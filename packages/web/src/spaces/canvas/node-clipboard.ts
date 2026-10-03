@@ -510,8 +510,8 @@ export function pasteOffsetFor(
     return pasteAnchorOffset(box, viewport, offsetPx);
   }
   return {
-    dx: viewport.x + viewport.width / 2 - (box.x + (box.width ?? 0) / 2),
-    dy: viewport.y + viewport.height / 2 - (box.y + (box.height ?? 0) / 2),
+    dx: viewport.x + viewport.width / 2 - (box.x + box.width / 2),
+    dy: viewport.y + viewport.height / 2 - (box.y + box.height / 2),
   };
 }
 
