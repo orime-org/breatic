@@ -33,12 +33,11 @@ export default defineConfig({
   resolve: {
     alias: {
       // The services' sources, and the aliases those sources use for
-      // themselves and for the libraries they read from source.
+      // themselves.
       "@integration-tests": resolve(__dirname, "./src"),
       "@server": resolve(__dirname, "../server/src"),
       "@worker": resolve(__dirname, "../worker/src"),
       "@collab": resolve(__dirname, "../collab/src"),
-      "@domain": resolve(__dirname, "../domain/src"),
     },
   },
 });

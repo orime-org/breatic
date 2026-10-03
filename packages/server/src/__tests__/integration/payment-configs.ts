@@ -4,7 +4,7 @@
 /**
  * Vitest globalSetup that gives the server's integration suite a price list.
  *
- * Runs after the shared container setup (`@breatic/integration-tests/containers`)
+ * Runs before the shared container setup (`@breatic/integration-tests/containers`)
  * in `vitest.integration.config.ts`. Only this package's suites read these
  * files, so laying them down is the server's own step.
  */

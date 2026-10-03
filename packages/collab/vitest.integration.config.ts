@@ -14,7 +14,7 @@
  * loopback. The ones that persist documents or run two instances also need
  * Postgres and Redis, which the shared container setup in
  * `@breatic/integration-tests` starts once for the whole run — so this config
- * needs Docker, like every package's integration config.
+ * needs Docker.
  */
 
 import type {} from "@breatic/integration-tests/provided-context";

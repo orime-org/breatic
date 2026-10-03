@@ -21,11 +21,13 @@ export default defineConfig({
     // __tests__/ next to the module — run in neither config, committed and
     // green and never executed.
     include: ["src/**/*.integration.test.ts"],
-    // globalSetup starts testcontainers BEFORE any test module is imported,
-    // then lays down the payment configs only this package's suites read.
+    // globalSetup lays down the payment configs only this package's suites
+    // read — first, because it is cheap and a run without a price list should
+    // say so before spending a minute pulling images — then starts the
+    // testcontainers BEFORE any test module is imported.
     globalSetup: [
-      "@breatic/integration-tests/containers",
       "./src/__tests__/integration/payment-configs.ts",
+      "@breatic/integration-tests/containers",
     ],
     // setupFiles runs inside the worker process. Re-applies env vars from globalSetup.
     setupFiles: ["@breatic/integration-tests/env"],
