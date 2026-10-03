@@ -49,6 +49,7 @@ import { documentTabExtension } from '@web/spaces/document/document-tab';
 import { documentTableKeysExtension } from '@web/spaces/document/document-table-keys';
 import { documentTableTargetExtension } from '@web/spaces/document/document-table-target';
 import { documentTableDragExtension } from '@web/spaces/document/document-table-drag';
+import { documentPasteHandler } from '@web/spaces/document/document-table-paste';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
@@ -199,6 +200,7 @@ export function buildDocumentEditor(
       cellTextColor: false,
       headers: true,
     },
+    pasteHandler: documentPasteHandler,
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;
 }
