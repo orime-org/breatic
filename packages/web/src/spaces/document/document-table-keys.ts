@@ -118,7 +118,7 @@ function collapseInCell(view: EditorView, dir: -1 | 1): boolean {
 /**
  * Opens a line under a table the body ends with, when the caret is on its way
  * out of it: on the last row going down, at the end of the last cell going
- * right. Nothing after such a table can take the caret, and the table
+ * right. Nothing after such a table can take a selection, and the table
  * plugin's own arrow falls back into the table (`prosemirror-tables` `arrow`,
  * `dist/index.js:2143-2151`). This is the keyboard's way to the line a click
  * on the space below the last block opens.
@@ -140,10 +140,10 @@ function leaveLastTable(editor: KeysEditor, dir: 'down' | 'right'): boolean {
       ? lastRow
       : lastRow && at.right === at.map.width && $head.parentOffset === $head.parent.content.size;
   if (!onWayOut || !view.endOfTextblock(dir)) return false;
-  // The end of the table itself; past it, the first place a caret can go —
-  // a block nested under the table counts.
+  // The end of the table itself; past it, anything a selection can stand on —
+  // a block nested under the table, a divider — means the body goes on.
   const end = cell.after(cell.depth - 1);
-  if (Selection.findFrom(view.state.doc.resolve(end), 1, true) !== null) return false;
+  if (Selection.findFrom(view.state.doc.resolve(end), 1) !== null) return false;
   const [line] = editor.insertBlocks([{ type: 'paragraph' }] as never, at.blockId, 'after');
   if (line === undefined) return false;
   editor.setTextCursorPosition(line, 'start');

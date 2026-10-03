@@ -259,6 +259,17 @@ describe('keys in a table cell', () => {
       expect(blockTypes(editor)).toEqual(['table']);
     });
 
+    it.each(['ArrowDown', 'ArrowRight'])('%s opens nothing when a divider follows the table', (key) => {
+      const editor = open();
+      editor.insertBlocks([{ type: 'divider' }] as never, editor.document[0]!, 'after');
+      onEdgeLine(editor);
+      caretAfter(editor, 'b2');
+
+      press(editor, key);
+
+      expect(blockTypes(editor)).toEqual(['table', 'divider']);
+    });
+
     it('opens nothing when the table has a block nested under it', () => {
       const editor = open();
       editor.updateBlock(editor.document[0]!, { children: [{ type: 'paragraph', content: 'kid' }] } as never);
