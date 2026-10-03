@@ -38,7 +38,8 @@ import {
   type ReferenceUrls,
 } from '@web/spaces/canvas/generate/reference-urls';
 import { asContentView } from '@web/data/yjs/node-view';
-import { imageSlotsForModel, type ImageSlot } from '@web/spaces/canvas/generate/image-slots';
+import type { ImageSlot } from '@web/spaces/canvas/generate/image-slots';
+import { styleSlotsFor } from '@web/spaces/canvas/generate/style-slot';
 import { withStyleImages } from '@web/spaces/canvas/generate/style-picks';
 
 /** Shared empty set for nodes with no `@`-picked references (avoids per-call allocation). */
@@ -194,8 +195,8 @@ export function buildGeneratePanelViewModel(input: {
   // not persist.
   const modelParams = current ? resolveModelSwitch(content, current).params : {};
   // The style slot is the model's to declare, per mode (inner#826).
-  const slots = imageSlotsForModel(current, mode);
   const { styleCap, styleImages, params } = withStyleImages(current, mode, content?.styleImageUrls, modelParams);
+  const slots: readonly ImageSlot[] = styleSlotsFor(styleCap);
 
   const references = deriveReferences(nodeId, nodes, edges, input.textById);
   // t2i generates from scratch and ignores source images (design §2.5): the

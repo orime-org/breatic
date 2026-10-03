@@ -83,7 +83,7 @@ import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets'
 import { slotForPurpose, slotRefusalKey } from '@web/spaces/canvas/generate/slots';
 import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
 import { useStyleSlot } from '@web/spaces/canvas/generate/use-style-slot';
-import type { ImageSlot } from '@web/spaces/canvas/generate/image-slots';
+import { styleSlotsFor } from '@web/spaces/canvas/generate/style-slot';
 import { poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
 import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import {
@@ -627,7 +627,7 @@ function VideoGeneratePanelBody({
   // under a running style pick too.
   useEndPickWhenSlotGone(
     nodeId,
-    vm.styleCap === undefined ? vm.slots : [...vm.slots, 'style' satisfies ImageSlot],
+    [...vm.slots, ...styleSlotsFor(vm.styleCap)],
     getLastWriteWasLocal,
   );
 

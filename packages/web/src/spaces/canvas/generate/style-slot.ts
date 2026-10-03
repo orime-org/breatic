@@ -47,3 +47,13 @@ export function styleCapFor(model: ModelEntry | undefined, mode: string): number
   if (spec === undefined || filledFromCanvas(spec, mode) === undefined) return undefined;
   return itemCap(spec);
 }
+
+/**
+ * The style slot as a drawn slot, for the lists that track which slots a
+ * panel shows (the running pick ends when its slot leaves the list).
+ * @param styleCap - The cap {@link styleCapFor} answered.
+ * @returns `['style']` when the area is drawn, else nothing.
+ */
+export function styleSlotsFor(styleCap: number | undefined): readonly 'style'[] {
+  return styleCap === undefined ? [] : ['style'];
+}

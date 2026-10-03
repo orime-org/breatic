@@ -257,7 +257,10 @@ describe('VideoGeneratePanel', () => {
 describe('VideoGeneratePanel — the style area (inner#828)', () => {
   it('draws the style area after Focus behind one divider for a model that takes style images', () => {
     renderPanel({ styleCap: 3, styleImages: [] });
-    expect(screen.getByTestId('generate-tool-style')).toBeInTheDocument();
+    const style = screen.getByTestId('generate-tool-style');
+    expect(
+      screen.getByTestId('generate-video-tool-focus').compareDocumentPosition(style) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.getAllByRole('separator')).toHaveLength(1);
   });
 

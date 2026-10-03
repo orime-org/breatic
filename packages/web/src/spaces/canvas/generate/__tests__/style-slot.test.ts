@@ -6,7 +6,7 @@ import type { ModelEntry } from '@breatic/shared';
 
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { allSlotSpecs, slotForPurpose } from '@web/spaces/canvas/generate/slots';
-import { STYLE_SLOT, styleCapFor } from '@web/spaces/canvas/generate/style-slot';
+import { STYLE_SLOT, styleCapFor, styleSlotsFor } from '@web/spaces/canvas/generate/style-slot';
 
 /**
  * A model with the given style declaration, in the given modes.
@@ -59,5 +59,10 @@ describe('the shared style slot', () => {
     expect(styleCapFor(model(undefined), 'ref')).toBeUndefined();
     expect(styleCapFor(model({ max_items: 3 }, ['t2v']), 'ref')).toBeUndefined();
     expect(styleCapFor(undefined, 'ref')).toBeUndefined();
+  });
+
+  it('names the style slot as drawn exactly when there is a cap', () => {
+    expect(styleSlotsFor(3)).toEqual(['style']);
+    expect(styleSlotsFor(undefined)).toEqual([]);
   });
 });
