@@ -1880,6 +1880,25 @@ body {
   background-color: var(--color-ring);
 }
 
+/* Where a dragged row or column lands: a line along the edge of the row or
+   the cells it would go next to, in the colour and thickness of the line a
+   dragged block draws (`dropCursor` in `build-document-editor.ts`). */
+.doc-body .doc-table-drop-row-before {
+  box-shadow: inset 0 2px 0 var(--color-status-selected);
+}
+
+.doc-body .doc-table-drop-row-after {
+  box-shadow: inset 0 -2px 0 var(--color-status-selected);
+}
+
+.doc-body .doc-table-drop-column-before {
+  box-shadow: inset 2px 0 0 var(--color-status-selected);
+}
+
+.doc-body .doc-table-drop-column-after {
+  box-shadow: inset -2px 0 0 var(--color-status-selected);
+}
+
 /* A cell's fill: the tint a highlight on words uses, so the panel's swatch,
    a highlight and a filled cell read one value. The library knows its own
    colour names and not ours. */
