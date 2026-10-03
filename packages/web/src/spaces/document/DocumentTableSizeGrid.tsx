@@ -102,8 +102,8 @@ export const DocumentTableSizeGrid = React.memo(function DocumentTableSizeGrid({
               data-cols={cols}
               data-on={on ? '' : undefined}
               className={cn(
-                'size-4 rounded-chrome-sm border border-border bg-background p-0 focus:bg-selection',
-                on && 'border-transparent bg-selection',
+                'size-4 rounded-chrome-sm border border-border bg-background p-0 focus:bg-[var(--color-selection)]',
+                on && 'border-transparent bg-[var(--color-selection)]',
               )}
               onFocus={onCellFocus}
               onKeyDown={onCellKeyDown}
