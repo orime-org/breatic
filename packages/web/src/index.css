@@ -1877,9 +1877,11 @@ body {
 }
 
 /* The tint above is a layer over the whole cell (the library's, at z-index 2);
-   the cell's words go above it, so a selected cell reads like selected text:
-   the colour behind the words, the words in their own colour. */
-.doc-body .selectedCell > * {
+   the cell's line of words goes above it, so a selected cell reads like
+   selected text: the colour behind the words, the words in their own colour.
+   The line only: the column-resize line is a child of the cell as well, drawn
+   by being absolutely placed. */
+.doc-body .selectedCell > p {
   position: relative;
   z-index: 3;
 }
