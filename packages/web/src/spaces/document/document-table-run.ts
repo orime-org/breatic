@@ -474,3 +474,30 @@ export function mergeSelectedCells(editor: TableEditor): void {
   if (view === undefined) return;
   mergeCells(view.state, view.dispatch);
 }
+
+/**
+ * The table a selection takes in whole, when every cell of it is empty: the
+ * case where deleting the selection leaves nothing of the table to keep.
+ * @param state - The editor state.
+ * @returns The table block's id, or null.
+ */
+export function wholeEmptyTableSelected(state: EditorState): string | null {
+  const { selection } = state;
+  if (!(selection instanceof CellSelection)) return null;
+  const at = cellAt(state.doc, selection.$anchorCell.pos);
+  if (at === null) return null;
+  let selected = 0;
+  selection.forEachCell(() => {
+    selected += 1;
+  });
+  let cells = 0;
+  let empty = true;
+  at.table.descendants((node) => {
+    const role = node.type.spec['tableRole'] as string | undefined;
+    if (role !== 'cell' && role !== 'header_cell') return true;
+    cells += 1;
+    if (node.childCount !== 1 || node.firstChild!.childCount !== 0) empty = false;
+    return false;
+  });
+  return empty && selected === cells ? at.blockId : null;
+}

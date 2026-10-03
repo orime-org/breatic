@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Tab, Shift-Tab and Enter inside a table cell.
+ * Tab, Shift-Tab and Enter inside a table cell, and Delete over every cell of
+ * an empty table.
  *
  * Tab and Shift-Tab move between cells, and Tab in the last cell adds a row
  * first — the way Google Docs, Notion and Word answer it. Enter breaks the
@@ -19,6 +20,8 @@
 
 import { createExtension } from '@blocknote/core';
 import type { EditorView } from '@tiptap/pm/view';
+import type { BlockNoteEditor } from '@blocknote/core';
+import { wholeEmptyTableSelected } from '@web/spaces/document/document-table-run';
 import {
   addRowAfter,
   CellSelection,
@@ -26,9 +29,10 @@ import {
   isInTable,
 } from '@tiptap/pm/tables';
 
-/** The one part of the editor these bindings read. */
+/** The parts of the editor these bindings use. */
 interface KeysEditor {
   readonly prosemirrorView: EditorView;
+  removeBlocks: BlockNoteEditor<never, never, never>['removeBlocks'];
 }
 
 /**
@@ -75,6 +79,21 @@ function breakLine(view: EditorView): boolean {
 }
 
 /**
+ * Takes a whole empty table away when every cell of it is selected — what the
+ * library does for Backspace (`Table/block.ts:442-491`), for the other key a
+ * reader deletes with. Anything else is the library's: `deleteCellSelection`
+ * empties the selected cells.
+ * @param editor - The editor.
+ * @returns Whether the key was claimed.
+ */
+function deleteWholeTable(editor: KeysEditor): boolean {
+  const blockId = wholeEmptyTableSelected(editor.prosemirrorView.state);
+  if (blockId === null) return false;
+  editor.removeBlocks([blockId]);
+  return true;
+}
+
+/**
  * The extension that binds the keys inside a table.
  * @returns The extension, for the assembly to register.
  */
@@ -86,5 +105,6 @@ export const documentTableKeysExtension = createExtension(() => ({
     'Shift-Tab': ({ editor }: { editor: KeysEditor }) => tabBack(editor.prosemirrorView),
     Enter: ({ editor }: { editor: KeysEditor }) => breakLine(editor.prosemirrorView),
     'Shift-Enter': ({ editor }: { editor: KeysEditor }) => breakLine(editor.prosemirrorView),
+    Delete: ({ editor }: { editor: KeysEditor }) => deleteWholeTable(editor),
   },
 }) as never);
