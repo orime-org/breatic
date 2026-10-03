@@ -22,7 +22,7 @@
  *   - two concurrent confirms apply the transfer EXACTLY ONCE.
  *   - cancel changes no roles.
  *
- * Runs against the testcontainer Postgres + Redis started by global-setup.ts.
+ * Runs against the testcontainer Postgres + Redis started by @breatic/integration-tests/containers.
  * Seeding uses a narrow raw `postgres` client; assertions drive the real
  * `studioTransfer.service` (core's env-bound `db`).
  */

@@ -19,7 +19,7 @@
  *   3. listUserStudios — every active membership (personal + team), with
  *      the personal studio first; a soft-deleted membership drops the studio.
  *
- * Runs against the testcontainer Postgres started by global-setup.ts.
+ * Runs against the testcontainer Postgres started by @breatic/integration-tests/containers.
  * Seeding uses a narrow raw `postgres` client; the assertions call the real
  * `studioService` (core's env-bound `db`, pointed at the same container via
  * the injected config) and the real `loadStudioRole` (domain).
@@ -45,7 +45,7 @@ import postgres from "postgres";
 import { initCore, NotFoundError } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
 
-// integration-setup.ts injects the container URLs into process.env. Inject
+// @breatic/integration-tests/env injects the container URLs into process.env. Inject
 // the validated config so the repo's env-bound `db` Proxy resolves to the
 // testcontainer. Guarded because the worker process is shared (singleFork)
 // with sibling suites that may have already inited.

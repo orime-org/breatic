@@ -2,78 +2,31 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Vitest globalSetup for integration tests.
+ * Vitest globalSetup for every package's integration suite.
  *
- * Starts PostgreSQL + Redis testcontainers BEFORE any test worker is forked.
- * This is essential because @breatic/core/config/env.ts calls createEnv()
- * at module-load time and reads process.env immediately — the containers
- * must be up and the env vars injected before the first import of any
- * @breatic/core symbol in the test worker.
- *
- * Uses Vitest's provide() API to forward the URLs to the test worker
- * processes, where they are re-applied to process.env in the per-worker
- * setupFile (integration-setup.ts).
+ * Starts PostgreSQL + Redis testcontainers BEFORE any test worker is forked,
+ * migrates both databases, and forwards the addresses to the workers through
+ * Vitest's provide() API; `env.ts` re-applies them to process.env there.
  */
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
-import { copyFileSync, existsSync, rmSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 /** Shared state across setup / teardown. */
 let pgContainer: StartedPostgreSqlContainer;
 let redisContainer: StartedTestContainer;
 
-/**
- * The payment config files these suites need, and where a fixture for each
- * lives.
- *
- * Neither is tracked by git: both name what a deployment really charges and
- * which Stripe objects it really sells. The suites that exercise checkout,
- * fulfilment, the membership panel and the subscription webhooks still need
- * a price list to exercise, so a run that finds none lays down a fixture.
- */
-const PAYMENT_CONFIGS = ["pricing", "subscription"] as const;
-
-/** Repo root, from this file at packages/server/src/__tests__/integration/. */
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../..");
-
-/** The configs this run laid down, and therefore the ones it may remove. */
-const laidDown: string[] = [];
-
-/**
- * Give the run a price list where the machine has none.
- *
- * Only writes what is absent, and records what it wrote, so a developer who
- * keeps their own `config/*.yaml` runs against theirs and still has it
- * afterwards.
- * @returns nothing; {@link laidDown} records what teardown must remove.
- */
-function layDownPaymentConfigs(): void {
-  for (const name of PAYMENT_CONFIGS) {
-    const target = resolve(REPO_ROOT, `config/${name}.yaml`);
-    if (existsSync(target)) continue;
-    copyFileSync(
-      resolve(dirname(fileURLToPath(import.meta.url)), `fixtures/${name}.yaml`),
-      target,
-    );
-    laidDown.push(target);
-  }
-}
-
 type ProvideContext = {
   provide: (key: string, value: string) => void;
 };
 
+/**
+ * Start the containers, migrate both databases and provide their addresses.
+ * @param ctx - Vitest's globalSetup context.
+ * @param ctx.provide - Forwards a value to the test workers' `inject()`.
+ * @returns once both databases are migrated.
+ */
 export async function setup({ provide }: ProvideContext): Promise<void> {
-  // Before the containers, because this is cheap and a run that cannot get a
-  // price list should say so before spending a minute pulling images.
-  layDownPaymentConfigs();
-  if (laidDown.length > 0) {
-    console.log(`[integration] Laid down payment config fixtures: ${laidDown.join(", ")}`);
-  }
-
   console.log("[integration] Starting testcontainers...");
 
   // Start PostgreSQL + Redis in parallel for speed
@@ -120,8 +73,8 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   process.env.REDIS_STREAM_URL = urls.REDIS_STREAM_URL;
   process.env.REDIS_COLLAB_URL = urls.REDIS_COLLAB_URL;
   // The rest of what the config schema wants, needed because the migration step
-  // below imports core. The R2 settings live in `integration-setup.ts` instead:
-  // they are read when a storage adapter is built, and nothing here builds one.
+  // below imports core. The R2 settings live in `env.ts` instead: they are
+  // read when a storage adapter is built, and nothing here builds one.
   // ENV must be "dev" | "staging" | "prod" (see core/config/env.ts)
   process.env.ENV = "dev";
   process.env.STORAGE_PROVIDER = "r2";
@@ -130,9 +83,9 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   // Run migrations against the fresh PG container before any test runs.
   // Imported dynamically AFTER the env vars above are set: @breatic/core's
   // env.ts validates process.env at module-load, so core must not be imported
-  // until DATABASE_URL etc. point at the freshly-started container. Routing
-  // migration through core keeps drizzle-orm a core-only dependency
-  // (CLAUDE.md "@core 内容归属").
+  // until DATABASE_URL etc. point at the freshly-started container. The
+  // migrations run through core's own functions, so this file needs no
+  // database driver of its own.
   console.log("[integration] Running migrations...");
   const { migrateDatabase, migrateYjsDatabase, createTestDb } = await import(
     "@breatic/core"
@@ -155,7 +108,7 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   console.log(`[integration] yjs PG: ${yjsUrl}`);
   console.log(`[integration] Redis base: ${redisBase}`);
 
-  // Forward URLs to test worker processes via inject() in integration-setup.ts
+  // Forward URLs to test worker processes via inject() in env.ts
   provide("DATABASE_URL", urls.DATABASE_URL);
   provide("YJS_DATABASE_URL", urls.YJS_DATABASE_URL);
   provide("REDIS_URL", urls.REDIS_URL);
@@ -164,6 +117,10 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   provide("REDIS_COLLAB_URL", urls.REDIS_COLLAB_URL);
 }
 
+/**
+ * Close the pools the migration step opened, then stop both containers.
+ * @returns once the containers are stopped.
+ */
 export async function teardown(): Promise<void> {
   console.log("[integration] Stopping containers...");
   // Importing @breatic/core in setup() created the env-bound singleton pool
@@ -174,8 +131,5 @@ export async function teardown(): Promise<void> {
     pgContainer?.stop(),
     redisContainer?.stop(),
   ]);
-  // Only what this run wrote. A developer's own config was never touched and
-  // is not in this list.
-  for (const path of laidDown) rmSync(path, { force: true });
   console.log("[integration] Containers stopped.");
 }

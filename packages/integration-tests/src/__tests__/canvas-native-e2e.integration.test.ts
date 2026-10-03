@@ -85,11 +85,11 @@ const providerCtrl = {
 };
 
 // Must be hoisted before the module imports below
-vi.mock("@breatic/worker/src/mini-tool-registry.js", () => ({
+vi.mock("@worker/mini-tool-registry.js", () => ({
   resolveMiniToolEntry: () => ({ kind: "local", handler: "test/mock" }),
 }));
 
-vi.mock("@breatic/worker/src/handlers/local/index.js", () => ({
+vi.mock("@worker/handlers/local/index.js", () => ({
   runLocalHandler: async () => {
     if (providerCtrl.mode === "failure") {
       throw providerCtrl.error;
@@ -263,7 +263,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 });
 
 // ── Import real modules AFTER mocks are registered ──────────────────────────
-// NOTE: process.env is already set by integration-setup.ts (setupFiles runs
+// NOTE: process.env is already set by test-utils/env.ts (setupFiles runs
 // before test file evaluation). @breatic/core no longer reads process.env
 // itself — it reads injected config via the env Proxy after initCore runs —
 // so we call initCore(process.env) below before any real-core access (e.g.
@@ -271,29 +271,17 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 // not in the shared setupFile.
 
 import type * as domain from "@breatic/domain";
-import { runTask } from "@breatic/worker/src/handlers/dispatch.js";
-import type { TaskJobData } from "@breatic/worker/src/handlers/dispatch.js";
+import { runTask } from "@worker/handlers/dispatch.js";
+import type { TaskJobData } from "@worker/handlers/dispatch.js";
 import { initCore, schema, createTestDb } from "@breatic/core";
 import { taskService } from "@breatic/domain";
-import { startTaskListener } from "@breatic/collab/src/services/task-listener.js";
+import { startTaskListener } from "@collab/services/task-listener.js";
 import { openGenerationTasks } from "@server/modules/task/generation-task.js";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
 
 initCore(process.env);
-
-// Declare the shape of values provided by globalSetup.setup() via provide().
-// Vitest uses declaration merging on this interface to type inject() calls.
-// This mirrors the same declaration in integration-setup.ts.
-declare module "vitest" {
-  export interface ProvidedContext {
-    DATABASE_URL: string;
-    REDIS_URL: string;
-    REDIS_QUEUE_URL: string;
-    REDIS_STREAM_URL: string;
-  }
-}
 
 // ── Infrastructure state ─────────────────────────────────────────────────────
 
@@ -569,7 +557,7 @@ beforeAll(async () => {
   //    redisKeyPrefix = "dev" -> cursor key: dev:collab:task-events:last-id.
   //    The STREAM key is separate and does NOT come from that argument:
   //    This must match taskEventsStreamKey() in @breatic/core/infra/event-stream.ts,
-  //    which uses `${env.ENV}:stream:task-events` — and ENV="dev" in integration-setup.ts.
+  //    which uses `${env.ENV}:stream:task-events` — and ENV="dev" in test-utils/env.ts.
   stopTaskListener = startTaskListener(
     hocuspocus,
     REDIS_STREAM_URL,

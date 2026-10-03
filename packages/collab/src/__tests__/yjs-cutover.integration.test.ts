@@ -7,7 +7,7 @@
  * After the cutover the `yjs_documents` repo lives in `@breatic/collab`
  * and targets a SEPARATE database (`yjsDb` / YJS_DATABASE_URL). This
  * pins the load-bearing behaviour the cutover depends on, against a real
- * second PG database (global-setup creates `breatic_yjs_test` in the same
+ * second PG database (the shared container setup creates `breatic_yjs_test` in the same
  * container + migrates it):
  *
  *   - repo round-trip on the yjs DB (fetch / upsert / soft-delete /
@@ -46,7 +46,7 @@ import {
   db as coreDb,
   encodeInitialMetaState,
 } from "@breatic/core";
-import * as yjsRepo from "@breatic/collab/src/services/yjs-documents.repo.js";
+import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 
 initCore(process.env);
 

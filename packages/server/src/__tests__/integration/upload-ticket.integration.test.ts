@@ -61,7 +61,7 @@ try {
 loadLocales();
 
 /**
- * The same secret `integration-setup.ts` hands the server. Read from the
+ * The same secret `@breatic/integration-tests/env` hands the server. Read from the
  * environment rather than repeated as a literal: a ticket the endpoint signs
  * with one value and this file verifies with another would pass a test that
  * asserts nothing.
