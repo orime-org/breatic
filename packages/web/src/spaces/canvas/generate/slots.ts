@@ -18,7 +18,7 @@
  * silently does the wrong thing, with nothing failing to compile (#1960).
  */
 
-import { refusalToastKey, type ExecuteVerdict } from '@breatic/shared';
+import { refusalToastKey, usableUrls, type ExecuteVerdict } from '@breatic/shared';
 import type { LucideIcon } from 'lucide-react';
 
 // The two registries are imported for their DATA; each imports only the types
@@ -160,11 +160,7 @@ export function readSlotPicks(
   spec: SlotSpec,
   value: unknown,
 ): Array<{ url: string; thumbnail?: string; duration?: number }> {
-  if (spec.multiple) {
-    if (!Array.isArray(value)) return [];
-    const urls = [...new Set(value.filter((v): v is string => typeof v === 'string' && v.length > 0))];
-    return urls.map((url) => ({ url, thumbnail: url }));
-  }
+  if (spec.multiple) return usableUrls(value).map((url) => ({ url, thumbnail: url }));
   const pick = readSlotPick(spec, value);
   return pick ? [pick] : [];
 }

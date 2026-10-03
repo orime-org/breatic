@@ -933,9 +933,9 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     append.mockRestore();
   });
 
-  it('style pick ends once the click fills the last place', async () => {
-    const append = vi.spyOn(canvasSpace, 'appendNodeSlotItem').mockImplementation(() => 'added');
-    mockUseCanvasSpace.mockReturnValue(styleNodes(['https://cdn/a.png', 'https://cdn/b.png']));
+  it('style pick ends once the write says the click filled the last place', async () => {
+    const append = vi.spyOn(canvasSpace, 'appendNodeSlotItem').mockImplementation(() => 'filled');
+    mockUseCanvasSpace.mockReturnValue(styleNodes([]));
     renderSpace();
     act(() => {
       useCanvasStore.getState().startStylePick('target', 3);
@@ -944,6 +944,17 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     await waitFor(() => expect(append).toHaveBeenCalled());
     expect(useCanvasStore.getState().pickSession).toBeNull();
     append.mockRestore();
+  });
+
+  it('style pick dims a picture the slot already holds', () => {
+    mockUseCanvasSpace.mockReturnValue(styleNodes(['https://cdn/x.png']));
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startStylePick('target', 3);
+    });
+    const cls = (id: string): string =>
+      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ?? '';
+    expect(cls('src-image')).toContain('canvas-pick-dimmed');
   });
 
   // The banner is the ONLY on-canvas instruction during a pick, so it has to

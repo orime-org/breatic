@@ -467,16 +467,18 @@ function GeneratePanelBody({
   );
   const startStylePick = useCanvasStore((s) => s.startStylePick);
   const styleCap = vm.styleCap;
+  const styleHeld = vm.styleImages.length;
   // Each click on the canvas adds one style image; the cap rides the session
-  // so the canvas knows when the slot is full (inner#826).
+  // so the canvas knows when the slot is full (inner#826). A full slot opens
+  // no pick: every click would add nothing.
   const onStylePick = React.useCallback(() => {
     const session = useCanvasStore.getState().pickSession;
     if (session?.nodeId === nodeId && session.purpose === 'style') {
       endPick();
-    } else if (styleCap !== undefined) {
+    } else if (styleCap !== undefined && styleHeld < styleCap) {
       startStylePick(nodeId, styleCap);
     }
-  }, [startStylePick, endPick, nodeId, styleCap]);
+  }, [startStylePick, endPick, nodeId, styleCap, styleHeld]);
   const onRemoveStyle = React.useCallback(
     (url: string) => {
       removeNodeSlotItem(projectId, spaceId, nodeId, IMAGE_SLOTS.style.field, url);

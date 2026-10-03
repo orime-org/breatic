@@ -11,6 +11,8 @@
  * same params, so what is quoted is what is sent.
  */
 
+import { usableUrls } from "@shared/item-cap.js";
+
 /**
  * The three fields this reads off each declaration. Loose on purpose: the
  * worker hands in the yaml-shaped entry and the panel the wire descriptor.
@@ -30,15 +32,6 @@ export interface JoinedRun {
   readonly params: Record<string, unknown>;
   /** The prompt with each joining slot's note appended. */
   readonly prompt: string;
-}
-
-/**
- * The usable URLs in a list value.
- * @param value - A submitted list.
- * @returns Its non-empty string entries.
- */
-function urlsOf(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v.length > 0) : [];
 }
 
 /**
@@ -68,10 +61,10 @@ export function joinSlotFiles(
   for (const [name, spec] of Object.entries(declared)) {
     const { joins, prompt_note: note } = spec as JoinFields;
     if (typeof joins !== "string" || typeof note !== "string") continue;
-    const files = urlsOf(out[name]);
+    const files = usableUrls(out[name]);
     delete out[name];
     if (files.length === 0) continue;
-    const pool = urlsOf(out[joins]);
+    const pool = usableUrls(out[joins]);
     const declaredMention = (declared[joins] as JoinFields | undefined)?.mention;
     const mention = typeof declaredMention === "string" ? declaredMention : "image {n}";
     const names = files.map((_, k) => {

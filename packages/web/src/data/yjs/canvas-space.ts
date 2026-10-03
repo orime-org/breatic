@@ -21,7 +21,7 @@ import {
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import { writeNodeMedia, type NodeMediaFields } from '@breatic/shared';
+import { usableUrls, writeNodeMedia, type NodeMediaFields } from '@breatic/shared';
 import { bodyFromText, bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import type { NodeKind, NodeView } from '@web/data/yjs/node-view';
 import { toNodeView } from '@web/data/yjs/node-view';
@@ -956,17 +956,6 @@ export function setNodeSlotValue(
 }
 
 /**
- * The usable files in a slot list, in order and once each. Collaborative
- * data, so whatever the type says, every entry is checked.
- * @param raw - The stored value.
- * @returns Its non-empty string entries without repeats.
- */
-function slotListOf(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
-  return [...new Set(raw.filter((v): v is string => typeof v === 'string' && v.length > 0))];
-}
-
-/**
  * Adds one file to a slot that holds several (inner#826: style images). The
  * list is one value, so it is read and written in one transaction; two
  * readers appending at the same moment keep whichever write lands last.
@@ -976,7 +965,8 @@ function slotListOf(raw: unknown): string[] {
  * @param key - The node data field the slot owns.
  * @param url - The picked file's URL.
  * @param capacity - The most files the slot holds.
- * @returns What happened: added, already there, full, or no such node.
+ * @returns What happened: added, added and now full, already there, full, or
+ *   no such node.
  */
 export function appendNodeSlotItem(
   projectId: string,
@@ -985,13 +975,13 @@ export function appendNodeSlotItem(
   key: string,
   url: string,
   capacity: number,
-): 'added' | 'present' | 'full' | 'node-missing' {
+): 'added' | 'filled' | 'present' | 'full' | 'node-missing' {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const data = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId)?.get('data');
   if (!(data instanceof Y.Map)) return 'node-missing';
-  let result: 'added' | 'present' | 'full' = 'added';
+  let result: 'added' | 'filled' | 'present' | 'full' = 'added';
   doc.transact(() => {
-    const list = slotListOf(data.get(key));
+    const list = usableUrls(data.get(key));
     if (list.includes(url)) {
       result = 'present';
       return;
@@ -1001,6 +991,7 @@ export function appendNodeSlotItem(
       return;
     }
     data.set(key, [...list, url]);
+    if (list.length + 1 >= capacity) result = 'filled';
   }, CANVAS_UNDO);
   return result;
 }
@@ -1025,7 +1016,7 @@ export function removeNodeSlotItem(
   const data = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId)?.get('data');
   if (!(data instanceof Y.Map)) return;
   doc.transact(() => {
-    const next = slotListOf(data.get(key)).filter((u) => u !== url);
+    const next = usableUrls(data.get(key)).filter((u) => u !== url);
     if (next.length === 0) data.delete(key);
     else data.set(key, next);
   }, CANVAS_UNDO);

@@ -591,6 +591,12 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(styleList()).toEqual(['https://cdn/a.png']);
   });
 
+  it('appendNodeSlotItem says when the file it added fills the slot', () => {
+    addNode(PID, SID, sampleFields('image', { styleImageUrls: ['a', 'b'] }, { id: 'gen' }));
+    expect(appendNodeSlotItem(PID, SID, 'gen', 'styleImageUrls', 'c', 3)).toBe('filled');
+    expect(styleList()).toEqual(['a', 'b', 'c']);
+  });
+
   it('appendNodeSlotItem refuses a file past the cap', () => {
     addNode(PID, SID, sampleFields('image', { styleImageUrls: ['a', 'b', 'c'] }, { id: 'gen' }));
     expect(appendNodeSlotItem(PID, SID, 'gen', 'styleImageUrls', 'd', 3)).toBe('full');

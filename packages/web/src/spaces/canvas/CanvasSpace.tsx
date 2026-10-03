@@ -2007,14 +2007,8 @@ function CanvasSpaceInner({
           // pick runs on until the slot is full or the reader exits.
           const url = pickedSlotUrl(node, pickedSlot.accepts);
           if (url === null) return;
-          const held = readSlotPicks(
-            pickedSlot,
-            (useCanvasGraphStore.getState().flowNodes.find((n) => n.id === target)?.data as
-              | Record<string, unknown>
-              | undefined)?.[pickedSlot.field],
-          ).length;
           const result = appendNodeSlotItem(projectId, spaceId, target, pickedSlot.field, url, session.capacity);
-          if (result === 'full' || (result === 'added' && held + 1 >= session.capacity)) endPick();
+          if (result === 'full' || result === 'filled') endPick();
           return;
         }
         if (!fillSlot(projectId, spaceId, target, pickedSlot, node)) return;
@@ -4204,13 +4198,20 @@ function CanvasSpaceInner({
       // of asset — an audio one for voice cloning (#1960 PR2) — dims the
       // right nodes without another branch here.
       const accepts = paintingSlot.accepts;
+      // A slot holding several takes each file once, so what it already holds
+      // is no candidate (inner#826).
+      const targetData = renderNodes.find((n) => n.id === target)?.data as Record<string, unknown> | undefined;
+      const held = new Set(
+        paintingSlot.multiple ? readSlotPicks(paintingSlot, targetData?.[paintingSlot.field]).map((p) => p.url) : [],
+      );
       return paint((node) => {
         const data = node.data as { content?: unknown; status?: unknown };
         return (
           node.id === target ||
           node.type !== accepts ||
           typeof data.content !== 'string' ||
-          data.content.length === 0
+          data.content.length === 0 ||
+          held.has(data.content)
         );
       });
     }
