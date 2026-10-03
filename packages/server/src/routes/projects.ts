@@ -221,6 +221,37 @@ projects.post("/:id/opened", async (c) => {
   return c.json({ data: { ok: true } });
 });
 
+/**
+ * `POST /projects/:id/archive` — archive a project.
+ *
+ * Studio admin only, whether or not they are on the project, so the gate is in
+ * the service (it reads the studio role), not `requireRoleOnParam`.
+ * @returns `200` with `{ data: { ok: true } }`
+ */
+projects.post(
+  "/:id/archive",
+  validate("param", z.object({ id: z.string().uuid() })),
+  async (c) => {
+    await projectService.archive(c.req.valid("param").id, c.get("user").id);
+    return c.json({ data: { ok: true } });
+  },
+);
+
+/**
+ * `POST /projects/:id/restore` — restore an archived project.
+ *
+ * Studio admin only; see `/archive`.
+ * @returns `200` with `{ data: { ok: true } }`
+ */
+projects.post(
+  "/:id/restore",
+  validate("param", z.object({ id: z.string().uuid() })),
+  async (c) => {
+    await projectService.restore(c.req.valid("param").id, c.get("user").id);
+    return c.json({ data: { ok: true } });
+  },
+);
+
 // ── Membership-gated writes ────────────────────────────────────────
 //
 // Every route below this point sits behind `requireRoleOnParam('id',

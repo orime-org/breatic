@@ -118,6 +118,38 @@ describe("Projects routes", () => {
     });
   });
 
+  describe("POST /projects/:id/archive and /restore — studio admin, decided in the service", () => {
+    it("archives for the caller and answers 200 without asking the caller's project role", async () => {
+      mocks.projectService.archive.mockResolvedValue(undefined);
+      const res = await createApp().request(`/api/v1/projects/${PROJ_UUID}/archive`, {
+        method: "POST",
+        headers: AUTH,
+      });
+      expect(res.status).toBe(200);
+      expect(mocks.projectService.archive).toHaveBeenCalledWith(PROJ_UUID, "user-1");
+      expect(mocks.projectAuthService.loadProjectRole).not.toHaveBeenCalled();
+    });
+
+    it("restores for the caller and answers 200", async () => {
+      mocks.projectService.restore.mockResolvedValue(undefined);
+      const res = await createApp().request(`/api/v1/projects/${PROJ_UUID}/restore`, {
+        method: "POST",
+        headers: AUTH,
+      });
+      expect(res.status).toBe(200);
+      expect(mocks.projectService.restore).toHaveBeenCalledWith(PROJ_UUID, "user-1");
+    });
+
+    it("refuses a malformed project id before reaching the service", async () => {
+      const res = await createApp().request("/api/v1/projects/not-a-uuid/archive", {
+        method: "POST",
+        headers: AUTH,
+      });
+      expect(res.status).toBe(422);
+      expect(mocks.projectService.archive).not.toHaveBeenCalled();
+    });
+  });
+
   describe("PATCH /projects/:id — partial update (DD #152)", () => {
     it("PATCH updates project name (returns {data: ProjectEntity})", async () => {
       mocks.projectService.update.mockResolvedValue({ id: PROJ_UUID, name: "New Name" });
