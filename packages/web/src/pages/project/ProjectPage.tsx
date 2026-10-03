@@ -51,6 +51,7 @@ import {
 } from '@web/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
 import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
+import { useRefreshOnReauth } from '@web/pages/project/use-refresh-on-reauth';
 import { useRenameProject } from '@web/pages/project/use-rename-project';
 import {
   initialTabState,
@@ -297,6 +298,10 @@ function ProjectWorkspace({
   // Unconditional on purpose: no filtering on whether we already know the id,
   // which would have quietly kept showing the old name for everyone listed.
   useRosterRefreshOnJoin(projectId, users);
+  // Archived, restored, a role changed: collab closes the documents and the
+  // connection re-authenticates by itself, but the banner and the role gates
+  // read the project query, so that is refetched too.
+  useRefreshOnReauth(provider, projectId);
   // The whole tab bar, held here and nowhere else. Every cell of the
   // transition table is one action on this reducer, so the strip and the
   // active tab have a single writer.

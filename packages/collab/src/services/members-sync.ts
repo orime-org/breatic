@@ -7,8 +7,9 @@
  * The API server publishes pub/sub events on Redis DB2:
  *
  *   - `{prefix}:project:{pid}:members:changed` — kick the affected user's
- *     ws connections to this project's docs (close 4403 forces an
- *     onAuthenticate re-check), then broadcastStateless an
+ *     ws connections to this project's docs (the close reason makes the
+ *     web client re-authenticate, so onAuthenticate re-checks the role),
+ *     then broadcastStateless an
  *     invalidate signal to the project's `meta` doc so other
  *     connected clients re-fetch their members cache.
  *
@@ -38,6 +39,7 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import type { Redis } from "@breatic/core";
 import { createLogger, projectControlChannelPattern } from "@breatic/core";
 import {
+  COLLAB_REAUTH_REASONS,
   parseDocName,
   projectMetaDocName,
   type MembersChangedEvent,
@@ -52,9 +54,10 @@ type ProjectControlEvent = MembersChangedEvent | ActivityNewControlEvent;
 
 /**
  * Best-effort kick — close every ws connection the user holds to
- * any doc under this project. The Hocuspocus client reconnects
- * automatically; the next `onAuthenticate` re-runs the role lookup
- * with the freshly-written `project_members` state.
+ * any doc under this project. Closing one document leaves the shared socket
+ * open, so the Hocuspocus client does not come back by itself; the web client
+ * re-sends its token on seeing this reason, and that `onAuthenticate` re-runs
+ * the role lookup with the freshly-written `project_members` state.
  * @param hocuspocus - Running Hocuspocus server whose loaded documents are scanned for the user's connections.
  * @param projectId - Project whose docs the kick is restricted to.
  * @param userId - User whose connections are closed with code 4403 to force an onAuthenticate re-check.
@@ -78,7 +81,7 @@ function kickUserFromProject(
     for (const [connection] of doc.connections) {
       const ctxUser = (connection.context as { user?: { id?: string } } | undefined)?.user;
       if (ctxUser?.id === userId) {
-        connection.close({ code: 4403, reason: "Permission changed, please reconnect" });
+        connection.close({ code: 4403, reason: COLLAB_REAUTH_REASONS.permissionChanged });
       }
     }
   }

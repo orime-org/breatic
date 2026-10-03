@@ -29,7 +29,7 @@
 
 import type { Hocuspocus } from "@hocuspocus/server";
 import { createLogger, lifecycleStreamKey } from "@breatic/core";
-import { parseDocName, type ProjectLifecycleEvent } from "@breatic/shared";
+import { COLLAB_REAUTH_REASONS, parseDocName, type ProjectLifecycleEvent } from "@breatic/shared";
 import { startStreamConsumer } from "@collab/services/event-stream.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 
@@ -46,10 +46,10 @@ const logger = createLogger("lifecycle-listener");
  */
 const CLOSE_PROJECT_REFRESHED = {
   code: 4406,
-  reason: "Project content updated",
+  reason: COLLAB_REAUTH_REASONS.projectContentUpdated,
 } as const;
-const CLOSE_PROJECT_ARCHIVED = { code: 4407, reason: "Project archived" } as const;
-const CLOSE_PROJECT_RESTORED = { code: 4408, reason: "Project restored" } as const;
+const CLOSE_PROJECT_ARCHIVED = { code: 4407, reason: COLLAB_REAUTH_REASONS.projectArchived } as const;
+const CLOSE_PROJECT_RESTORED = { code: 4408, reason: COLLAB_REAUTH_REASONS.projectRestored } as const;
 
 /**
  * Build the Redis key where this consumer persists its last-handled

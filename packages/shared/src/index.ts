@@ -333,6 +333,8 @@ export {
 } from "@shared/yjs-doc-names.js";
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
+export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
+
 export {
   documentBodyFragment,
   documentCommentThreads,

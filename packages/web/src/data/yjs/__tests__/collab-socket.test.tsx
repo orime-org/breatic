@@ -7,12 +7,13 @@ import * as Y from 'yjs';
 // Spy transport. We assert how many shared sockets / per-doc providers get
 // constructed + attached + destroyed, never opening a real WebSocket.
 const { wsInstances, providerInstances } = vi.hoisted(() => ({
-  wsInstances: [] as Array<{ destroy: ReturnType<typeof vi.fn> }>,
+  wsInstances: [] as Array<{ destroy: ReturnType<typeof vi.fn>; receivedOnOpenPayload?: Event }>,
   providerInstances: [] as Array<{
     destroy: ReturnType<typeof vi.fn>;
     attach: ReturnType<typeof vi.fn>;
+    onOpen: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
-    emit: (event: string) => void;
+    emit: (event: string, data?: unknown) => void;
     config: Record<string, unknown>;
   }>,
 }));
@@ -20,6 +21,7 @@ const { wsInstances, providerInstances } = vi.hoisted(() => ({
 vi.mock('@hocuspocus/provider', () => ({
   HocuspocusProviderWebsocket: class {
     destroy = vi.fn();
+    receivedOnOpenPayload?: Event = undefined;
     constructor() {
       wsInstances.push(this);
     }
@@ -27,13 +29,14 @@ vi.mock('@hocuspocus/provider', () => ({
   HocuspocusProvider: class {
     destroy = vi.fn();
     attach = vi.fn();
+    onOpen = vi.fn();
     // The registry subscribes to `synced` to latch "the content has arrived".
-    listeners: Record<string, Array<() => void>> = {};
-    on = vi.fn((event: string, cb: () => void) => {
+    listeners: Record<string, Array<(data?: unknown) => void>> = {};
+    on = vi.fn((event: string, cb: (data?: unknown) => void) => {
       (this.listeners[event] ??= []).push(cb);
     });
-    emit(event: string): void {
-      for (const cb of [...(this.listeners[event] ?? [])]) cb();
+    emit(event: string, data?: unknown): void {
+      for (const cb of [...(this.listeners[event] ?? [])]) cb(data);
     }
     config: Record<string, unknown>;
     constructor(config: Record<string, unknown>) {
@@ -160,5 +163,55 @@ describe('collab-socket manager — refcounted shared socket + deferred teardown
     releaseDocProvider(META); // consumer 2 leaves — refcount 0
     vi.runAllTimers();
     expect(getDoc(META)).not.toBe(doc); // now evicted
+  });
+});
+
+describe('collab-socket manager — a document closed to be re-checked comes straight back', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    _resetCollabSocketForTests();
+    _resetDocsForTests();
+    wsInstances.length = 0;
+    providerInstances.length = 0;
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const OPEN = new Event('open');
+
+  it('re-sends the token on the same socket when collab asks for it', () => {
+    acquireDocProvider(META, getDoc(META));
+    wsInstances[0]!.receivedOnOpenPayload = OPEN;
+    providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Project archived' } });
+    expect(providerInstances[0]!.onOpen).toHaveBeenCalledWith(OPEN);
+  });
+
+  it('does it for every reason collab sends for that purpose', () => {
+    acquireDocProvider(META, getDoc(META));
+    wsInstances[0]!.receivedOnOpenPayload = OPEN;
+    for (const reason of [
+      'Project archived',
+      'Project restored',
+      'Project content updated',
+      'Permission changed, please reconnect',
+    ]) {
+      providerInstances[0]!.emit('close', { event: { code: 1000, reason } });
+    }
+    expect(providerInstances[0]!.onOpen).toHaveBeenCalledTimes(4);
+  });
+
+  it('leaves any other close alone', () => {
+    acquireDocProvider(META, getDoc(META));
+    wsInstances[0]!.receivedOnOpenPayload = OPEN;
+    providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Document not found' } });
+    providerInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+    expect(providerInstances[0]!.onOpen).not.toHaveBeenCalled();
+  });
+
+  it('waits for the socket when the socket itself is down', () => {
+    acquireDocProvider(META, getDoc(META));
+    providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Project archived' } });
+    expect(providerInstances[0]!.onOpen).not.toHaveBeenCalled();
   });
 });
