@@ -119,22 +119,31 @@ export async function estimateCredits(
   const formulas = [model.pricing.formula, ...steps.map((s) => s.pricing.formula)];
   const promptField = model.prompt_upstream ?? "prompt";
 
+  // A required source the reader has not filled stands in as one placeholder,
+  // judged on the reader's own params: style files joining a pool do not fill
+  // the picture a run cannot go without.
+  const own: Record<string, unknown> = { ...input.params };
+  let unknown = false;
+  for (const [name, spec] of Object.entries(model.params)) {
+    if (spec.joins !== undefined) continue;
+    const source = spec.fill === "canvas" || spec.fill === "pool";
+    const value = own[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
+    if (source && !isPresent(value) && spec.optional !== true) {
+      own[name] = spec.type === "list" ? [UNPICKED] : UNPICKED;
+      if (reads(formulas, spec.upstream ?? name)) unknown = true;
+    }
+  }
+
   // Priced as sent: a joining slot's files are counted inside their pool.
-  const joined = joinSlotFiles(model.params, input.params, input.prompt ?? "");
+  const joined = joinSlotFiles(model.params, own, input.prompt ?? "");
   const params: Record<string, unknown> = { ...joined.params };
   const upstream: Record<string, unknown> = {};
   const durations: Record<string, readonly number[]> = {};
-  let unknown = false;
   for (const [name, spec] of Object.entries(model.params)) {
     const field = spec.upstream ?? name;
     if (spec.joins !== undefined) continue;
-    let value = joined.params[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
+    const value = joined.params[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
     const source = spec.fill === "canvas" || spec.fill === "pool";
-    if (source && !isPresent(value) && spec.optional !== true) {
-      value = spec.type === "list" ? [UNPICKED] : UNPICKED;
-      params[name] = value;
-      if (reads(formulas, field)) unknown = true;
-    }
     upstream[field] = value;
     if (source && isPresent(value)) {
       const known = input.durations?.[name] ?? [];

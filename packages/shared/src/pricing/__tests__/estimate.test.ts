@@ -144,6 +144,14 @@ describe("estimateCredits", () => {
     expect(joined).toEqual(plain);
   });
 
+  it("still counts the picture a run cannot go without when only style files fill the pool", async () => {
+    // The panel prices before anything is @-named: three style files plus the
+    // one base picture every edit needs, as a lower bound.
+    const estimate = await estimateCredits(EDIT_WITH_STYLE, { params: { style_images: ["s1", "s2", "s3"] } }, 1);
+    expect(estimate.bound).toBe("at_least");
+    expect(estimate.credits).toBeCloseTo(8.4, 6);
+  });
+
   it("prices the params the reader set, in credits after the discount", async () => {
     const estimate = await estimateCredits(WAN_T2V, { params: { resolution: "1080p", duration: 10 } }, 1);
     expect(estimate.bound).toBe("exact");
