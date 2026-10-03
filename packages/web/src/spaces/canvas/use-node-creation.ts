@@ -43,6 +43,11 @@ import {
   toRelativePosition,
 } from '@web/spaces/canvas/group-geometry';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { canvasApi } from '@web/data/api/canvas';
+import { ApiException } from '@web/data/api/types';
+import { useTranslation } from '@web/i18n/use-translation';
+import { toast } from '@web/lib/toast';
+import { ingestRefusalToastKey } from '@web/spaces/canvas/upload-failure';
 
 /** A node an upload just created: its id and the top-left it was written at. */
 export interface CreatedUploadNode {
@@ -161,6 +166,7 @@ export function useNodeCreation(
   spaceId: string,
 ): NodeCreation {
   const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
+  const t = useTranslation();
   // Every create drop centres the new node on the given point (its top-left =
   // point − EMPTY_NODE_SIZE/2) so it appears centred where the user dropped it,
   // not offset to the bottom-right. Consistent across the library (viewport
@@ -213,9 +219,27 @@ export function useNodeCreation(
       runCanvasUndoBatch(projectId, spaceId, () => {
         cloned.forEach((node) => addNode(projectId, spaceId, node));
       });
+      // `cloneForPaste` keeps the payload's order, so a clone sits at its
+      // source's index.
+      nodes.forEach((source, i) => {
+        const target = cloned[i];
+        if (source.external !== true || source.content === undefined || target === undefined) {
+          return;
+        }
+        canvasApi
+          .ingestUrl({
+            url: source.content,
+            project_id: projectId,
+            space_id: spaceId,
+            node_id: target.id,
+          })
+          .catch((err: unknown) => {
+            toast.error(t(ingestRefusalToastKey(err instanceof ApiException ? err.status : undefined)));
+          });
+      });
       return cloned.map((node) => node.id);
     },
-    [projectId, spaceId, userId],
+    [projectId, spaceId, userId, t],
   );
   const placeProposalAt = React.useCallback(
     (proposal: CanvasProposal, start: Spot): PlacedProposal => {
