@@ -377,22 +377,32 @@ describe("PUT /projects/:id/cover", () => {
     expect(old[0]!.deleted_at).toBeNull();
   });
 
-  it("refuses an editor", async () => {
+  it("lets an editor change it, and refuses a viewer", async () => {
     const owner = await seedUser();
     const editor = await seedUser();
+    const viewer = await seedUser();
     const { studioId, projectId } = await seedStudio(owner.userId);
     await addMember(studioId, projectId, editor.userId, "maintainer", "editor");
+    await addMember(studioId, projectId, viewer.userId, "maintainer", "viewer");
     const asset = await seedAsset(studioId, owner.userId);
+
+    const refused = await call(viewer.cookie, "PUT", `/projects/${projectId}/cover`, {
+      asset_id: asset.id,
+    });
+    expect(refused.status).toBe(403);
+    const before = await sql<{ thumbnail_url: string | null }[]>`
+      SELECT thumbnail_url FROM projects WHERE id = ${projectId}
+    `;
+    expect(before[0]!.thumbnail_url).toBeNull();
 
     const res = await call(editor.cookie, "PUT", `/projects/${projectId}/cover`, {
       asset_id: asset.id,
     });
-
-    expect(res.status).toBe(403);
-    const rows = await sql<{ thumbnail_url: string | null }[]>`
+    expect(res.status).toBe(200);
+    const after = await sql<{ thumbnail_url: string | null }[]>`
       SELECT thumbnail_url FROM projects WHERE id = ${projectId}
     `;
-    expect(rows[0]!.thumbnail_url).toBeNull();
+    expect(after[0]!.thumbnail_url).not.toBeNull();
   });
 
   it("refuses a row from another studio, a deleted row and a non-image row", async () => {

@@ -291,7 +291,7 @@ describe("seeing and opening (A1 A4 A11)", () => {
   it("the join-request read names the project and its studio, with no pending request yet", async () => {
     const { fx, requester, project } = await scene();
     const mine = await joinService.getMine(project.id, requester.id);
-    expect(mine.project).toEqual({ id: project.id, name: project.name, studioSlug: fx.studioSlug });
+    expect(mine.project).toEqual({ id: project.id, name: project.name, studioSlug: fx.studioSlug, archivedAt: null });
     expect(mine.pendingRequest).toBeNull();
   });
 });
