@@ -272,9 +272,18 @@ function ChatComposerInner({
               atLimit.sayAgain();
             }
           }}
-          // A paste into a full box is turned away the same way, and the browser
-          // cuts an oversized one down to the ceiling without a word either.
-          onPaste={() => {
+          // Pasted files are attached, as if picked with the attach button,
+          // and the clipboard's text is left out of the box: copying a file
+          // also puts its name there. A paste into a full box is turned away
+          // the same way, and the browser cuts an oversized one down to the
+          // ceiling without a word either.
+          onPaste={(event) => {
+            const files = [...event.clipboardData.files];
+            if (files.length > 0) {
+              event.preventDefault();
+              if (!frozen) onAttachFiles?.(files);
+              return;
+            }
             if (draft.length >= CHAT_MESSAGE_MAX_CHARS) atLimit.sayAgain();
           }}
           placeholder={t('chat.composer.placeholder')}
