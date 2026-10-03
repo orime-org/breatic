@@ -14,9 +14,8 @@ function pad(n: number): string {
  * Format a timestamp as the reader's own date.
  *
  * The wire carries UTC. Taking the first ten characters of it shows UTC's day
- * to everyone, and a reader eight hours ahead spends a third of every day on
- * the one before — on a record of money, where this is the only time it
- * carries.
+ * to everyone, and a reader eight hours ahead sees the day before for anything
+ * stamped between midnight and 08:00 their time.
  *
  * The parts come off a local `Date`, so the day is the reader's. The shape is
  * the one the confirmed design draws and it reads the same in every language
