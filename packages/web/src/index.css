@@ -1856,6 +1856,60 @@ body {
 }
 .doc-body [data-content-type='table'] .tableWrapper {
   overflow: visible;
+  padding: 0;
+}
+
+/* A table in the product's tokens, both themes (inner#1126 A13). BlockNote
+   writes fixed values for each of these — `#ddd` lines, `#c8c8ff66` over a
+   selected cell, `#adf` for the resize line — and its own spacing around the
+   table for handles this build does not draw; ours float beside it. */
+.doc-body [data-content-type='table'] td {
+  border-color: var(--color-border);
+}
+
+.doc-body [data-content-type='table'] th {
+  border-color: var(--color-border);
+  background-color: var(--color-accent);
+}
+
+.doc-body .selectedCell::after {
+  background: var(--color-selection);
+}
+
+.doc-body .column-resize-handle {
+  background-color: var(--color-ring);
+}
+
+/* A cell's fill: the tint a highlight on words uses, so the panel's swatch,
+   a highlight and a filled cell read one value. The library knows its own
+   colour names and not ours. */
+
+.doc-body [data-content-type='table'] [data-background-color='red'] {
+  background-color: var(--color-palette-red-highlight);
+}
+
+.doc-body [data-content-type='table'] [data-background-color='orange'] {
+  background-color: var(--color-palette-orange-highlight);
+}
+
+.doc-body [data-content-type='table'] [data-background-color='green'] {
+  background-color: var(--color-palette-green-highlight);
+}
+
+.doc-body [data-content-type='table'] [data-background-color='blue'] {
+  background-color: var(--color-palette-blue-highlight);
+}
+
+.doc-body [data-content-type='table'] [data-background-color='violet'] {
+  background-color: var(--color-palette-violet-highlight);
+}
+
+.doc-body [data-content-type='table'] [data-background-color='pink'] {
+  background-color: var(--color-palette-pink-highlight);
+}
+
+.doc-body [data-content-type='table'] [data-background-color='teal'] {
+  background-color: var(--color-palette-teal-highlight);
 }
 
 /* The caret ProseMirror draws in a gap no text caret can stand in — above a
