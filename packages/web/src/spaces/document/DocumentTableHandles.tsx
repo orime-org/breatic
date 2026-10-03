@@ -24,7 +24,19 @@ import {
   useExtension,
   useExtensionState,
 } from '@blocknote/react';
-import { GripHorizontal, GripVertical, Plus } from 'lucide-react';
+import {
+  ArrowDownToLine,
+  ArrowLeftToLine,
+  ArrowRightToLine,
+  ArrowUpToLine,
+  GripHorizontal,
+  GripVertical,
+  Palette,
+  PanelLeft,
+  PanelTop,
+  Plus,
+  TextAlignStart,
+} from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -91,8 +103,7 @@ interface TableExtendProps {
   readonly hideOtherElements: (hide: boolean) => void;
 }
 
-/** A cell's alignment and fill when a table is first made. */
-const DEFAULT_ALIGN = 'left';
+/** A cell's fill when it has none, as the table schema writes it. */
 const DEFAULT_FILL = 'default';
 
 /** The colour panel's mark rows, none of which a handle draws. */
@@ -201,17 +212,17 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
 
   const insertRows = row
     ? ([
-      ['insertAbove', 'spaces.document.table.insertRowAbove', (pos: number) => insertRow(editor, pos, 'above')],
-      ['insertBelow', 'spaces.document.table.insertRowBelow', (pos: number) => insertRow(editor, pos, 'below')],
+      ['insertAbove', 'spaces.document.table.insertRowAbove', ArrowUpToLine, (pos: number) => insertRow(editor, pos, 'above')],
+      ['insertBelow', 'spaces.document.table.insertRowBelow', ArrowDownToLine, (pos: number) => insertRow(editor, pos, 'below')],
     ] as const)
     : ([
-      ['insertLeft', 'spaces.document.table.insertColumnLeft', (pos: number) => insertColumn(editor, pos, 'left')],
-      ['insertRight', 'spaces.document.table.insertColumnRight', (pos: number) => insertColumn(editor, pos, 'right')],
+      ['insertLeft', 'spaces.document.table.insertColumnLeft', ArrowLeftToLine, (pos: number) => insertColumn(editor, pos, 'left')],
+      ['insertRight', 'spaces.document.table.insertColumnRight', ArrowRightToLine, (pos: number) => insertColumn(editor, pos, 'right')],
     ] as const);
 
   return (
     <>
-      {insertRows.map(([id, labelKey, run]) => (
+      {insertRows.map(([id, labelKey, Icon, run]) => (
         <DropdownMenuItem
           key={id}
           data-testid={`${stem}${id}`}
@@ -219,6 +230,7 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
             onTarget(run);
           }}
         >
+          <Icon />
           {t(labelKey)}
         </DropdownMenuItem>
       ))}
@@ -232,6 +244,7 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
           });
         })}
       >
+        {row ? <PanelTop /> : <PanelLeft />}
         <span className='flex-1 text-left'>
           {t(row ? 'spaces.document.table.headerRow' : 'spaces.document.table.headerColumn')}
         </span>
@@ -239,12 +252,13 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
       </DropdownMenuItem>
       <DropdownMenuSub>
         <DropdownMenuSubTrigger data-testid={`${stem}align`}>
+          <TextAlignStart />
           {t('spaces.document.commands.align')}
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent rowsClassName='flex flex-col gap-1'>
           {ALIGN_ITEMS.map((item) => {
             const ItemIcon = item.Icon;
-            const ticks = (faces.align ?? DEFAULT_ALIGN) === item.id && faces.align !== undefined;
+            const ticks = faces.align === item.id;
             return (
               <DropdownMenuItem
                 key={item.id}
@@ -266,6 +280,7 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
       </DropdownMenuSub>
       <DropdownMenuSub>
         <DropdownMenuSubTrigger data-testid={`${stem}fill`}>
+          <Palette />
           {t('spaces.document.table.cellFill')}
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent rowsClassName='py-2'>

@@ -15,12 +15,28 @@
  * editor through `useBlockNoteEditor`, which reads this context.
  */
 
-import { BlockNoteContext, SideMenuController } from '@blocknote/react';
+import {
+  BlockNoteContext,
+  SideMenuController,
+  TableHandlesController,
+} from '@blocknote/react';
 import * as React from 'react';
 
 import { DocumentBlockHandle } from '@web/spaces/document/DocumentBlockHandle';
+import {
+  DocumentTableExtend,
+  DocumentTableHandle,
+} from '@web/spaces/document/DocumentTableHandles';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
 import { stripPlacement } from '@web/spaces/document/document-strip-alignment';
+
+/**
+ * The library's cell handle, left out: ours follows the caret.
+ * @returns Nothing.
+ */
+function NoCellHandle(): null {
+  return null;
+}
 
 interface DocumentBlockControlsProps {
   /** The editor the strip acts on. */
@@ -53,6 +69,14 @@ export function DocumentBlockControls({
       <SideMenuController
         sideMenu={DocumentBlockHandle}
         floatingUIOptions={placement}
+      />
+      {/* A table's row and column handles and its edge plus. The cell button
+          follows the caret rather than the pointer, so it is not handed in
+          here (inner#1126 §5.0). */}
+      <TableHandlesController
+        tableHandle={DocumentTableHandle as never}
+        extendButton={DocumentTableExtend as never}
+        tableCellHandle={NoCellHandle}
       />
     </BlockNoteContext.Provider>
   );
