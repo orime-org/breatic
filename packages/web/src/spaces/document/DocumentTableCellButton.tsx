@@ -125,16 +125,6 @@ export function DocumentTableCellButton({
       cellPos !== null && isMerged(current.prosemirrorState.doc, cellPos),
   );
 
-  const { refs, floatingStyles, middlewareData } = useFloating({
-    middleware: [onVisibleCorner],
-    whileElementsMounted: autoUpdate,
-  });
-  const hidden = (middlewareData.onVisibleCorner as { hidden?: boolean } | undefined)?.hidden === true;
-  const style = React.useMemo<React.CSSProperties>(
-    () => (hidden ? { ...floatingStyles, visibility: 'hidden' } : floatingStyles),
-    [floatingStyles, hidden],
-  );
-
   // The cell's element as it is after every change: ProseMirror draws a cell
   // anew when its attributes change (alignment, fill, width, a split), so an
   // element read once would go on measuring one no longer in the page.
@@ -145,9 +135,16 @@ export function DocumentTableCellButton({
       return element instanceof Element ? element : null;
     },
   );
-  React.useLayoutEffect(() => {
-    refs.setReference(cellElement);
-  }, [cellElement, refs]);
+  const { refs, floatingStyles, middlewareData } = useFloating({
+    elements: { reference: cellElement },
+    middleware: [onVisibleCorner],
+    whileElementsMounted: autoUpdate,
+  });
+  const hidden = (middlewareData.onVisibleCorner as { hidden?: boolean } | undefined)?.hidden === true;
+  const style = React.useMemo<React.CSSProperties>(
+    () => (hidden ? { ...floatingStyles, visibility: 'hidden' } : floatingStyles),
+    [floatingStyles, hidden],
+  );
 
   const onOpenChange = React.useCallback(
     (next: boolean): void => {

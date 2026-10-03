@@ -137,20 +137,15 @@ function leaveEdgeTable(editor: KeysEditor, dir: EdgeArrow): boolean {
   const cell = selection.empty ? cellAround(selection.$head) : null;
   const at = cell === null ? null : cellAt(view.state.doc, cell.pos);
   if (cell === null || at === null) return false;
-  const { $head } = selection;
   const before = dir === 'up' || dir === 'left';
-  const line = $head.index(cell.depth + 1);
+  // The caret's line among the cell's lines, and the cell among the table's;
+  // where it stands on that line is the view's to say.
+  const line = selection.$head.index(cell.depth + 1);
   const edgeRow = before
     ? line === 0 && at.top === 0
     : line === cell.nodeAfter!.childCount - 1 && at.bottom === at.map.height;
-  const onWayOut =
-    dir === 'up' || dir === 'down'
-      ? edgeRow
-      : edgeRow &&
-        (before
-          ? at.left === 0 && $head.parentOffset === 0
-          : at.right === at.map.width && $head.parentOffset === $head.parent.content.size);
-  if (!onWayOut || !view.endOfTextblock(dir)) return false;
+  const edgeColumn = dir === 'left' ? at.left === 0 : dir === 'right' ? at.right === at.map.width : true;
+  if (!edgeRow || !edgeColumn || !view.endOfTextblock(dir)) return false;
   // Just outside the table itself; past it that way, anything a selection can
   // stand on — a block nested under the table, a divider — means the body
   // goes on.

@@ -22,6 +22,15 @@ const css = readFileSync(
 ).replace(/\/\*[\s\S]*?\*\//g, '');
 
 /**
+ * Every rule as selector and body. A body holds no braces, which also reaches
+ * the rules inside an `@layer` block rather than reading the block as one rule.
+ * @returns The matches, in source order.
+ */
+function rules(): RegExpMatchArray[] {
+  return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+}
+
+/**
  * Whether any selector in a list ends in the given text.
  *
  * A list is one rule reaching every one of its members, so a rule that also
@@ -35,6 +44,20 @@ function endsIn(selector: string, endsWith: string): boolean {
 }
 
 /**
+ * The one rule whose selector ends in the given text.
+ * @param endsWith - The tail of the selector.
+ * @returns That rule, selector and body.
+ * @throws {Error} When no rule, or more than one, matches.
+ */
+function oneRule(endsWith: string): RegExpMatchArray {
+  const found = rules().filter((match) => endsIn(match[1], endsWith));
+  if (found.length !== 1) {
+    throw new Error(`${String(found.length)} rules end in ${endsWith}`);
+  }
+  return found[0];
+}
+
+/**
  * The selector of the one rule whose selector ends in the given text.
  *
  * For the cases that ask a real DOM whether a rule reaches it: read from here
@@ -45,13 +68,7 @@ function endsIn(selector: string, endsWith: string): boolean {
  * @throws {Error} When no rule, or more than one, matches.
  */
 export function selectorEndingIn(endsWith: string): string {
-  const found = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((match) =>
-    endsIn(match[1], endsWith),
-  );
-  if (found.length !== 1) {
-    throw new Error(`${String(found.length)} rules end in ${endsWith}`);
-  }
-  return found[0][1].trim();
+  return oneRule(endsWith)[1].trim();
 }
 
 /**
@@ -61,13 +78,7 @@ export function selectorEndingIn(endsWith: string): string {
  * @throws {Error} When no rule, or more than one, matches.
  */
 export function ruleBody(endsWith: string): string {
-  const found = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((match) =>
-    endsIn(match[1], endsWith),
-  );
-  if (found.length !== 1) {
-    throw new Error(`${String(found.length)} rules end in ${endsWith}`);
-  }
-  return found[0][2];
+  return oneRule(endsWith)[2];
 }
 
 /**
@@ -86,7 +97,7 @@ export function declarationsOf(
   property: string,
 ): { selector: string; value: string }[] {
   const found: { selector: string; value: string }[] = [];
-  for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+  for (const rule of rules()) {
     const selector = rule[1].trim();
     // What a selector names inside `:not(...)` is what it refuses to reach,
     // so a rule mentioning a class there is not a rule about that class.
