@@ -1105,6 +1105,7 @@
         "codeBlock": "代码块",
         "taskList": "任务列表",
         "divider": "分割线",
+        "table": "表格",
         "align": "对齐",
         "alignLeft": "靠左",
         "alignCenter": "居中",
@@ -1176,6 +1177,10 @@
         "duplicate": "复制副本",
         "insertBelow": "在下方插入",
         "delete": "删除块"
+      },
+      "table": {
+        "pickSize": "选择行列数",
+        "size": "{rows} 行 × {cols} 列"
       }
     },
     "readOnlyReconnect": "重新连接"

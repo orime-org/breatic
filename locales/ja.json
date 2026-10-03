@@ -1105,6 +1105,7 @@
         "codeBlock": "コードブロック",
         "taskList": "タスクリスト",
         "divider": "区切り線",
+        "table": "表",
         "align": "配置",
         "alignLeft": "左揃え",
         "alignCenter": "中央揃え",
@@ -1176,6 +1177,10 @@
         "duplicate": "このブロックを複製",
         "insertBelow": "下に挿入",
         "delete": "ブロックを削除"
+      },
+      "table": {
+        "pickSize": "サイズを選択",
+        "size": "{rows} 行 × {cols} 列"
       }
     },
     "readOnlyReconnect": "再接続"

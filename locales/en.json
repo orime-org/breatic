@@ -1105,6 +1105,7 @@
         "codeBlock": "Code block",
         "taskList": "To-do list",
         "divider": "Divider",
+        "table": "Table",
         "align": "Alignment",
         "alignLeft": "Left",
         "alignCenter": "Centre",
@@ -1176,6 +1177,10 @@
         "duplicate": "Duplicate block",
         "insertBelow": "Insert below",
         "delete": "Delete block"
+      },
+      "table": {
+        "pickSize": "Select a size",
+        "size": "{rows, plural, one {# row} other {# rows}} × {cols, plural, one {# column} other {# columns}}"
       }
     },
     "readOnlyReconnect": "Reconnect"

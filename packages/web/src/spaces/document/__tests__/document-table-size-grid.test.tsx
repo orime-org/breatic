@@ -52,7 +52,7 @@ function lit(): string[] {
 describe('the table size grid', () => {
   it('draws nine rows of nine cells', () => {
     open();
-    expect(document.querySelectorAll('[data-testid^="doc-table-size-"]')).toHaveLength(81);
+    expect(document.querySelectorAll('[data-testid^="doc-table-size-"][data-rows]')).toHaveLength(81);
   });
 
   it('lights the cells up to the one under the pointer and names the size', () => {

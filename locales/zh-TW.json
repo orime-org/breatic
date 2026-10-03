@@ -1105,6 +1105,7 @@
         "codeBlock": "程式碼區塊",
         "taskList": "待辦清單",
         "divider": "分隔線",
+        "table": "表格",
         "align": "對齊",
         "alignLeft": "靠左",
         "alignCenter": "置中",
@@ -1176,6 +1177,10 @@
         "duplicate": "複製副本",
         "insertBelow": "在下方插入",
         "delete": "刪除區塊"
+      },
+      "table": {
+        "pickSize": "選擇列數與欄數",
+        "size": "{rows} 列 × {cols} 欄"
       }
     },
     "readOnlyReconnect": "重新連線"
