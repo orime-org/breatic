@@ -235,8 +235,9 @@ interface SlotToolProps {
  * every slot on a row accepting audio drew the same note over the one word
  * that told them apart (user 2026-09-06).
  *
- * Clicking the filled slot re-enters the pick (the next selection REPLACES the
- * copy). A ✕ badge at the top-right clears it; the ✕ is a SIBLING button
+ * Clicking a filled one-file slot re-enters the pick (the next selection
+ * REPLACES the copy); in a slot holding several, clicking adds one more while
+ * there is room and starts nothing once it is full. A ✕ badge at the top-right clears it; the ✕ is a SIBLING button
  * positioned over the corner — never nested inside the main button
  * (button-in-button reparents silently). The ✕ stays active even when picking
  * is gated off, so a stale copy can always be removed. The filled button keeps

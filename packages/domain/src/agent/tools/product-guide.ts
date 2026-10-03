@@ -626,7 +626,9 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.sourceVideo"))}, ${quoted(t("canvas.generatePanel.moodImage"))}, ` +
       `${quoted(t("canvas.generatePanel.musicSong"))}, ${quoted(t("canvas.generatePanel.musicMelody"))} and ` +
       `${quoted(t("canvas.generatePanel.musicVocal"))}. The picture panel's only one is its style area, which ` +
-      "holds up to three pictures (see the picture panel above). Which ones show depends on " +
+      "holds up to three pictures and works its own way (see the picture panel above): each click adds one, " +
+      "and a picture is taken out with its X, never replaced. Every other slot holds one node, as follows. " +
+      "Which ones show depends on " +
       "the mode and model. Some must be " +
       "filled before a run; others are optional. Press a slot's button, then click a node on the canvas: the bar " +
       `at the top says what to pick, such as ${quoted(t("canvas.generatePanel.selectFirstFrameFromCanvas"))}, ` +
