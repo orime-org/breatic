@@ -113,6 +113,17 @@ describe('the copy buttons', () => {
     expect(tokens.filter((t) => t === 'group' || t.startsWith('group-hover:'))).toEqual([]);
   });
 
+  it('is drawn the way the code block draws its corner copy button', () => {
+    // Same job, same look: an outline button the compact control size, with
+    // the icon muted until the copy has happened.
+    render(<MessageBubble message={withImages(1)} />);
+
+    const tokens = screen.getByTestId('asset-copy').className.split(/\s+/);
+    for (const cls of ['size-[var(--btn-compact)]', 'bg-card', 'text-muted-foreground']) {
+      expect(tokens).toContain(cls);
+    }
+  });
+
   it('sits beside the square rather than inside it', () => {
     // A button inside a button is not valid markup, and the outer one would
     // swallow the inner one's name and keys.
