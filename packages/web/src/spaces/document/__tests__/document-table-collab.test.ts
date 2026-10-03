@@ -281,6 +281,28 @@ describe('two people on one table (A17)', () => {
   });
 });
 
+describe('cells selected while the other side edits (A17)', () => {
+  it('stay selected as cells when the other side types before the table', () => {
+    const p = pair();
+    const view = p.ours.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.setSelection(
+        CellSelection.create(view.state.doc, cellOf(p.ours, 'a1'), cellOf(p.ours, 'b2')),
+      ),
+    );
+
+    const peer = p.theirs.prosemirrorView!;
+    peer.dispatch(peer.state.tr.insertText('more ', 1));
+    p.sync();
+
+    const { selection } = p.ours.prosemirrorState;
+    expect(selection).toBeInstanceOf(CellSelection);
+    const cells: string[] = [];
+    (selection as CellSelection).forEachCell((cell) => cells.push(cell.textContent));
+    expect(cells).toEqual(['a1', 'b1', 'a2', 'b2']);
+  });
+});
+
 describe('a menu held open while the other side edits (A17)', () => {
   /**
    * The words of the cell our menu holds.
