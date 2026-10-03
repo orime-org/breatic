@@ -177,10 +177,10 @@ describe('SettingsTab — the danger zone, wired up', () => {
     expect(screen.queryByTestId('settings-transfer-open')).toBeNull();
   });
 
-  it('shows the Admin transfer / delete / slug, and no leave action', () => {
+  it('shows the Admin transfer / slug, and no delete or leave action', () => {
     withQuery(<SettingsTab studio={TEAM} members={[]} />);
     expect(screen.getByTestId('settings-transfer-open')).toBeInTheDocument();
-    expect(screen.getByTestId('settings-delete')).toBeInTheDocument();
+    expect(screen.queryByTestId('settings-delete')).toBeNull();
     expect(screen.getByTestId('settings-slug-open')).toBeInTheDocument();
     expect(screen.queryByTestId('settings-leave-open')).toBeNull();
   });

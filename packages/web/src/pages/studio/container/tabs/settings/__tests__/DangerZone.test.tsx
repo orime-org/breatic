@@ -112,9 +112,11 @@ describe('DangerZone — what each kind of viewer gets', () => {
     expectCells(['slug']);
   });
 
-  it('gives the admin of a team studio all three governance actions', () => {
+  // A studio is never deleted, so no viewer is offered a delete entry; the
+  // `delete` cell stays in CELLS so every case asserts it is absent.
+  it('gives the admin of a team studio transfer and the slug, and no delete', () => {
     renderZone(studio({ type: 'team', myStudioRole: 'admin' }));
-    expectCells(['transfer', 'delete', 'slug']);
+    expectCells(['transfer', 'slug']);
   });
 
   it('gives a team member who is not the admin only the way out', () => {
