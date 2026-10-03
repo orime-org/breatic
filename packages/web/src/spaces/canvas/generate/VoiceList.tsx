@@ -126,6 +126,7 @@ export const VoiceList = React.memo(function VoiceList({
     <div className='flex flex-col'>
       <div className='border-b border-border p-2'>
         <Input
+          autoComplete='off'
           data-testid='generate-voice-search'
           value={list.query}
           onChange={(e) => onQueryChange(e.target.value)}

@@ -178,6 +178,7 @@ function TextControl({ name, label, held, onChange }: TextControlProps): React.J
         {label}
       </label>
       <Input
+        autoComplete='off'
         id={id}
         data-testid={`generate-param-${name}-input`}
         value={draft ?? held}

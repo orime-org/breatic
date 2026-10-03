@@ -159,6 +159,7 @@ export function TitleEditable({
   if (editing) {
     return (
       <input
+        autoComplete='off'
         ref={inputRef}
         value={draft}
         placeholder={placeholder}

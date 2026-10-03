@@ -187,6 +187,7 @@ function FieldCell({ testId, field, placeholder, value, onCommit }: FieldCellPro
   };
   return (
     <Input
+      autoComplete='off'
       data-testid={testId}
       placeholder={placeholder}
       value={draft ?? held}
