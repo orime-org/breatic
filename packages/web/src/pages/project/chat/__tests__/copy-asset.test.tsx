@@ -119,7 +119,7 @@ describe('the copy buttons', () => {
     render(<MessageBubble message={withImages(1)} />);
 
     const tokens = screen.getByTestId('asset-copy').className.split(/\s+/);
-    for (const cls of ['size-[18px]', 'bg-card', 'text-muted-foreground']) {
+    for (const cls of ['size-[18px]', 'rounded-chrome-sm', 'bg-card', 'text-muted-foreground']) {
       expect(tokens).toContain(cls);
     }
   });

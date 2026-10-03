@@ -206,7 +206,7 @@ function CopyAssetButton({ copying, asset, first }: CopyAssetButtonProps): React
         className={cn(
           // Drawn as the code block's corner copy button is, at a size that
           // leaves a 68px square mostly uncovered.
-          'size-[18px] bg-card text-muted-foreground transition-opacity',
+          'size-[18px] rounded-chrome-sm bg-card text-muted-foreground transition-opacity',
           copied
             ? 'text-foreground'
             : 'opacity-0 pointer-events-none group-hover/asset:opacity-100 group-hover/asset:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto',
