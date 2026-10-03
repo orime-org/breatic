@@ -190,7 +190,9 @@ describe("multi-row FOR UPDATE — locks are taken in key order", () => {
     await insertUser(ownerId, `${tag}-o`);
     const studioId = await insertStudio(ownerId, tag);
     const [p1, p2, p3] = sortedIds();
-    for (const id of [p1, p2, p3]) {
+    // Both sides of the join land largest key first, so whichever side the
+    // plan drives from, it meets the largest key first.
+    for (const id of [p3, p2, p1]) {
       await sql`
         INSERT INTO projects (id, studio_id, created_by_user_id, name, slug)
         VALUES (${id}, ${studioId}, ${ownerId}, 'Project', ${`${tag}-${id.slice(0, 8)}`})
@@ -203,6 +205,10 @@ describe("multi-row FOR UPDATE — locks are taken in key order", () => {
       SELECT project_id FROM project_members WHERE user_id = ${ownerId} ORDER BY ctid
     `;
     expectReverseScanOrder(scan.map((r) => r.project_id), [p3, p2, p1]);
+    const projectScan = await sql<{ id: string }[]>`
+      SELECT id FROM projects WHERE studio_id = ${studioId} ORDER BY ctid
+    `;
+    expectReverseScanOrder(projectScan.map((r) => r.id), [p3, p2, p1]);
 
     const held = await largestHeldWhileParked(
       (h) => h`SELECT 1 FROM project_members WHERE project_id = ${p1} AND user_id = ${ownerId} FOR UPDATE`,
