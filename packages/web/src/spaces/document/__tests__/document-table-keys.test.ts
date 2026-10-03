@@ -283,6 +283,83 @@ describe('keys in a table cell', () => {
     });
   });
 
+  describe('leaving a table the body starts with', () => {
+    /**
+     * Stands in for the browser's answer to "is the caret on the cell's edge
+     * line", which jsdom cannot give.
+     * @param editor - The editor.
+     */
+    function onEdgeLine(editor: Editor): void {
+      editor.prosemirrorView!.endOfTextblock = (): boolean => true;
+    }
+
+    /**
+     * The types of the top-level blocks.
+     * @param editor - The editor.
+     * @returns Them, in order.
+     */
+    function blockTypes(editor: Editor): string[] {
+      return (editor.document as unknown as { type: string }[]).map((b) => b.type);
+    }
+
+    /**
+     * Puts the caret at the start of a cell's text.
+     * @param editor - The editor.
+     * @param text - The cell's text.
+     */
+    function caretBefore(editor: Editor, text: string): void {
+      caretAfter(editor, text);
+      const view = editor.prosemirrorView!;
+      const at = view.state.selection.from - text.length;
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
+    }
+
+    it('ArrowUp in the first row opens a line above it and moves there', () => {
+      const editor = open();
+      onEdgeLine(editor);
+      caretAfter(editor, 'b1');
+
+      expect(press(editor, 'ArrowUp')).toBe(true);
+
+      expect(blockTypes(editor)).toEqual(['paragraph', 'table']);
+      expect(editor.prosemirrorState.selection.$head.parent.type.name).toBe('paragraph');
+    });
+
+    it('ArrowLeft at the start of the first cell opens a line above it', () => {
+      const editor = open();
+      onEdgeLine(editor);
+      caretBefore(editor, 'a1');
+
+      expect(press(editor, 'ArrowLeft')).toBe(true);
+
+      expect(blockTypes(editor)).toEqual(['paragraph', 'table']);
+    });
+
+    it.each([
+      ['ArrowUp', 'a2'],
+      ['ArrowLeft', 'b1'],
+    ])('%s from %s, which is not on the way out, opens nothing', (key, text) => {
+      const editor = open();
+      onEdgeLine(editor);
+      caretBefore(editor, text);
+
+      press(editor, key);
+
+      expect(blockTypes(editor)).toEqual(['table']);
+    });
+
+    it('opens nothing when a block comes before the table', () => {
+      const editor = open();
+      editor.insertBlocks([{ type: 'divider' }] as never, editor.document[0]!, 'before');
+      onEdgeLine(editor);
+      caretAfter(editor, 'a1');
+
+      press(editor, 'ArrowUp');
+
+      expect(blockTypes(editor)).toEqual(['divider', 'table']);
+    });
+  });
+
   it('Tab in the last cell adds a row and moves into its first cell', () => {
     const editor = open();
     caretAfter(editor, 'b2');

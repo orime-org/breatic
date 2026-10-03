@@ -115,38 +115,50 @@ function collapseInCell(view: EditorView, dir: -1 | 1): boolean {
   return true;
 }
 
+/** Which arrow leaves a table, and on which side. */
+type EdgeArrow = 'up' | 'down' | 'left' | 'right';
+
 /**
- * Opens a line under a table the body ends with, when the caret is on its way
- * out of it: on the last row going down, at the end of the last cell going
- * right. Nothing after such a table can take a selection, and the table
- * plugin's own arrow falls back into the table (`prosemirror-tables` `arrow`,
- * `dist/index.js:2143-2151`). This is the keyboard's way to the line a click
- * on the space below the last block opens.
+ * Opens a line beside a table at an end of the body, when the caret is on its
+ * way out of it: on the first row going up or the last going down, at the
+ * start of the first cell going left or the end of the last going right.
+ * Nothing past such a table can take a selection, and the table plugin's own
+ * arrow falls back into the table (`prosemirror-tables` `arrow`,
+ * `dist/index.js:2143-2151`). Under the table this is the keyboard's way to
+ * the line a click on the space below the last block opens; above it, to a
+ * line before a table the body starts with.
  * @param editor - The editor.
  * @param dir - Which arrow.
  * @returns Whether the key was claimed.
  */
-function leaveLastTable(editor: KeysEditor, dir: 'down' | 'right'): boolean {
+function leaveEdgeTable(editor: KeysEditor, dir: EdgeArrow): boolean {
   const view = editor.prosemirrorView;
   const { selection } = view.state;
   const cell = selection.empty ? cellAround(selection.$head) : null;
   const at = cell === null ? null : cellAt(view.state.doc, cell.pos);
   if (cell === null || at === null) return false;
   const { $head } = selection;
-  const lastLine = $head.index(cell.depth + 1) === cell.nodeAfter!.childCount - 1;
-  const lastRow = lastLine && at.bottom === at.map.height;
+  const before = dir === 'up' || dir === 'left';
+  const line = $head.index(cell.depth + 1);
+  const edgeRow = before
+    ? line === 0 && at.top === 0
+    : line === cell.nodeAfter!.childCount - 1 && at.bottom === at.map.height;
   const onWayOut =
-    dir === 'down'
-      ? lastRow
-      : lastRow && at.right === at.map.width && $head.parentOffset === $head.parent.content.size;
+    dir === 'up' || dir === 'down'
+      ? edgeRow
+      : edgeRow &&
+        (before
+          ? at.left === 0 && $head.parentOffset === 0
+          : at.right === at.map.width && $head.parentOffset === $head.parent.content.size);
   if (!onWayOut || !view.endOfTextblock(dir)) return false;
-  // The end of the table itself; past it, anything a selection can stand on —
-  // a block nested under the table, a divider — means the body goes on.
-  const end = cell.after(cell.depth - 1);
-  if (Selection.findFrom(view.state.doc.resolve(end), 1) !== null) return false;
-  const [line] = editor.insertBlocks([{ type: 'paragraph' }] as never, at.blockId, 'after');
-  if (line === undefined) return false;
-  editor.setTextCursorPosition(line, 'start');
+  // Just outside the table itself; past it that way, anything a selection can
+  // stand on — a block nested under the table, a divider — means the body
+  // goes on.
+  const edge = before ? cell.before(cell.depth - 1) : cell.after(cell.depth - 1);
+  if (Selection.findFrom(view.state.doc.resolve(edge), before ? -1 : 1) !== null) return false;
+  const [opened] = editor.insertBlocks([{ type: 'paragraph' }] as never, at.blockId, before ? 'before' : 'after');
+  if (opened === undefined) return false;
+  editor.setTextCursorPosition(opened, 'start');
   return true;
 }
 
@@ -163,9 +175,11 @@ export const documentTableKeysExtension = createExtension(() => ({
     Enter: ({ editor }: { editor: KeysEditor }) => breakLine(editor.prosemirrorView),
     'Shift-Enter': ({ editor }: { editor: KeysEditor }) => breakLine(editor.prosemirrorView),
     Delete: ({ editor }: { editor: KeysEditor }) => deleteWholeTable(editor),
-    ArrowLeft: ({ editor }: { editor: KeysEditor }) => collapseInCell(editor.prosemirrorView, -1),
+    ArrowLeft: ({ editor }: { editor: KeysEditor }) =>
+      collapseInCell(editor.prosemirrorView, -1) || leaveEdgeTable(editor, 'left'),
     ArrowRight: ({ editor }: { editor: KeysEditor }) =>
-      collapseInCell(editor.prosemirrorView, 1) || leaveLastTable(editor, 'right'),
-    ArrowDown: ({ editor }: { editor: KeysEditor }) => leaveLastTable(editor, 'down'),
+      collapseInCell(editor.prosemirrorView, 1) || leaveEdgeTable(editor, 'right'),
+    ArrowUp: ({ editor }: { editor: KeysEditor }) => leaveEdgeTable(editor, 'up'),
+    ArrowDown: ({ editor }: { editor: KeysEditor }) => leaveEdgeTable(editor, 'down'),
   },
 }) as never);
