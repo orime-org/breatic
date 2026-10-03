@@ -4,8 +4,9 @@
 /**
  * Role-upgrade request service — a viewer asks the owner for editor rights.
  *
- * Four operations: `request` files one, `approve` / `reject` answer it, and
- * `cancel` withdraws it. The request itself lives in `role_upgrade_requests`;
+ * Five operations: `request` files one, `approve` / `reject` answer it,
+ * `cancel` withdraws it, and `readdressOnOwnerChange` moves it to a project's
+ * new owner. The request itself lives in `role_upgrade_requests`;
  * the bell entry in `notifications` only ANNOUNCES it.
  *
  * That split is the point of this module's shape. The request used to BE the

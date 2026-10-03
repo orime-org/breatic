@@ -369,7 +369,6 @@ export async function findLiveForRequester(
 export interface PendingRoleUpgradeRequest {
   id: string;
   requesterUserId: string;
-  requestedRole: string;
   shareToken: string;
   message: string | null;
   expiresAt: Date;
@@ -393,7 +392,6 @@ export async function listLivePendingForProject(
     .select({
       id: roleUpgradeRequests.id,
       requesterUserId: roleUpgradeRequests.requesterUserId,
-      requestedRole: roleUpgradeRequests.requestedRole,
       shareToken: roleUpgradeRequests.shareToken,
       message: roleUpgradeRequests.message,
       expiresAt: roleUpgradeRequests.expiresAt,
