@@ -122,8 +122,7 @@ export async function softDeleteByName(name: string): Promise<boolean> {
  * `meta.spaces` CRDT, which lags behind cross-instance deletes by the
  * pub/sub propagation window. The project's meta doc (`project-{id}/meta`)
  * is excluded — it is not a Space. The `project-{id}/` prefix is
- * unambiguous (project ids are fixed-length UUIDs anchored by the `/`),
- * matching {@link softDeleteByProjectPrefix}.
+ * unambiguous (project ids are fixed-length UUIDs anchored by the `/`).
  *
  * LIKE-injection safety relies on an IMPLICIT upstream guarantee: a
  * caller only reaches here after `onAuthenticate` resolved the project
@@ -169,30 +168,6 @@ export async function restoreByName(name: string): Promise<boolean> {
     .where(and(eq(yjsDocuments.name, name), isNotNull(yjsDocuments.deletedAt)))
     .returning({ name: yjsDocuments.name });
   return rows.length > 0;
-}
-
-/**
- * Soft-delete every live row whose name belongs to a project.
- *
- * `yjs_documents` has no FK to `projects` — only a string `name` shaped
- * `project-{id}/...` (the v10 multi-doc layout: meta + per-space docs).
- * Driven by the lifecycle stream consumer on a `project:deleted` command
- * (the business-DB project soft-delete already committed separately).
- * The `deleted_at IS NULL` guard makes redelivery a safe no-op.
- * @param projectId - Project whose `project-{id}/...` docs are removed
- */
-export async function softDeleteByProjectPrefix(
-  projectId: string,
-): Promise<void> {
-  await yjsDb
-    .update(yjsDocuments)
-    .set({ deletedAt: sql`now()` })
-    .where(
-      and(
-        sql`${yjsDocuments.name} LIKE ${`project-${projectId}/%`}`,
-        isNull(yjsDocuments.deletedAt),
-      ),
-    );
 }
 
 /**

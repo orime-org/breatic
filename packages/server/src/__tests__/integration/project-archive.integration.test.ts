@@ -258,6 +258,16 @@ describe("restore", () => {
     expect(await outboxTypes(projectId)).toEqual(["project:archived", "project:restored"]);
   });
 
+  it("leaves every member's role as it was before the archive", async () => {
+    const { adminId, projectId } = await seedScene();
+    const roles = async (): Promise<unknown> =>
+      sql`SELECT user_id, role FROM project_members WHERE project_id = ${projectId} AND deleted_at IS NULL ORDER BY user_id`;
+    const before = await roles();
+    await projectService.archive(projectId, adminId);
+    await projectService.restore(projectId, adminId);
+    expect(await roles()).toEqual(before);
+  });
+
   it("is refused to anyone but the studio's admin", async () => {
     const { adminId, memberId, projectId } = await seedScene();
     await projectService.archive(projectId, adminId);

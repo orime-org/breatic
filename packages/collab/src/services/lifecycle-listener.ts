@@ -9,9 +9,6 @@
  * transactional-outbox relay) and performs the yjs-DB side that can no
  * longer ride the server's business transaction:
  *
- *   - `project:deleted`    → soft-delete every `project-{id}/*` doc in
- *                            the yjs DB + close live connections (a stale
- *                            tab can't keep writing a deleted project).
  *   - `project:duplicated` → copy `project-{src}/*` → `project-{new}/*`
  *                            in the yjs DB + close the new project's
  *                            connections so a client that raced in and
@@ -23,11 +20,11 @@
  *                            re-authenticate and come back writable.
  *
  * Durable resume — the last handled stream id is persisted to Redis so
- * a collab restart never drops an in-flight command (a dropped delete =
- * data leak, a dropped duplicate = empty project). Handlers are
- * idempotent (the repo's `deleted_at IS NULL` guard + `ON CONFLICT`),
- * so at-least-once redelivery is safe; a transient DB error throws and
- * the consumer retries.
+ * a collab restart never drops an in-flight command (a dropped duplicate
+ * = empty project, a dropped archive = writers who stay writable). Handlers
+ * are idempotent (`ON CONFLICT` on the copy; a kick of no connections is a
+ * no-op), so at-least-once redelivery is safe; a transient DB error throws
+ * and the consumer retries.
  */
 
 import type { Hocuspocus } from "@hocuspocus/server";
@@ -47,7 +44,6 @@ const logger = createLogger("lifecycle-listener");
  * archived project comes back read-only, a restored one writable, a
  * duplicated one re-loads its now-correct meta.
  */
-const CLOSE_PROJECT_DELETED = { code: 4404, reason: "Project deleted" } as const;
 const CLOSE_PROJECT_REFRESHED = {
   code: 4406,
   reason: "Project content updated",
@@ -111,12 +107,6 @@ export async function handleLifecycleEvent(
   hocuspocus: Hocuspocus,
   event: ProjectLifecycleEvent,
 ): Promise<void> {
-  if (event.type === "project:deleted") {
-    await yjsDocumentsRepo.softDeleteByProjectPrefix(event.projectId);
-    kickAllFromProject(hocuspocus, event.projectId, CLOSE_PROJECT_DELETED);
-    logger.info({ projectId: event.projectId }, "project_deleted_cascade_handled");
-    return;
-  }
   if (event.type === "project:duplicated") {
     await yjsDocumentsRepo.duplicateByProjectPrefix(event.sourceId, event.newId);
     kickAllFromProject(hocuspocus, event.newId, CLOSE_PROJECT_REFRESHED);

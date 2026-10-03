@@ -249,7 +249,6 @@ export {
 export type {
   MembersChangedEvent,
   ActivityNewControlEvent,
-  ProjectDeletedLifecycleEvent,
   ProjectDuplicatedLifecycleEvent,
   ProjectArchivedLifecycleEvent,
   ProjectRestoredLifecycleEvent,

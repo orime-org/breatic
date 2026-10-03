@@ -341,23 +341,6 @@ membershipScoped.post(
   },
 );
 
-/**
- * `DELETE /projects/:id` — soft-delete a project.
- *
- * Requires `owner` (cascades to all the project's children).
- * @returns `200` with `{ data: { success: true } }`
- */
-membershipScoped.delete(
-  "/:id",
-  requireRoleOnParam("id", "owner"),
-  async (c) => {
-    const user = c.get("user");
-    const id = c.req.param("id");
-    await projectService.deleteProject(id, user.id);
-    return c.json({ data: { success: true } });
-  },
-);
-
 projects.route("/", membershipScoped);
 
 // `projectAuthService` and `NotFoundError` / `t` are imported above

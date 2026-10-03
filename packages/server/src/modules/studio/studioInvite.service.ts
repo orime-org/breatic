@@ -226,16 +226,11 @@ export async function confirmInvite(
     }
 
     // Taken BEFORE the CAS, matching the order the project side has to use
-    // against `deleteProject` (`projects` first, its invitations second). There
-    // is no studio-delete cascade to deadlock with YET — studio deletion is not
-    // built (#26) — so today this order costs nothing and prevents nothing.
-    // Keeping the two sides identical is the point: whoever builds #26 will
-    // take the `studios` row first, as every cascade here does, and this path
-    // is then already on the safe side of that cycle rather than needing to be
-    // found and changed. `createInvite` above is NOT: it writes
-    // `studio_invitations` without taking the studio row at all, so #26 has to
-    // look at it as well (the project side had exactly this shape and it was a
-    // real cycle — see `invite-lock-order.integration.test.ts`).
+    // against `archiveProject` (`projects` first, its invitations second).
+    // Nothing sweeps studio invitations under the studio row, so here the
+    // order costs nothing and prevents nothing; it keeps the two sides
+    // identical, so a future sweep that takes the `studios` row first finds
+    // this path already on the safe side of that cycle.
     //
     // This lock only serialises — it deliberately does not filter `deleted_at`
     // — so liveness is a separate question, asked right after.
@@ -244,8 +239,8 @@ export async function confirmInvite(
       // The studio went away while this invite sat in the bell. Accepting now
       // would leave a live member row on something nobody can open, which is
       // the orphan every project-scoped path takes its lock to prevent. Nothing
-      // in the product soft-deletes a studio yet (#26); the integration case
-      // reaches this branch by doing it in SQL.
+      // in the product soft-deletes a studio; the integration case reaches this
+      // branch by doing it in SQL.
       throw new NotFoundError(t("server.error.not_found"));
     }
 

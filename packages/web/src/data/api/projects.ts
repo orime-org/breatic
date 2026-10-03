@@ -90,9 +90,6 @@ export const projectsApi = {
   recordOpen(id: string) {
     return apiPost<{ ok: boolean }>(`/projects/${id}/opened`, {});
   },
-  delete(id: string) {
-    return apiDelete(`/projects/${id}`);
-  },
   /**
    * `POST /api/v1/projects/:id/transfer-owner` — the current owner asks a
    * project collaborator (who is also a non-guest studio member) to take over

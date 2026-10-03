@@ -55,8 +55,8 @@ describe("Projects routes", () => {
       // every project route is behind it, and a per-route validator is one
       // more thing each new route has to remember.
       const res = await createApp().request(
-        "/api/v1/projects/not-a-uuid",
-        { method: "DELETE", headers: AUTH },
+        "/api/v1/projects/not-a-uuid/duplicate",
+        { method: "POST", headers: AUTH },
       );
       expect(res.status).toBe(403);
     });
@@ -100,21 +100,6 @@ describe("Projects routes", () => {
       });
 
       expect(res.status).toBe(422);
-    });
-  });
-
-  describe("DELETE /projects/:id — soft delete", () => {
-    it("soft-deletes and returns 200", async () => {
-      mocks.projectService.deleteProject.mockResolvedValue(undefined);
-
-      const app = createApp();
-      const res = await app.request(`/api/v1/projects/${PROJ_UUID}`, {
-        method: "DELETE",
-        headers: AUTH,
-      });
-
-      expect(res.status).toBe(200);
-      expect(mocks.projectService.deleteProject).toHaveBeenCalledWith(PROJ_UUID, "user-1");
     });
   });
 

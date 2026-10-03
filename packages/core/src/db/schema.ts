@@ -703,9 +703,8 @@ export const nodeHistory = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
-    // Soft-delete, stamped by deleteProject() cascade when the owning
-    // project is deleted. Required for the project-wide "soft delete
-    // only" rule (CLAUDE.md) now that deleteProject actually cascades.
+    // Soft-delete, per the project-wide "soft delete only" rule (CLAUDE.md).
+    // Only data migrations stamp it today (duplicate cleanup).
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
@@ -1643,8 +1642,8 @@ export const projectLifecycleOutbox = pgTable(
   "project_lifecycle_outbox",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    // Discriminator: "project:deleted" | "project:duplicated"
-    // (see @breatic/shared ProjectLifecycleEvent).
+    // Discriminator: "project:duplicated" | "project:archived" |
+    // "project:restored" (see @breatic/shared ProjectLifecycleEvent).
     kind: text("kind").notNull(),
     // Full ProjectLifecycleEvent payload (projectId / sourceId+newId / ts).
     payload: jsonb("payload").notNull(),
@@ -2190,9 +2189,8 @@ export const projectActivities = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
-    // Soft-delete: individual rows are never user-deleted, but the whole
-    // table is project-scoped and cascade-soft-deleted by deleteProject
-    // (same as node_history). Feed queries filter deleted_at IS NULL.
+    // Soft-delete, per the project-wide "soft delete only" rule; rows are
+    // never user-deleted. Feed queries filter deleted_at IS NULL.
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
@@ -2221,8 +2219,7 @@ export const projectActivities = pgTable(
 // never on Yjs node edits.
 //
 // V1 has no delete flow (assets accumulate); `deleted_at` is reserved
-// for a future GDPR / studio-deletion cascade. It does NOT cascade with
-// deleteProject (studio-scoped, not project-scoped).
+// for a future GDPR deletion flow.
 
 export const studioAssets = pgTable(
   "studio_assets",

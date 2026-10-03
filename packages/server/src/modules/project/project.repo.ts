@@ -18,7 +18,7 @@
 
 import { eq, and, isNull, isNotNull, desc, inArray, count, sql } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
-import { db, projectActivitiesRepo, projectMembersRepo } from "@breatic/core";
+import { db, projectMembersRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import { insertOutboxEvent } from "@server/modules/project/lifecycle-outbox.repo.js";
@@ -30,13 +30,7 @@ import {
   projectTransfers,
   roleUpgradeRequests,
   projectJoinRequests,
-  conversations,
-  nodeHistory,
-  projectMemories,
-  projectMemoryEntries,
-  tasks,
 } from "@breatic/core";
-import { cascadeDeleteConversations } from "@server/modules/conversation/conversation.repo.js";
 import type {
   ProjectEntity,
   ProjectRole,
@@ -178,6 +172,10 @@ export async function archiveProject(
     decidedAt: null,
   } as const;
   const notificationIds: string[] = [];
+  /**
+   * Keep the bell entry ids of the requests a sweep just expired.
+   * @param rows - The swept rows' notification ids
+   */
   const collect = (rows: { notificationId: string | null }[]): void => {
     for (const r of rows) if (r.notificationId !== null) notificationIds.push(r.notificationId);
   };
@@ -578,178 +576,6 @@ export async function duplicateProject(
   });
 
   return toEntity(newProject);
-}
-
-/**
- * Soft-delete a project and every record that belongs to it.
- *
- * BUG-020 switched every child FK to `onDelete: restrict`, which means
- * Postgres refuses to hard-delete a project while children reference
- * it. Setting `deleted_at` on the project row alone left children with
- * `deleted_at IS NULL` and they kept showing up in list queries —
- * BUG-031 closed that gap for the project's direct children, and
- * BUG-142 closes it again for the conversation's grandchildren
- * (conversation_attachments / conversation_memories / memory_history_entries)
- * by delegating to {@link cascadeDeleteConversations}.
- *
- * Every child UPDATE is guarded with `isNull(deletedAt)` so we never
- * overwrite a previously-stamped timestamp if the same project is
- * deleted twice.
- *
- * Reference-only memory entries (`project_memory_entries.source_conversation_id`) are NOT rewritten
- * here — see the rationale in `cascadeDeleteConversations`.
- *
- * yjs_documents is special: it has no FK to `projects`, only a string
- * `name` key shaped like `project-{id}/...` (the v10 multi-doc layout
- * uses meta + canvas-{sid} sub-paths). We soft-delete every row whose
- * name starts with the project prefix.
- *
- * project_members is also soft-deleted in this transaction so the
- * partial unique index "one active owner per project" is freed up if
- * the project is ever recreated under the same id (it isn't, but the
- * invariant is principled).
- * @param id - UUID of the project to soft-delete
- */
-export async function deleteProject(id: string): Promise<void> {
-  await db.transaction(async (tx) => {
-    const now = new Date();
-
-    // Taken FIRST. Without it a request filed concurrently commits after the
-    // cascade has already swept its table, leaving the orphan this whole
-    // cascade exists to prevent — so every path that files a project-scoped
-    // REQUEST row (invite, transfer offer, role-upgrade request) takes it too
-    // (see `lockLiveProject`).
-    await tx
-      .select({ id: projects.id })
-      .from(projects)
-      .where(eq(projects.id, id))
-      .for("update")
-      .limit(1);
-
-    const convRows = await tx
-      .select({ id: conversations.id })
-      .from(conversations)
-      .where(
-        and(eq(conversations.projectId, id), isNull(conversations.deletedAt)),
-      );
-    const convIds = convRows.map((r) => r.id);
-    await cascadeDeleteConversations(tx, convIds, now);
-
-    await tx
-      .update(nodeHistory)
-      .set({ deletedAt: now })
-      .where(and(eq(nodeHistory.projectId, id), isNull(nodeHistory.deletedAt)));
-
-    // Project activity feed dies with its project (append-only rows, but
-    // project-scoped — same cascade as node_history above).
-    await projectActivitiesRepo.softDeleteByProject(id, tx);
-
-    await tx
-      .update(tasks)
-      .set({ deletedAt: now })
-      .where(and(eq(tasks.projectId, id), isNull(tasks.deletedAt)));
-
-    await tx
-      .update(projectMemories)
-      .set({ deletedAt: now })
-      .where(and(eq(projectMemories.projectId, id), isNull(projectMemories.deletedAt)));
-
-    await tx
-      .update(projectMemoryEntries)
-      .set({ deletedAt: now })
-      .where(
-        and(eq(projectMemoryEntries.projectId, id), isNull(projectMemoryEntries.deletedAt)),
-      );
-
-    // The pending-request tables die with the project, and they go FIRST.
-    //
-    // Left behind, a pending row is undecidable and unkillable: every decision
-    // path resolves the caller's role through a join that filters deleted
-    // projects, so it answers 403 forever and deliberately leaves the row
-    // pending; the reaper only runs from a NEW request on the same key, and
-    // filing one needs a live project. The row then holds its uniqueness slot
-    // permanently and its `restrict` foreign key blocks the project from ever
-    // being hard-deleted.
-    //
-    // ORDER IS LOAD-BEARING. Deciding a join request or a role upgrade,
-    // withdrawing either, accepting a transfer and removing a studio member
-    // all lock this project row before its request and member rows, so
-    // they queue behind this cascade. A cascade that took `project_members`
-    // first would close a cycle with any path that does not, and deleting a
-    // project while somebody answers a request would abort one side with a
-    // deadlock rather than serialising them.
-    await tx
-      .update(roleUpgradeRequests)
-      .set({ deletedAt: now })
-      .where(
-        and(
-          eq(roleUpgradeRequests.projectId, id),
-          isNull(roleUpgradeRequests.deletedAt),
-        ),
-      );
-
-    await tx
-      .update(projectJoinRequests)
-      .set({ deletedAt: now })
-      .where(
-        and(
-          eq(projectJoinRequests.projectId, id),
-          isNull(projectJoinRequests.deletedAt),
-        ),
-      );
-
-    await tx
-      .update(projectTransfers)
-      .set({ deletedAt: now })
-      .where(
-        and(
-          eq(projectTransfers.projectId, id),
-          isNull(projectTransfers.deletedAt),
-        ),
-      );
-
-    // Pending invites are the same shape and were the same defect: a live
-    // pending row on a dead project holds its one-pending slot and its restrict
-    // FK forever. `confirmInvite` takes this same row before it writes, so a
-    // pending invite to a project swept here can no longer be accepted (that
-    // was not true until #87 — before it, an invitee could accept and land an
-    // active member row on a project nobody can open).
-    await tx
-      .update(projectInvitations)
-      .set({ deletedAt: now })
-      .where(
-        and(
-          eq(projectInvitations.projectId, id),
-          isNull(projectInvitations.deletedAt),
-        ),
-      );
-
-    // Their bell entries come down with them. The unread query only hides an
-    // entry once its own deadline passes, so a week-long request would leave
-    // buttons standing over rows that now answer 404.
-    await notificationRepo.retireByProject(id, tx);
-
-    await projectMembersRepo.softDeleteAllInProject(id, now, tx);
-
-    // The Yjs document store is a SEPARATE database now, so its cascade
-    // can't ride this business tx. Enqueue a lifecycle command in the
-    // same tx (atomic with the project soft-delete); the relay forwards
-    // it to collab, which soft-deletes `project-{id}/*` in the yjs DB +
-    // kicks live connections. The data-leak invariant does NOT depend on
-    // this async step: collab's auth hook reads the BUSINESS db, so the
-    // moment this tx commits, `loadProjectRole` returns null and refuses
-    // every new WebSocket — before any yjs read.
-    await insertOutboxEvent(tx, {
-      type: "project:deleted",
-      projectId: id,
-      ts: now.getTime(),
-    });
-
-    await tx
-      .update(projects)
-      .set({ deletedAt: now, updatedAt: now })
-      .where(eq(projects.id, id));
-  });
 }
 
 // `studios` is referenced indirectly via `projects.studioId`. Re-export

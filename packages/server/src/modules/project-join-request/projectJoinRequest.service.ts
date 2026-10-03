@@ -20,7 +20,7 @@
  * A path that locks a project's `projects` row together with any of its
  * request or member rows takes the project row first: filing, deciding and
  * withdrawing here, filing, deciding and withdrawing a role upgrade, accepting a
- * transfer, removing a studio member and the delete cascade. Every write to a
+ * transfer, removing a studio member and the archive sweep. Every write to a
  * join request happens under that project lock, which
  * {@link readdressOnOwnerChange} relies on when it reads the pending requests
  * unlocked. Deciding also locks the requester's studio membership before the

@@ -4,7 +4,7 @@
 /**
  * Lock order of every path that touches join requests — real Postgres.
  *
- * `deleteProject`, deciding a join request or a role upgrade, withdrawing a
+ * Archiving a project, deciding a join request or a role upgrade, withdrawing a
  * join request or a role upgrade, accepting a transfer and removing a studio member each lock a
  * project's `projects` row before its request and member rows, so any two of
  * them queue instead of deadlocking. Deciding a join request also locks the requester's
@@ -33,7 +33,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { ConflictError, initCore, NotFoundError } from "@breatic/core";
+import { ConflictError, initCore } from "@breatic/core";
 import * as joinService from "@server/modules/project-join-request/projectJoinRequest.service.js";
 import * as decisionService from "@server/modules/decision/decision.service.js";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
@@ -214,35 +214,56 @@ async function requestOf(
 }
 
 /**
- * Play `deleteProject`'s first two steps from a separate connection — lock the
- * project, sweep its join requests — then start `other`, and once `other` has
- * parked, play the step that closes a cycle with a path in the wrong order.
- * @param projectId - The project being deleted.
+ * Play `archiveProject`'s statements from a separate connection in its own
+ * order — lock the project, expire its role upgrades and join requests — then
+ * start `other`, and once `other` has parked, play the rest of the sweep.
+ * @param projectId - The project being archived.
+ * @param archivedBy - The studio admin stamped as archiving it.
  * @param other - The concurrent call under test.
- * @param closingStep - The cascade's later statement.
  * @param parkedOn - Substrings of the statement `other` parks on; empty for any.
  * @returns What each side threw, if anything.
  */
-async function againstDelete(
+async function againstArchive(
   projectId: string,
+  archivedBy: string,
   other: () => Promise<unknown>,
-  closingStep: (c: postgres.TransactionSql) => Promise<unknown>,
   parkedOn: readonly string[],
 ): Promise<{ sweepError: unknown; otherError: unknown }> {
-  const cascade = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
+  const sweep = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
   let sweepError: unknown = null;
   let running: Promise<PromiseSettledResult<unknown>> | undefined;
   try {
-    await cascade.begin(async (c) => {
-      await c`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
+    await sweep.begin(async (c) => {
+      await c`SELECT id FROM projects WHERE id = ${projectId} AND deleted_at IS NULL FOR UPDATE`;
       await c`
-        UPDATE project_join_requests SET deleted_at = now()
-        WHERE project_id = ${projectId} AND deleted_at IS NULL
+        UPDATE role_upgrade_requests SET status = 'expired', decided_at = null,
+          expires_at = LEAST(expires_at, now())
+        WHERE project_id = ${projectId} AND status = 'pending' AND deleted_at IS NULL
+      `;
+      await c`
+        UPDATE project_join_requests SET status = 'expired', decided_at = null,
+          expires_at = LEAST(expires_at, now())
+        WHERE project_id = ${projectId} AND status = 'pending' AND deleted_at IS NULL
       `;
       running = track(other());
       await waitUntilBlockedOn(sql, parkedOn, 1);
       try {
-        await closingStep(c);
+        const swept = await c<{ notification_id: string | null }[]>`
+          UPDATE project_transfers SET status = 'expired', decided_at = null,
+            expires_at = LEAST(expires_at, now())
+          WHERE project_id = ${projectId} AND status = 'pending' AND deleted_at IS NULL
+          RETURNING notification_id
+        `;
+        await c`
+          UPDATE project_invitations SET status = 'expired', expires_at = LEAST(expires_at, now())
+          WHERE project_id = ${projectId} AND status = 'pending' AND deleted_at IS NULL
+        `;
+        for (const row of swept) {
+          if (row.notification_id !== null) {
+            await c`UPDATE notifications SET read_at = now() WHERE id = ${row.notification_id} AND read_at IS NULL`;
+          }
+        }
+        await c`UPDATE projects SET archived_at = now(), archived_by_user_id = ${archivedBy} WHERE id = ${projectId}`;
       } catch (err) {
         sweepError = err;
       }
@@ -250,7 +271,7 @@ async function againstDelete(
   } catch (err) {
     sweepError ??= err;
   } finally {
-    await cascade.end({ timeout: 5 });
+    await sweep.end({ timeout: 5 });
   }
   const settled = await running!;
   return { sweepError, otherError: settled.status === "rejected" ? settled.reason : null };
@@ -455,8 +476,8 @@ describe("withdrawing a request against an owner change", () => {
   });
 });
 
-describe("an owner change against a project delete", () => {
-  it("accepting a transfer while the project is being deleted does not deadlock", async () => {
+describe("an owner change against a project archive", () => {
+  it("accepting a transfer while the project is being archived does not deadlock, and the offer lapses", async () => {
     const s = await scene();
     await joinService.request({ projectId: s.projectId, requesterUserId: s.requesterId });
     await projectTransferService.requestProjectTransfer(s.projectId, s.ownerId, s.heirId);
@@ -464,34 +485,33 @@ describe("an owner change against a project delete", () => {
       SELECT id FROM project_transfers WHERE project_id = ${s.projectId} AND status = 'pending'
     `;
 
-    const { sweepError, otherError } = await againstDelete(
+    const { sweepError, otherError } = await againstArchive(
       s.projectId,
+      s.ownerId,
       () => projectTransferService.confirmProjectTransfer(offer!.id, s.heirId),
-      (c) => c`
-        UPDATE project_transfers SET deleted_at = now()
-        WHERE project_id = ${s.projectId} AND deleted_at IS NULL
-      `,
       [],
     );
 
     expect(sqlStateOf(sweepError)).not.toBe(DEADLOCK);
     expect(sqlStateOf(otherError)).not.toBe(DEADLOCK);
     expect(sweepError).toBeNull();
-    // The offer went with the project, so the accept finds nothing to answer.
-    expect(otherError).toBeInstanceOf(NotFoundError);
+    const [after] = await sql<{ status: string }[]>`SELECT status FROM project_transfers WHERE id = ${offer!.id}`;
+    expect(after!.status).toBe("expired");
+    const [owner] = await sql<{ user_id: string }[]>`
+      SELECT user_id FROM project_members
+      WHERE project_id = ${s.projectId} AND role = 'owner' AND deleted_at IS NULL
+    `;
+    expect(owner!.user_id).toBe(s.ownerId);
   });
 
-  it("removing the owner from the studio while the project is being deleted does not deadlock", async () => {
+  it("removing the owner from the studio while the project is being archived does not deadlock", async () => {
     const s = await scene();
     await joinService.request({ projectId: s.projectId, requesterUserId: s.requesterId });
 
-    const { sweepError, otherError } = await againstDelete(
+    const { sweepError, otherError } = await againstArchive(
       s.projectId,
+      s.ownerId,
       () => studioMemberService.removeMember(s.studioSlug, s.ownerId),
-      (c) => c`
-        UPDATE project_members SET deleted_at = now()
-        WHERE project_id = ${s.projectId} AND deleted_at IS NULL
-      `,
       [],
     );
 

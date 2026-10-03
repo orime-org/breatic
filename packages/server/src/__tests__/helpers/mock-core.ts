@@ -127,7 +127,6 @@ export const mocks = {
     update: vi.fn(),
     duplicate: vi.fn(),
     saveCanvas: vi.fn(),
-    deleteProject: vi.fn(),
     archive: vi.fn(),
     restore: vi.fn(),
     assertCanChangeCover: vi.fn().mockResolvedValue(undefined),

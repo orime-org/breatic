@@ -6,9 +6,8 @@
  * Postgres.
  *
  * Every path that files a project-scoped REQUEST row (invite, transfer offer,
- * role-upgrade request) takes the `projects` row lock, and `deleteProject`
- * takes it FIRST and only then sweeps those tables (`project.repo.ts`, the
- * comment there says "Taken FIRST"). Any path
+ * role-upgrade request) takes the `projects` row lock, and archiving a project
+ * (`archiveProject`) takes it FIRST and only then sweeps those tables. Any path
  * that takes these two the other way round closes an AB/BA cycle: Postgres notices
  * after `deadlock_timeout` and aborts one side with 40P01, which is neither an
  * `AppError` nor an `HTTPException` and therefore surfaces as a 500 to whoever
@@ -18,10 +17,10 @@
  * `expireStalePending` — an `UPDATE project_invitations` that takes a row lock
  * on any timed-out invite for this (project, invitee) — and only afterwards
  * asked for the `projects` row. The window is not microseconds wide: it lasts
- * as long as the delete cascade holds its lock.
+ * as long as an archive holds its lock.
  *
  * The case below drives that cycle deliberately rather than hoping for it: a
- * separate connection plays the delete cascade's two steps by hand, and the
+ * separate connection plays the archive's two steps by hand, and the
  * probe turns "the invite is now parked on the projects row" into an observed
  * fact. With the old order the second step deadlocks; with the lock taken
  * first it goes through.
@@ -41,7 +40,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { initCore, loadLocales } from "@breatic/core";
+import { initCore, loadLocales, NotFoundError } from "@breatic/core";
 import * as projectInviteService from "@server/modules/project-invite/projectInvite.service.js";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
@@ -222,52 +221,52 @@ function sqlStateOf(err: unknown): string | null {
 /** Postgres' SQLSTATE for a deadlock it broke by aborting somebody. */
 const DEADLOCK = "40P01";
 
-describe("project invite — lock order against the delete cascade", () => {
-  it("re-inviting does not deadlock with a delete that already holds the project row", async () => {
+describe("project invite — lock order against archiving the project", () => {
+  it("re-inviting does not deadlock with an archive that already holds the project row, and is refused", async () => {
     const { projectId, adminId, inviteeEmail } = await seedStaleInvite();
 
-    // This connection plays `deleteProject`: the projects row first…
-    const cascade = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
+    // This connection plays `archiveProject`: the projects row first…
+    const sweep = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
     let sweepError: unknown = null;
-    let invite: Promise<unknown>;
+    let invite: Promise<PromiseSettledResult<unknown>[]>;
     try {
-      await cascade.begin(async (c) => {
+      await sweep.begin(async (c) => {
         await c`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
 
         // …while a re-invite for the same (project, invitee) starts up. It has
         // a stale pending row to expire and a project row to lock; only one
         // order of those two survives what happens next.
-        invite = projectInviteService.createInvite(
-          projectId,
-          adminId,
-          inviteeEmail,
-          "viewer",
-        );
+        // Settled from the start: it rejects as soon as the archive commits,
+        // which is before this test gets round to awaiting it.
+        invite = Promise.allSettled([
+          projectInviteService.createInvite(projectId, adminId, inviteeEmail, "viewer"),
+        ]);
         await waitUntilBlockedOn(sql, ["projects", "for update"], 1);
 
-        // …and the cascade's second step: sweep this project's invitations.
-        // With the invite holding the stale row's lock this closes the cycle.
+        // …then the archive's sweep of this project's invitations. With the
+        // invite holding the stale row's lock this would close the cycle.
         try {
           await c`
-            UPDATE project_invitations SET deleted_at = now()
-            WHERE project_id = ${projectId} AND deleted_at IS NULL
+            UPDATE project_invitations SET status = 'expired', expires_at = LEAST(expires_at, now())
+            WHERE project_id = ${projectId} AND status = 'pending' AND deleted_at IS NULL
           `;
+          await c`UPDATE projects SET archived_at = now(), archived_by_user_id = ${adminId} WHERE id = ${projectId}`;
         } catch (err) {
           sweepError = err;
         }
       });
     } finally {
-      await cascade.end({ timeout: 5 });
+      await sweep.end({ timeout: 5 });
     }
-    const [settled] = await Promise.allSettled([invite!]);
+    const [settled] = await invite!;
     const inviteError = settled.status === "rejected" ? settled.reason : null;
 
     expect(sqlStateOf(sweepError)).not.toBe(DEADLOCK);
     expect(sqlStateOf(inviteError)).not.toBe(DEADLOCK);
-    // Neither side merely survived: the sweep committed and the re-invite went
-    // on to file a fresh row once the cascade let go of the project.
     expect(sweepError).toBeNull();
-    expect(inviteError).toBeNull();
+    // The re-invite waited for the archive and then found the project taking
+    // no new invites.
+    expect(inviteError).toBeInstanceOf(NotFoundError);
   });
 });
 

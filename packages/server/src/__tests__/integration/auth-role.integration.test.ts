@@ -15,9 +15,8 @@
  *   1. active member of an active project → that member's role
  *   2. non-member of an active project → null (never leaks existence)
  *   3. member of a SOFT-DELETED project → null, even if the member row
- *      itself still looks active (the project-active join is
- *      defence-in-depth: project soft-delete cascades to member rows in
- *      one transaction, but a lingering member row must still be denied)
+ *      itself still looks active (the project-active join denies it
+ *      whatever the member rows say)
  *   4. unknown project / unknown user → null
  *
  * The join semantics (WHERE filters) can only be verified against real

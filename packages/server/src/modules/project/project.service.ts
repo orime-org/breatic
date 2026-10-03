@@ -559,19 +559,3 @@ export async function restore(projectId: string, userId: string): Promise<void> 
   if (outcome === "missing") throw new NotFoundError(t("server.error.not_found"));
   if (outcome === "unchanged") throw new ConflictError(t("server.project.not_archived"));
 }
-
-/**
- * Soft-delete a project after verifying the caller is `owner`.
- *
- * Cascades soft delete to conversations, tasks, node history, member
- * rows, project memories and yjs documents (all in one tx).
- * @param projectId - Project UUID to delete
- * @param userId - Authenticated user UUID; must be the project `owner`
- */
-export async function deleteProject(
-  projectId: string,
-  userId: string,
-): Promise<void> {
-  await assertAccess(projectId, userId, "owner");
-  await projectRepo.deleteProject(projectId);
-}

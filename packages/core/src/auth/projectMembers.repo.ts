@@ -49,13 +49,10 @@ function toEntity(
  * existence to a non-member.
  *
  * The `projects` inner-join with `projects.deleted_at IS NULL` folds
- * the project-existence guard into the same query. Project soft-delete
- * already cascades to its `project_members` rows in one transaction
- * (`project.repo.deleteProject`), so the member-row `deleted_at`
- * filter alone would suffice — the project join is defence-in-depth
- * that keeps a deleted project unreachable even if a member row ever
- * lingered, and it lets this one query replace a separate existence
- * SELECT (no raw `db` access outside this repo).
+ * the project-existence guard into the same query, so a soft-deleted
+ * project stays unreachable whatever its member rows say, and this one
+ * query replaces a separate existence SELECT (no raw `db` access outside
+ * this repo).
  *
  * Takes an optional transaction handle. A caller already inside one MUST pass
  * it: `db` hands out a SECOND pooled connection, and a transaction that holds
@@ -456,7 +453,7 @@ export async function updateRole(
  * It deliberately takes NO row lock. A single statement locks only the row it
  * changes and never waits on a second one, so this path cannot take part in a
  * deadlock — which matters because the other writers on this table (the
- * project-delete cascade, the studio kick) already form one. The `EXISTS` is
+ * studio kick, the ownership transfer) lock several rows each. The `EXISTS` is
  * unlocked, leaving a statement-wide window in which someone who has just
  * stopped being the owner could still land a decision. That is a bounded
  * cost and a deliberate one: the write never touches an owner row, so "exactly
@@ -622,39 +619,6 @@ export async function softDeleteAllInStudioForUser(
 }
 
 /**
- * Soft-delete every active member row of one project — the membership half of
- * the project-delete cascade.
- *
- * The stamp is passed in rather than read from the database, because this is
- * one statement of a cascade that marks a dozen tables and they all carry the
- * same instant. Rows already soft-deleted keep the date they were given: the
- * `deleted_at IS NULL` filter is what makes "when did this person lose access"
- * answerable months later, instead of being rewritten to the day the project
- * went away.
- * @param projectId - The project whose membership is being cleared
- * @param deletedAt - The cascade's timestamp, shared by every table it marks
- * @param tx - The project-delete transaction to join
- * @returns The number of rows soft-deleted
- */
-export async function softDeleteAllInProject(
-  projectId: string,
-  deletedAt: Date,
-  tx: DbTx,
-): Promise<number> {
-  const rows = await tx
-    .update(projectMembers)
-    .set({ deletedAt })
-    .where(
-      and(
-        eq(projectMembers.projectId, projectId),
-        isNull(projectMembers.deletedAt),
-      ),
-    )
-    .returning({ projectId: projectMembers.projectId });
-  return rows.length;
-}
-
-/**
  * List the projects a user actively OWNS within one studio, **holding a row
  * lock on each** — read BEFORE the leave/kick soft-deletes them, so the caller
  * knows which projects to hand to the admin.
@@ -672,7 +636,7 @@ export async function softDeleteAllInProject(
  *
  * The `projects` rows are locked first, in id order, and the membership rows
  * second, in a separate statement. Handing a project over moves its pending
- * join requests to the admin, and the delete cascade and the request decisions
+ * join requests to the admin, and the archive sweep and the request decisions
  * lock the project row before its request and member rows; one statement
  * locking both tables would take the two rows of a pair in an unspecified
  * order.
