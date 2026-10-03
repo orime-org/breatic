@@ -17,7 +17,7 @@
 import { test, expect, type Page } from 'playwright/test';
 
 import { openSmokeProject } from '../helpers/project';
-import { pressAndSettle } from '../helpers/editor-keys';
+import { clickAndSettle, pressAndSettle } from '../helpers/editor-keys';
 import { createSpace, deleteSpace } from '../helpers/space';
 
 let page: Page;
@@ -297,9 +297,10 @@ test('A5: the table icon opens the table menu, and dragging it moves the whole t
     'doc-block-row-delete',
   ]);
   await page.keyboard.press('Escape');
+  await expect(page.locator(EDITOR)).toBeFocused();
 
   // A line under the table to drop it below.
-  await page.locator(TOP).nth(2).click();
+  await clickAndSettle(page, page.locator(TOP).nth(2));
   await page.keyboard.type('tail');
   await hoverRow(page, 1);
   const handle = await page.getByTestId('doc-block-table-handle').boundingBox();
@@ -596,7 +597,7 @@ test('A17: two pages on one Space end up with the same table', async ({ browser 
     await other.getByTestId(`space-tab-name-${spaceId}`).click();
     await expect(other.locator(`${EDITOR} table`)).toHaveCount(1, { timeout: 20_000 });
 
-    await cell(page, 'a2').click();
+    await clickAndSettle(page, cell(page, 'a2'));
     await page.keyboard.press('End');
     await page.keyboard.type('!');
     await hoverCell(other, 'a1');
