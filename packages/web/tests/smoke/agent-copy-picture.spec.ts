@@ -59,16 +59,16 @@ async function documentNodes(page: Page): Promise<DocNode[]> {
 }
 
 /**
- * Asserts a button is still hidden once any opacity transition has run out.
+ * Asserts buttons are still hidden once any opacity transition has run out.
  *
  * A transition starts from the old value, so a check made right after the
  * pointer moves reads 0 even for a button on its way to showing.
  * @param page - The page.
- * @param button - The button.
+ * @param buttons - The buttons; there may be none.
  */
-async function stillHidden(page: Page, button: Locator): Promise<void> {
+async function stillHidden(page: Page, buttons: Locator[]): Promise<void> {
   await page.waitForTimeout(500);
-  await expect(button).toHaveCSS('opacity', '0');
+  for (const button of buttons) await expect(button).toHaveCSS('opacity', '0');
 }
 
 test.beforeEach(async ({ page, context }) => {
@@ -97,12 +97,13 @@ test('a copied picture pastes onto the canvas and lands as a stored picture @nee
   const copies = page.getByTestId('asset-copy');
   const reply = page.getByTestId('message-bubble').filter({ has: page.getByTestId('asset-row') });
   await reply.getByTestId('markdown-body').first().hover({ position: { x: 4, y: 4 } });
-  await stillHidden(page, copies.first());
+  await stillHidden(page, await copies.all());
   const square = page.getByTestId('asset-thumb').first();
   await square.hover();
   const copy = copies.first();
   await expect(copy).toHaveCSS('opacity', '1');
-  await stillHidden(page, copies.nth(1));
+  // The row may hold a single picture, so every other button is checked.
+  await stillHidden(page, (await copies.all()).slice(1));
   await copy.click();
   await expect(page.getByTestId('copy-answer')).toBeVisible();
 
