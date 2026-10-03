@@ -107,29 +107,28 @@ function zoneAt(view: EditorView, y: number): PointerZone {
     const last = edgeLine(view, 'end');
     if (last) {
       const box = last.getBoundingClientRect();
-      if (y >= (holdsText(view, 'end') ? box.bottom : box.top)) return 'end';
+      if (y >= (edgeBlockIsTable(view, 'end') ? box.bottom : box.top)) return 'end';
     }
   }
   if (bodyEdgeNeedsTakeover(doc, 'start')) {
     const first = edgeLine(view, 'start');
     if (first) {
       const box = first.getBoundingClientRect();
-      if (y <= (holdsText(view, 'start') ? box.top : box.bottom)) return 'start';
+      if (y <= (edgeBlockIsTable(view, 'start') ? box.top : box.bottom)) return 'start';
     }
   }
   return 'body';
 }
 
 /**
- * Whether the block at one end of the body holds text a selection can stand
- * in — a table, whose cells hold lines. A press over such a block is the
- * cells' own: the browser selects the words in them, and only a press past
- * the block's box reaches for the edge.
+ * Whether the block at one end of the body is a table. A press over a table
+ * is its cells': the browser selects the words in them, and only a press past
+ * the table's box reaches for the edge.
  * @param view - The view.
  * @param edge - Which end.
- * @returns True for a block whose text a selection can reach.
+ * @returns True for a table.
  */
-function holdsText(view: EditorView, edge: BodyEdge): boolean {
+function edgeBlockIsTable(view: EditorView, edge: BodyEdge): boolean {
   const pos = bodyEdgeBlockPos(view.state.doc, edge);
   return pos !== null && view.state.doc.nodeAt(pos)?.type.name === 'table';
 }

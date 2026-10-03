@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The commands a table's handles, its edge plus and its cell button run.
+ * The commands a table's handles and its cell button run.
  *
  * Each one is handed the position of the cell it acts on — the cell the menu
- * was opened on, mapped through every change since (`document-table-target.ts`)
- * — and finds the table from it inside the transaction it writes, so an edit
- * someone else made in between cannot point it at the wrong row. It writes
+ * was opened on, followed through every change since (`document-table-target.ts`)
+ * — and finds the table from it inside the transaction it writes. It writes
  * the table in place, never through the block's JSON: our comment mark is
  * ignored by BlockNote's block conversion, and a round trip would drop it.
  * The reader's own selection is put back at the end of the same transaction:

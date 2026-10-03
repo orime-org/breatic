@@ -85,7 +85,7 @@ export function evenPastedTables(html: string): string {
 export const documentPasteHandler: PasteHandler = ({ event, defaultPasteHandler }) => {
   const data = event.clipboardData;
   const html = data?.getData('text/html') ?? '';
-  const even = data === null ? html : evenPastedTables(html);
+  const even = evenPastedTables(html);
   if (data !== null && even !== html) {
     const evened: Pick<DataTransfer, 'types' | 'files' | 'items' | 'getData'> = {
       types: data.types,
