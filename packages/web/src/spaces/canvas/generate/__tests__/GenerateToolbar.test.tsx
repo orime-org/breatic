@@ -158,6 +158,26 @@ describe('GenerateToolbar — the style area (inner#826)', () => {
     expect(screen.getByTestId('generate-style-thumbnail-2')).toBeInTheDocument();
   });
 
+  it('names the empty slot with a palette and turns the extra place into a plus', () => {
+    const { unmount } = setup({ styleCap: 3, styleImages: [] });
+    expect(screen.getByTestId('generate-tool-style').querySelector('svg.lucide-palette')).not.toBeNull();
+    unmount();
+    setup({ styleCap: 3, styleImages: ['a'] });
+    const add = screen.getByTestId('generate-tool-style');
+    expect(add.querySelector('svg.lucide-plus')).not.toBeNull();
+    expect(add.querySelector('svg.lucide-palette')).toBeNull();
+  });
+
+  it('shows the running pick on the extra place only, never on a held image', () => {
+    setup({ styleCap: 3, styleImages: ['a', 'b'], styleActive: true });
+    expect(screen.getByTestId('generate-tool-style')).toHaveAttribute('aria-pressed', 'true');
+    for (const i of [0, 1]) {
+      const held = screen.getByTestId(`generate-tool-style-item-${i}`);
+      expect(held).toHaveAttribute('aria-pressed', 'false');
+      expect(held.className).not.toContain('ring-foreground');
+    }
+  });
+
   it('removes exactly the image whose ✕ is pressed', () => {
     const onRemoveStyle = vi.fn();
     setup({ styleCap: 3, styleImages: ['a', 'b'], onRemoveStyle });

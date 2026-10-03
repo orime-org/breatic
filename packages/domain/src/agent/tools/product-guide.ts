@@ -527,7 +527,7 @@ export function renderProductGuide(): string {
       `while the banner reads ${quoted(t("canvas.generatePanel.selectStyleFromCanvas"))}; each click adds one ` +
       "and picking ends by itself with the third. A picture already in the area stays dim and cannot be " +
       "picked twice. Each picked picture shows as a small picture with an X that takes it out, and while " +
-      "there is room one more place counts them, such as 2/3; clicking it picks more. Once three are in, " +
+      "there is room one more place, a plus over a count such as 2/3, picks more. Once three are in, " +
       "there is no room: take one out with its X before picking another. The pictures are copies, and the " +
       "run follows their look. Switching to a model that takes no style images hides the area; the pictures " +
       "stay on the node and come back with a model that takes them. A " +

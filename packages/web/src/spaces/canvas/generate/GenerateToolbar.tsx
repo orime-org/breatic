@@ -51,8 +51,8 @@ const NOTHING = (): void => {};
  * mode has no use for it (#1952 / #1986). Focus crops a region into a
  * standalone reference (#1782). When the model takes style images, a divider
  * follows and then the style area: one thumbnail per held image, each with its
- * own X, and while there is room an add control reading "Style" or n/cap
- * (inner#826).
+ * own X, and while there is room an add control: a palette over "Style"
+ * while empty, a plus over n/cap once one is held (inner#826).
  * @param root0 - Component props.
  * @param root0.onReference - Enter the reference-pick mode.
  * @param root0.referenceActive - Whether the reference pick is running.
@@ -106,7 +106,9 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
           clearTestId={`${spec.clearTestId}-${i}`}
           Icon={spec.Icon}
           onPick={onStylePick}
-          active={styleActive}
+          // A running pick adds an image and replaces none, so only the
+          // extra place shows it.
+          active={false}
           pick={{ kind: 'image', url, thumbnail: url }}
           onClear={() => onRemoveStyle?.(url)}
           disabled={false}
@@ -120,7 +122,7 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
           testId={spec.testId}
           thumbnailTestId={spec.thumbnailTestId}
           clearTestId={spec.clearTestId}
-          Icon={spec.Icon}
+          Icon={shown.length === 0 ? spec.Icon : Plus}
           onPick={onStylePick}
           active={styleActive}
           pick={undefined}

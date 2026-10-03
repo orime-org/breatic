@@ -9,7 +9,7 @@
  */
 
 import type { ModelEntry } from '@breatic/shared';
-import { Box } from 'lucide-react';
+import { Palette } from 'lucide-react';
 
 import { filledFromCanvas } from '@web/spaces/canvas/generate/canvas-filled';
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
@@ -25,7 +25,7 @@ export const IMAGE_SLOTS = {
     param: 'style_images',
     purpose: 'style',
     accepts: 'image',
-    Icon: Box,
+    Icon: Palette,
     testId: 'generate-tool-style',
     thumbnailTestId: 'generate-style-thumbnail',
     clearTestId: 'generate-style-clear',
