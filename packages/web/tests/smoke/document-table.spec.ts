@@ -405,6 +405,14 @@ test('A11: the cell button is on the caret cell only, and aligns that cell', asy
     tds.map((td) => getComputedStyle(td.firstElementChild ?? td).textAlign),
   );
   expect(aligned.filter((a) => a === 'center')).toHaveLength(1);
+
+  // The cell was redrawn with its new alignment; the button stays on it.
+  await expect(page.getByTestId('doc-table-cell-button')).toBeVisible();
+  const again = await page.getByTestId('doc-table-cell-button').boundingBox();
+  const redrawn = await cell(page, 'b2').boundingBox();
+  expect(again!.x + again!.width).toBeLessThanOrEqual(redrawn!.x + redrawn!.width);
+  expect(again!.x).toBeGreaterThanOrEqual(redrawn!.x);
+  expect(again!.y).toBeGreaterThanOrEqual(redrawn!.y);
 });
 
 test('A12: dragging a column edge widens it, and a wide table scrolls in its own frame', async () => {

@@ -135,11 +135,19 @@ export function DocumentTableCellButton({
     [floatingStyles, hidden],
   );
 
+  // The cell's element as it is after every change: ProseMirror draws a cell
+  // anew when its attributes change (alignment, fill, width, a split), so an
+  // element read once would go on measuring one no longer in the page.
+  const cellElement = useEditorSnapshot(
+    editor as never,
+    (current: { prosemirrorView: { nodeDOM: (pos: number) => Node | null } | undefined }) => {
+      const element = cellPos === null ? null : current.prosemirrorView?.nodeDOM(cellPos);
+      return element instanceof Element ? element : null;
+    },
+  );
   React.useLayoutEffect(() => {
-    const view = editor.prosemirrorView;
-    const element = cellPos === null || view === undefined ? null : view.nodeDOM(cellPos);
-    refs.setReference(element instanceof Element ? element : null);
-  }, [cellPos, editor, refs]);
+    refs.setReference(cellElement);
+  }, [cellElement, refs]);
 
   const onOpenChange = React.useCallback(
     (next: boolean): void => {
