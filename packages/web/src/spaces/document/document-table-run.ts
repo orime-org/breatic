@@ -24,6 +24,7 @@ import {
   removeColumn,
   removeRow,
   rowIsHeader,
+  splitCell,
   TableMap,
   toggleHeader,
 } from '@tiptap/pm/tables';
@@ -216,24 +217,63 @@ export function headerOn(doc: PMNode, cellPos: number, kind: 'row' | 'column'): 
 }
 
 /**
+ * Runs a `prosemirror-tables` command that reads the table from the
+ * selection, with the selection in the given cell, and carries its steps into
+ * this transaction. The state it runs against differs from the document's
+ * only in where the selection is.
+ * @param tr - The transaction.
+ * @param cellPos - The cell.
+ * @param command - The command.
+ */
+function runInCell(
+  tr: Transaction,
+  cellPos: number,
+  command: (state: EditorState, dispatch: (made: Transaction) => void) => boolean,
+): void {
+  const inCell = EditorState.create({
+    doc: tr.doc,
+    selection: TextSelection.near(tr.doc.resolve(cellPos + 1)),
+  });
+  command(inCell, (made) => {
+    made.steps.forEach((step) => tr.step(step));
+  });
+}
+
+/**
+ * Whether a cell spans more than one row or column.
+ * @param doc - The document.
+ * @param cellPos - The cell.
+ * @returns True for a merged cell.
+ */
+export function isMerged(doc: PMNode, cellPos: number): boolean {
+  const cell = doc.nodeAt(cellPos);
+  return cell !== null && (Number(cell.attrs['colspan']) > 1 || Number(cell.attrs['rowspan']) > 1);
+}
+
+/**
+ * Splits a merged cell back into the cells it covers; its content stays in
+ * the top-left one.
+ * @param editor - The editor to write to.
+ * @param cellPos - The cell.
+ */
+export function splitCellAt(editor: TableEditor, cellPos: number): void {
+  runOnTable(editor, cellPos, (tr) => {
+    runInCell(tr, cellPos, splitCell);
+  });
+}
+
+/**
  * Turns the table's first row or first column into headers, or back.
  *
- * `toggleHeader` reads the table from the selection, so it runs against a
- * state that differs from the document's only in where the selection is, and
- * its steps are carried into this transaction.
+ * `toggleHeader` reads the table from the selection, so it runs in the cell
+ * through {@link runInCell}.
  * @param editor - The editor to write to.
  * @param cellPos - Any cell of the table.
  * @param kind - The row or the column.
  */
 export function toggleHeaderAt(editor: TableEditor, cellPos: number, kind: 'row' | 'column'): void {
   runOnTable(editor, cellPos, (tr) => {
-    const inCell = EditorState.create({
-      doc: tr.doc,
-      selection: TextSelection.near(tr.doc.resolve(cellPos + 1)),
-    });
-    toggleHeader(kind)(inCell, (made) => {
-      made.steps.forEach((step) => tr.step(step));
-    });
+    runInCell(tr, cellPos, toggleHeader(kind));
   });
 }
 

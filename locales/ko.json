@@ -1196,7 +1196,9 @@
         "addRow": "행 추가",
         "addColumn": "열 추가",
         "rowHandle": "행",
-        "columnHandle": "열"
+        "columnHandle": "열",
+        "cellMenu": "셀 옵션",
+        "splitCell": "셀 분할"
       }
     },
     "readOnlyReconnect": "다시 연결"

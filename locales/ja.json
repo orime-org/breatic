@@ -1196,7 +1196,9 @@
         "addRow": "行を追加",
         "addColumn": "列を追加",
         "rowHandle": "行",
-        "columnHandle": "列"
+        "columnHandle": "列",
+        "cellMenu": "セルのオプション",
+        "splitCell": "セルを分割"
       }
     },
     "readOnlyReconnect": "再接続"

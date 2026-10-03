@@ -1196,7 +1196,9 @@
         "addRow": "Add a row",
         "addColumn": "Add a column",
         "rowHandle": "Row",
-        "columnHandle": "Column"
+        "columnHandle": "Column",
+        "cellMenu": "Cell options",
+        "splitCell": "Split cell"
       }
     },
     "readOnlyReconnect": "Reconnect"

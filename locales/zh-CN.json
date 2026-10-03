@@ -1196,7 +1196,9 @@
         "addRow": "加一行",
         "addColumn": "加一列",
         "rowHandle": "行",
-        "columnHandle": "列"
+        "columnHandle": "列",
+        "cellMenu": "格子选项",
+        "splitCell": "拆分单元格"
       }
     },
     "readOnlyReconnect": "重新连接"

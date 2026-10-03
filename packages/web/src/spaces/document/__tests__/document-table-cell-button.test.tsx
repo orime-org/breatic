@@ -112,6 +112,8 @@ function rows(): string[] {
 describe('the cell button (A11)', () => {
   it('is on the cell the caret is in, and nowhere else', () => {
     const { editor, viewport } = open();
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3)));
     render(<DocumentTableCellButton editor={editor} viewport={viewport} />);
     expect(screen.queryByTestId('doc-table-cell-button')).toBeNull();
 

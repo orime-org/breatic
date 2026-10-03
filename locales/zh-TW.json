@@ -1196,7 +1196,9 @@
         "addRow": "新增一列",
         "addColumn": "新增一欄",
         "rowHandle": "列",
-        "columnHandle": "欄"
+        "columnHandle": "欄",
+        "cellMenu": "儲存格選項",
+        "splitCell": "分割儲存格"
       }
     },
     "readOnlyReconnect": "重新連線"

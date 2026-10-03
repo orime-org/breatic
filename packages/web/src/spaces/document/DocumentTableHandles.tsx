@@ -31,11 +31,9 @@ import {
   ArrowUpToLine,
   GripHorizontal,
   GripVertical,
-  Palette,
   PanelLeft,
   PanelTop,
   Plus,
-  TextAlignStart,
 } from 'lucide-react';
 import * as React from 'react';
 
@@ -45,24 +43,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
-import { ALIGN_ITEMS } from '@web/spaces/document/document-align-items';
 import { itemWithin } from '@web/spaces/document/document-block-menu-parts';
 import { BLOCK_MENU_ROWS } from '@web/spaces/document/document-block-menu-rows';
-import {
-  DocumentColourPanel,
-  type CellFillRow,
-} from '@web/spaces/document/document-colour-panel';
-import {
-  NO_COLOUR,
-  type ColourFace,
-  type ColourHue,
-} from '@web/spaces/document/document-colour-run';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
 import { MenuTick } from '@web/spaces/document/document-menu-tick';
 import {
@@ -75,11 +60,14 @@ import {
   headerOn,
   insertColumn,
   insertRow,
-  setCellsAttr,
-  sharedCellAttr,
   toggleHeaderAt,
-  type CellScope,
 } from '@web/spaces/document/document-table-run';
+import {
+  CellAttributeMenus,
+  onTargetCell,
+  useCloseWhenTargetGone,
+  useHoldsSelection,
+} from '@web/spaces/document/document-table-menu-parts';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
@@ -103,112 +91,46 @@ interface TableExtendProps {
   readonly hideOtherElements: (hide: boolean) => void;
 }
 
-/** A cell's fill when it has none, as the table schema writes it. */
-const DEFAULT_FILL = 'default';
-
-/** The colour panel's mark rows, none of which a handle draws. */
-const NO_MARK_ROWS: readonly [] = [];
-
-/** The mark rows' reading, which a handle never shows. */
-const NO_MARK_FACE: ColourFace = { appliesHere: true, text: undefined, fill: undefined };
-
 /** The delete row's icon, shared with the block handle's menu. */
 const DeleteIcon = BLOCK_MENU_ROWS.find((row) => row.id === 'delete')!.Icon;
 
-/**
- * Whether the reader holds a selection that is not empty.
- * @param editor - The editor.
- * @returns True while one is held.
- */
-function useHoldsSelection(editor: HandleEditor): boolean {
-  return useEditorSnapshot(
-    editor as never,
-    (current: { prosemirrorState: { selection: { empty: boolean } } }) =>
-      !current.prosemirrorState.selection.empty,
-  );
-}
-
-/** The menu's reading of its target cell. */
-interface TargetFaces {
+/** The handle menu's own reading of its target cell. */
+interface HeaderFaces {
   /** Whether the header row (or column) applies here: the first one only. */
-  readonly headerReachable: boolean;
+  readonly reachable: boolean;
   /** Whether it is on. */
-  readonly headerOn: boolean;
-  /** The alignment every cell in scope shares. */
-  readonly align: unknown;
-  /** The fill every cell in scope shares. */
-  readonly fill: string | undefined;
+  readonly on: boolean;
 }
 
 /**
  * The menu rows of one handle.
- * @param props - The editor, the handle's scope and orientation.
+ * @param props - The editor and the handle's orientation.
  * @param props.editor - The editor.
  * @param props.row - Whether this is the row handle.
  * @returns The rows.
  */
 function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean }): React.JSX.Element {
   const t = useTranslation();
-  const scope: CellScope = row ? 'row' : 'column';
   const stem = row ? 'doc-table-row-' : 'doc-table-col-';
-  const faces = useEditorSnapshot(
+  const header = useEditorSnapshot(
     editor as never,
     React.useCallback(
-      (current: { prosemirrorState: Parameters<typeof tableTargetOf>[0] }): TargetFaces | null => {
+      (current: { prosemirrorState: Parameters<typeof tableTargetOf>[0] }): HeaderFaces | null => {
         const state = current.prosemirrorState;
         const pos = tableTargetOf(state);
         const at = pos === null ? null : cellAt(state.doc, pos);
         if (pos === null || at === null) return null;
-        const fill = sharedCellAttr(state.doc, pos, scope, 'backgroundColor');
         return {
-          headerReachable: row ? at.top === 0 : at.left === 0,
-          headerOn: headerOn(state.doc, pos, row ? 'row' : 'column'),
-          align: sharedCellAttr(state.doc, pos, scope, 'textAlignment'),
-          fill: fill === DEFAULT_FILL ? NO_COLOUR : (fill as string | undefined),
+          reachable: row ? at.top === 0 : at.left === 0,
+          on: headerOn(state.doc, pos, row ? 'row' : 'column'),
         };
       },
-      [row, scope],
+      [row],
     ),
-    (a, b) =>
-      a === b ||
-      (a !== null &&
-        b !== null &&
-        a.headerReachable === b.headerReachable &&
-        a.headerOn === b.headerOn &&
-        a.align === b.align &&
-        a.fill === b.fill),
+    (a, b) => a === b || (a !== null && b !== null && a.reachable === b.reachable && a.on === b.on),
   );
 
-  /**
-   * Runs a command on the target cell, if it is still there.
-   * @param command - What to run.
-   */
-  const onTarget = React.useCallback(
-    (command: (pos: number) => void): void => {
-      const pos = tableTargetOf(editor.prosemirrorState);
-      if (pos !== null) command(pos);
-    },
-    [editor],
-  );
-
-  const cell = React.useMemo<CellFillRow>(
-    () => ({
-      face: faces?.fill,
-      onSet: (hue: ColourHue) => {
-        onTarget((pos) => {
-          setCellsAttr(editor, pos, scope, 'backgroundColor', hue);
-        });
-      },
-      onClear: () => {
-        onTarget((pos) => {
-          setCellsAttr(editor, pos, scope, 'backgroundColor', DEFAULT_FILL);
-        });
-      },
-    }),
-    [editor, faces?.fill, onTarget, scope],
-  );
-
-  if (faces === null) return <></>;
+  if (header === null) return <></>;
 
   const insertRows = row
     ? ([
@@ -227,7 +149,7 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
           key={id}
           data-testid={`${stem}${id}`}
           onSelect={() => {
-            onTarget(run);
+            onTargetCell(editor, run);
           }}
         >
           <Icon />
@@ -237,9 +159,9 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
       <DropdownMenuSeparator className='my-0' />
       <DropdownMenuItem
         data-testid={`${stem}header`}
-        data-ticked={faces.headerOn ? 'true' : undefined}
-        {...itemWithin(faces.headerReachable, () => {
-          onTarget((pos) => {
+        data-ticked={header.on ? 'true' : undefined}
+        {...itemWithin(header.reachable, () => {
+          onTargetCell(editor, (pos) => {
             toggleHeaderAt(editor, pos, row ? 'row' : 'column');
           });
         })}
@@ -248,58 +170,15 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
         <span className='flex-1 text-left'>
           {t(row ? 'spaces.document.table.headerRow' : 'spaces.document.table.headerColumn')}
         </span>
-        <MenuTick on={faces.headerOn} />
+        <MenuTick on={header.on} />
       </DropdownMenuItem>
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger data-testid={`${stem}align`}>
-          <TextAlignStart />
-          {t('spaces.document.commands.align')}
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent rowsClassName='flex flex-col gap-1'>
-          {ALIGN_ITEMS.map((item) => {
-            const ItemIcon = item.Icon;
-            const ticks = faces.align === item.id;
-            return (
-              <DropdownMenuItem
-                key={item.id}
-                data-testid={`${stem}align-${item.id}`}
-                data-ticked={ticks ? 'true' : undefined}
-                onSelect={() => {
-                  onTarget((pos) => {
-                    setCellsAttr(editor, pos, scope, 'textAlignment', item.id);
-                  });
-                }}
-              >
-                <ItemIcon />
-                <span className='flex-1 text-left'>{t(item.labelKey)}</span>
-                <MenuTick on={ticks} />
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger data-testid={`${stem}fill`}>
-          <Palette />
-          {t('spaces.document.table.cellFill')}
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent rowsClassName='py-2'>
-          <DocumentColourPanel
-            idStem={`${stem}fill`}
-            face={NO_MARK_FACE}
-            kinds={NO_MARK_ROWS}
-            cell={cell}
-            onSet={() => undefined}
-            onClear={() => undefined}
-          />
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
+      <CellAttributeMenus editor={editor} scope={row ? 'row' : 'column'} stem={stem} />
       <DropdownMenuSeparator className='my-0' />
       <DropdownMenuItem
         data-testid={`${stem}delete`}
         className='text-status-error-foreground'
         onSelect={() => {
-          onTarget((pos) => {
+          onTargetCell(editor, (pos) => {
             if (row) deleteRowAt(editor, pos);
             else deleteColumnAt(editor, pos);
           });
@@ -373,6 +252,10 @@ export function DocumentTableHandle({
     },
     [editor, handles, hideOtherElements, state],
   );
+  const close = React.useCallback((): void => {
+    onOpenChange(false);
+  }, [onOpenChange]);
+  useCloseWhenTargetGone(editor, open, close);
 
   if (state === undefined || (holdsSelection && !open)) return null;
   const index = row ? state.rowIndex : state.colIndex;
