@@ -40,6 +40,7 @@ import * as notificationRepo from "@server/modules/notification/notification.rep
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as requestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
@@ -357,6 +358,13 @@ export async function cancel(
   requesterUserId: string,
 ): Promise<void> {
   const outcome = await db.transaction<Refused | { done: true }>(async (tx) => {
+    // The project first, as every write to this table takes it: an owner
+    // change re-addresses pending requests under that lock, and a withdrawal
+    // slipping in between its read and its write would leave the new owner a
+    // bell for a request that no longer exists.
+    const projectId = await requestsRepo.getProjectIdOf(requestId, tx);
+    if (projectId === null) return { refusal: "not_found" };
+    await projectRepo.lockLiveProject(projectId, tx);
     const cancelled = await requestsRepo.cancelIfPending(
       requestId,
       requesterUserId,
@@ -369,6 +377,60 @@ export async function cancel(
     return { done: true };
   });
   if (isRefused(outcome)) throw refusalError(outcome.refusal);
+}
+
+/**
+ * A project changed owner: move each pending request's bell entry to the new
+ * owner, keeping the same decision token and deadline.
+ *
+ * The new owner's own pending request is settled first: they own the project
+ * now, so there is nothing left for them to ask, and it must not land in their
+ * own bell. Called through `onProjectOwnerChanged`, inside the transaction that
+ * wrote the owner row and under its project lock.
+ * @param projectId - The project.
+ * @param newOwnerUserId - Its owner now.
+ * @param tx - The transaction that wrote the owner row.
+ */
+export async function readdressOnOwnerChange(
+  projectId: string,
+  newOwnerUserId: string,
+  tx: DbTx,
+): Promise<void> {
+  const pending = await requestsRepo.listLivePendingForProject(projectId, tx);
+  const others: requestsRepo.PendingRoleUpgradeRequest[] = [];
+  for (const req of pending) {
+    if (req.notificationId !== null) await notificationRepo.retire(req.notificationId, tx);
+    if (req.requesterUserId === newOwnerUserId) {
+      await requestsRepo.settleIfPending(req.id, "expired", null, tx);
+    } else {
+      others.push(req);
+    }
+  }
+  if (others.length === 0) return;
+  const project = await projectRepo.getProjectById(projectId, tx);
+  const profiles = await studioRepo.getPersonalProfilesByCreators(
+    others.map((r) => r.requesterUserId),
+    tx,
+  );
+  for (const req of others) {
+    const entry = await notificationService.createRoleUpgradeRequest({
+      ownerUserId: newOwnerUserId,
+      projectId,
+      expiresAt: req.expiresAt,
+      payload: {
+        requestId: req.id,
+        shareToken: req.shareToken,
+        requesterUserId: req.requesterUserId,
+        requesterName: profiles.get(req.requesterUserId)?.name ?? "",
+        projectId,
+        projectName: project?.name ?? "",
+        requestedRole: "editor",
+        message: req.message,
+      },
+      tx,
+    });
+    await requestsRepo.attachNotification(req.id, entry.id, tx);
+  }
 }
 
 /**

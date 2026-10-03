@@ -201,7 +201,6 @@ describe("role-upgrade request deadline", () => {
     await insertMember(projectId, requesterId, "viewer", ownerId);
 
     const notification = await roleUpgradeService.request({
-      ownerUserId: ownerId,
       requesterUserId: requesterId,
       projectId,
       projectName: "Deadline Demo",

@@ -3,6 +3,7 @@
 
 import type { DbTx } from "@breatic/core";
 import * as projectJoinRequestService from "@server/modules/project-join-request/projectJoinRequest.service.js";
+import * as roleUpgradeRequestService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
 
 /**
  * A project just changed owner: move every pending request that waits on its
@@ -22,4 +23,5 @@ export async function onProjectOwnerChanged(
   tx: DbTx,
 ): Promise<void> {
   await projectJoinRequestService.readdressOnOwnerChange(projectId, newOwnerUserId, tx);
+  await roleUpgradeRequestService.readdressOnOwnerChange(projectId, newOwnerUserId, tx);
 }
