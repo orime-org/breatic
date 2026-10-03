@@ -18,7 +18,7 @@ vi.mock('@web/data/api/project-join-requests', () => ({
   projectJoinRequestsApi: {
     mine: () =>
       Promise.resolve({
-        project: { id: '11111111-1111-4111-8111-111111111111', name: 'Resource test', studioSlug: 'acme' },
+        project: { id: '11111111-1111-4111-8111-111111111111', name: 'Resource test', studioSlug: 'acme', archivedAt: null },
         pendingRequest: null,
       }),
     request: vi.fn(),

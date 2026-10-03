@@ -1646,7 +1646,8 @@
     "withdraw": "Withdraw request",
     "requestFailed": "Couldn't send the request. Try again.",
     "withdrawFailed": "Couldn't withdraw the request. Try again.",
-    "loadFailed": "Couldn't open this project. Try again."
+    "loadFailed": "Couldn't open this project. Try again.",
+    "archived": "This project is archived"
   },
   "activity": {
     "description": "Uploads, generations, and Space / member changes",

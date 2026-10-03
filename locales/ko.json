@@ -1646,7 +1646,8 @@
     "withdraw": "요청 철회",
     "requestFailed": "요청을 보내지 못했습니다. 다시 시도하세요.",
     "withdrawFailed": "철회하지 못했습니다. 다시 시도하세요.",
-    "loadFailed": "이 Project를 열지 못했습니다. 다시 시도하세요."
+    "loadFailed": "이 Project를 열지 못했습니다. 다시 시도하세요.",
+    "archived": "이 Project는 보관되었습니다"
   },
   "activity": {
     "description": "업로드, 생성, Space 및 멤버 변경",

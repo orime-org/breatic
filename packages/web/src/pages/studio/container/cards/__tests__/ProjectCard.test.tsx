@@ -25,7 +25,7 @@ vi.mock('@web/data/api/project-join-requests', () => ({
   projectJoinRequestsApi: {
     mine: () =>
       Promise.resolve({
-        project: { id: 'id-1', name: 'Cyberpunk Alley', studioSlug: 'acme' },
+        project: { id: 'id-1', name: 'Cyberpunk Alley', studioSlug: 'acme', archivedAt: null },
         pendingRequest: null,
       }),
     request: vi.fn(),

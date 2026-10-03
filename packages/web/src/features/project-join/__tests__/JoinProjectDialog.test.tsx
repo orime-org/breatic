@@ -25,7 +25,7 @@ vi.mock('@web/lib/toast', () => ({
   toast: { error: (...a: unknown[]) => toastError(...a), success: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }));
 
-const PROJECT = { id: 'p1', name: 'Autumn Film', studioSlug: 'acme' };
+const PROJECT = { id: 'p1', name: 'Autumn Film', studioSlug: 'acme', archivedAt: null };
 
 /**
  * A promise the test settles by hand.
@@ -146,6 +146,22 @@ describe('JoinProjectDialog', () => {
     const { onOpenChange } = renderDialog();
 
     await waitFor(() => expect(toastError).toHaveBeenCalled());
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('says an archived project takes no requests, with no form to fill', async () => {
+    mine.mockResolvedValue({
+      project: { ...PROJECT, archivedAt: '2026-10-01T00:00:00.000Z' },
+      pendingRequest: null,
+    });
+    const { onOpenChange } = renderDialog();
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('This project is archived')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Autumn Film' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Request to join' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'OK' }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 

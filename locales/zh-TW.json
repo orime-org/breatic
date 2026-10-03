@@ -1646,7 +1646,8 @@
     "withdraw": "撤回申請",
     "requestFailed": "申請沒有送出，請重試。",
     "withdrawFailed": "撤回沒有成功，請重試。",
-    "loadFailed": "沒能打開這個 Project，請重試。"
+    "loadFailed": "沒能打開這個 Project，請重試。",
+    "archived": "這個 Project 已封存"
   },
   "activity": {
     "description": "上傳、生成、Space 與成員變更",

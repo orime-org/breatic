@@ -1646,7 +1646,8 @@
     "withdraw": "リクエストを取り消す",
     "requestFailed": "リクエストを送信できませんでした。もう一度お試しください。",
     "withdrawFailed": "取り消せませんでした。もう一度お試しください。",
-    "loadFailed": "この Project を開けませんでした。もう一度お試しください。"
+    "loadFailed": "この Project を開けませんでした。もう一度お試しください。",
+    "archived": "この Project はアーカイブ済みです"
   },
   "activity": {
     "description": "アップロード、生成、Space とメンバーの変更",
