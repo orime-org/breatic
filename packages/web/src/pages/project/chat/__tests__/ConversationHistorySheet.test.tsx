@@ -62,6 +62,22 @@ describe('relativeTime', () => {
     ).toEqual({ key: 'chat.relative.yesterday' });
   });
 
+  it('dates a conversation older than a year by the day of the reader', () => {
+    const real = process.env['TZ'];
+    try {
+      process.env['TZ'] = 'Asia/Shanghai';
+      const now = Date.parse('2026-10-03T00:00:00.000Z');
+      // 23:00 UTC on 2 April 2025 is already 3 April in Shanghai.
+      expect(relativeTime('2025-04-02T23:00:00.000Z', now)).toEqual({
+        key: 'chat.relative.isoDate',
+        params: { date: '2025-04-03' },
+      });
+    } finally {
+      if (real === undefined) delete process.env['TZ'];
+      else process.env['TZ'] = real;
+    }
+  });
+
   it('returns day bucket within the week', () => {
     expect(
       relativeTime(new Date(NOW - 3 * 86_400_000).toISOString(), NOW),
