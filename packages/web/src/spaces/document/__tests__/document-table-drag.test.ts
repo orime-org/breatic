@@ -56,7 +56,7 @@ function open(
     { type: 'table', content: { type: 'tableContent', rows } },
   ] as never);
   const view = editor.prosemirrorView!;
-  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 4)));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)));
   return editor;
 }
 

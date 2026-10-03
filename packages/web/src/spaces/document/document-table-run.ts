@@ -31,6 +31,8 @@ import {
   removeColumn,
   removeRow,
   mergeCells,
+  moveTableColumn,
+  moveTableRow,
   rowIsHeader,
   splitCell,
   TableMap,
@@ -500,4 +502,30 @@ export function wholeEmptyTableSelected(state: EditorState): string | null {
     return false;
   });
   return empty && selected === cells ? at.blockId : null;
+}
+
+/**
+ * Moves the row or column a cell is in so that it ends up at an index.
+ *
+ * `moveTableRow` and `moveTableColumn` find the line to move from the
+ * selection, so they run in the cell through {@link runInCell}. They rebuild
+ * the table from its own cell nodes, so the words, styles and comment marks
+ * in the cells move with them.
+ * @param editor - The editor to write to.
+ * @param cellPos - A cell of the row or column.
+ * @param orientation - Row or column.
+ * @param to - The index it ends up at.
+ */
+export function moveLineAt(
+  editor: TableEditor,
+  cellPos: number,
+  orientation: 'row' | 'column',
+  to: number,
+): void {
+  runOnTable(editor, cellPos, (tr, at) => {
+    const from = orientation === 'row' ? at.top : at.left;
+    if (from === to) return;
+    const move = orientation === 'row' ? moveTableRow : moveTableColumn;
+    runInCell(tr, cellPos, move({ from, to, select: false, pos: cellPos + 1 }));
+  });
 }

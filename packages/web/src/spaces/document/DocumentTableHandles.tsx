@@ -69,6 +69,7 @@ import {
   useHoldsSelection,
 } from '@web/spaces/document/document-table-menu-parts';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
+import { endTableDrag, startTableDrag } from '@web/spaces/document/document-table-drag';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
 /** What the library's handle state carries, as far as these read it. */
@@ -90,6 +91,12 @@ interface TableExtendProps {
   readonly orientation: 'addOrRemoveRows' | 'addOrRemoveColumns';
   readonly hideOtherElements: (hide: boolean) => void;
 }
+
+/**
+ * What a drag off a handle carries: nothing to drop anywhere else, a type of
+ * its own so a drop target can tell it from text.
+ */
+const TABLE_LINE_TYPE = 'application/x-doc-table-line';
 
 /** The delete row's icon, shared with the block handle's menu. */
 const DeleteIcon = BLOCK_MENU_ROWS.find((row) => row.id === 'delete')!.Icon;
@@ -280,6 +287,24 @@ export function DocumentTableHandle({
               ? 'flex h-6 w-3 items-center justify-center rounded-chrome-sm border border-border bg-popover text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-3'
               : 'flex h-3 w-6 items-center justify-center rounded-chrome-sm border border-border bg-popover text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-3'
           }
+          draggable
+          onDragStart={(event) => {
+            const view = editor.prosemirrorView;
+            const pos =
+              view === undefined || state.rowIndex === undefined || state.colIndex === undefined
+                ? null
+                : cellPosOf(view.state.doc, state.block.id, state.rowIndex, state.colIndex);
+            if (view === undefined || pos === null || !startTableDrag(view, orientation, pos)) {
+              event.preventDefault();
+              return;
+            }
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData(TABLE_LINE_TYPE, '');
+          }}
+          onDragEnd={() => {
+            const view = editor.prosemirrorView;
+            if (view !== undefined) endTableDrag(view);
+          }}
           onClick={() => {
             onOpenChange(!open);
           }}
