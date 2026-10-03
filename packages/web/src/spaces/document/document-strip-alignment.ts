@@ -123,10 +123,16 @@ export function stripOffsetFromRowTop(
  * lines, that box came back 45px tall against the 22.5px of one line, and
  * centring the strip on it put the strip between the two lines. A range's
  * rects are one per line box whatever the element is.
+ *
+ * A table answers with its first row's box.
  * @param row - The row's content element.
  * @returns The box, or undefined when the row shows no line.
  */
 export function firstLineOf(row: Element): DOMRect | undefined {
+  // A table's first line is its first row: the strip stands beside the top of
+  // the table, the way it stands beside a paragraph's first line.
+  const firstRow = row.querySelector('tr');
+  if (firstRow !== null) return firstRow.getBoundingClientRect();
   const words = row.firstElementChild ?? row;
   const range = document.createRange();
   range.selectNodeContents(words);
