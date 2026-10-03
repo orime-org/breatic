@@ -148,19 +148,6 @@ async function rowIsLocked(
   }
 }
 
-/**
- * Assert that the rows really sit in the physical order the case relies on:
- * a sequential scan must meet the largest key first.
- * @param keysInScanOrder - The keys as a plain sequential scan returns them.
- * @param largestFirst - The keys sorted largest first.
- */
-function expectReverseScanOrder(
-  keysInScanOrder: readonly string[],
-  largestFirst: readonly string[],
-): void {
-  expect(keysInScanOrder).toEqual(largestFirst);
-}
-
 describe("multi-row FOR UPDATE — locks are taken in key order", () => {
   it("lockMembership takes a studio's member rows in user_id order", async () => {
     const tag = `mrlo-${seq++}`;
@@ -173,7 +160,7 @@ describe("multi-row FOR UPDATE — locks are taken in key order", () => {
     const scan = await sql<{ user_id: string }[]>`
       SELECT user_id FROM studio_members WHERE studio_id = ${studioId} ORDER BY ctid
     `;
-    expectReverseScanOrder(scan.map((r) => r.user_id), [u3, u2, u1]);
+    expect(scan.map((r) => r.user_id)).toEqual([u3, u2, u1]);
 
     const held = await largestHeldWhileParked(
       (h) => h`SELECT 1 FROM studio_members WHERE studio_id = ${studioId} AND user_id = ${u1} FOR UPDATE`,
@@ -204,11 +191,11 @@ describe("multi-row FOR UPDATE — locks are taken in key order", () => {
     const scan = await sql<{ project_id: string }[]>`
       SELECT project_id FROM project_members WHERE user_id = ${ownerId} ORDER BY ctid
     `;
-    expectReverseScanOrder(scan.map((r) => r.project_id), [p3, p2, p1]);
+    expect(scan.map((r) => r.project_id)).toEqual([p3, p2, p1]);
     const projectScan = await sql<{ id: string }[]>`
       SELECT id FROM projects WHERE studio_id = ${studioId} ORDER BY ctid
     `;
-    expectReverseScanOrder(projectScan.map((r) => r.id), [p3, p2, p1]);
+    expect(projectScan.map((r) => r.id)).toEqual([p3, p2, p1]);
 
     const held = await largestHeldWhileParked(
       (h) => h`SELECT 1 FROM project_members WHERE project_id = ${p1} AND user_id = ${ownerId} FOR UPDATE`,
@@ -230,7 +217,7 @@ describe("multi-row FOR UPDATE — locks are taken in key order", () => {
     const scan = await sql<{ id: string }[]>`
       SELECT id FROM conversations WHERE user_id = ${userId} ORDER BY ctid
     `;
-    expectReverseScanOrder(scan.map((r) => r.id), [c3, c2, c1]);
+    expect(scan.map((r) => r.id)).toEqual([c3, c2, c1]);
 
     const held = await largestHeldWhileParked(
       (h) => h`SELECT 1 FROM conversations WHERE id = ${c1} FOR UPDATE`,
