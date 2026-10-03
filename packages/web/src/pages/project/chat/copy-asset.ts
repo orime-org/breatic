@@ -11,10 +11,8 @@
 
 import * as React from 'react';
 
-import { COPY_ANSWER_MS } from '@web/pages/project/chat/copy-answer';
+import { useKeyedCopy } from '@web/pages/project/chat/copy-answer';
 import type { ChatAsset } from '@web/pages/project/chat/types';
-import { useTranslation } from '@web/i18n/use-translation';
-import { toast } from '@web/lib/toast';
 import { serializeNodes, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 
 /**
@@ -59,43 +57,16 @@ export interface CopyAsset {
  * Copy pictures of one row, with one answer shared across its buttons.
  *
  * Both buttons of a picture read the same answer, so the one in the open box
- * says copied when the corner one was pressed. A failed write says so and
- * leaves the button pressable.
+ * says copied when the corner one was pressed.
  * @returns The answer and the action.
  */
 export function useCopyAsset(): CopyAsset {
-  const t = useTranslation();
-  const [copied, setCopied] = React.useState<string | null>(null);
-  const timer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  React.useEffect(
-    () => () => {
-      if (timer.current !== undefined) clearTimeout(timer.current);
-    },
-    [],
-  );
-
+  const { answeredKey, copy: copyKeyed } = useKeyedCopy();
   const copy = React.useCallback(
-    (asset: ChatAsset) => {
-      const address = addressOf(asset);
-      void navigator.clipboard
-        .writeText(clipboardTextFor(asset))
-        .then(() => {
-          if (timer.current !== undefined) clearTimeout(timer.current);
-          setCopied(address);
-          timer.current = setTimeout(() => {
-            timer.current = undefined;
-            setCopied(null);
-          }, COPY_ANSWER_MS);
-        })
-        .catch(() => {
-          toast.error(t('common.clipboardError'));
-        });
-    },
-    [t],
+    (asset: ChatAsset) => copyKeyed(clipboardTextFor(asset), addressOf(asset)),
+    [copyKeyed],
   );
-
-  return { copied, copy };
+  return React.useMemo(() => ({ copied: answeredKey, copy }), [answeredKey, copy]);
 }
 
 /**
