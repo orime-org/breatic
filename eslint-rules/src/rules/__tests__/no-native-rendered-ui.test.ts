@@ -9,7 +9,18 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("no-native-rendered-ui", noNativeRenderedUi, {
   valid: [
-    { code: "export const A = () => <input type='text' />;" },
+    { code: "export const A = () => <input type='text' autoComplete='off' />;" },
+    { code: "export const A = () => <Input value={v} autoComplete='off' />;" },
+    // A field whose remembered value is the point keeps its token.
+    { code: "export const A = () => <Input type='email' autoComplete='email' />;" },
+    // Types with no free-text history.
+    { code: "export const A = () => <input type='checkbox' />;" },
+    { code: "export const A = () => <input type='radio' />;" },
+    { code: "export const A = () => <input type='file' />;" },
+    { code: "export const A = () => <input type='hidden' />;" },
+    { code: "export const A = () => <input type='submit' />;" },
+    // A wrapper forwarding its props leaves the choice to its caller.
+    { code: "export const A = (props) => <input type={props.type} {...props} />;" },
     // Our own components, distinguished by the capital letter.
     { code: "export const A = () => <Select><Option /></Select>;" },
     { code: "export const A = () => <Slider value={1} />;" },
@@ -24,6 +35,25 @@ ruleTester.run("no-native-rendered-ui", noNativeRenderedUi, {
     { code: "// never write <select> or type='color' by hand\nexport const A = 1;" },
   ],
   invalid: [
+    {
+      // Without a token the browser offers every value ever typed into a
+      // field of the same name, drawn in its own dropdown over our UI.
+      code: "export const A = () => <input type='text' />;",
+      errors: [{ messageId: "browserHistory", data: { control: "input" } }],
+    },
+    {
+      code: "export const A = () => <input />;",
+      errors: [{ messageId: "browserHistory", data: { control: "input" } }],
+    },
+    {
+      code: "export const A = () => <Input id='studio-name' value={v} />;",
+      errors: [{ messageId: "browserHistory", data: { control: "Input" } }],
+    },
+    {
+      // A type decided at runtime may be a text one.
+      code: "export const A = () => <Input type={kind} />;",
+      errors: [{ messageId: "browserHistory", data: { control: "Input" } }],
+    },
     {
       code: "export const A = () => <input type='color' />;",
       errors: [{ messageId: "nativeInputType", data: { type: "color" } }],
