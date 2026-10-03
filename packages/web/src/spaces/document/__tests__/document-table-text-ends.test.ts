@@ -91,4 +91,16 @@ describe('the ends of a selection of cells', () => {
     expect([lineAt(editor, end.head), end.$head.parentOffset]).toEqual(['b2', 2]);
     expect([lineAt(editor, start.head), start.$head.parentOffset]).toEqual(['a1', 0]);
   });
+
+  it('leave the caret inside the selected cells when other cells and blocks lie around them', () => {
+    // a1 to a2 is a column with b1 and b2 beside it, and a line above the table.
+    const editor = open(0, 2);
+    editor.insertBlocks([{ type: 'paragraph', content: 'lead' }] as never, editor.document[0]!, 'before');
+
+    const end = caretAt(editor.prosemirrorState.selection, 1);
+    const start = caretAt(editor.prosemirrorState.selection, -1);
+
+    expect([lineAt(editor, end.head), end.$head.parentOffset]).toEqual(['a2', 2]);
+    expect([lineAt(editor, start.head), start.$head.parentOffset]).toEqual(['a1', 0]);
+  });
 });

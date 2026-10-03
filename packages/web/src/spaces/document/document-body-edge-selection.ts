@@ -426,10 +426,11 @@ export function caretAt(selection: Selection, dir: 1 | -1): Selection {
   if (selection instanceof CellSelection) {
     // The first cell in the document's order opens the selection and the last
     // one closes it, whichever corner it was dragged from; the ranges come
-    // head cell first.
+    // head cell first. Each range's ends sit on its cell's content edges, so
+    // the caret is searched for inward, into that cell.
     const edges = selection.ranges.map((range) => (dir < 0 ? range.$from : range.$to));
     const edge = edges.reduce((best, $pos) => ((dir < 0 ? $pos.pos < best.pos : $pos.pos > best.pos) ? $pos : best));
-    return Selection.near(edge, dir);
+    return Selection.near(edge, dir < 0 ? 1 : -1);
   }
   const { anchor, head } = textEnds(selection);
   return TextSelection.create(selection.$head.doc, (dir < 0 ? Math.min : Math.max)(anchor, head));
