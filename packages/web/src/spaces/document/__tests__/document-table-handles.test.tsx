@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import * as React from 'react';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
@@ -16,7 +16,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { insertRow } from '@web/spaces/document/document-table-run';
+import { deleteRowAt, insertRow } from '@web/spaces/document/document-table-run';
 import { tableTargetOf } from '@web/spaces/document/document-table-target';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -180,6 +180,25 @@ describe('the row handle (A6)', () => {
 
     view.unmount();
 
+    expect(side.unfrozen).toBe(1);
+  });
+
+  it('closes its menu when the row it was opened on is deleted', () => {
+    const editor = openOver(1, 0);
+    render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+    expect(screen.getByTestId('doc-table-row-delete')).toBeTruthy();
+
+    let a2 = -1;
+    editor.prosemirrorState.doc.descendants((node, pos) => {
+      if (a2 < 0 && node.type.name === 'tableCell' && node.textContent === 'a2') a2 = pos;
+      return a2 < 0;
+    });
+    act(() => {
+      deleteRowAt(editor, a2);
+    });
+
+    expect(screen.queryByTestId('doc-table-row-delete')).toBeNull();
     expect(side.unfrozen).toBe(1);
   });
 
