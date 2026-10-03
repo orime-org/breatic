@@ -364,3 +364,46 @@ export async function findLiveForRequester(
     );
   return rows[0] ?? null;
 }
+
+/** A live pending request, as an owner change needs it to re-address the bell. */
+export interface PendingRoleUpgradeRequest {
+  id: string;
+  requesterUserId: string;
+  shareToken: string;
+  message: string | null;
+  expiresAt: Date;
+  notificationId: string | null;
+}
+
+/**
+ * Every live pending request on a project, for re-addressing to a new owner.
+ *
+ * Read without a row lock: every write to this table and every read of the
+ * owner it rings happens under the project lock, which the owner change holds.
+ * @param projectId - The project whose owner changed.
+ * @param tx - The transaction that wrote the new owner.
+ * @returns The live pending requests.
+ */
+export async function listLivePendingForProject(
+  projectId: string,
+  tx: DbTx,
+): Promise<PendingRoleUpgradeRequest[]> {
+  return tx
+    .select({
+      id: roleUpgradeRequests.id,
+      requesterUserId: roleUpgradeRequests.requesterUserId,
+      shareToken: roleUpgradeRequests.shareToken,
+      message: roleUpgradeRequests.message,
+      expiresAt: roleUpgradeRequests.expiresAt,
+      notificationId: roleUpgradeRequests.notificationId,
+    })
+    .from(roleUpgradeRequests)
+    .where(
+      and(
+        eq(roleUpgradeRequests.projectId, projectId),
+        eq(roleUpgradeRequests.status, "pending"),
+        isNull(roleUpgradeRequests.deletedAt),
+        gt(roleUpgradeRequests.expiresAt, sql`now()`),
+      ),
+    );
+}

@@ -506,8 +506,8 @@ export async function deleteProject(id: string): Promise<void> {
     // being hard-deleted.
     //
     // ORDER IS LOAD-BEARING. Deciding a join request or a role upgrade,
-    // withdrawing a join request, accepting a transfer and removing a studio
-    // member all lock this project row before its request and member rows, so
+    // withdrawing either, accepting a transfer and removing a studio member
+    // all lock this project row before its request and member rows, so
     // they queue behind this cascade. A cascade that took `project_members`
     // first would close a cycle with any path that does not, and deleting a
     // project while somebody answers a request would abort one side with a

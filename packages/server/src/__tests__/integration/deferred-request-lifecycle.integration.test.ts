@@ -192,7 +192,6 @@ describe("a timed-out request is written down by the decision that meets it", ()
   it("role upgrade: the row lands `expired` and the bell entry is retired", async () => {
     const { ownerId, memberId, projectId } = await seedScene();
     await roleUpgradeService.request({
-      ownerUserId: ownerId,
       requesterUserId: memberId,
       projectId,
       projectName: "Demo",
@@ -267,7 +266,6 @@ describe("a request whose premise is gone is written down too", () => {
   it("role upgrade: approving someone who became an editor retires the request", async () => {
     const { ownerId, memberId, projectId } = await seedScene();
     await roleUpgradeService.request({
-      ownerUserId: ownerId,
       requesterUserId: memberId,
       projectId,
       projectName: "Demo",
@@ -297,7 +295,6 @@ describe("a request whose premise is gone is written down too", () => {
   it("role upgrade: rejecting someone who became an editor retires it as well", async () => {
     const { ownerId, memberId, projectId } = await seedScene();
     await roleUpgradeService.request({
-      ownerUserId: ownerId,
       requesterUserId: memberId,
       projectId,
       projectName: "Demo",
@@ -360,12 +357,11 @@ describe("a request cannot be filed onto a project that is being deleted", () =>
     // other and the cascade cannot see the uncommitted row. What commits is a
     // live pending request on a dead project — undecidable, unreapable, and
     // holding its slot forever.
-    const { ownerId, memberId, projectId } = await seedScene();
+    const { memberId, projectId } = await seedScene();
     await projectRepo.deleteProject(projectId);
 
     await expect(
       roleUpgradeService.request({
-        ownerUserId: ownerId,
         requesterUserId: memberId,
         projectId,
         projectName: "Demo",
@@ -400,7 +396,6 @@ describe("a decision is credited only to someone who still holds the project", (
     // is one that reject forgot for a whole round.
     const { ownerId, memberId, projectId } = await seedScene();
     await roleUpgradeService.request({
-      ownerUserId: ownerId,
       requesterUserId: memberId,
       projectId,
       projectName: "Demo",
@@ -440,9 +435,8 @@ describe("a deleted project takes its outstanding requests with it", () => {
     // reaper only runs from a new request, which needs a live project. The row
     // would hold its slot permanently and its restrict FK would block any
     // future hard delete.
-    const { ownerId, memberId, projectId } = await seedScene();
+    const { memberId, projectId } = await seedScene();
     await roleUpgradeService.request({
-      ownerUserId: ownerId,
       requesterUserId: memberId,
       projectId,
       projectName: "Demo",
@@ -499,9 +493,8 @@ describe("reaping takes the bell entry down with the row", () => {
     // to be retired. Miss that and the invariant "a settled request has no live
     // bell entry" rests on an unrelated filter in the unread query, and leaks
     // through every read that does not apply it.
-    const { ownerId, memberId, projectId } = await seedScene();
+    const { memberId, projectId } = await seedScene();
     await roleUpgradeService.request({
-      ownerUserId: ownerId,
       requesterUserId: memberId,
       projectId,
       projectName: "Demo",
@@ -515,7 +508,6 @@ describe("reaping takes the bell entry down with the row", () => {
 
     // Filing again is what reaps the old row.
     await roleUpgradeService.request({
-      ownerUserId: ownerId,
       requesterUserId: memberId,
       projectId,
       projectName: "Demo",
@@ -578,7 +570,6 @@ describe("a request refused for lack of standing is left alone", () => {
     // owner can still answer. Settling it here would let any stranger burn it.
     const { ownerId, memberId, projectId } = await seedScene();
     await roleUpgradeService.request({
-      ownerUserId: ownerId,
       requesterUserId: memberId,
       projectId,
       projectName: "Demo",
@@ -660,7 +651,6 @@ describe("a decider who loses the project mid-decision destroys nothing", () => 
     // entitled to decide write off a request the NEW owner never gets to see.
     const { ownerId, memberId, projectId } = await seedScene();
     await roleUpgradeService.request({
-      ownerUserId: ownerId,
       requesterUserId: memberId,
       projectId,
       projectName: "Demo",
@@ -780,9 +770,8 @@ describe("withdrawing frees the container's slot at once", () => {
 
 describe("one live request at a time, and a dead one never blocks", () => {
   it("role upgrade: a second live request is refused, a timed-out one is reaped", async () => {
-    const { ownerId, memberId, projectId } = await seedScene();
+    const { memberId, projectId } = await seedScene();
     await roleUpgradeService.request({
-      ownerUserId: ownerId,
       requesterUserId: memberId,
       projectId,
       projectName: "Demo",
@@ -795,7 +784,6 @@ describe("one live request at a time, and a dead one never blocks", () => {
 
     await expect(
       roleUpgradeService.request({
-        ownerUserId: ownerId,
         requesterUserId: memberId,
         projectId,
         projectName: "Demo",
@@ -806,7 +794,6 @@ describe("one live request at a time, and a dead one never blocks", () => {
     await ageOut("role_upgrade_requests", first);
     await expect(
       roleUpgradeService.request({
-        ownerUserId: ownerId,
         requesterUserId: memberId,
         projectId,
         projectName: "Demo",
