@@ -253,6 +253,7 @@ function AssetBox({ assets, at, onMove, onClose, copying }: AssetBoxProps): Reac
               data-testid='asset-box-copy'
               variant='outline'
               size='sm'
+              className='gap-1.5'
               onClick={() => copying.copy(current)}
             >
               {copied ? (
