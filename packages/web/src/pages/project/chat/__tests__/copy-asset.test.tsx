@@ -5,9 +5,8 @@
  * Copying a found picture so it can be pasted onto the canvas.
  *
  * The copy writes the canvas's own clipboard text: one image node whose
- * content is an address outside our storage, flagged so the canvas fetches it
- * into storage on paste. The address has to be one the fetch accepts, and the
- * fetch takes https only.
+ * content is the picture's thumbnail address, flagged as outside our storage so
+ * the canvas fetches it into storage on paste.
  */
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
@@ -31,9 +30,12 @@ describe('what a copy puts on the clipboard', () => {
     ...over,
   });
 
-  it('is one image node carrying the original, flagged as from outside', () => {
+  it('is one image node carrying the thumbnail, flagged as from outside', () => {
+    // The original is whatever format the site that published it chose (an
+    // AVIF one is refused by the fetch into storage); the thumbnail is the
+    // search service's own JPEG or PNG copy, which the row already shows.
     const nodes = parseClipboardNodes(
-      clipboardTextFor(asset({ imageUrl: 'https://original.example/1.png' })),
+      clipboardTextFor(asset({ imageUrl: 'https://original.example/1.avif' })),
     );
 
     expect(nodes).toEqual([
@@ -41,24 +43,10 @@ describe('what a copy puts on the clipboard', () => {
         type: 'image',
         position: { x: 0, y: 0 },
         name: 'A picture',
-        content: 'https://original.example/1.png',
+        content: 'https://thumb.example/1.jpg',
         external: true,
       },
     ]);
-  });
-
-  it('carries the thumbnail when the original is not https', () => {
-    const nodes = parseClipboardNodes(
-      clipboardTextFor(asset({ imageUrl: 'http://original.example/1.png' })),
-    );
-
-    expect(nodes?.[0]?.content).toBe('https://thumb.example/1.jpg');
-  });
-
-  it('carries the thumbnail when there is no original', () => {
-    const nodes = parseClipboardNodes(clipboardTextFor(asset({})));
-
-    expect(nodes?.[0]?.content).toBe('https://thumb.example/1.jpg');
   });
 
   it('leaves the name out when the picture has no title', () => {

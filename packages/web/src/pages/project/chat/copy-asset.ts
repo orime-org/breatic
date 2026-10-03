@@ -18,16 +18,17 @@ import { toast } from '@web/lib/toast';
 import { serializeNodes, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 
 /**
- * The address a copy hands to the canvas.
+ * The address a copy hands to the canvas: the thumbnail.
  *
- * The fetch into storage takes https only. The original is whatever the site
- * that published it serves, so it is used when it is https; the thumbnail is
- * the search service's own https copy, the one the row already shows.
+ * The original is in whatever format the site that published it chose, and
+ * storage takes PNG, JPEG and WebP only (an AVIF original is refused). The
+ * thumbnail is the search service's own https copy, served as JPEG, or PNG
+ * for a PNG original, and it is the picture the row already shows.
  * @param asset - The picture.
  * @returns The address to fetch.
  */
 function addressOf(asset: ChatAsset): string {
-  return asset.imageUrl?.startsWith('https://') === true ? asset.imageUrl : asset.thumbnailUrl;
+  return asset.thumbnailUrl;
 }
 
 /**
