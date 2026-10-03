@@ -285,6 +285,7 @@ export async function cascadeDeleteConversations(
     .select({ id: conversations.id })
     .from(conversations)
     .where(inArray(conversations.id, ids))
+    .orderBy(conversations.id)
     .for("update");
 
   await cascadeDeleteMessages(tx, ids, now);
