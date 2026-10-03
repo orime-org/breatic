@@ -50,6 +50,7 @@ import {
 import { PARAMS as AUDIO_PARAMS } from '@web/spaces/canvas/generate/audio-params';
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
+import { STYLE_SLOT } from '@web/spaces/canvas/generate/style-slot';
 import { CAMERA_PARAMS } from '@web/spaces/canvas/generate/CameraPicker';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { modelControls } from '@web/spaces/canvas/generate/model-controls';
@@ -192,11 +193,13 @@ const PANEL: Readonly<
   image: {
     // The image panel's one slot is the style area (inner#826); its other
     // sources come through the pool.
-    slots: () => [IMAGE_SLOTS.style.param],
+    slots: () => [STYLE_SLOT.param],
     controls: [...RATIO_RESOLUTION_PARAMS, ...CAMERA_PARAMS],
   },
   video: {
-    slots: (mode) => slotsForMode(mode).map((slot) => VIDEO_SLOTS[slot].param),
+    // The mode's source slots, then the style area every mode can draw for a
+    // model that declares it (inner#828).
+    slots: (mode) => [...slotsForMode(mode).map((slot) => VIDEO_SLOTS[slot].param), STYLE_SLOT.param],
     controls: [...EDITED_PARAMS],
   },
   audio: {

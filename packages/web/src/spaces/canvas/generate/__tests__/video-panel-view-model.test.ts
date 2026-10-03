@@ -1112,3 +1112,44 @@ describe('被 @ 引用的裁剪随提交上路（#1978）', () => {
     expect(vm.referenceUrls.image).toEqual([]);
   });
 });
+
+describe('the style slot on the video panel (inner#828)', () => {
+  const style = {
+    description: '',
+    default: null,
+    type: 'list' as const,
+    max_items: 3,
+    fill: 'canvas' as const,
+    accepts: 'image' as const,
+    optional: true,
+    joins: 'images',
+    prompt_note: 'Style references: {list}. Apply their style to the result.',
+  };
+  const styled = makeModel('wan-ref', { mode: 'ref', params: { style_images: style } });
+  const plain = makeModel('veo-3.1', { mode: 'ref' });
+
+  it('sends the node\'s style images, up to the cap, with the params', () => {
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [node('n1', videoView({ model: 'wan-ref', styleImageUrls: ['s1', 's2', 's3', 's4'] }))],
+      models: [styled],
+      mode: 'ref',
+    });
+    expect(vm.styleCap).toBe(3);
+    expect(vm.styleImages).toEqual(['s1', 's2', 's3', 's4']);
+    expect(vm.params.style_images).toEqual(['s1', 's2', 's3']);
+    expect(vm.slots).toEqual([]);
+  });
+
+  it('keeps the picks but sends and draws nothing for a model without the slot', () => {
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [node('n1', videoView({ model: 'veo-3.1', styleImageUrls: ['s1'] }))],
+      models: [plain],
+      mode: 'ref',
+    });
+    expect(vm.styleCap).toBeUndefined();
+    expect(vm.styleImages).toEqual(['s1']);
+    expect(vm.params.style_images).toBeUndefined();
+  });
+});

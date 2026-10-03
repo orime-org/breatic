@@ -72,6 +72,11 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         slotThumbnails={{}}
         onPickSlot={() => {}}
         onClearSlot={() => {}}
+        styleCap={undefined}
+        styleImages={[]}
+        onStylePick={() => {}}
+        stylePicking={false}
+        onRemoveStyle={() => {}}
         executeRefusal={null}
         promptSlot={<div data-testid='prompt-slot' />}
         onExit={onExit}
@@ -246,5 +251,38 @@ describe('VideoGeneratePanel', () => {
       ],
     });
     expect(screen.getByTestId('generate-ref-e1')).toBeInTheDocument();
+  });
+});
+
+describe('VideoGeneratePanel — the style area (inner#828)', () => {
+  it('draws the style area after Focus behind one divider for a model that takes style images', () => {
+    renderPanel({ styleCap: 3, styleImages: [] });
+    expect(screen.getByTestId('generate-tool-style')).toBeInTheDocument();
+    expect(screen.getAllByRole('separator')).toHaveLength(1);
+  });
+
+  it('draws no style area and no divider for a model that takes none', () => {
+    renderPanel({ styleCap: undefined, styleImages: ['https://cdn/a.png'] });
+    expect(screen.queryByTestId('generate-tool-style')).toBeNull();
+    expect(screen.queryByTestId('generate-style-thumbnail-0')).toBeNull();
+    expect(screen.queryAllByRole('separator')).toHaveLength(0);
+  });
+
+  it('wires the add control, the pressed state and each thumbnail\'s X', () => {
+    const onStylePick = vi.fn();
+    const onRemoveStyle = vi.fn();
+    renderPanel({
+      styleCap: 3,
+      styleImages: ['https://cdn/a.png', 'https://cdn/b.png'],
+      onStylePick,
+      onRemoveStyle,
+      stylePicking: true,
+    });
+    const add = screen.getByTestId('generate-tool-style');
+    expect(add).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(add);
+    expect(onStylePick).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId('generate-style-clear-1'));
+    expect(onRemoveStyle).toHaveBeenCalledWith('https://cdn/b.png');
   });
 });
