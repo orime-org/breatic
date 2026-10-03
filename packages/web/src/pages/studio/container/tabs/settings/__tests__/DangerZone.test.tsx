@@ -5,8 +5,8 @@
  * What the danger zone holds, per studio type and per role.
  *
  * The zone used to be hidden entirely from a personal studio, on the grounds
- * that its three actions — transfer, delete, leave — are all meaningless for
- * one. That reasoning was about those three actions and was wrongly read as a
+ * that its actions — transfer and leave — are both meaningless for one. That
+ * reasoning was about those actions and was wrongly read as a
  * rule about the box, which is how changing the slug ended up beside the
  * display name. A personal studio's slug is its owner's handle: changing it
  * breaks every link to them and frees the name for anyone, which is exactly
@@ -137,7 +137,7 @@ describe('DangerZone — what each kind of viewer gets', () => {
 
 describe('DangerZone — the line explaining the box', () => {
   // The hint is a second, independent statement of which cells are present:
-  // it names transfer and deletion for one viewer and not for another. Pinning
+  // it names transfer for one viewer and not for another. Pinning
   // only the cells would let the two drift, and a personal studio would be
   // read a warning about handing itself to somebody.
   const HINT = {
@@ -152,7 +152,7 @@ describe('DangerZone — the line explaining the box', () => {
     expect(screen.queryByText(HINT.team)).not.toBeInTheDocument();
   });
 
-  it('tells a team admin about all three', () => {
+  it('tells a team admin about transferring and the slug', () => {
     renderZone(studio({ type: 'team', myStudioRole: 'admin' }));
     expect(screen.getByText(HINT.team)).toBeInTheDocument();
   });
