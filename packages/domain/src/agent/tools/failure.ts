@@ -32,6 +32,18 @@ export function toolFailed(forModel: string, readerKey: FailureLine): Error {
 }
 
 /**
+ * Build the error a tool throws when it turns a call away to steer the model.
+ *
+ * Not a failure: nothing broke, and the model is told what to do instead. The
+ * reader is shown nothing for it.
+ * @param forModel - Why the call was turned away, and what to do instead.
+ * @returns The error to throw.
+ */
+export function turnedAway(forModel: string): Error {
+  return carrying(new Error(forModel), { kind: "turned_away", forModel } satisfies ToolFailure);
+}
+
+/**
  * What the user stopping the turn reads like from inside a tool.
  *
  * Not a failure: nothing went wrong, the answer stopped being wanted. It is

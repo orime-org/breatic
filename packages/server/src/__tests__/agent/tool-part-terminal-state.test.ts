@@ -65,7 +65,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const base = await domainMock();
   const actual = await importOriginal<Record<string, unknown>>();
   const { modelProducing } = await import("../helpers/model-double.js");
-  const { askUser } = await import("../../../../domain/src/agent/tools/ask-user.js");
+  const { makeAskUserTool } = await import("../../../../domain/src/agent/tools/ask-user.js");
   return {
     ...base,
     streamTextRetry: actual.streamTextRetry,
@@ -140,7 +140,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         // 会把这一轮停在那儿等人回答的那一类。用真工具本体:这条用例问的是
         // 「参数被真 schema 拒掉的一次调用会不会把这一轮停在那儿」,自己写一份
         // 形状差不多的 schema 只能证明我写的那份拒了什么。
-        ask_user: askUser,
+        ask_user: makeAskUserTool(),
       },
     }),
     finalizeTurn: async (opts: { steps: { persist?: () => Promise<void> } }) => {
@@ -322,7 +322,7 @@ describe("how a tool use is recorded when it does not come back", () => {
 
     const refused = toolPart(parts);
     expect(refused?.status).toBe("error");
-    expect(refused?.failure?.kind).toBe("tool_failed");
+    expect(refused?.failure?.kind).toBe("turned_away");
     // Something the model can act on. The wire carries the SDK's one masked
     // line for every error it streams, so a record built from that says only
     // that something went wrong -- which is the sentence this whole task
@@ -369,7 +369,7 @@ describe("how a tool use is recorded when it does not come back", () => {
     const failed = toolPart(parts);
     expect(failed?.failure?.kind).toBe("tool_failed");
     expect(failed?.failure?.forModel).toBe("the reason only the model gets");
-    expect(failed?.failure?.readerKey).toBe("chat.tool.failure.upstream");
+    expect(failed?.failure).toMatchObject({ readerKey: "chat.tool.failure.upstream" });
   });
 
   it("carries which ending it was, not just the words", async () => {
@@ -508,6 +508,37 @@ describe("how a tool use is recorded when it does not come back", () => {
     // Complete arguments, so this one is not held back from the history.
     expect(part?.argumentsIncomplete).toBeUndefined();
     expect(part?.input).toMatchObject({ url: "https://example.com" });
+  });
+
+  it("records a refused call as turned away when the turn is stopped before its step ends", async () => {
+    // The SDK refuses the call as soon as it is parsed, then the model goes on
+    // writing; the stop lands before the step ends, so `onStepFinish` never
+    // runs. Stored as a failure, a reload would draw a failed line the reader
+    // never saw while it happened.
+    thisCase.parts = [
+      { ...asksForTheTool, input: JSON.stringify({ url: 5 }) },
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "让我查一下" },
+      { type: "text-end", id: "t1" },
+    ];
+    thisCase.stopOnChunk = "text-delta";
+    const stopper = new AbortController();
+    thisCase.stopper = stopper;
+    addMessage.mockClear();
+
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("do something", stopper.signal);
+      for await (const chunk of turn) {
+        if (chunk.type === thisCase.stopOnChunk) stopper.abort();
+      }
+    });
+
+    const reply = addMessage.mock.calls.map(([, m]) => m).find((m) => m.role === "assistant");
+    const part = toolPart((reply?.parts as MessagePart[]) ?? []);
+
+    expect(part?.status).toBe("error");
+    expect(part?.failure?.kind).toBe("turned_away");
+    expect(part?.failure?.forModel).toMatch(/correct the call and try once more/i);
   });
 
   it("still records a normal tool use as successful", async () => {

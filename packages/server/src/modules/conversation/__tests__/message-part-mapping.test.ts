@@ -19,6 +19,7 @@
  * what it does not define. They are not transient: a reader who reloads has
  * to still see that a turn was cut off.
  */
+import { TURNED_AWAY } from "@breatic/shared";
 import { describe, it, expect } from "vitest";
 import type { UIMessage } from "ai";
 import { ATTACHMENT_DATA_PART, NOTHING_SAID_WHY } from "@breatic/shared";
@@ -434,5 +435,26 @@ describe("a stored message on its way to the browser", () => {
       { type: "reasoning", text: "先想一下" },
       { type: "text", text: "好的" },
     ]);
+  });
+});
+
+describe("a call that was turned away, read back", () => {
+  it("tells the panel to draw nothing for it, and says which ending it was", () => {
+    const [part] = toUiParts([
+      {
+        type: "tool",
+        toolCallId: "tc-1",
+        toolName: "ask_user",
+        input: { question: "How long?" },
+        status: "error",
+        failure: { kind: "turned_away", forModel: "This question was not put to the user." },
+      },
+    ]);
+
+    expect(part).toMatchObject({
+      state: "output-error",
+      errorText: TURNED_AWAY,
+      failureKind: "turned_away",
+    });
   });
 });

@@ -118,8 +118,8 @@ export function askUserMarkdown(payload: AskUserPayload): string {
  *
  * Fenced by blank lines because the panel joins every text part of a reply into
  * one string and renders that once: without them this paragraph runs into
- * whatever the model wrote before it, and a second question lands inside the
- * first one's last option.
+ * whatever the model wrote before it, and what the model writes after it lands
+ * inside the last option.
  * @param writer - The stream this turn is being written to.
  * @param toolCallId - Which call this is, so the part has an id of its own.
  * @param payload - What the tool returned.

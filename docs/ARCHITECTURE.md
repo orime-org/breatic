@@ -211,11 +211,11 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 `search_images` 打 Brave 的图片端点,搜索和展示由它一个人完成:它答复的结构化对象经 SDK 的原生 tool part 到前端(类型是 `tool-search_images`),`to-chat-message.ts` 读成 `assets` 画成一行方块;模型读的是同一份答复经 `toModelOutput` 渲染的文字。**两条路同源,中间没有第二次经手** —— 面板画的地址就是服务发来的地址。一条结果带图片的两个地址 —— 服务代理的缩略图(宽 500px,前端一律用它)和发布站自己托管的原图 —— 外加它被找到的那一页。**流式期间整轮只画一行**(`ToolRunLine`):最新那个还在跑的调用一个,显示工具自己声明的那句话(`metadata.runningLine`),没声明的才印工具名;跑完这一行就撤。认得出类型的工具另有自己的组件,由 `toChatMessage` 从 tool part 重建,刷新页面照样在。
 
-**`ask_user` 不是这样**:它的 payload 画出来就是一段文字,所以由服务端在 `onStepFinish` 拼成 markdown、写成文本 part,落进这一轮回复的正文,前端拿现成的 markdown 渲染器画。它也因此不回灌给模型 —— 问题已经在正文里了。**它是唯一会让这一轮停下等回答的工具**,名字在 `packages/domain/src/agent/tools/tool-names.ts` 写一次,注册表和判断这一轮停不停的那一处都从那儿读。判定题:**这个 payload 画出来是一段文字,还是一个组件?文字 → 服务端写进正文;组件 → 前端从 tool part 画。**
+**`ask_user` 不是这样**:它的 payload 画出来就是一段文字,所以由服务端在 `onStepFinish` 拼成 markdown、写成文本 part,落进这一轮回复的正文,前端拿现成的 markdown 渲染器画。它也因此不回灌给模型 —— 问题已经在正文里了。**一轮只问一个问题,由工具自己保证**:`TOOL_MAP` 每轮新建一个 `ask_user`,闭包里记着这一轮问过没有,第二次调用抛 `turned_away`,读者面前既不出现第二个问题、也不画失败行;这次被拒的调用照常回灌给模型,让它下一轮知道那个问题没发出去。**它是唯一会让这一轮停下等回答的工具**,名字在 `packages/domain/src/agent/tools/tool-names.ts` 写一次,注册表和判断这一轮停不停的那一处都从那儿读。判定题:**这个 payload 画出来是一段文字,还是一个组件?文字 → 服务端写进正文;组件 → 前端从 tool part 画。**
 
 工具返回什么,SDK 的 tool part 就原样带什么到前端。
 
-**工具失败时抛出,不返回**(MANDATORY)。返回值一律被 SDK 当成 `tool-result`,跟一份网页或一串搜索结果没有区别,模型据此认为这次调用成功了 —— 于是换个措辞再调一次。抛出的异常被 SDK 转成 `tool-error` 交给模型,这是让模型知道「失败了」的唯一途径,AI SDK · OpenAI Agents SDK · LangGraph 三家同此。**一次失败带三个字段**(`packages/shared/src/agent/tool-failure.ts` 的 `ToolFailure`):`kind` 说这是哪一种结局(`tool_failed` 或 `user_aborted`,类型把它跟 `readerKey` 绑死,「用户停止」配不上一句讲失败的话)· `forModel` 是具体原因,**不出后端** · `readerKey` 是给面板的翻译键,因为存下来的行会活得比写它时的那个语种长。判定题:**我正要在工具的 `execute` 里 `return` 一个描述失败的字符串吗?那就错了,`throw`。**
+**工具失败时抛出,不返回**(MANDATORY)。返回值一律被 SDK 当成 `tool-result`,跟一份网页或一串搜索结果没有区别,模型据此认为这次调用成功了 —— 于是换个措辞再调一次。抛出的异常被 SDK 转成 `tool-error` 交给模型,这是让模型知道「失败了」的唯一途径,AI SDK · OpenAI Agents SDK · LangGraph 三家同此。**一次失败带三个字段**(`packages/shared/src/agent/tool-failure.ts` 的 `ToolFailure`):`kind` 说这是哪一种结局(`tool_failed` · `user_aborted` · `turned_away`,类型把它跟 `readerKey` 绑死,「用户停止」配不上一句讲失败的话;`turned_away` 是为引导模型而拒绝的调用 —— 同一轮第二个问题、已有一个在跑时的第二个媒体理解、SDK 拒绝的参数或工具名 —— 不带 `readerKey`,线上 `errorText` 是标记 `turned_away`,面板什么都不画)· `forModel` 是具体原因,**不出后端** · `readerKey` 是给面板的翻译键,因为存下来的行会活得比写它时的那个语种长。判定题:**我正要在工具的 `execute` 里 `return` 一个描述失败的字符串吗?那就错了,`throw`。**
 
 **每条给模型的原因都要以「可以怎么办」收尾**。同一个「非 2xx」下面藏着四类原因、两种下一步:5xx / 429 / 408 是对方的事、跟措辞无关(传输层对 429 和 408 一视同仁地重试过了,到工具手里的是重试完还这样的);401 / 403 / 422 是我们这边发出去的东西被拒(凭据或参数),换查询词到不了;3xx 和 404 是我们手里那个地址搬了家(请求不跟随重定向,所以 3xx 作为普通响应回到工具;路径写死在工具里,所以 404 说的是同一件事),同样换措辞到不了;其余是这个请求本身、模型写的模型能改。没有重试上限、没有熔断 —— 收手由模型读了原因自己决定,系统提示词里有引导它的那一段。
 
