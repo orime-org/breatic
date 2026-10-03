@@ -79,18 +79,11 @@ export function ReplyBox({
         onCloseAutoFocus={returnFocus}
         className={BOX_SIZE}
       >
-        {/* The header's left column only holds the title, so it is made to
-          take the row: the actions then sit at its right edge, beside the
-          close button the header draws. */}
-        <DialogHeader className={actions === undefined ? undefined : '[&>div:first-child]:flex-1'}>
-          {actions === undefined ? (
-            <DialogTitle className='truncate text-sm font-medium'>{title}</DialogTitle>
-          ) : (
-            <div className='flex min-w-0 items-center justify-between gap-2'>
-              <DialogTitle className='min-w-0 truncate text-sm font-medium'>{title}</DialogTitle>
-              {actions}
-            </div>
-          )}
+        <DialogHeader>
+          <div className='flex min-w-0 items-center justify-between gap-2'>
+            <DialogTitle className='min-w-0 truncate text-sm font-medium'>{title}</DialogTitle>
+            {actions}
+          </div>
         </DialogHeader>
         {children}
         {footer}

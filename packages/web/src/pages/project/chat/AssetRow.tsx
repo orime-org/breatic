@@ -179,7 +179,7 @@ interface CopyAssetButtonProps {
  * The copy button in a square's top-right corner.
  *
  * Shown while the square is hovered or the button has the keyboard, and kept
- * up while it says copied. Hidden, it takes neither clicks nor a tab stop.
+ * up while it says copied. Hidden, it takes no clicks; keyboard focus shows it.
  * @param root0 - The component props.
  * @param root0.copying - The row's copy state.
  * @param root0.asset - The picture it copies.
