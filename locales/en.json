@@ -73,7 +73,8 @@
       "collaborator_limit_reached_for_invitee": "This project is full. Ask its Owner to make room.",
       "only_viewer_can_request_upgrade": "Only a Viewer can request a role upgrade",
       "no_active_owner": "This project has no active Owner",
-      "not_found": "Project not found"
+      "not_found": "Project not found",
+      "archived": "This project is archived and can only be viewed."
     },
     "text_tool": {
       "already_running": "Another text tool is already running. Please wait."
@@ -1401,8 +1402,7 @@
         "archived": "Archived",
         "archiveFailed": "Couldn't archive",
         "restored": "Restored",
-        "restoreFailed": "Couldn't restore",
-        "renameFailed": "Couldn't rename"
+        "restoreFailed": "Couldn't restore"
       },
       "projects": {
         "new": "New project",

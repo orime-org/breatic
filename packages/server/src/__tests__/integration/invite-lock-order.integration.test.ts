@@ -258,7 +258,7 @@ describe("project invite — lock order against archiving the project", () => {
     } finally {
       await sweep.end({ timeout: 5 });
     }
-    const [settled] = await invite!;
+    const settled = (await invite!)[0]!;
     const inviteError = settled.status === "rejected" ? settled.reason : null;
 
     expect(sqlStateOf(sweepError)).not.toBe(DEADLOCK);

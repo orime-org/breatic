@@ -76,7 +76,8 @@
       "collaborator_limit_reached_for_invitee": "这个 Project 的协作者名额已满，请联系它的 Owner 腾出名额。",
       "only_viewer_can_request_upgrade": "只有 Viewer 可以申请角色升级",
       "no_active_owner": "这个 Project 没有在任的 Owner",
-      "not_found": "找不到这个 Project"
+      "not_found": "找不到这个 Project",
+      "archived": "这个 Project 已归档，只能查看。"
     },
     "payment": {
       "tier_not_found": "未知的套餐：{tier}。可选：{available}",
@@ -1401,8 +1402,7 @@
         "archived": "已归档",
         "archiveFailed": "归档失败",
         "restored": "已恢复",
-        "restoreFailed": "恢复失败",
-        "renameFailed": "改名失败"
+        "restoreFailed": "恢复失败"
       },
       "projects": {
         "new": "新建 Project",

@@ -73,7 +73,8 @@
       "collaborator_limit_reached_for_invitee": "這個 Project 的協作者名額已滿，請聯絡它的 Owner 騰出名額。",
       "only_viewer_can_request_upgrade": "只有 Viewer 可以申請角色升級",
       "no_active_owner": "這個 Project 沒有在任的 Owner",
-      "not_found": "找不到這個 Project"
+      "not_found": "找不到這個 Project",
+      "archived": "這個 Project 已封存，只能檢視。"
     },
     "payment": {
       "tier_not_found": "未知的方案：{tier}。可選：{available}",
@@ -1401,8 +1402,7 @@
         "archived": "已封存",
         "archiveFailed": "封存失敗",
         "restored": "已還原",
-        "restoreFailed": "還原失敗",
-        "renameFailed": "重新命名失敗"
+        "restoreFailed": "還原失敗"
       },
       "projects": {
         "new": "新增 Project",

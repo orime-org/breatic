@@ -73,7 +73,8 @@
       "collaborator_limit_reached_for_invitee": "この Project のコラボレーター枠は満員です。Owner に空きを作ってもらってください。",
       "only_viewer_can_request_upgrade": "ロールの昇格を申請できるのは Viewer だけです",
       "no_active_owner": "この Project には現任の Owner がいません",
-      "not_found": "Project が見つかりません"
+      "not_found": "Project が見つかりません",
+      "archived": "この Project はアーカイブ済みのため閲覧のみです。"
     },
     "payment": {
       "tier_not_found": "不明なプラン：{tier}。選択可能：{available}",
@@ -1401,8 +1402,7 @@
         "archived": "アーカイブしました",
         "archiveFailed": "アーカイブできませんでした",
         "restored": "復元しました",
-        "restoreFailed": "復元できませんでした",
-        "renameFailed": "名前を変更できませんでした"
+        "restoreFailed": "復元できませんでした"
       },
       "projects": {
         "new": "Project を新規作成",

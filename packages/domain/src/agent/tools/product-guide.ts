@@ -918,8 +918,8 @@ export function renderProductGuide(): string {
       `comes back. ${quoted(t("connection.banner.authFailed.text"))} offers ` +
       `${quoted(t("connection.banner.authFailed.action"))} and ${quoted(t("connection.banner.reload"))}, and ` +
       "covers the work area the same way. It shows when the session ran out, and also when the reader was " +
-      "removed from the project or the project was deleted: if signing in again does not let them back in, it " +
-      "is one of those, and the project's owner can say which. With a document open, " +
+      "removed from the project: if signing in again does not let them back in, they were removed, and the " +
+      "project's owner can say why. With a document open, " +
       `${quoted(t("spaces.document.refusedNotice"))} also shows for a moment; nothing typed after it is saved, ` +
       "but the keyboard still reaches the document: press Cmd/Ctrl+A twice, then Cmd/Ctrl+C, to copy it out " +
       "before signing in again or reloading.",
