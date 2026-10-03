@@ -128,6 +128,7 @@ export const GroupNode = React.memo(function GroupNode({
         <NodeOccupantTags userIds={occupants} indentPx={0} />
         {editing ? (
           <input
+            autoComplete='off'
             ref={inputRef}
             data-testid='group-name-input'
             value={draft}

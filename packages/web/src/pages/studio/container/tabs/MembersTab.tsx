@@ -32,6 +32,7 @@ import type {
   StudioType,
 } from '@web/pages/studio/shared/studio-types';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
+import { formatLocalDay } from '@web/lib/format-day';
 
 interface MembersTabProps {
   /** The studio's URL handle — the path param for every member mutation. */
@@ -228,7 +229,7 @@ export function MembersTab({
                   </span>
                 </td>
                 <td className='py-2.5 font-mono text-xs text-muted-foreground'>
-                  {member.joinedAt.slice(0, 10)}
+                  {formatLocalDay(member.joinedAt)}
                 </td>
                 <td className='py-2.5'>
                   <span

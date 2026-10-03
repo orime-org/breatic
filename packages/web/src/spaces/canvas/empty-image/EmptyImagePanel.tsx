@@ -119,6 +119,7 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
           <label className='flex items-center gap-1'>
             {t('canvas.emptyImage.width')}
             <input
+              autoComplete='off'
               type='text'
               inputMode='numeric'
               data-testid='empty-image-width'
@@ -136,6 +137,7 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
           <label className='flex items-center gap-1'>
             {t('canvas.emptyImage.height')}
             <input
+              autoComplete='off'
               type='text'
               inputMode='numeric'
               data-testid='empty-image-height'
