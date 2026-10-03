@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { formatLocalDay } from '@web/lib/format-day';
+
 /**
  * Bucketed relative-time descriptor (key + ICU plural params).
  * Pure — returns the ICU message id to feed `t(rel.key, rel.params)`.
@@ -59,6 +61,6 @@ export function relativeTime(epochMs: number, now = Date.now()): RelativeTime {
     };
   return {
     key: 'activity.relative.isoDate',
-    params: { date: new Date(epochMs).toISOString().slice(0, 10) },
+    params: { date: formatLocalDay(epochMs) },
   };
 }

@@ -21,10 +21,10 @@ function pad(n: number): string {
  * The parts come off a local `Date`, so the day is the reader's. The shape is
  * the one the confirmed design draws and it reads the same in every language
  * this product ships, which is why it is assembled rather than localised.
- * @param iso - An ISO-8601 timestamp.
+ * @param at - An ISO-8601 timestamp, or epoch milliseconds.
  * @returns The date in the reader's timezone, as `YYYY-MM-DD`.
  */
-export function formatLocalDay(iso: string): string {
-  const at = new Date(iso);
-  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+export function formatLocalDay(at: string | number): string {
+  const day = new Date(at);
+  return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
 }
