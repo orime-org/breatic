@@ -448,31 +448,36 @@ test('A6, A11 and A12: on a wide table scrolled sideways, the row handle stays i
   expect(handle!.x).toBeLessThan(box!.x + 24);
 });
 
-test('A6 and A11: a cell cut by the frame of a wide table draws no button or handle past the frame', async () => {
+test('A6 and A11: a cell cut by the frame of a wide table shows its button and column handle over its visible part', async () => {
   await openFreshDocument(page);
   await insertTable(page, 2, 9);
   await fill(page, ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']);
   const frame = page.locator(`${EDITOR} [data-radix-scroll-area-viewport]`).first();
   const box = (await frame.boundingBox())!;
   const right = box.x + box.width;
-  // The first cell the frame's right edge cuts, and a point in its visible part.
+  // The table scrolled until the frame's right edge runs through the middle of
+  // the first cell it cuts; a point in that cell's visible half.
   const cut = await frame.evaluate((viewport, edge) => {
     for (const td of Array.from(viewport.querySelectorAll('tr:first-child td'))) {
       const r = td.getBoundingClientRect();
-      if (r.left < edge && r.right > edge) return { x: r.left + 8, y: r.top + r.height / 2 };
+      if (r.right > edge) {
+        viewport.scrollLeft += r.left + r.width / 2 - edge;
+        const moved = td.getBoundingClientRect();
+        return { x: moved.left + 8, y: moved.top + moved.height / 2 };
+      }
     }
     return null;
   }, right);
   expect(cut).not.toBeNull();
 
   /**
-   * Whether a control is drawn at all, and if so inside the frame.
+   * Whether a control is shown, inside the frame.
    * @param testId - The control.
-   * @returns Whether it stays in the frame.
+   * @returns Whether it is visible and within the frame.
    */
   const inFrame = async (testId: string): Promise<boolean> =>
     page.getByTestId(testId).evaluate((el, [left, edge]) => {
-      if (getComputedStyle(el).visibility === 'hidden') return true;
+      if (getComputedStyle(el).visibility === 'hidden') return false;
       const r = el.getBoundingClientRect();
       return r.left >= left && r.right <= edge;
     }, [box.x, right] as const);

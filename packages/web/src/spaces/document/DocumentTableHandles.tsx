@@ -95,14 +95,14 @@ const TABLE_LINE_TYPE = 'application/x-doc-table-line';
 /** The delete row's icon, shared with the block handle's menu. */
 const DeleteIcon = BLOCK_MENU_ROWS.find((row) => row.id === 'delete')!.Icon;
 
-/** Half the column handle's width (`w-6`). */
-const COLUMN_HANDLE_HALF = 12;
+/** The column handle's width (`w-6`). */
+const COLUMN_HANDLE_WIDTH = 24;
 
 /** Where a handle is drawn against its table's scroll frame. */
 interface FramePlace {
-  /** How far the row handle moves right, back into the frame. */
+  /** How far the handle moves across, onto the part of the table in view. */
   readonly shift: number;
-  /** Whether the column handle is hidden: it does not fit in the frame. */
+  /** Whether it is hidden: the part in view has no room for it. */
   readonly hidden: boolean;
 }
 
@@ -111,11 +111,12 @@ const IN_PLACE: FramePlace = { shift: 0, hidden: false };
 
 /**
  * Where a handle is drawn against the table's scroll frame. The controller
- * places the row handle at the table's own left edge and the column handle
- * centred over the hovered cell (`TableHandlesController.tsx:108-122`); on a
- * table scrolled sideways either can lie outside the frame. The row handle
- * moves back in by the width scrolled out of it; a column handle that does
- * not fit in the frame is hidden, as its column is cut by the frame.
+ * places the row handle at the table's own left edge
+ * (`TableHandlesController.tsx:108-124`) and the column handle centred over
+ * the hovered cell (`:125-141`); on a table scrolled sideways either can lie
+ * outside the frame. The row handle moves in by the width scrolled out of it;
+ * the column handle moves to the centre of the part of its cell in view, and
+ * is hidden when that part is narrower than the handle.
  * @param view - The editor view.
  * @param blockId - The table block's id.
  * @param row - Whether this is the row handle.
@@ -130,12 +131,13 @@ function framePlaceOf(
 ): FramePlace {
   const table = view?.dom.querySelector(`[data-id="${CSS.escape(blockId)}"] table`);
   const frame = table?.closest('[data-radix-scroll-area-viewport]');
-  if (table === null || table === undefined || frame === null || frame === undefined) return IN_PLACE;
+  if (!table || !frame) return IN_PLACE;
   const box = frame.getBoundingClientRect();
   if (row) return { shift: Math.max(0, box.left - table.getBoundingClientRect().left), hidden: false };
   if (cell === undefined) return IN_PLACE;
-  const centre = cell.left + cell.width / 2;
-  return { shift: 0, hidden: centre - COLUMN_HANDLE_HALF < box.left || centre + COLUMN_HANDLE_HALF > box.right };
+  const left = Math.max(cell.left, box.left);
+  const right = Math.min(cell.right, box.right);
+  return { shift: (left + right) / 2 - (cell.left + cell.width / 2), hidden: right - left < COLUMN_HANDLE_WIDTH };
 }
 
 /** The handle menu's own reading of its target cell. */
@@ -303,18 +305,12 @@ export function DocumentTableHandle({
 
   // Read against the frame each time the handles appear; the controller hides
   // them on a scroll.
-  const [place, setPlace] = React.useState<FramePlace>(IN_PLACE);
-  React.useLayoutEffect(() => {
-    setPlace(
-      state === undefined
-        ? IN_PLACE
-        : framePlaceOf(editor.prosemirrorView, state.block.id, row, state.referencePosCell),
-    );
-  }, [editor, row, state]);
+  const place =
+    state === undefined ? IN_PLACE : framePlaceOf(editor.prosemirrorView, state.block.id, row, state.referencePosCell);
   const placeStyle = React.useMemo<React.CSSProperties | undefined>(() => {
     if (place.hidden) return { visibility: 'hidden' };
-    return place.shift > 0 ? { transform: `translateX(${place.shift}px)` } : undefined;
-  }, [place]);
+    return place.shift === 0 ? undefined : { transform: `translateX(${place.shift}px)` };
+  }, [place.hidden, place.shift]);
 
   if (state === undefined || (holdsSelection && !open)) return null;
   const index = row ? state.rowIndex : state.colIndex;

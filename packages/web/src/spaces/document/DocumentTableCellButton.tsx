@@ -14,10 +14,10 @@
 
 import {
   autoUpdate,
+  detectOverflow,
   FloatingPortal,
-  hide,
-  offset,
   useFloating,
+  type Middleware,
 } from '@floating-ui/react';
 import { cellAround } from '@tiptap/pm/tables';
 import type { EditorState } from '@tiptap/pm/state';
@@ -47,6 +47,35 @@ import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 /** The button's side, and its inset from the cell's top-right corner. */
 const BUTTON = 20;
 const INSET = 2;
+
+/**
+ * Puts the button on the top-right corner of the part of its cell the reader
+ * can see. The cell's clipping ancestors — the table's scroll frame, the
+ * body's scroll area — can cut it; the button follows the cut edge in, and is
+ * hidden when the visible part has no room for it.
+ */
+const onVisibleCorner: Middleware = {
+  name: 'onVisibleCorner',
+  /**
+   * Places the button.
+   * @param state - floating-ui's state for this pass.
+   * @returns The button's position, and whether it is hidden.
+   */
+  async fn(state) {
+    const cut = await detectOverflow(state, { elementContext: 'reference' });
+    const { x, y, width, height } = state.rects.reference;
+    const left = x + Math.max(0, cut.left);
+    const right = x + width - Math.max(0, cut.right);
+    const top = y + Math.max(0, cut.top);
+    const bottom = y + height - Math.max(0, cut.bottom);
+    const room = BUTTON + 2 * INSET;
+    return {
+      x: right - INSET - BUTTON,
+      y: top + INSET,
+      data: { hidden: right - left < room || bottom - top < room },
+    };
+  },
+};
 
 interface DocumentTableCellButtonProps {
   /** The editor. */
@@ -96,18 +125,11 @@ export function DocumentTableCellButton({
       cellPos !== null && isMerged(current.prosemirrorState.doc, cellPos),
   );
 
-  // `escaped` reads the cell's clipping ancestors, the table's scroll frame
-  // among them; the padding of the button's own side makes any part of it
-  // past them count, so the corner of a cell cut by the frame shows nothing.
   const { refs, floatingStyles, middlewareData } = useFloating({
-    placement: 'top-end',
-    middleware: [
-      offset({ mainAxis: -(BUTTON + INSET), crossAxis: -INSET }),
-      hide({ strategy: 'escaped', padding: BUTTON }),
-    ],
+    middleware: [onVisibleCorner],
     whileElementsMounted: autoUpdate,
   });
-  const hidden = middlewareData.hide?.escaped === true;
+  const hidden = (middlewareData.onVisibleCorner as { hidden?: boolean } | undefined)?.hidden === true;
   const style = React.useMemo<React.CSSProperties>(
     () => (hidden ? { ...floatingStyles, visibility: 'hidden' } : floatingStyles),
     [floatingStyles, hidden],
