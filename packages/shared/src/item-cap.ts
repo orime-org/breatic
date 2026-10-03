@@ -52,6 +52,18 @@ export function isPresent(value: unknown): boolean {
 }
 
 /**
+ * The usable files in a list a slot holds: non-empty strings, in order, once
+ * each. The list arrives through collaborative data and the wire, so every
+ * entry is checked whatever the type says (inner#826).
+ * @param value - The stored or submitted list.
+ * @returns Its usable entries.
+ */
+export function usableUrls(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((v): v is string => typeof v === "string" && v.length > 0))];
+}
+
+/**
  * The cap in force for one capped list param.
  * @param descriptor - The param's descriptor from the model catalog entry.
  * @returns The cap, or undefined when this param is uncapped.

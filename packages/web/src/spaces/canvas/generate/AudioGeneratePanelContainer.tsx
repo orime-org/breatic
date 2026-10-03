@@ -42,6 +42,7 @@ import {
   AUDIO_SLOTS,
 } from '@web/spaces/canvas/generate/audio-slots';
 import { slotForPurpose, slotRefusalKey } from '@web/spaces/canvas/generate/slots';
+import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
 import { NO_REFERENCE_KINDS } from '@web/spaces/canvas/generate/reference-urls';
 import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
 import {
@@ -68,7 +69,6 @@ import {
   useOpenPanelNode,
 } from '@web/spaces/canvas/generate/generate-panel-frame';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
-import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import { resolveModelSwitch, resolveParamsEdit } from '@web/spaces/canvas/generate/model-params';
 import {
   filterAvailableModes,
@@ -297,24 +297,7 @@ function AudioGeneratePanelBody({
     (slot: AudioSlot) => clearSlot(projectId, spaceId, nodeId, AUDIO_SLOTS[slot]),
     [projectId, spaceId, nodeId],
   );
-  // A running slot pick outlives the control that started it when the mode
-  // changes (locally, or via a collaborator's setNodeMode): the slot stops
-  // rendering, so the pick loses its control — Exit on the banner would be the
-  // only way out, while the canvas kept dimming candidates for a slot that is
-  // gone.
-  React.useEffect(() => {
-    const session = useCanvasStore.getState().pickSession;
-    if (session?.nodeId !== nodeId) return;
-    // Every audio purpose is weighed, not just this mode's: a pick started on
-    // one mode has to end when the panel switches to a mode that does not
-    // collect that slot, whichever slot it was.
-    const running = slotForPurpose(session.purpose);
-    if (running === undefined || slots.includes(running as AudioSlot)) return;
-    endPick();
-    // The slot list comes from the mode, so this is a mode change reaching
-    // the pick — and the write may well have been a collaborator's.
-    toast.warning(t(pickEndToastKey(getLastWriteWasLocal())));
-  }, [slots, nodeId, endPick, t, getLastWriteWasLocal]);
+  useEndPickWhenSlotGone(nodeId, slots, getLastWriteWasLocal);
 
   // Both rebuild with the view model, which rebuilds on every canvas mutation
   // — every frame of any node drag — and both flow into React.memo components

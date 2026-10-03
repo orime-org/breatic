@@ -11,6 +11,7 @@ import {
   getPromptFragment,
   isNodeLocked,
   readCanvasGraph,
+  removeNodeSlotItem,
   setNodeMode,
   setNodeModel,
   setNodeParams,
@@ -18,6 +19,9 @@ import {
   type CanvasNodeView,
 } from '@web/data/yjs/canvas-space';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
+import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
+import { slotRefusalKey } from '@web/spaces/canvas/generate/slots';
+import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
@@ -459,6 +463,30 @@ function GeneratePanelBody({
       startReferencePick(nodeId);
     }
   }, [startReferencePick, endPick, nodeId]);
+  const stylePicking = useCanvasStore(
+    (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'style',
+  );
+  const startStylePick = useCanvasStore((s) => s.startStylePick);
+  const styleCap = vm.styleCap;
+  const styleHeld = vm.styleImages.length;
+  // Each click on the canvas adds one style image; the cap rides the session
+  // so the canvas knows when the slot is full (inner#826). A full slot opens
+  // no pick: every click would add nothing.
+  const onStylePick = React.useCallback(() => {
+    const session = useCanvasStore.getState().pickSession;
+    if (session?.nodeId === nodeId && session.purpose === 'style') {
+      endPick();
+    } else if (styleCap !== undefined && styleHeld < styleCap) {
+      startStylePick(nodeId, styleCap);
+    }
+  }, [startStylePick, endPick, nodeId, styleCap, styleHeld]);
+  const onRemoveStyle = React.useCallback(
+    (url: string) => {
+      removeNodeSlotItem(projectId, spaceId, nodeId, IMAGE_SLOTS.style.field, url);
+    },
+    [projectId, spaceId, nodeId],
+  );
+  useEndPickWhenSlotGone(nodeId, vm.slots, getLastWriteWasLocal);
   const startFocusPick = useCanvasStore((s) => s.startFocusPick);
   const onFocus = React.useCallback(() => {
     const session = useCanvasStore.getState().pickSession;
@@ -591,10 +619,13 @@ function GeneratePanelBody({
         toast.warning(t('canvas.generatePanel.errorTooManyReferences', verdict.over));
         return;
       }
+      // A refusal the style slot answers for speaks in its words (inner#826).
       const key =
-        poolKindOf(fresh.pool, verdict.slot) !== undefined
-          ? 'canvas.generatePanel.errorNoSourceImage'
-          : refusalToastKey(verdict.refusal);
+        verdict.slot === IMAGE_SLOTS.style.param
+          ? slotRefusalKey(IMAGE_SLOTS, fresh.slots, verdict)
+          : poolKindOf(fresh.pool, verdict.slot) !== undefined
+            ? 'canvas.generatePanel.errorNoSourceImage'
+            : refusalToastKey(verdict.refusal);
       // `max` comes from the same value the gate judged by, so the sentence
       // can never name a limit other than the one that refused.
       if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));
@@ -684,6 +715,7 @@ function GeneratePanelBody({
   // A media chip's words follow the pool, and a new record on every derive
   // would rebuild the prompt slot each time the canvas moves.
   const stableMentionTokens = useContentStable(vm.mentionTokens);
+  const stableStyleImages = useContentStable(vm.styleImages);
   const promptSlot = React.useMemo(
     () =>
       !vm.promptRequired ? (
@@ -742,6 +774,11 @@ function GeneratePanelBody({
       onInsertReference={handleInsertReference}
       onFocus={onFocus}
       focusPicking={focusPicking}
+      styleCap={vm.styleCap}
+      styleImages={stableStyleImages}
+      onStylePick={onStylePick}
+      stylePicking={stylePicking}
+      onRemoveStyle={onRemoveStyle}
       pendingFocus={pendingFocus}
       onExecute={onExecute}
     />

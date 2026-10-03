@@ -154,7 +154,10 @@ async function failureOf(run: () => Promise<unknown>): Promise<{
   }
   const carried = toolFailureOf(thrown);
   expect(carried, "the throw carries a failure rather than being bare").toBeDefined();
-  return { forModel: carried?.forModel ?? "", readerKey: carried?.readerKey ?? "" };
+  return {
+    forModel: carried?.forModel ?? "",
+    readerKey: carried !== undefined && "readerKey" in carried ? carried.readerKey : "",
+  };
 }
 
 beforeEach(() => {

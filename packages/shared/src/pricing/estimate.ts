@@ -3,6 +3,7 @@
 
 import type { ExtraStep, PricingContract } from "@shared/types/model-catalog";
 import { isPresent } from "@shared/item-cap";
+import { joinSlotFiles } from "@shared/join-slot-files";
 import { upstreamPriceUsd } from "@shared/pricing/upstream-price";
 
 /** What the estimate reads off one declared param. */
@@ -12,6 +13,12 @@ export interface PricedParam {
   readonly fill?: string;
   readonly type?: string;
   readonly optional?: boolean;
+  /** The pool a style slot's files travel in, for a model with no field for them. */
+  readonly joins?: string;
+  /** The sentence naming a joining slot's files in the prompt. */
+  readonly prompt_note?: string;
+  /** How a pool names its files in the prompt. */
+  readonly mention?: string;
 }
 
 /** What the estimate reads off one catalog model. */
@@ -112,19 +119,38 @@ export async function estimateCredits(
   const formulas = [model.pricing.formula, ...steps.map((s) => s.pricing.formula)];
   const promptField = model.prompt_upstream ?? "prompt";
 
-  const params: Record<string, unknown> = { ...input.params };
+  // A required source the reader has not filled stands in as one placeholder,
+  // judged on the reader's own params: style files joining a pool do not fill
+  // the picture a run cannot go without.
+  const priced = Object.entries(model.params).filter(([, spec]) => spec.joins === undefined);
+  /**
+   * A param's value in a record, else what the model declares it as.
+   * @param record - The params to read.
+   * @param name - The param's name.
+   * @param spec - Its declaration.
+   * @returns The value, its default, or an empty list for a list param.
+   */
+  const valueOf = (record: Record<string, unknown>, name: string, spec: PricedParam): unknown =>
+    record[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
+  const own: Record<string, unknown> = { ...input.params };
+  let unknown = false;
+  for (const [name, spec] of priced) {
+    const source = spec.fill === "canvas" || spec.fill === "pool";
+    if (source && !isPresent(valueOf(own, name, spec)) && spec.optional !== true) {
+      own[name] = spec.type === "list" ? [UNPICKED] : UNPICKED;
+      if (reads(formulas, spec.upstream ?? name)) unknown = true;
+    }
+  }
+
+  // Priced as sent: a joining slot's files are counted inside their pool.
+  const joined = joinSlotFiles(model.params, own, input.prompt ?? "");
+  const params: Record<string, unknown> = { ...joined.params };
   const upstream: Record<string, unknown> = {};
   const durations: Record<string, readonly number[]> = {};
-  let unknown = false;
-  for (const [name, spec] of Object.entries(model.params)) {
+  for (const [name, spec] of priced) {
     const field = spec.upstream ?? name;
-    let value = input.params[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
+    const value = valueOf(joined.params, name, spec);
     const source = spec.fill === "canvas" || spec.fill === "pool";
-    if (source && !isPresent(value) && spec.optional !== true) {
-      value = spec.type === "list" ? [UNPICKED] : UNPICKED;
-      params[name] = value;
-      if (reads(formulas, field)) unknown = true;
-    }
     upstream[field] = value;
     if (source && isPresent(value)) {
       const known = input.durations?.[name] ?? [];
@@ -133,7 +159,10 @@ export async function estimateCredits(
     }
   }
 
-  const text = input.prompt ?? "";
+  // An empty prompt stays empty, so a model billed by prompt length can be
+  // quoted per thousand characters below; a written one is priced as sent,
+  // with any joining slot's note.
+  const text = (input.prompt ?? "") === "" ? "" : joined.prompt;
   const textPriced = model.takes_prompt && text === "" && billsBy(formulas, "$length", promptField);
 
   // The model's own call is skipped when its source was used before, and so is

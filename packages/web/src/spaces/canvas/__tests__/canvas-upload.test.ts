@@ -437,6 +437,15 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
     expect(assetUrlSurvives(url('ef'), nodes)).toBe(true);
   });
 
+  it('assetUrlSurvives sees every image in the style slot (inner#826)', () => {
+    // Style images are copies held in one list; any of them still in use
+    // keeps its asset alive when the node it was picked from is deleted.
+    const nodes = [{ id: 'g', data: { styleImageUrls: [url('s1'), url('s2')] } }];
+    expect(assetUrlSurvives(url('s1'), nodes)).toBe(true);
+    expect(assetUrlSurvives(url('s2'), nodes)).toBe(true);
+    expect(assetUrlSurvives(url('s3'), nodes)).toBe(false);
+  });
+
   it('sees every slot the video registry declares, not a list kept by hand (#1918)', () => {
     // Driven off the registry so a slot added there is covered the day it is
     // written. The two entries this replaces were added one PR at a time,

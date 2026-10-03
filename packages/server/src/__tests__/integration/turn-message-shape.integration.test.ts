@@ -36,6 +36,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const { modelProducing } = await import("../helpers/model-double.js");
   const { tool } = await import("ai");
   const { z } = await import("zod");
+  const { makeAskUserTool } = await import("../../../../domain/src/agent/tools/ask-user.js");
   return {
     ...actual,
     resolveProvider: () => "test",
@@ -60,6 +61,9 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         }),
         // Fails every time, so a turn can be run in which one step fails and
         // the model carries on.
+        // The real one, built per turn as the registry builds it: one question
+        // a turn is held by the tool itself.
+        ask_user: makeAskUserTool(),
         always_fails: tool({
           description: "Never succeeds.",
           inputSchema: z.object({}),
@@ -81,6 +85,7 @@ import type * as DomainModule from "@breatic/domain";
 import crypto from "node:crypto";
 import { FINISHED, FINISHED_ASKING_FOR_A_TOOL, saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
+import { TURNED_AWAY } from "@breatic/shared";
 import postgres from "postgres";
 import {
   initCore,
@@ -437,5 +442,56 @@ describe("how a turn's ending reads back when the conversation is reopened", () 
       failureKind: "tool_failed",
     });
     expect(parts.find((p) => p.type === "text")).toMatchObject({ text: "Carrying on without it." });
+  });
+});
+
+describe("how a turn that was steered reads back", () => {
+  it("keeps only the first of two questions asked in one step, and draws nothing for the second", async () => {
+    const parts = await replyReadBack([
+      {
+        type: "tool-call",
+        toolCallId: "tc-q1",
+        toolName: "ask_user",
+        input: JSON.stringify({ question: "Which style?" }),
+      },
+      {
+        type: "tool-call",
+        toolCallId: "tc-q2",
+        toolName: "ask_user",
+        input: JSON.stringify({ question: "How long?" }),
+      },
+      FINISHED_ASKING_FOR_A_TOOL,
+    ]);
+
+    const text = parts
+      .filter((p) => p.type === "text")
+      .map((p) => String(p.text))
+      .join("");
+    expect(text).toContain("Which style?");
+    expect(text).not.toContain("How long?");
+    expect(parts.find((p) => p.toolCallId === "tc-q2")).toMatchObject({
+      state: "output-error",
+      errorText: TURNED_AWAY,
+      failureKind: "turned_away",
+    });
+  });
+
+  it("reads input the SDK refused back as turned away, with no line for the reader", async () => {
+    const parts = await replyReadBack([
+      {
+        type: "tool-call",
+        toolCallId: "tc-bad",
+        toolName: "echoes_its_input",
+        input: JSON.stringify({ sourceQuery: 5 }),
+      },
+      FINISHED_ASKING_FOR_A_TOOL,
+      ...saying("Fixed it."),
+    ]);
+
+    expect(parts.find((p) => p.toolCallId === "tc-bad")).toMatchObject({
+      state: "output-error",
+      errorText: TURNED_AWAY,
+      failureKind: "turned_away",
+    });
   });
 });

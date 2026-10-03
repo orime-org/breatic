@@ -245,13 +245,131 @@ models:
           formula: "{\"total_price\": base_price * (resolution = \"4k\" ? 11/5 : 1)}"
           discount_rate: 100
 
+  - name: "krea-v2-large-text-to-image"
+    display_name: "Krea V2 Large"
+    mode: "t2i"
+    takes_prompt: true
+    tier: "optional"
+    description: "Follows up to 3 style images"
+    guide: "Text to image that takes up to three style images and renders the prompt in their look."
+    generation_time: 120
+    icon: "krea"
+    params:
+      aspect_ratio:
+        description: "Output aspect ratio"
+        default: "1:1"
+        values: ["1:1", "4:3", "3:2", "16:9", "2.35:1", "4:5", "2:3", "9:16"]
+        fill: "panel"
+      creativity:
+        description: "How loosely the prompt is read"
+        label: "Creativity"
+        default: "medium"
+        values: ["raw", "low", "medium", "high"]
+        fill: "panel"
+      style_images:
+        description: "Style reference images"
+        default: null
+        type: "list"
+        max_items: 3
+        accepts: "image"
+        fill: "canvas"
+        optional: true
+        upstream: "reference"
+        item_key: "image"
+    providers:
+      - name: "wavespeed"
+        model_id: "wavespeed-ai/krea-v2-large/text-to-image"
+        priority: 1
+        pricing:
+          base_price: 60000
+          formula: "{\"total_price\": base_price + (($count(reference) > 0) ? 5000 : 0)}"
+          discount_rate: 100
+
+  - name: "ideogram-v3-quality"
+    display_name: "Ideogram V3 Quality"
+    mode: "t2i"
+    takes_prompt: true
+    tier: "optional"
+    description: "Strong text in images, 3 style images"
+    guide: "Text to image that is strong at lettering and takes up to three style images."
+    generation_time: 120
+    icon: "ideogram"
+    params:
+      aspect_ratio:
+        description: "Output aspect ratio"
+        default: "1:1"
+        values: ["1:1", "16:9", "9:16", "4:3", "3:4"]
+        fill: "panel"
+      rendering:
+        upstream: "style"
+        description: "Rendering type"
+        label: "Rendering"
+        default: "Auto"
+        values: ["Auto", "General", "Realistic", "Design"]
+        fill: "panel"
+      style_images:
+        description: "Style reference images"
+        default: null
+        type: "list"
+        max_items: 3
+        accepts: "image"
+        fill: "canvas"
+        optional: true
+        upstream: "reference_images"
+    providers:
+      - name: "wavespeed"
+        model_id: "ideogram-ai/ideogram-v3-quality"
+        priority: 1
+        pricing:
+          base_price: 90000
+          formula: ""
+          discount_rate: 100
+
+  - name: "recraft-v4-style-text-to-image"
+    display_name: "Recraft V4 Style"
+    mode: "t2i"
+    takes_prompt: true
+    tier: "optional"
+    description: "Draws in the look of your style images"
+    guide: "Text to image built around style images: it needs one to three of them and draws the prompt in their look."
+    generation_time: 120
+    icon: "recraft"
+    params:
+      aspect_ratio:
+        description: "Output aspect ratio"
+        default: "1:1"
+        values: ["1:1", "4:3", "3:4", "16:9", "9:16"]
+        fill: "panel"
+      style_match:
+        description: "How closely the result follows the style images"
+        label: "Style match"
+        default: "precise"
+        values: ["precise", "flexible"]
+        fill: "panel"
+      style_images:
+        description: "Style reference images"
+        default: null
+        type: "list"
+        max_items: 3
+        accepts: "image"
+        fill: "canvas"
+        upstream: "images"
+    providers:
+      - name: "wavespeed"
+        model_id: "recraft-ai/recraft-v4-style/text-to-image"
+        priority: 1
+        pricing:
+          base_price: 38500
+          formula: "{\"total_price\": base_price + (($exists(images) and $count(images) > 0) ? 5500 : 0)}"
+          discount_rate: 100
+
   - name: "gpt-image-2.5-sunburst-edit"
     display_name: "GPT Image 2.5 Sunburst Edit"
     mode: ["edit", "i2i"]
     takes_prompt: true
     tier: "recommended"
-    description: "16 refs, 4K, fidelity tier to max"
-    guide: "The highest-fidelity instruction editor, and the only one that accepts 16 references at once."
+    description: "13 refs + 3 style, 4K, tier to max"
+    guide: "The highest-fidelity instruction editor; takes 13 references plus 3 style images in one run."
     generation_time: 120
     icon: "openai"
     params:
@@ -265,10 +383,21 @@ models:
         description: "Images to edit"
         default: null
         type: "list"
-        max_items: 16
+        # The upstream takes 16 images; 3 of them are kept for the style slot.
+        max_items: 13
         accepts: "image"
         fill: "pool"
         mention: "image {n}"
+      style_images:
+        description: "Style reference images"
+        default: null
+        type: "list"
+        max_items: 3
+        accepts: "image"
+        fill: "canvas"
+        optional: true
+        joins: "images"
+        prompt_note: "Style references: {list}. Apply their style to the result."
       quality:
         description: "Rendering quality"
         label: "Quality"
@@ -295,8 +424,8 @@ models:
     mode: ["i2i", "edit"]
     takes_prompt: true
     tier: "optional"
-    description: "A different house look, 10 refs"
-    guide: "A second independently top-ranked editing house — different training, different look, ten references."
+    description: "A different house look, 7 refs + 3 style"
+    guide: "A second independently top-ranked editing house — different training, different look, seven references plus three style images."
     generation_time: 120
     icon: "meta"
     params:
@@ -311,10 +440,21 @@ models:
         description: "Images to edit"
         default: null
         type: "list"
-        max_items: 10
+        # The upstream takes 10 images; 3 of them are kept for the style slot.
+        max_items: 7
         accepts: "image"
         fill: "pool"
         mention: "image {n}"
+      style_images:
+        description: "Style reference images"
+        default: null
+        type: "list"
+        max_items: 3
+        accepts: "image"
+        fill: "canvas"
+        optional: true
+        joins: "images"
+        prompt_note: "Style references: {list}. Apply their style to the result."
       output_format:
         description: "Output file format"
         default: "png"
@@ -350,10 +490,21 @@ models:
         description: "Images to edit"
         default: null
         type: "list"
-        max_items: 14
+        # The upstream takes 14 images; 3 of them are kept for the style slot.
+        max_items: 11
         accepts: "image"
         fill: "pool"
         mention: "image {n}"
+      style_images:
+        description: "Style reference images"
+        default: null
+        type: "list"
+        max_items: 3
+        accepts: "image"
+        fill: "canvas"
+        optional: true
+        joins: "images"
+        prompt_note: "Apply the artistic style of {list} to the result."
       resolution:
         description: "Output resolution"
         default: "4k"

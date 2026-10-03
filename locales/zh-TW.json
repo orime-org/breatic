@@ -638,7 +638,10 @@
         "negative_prompt": "反向提示詞",
         "motion": "運動幅度",
         "order": "順序",
-        "model_mode": "區域"
+        "model_mode": "區域",
+        "creativity": "創造力",
+        "rendering": "渲染類型",
+        "style_match": "風格貼合"
       },
       "paramField": {
         "speaker": "名字",
@@ -661,7 +664,12 @@
       "refuseStoryboardShotEmpty": "鏡頭 {shot, number} 沒有內容",
       "refuseStoryboardTooMany": "最多 {limit, number} 個鏡頭",
       "refuseStoryboardShotTooLong": "鏡頭 {shot, number} 超過 {limit, number} 字上限",
-      "refuseStoryboardDurationMismatch": "鏡頭時長合計 {shots, number} 秒，影片時長 {total, number} 秒"
+      "refuseStoryboardDurationMismatch": "鏡頭時長合計 {shots, number} 秒，影片時長 {total, number} 秒",
+      "style": "風格",
+      "styleTip": "從畫布選最多 3 張圖作為風格參考",
+      "selectStyleFromCanvas": "從畫布選擇風格參考",
+      "removeStyle": "移除風格參考",
+      "errorNoStyleImage": "先挑一張風格圖"
     },
     "nodeMenu": {
       "generate": "生成",

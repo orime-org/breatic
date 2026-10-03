@@ -16,7 +16,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { NOTHING_SAID_WHY, carrying } from "@breatic/shared";
+import { FAILURE_LINES, NOTHING_SAID_WHY, carrying, wireLineOf } from "@breatic/shared";
+import { InvalidToolInputError, NoSuchToolError } from "ai";
 import type { ToolFailure } from "@breatic/shared";
 import { STOPPED_BY_USER } from "@breatic/domain";
 
@@ -82,15 +83,18 @@ describe("轮次替一次调用说的每句话,都说了它自己那个下一步
     expect(stopped.forModel).toBe(failed.forModel);
     expect(stopped.kind).toBe("user_aborted");
     expect(failed.kind).toBe("tool_failed");
-    expect(stopped.readerKey).not.toBe(failed.readerKey);
+    expect(wireLineOf(stopped)).not.toBe(wireLineOf(failed));
   });
 
   it("SDK 拒掉的调用,在它自己那句话后面接上下一步", () => {
     // 这一条的前半截是 SDK 的原话,哪个字段不合 schema 就写在里面 —— 那正是
     // 模型改这次调用所需要的。它自己不说下一步,而这是全部结局里最该重来的
     // 一种:调用根本没发出去,改对参数就成了。
-    const ending = endingOf(new Error("AI_InvalidToolInputError: url must be a string"));
+    // The shape the SDK really hands over: its own error rendered with
+    // `toString()`, so the name leads.
+    const ending = endingOf("AI_InvalidToolInputError: url must be a string");
 
+    expect(ending.kind).toBe("turned_away");
     expect(ending.forModel).toContain("url must be a string");
     expect(ending.forModel).toMatch(/correct the call and try once more/i);
   });
@@ -105,5 +109,36 @@ describe("轮次替一次调用说的每句话,都说了它自己那个下一步
     };
 
     expect(endingOf(carrying(new Error("the message"), own))).toStrictEqual(own);
+  });
+});
+
+describe("a call the SDK refused, in either shape it arrives in", () => {
+  it("is turned away when it arrives as the SDK's own error object", () => {
+    const refused = new InvalidToolInputError({
+      toolName: "web_search",
+      toolInput: "{}",
+      cause: new Error("query is required"),
+    });
+    expect(endingOf(refused).kind).toBe("turned_away");
+    expect(endingOf(new NoSuchToolError({ toolName: "fetch_page" })).kind).toBe("turned_away");
+  });
+
+  it("is turned away when it arrives rendered as a string", () => {
+    expect(endingOf("AI_NoSuchToolError: Model tried to call unavailable tool 'x'").kind).toBe(
+      "turned_away",
+    );
+  });
+
+  it("stays a failure when it is a tool's own exception or some other error", () => {
+    // A bug in a tool, or the turn's own stream failing, is something the
+    // reader is told about.
+    expect(endingOf(new Error("boom"))).toMatchObject({
+      kind: "tool_failed",
+      readerKey: FAILURE_LINES.generic,
+    });
+    expect(endingOf("text part 1 not found")).toMatchObject({
+      kind: "tool_failed",
+      readerKey: FAILURE_LINES.generic,
+    });
   });
 });

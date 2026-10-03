@@ -21,7 +21,7 @@ import {
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import { writeNodeMedia, type NodeMediaFields } from '@breatic/shared';
+import { usableUrls, writeNodeMedia, type NodeMediaFields } from '@breatic/shared';
 import { bodyFromText, bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import type { NodeKind, NodeView } from '@web/data/yjs/node-view';
 import { toNodeView } from '@web/data/yjs/node-view';
@@ -952,6 +952,75 @@ export function setNodeSlotValue(
     } else {
       data.set(key, value);
     }
+  }, CANVAS_UNDO);
+}
+
+/**
+ * Adds one file to a slot that holds several (inner#826: style images). The
+ * list is one value, so it is read and written in one transaction; when two
+ * readers append at the same moment, each writes a whole list and Yjs keeps
+ * one of them, the same one on every client, so one of the two appends is
+ * lost.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The generative node whose slot gets the file.
+ * @param key - The node data field the slot owns.
+ * @param url - The picked file's URL.
+ * @param capacity - The most files the slot holds.
+ * @returns What happened: added, added and now full, already there, full, or
+ *   no such node.
+ */
+export function appendNodeSlotItem(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  key: string,
+  url: string,
+  capacity: number,
+): 'added' | 'filled' | 'present' | 'full' | 'node-missing' {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const data = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId)?.get('data');
+  if (!(data instanceof Y.Map)) return 'node-missing';
+  let result: 'added' | 'filled' | 'present' | 'full' = 'added';
+  doc.transact(() => {
+    const list = usableUrls(data.get(key));
+    if (list.includes(url)) {
+      result = 'present';
+      return;
+    }
+    if (list.length >= capacity) {
+      result = 'full';
+      return;
+    }
+    data.set(key, [...list, url]);
+    if (list.length + 1 >= capacity) result = 'filled';
+  }, CANVAS_UNDO);
+  return result;
+}
+
+/**
+ * Takes one file out of a slot that holds several; the field goes with the
+ * last one, so an empty slot reads the same as one never filled.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The generative node whose slot loses the file.
+ * @param key - The node data field the slot owns.
+ * @param url - The file to take out.
+ */
+export function removeNodeSlotItem(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  key: string,
+  url: string,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const data = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId)?.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => {
+    const next = usableUrls(data.get(key)).filter((u) => u !== url);
+    if (next.length === 0) data.delete(key);
+    else data.set(key, next);
   }, CANVAS_UNDO);
 }
 

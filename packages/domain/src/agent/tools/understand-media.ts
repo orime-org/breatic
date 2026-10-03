@@ -20,7 +20,7 @@ import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { getAgentConfig, getRawEnvVar } from "@breatic/core";
 import { FAILURE_LINES } from "@breatic/shared";
-import { isStop, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
+import { isStop, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import {
@@ -281,14 +281,15 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
       }
 
       if (running) {
-        // Past tense, and no mention of a turn. This sentence is stored on the
-        // failed call and read again by every later turn that reads the record
-        // — the same rule `web-search.ts` states for its own reasons — so one
-        // saying something is running now would be false by then.
-        throw toolFailed(
+        // Turned away, not failed: nothing went wrong, the model is told to wait,
+        // and the reader is shown nothing for it. Past tense, and no mention of
+        // a turn. This sentence is stored on the call and read again by every
+        // later turn that reads the record — the same rule `web-search.ts`
+        // states for its own reasons — so one saying something is running now
+        // would be false by then.
+        throw turnedAway(
           "Another media call was already running when this one arrived. Read that answer, " +
             "then ask about this address.",
-          FAILURE_LINES.generic,
         );
       }
       running = true;

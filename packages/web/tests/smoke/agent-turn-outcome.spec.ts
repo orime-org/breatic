@@ -101,3 +101,40 @@ test('tool steps that failed the same way while the turn carried on share one li
   );
   await expect(page.getByTestId('message-bubble-error')).toHaveCount(0);
 });
+
+test('calls turned away to steer the model draw no line, and only one question is asked', async ({
+  page,
+}) => {
+  // In the order the server sends them (#996): the first question answered and
+  // written into the reply, a second question turned away, input the SDK
+  // refused -- first as an input error, then as the output error that
+  // follows it -- and a second media call turned away while one was running.
+  await answerWith(page, [
+    { type: 'start-step' },
+    { type: 'tool-input-available', toolCallId: 'q1', toolName: 'ask_user', input: { question: 'Which style?' } },
+    { type: 'tool-output-available', toolCallId: 'q1', output: { question: 'Which style?' } },
+    { type: 'text-start', id: 'ask-q1' },
+    { type: 'text-delta', id: 'ask-q1', delta: '\n\nWhich style?\n\n' },
+    { type: 'text-end', id: 'ask-q1' },
+    { type: 'tool-input-available', toolCallId: 'q2', toolName: 'ask_user', input: { question: 'How long?' } },
+    { type: 'tool-output-error', toolCallId: 'q2', errorText: 'turned_away' },
+    {
+      type: 'tool-input-error',
+      toolCallId: 'bad',
+      toolName: 'web_search',
+      input: { query: 5 },
+      errorText: 'turned_away',
+    },
+    { type: 'tool-output-error', toolCallId: 'bad', errorText: 'turned_away' },
+    { type: 'tool-input-available', toolCallId: 'm2', toolName: 'understand_media', input: { url: 'https://example.com/b.mp4' } },
+    { type: 'tool-output-error', toolCallId: 'm2', errorText: 'turned_away' },
+    { type: 'finish-step' },
+    { type: 'data-blocked', data: {} },
+    { type: 'finish' },
+  ]);
+  await sendOne(page);
+
+  await page.waitForTimeout(PAST_THE_NOTICE_MS);
+  await expect(page.getByTestId('message-bubble-tool-failed')).toHaveCount(0);
+  await expect(page.getByTestId('message-bubble-content').last()).toHaveText('Which style?');
+});

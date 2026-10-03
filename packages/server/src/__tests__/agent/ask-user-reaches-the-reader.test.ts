@@ -12,13 +12,15 @@
  * What it writes is the model's own words and nothing else, which is what
  * keeps the whole paragraph in the language the conversation is in.
  *
- * Two questions can land in one step, since nothing stops a model calling a
- * tool twice at once, and both have to be there.
+ * Two calls can land in one step, since nothing stops a model calling a tool
+ * twice at once. The reader is put one question a turn, so only the first is
+ * in the reply; the other is turned away, with nothing drawn for it.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import { FINISHED, FINISHED_ASKING_FOR_A_TOOL } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
+import { TURNED_AWAY } from "@breatic/shared";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const foldIfOverBudget = vi.fn(async () => false);
@@ -57,7 +59,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   // own fields, and a field the real one grows arrives here as an unknown key
   // that zod strips in silence -- so the turn under test would draw a payload
   // production cannot produce, and go on passing.
-  const { askUser: asking } = await import("../../../../domain/src/agent/tools/ask-user.js");
+  const { makeAskUserTool } = await import("../../../../domain/src/agent/tools/ask-user.js");
 
   return {
     ...base,
@@ -65,7 +67,9 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     buildAgentConfig: () => ({
       modelId: "test",
       instructions: "system",
-      tools: { ask_user: asking },
+      // One per turn, as the registry builds it: the tool holds whether this
+      // turn has asked yet.
+      tools: { ask_user: makeAskUserTool() },
     }),
     // Runs the one step this file is about. The real one runs them all in
     // order; what matters here is that storage is reached at all, because the
@@ -130,19 +134,35 @@ function asks(calls: Array<Record<string, unknown>>): ModelStreamPart[] {
  * @returns Everything the turn wrote as text, joined in order.
  */
 async function replyText(script: ModelStreamPart[]): Promise<string> {
+  return (await turnOn(script)).text;
+}
+
+/**
+ * Run one turn and report what the reader was sent.
+ * @param script - What the model produces on its one call.
+ * @returns The reply's text, and the error field of each tool call that ended
+ *   in one, by call id.
+ */
+async function turnOn(
+  script: ModelStreamPart[],
+): Promise<{ text: string; toolErrors: Record<string, string | undefined> }> {
   modelSays.perCall = [script];
   modelSays.calls = 0;
-  let written = "";
+  let text = "";
+  const toolErrors: Record<string, string | undefined> = {};
 
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
     const turn = await new MainAgent().chat("帮我看看");
     for await (const chunk of turn) {
-      const part = chunk as { type: string; delta?: string };
-      if (part.type === "text-delta") written += part.delta ?? "";
+      const part = chunk as { type: string; delta?: string; toolCallId?: string; errorText?: string };
+      if (part.type === "text-delta") text += part.delta ?? "";
+      if (part.type === "tool-output-error" && part.toolCallId !== undefined) {
+        toolErrors[part.toolCallId] = part.errorText;
+      }
     }
   });
 
-  return written;
+  return { text, toolErrors };
 }
 
 describe("a question with options", () => {
@@ -225,16 +245,36 @@ describe("two questions in one step", () => {
     vi.clearAllMocks();
   });
 
-  it("are both in the reply, in the order they were asked", async () => {
-    // Stopping after a question is decided per step, so a model calling the
-    // tool twice at once runs both. Drawing one of them would leave the
-    // reader answering a question they cannot see.
-    const text = await replyText(
+  it("put only the first in the reply, and draw nothing for the second", async () => {
+    // Stopping after a question is decided per step, so both calls run; the
+    // tool is what lets only the first through. The second goes out as turned
+    // away, which the panel takes as "draw nothing".
+    const { text, toolErrors } = await turnOn(
       asks([{ question: "先定节奏？" }, { question: "再定时长？" }]),
     );
 
-    // Both in full, and the blank lines between them: two paragraphs, not the
-    // second question tacked onto the end of the first one's last option.
-    expect(text).toBe("\n\n先定节奏？\n\n\n\n再定时长？\n\n");
+    expect(text).toBe("\n\n先定节奏？\n\n");
+    expect(toolErrors["call-0"]).toBeUndefined();
+    expect(toolErrors["call-1"]).toBe(TURNED_AWAY);
+  });
+
+  it("put the second in the reply when the first was refused for its input", async () => {
+    // A call the schema refuses never runs, so it asks nothing: the first
+    // question actually put is the second call's.
+    const { text, toolErrors } = await turnOn(asks([{ options: 5 }, { question: "再定时长？" }]));
+
+    expect(text).toBe("\n\n再定时长？\n\n");
+    expect(toolErrors["call-0"]).toBe(TURNED_AWAY);
+    expect(toolErrors["call-1"]).toBeUndefined();
+  });
+
+  it("store the second as turned away, so a reload draws nothing for it either", async () => {
+    await turnOn(asks([{ question: "先定节奏？" }, { question: "再定时长？" }]));
+
+    const stored = addMessage.mock.calls.at(-1)?.[1] as
+      | { parts?: Array<{ type: string; toolCallId?: string; failure?: { kind?: string } }> }
+      | undefined;
+    const second = (stored?.parts ?? []).find((part) => part.toolCallId === "call-1");
+    expect(second?.failure?.kind).toBe("turned_away");
   });
 });

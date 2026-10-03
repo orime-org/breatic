@@ -62,3 +62,31 @@ describe("validateParams and a capped list param", () => {
     expect(cleaned.images).toEqual(["a", "b"]);
   });
 });
+
+// A style slot that joins a pool is capped on its own (inner#826): a full
+// pool and a full style slot both pass whole, and the fold that follows sends
+// every one of them upstream.
+describe("validateParams — a style slot joining a pool", () => {
+  const STYLE = {
+    description: "Style references",
+    type: "list",
+    max_items: 3,
+    default: null,
+    fill: "canvas",
+    joins: "images",
+    prompt_note: "Style references: {list}.",
+  };
+  const POOL = { description: "Images to edit", type: "list", max_items: 13, default: null, fill: "pool", mention: "image {n}" };
+  const files = (n: number, tag: string): string[] => Array.from({ length: n }, (_, i) => `${tag}${i}`);
+
+  it("keeps thirteen pool images and three style images, and the fold sends all sixteen", async () => {
+    getFullModelConfig.mockReturnValue({ models: [{ name: "edit", params: { images: POOL, style_images: STYLE } }] });
+    const [, cleaned] = validateParams("image", "edit", { images: files(13, "r"), style_images: files(3, "s") });
+    expect(cleaned.images).toHaveLength(13);
+    expect(cleaned.style_images).toHaveLength(3);
+    const { joinSlotFiles } = await import("@breatic/shared");
+    const sent = joinSlotFiles({ images: POOL, style_images: STYLE }, cleaned, "redraw");
+    expect(sent.params.images).toEqual([...files(13, "r"), ...files(3, "s")]);
+    expect(sent.prompt).toBe("redraw Style references: image 14, image 15 and image 16.");
+  });
+});
