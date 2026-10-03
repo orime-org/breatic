@@ -55,7 +55,10 @@ function open(text = 'lead'): Editor {
  */
 function paste(editor: Editor, data: Record<string, string>): void {
   const event = new Event('paste', { bubbles: true, cancelable: true });
+  // Configurable, as on a browser's event, where the clipboard is a getter on
+  // the prototype and the page may put its own value on the event.
   Object.defineProperty(event, 'clipboardData', {
+    configurable: true,
     value: {
       types: Object.keys(data),
       getData: (type: string): string => data[type] ?? '',
@@ -174,6 +177,36 @@ describe('pasting a table from elsewhere (A16)', () => {
     paste(editor, { 'text/plain': MARKDOWN });
 
     expect(tables(editor)).toEqual([[['h1', 'h2'], ['c1', 'c2']]]);
+  });
+});
+
+describe('pasting a web table whose grid is not even (A16)', () => {
+  it('lands a table whose rowspan runs past its last row, the span cut to the rows there are', () => {
+    const editor = open();
+
+    paste(editor, {
+      'text/html': '<table><tr><td rowspan="5">tall</td><td>b</td></tr><tr><td>c</td></tr></table>',
+      'text/plain': 'tall\tb\nc',
+    });
+
+    expect(tables(editor)).toEqual([[['tall', 'b'], ['c']]]);
+    let rowspan = 0;
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'tableCell' && node.textContent === 'tall') rowspan = Number(node.attrs['rowspan']);
+      return true;
+    });
+    expect(rowspan).toBe(2);
+  });
+
+  it('keeps the words of a short first row in its first columns', () => {
+    const editor = open();
+
+    paste(editor, {
+      'text/html': '<table><tr><td>a</td></tr><tr><td>b</td><td>c</td></tr></table>',
+      'text/plain': 'a\nb\tc',
+    });
+
+    expect(tables(editor)).toEqual([[['a', ''], ['b', 'c']]]);
   });
 });
 
