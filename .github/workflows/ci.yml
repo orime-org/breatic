@@ -217,8 +217,9 @@ jobs:
     # package at once, and a suite holding servers open for 46 or 65 seconds
     # decides the timeouts of every package running beside it.
     env:
-      # The runner is ephemeral and global-setup.ts already calls .stop() on
-      # the containers explicitly, so the Testcontainers Ryuk reaper adds no
+      # The runner is ephemeral and the shared container setup
+      # (packages/integration-tests/src/test-utils/containers.ts) already calls
+      # .stop() on the containers explicitly, so the Testcontainers Ryuk reaper adds no
       # value here and can be flaky in CI — disable it.
       TESTCONTAINERS_RYUK_DISABLED: "true"
 

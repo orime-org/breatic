@@ -611,18 +611,9 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
-      '@breatic/collab':
+      '@breatic/integration-tests':
         specifier: workspace:*
-        version: link:../collab
-      '@breatic/worker':
-        specifier: workspace:*
-        version: link:../worker
-      '@hocuspocus/extension-redis':
-        specifier: 'catalog:'
-        version: 4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
-      '@hocuspocus/server':
-        specifier: 'catalog:'
-        version: 4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
+        version: link:../integration-tests
       '@testcontainers/postgresql':
         specifier: 'catalog:'
         version: 11.14.0
@@ -656,9 +647,6 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(@vitest/ui@4.1.10)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0)
-      yjs:
-        specifier: 'catalog:'
-        version: 13.6.32
 
   packages/shared:
     dependencies:

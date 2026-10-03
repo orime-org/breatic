@@ -9,6 +9,7 @@
  * Run with: pnpm --filter @breatic/server test:integration
  */
 
+import type {} from "@breatic/integration-tests/provided-context";
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 
@@ -20,10 +21,14 @@ export default defineConfig({
     // __tests__/ next to the module — run in neither config, committed and
     // green and never executed.
     include: ["src/**/*.integration.test.ts"],
-    // globalSetup starts testcontainers BEFORE any test module is imported.
-    globalSetup: ["./src/__tests__/integration/global-setup.ts"],
+    // globalSetup starts testcontainers BEFORE any test module is imported,
+    // then lays down the payment configs only this package's suites read.
+    globalSetup: [
+      "@breatic/integration-tests/containers",
+      "./src/__tests__/integration/payment-configs.ts",
+    ],
     // setupFiles runs inside the worker process. Re-applies env vars from globalSetup.
-    setupFiles: ["./src/__tests__/integration/integration-setup.ts"],
+    setupFiles: ["@breatic/integration-tests/env"],
     // Single fork: one worker process, one container set, no port conflicts.
     pool: "forks",
     poolOptions: {
@@ -38,19 +43,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@server": resolve(__dirname, "./src"),
-      // Allow integration tests to import from worker and collab source directly.
-      "@breatic/worker/src": resolve(__dirname, "../worker/src"),
-      "@breatic/collab/src": resolve(__dirname, "../collab/src"),
-      // Worker and collab source modules reference their OWN code through the
-      // package-local `@worker/*` and `@collab/*` path aliases (CLAUDE.md
-      // rule #15: depended-on packages use a globally-unique prefix). When an
-      // integration test imports that source (via the `@breatic/{worker,collab}/src`
-      // aliases above), Vite must also resolve those self-aliases — otherwise
-      // e.g. `@worker/mini-tool-registry.js` fails with "Does the file exist?".
-      "@worker": resolve(__dirname, "../worker/src"),
-      "@collab": resolve(__dirname, "../collab/src"),
-      // The same for a test that reaches for a real tool: it imports the domain
-      // source directly, and that source uses domain's own alias.
+      // A test that reaches for a real tool imports the domain source
+      // directly, and that source uses domain's own alias.
       "@domain": resolve(__dirname, "../domain/src"),
     },
   },

@@ -7,7 +7,7 @@
 # fixture: figures that assertions can name, and price ids that belong to
 # nobody.
 #
-# `global-setup.ts` copies this to `config/pricing.yaml` when that file is
+# `payment-configs.ts` copies this to `config/pricing.yaml` when that file is
 # absent, and removes it again afterwards. A developer's own file is left
 # alone.
 #

@@ -20,7 +20,7 @@
  * approve AND reject it, double-bumping roles / sending conflicting
  * notifications.
  *
- * Runs against the testcontainer Postgres + Redis started by global-setup.ts.
+ * Runs against the testcontainer Postgres + Redis started by @breatic/integration-tests/containers.
  * Seeding uses a narrow raw `postgres` client; the assertions drive the real
  * `roleUpgradeRequest.service` (core's env-bound `db`).
  */
@@ -46,7 +46,7 @@ import { initCore } from "@breatic/core";
 import * as roleUpgradeService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
 import { getDecisionWindowMs } from "@server/config/limits.js";
 
-// integration-setup.ts injects the container URLs into process.env but
+// @breatic/integration-tests/env injects the container URLs into process.env but
 // deliberately does not call initCore itself — a setup file runs for every
 // suite, so importing the core barrel there would pull the application into
 // every module graph.

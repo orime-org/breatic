@@ -36,10 +36,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@breatic/collab": "workspace:*",
-    "@breatic/worker": "workspace:*",
-    "@hocuspocus/extension-redis": "catalog:",
-    "@hocuspocus/server": "catalog:",
+    "@breatic/integration-tests": "workspace:*",
     "@testcontainers/postgresql": "catalog:",
     "@types/mdast": "^4.0.4",
     "@types/mjml": "5.0.0",
@@ -50,7 +47,6 @@
     "testcontainers": "catalog:",
     "tsup": "catalog:",
     "tsx": "catalog:",
-    "vitest": "catalog:",
-    "yjs": "catalog:"
+    "vitest": "catalog:"
   }
 }

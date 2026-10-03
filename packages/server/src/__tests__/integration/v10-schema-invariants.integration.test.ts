@@ -17,7 +17,7 @@
  *      A second active owner insert is rejected; soft-deleting the
  *      first row makes the next insert succeed (revival path).
  *
- * Runs against a real PostgreSQL container started by global-setup.ts.
+ * Runs against a real PostgreSQL container started by @breatic/integration-tests/containers.
  * Skips testcontainers' application-bootstrap path entirely — this
  * test owns its own postgres-js client to keep the round-trip narrow.
  */

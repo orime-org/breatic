@@ -24,7 +24,7 @@
  *
  * These are transaction / visibility properties, so they are only provable
  * against a real Postgres. Runs against the testcontainer Postgres + Redis
- * started by global-setup.ts; seeding uses a narrow raw `postgres` client while
+ * started by @breatic/integration-tests/containers; seeding uses a narrow raw `postgres` client while
  * the assertions drive the real `roleUpgradeRequest.service`.
  */
 
@@ -48,7 +48,7 @@ import postgres from "postgres";
 import { initCore } from "@breatic/core";
 import * as roleUpgradeService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
 
-// integration-setup.ts injects the container URLs into process.env but
+// @breatic/integration-tests/env injects the container URLs into process.env but
 // deliberately does not call initCore itself — a setup file runs for every
 // suite, so importing the core barrel there would pull the application into
 // every module graph.
