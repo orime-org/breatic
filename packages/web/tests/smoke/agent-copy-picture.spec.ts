@@ -107,6 +107,14 @@ test('a copied picture pastes onto the canvas and lands as a stored picture @nee
   expect(pasted.name).toBe(copied?.name ?? pasted.name);
   // The node never holds the outside address; the server writes the stored one.
   expect(pasted.content).not.toBe(copied?.content);
+  // It lands in the view, the way a pasted file does.
+  const pane = await page.locator('.react-flow').boundingBox();
+  const placed = await page.locator(`.react-flow__node[data-id="${pasted.id}"]`).boundingBox();
+  if (pane === null || placed === null) throw new Error('the canvas or the node is not on screen');
+  expect(placed.x).toBeGreaterThanOrEqual(pane.x);
+  expect(placed.y).toBeGreaterThanOrEqual(pane.y);
+  expect(placed.x + placed.width).toBeLessThanOrEqual(pane.x + pane.width);
+  expect(placed.y + placed.height).toBeLessThanOrEqual(pane.y + pane.height);
 
   await expect
     .poll(async () => (await documentNodes(page)).find((n) => n.id === pasted.id)?.content ?? null, {

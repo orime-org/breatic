@@ -19,7 +19,13 @@ import { ApiException } from '@web/data/api/types';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
-import { canvasTakesPaste, cloneForPaste, CLIPBOARD_MARKER } from '@web/spaces/canvas/node-clipboard';
+import {
+  canvasTakesPaste,
+  cloneForPaste,
+  CLIPBOARD_MARKER,
+  pasteOffsetFor,
+} from '@web/spaces/canvas/node-clipboard';
+import { useUIStore } from '@web/stores/ui';
 
 const toastError = vi.hoisted(() => vi.fn());
 vi.mock('@web/lib/toast', () => ({ toast: { error: toastError } }));
@@ -119,17 +125,70 @@ describe('pasting a node from outside', () => {
 });
 
 describe('whether the canvas takes a paste', () => {
-  it('takes any paste while the space holds the keyboard', () => {
-    expect(canvasTakesPaste(true, 'plain text')).toBe(true);
+  /**
+   * An element in a region, appended to the page.
+   * @param region - The region it sits in, or none for an overlay portalled to body.
+   * @returns The element.
+   */
+  const elementIn = (region: 'space' | 'agent' | null): HTMLElement => {
+    const host = document.createElement('div');
+    if (region !== null) host.setAttribute('data-region', region);
+    const button = document.createElement('button');
+    host.append(button);
+    document.body.append(host);
+    return button;
+  };
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+    useUIStore.getState().setActiveRegion('space');
   });
 
-  it('takes its own nodes even after a click elsewhere', () => {
+  it('takes any paste while the space holds the keyboard', () => {
+    useUIStore.getState().setActiveRegion('space');
+    expect(canvasTakesPaste(elementIn('space'), 'plain text')).toBe(true);
+  });
+
+  it('takes its own nodes after a click in the agent column', () => {
     // Copying a picture in the agent column leaves the keyboard there; a
     // paste of canvas nodes has no other place to go.
-    expect(canvasTakesPaste(false, `${CLIPBOARD_MARKER}[]`)).toBe(true);
+    useUIStore.getState().setActiveRegion('agent');
+    expect(canvasTakesPaste(elementIn('agent'), `${CLIPBOARD_MARKER}[]`)).toBe(true);
   });
 
   it('leaves plain text to whoever holds the keyboard', () => {
-    expect(canvasTakesPaste(false, 'plain text')).toBe(false);
+    useUIStore.getState().setActiveRegion('agent');
+    expect(canvasTakesPaste(elementIn('agent'), 'plain text')).toBe(false);
+  });
+
+  it('leaves a paste inside an open overlay to the overlay', () => {
+    // A menu or dialog portalled to body is handling its own keys.
+    useUIStore.getState().setActiveRegion('agent');
+    expect(canvasTakesPaste(elementIn(null), `${CLIPBOARD_MARKER}[]`)).toBe(false);
+  });
+});
+
+describe('where pasted nodes land', () => {
+  const viewport = { x: 1000, y: 1000, width: 800, height: 600 };
+
+  it('puts pictures from outside in the middle of the view, even with the origin in view', () => {
+    const offset = pasteOffsetFor(
+      [{ ...outside, position: { x: 0, y: 0 } }],
+      { x: -100, y: -100, width: 800, height: 600 },
+      24,
+    );
+    const box = { width: 288, height: 192 };
+    // The node's centre lands on the view's centre.
+    expect(offset.dx + box.width / 2).toBe(-100 + 400);
+    expect(offset.dy + box.height / 2).toBe(-100 + 300);
+  });
+
+  it('keeps nodes copied on the canvas beside their source', () => {
+    const offset = pasteOffsetFor(
+      [{ type: 'text' as const, position: { x: 1100, y: 1100 } }],
+      viewport,
+      24,
+    );
+    expect(offset).toEqual({ dx: 24, dy: 24 });
   });
 });

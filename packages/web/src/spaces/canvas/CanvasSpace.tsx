@@ -253,8 +253,8 @@ import {
   cloneForPaste,
   externalParentAbs,
   canvasTakesPaste,
+  pasteOffsetFor,
   parseClipboardNodes,
-  pasteAnchorOffset,
   serializeNodes,
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
@@ -2886,7 +2886,7 @@ function CanvasSpaceInner({
     const onPaste = (event: ClipboardEvent): void => {
       const text = event.clipboardData?.getData('text/plain') ?? '';
       if (readOnly) return;
-      if (!canvasTakesPaste(regionOwnsKeyboard(event.target, 'space'), text)) return;
+      if (!canvasTakesPaste(event.target, text)) return;
       // A caret in a field is answered by the field or by the browser, so
       // this key is theirs while one is there.
       if (isEditableTarget(event.target as Element | null)) return;
@@ -2920,8 +2920,8 @@ function CanvasSpaceInner({
         if (rect) {
           const tl = screenToFlowPosition({ x: rect.left, y: rect.top });
           const br = screenToFlowPosition({ x: rect.right, y: rect.bottom });
-          offset = pasteAnchorOffset(
-            clipboardBoundingBox(clipboardNodes),
+          offset = pasteOffsetFor(
+            clipboardNodes,
             { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y },
             PASTE_OFFSET_PX,
           );

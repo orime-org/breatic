@@ -13,6 +13,7 @@
 
 import type { CanvasNodeFields } from '@breatic/shared';
 import { newId } from '@breatic/shared';
+import { regionOf, regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 
 import {
   createEmptyNode,
@@ -279,14 +280,17 @@ export function parseClipboardNodes(text: string): ClipboardNode[] | null {
  * Whether a paste belongs to the canvas.
  *
  * The canvas takes a paste while the space holds the keyboard. Its own nodes
- * it takes regardless: copying a picture in the agent column leaves the
- * keyboard there, and canvas nodes have nowhere else to go.
- * @param ownsKeyboard - Whether the space holds the keyboard.
+ * it also takes after a click in another region: copying a picture in the
+ * agent column leaves the keyboard there, and canvas nodes have nowhere else
+ * to go. A paste inside an open overlay stays the overlay's.
+ * @param target - The paste event's target.
  * @param text - The clipboard's plain text.
  * @returns Whether the canvas handles this paste.
  */
-export function canvasTakesPaste(ownsKeyboard: boolean, text: string): boolean {
-  return ownsKeyboard || text.startsWith(CLIPBOARD_MARKER);
+export function canvasTakesPaste(target: EventTarget | null, text: string): boolean {
+  if (regionOwnsKeyboard(target, 'space')) return true;
+  if (!text.startsWith(CLIPBOARD_MARKER) || !(target instanceof Element)) return false;
+  return target === document.body || regionOf(target) !== null;
 }
 
 /**
@@ -479,6 +483,36 @@ export function pasteAnchorOffset(
   const viewCenterX = viewport.x + viewport.width / 2;
   const viewCenterY = viewport.y + viewport.height / 2;
   return { dx: viewCenterX - boxCenterX, dy: viewCenterY - boxCenterY };
+}
+
+/**
+ * Where a paste goes, relative to where the payload was copied from.
+ *
+ * Nodes copied on the canvas land beside their source while it is in view.
+ * Pictures from outside have no source on the canvas, so they land in the
+ * middle of the view, the way a pasted file does.
+ * @param nodes - The clipboard payload.
+ * @param viewport - The visible canvas rect, in flow coordinates.
+ * @param viewport.x - Its left edge.
+ * @param viewport.y - Its top edge.
+ * @param viewport.width - Its width.
+ * @param viewport.height - Its height.
+ * @param offsetPx - The nudge beside an in-view source.
+ * @returns The shift to apply to every node's position.
+ */
+export function pasteOffsetFor(
+  nodes: ReadonlyArray<ClipboardNode>,
+  viewport: { x: number; y: number; width: number; height: number },
+  offsetPx: number,
+): { dx: number; dy: number } {
+  const box = clipboardBoundingBox(nodes);
+  if (!nodes.every((node) => node.external === true)) {
+    return pasteAnchorOffset(box, viewport, offsetPx);
+  }
+  return {
+    dx: viewport.x + viewport.width / 2 - (box.x + (box.width ?? 0) / 2),
+    dy: viewport.y + viewport.height / 2 - (box.y + (box.height ?? 0) / 2),
+  };
 }
 
 /**
