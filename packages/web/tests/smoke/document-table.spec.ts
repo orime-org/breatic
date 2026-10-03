@@ -431,6 +431,155 @@ test('A6, A11 and A12: on a wide table scrolled sideways, the row handle stays i
   expect(handle!.x).toBeLessThan(box!.x + 24);
 });
 
+/**
+ * The visible box of the frame a table scrolls in.
+ * @param p - The page.
+ * @param index - Which table, from the top.
+ * @returns The frame's box.
+ */
+async function frameOf(p: Page, index: number): Promise<{ left: number; right: number }> {
+  return p.locator(`${EDITOR} table`).nth(index).evaluate((table) => {
+    const box = table.closest('[data-radix-scroll-area-viewport]')!.getBoundingClientRect();
+    return { left: box.left, right: box.right };
+  });
+}
+
+/**
+ * Scrolls the frame a table sits in.
+ * @param p - The page.
+ * @param index - Which table, from the top.
+ * @param left - How far, or 'end' for all the way.
+ */
+async function scrollTable(p: Page, index: number, left: number | 'end'): Promise<void> {
+  await p.locator(`${EDITOR} table`).nth(index).evaluate((table, to) => {
+    const viewport = table.closest('[data-radix-scroll-area-viewport]')!;
+    viewport.scrollLeft = to === 'end' ? viewport.scrollWidth : to;
+  }, left);
+}
+
+/**
+ * Whether a control is on screen right now, read after the page has drawn
+ * twice: a pointer moving on would not give it longer to come back.
+ * @param p - The page.
+ * @param testId - The control.
+ * @returns Whether it is visible.
+ */
+async function shownNow(p: Page, testId: string): Promise<boolean> {
+  await p.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+  return p.getByTestId(testId).isVisible();
+}
+
+/**
+ * Pastes a table of the given size, its cells named by a prefix, row and column.
+ * @param p - The page.
+ * @param rows - How many rows.
+ * @param cols - How many columns.
+ * @param tag - The prefix.
+ */
+async function pasteGrid(p: Page, rows: number, cols: number, tag: string): Promise<void> {
+  const row = (r: number): string =>
+    `<tr>${Array.from({ length: cols }, (_, c) => `<td>${tag}${r}${c}</td>`).join('')}</tr>`;
+  const html = `<table><tbody>${Array.from({ length: rows }, (_, r) => row(r)).join('')}</tbody></table>`;
+  await p.evaluate(([selector, markup]) => {
+    const transfer = new DataTransfer();
+    transfer.setData('text/html', markup);
+    document.querySelector(selector)!.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true }),
+    );
+  }, [EDITOR, html] as const);
+  await expect(cell(p, `${tag}00`)).toBeVisible();
+}
+
+test('A8 and A12: on a wide table scrolled with the wheel, the edge plus buttons stay in the frame and in reach', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.press('Enter');
+  await pasteGrid(page, 2, 12, 'w');
+  await cell(page, 'w10').click();
+  await pressAndSettle(page, 'ArrowDown');
+  await pasteGrid(page, 3, 3, 'n');
+  await page.locator(TOP).first().click();
+  const frame = await frameOf(page, 0);
+
+  // Scrolled partway the way a reader scrolls, which brings up the frame's
+  // scrollbar over the last row: moving down from that row to the bar under
+  // the table, across the scrollbar, keeps the bar there, and the bar covers
+  // only what is in sight.
+  const box = await page.locator(`${EDITOR} table`).first().boundingBox();
+  await page.mouse.move(box!.x + 300, box!.y + 20);
+  await page.mouse.wheel(400, 0);
+  const from = await cell(page, 'w16').boundingBox();
+  const x = from!.x + 30;
+  await page.mouse.move(x, from!.y + from!.height / 2, { steps: 4 });
+  for (let y = from!.y + from!.height - 6; y <= from!.y + from!.height + 9; y += 3) {
+    await page.mouse.move(x, y);
+    expect(await shownNow(page, 'doc-table-extend-rows'), `at ${y}`).toBe(true);
+  }
+  const rows = await page.getByTestId('doc-table-extend-rows').boundingBox();
+  expect(rows!.x).toBeGreaterThanOrEqual(frame.left - 1);
+  expect(rows!.x + rows!.width).toBeLessThanOrEqual(frame.right + 1);
+  const lower = await page.locator(`${EDITOR} table`).nth(1).boundingBox();
+  expect(rows!.y + rows!.height).toBeLessThanOrEqual(lower!.y);
+
+  // The plus beside the table belongs to its right edge, out of sight until scrolled to.
+  await scrollTable(page, 0, 0);
+  await hoverCell(page, 'w05');
+  await expect(page.getByTestId('doc-table-extend-cols')).toHaveCount(0);
+  await scrollTable(page, 0, 'end');
+  await hoverCell(page, 'w011');
+  const cols = await page.getByTestId('doc-table-extend-cols').boundingBox();
+  expect(cols!.x + cols!.width).toBeLessThanOrEqual(frame.right + 1);
+});
+
+test('A8: the plus under a table is reached by moving down to it, with another table right below', async () => {
+  await openFreshDocument(page);
+  await insertTable(page, 2, 2);
+  await fill(page, ['e1', 'e2', 'e3', 'e4']);
+  await insertTable(page, 2, 2);
+  await fill(page, ['a1', 'b1', 'a2', 'b2']);
+  await page.locator(TOP).first().click();
+
+  const start = await cell(page, 'a2').boundingBox();
+  const lower = await page.locator(`${EDITOR} table`).nth(1).boundingBox();
+  await page.mouse.move(5, 5);
+  await page.mouse.move(start!.x + 20, start!.y + start!.height / 2, { steps: 3 });
+  const x = start!.x + 20;
+  for (let y = start!.y + start!.height / 2; y <= start!.y + start!.height + 8; y += 3) {
+    await page.mouse.move(x, y);
+    expect(await shownNow(page, 'doc-table-extend-rows'), `at ${y}`).toBe(true);
+  }
+  const bar = await page.getByTestId('doc-table-extend-rows').boundingBox();
+  expect(bar!.y + bar!.height).toBeLessThanOrEqual(lower!.y);
+  await page.mouse.click(x, bar!.y + bar!.height / 2);
+
+  expect(await grids(page)).toEqual([
+    [['a1', 'b1'], ['a2', 'b2'], ['', '']],
+    [['e1', 'e2'], ['e3', 'e4']],
+  ]);
+});
+
+test('A8: the plus beside a table is reached by moving right to it', async () => {
+  await openFreshDocument(page);
+  await smallTable(page);
+
+  const start = await cell(page, 'b1').boundingBox();
+  const y = start!.y + start!.height / 2;
+  await page.mouse.move(5, 5);
+  await page.mouse.move(start!.x + start!.width / 2, y, { steps: 3 });
+  for (let x = start!.x + start!.width / 2; x <= start!.x + start!.width + 8; x += 3) {
+    await page.mouse.move(x, y);
+    expect(await shownNow(page, 'doc-table-extend-cols'), `at ${x}`).toBe(true);
+  }
+  const bar = await page.getByTestId('doc-table-extend-cols').boundingBox();
+  await page.mouse.click(bar!.x + bar!.width / 2, y);
+
+  expect(await grids(page)).toEqual([[['a1', 'b1', ''], ['a2', 'b2', '']]]);
+});
+
 test('A13: the table reads the product tokens in the dark theme', async () => {
   await openFreshDocument(page);
   await smallTable(page);
