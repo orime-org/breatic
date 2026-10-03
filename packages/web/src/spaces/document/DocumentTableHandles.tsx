@@ -303,14 +303,14 @@ export function DocumentTableHandle({
   }, [onOpenChange]);
   useCloseWhenTargetGone(editor, open, close);
 
-  // Read against the frame each time the handles appear; the controller hides
-  // them on a scroll.
-  const place =
-    state === undefined ? IN_PLACE : framePlaceOf(editor.prosemirrorView, state.block.id, row, state.referencePosCell);
+  // Read against the frame whenever the controller places the handles; it
+  // hides them on a scroll.
   const placeStyle = React.useMemo<React.CSSProperties | undefined>(() => {
+    const place =
+      state === undefined ? IN_PLACE : framePlaceOf(editor.prosemirrorView, state.block.id, row, state.referencePosCell);
     if (place.hidden) return { visibility: 'hidden' };
     return place.shift === 0 ? undefined : { transform: `translateX(${place.shift}px)` };
-  }, [place.hidden, place.shift]);
+  }, [editor, row, state]);
 
   if (state === undefined || (holdsSelection && !open)) return null;
   const index = row ? state.rowIndex : state.colIndex;
@@ -318,7 +318,7 @@ export function DocumentTableHandle({
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <div className='relative flex' style={placeStyle}>
+      <div className='doc-table-handle relative flex' style={placeStyle}>
         {/* The anchor, and nothing else, as on the block handle: it answers
             no pointer events, so Radix's trigger handlers never run on the
             button beside it. */}

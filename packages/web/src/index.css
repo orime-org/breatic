@@ -1912,6 +1912,21 @@ body {
   box-shadow: inset -2px 0 0 var(--color-status-selected);
 }
 
+/* A row or column handle moves off the spot the library places its box on
+   when the table is scrolled sideways (`framePlaceOf` in
+   `DocumentTableHandles.tsx`); the library's box stays on that spot, over
+   whatever is there, so it lets presses through and only the handle takes
+   them. */
+@layer components {
+  div:has(> .doc-table-handle) {
+    pointer-events: none;
+  }
+
+  .doc-table-handle {
+    pointer-events: auto;
+  }
+}
+
 /* A cell's fill: the tint a highlight on words uses, so the panel's swatch,
    a highlight and a filled cell read one value. The library knows its own
    colour names and not ours. */

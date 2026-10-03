@@ -497,6 +497,14 @@ test('A6 and A11: a cell cut by the frame of a wide table shows its button and c
   await page.mouse.move(cut!.x, cut!.y, { steps: 3 });
   await expect(page.getByTestId('doc-table-col-handle')).toHaveCount(1);
   expect(await inFrame('doc-table-col-handle')).toBe(true);
+
+  // The whole button answers, its top edge too: nothing left where the
+  // handle was before it moved takes the press.
+  const button = (await page.getByTestId('doc-table-cell-button').boundingBox())!;
+  await page.mouse.click(button.x + button.width / 2, button.y + 2);
+  await expect(page.getByTestId('doc-table-cell-align')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('doc-table-cell-align')).toHaveCount(0);
 });
 
 test('A13: the table reads the product tokens in the dark theme', async () => {

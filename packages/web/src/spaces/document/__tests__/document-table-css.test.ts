@@ -47,6 +47,13 @@ describe('a table in the body', () => {
     expect(paddings.map(({ value }) => value)).toEqual(['0 0 0.5rem 0']);
   });
 
+  it('lets presses through the library box a moved row or column handle leaves behind', () => {
+    // The handle is translated onto the part of the table in view; the box the
+    // library places it in stays where it was and must not take a press.
+    expect(ruleBody('div:has(> .doc-table-handle)')).toContain('pointer-events: none');
+    expect(ruleBody('.doc-table-handle')).toContain('pointer-events: auto');
+  });
+
   it('draws where a dragged row or column lands the way a dragged block\'s line is drawn', () => {
     for (const [name, shadow] of [
       ['row-before', '0 2px 0'],

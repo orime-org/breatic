@@ -45,7 +45,7 @@ function endsIn(selector: string, endsWith: string): boolean {
  * @throws {Error} When no rule, or more than one, matches.
  */
 export function selectorEndingIn(endsWith: string): string {
-  const found = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((match) =>
+  const found = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((match) =>
     endsIn(match[1], endsWith),
   );
   if (found.length !== 1) {
@@ -61,7 +61,7 @@ export function selectorEndingIn(endsWith: string): string {
  * @throws {Error} When no rule, or more than one, matches.
  */
 export function ruleBody(endsWith: string): string {
-  const found = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((match) =>
+  const found = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((match) =>
     endsIn(match[1], endsWith),
   );
   if (found.length !== 1) {
@@ -86,7 +86,7 @@ export function declarationsOf(
   property: string,
 ): { selector: string; value: string }[] {
   const found: { selector: string; value: string }[] = [];
-  for (const rule of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+  for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const selector = rule[1].trim();
     // What a selector names inside `:not(...)` is what it refuses to reach,
     // so a rule mentioning a class there is not a rule about that class.
