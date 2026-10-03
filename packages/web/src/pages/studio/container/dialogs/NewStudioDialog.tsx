@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -17,9 +18,15 @@ import { Label } from '@web/components/ui/label';
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
-import { STUDIO_SLUG_BOUNDS } from '@web/pages/studio/container/dialogs/slug-util';
+import {
+  STUDIO_SLUG_BOUNDS,
+  toSlugCheck,
+} from '@web/pages/studio/container/dialogs/slug-util';
 import { useCreateStudio } from '@web/pages/studio/container/dialogs/use-create-studio';
-import { useSlugAvailability } from '@web/pages/studio/container/dialogs/use-slug-availability';
+import {
+  recheckSlugTaken,
+  useSlugAvailability,
+} from '@web/pages/studio/container/dialogs/use-slug-availability';
 
 interface NewStudioDialogProps {
   open: boolean;
@@ -52,6 +59,7 @@ export function NewStudioDialog({
   const [formError, setFormError] = React.useState<string | null>(null);
   const availability = useSlugAvailability(slug);
   const createStudio = useCreateStudio();
+  const queryClient = useQueryClient();
 
   /** Clear the form back to empty (on close). */
   const reset = (): void => {
@@ -71,24 +79,34 @@ export function NewStudioDialog({
     }
   };
 
-  // Map the live availability status onto the SlugField's error / availability
-  // props (invalid + taken render as a destructive error line; checking +
-  // available render as a muted line).
-  const slugError =
-    availability.status === 'invalid' || availability.status === 'taken'
-      ? (availability.reason ?? null)
-      : null;
-  const slugLive =
-    availability.status === 'checking'
-      ? ('checking' as const)
-      : availability.status === 'available'
-        ? ('available' as const)
-        : undefined;
-
   const canSubmit =
     name.trim() !== '' &&
     availability.status === 'available' &&
     !createStudio.isPending;
+
+  /**
+   * Put a refused create where the reader will look for it. A 409 is re-asked
+   * against the slug: when the slug is now taken, the slug line says so on its
+   * own; any other refusal stays under the form.
+   * @param err - What the create threw.
+   * @param submitted - The trimmed slug that was submitted.
+   */
+  const reportCreateError = async (
+    err: unknown,
+    submitted: string,
+  ): Promise<void> => {
+    if (err instanceof ApiException && err.status === 409) {
+      const taken = await recheckSlugTaken(queryClient, submitted).catch(
+        () => false,
+      );
+      if (taken) return;
+    }
+    setFormError(
+      err instanceof ApiException
+        ? err.message
+        : t('studio.container.dialog.createStudioError'),
+    );
+  };
 
   /**
    * Validate (slug must already be `available`) and create the studio.
@@ -104,12 +122,9 @@ export function NewStudioDialog({
       { name: name.trim(), slug: slug.trim() },
       {
         onSuccess: () => handleOpenChange(false),
-        onError: (err) =>
-          setFormError(
-            err instanceof ApiException
-              ? err.message
-              : t('studio.container.dialog.createStudioError'),
-          ),
+        onError: (err) => {
+          void reportCreateError(err, slug.trim());
+        },
       },
     );
   };
@@ -129,6 +144,7 @@ export function NewStudioDialog({
               <Input
                 id='new-studio-name'
                 autoComplete='off'
+                placeholder={t('studio.container.dialog.namePlaceholderStudio')}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 required
@@ -137,12 +153,15 @@ export function NewStudioDialog({
             <SlugField
               id='new-studio-slug'
               label={t('studio.container.dialog.slugLabel')}
-              placeholder={t('studio.container.dialog.slugPlaceholder')}
+              placeholder={t('studio.container.dialog.slugPlaceholderStudio')}
               value={slug}
               onChange={setSlug}
-              error={slugError}
+              check={toSlugCheck(availability)}
               bounds={STUDIO_SLUG_BOUNDS}
-              availability={slugLive}
+              helper={t('studio.container.dialog.slugHelperStudio', {
+                min: STUDIO_SLUG_BOUNDS.min,
+                max: STUDIO_SLUG_BOUNDS.max,
+              })}
             />
             {formError ? (
               <p className='text-xs text-status-error-foreground' role='alert'>

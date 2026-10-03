@@ -29,6 +29,16 @@ export const ITEM_SLUG_BOUNDS = { min: 6, max: 50 } as const;
 /** A slug validation failure reason, or `null` when the slug is acceptable. */
 export type SlugError = 'format' | 'length' | 'reserved' | 'taken' | null;
 
+/**
+ * What the one hint line under a slug input says: the field's description
+ * while it is empty, a pending line while a check runs, then the outcome.
+ */
+export type SlugCheck =
+  | { state: 'empty' }
+  | { state: 'checking' }
+  | { state: 'invalid'; reason: Exclude<SlugError, null> }
+  | { state: 'valid' };
+
 interface SlugBounds {
   min: number;
   max: number;
@@ -87,4 +97,28 @@ export function validateStudioSlug(
  */
 export function validateItemSlug(value: string): SlugError {
   return validateSlugShape(value, ITEM_SLUG_BOUNDS);
+}
+
+/**
+ * The hint-line state for a studio slug's live availability.
+ * @param result - The availability status and, when refused, why.
+ * @param result.status - Where the live check stands.
+ * @param result.reason - Why the slug was refused, when it was.
+ * @returns What the slug field shows.
+ */
+export function toSlugCheck(result: {
+  status: 'idle' | 'invalid' | 'checking' | 'available' | 'taken';
+  reason?: SlugError;
+}): SlugCheck {
+  switch (result.status) {
+    case 'idle':
+      return { state: 'empty' };
+    case 'checking':
+      return { state: 'checking' };
+    case 'available':
+      return { state: 'valid' };
+    case 'invalid':
+    case 'taken':
+      return { state: 'invalid', reason: result.reason ?? 'taken' };
+  }
 }

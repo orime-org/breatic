@@ -22,11 +22,8 @@ import {
   StudioSelectField,
   type StudioOption,
 } from '@web/pages/studio/container/dialogs/StudioSelectField';
-import {
-  ITEM_SLUG_BOUNDS,
-  validateItemSlug,
-  type SlugError,
-} from '@web/pages/studio/container/dialogs/slug-util';
+import { ITEM_SLUG_BOUNDS } from '@web/pages/studio/container/dialogs/slug-util';
+import { useItemSlugCheck } from '@web/pages/studio/container/dialogs/use-item-slug-check';
 import { SpaceKindPicker } from '@web/spaces/SpaceKindPicker';
 import type { SpaceType } from '@breatic/shared';
 
@@ -74,9 +71,9 @@ interface NewItemDialogProps {
 /**
  * The new-project / new-collection dialog (spec §3.12) — a shared form (name +
  * slug + optional description) parameterized by kind. Project / collection
- * slugs are not unique, so only shape is validated (`validateItemSlug`). On a
- * valid submit it reports the values and closes; the real create wires to the
- * API in Phase 2. The primary button uses the studio brand color (§1.2).
+ * slugs are not unique, so the slug is checked for shape alone, live as it is
+ * typed (`useItemSlugCheck`); Create waits for a name and a slug that passed.
+ * A submit reports the values and closes once the caller's create settles.
  * @param props the kind, open state and create callback.
  * @param props.kind the dialog / collection kind.
  * @param props.open whether the dialog is open.
@@ -100,13 +97,7 @@ export function NewItemDialog({
   const [description, setDescription] = React.useState('');
   const [spaceType, setSpaceType] = React.useState<SpaceType>('canvas');
   const [studioId, setStudioId] = React.useState(defaultStudioId ?? '');
-  const [slugError, setSlugError] = React.useState<SlugError>(null);
-  const [submitted, setSubmitted] = React.useState(false);
-  // Where the cursor goes when a press is refused. The message a refusal
-  // reveals sits further up the form than the button that was pressed, so
-  // without this the press reads as nothing having happened.
-  const nameRef = React.useRef<HTMLInputElement>(null);
-  const slugRef = React.useRef<HTMLInputElement>(null);
+  const slugCheck = useItemSlugCheck(slug);
   const [submitting, setSubmitting] = React.useState(false);
   const showStudioSelect =
     kind === 'project' && studios !== undefined && studios.length > 0;
@@ -129,8 +120,6 @@ export function NewItemDialog({
     setDescription('');
     setSpaceType('canvas');
     setStudioId(defaultStudioId ?? '');
-    setSlugError(null);
-    setSubmitted(false);
     setSubmitting(false);
   };
 
@@ -145,16 +134,8 @@ export function NewItemDialog({
     }
   };
 
-  /**
-   * Update the slug and re-validate once a submit has been attempted.
-   * @param next the next value.
-   */
-  const handleSlugChange = (next: string): void => {
-    setSlug(next);
-    if (submitted) {
-      setSlugError(validateItemSlug(next));
-    }
-  };
+  const canSubmit =
+    !submitting && name.trim() !== '' && slugCheck.state === 'valid';
 
   /**
    * Validate the form and report the values on a successful submit.
@@ -162,17 +143,7 @@ export function NewItemDialog({
    */
   const submit = (event: React.FormEvent): void => {
     event.preventDefault();
-    setSubmitted(true);
-    const error = validateItemSlug(slug);
-    setSlugError(error);
-    const nameMissing = name.trim() === '';
-    if (nameMissing || error !== null) {
-      // Calling `preventDefault` above took over the job the browser does for
-      // a form it validates itself: put the cursor on the first field that
-      // was rejected, which also brings it into view.
-      (nameMissing ? nameRef : slugRef).current?.focus();
-      return;
-    }
+    if (!canSubmit) return;
     setSubmitting(true);
     // Awaited whether or not the caller returns a promise, so there is one
     // path out of a press. A caller that reports failure by rejecting leaves
@@ -181,7 +152,7 @@ export function NewItemDialog({
     void Promise.resolve(
       onCreate?.({
         name: name.trim(),
-        slug,
+        slug: slug.trim(),
         description: description.trim(),
         // A space type + target studio only apply to a project; collections
         // have neither spaces nor a studio selector, so both are omitted.
@@ -203,10 +174,19 @@ export function NewItemDialog({
     kind === 'project'
       ? t('studio.container.dialog.newProjectTitle')
       : t('studio.container.dialog.newCollectionTitle');
+  const bounds = { min: ITEM_SLUG_BOUNDS.min, max: ITEM_SLUG_BOUNDS.max };
   const slugHelper =
     kind === 'project'
-      ? t('studio.container.dialog.slugHelperProject')
-      : t('studio.container.dialog.slugHelperCollection');
+      ? t('studio.container.dialog.slugHelperProject', bounds)
+      : t('studio.container.dialog.slugHelperCollection', bounds);
+  const namePlaceholder =
+    kind === 'project'
+      ? t('studio.container.dialog.namePlaceholder')
+      : t('studio.container.dialog.namePlaceholderCollection');
+  const slugPlaceholder =
+    kind === 'project'
+      ? t('studio.container.dialog.slugPlaceholder')
+      : t('studio.container.dialog.slugPlaceholderCollection');
   const nameId = `new-${kind}-name`;
   const slugId = `new-${kind}-slug`;
   const descId = `new-${kind}-desc`;
@@ -237,11 +217,10 @@ export function NewItemDialog({
               </Label>
               <Input
                 id={nameId}
-                ref={nameRef}
                 autoComplete='off'
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                placeholder={t('studio.container.dialog.namePlaceholder')}
+                placeholder={namePlaceholder}
                 disabled={submitting}
                 required
               />
@@ -255,12 +234,11 @@ export function NewItemDialog({
             ) : null}
             <SlugField
               id={slugId}
-              inputRef={slugRef}
               label={t('studio.container.dialog.slugLabel')}
-              placeholder={t('studio.container.dialog.slugPlaceholder')}
+              placeholder={slugPlaceholder}
               value={slug}
-              onChange={handleSlugChange}
-              error={slugError}
+              onChange={setSlug}
+              check={slugCheck}
               bounds={ITEM_SLUG_BOUNDS}
               helper={slugHelper}
               disabled={submitting}
@@ -287,7 +265,7 @@ export function NewItemDialog({
             </Button>
             <Button
               type='submit'
-              disabled={submitting || name.trim() === '' || slugError !== null}
+              disabled={!canSubmit}
             >
               {submitting ? (
                 <Loader2

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type QueryClient } from '@tanstack/react-query';
 
 import { studiosApi } from '@web/data/api/studios';
 import { useDebounce } from '@web/lib/use-debounce';
@@ -57,8 +57,18 @@ function validateLocally(value: string): SlugError {
 }
 
 /**
+ * Cache key of one slug's availability answer.
+ * @param slug - The trimmed slug.
+ * @returns The query key.
+ */
+function slugAvailabilityKey(slug: string): readonly unknown[] {
+  return ['studio-slug-available', slug];
+}
+
+/**
  * Live (debounced) studio-slug availability — shared by the create-studio
- * dialog and the onboarding slug page so both behave identically.
+ * dialog, the rename-slug dialog and the onboarding slug page so all three
+ * behave identically.
  *
  * Local shape/length/reserved checks run first (no request for an
  * obviously-invalid slug); a well-formed slug is checked against the server.
@@ -86,7 +96,7 @@ export function useSlugAvailability(
   const enabled = slug.length > 0 && localError === null && !isOwn;
 
   const query = useQuery({
-    queryKey: ['studio-slug-available', slug],
+    queryKey: slugAvailabilityKey(slug),
     queryFn: ({ signal }) => studiosApi.checkSlugAvailable(slug, signal),
     enabled,
     staleTime: 30_000,
@@ -117,4 +127,27 @@ export function useSlugAvailability(
     return { status: 'available' };
   }
   return { status: 'taken', reason: query.data.reason ?? 'taken' };
+}
+
+/**
+ * Ask the server again whether a slug is free, after a submit came back 409.
+ *
+ * A 409 does not always mean the slug: creating a team studio also answers 409
+ * when the account is at its team-studio cap. Refreshing the cached answer
+ * tells the two apart, and the slug field picks the new answer up on its own.
+ * @param client - The query client holding the availability answers.
+ * @param slug - The trimmed slug that was submitted.
+ * @returns Whether the slug is now taken.
+ * @throws {ApiException} When the availability request itself fails.
+ */
+export async function recheckSlugTaken(
+  client: QueryClient,
+  slug: string,
+): Promise<boolean> {
+  const answer = await client.fetchQuery({
+    queryKey: slugAvailabilityKey(slug),
+    queryFn: ({ signal }) => studiosApi.checkSlugAvailable(slug, signal),
+    staleTime: 0,
+  });
+  return !answer.available;
 }
