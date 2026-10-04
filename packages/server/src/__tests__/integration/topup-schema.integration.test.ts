@@ -37,7 +37,7 @@
  * failed / expired`. `expired` is the terminal state added here — it is how an
  * abandoned checkout leaves "in progress".
  *
- * Runs against the testcontainer Postgres that global-setup.ts brings up, so
+ * Runs against the testcontainer Postgres that @breatic/integration-tests/containers brings up, so
  * what it reads is the schema the migrations actually produce.
  */
 

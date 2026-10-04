@@ -76,7 +76,9 @@ const BUTTON_SIZE = 'h-[var(--btn-inline)] w-[var(--btn-inline)]';
  * slider so it never eats the control-bar width. Video controls overlay the
  * picture bottom (the video fills the node); audio controls sit below the
  * decorative {@link Waveform}, which doubles as the seek surface. Every
- * interactive control carries `nodrag` so ReactFlow does not hijack drags.
+ * interactive control carries `nodrag` so ReactFlow does not hijack drags,
+ * and the sliders carry `nokey` so arrow keys move the playhead or volume
+ * rather than the node.
  * Zero third-party player dependency.
  * @param root0 - Component props.
  * @param root0.modality - `'audio'` or `'video'`.
@@ -173,7 +175,7 @@ export function MediaPlayer({
           step={1}
           value={[volumePct]}
           onValueChange={([v]) => p.setVolumeLevel(v / 100)}
-          className='h-24 text-foreground'
+          className='nokey h-24 text-foreground'
         />
       </PopoverContent>
     </Popover>
@@ -223,7 +225,7 @@ export function MediaPlayer({
             step={0.1}
             value={[p.progress * 100]}
             onValueChange={([v]) => p.seekFraction(v / 100)}
-            className='min-w-0 flex-1'
+            className='nokey min-w-0 flex-1'
           />
           <span
             data-testid='time-total'
@@ -281,7 +283,7 @@ export function MediaPlayer({
           step={0.1}
           value={[p.progress * 100]}
           onValueChange={([v]) => p.seekFraction(v / 100)}
-          className='min-w-0 flex-1'
+          className='nokey min-w-0 flex-1'
         />
         <span
           data-testid='time-total'

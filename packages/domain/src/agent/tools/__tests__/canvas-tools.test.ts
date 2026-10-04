@@ -409,7 +409,7 @@ describe("what the rendered answer tells the model", () => {
     // The cap belongs to the parameter, not to one of the shapes it can take:
     // a reference list states both its type and how many it holds.
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "ref" });
-    expect(renderGenerationModelsForModel(answer)).toMatch(/images:[^\n]*a list;[^\n]*at most 9/);
+    expect(renderGenerationModelsForModel(answer)).toMatch(/images:[^\n]*a list;[^\n]*at most 6/);
   });
 
   it("says a source slot is filled from the canvas rather than by wiring", async () => {

@@ -316,6 +316,12 @@ describe("what the guide says", () => {
     expect(section("Source slots")).toMatch(/The picture panel's only one is its style area, which holds up to three pictures/);
   });
 
+  it("gives the video panel the same style area for a model that takes style images (inner#828)", () => {
+    expect(section("Inside the generation panel")).toMatch(/- Video panel: .*A model that takes style images adds the same style area at the end, after its own thin divider/);
+    expect(section("Inside the generation panel")).toMatch(/Style pictures never count as a reference the model needs/);
+    expect(section("Source slots")).toMatch(/the video panel shows the same area for a model that takes style images/);
+  });
+
   it("says which comment controls depend on the thread or the panel being open", () => {
     const doc = section("Document spaces");
     expect(doc).toMatch(/a resolved card takes no replies until it is reopened/);

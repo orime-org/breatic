@@ -26,7 +26,7 @@
  * test asserts the underlying data is NOT destroyed (mirrors the
  * credit-balance integration suite).
  *
- * Runs against the testcontainer Postgres started by global-setup.ts.
+ * Runs against the testcontainer Postgres started by @breatic/integration-tests/containers.
  * Seeding uses a narrow raw `postgres` client; the assertions call the
  * real `studioMembersRepo` (core's env-bound `db`, pointed at the same
  * container via the injected config).
@@ -52,7 +52,7 @@ import postgres from "postgres";
 import { initCore } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 
-// integration-setup.ts injects the container URLs into process.env. Each
+// @breatic/integration-tests/env injects the container URLs into process.env. Each
 // suite injects the validated config so the repo's env-bound `db` Proxy
 // resolves to the testcontainer. Guarded because the worker process is
 // shared (singleFork) with sibling suites that may have already inited.

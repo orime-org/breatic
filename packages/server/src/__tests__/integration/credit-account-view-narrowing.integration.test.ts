@@ -18,7 +18,7 @@
  * its task was running leaves the same shape — the reader ran those, so they
  * stay. The per-studio totals have nowhere to put them and do not.
  *
- * Runs against the testcontainer Postgres started by global-setup.ts.
+ * Runs against the testcontainer Postgres started by @breatic/integration-tests/containers.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";

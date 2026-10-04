@@ -227,7 +227,7 @@ describe("Space existence over a live server", () => {
     // cases above are not counter-examples: they do hold the meta doc, which
     // is exactly why they can stage the disagreement.) That half is pinned
     // across two real instances in
-    // `packages/server/src/__tests__/integration/collab-space-existence-multi-instance.integration.test.ts`.
+    // `collab-space-existence-multi-instance.integration.test.ts` beside this file.
     stored.set(META_DOC, storedMetaWith([SID]));
 
     const [metaClient, contentClient] = await Promise.all([

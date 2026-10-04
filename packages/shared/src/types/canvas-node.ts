@@ -425,9 +425,9 @@ export interface CanvasNodeFields {
      */
     paramsByModel?: Record<string, Record<string, unknown>>;
     /**
-     * Style images for an image node (inner#826): pick-time COPIES of the
-     * picked images' URLs, in the order they were picked, at most as many as
-     * the model's `style_images` cap (3). Copies, like the source slots: no
+     * Style images for an image or video node (inner#826, inner#828):
+     * pick-time COPIES of the picked images' URLs, in the order they were
+     * picked, at most as many as the model's `style_images` cap (3). Copies, like the source slots: no
      * relationship to the nodes they came from. Sent as `params.style_images`
      * when the active model declares it; kept but not sent otherwise. The
      * whole list is one last-write-wins value. Absent = none picked.

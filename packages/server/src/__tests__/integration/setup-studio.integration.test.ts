@@ -23,7 +23,7 @@
  *      setup and the studio after, so `/auth/me` can report
  *      personalStudio==null for a half-onboarded account.
  *
- * Runs against the testcontainer Postgres started by global-setup.ts.
+ * Runs against the testcontainer Postgres started by @breatic/integration-tests/containers.
  * Seeding uses a narrow raw `postgres` client; the assertions call the
  * real `studioService` (core's env-bound `db`, pointed at the same
  * container via the injected config).
@@ -71,7 +71,7 @@ import { initCore, ConflictError } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import * as studioService from "@server/modules/studio/studio.service.js";
 
-// integration-setup.ts injects the container URLs into process.env. Inject
+// @breatic/integration-tests/env injects the container URLs into process.env. Inject
 // the validated config so the repo's env-bound `db` Proxy resolves to the
 // testcontainer. Guarded because the worker process is shared (singleFork)
 // with sibling suites that may have already inited.

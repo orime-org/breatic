@@ -210,7 +210,8 @@ export function renderProductGuide(): string {
       "of the box, above the text, says so.",
     "The plus sign at the bottom left of the box attaches up to " +
       `${String(getAgentConfig().attachment_max_items)} pictures, videos, sounds, PDF, Word (.docx), Excel or ` +
-      "plain text files to the next message. Canvas nodes are handed over with " +
+      "plain text files to the next message; pasting such files into the box (a screenshot, a copied file) " +
+      "attaches them the same way. Canvas nodes are handed over with " +
       `${quoted(t("canvas.contextMenu.addToAgent"))} on their right-click menu; if the model list cannot be read at that moment, nothing is attached and ` +
       `${quoted(t("canvas.generatePanel.catalogUnavailable"))} shows. Each attachment shows as a small ` +
       "chip in the box above the text, with a type and a name and a spinner while it uploads; hovering it " +
@@ -234,7 +235,11 @@ export function renderProductGuide(): string {
       "copy icon when hovered. A to-do list in a reply shows each item's box ticked or empty. Small numbered " +
       "circles in the text are sources: hovering one shows it and " +
       "clicking opens it. Pictures found for the reader appear as a row of squares, the last showing a plus and " +
-      "a number when there are more; clicking one opens it large. Under a finished reply are a copy icon and, " +
+      "a number when there are more; clicking one opens it large. Hovering a picture square (not the one with the " +
+      "number) shows a copy icon at its " +
+      `top-right corner, and the large view has ${quoted(t("chat.action.copy"))} beside its close button; pasting ` +
+      "the copy onto the canvas with Cmd/Ctrl+V makes a picture node, which shows the picture once it has been " +
+      "fetched into the project. Under a finished reply are a copy icon and, " +
       `when it used sources, a button such as ${quoted(t("chat.sources.count", { count: 3 }))}, which lists ` +
       "them. A reply that did not end normally says so on its last line, with one of these:",
     `  - ${quoted(t("chat.error.turnFailed"))}`,
@@ -285,7 +290,9 @@ export function renderProductGuide(): string {
       "that connection, and the one you pick appears there, already connected.",
     "- Paste with Cmd/Ctrl+V: a copied node, a file or screenshot, or plain text, which becomes a text node. " +
       "The canvas's keys, this one included, act once the space was the last thing clicked and nothing is being " +
-      "typed in; after typing in this chat they go to the chat box. To hand them back, click one of the selected " +
+      "typed in. A copied node or a picture copied in this chat pastes onto the canvas even after a click in " +
+      "this chat, as long as nothing is being typed in and no menu or large view is open. After typing in this " +
+      "chat the other keys go to the chat box. To hand them back, click one of the selected " +
       "nodes or the space's tab, which keeps the selection; clicking an empty spot on the canvas also works but " +
       "clears the selection.",
     `- Double-clicking empty canvas does nothing. An empty canvas shows ${quoted(t("canvas.emptyState.title"))} ` +
@@ -427,7 +434,10 @@ export function renderProductGuide(): string {
       "to 800 and press Enter. The minimap can be dragged to move the view and scrolled to zoom. The left menu " +
       "and this bar slide out of sight while nodes are being picked for a panel. Each space reopens where you " +
       "left it; one never opened before frames all its nodes.",
-    "Drag a node, a group or a note to move it; with snap to grid on, a dragged node lands on the grid. A " +
+    "Drag a node, a group or a note to move it; with snap to grid on, a dragged node lands on the grid. " +
+      "Right after clicking a node or dragging a box over several, the arrow keys move what is selected a " +
+      "little at a time and further with Shift (with snap to grid on, one grid dot at a time, or four with " +
+      "Shift); undo takes back one press, or all of a key held down. A " +
       `locked one does not move and shows ${quoted(t("canvas.gate.locked"))} Picture, video, sound and text ` +
       "nodes cannot be resized: zoom the canvas to see them larger. Only a group has resize handles.",
     "Scroll to pan, or hold Space and drag (while typing in a text node, over the task list or the history " +
@@ -545,7 +555,10 @@ export function renderProductGuide(): string {
       "well as the camera itself; the wheels only apply while the switch reads " +
       `${quoted(t("canvas.generatePanel.switchOn"))}.`,
     `- Video panel: tools ${quoted(t("canvas.generatePanel.reference"))} and ` +
-      `${quoted(t("canvas.generatePanel.focus"))}, then after a thin divider one button for each source slot. The ` +
+      `${quoted(t("canvas.generatePanel.focus"))}, then after a thin divider one button for each source slot. ` +
+      "A model that takes style images adds the same style area at the end, after its own thin divider, and it " +
+      "works as on the picture panel. Style pictures never count as a reference the model needs: a model that " +
+      "will not run without one still needs it mentioned with @. The " +
       "settings pill shows values such as 16:9 · 720p · 8s; clicking it opens " +
       `${quoted(t("canvas.generatePanel.ratio"))}, ${quoted(t("canvas.generatePanel.resolution"))}, ` +
       `${quoted(t("canvas.generatePanel.duration"))}, a ${quoted(t("canvas.generatePanel.generateAudio"))} ` +
@@ -626,7 +639,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.sourceVideo"))}, ${quoted(t("canvas.generatePanel.moodImage"))}, ` +
       `${quoted(t("canvas.generatePanel.musicSong"))}, ${quoted(t("canvas.generatePanel.musicMelody"))} and ` +
       `${quoted(t("canvas.generatePanel.musicVocal"))}. The picture panel's only one is its style area, which ` +
-      "holds up to three pictures and works its own way (see the picture panel above): each click adds one, " +
+      "holds up to three pictures and works its own way (see the picture panel above), and the video panel shows " +
+      "the same area for a model that takes style images: each click adds one, " +
       "and a picture is taken out with its X, never replaced. Every other slot holds one node, as follows. " +
       "Which ones show depends on " +
       "the mode and model. Some must be " +

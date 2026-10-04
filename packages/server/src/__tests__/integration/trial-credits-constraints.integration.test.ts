@@ -24,7 +24,7 @@
  * about the data rather than on a predicate anybody wrote — if grants ever
  * reach a team studio, this is what notices.
  *
- * Runs against the testcontainer Postgres started by global-setup.ts.
+ * Runs against the testcontainer Postgres started by @breatic/integration-tests/containers.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";

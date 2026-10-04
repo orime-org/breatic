@@ -19,7 +19,7 @@ import { db, projectMembersRepo } from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
-import * as projectJoinRequestService from "@server/modules/project-join-request/projectJoinRequest.service.js";
+import { onProjectOwnerChanged } from "@server/modules/project/projectOwnerChange.service.js";
 
 /** Roles an admin may grant by change-role; admin is excluded. */
 type GrantableRole = "maintainer" | "guest";
@@ -147,7 +147,7 @@ async function detachMember(
     await projectMembersRepo.softDeleteAllInStudioForUser(studio.id, targetUserId, tx);
     for (const projectId of owned) {
       await projectMembersRepo.materializeOwner(projectId, adminUserId, tx);
-      await projectJoinRequestService.readdressOnOwnerChange(projectId, adminUserId, tx);
+      await onProjectOwnerChanged(projectId, adminUserId, tx);
     }
     await studioMembersRepo.softDelete(studio.id, targetUserId, tx);
   });

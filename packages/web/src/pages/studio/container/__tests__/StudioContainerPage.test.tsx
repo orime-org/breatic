@@ -255,6 +255,8 @@ describe('StudioContainerPage', () => {
     await user.click(screen.getByRole('button', { name: 'New project' }));
     await user.type(screen.getByLabelText('Name'), 'Fresh');
     await user.type(screen.getByLabelText('Slug'), 'fresh-proj');
+    // Create waits for the live slug check to settle.
+    await screen.findByText('Slug is available');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     // studioId is the current studio (s-acme), and the first space defaults to
     // canvas (the only selectable type today). The studio selector that would

@@ -27,7 +27,7 @@
  *      predating the migration came from a payment, so the backfill is the
  *      truth about them rather than a default.
  *
- * Runs against the testcontainer Postgres started by global-setup.ts, so what
+ * Runs against the testcontainer Postgres started by @breatic/integration-tests/containers, so what
  * it reads is the schema the migration actually produced.
  */
 
