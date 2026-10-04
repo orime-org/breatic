@@ -291,6 +291,9 @@ export function ChatPanel({
           the second failure is invisible and unspoken. */}
       <ChatNotice key={mishap?.at ?? 'none'} message={notice} />
       <ChatComposer
+        // A conversation of its own each: what was typed and undone in one is
+        // not the next one's to undo.
+        key={currentId ?? 'none'}
         draft={draft}
         turnPhase={turnPhase}
         navigating={navigating}

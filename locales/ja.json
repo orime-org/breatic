@@ -249,7 +249,9 @@
       "attachTooLong": "添付した内容が多すぎます。件数を減らすか、短いファイルにしてください。",
       "attachUnsupported": "{filename} は添付できません",
       "attachTooLarge": "{filename} は大きすぎて添付できません",
-      "attachUnavailable": "今は添付できません。もう一度お試しください。"
+      "attachUnavailable": "今は添付できません。もう一度お試しください。",
+      "atEmpty": "参照できる添付はありません",
+      "atNoMatch": "一致する添付はありません"
     },
     "empty": {
       "greetingWithName": "やあ、{name} さん!",

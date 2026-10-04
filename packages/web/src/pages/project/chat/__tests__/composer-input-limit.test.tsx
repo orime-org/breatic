@@ -14,6 +14,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import type { Editor } from '@tiptap/core';
 
 // 上限换成一个跟五份文案里都不一样、且带千分位的数。文案自己写死 10,000 时，
 // 「说出来的数就是生效的数」那条永远成立，看不出它根本没读这个常量；而 12,345
@@ -39,6 +40,16 @@ function setup(draft: string): { fill: (next: string) => void } {
   };
 }
 
+/**
+ * The editor behind the box.
+ * @returns The editor.
+ */
+function box(): Editor {
+  const el = screen.getByTestId('chat-composer-textarea') as unknown as { editor?: Editor };
+  if (!el.editor) throw new Error('no editor on the box');
+  return el.editor;
+}
+
 /** 打满输入框，因为那一刻才是提示出现的时候。 */
 function fillToLimit(): void {
   setup('y'.repeat(CHAT_MESSAGE_MAX_CHARS - 1)).fill(
@@ -47,13 +58,16 @@ function fillToLimit(): void {
 }
 
 describe('输入框的上限', () => {
-  it('把上限交给浏览器，粘贴超长文本时由它截断', () => {
-    setup('');
+  it('cuts a paste past the limit down to it and says so', () => {
+    setup('y'.repeat(CHAT_MESSAGE_MAX_CHARS - 3));
+    act(() => box().commands.focus('end'));
 
-    expect(screen.getByTestId('chat-composer-textarea')).toHaveAttribute(
-      'maxlength',
-      String(CHAT_MESSAGE_MAX_CHARS),
-    );
+    fireEvent.paste(box().view.dom, {
+      clipboardData: { files: [], getData: (type: string) => (type === 'text/plain' ? 'abcdef' : '') },
+    });
+
+    expect(box().state.doc.textContent).toBe(`${'y'.repeat(CHAT_MESSAGE_MAX_CHARS - 3)}abc`);
+    expect(screen.getByTestId('chat-composer-limit')).toBeInTheDocument();
   });
 
   it('到了上限才说，说的是已经到了', () => {
@@ -90,18 +104,21 @@ describe('输入框的上限', () => {
     expect(screen.queryByTestId('chat-composer-limit')).not.toBeInTheDocument();
   });
 
-  it('满了之后又被吞掉一次击键，就再说一次', () => {
+  it('says it again when a full box turns a keystroke away', () => {
     vi.useFakeTimers();
     try {
       fillToLimit();
-      const box = screen.getByTestId('chat-composer-textarea');
       act(() => {
         vi.advanceTimersByTime(NOTICE_LINGERS_MS);
       });
       expect(screen.queryByTestId('chat-composer-limit')).not.toBeInTheDocument();
 
-      fireEvent.keyDown(box, { key: 'a' });
+      act(() => {
+        const e = box();
+        e.view.dispatch(e.state.tr.insertText('a', e.state.doc.content.size - 1));
+      });
 
+      expect(box().state.doc.textContent).not.toContain('a');
       expect(screen.getByTestId('chat-composer-limit')).toBeInTheDocument();
     } finally {
       vi.useRealTimers();

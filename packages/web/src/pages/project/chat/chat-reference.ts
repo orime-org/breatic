@@ -30,14 +30,15 @@ export interface ChatReferenceOptions {
 }
 
 /**
- * The content a picked tray item is inserted as.
- * @param item - The tray item.
+ * The content a reference block is inserted as.
+ * @param id - The attachment it points at.
+ * @param label - What the block shows.
  * @returns The block's content.
  */
-export function chatReferenceContent(item: TrayItem): { type: string; attrs: Record<string, unknown> } {
+export function chatReferenceContent(id: string, label: string): { type: string; attrs: Record<string, unknown> } {
   return {
     type: REFERENCE_MENTION_NODE,
-    attrs: { [MENTION_SOURCE_ID_ATTR]: item.id, [CHAT_REFERENCE_LABEL_ATTR]: item.name },
+    attrs: { [MENTION_SOURCE_ID_ATTR]: id, [CHAT_REFERENCE_LABEL_ATTR]: label },
   };
 }
 

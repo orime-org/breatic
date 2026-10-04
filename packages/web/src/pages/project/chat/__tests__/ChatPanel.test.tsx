@@ -265,8 +265,9 @@ describe('ChatPanel', () => {
 
     // The box shows what was sent and accepts nothing more, so there is never
     // a moment where it holds one sentence of ours and another of theirs.
-    const box = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement;
-    expect(box.readOnly).toBe(true);
+    const box = screen.getByTestId('chat-composer-textarea');
+    expect(box).toHaveAttribute('contenteditable', 'false');
+    expect(box).toHaveAttribute('aria-readonly', 'true');
     await user.type(box, ' and one more thing');
     expect(conversationRuntime.draftOf(CONV)).toBe('first question');
 
@@ -277,7 +278,7 @@ describe('ChatPanel', () => {
     // And then it is emptied, with no rule applied to the text: only one
     // thing could have been in it.
     await waitFor(() => expect(conversationRuntime.draftOf(CONV)).toBe(''));
-    expect(screen.getByTestId('chat-composer-textarea')).toHaveProperty('readOnly', false);
+    expect(screen.getByTestId('chat-composer-textarea')).toHaveAttribute('contenteditable', 'true');
   });
 
   it('says so on the composer when the message never went out', async () => {
@@ -382,7 +383,7 @@ describe('ChatPanel', () => {
     renderPanel();
 
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
-    expect(screen.getByTestId('chat-composer-textarea')).toHaveAttribute('readonly');
+    expect(screen.getByTestId('chat-composer-textarea')).toHaveAttribute('aria-readonly', 'true');
 
     await act(async () => {
       land?.();
@@ -390,7 +391,7 @@ describe('ChatPanel', () => {
     });
 
     await waitFor(() =>
-      expect(screen.getByTestId('chat-composer-textarea')).not.toHaveAttribute('readonly'),
+      expect(screen.getByTestId('chat-composer-textarea')).toHaveAttribute('contenteditable', 'true'),
     );
   });
 

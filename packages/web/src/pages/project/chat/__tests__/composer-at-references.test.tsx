@@ -7,7 +7,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
-import { attachmentMarker } from '@breatic/shared';
+import { attachmentMarker, messageLength } from '@breatic/shared';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import type { TrayItem } from '@web/stores/chat-attachments';
@@ -140,20 +140,28 @@ describe('@ in the chat box', () => {
     expect(screen.getByTestId('chat-reference')).toHaveTextContent('cover-v2.png');
   });
 
-  it('does not open the list when the draft is written from outside', () => {
+  it('does not open the list when the draft is written from outside', async () => {
     const { rerender } = setup({ draft: '', attachments: [cover] });
+    act(() => box().commands.focus('end'));
 
     rerender({ draft: 'ask about @' });
 
     expect(box().state.doc.textContent).toBe('ask about @');
-    expect(screen.queryByTestId('reference-mention-option-a1')).toBeNull();
+    // The list is built for the `@` all the same; what matters is that the
+    // reader is not shown one they never asked for.
+    expect(await screen.findByTestId('reference-mention-option-a1')).not.toBeVisible();
   });
 
   it('counts a reference as one character against the limit', () => {
-    setup({ draft: `${attachmentMarker('a1')}${'y'.repeat(9_998)}`, attachments: [cover] });
+    // Nine thousand nine hundred and ninety-nine as the reader sees it: the
+    // block counts once, its marker is far longer.
+    const { onChange } = setup({ draft: `y ${attachmentMarker('a1')} ${'y'.repeat(9_995)}`, attachments: [cover] });
     act(() => box().commands.focus('end'));
     type('z');
+    type('q');
 
-    expect(box().state.doc.textContent.length).toBe(10_000);
+    const last = String(onChange.mock.lastCall?.[0]);
+    expect(last.endsWith('z')).toBe(true);
+    expect(messageLength([cover], last)).toBe(10_000);
   });
 });

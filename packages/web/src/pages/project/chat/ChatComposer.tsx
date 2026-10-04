@@ -6,20 +6,20 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
-import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
+import { EditorContent } from '@tiptap/react';
+import { CHAT_MESSAGE_MAX_CHARS, messageLength } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
 import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
+import { useComposerEditor } from '@web/pages/project/chat/use-composer-editor';
 import { NO_ATTACHMENTS, type TrayItem } from '@web/stores/chat-attachments';
 import type { TurnPhase } from '@web/stores/conversation-runtime';
 
 /**
  * The id the at-limit line carries, so the box can point at it.
  *
- * `maxLength` refuses the keystroke without saying anything, and the line
- * that says why is drawn on the panel's own edge -- out of the field, where
- * a screen reader would only meet it by leaving the box.
+ * The limit refuses the keystroke without saying anything, and the line that
+ * says why is drawn on the panel's own edge -- out of the field.
  */
 export const CHAT_LIMIT_NOTICE_ID = 'chat-composer-at-limit';
 
@@ -71,6 +71,8 @@ interface ChatComposerProps {
  *
  * Behaviour:
  *   - Enter without Shift submits; Shift+Enter newlines
+ *   - `@` lists the attached items; picking one puts a reference to it in
+ *     the words
  *   - Send is available only when there is something typed, the turn is idle,
  *     and every attached item is ready: what is sent is what is shown
  *   - The bottom-right corner has 4 states: disabled send, ready send,
@@ -87,7 +89,7 @@ interface ChatComposerProps {
  * @param root0.onAbort - Called to abort the in-flight streaming response.
  * @param root0.onAttachFiles - Called with the files the reader picked.
  * @param root0.onRemoveAttachment - Called with an item's id to take it out.
- * @returns The composer card with attachments, textarea, and action buttons.
+ * @returns The composer card with attachments, the box, and action buttons.
  */
 function ChatComposerInner({
   draft,
@@ -110,13 +112,22 @@ function ChatComposerInner({
   const allReady = attachments.every((item) => item.status === 'ready');
   const ready = draft.trim().length > 0 && turnPhase === 'idle' && !navigating && allReady;
   const picker = React.useRef<HTMLInputElement>(null);
-  const box = React.useRef<HTMLTextAreaElement>(null);
   const tray = React.useRef<HTMLDivElement>(null);
 
-  // The box takes exactly the height of what is written in it, and the
-  // wrapper below caps how much of that is on screen.
-  useAutosizeTextarea(box, draft);
-  const atLimit = useAtLimitNotice(draft.length, CHAT_MESSAGE_MAX_CHARS);
+  const atLimit = useAtLimitNotice(messageLength(attachments, draft), CHAT_MESSAGE_MAX_CHARS);
+  // Read through a ref: the editor is built once, and Enter reaches it there.
+  const submitRef = React.useRef<() => void>(() => undefined);
+  const editor = useComposerEditor({
+    draft,
+    attachments,
+    readOnly: frozen,
+    ariaLabel: t('chat.composer.inputAria'),
+    describedBy: atLimit.showing ? CHAT_LIMIT_NOTICE_ID : undefined,
+    onChange,
+    onEnter: () => submitRef.current(),
+    onPasteFiles: (files) => onAttachFiles?.(files),
+    onRefusedAtLimit: atLimit.sayAgain,
+  });
 
   /**
    * Submit the draft message when the composer is in a ready state.
@@ -135,6 +146,7 @@ function ChatComposerInner({
     onSubmit();
     handOverTheKeyboard();
   };
+  submitRef.current = submit;
 
   /**
    * Stop the turn, and hand the keyboard over on the way out.
@@ -158,7 +170,7 @@ function ChatComposerInner({
    * next anyway.
    */
   const handOverTheKeyboard = (): void => {
-    box.current?.focus();
+    editor?.view.dom.focus();
   };
 
   /**
@@ -171,11 +183,11 @@ function ChatComposerInner({
       const row = tray.current?.querySelector(`[data-attachment-id="${CSS.escape(id)}"]`);
       if (row?.contains(document.activeElement)) {
         const neighbour = (row.nextElementSibling ?? row.previousElementSibling)?.querySelector('button');
-        (neighbour ?? box.current)?.focus();
+        (neighbour ?? editor?.view.dom)?.focus();
       }
       onRemoveAttachment?.(id);
     },
-    [onRemoveAttachment],
+    [onRemoveAttachment, editor],
   );
 
   return (
@@ -226,84 +238,10 @@ function ChatComposerInner({
       ) : null}
       {/* Ten lines of writing, then it scrolls -- past that the conversation
           would be the smaller half of the column. The scrolling is the
-          panel's own: a textarea left to scroll itself draws the browser's
+          panel's own: a box left to scroll itself draws the browser's
           scrollbar, which is a different shape in every engine. */}
       <ScrollArea viewportClassName='max-h-[210px]'>
-        <textarea
-          ref={box}
-          value={draft}
-          // Nothing goes in between the press and the server answering. The box
-          // still shows what was sent, because this end cannot say it arrived --
-          // and a letter typed now would join that sentence with nothing to tell
-          // the two apart afterwards, which is the whole of why emptying it
-          // later ever needed a rule. Read-only rather than disabled: it keeps
-          // the keyboard the press handed it, and a disabled control loses that.
-          readOnly={turnPhase === 'sending' || navigating}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => {
-            // Typing Chinese, Japanese or Korean means pressing Enter to accept
-            // what the IME is offering, several times per sentence. The browser
-            // marks that keystroke as part of the composition, and that mark is
-            // the only thing separating it from the Enter that means "send" —
-            // both arrive as `key === 'Enter'` with no modifier. Without this
-            // check the first message a CJK reader ever sends is the raw
-            // keystrokes they were still choosing between.
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              submit();
-              return;
-            }
-            // A full box turns a letter away in silence: no `input` event, no
-            // change to show. Only a key that would have added one counts --
-            // `key.length === 1` is that key, a composition is still being
-            // chosen, a shortcut is not text, and a selection is about to be
-            // replaced rather than grown.
-            const b = box.current;
-            if (
-              draft.length >= CHAT_MESSAGE_MAX_CHARS &&
-              e.key.length === 1 &&
-              !e.nativeEvent.isComposing &&
-              !e.metaKey &&
-              !e.ctrlKey &&
-              !e.altKey &&
-              b !== null &&
-              b.selectionStart === b.selectionEnd
-            ) {
-              atLimit.sayAgain();
-            }
-          }}
-          // Pasted files are attached, as if picked with the attach button,
-          // and the clipboard's text is left out of the box: copying a file
-          // also puts its name there. A paste into a full box is turned away
-          // the same way, and the browser cuts an oversized one down to the
-          // ceiling without a word either.
-          onPaste={(event) => {
-            const files = [...event.clipboardData.files];
-            if (files.length > 0) {
-              event.preventDefault();
-              if (!frozen) onAttachFiles?.(files);
-              return;
-            }
-            if (draft.length >= CHAT_MESSAGE_MAX_CHARS) atLimit.sayAgain();
-          }}
-          placeholder={t('chat.composer.placeholder')}
-          // The browser owns the ceiling: it refuses the keystroke past it and
-          // cuts a paste down to it. The line on this box's top edge says the
-          // ceiling was reached, which is the part a reader cannot see for
-          // themselves — a box that has quietly stopped accepting text looks
-          // like one that is working.
-          maxLength={CHAT_MESSAGE_MAX_CHARS}
-          rows={1}
-          // Starts on the one line it needs and grows with what is written, to
-          // ten. Past that the conversation would be the smaller half of the
-          // column, so the box scrolls instead -- the height is set from the
-          // content by the effect above, and the ceiling is the only figure
-          // the stylesheet decides.
-          className='block w-full resize-none overflow-hidden border-0 bg-transparent px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none placeholder:text-muted-foreground'
-          aria-label={t('chat.composer.inputAria')}
-          {...(atLimit.showing ? { 'aria-describedby': CHAT_LIMIT_NOTICE_ID } : {})}
-          data-testid='chat-composer-textarea'
-        />
+        <EditorContent editor={editor} />
       </ScrollArea>
       <div className='flex items-center justify-between gap-2 px-2 pb-2 pt-1.5'>
         <div className='flex min-w-0 flex-1 items-center gap-1.5'>

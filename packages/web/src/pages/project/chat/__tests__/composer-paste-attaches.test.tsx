@@ -67,13 +67,13 @@ describe('pasting into the composer', () => {
     expect(inserted).toBe(false);
   });
 
-  it('leaves a plain-text paste to the box', () => {
+  it('puts a plain-text paste into the box', () => {
     const { onAttachFiles } = setup();
 
-    const inserted = paste([], 'hello');
+    paste([], 'hello');
 
     expect(onAttachFiles).not.toHaveBeenCalled();
-    expect(inserted).toBe(true);
+    expect(screen.getByTestId('chat-composer-textarea')).toHaveTextContent('hello');
   });
 
   it('attaches nothing while the attach button is off', () => {

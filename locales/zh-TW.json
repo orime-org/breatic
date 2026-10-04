@@ -249,7 +249,9 @@
       "attachTooLong": "附帶的內容太多了，請少掛幾項或換短一點的檔案。",
       "attachUnsupported": "{filename} 不能附帶",
       "attachTooLarge": "{filename} 太大，不能附帶",
-      "attachUnavailable": "暫時無法新增，請重試。"
+      "attachUnavailable": "暫時無法新增，請重試。",
+      "atEmpty": "沒有可引用的附件",
+      "atNoMatch": "沒有符合的附件"
     },
     "empty": {
       "greetingWithName": "嗨,{name}!",

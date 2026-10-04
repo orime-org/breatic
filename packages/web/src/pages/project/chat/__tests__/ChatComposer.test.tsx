@@ -128,9 +128,10 @@ describe('ChatComposer', () => {
         onAbort={vi.fn()}
       />,
     );
-    const box = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement;
+    const box = screen.getByTestId('chat-composer-textarea');
 
-    expect(box.readOnly).toBe(true);
+    expect(box).toHaveAttribute('contenteditable', 'false');
+    expect(box).toHaveAttribute('aria-readonly', 'true');
   });
 
   it('does not send on Enter while the last press is still unanswered', () => {
@@ -160,8 +161,8 @@ describe('ChatComposer', () => {
         onAbort={vi.fn()}
       />,
     );
-    const box = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement;
-    expect(box.readOnly).toBe(false);
+    const box = screen.getByTestId('chat-composer-textarea');
+    expect(box).toHaveAttribute('contenteditable', 'true');
   });
 
   it('hands the keyboard to the box when stop is pressed, too', () => {
@@ -272,14 +273,14 @@ describe('while the panel is on its way to another conversation', () => {
     // 能用、按下去没反应。
     setup({ draft: 'half a sentence', navigating: true });
 
-    expect(screen.getByTestId('chat-composer-textarea')).toHaveAttribute('readonly');
+    expect(screen.getByTestId('chat-composer-textarea')).toHaveAttribute('aria-readonly', 'true');
     expect(screen.getByTestId('chat-composer-send')).toBeDisabled();
   });
 
   it('gives it back once the conversation has arrived', () => {
     setup({ draft: 'half a sentence', navigating: false });
 
-    expect(screen.getByTestId('chat-composer-textarea')).not.toHaveAttribute('readonly');
+    expect(screen.getByTestId('chat-composer-textarea')).toHaveAttribute('contenteditable', 'true');
     expect(screen.getByTestId('chat-composer-send')).not.toBeDisabled();
   });
 });
