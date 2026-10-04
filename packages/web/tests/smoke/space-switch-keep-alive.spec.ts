@@ -22,6 +22,44 @@ import {
 } from '../helpers/tab-restore';
 
 /**
+ * Adds an empty node of a type to a Space's document.
+ * @param p - A page with the Space open.
+ * @param projectId - The project.
+ * @param spaceId - The Space.
+ * @param id - The node id.
+ * @param type - The node type.
+ */
+async function seedNode(
+  p: Page,
+  projectId: string,
+  spaceId: string,
+  id: string,
+  type: 'text' | 'image',
+): Promise<void> {
+  const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
+  await p.evaluate(
+    async ([pid, sid, nodeId, kind, canvasUrl]: string[]) => {
+      const canvas = (await import(/* @vite-ignore */ canvasUrl!)) as {
+        addNode: (p: string, s: string, n: unknown) => void;
+      };
+      canvas.addNode(pid!, sid!, {
+        id: nodeId,
+        type: kind,
+        position: { x: 0, y: 0 },
+        data: {
+          name: 'keep-alive',
+          createdAt: Date.now(),
+          createdBy: 'keep-alive',
+          locked: false,
+          attachments: [],
+        },
+      });
+    },
+    [projectId, spaceId, id, type, canvasAt],
+  );
+}
+
+/**
  * Writes a text node holding some words into a Space's document.
  * @param p - A page with the Space open.
  * @param projectId - The project.
@@ -36,26 +74,14 @@ async function seedTextNode(
   id: string,
   words: string,
 ): Promise<void> {
+  await seedNode(p, projectId, spaceId, id, 'text');
   const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
   const bodyAt = await liveModuleUrl(p, TEXT_BODY);
   await p.evaluate(
     async ([pid, sid, nodeId, text, canvasUrl, bodyUrl]: string[]) => {
       const canvas = (await import(/* @vite-ignore */ canvasUrl!)) as {
-        addNode: (p: string, s: string, n: unknown) => void;
         getTextBody: (p: string, s: string, id: string) => unknown;
       };
-      canvas.addNode(pid!, sid!, {
-        id: nodeId,
-        type: 'text',
-        position: { x: 0, y: 0 },
-        data: {
-          name: 'keep-alive',
-          createdAt: Date.now(),
-          createdBy: 'keep-alive',
-          locked: false,
-          attachments: [],
-        },
-      });
       const shared = (await import(/* @vite-ignore */ bodyUrl!)) as {
         writePlainTextIntoBody: (b: unknown, t: string) => void;
       };
@@ -104,4 +130,33 @@ test('a text node being written stays open with its caret and undo across a swit
   await expect(body).toHaveText('Seeded words!');
   await page.keyboard.press('ControlOrMeta+z');
   await expect(body).not.toHaveText('Seeded words!');
+});
+
+test('a prompt being written stays with its caret and undo across a switch', async ({ page }) => {
+  // A13, the generate panel's half: the panel is taken down with the hidden
+  // canvas and put back, and the prompt's editor must come back with it.
+  const projectUrl = await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  await seedNode(page, projectIdOf(projectUrl), first, 'keep-alive-image', 'image');
+  const node = visibleSpace(page).locator('.react-flow__node[data-id="keep-alive-image"]');
+  await expect(node).toBeVisible({ timeout: 20_000 });
+  await node.click({ button: 'right' });
+  await page.getByTestId('node-menu-generate').click();
+  const prompt = visibleSpace(page).locator('[data-testid="generate-prompt-editor"] .ProseMirror');
+  await expect(prompt).toBeVisible({ timeout: 15_000 });
+  await prompt.click();
+  await page.keyboard.type('a red fox');
+  await expect(prompt).toHaveText('a red fox');
+
+  await showSpace(page, second);
+  await showSpace(page, first);
+
+  await expect(prompt).toBeVisible();
+  await expect(prompt).toBeFocused();
+  await page.keyboard.type('!');
+  await expect(prompt).toHaveText('a red fox!');
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(prompt).not.toHaveText('a red fox!');
 });

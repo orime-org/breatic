@@ -298,7 +298,7 @@ export function TextNodeEditor({
   // and read as the reader leaving.
   React.useEffect(() => {
     const id = window.setTimeout(() => {
-      if (!editor.isDestroyed && !editor.isFocused) editor.view.focus();
+      if (!editor.isDestroyed && !editor.view.hasFocus()) editor.view.focus();
     }, 0);
     return () => window.clearTimeout(id);
   }, [editor]);
