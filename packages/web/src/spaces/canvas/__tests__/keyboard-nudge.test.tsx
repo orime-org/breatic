@@ -9,6 +9,7 @@ import * as canvasSpace from '@web/data/yjs/canvas-space';
 import {
   addNode,
   createGroup,
+  setNodeName,
   getCanvasUndoManager,
   readNodes,
   _resetCanvasUndoCacheForTests,
@@ -290,6 +291,61 @@ describe('arrow keys move the selected nodes in the document (inner#1010)', () =
       undo.undo();
     });
     expect(stored('a')).toMatchObject({ x: 110, y: 100 });
+  });
+
+  it('B4: repeats with no opening press of their own start a new undo step', async () => {
+    // The manager exists first, so creating the node is the step on top.
+    const undo = getCanvasUndoManager(doc(), NAME);
+    seedImage('a', 100, 100);
+    mount();
+    clickNode('a');
+    const before = undo.undoStack.length;
+    // Focus reached the node while the key was already held: only repeats arrive.
+    press('a', 'ArrowRight', false, true);
+    press('a', 'ArrowRight', false, true);
+    await waitFor(() => expect(stored('a').x).toBe(110));
+    expect(undo.undoStack.length).toBe(before + 1);
+    act(() => {
+      undo.undo();
+    });
+    expect(stored('a')).toMatchObject({ x: 100, y: 100 });
+  });
+
+  it('B4: a held run does not swallow a write made in the middle of it', async () => {
+    seedImage('a', 100, 100);
+    const undo = getCanvasUndoManager(doc(), NAME);
+    mount();
+    clickNode('a');
+    const before = undo.undoStack.length;
+    press('a', 'ArrowRight');
+    await waitFor(() => expect(stored('a').x).toBe(105));
+    act(() => {
+      setNodeName('p', 's', 'a', 'renamed');
+    });
+    press('a', 'ArrowRight', false, true);
+    await waitFor(() => expect(stored('a').x).toBe(110));
+    expect(undo.undoStack.length).toBe(before + 3);
+    act(() => {
+      undo.undo();
+    });
+    expect(stored('a').x).toBe(105);
+    expect(readNodes(doc()).find((n) => n.id === 'a')?.data).toMatchObject({ name: 'renamed' });
+  });
+
+  it('B4: pressing the pointer ends the held run', async () => {
+    seedImage('a', 100, 100);
+    const undo = getCanvasUndoManager(doc(), NAME);
+    mount();
+    clickNode('a');
+    const before = undo.undoStack.length;
+    press('a', 'ArrowRight');
+    await waitFor(() => expect(stored('a').x).toBe(105));
+    act(() => {
+      fireEvent.pointerDown(document.querySelector('.react-flow__pane') as HTMLElement);
+    });
+    press('a', 'ArrowRight', false, true);
+    await waitFor(() => expect(stored('a').x).toBe(110));
+    expect(undo.undoStack.length).toBe(before + 2);
   });
 
   it('B3: with snap to grid on, a step is one grid dot and lands on the grid', async () => {
