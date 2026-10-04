@@ -423,7 +423,13 @@ export function FocusCropOverlay({
   // measure below immediately re-records it for the new target — a passive
   // reset used to run AFTER the mount measure and wipe the baseline, which
   // silently disabled the confirm-time src-swap check (adversarial R2).
+  //
+  // Only on a change of target: effects run again when a hidden Space is
+  // shown (inner#1235), and the same target keeps the marquee drawn on it.
+  const targetSeen = React.useRef<string | null>(null);
   React.useLayoutEffect(() => {
+    if (targetSeen.current === nodeId) return;
+    targetSeen.current = nodeId;
     clearMarquee();
     interactionRef.current = null;
     measuredSrcRef.current = null;
