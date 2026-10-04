@@ -28,6 +28,8 @@ export interface ProjectDetail extends ProjectSummary {
   deletedAt: string | null;
   /** When the project was archived (read-only for everyone), or null while live. */
   archivedAt: string | null;
+  /** Whether the caller may rename it: the studio admin or its owner, on a live project. */
+  canManageMeta: boolean;
   /** Whether the caller may restore it: a studio admin, on an archived project. */
   canRestore: boolean;
 }

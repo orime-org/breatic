@@ -5,6 +5,10 @@
  * Who may manage a project as an object — rename it, change its cover,
  * duplicate it, archive and restore it.
  *
+ * The studio admin and the project's owner may rename, change the cover and
+ * duplicate; only the studio admin may archive and restore. Nobody else may
+ * do any of it, editors included.
+ *
  * One rule, read in two places: the studio's project lists send it as flags
  * so a card's menu offers exactly what the server will accept, and the write
  * paths check it before they write. Managing the object is not entering the
@@ -13,7 +17,6 @@
  */
 
 import type { ProjectRole, StudioRole } from "@breatic/shared";
-import { ROLE_RANK } from "@breatic/shared";
 
 /** What a caller may do to one project from its card. */
 export interface ProjectPermissions {
@@ -40,11 +43,10 @@ export interface ProjectPermissionFacts {
  */
 export function projectPermissions(facts: ProjectPermissionFacts): ProjectPermissions {
   const isAdmin = facts.studioRole === "admin";
-  const editsContent =
-    facts.projectRole !== null && ROLE_RANK[facts.projectRole] >= ROLE_RANK.editor;
+  const manages = !facts.archived && (isAdmin || facts.projectRole === "owner");
   return {
-    canManageMeta: !facts.archived && (isAdmin || editsContent),
-    canDuplicate: !facts.archived && editsContent,
+    canManageMeta: manages,
+    canDuplicate: manages,
     canArchive: !facts.archived && isAdmin,
     canRestore: facts.archived && isAdmin,
   };

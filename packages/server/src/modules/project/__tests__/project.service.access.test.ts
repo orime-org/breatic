@@ -84,15 +84,16 @@ beforeEach(() => {
 });
 
 describe("project.service.loadForViewer — members enter, studio members are refused", () => {
-  it("returns an existing member's role unchanged", async () => {
+  it("returns an existing member's role unchanged, and an editor may not rename", async () => {
     loadProjectAccess.mockResolvedValue({ role: "editor", archived: false });
+    loadStudioRole.mockResolvedValue("maintainer");
     getProjectById.mockResolvedValue(makeProject());
 
     const result = await loadForViewer("p-1", "u-1");
 
     expect(result.myRole).toBe("editor");
     expect(result.project.id).toBe("p-1");
-    expect(loadStudioRole).not.toHaveBeenCalled();
+    expect(result.canManageMeta).toBe(false);
   });
 
   it("refuses a studio member who is not on the project with 403", async () => {

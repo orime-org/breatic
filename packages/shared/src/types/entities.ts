@@ -674,6 +674,8 @@ export interface ProjectDetail {
    * read-only for every member; `myRole` stays the stored role.
    */
   archivedAt: Date | null;
+  /** Whether the reader may rename it — live, and they are the studio's admin or its owner. */
+  canManageMeta: boolean;
   /** Whether the reader may restore it — archived and they are the studio's admin. */
   canRestore: boolean;
 }

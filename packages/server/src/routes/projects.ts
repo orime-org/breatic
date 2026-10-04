@@ -162,7 +162,7 @@ projects.get("/:id", async (c) => {
   const id = c.req.param("id");
   // A malformed resource key cannot identify a project; never send it to a UUID column.
   if (!z.string().uuid().safeParse(id).success) throw new NotFoundError(t("server.error.not_found"));
-  const { project, myRole, canRestore } = await projectService.loadForViewer(id, user.id);
+  const { project, myRole, canManageMeta, canRestore } = await projectService.loadForViewer(id, user.id);
   const detail: ProjectDetail = {
     id: project.id,
     studioId: project.studioId,
@@ -175,6 +175,7 @@ projects.get("/:id", async (c) => {
     updatedAt: project.updatedAt,
     deletedAt: project.deletedAt,
     archivedAt: project.archivedAt,
+    canManageMeta,
     canRestore,
   };
   return c.json({ data: detail });
@@ -313,8 +314,8 @@ projects.put(
 /**
  * `POST /projects/:id/duplicate` — fork a project into a new one.
  *
- * Gated in the service by `canDuplicate`: an editor or owner of the
- * project, which must be live. The duplicate's only member is the caller, as
+ * Gated in the service by `canDuplicate`: the studio's admin or the
+ * project's owner, and the project must be live. The duplicate's only member is the caller, as
  * its owner; the source's members are not copied.
  * @returns `201` with `{ data: ProjectEntity }` — the NEW project
  */

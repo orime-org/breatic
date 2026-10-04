@@ -133,16 +133,17 @@ async function nameOf(projectId: string): Promise<string> {
 }
 
 describe("rename", () => {
-  it("is allowed to the studio admin who is not on the project, the owner and an editor", async () => {
+  it("is allowed to the studio admin who is not on the project and to the owner", async () => {
     const s = await seedScene();
-    for (const who of [s.adminId, s.ownerId, s.editorId]) {
+    for (const who of [s.adminId, s.ownerId]) {
       await projectService.update(s.projectId, who, { name: `by-${who.slice(0, 8)}` });
       expect(await nameOf(s.projectId)).toBe(`by-${who.slice(0, 8)}`);
     }
   });
 
-  it("is refused to a viewer and to a studio member who is not on the project", async () => {
+  it("is refused to an editor, a viewer and a studio member who is not on the project", async () => {
     const s = await seedScene();
+    await expect(projectService.update(s.projectId, s.editorId, { name: "x" })).rejects.toBeInstanceOf(ForbiddenError);
     await expect(projectService.update(s.projectId, s.viewerId, { name: "x" })).rejects.toBeInstanceOf(ForbiddenError);
     await expect(projectService.update(s.projectId, s.guestId, { name: "x" })).rejects.toBeInstanceOf(ForbiddenError);
   });
@@ -156,16 +157,17 @@ describe("rename", () => {
 });
 
 describe("change cover", () => {
-  it("is allowed to the studio admin who is not on the project and to an editor", async () => {
+  it("is allowed to the studio admin who is not on the project and to the owner", async () => {
     const s = await seedScene();
     const image = await insertImage(s.studioId, s.adminId);
     await projectService.setCover(s.projectId, s.adminId, image);
-    await projectService.setCover(s.projectId, s.editorId, image);
+    await projectService.setCover(s.projectId, s.ownerId, image);
   });
 
-  it("is refused to a viewer", async () => {
+  it("is refused to an editor and to a viewer", async () => {
     const s = await seedScene();
     const image = await insertImage(s.studioId, s.adminId);
+    await expect(projectService.setCover(s.projectId, s.editorId, image)).rejects.toBeInstanceOf(ForbiddenError);
     await expect(projectService.setCover(s.projectId, s.viewerId, image)).rejects.toBeInstanceOf(ForbiddenError);
   });
 
@@ -178,15 +180,21 @@ describe("change cover", () => {
 });
 
 describe("duplicate", () => {
-  it("needs editor or above on the project: a viewer and the non-member admin are refused", async () => {
+  it("is refused to an editor and to a viewer", async () => {
     const s = await seedScene();
+    await expect(projectService.duplicate(s.projectId, s.editorId)).rejects.toBeInstanceOf(ForbiddenError);
     await expect(projectService.duplicate(s.projectId, s.viewerId)).rejects.toBeInstanceOf(ForbiddenError);
-    await expect(projectService.duplicate(s.projectId, s.adminId)).rejects.toThrow();
-    const copy = await projectService.duplicate(s.projectId, s.editorId);
-    const members = await sql<{ user_id: string; role: string }[]>`
-      SELECT user_id, role FROM project_members WHERE project_id = ${copy.id} AND deleted_at IS NULL
-    `;
-    expect(members).toEqual([{ user_id: s.editorId, role: "owner" }]);
+  });
+
+  it("gives the copy to whoever made it, alone: the owner, or the studio admin who is not on the project", async () => {
+    const s = await seedScene();
+    for (const who of [s.ownerId, s.adminId]) {
+      const copy = await projectService.duplicate(s.projectId, who);
+      const members = await sql<{ user_id: string; role: string }[]>`
+        SELECT user_id, role FROM project_members WHERE project_id = ${copy.id} AND deleted_at IS NULL
+      `;
+      expect(members).toEqual([{ user_id: who, role: "owner" }]);
+    }
   });
 });
 
@@ -197,9 +205,9 @@ describe("the studio's project lists", () => {
       const [p] = await projectService.listByStudioForViewer(s.studioId, who, { archived: false });
       return { canManageMeta: p!.canManageMeta, canDuplicate: p!.canDuplicate, canArchive: p!.canArchive, canRestore: p!.canRestore };
     };
-    expect(await flags(s.adminId)).toEqual({ canManageMeta: true, canDuplicate: false, canArchive: true, canRestore: false });
+    expect(await flags(s.adminId)).toEqual({ canManageMeta: true, canDuplicate: true, canArchive: true, canRestore: false });
     expect(await flags(s.ownerId)).toEqual({ canManageMeta: true, canDuplicate: true, canArchive: false, canRestore: false });
-    expect(await flags(s.editorId)).toEqual({ canManageMeta: true, canDuplicate: true, canArchive: false, canRestore: false });
+    expect(await flags(s.editorId)).toEqual({ canManageMeta: false, canDuplicate: false, canArchive: false, canRestore: false });
     expect(await flags(s.viewerId)).toEqual({ canManageMeta: false, canDuplicate: false, canArchive: false, canRestore: false });
   });
 
@@ -215,6 +223,25 @@ describe("the studio's project lists", () => {
     await expect(
       projectService.listByStudioForViewer(s.studioId, s.ownerId, { archived: true }),
     ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("refuse the archived list to someone outside the studio, while the live list is just empty", async () => {
+    const s = await seedScene();
+    const outsider = await insertUser(`outsider-${s.projectId.slice(0, 8)}`);
+    expect(await projectService.listByStudioForViewer(s.studioId, outsider, { archived: false })).toEqual([]);
+    await expect(
+      projectService.listByStudioForViewer(s.studioId, outsider, { archived: true }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+});
+
+describe("the project page", () => {
+  it("lets the owner rename from the title, and not an editor", async () => {
+    const s = await seedScene();
+    expect((await projectService.loadForViewer(s.projectId, s.ownerId)).canManageMeta).toBe(true);
+    expect((await projectService.loadForViewer(s.projectId, s.editorId)).canManageMeta).toBe(false);
+    await projectService.archive(s.projectId, s.adminId);
+    expect((await projectService.loadForViewer(s.projectId, s.ownerId)).canManageMeta).toBe(false);
   });
 });
 

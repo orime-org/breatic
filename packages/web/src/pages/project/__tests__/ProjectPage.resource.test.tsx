@@ -33,7 +33,7 @@ vi.mock('@web/data/yjs/collab-socket', async original => ({
 const id = '11111111-1111-4111-8111-111111111111';
 const project: ProjectDetail = {
   id, name: 'Resource test', description: null, thumbnailUrl: null, createdAt: '', updatedAt: '',
-  studioId: 'studio', createdByUserId: 'user', myRole: 'owner', deletedAt: null, archivedAt: null, canRestore: false,
+  studioId: 'studio', createdByUserId: 'user', myRole: 'owner', deletedAt: null, archivedAt: null, canManageMeta: true, canRestore: false,
 };
 function Location() { return <p data-testid='address'>{useLocation().pathname}</p>; }
 function setup(suffix = '') {

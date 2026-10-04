@@ -68,6 +68,8 @@ interface TopBarProps {
   actualRole: ProjectRole;
   /** The project is archived; the role tag stops taking clicks. */
   archived: boolean;
+  /** The reader may rename the project: the studio's admin or its owner. */
+  canRename: boolean;
   credits: CreditsReadout;
   onRename: (next: string) => void;
   /**
@@ -98,9 +100,10 @@ interface TopBarProps {
  * @param root0 - Top-bar props.
  * @param root0.projectId - Id of the current project, passed to membership, share, role and bell children.
  * @param root0.projectName - Current project name shown in the editable title.
- * @param root0.role - The role the reader acts with; gates title edit, share and member management.
+ * @param root0.role - The role the reader acts with; gates share and member management.
  * @param root0.actualRole - The reader's real role, shown on the role tag.
  * @param root0.archived - Whether the project is archived, which freezes the role tag.
+ * @param root0.canRename - Whether the title can be edited.
  * @param root0.credits - What the credits pill reads out.
  * @param root0.onRename - Called with the new title when the user finishes editing the project name.
  * @param root0.members - The project's roster, forwarded to both member components.
@@ -114,6 +117,7 @@ export function TopBar({
   role,
   actualRole,
   archived,
+  canRename,
   credits,
   onRename,
   members,
@@ -136,7 +140,7 @@ export function TopBar({
         <TitleEditable
           value={projectName}
           onChange={onRename}
-          editable={role !== 'viewer'}
+          editable={canRename}
         />
         <RoleTag role={actualRole} projectId={projectId} frozen={archived} />
       </div>

@@ -98,8 +98,8 @@ export function renderProductGuide(): string {
     "",
     "## The top bar",
     "Left to right: the brand mark, which opens our website in a new tab; an arrow with the word Studio, which " +
-      "goes back to the studio; the project's name, which double-clicking renames (Enter or clicking away saves, " +
-      "Esc or an empty name keeps the old one); and the reader's role, " +
+      "goes back to the studio; the project's name, which the project's owner or the studio's admin renames by " +
+      "double-clicking it (Enter or clicking away saves, Esc or an empty name keeps the old one); and the reader's role, " +
       `${quoted(t("role.owner"))} or ${quoted(t("role.editor"))}.`,
     "On the right: the members' pictures with a small arrow, which open " +
       `${quoted(t("members.popover.title"))}; for the owner that list ends with ` +

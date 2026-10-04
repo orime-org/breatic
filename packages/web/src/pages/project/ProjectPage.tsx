@@ -860,6 +860,7 @@ function ProjectWorkspace({
               role={role}
               actualRole={actualRole}
               archived={archived}
+              canRename={project.canManageMeta}
               credits={credits}
               onRename={(next) => renameMutation.mutate(next)}
               members={members}
