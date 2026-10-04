@@ -25,7 +25,7 @@ describe('canvas session store', () => {
     const b = createCanvasSessionStore();
 
     a.getState().openGeneratePanel('node-a', 'image');
-    b.getState().startReferencePick('node-b');
+    b.getState().startPick('node-b', 'reference');
 
     expect(a.getState().panelHostId).toBe('node-a');
     expect(a.getState().pickSession).toBeNull();
@@ -37,7 +37,7 @@ describe('canvas session store', () => {
     const store = createCanvasSessionStore();
 
     store.getState().startAnnotationPlacement();
-    store.getState().startReferencePick('node-a');
+    store.getState().startPick('node-a', 'reference');
     expect(store.getState().placingAnnotation).toBe(false);
     expect(store.getState().pickSession).toEqual({ nodeId: 'node-a', purpose: 'reference' });
 
