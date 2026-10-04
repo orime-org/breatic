@@ -17,7 +17,7 @@ import { expect, test, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, liveModuleUrl } from './live-module';
 import { openSmokeProject } from './project';
-import { createSpace, deleteSpace } from './space';
+import { createSpace, deleteSpace, visibleSpace } from './space';
 
 /** Wide enough for a strip of several tabs and a minimap beside the canvas. */
 export const VIEWPORT = { width: 1400, height: 900 };
@@ -171,7 +171,7 @@ export async function openFreshProject(p: Page): Promise<string> {
   await openSmokeProject(p);
   await p.evaluate(() => window.localStorage.removeItem('breatic.projectTabs'));
   await p.reload();
-  await expect(p.locator('.react-flow__pane:visible')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(p).locator('.react-flow__pane:visible')).toBeVisible({ timeout: 20_000 });
   return p.url();
 }
 

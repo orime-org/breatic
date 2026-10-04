@@ -20,13 +20,12 @@ import {
   selectFirstParagraph,
   selectParagraph,
 } from '../helpers/bubble-bar';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
 // `bubble-bar` registers the afterEach that removes what `openFreshDocument`
 // made, and it removes it off the fixture's page — so this file uses that one.
 test.use({ viewport: { width: 1680, height: 950 } });
 
-const EDITOR = '[data-testid="document-space"] .ProseMirror';
 
 /** A line long enough that quoting it would run off the screen. */
 const LONG_LINE =

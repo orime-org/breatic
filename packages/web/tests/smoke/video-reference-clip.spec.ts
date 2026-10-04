@@ -22,7 +22,7 @@ import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 // Taller than Desktop Chrome's 720. This panel is the tallest of the three —
 // a reference rail, a prompt editor and a toolbar — and it hangs BELOW its
@@ -66,7 +66,7 @@ async function seedNode(
   atX = 0,
   atY = 0,
 ): Promise<void> {
-  await expect(p.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(p).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   seededIds.push(nodeId);
   const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
   const seen = await p.evaluate(
@@ -157,7 +157,7 @@ async function wire(p: Page, source: string, target: string): Promise<void> {
 async function viewportOrigin(
   p: Page,
 ): Promise<{ tx: number; ty: number; width: number; height: number }> {
-  await expect(p.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(p).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   return p.evaluate(() => {
     const vp = document.querySelector('.react-flow__viewport');
     const pane = document.querySelector('.react-flow');
@@ -176,7 +176,7 @@ async function viewportOrigin(
  * @param nodeId - The node to open it on.
  */
 async function openGenerate(p: Page, nodeId: string): Promise<void> {
-  const node = p.locator(`.react-flow__node[data-id="${nodeId}"]`);
+  const node = visibleSpace(p).locator(`.react-flow__node[data-id="${nodeId}"]`);
   await expect(node).toBeVisible({ timeout: 15_000 });
   await node.click({ button: 'right' });
   await p.getByTestId('node-menu-generate').click();

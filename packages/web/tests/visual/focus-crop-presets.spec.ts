@@ -23,7 +23,7 @@ import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 // The viewport is set on `browser.newPage` rather than through `test.use`,
 // which configures the `page` fixture no case here takes. Desktop-web is the
@@ -153,14 +153,14 @@ async function openCropOverlay(): Promise<void> {
   // regardless of what the account's tab order says.
   const spaceName = `focus-crop-e2e-${Date.now()}`;
   createdSpaceIds.push(await createSpace(page, 'canvas', spaceName));
-  await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
 
   // Two image nodes: the pick has to START from one node's generate panel, and
   // a node is never a crop source for its own panel.
   await seedTwoImageNodes(page, projectId, spaceName);
 
   // The pick has to START from some node's generate panel.
-  const imageNode = page.locator('.react-flow__node:has([data-testid=image-node-img])');
+  const imageNode = visibleSpace(page).locator('.react-flow__node:has([data-testid=image-node-img])');
   await expect(imageNode.first()).toBeVisible({ timeout: 20_000 });
 
   const hostNodeId =

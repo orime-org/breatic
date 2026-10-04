@@ -16,7 +16,7 @@ import { test, expect, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 test.use({ storageState: STATE_FILE.A });
 
@@ -367,7 +367,7 @@ test('one undo takes the whole batch back', async ({ page }) => {
   // One drop is one thing the reader did, so it is one thing to take back.
   // Aimed at the pane: the handler asks whether the event's target sits in
   // the canvas region before it reads the chord.
-  await page.locator('.react-flow__pane').press('ControlOrMeta+z');
+  await visibleSpace(page).locator('.react-flow__pane').press('ControlOrMeta+z');
 
   await expect
     .poll(async () => (await documentNodes(page)).length, { timeout: 15_000 })

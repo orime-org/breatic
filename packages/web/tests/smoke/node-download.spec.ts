@@ -32,7 +32,7 @@ import { readFileSync } from 'node:fs';
 import { test, expect, type Page } from 'playwright/test';
 
 import { openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 let page: Page;
 let spaceId = '';
@@ -47,7 +47,7 @@ test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
   await openSmokeProject(page);
   spaceId = await createSpace(page, 'canvas', `node-download-e2e-${Date.now()}`);
-  await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
 });
 
 test.afterEach(async () => {
@@ -94,13 +94,13 @@ test('the menu hands the stored file to the browser as a download @needs-ingest 
   // The drop makes an empty node first; the picture arrives when the server
   // has registered the bytes. Waiting for the node separates "the drop never
   // landed" from "the upload is still running".
-  await expect(page.locator('.react-flow__node')).toHaveCount(1, {
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(1, {
     timeout: 20_000,
   });
 
   // The Space starts empty, so the one image that appears is this upload's,
   // and it carries the address the server registered.
-  const nodeImage = page.locator('.react-flow__node img');
+  const nodeImage = visibleSpace(page).locator('.react-flow__node img');
   await expect(nodeImage).toHaveCount(1, { timeout: 30_000 });
   const stored = await nodeImage.evaluate(
     (img) => (img as HTMLImageElement).src,

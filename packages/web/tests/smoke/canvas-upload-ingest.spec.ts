@@ -30,7 +30,7 @@ import { join } from 'node:path';
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 let context: BrowserContext;
 let page: Page;
@@ -373,7 +373,7 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
 
   await noToastLeft(page);
   const before = (await imageSources(page)).length;
-  const nodesBefore = await page.locator('.react-flow__node').count();
+  const nodesBefore = await visibleSpace(page).locator('.react-flow__node').count();
 
   // Armed before the drop: the report goes out while the upload is failing.
   const reported = page.waitForResponse(
@@ -402,7 +402,7 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
   // looking away — a toast does not, and a node runs several uploads at once.
   // Scoped to the node this drop made: a page-wide match would drift onto
   // another node the moment any earlier case leaves a failed row behind.
-  const node = page.locator('.react-flow__node').last();
+  const node = visibleSpace(page).locator('.react-flow__node').last();
   const failedCount = node.locator('[data-testid="task-count-failed"]');
   await expect(failedCount).toBeVisible({ timeout: 30_000 });
   expect(await page.locator('[data-sonner-toast]').count()).toBe(0);
@@ -423,7 +423,7 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
   await expect(row.locator('[data-testid="task-action-retry"]')).toBeVisible();
 
   // The node the drop created is still there, and still has no content.
-  expect(await page.locator('.react-flow__node').count()).toBe(nodesBefore + 1);
+  expect(await visibleSpace(page).locator('.react-flow__node').count()).toBe(nodesBefore + 1);
   expect((await imageSources(page)).length).toBe(before);
   // The fixed English sentence this used to write into the shared document is
   // gone (§3.7.2) — every collaborator read it, in the uploader's words.
@@ -444,7 +444,7 @@ test('a drop that never gets a ticket keeps its node and says so', async () => {
   });
 
   await noToastLeft(page);
-  const nodesBefore = await page.locator('.react-flow__node').count();
+  const nodesBefore = await visibleSpace(page).locator('.react-flow__node').count();
 
   await dropFile(
     page,
@@ -461,7 +461,7 @@ test('a drop that never gets a ticket keeps its node and says so', async () => {
 
   // The node the drop made is still there. It holds nothing and never will,
   // and taking it away is the reader's call to make, not ours.
-  expect(await page.locator('.react-flow__node').count()).toBe(nodesBefore + 1);
+  expect(await visibleSpace(page).locator('.react-flow__node').count()).toBe(nodesBefore + 1);
 
   await page.unroute('**/assets/upload-ticket*');
 });
@@ -473,7 +473,7 @@ test('a drop that never gets a ticket keeps its node and says so', async () => {
 // sentence in the reader's language.
 test('a file whose bytes are not what it claims is refused at the edge @needs-ingest @needs-storage', async () => {
 
-  const before = await page.locator('.react-flow__node').count();
+  const before = await visibleSpace(page).locator('.react-flow__node').count();
   const imagesBefore = (await imageSources(page)).length;
   // A zip's signature, named and announced as a picture. Random bytes behind it
   // so no earlier run stored this content — an identical file would hit dedup
@@ -487,7 +487,7 @@ test('a file whose bytes are not what it claims is refused at the edge @needs-in
 
   // The node the drop created stays: it has a task, and that task has an owner.
   await expect
-    .poll(async () => page.locator('.react-flow__node').count(), { timeout: 30_000 })
+    .poll(async () => visibleSpace(page).locator('.react-flow__node').count(), { timeout: 30_000 })
     .toBe(before + 1);
   const nodeId = await page
     .locator('.react-flow__node')
@@ -533,7 +533,7 @@ test('a format we do not take is refused at the drop, with no node and no ticket
   });
 
   await noToastLeft(page);
-  const nodesBefore = await page.locator('.react-flow__node').count();
+  const nodesBefore = await visibleSpace(page).locator('.react-flow__node').count();
 
   await dropFile(
     page,
@@ -551,7 +551,7 @@ test('a format we do not take is refused at the drop, with no node and no ticket
 
   // Nothing was created and nothing was asked for: the refusal is the whole
   // outcome, so there is no failed node to clean up and no grant to void.
-  expect(await page.locator('.react-flow__node').count()).toBe(nodesBefore);
+  expect(await visibleSpace(page).locator('.react-flow__node').count()).toBe(nodesBefore);
   expect(ticketsAsked).toBe(0);
 
   await page.unroute('**/assets/upload-ticket*');

@@ -24,7 +24,7 @@ import { expect, test, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, liveModuleUrl } from './live-module';
 import { openSmokeProject } from './project';
-import { createSpace, deleteSpace } from './space';
+import { createSpace, deleteSpace, visibleSpace } from './space';
 
 /**
  * How long a change is given to cross the collab server.
@@ -67,7 +67,7 @@ test.beforeEach(async ({ page }) => {
   const projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] ?? '';
   if (!projectId) throw new Error(`no project id in ${page.url()}`);
   const spaceId = await createSpace(page, 'canvas', `annotation-e2e ${Date.now()}`);
-  await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   board = { projectId, spaceId };
 });
 
@@ -96,7 +96,7 @@ export async function openPeer(page: Page): Promise<Page> {
   const tab = peer.getByTestId(`space-tab-name-${spaceId}`);
   await expect(tab).toBeVisible({ timeout: 20_000 });
   await tab.click();
-  await expect(peer.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(peer).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   return peer;
 }
 
@@ -114,7 +114,7 @@ export async function openPeer(page: Page): Promise<Page> {
 export async function landANote(page: Page, says = 'the shot needs to be slower'): Promise<string> {
   const before = await noteIds(page);
   await page.getByTestId('tool-comment').click();
-  const board = await page.locator('.react-flow__pane').boundingBox();
+  const board = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
   if (board === null) throw new Error('the board draws nothing');
   await page.mouse.click(board.x + board.width * 0.35, board.y + board.height * 0.45);
   const composer = page.getByTestId('annotation-composer-input');
@@ -186,7 +186,7 @@ export async function seedWiredPair(page: Page): Promise<void> {
     },
     [projectId, spaceId, canvasAt] as [string, string, string],
   );
-  await expect.poll(() => page.locator('.react-flow__edge-path').count(), { timeout: SETTLE_MS }).toBeGreaterThan(0);
+  await expect.poll(() => visibleSpace(page).locator('.react-flow__edge-path').count(), { timeout: SETTLE_MS }).toBeGreaterThan(0);
 }
 
 /**
@@ -210,7 +210,7 @@ export async function makeAGroup(page: Page): Promise<void> {
   const button = page.getByTestId('group-toolbar-group');
   await expect(button).toBeVisible({ timeout: SETTLE_MS });
   await button.click();
-  await expect(page.locator('.react-flow__node-group')).toHaveCount(1, {
+  await expect(visibleSpace(page).locator('.react-flow__node-group')).toHaveCount(1, {
     timeout: SETTLE_MS,
   });
 }
@@ -314,7 +314,7 @@ export async function dropNote(page: Page, nodeId: string): Promise<void> {
     },
     [projectId, spaceId, nodeId, canvasAt] as [string, string, string, string],
   );
-  await expect(page.locator(`.react-flow__node[data-id="${nodeId}"]`)).toHaveCount(0, {
+  await expect(visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`)).toHaveCount(0, {
     timeout: SETTLE_MS,
   });
 }

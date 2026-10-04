@@ -19,6 +19,7 @@
 import { test, expect, type Page } from 'playwright/test';
 
 import { openGenerate, seedNode, registerCanvasStage } from '../helpers/audio-panel';
+import { visibleSpace } from '../helpers/space';
 
 registerCanvasStage();
 
@@ -84,7 +85,7 @@ async function choose(page: Page, mode: string, model: string): Promise<void> {
  * @param nodeId - The node to click.
  */
 async function clickNode(page: Page, nodeId: string): Promise<void> {
-  await page.locator(`.react-flow__node[data-id="${nodeId}"]`).click();
+  await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).click();
 }
 
 /**
@@ -121,7 +122,7 @@ test('picks up to three style pictures for a text-to-video model and sends them'
   await clickNode(page, pictures[0]);
   await expect(page.getByTestId('generate-style-thumbnail-0')).toBeVisible();
   await expect(add).toContainText('1/3');
-  await expect(page.locator(`.react-flow__node[data-id="${pictures[0]}"]`)).toHaveClass(/canvas-pick-dimmed/);
+  await expect(visibleSpace(page).locator(`.react-flow__node[data-id="${pictures[0]}"]`)).toHaveClass(/canvas-pick-dimmed/);
   await clickNode(page, pictures[1]);
   await expect(add).toContainText('2/3');
   await clickNode(page, pictures[2]);

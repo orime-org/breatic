@@ -21,7 +21,7 @@
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 let context: BrowserContext;
 let page: Page;
@@ -48,7 +48,7 @@ const TINY_PNG =
  * @returns The id of the node the drop made.
  */
 async function dropANode(target: Page): Promise<string> {
-  const before = await target.locator('.react-flow__node').count();
+  const before = await visibleSpace(target).locator('.react-flow__node').count();
   await target.evaluate(async (encoded: string) => {
     const binary = atob(encoded);
     const bytes = new Uint8Array(binary.length);
@@ -70,7 +70,7 @@ async function dropANode(target: Page): Promise<string> {
   }, TINY_PNG);
 
   await expect
-    .poll(async () => target.locator('.react-flow__node').count(), {
+    .poll(async () => visibleSpace(target).locator('.react-flow__node').count(), {
       timeout: 30_000,
     })
     .toBeGreaterThan(before);
@@ -162,7 +162,7 @@ test.beforeEach(async ({ browser }) => {
   // canvases: dropping without this would put the node on whichever tab was
   // selected, while the submission names the Space that was just made.
   await page.getByTestId(`space-tab-name-${spaceId}`).click();
-  await expect(page.locator('.react-flow__pane')).toBeVisible({
+  await expect(visibleSpace(page).locator('.react-flow__pane')).toBeVisible({
     timeout: 15_000,
   });
 });

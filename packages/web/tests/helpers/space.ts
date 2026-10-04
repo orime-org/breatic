@@ -27,6 +27,16 @@ import { expect, type Locator, type Page } from 'playwright/test';
 export type SpaceKind = 'canvas' | 'document';
 
 /**
+ * The Space on screen, as a selector. Every open tab keeps its Space in the
+ * page, hidden (inner#1235), so a selector for something inside a Space
+ * starts here.
+ */
+export const VISIBLE_SPACE = '[data-space-outlet]:visible';
+
+/** The editable body of the document Space on screen. */
+export const DOCUMENT_EDITOR = `${VISIBLE_SPACE} [data-testid="document-space"] .ProseMirror`;
+
+/**
  * The Space on screen. Every open tab keeps its Space in the page, hidden
  * (inner#1235), so a lookup that should land in the Space being worked on
  * starts here rather than at the page.
@@ -34,7 +44,7 @@ export type SpaceKind = 'canvas' | 'document';
  * @returns The shown Space's outer element.
  */
 export function visibleSpace(page: Page): Locator {
-  return page.locator('[data-space-outlet]:visible');
+  return page.locator(VISIBLE_SPACE);
 }
 
 /**
