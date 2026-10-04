@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 // A sent message keeps its references: they show as blocks in the bubble, and
-// copying the message gives the attachments' names (inner design 2026-10-04
-// §7, A5).
+// copying the message gives the attachments' names.
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';

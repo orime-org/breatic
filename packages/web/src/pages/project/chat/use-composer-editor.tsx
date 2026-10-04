@@ -3,7 +3,7 @@
 
 /**
  * The chat box's editor: plain paragraphs with reference blocks, the draft
- * kept as one string outside it (inner design 2026-10-04 §6–§9).
+ * kept as one string outside it.
  *
  * Every write the reader did not make — a draft written from outside, a block
  * taken out because its attachment left, a name brought up to date — goes

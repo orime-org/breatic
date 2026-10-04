@@ -1,8 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-// Canvas text pasted into the chat box becomes an attachment (inner design
-// 2026-10-04 §8, A10).
+// Canvas text pasted into the chat box becomes an attachment.
 
 import { describe, it, expect } from 'vitest';
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 // Typing `@` in the chat box picks one of the attached items and puts a
-// reference to it in the words (inner design 2026-10-04 §2, A1–A3, A6).
+// reference to it in the words.
 
 import { describe, it, expect, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
