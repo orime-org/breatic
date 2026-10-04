@@ -55,7 +55,7 @@ export function retotal(durations: readonly number[], total: number): number[] {
 }
 
 /**
- * The durations on entering the per-shot tier: two even shots when there are
+ * The durations on entering the multi-shot mode: two even shots when there are
  * none yet, otherwise the existing ones re-split to the total if they drifted.
  * @param durations - The stored durations.
  * @param total - The total seconds.
