@@ -588,10 +588,13 @@ describe('@ in the chat box', () => {
       clipboardData: { files: [], getData: (kind: string) => (kind === 'text/plain' ? 'z'.repeat(50) : '') },
     });
 
-    expect(dispatched).toHaveLength(1);
+    // The paste goes in as ProseMirror pastes, then its end is cut; both
+    // leave the caret in view.
     expect(dispatched[0]?.scrolledIntoView).toBe(true);
     expect(dispatched[0]?.getMeta('uiEvent')).toBe('paste');
     expect(dispatched[0]?.getMeta('paste')).toBe(true);
+    expect(dispatched.at(-1)?.scrolledIntoView).toBe(true);
+    expect(box().state.doc.textContent).toHaveLength(10_000);
   });
 
   it('neither shows the list again nor picks from it while it is read-only', async () => {

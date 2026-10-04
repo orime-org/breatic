@@ -12,7 +12,7 @@ import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
 
-import { MACHINE_EDIT_META } from '@web/features/reference-mention/reference-mention-local-input';
+import { dispatchMachineEdit, MACHINE_EDIT_META } from '@web/features/reference-mention/reference-mention-local-input';
 import { ChatReference } from '@web/pages/project/chat/chat-reference';
 import { draftLength, followAttachments } from '@web/pages/project/chat/composer-draft';
 import type { TrayItem } from '@web/stores/chat-attachments';
@@ -67,6 +67,51 @@ export function settledLength(
 }
 
 /**
+ * Whether an edit brings in a batch of text at once: a paste, a drop from
+ * outside the box, or an input method's composition. A drop that moves what
+ * is already in the box deletes its source first, so it has a second step.
+ * @param tr - The edit.
+ * @returns True for a batch.
+ */
+function isBatch(tr: Transaction): boolean {
+  if (tr.getMeta('composition') !== undefined || tr.getMeta('uiEvent') === 'paste') return true;
+  return tr.getMeta('uiEvent') === 'drop' && tr.steps.length === 1;
+}
+
+/**
+ * The edit that brings the box back to the limit by cutting what stands just
+ * before the selection's end -- where a paste, a drop or a composition ends.
+ * Cut between whole characters; a longer cut never measures longer, so the
+ * cut is found by halves.
+ * @param state - The box's state.
+ * @param attached - What is attached; only their ids are read.
+ * @returns The edit, or null when the box is within the limit.
+ */
+function trimToLimit(state: EditorState, attached: ReadonlyArray<{ readonly id: string }>): Transaction | null {
+  const to = state.selection.to;
+  /**
+   * Whether cutting from a position up to the end leaves the box within the limit.
+   * @param from - Where the cut starts.
+   * @returns True when it fits.
+   */
+  const fitsFrom = (from: number): boolean =>
+    settledLength(state, state.tr.delete(from, to), attached) <= CHAT_MESSAGE_MAX_CHARS;
+  if (fitsFrom(to)) return null;
+  let low = 0;
+  let high = to;
+  while (low < high) {
+    const mid = (low + high + 1) >> 1;
+    if (fitsFrom(mid)) low = mid;
+    else high = mid - 1;
+  }
+  let from = low;
+  // Never leave half of a character that takes two code units.
+  const before = state.doc.textBetween(Math.max(0, from - 1), from);
+  if (/[\uD800-\uDBFF]/.test(before)) from -= 1;
+  return state.tr.delete(from, to);
+}
+
+/**
  * The box's own rules: the `@` list, Enter sends, the limit holds, and every
  * block follows what is attached -- whichever way it got into the box. The plugins run in the
  * order listed, so the `@` list sees a key before Enter is settled; the
@@ -76,6 +121,9 @@ export function settledLength(
  * @returns The extension.
  */
 function composerRules(wiring: ComposerWiring): AnyExtension {
+  // A batch let past the limit, waiting to be cut once its composition (if
+  // any) is over.
+  let overflowing = false;
   return Extension.create({
     name: 'composerRules',
     priority: 150,
@@ -92,6 +140,19 @@ function composerRules(wiring: ComposerWiring): AnyExtension {
             const tr = followAttachments(state, wiring.attachments(), wiring.labelOf);
             return tr ? tr.setMeta('addToHistory', false) : null;
           },
+          // Once the box is no longer composing, a batch that went past the
+          // limit loses its end: the box keeps the longest start of what came
+          // in that fits, as the textarea's maxLength did.
+          view: () => ({
+            update: (view): void => {
+              if (!overflowing || view.composing) return;
+              overflowing = false;
+              const trim = trimToLimit(view.state, wiring.attachments());
+              if (trim === null) return;
+              dispatchMachineEdit(view, trim.scrollIntoView());
+              wiring.onRefusedAtLimit();
+            },
+          }),
           props: {
             handleKeyDown: (view, event): boolean => {
               if (event.key !== 'Enter' || event.isComposing) return false;
@@ -104,12 +165,18 @@ function composerRules(wiring: ComposerWiring): AnyExtension {
           // Refuses an edit that would take the words past the limit, as the
           // reader counts them once the box has settled it (the spaces kept
           // around a block included). Writes the reader did not make are let
-          // through; an edit that shortens is always fine.
+          // through; an edit that shortens is always fine. A batch of text --
+          // a paste, a drop from outside, an input method's composition -- comes
+          // in whole and is cut afterwards.
           filterTransaction: (tr: Transaction, state): boolean => {
             if (measuring || !tr.docChanged || tr.getMeta(MACHINE_EDIT_META)) return true;
             const attached = wiring.attachments();
             const after = settledLength(state, tr, attached);
             if (after <= CHAT_MESSAGE_MAX_CHARS || after <= draftLength(state.doc, attached)) return true;
+            if (isBatch(tr)) {
+              overflowing = true;
+              return true;
+            }
             wiring.onRefusedAtLimit();
             return false;
           },

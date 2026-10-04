@@ -14,16 +14,16 @@
 import type { Editor } from '@tiptap/core';
 import { useEditor } from '@tiptap/react';
 import * as React from 'react';
-import { CHAT_MESSAGE_MAX_CHARS, getLocale, t as sharedT } from '@breatic/shared';
-import { Slice } from '@tiptap/pm/model';
-import { EditorState } from '@tiptap/pm/state';
+import { getLocale, t as sharedT } from '@breatic/shared';
+import { Fragment, Slice } from '@tiptap/pm/model';
+import { EditorState, Selection, TextSelection } from '@tiptap/pm/state';
 
 import { makeMentionSuggestion } from '@web/features/reference-mention/mention-suggestion';
 import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
 import { useTranslation } from '@web/i18n/use-translation';
 import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
 import { chatReferenceContent } from '@web/pages/project/chat/chat-reference';
-import { ATTACHMENTS_CHANGED_META, composerExtensions, settledLength } from '@web/pages/project/chat/composer-extensions';
+import { ATTACHMENTS_CHANGED_META, composerExtensions } from '@web/pages/project/chat/composer-extensions';
 import { draftContent, draftOf } from '@web/pages/project/chat/composer-draft';
 import { parseClipboardNodes, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
@@ -124,9 +124,15 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
           // the body; these props are read before any plugin's, so this one holds.
           tabindex: '0',
           class:
-            'block w-full whitespace-pre-wrap break-words px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none',
+            // The placeholder keeps to one line, as the textarea's did: wrapped,
+            // its second line hangs below the empty box and makes it scroll.
+            'block w-full whitespace-pre-wrap break-words px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none [&_.is-editor-empty::before]:max-w-full [&_.is-editor-empty::before]:truncate',
         },
         handleDOMEvents: {
+          // Copying or cutting nothing leaves the clipboard as it was, as in a
+          // textarea; ProseMirror would write an empty string over it.
+          copy: (view): boolean => nothingSelected(view.state),
+          cut: (view): boolean => nothingSelected(view.state),
           // Read-only, ProseMirror skips its own paste handling, and the event
           // would go on to the page: the canvas takes canvas nodes pasted
           // outside a field. The box keeps it, as a read-only field does.
@@ -137,7 +143,7 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
             return true;
           },
         },
-        handlePaste: (view, event, slice): boolean => {
+        handlePaste: (_view, event): boolean => {
           const files = [...(event.clipboardData?.files ?? [])];
           if (files.length > 0) {
             // Pasted files are attached, as if picked with the attach button,
@@ -153,23 +159,34 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
             live.current.onPasteCanvas(nodes);
             return true;
           }
-          // A paste is measured as what the box would hold after it, as every
-          // edit is, and one that does not fit is cut down to the longest
-          // start that does, with the limit said out loud.
-          const attached = live.current.attachments;
-          /**
-           * Whether the box would stay under the limit with this part pasted.
-           * @param part - What would be inserted.
-           * @returns True when it fits.
-           */
-          const fits = (part: Slice): boolean =>
-            settledLength(view.state, view.state.tr.replaceSelection(part), attached) <= CHAT_MESSAGE_MAX_CHARS;
-          if (fits(slice)) return false;
-          live.current.onRefusedAtLimit();
-          const fitted = longestFittingStart(slice, fits);
-          // Dispatched as prosemirror-view dispatches a paste of its own.
-          if (fitted) view.dispatch(view.state.tr.replaceSelection(fitted).scrollIntoView().setMeta('paste', true).setMeta('uiEvent', 'paste'));
+          // Everything else is pasted as ProseMirror pastes it; one past the
+          // limit has its end cut once it is in (composerRules).
+          return false;
+        },
+        // A drop beside the text -- past a line's end, under the last line --
+        // lands between paragraphs, where ProseMirror would start a new one.
+        // The textarea put it on the nearest line; so does this, doing what
+        // ProseMirror's own drop does from there.
+        handleDrop: (view, event, slice, moved): boolean => {
+          if (moved || slice.size === 0) return false;
+          const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
+          if (!at) return false;
+          const $at = view.state.doc.resolve(at.pos);
+          if ($at.parent.inlineContent) return false;
+          const pos = Selection.near($at, -1).head;
+          const tr = view.state.tr.replaceRange(pos, pos, slice);
+          tr.setSelection(TextSelection.between(tr.doc.resolve(pos), tr.doc.resolve(tr.mapping.map(pos, 1))));
+          view.focus();
+          view.dispatch(tr.setMeta('uiEvent', 'drop'));
           return true;
+        },
+        // Plain text -- pasted, or dropped from outside -- as the textarea took
+        // it: joined to the line it lands on, a paragraph per line, blank
+        // lines kept.
+        clipboardTextParser: (text, $context): Slice => {
+          const schema = $context.doc.type.schema;
+          const lines = text.split(/\r\n?|\n/).map((line) => schema.node('paragraph', null, line === '' ? [] : [schema.text(line)]));
+          return Slice.maxOpen(Fragment.from(lines));
         },
       },
       onUpdate: ({ editor: e }) => {
@@ -233,51 +250,14 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
 }
 
 /**
- * The longest start of a paste that still fits. Cut after a whole character,
- * a whole block, or at the start of a line; a longer start never measures
- * shorter, so the cuts are searched by halves.
- * @param slice - What would be inserted.
- * @param fits - Whether a part of it fits.
- * @returns What fits, or null when nothing does.
+ * Whether the selection holds no words and no block -- what a select-all in an
+ * empty box gives.
+ * @param state - The box's state.
+ * @returns True when there is nothing to copy.
  */
-function longestFittingStart(slice: Slice, fits: (part: Slice) => boolean): Slice | null {
-  const cuts: number[] = [];
-  let firstBlock = true;
-  slice.content.nodesBetween(0, slice.content.size, (node, pos) => {
-    if (node.isTextblock) {
-      if (!firstBlock) cuts.push(pos + 1);
-      firstBlock = false;
-      return true;
-    }
-    if (node.isText) {
-      let at = pos;
-      for (const char of node.text ?? '') {
-        at += char.length;
-        cuts.push(at);
-      }
-      return false;
-    }
-    if (node.isInline) cuts.push(pos + node.nodeSize);
-    return !node.isInline;
-  });
-  /**
-   * The paste up to one of its cuts.
-   * @param i - Which cut.
-   * @returns The start of the paste.
-   */
-  const startAt = (i: number): Slice => Slice.maxOpen(slice.content.cut(0, cuts[i]));
-  let low = 0;
-  let high = cuts.length - 1;
-  let best: Slice | null = null;
-  while (low <= high) {
-    const mid = (low + high) >> 1;
-    const part = startAt(mid);
-    if (fits(part)) {
-      best = part;
-      low = mid + 1;
-    } else high = mid - 1;
-  }
-  return best;
+function nothingSelected(state: EditorState): boolean {
+  const { from, to } = state.selection;
+  return state.doc.textBetween(from, to, '\n', () => '\uFFFC') === '';
 }
 
 /** What the box was last given from outside it. */
