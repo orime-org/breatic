@@ -419,7 +419,7 @@ describe('StudioContainerPage', () => {
     );
     setup('acme-studio', false, 'archived');
     expect(await screen.findByText('Old Logo')).toBeInTheDocument();
-    expect(screen.getByText('Archived', { selector: 'span' })).toBeInTheDocument();
+    expect(within(screen.getByTestId('project-card-p-old')).getByText('Archived')).toBeInTheDocument();
     expect(screen.queryByText('Real Studio Project')).toBeNull();
     expect(studiosApi.listProjects).toHaveBeenCalledWith('acme-studio', true);
   });

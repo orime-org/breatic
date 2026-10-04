@@ -27,13 +27,21 @@ const VISIBILITY_OVERLAY =
   'inline-flex items-center gap-1 rounded-chrome bg-black/45 px-1.5 text-2xs font-semibold leading-5 text-white';
 
 /**
- * The "archived" overlay on an archived project's card thumbnail, in the same
- * pill as the collection visibility badge. The card positions it absolutely.
- * @returns the archived overlay badge.
+ * The "archived" tag on an archived project's card thumbnail: card background,
+ * a 1px border and muted text, so on a page of archived cards it reads quieter
+ * than the names. The card positions it absolutely.
+ * @returns the archived tag.
  */
 export function ArchivedBadge(): React.JSX.Element {
   const t = useTranslation();
-  return <span className={VISIBILITY_OVERLAY}>{t('studio.container.card.archivedBadge')}</span>;
+  return (
+    <Badge
+      variant='outline'
+      className='border-border bg-card px-1.5 py-0 text-2xs leading-5 text-muted-foreground'
+    >
+      {t('studio.container.card.archivedBadge')}
+    </Badge>
+  );
 }
 
 /**
