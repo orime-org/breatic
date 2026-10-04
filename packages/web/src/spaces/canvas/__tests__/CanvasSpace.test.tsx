@@ -2440,6 +2440,54 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     addNode.mockRestore();
   });
 
+  it('leaves a canvas paste into a field in the agent column to that field', () => {
+    // After a copy in the agent column the keyboard is there; a paste into
+    // its text box belongs to the box, even when it carries canvas nodes.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    const addNode = vi
+      .spyOn(canvasSpace, 'addNode')
+      .mockImplementation(() => undefined);
+    renderSpace();
+    const agent = document.createElement('div');
+    agent.setAttribute('data-region', 'agent');
+    const input = document.createElement('textarea');
+    agent.append(input);
+    document.body.append(agent);
+    useUIStore.setState({ activeRegion: 'agent' });
+    input.focus();
+
+    dispatchPaste(serializeNodes([{ type: 'text', position: { x: 0, y: 0 }, content: 'n' }]));
+
+    expect(addNode).not.toHaveBeenCalled();
+    expect(useUIStore.getState().activeRegion).toBe('agent');
+    agent.remove();
+    addNode.mockRestore();
+  });
+
+  it('takes canvas nodes pasted after a click on a button in the agent column', () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    const addNode = vi
+      .spyOn(canvasSpace, 'addNode')
+      .mockImplementation(() => undefined);
+    renderSpace();
+    const agent = document.createElement('div');
+    agent.setAttribute('data-region', 'agent');
+    const button = document.createElement('button');
+    agent.append(button);
+    document.body.append(agent);
+    useUIStore.setState({ activeRegion: 'agent' });
+    button.focus();
+
+    dispatchPaste(serializeNodes([{ type: 'text', position: { x: 0, y: 0 }, content: 'n' }]));
+
+    expect(addNode).toHaveBeenCalledTimes(1);
+    // The pasted node is selected on the canvas, so undo, delete and Escape
+    // that follow it act there.
+    expect(useUIStore.getState().activeRegion).toBe('space');
+    agent.remove();
+    addNode.mockRestore();
+  });
+
   // ---- Right-click menu (context menu) ----
   // The reported bug: canvas surfaces leaked the browser's native menu. Right-
   // clicking the pane must suppress it (preventDefault) and open our custom menu

@@ -293,7 +293,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.upload.tooLarge": { described: /over the size limit, makes no node, and a message names it/ },
   "canvas.upload.unsupportedType": { described: /in a format that is not supported, or over the size limit, makes no node, and a message names it/ },
   "chat.action.copied": { excluded: REASONS.PASSING },
-  "chat.action.copy": { excluded: REASONS.SCREEN_READER, look: /Under a finished reply are a copy icon/ },
   "chat.assets.more": { excluded: REASONS.FILLS_A_VALUE },
   "chat.attachment.kind": { excluded: REASONS.FILLS_A_VALUE },
   "chat.attachment.more": { excluded: REASONS.FILLS_A_VALUE },

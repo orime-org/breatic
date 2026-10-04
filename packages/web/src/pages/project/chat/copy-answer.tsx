@@ -15,34 +15,29 @@ import { useTranslation } from '@web/i18n/use-translation';
  */
 export const COPY_ANSWER_MS = 1600;
 
-interface CopyAnswer {
-  /** Whether the last press is still being answered. */
-  answered: boolean;
-  /** Puts the text on the clipboard and starts the answer. */
-  copy: () => void;
+/** A copy whose answer names what was copied. */
+export interface KeyedCopy {
+  /** The key of the copy still being answered, or null when none is. */
+  answeredKey: string | null;
+  /** Puts the text on the clipboard and answers it under the key. */
+  copy: (text: string, key: string) => void;
 }
 
 /**
  * Copying, and saying it worked.
  *
  * Every copy in the panel behaves this way -- the one under a reply, the one
- * under a reader's own message, the one over a code block -- so all three ask
- * here rather than each keeping its own state and its own timer.
- * @param source - What goes on the clipboard, or a way to read it at the
- *   moment of the press. A code block reads its own rendered text, which the
- *   highlighter rebuilds, so a copy held from an earlier render would be the
- *   version before whatever the last rebuild did.
- * @returns Whether the answer is up, and the press handler.
+ * under a reader's own message, the one over a code block, the ones on a found
+ * picture -- so all of them ask here rather than each keeping its own state
+ * and its own timer. The key says which thing the answer belongs to, so
+ * several buttons can share one answer and tell whose it is.
+ * @returns The key being answered, and the press handler.
  */
-export function useCopyAnswer(source: string | (() => string)): CopyAnswer {
+export function useKeyedCopy(): KeyedCopy {
   const t = useTranslation();
-  const [answered, setAnswered] = React.useState(false);
+  const [answeredKey, setAnsweredKey] = React.useState<string | null>(null);
   const timer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  // Read through a ref so the source stays out of the handler's dependencies:
-  // a source given as a function is a new one each render, and listing it
-  // would rebuild the handler on every render of the message it sits under.
-  const latest = React.useRef(source);
-  latest.current = source;
+  const current = React.useRef<string | null>(null);
 
   React.useEffect(
     () => () => {
@@ -51,27 +46,66 @@ export function useCopyAnswer(source: string | (() => string)): CopyAnswer {
     [],
   );
 
+  const copy = React.useCallback(
+    (text: string, key: string) => {
+      void navigator.clipboard
+        .writeText(text)
+        .then(() => {
+          // A second press of the same thing while the answer is up leaves
+          // the first timer running, so the answer neither flickers nor
+          // outstays the press that put it there. Another thing takes over.
+          if (timer.current !== undefined && current.current === key) return;
+          if (timer.current !== undefined) clearTimeout(timer.current);
+          current.current = key;
+          setAnsweredKey(key);
+          timer.current = setTimeout(() => {
+            timer.current = undefined;
+            current.current = null;
+            setAnsweredKey(null);
+          }, COPY_ANSWER_MS);
+        })
+        .catch(() => {
+          toast.error(t('common.clipboardError'));
+        });
+    },
+    [t],
+  );
+
+  return React.useMemo(() => ({ answeredKey, copy }), [answeredKey, copy]);
+}
+
+interface CopyAnswer {
+  /** Whether the last press is still being answered. */
+  answered: boolean;
+  /** Puts the text on the clipboard and starts the answer. */
+  copy: () => void;
+}
+
+/** The one key a single-source copy answers under. */
+const ONLY = 'only';
+
+/**
+ * Copying one thing, and saying it worked.
+ * @param source - What goes on the clipboard, or a way to read it at the
+ *   moment of the press. A code block reads its own rendered text, which the
+ *   highlighter rebuilds, so a copy held from an earlier render would be the
+ *   version before whatever the last rebuild did.
+ * @returns Whether the answer is up, and the press handler.
+ */
+export function useCopyAnswer(source: string | (() => string)): CopyAnswer {
+  const keyed = useKeyedCopy();
+  // Read through a ref so the source stays out of the handler's dependencies:
+  // a source given as a function is a new one each render, and listing it
+  // would rebuild the handler on every render of the message it sits under.
+  const latest = React.useRef(source);
+  latest.current = source;
+  const { copy: copyKeyed } = keyed;
   const copy = React.useCallback(() => {
     const text = typeof latest.current === 'function' ? latest.current() : latest.current;
-    void navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        // A second press while the answer is up leaves the first timer
-        // running, so the answer neither flickers nor outstays the press
-        // that put it there.
-        if (timer.current !== undefined) return;
-        setAnswered(true);
-        timer.current = setTimeout(() => {
-          timer.current = undefined;
-          setAnswered(false);
-        }, COPY_ANSWER_MS);
-      })
-      .catch(() => {
-        toast.error(t('common.clipboardError'));
-      });
-  }, [t]);
-
-  return { answered, copy };
+    copyKeyed(text, ONLY);
+  }, [copyKeyed]);
+  const answered = keyed.answeredKey !== null;
+  return React.useMemo(() => ({ answered, copy }), [answered, copy]);
 }
 
 interface CopyAnswerLabelProps {
