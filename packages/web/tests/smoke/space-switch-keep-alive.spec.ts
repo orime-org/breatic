@@ -28,6 +28,7 @@ import {
  * @param spaceId - The Space.
  * @param id - The node id.
  * @param type - The node type.
+ * @param at - Where it goes, in canvas coordinates.
  */
 async function seedNode(
   p: Page,
@@ -35,17 +36,18 @@ async function seedNode(
   spaceId: string,
   id: string,
   type: 'text' | 'image',
+  at: { x: number; y: number } = { x: 0, y: 0 },
 ): Promise<void> {
   const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
   await p.evaluate(
-    async ([pid, sid, nodeId, kind, canvasUrl]: string[]) => {
+    async ([pid, sid, nodeId, kind, canvasUrl, x, y]: string[]) => {
       const canvas = (await import(/* @vite-ignore */ canvasUrl!)) as {
         addNode: (p: string, s: string, n: unknown) => void;
       };
       canvas.addNode(pid!, sid!, {
         id: nodeId,
         type: kind,
-        position: { x: 0, y: 0 },
+        position: { x: Number(x), y: Number(y) },
         data: {
           name: 'keep-alive',
           createdAt: Date.now(),
@@ -55,7 +57,7 @@ async function seedNode(
         },
       });
     },
-    [projectId, spaceId, id, type, canvasAt],
+    [projectId, spaceId, id, type, canvasAt, String(at.x), String(at.y)],
   );
 }
 
@@ -185,4 +187,43 @@ test('a note being written stays open with its words across a switch', async ({ 
   await page.keyboard.type(' finished');
   await page.keyboard.press('Enter');
   await expect(composer).toHaveCount(0);
+});
+
+test.describe('on a Mac, where Cmd is the canvas library\'s add-to-selection key', () => {
+  // The library reads the platform from the user agent, and the smoke device
+  // reports Windows, where the key is Control and a Control press on macOS is
+  // a right-click that resets the key state on its own.
+  test.use({
+    userAgent:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
+  });
+
+  test('a key held while switching away is let go when the canvas is shown again', async ({
+    page,
+  }) => {
+    // The library keeps "this key is down" while its Space is hidden and never
+    // hears the key come up there; shown again, a click selects one node as
+    // before.
+    const projectUrl = await openFreshProject(page);
+    await addSpaces(page, 1);
+    const [first, second] = (await stripIds(page)) as [string, string];
+    await showSpace(page, first);
+    await seedNode(page, projectIdOf(projectUrl), first, 'held-a', 'image', { x: 0, y: 0 });
+    await seedNode(page, projectIdOf(projectUrl), first, 'held-b', 'image', { x: 400, y: 0 });
+    const a = visibleSpace(page).locator('.react-flow__node[data-id="held-a"]');
+    const b = visibleSpace(page).locator('.react-flow__node[data-id="held-b"]');
+    await expect(b).toBeVisible({ timeout: 20_000 });
+
+    await page.keyboard.down('Meta');
+    await page.locator(`[data-testid="space-tab-${second}"]`).click();
+    await expect.poll(() => activeId(page)).toBe(second);
+    await page.keyboard.up('Meta');
+    await showSpace(page, first);
+
+    await a.click();
+    await b.click();
+
+    await expect(b).toHaveClass(/selected/);
+    await expect(a).not.toHaveClass(/selected/);
+  });
 });

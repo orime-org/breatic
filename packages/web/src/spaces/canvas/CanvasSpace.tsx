@@ -773,15 +773,6 @@ function RestoreFlowOnShow({
 }
 
 /**
- *
- * @param root0
- * @param root0.projectId
- * @param root0.spaceId
- * @param root0.readOnly
- * @param root0.myRole
- * @param root0.synced
- */
-/**
  * Canvas body — mounts ReactFlow over the Yjs-backed canvas space.
  *
  * Yjs is the single source of truth: `useCanvasSpace` observes the doc and
@@ -1042,6 +1033,17 @@ function CanvasSpaceInner({
   // the first click on the next canvas dropped a note box nobody asked for —
   // reproduced on a board.
   React.useEffect(() => () => endAnnotationPlacement(), [endAnnotationPlacement]);
+
+  // Shown again, the canvas library still holds a key that was down when this
+  // Space was hidden: its key listeners were off while the key came up, so Cmd
+  // went on adding every click to the selection (inner#1235). Its
+  // `useKeyPress` (`@xyflow/react` 12.11.2) lets every key go on a window
+  // `contextmenu`, which nothing of ours listens for. Runs after the
+  // library's listeners are back, since a parent's effects follow its
+  // children's on show.
+  React.useEffect(() => {
+    window.dispatchEvent(new Event('contextmenu'));
+  }, []);
 
   // Track an in-flight front-end operation (upload / extraction / focus crop)
   // in the per-space operation registry (#1617): register on start, unregister
