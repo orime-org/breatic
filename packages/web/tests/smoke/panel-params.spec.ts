@@ -45,7 +45,7 @@ test('an image model shows every param it stands on, named from the locales', as
   await expect(page.getByText('Quality', { exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
 
-  // Muse Image Edit: an edit starts on Auto, the shape of the image it edits.
+  // Muse Image: an edit starts on Auto, the shape of the image it edits.
   await page.getByTestId('generate-mode-trigger').click();
   await page.getByTestId('generate-mode-i2i').click();
   await page.getByTestId('generate-model-trigger').click();

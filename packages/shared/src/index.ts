@@ -391,6 +391,7 @@ export {
   retotal,
   stepShot,
 } from "@shared/storyboard-durations.js";
+export { modelLabel, type NamedModel } from "@shared/model-label.js";
 export {
   MULTI_SHOT_MAX_SHOTS,
   MULTI_SHOT_MODE,

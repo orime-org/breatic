@@ -7,6 +7,7 @@
 import {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
+  modelLabel,
   paramValues,
   storyboardSpec,
   type ControlGate,
@@ -481,8 +482,8 @@ export function modelsForMode(
   const entries = entriesForNode(nodeType);
   const usable = usableModes(panelModes, entries);
   if (!usable.includes(mode)) return { available: false, offered: usable };
-  const models = entries
-    .filter((entry) => modesOf(entry).includes(mode))
+  const inMode = entries.filter((entry) => modesOf(entry).includes(mode));
+  const models = inMode
     .map((entry) => {
       // Only this node's modes: an entry also serving a mini-tool operation
       // names one the picker never offers, which is a mode to nobody here.
@@ -495,7 +496,8 @@ export function modelsForMode(
       const storyboard = storyboardSpec(entry.params, mode);
       return {
       name: entry.name,
-      displayName: entry.display_name,
+      // The name this mode's picker shows, so the agent and the reader say the same one.
+      displayName: modelLabel(entry, inMode),
       // The guide is written for a model to read and says what the thing is
       // good at; the description is written for a person and says what it is.
       // Either answers "should I propose this one", so take whichever exists.

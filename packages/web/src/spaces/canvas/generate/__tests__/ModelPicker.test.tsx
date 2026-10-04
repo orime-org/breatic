@@ -45,6 +45,19 @@ const MODELS = [
 ];
 
 describe('ModelPicker — pick the generation model from the catalog', () => {
+  it('joins a variant onto a name only where the list holds two models of that name', () => {
+    const t2v = { ...model('g-t2v', 'Gemini Omni 1.1 Flash'), variant: 'Text-to-Video' };
+    const ref = { ...model('g-ref', 'Gemini Omni 1.1 Flash'), variant: 'Reference' };
+    const kling = { ...model('kling', 'Kling 3.0 4K'), variant: 'Text-to-Video' };
+    render(<ModelPicker models={[t2v, ref, kling]} value='g-ref' onChange={() => {}} />);
+    expect(screen.getByTestId('generate-model-trigger')).toHaveTextContent('Gemini Omni 1.1 Flash Reference');
+    fireEvent.click(screen.getByTestId('generate-model-trigger'));
+    expect(screen.getByTestId('generate-model-option-g-t2v')).toHaveTextContent('Gemini Omni 1.1 Flash Text-to-Video');
+    expect(screen.getByTestId('generate-model-option-kling')).toHaveTextContent('Kling 3.0 4K');
+    expect(screen.getByTestId('generate-model-option-kling')).not.toHaveTextContent('Text-to-Video');
+  });
+
+
   it('shows the current model’s display name on the trigger', () => {
     render(
       <ModelPicker models={MODELS} value='nano_banana_pro' onChange={() => {}} />,

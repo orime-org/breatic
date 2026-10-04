@@ -209,7 +209,10 @@ export type SourceType = "image" | "video" | "audio";
 /** Single model definition — one entry in the catalog response. */
 export interface ModelEntry {
   name: string;
+  /** The vendor's name for the model; `modelLabel` builds what a list shows. */
   display_name: string;
+  /** What tells this model apart from another one sharing its name in some mode. */
+  variant?: string;
   modality: ModelModality;
   mode: string | string[];
   description: string;
@@ -496,6 +499,7 @@ const modelEntrySchema = z.object({
   // Identity: no `.catch`, so an entry with no usable name fails and is dropped.
   name: z.string().min(1),
   display_name: z.string().catch(""),
+  variant: z.string().optional().catch(undefined),
   modality: z
     .enum(["image", "video", "audio", "tts", "three_d"])
     .catch("image"),

@@ -22,6 +22,7 @@ import {
   getModeConfig,
   resetModeConfig,
 } from "@domain/model-catalog/mode-config.js";
+import { assertNamesTellApart } from "@domain/model-catalog/model-names.js";
 import { assertParamDeclarations } from "@domain/model-catalog/param-declaration.js";
 import { assertTakesPromptDeclared } from "@domain/model-catalog/takes-prompt.js";
 import type {
@@ -99,6 +100,8 @@ export interface FullProviderEndpoint {
 export interface FullModelEntry {
   name: string;
   display_name?: string;
+  /** What tells this model apart from another one sharing its name in some mode. */
+  variant?: string;
   mode?: string | string[];
   tier?: string;
   description?: string;
@@ -219,6 +222,7 @@ export function getFullModelConfig(modality: string): FullModalityConfig {
   // reader answers on its own. Same fail-fast reasoning as the line above.
   assertModesDeclared(modality, models, getModeConfig());
   assertParamDeclarations(modality, models);
+  assertNamesTellApart(modality, models);
 
   let providers: Record<string, ProviderConnectionConfig> = {};
   const providersPath = resolve(dir, "providers.yaml");
@@ -289,6 +293,7 @@ function projectModelEntry(
   return {
     name: m.name,
     display_name: m.display_name ?? m.name,
+    ...(m.variant !== undefined ? { variant: m.variant } : {}),
     modality,
     mode: m.mode as string | string[],
     description: m.description ?? "",

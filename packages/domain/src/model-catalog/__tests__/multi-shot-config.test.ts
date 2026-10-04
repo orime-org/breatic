@@ -8,7 +8,7 @@
  */
 
 import { initCore } from "@breatic/core";
-import { storyboardSpec, type ParamDescriptor } from "@breatic/shared";
+import { modelLabel, storyboardSpec, type ParamDescriptor } from "@breatic/shared";
 import { describe, it, expect, beforeAll } from "vitest";
 
 import { getFullModelConfig, type FullModelEntry } from "../model-catalog.js";
@@ -105,5 +105,34 @@ describe("the models the multi-shot mode offers", () => {
       modes: [mode],
       fill: "panel",
     });
+  });
+});
+
+describe("the names the multi-shot mode shows", () => {
+  /**
+   * Each model a mode offers, by the name its list shows.
+   * @param mode - The mode.
+   * @returns The names, by model id.
+   */
+  function labelsIn(mode: string): Record<string, string> {
+    const peers = getFullModelConfig("video").models.filter((m) => [m.mode].flat().includes(mode));
+    const named = peers.map((m) => ({ ...m, display_name: m.display_name ?? m.name }));
+    return Object.fromEntries(named.map((m) => [m.name, modelLabel(m, named)]));
+  }
+
+  it("tells a model's text, image and reference versions apart where all three appear", () => {
+    expect(labelsIn("multi_shot")).toMatchObject({
+      "gemini-omni-1.1-flash-text-to-video": "Gemini Omni 1.1 Flash Text-to-Video",
+      "gemini-omni-1.1-flash-image-to-video": "Gemini Omni 1.1 Flash Image-to-Video",
+      "gemini-omni-1.1-flash-reference-to-video": "Gemini Omni 1.1 Flash Reference",
+      "kling-v3.0-4k-text-to-video": "Kling 3.0 4K",
+      "happyhorse-1.1-reference-to-video": "HappyHorse 1.1",
+    });
+  });
+
+  it("names each version by the vendor's name alone in a mode where it appears once", () => {
+    expect(labelsIn("i2v")["gemini-omni-1.1-flash-image-to-video"]).toBe("Gemini Omni 1.1 Flash");
+    expect(labelsIn("ref")["wan-3.0-reference-to-video"]).toBe("Wan 3.0");
+    expect(labelsIn("first_last")["flux-3-start-end-to-video"]).toBe("FLUX 3");
   });
 });

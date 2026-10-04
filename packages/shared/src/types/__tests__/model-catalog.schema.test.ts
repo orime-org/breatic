@@ -65,6 +65,11 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(out.total).toBe(2);
   });
 
+  it("keeps the variant that tells a model apart from a namesake, and drops one that is not text", () => {
+    const out = sanitizeModelCatalog(catalog([entry("a", { variant: "Reference" }), entry("b", { variant: 3 }), entry("c")]));
+    expect(out.image.map((m) => m.variant)).toEqual(["Reference", undefined, undefined]);
+  });
+
   it("preserves a valid icon name on an entry", () => {
     const raw = catalog([entry("flux", { icon: "nano-banana" })]);
     const out = sanitizeModelCatalog(raw);

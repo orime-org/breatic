@@ -79,6 +79,17 @@ describe("the model listing", () => {
     expect(line).toMatch(/512 characters/);
   });
 
+  it("names each model as the mode's picker shows it", async () => {
+    const multiShot = renderGenerationModelsForModel(
+      await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "multi_shot" }),
+    );
+    expect(multiShot).toContain("- Gemini Omni 1.1 Flash Reference (gemini-omni-1.1-flash-reference-to-video)");
+    const ref = renderGenerationModelsForModel(
+      await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "ref" }),
+    );
+    expect(ref).toContain("- Gemini Omni 1.1 Flash (gemini-omni-1.1-flash-reference-to-video)");
+  });
+
   it("says nothing about shots outside the multi-shot mode", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
     const line = renderGenerationModelsForModel(answer).split("\n").find((l) => l.includes(`(${KLING})`)) ?? "";
