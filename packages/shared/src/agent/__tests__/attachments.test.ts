@@ -18,6 +18,7 @@ import {
   attachmentSection,
   chipOfPart,
   messageLength,
+  messageSegments,
   messageWithNames,
   userTurnForModel,
 } from "@shared/agent/attachments.js";
@@ -149,5 +150,21 @@ describe("a reference to an attachment inside the typed words", () => {
 
     expect(messageLength([image], words)).toBe(5);
     expect(messageLength([], words)).toBe(words.length);
+  });
+});
+
+describe("the typed words split around their references", () => {
+  it("gives the text runs and the ids in order", () => {
+    expect(messageSegments(`a ${attachmentMarker("x")}b${attachmentMarker("y")}`)).toEqual([
+      { kind: "text", text: "a " },
+      { kind: "reference", id: "x" },
+      { kind: "text", text: "b" },
+      { kind: "reference", id: "y" },
+    ]);
+  });
+
+  it("is one text run when there is no reference", () => {
+    expect(messageSegments("plain\nwords")).toEqual([{ kind: "text", text: "plain\nwords" }]);
+    expect(messageSegments("")).toEqual([]);
   });
 });
