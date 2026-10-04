@@ -325,6 +325,9 @@ export function makeMentionSuggestion<T>(
             if (event.relatedTarget !== null) hideUnlessWithin(event.relatedTarget);
           };
           props.editor.view.dom.addEventListener('focusout', onFocusOut);
+          // Focus can also leave from a row of the list itself (a press on a
+          // row dragged off before release leaves the row focused).
+          el.addEventListener('focusout', onFocusOut);
           // Re-show a hidden popup when the LOCAL user clicks / arrows the caret
           // back into the still-active `@` range (#1805): the outside-click
           // handler HIDES the popup (display:none) without exiting the suggestion
