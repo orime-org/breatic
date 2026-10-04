@@ -113,6 +113,25 @@ describe("upstreamBody", () => {
     expect(upstreamBody(edit, { aspect_ratio: "1:1" }, "p")).toEqual({ aspect_ratio: "1:1", prompt: "p" });
   });
 
+  it("sends a value as the upstream's spelling, and a switch left off as nothing", () => {
+    const kling: FullModelEntry = {
+      name: "kling",
+      takes_prompt: true,
+      params: {
+        auto_shots: {
+          fill: "panel",
+          values: [true, false],
+          default: false,
+          absent_value: false,
+          upstream: "shot_type",
+          upstream_values: { true: "intelligence" },
+        },
+      },
+    };
+    expect(upstreamBody(kling, { auto_shots: true }, "p")).toEqual({ shot_type: "intelligence", prompt: "p" });
+    expect(upstreamBody(kling, { auto_shots: false }, "p")).toEqual({ prompt: "p" });
+  });
+
   it("keeps a param off the wire when the one that replaces it is sent", () => {
     // Gemini ignores its single voice once speakers are given; sending both
     // says two things about who reads the script.

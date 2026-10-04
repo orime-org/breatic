@@ -392,11 +392,10 @@ export interface CanvasNodeFields {
      */
     prompts?: unknown;
     /**
-     * The storyboard of each video mode (#2218) — `Y.Map<mode, Y.Map>` at
-     * runtime, each a tier (`kind`) and its shots (`shots`: `Y.Array` of
-     * `{ id, prompt: Y.XmlFragment, duration }`).
+     * The multi-shot mode's shots — `Y.Array` of
+     * `{ id, prompt: Y.XmlFragment, duration }` at runtime.
      */
-    storyboards?: unknown;
+    shots?: unknown;
     /** Model id from config/models/*.yaml. */
     model?: string;
     /**

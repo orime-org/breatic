@@ -65,6 +65,11 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(out.total).toBe(2);
   });
 
+  it("keeps the variant that tells a model apart from a namesake, and drops one that is not text", () => {
+    const out = sanitizeModelCatalog(catalog([entry("a", { variant: "Reference" }), entry("b", { variant: 3 }), entry("c")]));
+    expect(out.image.map((m) => m.variant)).toEqual(["Reference", undefined, undefined]);
+  });
+
   it("preserves a valid icon name on an entry", () => {
     const raw = catalog([entry("flux", { icon: "nano-banana" })]);
     const out = sanitizeModelCatalog(raw);
@@ -244,13 +249,13 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(sanitizeModelCatalog(raw).total).toBe(0);
   });
 
-  it("lists the six video modes the panel offers, and no mini-tool mode (#1896)", () => {
+  it("lists the seven video modes the panel offers, and no mini-tool mode (#1896)", () => {
     // A product decision (user 2026-08-08), not a formula: what this list
     // contains IS the rule, and there is no separate predicate. Most of what
     // was left out works on a video that already exists, which is the shape of
     // the decision — but `motion` takes a character image and is out anyway,
     // so a reader who re-derives the list from that shape gets it wrong. The
-    // panel narrows its picker to these six, which is what keeps a mini-tool
+    // panel narrows its picker to these seven, which is what keeps a mini-tool
     // entry out of the model list.
     expect([...IMAGE_GENERATION_MODES]).toEqual(["t2i", "i2i"]);
     expect([...AUDIO_GENERATION_MODES]).toEqual([
@@ -266,6 +271,7 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
       "first_last",
       "animate",
       "ref",
+      "multi_shot",
       "talking_head",
     ]);
 
@@ -485,6 +491,30 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
       fields,
     });
     expect(params?.negative_prompt?.type).toBe("text");
+  });
+
+  it("keeps what a value is sent as upstream and how shots are written into the prompt", () => {
+    const raw = catalog([
+      entry("kling", {
+        params: {
+          auto_shots: {
+            description: "",
+            values: [true, false],
+            upstream: "shot_type",
+            upstream_values: { true: "intelligence" },
+            default: false,
+          },
+          shots: { description: "", type: "items", into_prompt: "Shot {n}: {prompt}", default: null },
+          broken: { description: "", values: ["a"], upstream_values: "a", into_prompt: 3, default: "a" },
+        },
+      }),
+    ]);
+    const params = sanitizeModelCatalog(raw).image[0]?.params;
+    expect(params?.auto_shots?.upstream_values).toEqual({ true: "intelligence" });
+    expect(params?.shots?.into_prompt).toBe("Shot {n}: {prompt}");
+    expect(params?.broken?.upstream_values).toBeUndefined();
+    expect(params?.broken?.into_prompt).toBeUndefined();
+    expect(params?.broken?.values).toEqual(["a"]);
   });
 
   it("keeps how each value of a choice reads, and drops a malformed map", () => {

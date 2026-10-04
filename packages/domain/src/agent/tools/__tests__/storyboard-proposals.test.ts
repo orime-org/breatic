@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What the agent learns about a model's storyboard, and what it may propose
- * with one (#2218).
+ * What the agent learns about the multi-shot mode, and what it may propose in
+ * it.
  *
- * The storyboard params are filled from the node's storyboard, not typed in
- * `params`, so the agent reaches them only through a proposal's `storyboard`
- * and `shots`. The listing has to say so, and the check has to hold shots to
- * the same rules the panel's execute gate holds them to.
+ * The shot params are filled from the node's shots, not typed in `params`, so
+ * the agent reaches them only through a proposal's `shots`, and only in the
+ * multi-shot mode. The listing has to say so, and the check has to hold shots
+ * to the same rules the panel's execute gate holds them to.
  */
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
@@ -49,13 +49,15 @@ async function run<T>(canvasTool: unknown, input: unknown): Promise<T> {
 }
 
 /**
- * A lone text-to-video generation.
+ * A lone multi-shot generation.
  * @param node - What to put on the node beside its role and type.
  * @returns The proposal.
  */
 function alone(node: Partial<ProposalNode>): CanvasProposal {
   return {
-    nodes: [{ role: "generate", type: "video", name: "The clip", mode: "t2v", model: KLING, params: { duration: 5 }, ...node }],
+    nodes: [
+      { role: "generate", type: "video", name: "The clip", mode: "multi_shot", model: KLING, params: { duration: 5 }, ...node },
+    ],
     edges: [],
     modelNote: "",
     rationale: "",
@@ -69,29 +71,58 @@ const twoShots = [
 ];
 
 describe("the model listing", () => {
-  it("says which model takes a storyboard, and how", async () => {
-    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
+  it("says in the multi-shot mode that a model takes shots, and how many", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "multi_shot" });
     const line = renderGenerationModelsForModel(answer).split("\n").find((l) => l.includes(`(${KLING})`)) ?? "";
-    expect(line).toMatch(/storyboard/i);
+    expect(line).toMatch(/shots/);
     expect(line).toMatch(/at most 6 shots/);
     expect(line).toMatch(/512 characters/);
   });
 
-  it("does not call the storyboard params unreachable", async () => {
+  it("names each model as the mode's picker shows it", async () => {
+    const multiShot = renderGenerationModelsForModel(
+      await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "multi_shot" }),
+    );
+    expect(multiShot).toContain("- Gemini Omni 1.1 Flash Reference (gemini-omni-1.1-flash-reference-to-video)");
+    const ref = renderGenerationModelsForModel(
+      await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "ref" }),
+    );
+    expect(ref).toContain("- Gemini Omni 1.1 Flash (gemini-omni-1.1-flash-reference-to-video)");
+  });
+
+  it("says nothing about shots outside the multi-shot mode", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
+    const line = renderGenerationModelsForModel(answer).split("\n").find((l) => l.includes(`(${KLING})`)) ?? "";
+    expect(line).not.toMatch(/shots \(/);
+  });
+
+  it("does not call the shot params unreachable", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "multi_shot" });
     const rendered = renderGenerationModelsForModel(answer);
     expect(rendered).not.toMatch(/Nothing here reaches:[^\n]*multi_prompt/);
     expect(rendered).not.toMatch(/multi_prompt: this panel draws no control/);
   });
 });
 
-describe("a proposal with a storyboard", () => {
+describe("a multi-shot proposal", () => {
   it("takes shots with no main prompt", () => {
     expect(checkProposal(alone({ prompt: undefined, shots: twoShots }))).toEqual({ ok: true });
   });
 
-  it("takes the automatic tier with a main prompt", () => {
-    expect(checkProposal(alone({ prompt: [{ text: "a boat, then the pond" }], storyboard: "auto" }))).toEqual({ ok: true });
+  it("takes shots on a model that has them written into its prompt", () => {
+    expect(
+      checkProposal(alone({ model: "wan-3.0-text-to-video", prompt: undefined, shots: twoShots })),
+    ).toEqual({ ok: true });
+  });
+
+  it("refuses the mode without shots", () => {
+    const answer = checkProposal(alone({ prompt: [{ text: "a boat, then the pond" }] }));
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/multi_shot.*shots/) });
+  });
+
+  it("refuses shots in any other mode", () => {
+    const answer = checkProposal(alone({ mode: "t2v", prompt: undefined, shots: twoShots }));
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/multi_shot/) });
   });
 
   it("refuses shots whose seconds do not add up to the duration", () => {
@@ -104,9 +135,12 @@ describe("a proposal with a storyboard", () => {
     expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/Shot 2 writes nothing/) });
   });
 
-  it("refuses both tiers at once", () => {
-    const answer = checkProposal(alone({ prompt: undefined, shots: twoShots, storyboard: "auto" }));
-    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/not both/) });
+  it("refuses more than six shots, whatever the model allows", () => {
+    const seven = Array.from({ length: 7 }, (_, i) => ({ prompt: [{ text: `shot ${i + 1}` }], duration: 1 }));
+    const answer = checkProposal(
+      alone({ model: "wan-3.0-text-to-video", prompt: undefined, shots: seven, params: { duration: 7 } }),
+    );
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/at most 6 shots/) });
   });
 
   it("refuses a main prompt beside shots, which the run would not send", () => {
@@ -114,21 +148,18 @@ describe("a proposal with a storyboard", () => {
     expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/main prompt is not sent/) });
   });
 
-  it("refuses shots on a model that takes no storyboard", () => {
-    const answer = checkProposal(
-      alone({ model: "minimax-h3-text-to-video", prompt: undefined, shots: twoShots, params: {} }),
-    );
-    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/takes no storyboard/) });
+  it("refuses the shot params written into params", () => {
+    const answer = checkProposal(alone({ prompt: undefined, shots: twoShots, params: { duration: 5, shot_type: "customize" } }));
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/set by the node's shots/) });
   });
 
-  it("refuses the storyboard params written into params", () => {
-    const answer = checkProposal(
-      alone({ prompt: [{ text: "a boat" }], params: { duration: 5, shot_type: "customize" } }),
-    );
-    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/set by the node's storyboard/) });
+  it("takes auto multi-shot as an ordinary param in text-to-video", () => {
+    expect(
+      checkProposal(alone({ mode: "t2v", prompt: [{ text: "a boat, then the pond" }], params: { duration: 5, auto_shots: true } })),
+    ).toEqual({ ok: true });
   });
 
-  it("refuses shots or a storyboard on a node that does not generate", () => {
+  it("refuses shots on a node that does not generate", () => {
     const source = {
       nodes: [{ role: "source", type: "image", name: "Your photo", shots: twoShots }],
       edges: [],
@@ -136,14 +167,6 @@ describe("a proposal with a storyboard", () => {
       rationale: "",
       groupName: "Clip",
     } as unknown as CanvasProposal;
-    expect(checkProposal(source)).toMatchObject({ ok: false, reason: expect.stringMatching(/storyboard/) });
-    const written = {
-      nodes: [{ role: "written", type: "text", name: "Copy", prompt: [{ text: "hi" }], storyboard: "auto" }],
-      edges: [],
-      modelNote: "",
-      rationale: "",
-      groupName: "Clip",
-    } as unknown as CanvasProposal;
-    expect(checkProposal(written)).toMatchObject({ ok: false });
+    expect(checkProposal(source)).toMatchObject({ ok: false, reason: expect.stringMatching(/shots/) });
   });
 });

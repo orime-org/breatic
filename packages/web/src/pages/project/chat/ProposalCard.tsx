@@ -67,7 +67,11 @@ export const ProposalCard = React.memo(function ProposalCard({
   // runs on one. Three angles on three models leave it saying nothing anyone
   // can place.
   const model = React.useMemo(() => modelOf(proposal), [proposal]);
-  const modelName = React.useMemo(() => nameOf(catalog, model), [catalog, model]);
+  // Named as the picker of the mode it runs in names it.
+  const modelName = React.useMemo(
+    () => nameOf(catalog, model, proposal.nodes.find((n) => n.role === 'generate' && n.model === model)?.mode),
+    [catalog, model, proposal],
+  );
 
   // The canvas answers once the group is placed or once placing threw. Only
   // the card that is waiting reads it: placing runs to completion inside one

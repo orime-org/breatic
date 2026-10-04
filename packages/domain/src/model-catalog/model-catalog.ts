@@ -22,6 +22,7 @@ import {
   getModeConfig,
   resetModeConfig,
 } from "@domain/model-catalog/mode-config.js";
+import { assertNamesTellApart } from "@domain/model-catalog/model-names.js";
 import { assertParamDeclarations } from "@domain/model-catalog/param-declaration.js";
 import { assertTakesPromptDeclared } from "@domain/model-catalog/takes-prompt.js";
 import type {
@@ -67,9 +68,13 @@ export interface FullParamSpec {
   /** Another param this one stands in for; the body sends only one of the two. */
   replaces?: string;
   /** The value that is sent as nothing: holding it leaves the param out. */
-  absent_value?: string;
+  absent_value?: string | number | boolean;
   /** The upstream field this param is sent as, when it is not the param's name. */
   upstream?: string;
+  /** What a value is sent as upstream, keyed by the value's string form. */
+  upstream_values?: Record<string, string>;
+  /** The template each entry of a list is written into the prompt with. */
+  into_prompt?: string;
   /** How the param's value reaches the run. */
   fill?: string;
   /**
@@ -95,6 +100,8 @@ export interface FullProviderEndpoint {
 export interface FullModelEntry {
   name: string;
   display_name?: string;
+  /** What tells this model apart from another one sharing its name in some mode. */
+  variant?: string;
   mode?: string | string[];
   tier?: string;
   description?: string;
@@ -215,6 +222,7 @@ export function getFullModelConfig(modality: string): FullModalityConfig {
   // reader answers on its own. Same fail-fast reasoning as the line above.
   assertModesDeclared(modality, models, getModeConfig());
   assertParamDeclarations(modality, models);
+  assertNamesTellApart(modality, models);
 
   let providers: Record<string, ProviderConnectionConfig> = {};
   const providersPath = resolve(dir, "providers.yaml");
@@ -285,6 +293,7 @@ function projectModelEntry(
   return {
     name: m.name,
     display_name: m.display_name ?? m.name,
+    ...(m.variant !== undefined ? { variant: m.variant } : {}),
     modality,
     mode: m.mode as string | string[],
     description: m.description ?? "",

@@ -466,6 +466,55 @@ describe("a panel parameter's default", () => {
       assertParamDeclarations("image", modelWith({ aspect_ratio: { ...ratio, absent_value: "match" } }, "t2i")),
     ).toThrow(/a-model\.aspect_ratio.*absent_value/s);
   });
+
+  it("lets a switch name false as the value that is sent as nothing", () => {
+    const toggle = { fill: "panel", values: [true, false], default: false, absent_value: false };
+    expect(() => assertParamDeclarations("video", modelWith({ auto_shots: toggle }, "t2v"))).not.toThrow();
+  });
+
+  it("lets a value be sent as another spelling only when the choice offers that value", () => {
+    const toggle = { fill: "panel", values: [true, false], default: false, upstream: "shot_type" };
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({ auto_shots: { ...toggle, upstream_values: { true: "intelligence" } } }, "t2v"),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertParamDeclarations("video", modelWith({ auto_shots: { ...toggle, upstream_values: { on: "x" } } }, "t2v")),
+    ).toThrow(/a-model\.auto_shots.*upstream_values/s);
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({ seed: { fill: "panel", min: 0, max: 9, default: 0, upstream_values: { "1": "x" } } }, "t2v"),
+      ),
+    ).toThrow(/a-model\.seed.*upstream_values/s);
+  });
+
+  it("lets only a list of entries write them into the prompt, and only with a place for each one's text", () => {
+    const shots = {
+      fill: "storyboard",
+      type: "items",
+      default: null,
+      modes: ["multi_shot"],
+      fields: { prompt: { type: "text" }, duration: { values: [1, 2] } },
+    };
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({ shots: { ...shots, into_prompt: "Shot {n} [{start}-{end}s]: {prompt}" } }, ["t2v", "multi_shot"]),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertParamDeclarations("video", modelWith({ shots: { ...shots, into_prompt: "Shot {n}" } }, ["t2v", "multi_shot"])),
+    ).toThrow(/a-model\.shots.*into_prompt/s);
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({ tone: { fill: "panel", values: ["a"], default: "a", into_prompt: "{prompt}" } }, "t2v"),
+      ),
+    ).toThrow(/a-model\.tone.*into_prompt/s);
+  });
 });
 
 describe("the loader refuses what these checks refuse", () => {

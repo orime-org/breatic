@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * A video node's storyboards: one per mode, each a tier and a list of shots
- * (#2218).
+ * A video node's shots, which only the multi-shot mode uses.
  *
  * The shape, born with the node in `canvas-space.ts`:
- * `data.storyboards: Y.Map<mode, Y.Map{ kind, shots: Y.Array<Y.Map{ id, prompt, duration }> }>`.
+ * `data.shots: Y.Array<Y.Map{ id, prompt, duration }>`.
  * A shot is inserted whole with its own prompt fragment, so two people adding
  * a shot at once both keep theirs (array inserts commute). Durations move
  * through the pure rules in `@breatic/shared`'s `storyboard-durations`, which
@@ -14,16 +13,7 @@
  */
 
 import * as Y from 'yjs';
-import {
-  addShot,
-  asStoryboardKind,
-  enterCustom,
-  newId,
-  removeShot,
-  retotal,
-  stepShot,
-  type StoryboardKind,
-} from '@breatic/shared';
+import { addShot, enterCustom, newId, removeShot, retotal, stepShot } from '@breatic/shared';
 
 import { CANVAS_UNDO, nodeDataMap } from '@web/data/yjs/canvas-space';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -35,39 +25,15 @@ export interface StoryboardShotView {
   readonly duration: number;
 }
 
-/** One mode's storyboard as read off the document. */
-export interface StoryboardView {
-  readonly kind: StoryboardKind;
-  readonly shots: readonly StoryboardShotView[];
-}
-
 /**
- * The live storyboard map of one mode, for a reader that follows it.
+ * The live shots array of a video node, for a reader that follows it.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.
- * @param mode - The video mode.
- * @returns The map, or null when the node or that mode has none.
+ * @returns The array, or null when the node has none.
  */
-export function storyboardMapOf(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  mode: string,
-): Y.Map<unknown> | null {
-  const data = nodeDataMap(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId);
-  const boards = data?.get('storyboards');
-  const board = boards instanceof Y.Map ? boards.get(mode) : undefined;
-  return board instanceof Y.Map ? board : null;
-}
-
-/**
- * The shots array of a storyboard map.
- * @param board - The storyboard map.
- * @returns Its shots, or null when the map carries none.
- */
-function shotsOf(board: Y.Map<unknown>): Y.Array<Y.Map<unknown>> | null {
-  const shots = board.get('shots');
+export function shotListOf(projectId: string, spaceId: string, nodeId: string): Y.Array<Y.Map<unknown>> | null {
+  const shots = nodeDataMap(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId)?.get('shots');
   return shots instanceof Y.Array ? (shots as Y.Array<Y.Map<unknown>>) : null;
 }
 
@@ -94,43 +60,15 @@ function shotView(shot: Y.Map<unknown>): StoryboardShotView | null {
 }
 
 /**
- * Reads one mode's storyboard.
+ * Reads a video node's shots.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.
- * @param mode - The video mode.
- * @returns The storyboard, or null when the node or that mode has none.
+ * @returns The shots, or null when the node has no list of them.
  */
-export function readStoryboard(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  mode: string,
-): StoryboardView | null {
-  const board = storyboardMapOf(projectId, spaceId, nodeId, mode);
-  if (!board) return null;
-  const shots = shotsOf(board)?.toArray().flatMap((shot) => shotView(shot) ?? []) ?? [];
-  return { kind: asStoryboardKind(board.get('kind')) ?? 'off', shots };
-}
-
-/**
- * Sets one mode's tier; the shots are kept whatever the tier becomes.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - The video node.
- * @param mode - The video mode.
- * @param kind - The tier to set.
- */
-export function setStoryboardKind(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  mode: string,
-  kind: StoryboardKind,
-): void {
-  const board = storyboardMapOf(projectId, spaceId, nodeId, mode);
-  if (!board) return;
-  board.doc?.transact(() => board.set('kind', kind), CANVAS_UNDO);
+export function readShots(projectId: string, spaceId: string, nodeId: string): StoryboardShotView[] | null {
+  const shots = shotListOf(projectId, spaceId, nodeId);
+  return shots ? shots.toArray().flatMap((shot) => shotView(shot) ?? []) : null;
 }
 
 /**
@@ -147,26 +85,23 @@ function newShot(duration: number): Y.Map<unknown> {
 }
 
 /**
- * Applies one edit to a mode's storyboard in one transaction.
+ * Applies one edit to a node's shots in one transaction.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.
- * @param mode - The video mode.
- * @param edit - Given the shots array, their durations and the board, applies the change.
- * @returns Whether the node has that mode's storyboard to edit.
+ * @param edit - Given the shots array and their durations, applies the change.
+ * @returns Whether the node has shots to edit.
  */
 function editShots(
   projectId: string,
   spaceId: string,
   nodeId: string,
-  mode: string,
-  edit: (shots: Y.Array<Y.Map<unknown>>, durations: number[], board: Y.Map<unknown>) => void,
+  edit: (shots: Y.Array<Y.Map<unknown>>, durations: number[]) => void,
 ): boolean {
-  const board = storyboardMapOf(projectId, spaceId, nodeId, mode);
-  const shots = board ? shotsOf(board) : null;
-  if (!board || !shots) return false;
-  board.doc?.transact(() => {
-    edit(shots, shots.toArray().map(durationOf), board);
+  const shots = shotListOf(projectId, spaceId, nodeId);
+  if (!shots) return false;
+  shots.doc?.transact(() => {
+    edit(shots, shots.toArray().map(durationOf));
   }, CANVAS_UNDO);
   return true;
 }
@@ -184,26 +119,18 @@ function writeDurations(shots: Y.Array<Y.Map<unknown>>, durations: readonly numb
 }
 
 /**
- * Enters the per-shot tier: two shots when there are none, the existing ones
- * re-split to the total otherwise.
+ * Enters the multi-shot mode: two shots when there are none, the existing
+ * ones re-split to the total when they drifted from it.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.
- * @param mode - The video mode.
  * @param total - The model's total seconds.
  */
-export function enterStoryboardShots(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  mode: string,
-  total: number,
-): void {
-  editShots(projectId, spaceId, nodeId, mode, (shots, durations, board) => {
+export function enterStoryboardShots(projectId: string, spaceId: string, nodeId: string, total: number): void {
+  editShots(projectId, spaceId, nodeId, (shots, durations) => {
     const next = enterCustom(durations, total);
     if (shots.length === 0) shots.push(next.map((d) => newShot(d)));
     else writeDurations(shots, next);
-    board.set('kind', 'custom');
   });
 }
 
@@ -212,19 +139,17 @@ export function enterStoryboardShots(
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.
- * @param mode - The video mode.
  * @param total - The model's total seconds.
- * @param maxShots - The model's shot cap.
+ * @param maxShots - The shot cap.
  */
 export function addStoryboardShot(
   projectId: string,
   spaceId: string,
   nodeId: string,
-  mode: string,
   total: number,
   maxShots: number,
 ): void {
-  editShots(projectId, spaceId, nodeId, mode, (shots, durations) => {
+  editShots(projectId, spaceId, nodeId, (shots, durations) => {
     const next = addShot(durations, total, maxShots);
     if (!next) return;
     writeDurations(shots, next);
@@ -237,7 +162,6 @@ export function addStoryboardShot(
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.
- * @param mode - The video mode.
  * @param shotId - The shot being stepped.
  * @param delta - +1 or -1.
  */
@@ -245,11 +169,10 @@ export function stepStoryboardShot(
   projectId: string,
   spaceId: string,
   nodeId: string,
-  mode: string,
   shotId: string,
   delta: 1 | -1,
 ): void {
-  editShots(projectId, spaceId, nodeId, mode, (shots, durations) => {
+  editShots(projectId, spaceId, nodeId, (shots, durations) => {
     const index = shots.toArray().findIndex((shot) => shot.get('id') === shotId);
     const next = index === -1 ? null : stepShot(durations, index, delta);
     if (next) writeDurations(shots, next);
@@ -261,7 +184,6 @@ export function stepStoryboardShot(
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.
- * @param mode - The video mode.
  * @param shotId - The shot to remove.
  * @param total - The model's total seconds.
  */
@@ -269,11 +191,10 @@ export function removeStoryboardShot(
   projectId: string,
   spaceId: string,
   nodeId: string,
-  mode: string,
   shotId: string,
   total: number,
 ): void {
-  editShots(projectId, spaceId, nodeId, mode, (shots, durations) => {
+  editShots(projectId, spaceId, nodeId, (shots, durations) => {
     const index = shots.toArray().findIndex((shot) => shot.get('id') === shotId);
     const next = index === -1 ? null : removeShot(durations, index, total);
     if (!next) return;
@@ -283,47 +204,36 @@ export function removeStoryboardShot(
 }
 
 /**
- * Re-splits one mode's shots to a new total, in the per-shot tier only.
+ * Re-splits the shots to a new total. The panel calls it only while the
+ * multi-shot mode is showing them.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.
- * @param mode - The video mode.
  * @param total - The new total seconds.
  */
-export function retotalStoryboard(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  mode: string,
-  total: number,
-): void {
-  editShots(projectId, spaceId, nodeId, mode, (shots, durations, board) => {
-    if (board.get('kind') === 'custom') writeDurations(shots, retotal(durations, total));
-  });
+export function retotalStoryboard(projectId: string, spaceId: string, nodeId: string, total: number): void {
+  editShots(projectId, spaceId, nodeId, (shots, durations) => writeDurations(shots, retotal(durations, total)));
 }
 
 /**
- * Replaces one mode's shots with fresh ones of the given seconds and puts the
- * storyboard in the per-shot tier, for a proposal landing on a new node.
+ * Replaces the shots with fresh ones of the given seconds, for a proposal
+ * landing on a new node.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.
- * @param mode - The video mode.
  * @param durations - Each shot's seconds, in order.
- * @returns Each new shot's prompt fragment, in order.
+ * @returns Each new shot's prompt fragment, in order; empty when the node has no list of shots.
  */
 export function setStoryboardShots(
   projectId: string,
   spaceId: string,
   nodeId: string,
-  mode: string,
   durations: readonly number[],
 ): Y.XmlFragment[] {
   const fresh = durations.map((d) => newShot(d));
-  const landed = editShots(projectId, spaceId, nodeId, mode, (shots, _old, board) => {
+  const landed = editShots(projectId, spaceId, nodeId, (shots) => {
     shots.delete(0, shots.length);
     shots.push(fresh);
-    board.set('kind', 'custom');
   });
   return landed ? fresh.map((shot) => shot.get('prompt') as Y.XmlFragment) : [];
 }

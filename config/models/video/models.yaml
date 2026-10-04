@@ -2,6 +2,12 @@
 # model listed is the one a panel opens on, so entries are ordered by how the
 # catalog ranks them for their mode.
 # Guidelines:
+#   model.display_name   — the vendor's name for the model, never the mode it
+#                          runs in: the mode picker already says that.
+#   model.variant        — what tells this model apart from another one with
+#                          the same display_name in some mode; a list joins
+#                          it on only where both appear (`modelLabel`). The
+#                          catalog refuses namesakes in one mode without one.
 #   model.description    — max 40 chars, English. The picker draws it under
 #                          display_name, so it is what tells a reader which of
 #                          several models for one mode to pick: say what this
@@ -38,6 +44,13 @@
 #   param.absent_value   — the value that is sent as nothing: holding it
 #                          leaves the param out of the request (`auto` lets
 #                          the upstream decide).
+#   param.upstream_values — what a value is sent as upstream, keyed by the
+#                          value's string form, when the endpoint spells it
+#                          differently; a value not listed goes as it is.
+#   param.into_prompt    — for an `items` list the endpoint has no field for:
+#                          each entry is written into the prompt with this
+#                          template ({n} its place, {start}/{end} its running
+#                          seconds, {prompt} its text), one per line.
 #   provider.pricing     — the endpoint's WaveSpeed pricing contract, verbatim:
 #                          base_price (1,000,000 = 1 USD), the JSONata formula
 #                          (empty means base_price per call) and discount_rate
@@ -48,7 +61,8 @@ models:
 
   - name: "gemini-omni-1.1-flash-text-to-video"
     display_name: "Gemini Omni 1.1 Flash"
-    mode: "t2v"
+    variant: "Text-to-Video"
+    mode: ["t2v", "multi_shot"]
     takes_prompt: true
     tier: "recommended"
     description: "Top-ranked; synced audio up to 4K"
@@ -71,6 +85,18 @@ models:
         default: "720p"
         values: ["360p", "720p", "1080p", "4k"]
         fill: "panel"
+      shots:
+        description: "Shots, each with its own prompt, written into the prompt in order"
+        default: null
+        type: "items"
+        fields:
+          prompt:
+            type: "text"
+          duration:
+            values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        modes: ["multi_shot"]
+        into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
+        fill: "storyboard"
     providers:
       - name: "wavespeed"
         model_id: "google/gemini-omni-1.1-flash/text-to-video"
@@ -82,7 +108,8 @@ models:
 
   - name: "wan-3.0-text-to-video"
     display_name: "Wan 3.0"
-    mode: "t2v"
+    variant: "Text-to-Video"
+    mode: ["t2v", "multi_shot"]
     takes_prompt: true
     tier: "optional"
     description: "30s in one take with native audio"
@@ -112,6 +139,18 @@ models:
         default: "720p"
         values: ["480p", "720p", "1080p"]
         fill: "panel"
+      shots:
+        description: "Shots, each with its own prompt, written into the prompt in order"
+        default: null
+        type: "items"
+        fields:
+          prompt:
+            type: "text"
+          duration:
+            values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+        modes: ["multi_shot"]
+        into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
+        fill: "storyboard"
     providers:
       - name: "wavespeed"
         model_id: "alibaba/wan-3.0/text-to-video"
@@ -123,7 +162,7 @@ models:
 
   - name: "seedance-2.5-text-to-video"
     display_name: "Seedance 2.5"
-    mode: "t2v"
+    mode: ["t2v", "multi_shot"]
     takes_prompt: true
     tier: "optional"
     description: "Native 4K from 50 reference assets"
@@ -193,6 +232,18 @@ models:
         default: "720p"
         values: ["480p", "720p", "1080p", "4k"]
         fill: "panel"
+      shots:
+        description: "Shots, each with its own prompt, written into the prompt in order"
+        default: null
+        type: "items"
+        fields:
+          prompt:
+            type: "text"
+          duration:
+            values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+        modes: ["multi_shot"]
+        into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
+        fill: "storyboard"
     providers:
       - name: "wavespeed"
         model_id: "bytedance/seedance-2.5/text-to-video"
@@ -204,7 +255,8 @@ models:
 
   - name: "minimax-h3-text-to-video"
     display_name: "MiniMax H3"
-    mode: "t2v"
+    variant: "Text-to-Video"
+    mode: ["t2v", "multi_shot"]
     takes_prompt: true
     tier: "optional"
     description: "Silent 2K, 21:9 through 9:16"
@@ -227,6 +279,18 @@ models:
         default: "768p"
         values: ["768p", "2k"]
         fill: "panel"
+      shots:
+        description: "Shots, each with its own prompt, written into the prompt in order"
+        default: null
+        type: "items"
+        fields:
+          prompt:
+            type: "text"
+          duration:
+            values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        modes: ["multi_shot"]
+        into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
+        fill: "storyboard"
     providers:
       - name: "wavespeed"
         model_id: "minimax/h3/text-to-video"
@@ -238,7 +302,7 @@ models:
 
   - name: "kling-v3.0-4k-text-to-video"
     display_name: "Kling 3.0 4K"
-    mode: "t2v"
+    mode: ["t2v", "multi_shot"]
     takes_prompt: true
     tier: "optional"
     description: "4K with a negative prompt"
@@ -269,13 +333,26 @@ models:
           duration:
             values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
             default: 5
+        modes: ["multi_shot"]
         fill: "storyboard"
       shot_type:
-        description: "Who splits the storyboard into shots: the model (intelligence) or the reader, shot by shot (customize)"
+        description: "Sent as customize when the shots are written one by one in the multi-shot mode"
         label: "Storyboard tier"
         default: null
-        values: ["intelligence", "customize"]
+        values: ["customize"]
+        modes: ["multi_shot"]
         fill: "storyboard"
+      auto_shots:
+        upstream: "shot_type"
+        description: "Let the model split the prompt into several shots itself"
+        label: "Auto multi-shot"
+        default: false
+        values: [true, false]
+        absent_value: false
+        upstream_values:
+          "true": "intelligence"
+        modes: ["t2v"]
+        fill: "panel"
       negative_prompt:
         description: "What to keep out of the video"
         label: "Negative prompt"
@@ -298,8 +375,9 @@ models:
           discount_rate: 100
 
   - name: "gemini-omni-1.1-flash-image-to-video"
-    display_name: "Gemini Omni 1.1 Flash Image-to-Video"
-    mode: ["i2v", "first_last"]
+    display_name: "Gemini Omni 1.1 Flash"
+    variant: "Image-to-Video"
+    mode: ["i2v", "first_last", "multi_shot"]
     takes_prompt: true
     tier: "recommended"
     description: "Native audio, 4K ladder, end frame"
@@ -334,6 +412,18 @@ models:
         default: "720p"
         values: ["360p", "720p", "1080p", "4k"]
         fill: "panel"
+      shots:
+        description: "Shots, each with its own prompt, written into the prompt in order"
+        default: null
+        type: "items"
+        fields:
+          prompt:
+            type: "text"
+          duration:
+            values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        modes: ["multi_shot"]
+        into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
+        fill: "storyboard"
     providers:
       - name: "wavespeed"
         model_id: "google/gemini-omni-1.1-flash/image-to-video"
@@ -344,8 +434,9 @@ models:
           discount_rate: 100
 
   - name: "minimax-h3-image-to-video"
-    display_name: "MiniMax H3 Image-to-Video"
-    mode: ["i2v", "first_last"]
+    display_name: "MiniMax H3"
+    variant: "Image-to-Video"
+    mode: ["i2v", "first_last", "multi_shot"]
     takes_prompt: true
     tier: "recommended"
     description: "Most-voted #1; native 2K, 15s"
@@ -375,6 +466,18 @@ models:
         default: "768p"
         values: ["768p", "2k"]
         fill: "panel"
+      shots:
+        description: "Shots, each with its own prompt, written into the prompt in order"
+        default: null
+        type: "items"
+        fields:
+          prompt:
+            type: "text"
+          duration:
+            values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        modes: ["multi_shot"]
+        into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
+        fill: "storyboard"
     providers:
       - name: "wavespeed"
         model_id: "minimax/h3/image-to-video"
@@ -385,8 +488,9 @@ models:
           discount_rate: 100
 
   - name: "wan-3.0-image-to-video"
-    display_name: "Wan 3.0 Image-to-Video"
-    mode: ["i2v", "first_last"]
+    display_name: "Wan 3.0"
+    variant: "Image-to-Video"
+    mode: ["i2v", "first_last", "multi_shot"]
     takes_prompt: true
     tier: "optional"
     description: "2-30s, audio you can switch off"
@@ -429,6 +533,18 @@ models:
         default: "720p"
         values: ["480p", "720p", "1080p"]
         fill: "panel"
+      shots:
+        description: "Shots, each with its own prompt, written into the prompt in order"
+        default: null
+        type: "items"
+        fields:
+          prompt:
+            type: "text"
+          duration:
+            values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+        modes: ["multi_shot"]
+        into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
+        fill: "storyboard"
     providers:
       - name: "wavespeed"
         model_id: "alibaba/wan-3.0/image-to-video"
@@ -439,8 +555,8 @@ models:
           discount_rate: 95
 
   - name: "kling-video-o3-4k-image-to-video"
-    display_name: "Kling Video O3 4K Image-to-Video"
-    mode: "i2v"
+    display_name: "Kling Video O3 4K"
+    mode: ["i2v", "multi_shot"]
     takes_prompt: true
     tier: "optional"
     description: "Mentioned images held as elements, in 4K"
@@ -481,13 +597,26 @@ models:
           duration:
             values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
             default: 5
+        modes: ["multi_shot"]
         fill: "storyboard"
       shot_type:
-        description: "Who splits the storyboard into shots: the model (intelligence) or the reader, shot by shot (customize)"
+        description: "Sent as customize when the shots are written one by one in the multi-shot mode"
         label: "Storyboard tier"
         default: null
-        values: ["intelligence", "customize"]
+        values: ["customize"]
+        modes: ["multi_shot"]
         fill: "storyboard"
+      auto_shots:
+        upstream: "shot_type"
+        description: "Let the model split the prompt into several shots itself"
+        label: "Auto multi-shot"
+        default: false
+        values: [true, false]
+        absent_value: false
+        upstream_values:
+          "true": "intelligence"
+        modes: ["i2v"]
+        fill: "panel"
       generate_audio:
         upstream: "sound"
         description: "Generate a soundtrack with the video"
@@ -577,8 +706,9 @@ models:
           discount_rate: 100
 
   - name: "minimax-h3-reference-to-video"
-    display_name: "MiniMax H3 Reference"
-    mode: "ref"
+    display_name: "MiniMax H3"
+    variant: "Reference"
+    mode: ["ref", "multi_shot"]
     takes_prompt: true
     tier: "recommended"
     description: "Top-rated, 2K from mixed refs"
@@ -587,6 +717,8 @@ models:
     icon: "minimax"
     source_groups:
       - mode: "ref"
+        any_of: ["images", "videos", "audios"]
+      - mode: "multi_shot"
         any_of: ["images", "videos", "audios"]
     params:
       aspect_ratio:
@@ -645,6 +777,18 @@ models:
         default: "768p"
         values: ["768p", "2k"]
         fill: "panel"
+      shots:
+        description: "Shots, each with its own prompt, written into the prompt in order"
+        default: null
+        type: "items"
+        fields:
+          prompt:
+            type: "text"
+          duration:
+            values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        modes: ["multi_shot"]
+        into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
+        fill: "storyboard"
     providers:
       - name: "wavespeed"
         model_id: "minimax/h3/reference-to-video"
@@ -655,8 +799,9 @@ models:
           discount_rate: 100
 
   - name: "gemini-omni-1.1-flash-reference-to-video"
-    display_name: "Gemini Omni 1.1 Flash Reference"
-    mode: "ref"
+    display_name: "Gemini Omni 1.1 Flash"
+    variant: "Reference"
+    mode: ["ref", "multi_shot"]
     takes_prompt: true
     tier: "optional"
     description: "10 refs, 4K, lip-synced audio"
@@ -665,6 +810,8 @@ models:
     icon: "gemini"
     source_groups:
       - mode: "ref"
+        any_of: ["images", "videos"]
+      - mode: "multi_shot"
         any_of: ["images", "videos"]
     params:
       aspect_ratio:
@@ -712,6 +859,18 @@ models:
         default: "720p"
         values: ["360p", "720p", "1080p", "4k"]
         fill: "panel"
+      shots:
+        description: "Shots, each with its own prompt, written into the prompt in order"
+        default: null
+        type: "items"
+        fields:
+          prompt:
+            type: "text"
+          duration:
+            values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        modes: ["multi_shot"]
+        into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
+        fill: "storyboard"
     providers:
       - name: "wavespeed"
         model_id: "google/gemini-omni-1.1-flash/reference-to-video"
@@ -722,8 +881,9 @@ models:
           discount_rate: 100
 
   - name: "wan-3.0-reference-to-video"
-    display_name: "Wan 3.0 Reference"
-    mode: "ref"
+    display_name: "Wan 3.0"
+    variant: "Reference"
+    mode: ["ref", "multi_shot"]
     takes_prompt: true
     tier: "optional"
     description: "30s takes from 20 mixed assets"
@@ -732,6 +892,8 @@ models:
     icon: "alibaba"
     source_groups:
       - mode: "ref"
+        any_of: ["images", "videos", "audios"]
+      - mode: "multi_shot"
         any_of: ["images", "videos", "audios"]
     params:
       aspect_ratio:
@@ -797,6 +959,18 @@ models:
         default: "720p"
         values: ["480p", "720p", "1080p"]
         fill: "panel"
+      shots:
+        description: "Shots, each with its own prompt, written into the prompt in order"
+        default: null
+        type: "items"
+        fields:
+          prompt:
+            type: "text"
+          duration:
+            values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+        modes: ["multi_shot"]
+        into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
+        fill: "storyboard"
     providers:
       - name: "wavespeed"
         model_id: "alibaba/wan-3.0/reference-to-video"
@@ -807,8 +981,8 @@ models:
           discount_rate: 95
 
   - name: "happyhorse-1.1-reference-to-video"
-    display_name: "HappyHorse 1.1 Reference"
-    mode: "ref"
+    display_name: "HappyHorse 1.1"
+    mode: ["ref", "multi_shot"]
     takes_prompt: true
     tier: "optional"
     description: "Holds visual style, not just faces"
@@ -851,6 +1025,18 @@ models:
         default: "720p"
         values: ["720p", "1080p"]
         fill: "panel"
+      shots:
+        description: "Shots, each with its own prompt, written into the prompt in order"
+        default: null
+        type: "items"
+        fields:
+          prompt:
+            type: "text"
+          duration:
+            values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        modes: ["multi_shot"]
+        into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
+        fill: "storyboard"
     providers:
       - name: "wavespeed"
         model_id: "alibaba/happyhorse-1.1/reference-to-video"
@@ -861,7 +1047,7 @@ models:
           discount_rate: 100
 
   - name: "flux-3-start-end-to-video"
-    display_name: "FLUX 3 Start-End"
+    display_name: "FLUX 3"
     mode: "first_last"
     takes_prompt: true
     tier: "optional"
@@ -914,7 +1100,7 @@ models:
           discount_rate: 100
 
   - name: "seedance-2.5-video-extend"
-    display_name: "Seedance 2.5 Extend"
+    display_name: "Seedance 2.5"
     mode: "extend"
     takes_prompt: true
     tier: "internal"
@@ -955,7 +1141,7 @@ models:
           discount_rate: 90
 
   - name: "wan-3.0-video-edit"
-    display_name: "Wan 3.0 Edit"
+    display_name: "Wan 3.0"
     mode: "edit"
     takes_prompt: true
     tier: "internal"
@@ -992,7 +1178,7 @@ models:
           discount_rate: 100
 
   - name: "kling-v3-pro-motion"
-    display_name: "Kling 3.0 Pro Motion Control"
+    display_name: "Kling 3.0 Pro"
     mode: "motion"
     takes_prompt: true
     tier: "internal"
@@ -1081,7 +1267,8 @@ models:
           discount_rate: 100
 
   - name: "infinitetalk-video-to-video"
-    display_name: "InfiniteTalk Video-to-Video"
+    display_name: "InfiniteTalk"
+    variant: "Video-to-Video"
     mode: "talking_head"
     takes_prompt: true
     tier: "optional"
@@ -1115,7 +1302,8 @@ models:
           discount_rate: 100
 
   - name: "infinitetalk-multi"
-    display_name: "InfiniteTalk Multi"
+    display_name: "InfiniteTalk"
+    variant: "Multi"
     mode: "talking_head"
     takes_prompt: true
     tier: "optional"
@@ -1202,7 +1390,7 @@ models:
           discount_rate: 100
 
   - name: "ltx-2.3-lipsync"
-    display_name: "LTX 2.3 Lipsync"
+    display_name: "LTX 2.3"
     mode: "talking_head"
     takes_prompt: true
     tier: "optional"
@@ -1237,7 +1425,7 @@ models:
           discount_rate: 100
 
   - name: "seedvr2-video"
-    display_name: "SeedVR2 Video Upscaler"
+    display_name: "SeedVR2"
     mode: "upscale"
     takes_prompt: false
     tier: "internal"
@@ -1268,7 +1456,7 @@ models:
           discount_rate: 100
 
   - name: "rife-interpolation"
-    display_name: "RIFE Frame Interpolation"
+    display_name: "RIFE"
     mode: "interpolate"
     takes_prompt: false
     tier: "internal"

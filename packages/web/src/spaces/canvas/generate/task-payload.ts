@@ -14,7 +14,7 @@
 import type { ReferencePool, TaskCreateInput } from '@breatic/shared';
 import type { EstimateInput } from '@breatic/shared/pricing';
 
-import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
+import { buildOverwriteTaskPayload, type OverwriteTaskInput } from '@web/spaces/canvas/generate/overwrite-task-payload';
 import { poolParams, type ReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 
 /** Image-node generation task type (AIGC_TASK_TYPES key on the worker). */
@@ -22,6 +22,8 @@ const IMAGE_TASK_TYPE = 'image';
 
 /** Inputs for {@link buildGenerateTaskPayload}. */
 export interface GenerateTaskInput {
+  /** The mode the run is in and the model's declared params (`buildOverwriteTaskPayload`). */
+  generation: OverwriteTaskInput['generation'];
   /** Node being generated (the overwrite target). */
   nodeId: string;
   projectId: string;
@@ -48,6 +50,7 @@ export function buildGenerateTaskPayload(
   input: GenerateTaskInput,
 ): TaskCreateInput {
   return buildOverwriteTaskPayload({
+    generation: input.generation,
     taskType: IMAGE_TASK_TYPE,
     nodeId: input.nodeId,
     projectId: input.projectId,

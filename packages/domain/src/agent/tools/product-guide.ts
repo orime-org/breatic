@@ -474,8 +474,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.refuseExecuteNoVoice"))} or ` +
       `${quoted(t("canvas.generatePanel.errorNoSourceImage"))} The music modes may ask ` +
       `${quoted(t("canvas.generatePanel.refuseExecuteNoStyle"))}, ${quoted(t("canvas.generatePanel.lyricsMissing"))} ` +
-      `or ${quoted(t("canvas.generatePanel.refuseExecuteNoReference"))}. When a storyboard is split into shots ` +
-      "(see the video panel below), the shots take the prompt's place, and pressing it may say " +
+      `or ${quoted(t("canvas.generatePanel.refuseExecuteNoReference"))}. In the video panel's Multi-Shot mode ` +
+      "(see below), the shots take the prompt's place, and pressing it may say " +
       `${quoted(t("canvas.generatePanel.refuseStoryboardShotEmpty", { shot: 2 }))}, ` +
       `${quoted(t("canvas.generatePanel.refuseStoryboardShotTooLong", { shot: 2, limit: 512 }))}, ` +
       `${quoted(t("canvas.generatePanel.refuseStoryboardDurationMismatch", { shots: 6, total: 5 }))} or ` +
@@ -566,36 +566,30 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.duration"))}, a ${quoted(t("canvas.generatePanel.generateAudio"))} ` +
       "switch on models that can, and any settings of the model's own. A setting the model does not have is left " +
       "out.",
-    `- Storyboard, on the video models that offer it: under the prompt box is a row with a ` +
-      `${quoted(t("canvas.generatePanel.storyboard.label"))} switch reading ` +
-      `${quoted(t("canvas.generatePanel.switchOff"))} or ${quoted(t("canvas.generatePanel.switchOn"))}. On, the ` +
-      `model splits the prompt into shots itself, and the row says ` +
-      `${quoted(t("canvas.generatePanel.storyboard.autoHint"))}. ` +
-      `${quoted(t("canvas.generatePanel.storyboard.perShot"))} at the right end of that row splits it by hand: the ` +
-      "prompt box gives way to one card per shot, and the right end of the row reads " +
-      `${quoted(t("canvas.generatePanel.storyboard.addShot"))} then ` +
-      `${quoted(t("canvas.generatePanel.storyboard.back"))}. A card, such as ` +
+    `- Multi-Shot, a mode in the video panel's mode picker: the prompt box gives way to one card per shot, and ` +
+      "switching into it with no shots lays out two, splitting the video's length. A card, such as " +
       `${quoted(t("canvas.generatePanel.storyboard.shot", { n: 1 }))}, has a minus and a plus around its ` +
       `seconds, ${quoted(t("canvas.generatePanel.storyboard.removeShot"))}, and a box, ` +
       `${quoted(t("canvas.generatePanel.storyboard.shotPlaceholder"))}, that takes @ mentions like the prompt; ` +
-      "clicking a chip in the strip puts it in that shot box if the prompt box clicked into last was a shot; " +
-      "otherwise, including after clicking the main prompt box, it goes into the first shot. While split by " +
-      "hand, the shots' seconds keep adding up to the video's length: the plus takes a second from another " +
-      "shot and the minus gives one to the shot after it, or to the one before it on the last shot, so the " +
-      "minus is greyed at one second or " +
+      "clicking a chip in the strip puts it in the shot box clicked into last, or in the first shot. Under the " +
+      `cards, in the middle, is ${quoted(t("canvas.generatePanel.storyboard.addShot"))}. The shots' seconds keep ` +
+      "adding up to the video's length: the plus takes a second from another shot and the minus gives one to " +
+      "the shot after it, or to the one before it on the last shot, so the minus is greyed at one second or " +
       "when there is only one shot, and the plus is greyed when no other shot has a second to spare. In the " +
-      "settings pill a duration shorter than the number of shots is greyed, and picking another one re-splits " +
-      "the shots. A duration shortened while the shots were hidden can leave fewer seconds than shots; they " +
-      "then stay as they were and pressing generate says they do not add up: remove shots until there are no " +
-      "more shots than seconds, and the rest are re-split, or pick a duration at least as long as the number " +
-      `of shots. ${quoted(t("canvas.generatePanel.storyboard.addShot"))} is greyed with ` +
-      `${quoted(t("canvas.generatePanel.storyboard.shotCapReached", { max: 6 }))} at the model's limit, or with ` +
+      "settings pill a duration shorter than the number of shots is greyed, and picking another one, or another " +
+      "model, re-splits the shots. A duration shortened in another mode can leave fewer seconds than shots; " +
+      "they then stay as they were and pressing generate says they do not add up: remove shots until there are " +
+      "no more shots than seconds, and the rest are re-split, or pick a duration at least as long as the number " +
+      `of shots. When no shot can be added, ${quoted(t("canvas.generatePanel.storyboard.addShot"))} gives way to ` +
+      `${quoted(t("canvas.generatePanel.storyboard.shotCapReached", { max: 6 }))} at six shots, or ` +
       `${quoted(t("canvas.generatePanel.storyboard.noSecondToSpare"))} when the video has no more seconds than ` +
       "there are shots; " +
       `${quoted(t("canvas.generatePanel.storyboard.removeShot"))} is greyed while only one shot is left. ` +
-      `${quoted(t("canvas.generatePanel.storyboard.back"))}, or turning the switch off, brings the prompt box ` +
-      "back with its words, and the shots are kept for next time. Split by hand, the run sends the shots and the " +
-      "nodes mentioned in them, and the prompt box's words are not sent. Each mode keeps its own storyboard.",
+      "An image-to-video model also shows its first frame slot here, and a reference model takes the nodes the " +
+      "shots mention. The run sends the shots and the nodes mentioned in them; switching to another mode brings " +
+      "that mode's prompt box back with its words, and the shots are kept for next time. On the Kling models, " +
+      `text to video and image to video have a ${quoted(t("canvas.generatePanel.param.auto_shots"))} switch in ` +
+      "the settings pill: on, the model splits the prompt into shots itself.",
     `- Sound panel: tool ${quoted(t("canvas.generatePanel.reference"))}, then the source slots. Here only a ` +
       "connected text node can be mentioned; a connected sound shows as a faded chip, and a sound goes in through " +
       "its slot. On a model with voices the settings pill shows a speaker icon and the current voice and " +
@@ -744,7 +738,7 @@ export function renderProductGuide(): string {
       "keys work when the canvas was the last thing clicked and no box is being typed in: after pressing a " +
       "button in this chat, click empty canvas first, or use the bar. Undo takes back only the reader's own " +
       "changes: adding, deleting and moving nodes, connections and groups, a group's size and colour, names, " +
-      "locks, a node's mode, model, settings and slots, a video's storyboard and its shots, and notes and their replies. It does not take back what " +
+      "locks, a node's mode, model, settings and slots, a video's shots, and notes and their replies. It does not take back what " +
       "a generation or an upload put in a node (use the node's " +
       `${quoted(t("canvas.nodeMenu.history"))}), a focus crop (press the X on its chip), or other people's ` +
       "changes. Undoing a removed connection, or a deleted node with its connections, brings them back, but " +
@@ -772,10 +766,9 @@ export function renderProductGuide(): string {
       "With one generating node its panel opens by itself; with several, the group is selected and the reader " +
       `right-clicks each node and chooses ${quoted(t("canvas.nodeMenu.generate"))}.`,
     "Each generating node arrives empty, with its mode, model and the settings the proposal chose already set " +
-      "and, when the model has a prompt box, its prompt written. A video node on a model with a storyboard may " +
-      "instead arrive with the storyboard switched on, or split into shots with each shot's words written and " +
-      "the prompt box empty; its panel then opens on the shots. The prompt and shots go into the proposal's " +
-      "mode only, so switching mode shows that mode's own box. Where the model has no prompt box, a picture or video " +
+      "and, when the model has a prompt box, its prompt written. A video node in Multi-Shot arrives with its " +
+      "shots, each with its words and seconds written, and its panel opens on them. The prompt goes into the " +
+      "proposal's mode only, so switching mode shows that mode's own box. Where the model has no prompt box, a picture or video " +
       `panel shows ${quoted(t("canvas.generatePanel.promptNotUsed"))} in place of the box, and a sound panel ` +
       "still shows a box that holds only the proposal's bracketed spots, if any; nothing typed there is sent. " +
       "The reader generates the nodes in the order the card's arrows run, and waits for each to show its result " +

@@ -19,8 +19,8 @@ import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
  * the mode option means adding a mode cannot forget to state it.
  */
 describe('video mode options (#1904)', () => {
-  it('offers the six modes built so far, text-to-video first', () => {
-    // Against the shared list rather than six literals, because the backend
+  it('offers the modes built so far, text-to-video first', () => {
+    // Against the shared list rather than literals, because the backend
     // answers the agent "which modes can this node be set to" out of that
     // list (#261): a mode added to one and not the other has the agent
     // naming a mode this picker does not offer, or missing one it does.
@@ -37,6 +37,8 @@ describe('video mode options (#1904)', () => {
     expect(slotsForMode('i2v')).toEqual(['firstFrame']);
     expect(slotsForMode('first_last')).toEqual(['firstFrame', 'endFrame']);
     expect(slotsForMode('animate')).toEqual(['characterImage', 'drivingVideo']);
+    // A model's first frame where it has one; the shots replace the prompt.
+    expect(slotsForMode('multi_shot')).toEqual(['firstFrame']);
     expect(slotsForMode('talking_head')).toEqual([
       'characterImage',
       'sourceVideo',

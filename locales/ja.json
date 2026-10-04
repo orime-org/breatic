@@ -641,6 +641,7 @@
         "horizontal_angle": "水平角度",
         "vertical_angle": "垂直角度",
         "negative_prompt": "ネガティブプロンプト",
+        "auto_shots": "自動マルチショット",
         "motion": "動きの大きさ",
         "order": "順序",
         "model_mode": "範囲",
@@ -655,10 +656,6 @@
         "pronunciation": "読み"
       },
       "storyboard": {
-        "label": "ストーリーボード",
-        "perShot": "ショットごとに編集",
-        "autoHint": "モデルがショットを分割します",
-        "back": "自動ストーリーボードに戻る",
         "shot": "ショット {n, number}",
         "removeShot": "削除",
         "addShot": "ショットを追加",

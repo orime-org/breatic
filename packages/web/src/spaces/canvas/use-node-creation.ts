@@ -17,7 +17,7 @@ import {
   setNodeModel,
   setNodeName,
 } from '@web/data/yjs/canvas-space';
-import { setStoryboardKind, setStoryboardShots } from '@web/data/yjs/node-storyboard';
+import { setStoryboardShots } from '@web/data/yjs/node-storyboard';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import {
   writeProposalPrompt,
@@ -327,19 +327,11 @@ export function useNodeCreation(
           const fragment = getPromptFragment(projectId, spaceId, id, node.mode);
           if (fragment && node.prompt) feeders = writeProposalPrompt(fragment, node.prompt, feeders);
           if (node.shots) {
-            const shotFragments = setStoryboardShots(
-              projectId,
-              spaceId,
-              id,
-              node.mode,
-              node.shots.map((shot) => shot.duration),
-            );
+            const shotFragments = setStoryboardShots(projectId, spaceId, id, node.shots.map((shot) => shot.duration));
             node.shots.forEach((shot, k) => {
               const target = shotFragments[k];
               if (target) feeders = writeProposalPrompt(target, shot.prompt, feeders);
             });
-          } else if (node.storyboard === 'auto') {
-            setStoryboardKind(projectId, spaceId, id, node.mode, 'auto');
           }
         });
       });

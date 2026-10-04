@@ -12,7 +12,7 @@
  * modality puts in `params` is its own business and stays in its own builder.
  */
 
-import type { TaskCreateInput } from '@breatic/shared';
+import { paramsForMode, type ParamDescriptor, type TaskCreateInput } from '@breatic/shared';
 
 /** Inputs for {@link buildOverwriteTaskPayload}. */
 export interface OverwriteTaskInput {
@@ -26,11 +26,17 @@ export interface OverwriteTaskInput {
   model: string;
   /** The fully assembled request params, prompt and sources included. */
   params: Record<string, unknown>;
+  /**
+   * The mode the run is in and the model's declared params. Params are
+   * stored per model across modes, so one declared only for other modes is
+   * left behind here, for every panel at once.
+   */
+  generation: { mode: string; declared: Readonly<Record<string, ParamDescriptor>> };
 }
 
 /**
  * Wraps already-assembled params in the overwrite task envelope.
- * @param input - Task type, node, project/space, model and params.
+ * @param input - Task type, node, project/space, model, params and the mode they run in.
  * @returns The `POST /canvas/tasks` request body.
  */
 export function buildOverwriteTaskPayload(
@@ -39,7 +45,7 @@ export function buildOverwriteTaskPayload(
   return {
     task_type: input.taskType,
     model: input.model,
-    params: input.params,
+    params: paramsForMode(input.params, input.generation.declared, input.generation.mode),
     node_ids: [input.nodeId],
     project_id: input.projectId,
     space_id: input.spaceId,

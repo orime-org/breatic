@@ -354,6 +354,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
           // Renders nothing when this model has no voice and no param to show.
           <AudioSettingsPicker
             model={currentModel}
+            mode={mode}
             value={params}
             onChange={onChangeParams}
             voice={voice}

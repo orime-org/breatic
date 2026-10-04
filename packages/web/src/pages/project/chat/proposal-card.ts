@@ -10,7 +10,7 @@
  * display name.
  */
 
-import { layersOf, nameableFeeders, proposalMarkSegments } from '@breatic/shared';
+import { layersOf, modelLabel, nameableFeeders, proposalMarkSegments } from '@breatic/shared';
 import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
 
 /** What one node contributes to the little shape drawn on the card. */
@@ -282,12 +282,17 @@ function entryOf(
  * note beside it is written about a particular model and needs one named.
  * @param catalog - The model catalog, or undefined while it is being fetched.
  * @param model - The model the proposal chose.
+ * @param mode - The mode it runs in, whose picker the name is the one of.
  * @returns The name to show, or undefined when the proposal names no model.
  * @throws {never} Never.
  */
 export function nameOf(
   catalog: ModelCatalog | undefined,
   model: string | undefined,
+  mode: string | undefined,
 ): string | undefined {
-  return entryOf(catalog, model)?.display_name || model;
+  const entry = entryOf(catalog, model);
+  if (!entry || !catalog) return model;
+  const peers = (catalog[entry.modality] ?? []).filter((m) => mode !== undefined && [m.mode].flat().includes(mode));
+  return modelLabel(entry, peers) || model;
 }

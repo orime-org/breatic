@@ -2,6 +2,12 @@
 # model listed is the one a panel opens on, so entries are ordered by how the
 # catalog ranks them for their mode.
 # Guidelines:
+#   model.display_name   — the vendor's name for the model, never the mode it
+#                          runs in: the mode picker already says that.
+#   model.variant        — what tells this model apart from another one with
+#                          the same display_name in some mode; a list joins
+#                          it on only where both appear (`modelLabel`). The
+#                          catalog refuses namesakes in one mode without one.
 #   model.description    — max 40 chars, English. The picker draws it under
 #                          display_name, so it is what tells a reader which of
 #                          several models for one mode to pick: say what this
@@ -364,7 +370,7 @@ models:
           discount_rate: 100
 
   - name: "gpt-image-2.5-sunburst-edit"
-    display_name: "GPT Image 2.5 Sunburst Edit"
+    display_name: "GPT Image 2.5 Sunburst"
     mode: ["edit", "i2i"]
     takes_prompt: true
     tier: "recommended"
@@ -420,7 +426,7 @@ models:
           discount_rate: 100
 
   - name: "muse-image-edit"
-    display_name: "Muse Image Edit"
+    display_name: "Muse Image"
     mode: ["i2i", "edit"]
     takes_prompt: true
     tier: "optional"
@@ -471,7 +477,7 @@ models:
           discount_rate: 100
 
   - name: "nano-banana-pro-edit-ultra"
-    display_name: "Nano Banana Pro Edit Ultra"
+    display_name: "Nano Banana Pro Ultra"
     mode: ["i2i", "edit"]
     takes_prompt: true
     tier: "optional"

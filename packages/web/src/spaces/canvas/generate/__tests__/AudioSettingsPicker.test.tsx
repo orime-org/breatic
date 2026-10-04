@@ -83,7 +83,7 @@ function open(
   onChange: (partial: object) => void = () => {},
 ): void {
   render(
-    <AudioSettingsPicker model={entry} value={resolveParamsForModel(entry, value)} onChange={onChange} voice={NO_VOICE} />,
+    <AudioSettingsPicker mode='tts' model={entry} value={resolveParamsForModel(entry, value)} onChange={onChange} voice={NO_VOICE} />,
   );
   fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
 }
@@ -207,7 +207,7 @@ describe('AudioSettingsPicker â€” the speaking params the active model declares'
 
   it('renders nothing at all for a model with no voice and no param', () => {
     // No empty pill that opens onto nothing.
-    render(<AudioSettingsPicker voice={NO_VOICE} model={model({})} value={{}} onChange={() => {}} />);
+    render(<AudioSettingsPicker mode='tts' voice={NO_VOICE} model={model({})} value={{}} onChange={() => {}} />);
     expect(screen.queryByTestId('generate-audio-settings-trigger')).toBeNull();
   });
 
@@ -215,7 +215,7 @@ describe('AudioSettingsPicker â€” the speaking params the active model declares'
     // The voice is one of the settings now (design Â§16.1), so a voice-only
     // model still gets the pill, opening onto the voice row.
     render(
-      <AudioSettingsPicker
+      <AudioSettingsPicker mode='tts'
         voice={NO_VOICE}
         model={model({ voice_id: { description: '', default: null, remote_source: 'voices' } })}
         value={{}}
@@ -339,7 +339,7 @@ describe('AudioSettingsPicker â€” when a slider writes', () => {
     // row shows this client's number over anything a collaborator stores.
     const onChange = vi.fn();
     const { rerender } = render(
-      <AudioSettingsPicker voice={NO_VOICE} model={MINIMAX} value={{ speed: 1, volume: 1 }} onChange={onChange} />,
+      <AudioSettingsPicker mode='tts' voice={NO_VOICE} model={MINIMAX} value={{ speed: 1, volume: 1 }} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     const thumb = screen.getByRole('slider', { name: 'Speed' });
@@ -347,7 +347,7 @@ describe('AudioSettingsPicker â€” when a slider writes', () => {
     fireEvent.keyUp(thumb, { key: 'ArrowRight' });
 
     rerender(
-      <AudioSettingsPicker voice={NO_VOICE} model={MINIMAX} value={{ speed: 0.8, volume: 1 }} onChange={onChange} />,
+      <AudioSettingsPicker mode='tts' voice={NO_VOICE} model={MINIMAX} value={{ speed: 0.8, volume: 1 }} onChange={onChange} />,
     );
     expect(screen.getByTestId('generate-audio-speed-value')).toHaveTextContent('0.80x');
   });
@@ -359,7 +359,7 @@ describe('AudioSettingsPicker trigger carries the values, like the video panel',
     // them on the trigger; the row reads as four pills each naming what it
     // holds.
     render(
-      <AudioSettingsPicker
+      <AudioSettingsPicker mode='tts'
         voice={NO_VOICE}
         model={ELEVENLABS}
         value={{ stability: 0.5, similarity: 0.75 }}
@@ -372,7 +372,7 @@ describe('AudioSettingsPicker trigger carries the values, like the video panel',
 
   it('prints MiniMax\'s pair in their own units', () => {
     render(
-      <AudioSettingsPicker
+      <AudioSettingsPicker mode='tts'
         voice={NO_VOICE}
         model={MINIMAX}
         value={{ speed: 1.25, volume: 0.5 }}
@@ -388,7 +388,7 @@ describe('AudioSettingsPicker trigger carries the values, like the video panel',
     // The three pills to its left carry bg-background. An unfilled control in
     // that row reads as a switch that is off, and these params are never off.
     render(
-      <AudioSettingsPicker
+      <AudioSettingsPicker mode='tts'
         voice={NO_VOICE}
         model={MINIMAX}
         value={{ speed: 1, volume: 1 }}
@@ -429,7 +429,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
     new Intl.DisplayNames(['en'], { type: 'language', languageDisplay: 'standard' }).of(tag) ?? tag;
 
   it('reads top to bottom as reading mode, language, voice', () => {
-    render(<AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={() => {}} />);
+    render(<AudioSettingsPicker mode='tts' voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={() => {}} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     const order = [
       screen.getByTestId('generate-audio-reading-single'),
@@ -444,7 +444,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
 
   it('insets rows and groups 12px like the image and video popovers, labels in one style', () => {
     // Popover p-2 (8px) + 4px on each block = the p-3 the other two use.
-    render(<AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={() => {}} />);
+    render(<AudioSettingsPicker mode='tts' voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={() => {}} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     const row = screen.getByTestId('generate-audio-row-language');
     expect(row.className).toContain('px-1');
@@ -457,7 +457,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
     const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(
       { left: 700, right: 1000, top: 0, bottom: 0, width: 300, height: 0, x: 700, y: 0, toJSON: () => ({}) } as DOMRect,
     );
-    render(<AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={() => {}} />);
+    render(<AudioSettingsPicker mode='tts' voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={() => {}} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     fireEvent.click(screen.getByTestId('generate-audio-row-language'));
     expect(screen.getByTestId('generate-audio-second-panel')).toHaveAttribute('data-side', 'left');
@@ -468,13 +468,13 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
   it('writes the dialogue switch, and shows the speakers in place of the voice', () => {
     const onChange = vi.fn();
     const { rerender } = render(
-      <AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={onChange} />,
+      <AudioSettingsPicker mode='tts' voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     fireEvent.click(screen.getByTestId('generate-audio-reading-dialogue'));
     expect(onChange).toHaveBeenCalledWith({ _stand_in_on: true });
     rerender(
-      <AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={{ _stand_in_on: true }} onChange={onChange} />,
+      <AudioSettingsPicker mode='tts' voice={NO_VOICE} model={GEMINI} value={{ _stand_in_on: true }} onChange={onChange} />,
     );
     expect(screen.getByTestId('generate-audio-row-speakers-0')).toBeInTheDocument();
     expect(screen.getByTestId('generate-audio-row-speakers-1')).toBeInTheDocument();
@@ -483,7 +483,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
 
   it('names each language in the reader\'s language and picks one from a searchable list beside', () => {
     const onChange = vi.fn();
-    render(<AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={onChange} />);
+    render(<AudioSettingsPicker mode='tts' voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={onChange} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     expect(screen.getByTestId('generate-audio-row-language')).toHaveTextContent(nameOf('en-US'));
     fireEvent.click(screen.getByTestId('generate-audio-row-language'));
@@ -502,7 +502,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
   it('draws the open row\'s name in full foreground, since the row sits on the accent fill', () => {
     // Muted text on the accent fill measures 4.46:1 in the dark theme, under
     // the 4.5:1 floor for 13px text; the rows that are not open keep it muted.
-    render(<AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={() => {}} />);
+    render(<AudioSettingsPicker mode='tts' voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={() => {}} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     fireEvent.click(screen.getByTestId('generate-audio-row-language'));
     const nameIn = (row: string): HTMLElement => screen.getByTestId(`generate-audio-row-${row}`).firstElementChild as HTMLElement;
@@ -518,7 +518,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
   const DIALOGUE = { _stand_in_on: true, speakers: [{ speaker: 'Ana', voice: 'Kore' }, { speaker: '', voice: 'Puck' }] };
 
   it('gives each speaker a row reading the name and the voice, with the script hint under them (#2256)', () => {
-    render(<AudioSettingsPicker voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={() => {}} />);
+    render(<AudioSettingsPicker mode='tts' voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={() => {}} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     expect(screen.getByTestId('generate-audio-row-speakers-0')).toHaveTextContent('Speaker 1');
     expect(screen.getByTestId('generate-audio-row-speakers-0')).toHaveTextContent('Ana Â· Kore');
@@ -530,7 +530,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
   });
 
   it('opens a speaker with a name box over the same voice list, the speaker\'s voice chosen (#2256)', () => {
-    render(<AudioSettingsPicker voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={() => {}} />);
+    render(<AudioSettingsPicker mode='tts' voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={() => {}} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     fireEvent.click(screen.getByTestId('generate-audio-row-speakers-1'));
     const panel = screen.getByTestId('generate-audio-second-panel');
@@ -542,7 +542,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
 
   it('writes the name on Enter and on leaving the box, but not on the Enter that confirms an IME word (#2256)', () => {
     const onChange = vi.fn();
-    render(<AudioSettingsPicker voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={onChange} />);
+    render(<AudioSettingsPicker mode='tts' voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={onChange} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     fireEvent.click(screen.getByTestId('generate-audio-row-speakers-1'));
     const box = screen.getByTestId('generate-audio-speaker-name');
@@ -559,7 +559,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
 
   it('picks a speaker\'s voice from the list and folds the panel (#2256)', () => {
     const onChange = vi.fn();
-    render(<AudioSettingsPicker voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={onChange} />);
+    render(<AudioSettingsPicker mode='tts' voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={onChange} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     fireEvent.click(screen.getByTestId('generate-audio-row-speakers-0'));
     fireEvent.click(screen.getByTestId('generate-voice-option-Puck'));
@@ -569,7 +569,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
 
   it('fills an unset dialogue to two speakers with no name and the first voice (#2256)', () => {
     const onChange = vi.fn();
-    render(<AudioSettingsPicker voice={SPEAKER_VOICES} model={GEMINI} value={{ _stand_in_on: true }} onChange={onChange} />);
+    render(<AudioSettingsPicker mode='tts' voice={SPEAKER_VOICES} model={GEMINI} value={{ _stand_in_on: true }} onChange={onChange} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     expect(screen.getByTestId('generate-audio-row-speakers-0')).toHaveTextContent('Kore');
     fireEvent.click(screen.getByTestId('generate-audio-row-speakers-1'));
@@ -580,7 +580,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
   it('clears the voice search when moving from one speaker to the other (#2256)', () => {
     const onQueryChange = vi.fn();
     render(
-      <AudioSettingsPicker voice={{ ...SPEAKER_VOICES, onQueryChange }} model={GEMINI} value={DIALOGUE} onChange={() => {}} />,
+      <AudioSettingsPicker mode='tts' voice={{ ...SPEAKER_VOICES, onQueryChange }} model={GEMINI} value={DIALOGUE} onChange={() => {}} />,
     );
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     fireEvent.click(screen.getByTestId('generate-audio-row-speakers-0'));
@@ -596,7 +596,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
       emotion: { description: '', label: 'Emotion', fill: 'panel', default: 'happy', values: ['happy', 'sad'] },
     });
     render(
-      <AudioSettingsPicker
+      <AudioSettingsPicker mode='tts'
         voice={{ ...NO_VOICE, selectedId: 'v', selectedName: 'Vera' }}
         model={emotional}
         value={resolveParamsForModel(emotional, {})}
@@ -618,17 +618,17 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
     });
     const props = { voice: { ...NO_VOICE, selectedId: 'v', selectedName: 'Vera' }, model: minimax, onChange: () => {} };
     const { rerender } = render(
-      <AudioSettingsPicker {...props} value={{ ...resolveParamsForModel(minimax, {}), pronunciation_dict: [{ text: 'a', pronunciation: 'b' }] }} />,
+      <AudioSettingsPicker mode='tts' {...props} value={{ ...resolveParamsForModel(minimax, {}), pronunciation_dict: [{ text: 'a', pronunciation: 'b' }] }} />,
     );
     const trigger = screen.getByTestId('generate-audio-settings-trigger');
     expect(trigger).toHaveTextContent('Pronunciations Â· Vera Â· 1.00x Â· Happy');
-    rerender(<AudioSettingsPicker {...props} value={resolveParamsForModel(minimax, {})} />);
+    rerender(<AudioSettingsPicker mode='tts' {...props} value={resolveParamsForModel(minimax, {})} />);
     expect(trigger).toHaveTextContent(/^Vera Â· 1\.00x Â· Happy$/);
   });
 
   it('caps the pill at 150px and prints the language, then the voice, as the popover lists them', () => {
     render(
-      <AudioSettingsPicker
+      <AudioSettingsPicker mode='tts'
         voice={{ ...NO_VOICE, selectedId: 'Kore', selectedName: 'Kore' }}
         model={GEMINI}
         value={resolveParamsForModel(GEMINI, {})}

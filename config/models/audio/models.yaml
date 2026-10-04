@@ -2,6 +2,12 @@
 # model listed is the one a panel opens on, so entries are ordered by how the
 # catalog ranks them for their mode.
 # Guidelines:
+#   model.display_name   — the vendor's name for the model, never the mode it
+#                          runs in: the mode picker already says that.
+#   model.variant        — what tells this model apart from another one with
+#                          the same display_name in some mode; a list joins
+#                          it on only where both appear (`modelLabel`). The
+#                          catalog refuses namesakes in one mode without one.
 #   model.description    — max 40 chars, English. The picker draws it under
 #                          display_name, so it is what tells a reader which of
 #                          several models for one mode to pick: say what this
@@ -47,7 +53,8 @@
 models:
 
   - name: "mureka-v9.5-generate-song"
-    display_name: "Mureka V9.5 Song"
+    display_name: "Mureka V9.5"
+    variant: "Song"
     mode: ["t2m", "a2m"]
     takes_prompt: true
     tier: "recommended"
@@ -120,7 +127,8 @@ models:
           discount_rate: 100
 
   - name: "mureka-v9.5-generate-bgm"
-    display_name: "Mureka V9.5 BGM"
+    display_name: "Mureka V9.5"
+    variant: "BGM"
     mode: "t2m"
     takes_prompt: true
     tier: "optional"
@@ -335,7 +343,7 @@ models:
           discount_rate: 100
 
   - name: "sfx-1.6-extend-audio"
-    display_name: "Mirelo Extend Audio"
+    display_name: "Mirelo SFX 1.6"
     mode: "extend"
     takes_prompt: true
     tier: "internal"

@@ -37,6 +37,8 @@ export interface VideoParamsValue {
 interface VideoParamsPickerProps {
   /** The current model, whose params define what is offered. */
   model: ModelEntry;
+  /** The mode the panel is in; a control declared only for other modes is not drawn. */
+  mode: string;
   /**
    * What a submission through this panel would carry, keyed as the model
    * declares it: the node's params reconciled against the model. The whole
@@ -46,8 +48,8 @@ interface VideoParamsPickerProps {
   /** Called with the changed field only. */
   onChange: (partial: object) => void;
   /**
-   * Durations below this cannot be picked: under the per-shot storyboard
-   * every shot needs a second (#2218). Undefined when nothing is held back.
+   * Durations below this cannot be picked: in the multi-shot mode every shot
+   * needs a second. Undefined when nothing is held back.
    */
   durationFloor?: number;
 }
@@ -141,12 +143,13 @@ export function editedParams(
  * declares two sources and a seed, none of which this pill edits) would
  * otherwise get a pill with an empty label that opens onto nothing.
  * @param model - The model the panel currently has selected.
+ * @param mode - The mode the panel is in.
  * @returns True when the model declares at least one param this pill edits.
  */
-export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
+export function videoParamsPickerHasOptions(model: ModelEntry, mode: string): boolean {
   return (
     EDITED_PARAMS.some((name) => model.params?.[name] != null) ||
-    modelControls(model).length > 0
+    modelControls(model, mode).length > 0
   );
 }
 
@@ -162,6 +165,7 @@ export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
  * resolution, and not all of them can generate sound.
  * @param root0 - Component props.
  * @param root0.model - The current model.
+ * @param root0.mode - The mode the panel is in.
  * @param root0.params - The node's params for this model.
  * @param root0.onChange - Called with the changed field.
  * @param root0.durationFloor - The fewest seconds the duration may be set to.
@@ -169,6 +173,7 @@ export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
  */
 export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   model,
+  mode,
   params,
   onChange,
   durationFloor,
@@ -220,7 +225,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
     resolutions.length > 0 ? value.resolution : undefined,
     durations.length > 0 ? durationLabel : undefined,
     audioSupported && value.generate_audio === true ? t('canvas.generatePanel.generateAudio') : undefined,
-    ...ownControlSummary(model, params, (name) => t(`canvas.generatePanel.param.${name}`)),
+    ...ownControlSummary(model, mode, params, (name) => t(`canvas.generatePanel.param.${name}`)),
   ]
     .filter(Boolean)
     .join(' · ') || t('canvas.generatePanel.videoParams');
@@ -306,6 +311,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
         ) : null}
         <ModelParamControls
           model={model}
+          mode={mode}
           value={params}
           onChange={onChange}
           className={sharedShown ? 'mt-3 border-t border-border pt-3' : undefined}
