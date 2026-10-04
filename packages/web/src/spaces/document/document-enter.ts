@@ -37,6 +37,7 @@ import {
   TextSelection,
 } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
+import { cellAround } from '@tiptap/pm/tables';
 
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
 import {
@@ -300,7 +301,7 @@ export const documentEnterExtension = createExtension(() => {
     // caret's block is and answers with `insertText`. Over a node selection
     // that replaces the whole block, so the two selection kinds this file
     // answers for never reached it.
-    runsBefore: ['code-block-keyboard-shortcuts'],
+    runsBefore: ['code-block-keyboard-shortcuts', 'document-table-keys'],
     prosemirrorPlugins: [imeWatchPlugin(ended)],
     keyboardShortcuts: {
       Enter: ({ editor }: { editor: ListEditor }) => {
@@ -312,6 +313,11 @@ export const documentEnterExtension = createExtension(() => {
         // is the timer's job alone.
         if (ended.justNow) {
           return true;
+        }
+        // Inside a table Enter breaks the line in the cell
+        // (`document-table-keys`, which runs after this).
+        if (cellAround(editor.prosemirrorState.selection.$head) !== null) {
+          return false;
         }
         // A range reaching past an end of the body goes as any range does;
         // what is left is a caret in text, which takes the ordinary Enter

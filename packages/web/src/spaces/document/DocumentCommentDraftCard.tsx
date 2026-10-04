@@ -85,7 +85,9 @@ function readDraftQuote(editor: ToolEditor): string | null {
   const state = editor.prosemirrorView?.state;
   if (state === undefined) return null;
   const aim = draftRangeIn(state);
-  return aim === null ? null : state.doc.textBetween(aim.from, aim.to, ' ');
+  return aim === null
+    ? null
+    : aim.segments.map(({ from, to }) => state.doc.textBetween(from, to, ' ')).join(' ');
 }
 
 /**

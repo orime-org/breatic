@@ -12,6 +12,7 @@
 import { getMarkRange } from '@tiptap/core';
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { EditorState } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
 import type { Mark } from '@tiptap/pm/model';
 import { isAllowedUri } from '@tiptap/extension-link';
 
@@ -237,6 +238,8 @@ export function linksAtPoint(state: EditorState, pos: number): LinkAt[] {
 export function canLinkSpan(state: EditorState, from: number, to: number): boolean {
   const linkType = state.schema.marks.link;
   if (!linkType) return false;
+  // A link sits on one stretch of words; several selected cells are several.
+  if (state.selection instanceof CellSelection) return false;
 
   let allowed = true;
   state.doc.nodesBetween(from, to, (node, _pos, parent) => {

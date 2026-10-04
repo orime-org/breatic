@@ -35,6 +35,7 @@ import {
 
 import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
 import { buildListItemSpecs } from '@web/spaces/document/document-list-block';
+import { buildTableSpec } from '@web/spaces/document/document-table-blocknote';
 import {
   unsupportedBlockSpec,
   unsupportedInlineSpec,
@@ -84,7 +85,7 @@ function withProps<T extends SpecWithProps>(
 }
 
 /**
- * Builds the schema: ten types, three added props, the rest turned off.
+ * Builds the schema: nine block types, three added props, the rest turned off.
  * @returns The schema to hand `BlockNoteEditor.create`.
  * @throws {Error} Whatever BlockNote throws while validating the specs.
  */
@@ -96,7 +97,6 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     // make the coexistence rule false for whichever came in as a container.
     quote: _quote,
     toggleListItem: _toggleListItem,
-    table: _table,
     image: _image,
     video: _video,
     audio: _audio,
@@ -136,6 +136,7 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     // (`ExtensionManager/index.ts:565-583`). `documentDividerInputExtension`
     // places the divider and the caret in one transaction instead.
     divider: { ...withProps(enabled.divider, QUOTED_PROP), extensions: [] },
+    table: buildTableSpec(),
     unsupportedBlock: unsupportedBlockSpec,
   };
 

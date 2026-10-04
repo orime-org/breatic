@@ -3,8 +3,8 @@
 
 /**
  * Where the strip sits against the row it points at: vertically on the row's
- * first line (A2), horizontally on the body's left edge (#1097 A13, see
- * `stripPlacement`).
+ * first line (A2), horizontally `STRIP_OUTSET` out from the body's left edge
+ * (#1097 A13, inner#1126, see `stripPlacement`).
  *
  * The strip is centred on the row's FIRST VISIBLE LINE, not on the row: a
  * heading is taller than the strip and a wrapped paragraph is several lines
@@ -47,17 +47,27 @@ import type { Middleware } from '@floating-ui/react';
 import * as React from 'react';
 
 /**
+ * How far the strip stands out from the body's left edge, the same on every
+ * row (user 2026-10-04). A table's row handle is 12px wide and centred on the
+ * table's left line, which is the body's edge; WCAG 2.2 SC 2.5.8 keeps a
+ * 24px circle around it clear of other targets, and that circle reaches 12px
+ * past the edge.
+ */
+export const STRIP_OUTSET = 12;
+
+/**
  * The carrier's placement: the library's left-start against the row, with its
  * table of per-type offsets replaced by one sideways move.
  *
- * The move puts the carrier on the body's left edge whatever the row's
- * nesting (#1097 A13, user 2026-10-01): the reference is the row's own
+ * The move puts the carrier `STRIP_OUTSET` out from the body's left edge
+ * whatever the row's nesting (#1097 A13, user 2026-10-01): the reference is the row's own
  * container, which a nested row has indented with it. The body's edge is the
  * root block group, the element the library itself takes the side menu's x
  * from (`SideMenu.ts:257-266`). Moving the carrier rather than the strip
  * inside it leaves nothing of it in the indent, where a click has to reach
  * the row; and the x comes from the same reference rect floating-ui placed
- * with, so a stale reference after a move still lands on the edge.
+ * with, so a stale reference after a move still lands `STRIP_OUTSET` out
+ * from the edge.
  * @param bodyOf - Reads the editable element, undefined before it mounts.
  * @returns The options to hand `SideMenuController`.
  */
@@ -75,7 +85,7 @@ export function stripPlacement(bodyOf: () => HTMLElement | undefined): {
             const root = bodyOf()?.firstElementChild;
             if (root == null) return {};
             const rowLeft = elements.reference.getBoundingClientRect().left;
-            return { x: x + root.getBoundingClientRect().left - rowLeft };
+            return { x: x + root.getBoundingClientRect().left - rowLeft - STRIP_OUTSET };
           },
         },
       ],
@@ -123,10 +133,16 @@ export function stripOffsetFromRowTop(
  * lines, that box came back 45px tall against the 22.5px of one line, and
  * centring the strip on it put the strip between the two lines. A range's
  * rects are one per line box whatever the element is.
+ *
+ * A table answers with its first row's box.
  * @param row - The row's content element.
  * @returns The box, or undefined when the row shows no line.
  */
-function firstLineOf(row: Element): DOMRect | undefined {
+export function firstLineOf(row: Element): DOMRect | undefined {
+  // A table's first line is its first row: the strip stands beside the top of
+  // the table, the way it stands beside a paragraph's first line.
+  const firstRow = row.querySelector('tr');
+  if (firstRow !== null) return firstRow.getBoundingClientRect();
   const words = row.firstElementChild ?? row;
   const range = document.createRange();
   range.selectNodeContents(words);

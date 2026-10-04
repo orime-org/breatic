@@ -85,8 +85,8 @@ describe('the bubble bar entry', () => {
     await waitFor(() => {
       expect(draftRangeIn(editor.prosemirrorState)).not.toBeNull();
     });
-    const at = draftRangeIn(editor.prosemirrorState)!;
-    expect(editor.prosemirrorState.doc.textBetween(at.from, at.to)).toBe(
+    const [at] = draftRangeIn(editor.prosemirrorState)!.segments;
+    expect(editor.prosemirrorState.doc.textBetween(at!.from, at!.to)).toBe(
       'alpha',
     );
   });
@@ -112,7 +112,7 @@ describe('the block handle entry', () => {
     const range = draftRangeIn(editor.prosemirrorState);
     expect(range).not.toBeNull();
     expect(
-      editor.prosemirrorState.doc.textBetween(range!.from, range!.to),
+      editor.prosemirrorState.doc.textBetween(range!.segments[0]!.from, range!.segments[0]!.to),
     ).toBe('alpha bravo charlie');
   });
 

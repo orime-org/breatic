@@ -16,6 +16,7 @@ import { describe, it, expect } from 'vitest';
 import type { MiddlewareState } from '@floating-ui/react';
 
 import {
+  firstLineOf,
   stripPlacement,
   stripOffsetFromRowTop,
 } from '@web/spaces/document/document-strip-alignment';
@@ -104,20 +105,34 @@ async function placeAt(bodyLeft: number, rowLeft: number, x: number): Promise<un
   return result;
 }
 
-describe('the strip stays on the body\'s left edge (#1097 A13)', () => {
+describe('the strip stands 12px out from the body\'s left edge (#1097 A13, inner#1126)', () => {
   it('puts a nested row\'s carrier where a top-level row\'s goes', async () => {
     // Body at 400, row indented to 448 (two levels), strip 24 wide: the
     // library's left-start put the carrier at 424.
-    expect(await placeAt(400, 448, 424)).toEqual({ x: 376 });
+    expect(await placeAt(400, 448, 424)).toEqual({ x: 364 });
   });
 
-  it('leaves a top-level row\'s carrier where it is', async () => {
-    expect(await placeAt(400, 400, 376)).toEqual({ x: 376 });
+  it('moves a top-level row\'s carrier 12px out', async () => {
+    expect(await placeAt(400, 400, 376)).toEqual({ x: 364 });
   });
 
   it('leaves the carrier alone while there is no body to measure', async () => {
     const [edge] = stripPlacement(() => undefined).useFloatingOptions.middleware;
     const state = { x: 424, rects: { reference: { x: 448 } } } as unknown as MiddlewareState;
     expect((await edge.fn(state)).x).toBeUndefined();
+  });
+});
+
+describe('the first line of a table (inner#1126 A5)', () => {
+  it('is the table\'s first row, not the whole table', () => {
+    const block = document.createElement('div');
+    block.setAttribute('data-content-type', 'table');
+    block.innerHTML =
+      '<div class="doc-table-scroller"><table><tbody><tr><td><p>a</p></td></tr><tr><td><p>b</p></td></tr></tbody></table></div>';
+    const first = block.querySelector('tr')!;
+    const box = new DOMRect(0, 176, 240, 35);
+    first.getBoundingClientRect = (): DOMRect => box;
+
+    expect(firstLineOf(block)).toBe(box);
   });
 });

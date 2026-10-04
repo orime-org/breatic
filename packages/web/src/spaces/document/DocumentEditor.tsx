@@ -28,6 +28,7 @@ import {
 } from '@web/spaces/document/document-comment-selection';
 import { useCommentRail } from '@web/spaces/document/use-comment-rail';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
+import { DocumentTableCellButton } from '@web/spaces/document/DocumentTableCellButton';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
 interface DocumentEditorProps {
@@ -229,6 +230,11 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       {/* The strip beside the row under the pointer. A viewer gets none of it
           (A3): every command in the handle's menu writes to the document. */}
       {!readOnly && <DocumentBlockControls editor={handle.editor} />}
+      {/* The button on the cell the caret is in; a viewer gets none of it
+          either (inner#1126 A18). */}
+      {viewport !== null && !readOnly && (
+        <DocumentTableCellButton editor={handle.editor} viewport={viewport} />
+      )}
       {/* The toolbar over a link the pointer hovers or the caret sits in. It
           owns its own timing, position and state; what it takes from here is
           where to draw and when to stand aside.

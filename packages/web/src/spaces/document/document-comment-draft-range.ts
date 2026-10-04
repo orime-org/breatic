@@ -56,7 +56,13 @@
  * the last. A range that reaches into the next line, or past non-text at an
  * edge, is drawn in to its letters wherever a range is written.
  *
- * It is GONE once it covers no letters, or its end comes before its start.
+ * A draft over several selected table cells is one stretch per cell
+ * (inner#1126 A9): the cells need not be next to each other in the document,
+ * so one range from the first to the last would take in cells nobody
+ * selected. Each stretch is carried on its own, as below.
+ *
+ * A stretch is GONE once it covers no letters, or its end comes before its
+ * start; the draft is gone with the last of its stretches.
  * Posting then would put the reader's words in a thread pointing at nothing,
  * which is what A21 is about — the draft card keeps its place in the panel
  * and says so instead, keeping what the reader wrote.
@@ -134,7 +140,10 @@ export const DRAFT_THREAD_ID = 'doc-comment-draft';
 /** The comment wash over the words a draft is aimed at. */
 const DRAFT_MARK_CLASS = 'doc-comment-draft-mark';
 
-/** Where an unposted comment is going. */
+/**
+ * One stretch an unposted comment is going to land on. A draft has one per
+ * selected table cell, and one where the words are a single stretch.
+ */
 export interface DraftRange {
   readonly from: number;
   readonly to: number;
@@ -162,7 +171,7 @@ let entries = 0;
  */
 interface NamedBeforeEdit {
   readonly entry: number;
-  readonly link: TrackedLink;
+  readonly links: readonly TrackedLink[];
 }
 
 /** The sync binding, as a position conversion takes it. */
@@ -461,7 +470,9 @@ function carryAcrossYjs(
 }
 
 /** The open draft: where it is now, and which opening it is. */
-export interface DraftAim extends DraftRange {
+export interface DraftAim {
+  /** The stretches it is aimed at, in document order; never empty. */
+  readonly segments: readonly DraftRange[];
   readonly opening: DraftOpening;
   /**
    * Counts the presses on a comment entry in this page; a new one is the
@@ -486,12 +497,12 @@ export type Draft =
   };
 
 /**
- * What a caller dispatches under the plugin's key: a range opens a draft, or
- * moves the open one there — aimed or dropped — keeping its opening and so
+ * What a caller dispatches under the plugin's key: stretches open a draft, or
+ * move the open one there — aimed or dropped — keeping its opening and so
  * its words; `null` closes it; `{ drop }` drops it for a reason the plugin
  * cannot see for itself.
  */
-export type DraftCommand = DraftRange | null | { readonly drop: 'cannotWrite' };
+export type DraftCommand = readonly DraftRange[] | null | { readonly drop: 'cannotWrite' };
 
 /** The plugin's key, which is also the meta a {@link DraftCommand} goes under. */
 export const DOCUMENT_COMMENT_DRAFT_RANGE = new PluginKey<Draft | null>(
@@ -569,36 +580,62 @@ function carryDraft(
   tr: Transaction,
   current: Draft & { kind: 'aimed' },
   before: EditorState,
-  tracked: TrackedLink | null,
-  handed: TrackedLink | null,
+  tracked: readonly TrackedLink[] | null,
+  handed: readonly TrackedLink[] | null,
 ): Draft {
   const bound = syncBindingOf(before);
-  // The binding has rebuilt its index to the new nodes before it dispatches
-  // (`_typeChanged`), so the relative positions resolve against this change.
-  const carried =
-    fromYjs(tr) && tracked !== null && bound !== null
-      ? carryAcrossYjs(
-        tr,
-        bound,
-        tracked,
-        undoRedo(tr) ? handed : null,
-        current,
-      )
-      : mapDraftRange(current, tr);
-  const moved =
-    carried === null || carried.to <= carried.from
-      ? null
-      : letterBounds(tr.doc, carried);
-  if (moved === null) {
+  // Stretch by stretch. A stretch whose words are gone leaves the draft on the
+  // ones that are still there; the draft is gone with the last of them.
+  const moved: DraftRange[] = [];
+  current.segments.forEach((segment, index) => {
+    const link = tracked?.[index] ?? null;
+    // The binding has rebuilt its index to the new nodes before it dispatches
+    // (`_typeChanged`), so the relative positions resolve against this change.
+    const carried =
+      fromYjs(tr) && link !== null && bound !== null
+        ? carryAcrossYjs(
+          tr,
+          bound,
+          link,
+          undoRedo(tr) ? (handed?.[index] ?? null) : null,
+          segment,
+        )
+        : mapDraftRange(segment, tr);
+    const drawn =
+      carried === null || carried.to <= carried.from ? null : letterBounds(tr.doc, carried);
+    if (drawn !== null) moved.push(drawn);
+  });
+  if (moved.length === 0) {
     return { kind: 'dropped', why: 'targetGone', opening: current.opening };
   }
   // The SAME object back when nothing moved, not an equal one.
   // `useSyncExternalStore` requires the snapshot to be identical while the
   // store has not changed, and a fresh object per transaction would make
   // every keystroke anywhere in the body read as a change to this range.
-  return moved.from === current.from && moved.to === current.to
-    ? current
-    : { ...current, from: moved.from, to: moved.to };
+  return sameSegments(moved, current.segments) ? current : { ...current, segments: moved };
+}
+
+/**
+ * Whether two lists of stretches are the same stretches.
+ * @param a - One list.
+ * @param b - The other.
+ * @returns True when they match one for one.
+ */
+function sameSegments(a: readonly DraftRange[], b: readonly DraftRange[]): boolean {
+  return a.length === b.length && a.every((one, i) => one.from === b[i]!.from && one.to === b[i]!.to);
+}
+
+/**
+ * Draws stretches in to their letters and puts them in document order.
+ * @param doc - The body.
+ * @param ranges - The stretches.
+ * @returns Those that cover letters, in order.
+ */
+function aimAt(doc: ProseMirrorNode, ranges: readonly DraftRange[]): DraftRange[] {
+  return ranges
+    .map((range) => letterBounds(doc, range))
+    .filter((range): range is DraftRange => range !== null)
+    .sort((a, b) => a.from - b.from);
 }
 
 /**
@@ -624,7 +661,7 @@ export function draftRangeIn(state: EditorState): DraftAim | null {
 /**
  * The paint over the words the open draft is aimed at.
  * @param state - The editor state.
- * @returns One inline decoration over the range, deep while the draft is the
+ * @returns One inline decoration over each stretch, deep while the draft is the
  *   card being read or its card is under the pointer; nothing while no draft
  *   is open.
  */
@@ -634,11 +671,14 @@ function paintDraft(state: EditorState): DecorationSet {
   const reading =
     selectedThreadsIn(state).includes(DRAFT_THREAD_ID) ||
     hoveredThreadIn(state) === DRAFT_THREAD_ID;
-  return DecorationSet.create(state.doc, [
-    Decoration.inline(range.from, range.to, {
-      class: reading ? `${DRAFT_MARK_CLASS} ${READING_CLASS}` : DRAFT_MARK_CLASS,
-    }),
-  ]);
+  return DecorationSet.create(
+    state.doc,
+    range.segments.map(({ from, to }) =>
+      Decoration.inline(from, to, {
+        class: reading ? `${DRAFT_MARK_CLASS} ${READING_CLASS}` : DRAFT_MARK_CLASS,
+      }),
+    ),
+  );
 }
 
 /**
@@ -658,12 +698,12 @@ export const onDraftChange: (listener: () => void) => () => void =
  * @returns The extension, for the assembly to register.
  */
 export const documentCommentDraftRange = createExtension(() => {
-  // The open draft's range as Yjs names it.
-  let tracked: TrackedLink | null = null;
+  // The open draft's stretches as Yjs names them.
+  let tracked: readonly TrackedLink[] | null = null;
   // The names as they stood when the current Yjs transaction began.
-  let beforeYjs: TrackedLink | null = null;
+  let beforeYjs: readonly TrackedLink[] | null = null;
   // The names the last undo or redo handed back for this draft, if any.
-  let handed: TrackedLink | null = null;
+  let handed: readonly TrackedLink[] | null = null;
   return {
     key: 'document-comment-draft-range',
     prosemirrorPlugins: [
@@ -699,8 +739,8 @@ export const documentCommentDraftRange = createExtension(() => {
               // ranges already (`canCommentOver`), so one arriving means a
               // caller is wrong, and holding it would let a comment be written
               // with no words under it.
-              const aim = letterBounds(tr.doc, asked);
-              if (aim === null) return current;
+              const segments = aimAt(tr.doc, asked as readonly DraftRange[]);
+              if (segments.length === 0) return current;
               // An open draft is moved, not replaced: it ends only on cancel
               // or save, and its words are kept against its opening.
               let opening = current?.opening;
@@ -709,7 +749,7 @@ export const documentCommentDraftRange = createExtension(() => {
                 opening = { serial: openings };
               }
               entries += 1;
-              return { kind: 'aimed', ...aim, opening, entry: entries };
+              return { kind: 'aimed', segments, opening, entry: entries };
             }
             // A selection change carries no steps and the range comes back
             // unchanged — which is what a reader clicking elsewhere before
@@ -759,13 +799,13 @@ export const documentCommentDraftRange = createExtension(() => {
                   const range = draftRangeIn(view.state);
                   return beforeYjs === null || range === null
                     ? null
-                    : { entry: range.entry, link: beforeYjs };
+                    : { entry: range.entry, links: beforeYjs };
                 },
                 (stored) => {
                   const named = stored as NamedBeforeEdit | undefined;
                   handed =
                     named !== undefined && named.entry === draftRangeIn(view.state)?.entry
-                      ? named.link
+                      ? named.links
                       : null;
                 },
               );
@@ -790,7 +830,7 @@ export const documentCommentDraftRange = createExtension(() => {
                 bound !== null &&
                 (next.state.doc !== prev.doc || draftRangeIn(prev) !== range)
               ) {
-                tracked = trackDraft(bound, range);
+                tracked = range.segments.map((segment) => trackDraft(bound, segment));
               }
               watching.update?.(next, prev);
             },

@@ -46,6 +46,11 @@ import { documentSelectionPaintExtension } from '@web/spaces/document/document-s
 import { documentEnterExtension } from '@web/spaces/document/document-enter';
 import { documentKeyboardMoveExtension } from '@web/spaces/document/document-keyboard-move';
 import { documentTabExtension } from '@web/spaces/document/document-tab';
+import { documentTableKeysExtension } from '@web/spaces/document/document-table-keys';
+import { documentTableColumnWidthsExtension } from '@web/spaces/document/document-table-column-widths';
+import { documentTableTargetExtension } from '@web/spaces/document/document-table-target';
+import { documentTableDragExtension } from '@web/spaces/document/document-table-drag';
+import { documentPasteHandler } from '@web/spaces/document/document-table-paste';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
@@ -130,6 +135,10 @@ export function buildDocumentEditor(
       documentEnterExtension(),
       documentSafariImeExtension(),
       documentTabExtension(),
+      documentTableKeysExtension(),
+      documentTableTargetExtension(),
+      documentTableColumnWidthsExtension(),
+      documentTableDragExtension(),
       documentKeyboardMoveExtension(),
       documentTrailingPressExtension(),
       documentQuoteInputExtension(),
@@ -184,6 +193,16 @@ export function buildDocumentEditor(
     // is all this has to say and is how the rest of this product's chrome is
     // drawn.
     dropCursor: { color: false, width: 2 },
+    // Merge and split, a fill colour per cell, and a header row and column.
+    // Cell text colour stays off: a cell's text takes the same text colour
+    // mark every other run does.
+    tables: {
+      splitCells: true,
+      cellBackgroundColor: true,
+      cellTextColor: false,
+      headers: true,
+    },
+    pasteHandler: documentPasteHandler,
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;
 }

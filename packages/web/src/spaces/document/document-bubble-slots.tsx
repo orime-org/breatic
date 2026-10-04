@@ -63,7 +63,15 @@ import {
   type ColourHue,
   type ColourKind,
 } from '@web/spaces/document/document-colour-run';
-import { DocumentColourPanel } from '@web/spaces/document/document-colour-panel';
+import {
+  DocumentColourPanel,
+  type CellFillRow,
+} from '@web/spaces/document/document-colour-panel';
+import {
+  cellFillFace,
+  cellsUnder,
+  setCellFill,
+} from '@web/spaces/document/document-table-run';
 import { MenuTick } from '@web/spaces/document/document-menu-tick';
 import {
   ALIGN_ITEMS,
@@ -291,6 +299,12 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
   const reachable = useEditorSnapshot(editor, (e) =>
     open ? canRunBlockType(e) : true,
   );
+  // A cell's line is not a block of its own, so none of the rows reaches it
+  // and the slot steps back as a whole (inner#1126 A9).
+  const inCells = useEditorSnapshot(
+    editor,
+    (e) => cellsUnder(e.prosemirrorState.doc, e.prosemirrorState.selection).length > 0,
+  );
   const CurrentIcon = blockTypeItem(current).Icon;
 
   return (
@@ -298,6 +312,7 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
       id={id}
       label={t('spaces.document.commands.blockType')}
       face={<CurrentIcon className='h-4 w-4' />}
+      appliesHere={!inCells}
       openerProps={{ 'data-block-type': current }}
       contentClassName={ROWS}
       container={container}
@@ -440,6 +455,13 @@ export const ColorSlot = React.memo(function ColorSlot({
   // slot reads its own. Row by row it walked the selection once per row per
   // editor change, and the readings could disagree about what is under it.
   const face = useEditorSnapshot(editor, colourFace, sameColours);
+  // In a table the cells under the selection carry a fill of their own, and
+  // the panel offers it as a third row (inner#1126 A9).
+  const inCells = useEditorSnapshot(
+    editor,
+    (current) => cellsUnder(current.prosemirrorState.doc, current.prosemirrorState.selection).length > 0,
+  );
+  const cellFace = useEditorSnapshot(editor, (current) => cellFillFace(current.prosemirrorState));
   // The panel's cells are buttons laid out in a grid rather than rows built
   // on `BubbleMenuRow`, so closing is theirs to ask for. Ruling C2 has the
   // menu close on every press alike.
@@ -458,6 +480,24 @@ export const ColorSlot = React.memo(function ColorSlot({
     [editor, onOpenChange],
   );
 
+  const cell = React.useMemo<CellFillRow | undefined>(
+    () =>
+      inCells
+        ? {
+          face: cellFace,
+          onSet: (hue: ColourHue) => {
+            setCellFill(editor, hue);
+            onOpenChange(id, false);
+          },
+          onClear: () => {
+            setCellFill(editor, undefined);
+            onOpenChange(id, false);
+          },
+        }
+        : undefined,
+    [cellFace, editor, inCells, onOpenChange],
+  );
+
   return (
     <SlotShell
       id={id}
@@ -466,7 +506,7 @@ export const ColorSlot = React.memo(function ColorSlot({
       openerProps={{ className: 'font-semibold' }}
       align='end'
       contentClassName='py-2'
-      appliesHere={face.appliesHere}
+      appliesHere={face.appliesHere || inCells}
       container={container}
       scroller={scroller}
       openId={openId}
@@ -477,6 +517,7 @@ export const ColorSlot = React.memo(function ColorSlot({
         face={face}
         onSet={onSet}
         onClear={onClear}
+        cell={cell}
       />
     </SlotShell>
   );
