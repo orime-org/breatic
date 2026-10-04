@@ -20,7 +20,7 @@ import {
   selectFirstParagraph,
   selectParagraph,
 } from '../helpers/bubble-bar';
-import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
+import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, VISIBLE_SPACE } from '../helpers/space';
 
 // `bubble-bar` registers the afterEach that removes what `openFreshDocument`
 // made, and it removes it off the fixture's page — so this file uses that one.
@@ -296,11 +296,11 @@ test.describe('the card a comment is written in', () => {
    * @returns True when it does.
    */
   function readCardInView(page: Page): Promise<boolean> {
-    return page.evaluate(() => {
+    return page.evaluate((space: string) => {
       const node = document.querySelector('[data-testid="doc-comment-card"]')!;
       const header = document.querySelector('[data-testid="doc-comment-rail-header"]')!;
       const view = document
-        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+        .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)!
         .getBoundingClientRect();
       const r = node.getBoundingClientRect();
       return (
@@ -308,7 +308,7 @@ test.describe('the card a comment is written in', () => {
         r.bottom <= view.bottom &&
         node.contains(document.elementFromPoint(r.x + r.width / 2, r.y + 8))
       );
-    });
+    }, VISIBLE_SPACE);
   }
 
   test('shows a comment read from words under the panel header below the header', async ({
@@ -429,11 +429,11 @@ test.describe('the card a comment is written in', () => {
       .locator('.doc-body-scroller [data-radix-scroll-area-viewport]')
       .first();
     const boxInView = (): Promise<boolean> =>
-      page.evaluate(() => {
+      page.evaluate((space: string) => {
         const box = document.querySelector('[data-testid="doc-comment-draft-input"]')!;
         const header = document.querySelector('[data-testid="doc-comment-rail-header"]')!;
         const view = document
-          .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+          .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)!
           .getBoundingClientRect();
         const r = box.getBoundingClientRect();
         const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
@@ -442,19 +442,19 @@ test.describe('the card a comment is written in', () => {
           r.bottom <= view.bottom &&
           hit === box
         );
-      });
+      }, VISIBLE_SPACE);
 
     // Words in the strip the header covers.
     await scrollBodyTo(page, 1800);
-    const underHeader = await page.evaluate((sel) => {
+    const underHeader = await page.evaluate(([sel, space]: [string, string]) => {
       const top = document
-        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+        .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)!
         .getBoundingClientRect().top;
       return Array.from(document.querySelectorAll(`${sel} p`)).findIndex((p) => {
         const at = p.getBoundingClientRect().top - top;
         return at >= 2 && at <= 30;
       });
-    }, EDITOR);
+    }, [EDITOR, VISIBLE_SPACE] as [string, string]);
     expect(underHeader).toBeGreaterThan(-1);
     await page.locator(`${EDITOR} p`).nth(underHeader).click({ clickCount: 3 });
     await page.getByTestId('doc-bubble-tool-comment').click();
@@ -492,15 +492,15 @@ test.describe('the card a comment is written in', () => {
     await page.keyboard.type('kept words');
 
     await scrollBodyTo(page, 1500);
-    const target = await page.evaluate((sel) => {
+    const target = await page.evaluate(([sel, space]: [string, string]) => {
       const view = document
-        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+        .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)!
         .getBoundingClientRect();
       return Array.from(document.querySelectorAll(`${sel} p`)).findIndex((p) => {
         const at = p.getBoundingClientRect().top;
         return at > view.top + 300 && at < view.top + 500;
       });
-    }, EDITOR);
+    }, [EDITOR, VISIBLE_SPACE] as [string, string]);
     expect(target).toBeGreaterThan(20);
     await selectParagraph(page, target);
     await page.getByTestId('doc-bubble-tool-comment').click();
@@ -510,17 +510,17 @@ test.describe('the card a comment is written in', () => {
     await expect(box).toHaveValue('kept words');
     await expect
       .poll(() =>
-        page.evaluate(() => {
+        page.evaluate((space: string) => {
           const input = document.querySelector('[data-testid="doc-comment-draft-input"]')!;
           const view = document
-            .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+            .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)!
             .getBoundingClientRect();
           const r = input.getBoundingClientRect();
           const body = document.querySelector(
             '.doc-body-scroller [data-radix-scroll-area-viewport]',
           )!;
           return body.scrollTop > 1000 && r.top >= view.top && r.bottom <= view.bottom;
-        }),
+        }, VISIBLE_SPACE),
       )
       .toBe(true);
   });
@@ -604,8 +604,8 @@ test.describe('the card a comment is written in', () => {
   test('keeps what was written in it across a Space tab switch', async ({
     page,
   }) => {
-    // The panel is remounted by the switch and the editor is not; the words
-    // are the reader's until they send or clear them.
+    // The Space is hidden by the switch, not taken down; the words are the
+    // reader's until they send or clear them.
     await openWithALongSelection(page);
     const home = await page
       .locator('[role="tab"][aria-selected="true"]')
@@ -615,7 +615,7 @@ test.describe('the card a comment is written in', () => {
 
     const away = await createSpace(page, 'document', `away-${Date.now()}`);
     try {
-      await expect(page.getByTestId('doc-comment-draft-card')).toHaveCount(0);
+      await expect(page.getByTestId('doc-comment-draft-card')).toBeHidden();
       await page.getByTestId(home!).click();
 
       await expect(page.getByTestId('doc-comment-draft-input')).toHaveValue(

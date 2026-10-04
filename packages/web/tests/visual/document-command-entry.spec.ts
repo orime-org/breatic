@@ -19,7 +19,7 @@
 import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, VISIBLE_SPACE } from '../helpers/space';
 
 let page: Page;
 
@@ -90,8 +90,8 @@ test('the entry sticks inside the scroller, not beside it', async () => {
   // the bubble bar, which the editor appends to this same shell but only while
   // a selection exists — there is none here.
   await openFreshDocument(page);
-  const layout = await page.evaluate(() => {
-    const scroller = document.querySelector('.doc-body-scroller')!;
+  const layout = await page.evaluate((space: string) => {
+    const scroller = document.querySelector(`${space} .doc-body-scroller`)!;
     const viewport = scroller.querySelector('[data-radix-scroll-area-viewport]')!;
     const trigger = document.querySelector(
       '[data-testid="doc-doc-menu-trigger"]',
@@ -110,7 +110,7 @@ test('the entry sticks inside the scroller, not beside it', async () => {
         ),
       position: getComputedStyle(layer).position,
     };
-  });
+  }, VISIBLE_SPACE);
 
   expect(layout.shellChildren).toBe(1);
   expect(layout.insideViewport).toBe(true);

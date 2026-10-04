@@ -11,6 +11,7 @@
 import { expect, type Page } from 'playwright/test';
 
 import { openFreshDocument, selectParagraph } from './bubble-bar';
+import { VISIBLE_SPACE } from './space';
 
 /**
  * The two hover delays, the same numbers the toolbar counts with
@@ -71,14 +72,14 @@ export async function openViewOverFirstLink(page: Page): Promise<void> {
     await collapseAfterLinking(page);
   }
 
-  const line = await page.evaluate(() => {
-    const first = document.querySelector('.ProseMirror a')!.getClientRects()[0]!;
+  const line = await page.evaluate((space: string) => {
+    const first = document.querySelector(`${space} .ProseMirror a`)!.getClientRects()[0]!;
     return {
       left: Math.round(first.left) + 2,
       right: Math.round(first.right) - 2,
       y: Math.round(first.top + first.height / 2),
     };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.move(line.left, line.y);
   await page.mouse.down();
   await page.mouse.move(line.right, line.y, { steps: 4 });

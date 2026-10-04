@@ -16,7 +16,7 @@ import { test, expect, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
 
 test.use({ storageState: STATE_FILE.A });
 
@@ -94,11 +94,10 @@ async function documentNodes(page: Page): Promise<DocNode[]> {
  * @returns The selected node ids.
  */
 async function selectedOnScreen(page: Page): Promise<string[]> {
-  return page.evaluate(() =>
-    [...document.querySelectorAll('.react-flow__node.selected')].map(
+  return page.evaluate((space: string) =>
+    [...document.querySelectorAll(`${space} .react-flow__node.selected`)].map(
       (el) => (el as HTMLElement).dataset.id ?? '',
-    ),
-  );
+    ), VISIBLE_SPACE);
 }
 
 /**
@@ -114,7 +113,7 @@ async function handOverFiles(
   count: number,
 ): Promise<void> {
   await page.evaluate(
-    async ([entry, total, encoded]: [string, number, string]) => {
+    async ([entry, total, encoded, space]: [string, number, string, string]) => {
       const binary = atob(encoded);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
@@ -124,7 +123,7 @@ async function handOverFiles(
           new File([bytes], `batch-${String(i)}.png`, { type: 'image/png' }),
         );
       }
-      const pane = document.querySelector('.react-flow__pane');
+      const pane = document.querySelector(`${space} .react-flow__pane`);
       if (pane === null) throw new Error('no canvas pane to hand files to');
       if (entry === 'paste') {
         // Aimed at the pane, not at `document`: the handler asks whether the
@@ -152,7 +151,7 @@ async function handOverFiles(
         new DragEvent('drop', { ...at, dataTransfer: transfer }),
       );
     },
-    [how, count, SOLID_PNG] as [string, number, string],
+    [how, count, SOLID_PNG, VISIBLE_SPACE] as [string, number, string, string],
   );
 }
 

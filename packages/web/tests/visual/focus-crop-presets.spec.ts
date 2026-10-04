@@ -23,7 +23,7 @@ import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
-import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
 
 // The viewport is set on `browser.newPage` rather than through `test.use`,
 // which configures the `page` fixture no case here takes. Desktop-web is the
@@ -178,9 +178,9 @@ async function openCropOverlay(): Promise<void> {
   // Polls rather than reads once: a node's <img>/<video> reports its intrinsic
   // size only after it decodes, and right after the panel opens they all still
   // read zero. Whichever source decodes first and is not covered gets tagged.
-  await page.waitForFunction((hostId: string) => {
+  await page.waitForFunction(([hostId, space]: [string, string]) => {
     const candidates: Element[] = [];
-    for (const node of document.querySelectorAll('.react-flow__node')) {
+    for (const node of document.querySelectorAll(`${space} .react-flow__node`)) {
       // The node whose panel started the pick is not a candidate.
       if (node.getAttribute('data-id') === hostId) continue;
       // An EMPTY image node carries `image-node` too, with placeholder text
@@ -202,7 +202,7 @@ async function openCropOverlay(): Promise<void> {
       }
     }
     return false;
-  }, hostNodeId, { timeout: 20_000 });
+  }, [hostNodeId, VISIBLE_SPACE] as [string, string], { timeout: 20_000 });
   await page.locator('[data-crop-target=yes]').click();
 
   await expect(page.getByTestId('focus-crop-controls')).toBeVisible({ timeout: 10_000 });

@@ -21,7 +21,7 @@ import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
-import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
 
 // The panel hangs below its node and grows with every shot; at 720 the last
 // shot's box falls past the window bottom.
@@ -42,12 +42,12 @@ async function seedVideoNode(p: Page): Promise<string> {
   await expect(visibleSpace(p).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   const nodeId = crypto.randomUUID();
   const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
-  const origin = await p.evaluate(() => {
-    const vp = document.querySelector('.react-flow__viewport');
+  const origin = await p.evaluate((space: string) => {
+    const vp = document.querySelector(`${space} .react-flow__viewport`);
     if (!(vp instanceof HTMLElement)) throw new Error('canvas not mounted');
     const m = new DOMMatrixReadOnly(getComputedStyle(vp).transform);
     return { tx: m.e, ty: m.f };
-  });
+  }, VISIBLE_SPACE);
   await p.evaluate(
     async ([pid, sid, id, x, y, at]: [string, string, string, number, number, string]) => {
       const canvas = (await import(/* @vite-ignore */ at)) as {

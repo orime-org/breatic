@@ -16,7 +16,7 @@
 import { expect, test, type Locator, type Page } from 'playwright/test';
 
 import { openSmokeProject } from './project';
-import { createSpace, deleteSpace } from './space';
+import { createSpace, deleteSpace, VISIBLE_SPACE } from './space';
 
 // Wide, because the column's own width decides which side the bar comes up on
 // and how far it may reach.
@@ -42,12 +42,12 @@ test.afterEach(async ({ page }) => {
  * @returns How far the body's visible area sits below the top of the window.
  */
 export async function bodyViewportTop(p: Page): Promise<number> {
-  return p.evaluate(() =>
+  return p.evaluate((space: string) =>
     Math.round(
       document
-        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+        .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)!
         .getBoundingClientRect().top,
-    ));
+    ), VISIBLE_SPACE);
 }
 
 /** The gap between the bar and the line it anchors to, the same number the implementation calls `GAP_FROM_SELECTION_PX`. */
@@ -138,11 +138,11 @@ export async function selectParagraph(page: Page, i: number): Promise<void> {
  * @param y - Where to park it.
  */
 export async function scrollBodyTo(page: Page, y: number): Promise<void> {
-  await page.evaluate((top) => {
+  await page.evaluate(([top, space]: [number, string]) => {
     document
-      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)
       ?.scrollTo(0, top);
-  }, y);
+  }, [y, VISIBLE_SPACE] as [number, string]);
   await page.waitForTimeout(400);
 }
 

@@ -36,6 +36,7 @@ import {
   settlePanelUnder,
 } from '../helpers/link-panel';
 import { STATE_FILE } from '../helpers/project';
+import { VISIBLE_SPACE } from '../helpers/space';
 
 /**
  * The middle of an element's text, in that element's own coordinates.
@@ -133,10 +134,10 @@ test('link: the panel sits against the link it acts on', async ({ page }) => {
   // faces of one control never slide sideways. A reference holding a degenerate
   // rectangle lands the panel hundreds of pixels away, which is what these
   // numbers read.
-  const link = await page.evaluate(() => {
-    const r = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
+  const link = await page.evaluate((space: string) => {
+    const r = document.querySelector(`${space} .ProseMirror a`)!.getBoundingClientRect();
     return { left: r.left, right: r.right, bottom: r.bottom };
-  });
+  }, VISIBLE_SPACE);
   expect(Math.abs((await settlePanelUnder(page, link)).leftOffset)).toBeLessThan(2);
 });
 
@@ -165,13 +166,13 @@ test('link: the panel travels with its link when the body scrolls', async ({ pag
   await page.waitForTimeout(400);
 
   const gap = () =>
-    page.evaluate(() => {
+    page.evaluate((space: string) => {
       const panel = document
         .querySelector('[data-testid="doc-link-popover"]')!
         .getBoundingClientRect();
-      const link = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
+      const link = document.querySelector(`${space} .ProseMirror a`)!.getBoundingClientRect();
       return { gapBelow: panel.top - link.bottom, linkTop: link.top };
-    });
+    }, VISIBLE_SPACE);
 
   const before = await gap();
   await scrollBodyTo(page, 200);
@@ -459,8 +460,8 @@ test('link: a target that wraps gets the panel under its last line', async ({ pa
   await linkTheSelection(page, 'a.example/wrapped');
   await openViewOverFirstLink(page);
 
-  const lines = await page.evaluate(() => {
-    const rects = [...document.querySelector('.ProseMirror a')!.getClientRects()];
+  const lines = await page.evaluate((space: string) => {
+    const rects = [...document.querySelector(`${space} .ProseMirror a`)!.getClientRects()];
     const last = rects[rects.length - 1]!;
     const first = rects[0]!;
     return {
@@ -468,7 +469,7 @@ test('link: a target that wraps gets the panel under its last line', async ({ pa
       first: { left: first.left, right: first.right, bottom: first.bottom },
       last: { left: last.left, right: last.right, bottom: last.bottom },
     };
-  });
+  }, VISIBLE_SPACE);
 
   // Without this the test would pass on a link that never wrapped.
   expect(lines.count).toBeGreaterThan(1);
@@ -517,22 +518,22 @@ test('link: a target at the bottom edge keeps the panel inside the body column',
   // Bring that link down to the bottom edge, leaving part of the line showing.
   const view = await bodyView(page);
   const scroll = await page.evaluate(
-    ([viewBottom]) => {
+    ([viewBottom, space]: [number, string]) => {
       const el = document.querySelector(
-        '.doc-body-scroller [data-radix-scroll-area-viewport]',
+        `${space} .doc-body-scroller [data-radix-scroll-area-viewport]`,
       )!;
-      const link = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
-      return el.scrollTop + link.top - (viewBottom! - 10);
+      const link = document.querySelector(`${space} .ProseMirror a`)!.getBoundingClientRect();
+      return el.scrollTop + link.top - (viewBottom - 10);
     },
-    [view.bottom],
+    [view.bottom, VISIBLE_SPACE] as [number, string],
   );
   await scrollBodyTo(page, scroll);
 
-  const placed = await page.evaluate(() => {
+  const placed = await page.evaluate((space: string) => {
     const panel = document
       .querySelector('[data-testid="doc-link-popover"]')!
       .getBoundingClientRect();
-    const link = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
+    const link = document.querySelector(`${space} .ProseMirror a`)!.getBoundingClientRect();
     return {
       panelLeft: Math.round(panel.left),
       panelRight: Math.round(panel.right),
@@ -540,7 +541,7 @@ test('link: a target at the bottom edge keeps the panel inside the body column',
       linkRight: Math.round(link.right),
       linkVisible: link.top >= 0,
     };
-  });
+  }, VISIBLE_SPACE);
 
   // The line really is at the edge rather than gone past it.
   expect(placed.linkVisible).toBe(true);
@@ -567,10 +568,10 @@ test('link: the panel still meets its target after the window changes width', as
   await openViewOverFirstLink(page);
 
   const linkBox = () =>
-    page.evaluate(() => {
-      const r = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
+    page.evaluate((space: string) => {
+      const r = document.querySelector(`${space} .ProseMirror a`)!.getBoundingClientRect();
       return { left: r.left, right: r.right, bottom: r.bottom };
-    });
+    }, VISIBLE_SPACE);
 
   await settlePanelUnder(page, await linkBox());
   const wide = await linkBox();
@@ -630,10 +631,10 @@ test('link: the panel keeps its place while a co-editor types', async ({ page, b
   await openViewOverFirstLink(page);
 
   const linkBox = () =>
-    page.evaluate(() => {
-      const r = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
+    page.evaluate((space: string) => {
+      const r = document.querySelector(`${space} .ProseMirror a`)!.getBoundingClientRect();
       return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
-    });
+    }, VISIBLE_SPACE);
   const before = await linkBox();
   const settled = await settlePanelUnder(page, before);
 

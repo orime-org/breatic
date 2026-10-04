@@ -22,7 +22,7 @@ import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
-import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
 
 // Taller than Desktop Chrome's 720. This panel is the tallest of the three —
 // a reference rail, a prompt editor and a toolbar — and it hangs BELOW its
@@ -158,15 +158,15 @@ async function viewportOrigin(
   p: Page,
 ): Promise<{ tx: number; ty: number; width: number; height: number }> {
   await expect(visibleSpace(p).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
-  return p.evaluate(() => {
-    const vp = document.querySelector('.react-flow__viewport');
-    const pane = document.querySelector('.react-flow');
+  return p.evaluate((space: string) => {
+    const vp = document.querySelector(`${space} .react-flow__viewport`);
+    const pane = document.querySelector(`${space} .react-flow`);
     if (!(vp instanceof HTMLElement) || !(pane instanceof HTMLElement)) {
       throw new Error('canvas not mounted');
     }
     const m = new DOMMatrixReadOnly(getComputedStyle(vp).transform);
     return { tx: m.e, ty: m.f, width: pane.clientWidth, height: pane.clientHeight };
-  });
+  }, VISIBLE_SPACE);
 }
 
 /**

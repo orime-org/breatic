@@ -30,7 +30,7 @@ import { join } from 'node:path';
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
 
 let context: BrowserContext;
 let page: Page;
@@ -74,14 +74,14 @@ async function dropFile(
   bytes: Buffer,
 ): Promise<void> {
   await target.evaluate(
-    async ([fileName, mime, encoded]: [string, string, string]) => {
+    async ([fileName, mime, encoded, space]: [string, string, string, string]) => {
       const binary = atob(encoded);
       const buffer = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i += 1) buffer[i] = binary.charCodeAt(i);
       const file = new File([buffer], fileName, { type: mime });
       const transfer = new DataTransfer();
       transfer.items.add(file);
-      const pane = document.querySelector('.react-flow__pane');
+      const pane = document.querySelector(`${space} .react-flow__pane`);
       if (pane === null) throw new Error('no canvas pane to drop onto');
       const rect = pane.getBoundingClientRect();
       const at = {
@@ -93,17 +93,16 @@ async function dropFile(
       pane.dispatchEvent(new DragEvent('dragover', { ...at, dataTransfer: transfer }));
       pane.dispatchEvent(new DragEvent('drop', { ...at, dataTransfer: transfer }));
     },
-    [name, type, bytes.toString('base64')] as [string, string, string],
+    [name, type, bytes.toString('base64'), VISIBLE_SPACE] as [string, string, string, string],
   );
 }
 
 /** Every image node's `src` currently on the canvas. */
 async function imageSources(target: Page): Promise<string[]> {
-  return target.evaluate(() =>
-    [...document.querySelectorAll('.react-flow__node img')].map(
+  return target.evaluate((space: string) =>
+    [...document.querySelectorAll(`${space} .react-flow__node img`)].map(
       (img) => (img as HTMLImageElement).src,
-    ),
-  );
+    ), VISIBLE_SPACE);
 }
 
 /**
@@ -157,11 +156,10 @@ async function noToastLeft(target: Page): Promise<void> {
 
 /** Every video node's `src` currently on the canvas. */
 async function videoSources(target: Page): Promise<string[]> {
-  return target.evaluate(() =>
-    [...document.querySelectorAll('.react-flow__node video')].map(
+  return target.evaluate((space: string) =>
+    [...document.querySelectorAll(`${space} .react-flow__node video`)].map(
       (v) => (v as HTMLVideoElement).src,
-    ),
-  );
+    ), VISIBLE_SPACE);
 }
 
 test.beforeEach(async ({ browser }) => {
@@ -269,10 +267,9 @@ test('a multi-part video lands with the cover our worker pulled out of it @needs
 
   // The cover rides in on the same event, as the node's poster.
   const poster = await page.evaluate(
-    () =>
-      (document.querySelector('.react-flow__node video') as HTMLVideoElement)
-        ?.poster ?? '',
-  );
+    (space: string) =>
+      (document.querySelector(`${space} .react-flow__node video`) as HTMLVideoElement)
+        ?.poster ?? '', VISIBLE_SPACE);
   expect(poster).toMatch(/^https?:\/\//);
   expect(poster).not.toBe(videoUrl);
 });
@@ -342,10 +339,10 @@ test('a video whose frame cannot be cut still lands, without a cover @needs-ffmp
   // Held for a while: a poster that arrives late would make this pass on
   // timing rather than on the outcome.
   await page.waitForTimeout(5_000);
-  const poster = await page.evaluate(() => {
-    const videos = [...document.querySelectorAll('.react-flow__node video')];
+  const poster = await page.evaluate((space: string) => {
+    const videos = [...document.querySelectorAll(`${space} .react-flow__node video`)];
     return (videos[videos.length - 1] as HTMLVideoElement | undefined)?.poster ?? '';
-  });
+  }, VISIBLE_SPACE);
   expect(poster).toBe('');
 });
 

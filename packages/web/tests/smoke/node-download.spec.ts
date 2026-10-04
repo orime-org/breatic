@@ -32,7 +32,7 @@ import { readFileSync } from 'node:fs';
 import { test, expect, type Page } from 'playwright/test';
 
 import { openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
 
 let page: Page;
 let spaceId = '';
@@ -64,14 +64,14 @@ test.afterEach(async () => {
  * @param bytes - The file's contents.
  */
 async function dropPng(bytes: Buffer): Promise<void> {
-  await page.evaluate(async (encoded: string) => {
+  await page.evaluate(async ([encoded, space]: [string, string]) => {
     const binary = atob(encoded);
     const buffer = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i += 1) buffer[i] = binary.charCodeAt(i);
     const file = new File([buffer], 'downloadable.png', { type: 'image/png' });
     const transfer = new DataTransfer();
     transfer.items.add(file);
-    const pane = document.querySelector('.react-flow__pane');
+    const pane = document.querySelector(`${space} .react-flow__pane`);
     if (pane === null) throw new Error('no canvas pane to drop onto');
     const rect = pane.getBoundingClientRect();
     const at = {
@@ -82,7 +82,7 @@ async function dropPng(bytes: Buffer): Promise<void> {
     };
     pane.dispatchEvent(new DragEvent('dragover', { ...at, dataTransfer: transfer }));
     pane.dispatchEvent(new DragEvent('drop', { ...at, dataTransfer: transfer }));
-  }, bytes.toString('base64'));
+  }, [bytes.toString('base64'), VISIBLE_SPACE] as [string, string]);
 }
 
 // The bytes go to R2 through the ingest Worker and come back from the
