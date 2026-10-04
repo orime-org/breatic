@@ -58,16 +58,21 @@ function MentionListInner<T>(
   // come and go around it (an upload finishing, a collaborator's edit, a
   // fresh array for the same rows) leave it where it is. It goes back to the
   // first row when the reader changes the query, or when its row is gone.
-  const [picked, setPicked] = React.useState<{ key: string; query: string } | null>(null);
-  const at = picked !== null && picked.query === query ? items.findIndex((item) => itemKey(item) === picked.key) : -1;
+  const [picked, setPicked] = React.useState<string | null>(null);
+  const [pickedUnder, setPickedUnder] = React.useState(query);
+  if (pickedUnder !== query) {
+    setPickedUnder(query);
+    setPicked(null);
+  }
+  const at = picked === null ? -1 : items.findIndex((item) => itemKey(item) === picked);
   const selected = at >= 0 ? at : 0;
   const listRef = React.useRef<HTMLDivElement>(null);
   const select = React.useCallback(
     (index: number): void => {
       const item = items[index];
-      if (item !== undefined) setPicked({ key: itemKey(item), query });
+      if (item !== undefined) setPicked(itemKey(item));
     },
-    [items, itemKey, query],
+    [items, itemKey],
   );
   // Keep the keyboard-selected row visible (I1, user 2026-07-12). The popup's
   // own viewport is its only scrolling ancestor while the popup is on screen,
@@ -97,7 +102,8 @@ function MentionListInner<T>(
           select((selected + 1) % items.length);
           return true;
         }
-        if (event.key === 'Enter' || event.key === 'Tab') {
+        // Shift+Tab is the keyboard moving back, and is left to it.
+        if (event.key === 'Enter' || (event.key === 'Tab' && !event.shiftKey)) {
           pick(selected);
           return true;
         }

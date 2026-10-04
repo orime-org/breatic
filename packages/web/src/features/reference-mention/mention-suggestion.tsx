@@ -152,6 +152,19 @@ export function makeMentionSuggestion<T>(
        */
       let visible = false;
       /**
+       * Everything the list is given for a query, in one place for the first
+       * render and every refresh alike.
+       * @param query - The text typed after `@`.
+       * @returns The list's props.
+       */
+      const listProps = (query: string): MentionListProps<T> => ({
+        ...resolveList(query),
+        query,
+        command: (item: T) => latestProps?.command(item),
+        itemKey: input.itemKey,
+        renderItem: input.renderItem,
+      });
+      /**
        * Updates the popup's list CONTENT only — never its visibility. The pick
        * command is read live from {@link latestProps} (bound to the current `@`
        * range). Split from visibility so a remote change can refresh content while
@@ -165,15 +178,7 @@ export function makeMentionSuggestion<T>(
        * @param query - The text typed after `@`.
        */
       const updateContent = (query: string): void => {
-        const { items, emptyLabel } = resolveList(query);
-        component?.updateProps({
-          items,
-          query,
-          command: (item: T) => latestProps?.command(item),
-          emptyLabel,
-          itemKey: input.itemKey,
-          renderItem: input.renderItem,
-        });
+        component?.updateProps(listProps(query));
       };
 
       /**
@@ -260,13 +265,7 @@ export function makeMentionSuggestion<T>(
           // with the real rows arriving on a later onUpdate. `resolveList` is
           // the single source for every path here.
           component = new ReactRenderer(MentionList as React.ComponentType<MentionListProps<T>>, {
-            props: {
-              ...resolveList(props.query),
-              query: props.query,
-              command: (item: T) => latestProps?.command(item),
-              itemKey: input.itemKey,
-              renderItem: input.renderItem,
-            },
+            props: listProps(props.query),
             editor: props.editor,
           });
           el = document.createElement('div');
@@ -400,7 +399,7 @@ export function makeMentionSuggestion<T>(
           if (component?.ref?.onKeyDown(props.event) === true) return true;
           // Enter or Tab with nothing to pick ends the `@` there, leaving what
           // was typed as plain text; it neither sends nor breaks the line.
-          if (props.event.key === 'Enter' || props.event.key === 'Tab') {
+          if (props.event.key === 'Enter' || (props.event.key === 'Tab' && !props.event.shiftKey)) {
             exitSuggestion(props.view);
             return true;
           }
