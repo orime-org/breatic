@@ -121,10 +121,20 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
           }),
         }),
         Extension.create({
-          name: 'composerLimit',
+          name: 'composerRules',
           addProseMirrorPlugins() {
             return [
               new Plugin({
+                // An undo or a draft written in can bring back a block whose
+                // attachment has since gone; it goes again straight away.
+                appendTransaction: (trs, _old, state): Transaction | null => {
+                  if (!trs.some((tr) => tr.docChanged)) return null;
+                  const stale = stalePositions(state.doc, live.current.attachments);
+                  if (stale.size === 0) return null;
+                  const tr = state.tr;
+                  for (const { from, to } of planCascadeDeletion(state.doc, stale)) tr.delete(from, to);
+                  return tr.setMeta('addToHistory', false);
+                },
                 // Refuses an edit that would take the words past the limit, as
                 // the reader counts them. Follow-ups other plugins append (the
                 // spaces kept around a block) and writes the reader did not
@@ -261,6 +271,23 @@ function nameIn(
 }
 
 /**
+ * Where the blocks are whose attachment is not attached.
+ * @param doc - The box's document.
+ * @param attachments - What is attached.
+ * @returns Their positions.
+ */
+function stalePositions(doc: Editor['state']['doc'], attachments: ReadonlyArray<TrayItem>): Set<number> {
+  const ids = new Set(attachments.map((a) => a.id));
+  const stale = new Set<number>();
+  doc.descendants((node, pos) => {
+    if (node.type.name === REFERENCE_MENTION_NODE && !ids.has(String(node.attrs[MENTION_SOURCE_ID_ATTR]))) {
+      stale.add(pos);
+    }
+  });
+  return stale;
+}
+
+/**
  * Takes out blocks whose attachment left and renames the rest, in one write
  * the reader did not make.
  * @param editor - The box.
@@ -273,13 +300,12 @@ function syncBlocks(
   labelOf: (item: TrayItem) => string,
 ): void {
   const byId = new Map(attachments.map((a) => [a.id, a]));
-  const stale = new Set<number>();
+  const stale = stalePositions(editor.state.doc, attachments);
   const renames: { pos: number; label: string }[] = [];
   editor.state.doc.descendants((node, pos) => {
     if (node.type.name !== REFERENCE_MENTION_NODE) return;
     const item = byId.get(String(node.attrs[MENTION_SOURCE_ID_ATTR]));
-    if (!item) stale.add(pos);
-    else if (node.attrs[CHAT_REFERENCE_LABEL_ATTR] !== labelOf(item)) {
+    if (item && node.attrs[CHAT_REFERENCE_LABEL_ATTR] !== labelOf(item)) {
       renames.push({ pos, label: labelOf(item) });
     }
   });
