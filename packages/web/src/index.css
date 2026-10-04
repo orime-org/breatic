@@ -115,10 +115,8 @@ body {
    absolutely inside it; absolute children give the list no width, so each
    toast starts at the centre line. The `translate` property pulls it back by
    half its own width. It is a separate property from `transform`, which sonner
-   uses for stacking older toasts behind the newest and for swiping, so the two
-   do not overwrite each other. The toasts stay absolute, so sonner's own
-   offsets put each open toast on its row; made relative, older toasts landed
-   on rows of their own while sonner still hid their text, as empty bars. */
+   uses to move each toast to its own row and for swiping, so the two do not
+   overwrite each other. */
 [data-sonner-toaster][data-x-position='center'] [data-sonner-toast] {
   translate: -50% 0;
 }
@@ -131,8 +129,8 @@ body {
    tokens (the five defined status hues), so error/warning/success/info read
    consistently with the rest of the app. `!important` is required: it beats
    sonner's inline `borderColor` (non-important, so !important wins) and its
-   `[data-sonner-toast][data-styled]` vendor selector — same override discipline
-   as the centering rules above. richColors is off (App.tsx); this is the single
+   `[data-sonner-toast][data-styled]` vendor selector. richColors is off
+   (App.tsx); this is the single
    source of toast coloring. */
 [data-sonner-toast][data-type='error'] {
   border-left: 3px solid var(--color-status-error) !important;
