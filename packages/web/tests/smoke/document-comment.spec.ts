@@ -297,8 +297,8 @@ test.describe('the card a comment is written in', () => {
    */
   function readCardInView(page: Page): Promise<boolean> {
     return page.evaluate((space: string) => {
-      const node = document.querySelector('[data-testid="doc-comment-card"]')!;
-      const header = document.querySelector('[data-testid="doc-comment-rail-header"]')!;
+      const node = document.querySelector(`${space} [data-testid="doc-comment-card"]`)!;
+      const header = document.querySelector(`${space} [data-testid="doc-comment-rail-header"]`)!;
       const view = document
         .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)!
         .getBoundingClientRect();
@@ -387,7 +387,7 @@ test.describe('the card a comment is written in', () => {
 
     const away = await createSpace(page, 'document', `away-${Date.now()}`);
     try {
-      await expect(page.getByTestId('doc-comment-card')).toHaveCount(0);
+      await expect(page.getByTestId('doc-comment-card')).toBeHidden();
       await page.getByTestId(home).click();
 
       await expect(page.getByTestId('doc-comment-card')).toHaveAttribute(

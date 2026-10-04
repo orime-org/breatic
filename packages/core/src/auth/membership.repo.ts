@@ -533,8 +533,9 @@ export async function lockLimitsForUser(
  * skips the whole ceiling decision for meta and for viewers. So the cost of
  * opening a project is one lookup per open Space tab THAT HAS A DOCUMENT, not
  * one for the project: each such tab attaches its own document and each one
- * handshakes (see the web side's `OpenSpace`, whose `DOC_NAME_BUILDERS`
- * decides which types have one — timeline has none today and costs nothing).
+ * handshakes (see the web side's `OpenSpace`; `DOC_NAME_BUILDERS` in
+ * `data/yjs/space-connection.ts` decides which types have one — timeline has
+ * none today and costs nothing).
  * Three open canvases, three lookups.
  * Unlike its siblings above it takes NO transaction handle, and that is not an
  * omission: the two queries it makes could not both honour one. Resolving the
