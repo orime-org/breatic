@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
-import { userTurnForModel } from "@breatic/shared";
+import { attachmentMarker, userTurnForModel } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
 import { saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
@@ -124,6 +124,12 @@ describe("a turn opened by a message with attachments", () => {
     await runOneTurn("what is in this?", [image]);
 
     expect(titleForTurn).toHaveBeenCalledWith("c1", "what is in this?");
+  });
+
+  it("names the conversation after the attachment a reference points at", async () => {
+    await runOneTurn(`what is in ${attachmentMarker(image.id)}?`, [image]);
+
+    expect(titleForTurn).toHaveBeenCalledWith("c1", "what is in cover.png?");
   });
 
   it("sends the model the attachments and the words on this same turn", async () => {
