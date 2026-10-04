@@ -17,7 +17,7 @@
 import { expect, test, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace, DOCUMENT_EDITOR } from '../helpers/space';
 
 let page: Page;
 const spaces: string[] = [];
@@ -117,7 +117,7 @@ test('asked about a document, reads the guide @needs-model', async () => {
 test('asked how to insert a table and add a row, names the controls the screen shows @needs-model', async () => {
   test.setTimeout(300_000);
   spaces.push(await createSpace(page, 'document', `guide-table-${String(Date.now())}`));
-  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  const editor = page.locator(`${DOCUMENT_EDITOR}`);
   await editor.click();
   await page.keyboard.type('lead');
 

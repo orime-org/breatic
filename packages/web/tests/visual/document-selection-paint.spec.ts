@@ -29,7 +29,7 @@
 import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, DOCUMENT_EDITOR, VISIBLE_SPACE } from '../helpers/space';
 
 // Not serial: each case makes its own Space and shares nothing but the login,
 // and serial would stop reporting at the first red one.
@@ -98,7 +98,7 @@ async function freshBody(p: Page, theme: 'light' | 'dark'): Promise<void> {
   await openSmokeProject(p);
   createdSpaceIds.push(await createSpace(p, 'document', `paint-${Date.now()}`));
 
-  const editor = p.locator('[data-testid="document-space"] .ProseMirror');
+  const editor = p.locator(`${DOCUMENT_EDITOR}`);
   await expect(editor).toBeVisible({ timeout: 15_000 });
   // The new-Space dialog hands focus back to its trigger asynchronously; typing
   // before that lands goes to the button.
@@ -118,9 +118,9 @@ async function firstLineClip(
   p: Page,
   insetY = 0,
 ): Promise<{ x: number; y: number; width: number; height: number }> {
-  return p.evaluate((inset) => {
+  return p.evaluate(([inset, space]: [number, string]) => {
     const r = document.querySelector<HTMLElement>(
-      '[data-testid="document-space"] .ProseMirror p',
+      `${space} [data-testid="document-space"] .ProseMirror p`,
     )!.getBoundingClientRect();
     return {
       x: Math.round(r.x),
@@ -128,7 +128,7 @@ async function firstLineClip(
       width: Math.round(r.width),
       height: Math.round(r.height) - inset * 2,
     };
-  }, insetY);
+  }, [insetY, VISIBLE_SPACE] as [number, string]);
 }
 
 /**
@@ -328,14 +328,14 @@ test('a selection a co-editor also holds looks the same with the panel open', as
     const other = await peer.newPage();
     await other.goto(projectUrl);
     await other.getByTestId(spaceTab).click();
-    const peerBody = other.locator('[data-testid="document-space"] .ProseMirror');
+    const peerBody = other.locator(`${DOCUMENT_EDITOR}`);
     await expect(peerBody).toContainText(ONE_LINE, { timeout: 15_000 });
 
     await peerBody.click();
     await other.keyboard.press(MOD + '+a');
 
     const band = page.locator(
-      '[data-testid="document-space"] .ProseMirror .collaboration-carets__selection',
+      `${DOCUMENT_EDITOR} .collaboration-carets__selection`,
     );
     await expect(band).toBeVisible({ timeout: 15_000 });
 

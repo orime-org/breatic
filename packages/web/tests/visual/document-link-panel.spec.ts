@@ -36,7 +36,7 @@ import {
   settlePanelUnder,
 } from '../helpers/link-panel';
 import { STATE_FILE } from '../helpers/project';
-import { VISIBLE_SPACE } from '../helpers/space';
+import { VISIBLE_SPACE, DOCUMENT_EDITOR } from '../helpers/space';
 
 /**
  * The middle of an element's text, in that element's own coordinates.
@@ -203,12 +203,12 @@ test('link: scrolling the target away clips the panel and keeps the draft', asyn
   await expect(input).toBeFocused();
 
   const placement = () =>
-    page.evaluate(() => {
+    page.evaluate((space: string) => {
       const panel = document
         .querySelector('[data-testid="doc-link-popover"]')!
         .getBoundingClientRect();
       const view = document
-        .querySelector('[data-testid="document-space"] .ProseMirror')!
+        .querySelector(`${space} [data-testid="document-space"] .ProseMirror`)!
         .closest('[data-radix-scroll-area-viewport]')!
         .getBoundingClientRect();
       // Where the panel's own centre lands answers the question the rectangle
@@ -225,7 +225,7 @@ test('link: scrolling the target away clips the panel and keeps the draft', asyn
         insideTheBody: panel.top >= view.top && panel.bottom <= view.bottom,
         reachableAtItsCentre: centre !== null && el.contains(centre),
       };
-    });
+    }, VISIBLE_SPACE);
 
   const onOpen = await placement();
   expect(onOpen.insideTheBody).toBe(true);
@@ -308,15 +308,15 @@ test('link: the panel is never drawn anywhere but against its target', async ({ 
   await expect(page.getByTestId('doc-link-input')).toBeFocused({ timeout: 5_000 });
   await page.waitForTimeout(400);
 
-  const measured = await page.evaluate(() => {
+  const measured = await page.evaluate((space: string) => {
     const frames = (window as unknown as {
       __frames: { top: number; left: number; opacity: number }[];
     }).__frames;
     const line = document
-      .querySelector('[data-testid="document-space"] .ProseMirror p')!
+      .querySelector(`${space} [data-testid="document-space"] .ProseMirror p`)!
       .getBoundingClientRect();
     return { frames, lineBottom: Math.round(line.bottom) };
-  });
+  }, VISIBLE_SPACE);
 
   expect(measured.frames.length).toBeGreaterThan(1);
   // The library's origin was among them, and it was transparent when it was.
@@ -350,16 +350,16 @@ test('link: opening lands in the field, closing hands the caret back', async ({ 
   await page.keyboard.type('a.example');
   await expect(input).toHaveValue('a.example');
   const bodyText = await page.evaluate(
-    () =>
-      document.querySelector('[data-testid="document-space"] .ProseMirror')
-        ?.textContent ?? '',
+    (space: string) =>
+      document.querySelector(`${space} [data-testid="document-space"] .ProseMirror`)
+        ?.textContent ?? '', VISIBLE_SPACE
   );
   expect(bodyText).toBe('focus me');
 
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('doc-link-popover')).toBeHidden({ timeout: 5_000 });
   await expect(
-    page.locator('[data-testid="document-space"] .ProseMirror'),
+    page.locator(`${DOCUMENT_EDITOR}`),
   ).toBeFocused();
 });
 
@@ -420,10 +420,10 @@ test('link: a link in the body says it can be pressed', async ({ page }) => {
 
   await expect(
     page.evaluate(
-      () =>
+      (space: string) =>
         getComputedStyle(
-          document.querySelector('[data-testid="document-space"] .ProseMirror a')!,
-        ).cursor,
+          document.querySelector(`${space} [data-testid="document-space"] .ProseMirror a`)!,
+        ).cursor, VISIBLE_SPACE
     ),
   ).resolves.toBe('pointer');
 });
@@ -655,14 +655,14 @@ test('link: the panel keeps its place while a co-editor types', async ({ page, b
 
     await other.goto(projectUrl);
     await other.getByTestId(spaceTab).click();
-    const peerEditor = other.locator('[data-testid="document-space"] .ProseMirror');
+    const peerEditor = other.locator(`${DOCUMENT_EDITOR}`);
     await expect(peerEditor).toBeVisible({ timeout: 15_000 });
     // The link A made has to have reached B before B edits around it.
     await expect(
-      other.locator('[data-testid="document-space"] .ProseMirror a'),
+      other.locator(`${DOCUMENT_EDITOR} a`),
     ).toBeVisible({ timeout: 15_000 });
 
-    await other.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+    await other.locator(`${DOCUMENT_EDITOR} p`).first().click();
     await other.keyboard.press('End');
     await other.keyboard.type(
       ' and here is a good deal more of it, enough that the paragraph has to take a second line and push everything below it down the page',
@@ -671,7 +671,7 @@ test('link: the panel keeps its place while a co-editor types', async ({ page, b
     // The peer's text has to be in this document, and the line has to have
     // moved because of it rather than because a second reader arrived.
     await expect(
-      page.locator('[data-testid="document-space"] .ProseMirror'),
+      page.locator(`${DOCUMENT_EDITOR}`),
     ).toContainText('push everything below it down the page', { timeout: 15_000 });
     await expect.poll(async () => (await linkBox()).top - before.top).toBeGreaterThan(20);
   } finally {
@@ -719,7 +719,7 @@ test('link: the toolbar keeps its link while a co-editor styles it', async ({ pa
   const reach = async (): Promise<number> => {
     const bar = (await page.getByTestId('doc-link-toolbar').boundingBox())!;
     const link = (await page
-      .locator('[data-testid="document-space"] .ProseMirror a')
+      .locator(`${DOCUMENT_EDITOR} a`)
       .first()
       .boundingBox())!;
     return link.y - (bar.y + bar.height);
@@ -736,7 +736,7 @@ test('link: the toolbar keeps its link while a co-editor styles it', async ({ pa
     await other.goto(projectUrl);
     await other.getByTestId(spaceTab).click();
     await expect(
-      other.locator('[data-testid="document-space"] .ProseMirror a'),
+      other.locator(`${DOCUMENT_EDITOR} a`),
     ).toBeVisible({ timeout: 15_000 });
 
     // Reached from the plain text in front of it: pressing inside a link opens
@@ -744,13 +744,13 @@ test('link: the toolbar keeps its link while a co-editor styles it', async ({ pa
     // at the middle of the words, since the element itself runs the full width
     // of the row and its centre is past the end of them.
     const plain = other
-      .locator('[data-testid="document-space"] .ProseMirror p')
+      .locator(`${DOCUMENT_EDITOR} p`)
       .first();
     await plain.click({ position: await textCentre(plain) });
     // Presses that arrive before a click's focus lands are dropped, and the
     // selection is then empty when the style is asked for.
     await expect(
-      other.locator('[data-testid="document-space"] .ProseMirror'),
+      other.locator(`${DOCUMENT_EDITOR}`),
     ).toBeFocused();
     await other.waitForTimeout(200);
     for (let i = 0; i < 9; i += 1) await other.keyboard.press('Shift+ArrowRight');
@@ -761,7 +761,7 @@ test('link: the toolbar keeps its link while a co-editor styles it', async ({ pa
     await expect
       .poll(
         async () =>
-          page.locator('[data-testid="document-space"] .ProseMirror strong').count(),
+          page.locator(`${DOCUMENT_EDITOR} strong`).count(),
         { timeout: 15_000 },
       )
       .toBeGreaterThan(0);
@@ -859,7 +859,7 @@ test('link: the pointer knows a link a style has split in two', async ({ page })
     timeout: 8_000,
   });
   const drawn = await page
-    .locator('[data-testid="document-space"] .ProseMirror a')
+    .locator(`${DOCUMENT_EDITOR} a`)
     .count();
   expect(drawn, 'the style has to split the link for this to mean anything')
     .toBeGreaterThan(1);
@@ -905,19 +905,19 @@ test('link: the toolbar opens against the link a co-editor just moved', async ({
     const other = await peer.newPage();
     await other.goto(projectUrl);
     await other.getByTestId(spaceTab).click();
-    const peerBody = other.locator('[data-testid="document-space"] .ProseMirror');
+    const peerBody = other.locator(`${DOCUMENT_EDITOR}`);
     await expect(peerBody).toContainText('a line with a', { timeout: 20_000 });
     await peerBody.locator('p').first().click();
     await other.keyboard.press(
       process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home',
     );
 
-    const aim = await page.evaluate(() => {
+    const aim = await page.evaluate((space: string) => {
       const rect = document
-        .querySelector('[data-testid="document-space"] .ProseMirror a')!
+        .querySelector(`${space} [data-testid="document-space"] .ProseMirror a`)!
         .getBoundingClientRect();
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    });
+    }, VISIBLE_SPACE);
     await page.mouse.move(20, 20);
     await page.waitForTimeout(400);
     // The pointer arrives, and the peer writes while the delay is running.
@@ -928,15 +928,15 @@ test('link: the toolbar opens against the link a co-editor just moved', async ({
     });
     await page.waitForTimeout(600);
 
-    const reach = await page.evaluate(() => {
+    const reach = await page.evaluate((space: string) => {
       const bar = document
         .querySelector('[data-testid="doc-link-toolbar"]')!
         .getBoundingClientRect();
       const link = document
-        .querySelector('[data-testid="document-space"] .ProseMirror a')!
+        .querySelector(`${space} [data-testid="document-space"] .ProseMirror a`)!
         .getBoundingClientRect();
       return { sideways: Math.round(bar.left - link.left) };
-    });
+    }, VISIBLE_SPACE);
 
     expect(
       Math.abs(reach.sideways),
@@ -965,8 +965,8 @@ test('link: the trailing edge of a link that touches another one', async ({ page
   // waiting for the editor to hold the focus: presses that arrive before a
   // click's focus lands are dropped, and the two links then come out the wrong
   // length with a plain character left between them, which is another case.
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
-  await expect(page.locator('[data-testid="document-space"] .ProseMirror')).toBeFocused();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
+  await expect(page.locator(`${DOCUMENT_EDITOR}`)).toBeFocused();
   await page.waitForTimeout(200);
   await page.keyboard.press(mod);
   for (let i = 0; i < 3; i += 1) await page.keyboard.press('Shift+ArrowRight');
@@ -983,8 +983,8 @@ test('link: the trailing edge of a link that touches another one', async ({ page
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
   });
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
-  await expect(page.locator('[data-testid="document-space"] .ProseMirror')).toBeFocused();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
+  await expect(page.locator(`${DOCUMENT_EDITOR}`)).toBeFocused();
   await page.waitForTimeout(200);
   await page.keyboard.press(mod);
   for (let i = 0; i < 3; i += 1) await page.keyboard.press('ArrowRight');
@@ -1003,26 +1003,26 @@ test('link: the trailing edge of a link that touches another one', async ({ page
     timeout: 8_000,
   });
   expect(
-    await page.locator('[data-testid="document-space"] .ProseMirror a').count(),
+    await page.locator(`${DOCUMENT_EDITOR} a`).count(),
     'the two links have to be separate runs for this to mean anything',
   ).toBe(2);
   expect(
-    await page.evaluate(() => {
+    await page.evaluate((space: string) => {
       const at = (href: string) =>
         document.querySelector(
-          `[data-testid="document-space"] .ProseMirror a[href="${href}"]`,
+          `${space} [data-testid="document-space"] .ProseMirror a[href="${href}"]`,
         )!.getClientRects()[0]!;
       return Math.round(at('https://a.example/bar').left - at('https://a.example/foo').right);
-    }),
+    }, VISIBLE_SPACE),
     'the two links have to touch for this to mean anything',
   ).toBe(0);
 
-  const edge = await page.evaluate(() => {
+  const edge = await page.evaluate((space: string) => {
     const rect = document
-      .querySelector('[data-testid="document-space"] .ProseMirror a[href="https://a.example/foo"]')!
+      .querySelector(`${space} [data-testid="document-space"] .ProseMirror a[href="https://a.example/foo"]`)!
       .getClientRects()[0]!;
     return { x: rect.right - 1, y: rect.top + rect.height / 2 };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.move(20, 20);
   await page.waitForTimeout(400);
   await page.mouse.move(edge.x, edge.y, { steps: 25 });
@@ -1068,7 +1068,7 @@ test('link: the toolbar comes up while a co-editor is typing', async ({ page, br
     const other = await peer.newPage();
     await other.goto(projectUrl);
     await other.getByTestId(spaceTab).click();
-    const peerBody = other.locator('[data-testid="document-space"] .ProseMirror');
+    const peerBody = other.locator(`${DOCUMENT_EDITOR}`);
     await expect(peerBody).toContainText('a line with a target on it', {
       timeout: 20_000,
     });
@@ -1077,12 +1077,12 @@ test('link: the toolbar comes up while a co-editor is typing', async ({ page, br
       process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home',
     );
 
-    const aim = await page.evaluate(() => {
+    const aim = await page.evaluate((space: string) => {
       const rect = document
-        .querySelector('[data-testid="document-space"] .ProseMirror a')!
+        .querySelector(`${space} [data-testid="document-space"] .ProseMirror a`)!
         .getBoundingClientRect();
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    });
+    }, VISIBLE_SPACE);
     await page.mouse.move(20, 20);
     await page.waitForTimeout(300);
     // The peer is already writing when the pointer arrives, so the countdown
@@ -1142,7 +1142,7 @@ test('link: a dismissal holds while a co-editor writes ahead of the link', async
     const other = await peer.newPage();
     await other.goto(projectUrl);
     await other.getByTestId(spaceTab).click();
-    const peerBody = other.locator('[data-testid="document-space"] .ProseMirror');
+    const peerBody = other.locator(`${DOCUMENT_EDITOR}`);
     await expect(peerBody).toContainText('a line with a target on it', {
       timeout: 20_000,
     });
@@ -1160,12 +1160,12 @@ test('link: a dismissal holds while a co-editor writes ahead of the link', async
 
     await other.keyboard.type('PEER ', { delay: 1 });
     await page.waitForTimeout(700);
-    const moved = await page.evaluate(() => {
+    const moved = await page.evaluate((space: string) => {
       const rect = document
-        .querySelector('[data-testid="document-space"] .ProseMirror a')!
+        .querySelector(`${space} [data-testid="document-space"] .ProseMirror a`)!
         .getBoundingClientRect();
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    });
+    }, VISIBLE_SPACE);
     await page.mouse.move(moved.x + 1, moved.y);
     await page.waitForTimeout(HOVER_OPEN_DELAY_MS + 600);
 
@@ -1192,7 +1192,7 @@ test('link: the toolbar stays when the caret leaves a link the pointer is on', a
   await linkTheSelection(page, 'a.example/stays');
   await collapseAfterLinking(page);
   await page.keyboard.press('Escape');
-  await page.locator('[data-testid="document-space"] .ProseMirror p').nth(1).click();
+  await page.locator(`${DOCUMENT_EDITOR} p`).nth(1).click();
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
@@ -1207,7 +1207,7 @@ test('link: the toolbar stays when the caret leaves a link the pointer is on', a
     { timeout: 8_000 },
   );
   const box = (await page
-    .locator('[data-testid="document-space"] .ProseMirror a')
+    .locator(`${DOCUMENT_EDITOR} a`)
     .first()
     .boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, {
@@ -1236,16 +1236,16 @@ test('link: two touching links each answer for themselves', async ({ page }) => 
   await page.keyboard.press('Enter');
   await page.keyboard.type('a plain line to rest on');
   const mod = process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home';
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
-  await expect(page.locator('[data-testid="document-space"] .ProseMirror')).toBeFocused();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
+  await expect(page.locator(`${DOCUMENT_EDITOR}`)).toBeFocused();
   await page.waitForTimeout(200);
   await page.keyboard.press(mod);
   for (let i = 0; i < 3; i += 1) await page.keyboard.press('Shift+ArrowRight');
   await linkTheSelection(page, 'a.example/foo');
   await collapseAfterLinking(page);
   await page.keyboard.press('Escape');
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
-  await expect(page.locator('[data-testid="document-space"] .ProseMirror')).toBeFocused();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
+  await expect(page.locator(`${DOCUMENT_EDITOR}`)).toBeFocused();
   await page.waitForTimeout(200);
   await page.keyboard.press(mod);
   for (let i = 0; i < 3; i += 1) await page.keyboard.press('ArrowRight');
@@ -1253,16 +1253,16 @@ test('link: two touching links each answer for themselves', async ({ page }) => 
   await linkTheSelection(page, 'a.example/bar');
   await collapseAfterLinking(page);
   await page.keyboard.press('Escape');
-  await page.locator('[data-testid="document-space"] .ProseMirror p').nth(1).click();
+  await page.locator(`${DOCUMENT_EDITOR} p`).nth(1).click();
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
   });
 
-  const pair = await page.evaluate(() => {
+  const pair = await page.evaluate((space: string) => {
     const at = (href: string) =>
       document
-        .querySelector(`[data-testid="document-space"] .ProseMirror a[href="${href}"]`)!
+        .querySelector(`${space} [data-testid="document-space"] .ProseMirror a[href="${href}"]`)!
         .getClientRects()[0]!;
     const one = at('https://a.example/foo');
     const other = at('https://a.example/bar');
@@ -1270,7 +1270,7 @@ test('link: two touching links each answer for themselves', async ({ page }) => 
       foo: { x: one.left + one.width / 2, y: one.top + one.height / 2 },
       bar: { x: other.left + other.width / 2, y: other.top + other.height / 2 },
     };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.move(pair.foo.x, pair.foo.y, { steps: 25 });
   await expect(page.getByTestId('doc-link-url')).toHaveText(
     'https://a.example/foo',
@@ -1315,16 +1315,16 @@ test('link: a keystroke inside the link the caret is in leaves the pointer its o
   await page.keyboard.press('Enter');
   await page.keyboard.type('a plain line to rest on');
   const mod = process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home';
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
-  await expect(page.locator('[data-testid="document-space"] .ProseMirror')).toBeFocused();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
+  await expect(page.locator(`${DOCUMENT_EDITOR}`)).toBeFocused();
   await page.waitForTimeout(200);
   await page.keyboard.press(mod);
   for (let i = 0; i < 8; i += 1) await page.keyboard.press('Shift+ArrowRight');
   await linkTheSelection(page, 'a.example/alpha');
   await collapseAfterLinking(page);
   await page.keyboard.press('Escape');
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
-  await expect(page.locator('[data-testid="document-space"] .ProseMirror')).toBeFocused();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
+  await expect(page.locator(`${DOCUMENT_EDITOR}`)).toBeFocused();
   await page.waitForTimeout(200);
   await page.keyboard.press(mod);
   for (let i = 0; i < 13; i += 1) await page.keyboard.press('ArrowRight');
@@ -1332,15 +1332,15 @@ test('link: a keystroke inside the link the caret is in leaves the pointer its o
   await linkTheSelection(page, 'a.example/beta');
   await collapseAfterLinking(page);
   await page.keyboard.press('Escape');
-  await page.locator('[data-testid="document-space"] .ProseMirror p').nth(1).click();
+  await page.locator(`${DOCUMENT_EDITOR} p`).nth(1).click();
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
   });
 
   // The caret into the first link, by keyboard.
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
-  await expect(page.locator('[data-testid="document-space"] .ProseMirror')).toBeFocused();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
+  await expect(page.locator(`${DOCUMENT_EDITOR}`)).toBeFocused();
   await page.waitForTimeout(200);
   await page.keyboard.press(mod);
   for (let i = 0; i < 3; i += 1) await page.keyboard.press('ArrowRight');
@@ -1351,12 +1351,12 @@ test('link: a keystroke inside the link the caret is in leaves the pointer its o
   );
 
   // The pointer takes the hold to the other link on the same line.
-  const beta = await page.evaluate(() => {
+  const beta = await page.evaluate((space: string) => {
     const r = document
-      .querySelector('[data-testid="document-space"] .ProseMirror a[href="https://a.example/beta"]')!
+      .querySelector(`${space} [data-testid="document-space"] .ProseMirror a[href="https://a.example/beta"]`)!
       .getClientRects()[0]!;
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.move(beta.x, beta.y, { steps: 25 });
   await expect(page.getByTestId('doc-link-url')).toHaveText(
     'https://a.example/beta',
@@ -1397,8 +1397,8 @@ test('link: the toolbar stands while the reader writes under the hand', async ({
   // every measurement here is about the pointer.
   await page.keyboard.type('a plain line to rest on');
   const mod = process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home';
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
-  await expect(page.locator('[data-testid="document-space"] .ProseMirror')).toBeFocused();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
+  await expect(page.locator(`${DOCUMENT_EDITOR}`)).toBeFocused();
   await page.waitForTimeout(200);
   await page.keyboard.press(mod);
   for (let i = 0; i < 6; i += 1) await page.keyboard.press('ArrowRight');
@@ -1436,16 +1436,16 @@ test('link: a dismissal holds while the caret is parked in another link', async 
   // of its own: the case is about a caret parked in one of the two above.
   await page.keyboard.type('a plain line to rest on');
   const mod = process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home';
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
-  await expect(page.locator('[data-testid="document-space"] .ProseMirror')).toBeFocused();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
+  await expect(page.locator(`${DOCUMENT_EDITOR}`)).toBeFocused();
   await page.waitForTimeout(200);
   await page.keyboard.press(mod);
   for (let i = 0; i < 8; i += 1) await page.keyboard.press('Shift+ArrowRight');
   await linkTheSelection(page, 'a.example/alpha');
   await collapseAfterLinking(page);
   await page.keyboard.press('Escape');
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
-  await expect(page.locator('[data-testid="document-space"] .ProseMirror')).toBeFocused();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
+  await expect(page.locator(`${DOCUMENT_EDITOR}`)).toBeFocused();
   await page.waitForTimeout(200);
   await page.keyboard.press(mod);
   for (let i = 0; i < 13; i += 1) await page.keyboard.press('ArrowRight');
@@ -1455,8 +1455,8 @@ test('link: a dismissal holds while the caret is parked in another link', async 
   await parkPointer(page);
 
   // The caret into the first link, the pointer onto the second.
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
-  await expect(page.locator('[data-testid="document-space"] .ProseMirror')).toBeFocused();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
+  await expect(page.locator(`${DOCUMENT_EDITOR}`)).toBeFocused();
   await page.waitForTimeout(200);
   await page.keyboard.press(mod);
   for (let i = 0; i < 3; i += 1) await page.keyboard.press('ArrowRight');
@@ -1474,7 +1474,7 @@ test('link: a dismissal holds while the caret is parked in another link', async 
   // One character. The hand has not moved, and the caret is where it was.
   // Escape takes the focus off the body (#993), so it goes back without a
   // click, which would move the caret out of the link this case is about.
-  await page.locator('[data-testid="document-space"] .ProseMirror').evaluate((el) => {
+  await page.locator(`${DOCUMENT_EDITOR}`).evaluate((el) => {
     (el as HTMLElement).focus();
   });
   await page.keyboard.type('Q');
@@ -1482,7 +1482,7 @@ test('link: a dismissal holds while the caret is parked in another link', async 
   // leave the document unchanged, and the assertion below would then be the
   // one made two lines above it.
   await expect(
-    page.locator('[data-testid="document-space"] .ProseMirror'),
+    page.locator(`${DOCUMENT_EDITOR}`),
   ).toContainText('Q', { timeout: 8_000 });
   await page.waitForTimeout(700);
 

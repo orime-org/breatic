@@ -322,7 +322,7 @@ test('a pointer leaving the canvas takes the arrow away', async () => {
   // on the canvas container, and only a real move produces it — a synthetic
   // event would have to name that container itself, and naming the wrong
   // element leaves a case that passes while testing nothing.
-  const box = await watcher.getByTestId('canvas-space').boundingBox();
+  const box = await visibleSpace(watcher).getByTestId('canvas-space').boundingBox();
   if (box === null) throw new Error('the canvas has no box');
   await watcher.mouse.move(box.x + 200, box.y + 200);
   await watcher.mouse.move(box.x - 40, box.y + 200, { steps: 6 });

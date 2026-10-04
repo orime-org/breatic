@@ -16,7 +16,7 @@
 import { expect, test, type Locator, type Page } from 'playwright/test';
 
 import { openSmokeProject } from './project';
-import { createSpace, deleteSpace, VISIBLE_SPACE } from './space';
+import { createSpace, deleteSpace, VISIBLE_SPACE, DOCUMENT_EDITOR } from './space';
 
 // Wide, because the column's own width decides which side the bar comes up on
 // and how far it may reach.
@@ -74,7 +74,7 @@ export async function openFreshDocument(page: Page): Promise<void> {
     await createSpace(page, 'document', `bubble-${Date.now()}`),
   );
 
-  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  const editor = page.locator(`${DOCUMENT_EDITOR}`);
   await expect(editor).toBeVisible({ timeout: 15_000 });
   // The new-Space dialog hands focus back to its trigger asynchronously as it
   // closes. Typing before that lands on the button instead of the body (#123).
@@ -93,7 +93,7 @@ export async function openFreshDocument(page: Page): Promise<void> {
  * document of two, the press without the wait took the second.
  */
 export async function selectFirstParagraph(page: Page): Promise<void> {
-  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  const editor = page.locator(`${DOCUMENT_EDITOR}`);
   await editor.locator('p').first().click();
   await expect(editor).toBeFocused();
   await page.waitForTimeout(200);
@@ -119,7 +119,7 @@ export async function selectFirstParagraph(page: Page): Promise<void> {
  */
 export async function selectParagraph(page: Page, i: number): Promise<void> {
   const paragraph = page
-    .locator('[data-testid="document-space"] .ProseMirror p')
+    .locator(`${DOCUMENT_EDITOR} p`)
     .nth(i);
   const bar = page.getByTestId('doc-selection-bubble-bar');
 

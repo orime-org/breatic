@@ -28,7 +28,7 @@ import {
   typeLongBody,
 } from '../helpers/bubble-bar';
 import { bodyView } from '../helpers/link-panel';
-import { VISIBLE_SPACE } from '../helpers/space';
+import { VISIBLE_SPACE, DOCUMENT_EDITOR } from '../helpers/space';
 
 for (const scheme of ['light', 'dark'] as const) {
   test(`浮出条的位置和视觉规格（${scheme}）`, async ({ page }) => {
@@ -359,9 +359,9 @@ test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台
     if (m.type() === 'warning') lines.push(m.text());
   });
   const bodyBefore = await page.evaluate(
-    () =>
-      document.querySelector('[data-testid="document-space"] .ProseMirror')
-        ?.innerHTML ?? '',
+    (space: string) =>
+      document.querySelector(`${space} [data-testid="document-space"] .ProseMirror`)
+        ?.innerHTML ?? '', VISIBLE_SPACE
   );
 
   const ai = await hoverOpenSlot(page, 'doc-bubble-ai');
@@ -385,9 +385,9 @@ test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台
   expect(lines.filter((l) => l.includes('not implemented yet'))).toHaveLength(1);
   expect(
     await page.evaluate(
-      () =>
-        document.querySelector('[data-testid="document-space"] .ProseMirror')
-          ?.innerHTML ?? '',
+      (space: string) =>
+        document.querySelector(`${space} [data-testid="document-space"] .ProseMirror`)
+          ?.innerHTML ?? '', VISIBLE_SPACE
     ),
   ).toBe(bodyBefore);
 
@@ -407,12 +407,12 @@ test('按过浮出条之后再点到编辑器外面，条要消失', async ({ pa
   await page.getByTestId('doc-bubble-tool-bold').click();
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
 
-  const stillFocused = await page.evaluate(() => {
+  const stillFocused = await page.evaluate((space: string) => {
     const editor = document.querySelector(
-      '[data-testid="document-space"] .ProseMirror',
+      `${space} [data-testid="document-space"] .ProseMirror`,
     );
     return editor?.contains(document.activeElement) ?? false;
-  });
+  }, VISIBLE_SPACE);
   expect(stillFocused).toBe(true);
 
   // 真的用鼠标点，不是按 Tab。两条路进插件的方式不同：实测点击派发**一次**
@@ -457,8 +457,8 @@ test('正文列右边放不下时，浮出条改成右边缘对齐选区左边�
   // 双击行尾那个词：选区左边到正文列右沿的余量小于条宽，flip 的 crossAxis
   // 就会把 `top-start` 翻成 `top-end`。这是水平方向的自适应，跟竖直方向翻到
   // 下方是同一套机制（定稿 §5.1）。
-  const spot = await page.evaluate(() => {
-    const p = document.querySelector('[data-testid="document-space"] .ProseMirror p');
+  const spot = await page.evaluate((space: string) => {
+    const p = document.querySelector(`${space} [data-testid="document-space"] .ProseMirror p`);
     const text = p?.firstChild as Text;
     const range = document.createRange();
     // 走一遍每个字符，找出**第一行**上最靠右的那一个。写死「倒数第 7 个字符」
@@ -480,7 +480,7 @@ test('正文列右边放不下时，浮出条改成右边缘对齐选区左边�
     range.setEnd(text, first.offset + 1);
     const r = range.getBoundingClientRect();
     return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.dblclick(spot.x, spot.y);
   const bar = page.getByTestId('doc-selection-bubble-bar');
   await expect(bar).toBeVisible({ timeout: 5_000 });
@@ -557,7 +557,7 @@ test('全选时鼠标不在正文里就不显示，鼠标不进来滚多远都�
 
   // 先让编辑器拿到焦点（点一下正文），再把鼠标挪到窗口左上角——那儿在正文
   // 显示区外面，是顶部横条那一带。
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
   await page.mouse.move(8, 8);
   await selectWholeDocument(page);
 
@@ -575,7 +575,7 @@ test('全选后鼠标回到正文里，条自己就出来了——不用滚动',
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
 
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
   await page.mouse.move(8, 8);
   await selectWholeDocument(page);
   expect((await readBar(page)).shown).toBe(false);
@@ -621,7 +621,7 @@ test('全选时鼠标贴着正文区域上沿，条也不画到区域外面', as
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
 
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
 
   const spot = await page.evaluate((space: string) => {
     const v = document
@@ -649,7 +649,7 @@ test('鼠标离开浏览器之后，键盘全选不把条摆出来', async ({ pa
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
 
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
 
   // 先在正文里待过，好让「最后一次已知位置」确实落在正文里——不这样的话
   // 断言的就是「从没知道过」，跟这条要测的「知道过又作废」不是一回事。
@@ -918,8 +918,8 @@ test('条的左右不伸出正文显示区——选了一部分和全选各量�
   // 外边距随窗口宽度变（正文列有最大宽度，窗口越宽外边距越大）。所以下面的
   // 前置断言按「条被推到了列的右端、不是停在列中间」来写，不钉某个具体像素
   // 数——那个数只在量它的那个视口下成立。
-  const spot = await page.evaluate(() => {
-    const p = document.querySelector('[data-testid="document-space"] .ProseMirror p');
+  const spot = await page.evaluate((space: string) => {
+    const p = document.querySelector(`${space} [data-testid="document-space"] .ProseMirror p`);
     const text = p?.firstChild as Text;
     const range = document.createRange();
     const first = { top: 0, right: 0, offset: 0 };
@@ -938,7 +938,7 @@ test('条的左右不伸出正文显示区——选了一部分和全选各量�
     range.setEnd(text, first.offset + 1);
     const r = range.getBoundingClientRect();
     return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.dblclick(spot.x, spot.y);
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible({ timeout: 5_000 });
   const partial = await edges();
@@ -1049,7 +1049,7 @@ test('浮出条第一次画出来就在它最终的位置上', async ({ page }) 
   // bar's entry would be covered by a gate that has nothing to do with where
   // it is placed.
   await page
-    .locator('[data-testid="document-space"] .ProseMirror p')
+    .locator(`${DOCUMENT_EDITOR} p`)
     .nth(5)
     .click();
   await expect(page.getByTestId('doc-selection-bubble-bar')).not.toBeAttached();
@@ -1087,7 +1087,7 @@ test('往上拖着选到正文区顶端，松手后条整个在正文区里', as
   await scrollBodyTo(page, 400);
 
   const view = await bodyView(page);
-  const paragraphs = page.locator('[data-testid="document-space"] .ProseMirror p');
+  const paragraphs = page.locator(`${DOCUMENT_EDITOR} p`);
   const startBox = (await paragraphs
     .filter({ hasText: 'line' })
     .first()
