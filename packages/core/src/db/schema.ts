@@ -32,6 +32,7 @@ import {
 // still being defined at the point the reference is written.
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { MessagePart } from "@breatic/shared";
+import { PROJECT_NAME_MAX_CHARS } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -261,7 +262,7 @@ export const projects = pgTable(
     createdByUserId: uuid("created_by_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    name: varchar("name", { length: 255 }).notNull(),
+    name: varchar("name", { length: PROJECT_NAME_MAX_CHARS }).notNull(),
     description: text("description"),
     thumbnailUrl: text("thumbnail_url"),
     // URL slug for /project/{slug}-{uuid}. Format-validated app-side, NOT
@@ -276,6 +277,13 @@ export const projects = pgTable(
       .default("canvas")
       .notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    // Archive (0090, #1222): an archived project is read-only for every
+    // member until its studio's admin restores it. The two move together —
+    // the CHECK `projects_archived_pair` saying so is hand-written in 0090.
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    archivedByUserId: uuid("archived_by_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
     ...timestamps,
   },
   (table) => [index("projects_studio_id_idx").on(table.studioId, table.deletedAt)],
@@ -696,9 +704,8 @@ export const nodeHistory = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
-    // Soft-delete, stamped by deleteProject() cascade when the owning
-    // project is deleted. Required for the project-wide "soft delete
-    // only" rule (CLAUDE.md) now that deleteProject actually cascades.
+    // Soft-delete, per the project-wide "soft delete only" rule (CLAUDE.md).
+    // Only data migrations stamp it today (duplicate cleanup).
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
@@ -1624,8 +1631,8 @@ export const skillInstalls = pgTable(
 // ── 17.1 Project Lifecycle Outbox ────────────────────────────────────
 //
 // Transactional outbox bridging the business DB to the separate yjs DB.
-// Since the two databases cannot share a transaction, a project delete /
-// duplicate writes one command row HERE inside the same business tx (so
+// Since the two databases cannot share a transaction, a project duplicate /
+// archive / restore writes one command row HERE inside the same business tx (so
 // the command's existence is atomic with the business write). A relay
 // loop forwards unsent rows to the `project-lifecycle` Redis Stream;
 // collab consumes them and performs the yjs-DB side idempotently. Rows
@@ -1636,8 +1643,8 @@ export const projectLifecycleOutbox = pgTable(
   "project_lifecycle_outbox",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    // Discriminator: "project:deleted" | "project:duplicated"
-    // (see @breatic/shared ProjectLifecycleEvent).
+    // Discriminator: "project:duplicated" | "project:archived" |
+    // "project:restored" (see @breatic/shared ProjectLifecycleEvent).
     kind: text("kind").notNull(),
     // Full ProjectLifecycleEvent payload (projectId / sourceId+newId / ts).
     payload: jsonb("payload").notNull(),
@@ -2183,9 +2190,8 @@ export const projectActivities = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
-    // Soft-delete: individual rows are never user-deleted, but the whole
-    // table is project-scoped and cascade-soft-deleted by deleteProject
-    // (same as node_history). Feed queries filter deleted_at IS NULL.
+    // Soft-delete, per the project-wide "soft delete only" rule; rows are
+    // never user-deleted. Feed queries filter deleted_at IS NULL.
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
@@ -2214,8 +2220,7 @@ export const projectActivities = pgTable(
 // never on Yjs node edits.
 //
 // V1 has no delete flow (assets accumulate); `deleted_at` is reserved
-// for a future GDPR / studio-deletion cascade. It does NOT cascade with
-// deleteProject (studio-scoped, not project-scoped).
+// for a future GDPR deletion flow.
 
 export const studioAssets = pgTable(
   "studio_assets",

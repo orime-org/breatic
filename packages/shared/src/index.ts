@@ -109,8 +109,9 @@ export type {
   Space,
   MembersChangedEvent,
   ActivityNewControlEvent,
-  ProjectDeletedLifecycleEvent,
   ProjectDuplicatedLifecycleEvent,
+  ProjectArchivedLifecycleEvent,
+  ProjectRestoredLifecycleEvent,
   ProjectLifecycleEvent,
   Voice,
   VoicePage,
@@ -283,6 +284,7 @@ export {
   chatRenameConversationSchema,
   CHAT_MESSAGE_MAX_CHARS,
   CONVERSATION_TITLE_MAX_CHARS,
+  PROJECT_NAME_MAX_CHARS,
 } from "@shared/schemas/index.js";
 
 export type {
@@ -331,6 +333,8 @@ export {
   isProjectScopedDocName,
 } from "@shared/yjs-doc-names.js";
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
+
+export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
 
 export {
   documentBodyFragment,
@@ -677,3 +681,4 @@ export {
   type ReferenceKind,
   type ReferencePool,
 } from "@shared/reference-pool.js";
+export { REQUEST_NOTIFICATION_TYPES, isRequestNotification } from "@shared/request-notifications.js";

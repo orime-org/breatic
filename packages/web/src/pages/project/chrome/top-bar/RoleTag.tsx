@@ -34,6 +34,11 @@ const ROLE_KEY: Record<ProjectRole, string> = {
 interface RoleTagProps {
   role: ProjectRole;
   projectId: string;
+  /**
+   * The project is archived: the chip shows the role and takes no clicks,
+   * since an archived project accepts no upgrade request.
+   */
+  frozen?: boolean;
 }
 
 /**
@@ -42,6 +47,7 @@ interface RoleTagProps {
  * - `owner` / `editor` → read-only neutral pill (cursor default).
  * - `viewer` → clickable; the popover is either the request form or, once a
  *   request is outstanding, its status and a withdraw button.
+ * - on an archived project (`frozen`) → read-only for every role.
  *
  * The upgrade entry point lives on the chip rather than a separate button
  * because viewers see "Viewer" and intuitively know to click it — and the same
@@ -54,10 +60,11 @@ interface RoleTagProps {
  * @param root0 - Role tag props.
  * @param root0.role - Viewer's role in the project; decides whether the chip is read-only or clickable.
  * @param root0.projectId - Id of the project the upgrade request targets.
- * @returns a read-only role chip for owners/editors, or a clickable request-edit-access chip for viewers.
+ * @param root0.frozen - Whether the project is archived, which makes the chip read-only for every role.
+ * @returns a read-only role chip for owners/editors (and everyone on an archived project), or a clickable request-edit-access chip for viewers.
  */
-export function RoleTag({ role, projectId }: RoleTagProps): React.JSX.Element {
-  if (role !== 'viewer') {
+export function RoleTag({ role, projectId, frozen = false }: RoleTagProps): React.JSX.Element {
+  if (role !== 'viewer' || frozen) {
     return <ReadOnlyRoleTag role={role} />;
   }
   return <ClickableViewerRoleTag projectId={projectId} />;

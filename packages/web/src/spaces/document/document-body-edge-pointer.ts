@@ -105,13 +105,32 @@ function zoneAt(view: EditorView, y: number): PointerZone {
   const { doc } = view.state;
   if (bodyEdgeNeedsTakeover(doc, 'end')) {
     const last = edgeLine(view, 'end');
-    if (last && y >= last.getBoundingClientRect().top) return 'end';
+    if (last) {
+      const box = last.getBoundingClientRect();
+      if (y >= (edgeBlockIsTable(view, 'end') ? box.bottom : box.top)) return 'end';
+    }
   }
   if (bodyEdgeNeedsTakeover(doc, 'start')) {
     const first = edgeLine(view, 'start');
-    if (first && y <= first.getBoundingClientRect().bottom) return 'start';
+    if (first) {
+      const box = first.getBoundingClientRect();
+      if (y <= (edgeBlockIsTable(view, 'start') ? box.top : box.bottom)) return 'start';
+    }
   }
   return 'body';
+}
+
+/**
+ * Whether the block at one end of the body is a table. A press over a table
+ * is its cells': the browser selects the words in them, and only a press past
+ * the table's box reaches for the edge.
+ * @param view - The view.
+ * @param edge - Which end.
+ * @returns True for a table.
+ */
+function edgeBlockIsTable(view: EditorView, edge: BodyEdge): boolean {
+  const pos = bodyEdgeBlockPos(view.state.doc, edge);
+  return pos !== null && view.state.doc.nodeAt(pos)?.type.name === 'table';
 }
 
 /**

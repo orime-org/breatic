@@ -118,6 +118,7 @@ describe('StudioTabBar — a nav of links, not a tablist', () => {
       // of it — otherwise the strip's first link points away from the page the
       // reader is already on.
       '/studio/acme-studio',
+      '/studio/acme-studio/archived',
       '/studio/acme-studio/collections',
       '/studio/acme-studio/works',
       '/studio/acme-studio/members',
@@ -219,7 +220,7 @@ describe('StudioTabBar — a nav of links, not a tablist', () => {
     // page they came from.
     const user = userEvent.setup();
     const { location, goBack } = setupWithLocation('team');
-    screen.getAllByRole('link')[1]?.focus();
+    screen.getByRole('link', { name: 'Collections' }).focus();
 
     await user.keyboard('{Enter}');
     expect(location().pathname).toBe('/studio/acme-studio/collections');
@@ -229,12 +230,13 @@ describe('StudioTabBar — a nav of links, not a tablist', () => {
     expect(location().pathname).toBe('/studio/acme-studio');
   });
 
-  it('renders all 6 sections for a team studio, in spec order', () => {
+  it('renders all 7 sections for a team studio\'s admin, in spec order', () => {
     setup('team');
     // Test boot locale is English (vitest.setup seeds en + setLocale('en')).
     // Works sits at the 3rd position (spec §6.1), not the end.
     expect(screen.getAllByRole('link').map((l) => l.textContent)).toEqual([
       'Projects',
+      'Archived',
       'Collections',
       'Works',
       'Members',
@@ -243,9 +245,9 @@ describe('StudioTabBar — a nav of links, not a tablist', () => {
     ]);
   });
 
-  it('shows all 6 sections for a personal studio (Members read-only, A 方案)', () => {
+  it('shows all 7 sections to a personal studio admin (Members read-only there)', () => {
     setup('personal');
-    expect(screen.getAllByRole('link')).toHaveLength(6);
+    expect(screen.getAllByRole('link')).toHaveLength(7);
     expect(
       screen.getByRole('link', { name: 'Members' }),
     ).toBeInTheDocument();

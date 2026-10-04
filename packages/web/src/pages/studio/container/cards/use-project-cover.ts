@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { projectsApi } from '@web/data/api/projects';
+import { invalidateProjectListings, projectsApi } from '@web/data/api/projects';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   pictureErrorMessage,
@@ -28,13 +28,11 @@ export interface ProjectCoverUpload {
  * Replace a project's cover: upload the crop as an asset, then point the
  * project at it. The picture it replaces stays in the studio's assets.
  *
- * Both lists that show the cover are refreshed — the studio's Projects tab and
- * the Recent page.
+ * Every listing that shows the cover is refreshed afterwards.
  * @param projectId - The project whose cover this is.
- * @param studioSlug - The studio whose Projects tab lists it.
  * @returns The upload action and its state.
  */
-export function useProjectCover(projectId: string, studioSlug: string): ProjectCoverUpload {
+export function useProjectCover(projectId: string): ProjectCoverUpload {
   const t = useTranslation();
   const queryClient = useQueryClient();
 
@@ -46,10 +44,7 @@ export function useProjectCover(projectId: string, studioSlug: string): ProjectC
       });
       return projectsApi.setCover(projectId, assetId);
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['studio', studioSlug, 'projects'] });
-      void queryClient.invalidateQueries({ queryKey: ['studios', 'recent'] });
-    },
+    onSuccess: () => invalidateProjectListings(queryClient, projectId),
   });
 
   const { mutate, reset, isPending, isSuccess, error } = mutation;

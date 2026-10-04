@@ -5,16 +5,13 @@
  * What the project lifecycle writes into `project_members`, against a real
  * Postgres.
  *
- * These two invariants had NO test at all. Measured rather than assumed: on
+ * This invariant had NO test at all. Measured rather than assumed: on
  * 2026-08-05 the owner insert in `duplicateProject` was changed from `owner`
- * to `viewer`, and the member sweep in `deleteProject` was turned into a
- * no-op — the whole suite stayed green both times, 476 integration tests and
- * every unit test. Five integration tests do call `deleteProject`, which is
- * how the gap hid: calling a function is not testing what it writes.
+ * to `viewer` and the whole suite stayed green, 476 integration tests and
+ * every unit test: calling a function is not testing what it writes.
  *
  * Creation is covered in `project-access.integration.test.ts`, so it is not
- * repeated here. Duplication and
- * deletion are the two that were unguarded, and they are guarded here.
+ * repeated here. Duplication was unguarded, and it is guarded here.
  *
  * Both go through the repo directly rather than the service: the subject is
  * what lands in the table, and the service layer's authorisation is pinned by
@@ -179,7 +176,7 @@ async function duplicateAsService(
   return db.transaction(async (tx) => {
     const source = await projectRepo.getProjectById(sourceId, tx);
     if (!source) throw new Error(`source project ${sourceId} not found`);
-    return projectRepo.duplicateProject(tx, creatorUserId, source);
+    return projectRepo.duplicateProject(tx, creatorUserId, source, `Copy of ${source.name}`);
   });
 }
 
@@ -219,88 +216,5 @@ describe("duplicateProject — the copy belongs to whoever made it", () => {
     const rows = await allMemberRows(sourceId);
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.deleted_at === null)).toBe(true);
-  });
-});
-
-describe("deleteProject — the membership goes down with the project", () => {
-  it("soft-deletes every live member row, owner included", async () => {
-    const owner = await insertUser();
-    const editor = await insertUser();
-    const viewer = await insertUser();
-    const studioId = await insertStudio(owner);
-    const projectId = await insertProject(studioId, owner);
-    await addMember(projectId, editor, "editor", owner);
-    await addMember(projectId, viewer, "viewer", owner);
-
-    const before = await allMemberRows(projectId);
-    expect(before).toHaveLength(3);
-    expect(before.every((r) => r.deleted_at === null)).toBe(true);
-
-    await projectRepo.deleteProject(projectId);
-
-    const after = await allMemberRows(projectId);
-    // Soft delete, so the rows are still there — what changed is the stamp.
-    expect(after).toHaveLength(3);
-    expect(after.every((r) => r.deleted_at !== null)).toBe(true);
-  });
-
-  it("leaves every other project's membership alone", async () => {
-    // The other half of the sweep's WHERE. Measured: a predicate widened to
-    // the whole table — `(project_id = $1 OR project_id IS NOT NULL) AND
-    // deleted_at IS NULL`, which compiles and keeps the live-row filter — was
-    // invisible to all 480 integration tests before this case existed. What it
-    // would do in production is revoke every membership in the database the
-    // first time anyone deletes a project.
-    //
-    // The sibling sweep in the same repo file, softDeleteAllInStudioForUser,
-    // is held to this standard by studio-member-cascade.integration.test.ts:130
-    // and :146. This one was not.
-    const owner = await insertUser();
-    const bystander = await insertUser();
-    const studioId = await insertStudio(owner);
-    const doomed = await insertProject(studioId, owner);
-    const survivor = await insertProject(studioId, owner);
-    await addMember(doomed, bystander, "editor", owner);
-    await addMember(survivor, bystander, "editor", owner);
-
-    await projectRepo.deleteProject(doomed);
-
-    const survivorRows = await allMemberRows(survivor);
-    expect(survivorRows).toHaveLength(2);
-    expect(survivorRows.every((r) => r.deleted_at === null)).toBe(true);
-    // And the one that was deleted really did go, so this is not passing
-    // because the sweep did nothing at all.
-    const doomedRows = await allMemberRows(doomed);
-    expect(doomedRows.every((r) => r.deleted_at !== null)).toBe(true);
-  });
-
-  it("does not re-stamp a row that was already soft-deleted", async () => {
-    // The sweep's WHERE excludes already-deleted rows. Without that, deleting
-    // a project would rewrite the date on which a member was removed months
-    // earlier, and "when did this person lose access" stops being answerable.
-    const owner = await insertUser();
-    const removed = await insertUser();
-    const studioId = await insertStudio(owner);
-    const projectId = await insertProject(studioId, owner);
-    await addMember(projectId, removed, "viewer", owner);
-    await sql`
-      UPDATE project_members SET deleted_at = now() - interval '30 days'
-      WHERE project_id = ${projectId} AND user_id = ${removed}
-    `;
-
-    const [staleBefore] = await sql<{ deleted_at: Date }[]>`
-      SELECT deleted_at FROM project_members
-      WHERE project_id = ${projectId} AND user_id = ${removed}
-    `;
-
-    await projectRepo.deleteProject(projectId);
-
-    const [staleAfter] = await sql<{ deleted_at: Date }[]>`
-      SELECT deleted_at FROM project_members
-      WHERE project_id = ${projectId} AND user_id = ${removed}
-    `;
-    expect(staleAfter!.deleted_at.getTime()).toBe(
-      staleBefore!.deleted_at.getTime(),
-    );
   });
 });

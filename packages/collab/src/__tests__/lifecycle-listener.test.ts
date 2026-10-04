@@ -5,12 +5,11 @@
  * Unit tests for the project-lifecycle consumer's dispatch + kick.
  *
  * Pins the critical-path routing the outbox stream drives:
- *   - project:deleted   → soft-delete the project's yjs docs + close
- *     ALL of its connections (a stale tab can't keep writing) with a
- *     terminal close code (4404, not members-sync's reconnect 4403);
  *   - project:duplicated → copy the source's docs + close the NEW
  *     project's connections (4406) so a client that raced in and
  *     lazy-seeded reloads the copied content — the SOURCE is untouched;
+ *   - project:archived / project:restored → close every connection of the
+ *     project with the reason the client re-authenticates on;
  *   - an unknown command is skipped (no repo call, no kick) so one bad
  *     event can't block the stream.
  *
@@ -37,14 +36,11 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
-const { softDeleteByProjectPrefixMock, duplicateByProjectPrefixMock } =
-  vi.hoisted(() => ({
-    softDeleteByProjectPrefixMock: vi.fn(),
-    duplicateByProjectPrefixMock: vi.fn(),
-  }));
+const { duplicateByProjectPrefixMock } = vi.hoisted(() => ({
+  duplicateByProjectPrefixMock: vi.fn(),
+}));
 
 vi.mock("@collab/services/yjs-documents.repo.js", () => ({
-  softDeleteByProjectPrefix: softDeleteByProjectPrefixMock,
   duplicateByProjectPrefix: duplicateByProjectPrefixMock,
 }));
 
@@ -67,8 +63,10 @@ interface ClosedFrame {
 function makeHocuspocus(docNames: string[]): {
   hocuspocus: Hocuspocus;
   closed: ClosedFrame[];
+  reasons: { docName: string; reason: string }[];
 } {
   const closed: ClosedFrame[] = [];
+  const reasons: { docName: string; reason: string }[] = [];
   const documents = new Map<string, { connections: Map<unknown, unknown> }>();
   for (const docName of docNames) {
     // Connection as the KEY, matching the real Document; the value only
@@ -77,40 +75,22 @@ function makeHocuspocus(docNames: string[]): {
     connections.set(
       {
         context: { user: { id: "u1" } },
-        close: ({ code }: { code: number }) => closed.push({ docName, code }),
+        close: ({ code, reason }: { code: number; reason: string }) => {
+          closed.push({ docName, code });
+          reasons.push({ docName, reason });
+        },
       },
       { clients: new Set<number>() },
     );
     documents.set(docName, { connections });
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { hocuspocus: { documents } as any, closed };
+  return { hocuspocus: { documents } as any, closed, reasons };
 }
 
 describe("handleLifecycleEvent", () => {
   beforeEach(() => {
-    softDeleteByProjectPrefixMock.mockReset().mockResolvedValue(undefined);
     duplicateByProjectPrefixMock.mockReset().mockResolvedValue(undefined);
-  });
-
-  it("project:deleted soft-deletes the project + closes ALL its connections (4404)", async () => {
-    const { hocuspocus, closed } = makeHocuspocus([
-      `project-${PID}/meta`,
-      `project-${PID}/canvas-${NEW_PID}`,
-      `project-${NEW_PID}/meta`, // another project — must be untouched
-    ]);
-
-    await handleLifecycleEvent(hocuspocus, {
-      type: "project:deleted",
-      projectId: PID,
-      ts: 1,
-    });
-
-    expect(softDeleteByProjectPrefixMock).toHaveBeenCalledWith(PID);
-    // Both of PID's docs closed with 4404; the other project untouched.
-    expect(closed).toHaveLength(2);
-    expect(closed.every((c) => c.code === 4404)).toBe(true);
-    expect(closed.every((c) => c.docName.startsWith(`project-${PID}/`))).toBe(true);
   });
 
   it("project:duplicated copies the source + closes the NEW project's connections (4406), source untouched", async () => {
@@ -132,6 +112,35 @@ describe("handleLifecycleEvent", () => {
     ]);
   });
 
+  it("project:archived closes every connection of the project with the reason the client re-authenticates on", async () => {
+    const { hocuspocus, reasons } = makeHocuspocus([
+      `project-${PID}/meta`,
+      `project-${PID}/canvas-${NEW_PID}`,
+      `project-${NEW_PID}/meta`, // another project — must be untouched
+    ]);
+
+    await handleLifecycleEvent(hocuspocus, { type: "project:archived", projectId: PID, ts: 1 });
+
+    expect(reasons).toEqual([
+      { docName: `project-${PID}/meta`, reason: "Project archived" },
+      { docName: `project-${PID}/canvas-${NEW_PID}`, reason: "Project archived" },
+    ]);
+    // Archiving keeps every document as it is: nothing is copied.
+    expect(duplicateByProjectPrefixMock).not.toHaveBeenCalled();
+  });
+
+  it("project:restored closes every connection of the project with its own reason", async () => {
+    const { hocuspocus, reasons } = makeHocuspocus([
+      `project-${PID}/meta`,
+      `project-${NEW_PID}/meta`,
+    ]);
+
+    await handleLifecycleEvent(hocuspocus, { type: "project:restored", projectId: PID, ts: 1 });
+
+    expect(reasons).toEqual([{ docName: `project-${PID}/meta`, reason: "Project restored" }]);
+    expect(duplicateByProjectPrefixMock).not.toHaveBeenCalled();
+  });
+
   it("skips an unknown command (no repo call, no kick)", async () => {
     const { hocuspocus, closed } = makeHocuspocus([`project-${PID}/meta`]);
 
@@ -142,19 +151,19 @@ describe("handleLifecycleEvent", () => {
       ts: 1,
     });
 
-    expect(softDeleteByProjectPrefixMock).not.toHaveBeenCalled();
     expect(duplicateByProjectPrefixMock).not.toHaveBeenCalled();
     expect(closed).toHaveLength(0);
   });
 
   it("propagates a repo error so the stream consumer retries (no cursor advance)", async () => {
-    softDeleteByProjectPrefixMock.mockRejectedValue(new Error("yjs db down"));
-    const { hocuspocus } = makeHocuspocus([`project-${PID}/meta`]);
+    duplicateByProjectPrefixMock.mockRejectedValue(new Error("yjs db down"));
+    const { hocuspocus } = makeHocuspocus([`project-${NEW_PID}/meta`]);
 
     await expect(
       handleLifecycleEvent(hocuspocus, {
-        type: "project:deleted",
-        projectId: PID,
+        type: "project:duplicated",
+        sourceId: PID,
+        newId: NEW_PID,
         ts: 1,
       }),
     ).rejects.toThrow("yjs db down");

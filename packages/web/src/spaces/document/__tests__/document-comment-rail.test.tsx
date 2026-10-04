@@ -199,7 +199,8 @@ describe('the comment panel', () => {
   function aimedWords(): string {
     const at = draftRangeIn(handle.editor.prosemirrorState);
     if (at === null) return '';
-    return handle.editor.prosemirrorState.doc.textBetween(at.from, at.to);
+    const { doc } = handle.editor.prosemirrorState;
+    return at.segments.map(({ from, to }) => doc.textBetween(from, to)).join('');
   }
 
   /** Puts the focus somewhere the reader could have put it: the body. */
@@ -303,7 +304,7 @@ describe('the comment panel', () => {
    */
   function aimAt(from: number, to: number): void {
     act(() => {
-      openCommentDraft(handle.editor, { from, to });
+      openCommentDraft(handle.editor, [{ from, to }]);
     });
   }
 
@@ -360,10 +361,9 @@ describe('the comment panel', () => {
   function aimDraft(from: number, to: number): void {
     const run = firstRun();
     act(() => {
-      openCommentDraft(handle.editor, {
-        from: run.from + from,
-        to: run.from + to,
-      });
+      openCommentDraft(handle.editor, [
+        { from: run.from + from, to: run.from + to },
+      ]);
     });
   }
 

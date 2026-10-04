@@ -14,7 +14,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { insertRowForMenu } from '@web/spaces/document/document-insert-row';
+import { insertBelow, insertRowForMenu } from '@web/spaces/document/document-insert-row';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -130,5 +130,58 @@ describe('the row insert-below makes', () => {
 
     const where = editor.getTextCursorPosition().block as unknown as Seen;
     expect(where.id).toBe(made);
+  });
+});
+
+describe('a table inserted below (inner#1126 A1)', () => {
+  const PICK = { table: { rows: 3, cols: 4 } } as const;
+
+  /** A block as `editor.document` hands it back, table content included. */
+  interface Read {
+    id: string;
+    type: string;
+    props: Record<string, unknown>;
+    content: unknown;
+  }
+
+  it('goes under the row with an empty line after it, caret in the first cell', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'pressed' },
+      { type: 'paragraph', content: 'after' },
+    ]);
+
+    insertBelow(editor, editor.document[0] as never, PICK);
+
+    const blocks = editor.document as unknown as Read[];
+    expect(blocks.map((b) => b.type)).toEqual(['paragraph', 'table', 'paragraph', 'paragraph']);
+    const rows = (blocks[1]!.content as { rows: { cells: unknown[] }[] }).rows;
+    expect(rows.map((r) => r.cells.length)).toEqual([4, 4, 4]);
+    expect(blocks[2]!.content).toEqual([]);
+    const { $head } = editor.prosemirrorState.selection;
+    expect($head.parent.type.name).toBe('tableParagraph');
+    expect([$head.index($head.depth - 3), $head.index($head.depth - 2)]).toEqual([0, 0]);
+  });
+
+  it('carries the quote of the row to the table and the line after it', () => {
+    const editor = open([{ type: 'paragraph', content: 'pressed', props: { quoted: true } }]);
+
+    insertBelow(editor, editor.document[0] as never, PICK);
+
+    const blocks = editor.document as unknown as Read[];
+    expect(blocks.slice(1).map((b) => b.props['quoted'])).toEqual([true, true]);
+  });
+
+  it('makes the other entries as the menu always has', () => {
+    const editor = open([{ type: 'paragraph', content: 'pressed' }]);
+
+    insertBelow(editor, editor.document[0] as never, 'heading-2');
+    insertBelow(editor, editor.document[0] as never, 'divider');
+
+    expect((editor.document as unknown as Read[]).map((b) => b.type)).toEqual([
+      'paragraph',
+      'divider',
+      'paragraph',
+      'heading',
+    ]);
   });
 });

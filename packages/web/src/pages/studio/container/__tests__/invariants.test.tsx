@@ -63,15 +63,14 @@ describe('studio container — invariant 5 (StrictMode-safe)', () => {
       </StrictMode>,
     );
     // If a component duplicated DOM under the double render, the section count
-    // would multiply; exactly 6 (once the shell query resolves) proves render
+    // would multiply; exactly 7 (once the shell query resolves) proves render
     // idempotence. The top bar moved to the layout route, so the standalone
-    // container no longer renders a banner. 6 sections = team studio with Works
-    // added at the 3rd position (spec §6.1). Counted inside the nav: the
-    // project cards are links too.
+    // container no longer renders a banner. 7 sections = a team studio as its
+    // admin sees it. Counted inside the nav: the project cards are links too.
     const nav = await screen.findByRole('navigation', {
       name: 'Studio sections',
     });
-    expect(within(nav).getAllByRole('link')).toHaveLength(6);
+    expect(within(nav).getAllByRole('link')).toHaveLength(7);
   });
 });
 
@@ -91,7 +90,7 @@ describe('studio tabs — empty state (spec §3.13)', () => {
   it('shows the empty hint and the new-project card when there are no projects', () => {
     render(
       <MemoryRouter>
-        <ProjectsTab projects={[]} studioRole='admin' studioSlug='acme' />
+        <ProjectsTab projects={[]} studioRole='admin' />
       </MemoryRouter>,
     );
     expect(screen.getByText(/No projects yet/)).toBeInTheDocument();

@@ -261,6 +261,12 @@ export async function startCheckout(input: {
     // metadata and `client_reference_id` stop at the Session.
     subscription_data: { metadata: { userId: input.userId } },
     client_reference_id: input.userId,
+    // The subscription keeps this, so renewals and upgrade invoices are taxed
+    // too. Checkout taxes on the address stored on the customer, which starts
+    // with none and may be stale for a returning buyer; writing the billing
+    // address typed here back to it is what makes the tax follow that address.
+    automatic_tax: { enabled: true },
+    customer_update: { address: "auto" },
     ...returnUrls(input.returnUrl),
   });
 

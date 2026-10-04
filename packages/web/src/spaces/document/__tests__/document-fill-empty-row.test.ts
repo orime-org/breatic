@@ -215,3 +215,88 @@ describe('one pick, one transaction', () => {
     expect(dispatches).toBe(1);
   });
 });
+
+/** A table block as `editor.document` hands it back. */
+interface SeenTable {
+  id: string;
+  type: string;
+  props: Record<string, unknown>;
+  content: { rows: { cells: { content: { text?: string }[] }[] }[] };
+}
+
+/**
+ * The text of every cell of a table block, row by row.
+ * @param block - The block.
+ * @returns One array of cell texts per row.
+ */
+function cellTexts(block: SeenTable): string[][] {
+  return block.content.rows.map((row) =>
+    row.cells.map((cell) => cell.content.map((c) => c.text ?? '').join('')),
+  );
+}
+
+/**
+ * The type of the block holding the caret's line, and the cell index in its row.
+ * @param editor - The editor.
+ * @returns The line's type and, inside a table, the row and column.
+ */
+function caretPlace(editor: Editor): { line: string; row?: number; col?: number } {
+  const { $head } = editor.prosemirrorState.selection;
+  const line = $head.parent.type.name;
+  if (line !== 'tableParagraph') return { line };
+  return { line, row: $head.index($head.depth - 3), col: $head.index($head.depth - 2) };
+}
+
+describe('a table picked on the plus (inner#1126 A2)', () => {
+  const PICK: InsertChoice = { table: { rows: 2, cols: 3 } };
+
+  it('turns the line into an empty table of that size, caret in the first cell', () => {
+    const { editor } = open(AROUND_EMPTY);
+    const row = rowAt(editor, 1);
+
+    fillEmptyRow(editor, row, PICK);
+
+    const made = editor.document[1] as unknown as SeenTable;
+    expect(made.id).toBe(row.id);
+    expect(made.type).toBe('table');
+    expect(cellTexts(made)).toEqual([
+      ['', '', ''],
+      ['', '', ''],
+    ]);
+    expect(caretPlace(editor)).toEqual({ line: 'tableParagraph', row: 0, col: 0 });
+    expect(editor.document).toHaveLength(3);
+  });
+
+  it('keeps the quote of the line', () => {
+    const { editor } = open([{ type: 'paragraph', props: { quoted: true } }]);
+
+    fillEmptyRow(editor, rowAt(editor, 0), PICK);
+
+    const made = editor.document[0] as unknown as SeenTable;
+    expect([made.type, made.props.quoted]).toEqual(['table', true]);
+  });
+
+  it('is taken back by one undo', () => {
+    const { editor, manager } = open(AROUND_EMPTY);
+
+    fillEmptyRow(editor, rowAt(editor, 1), PICK);
+    manager.undo();
+
+    expect(shape(editor)).toEqual(['paragraph:Above', 'paragraph:', 'paragraph:Below']);
+  });
+
+  it('dispatches once', () => {
+    const { editor } = open(AROUND_EMPTY);
+    const view = editor.prosemirrorView!;
+    let dispatches = 0;
+    const original = view.dispatch.bind(view);
+    vi.spyOn(view, 'dispatch').mockImplementation((tr) => {
+      dispatches += 1;
+      original(tr);
+    });
+
+    fillEmptyRow(editor, rowAt(editor, 1), PICK);
+
+    expect(dispatches).toBe(1);
+  });
+});

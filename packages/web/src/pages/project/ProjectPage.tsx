@@ -44,13 +44,15 @@ import type { SpaceType } from '@breatic/shared';
 import { AgentColumn } from '@web/pages/project/chrome/AgentColumn';
 import { LoadingOverlay } from '@web/pages/project/chrome/LoadingOverlay';
 import { LoadingScreen } from '@web/components/loading-screen';
+import { ArchivedBanner } from '@web/pages/project/chrome/ArchivedBanner';
 import { ConnectionBanner } from '@web/pages/project/chrome/ConnectionBanner';
 import {
   LeftFloatingMenu,
 } from '@web/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
 import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
-import { useRenameProject } from '@web/pages/project/use-rename-project';
+import { useRefreshOnReauth } from '@web/pages/project/use-refresh-on-reauth';
+import { useRenameProject } from '@web/features/project-manage/use-rename-project';
 import {
   initialTabState,
   reduceTabState,
@@ -220,7 +222,12 @@ function ProjectWorkspace({
   // Fail-safe default: if `myRole` is missing (glitch / pre-load race),
   // treat the caller as the most-restrictive 'viewer' so chrome affordances
   // stay hidden rather than leaking owner/editor actions (user 2026-06-18).
-  const role = project.myRole ?? 'viewer';
+  const actualRole = project.myRole ?? 'viewer';
+  // An archived project is read-only for every member, whatever their role, so
+  // everything below that gates on the role reads this one value. The real
+  // role only reaches the role tag, which shows it.
+  const archived = project.archivedAt !== null;
+  const role = archived ? 'viewer' : actualRole;
   // Viewer affordance model (access-permission § 6.2, option B): the canvas
   // left creation menu stays visible + disabled (LeftFloatingMenu) and the
   // canvas body is read-only (SpaceOutlet); everything else a viewer cannot
@@ -291,6 +298,10 @@ function ProjectWorkspace({
   // Unconditional on purpose: no filtering on whether we already know the id,
   // which would have quietly kept showing the old name for everyone listed.
   useRosterRefreshOnJoin(projectId, users);
+  // Archived, restored, a role changed: collab closes the documents and the
+  // connection re-authenticates by itself, but the banner and the role gates
+  // read the project query, so that is refetched too.
+  useRefreshOnReauth(provider, projectId);
   // The whole tab bar, held here and nowhere else. Every cell of the
   // transition table is one action on this reducer, so the strip and the
   // active tab have a single writer.
@@ -839,11 +850,17 @@ function ProjectWorkspace({
             data-workspace=''
             data-workspace-disabled={workspaceDisabled || undefined}
           >
+            {archived ? (
+              <ArchivedBanner projectId={projectId} canRestore={project.canRestore} />
+            ) : null}
             <TopBar
               connectionStatus={connectionStatus}
               projectId={projectId}
               projectName={projectName}
               role={role}
+              actualRole={actualRole}
+              archived={archived}
+              canRename={project.canManageMeta}
               credits={credits}
               onRename={(next) => renameMutation.mutate(next)}
               members={members}

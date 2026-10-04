@@ -98,8 +98,8 @@ export function renderProductGuide(): string {
     "",
     "## The top bar",
     "Left to right: the brand mark, which opens our website in a new tab; an arrow with the word Studio, which " +
-      "goes back to the studio; the project's name, which double-clicking renames (Enter or clicking away saves, " +
-      "Esc or an empty name keeps the old one); and the reader's role, " +
+      "goes back to the studio; the project's name, which the project's owner or the studio's admin renames by " +
+      "double-clicking it (Enter or clicking away saves, Esc or an empty name keeps the old one); and the reader's role, " +
       `${quoted(t("role.owner"))} or ${quoted(t("role.editor"))}.`,
     "On the right: the members' pictures with a small arrow, which open " +
       `${quoted(t("members.popover.title"))}; for the owner that list ends with ` +
@@ -138,7 +138,9 @@ export function renderProductGuide(): string {
       "An item someone is waiting on, such as an invitation or a transfer, shows how long is left and " +
       `${quoted(t("notifications.openDecision"))}, which leaves this page for a page where it is answered; it ` +
       `goes once it is answered or runs out. Any other item shows ${quoted(t("notifications.markRead"))}, ` +
-      "which takes it off the list.",
+      "which takes it off the list. While any such item is there, the header has " +
+      `${quoted(t("notifications.markAllRead"))} beside the count, which takes all of them off at once and leaves ` +
+      "the items someone is waiting on.",
     `When a new version of the site is out, a ${quoted(t("project.update.available"))} button appears on the ` +
       `right; it opens ${quoted(t("project.update.title"))} with ${quoted(t("project.update.description"))} ` +
       `(${quoted(t("project.update.busy"))} while an upload runs) and asks whether to refresh now ` +
@@ -815,7 +817,9 @@ export function renderProductGuide(): string {
     "- Clicking the empty space below the last block starts a new block there, unless the last block is already " +
       "empty. Clicking a to-do's box ticks or unticks it. Clicking a link opens it in a new tab. Selected words " +
       "can be dragged elsewhere. Pasting Markdown turns it into headings, lists and so on (inside a code block it " +
-      "stays plain text); pasting a picture or file does nothing.",
+      "stays plain text); a table copied from a spreadsheet, a web page or Markdown arrives as a table, keeping " +
+      "only the words of any list in its cells and dropping pictures; pasted with the caret in a cell, it fills " +
+      "the cells from that one instead. Pasting a picture or file does nothing.",
     "- Selecting text shows a bar, left to right: an icon of the current block type with a small arrow, an " +
       "alignment icon with an arrow, bold B, italic I, strikethrough S and underline U icons, a link icon, a code " +
       "icon, the letter A with an arrow (colour), a speech-bubble icon (comment), and a sparkle with the word " +
@@ -861,7 +865,13 @@ export function renderProductGuide(): string {
       `and ${quoted(t("spaces.document.commands.color"))} open a submenu when hovered; ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} lists the block types other than ` +
       `${quoted(t("spaces.document.commands.paragraph"))}, then ${quoted(t("spaces.document.commands.divider"))} ` +
-      "on its own, and puts a new line of the one picked below; the divider comes with an empty line under it. " +
+      `and ${quoted(t("spaces.document.commands.table"))} on their own, and puts a new line of the one picked ` +
+      "below; the divider and the table each come with an empty line under them, and a new table puts the caret " +
+      "in its first cell. " +
+      `${quoted(t("spaces.document.commands.table"))} opens a grid of squares, nine across and nine down, with ` +
+      `${quoted(t("spaces.document.table.pickSize"))} under it; moving over it lights the squares up to the ` +
+      `pointer and the words under it change to the size, such as ${quoted(t("spaces.document.table.size", { rows: 3, cols: 4 }))}, and clicking ` +
+      "puts a table of that size there; the arrow keys and Enter do the same. " +
       "Typing --- at the start of a line puts a divider above that line. Clicking a divider selects it, and " +
       "Backspace or Delete removes it. On a divider's handle menu, " +
       `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.commands.color"))} and ` +
@@ -871,6 +881,44 @@ export function renderProductGuide(): string {
       "plain line below, press Enter at the end of the line (Shift+Enter in a code block); if the new line kept " +
       "the list or to-do of the one above, Cmd+Alt+0 makes it plain text, and if it kept the quote, Cmd+Shift+B " +
       "takes the quote off.",
+    "- A table shows a table icon at the left of its first row instead of the six dots. Drag it to move the " +
+      `whole table; click it for a menu with ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
+      `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
+      `${quoted(t("spaces.document.blockHandle.unindent"))}, ${quoted(t("spaces.document.commands.comment"))} and ` +
+      `${quoted(t("spaces.document.blockHandle.deleteTable"))}. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
+      `and ${quoted(t("spaces.document.blockHandle.unindent"))} are greyed when the table cannot move that way, ` +
+      `and ${quoted(t("spaces.document.commands.comment"))} when no cell has words.`,
+    "- Hovering a cell, with no text selected, shows a small handle of dots at the left of its row and one above " +
+      "its column; dragging either moves the row or column, with a line showing where it will land. Clicking the " +
+      `row's handle opens ${quoted(t("spaces.document.table.insertRowAbove"))}, ` +
+      `${quoted(t("spaces.document.table.insertRowBelow"))}, ${quoted(t("spaces.document.table.headerRow"))}, ` +
+      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +
+      `${quoted(t("spaces.document.table.deleteRow"))}; the column's has ` +
+      `${quoted(t("spaces.document.table.insertColumnLeft"))}, ${quoted(t("spaces.document.table.insertColumnRight"))}, ` +
+      `${quoted(t("spaces.document.table.headerColumn"))}, ${quoted(t("spaces.document.commands.align"))}, ` +
+      `${quoted(t("spaces.document.table.cellFill"))} and ${quoted(t("spaces.document.table.deleteColumn"))}. ` +
+      `${quoted(t("spaces.document.table.headerRow"))} can be picked only on the first row and ` +
+      `${quoted(t("spaces.document.table.headerColumn"))} only on the first column, and shows a tick when on. ` +
+      `${quoted(t("spaces.document.commands.align"))} and ${quoted(t("spaces.document.table.cellFill"))} open a ` +
+      "submenu when hovered and act on the whole row or column; the fill submenu is a row of colours, the first " +
+      `square taking the fill off, then ${quoted(t("spaces.document.commands.colorReset"))}. Deleting the last row or ` +
+      "column deletes the table. Rows and columns are added from these two menus, and Tab in the last cell adds " +
+      "a row. While one of these " +
+      "menus is open, the cells it acts on are tinted the way selected cells are. Dragging the line on a " +
+      "column's right side changes that column's width only; the other columns keep theirs and the table " +
+      "grows. A table wider than the page scrolls sideways inside its own frame.",
+    "- With the caret in a cell, a small box with a down arrow shows at that cell's top right corner; it opens " +
+      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +
+      `${quoted(t("spaces.document.table.splitCell"))} for that cell, and ` +
+      `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged. Tab moves to the next ` +
+      "cell, and in the last cell it adds a row first; Shift+Tab moves back. Enter and Shift+Enter break the line " +
+      "inside the cell. A cell holds only words: no lists, headings or other blocks. Dragging across cells " +
+      "selects them. With words selected inside one cell, or with cells selected, the text bar has its block " +
+      "type button greyed and in its colour menu the rows " +
+      `${quoted(t("spaces.document.commands.textColor"))}, ${quoted(t("spaces.document.table.textHighlight"))} and ` +
+      `${quoted(t("spaces.document.table.cellFill"))}; with cells selected it also shows a merge icon after the ` +
+      "speech bubble that merges them into one. With every cell of an empty table selected, Backspace or " +
+      "Delete removes the table.",
     `- An empty document shows ${quoted(t("spaces.document.placeholder"))}. Three dots at the top right open a ` +
       `menu: ${quoted(t("spaces.document.docMenu.comments"))}, which ends in ` +
       `${quoted(t("spaces.document.docMenu.commentsUnresolved", { count: 2 }))} or ` +
@@ -912,7 +960,7 @@ export function renderProductGuide(): string {
       `With only resolved ones, ${quoted(t("spaces.document.comment.filterOpen"))} shows ` +
       `${quoted(t("spaces.document.comment.nothingUnresolved"))}`,
     "- There is no slash menu. Not available yet: the AI commands, snapshots, images or other media, " +
-      "tables, toggle lists, and headings below level 3.",
+      "toggle lists, and headings below level 3.",
     "",
     "## When something is wrong",
     `- ${quoted(t("connection.banner.disconnected.text"))} across the top, with ` +
@@ -920,8 +968,8 @@ export function renderProductGuide(): string {
       `comes back. ${quoted(t("connection.banner.authFailed.text"))} offers ` +
       `${quoted(t("connection.banner.authFailed.action"))} and ${quoted(t("connection.banner.reload"))}, and ` +
       "covers the work area the same way. It shows when the session ran out, and also when the reader was " +
-      "removed from the project or the project was deleted: if signing in again does not let them back in, it " +
-      "is one of those, and the project's owner can say which. With a document open, " +
+      "removed from the project: if signing in again does not let them back in, they were removed, and the " +
+      "project's owner can say why. With a document open, " +
       `${quoted(t("spaces.document.refusedNotice"))} also shows for a moment; nothing typed after it is saved, ` +
       "but the keyboard still reaches the document: press Cmd/Ctrl+A twice, then Cmd/Ctrl+C, to copy it out " +
       "before signing in again or reloading.",

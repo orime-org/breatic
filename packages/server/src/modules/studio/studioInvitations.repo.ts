@@ -162,10 +162,10 @@ export async function attachNotification(
  *
  * `confirmInvite` is handed an invitation id and nothing else, but it takes the
  * studio's row lock BEFORE the accept CAS, so the id has to be reachable ahead
- * of it. That order mirrors the project side, where `deleteProject` locks
+ * of it. That order mirrors the project side, where `archiveProject` locks
  * `projects` first and sweeps its invitations second and the opposite order
- * would close a deadlock cycle; no studio-delete cascade exists yet (#26), so
- * on this side the order is a precaution rather than a fix. Reading it unlocked
+ * would close a deadlock cycle; nothing sweeps studio invitations under the
+ * studio row, so on this side the order is a precaution rather than a fix. Reading it unlocked
  * is safe for two reasons — an invitation's `studio_id` never changes, and whether
  * the invite may still be accepted is decided by {@link acceptIfPending}, not
  * here. Rows that are soft-deleted or point at nothing are simply absent.

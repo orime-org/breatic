@@ -34,13 +34,13 @@ const ENABLED = [
   'numberedListItem',
   'checkListItem',
   'divider',
+  'table',
 ] as const;
 
 /** Turned off this version, so they fall into the fallback path instead. */
 const DISABLED = [
   'quote',
   'toggleListItem',
-  'table',
   'image',
   'video',
   'audio',

@@ -87,10 +87,10 @@ async function comment(
   const run = firstRun(editor);
   const view = editor.prosemirrorView!;
   view.dispatch(
-    view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+    view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [{
       from: run.from + from,
       to: run.from + to,
-    }),
+    }]),
   );
   const thread = await postComment(editor, 'said something');
   return thread!.id;

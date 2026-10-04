@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #113 A3: a viewer gets no strip.
+ * #113 A3: a viewer gets no strip. inner#1126 A18: nor the button on the
+ * table cell the caret is in — the table's own handles and its plus buttons
+ * are part of the strip.
  *
  * Every command off it writes to the document, so a viewer who could reach
  * the strip would be editing a document they are only allowed to read.
@@ -42,6 +44,16 @@ vi.mock('@web/spaces/document/DocumentBlockControls', () => ({
   ),
 }));
 
+vi.mock('@web/spaces/document/DocumentTableCellButton', () => ({
+  /**
+   * Stands in for the cell button, saying only that it was mounted.
+   * @returns The marker.
+   */
+  DocumentTableCellButton: (): React.JSX.Element => (
+    <div data-testid='cell-button-mounted' />
+  ),
+}));
+
 describe('who the strip is mounted for', () => {
   const NAME = 'project-p/document-gate';
   let doc: Y.Doc;
@@ -75,11 +87,13 @@ describe('who the strip is mounted for', () => {
     await waitFor(() =>
       expect(screen.getByTestId('block-strip-mounted')).toBeInTheDocument(),
     );
+    expect(screen.getByTestId('cell-button-mounted')).toBeInTheDocument();
   });
 
   it('withholds them from a viewer', () => {
     render(<DocumentEditor handle={handle} readOnly />);
 
     expect(screen.queryByTestId('block-strip-mounted')).toBeNull();
+    expect(screen.queryByTestId('cell-button-mounted')).toBeNull();
   });
 });

@@ -53,13 +53,18 @@ vi.mock('@web/pages/project/LeaveProjectGuard', () => ({
 
 const getMock = vi.fn();
 const membersListMock = vi.fn();
+const restoreMock = vi.fn();
 vi.mock('@web/data/api', async () => {
   const actual = await vi.importActual<typeof import('@web/data/api')>(
     '@web/data/api',
   );
   return {
     ...actual,
-    projectsApi: { ...actual.projectsApi, get: (...a: unknown[]) => getMock(...a) },
+    projectsApi: {
+      ...actual.projectsApi,
+      get: (...a: unknown[]) => getMock(...a),
+      restore: (...a: unknown[]) => restoreMock(...a),
+    },
     membersApi: {
       ...actual.membersApi,
       list: (...a: unknown[]) => membersListMock(...a),
@@ -86,7 +91,10 @@ function AllProviders({ children }: { children: React.ReactNode }) {
 const render = (ui: React.ReactElement, options?: RenderOptions) =>
   rtlRender(ui, { wrapper: AllProviders, ...options });
 
-function setup(role: ProjectRole) {
+function setup(
+  role: ProjectRole,
+  { archivedAt = null, canRestore = false }: { archivedAt?: string | null; canRestore?: boolean } = {},
+) {
   getMock.mockResolvedValue({
     id: PID,
     name: 'Demo project',
@@ -98,6 +106,8 @@ function setup(role: ProjectRole) {
     createdByUserId: 'u-me',
     myRole: role,
     deletedAt: null,
+    archivedAt,
+    canRestore,
   });
   membersListMock.mockResolvedValue({ members: [] });
   render(
@@ -150,5 +160,57 @@ describe('ProjectPage — agent-column role gating (B model — hide)', () => {
       ).toBeInTheDocument();
     });
     expect(screen.queryByTestId('agent-column')).toBeNull();
+  });
+});
+
+describe('ProjectPage — an archived project is read-only for everyone', () => {
+  const ARCHIVED = '2026-10-01T00:00:00.000Z';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useUIStore.setState({ chatPanelCollapsed: false });
+    useCurrentUserStore.setState({
+      user: {
+        id: 'u-me',
+        name: 'Me',
+        email: 'me@e.com',
+        personalStudio: { name: 'Me', slug: 'me', avatarUrl: null },
+        membershipTier: 'base',
+      },
+      role: null,
+      loading: false,
+      bootstrapped: true,
+    });
+  });
+
+  it('shows the banner and hides what an owner could otherwise write with', async () => {
+    setup('owner', { archivedAt: ARCHIVED });
+    expect(await screen.findByText('This project is archived and can only be viewed')).toBeInTheDocument();
+    expect(screen.queryByTestId('agent-column')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Share' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull();
+  });
+
+  it('keeps the real role on the role tag and makes it unclickable', async () => {
+    setup('viewer', { archivedAt: ARCHIVED });
+    await screen.findByText('This project is archived and can only be viewed');
+    const tag = screen.getByTestId('role-tag');
+    expect(tag).toHaveTextContent('Viewer');
+    expect(tag.tagName).toBe('SPAN');
+    expect(screen.queryByRole('button', { name: /request editor access/i })).toBeNull();
+  });
+
+  it('offers restore on the banner to whoever may restore', async () => {
+    restoreMock.mockResolvedValue({ ok: true });
+    setup('editor', { archivedAt: ARCHIVED, canRestore: true });
+    const restore = await screen.findByRole('button', { name: 'Restore' });
+    restore.click();
+    await waitFor(() => expect(restoreMock).toHaveBeenCalledWith(PID));
+  });
+
+  it('shows no banner on a live project', async () => {
+    setup('owner');
+    expect(await screen.findByTestId('agent-column')).toBeInTheDocument();
+    expect(screen.queryByText('This project is archived and can only be viewed')).toBeNull();
   });
 });

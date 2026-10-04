@@ -11,7 +11,7 @@
  *   - GET ?unread=true|false — list (defaults to unread)
  *   - GET /count             — unread count for the red-dot badge
  *   - PATCH /:id/read        — mark a single notification read
- *   - POST /read-all         — mark every unread notification read
+ *   - POST /read-all         — mark unread news read; requests stay
  *
  * Reading an inbox, and nothing else. Deciding a request used to happen here
  * too, through a `POST /:id/action` that dispatched on the entry's `type` and
@@ -93,8 +93,9 @@ route.patch(
 );
 
 /**
- * `POST /api/v1/users/me/notifications/read-all` — mark every unread
- * notification as read. Idempotent — returns the count of rows
+ * `POST /api/v1/users/me/notifications/read-all` — mark the user's unread
+ * notifications read, except requests still waiting on an answer; rows another
+ * transaction holds are skipped. Idempotent — returns the count of rows
  * updated.
  */
 route.post("/read-all", async (c) => {

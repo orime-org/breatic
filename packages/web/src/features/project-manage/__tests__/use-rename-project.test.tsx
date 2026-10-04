@@ -6,17 +6,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-vi.mock('@web/data/api/projects', () => ({
+vi.mock('@web/data/api/projects', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/projects')>()),
   projectsApi: { rename: vi.fn() },
 }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
-import { projectsApi } from '@web/data/api/projects';
+import { isStudioProjectsListKey, projectsApi } from '@web/data/api/projects';
 import { toast } from 'sonner';
 import { t } from '@breatic/shared';
-import {
-  isStudioProjectsListKey,
-  useRenameProject,
-} from '@web/pages/project/use-rename-project';
+import { useRenameProject } from '@web/features/project-manage/use-rename-project';
 
 // ── pure predicate (the matching logic the bug got wrong) ──────────────────
 describe('isStudioProjectsListKey (spec: studio container projects list key)', () => {
@@ -59,7 +57,7 @@ beforeEach(() => {
     myRole: 'owner',
     createdAt: '2026-06-07T00:00:00.000Z',
     updatedAt: '2026-06-07T00:00:00.000Z',
-    deletedAt: null,
+    deletedAt: null, archivedAt: null, canManageMeta: true, canRestore: false,
   });
 });
 
@@ -74,6 +72,7 @@ describe('useRenameProject (#1068: rename refreshes the studio list)', () => {
     // ['projects','list'] key, leaving this one stale-but-not-invalidated.
     client.setQueryData(['studio', 's1', 'projects'], []);
     client.setQueryData(['project', 'p1'], { name: 'Old Name' });
+    client.setQueryData(['studios', 'recent'], []);
 
     const { result } = renderHook(() => useRenameProject('p1'), {
       wrapper: makeWrapper(client),
@@ -88,8 +87,9 @@ describe('useRenameProject (#1068: rename refreshes the studio list)', () => {
         client.getQueryState(['studio', 's1', 'projects'])?.isInvalidated,
       ).toBe(true);
     });
-    // The in-project detail is refreshed too.
+    // The in-project detail and the Recent landing are refreshed too.
     expect(client.getQueryState(['project', 'p1'])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['studios', 'recent'])?.isInvalidated).toBe(true);
     expect(vi.mocked(projectsApi.rename)).toHaveBeenCalledWith('p1', 'New Name');
   });
 

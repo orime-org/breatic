@@ -78,6 +78,9 @@ function namedIds(text: string): string[] {
   return [...text.matchAll(/'([a-z]\w*(?:\.\w+)+)'/g)].map((m) => m[1] ?? "");
 }
 
+/** Where the block menu's rows end and the table entry's menu begins, in their shared source. */
+const TABLE_ROWS = "export const TABLE_MENU_ROWS";
+
 /** The guide's own source, where every message id it shows is spelled out. */
 const source = readFileSync(resolve(import.meta.dirname, "..", "product-guide.ts"), "utf8");
 
@@ -535,10 +538,26 @@ describe("what the guide says", () => {
   it("lists the block menu rows in the order the menu shows them", () => {
     const handle = section("Document spaces").split("Hovering any other line")[1]?.split("\n")[0] ?? "";
     // The rows in the order the menu's own table lists them.
-    const rows = webSource("spaces/document/document-block-menu-rows.ts");
+    const [rows = ""] = webSource("spaces/document/document-block-menu-rows.ts").split(TABLE_ROWS);
     const ids = [...rows.matchAll(/labelKey: '(spaces\.document\.[\w.]+)'/g)].map((m) => m[1] ?? "");
     expect(ids).toEqual(namedIds(rows));
     expectRowsInOrder(handle, ids.map((id) => [id]));
+  });
+
+  it("lists the table entry's menu rows in the order the menu shows them", () => {
+    const entry = section("Document spaces").split("A table shows a table icon")[1]?.split("\n")[0] ?? "";
+    const [rows = "", table = ""] = webSource("spaces/document/document-block-menu-rows.ts").split(TABLE_ROWS);
+    const labelOf = new Map(
+      [...rows.matchAll(/id: '(\w+)',\s*labelKey: '([\w.]+)'/g)].map((m) => [m[1] ?? "", m[2] ?? ""]),
+    );
+    // A row of its own names its label; one taken from the block menu as it
+    // is names only the row it takes.
+    const ids = table
+      .split("\n")
+      .map((line) => /labelKey: '([\w.]+)'/.exec(line)?.[1] ?? labelOf.get(/rowOf\('(\w+)'\)/.exec(line)?.[1] ?? ""))
+      .filter((id): id is string => id !== undefined);
+    expect(ids).toHaveLength(table.split("\n").filter((line) => /rowOf|labelKey/.test(line)).length);
+    expectRowsInOrder(entry, ids.map((id) => [id]));
   });
 
   it("keeps its hand-written list of creatable types in the create menu's order", () => {

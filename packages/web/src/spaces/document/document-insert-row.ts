@@ -22,8 +22,40 @@ import {
 } from '@web/spaces/document/document-handle-commands';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 
-/** One entry of the insert menu: a block type, or the divider. */
-export type InsertChoice = BlockTypeId | typeof DIVIDER;
+/** How many rows and columns a new table has. */
+export interface TableSize {
+  readonly rows: number;
+  readonly cols: number;
+}
+
+/** One entry of the insert menu: a block type, the divider, or a table of a size. */
+export type InsertChoice = BlockTypeId | typeof DIVIDER | { readonly table: TableSize };
+
+/** A block for `insertBlocks` / `updateBlock`, as far as this module builds one. */
+interface BlockSpec {
+  readonly type: string;
+  readonly props?: Readonly<Record<string, unknown>>;
+  readonly content?: unknown;
+}
+
+/**
+ * An empty table of a size.
+ * @param size - Rows and columns.
+ * @param quoted - Whether it sits in a quote.
+ * @returns The block, every cell empty.
+ */
+function emptyTable(size: TableSize, quoted: boolean): BlockSpec {
+  return {
+    type: 'table',
+    props: { [QUOTED]: quoted },
+    content: {
+      type: 'tableContent',
+      rows: Array.from({ length: size.rows }, () => ({
+        cells: Array.from({ length: size.cols }, () => []),
+      })),
+    },
+  };
+}
 
 /**
  * Makes the row under the pressed one, and puts the caret in it.
@@ -44,7 +76,7 @@ export type InsertChoice = BlockTypeId | typeof DIVIDER;
  * inside a quote has to stay in the quote, the way Enter's does.
  * @param editor - The editor to write to.
  * @param row - The block the menu was opened on.
- * @param lead - Block types to place before the row, in order.
+ * @param lead - Blocks to place before the row, in order.
  * @returns The id of the row that was made.
  * @throws {Error} `Block with ID … not found`, from BlockNote's
  *   `insertBlocks`, when the pressed block is no longer in the document.
@@ -52,14 +84,14 @@ export type InsertChoice = BlockTypeId | typeof DIVIDER;
 export function insertRowForMenu(
   editor: HandleEditor,
   row: PressedBlock,
-  lead: readonly string[] = [],
+  lead: readonly BlockSpec[] = [],
 ): string {
   const quoted = row.props?.[QUOTED] === true;
   const firstChild = row.children?.[0];
   const made = editor.insertBlocks(
-    [...lead, 'paragraph'].map((type) => ({
-      type,
-      props: { [QUOTED]: quoted },
+    [...lead, { type: 'paragraph' }].map((block) => ({
+      ...block,
+      props: { ...block.props, [QUOTED]: quoted },
     })) as never,
     firstChild?.id ?? row.id,
     firstChild === undefined ? 'after' : 'before',
@@ -68,6 +100,35 @@ export function insertRowForMenu(
   const rowMade = made[made.length - 1]!;
   editor.setTextCursorPosition(rowMade.id, 'start');
   return rowMade.id;
+}
+
+/**
+ * The insert-below submenu's pick, made under the pressed row (#113 A7).
+ *
+ * A block type is a new row turned into that type; a divider is a divider with
+ * the new row under it (#124 A2); a table is the table with the new row under
+ * it and the caret in its first cell (inner#1126 A1), so the reader writes in
+ * the table and has a line below it to carry on.
+ * @param editor - The editor to write to.
+ * @param row - The block the menu was opened on.
+ * @param choice - The entry that was picked.
+ * @throws {Error} `Block with ID … not found`, from BlockNote's
+ *   `insertBlocks`, when the pressed block is no longer in the document.
+ */
+export function insertBelow(
+  editor: HandleEditor,
+  row: PressedBlock,
+  choice: InsertChoice,
+): void {
+  if (choice === DIVIDER) {
+    insertRowForMenu(editor, row, [{ type: DIVIDER }]);
+  } else if (typeof choice === 'object') {
+    const made = insertRowForMenu(editor, row, [emptyTable(choice.table, false)]);
+    const table = editor.getPrevBlock(made) as { id: string } | undefined;
+    if (table !== undefined) editor.setTextCursorPosition(table.id, 'start');
+  } else {
+    runBlockType(editor, choice, insertRowForMenu(editor, row), false);
+  }
 }
 
 /**
@@ -108,7 +169,11 @@ export function fillEmptyRow(
   choice: InsertChoice,
 ): void {
   editor.transact(() => {
-    if (choice === DIVIDER) {
+    if (typeof choice === 'object') {
+      // `updateBlock` keeps the row's id and merges its props, so the quote
+      // stays on the table it becomes.
+      editor.updateBlock(row.id, emptyTable(choice.table, row.props?.[QUOTED] === true) as never);
+    } else if (choice === DIVIDER) {
       editor.insertBlocks(
         [{ type: DIVIDER, props: { [QUOTED]: row.props?.[QUOTED] === true } }] as never,
         row.id,

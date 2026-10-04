@@ -261,7 +261,7 @@ export async function confirmProjectTransfer(
     //
     // The locks go the recipient's `studio_members` row, the `projects` row,
     // the offer, then the recipient's `project_members` row. Leaving locks
-    // `studio_members` before `project_members`, and the delete cascade locks
+    // `studio_members` before `project_members`, and the archive sweep locks
     // the project before the offer, so both queue with this.
     // `studio_id` never changes, so the unlocked read names the right studio.
     const offerProjectId = await transfersRepo.getProjectIdOf(transferId, tx);

@@ -5,13 +5,13 @@
  * Integration test — the FULL cross-process lifecycle chain, end to end
  * against real Postgres (business + yjs) + real Redis Streams.
  *
- * This is the cutover's async path that the unit/integration tests above
- * only cover piecewise: a project delete enqueues an outbox row in the
- * business tx; the server relay forwards it to the durable
- * `project-lifecycle` Redis Stream; the collab consumer reads it and
- * soft-deletes the project's docs in the SEPARATE yjs DB. Here we drive
- * the real relay + the real consumer and assert the yjs doc is gone +
- * the outbox row is marked sent.
+ * This is the async path that the unit/integration tests above only cover
+ * piecewise: archiving a project enqueues an outbox row in the business tx;
+ * the server relay forwards it to the durable `project-lifecycle` Redis
+ * Stream; the collab consumer reads it and closes the project's live
+ * connections so they re-authenticate read-only. Here we drive the real relay
+ * + the real consumer and assert the connection was closed with the archive
+ * reason, the yjs docs are untouched, and the outbox row is marked sent.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
@@ -33,10 +33,20 @@ const PID = "f0f0f0f0-f0f0-4f0f-8f0f-f0f0f0f0f0f0";
 const META = `project-${PID}/meta`;
 const CANVAS = `project-${PID}/canvas-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`;
 
-// Minimal fake Hocuspocus — the delete handler kicks connections, and
-// with no live connections that walk is a no-op.
+// Minimal fake Hocuspocus holding one live connection on the project's meta
+// doc; the archive handler closes it, and records the reason it was given.
+const closedWith: string[] = [];
+const liveConnections = new Map<unknown, unknown>([
+  [
+    {
+      context: { user: { id: "u1" } },
+      close: ({ reason }: { reason: string }) => closedWith.push(reason),
+    },
+    { clients: new Set<number>() },
+  ],
+]);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const fakeHocuspocus = { documents: new Map() } as any;
+const fakeHocuspocus = { documents: new Map([[META, { connections: liveConnections }]]) } as any;
 
 let stopRelay: { stop(): void };
 let stopConsumer: () => Promise<void>;
@@ -74,34 +84,35 @@ afterAll(async () => {
   await stopConsumer();
   await coreDb
     .delete(projectLifecycleOutbox)
-    .where(eq(projectLifecycleOutbox.kind, "project:deleted"));
+    .where(eq(projectLifecycleOutbox.kind, "project:archived"));
 });
 
 describe("lifecycle outbox → relay → stream → consumer chain", () => {
-  it("a project:deleted outbox row drives a yjs soft-delete across the chain", async () => {
+  it("a project:archived outbox row closes the project's live connections across the chain", async () => {
     // Seed live yjs docs for the project (in the SEPARATE yjs DB).
     await yjsRepo.upsertDocData(META, new Uint8Array([1]));
     await yjsRepo.upsertDocData(CANVAS, new Uint8Array([2]));
-    expect(await yjsRepo.fetchDocData(META)).not.toBeNull();
 
-    // Enqueue the delete command in a business transaction (as the server
-    // deleteProject path does), then let the real relay + consumer run.
+    // Enqueue the archive command in a business transaction (as the server
+    // archive path does), then let the real relay + consumer run.
     await coreDb.transaction(async (tx) => {
       await insertOutboxEvent(tx, {
-        type: "project:deleted",
+        type: "project:archived",
         projectId: PID,
         ts: Date.now(),
       });
     });
 
-    // The chain soft-deletes the project's docs in the yjs DB.
     await waitFor(
-      async () =>
-        (await yjsRepo.fetchDocData(META)) === null &&
-        (await yjsRepo.fetchDocData(CANVAS)) === null,
+      async () => closedWith.length > 0,
       15000,
-      "yjs docs soft-deleted via the chain",
+      "live connection closed via the chain",
     );
+    expect(closedWith).toEqual(["Project archived"]);
+
+    // Archiving keeps every document.
+    expect(await yjsRepo.fetchDocData(META)).not.toBeNull();
+    expect(await yjsRepo.fetchDocData(CANVAS)).not.toBeNull();
 
     // The relay marked the outbox row sent (no longer unsent).
     await waitFor(

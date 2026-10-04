@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { REQUEST_NOTIFICATION_TYPES } from '@breatic/shared';
+
 import { apiGet, apiPatch, apiPost } from '@web/data/api/request';
 
 /**
@@ -32,6 +34,8 @@ export type NotificationType =
   | 'membership.ended'
   | 'membership.upgrade_incomplete'
   | 'storage.quota_exceeded';
+
+REQUEST_NOTIFICATION_TYPES satisfies readonly NotificationType[];
 
 export interface Notification {
   id: string;

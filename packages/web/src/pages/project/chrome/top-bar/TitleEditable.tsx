@@ -17,15 +17,11 @@ interface TitleEditableProps {
    */
   maxWidth?: number;
   /**
-   * How many characters the name may run to.
-   *
-   * Defaults to what a project name may hold, which is what this box was
-   * written for. A caller whose thing is stored with a different limit passes
-   * its own -- otherwise opening this box and closing it again would shorten
-   * a name that is perfectly legal where it lives, without the reader having
-   * changed a thing.
+   * How many characters the name may run to: the limit of wherever the
+   * caller stores it. A smaller number would shorten a legal name the moment
+   * the box was opened and closed, without the reader having changed a thing.
    */
-  maxLength?: number;
+  maxLength: number;
   /**
    * What to show while the thing has no name of its own.
    *
@@ -40,24 +36,13 @@ interface TitleEditableProps {
   /**
    * Whether the title is editable (default true). When false the title is
    * a plain read-only span — no double-click-to-edit, no keyboard edit
-   * affordance, not exposed as a focusable textbox. Used to gate the
-   * project rename for non-owner roles (viewer); the backend `requireRole`
-   * is the real enforcement, this is UX only.
+   * affordance, not exposed as a focusable textbox. The project page passes
+   * `canManageMeta`; the server's `assertMayManage` is the real
+   * enforcement, this is UX only.
    */
   editable?: boolean;
 }
 
-/**
- * How long a name may be when the caller does not say.
- *
- * What this box has always capped project names at, kept as the default so
- * that behaviour does not change. It is not what the server allows -- a
- * project name may be 255 -- so it is a display cap, not a limit. A caller
- * whose thing is stored with a limit of its own has to pass it: otherwise
- * opening this box and closing it again would quietly shorten a name that was
- * perfectly legal where it lives.
- */
-const DEFAULT_MAX_TITLE_LEN = 80;
 /** Default visible width cap when caller doesn't override. */
 const DEFAULT_TITLE_MAX_WIDTH = 320;
 
@@ -96,7 +81,7 @@ const DEFAULT_TITLE_MAX_WIDTH = 320;
  * @param root0.value - Current project title shown in static mode and seeded as the edit draft.
  * @param root0.onChange - Called with the trimmed, length-capped new title once the user commits a rename.
  * @param root0.maxWidth - Visible width cap in pixels; defaults to 320.
- * @param root0.maxLength - How many characters the name may run to; defaults to what a project name may hold.
+ * @param root0.maxLength - How many characters the name may run to, as the caller stores it.
  * @param root0.placeholder - What to show while the thing has no name of its own.
  * @param root0.editable - Whether the title can be edited; defaults to true. When false the span is read-only.
  * @returns the static truncated title span, or the editing input while in edit mode.
@@ -105,7 +90,7 @@ export function TitleEditable({
   value,
   onChange,
   maxWidth = DEFAULT_TITLE_MAX_WIDTH,
-  maxLength = DEFAULT_MAX_TITLE_LEN,
+  maxLength,
   placeholder,
   editable = true,
 }: TitleEditableProps): React.JSX.Element {
@@ -195,8 +180,7 @@ export function TitleEditable({
 
   // Read-only mode (editable=false): a plain truncating span with no edit
   // affordance — not a focusable textbox, no double-click / Enter / Space
-  // edit trigger, no hover background. Used to gate the project rename for
-  // non-owner roles; the backend `requireRole` is the real enforcement.
+  // edit trigger, no hover background.
   if (!editable) {
     return (
       <span

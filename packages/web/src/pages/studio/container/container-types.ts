@@ -37,6 +37,16 @@ export interface ContainerProject {
    * row, so "modified" would be misleading). Recent-landing handles recency.
    */
   createdAt: string;
+  /** ISO-8601 archive timestamp, or `null` while the project is live. */
+  archivedAt: string | null;
+  /** The card menu may offer rename and change cover. */
+  canManageMeta: boolean;
+  /** The card menu may offer duplicate. */
+  canDuplicate: boolean;
+  /** The card menu may offer archive. */
+  canArchive: boolean;
+  /** The archived card's menu may offer restore. */
+  canRestore: boolean;
 }
 
 /** The dominant media kind of a collection, shown as a tag (spec §3.4). */

@@ -328,26 +328,6 @@ export const projectActivitiesRepo = {
   },
 
   /**
-   * Soft-delete every live activity row of a project — the
-   * deleteProject cascade (same as node_history). Individual rows are
-   * never user-deleted, but the whole feed dies with its project.
-   * @param projectId - Project being deleted.
-   * @param tx - The deleteProject business transaction to join.
-   * @returns Nothing.
-   */
-  async softDeleteByProject(projectId: string, tx: DbTx): Promise<void> {
-    await tx
-      .update(projectActivities)
-      .set({ deletedAt: new Date() })
-      .where(
-        and(
-          eq(projectActivities.projectId, projectId),
-          isNull(projectActivities.deletedAt),
-        ),
-      );
-  },
-
-  /**
    * Latest unconsumed `space:deleted` row for a space - the restore
    * source (its payload.spaceSnapshot rebuilds the meta directory
    * entry; the canvas CONTENT doc is un-soft-deleted separately).

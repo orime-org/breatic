@@ -173,6 +173,8 @@ describe('ProjectPage roster wiring', () => {
       createdByUserId: 'u-me',
       myRole: 'owner',
       deletedAt: null,
+      archivedAt: null,
+      canRestore: false,
     });
     useUIStore.setState({ chatPanelCollapsed: false });
     useCurrentUserStore.setState({

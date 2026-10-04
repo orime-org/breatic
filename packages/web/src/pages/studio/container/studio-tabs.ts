@@ -6,9 +6,10 @@ import type {
   StudioType,
 } from '@web/pages/studio/shared/studio-types';
 
-/** The six studio container tabs (spec §6.1; Works added at the 3rd position). */
+/** The studio container tabs (spec §6.1; Archived sits right after Projects). */
 export type StudioTabKey =
   | 'projects'
+  | 'archived'
   | 'collections'
   | 'works'
   | 'members'
@@ -30,12 +31,14 @@ export interface StudioTabDef {
 }
 
 /**
- * All tabs in fixed spec order (spec §6.1): projects → collections → works →
- * members → credits → settings. Works sits at the 3rd position (not the end);
- * it is non-team-only, so personal studios keep it.
+ * All tabs in fixed spec order (spec §6.1): projects → archived → collections →
+ * works → members → credits → settings. Archived lists the studio's archived
+ * projects and is the admin's alone, since only the admin archives and
+ * restores. Works is non-team-only, so personal studios keep it.
  */
 export const STUDIO_TABS: readonly StudioTabDef[] = [
   { key: 'projects', labelKey: 'studio.container.tabs.projects', teamOnly: false, adminOnly: false },
+  { key: 'archived', labelKey: 'studio.container.tabs.archived', teamOnly: false, adminOnly: true },
   { key: 'collections', labelKey: 'studio.container.tabs.collections', teamOnly: false, adminOnly: false },
   { key: 'works', labelKey: 'studio.container.tabs.works', teamOnly: false, adminOnly: false },
   { key: 'members', labelKey: 'studio.container.tabs.members', teamOnly: false, adminOnly: false },
@@ -150,8 +153,9 @@ export function studioTabFromParam(value: string | undefined): StudioTabKey {
  * of studio this is: none is team-only today — a personal studio's Members
  * section is read-only rather than absent (decision A, 2026-06-08) — and the
  * filter is kept for a future section that is genuinely team-only.
- * `adminOnly` asks who the viewer is: Credits is the studio's money, and the
- * admin is who manages it.
+ * `adminOnly` asks who the viewer is: Credits is the studio's money and
+ * Archived holds what only the admin may restore, and the admin is who manages
+ * both.
  *
  * A non-member gets nothing. That is not a gate on top of the others: their
  * page renders no strip at all (the public façade), so "which sections does
