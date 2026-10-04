@@ -110,7 +110,7 @@ export type ProposalRole = "source" | "generate" | "written";
 /** Every node kind a proposal can place: the three that generate, plus text. */
 export type ProposalNodeType = GenerationNodeType | "text";
 
-/** One shot of a proposed per-shot storyboard. */
+/** One shot of a proposed multi-shot generation. */
 export interface ProposalShot {
   prompt: PromptSegment[];
   duration: number;
@@ -126,14 +126,9 @@ export interface ProposalNode {
   params?: Record<string, unknown>;
   prompt?: PromptSegment[];
   /**
-   * The storyboard tier to set (#2218): `auto` lets the model split the main
-   * prompt into shots. Absent means none, unless {@link ProposalNode.shots}
-   * sets the per-shot tier.
-   */
-  storyboard?: "auto";
-  /**
-   * The shots of a per-shot storyboard (#2218), each with its own prompt and
-   * whole seconds. Present means the node lands in the per-shot tier.
+   * The shots of a multi-shot generation, each with its own prompt and whole
+   * seconds; given in the `multi_shot` mode only, where they stand in for the
+   * main prompt.
    */
   shots?: ProposalShot[];
   /**

@@ -104,15 +104,15 @@ function dataMaps(): (id: string) => Y.Map<unknown> | null {
     mode: 't2v',
     model: 'kling',
     prompts: ymap({ t2v: fragment(styled) }),
-    storyboards: ymap({ t2v: ymap({ kind: 'custom', shots }) }),
+    shots,
   }));
   return (id) => root.get(id) ?? null;
 }
 
 /**
- * A video model serving text to video, with or without a storyboard.
+ * A video model serving text to video, with or without the multi-shot mode.
  * @param name - Its id.
- * @param storyboard - Whether it takes one.
+ * @param storyboard - Whether it takes shots in the multi-shot mode.
  * @returns The entry.
  */
 function videoModel(name: string, storyboard: boolean): ModelEntry {
@@ -120,7 +120,7 @@ function videoModel(name: string, storyboard: boolean): ModelEntry {
     name,
     display_name: name,
     modality: 'video',
-    mode: ['t2v'],
+    mode: storyboard ? ['t2v', 'multi_shot'] : ['t2v'],
     description: '',
     guide: '',
     tier: 'optional',
@@ -135,10 +135,11 @@ function videoModel(name: string, storyboard: boolean): ModelEntry {
             default: null,
             type: 'items',
             max_items: 6,
+            modes: ['multi_shot'],
             fill: 'storyboard',
             fields: { prompt: { type: 'text' }, duration: { values: [1, 2, 3, 4, 5] } },
           },
-          shot_type: { description: '', default: null, values: ['intelligence', 'customize'], fill: 'storyboard' },
+          shot_type: { description: '', default: null, values: ['customize'], modes: ['multi_shot'], fill: 'storyboard' },
         }
         : {}),
     },
@@ -212,26 +213,16 @@ describe('a piece of the canvas handed to the agent', () => {
     expect(image?.data).toMatchObject({ prompts: { t2i: 'a red car at dusk', i2i: 'make it blue' } });
   });
 
-  it('gives each mode storyboard with its shots', () => {
+  it('gives the node its shots', () => {
     const [video] = snapshot(['v1']).nodes;
 
-    expect(video?.data).toMatchObject({
-      storyboards: { t2v: { kind: 'custom', shots: [{ id: 's1', prompt: 'a paper boat', duration: 3 }] } },
-    });
+    expect(video?.data).toMatchObject({ shots: [{ id: 's1', prompt: 'a paper boat', duration: 3 }] });
   });
 
   it('says what the node would run right now', () => {
     const [video] = snapshot(['v1']).nodes;
 
-    expect(video?.current).toEqual({ mode: 't2v', model: 'kling', params: { duration: 5 }, storyboard: 'custom' });
-  });
-
-  it('says the storyboard is off on a model that takes none, whatever is stored', () => {
-    const plain = { ...readers, catalog: { ...CATALOG, video: [videoModel('kling', false)] } as ModelCatalog };
-    const item = itemForPick(GRAPH, ['v1'], plain);
-    const [video] = (item?.chip?.data_snapshot as { nodes: Array<Record<string, unknown>> }).nodes;
-
-    expect(video?.current).toMatchObject({ storyboard: 'off' });
+    expect(video?.current).toEqual({ mode: 't2v', model: 'kling', params: { duration: 5 } });
   });
 
   it('says an audio node with no voice picked would send the first voice of its model', () => {

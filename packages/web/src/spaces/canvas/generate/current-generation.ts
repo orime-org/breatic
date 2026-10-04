@@ -2,21 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What a node's panel would run right now (#2218): the mode, model, params and
- * storyboard tier in effect, resolved by the same rules the panels resolve by.
+ * What a node's panel would run right now: the mode, model and params in
+ * effect, resolved by the same rules the panels resolve by.
  *
  * The node stores choices that can be stale — a mode this deployment no longer
- * serves, a model picked under another mode, a storyboard tier on a model that
- * takes none. The attach snapshot hands the agent both the stored data and this
+ * serves, a model picked under another mode, a param set in another mode. The
+ * attach snapshot hands the agent both the stored data and this
  * answer, so it can tell what is written from what would actually run.
  */
 
 import {
-  effectiveStoryboardKind,
+  paramsForMode,
   type GenerationNodeType,
   type ModelCatalog,
   type ModelEntry,
-  type StoryboardKind,
 } from '@breatic/shared';
 
 import type { ContentNodeView } from '@web/data/yjs/node-view';
@@ -40,7 +39,6 @@ export interface CurrentGeneration {
   readonly mode: string;
   readonly model: string;
   readonly params: Record<string, unknown>;
-  readonly storyboard: StoryboardKind;
 }
 
 const MODE_OPTIONS: Readonly<Record<GenerationNodeType, readonly { value: string }[]>> = {
@@ -54,7 +52,6 @@ const MODE_OPTIONS: Readonly<Record<GenerationNodeType, readonly { value: string
  * @param kind - The node's generating type.
  * @param content - The node's content view.
  * @param catalog - The model catalog, or undefined before it arrives.
- * @param storyboardKindOf - Reads the tier stored for a mode.
  * @param firstVoiceOf - The first voice of a model's list, which the audio
  *   panel sends when nobody picked one; undefined when it is not known.
  * @returns The generation in effect, or null when the catalog is missing or
@@ -64,7 +61,6 @@ export function currentGeneration(
   kind: GenerationNodeType,
   content: ContentNodeView,
   catalog: ModelCatalog | undefined,
-  storyboardKindOf: (mode: string) => StoryboardKind | undefined,
   firstVoiceOf: (model: string) => { id: string } | null | undefined,
 ): CurrentGeneration | null {
   const models = modelsForModality(catalog, kind);
@@ -78,15 +74,18 @@ export function currentGeneration(
     mode,
     model: entry.name,
     // As the run sends them: the side of a stand-in not in use and its switch
-    // stay behind.
-    params: wireParams(
-      entry,
-      kind === 'audio'
-        ? audioParams(content, models, mode, firstVoiceOf)
-        // The image and video panels send the style images the model takes.
-        : withStyleImages(entry, mode, content.styleImageUrls, resolveModelSwitch(content, entry).params).params,
+    // stay behind, and so do params declared for other modes.
+    params: paramsForMode(
+      wireParams(
+        entry,
+        kind === 'audio'
+          ? audioParams(content, models, mode, firstVoiceOf)
+          // The image and video panels send the style images the model takes.
+          : withStyleImages(entry, mode, content.styleImageUrls, resolveModelSwitch(content, entry).params).params,
+      ),
+      entry.params,
+      mode,
     ),
-    storyboard: effectiveStoryboardKind(entry.params, storyboardKindOf(mode)),
   };
 }
 

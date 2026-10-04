@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { asStoryboardKind, isGenerationNodeType, type ChatAttachedChip, type ModelCatalog, type StoryboardKind } from '@breatic/shared';
+import { isGenerationNodeType, type ChatAttachedChip, type ModelCatalog } from '@breatic/shared';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import * as Y from 'yjs';
 
@@ -56,17 +56,6 @@ function plain(value: unknown): unknown {
   }
   if (value instanceof Y.Array) return value.toArray().map(plain);
   return value;
-}
-
-/**
- * The tier stored for a mode, read off a node's plain data.
- * @param data - The node's plain data.
- * @param mode - The mode.
- * @returns The stored tier, if any.
- */
-function storedTier(data: Record<string, unknown>, mode: string): StoryboardKind | undefined {
-  const boards = data.storyboards as Record<string, { kind?: unknown }> | undefined;
-  return asStoryboardKind(boards?.[mode]?.kind);
 }
 
 /**
@@ -184,7 +173,6 @@ export function itemForPick(
         kind,
           node.data as ContentNodeView,
           readers.catalog,
-          (mode) => storedTier(data, mode),
           readers.firstVoiceOf,
       )
       : null;

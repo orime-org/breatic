@@ -126,8 +126,8 @@ export interface ParamInfo {
    */
   optional?: true;
   /**
-   * Filled from the node's storyboard (#2218): a proposal reaches it through
-   * its `storyboard` and `shots`, never through `params`.
+   * Filled from the node's shots: a proposal reaches it through its `shots`,
+   * never through `params`.
    */
   fromStoryboard?: true;
   /**
@@ -196,8 +196,9 @@ export interface ModelInfo {
   /** Its parameters, keyed by the name the node stores them under. */
   params: Record<string, ParamInfo>;
   /**
-   * The storyboard it takes (#2218), for a model that declares one: how many
-   * shots, how long each may be written, and what their seconds add up to.
+   * The shots it takes in the multi-shot mode, for a model that declares
+   * them: how many, how long each may be written, and what their seconds add
+   * up to. Absent in every other mode.
    */
   storyboard?: StoryboardSpec;
 }
@@ -491,7 +492,7 @@ export function modelsForMode(
       const reached = Object.entries(entry.params).map(
         ([name, spec]) => [name, spec, reachedBy(spec, mode)] as const,
       );
-      const storyboard = storyboardSpec(entry.params);
+      const storyboard = storyboardSpec(entry.params, mode);
       return {
       name: entry.name,
       displayName: entry.display_name,

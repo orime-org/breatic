@@ -663,10 +663,6 @@
         "pronunciation": "Read as"
       },
       "storyboard": {
-        "label": "Storyboard",
-        "perShot": "Edit per shot",
-        "autoHint": "The model splits the shots",
-        "back": "Back to auto storyboard",
         "shot": "Shot {n, number}",
         "removeShot": "Remove",
         "addShot": "Add shot",
