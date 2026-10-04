@@ -2454,12 +2454,26 @@ describe('the multi-shot mode', () => {
       expect(data.paramsByModel?.['kling-v3']?.duration).toBe(10);
     });
     expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([2, 3]);
+    // Back in the multi-shot mode, the shots are re-split to the longer video.
+    fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
+    await userEvent.click(await screen.findByTestId('generate-video-mode-multi-shot'));
+    await waitFor(() => expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([4, 6]));
   });
 
   it('re-splits the shots to the new model\'s total on a model switch in the multi-shot mode', async () => {
     await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+    const name = docName.canvasSpace('p', 's');
+    const undo = getCanvasUndoManager(getDoc(name), name);
+    undo.clear();
     fireEvent.click(screen.getByTestId('generate-model-trigger'));
     await userEvent.click(await screen.findByTestId('generate-model-option-wan-3'));
     await waitFor(() => expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([4, 6]));
+    // One undo takes back the switch and the re-split together.
+    act(() => {
+      undo.undo();
+    });
+    expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([2, 3]);
+    const data = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')?.data as { model?: string };
+    expect(data.model).toBe('kling-v3');
   });
 });

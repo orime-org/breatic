@@ -35,7 +35,6 @@ import { useCanvasStore } from '@web/stores';
 import {
   evaluateExecute,
   extractPromptText,
-  paramsForMode,
   storyboardSpec,
   type ExecuteVerdict,
   type ModelEntry,
@@ -765,9 +764,8 @@ function VideoGeneratePanelBody({
         projectId,
         spaceId,
         model: fresh.model,
-        // Params are stored per model across modes: one set in another mode
-        // (auto multi-shot from text to video) stays out of this run.
-        params: paramsForMode(fresh.params, fresh.modelEntry?.params ?? {}, fresh.mode),
+        params: fresh.params,
+        generation: { mode: fresh.mode, declared: fresh.modelEntry?.params ?? {} },
         promptText: run.sendsPrompt || run.writtenPrompt !== undefined ? freshPrompt : undefined,
         storyboardParams: run.params,
         // The payload's source fields are built FROM the drawn slots, so a
@@ -938,28 +936,24 @@ function VideoGeneratePanelBody({
       stableMentionTokens,
     ],
   );
-  const maxShots = spec?.maxShots;
   const addBlocked = React.useMemo(
-    () =>
-      shots && maxShots !== undefined
-        ? addBlockedKey(shots.map((shot) => shot.duration), total, maxShots)
-        : undefined,
-    [shots, total, maxShots],
+    () => (spec && shots ? addBlockedKey(shots.map((shot) => shot.duration), total, spec.maxShots) : undefined),
+    [spec, shots, total],
   );
   const promptSlot = React.useMemo(() => {
     if (!vm.promptRequired) return <PromptNotUsedNotice />;
     // The shots take the prompt box's place in the multi-shot mode.
-    if (maxShots === undefined || !shots) return mainEditor;
+    if (!spec || !shots) return mainEditor;
     return (
       <>
         <ShotList shots={shots} onStep={onStepShot} onRemove={onRemoveShot} renderEditor={renderShotEditor} />
-        <AddShotRow maxShots={maxShots} addBlocked={addBlocked} onAdd={onAddShot} />
+        <AddShotRow maxShots={spec.maxShots} addBlocked={addBlocked} onAdd={onAddShot} />
       </>
     );
   }, [
     vm.promptRequired,
     shots,
-    maxShots,
+    spec,
     addBlocked,
     mainEditor,
     renderShotEditor,

@@ -24,7 +24,7 @@ export const FILL_KINDS = [
   "editor",
   "panel",
   "remote",
-  // Filled from the node's per-mode storyboard: its shots and its tier (#2218).
+  // Filled from the node's shots in the multi-shot mode (node-storyboard.ts).
   "storyboard",
   "none",
 ] as const;

@@ -88,7 +88,7 @@ export interface ItemField {
 
 /**
  * How a parameter's value reaches the run (#269). `storyboard` is filled from
- * the node's per-mode storyboard: its shots and its tier (#2218).
+ * the node's shots in the multi-shot mode (`storyboard.ts`).
  */
 export type ParamFill = "canvas" | "pool" | "editor" | "panel" | "remote" | "storyboard" | "none";
 
