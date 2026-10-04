@@ -178,7 +178,7 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
           class:
             'block w-full whitespace-pre-wrap break-words px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none',
         },
-        handlePaste: (view, event): boolean => {
+        handlePaste: (view, event, slice): boolean => {
           const files = [...(event.clipboardData?.files ?? [])];
           if (files.length > 0) {
             // Pasted files are attached, as if picked with the attach button,
@@ -187,25 +187,23 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
             if (!live.current.readOnly) live.current.onPasteFiles(files);
             return true;
           }
-          const text = event.clipboardData?.getData('text/plain') ?? '';
-          if (text === '') return false;
           // The canvas's own clipboard text becomes an attachment; text that
           // only looks like it is pasted as the words it is.
-          const nodes = parseClipboardNodes(text);
+          const nodes = parseClipboardNodes(event.clipboardData?.getData('text/plain') ?? '');
           if (nodes !== null) {
             if (!live.current.readOnly) live.current.onPasteCanvas(nodes);
             return true;
           }
-          // A paste is cut down to what is left under the limit, and saying
-          // so is the only way the reader learns the rest did not go in.
-          const { from, to } = view.state.selection;
-          const room =
-            CHAT_MESSAGE_MAX_CHARS -
-            lengthOf(view.state.doc, live.current.attachments) +
-            view.state.doc.textBetween(from, to, '\n', ' ').length;
-          if (text.length <= room) return false;
+          // A paste is measured as what it would insert -- blocks count once,
+          // as everywhere in the box -- and one that does not fit is cut down
+          // to what is left, as plain words, with the limit said out loud.
+          const attached = live.current.attachments;
+          const after = lengthOf(view.state.tr.replaceSelection(slice).doc, attached);
+          if (after <= CHAT_MESSAGE_MAX_CHARS) return false;
+          const room = CHAT_MESSAGE_MAX_CHARS - lengthOf(view.state.tr.deleteSelection().doc, attached);
           live.current.onRefusedAtLimit();
-          if (room > 0) view.dispatch(view.state.tr.insertText(text.slice(0, room), from, to));
+          const words = slice.content.textBetween(0, slice.content.size, '\n');
+          if (room > 0) view.dispatch(view.state.tr.insertText(words.slice(0, room)));
           return true;
         },
       },

@@ -103,13 +103,15 @@ function rewriteMarkers<C extends { readonly id: string }>(
 }
 
 /**
- * The typed words with each reference read as its attachment's name.
+ * The typed words for a conversation's name: a reference to a named
+ * attachment reads as that name, one to an unnamed attachment as nothing.
+ * The model's own headings are English and stay out of what a reader sees.
  * @param chips - What the user attached to the message.
  * @param message - What the user typed.
- * @returns The words as plain text.
+ * @returns The words.
  */
-export function messageWithNames(chips: readonly ChatAttachedChip[], message: string): string {
-  return rewriteMarkers(chips, message, (chip) => titleOf(chip));
+export function wordsForTitle(chips: readonly ChatAttachedChip[], message: string): string {
+  return rewriteMarkers(chips, message, (chip) => chip.name);
 }
 
 /**

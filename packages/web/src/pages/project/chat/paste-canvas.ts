@@ -29,7 +29,7 @@ export function pastedCanvas(nodes: readonly ClipboardNode[], onCanvas: (id: str
   const lone = nodes.length === 1 ? nodes[0] : undefined;
   if (lone?.external === true && lone.type === 'image' && typeof lone.content === 'string') {
     const id = `image-${hashOf([lone.content])}`;
-    const name = lone.name ?? fileNameOf(lone.content);
+    const name = lone.name ?? '';
     const chip: ChatAttachedChip = { id, type: 'image', name, data_snapshot: { url: lone.content } };
     return { kind: 'item', item: { id, name, type: 'image', status: 'ready', chip } };
   }
@@ -69,18 +69,4 @@ function entryOf(node: ClipboardNode): { data: Record<string, unknown> } & Recor
       ...(node.coverUrl === undefined ? {} : { coverUrl: node.coverUrl }),
     },
   };
-}
-
-/**
- * The file name at the end of an address, or empty when it has none.
- * @param address - The address.
- * @returns The decoded last path segment.
- */
-function fileNameOf(address: string): string {
-  try {
-    const last = new URL(address).pathname.split('/').pop() ?? '';
-    return decodeURIComponent(last);
-  } catch {
-    return '';
-  }
 }

@@ -421,8 +421,8 @@ export {
   chipOfPart,
   messageLength,
   messageSegments,
-  messageWithNames,
   referenceCount,
+  wordsForTitle,
   userTurnForModel,
 } from "@shared/agent/attachments.js";
 export type { AttachmentDataPart, MessageSegment } from "@shared/agent/attachments.js";
