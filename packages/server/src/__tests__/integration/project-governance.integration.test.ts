@@ -180,6 +180,13 @@ describe("change cover", () => {
 });
 
 describe("duplicate", () => {
+  it("tells the owner the project is archived, the same answer a rename gets", async () => {
+    const s = await seedScene();
+    await projectService.archive(s.projectId, s.adminId);
+    await expect(projectService.duplicate(s.projectId, s.ownerId)).rejects.toBeInstanceOf(ConflictError);
+    await expect(projectService.duplicate(s.projectId, s.editorId)).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
   it("is refused to an editor and to a viewer", async () => {
     const s = await seedScene();
     await expect(projectService.duplicate(s.projectId, s.editorId)).rejects.toBeInstanceOf(ForbiddenError);

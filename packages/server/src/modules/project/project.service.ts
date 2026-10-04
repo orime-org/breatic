@@ -27,7 +27,7 @@ import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 import { ROLE_RANK } from "@breatic/shared";
-import { projectPermissions } from "@server/modules/project/projectGovernance.js";
+import { mayArchive, mayManage, projectPermissions } from "@server/modules/project/projectGovernance.js";
 import type {
   ProjectEntity,
   ProjectRole,
@@ -346,19 +346,16 @@ export async function listByStudioSlug(
 /**
  * Update mutable project metadata.
  *
- * Requires at least `editor` on the project — name / description are content
- * edits, not just admin operations. The
- * `requireRole('editor')` middleware on the PUT route enforces the
- * same; this service-side check is defense in depth for non-route
- * callers.
+ * Gated by {@link assertCanManageMeta}: the studio's admin or the project's
+ * owner, on a live project.
  * @param projectId - Project UUID to update
- * @param userId - Authenticated user UUID; must have at least `editor` access
+ * @param userId - Authenticated user UUID
  * @param patch - Fields to update
  * @param patch.name - New project name
  * @param patch.description - New description; `null` clears it
  * @returns The updated project entity
- * @throws {NotFoundError} if the project doesn't exist or the
- *   caller has no membership
+ * @throws {NotFoundError} if the project doesn't exist or the caller is not
+ *   in its studio
  * @throws {ForbiddenError} if the caller is neither the studio's admin nor the project's owner
  * @throws {ConflictError} if the project is archived
  */
@@ -419,9 +416,7 @@ async function managementFacts(projectId: string, userId: string): Promise<Manag
  */
 export async function assertCanManageMeta(projectId: string, userId: string): Promise<ProjectEntity> {
   const { project, ...roles } = await managementFacts(projectId, userId);
-  if (!projectPermissions({ ...roles, archived: false }).canManageMeta) {
-    throw new ForbiddenError(t("server.error.forbidden"));
-  }
+  if (!mayManage(roles)) throw new ForbiddenError(t("server.error.forbidden"));
   if (project.archivedAt !== null) throw new ConflictError(t("server.project.archived"));
   return project;
 }
@@ -491,18 +486,17 @@ export async function setCover(
  * @throws {NotFoundError} if the source project does not exist, or the caller
  *   is not in its studio
  * @throws {ForbiddenError} if the caller is neither the studio's admin nor the
- *   source's owner, or it is archived
- * @throws {ConflictError} if the source's studio already holds as many
- *   projects as its tier allows
+ *   source's owner
+ * @throws {ConflictError} if the source is archived, or its studio already
+ *   holds as many projects as its tier allows
  */
 export async function duplicate(
   sourceId: string,
   userId: string,
 ): Promise<ProjectEntity> {
   const { project: current, ...roles } = await managementFacts(sourceId, userId);
-  if (!projectPermissions({ ...roles, archived: current.archivedAt !== null }).canDuplicate) {
-    throw new ForbiddenError(t("server.error.forbidden"));
-  }
+  if (!mayManage(roles)) throw new ForbiddenError(t("server.error.forbidden"));
+  if (current.archivedAt !== null) throw new ConflictError(t("server.project.archived"));
 
   return db.transaction(async (tx) => {
     // Read first, because the studio to lock is the SOURCE's — a copy lands
@@ -539,10 +533,7 @@ export async function assertNotArchived(projectId: string | null): Promise<void>
  * @throws {ConflictError} when the project is already archived
  */
 export async function archive(projectId: string, userId: string): Promise<void> {
-  const { studioRole, projectRole } = await managementFacts(projectId, userId);
-  if (!projectPermissions({ studioRole, projectRole, archived: false }).canArchive) {
-    throw new ForbiddenError(t("server.error.forbidden"));
-  }
+  if (!mayArchive(await managementFacts(projectId, userId))) throw new ForbiddenError(t("server.error.forbidden"));
   const outcome = await db.transaction((tx) => projectRepo.archiveProject(projectId, userId, tx));
   if (outcome === "missing") throw new NotFoundError(t("server.error.not_found"));
   if (outcome === "unchanged") throw new ConflictError(t("server.project.already_archived"));
@@ -561,9 +552,7 @@ export async function archive(projectId: string, userId: string): Promise<void> 
  */
 export async function restore(projectId: string, userId: string): Promise<void> {
   const { project, ...roles } = await managementFacts(projectId, userId);
-  if (!projectPermissions({ ...roles, archived: true }).canRestore) {
-    throw new ForbiddenError(t("server.error.forbidden"));
-  }
+  if (!mayArchive(roles)) throw new ForbiddenError(t("server.error.forbidden"));
   const result = await db.transaction(async (tx) => {
     const room = await studioProjectRoom(project.studioId, tx);
     if (room === null) return { outcome: "missing" as const, limit: 0 };

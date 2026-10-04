@@ -27,13 +27,36 @@ export interface ProjectPermissions {
   canRestore: boolean;
 }
 
-/** The facts the rule reads. */
-export interface ProjectPermissionFacts {
+/** The caller's two roles, which is all the rule asks of the caller. */
+export interface ProjectRoles {
   /** The caller's role in the project's studio, or null outside it. */
   studioRole: StudioRole | null;
   /** The caller's stored role on the project, or null when not on it. */
   projectRole: ProjectRole | null;
+}
+
+/** The facts the rule reads. */
+export interface ProjectPermissionFacts extends ProjectRoles {
   archived: boolean;
+}
+
+/**
+ * Whether the caller may rename, change the cover of and duplicate the
+ * project, setting aside whether it is archived.
+ * @param roles - The caller's studio and project roles
+ * @returns True for the studio's admin and the project's owner
+ */
+export function mayManage(roles: ProjectRoles): boolean {
+  return roles.studioRole === "admin" || roles.projectRole === "owner";
+}
+
+/**
+ * Whether the caller may archive and restore the project.
+ * @param roles - The caller's studio and project roles
+ * @returns True for the studio's admin
+ */
+export function mayArchive(roles: ProjectRoles): boolean {
+  return roles.studioRole === "admin";
 }
 
 /**
@@ -42,12 +65,11 @@ export interface ProjectPermissionFacts {
  * @returns The four permissions
  */
 export function projectPermissions(facts: ProjectPermissionFacts): ProjectPermissions {
-  const isAdmin = facts.studioRole === "admin";
-  const manages = !facts.archived && (isAdmin || facts.projectRole === "owner");
+  const manages = !facts.archived && mayManage(facts);
   return {
     canManageMeta: manages,
     canDuplicate: manages,
-    canArchive: !facts.archived && isAdmin,
-    canRestore: facts.archived && isAdmin,
+    canArchive: !facts.archived && mayArchive(facts),
+    canRestore: facts.archived && mayArchive(facts),
   };
 }
