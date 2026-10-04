@@ -10,6 +10,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
+import { CLIPBOARD_MARKER } from '@web/spaces/canvas/node-clipboard';
 
 /**
  * Render the composer with an attach handler unless one is given.
@@ -18,8 +19,10 @@ import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
  */
 function setup(props: Partial<Parameters<typeof ChatComposer>[0]> = {}): {
   onAttachFiles: ReturnType<typeof vi.fn>;
+  onPasteCanvas: ReturnType<typeof vi.fn>;
 } {
   const onAttachFiles = vi.fn();
+  const onPasteCanvas = vi.fn();
   render(
     <ChatComposer
       draft=''
@@ -27,10 +30,11 @@ function setup(props: Partial<Parameters<typeof ChatComposer>[0]> = {}): {
       onSubmit={vi.fn()}
       onAbort={vi.fn()}
       onAttachFiles={onAttachFiles}
+      onPasteCanvas={onPasteCanvas}
       {...props}
     />,
   );
-  return { onAttachFiles };
+  return { onAttachFiles, onPasteCanvas };
 }
 
 /**
@@ -82,5 +86,24 @@ describe('pasting into the composer', () => {
     paste([shot]);
 
     expect(onAttachFiles).not.toHaveBeenCalled();
+  });
+
+  it('hands canvas text on as nodes and keeps it out of the box', () => {
+    const { onPasteCanvas } = setup();
+    const node = { type: 'image', position: { x: 0, y: 0 }, content: 'https://x/y.png', external: true };
+
+    paste([], `${CLIPBOARD_MARKER}${JSON.stringify([node])}`);
+
+    expect(onPasteCanvas).toHaveBeenCalledWith([node]);
+    expect(screen.getByTestId('chat-composer-textarea')).not.toHaveTextContent(CLIPBOARD_MARKER);
+  });
+
+  it('pastes canvas text that does not parse as the words it is', () => {
+    const { onPasteCanvas } = setup();
+
+    paste([], `${CLIPBOARD_MARKER}not json`);
+
+    expect(onPasteCanvas).not.toHaveBeenCalled();
+    expect(screen.getByTestId('chat-composer-textarea')).toHaveTextContent('not json');
   });
 });

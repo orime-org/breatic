@@ -120,12 +120,21 @@ export function nodeNameOf(data: { kind?: unknown; name?: unknown; content?: unk
  * @param ids - The node ids.
  * @returns The same string for the same set.
  */
-function pickId(ids: readonly string[]): string {
+export function pickId(ids: readonly string[]): string {
+  return `canvas-${ids.length}-${hashOf(ids)}`;
+}
+
+/**
+ * A short stable hash of some strings, whatever their order.
+ * @param parts - The strings.
+ * @returns The hash, base 36.
+ */
+export function hashOf(parts: readonly string[]): string {
   let hash = 0x811c9dc5;
-  for (const ch of [...ids].sort().join('\u0000')) {
+  for (const ch of [...parts].sort().join('\u0000')) {
     hash = Math.imul(hash ^ ch.charCodeAt(0), 0x01000193) >>> 0;
   }
-  return `canvas-${ids.length}-${hash.toString(36)}`;
+  return hash.toString(36);
 }
 
 /**
