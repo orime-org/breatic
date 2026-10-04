@@ -103,17 +103,14 @@ export function resolvedSegments<C extends { readonly id: string }>(
   chips: readonly C[],
   message: string,
 ): ResolvedSegment<C>[] {
-  const place = new Map<string, number>();
+  const byId = new Map<string, { chip: C; n: number }>();
   chips.forEach((chip, i) => {
-    if (!place.has(chip.id)) place.set(chip.id, i);
+    if (!byId.has(chip.id)) byId.set(chip.id, { chip, n: i + 1 });
   });
   return messageSegments(message).map((segment): ResolvedSegment<C> => {
     if (segment.kind === "text") return segment;
-    const at = place.get(segment.id);
-    const chip = at === undefined ? undefined : chips[at];
-    return chip === undefined || at === undefined
-      ? { kind: "unattached", marker: attachmentMarker(segment.id) }
-      : { kind: "reference", chip, n: at + 1 };
+    const hit = byId.get(segment.id);
+    return hit ? { kind: "reference", ...hit } : { kind: "unattached", marker: attachmentMarker(segment.id) };
   });
 }
 
@@ -125,7 +122,7 @@ export function resolvedSegments<C extends { readonly id: string }>(
  * @param write - What a reference becomes, given its attachment and its place.
  * @returns The words.
  */
-function writeReferences<C extends { readonly id: string }>(
+export function writeReferences<C extends { readonly id: string }>(
   chips: readonly C[],
   message: string,
   write: (chip: C, n: number) => string,

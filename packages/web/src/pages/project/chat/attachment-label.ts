@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { resolvedSegments, type ChatAttachedChip } from '@breatic/shared';
+import { writeReferences, type ChatAttachedChip } from '@breatic/shared';
 
 import type { useTranslation } from '@web/i18n/use-translation';
 
@@ -46,7 +46,5 @@ export function wordsWithLabels(
   content: string,
   attachments: readonly ChatAttachedChip[] | undefined,
 ): string {
-  return resolvedSegments(attachments ?? [], content)
-    .map((s) => (s.kind === 'text' ? s.text : s.kind === 'reference' ? attachmentLabel(t, s.chip) : s.marker))
-    .join('');
+  return writeReferences(attachments ?? [], content, (chip) => attachmentLabel(t, chip));
 }
