@@ -28,12 +28,12 @@ const render = (
   // wrapper option (not a manual wrap) so a later rerender() keeps the provider.
   baseRender(args[0], { ...args[1], wrapper: TooltipProvider });
 
-import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { yUndoPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
 import {
   dragScrollDelta,
   referenceMentionCaretKey,
-} from '@web/spaces/canvas/generate/reference-mention-caret';
+} from '@web/features/reference-mention/reference-mention-caret';
 import {
   PromptEditor,
   type PromptEditorHandle,

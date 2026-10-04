@@ -9,7 +9,7 @@ import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 import fc from 'fast-check';
 import { describe, it, expect } from 'vitest';
 
-import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import {
   ReferenceMention,
@@ -24,7 +24,7 @@ import {
   isStoppable,
   findNextStoppable,
   nearestStoppable,
-} from '@web/spaces/canvas/generate/reference-mention-whitespace';
+} from '@web/features/reference-mention/reference-mention-whitespace';
 
 const chipA: ReferenceRailItem = {
   refId: 'a->me',

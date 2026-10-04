@@ -67,9 +67,9 @@ import {
   planDropResidueHeal,
   planWhitespaceInsertions,
   resolveDeletionUnit,
-} from '@web/spaces/canvas/generate/reference-mention-whitespace';
+} from '@web/features/reference-mention/reference-mention-whitespace';
 import { ySyncPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
-import { dispatchMachineEdit } from '@web/spaces/canvas/generate/reference-mention-local-input';
+import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
 
 /**
  * A recorded selection range as Yjs RELATIVE positions. Absolute positions

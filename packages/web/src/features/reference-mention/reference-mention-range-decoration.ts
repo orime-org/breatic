@@ -17,7 +17,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
-import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 
 /** Class added to a chip caught inside a text range selection (see index.css). */
 export const RANGE_SELECTED_CLASS = 'reference-mention--range-selected';

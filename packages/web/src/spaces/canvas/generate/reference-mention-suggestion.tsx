@@ -24,7 +24,7 @@ import {
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { referenceMentionContent } from '@web/spaces/canvas/generate/reference-mention';
 import { insertRefusal, REFERENCE_KINDS, type ReferenceUsabilityContext } from '@breatic/shared';
-import { wasLastChangeLocalUserInput } from '@web/spaces/canvas/generate/reference-mention-local-input';
+import { wasLastChangeLocalUserInput } from '@web/features/reference-mention/reference-mention-local-input';
 import {
   ReferenceMentionList,
   type ReferenceMentionListRef,

@@ -12,8 +12,8 @@ import {
   referenceMentionContent,
 } from '@web/spaces/canvas/generate/reference-mention';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
-import { selectionChipDecorations } from '@web/spaces/canvas/generate/reference-mention-range-decoration';
-import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+import { selectionChipDecorations } from '@web/features/reference-mention/reference-mention-range-decoration';
+import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 
 const chip = (id: string): ReferenceRailItem => ({

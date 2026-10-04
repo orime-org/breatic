@@ -20,11 +20,10 @@ import {
   extractAtMentionedSourceIds,
   planMentionDeletions,
   planChipDisplayUpdates,
-  MENTION_SOURCE_ID_ATTR,
-  REFERENCE_MENTION_NODE,
   type MentionOccurrence,
   type ChipDisplaySnapshot,
 } from '@web/spaces/canvas/generate/at-reference';
+import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import {
   MENTION_LABEL_ATTR,
@@ -33,10 +32,10 @@ import {
   referenceMentionContent,
   serializePromptText,
 } from '@web/spaces/canvas/generate/reference-mention';
-import { dispatchMachineEdit } from '@web/spaces/canvas/generate/reference-mention-local-input';
+import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
 import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
-import { planCascadeDeletion } from '@web/spaces/canvas/generate/reference-mention-whitespace';
+import { planCascadeDeletion } from '@web/features/reference-mention/reference-mention-whitespace';
 
 /** Imperative handle exposed to the container to insert a reference at the cursor. */
 export interface PromptEditorHandle {

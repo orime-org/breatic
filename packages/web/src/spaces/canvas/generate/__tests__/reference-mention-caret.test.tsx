@@ -15,14 +15,14 @@ import {
   yUndoPluginKey,
 } from '@web/features/collab-editor/collab-plugin-keys';
 
-import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { CollabUndoSelection } from '@web/features/collab-editor/collab-undo-selection';
-import { referenceMentionCaretKey } from '@web/spaces/canvas/generate/reference-mention-caret';
+import { referenceMentionCaretKey } from '@web/features/reference-mention/reference-mention-caret';
 import {
   isStoppable,
   planCascadeDeletion,
   planWhitespaceInsertions,
-} from '@web/spaces/canvas/generate/reference-mention-whitespace';
+} from '@web/features/reference-mention/reference-mention-whitespace';
 import {
   ReferenceMention,
   referenceMentionContent,

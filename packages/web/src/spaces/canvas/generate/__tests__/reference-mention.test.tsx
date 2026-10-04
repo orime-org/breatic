@@ -25,8 +25,8 @@ import {
   MACHINE_EDIT_META,
   dispatchMachineEdit,
   wasLastChangeLocalUserInput,
-} from '@web/spaces/canvas/generate/reference-mention-local-input';
-import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+} from '@web/features/reference-mention/reference-mention-local-input';
+import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 
 /**

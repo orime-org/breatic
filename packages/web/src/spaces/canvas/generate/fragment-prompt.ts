@@ -13,7 +13,7 @@
 
 import * as Y from 'yjs';
 
-import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { chipWordsReader, MENTION_KIND_ATTR } from '@web/spaces/canvas/generate/reference-mention';
 import type { MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
