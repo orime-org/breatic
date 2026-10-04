@@ -116,6 +116,17 @@ test('@ lists the attachment just above the @, and the pick goes out as a refere
   await expect(page.getByTestId('message-reference')).toHaveText('Neon street', { timeout: 20_000 });
 });
 
+test('the full-width at sign a CJK input method types opens the list too', async ({ page }) => {
+  await pasteText(page, MARKER + JSON.stringify([PICTURE]));
+  const box = page.getByTestId('chat-composer-box');
+  await box.pressSequentially('写真の＠');
+  await expect(page.locator('[data-testid^="reference-mention-option-"]').first()).toContainText('Neon street');
+  await box.press('Enter');
+
+  await expect(page.getByTestId('chat-reference')).toHaveText('Neon street');
+  await expect(box).toHaveText(/^写真の/);
+});
+
 test('removing the attachment takes its block out of the words', async ({ page }) => {
   await pasteText(page, MARKER + JSON.stringify([PICTURE]));
   const box = page.getByTestId('chat-composer-box');
