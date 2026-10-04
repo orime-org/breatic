@@ -33,12 +33,13 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { ConflictError, initCore } from "@breatic/core";
+import { ConflictError, db, initCore } from "@breatic/core";
 import * as joinService from "@server/modules/project-join-request/projectJoinRequest.service.js";
 import * as decisionService from "@server/modules/decision/decision.service.js";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
 import * as roleUpgradeService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
+import * as projectRepo from "@server/modules/project/project.repo.js";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 
 try {
@@ -217,6 +218,9 @@ async function requestOf(
  * Play `archiveProject`'s statements from a separate connection in its own
  * order — lock the project, expire its role upgrades and join requests — then
  * start `other`, and once `other` has parked, play the rest of the sweep.
+ * Played by hand so `other` can be started in the middle of the sweep; that
+ * the real `archiveProject` takes the project row before any request row is
+ * pinned on the function itself below ("the project row comes first").
  * @param projectId - The project being archived.
  * @param archivedBy - The studio admin stamped as archiving it.
  * @param other - The concurrent call under test.
@@ -568,5 +572,153 @@ describe("a request filed while the project changes owner", () => {
       bell_user: s.heirId,
       bell_read: false,
     });
+  });
+});
+
+/**
+ * Hold a project's row lock, start `run`, and once it has parked on that lock
+ * ask whether it already holds the given request row. A path that touched its
+ * request rows before the project row would hold that row by now, and the
+ * NOWAIT probe would be refused.
+ * @param projectId - The project whose row is held.
+ * @param run - The path under test.
+ * @param table - The request table the path writes.
+ * @param rowId - The request row it writes.
+ * @returns Whether the request row was free while the path waited, and how the path ended.
+ */
+async function requestRowFreeWhileParkedOnProject(
+  projectId: string,
+  run: () => Promise<unknown>,
+  table: string,
+  rowId: string,
+): Promise<{ free: boolean; outcome: PromiseSettledResult<unknown> }> {
+  const holder = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
+  const probe = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
+  let running: Promise<PromiseSettledResult<unknown>> | undefined;
+  let free = false;
+  try {
+    await holder.begin(async (h) => {
+      await h`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
+      running = track(run());
+      await waitUntilBlockedOn(sql, ["projects", "for update"], 1);
+      try {
+        await probe.begin(async (p) => {
+          await p`SELECT id FROM ${p(table)} WHERE id = ${rowId} FOR UPDATE NOWAIT`;
+        });
+        free = true;
+      } catch (err) {
+        // 55P03 is lock_not_available: the path already holds the row.
+        if (sqlStateOf(err) !== "55P03") throw err;
+      }
+    });
+  } finally {
+    await probe.end({ timeout: 5 });
+    await holder.end({ timeout: 5 });
+  }
+  return { free, outcome: await running! };
+}
+
+/**
+ * Add a viewer to the scene's project with a pending role upgrade request.
+ * @param s - The scene.
+ * @returns The viewer and their request's id.
+ */
+async function pendingUpgrade(s: Awaited<ReturnType<typeof scene>>): Promise<{ viewerId: string; requestId: string }> {
+  const viewerId = await insertUser();
+  await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${s.studioId}, ${viewerId}, 'maintainer')`;
+  await sql`INSERT INTO project_members (project_id, user_id, role, added_by) VALUES (${s.projectId}, ${viewerId}, 'viewer', ${s.ownerId})`;
+  const filed = await roleUpgradeService.request({ requesterUserId: viewerId, projectId: s.projectId, projectName: "Project" });
+  return { viewerId, requestId: filed.requestId };
+}
+
+/**
+ * The scene's pending join request.
+ * @param s - The scene.
+ * @returns Its id.
+ */
+async function pendingJoin(s: Awaited<ReturnType<typeof scene>>): Promise<string> {
+  await joinService.request({ projectId: s.projectId, requesterUserId: s.requesterId });
+  const [row] = await sql<{ id: string }[]>`
+    SELECT id FROM project_join_requests WHERE project_id = ${s.projectId} AND status = 'pending'
+  `;
+  return row!.id;
+}
+
+describe("the project row comes first on every path that writes a project's requests", () => {
+  it("archiveProject itself holds no request row while it waits for the project row", async () => {
+    // One project per request table: the first probe's archive goes through.
+    const s = await scene();
+    const joinId = await pendingJoin(s);
+    const join = await requestRowFreeWhileParkedOnProject(
+      s.projectId,
+      () => db.transaction((tx) => projectRepo.archiveProject(s.projectId, s.adminId, tx)),
+      "project_join_requests",
+      joinId,
+    );
+    expect(join.free).toBe(true);
+    expect(join.outcome.status).toBe("fulfilled");
+
+    const t = await scene();
+    const { requestId } = await pendingUpgrade(t);
+    const upgrade = await requestRowFreeWhileParkedOnProject(
+      t.projectId,
+      () => db.transaction((tx) => projectRepo.archiveProject(t.projectId, t.adminId, tx)),
+      "role_upgrade_requests",
+      requestId,
+    );
+    expect(upgrade.free).toBe(true);
+    expect(upgrade.outcome.status).toBe("fulfilled");
+  });
+
+  it("approving a join request", async () => {
+    const s = await scene();
+    const id = await pendingJoin(s);
+    const r = await requestRowFreeWhileParkedOnProject(
+      s.projectId,
+      () => joinService.approve({ requestId: id, ownerUserId: s.ownerId, role: "viewer" }),
+      "project_join_requests",
+      id,
+    );
+    expect(r.free).toBe(true);
+    expect(r.outcome.status).toBe("fulfilled");
+  });
+
+  it("withdrawing a join request", async () => {
+    const s = await scene();
+    const id = await pendingJoin(s);
+    const r = await requestRowFreeWhileParkedOnProject(
+      s.projectId,
+      () => joinService.cancelMine(s.projectId, s.requesterId),
+      "project_join_requests",
+      id,
+    );
+    expect(r.free).toBe(true);
+    expect(r.outcome.status).toBe("fulfilled");
+  });
+
+  it("approving a role upgrade", async () => {
+    const s = await scene();
+    const { requestId } = await pendingUpgrade(s);
+    const r = await requestRowFreeWhileParkedOnProject(
+      s.projectId,
+      () => roleUpgradeService.approve({ requestId, ownerUserId: s.ownerId }),
+      "role_upgrade_requests",
+      requestId,
+    );
+    expect(r.free).toBe(true);
+    expect(r.outcome.status).toBe("fulfilled");
+  });
+
+  it("withdrawing a role upgrade", async () => {
+    const s = await scene();
+    const { viewerId, requestId } = await pendingUpgrade(s);
+    const r = await requestRowFreeWhileParkedOnProject(
+      s.projectId,
+      () => roleUpgradeService.cancel(requestId, viewerId),
+      "role_upgrade_requests",
+      requestId,
+    );
+    expect(r.free).toBe(true);
+    expect(r.outcome.status).toBe("fulfilled");
   });
 });
