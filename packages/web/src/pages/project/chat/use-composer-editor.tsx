@@ -118,6 +118,11 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
           'data-testid': 'chat-composer-box',
           role: 'textbox',
           'aria-multiline': 'true',
+          // Always a tab stop, as the textarea was, read-only included. TipTap's
+          // own Tabindex drops it with `contenteditable` when the box turns
+          // read-only, and a focused element left with neither gives focus to
+          // the body; these props are read before any plugin's, so this one holds.
+          tabindex: '0',
           class:
             'block w-full whitespace-pre-wrap break-words px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none',
         },
@@ -207,19 +212,13 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
     if (trayOrLanguage) refreshList.current?.();
   }, [editor, input.conversationId, input.draft, input.attachments, locale]);
 
-  // Read-only keeps the keyboard: ProseMirror drops `contenteditable` and
-  // nothing else, so the box needs a tab stop of its own to keep focus.
+  // Read-only keeps the keyboard through the tab stop the attributes above give
+  // the box for good.
   React.useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     editor.setEditable(!input.readOnly);
-    const dom = editor.view.dom;
-    if (input.readOnly) {
-      dom.setAttribute('tabindex', '0');
-      dom.setAttribute('aria-readonly', 'true');
-    } else {
-      dom.removeAttribute('tabindex');
-      dom.removeAttribute('aria-readonly');
-    }
+    if (input.readOnly) editor.view.dom.setAttribute('aria-readonly', 'true');
+    else editor.view.dom.removeAttribute('aria-readonly');
   }, [editor, input.readOnly]);
 
   React.useEffect(() => {

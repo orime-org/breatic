@@ -181,7 +181,9 @@ function ChatComposerInner({
    * next anyway.
    */
   const handOverTheKeyboard = (): void => {
-    editor?.view.dom.focus();
+    // The editor's own focus puts the caret back where the reader left it; a
+    // bare DOM focus lets the browser put it at the start.
+    editor?.view.focus();
   };
 
   /**
@@ -194,7 +196,8 @@ function ChatComposerInner({
       const row = tray.current?.querySelector(`[data-attachment-id="${CSS.escape(id)}"]`);
       if (row?.contains(document.activeElement)) {
         const neighbour = (row.nextElementSibling ?? row.previousElementSibling)?.querySelector('button');
-        (neighbour ?? editor?.view.dom)?.focus();
+        if (neighbour) neighbour.focus();
+        else editor?.view.focus();
       }
       onRemoveAttachment?.(id);
     },
