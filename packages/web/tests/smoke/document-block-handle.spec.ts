@@ -1468,13 +1468,15 @@ test('offers the insert rows in the block type menu’s own order', async () => 
   );
 
   // Paragraph is the one row insert leaves out: the row it makes is already
-  // one, so offering it would offer nothing. The divider comes after them: it
-  // is not a block type, so the block type menu has no row for it (#124).
+  // one, so offering it would offer nothing. The divider and the table come
+  // after them: neither is a block type, so the block type menu has no row
+  // for either (#124, inner#1126).
   expect(inserts.map((id) => id.replace('doc-block-insert-', ''))).toEqual([
     ...types
       .map((id) => id.replace('doc-block-type-', ''))
       .filter((id) => id !== 'paragraph'),
     'divider',
+    'table',
   ]);
 
   await closeHandleMenu(page);
@@ -1603,7 +1605,8 @@ test('rules the insert submenu the same way', async () => {
   // The same three dimensions, on the menu that makes a row rather than
   // changes one: six rows set the type, one sets the number, one sets the
   // quote. Paragraph is absent, so the first group is one shorter than the
-  // block type menu's. The divider closes it in a group of its own (#124).
+  // block type menu's. The divider and the table close it in a group of their
+  // own (#124, inner#1126).
   await openFreshDocument(page);
   await typeLines(page, ['a row to act on']);
   await openHandleMenu(page);
@@ -1638,6 +1641,7 @@ test('rules the insert submenu the same way', async () => {
     'doc-block-insert-quote',
     'separator',
     'doc-block-insert-divider',
+    'doc-block-insert-table',
   ]);
 
   await closeHandleMenu(page);
