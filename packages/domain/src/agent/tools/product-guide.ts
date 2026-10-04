@@ -431,7 +431,7 @@ export function renderProductGuide(): string {
     "Drag a node, a group or a note to move it; with snap to grid on, a dragged node lands on the grid. " +
       "Right after clicking a node or dragging a box over several, the arrow keys move what is selected a " +
       "little at a time and further with Shift (with snap to grid on, one grid dot at a time, or four with " +
-      "Shift); each press can be undone on its own. A " +
+      "Shift); undo takes back one press, or all of a key held down. A " +
       `locked one does not move and shows ${quoted(t("canvas.gate.locked"))} Picture, video, sound and text ` +
       "nodes cannot be resized: zoom the canvas to see them larger. Only a group has resize handles.",
     "Scroll to pan, or hold Space and drag (while typing in a text node, over the task list or the history " +
