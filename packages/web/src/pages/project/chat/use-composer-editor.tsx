@@ -15,6 +15,7 @@ import type { Editor } from '@tiptap/core';
 import { useEditor } from '@tiptap/react';
 import * as React from 'react';
 import { CHAT_MESSAGE_MAX_CHARS, getLocale, t as sharedT } from '@breatic/shared';
+import { Slice } from '@tiptap/pm/model';
 import { EditorState } from '@tiptap/pm/state';
 
 import { makeMentionSuggestion } from '@web/features/reference-mention/mention-suggestion';
@@ -149,15 +150,14 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
           }
           // A paste is measured as what it would insert -- blocks count once,
           // as everywhere in the box -- and one that does not fit is cut down
-          // to what is left, as plain words, with the limit said out loud.
+          // to what is left, with the limit said out loud.
           const attached = live.current.attachments;
           const after = draftLength(view.state.tr.replaceSelection(slice).doc, attached);
           if (after <= CHAT_MESSAGE_MAX_CHARS) return false;
           const room = CHAT_MESSAGE_MAX_CHARS - draftLength(view.state.tr.deleteSelection().doc, attached);
           live.current.onRefusedAtLimit();
-          const words = slice.content.textBetween(0, slice.content.size, '\n');
-          const cut = fitInto(words, room);
-          if (cut) view.dispatch(view.state.tr.insertText(cut));
+          const fitted = fitInto(slice, room);
+          if (fitted) view.dispatch(view.state.tr.replaceSelection(fitted));
           return true;
         },
       },
@@ -228,19 +228,46 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
 }
 
 /**
- * The longest start of the words that fits in the room, cut between
- * characters. The limit counts as `String.length` does, so an emoji takes two.
- * @param words - What would be inserted.
+ * The longest start of a paste that fits in the room, counted the way the
+ * draft is: text by `String.length` (an emoji takes two), a block as one, a
+ * line break as one. Cut between characters, never inside one.
+ * @param slice - What would be inserted.
  * @param room - How much the limit has left.
- * @returns What fits.
+ * @returns What fits, or null when nothing does.
  */
-function fitInto(words: string, room: number): string {
-  let cut = '';
-  for (const char of words) {
-    if (cut.length + char.length > room) break;
-    cut += char;
-  }
-  return cut;
+function fitInto(slice: Slice, room: number): Slice | null {
+  let left = room;
+  let cut = -1;
+  let firstBlock = true;
+  slice.content.nodesBetween(0, slice.content.size, (node, pos) => {
+    if (cut >= 0) return false;
+    if (node.isTextblock) {
+      if (!firstBlock && left < 1) cut = pos;
+      else if (!firstBlock) left -= 1;
+      firstBlock = false;
+      return cut < 0;
+    }
+    if (node.isText) {
+      let used = 0;
+      for (const char of node.text ?? '') {
+        if (char.length > left) {
+          cut = pos + used;
+          return false;
+        }
+        left -= char.length;
+        used += char.length;
+      }
+      return false;
+    }
+    if (node.isInline) {
+      if (left < 1) cut = pos;
+      else left -= 1;
+      return false;
+    }
+    return true;
+  });
+  const content = cut < 0 ? slice.content : slice.content.cut(0, cut);
+  return content.size > 0 ? Slice.maxOpen(content) : null;
 }
 
 /** What the box was last given from outside it. */
