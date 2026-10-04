@@ -113,9 +113,10 @@ export function BellMenu(): React.JSX.Element {
     },
   });
   // Requests stay in the bell until answered, so only news rows can be cleared.
+  const items = inboxQuery.data?.items;
   const hasNewsRow = React.useMemo(
-    () => notifications.some((n) => !isRequestNotification(n.type)),
-    [notifications],
+    () => (items ?? []).some((n) => !isRequestNotification(n.type)),
+    [items],
   );
 
   return (
