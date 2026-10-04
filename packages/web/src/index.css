@@ -1971,8 +1971,8 @@ body {
 }
 
 /* A row or column handle always moves off the spot the library places its
-   box on: it is centred on the table's line, moved into the frame when the
-   table is scrolled sideways, and the column handle steps aside from the
+   box on: it is centred on the table's line, which is the frame's left line
+   when the table is scrolled sideways, and the column handle steps aside from the
    cell button (`placeStyle` and `framePlaceOf` in `DocumentTableHandles.tsx`);
    the library's box stays on that spot, over whatever is there, so it lets
    presses through and only the handle takes them. */

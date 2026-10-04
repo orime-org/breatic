@@ -523,7 +523,7 @@ test('A12: dragging the last column wider leaves every other column as wide as i
   expect(after[3]).toBeGreaterThan(before[3] + 100);
 });
 
-test('A6, A11 and A12: on a wide table scrolled sideways, the row handle stays in the frame and the cell button leaves with its cell', async () => {
+test('A6, A11 and A12: on a wide table scrolled sideways, the row handle sits on the frame\'s left line and the cell button leaves with its cell', async () => {
   await openFreshDocument(page);
   await insertTable(page, 2, 9);
   await fill(page, ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']);

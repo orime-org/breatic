@@ -106,7 +106,7 @@ const DeleteIcon = BLOCK_MENU_ROWS.find((row) => row.id === 'delete')!.Icon;
 
 /** Where a handle is drawn against its table's scroll frame. */
 interface FramePlace {
-  /** How far the handle moves across, onto the part of the table in view. */
+  /** How far the handle moves across, onto the part of the table in view or the frame's left line. */
   readonly shift: number;
   /** Whether it is hidden: the part in view has no room for it. */
   readonly hidden: boolean;
@@ -140,7 +140,8 @@ function cellButtonIn(view: EditorView, table: Element, frame: DOMRect, caretCel
  * places the row handle at the table's own left edge
  * (`TableHandlesController.tsx:108-124`) and the column handle centred over
  * the hovered cell (`:125-141`); on a table scrolled sideways either can lie
- * outside the frame. The row handle moves in by the width scrolled out of it;
+ * outside the frame. The row handle moves across by the width scrolled out of
+ * it, so it sits on the frame's left line;
  * the column handle moves onto the part of its cell in view, aside from the
  * cell button there (`columnHandleCentre`), and is hidden when that part has
  * no room for it.

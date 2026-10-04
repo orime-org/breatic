@@ -809,7 +809,8 @@ export function renderProductGuide(): string {
       "empty. Clicking a to-do's box ticks or unticks it. Clicking a link opens it in a new tab. Selected words " +
       "can be dragged elsewhere. Pasting Markdown turns it into headings, lists and so on (inside a code block it " +
       "stays plain text); a table copied from a spreadsheet, a web page or Markdown arrives as a table, keeping " +
-      "only the words of any list or picture in its cells. Pasting a picture or file does nothing.",
+      "only the words of any list in its cells and dropping pictures; pasted with the caret in a cell, it fills " +
+      "the cells from that one instead. Pasting a picture or file does nothing.",
     "- Selecting text shows a bar, left to right: an icon of the current block type with a small arrow, an " +
       "alignment icon with an arrow, bold B, italic I, strikethrough S and underline U icons, a link icon, a code " +
       "icon, the letter A with an arrow (colour), a speech-bubble icon (comment), and a sparkle with the word " +
@@ -856,7 +857,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} lists the block types other than ` +
       `${quoted(t("spaces.document.commands.paragraph"))}, then ${quoted(t("spaces.document.commands.divider"))} ` +
       `and ${quoted(t("spaces.document.commands.table"))} on their own, and puts a new line of the one picked ` +
-      "below; the divider comes with an empty line under it. " +
+      "below; the divider and the table each come with an empty line under them, and a new table puts the caret " +
+      "in its first cell. " +
       `${quoted(t("spaces.document.commands.table"))} opens a grid of squares, nine across and nine down, with ` +
       `${quoted(t("spaces.document.table.pickSize"))} under it; moving over it lights the squares up to the ` +
       `pointer and the words under it change to the size, such as ${quoted(t("spaces.document.table.size", { rows: 3, cols: 4 }))}, and clicking ` +
@@ -891,7 +893,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.commands.align"))} and ${quoted(t("spaces.document.table.cellFill"))} open a ` +
       "submenu when hovered and act on the whole row or column; the fill submenu is a row of colours, the first " +
       `square taking the fill off, then ${quoted(t("spaces.document.commands.colorReset"))}. Deleting the last row or ` +
-      "column deletes the table. Rows and columns are added only from these two menus. While one of these " +
+      "column deletes the table. Rows and columns are added from these two menus, and Tab in the last cell adds " +
+      "a row. While one of these " +
       "menus is open, the cells it acts on are tinted the way selected cells are. Dragging the line on a " +
       "column's right side changes that column's width only; the other columns keep theirs and the table " +
       "grows. A table wider than the page scrolls sideways inside its own frame.",
@@ -901,10 +904,11 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged. Tab moves to the next ` +
       "cell, and in the last cell it adds a row first; Shift+Tab moves back. Enter and Shift+Enter break the line " +
       "inside the cell. A cell holds only words: no lists, headings or other blocks. Dragging across cells " +
-      "selects them; the text bar then has its block type button greyed, a merge icon after the speech bubble " +
-      "that merges the selected cells into one, and in its colour menu the rows " +
+      "selects them. With words selected inside one cell, or with cells selected, the text bar has its block " +
+      "type button greyed and in its colour menu the rows " +
       `${quoted(t("spaces.document.commands.textColor"))}, ${quoted(t("spaces.document.table.textHighlight"))} and ` +
-      `${quoted(t("spaces.document.table.cellFill"))}. With every cell of an empty table selected, Backspace or ` +
+      `${quoted(t("spaces.document.table.cellFill"))}; with cells selected it also shows a merge icon after the ` +
+      "speech bubble that merges them into one. With every cell of an empty table selected, Backspace or " +
       "Delete removes the table.",
     `- An empty document shows ${quoted(t("spaces.document.placeholder"))}. Three dots at the top right open a ` +
       `menu: ${quoted(t("spaces.document.docMenu.comments"))}, which ends in ` +
