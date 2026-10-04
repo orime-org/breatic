@@ -64,6 +64,10 @@ export function createLocalUserInputTracker(): Plugin<boolean> {
         // otherwise a machine append after a remote edit would mask the remote
         // origin (the settled-state hole round 4 found).
         if (tr.getMeta('appendedTransaction')) return value;
+        // A machine dispatch is never the reader's input, whether or not it
+        // changes the doc itself: a meta-only one can still have follow-ups
+        // appended that move the `@` range, and those ride on this judgment.
+        if (tr.getMeta(MACHINE_EDIT_META) === true) return false;
         // Intent-bearing = doc change OR selection change (#1805): a local
         // CARET PLACEMENT — pointer click or arrow key — is user input too,
         // even though it changes no content. The suggestion's onStart fires
@@ -78,16 +82,11 @@ export function createLocalUserInputTracker(): Plugin<boolean> {
         // either — undo is not an intent to open the picker — so, unlike the old
         // discriminator, it does not re-show a dismissed popup. Selection-only
         // transactions are produced by LOCAL input (prosemirror-view
-        // pointer/keyboard handling); remote applies and machine dispatches are
-        // doc transactions or MACHINE_EDIT_META-tagged (every machine dispatch
-        // rides dispatchMachineEdit), so the same test classifies them correctly.
-        // An editor with no collaboration undoes through the plain history
-        // plugin instead, which tags its own transactions.
-        const isRemoteOrUndo =
-          tr.getMeta(ySyncPluginKey) !== undefined || isHistoryTransaction(tr);
-        // Machine-derived local dispatch.
-        const isMachine = tr.getMeta(MACHINE_EDIT_META) === true;
-        return !isRemoteOrUndo && !isMachine;
+        // pointer/keyboard handling); remote applies are doc transactions, so
+        // the same test classifies them correctly. An editor with no
+        // collaboration undoes through the plain history plugin instead, which
+        // tags its own transactions.
+        return tr.getMeta(ySyncPluginKey) === undefined && !isHistoryTransaction(tr);
       },
     },
   });
