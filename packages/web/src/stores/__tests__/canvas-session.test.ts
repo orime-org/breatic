@@ -71,4 +71,17 @@ describe('canvas session store', () => {
     canvasSessions.drop('space-a');
     expect(canvasSessions.of('space-a')).not.toBe(a);
   });
+
+  it('holds one text node being written, and lets only that one end it', () => {
+    const store = createCanvasSessionStore();
+
+    store.getState().startTextEdit('a');
+    store.getState().endTextEdit('b');
+    expect(store.getState().editingTextNode).toBe('a');
+
+    store.getState().startTextEdit('b');
+    expect(store.getState().editingTextNode).toBe('b');
+    store.getState().endTextEdit('b');
+    expect(store.getState().editingTextNode).toBeNull();
+  });
 });

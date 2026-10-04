@@ -131,6 +131,16 @@ export interface CanvasSessionState {
   closeActivePanel: () => void;
   /** Close the panel only while it is still the opening `session` names. */
   closePanelOfSession: (session: number) => void;
+  /**
+   * The text node being written in, or null. Here rather than on the node:
+   * a hidden canvas has its nodes taken down and put back by the library, and
+   * the reader who comes back is still writing (inner#1235 A13).
+   */
+  editingTextNode: string | null;
+  /** Start writing in a text node. */
+  startTextEdit: (nodeId: string) => void;
+  /** Stop writing in a text node, if it is still the one being written in. */
+  endTextEdit: (nodeId: string) => void;
   /** Enter a REFERENCE pick (wires i2i source edges) for a generative node. */
   startReferencePick: (nodeId: string) => void;
   /** Enter the first-frame pick for a video node (#1896). */
@@ -238,6 +248,7 @@ export function createCanvasSessionStore(): CanvasSessionStore {
       panelHostId: null,
       panelKind: null,
       panelSession: 0,
+      editingTextNode: null,
       taskPanelStatus: null,
       pickSession: null,
       pendingFocusUploads: [],
@@ -321,6 +332,14 @@ export function createCanvasSessionStore(): CanvasSessionStore {
           s.panelKind = null;
           s.taskPanelStatus = null;
           s.pickSession = null;
+        }),
+      startTextEdit: (nodeId) =>
+        set((s) => {
+          s.editingTextNode = nodeId;
+        }),
+      endTextEdit: (nodeId) =>
+        set((s) => {
+          if (s.editingTextNode === nodeId) s.editingTextNode = null;
         }),
       closePanelOfSession: (session) =>
         set((s) => {
