@@ -483,9 +483,9 @@ describe("what the guide says", () => {
   });
 
   it("says how to send, break a line and stop a reply", () => {
-    const box = webSource("pages/project/chat/use-composer-editor.tsx");
+    const box = webSource("pages/project/chat/composer-extensions.ts");
     expect(box).toContain("if (event.shiftKey) splitBlock(view.state, view.dispatch);");
-    expect(box).toContain("else live.current.onEnter();");
+    expect(box).toContain("else wiring.onEnter();");
     const chat = section("The chat panel");
     expect(chat).toMatch(/Enter sends the message and Shift\+Enter starts a new line/);
     expect(chat).toMatch(/red square, which stops the reply/);
