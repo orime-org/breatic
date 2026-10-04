@@ -1883,13 +1883,13 @@ body {
   .doc-table-overflow-edge[data-overflow-edge='left'] {
     left: 0;
     border-left: 1px solid var(--color-border);
-    background: linear-gradient(to right, var(--color-overflow-shadow), transparent);
+    background: linear-gradient(to right, var(--overflow-shade), transparent);
   }
 
   .doc-table-overflow-edge[data-overflow-edge='right'] {
     right: 0;
     border-right: 1px solid var(--color-border);
-    background: linear-gradient(to left, var(--color-overflow-shadow), transparent);
+    background: linear-gradient(to left, var(--overflow-shade), transparent);
   }
 }
 .doc-body [data-content-type='table'] .tableWrapper {

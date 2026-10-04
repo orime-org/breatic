@@ -331,8 +331,6 @@ html[data-theme='light'] {
 
   /* ---- Border / input / focus ring ---- */
   --color-border: rgba(30, 30, 30, 0.12);
-  /* Content scrolled under the edge of its frame: the black --shadow-md uses. */
-  --color-overflow-shadow: rgba(0, 0, 0, 0.08);
   --color-input: var(--neutral-200);
   /* focus = neutral solid 1px, no glow (translucent rejected: reads dirty). */
   --color-ring: var(--neutral-700);
@@ -468,6 +466,8 @@ html[data-theme='light'] {
   --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.08),
     0 2px 4px -2px rgba(0, 0, 0, 0.04);
+  /* Content scrolled under the edge of its frame: the black --shadow-md uses. */
+  --overflow-shade: rgba(0, 0, 0, 0.08);
 
   /* ---- Type scale · 10 steps (base 15, each with a line-height) ---- */
   --text-2xs: 11px;
@@ -574,7 +574,6 @@ html[data-theme='dark'] {
   --color-secondary-foreground: var(--neutral-900);
 
   --color-border: rgba(240, 240, 240, 0.12);
-  --color-overflow-shadow: rgba(0, 0, 0, 0.5);
   --color-input: var(--neutral-400);
 
   --color-primary: var(--neutral-900);
@@ -628,6 +627,7 @@ html[data-theme='dark'] {
   --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.5),
     0 2px 4px -2px rgba(0, 0, 0, 0.4);
+  --overflow-shade: rgba(0, 0, 0, 0.5);
 }
 
 /* ============================================================

@@ -89,7 +89,7 @@ describe('a table in the body', () => {
     for (const side of ['left', 'right']) {
       const body = ruleBody(`.doc-table-overflow-edge[data-overflow-edge='${side}']`);
       expect(body).toContain(`border-${side}: 1px solid var(--color-border)`);
-      expect(body).toContain('var(--color-overflow-shadow)');
+      expect(body).toContain('var(--overflow-shade)');
     }
   });
 
