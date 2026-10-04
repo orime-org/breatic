@@ -74,7 +74,7 @@ export function SpaceOutlet({
   // resolves a document name through `DOC_NAME_BUILDERS`, and a type missing
   // from that table renders nothing. Adding a type means both tables.
   return (
-    <div className='relative h-full w-full'>
+    <div className='relative h-full w-full' data-space-outlet={spaceId}>
       <SpaceReadOnlyNotice
         projectId={projectId}
         spaceId={spaceId}

@@ -22,9 +22,20 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-import { expect, type Page } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
 
 export type SpaceKind = 'canvas' | 'document';
+
+/**
+ * The Space on screen. Every open tab keeps its Space in the page, hidden
+ * (inner#1235), so a lookup that should land in the Space being worked on
+ * starts here rather than at the page.
+ * @param page - A page inside a project.
+ * @returns The shown Space's outer element.
+ */
+export function visibleSpace(page: Page): Locator {
+  return page.locator('[data-space-outlet]:visible');
+}
 
 /**
  * Create a Space in the open project and return its id.
