@@ -50,10 +50,7 @@ describe('ModelPicker — pick the generation model from the catalog', () => {
     const ref = { ...model('g-ref', 'Gemini Omni 1.1 Flash'), variant: 'Reference' };
     const kling = { ...model('kling', 'Kling 3.0 4K'), variant: 'Text-to-Video' };
     render(<ModelPicker models={[t2v, ref, kling]} value='g-ref' onChange={() => {}} />);
-    expect(screen.getByTestId('generate-model-trigger')).toHaveTextContent('Gemini Omni 1.1 Flash');
-    // The variant keeps its own place on the button, so a cut-short vendor name
-    // never takes it with it.
-    expect(screen.getByTestId('generate-model-trigger-variant')).toHaveTextContent('Reference');
+    expect(screen.getByTestId('generate-model-trigger')).toHaveTextContent('Gemini Omni 1.1 Flash Reference');
     fireEvent.click(screen.getByTestId('generate-model-trigger'));
     expect(screen.getByTestId('generate-model-option-g-t2v')).toHaveTextContent('Gemini Omni 1.1 Flash Text-to-Video');
     expect(screen.getByTestId('generate-model-option-kling')).toHaveTextContent('Kling 3.0 4K');

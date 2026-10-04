@@ -4,7 +4,7 @@
 import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
 
-import { modelLabel, modelLabelParts, type ModelEntry } from '@breatic/shared';
+import { modelLabel, type ModelEntry } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -52,7 +52,6 @@ export const ModelPicker = React.memo(function ModelPicker({
   // ratio / camera pickers use. Inert while closed.
   useFollowCanvasViewport(open);
   const current = models.find((m) => m.name === value);
-  const parts = current ? modelLabelParts(current, models) : undefined;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -64,14 +63,7 @@ export const ModelPicker = React.memo(function ModelPicker({
           className='flex h-8 min-w-0 max-w-[8rem] items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <ModelIcon name={current?.icon} className='h-4 w-4 shrink-0' />
-          {/* The vendor's name is what gets cut short; the variant that tells
-              namesakes apart keeps its place after it. */}
-          <span className='truncate'>{parts?.name ?? value}</span>
-          {parts?.variant !== undefined ? (
-            <span data-testid='generate-model-trigger-variant' className='shrink-0'>
-              {parts.variant}
-            </span>
-          ) : null}
+          <span className='truncate'>{current ? modelLabel(current, models) : value}</span>
           <ChevronDown
             className='h-3.5 w-3.5 shrink-0 opacity-60'
             aria-hidden='true'
