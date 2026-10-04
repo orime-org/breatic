@@ -4899,45 +4899,6 @@ describe('placing a note (#1881)', () => {
     expect(getUsersByIds).toHaveBeenCalledWith(['u-1', 'u-2', 'u-3']);
   });
 
-  it('forgets a note box when this canvas goes away under it', () => {
-    // A box outlives the sticky's DOM on purpose — the canvas culls offscreen
-    // nodes and a draft held in the component went with them (#1881 E7). What
-    // ends it is the sticky closing, and a Space switch closes it by taking
-    // the whole canvas away (§8.7.3's 「切 Space / 组件卸载」 row). Measured
-    // before this: the draft was swept on the next mount, one frame before the
-    // graph mirror refilled, so the reader came back to a sticky drawn open
-    // over words that were already gone.
-    mockUseCanvasSpace.mockReturnValue(
-      mockSpace({
-        nodes: [
-          {
-            id: 'n-note',
-            type: 'annotation',
-            position: { x: 0, y: 0 },
-            data: {
-              kind: 'annotation',
-              content: 'a cooler shot here',
-              createdBy: 'u-1',
-              createdAt: 1,
-              replies: [],
-            },
-          },
-        ],
-      }),
-    );
-    act(() => {
-      canvasSessions.of('s').getState().openAnnotationPanel('n-note');
-      canvasSessions.of('s').getState().setAnnotationDraft('n-note', {
-        draft: { mode: 'typing', use: 'reply', text: 'half an answer', opened: '' },
-        target: null,
-      });
-    });
-    const view = renderSpace();
-    expect(canvasSessions.of('s').getState().annotationDrafts['n-note']).toBeDefined();
-    view.unmount();
-    expect(canvasSessions.of('s').getState().annotationDrafts['n-note']).toBeUndefined();
-    expect(canvasSessions.of('s').getState().panelKind).toBeNull();
-  });
 });
 
 describe('the camera this Space is left on (#2165)', () => {

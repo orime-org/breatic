@@ -27,6 +27,8 @@ import type * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
+import { canvasGraphs } from '@web/stores/canvas-graph';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 const PID = '11111111-1111-4111-8111-111111111111';
 const SPACE_A = '22222222-2222-4222-8222-222222222222';
@@ -277,6 +279,33 @@ describe('ProjectPage — closing a tab discards what that tab was holding', () 
     expect(evictDocumentEditorMock).toHaveBeenCalledWith(
       DOCUMENT_DOC_A,
     );
+  });
+
+  // A Space switched away from keeps its canvas session; closing the tab is
+  // what lets it go (inner#1235 A14): the open sticky and the box half written
+  // in it go with the tab, and the tab left open keeps its own.
+  it('drops the closed tab\'s canvas session and render buffer', async () => {
+    await openBoth();
+    const sessionA = canvasSessions.of(SPACE_A);
+    sessionA.getState().openAnnotationPanel('note');
+    sessionA.getState().setAnnotationDraft('note', {
+      draft: { mode: 'typing', use: 'edit', text: 'half', opened: '' },
+      target: { kind: 'body' },
+    });
+    canvasGraphs.of(SPACE_A).getState().setFlowNodes(() => [
+      { id: 'note', position: { x: 0, y: 0 }, data: {} },
+    ]);
+    const sessionB = canvasSessions.of(SPACE_B);
+
+    (await screen.findByTestId(`space-tab-close-${SPACE_A}`)).click();
+
+    await waitFor(() => {
+      expect(canvasSessions.of(SPACE_A)).not.toBe(sessionA);
+    });
+    expect(canvasSessions.of(SPACE_A).getState().panelKind).toBeNull();
+    expect(canvasSessions.of(SPACE_A).getState().annotationDrafts).toEqual({});
+    expect(canvasGraphs.of(SPACE_A).getState().flowNodes).toEqual([]);
+    expect(canvasSessions.of(SPACE_B)).toBe(sessionB);
   });
 
   it('keeps a tab that is still open untouched', async () => {

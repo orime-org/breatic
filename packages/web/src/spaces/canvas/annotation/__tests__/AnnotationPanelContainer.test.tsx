@@ -395,13 +395,4 @@ describe('what a sticky closing does to the box that was open', () => {
     view.unmount();
   });
 
-  it('closes the slot when the canvas goes away under it', () => {
-    // Switching to another Space tab unmounts this canvas with the sticky open
-    // — §8.7.3's 「切 Space / 组件卸载 → 收起」 row. The slot is reset per
-    // PROJECT, so without this the sticky was drawn open again on the way back.
-    holdADraft('typing');
-    const view = mount();
-    view.unmount();
-    expect(canvasSessions.of('s1').getState().panelKind).toBeNull();
-  });
 });
