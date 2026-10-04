@@ -17,7 +17,7 @@
  * See spec: access-permission design (2026-05-28) § 7.
  */
 
-import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { notifications } from "@breatic/core";
 import type { NotificationEntity } from "@breatic/shared";
@@ -245,13 +245,21 @@ export async function retire(id: string, tx?: DbTx): Promise<void> {
 
 /**
  * Mark all of a user's unread notifications as read.
+ *
+ * Rows another transaction holds are skipped, not waited on. Archiving a
+ * project and re-addressing requests on an owner change retire several bell
+ * entries across separate statements, in no fixed order, so a bulk update that
+ * waited on one row while holding another could close a cycle with them
+ * (40P01). Every writer to this table only sets `read_at`, so a held row is
+ * being marked read by its holder; if that holder rolls back, the row stays
+ * unread until the next "mark all read".
  * @param userId - Inbox owner whose unread notifications to clear
- * @returns count of rows updated.
+ * @returns count of rows this call marked read.
  */
 export async function markAllRead(userId: string): Promise<number> {
-  const rows = await db
-    .update(notifications)
-    .set({ readAt: sql`now()` })
+  const unlocked = db
+    .select({ id: notifications.id })
+    .from(notifications)
     .where(
       and(
         eq(notifications.userId, userId),
@@ -259,6 +267,11 @@ export async function markAllRead(userId: string): Promise<number> {
         isNull(notifications.deletedAt),
       ),
     )
+    .for("update", { skipLocked: true });
+  const rows = await db
+    .update(notifications)
+    .set({ readAt: sql`now()` })
+    .where(inArray(notifications.id, unlocked))
     .returning({ id: notifications.id });
   return rows.length;
 }
