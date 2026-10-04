@@ -1909,14 +1909,17 @@ body {
 }
 
 /* A table in the product's tokens, both themes (inner#1126 A13). BlockNote
-   writes fixed values for each of these — `#ddd` lines, `#c8c8ff66` over a
-   selected cell, `#adf` for the resize line. */
+   writes fixed values for each of these — `#ddd` lines, `5px 10px` around a
+   cell's words, `#c8c8ff66` over a selected cell, `#adf` for the resize
+   line. */
 .doc-body [data-content-type='table'] td {
   border-color: var(--color-border);
+  padding: var(--space-3) var(--space-5);
 }
 
 .doc-body [data-content-type='table'] th {
   border-color: var(--color-border);
+  padding: var(--space-3) var(--space-5);
   background-color: var(--color-muted);
 }
 

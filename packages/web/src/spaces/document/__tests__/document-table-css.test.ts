@@ -23,6 +23,10 @@ describe('a table in the body', () => {
 
   it('draws its lines, its header, its selected cells and its resize line in tokens', () => {
     expect(ruleBody('[data-content-type=\'table\'] td')).toContain('border-color: var(--color-border)');
+    // The space around a cell's words is on the space scale: 6px above and
+    // below, 10px either side.
+    expect(ruleBody('[data-content-type=\'table\'] td')).toContain('padding: var(--space-3) var(--space-5)');
+    expect(ruleBody('[data-content-type=\'table\'] th')).toContain('padding: var(--space-3) var(--space-5)');
     expect(ruleBody('[data-content-type=\'table\'] th')).toContain('background-color: var(--color-muted)');
     expect(ruleBody('.selectedCell::after')).toContain('background: var(--color-selection)');
     expect(ruleBody('.column-resize-handle')).toContain('background-color: var(--color-ring)');
