@@ -35,7 +35,7 @@ const SOURCES: Record<string, string> = {
   "at the limit": "a".repeat(PROJECT_NAME_MAX_CHARS),
   "a space where the cut falls": `${"a".repeat(246)} ${"b".repeat(8)}`,
   "a flag where the cut falls": `${"x".repeat(245)}🇨🇳${"y".repeat(9)}`,
-  "a joined emoji where the cut falls": `${"x".repeat(244)}👨‍👩‍👧${"y".repeat(5)}`,
+  "a joined emoji where the cut falls": `${"x".repeat(244)}\u{1F468}\u200D\u{1F469}\u200D\u{1F467}${"y".repeat(5)}`,
   "a letter with a combining mark at the cut": `${"x".repeat(246)}é${"y".repeat(7)}`,
   "emoji throughout": "😀".repeat(127),
   "CJK throughout": "名".repeat(PROJECT_NAME_MAX_CHARS),
