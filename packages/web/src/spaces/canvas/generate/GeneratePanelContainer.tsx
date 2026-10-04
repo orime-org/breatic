@@ -182,7 +182,6 @@ function GeneratePanelBody({
     isSubmitting,
     setIsSubmitting,
     submittingRef,
-    isMountedRef,
   } = useGenerateSubmitState();
 
   // The `@`-picked source ids, mirrored to a ref for the same reason as the
@@ -623,6 +622,10 @@ function GeneratePanelBody({
       return;
     }
     submittingRef.current = true;
+    // Which opening of the panel this submit came from. The body is unmounted
+    // whenever its Space is hidden, so the answer may land after it is gone;
+    // it closes this opening and nothing the reader opened since.
+    const session = sessionStore.getState().panelSession;
     setIsSubmitting(true);
     try {
       // Payload build is INSIDE the try: if it (or the lease read) throws, the
@@ -638,29 +641,18 @@ function GeneratePanelBody({
         poolParams: poolParams(fresh.pool, fresh.referenceUrls),
       });
       await canvasApi.createTask(payload);
-      // Close only if THIS mount is still alive AND the panel is still on this
-      // node — a stale submit from a since-unmounted instance (close+reopen on
-      // the same node) must not close the freshly-reopened panel.
-      if (
-        isMountedRef.current &&
-        sessionStore.getState().panelHostId === nodeId &&
-        sessionStore.getState().panelKind === 'generate'
-      ) {
-        closeActivePanel();
-      }
+      sessionStore.getState().closePanelOfSession(session);
     } catch (err) {
       // The failure toast is UNCONDITIONAL (silent-fail mandate): sonner is a
       // global outlet, so a submit that failed AFTER the user closed the panel
-      // (fire-and-move-on, then 402/409/503) still explains itself — the old
-      // stale-mount early-return silently swallowed exactly those failures
-      // (round-2 adversarial). Only the React state writes stay gated.
+      // (fire-and-move-on, then 402/409/503) still explains itself. The state
+      // writes below do nothing once this body has been unmounted.
       toast.error(
         executeErrorMessage(
           err instanceof ApiException ? err.status : undefined,
           t,
         ),
       );
-      if (!isMountedRef.current) return; // stale mount — skip setState only
       submittingRef.current = false;
       setIsSubmitting(false);
     }
@@ -669,11 +661,9 @@ function GeneratePanelBody({
     projectId,
     spaceId,
     freshVm,
-    closeActivePanel,
     t,
     // Stable for this mount's lifetime; listed because they come from a hook,
     // where the linter cannot see that for itself.
-    isMountedRef,
     promptEditorRef,
     promptTextRef,
     setIsSubmitting,

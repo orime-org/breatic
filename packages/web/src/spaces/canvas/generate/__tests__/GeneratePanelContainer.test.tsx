@@ -4,7 +4,7 @@
 /** The canvas hands the panels a getter; these trees answer 'this client'. */
 const LAST_WRITE_LOCAL = (): boolean => true;
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   act,
   fireEvent,
@@ -103,15 +103,21 @@ function storedMode(): string {
 type ContainerProps = Parameters<typeof GeneratePanelContainer>[0];
 
 /**
- * Mounts the container under a fresh QueryClient (no retries — the failure
- * path resolves in one round trip).
+ * The container under a QueryClient, inside the Activity a Space body sits in.
+ * @param client - The query client; the same one across re-renders keeps the
+ *   tree mounted.
  * @param graph - Optional canvas graph override; defaults to a lone target.
- * @returns The render result.
+ * @param mode - Whether the Space is shown.
+ * @returns The tree.
  */
-function mountContainer(graph?: {
-  nodes?: ContainerProps['nodes'];
-  edges?: ContainerProps['edges'];
-}): ReturnType<typeof render> {
+function containerTree(
+  client: QueryClient,
+  graph?: {
+    nodes?: ContainerProps['nodes'];
+    edges?: ContainerProps['edges'];
+  },
+  mode: 'visible' | 'hidden' = 'visible',
+): React.JSX.Element {
   const canvas: CanvasContextValue = {
     projectId: 'p',
     spaceId: 's',
@@ -119,13 +125,10 @@ function mountContainer(graph?: {
     myRole: 'editor',
     caretProvider: null,
   };
-  return render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
-      {/* A REAL ReactFlow with the target node: GeneratePanelBody mounts
+  return (
+    <QueryClientProvider client={client}>
+      <Activity mode={mode}>
+        {/* A REAL ReactFlow with the target node: GeneratePanelBody mounts
           inside a NodeToolbar, which renders its children only when the node
           exists in ReactFlow's store — a bare provider never mounts the
           body (caught wiring the caret-awareness test). The canvas here
@@ -137,30 +140,49 @@ function mountContainer(graph?: {
           popovers open under a bare click; what does need waiting for is the
           trigger becoming enabled once the catalog resolves (measured — that,
           not the event kind, is what makes an early click miss). */}
-      <ReactFlow
-        nodes={[
-          { id: 'target', position: { x: 0, y: 0 }, data: {} },
-        ]}
-        edges={[]}
-      >
-        <CanvasContext.Provider value={canvas}>
-          <GeneratePanelContainer
-            projectId='p'
-            spaceId='s'
-            nodes={
-              graph?.nodes ?? [
-                {
-                  id: 'target',
-                  data: { kind: 'image', status: 'idle' },
-                },
-              ]
-            }
-            edges={graph?.edges ?? []}
-            getLastWriteWasLocal={LAST_WRITE_LOCAL}
-          />
-        </CanvasContext.Provider>
-      </ReactFlow>
-    </QueryClientProvider>,
+        <ReactFlow
+          nodes={[
+            { id: 'target', position: { x: 0, y: 0 }, data: {} },
+          ]}
+          edges={[]}
+        >
+          <CanvasContext.Provider value={canvas}>
+            <GeneratePanelContainer
+              projectId='p'
+              spaceId='s'
+              nodes={
+                graph?.nodes ?? [
+                  {
+                    id: 'target',
+                    data: { kind: 'image', status: 'idle' },
+                  },
+                ]
+              }
+              edges={graph?.edges ?? []}
+              getLastWriteWasLocal={LAST_WRITE_LOCAL}
+            />
+          </CanvasContext.Provider>
+        </ReactFlow>
+      </Activity>
+    </QueryClientProvider>
+  );
+}
+
+/**
+ * Mounts the container under a fresh QueryClient (no retries — the failure
+ * path resolves in one round trip).
+ * @param graph - Optional canvas graph override; defaults to a lone target.
+ * @returns The render result.
+ */
+function mountContainer(graph?: {
+  nodes?: ContainerProps['nodes'];
+  edges?: ContainerProps['edges'];
+}): ReturnType<typeof render> {
+  return render(
+    containerTree(
+      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+      graph,
+    ),
   );
 }
 
@@ -903,6 +925,87 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     expect(createSpy).not.toHaveBeenCalled();
     listSpy.mockRestore();
     createSpy.mockRestore();
+  });
+
+  // A Space hidden while its panel is submitting is the same mount, shown
+  // again (inner#1235 A7): the answer that arrives meanwhile still belongs to
+  // the opening it was sent from.
+  describe('an answer that arrives while the Space is hidden', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    /**
+     * Submits from the panel with the answer held back, then hides the Space.
+     * @param settle - How the held-back answer ends.
+     * @returns Shows the Space again.
+     */
+    const submitThenHide = async (
+      settle: (answer: {
+        resolve: (v: Awaited<ReturnType<typeof canvasApi.createTask>>) => void;
+        reject: (e: unknown) => void;
+      }) => void,
+    ): Promise<() => Promise<void>> => {
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(
+        imageCatalog([{ ...T2I_MODEL, takes_prompt: false }]),
+      );
+      let answer:
+        | {
+            resolve: (v: Awaited<ReturnType<typeof canvasApi.createTask>>) => void;
+            reject: (e: unknown) => void;
+          }
+        | undefined;
+      vi.spyOn(canvasApi, 'createTask').mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            answer = { resolve, reject };
+          }),
+      );
+      seedImageNode();
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const { rerender } = render(containerTree(client));
+      act(() => {
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+      });
+      const btn = await screen.findByTestId('generate-execute');
+      await waitFor(() => {
+        expect((btn as HTMLButtonElement).disabled).toBe(false);
+      });
+      fireEvent.click(btn);
+      await waitFor(() => expect(answer).toBeDefined());
+      await act(async () => {
+        rerender(containerTree(client, undefined, 'hidden'));
+      });
+      await act(async () => {
+        settle(answer!);
+      });
+      return async () => {
+        await act(async () => {
+          rerender(containerTree(client, undefined, 'visible'));
+        });
+      };
+    };
+
+    it('closes the panel it was sent from', async () => {
+      const show = await submitThenHide((a) =>
+        a.resolve({ id: 'task-1' } as Awaited<
+          ReturnType<typeof canvasApi.createTask>
+        >),
+      );
+      await show();
+      expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
+    });
+
+    it('takes the next press after a refusal', async () => {
+      const show = await submitThenHide((a) => a.reject(new Error('refused')));
+      await show();
+      fireEvent.click(screen.getByTestId('generate-execute'));
+      await waitFor(() => {
+        expect(canvasApi.createTask).toHaveBeenCalledTimes(2);
+      });
+    });
   });
 });
 

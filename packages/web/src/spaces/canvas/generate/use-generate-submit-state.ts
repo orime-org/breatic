@@ -59,14 +59,11 @@ export interface GenerateSubmitState {
   setIsSubmitting: React.Dispatch<React.SetStateAction<boolean>>;
   /** The synchronous re-entry latch: state cannot answer soon enough. */
   submittingRef: React.RefObject<boolean>;
-  /** False once this mount is gone, for a submit still on its way back. */
-  isMountedRef: React.RefObject<boolean>;
 }
 
 /**
  * Builds the submit-time state for one Generate panel.
- * @returns The prompt mirrors, the editor handle, the in-flight mirrors, and
- *   this mount's liveness flag.
+ * @returns The prompt mirrors, the editor handles and the in-flight mirrors.
  */
 export function useGenerateSubmitState(): GenerateSubmitState {
   const [promptText, setPromptText] = React.useState('');
@@ -88,19 +85,6 @@ export function useGenerateSubmitState(): GenerateSubmitState {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
 
-  // Marks THIS mount stale on unmount. The panel body is keyed by node id, so
-  // closing and reopening on the same node remounts a fresh instance, and an
-  // in-flight submit from the old one must not close the new panel. Set to
-  // true on mount as well, because Strict Mode runs the cleanup once before
-  // the effect that matters.
-  const isMountedRef = React.useRef(true);
-  React.useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
   return {
     lyricsText,
     lyricsTextRef,
@@ -113,6 +97,5 @@ export function useGenerateSubmitState(): GenerateSubmitState {
     isSubmitting,
     setIsSubmitting,
     submittingRef,
-    isMountedRef,
   };
 }

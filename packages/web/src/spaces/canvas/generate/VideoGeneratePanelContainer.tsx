@@ -203,7 +203,6 @@ function VideoGeneratePanelBody({
     isSubmitting,
     setIsSubmitting,
     submittingRef,
-    isMountedRef,
   } = useGenerateSubmitState();
 
   // The ids the prompt `@`-mentions right now. Kept in a ref rather than in
@@ -766,6 +765,10 @@ function VideoGeneratePanelBody({
       return;
     }
     submittingRef.current = true;
+    // Which opening of the panel this submit came from. The body is unmounted
+    // whenever its Space is hidden, so the answer may land after it is gone;
+    // it closes this opening and nothing the reader opened since.
+    const session = sessionStore.getState().panelSession;
     setIsSubmitting(true);
     try {
       // Inside the try: if the payload build or the lease read throws, the
@@ -785,27 +788,16 @@ function VideoGeneratePanelBody({
         poolParams: poolParams(fresh.pool, fresh.referenceUrls),
       });
       await canvasApi.createTask(payload);
-      // Close only if THIS mount is alive AND the panel is still on this node:
-      // a stale submit from a since-unmounted instance must not close a
-      // freshly-reopened panel.
-      if (
-        isMountedRef.current &&
-        sessionStore.getState().panelHostId === nodeId &&
-        sessionStore.getState().panelKind === 'generateVideo'
-      ) {
-        closeActivePanel();
-      }
+      sessionStore.getState().closePanelOfSession(session);
     } catch (err) {
       // Unconditional (silent-fail mandate): a submit that failed after the
-      // user closed the panel still explains itself. Only the state writes are
-      // gated on the mount being alive.
+      // user closed the panel still explains itself.
       toast.error(
         executeErrorMessage(
           err instanceof ApiException ? err.status : undefined,
           t,
         ),
       );
-      if (!isMountedRef.current) return;
       submittingRef.current = false;
       setIsSubmitting(false);
     }
@@ -814,11 +806,9 @@ function VideoGeneratePanelBody({
     projectId,
     spaceId,
     freshVm,
-    closeActivePanel,
     t,
     // Stable for this mount's lifetime; listed because they come from a hook,
     // where the linter cannot see that for itself.
-    isMountedRef,
     promptEditorRef,
     promptTextRef,
     setIsSubmitting,

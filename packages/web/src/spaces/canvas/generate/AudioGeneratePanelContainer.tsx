@@ -199,7 +199,6 @@ function AudioGeneratePanelBody({
     isSubmitting,
     setIsSubmitting,
     submittingRef,
-    isMountedRef,
   } = useGenerateSubmitState();
 
   // Read during render: `getPromptFragment` is a synchronous document read with
@@ -508,6 +507,10 @@ function AudioGeneratePanelBody({
     if (!fresh.modelEntry) return;
 
     submittingRef.current = true;
+    // Which opening of the panel this submit came from. The body is unmounted
+    // whenever its Space is hidden, so the answer may land after it is gone;
+    // it closes this opening and nothing the reader opened since.
+    const session = sessionStore.getState().panelSession;
     setIsSubmitting(true);
     try {
       const payload = buildAudioTaskPayload({
@@ -528,21 +531,13 @@ function AudioGeneratePanelBody({
         ...(freshLyrics !== undefined ? { lyricsText: freshLyrics } : {}),
       });
       await canvasApi.createTask(payload);
-      // Close only if THIS mount is alive AND the panel is still on this node.
-      if (
-        isMountedRef.current &&
-        sessionStore.getState().panelHostId === nodeId &&
-        sessionStore.getState().panelKind === 'generateAudio'
-      ) {
-        closeActivePanel();
-      }
+      sessionStore.getState().closePanelOfSession(session);
     } catch (err) {
       // Unconditional: a submit that failed after the user closed the panel
-      // still explains itself. Only the state writes are gated on the mount.
+      // still explains itself.
       toast.error(
         executeErrorMessage(err instanceof ApiException ? err.status : undefined, t),
       );
-      if (!isMountedRef.current) return;
       submittingRef.current = false;
       setIsSubmitting(false);
     }
@@ -551,14 +546,12 @@ function AudioGeneratePanelBody({
     projectId,
     spaceId,
     freshVm,
-    closeActivePanel,
     t,
     lyrics,
     mode,
     slots,
     // Stable for this mount's lifetime; listed because they come from a hook,
     // where the linter cannot see that for itself.
-    isMountedRef,
     lyricsEditorRef,
     lyricsTextRef,
     promptEditorRef,
