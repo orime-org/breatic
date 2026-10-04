@@ -4,27 +4,15 @@
 /**
  * Tracks, per transaction, whether the LAST doc change was a genuine LOCAL USER
  * keystroke — so the `@` suggestion popup's visibility follows the local user's
- * intent and is never resurrected by a machine-derived or remote edit
- * (collaboration residual 1, #1802).
+ * intent and is never resurrected by a machine-derived or remote edit (#1802).
  *
- * This POSITIVE identification replaces the earlier `wasLastChangeRemote`
- * reverse-inference (read the settled y-sync `isChangeOrigin` and assume
- * "not remote" == "the user typed"). That assumption was structurally wrong on
- * two counts the round-4 adversarial pass exposed:
- *   1. A LOCAL machine-derived transaction — the edge-driven cascade-clear that
- *      deletes a chip when its reference leaves the pool (PromptEditor), or a
- *      chip display re-sync — carries no remote origin yet is not a keystroke
- *      either, so "not remote" wrongly resurrected a dismissed popup.
- *   2. It read the SETTLED state, so an appendTransaction follow-up (the caret
- *      whitespace normalizer) running after a remote edit overwrote the remote
- *      origin and masked it.
- *
- * A local user keystroke is a doc-changing transaction that is NOT a
- * y-prosemirror apply (a remote peer edit OR a local yUndo — both tagged with
- * the y-sync plugin key's meta) and NOT a machine-derived dispatch (tagged
- * {@link MACHINE_EDIT_META}). A follow-up appendTransaction rides along with —
- * and never overrides — the judgment of the root transaction that triggered the
- * update.
+ * A local user keystroke is a doc-changing transaction that is NOT a remote
+ * apply or an undo (a y-prosemirror apply carries the y-sync plugin key's meta;
+ * the plain history plugin tags its own) and NOT a machine-derived dispatch
+ * (tagged {@link MACHINE_EDIT_META}). Absence of a remote origin is not enough:
+ * an editor's own machine writes carry none either. A follow-up
+ * appendTransaction rides along with — and never overrides — the judgment of
+ * the root transaction that triggered the update.
  */
 
 import type { Editor } from '@tiptap/core';
@@ -37,9 +25,8 @@ import { ySyncPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
 /**
  * Meta key a MACHINE-DERIVED (non-user-typed) local editor transaction sets so
  * the local-input tracker does not mistake it for a keystroke. Set it on every
- * programmatic `editor.view.dispatch` that is a CONSEQUENCE of a canvas / data
- * change rather than a keypress — the edge-driven cascade-clear and the chip
- * display re-sync in PromptEditor. A y-prosemirror apply (remote peer edit or
+ * programmatic `editor.view.dispatch` that is a CONSEQUENCE of a change outside
+ * the editor rather than a keypress. A y-prosemirror apply (remote peer edit or
  * local yUndo) needs no marker: it already carries the y-sync plugin key's meta.
  */
 export const MACHINE_EDIT_META = 'referenceMentionMachineEdit';
@@ -51,9 +38,8 @@ const LOCAL_USER_INPUT_KEY = new PluginKey<boolean>(
 
 /**
  * Builds the ProseMirror plugin that maintains, per transaction, whether the
- * last doc change was a local user keystroke. Installed by the ReferenceMention
- * node (addProseMirrorPlugins) so it rides on the prompt editor alongside the
- * caret plugin. Computing this in `apply` (before the plugin `view().update`
+ * last doc change was a local user keystroke. Installed by the editor's
+ * reference node alongside the caret plugin. Computing this in `apply` (before the plugin `view().update`
  * that drives the suggestion callbacks) means there is no read-the-settled-state
  * race — the judgment is fixed by the transaction that triggered the update.
  * @returns The tracker plugin.
@@ -94,13 +80,12 @@ export function createLocalUserInputTracker(): Plugin<boolean> {
         // transactions are produced by LOCAL input (prosemirror-view
         // pointer/keyboard handling); remote applies and machine dispatches are
         // doc transactions or MACHINE_EDIT_META-tagged (every machine dispatch
-        // rides dispatchMachineEdit — the tracker, the caret plugin, and
-        // PromptEditor's effects), so the same test classifies them correctly.
+        // rides dispatchMachineEdit), so the same test classifies them correctly.
         // An editor with no collaboration undoes through the plain history
         // plugin instead, which tags its own transactions.
         const isRemoteOrUndo =
           tr.getMeta(ySyncPluginKey) !== undefined || isHistoryTransaction(tr);
-        // Machine-derived local dispatch (cascade-clear / chip display sync).
+        // Machine-derived local dispatch.
         const isMachine = tr.getMeta(MACHINE_EDIT_META) === true;
         return !isRemoteOrUndo && !isMachine;
       },
@@ -113,7 +98,7 @@ export function createLocalUserInputTracker(): Plugin<boolean> {
  * USER keystroke (not a remote peer edit, a local yUndo, or a machine-derived
  * dispatch). The `@` suggestion uses it to drive popup visibility by local
  * intent only. Returns false when the tracker plugin is absent (a bare editor).
- * @param editor - The prompt editor.
+ * @param editor - The editor.
  * @returns True when the last doc change was a local user keystroke.
  * @throws {never}
  */
@@ -122,17 +107,15 @@ export function wasLastChangeLocalUserInput(editor: Editor): boolean {
 }
 
 /**
- * Dispatches a MACHINE-DERIVED (non-user-typed) edit on the prompt editor,
+ * Dispatches a MACHINE-DERIVED (non-user-typed) edit on an editor,
  * applying BOTH machine-edit invariants in one place: keep it OUT of the
  * collaborative undo stack (addToHistory:false, so Cmd+Z reverts the user's own
  * edit rather than a machine cosmetic sync / edge-driven delete) AND tag it
  * MACHINE_EDIT_META so {@link wasLastChangeLocalUserInput} never counts it as a
  * keystroke (so it can never resurrect a dismissed `@` popup — #1802 round-4).
- * Every machine effect on the prompt (the edge-driven cascade-clear, the chip
- * display re-sync, and any future mini-tool write-back) must dispatch through
- * this so both invariants hold by construction rather than being re-derived and
- * drifting per call site.
- * @param view - The prompt editor view.
+ * Every machine effect on the editor dispatches through this, so both
+ * invariants hold by construction.
+ * @param view - The editor view.
  * @param tr - The prepared transaction (its content already staged by the caller).
  * @throws {never}
  */

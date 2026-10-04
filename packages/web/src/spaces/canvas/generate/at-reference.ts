@@ -17,7 +17,6 @@ import type { JSONContent } from '@tiptap/core';
 
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 
-
 /**
  * Extracts the source node ids of all `@`-mentioned reference images in a
  * prompt document, in first-appearance order and de-duplicated. Walks the

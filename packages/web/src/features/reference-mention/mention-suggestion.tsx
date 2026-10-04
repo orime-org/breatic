@@ -16,10 +16,13 @@ import type { Transaction } from '@tiptap/pm/state';
 import { ReactRenderer } from '@tiptap/react';
 import {
   exitSuggestion,
+  findSuggestionMatch,
   SuggestionPluginKey,
   type SuggestionKeyDownProps,
+  type SuggestionMatch,
   type SuggestionOptions,
   type SuggestionProps,
+  type Trigger,
 } from '@tiptap/suggestion';
 import type * as React from 'react';
 
@@ -29,6 +32,26 @@ import {
   type MentionListRef,
 } from '@web/features/reference-mention/mention-list';
 import { wasLastChangeLocalUserInput } from '@web/features/reference-mention/reference-mention-local-input';
+
+/**
+ * What opens the list: `@`, and the full-width `＠` a Chinese, Japanese or
+ * Korean input method types in full-width mode.
+ */
+const AT_SIGNS = ['@', '＠'] as const;
+
+/**
+ * The `@` match nearest the caret, whichever at sign opened it.
+ * @param config - The plugin's trigger config for this position.
+ * @returns The match, or null when the caret is in none.
+ */
+function matchEitherAtSign(config: Trigger): SuggestionMatch {
+  let nearest: SuggestionMatch = null;
+  for (const char of AT_SIGNS) {
+    const match = findSuggestionMatch({ ...config, char });
+    if (match && (!nearest || match.range.from > nearest.range.from)) nearest = match;
+  }
+  return nearest;
+}
 
 /** A React-ref-shaped holder the open popup writes its `refresh()` into. */
 export type RefreshHandleRef = { current: (() => void) | null };
@@ -48,7 +71,11 @@ export interface MentionSuggestionInput<T> {
   renderItem: (item: T) => React.ReactNode;
   /** Where the popup sits against the caret. */
   placement: Placement;
-  /** Ref the open popup writes a `refresh()` into (collaboration residual 2). */
+  /**
+   * Ref the open popup writes a `refresh()` into. The caller runs it when what
+   * `resolveList` reads changes without an edit in this editor, which the
+   * plugin would otherwise never see.
+   */
   refreshRef?: RefreshHandleRef;
   /** Whether the last transaction was a local keystroke; injectable for tests. */
   isLocalUserInput?: (editor: Editor) => boolean;
@@ -66,6 +93,7 @@ export function makeMentionSuggestion<T>(
   const resolveList = input.resolveList;
   return {
     char: '@',
+    findSuggestionMatch: matchEitherAtSign,
     // @tiptap/suggestion defaults allowedPrefixes to [" "], which only fires `@`
     // when preceded by a space or at block start — so typing `@` right after
     // text (e.g. directly after a CJK character, where no space precedes it)
@@ -103,9 +131,8 @@ export function makeMentionSuggestion<T>(
       /**
        * The latest suggestion props (from onStart / onUpdate): `command` is bound
        * to the live `@` range and `query` is the current filter text. The focus
-       * re-show path reads these to recompute a FRESH list from the live pool +
-       * mode, so a popup hidden by a mode / model click never re-shows a stale
-       * list (#1799 / #1800).
+       * re-show path reads these to recompute a FRESH list, so a popup hidden by
+       * a click elsewhere never re-shows a stale one (#1799 / #1800).
        */
       let latestProps: SuggestionProps<T> | null = null;
       /**
@@ -165,11 +192,10 @@ export function makeMentionSuggestion<T>(
        * which fires after mouseup's selection dispatch) needs no timer, no
        * geometry, no gesture heuristic (the v1 focus+timer and v2 posAtCoords /
        * 500ms designs both raced the settle and were killed at Gate 1). Recomputes
-       * the list from the live pool so a mode / pool change since the popup was
-       * hidden is reflected. No-op unless the popup is hidden AND the plugin is
+       * the list, so a change since the popup was hidden is reflected. No-op unless the popup is hidden AND the plugin is
        * active with an empty selection. Never resurrects a popup that is not
        * plugin-active, so a genuine exit (space / delete / cursor-leave) stays gone.
-       * @param editor - The prompt editor (its settled state is read live).
+       * @param editor - The editor (its settled state is read live).
        */
       const reshowIfActiveHidden = (editor: Editor): void => {
         if (!el || visible) return;
@@ -184,12 +210,10 @@ export function makeMentionSuggestion<T>(
 
       /**
        * Anchors the popup to the caret and KEEPS it anchored via floating-ui
-       * autoUpdate: a one-shot computePosition would leave the popup at stale
-       * coordinates when the surface moves without a keystroke (canvas pan/zoom
-       * moves the NodeToolbar-anchored editor; the prompt is its own scroll
-       * container). The virtual reference returns the LIVE caret rect each call;
-       * animationFrame polling is needed because the canvas pans via CSS
-       * transform, not scroll events (adversarial 2026-07-10).
+       * autoUpdate: the editor can move without a keystroke (a scroll, or a CSS
+       * transform on an ancestor, which fires no scroll event). The virtual
+       * reference returns the LIVE caret rect each call, polled every
+       * animation frame.
        * @param clientRect - The suggestion's live caret rect getter.
        */
       const place = (
@@ -210,13 +234,9 @@ export function makeMentionSuggestion<T>(
             // viewport corner). Restores the pre-autoUpdate `if (!rect) return`.
             if (!el || !clientRect()) return;
             void computePosition(reference, el, {
-              // NO flip / shift (user 2026-07-20): this popup is anchored INSIDE
-              // the ReactFlow canvas, and must track its caret and clip at the
-              // viewport edge — NOT slide/flip to stay on screen. Collision
-              // middleware kept the list pinned in the viewport while the caret
-              // panned off, detaching it from the `@` (the list floated far from
-              // its anchor). Same clip-not-jump contract the canvas Radix floats
-              // use via avoidCollisions={false} (ratio / camera / model pickers).
+              // No flip / shift (user 2026-07-20): the list stays on its `@` and
+              // clips at the viewport edge. Collision middleware would keep it
+              // on screen after the caret moved off, away from the `@`.
               placement: input.placement,
               middleware: [offset(6)],
             }).then(({ x, y }) => {
@@ -232,7 +252,7 @@ export function makeMentionSuggestion<T>(
       return {
         onStart: (props: SuggestionProps<T>): void => {
           latestProps = props;
-          // Seeded from the live pool, NOT from `props.items`. @tiptap/suggestion
+          // Seeded from `resolveList`, NOT from `props.items`. @tiptap/suggestion
           // resolves items through an async pipeline (so a remote resolver can be
           // awaited and aborted): every callback is handed `initialItems ?? []`
           // first — and we configure no `initialItems`, so that is always EMPTY —
@@ -254,26 +274,18 @@ export function makeMentionSuggestion<T>(
           el.style.zIndex = '50';
           el.appendChild(component.element);
           document.body.appendChild(el);
-          // Residual 2 (mode / pool changed REMOTELY): a collaborator toggling
-          // the node's mode or editing references fires NO transaction on this
-          // client (mode lives on the canvas node, not the prompt doc), so the
-          // plugin never re-runs items() and a VISIBLE popup keeps its stale list.
-          // Expose a refresh the React layer calls when the `mode` / `references`
-          // props change; it recomputes CONTENT from the live pool + mode, but
-          // only while the popup is actually on screen (a closed one needs no
-          // refresh).
+          // What the list reads can change with no transaction in this editor,
+          // so the plugin never re-runs items() and an open popup would keep a
+          // stale list. The caller runs this refresh when that happens.
           if (input.refreshRef) {
             input.refreshRef.current = (): void => {
-              // CONTENT only. Refreshing an open popup keeps its rows current
-              // when a remote edge add/remove fires no prosemirror transaction
-              // (onUpdate can't heal that). It never opens or closes anything:
-              // a popup the user closed stays closed, and an emptied pool now
-              // shows a sentence rather than disappearing (#1952).
+              // CONTENT only, and only while on screen. It never opens or closes
+              // anything: a popup the user closed stays closed, and an emptied
+              // list shows a sentence rather than disappearing (#1952).
               if (el && visible && latestProps) updateContent(latestProps.query);
             };
           }
-          // Clicking outside the popup AND the editor (a canvas node / panel
-          // control) does NOT move the ProseMirror selection, so the suggestion
+          // Clicking outside the popup AND the editor does NOT move the ProseMirror selection, so the suggestion
           // would otherwise stay open floating over the UI. Just HIDE the popup
           // — do NOT exitSuggestion (B2, user 2026-07-12): exitSuggestion marks
           // the active `@` range permanently exited, so after a blur-and-back
@@ -282,7 +294,8 @@ export function makeMentionSuggestion<T>(
           // active, so re-focusing and typing re-shows it via onUpdate; a
           // genuine break of the `@` match (space, deleting the `@`, cursor
           // leaving the range) still exits the plugin naturally → onExit removes
-          // the popup. Capture phase so we see the click before ReactFlow stops it.
+          // the popup. Capture phase, so a click whose handler stops
+          // propagation is still seen.
           onOutsidePointerDown = (event: PointerEvent): void => {
             const target = event.target as Node | null;
             if (
@@ -338,7 +351,7 @@ export function makeMentionSuggestion<T>(
           };
           props.editor.view.dom.addEventListener('click', onEditorClick);
           // Decide the initial visibility. A LOCAL start — the user typed `@` —
-          // shows, whatever the pool holds (#1952: an empty list is a sentence,
+          // shows, whatever the list holds (#1952: an empty list is a sentence,
           // not a disappearance). Anything else reaching
           // onStart must NOT pop a picker this user never opened (residual 1):
           // a remote peer's edit, or a local machine-derived cascade, can put an

@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The `@` suggestion wiring for the reference-mention node: typing `@` opens a
- * caret-anchored popup of the current connection reference pool, and picking a
- * row inserts a reference-mention atom carrying the stable `sourceNodeId` plus a
- * snapshot thumbnail / label (design 2026-07-10 §2.2). The pool is read through
- * a getter so the editor is never rebuilt when incoming edges change; the popup
- * is positioned by floating-ui and rendered via TipTap's ReactRenderer.
+ * What the generate panel's `@` list offers: the current connection reference
+ * pool, narrowed to the rows the active mode can use, and picking a row inserts
+ * a reference-mention atom carrying the stable `sourceNodeId` plus a snapshot
+ * thumbnail / label (design 2026-07-10 §2.2). The pool and mode are read
+ * through getters so the editor is never rebuilt when incoming edges change.
  */
 
 import type { Editor } from '@tiptap/core';
@@ -16,7 +15,6 @@ import type { SuggestionOptions } from '@tiptap/suggestion';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { referenceMentionContent } from '@web/spaces/canvas/generate/reference-mention';
 import { insertRefusal, REFERENCE_KINDS, type ReferenceUsabilityContext } from '@breatic/shared';
-import { wasLastChangeLocalUserInput } from '@web/features/reference-mention/reference-mention-local-input';
 import {
   makeMentionSuggestion,
   type RefreshHandleRef,
@@ -54,10 +52,11 @@ const ANY_CONTEXT: ReferenceUsabilityContext = {
  *   2026-08-13). A getter
  *   because the mode lives on the canvas node, not in the prompt doc.
  *   Optional; omitting it assumes a reference-taking mode ({@link ANY_CONTEXT}).
- * @param input.refreshRef - Ref the open popup writes a `refresh()` into so the
- *   React layer can refresh a visible popup on a remote mode/pool change (residual 2).
+ * @param input.refreshRef - Ref the open popup writes a `refresh()` into; the
+ *   panel runs it when a collaborator changes the mode or the pool, which
+ *   fires no transaction in this editor.
  * @param input.isLocalUserInput - Whether the last transaction was a local user
- *   keystroke; defaults to {@link wasLastChangeLocalUserInput}, injectable for tests (residual 1).
+ *   keystroke; injectable for tests.
  * @returns The suggestion options (without `editor`, supplied by the extension).
  */
 export function makeReferenceSuggestion(input: {
@@ -68,7 +67,6 @@ export function makeReferenceSuggestion(input: {
   refreshRef?: RefreshHandleRef;
   isLocalUserInput?: (editor: Editor) => boolean;
 }): Omit<SuggestionOptions<ReferenceRailItem>, 'editor'> {
-  const isLocalUserInput = input.isLocalUserInput ?? wasLastChangeLocalUserInput;
   /**
    * The rows this mode can use at all, before the typed query narrows them.
    *
@@ -133,6 +131,6 @@ export function makeReferenceSuggestion(input: {
     // Below the caret: the prompt box sits on the canvas with room under it.
     placement: 'bottom-start',
     ...(input.refreshRef ? { refreshRef: input.refreshRef } : {}),
-    isLocalUserInput,
+    ...(input.isLocalUserInput ? { isLocalUserInput: input.isLocalUserInput } : {}),
   });
 }
