@@ -260,6 +260,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.nodePlaceholder.audio": { described: /An empty picture, video or sound node shows its type icon/ },
   "canvas.nodePlaceholder.video": { described: /An empty picture, video or sound node shows its type icon/ },
   "canvas.nodePlaceholder.web": { excluded: REASONS.NOT_CREATABLE },
+  "canvas.panel.hostDeletedByPeer": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.couldNotStart": { excluded: REASONS.SAYS_TRY_AGAIN },
   "canvas.task.countTip": { excluded: REASONS.FILLS_A_VALUE },
   "canvas.task.dismissFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },

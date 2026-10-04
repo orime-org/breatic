@@ -38,12 +38,8 @@ export function EmptyImagePanelContainer({
   const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
   // Only this container's kind; the Generate panel shares `panelHostId`.
   const nodeId = kind === 'resetEmpty' ? host : null;
-  // Close when the host disappears (a collaborator deletes it) so we never
-  // render a stale panel — mirrors the Generate panel's node-gone guard.
+  // A deleted host draws nothing here; `CanvasSpaceInner` closes the panel.
   const nodeGone = nodeId != null && !nodes.some((n) => n.id === nodeId);
-  React.useEffect(() => {
-    if (nodeGone) closeActivePanel();
-  }, [nodeGone, closeActivePanel]);
   // Stable per host so the memoized EmptyImagePanel bails when this container
   // re-renders for unrelated store changes (the panel is remounted per host by
   // `key={nodeId}`, so binding `nodeId` here is safe).

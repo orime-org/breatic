@@ -896,6 +896,7 @@ function CanvasSpaceInner({
   const openHistoryPanel = useCanvasSession((s) => s.openHistoryPanel);
   const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
   const panelHostId = useCanvasSession((s) => s.panelHostId);
+  const panelKind = useCanvasSession((s) => s.panelKind);
   const pickSession = useCanvasSession((s) => s.pickSession);
   // The node a pick is running for, or null — stands in
   // for the mechanical "is a pick active / which node" checks that don't care
@@ -1400,6 +1401,26 @@ function CanvasSpaceInner({
     closeActivePanel,
     selectOnlyNode,
   ]);
+
+  // The node a panel is open on was deleted: the panel closes, and a
+  // collaborator's delete is told (canvas awareness design §5.7.2). One place
+  // for every node-anchored panel but the sticky, which has its own wording
+  // for a note somebody was writing in. This canvas reads only its own Space,
+  // so a host missing from `nodes` is a delete, never a switch of Space.
+  const panelHostGone =
+    panelHostId !== null &&
+    panelKind !== 'annotation' &&
+    !nodes.some((n) => n.id === panelHostId);
+  React.useEffect(() => {
+    if (!panelHostGone || panelHostId === null) return;
+    if (deletedByPeer(panelHostId)) {
+      toast.warning(t('canvas.panel.hostDeletedByPeer'));
+    }
+    closeActivePanel();
+    // The panel held the keyboard focus and has gone from the page; hand it
+    // to the canvas. Focus somewhere else is the reader's and stays there.
+    if (document.activeElement === document.body) containerRef.current?.focus();
+  }, [panelHostGone, panelHostId, deletedByPeer, closeActivePanel, t]);
 
   const pendingViewportCommand = useCanvasStore(
     (s) => s.pendingViewportCommand,

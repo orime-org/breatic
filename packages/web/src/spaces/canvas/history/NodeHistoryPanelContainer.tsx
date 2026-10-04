@@ -146,13 +146,8 @@ function OpenNodeHistoryPanel({
   onRestore,
 }: OpenNodeHistoryPanelProps): React.JSX.Element | null {
   const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
+  // A deleted host closes the panel in `CanvasSpaceInner`.
   const hostNode = nodes.find((n) => n.id === nodeId);
-  // Close when the host disappears (a collaborator deletes it) — mirrors the
-  // Generate / reset panels' node-gone guard.
-  const nodeGone = hostNode === undefined;
-  React.useEffect(() => {
-    if (nodeGone) closeActivePanel();
-  }, [nodeGone, closeActivePanel]);
 
   const modality: HistoryModality | null =
     hostNode !== undefined && HISTORY_MODALITIES.has(hostNode.type)

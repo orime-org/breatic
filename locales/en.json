@@ -805,6 +805,9 @@
         "declined": "The model declined this request.",
         "media_refused": "The model would not take this file."
       }
+    },
+    "panel": {
+      "hostDeletedByPeer": "A collaborator deleted the node."
     }
   },
   "auth": {

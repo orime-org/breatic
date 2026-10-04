@@ -101,19 +101,16 @@ beforeEach(() => {
 });
 
 describe('NodeTaskPanelContainer', () => {
-  it('closes when its host node disappears', async () => {
+  it('draws nothing once its host node is gone', async () => {
     const view = mount();
-    await waitFor(() =>
-      expect(canvasSessions.of('').getState().panelHostId).toBe('target'),
-    );
+    await screen.findByTestId('node-task-panel-title');
 
-    // A collaborator deleted the node this panel hangs on. Its three sibling
-    // panels all close themselves here, and `resolvePanelSelectionAction`
-    // leaves the case to them rather than acting on a host that is gone.
+    // A collaborator deleted the node this panel hangs on. Closing the panel
+    // is the canvas's job (`panel-host-deleted.test.tsx`).
     view.rerender(panel([]));
 
     await waitFor(() =>
-      expect(canvasSessions.of('').getState().panelHostId).toBeNull(),
+      expect(screen.queryByTestId('node-task-panel-title')).toBeNull(),
     );
   });
 

@@ -76,18 +76,19 @@ describe('EmptyImagePanelContainer', () => {
     expect(canvasSessions.of('').getState().panelKind).toBeNull();
   });
 
-  it('closes the panel when the host node disappears (collaborator delete)', () => {
+  it('draws nothing once its host node is gone', () => {
     const { rerender } = mountContainer(vi.fn(), [{ id: 'target' }]);
     act(() => {
       canvasSessions.of('').getState().openEmptyImagePanel('target');
     });
     expect(screen.getByTestId('empty-image-execute')).toBeInTheDocument();
-    // The host vanishes from the live node list → node-gone guard closes it.
+    // The host vanishes from the live node list; closing the panel is the
+    // canvas's job (`panel-host-deleted.test.tsx`), drawing nothing is this one's.
     rerender(
       <ReactFlow nodes={[]} edges={[]}>
         <EmptyImagePanelContainer nodes={[]} onReset={vi.fn()} />
       </ReactFlow>,
     );
-    expect(canvasSessions.of('').getState().panelHostId).toBeNull();
+    expect(screen.queryByTestId('empty-image-execute')).toBeNull();
   });
 });

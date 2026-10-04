@@ -805,6 +805,9 @@
         "declined": "模型拒絕了這次請求。",
         "media_refused": "模型不接受這個檔案。"
       }
+    },
+    "panel": {
+      "hostDeletedByPeer": "協作者刪除了節點。"
     }
   },
   "auth": {

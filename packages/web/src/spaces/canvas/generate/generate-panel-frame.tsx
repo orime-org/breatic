@@ -34,9 +34,8 @@ type GeneratePanelKind = 'generate' | 'generateVideo' | 'generateAudio';
 /**
  * The node whose panel of this kind is open, or null.
  *
- * Also closes the panel when the target node disappears (a collaborator
- * deletes it) so a stale panel is never rendered and no pick session is left
- * pointing at a node that no longer exists.
+ * A target node that has disappeared answers null, so a stale panel is never
+ * rendered; `CanvasSpaceInner` closes the panel and ends its pick.
  * @param kind - Which panel is asking; the kinds share `panelHostId`.
  * @param nodes - Live canvas nodes, read to notice the target vanishing.
  * @returns The open panel's node id, or null when this panel is not open.
@@ -47,12 +46,8 @@ export function useOpenPanelNode(
 ): string | null {
   const host = useCanvasSession((s) => s.panelHostId);
   const openKind = useCanvasSession((s) => s.panelKind);
-  const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
   const nodeId = openKind === kind ? host : null;
   const nodeGone = nodeId != null && !nodes.some((n) => n.id === nodeId);
-  React.useEffect(() => {
-    if (nodeGone) closeActivePanel();
-  }, [nodeGone, closeActivePanel]);
   return nodeGone ? null : nodeId;
 }
 

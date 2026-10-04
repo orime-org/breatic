@@ -74,6 +74,7 @@ describe('a panel whose node is deleted', () => {
     expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
     expect(toast.warning).toHaveBeenCalledWith(
       en.canvas.panel.hostDeletedByPeer,
+      expect.anything(),
     );
   });
 

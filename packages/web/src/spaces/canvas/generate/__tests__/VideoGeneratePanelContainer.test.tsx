@@ -509,9 +509,10 @@ describe('VideoGeneratePanelContainer', () => {
     });
   });
 
-  it('closes itself when the target node is deleted', async () => {
+  it('draws nothing once the target node is deleted', async () => {
     // A collaborator deleting the node must not leave a panel anchored to
-    // nothing.
+    // nothing. Closing the panel is the canvas's job
+    // (`panel-host-deleted.test.tsx`).
     vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
     const view = mountContainer('video');
     act(() => {
@@ -548,9 +549,8 @@ describe('VideoGeneratePanelContainer', () => {
       </QueryClientProvider>,
     );
     await waitFor(() => {
-      expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
+      expect(screen.queryByTestId('generate-video-execute')).toBeNull();
     });
-    expect(screen.queryByTestId('generate-video-execute')).toBeNull();
   });
 
   it('on catalog fetch failure: toasts, drops the panel intent, renders nothing', async () => {
