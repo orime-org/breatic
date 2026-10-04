@@ -298,6 +298,27 @@ describe('@ in the chat box', () => {
     expect(onChange).toHaveBeenLastCalledWith(`${'y'.repeat(9_997)}\u{1F600}o`);
   });
 
+  it('keeps a pasted block, counted as one, when the paste is cut', () => {
+    const { onChange } = setup({ draft: 'y'.repeat(9_990), attachments: [cover] });
+    act(() => {
+      box().commands.focus('end');
+      box().view.pasteHTML('ab<span data-reference-mention="" data-source-id="a1">x</span>cdefghijklmnop');
+    });
+
+    expect(String(onChange.mock.lastCall?.[0]).slice(9_990)).toBe(`ab${attachmentMarker('a1')}cdefghi`);
+    expect(screen.getByTestId('chat-reference')).toHaveTextContent('cover.png');
+  });
+
+  it('counts a line break as one when a paste is cut', () => {
+    const { onChange } = setup({ draft: 'y'.repeat(9_996) });
+    act(() => {
+      box().commands.focus('end');
+      box().view.pasteHTML('<p>ab</p><p>cdef</p>');
+    });
+
+    expect(String(onChange.mock.lastCall?.[0]).slice(9_996)).toBe('ab\nc');
+  });
+
   it('keeps a paste to itself while it is read-only', () => {
     const onPasteCanvas = vi.fn();
     const outside = vi.fn();

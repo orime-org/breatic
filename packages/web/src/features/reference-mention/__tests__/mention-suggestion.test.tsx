@@ -234,6 +234,19 @@ describe('the shared @ list', () => {
     expect(chips(e)).toEqual(['b']);
   });
 
+  it('lets Shift+Tab through without picking or ending the @', async () => {
+    const e = await makeEditor();
+    type(e, '@');
+    await listShown();
+    const event = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true });
+    act(() => {
+      e.view.dom.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(chips(e)).toEqual([]);
+  });
+
   it('sits where the caller places it', async () => {
     const e = await makeEditor('top-start');
     type(e, '@');

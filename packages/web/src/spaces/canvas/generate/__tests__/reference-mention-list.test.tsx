@@ -207,6 +207,36 @@ describe('ReferenceMentionList — keyboard highlight vs re-rendered pools', () 
     expect(highlighted()).toBe('b');
   });
 
+  it('puts the highlight on the first row when the query changes back, too', () => {
+    const ref = React.createRef<MentionListRef>();
+    const view = (query: string, items: ReferenceRailItem[]): React.JSX.Element => (
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
+        ref={ref} items={items} command={vi.fn()} emptyLabel='none' query={query} />
+    );
+    const { rerender } = render(view('', [row('a'), row('b'), row('c')]));
+    sendKey(ref, 'ArrowDown');
+    rerender(view('x', [row('a'), row('b')]));
+    rerender(view('', [row('a'), row('b'), row('c')]));
+
+    expect(highlighted()).toBe('a');
+  });
+
+  it('leaves Shift+Tab alone so the keyboard can move back', () => {
+    const ref = React.createRef<MentionListRef>();
+    const command = vi.fn();
+    render(
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
+        ref={ref} items={[row('a')]} command={command} emptyLabel='none' query='' />,
+    );
+    let taken = true;
+    act(() => {
+      taken = ref.current?.onKeyDown(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true })) ?? true;
+    });
+
+    expect(taken).toBe(false);
+    expect(command).not.toHaveBeenCalled();
+  });
+
   it('moves the highlight to the first row when the highlighted one goes', () => {
     const ref = React.createRef<MentionListRef>();
     const { rerender } = render(
