@@ -420,10 +420,11 @@ export {
   attachmentSection,
   chipOfPart,
   messageLength,
+  messageSegments,
   messageWithNames,
   userTurnForModel,
 } from "@shared/agent/attachments.js";
-export type { AttachmentDataPart } from "@shared/agent/attachments.js";
+export type { AttachmentDataPart, MessageSegment } from "@shared/agent/attachments.js";
 export {
   carrying,
   FAILURE_LINES,

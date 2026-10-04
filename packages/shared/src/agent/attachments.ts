@@ -61,6 +61,26 @@ export function attachmentMarker(id: string): string {
   return `@[attachment:${id}]`;
 }
 
+/** One run of the typed words: plain text, or a reference to an attachment. */
+export type MessageSegment = { kind: "text"; text: string } | { kind: "reference"; id: string };
+
+/**
+ * The typed words split around their references, in order.
+ * @param message - What the user typed.
+ * @returns The runs; empty for an empty message.
+ */
+export function messageSegments(message: string): MessageSegment[] {
+  const out: MessageSegment[] = [];
+  let at = 0;
+  for (const match of message.matchAll(MARKER)) {
+    if (match.index > at) out.push({ kind: "text", text: message.slice(at, match.index) });
+    out.push({ kind: "reference", id: match[1] ?? "" });
+    at = match.index + match[0].length;
+  }
+  if (at < message.length) out.push({ kind: "text", text: message.slice(at) });
+  return out;
+}
+
 /**
  * Rewrite each marker that points at one of this message's attachments.
  * Markers for anything else stay as the text they are.
@@ -69,10 +89,10 @@ export function attachmentMarker(id: string): string {
  * @param write - What a marker becomes, given its attachment and its place.
  * @returns The rewritten words.
  */
-function rewriteMarkers(
-  chips: readonly ChatAttachedChip[],
+function rewriteMarkers<C extends { readonly id: string }>(
+  chips: readonly C[],
   message: string,
-  write: (chip: ChatAttachedChip, n: number) => string,
+  write: (chip: C, n: number) => string,
 ): string {
   if (chips.length === 0) return message;
   return message.replace(MARKER, (marker, id: string) => {
@@ -95,11 +115,11 @@ export function messageWithNames(chips: readonly ChatAttachedChip[], message: st
 /**
  * How long the typed words are, counting each reference as one character, the
  * way the reader sees it in the box.
- * @param chips - What the user attached to the message.
+ * @param chips - What the user attached to the message; only their ids are read.
  * @param message - What the user typed.
  * @returns The length.
  */
-export function messageLength(chips: readonly ChatAttachedChip[], message: string): number {
+export function messageLength(chips: ReadonlyArray<{ readonly id: string }>, message: string): number {
   return rewriteMarkers(chips, message, () => "@").length;
 }
 
