@@ -36,6 +36,11 @@
 # reading of a Stripe subscription compares `recurring.interval` against the
 # period slot a price sits in here, so the second spelling is read as a
 # disagreement and the tier is refused.
+#
+# `price_cents` is the price before tax. Membership checkout turns on Stripe
+# Tax, which adds the buyer's local tax on top, so create every Price with
+# `tax_behavior: exclusive` — Stripe cannot change it once set. A Price left
+# `unspecified` takes the account's default from the Tax settings instead.
 plans:
   pro:
     currency: usd
