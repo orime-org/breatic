@@ -960,9 +960,7 @@
     },
     "archived": {
       "banner": "이 Project는 보관되어 보기만 할 수 있습니다",
-      "restore": "복원",
-      "restored": "복원했습니다",
-      "restoreFailed": "복원하지 못했습니다"
+      "restore": "복원"
     }
   },
   "common": {

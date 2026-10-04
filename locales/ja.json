@@ -960,9 +960,7 @@
     },
     "archived": {
       "banner": "この Project はアーカイブ済みのため閲覧のみです",
-      "restore": "復元",
-      "restored": "復元しました",
-      "restoreFailed": "復元できませんでした"
+      "restore": "復元"
     }
   },
   "common": {

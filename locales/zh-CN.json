@@ -960,9 +960,7 @@
     },
     "archived": {
       "banner": "该 Project 已归档，只能查看",
-      "restore": "恢复",
-      "restored": "已恢复",
-      "restoreFailed": "恢复失败"
+      "restore": "恢复"
     }
   },
   "common": {

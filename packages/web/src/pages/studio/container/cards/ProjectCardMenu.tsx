@@ -12,12 +12,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
+import { useProjectActions } from '@web/features/project-manage/use-project-actions';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { useRenameProject } from '@web/pages/project/use-rename-project';
 import { ArchiveProjectDialog } from '@web/pages/studio/container/cards/ArchiveProjectDialog';
 import { RenameProjectDialog } from '@web/pages/studio/container/cards/RenameProjectDialog';
-import { useProjectCardActions } from '@web/pages/studio/container/cards/use-project-card-actions';
 import { useProjectCover } from '@web/pages/studio/container/cards/use-project-cover';
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
 import { ImageCropDialog } from '@web/pages/studio/container/dialogs/ImageCropDialog';
@@ -35,17 +35,15 @@ interface ProjectCardMenuProps {
  * @returns True when at least one entry would show.
  */
 export function hasCardMenu(project: ContainerProject): boolean {
-  return project.archivedAt === null
-    ? project.canManageMeta || project.canDuplicate || project.canArchive
-    : project.canRestore;
+  return project.canManageMeta || project.canDuplicate || project.canArchive || project.canRestore;
 }
 
 /**
- * The `⋯` menu on a project card. Which entries show is the server's answer
- * (the four `can*` flags), not a role check made here:
- * - a live card: rename and upload cover (`canManageMeta`), duplicate
- *   (`canDuplicate`), then archive (`canArchive`) after a separator;
- * - an archived card: restore (`canRestore`) and nothing else.
+ * The `⋯` menu on a project card. Which entries show is the server's answer,
+ * one flag per entry: rename and upload cover (`canManageMeta`), duplicate
+ * (`canDuplicate`), archive (`canArchive`, after a separator) and restore
+ * (`canRestore`). The server sends restore alone on an archived card and the
+ * other three only on a live one.
  *
  * Render it only when {@link hasCardMenu} says there is something to show.
  *
@@ -66,9 +64,8 @@ export function ProjectCardMenu({ project, studioSlug }: ProjectCardMenuProps): 
   const [confirmingArchive, setConfirmingArchive] = React.useState(false);
   const cover = useProjectCover(project.id, studioSlug);
   const rename = useRenameProject(project.id);
-  const actions = useProjectCardActions(project.id, studioSlug);
+  const actions = useProjectActions(project.id);
   const { reset, done } = cover;
-  const archived = project.archivedAt !== null;
 
   const handlePick = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
@@ -123,47 +120,42 @@ export function ProjectCardMenu({ project, studioSlug }: ProjectCardMenuProps): 
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align='end' data-testid='project-card-menu'>
-          {archived ? (
-            project.canRestore ? (
-              <DropdownMenuItem onSelect={runRestore} disabled={actions.pending}>
-                <ArchiveRestore className='h-4 w-4' />
-                {t('studio.container.card.restore')}
-              </DropdownMenuItem>
-            ) : null
-          ) : (
+          {project.canManageMeta ? (
             <>
-              {project.canManageMeta ? (
-                <>
-                  <DropdownMenuItem onSelect={openRename}>
-                    <Pencil className='h-4 w-4' />
-                    {t('studio.container.card.rename')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={openPicker}>
-                    <ImageUp className='h-4 w-4' />
-                    {t('studio.container.cover.menuUpload')}
-                  </DropdownMenuItem>
-                </>
-              ) : null}
-              {project.canDuplicate ? (
-                <DropdownMenuItem onSelect={runDuplicate} disabled={actions.pending}>
-                  <Copy className='h-4 w-4' />
-                  {t('studio.container.card.duplicate')}
-                </DropdownMenuItem>
-              ) : null}
-              {project.canArchive ? (
-                <>
-                  {project.canManageMeta || project.canDuplicate ? <DropdownMenuSeparator /> : null}
-                  <DropdownMenuItem onSelect={openArchive} disabled={actions.pending}>
-                    <Archive className='h-4 w-4' />
-                    {t('studio.container.card.archive')}
-                  </DropdownMenuItem>
-                </>
-              ) : null}
+              <DropdownMenuItem onSelect={openRename}>
+                <Pencil className='h-4 w-4' />
+                {t('studio.container.card.rename')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={openPicker}>
+                <ImageUp className='h-4 w-4' />
+                {t('studio.container.cover.menuUpload')}
+              </DropdownMenuItem>
             </>
-          )}
+          ) : null}
+          {project.canDuplicate ? (
+            <DropdownMenuItem onSelect={runDuplicate} disabled={actions.pending}>
+              <Copy className='h-4 w-4' />
+              {t('studio.container.card.duplicate')}
+            </DropdownMenuItem>
+          ) : null}
+          {project.canArchive ? (
+            <>
+              {project.canManageMeta || project.canDuplicate ? <DropdownMenuSeparator /> : null}
+              <DropdownMenuItem onSelect={openArchive} disabled={actions.pending}>
+                <Archive className='h-4 w-4' />
+                {t('studio.container.card.archive')}
+              </DropdownMenuItem>
+            </>
+          ) : null}
+          {project.canRestore ? (
+            <DropdownMenuItem onSelect={runRestore} disabled={actions.pending}>
+              <ArchiveRestore className='h-4 w-4' />
+              {t('studio.container.card.restore')}
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
-      {project.canManageMeta && !archived ? (
+      {project.canManageMeta ? (
         <>
           <input
             ref={inputRef}
@@ -189,7 +181,7 @@ export function ProjectCardMenu({ project, studioSlug }: ProjectCardMenuProps): 
           />
         </>
       ) : null}
-      {project.canArchive && !archived ? (
+      {project.canArchive ? (
         <ArchiveProjectDialog
           open={confirmingArchive}
           onOpenChange={setConfirmingArchive}

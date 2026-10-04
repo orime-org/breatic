@@ -960,9 +960,7 @@
     },
     "archived": {
       "banner": "This project is archived and can only be viewed",
-      "restore": "Restore",
-      "restored": "Restored",
-      "restoreFailed": "Couldn't restore"
+      "restore": "Restore"
     }
   },
   "common": {

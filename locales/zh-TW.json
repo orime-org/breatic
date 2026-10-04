@@ -960,9 +960,7 @@
     },
     "archived": {
       "banner": "這個 Project 已封存，只能檢視",
-      "restore": "還原",
-      "restored": "已還原",
-      "restoreFailed": "還原失敗"
+      "restore": "還原"
     }
   },
   "common": {

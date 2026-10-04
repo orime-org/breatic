@@ -3,12 +3,12 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { projectsApi } from '@web/data/api/projects';
+import { isStudioProjectsListKey, projectsApi } from '@web/data/api';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 
-/** The card menu's server-side actions, each settling with a toast. */
-export interface ProjectCardActions {
+/** A project's server-side management actions, each settling with a toast. */
+export interface ProjectActions {
   duplicate: () => void;
   archive: () => void;
   restore: () => void;
@@ -17,19 +17,18 @@ export interface ProjectCardActions {
 }
 
 /**
- * Duplicate, archive and restore for one project card.
+ * Duplicate, archive and restore for one project — from its studio card, and
+ * restore also from the banner inside the archived project.
  *
  * Every one of them changes which list a project sits in, so each success
- * refetches both of the studio's lists (live and archived share the
- * `['studio', slug, 'projects']` prefix), the Recent landing, and the project's
- * own detail for anyone who has it open. A failure toasts the server's
- * sentence, which names the reason (a full studio, an already-archived
- * project).
- * @param projectId - The project the card shows.
- * @param studioSlug - The studio whose lists the card sits in.
+ * refetches every studio's project lists (live and archived; the banner does
+ * not know the studio's slug), the Recent landing, and the project's own
+ * detail for anyone who has it open. A failure toasts the server's sentence,
+ * which names the reason (a full studio, an already-archived project).
+ * @param projectId - The project.
  * @returns The three actions and whether one is running.
  */
-export function useProjectCardActions(projectId: string, studioSlug: string): ProjectCardActions {
+export function useProjectActions(projectId: string): ProjectActions {
   const t = useTranslation();
   const queryClient = useQueryClient();
 
@@ -37,7 +36,9 @@ export function useProjectCardActions(projectId: string, studioSlug: string): Pr
    * Refetch everything that shows which list this project is in.
    */
   const refresh = (): void => {
-    void queryClient.invalidateQueries({ queryKey: ['studio', studioSlug, 'projects'] });
+    void queryClient.invalidateQueries({
+      predicate: (query) => isStudioProjectsListKey(query.queryKey),
+    });
     void queryClient.invalidateQueries({ queryKey: ['studios', 'recent'] });
     void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
   };

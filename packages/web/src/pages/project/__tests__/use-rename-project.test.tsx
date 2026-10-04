@@ -6,17 +6,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-vi.mock('@web/data/api/projects', () => ({
+vi.mock('@web/data/api/projects', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/projects')>()),
   projectsApi: { rename: vi.fn() },
 }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
-import { projectsApi } from '@web/data/api/projects';
+import { isStudioProjectsListKey, projectsApi } from '@web/data/api/projects';
 import { toast } from 'sonner';
 import { t } from '@breatic/shared';
-import {
-  isStudioProjectsListKey,
-  useRenameProject,
-} from '@web/pages/project/use-rename-project';
+import { useRenameProject } from '@web/pages/project/use-rename-project';
 
 // ── pure predicate (the matching logic the bug got wrong) ──────────────────
 describe('isStudioProjectsListKey (spec: studio container projects list key)', () => {

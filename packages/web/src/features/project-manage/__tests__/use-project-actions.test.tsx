@@ -6,7 +6,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-vi.mock('@web/data/api/projects', () => ({
+vi.mock('@web/data/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api')>()),
   projectsApi: {
     duplicate: vi.fn(),
     archive: vi.fn(),
@@ -17,14 +18,16 @@ vi.mock('@web/lib/toast', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-import { projectsApi } from '@web/data/api/projects';
+import { projectsApi } from '@web/data/api';
 import { toast } from '@web/lib/toast';
 import { ApiException } from '@web/data/api/types';
-import { useProjectCardActions } from '@web/pages/studio/container/cards/use-project-card-actions';
+import { useProjectActions } from '@web/features/project-manage/use-project-actions';
 
+// Every studio's lists: the in-project banner does not know the studio's slug.
 const LISTS = [
   ['studio', 'acme', 'projects'],
   ['studio', 'acme', 'projects', 'archived'],
+  ['studio', 'other', 'projects', 'archived'],
   ['studios', 'recent'],
   ['project', 'p1'],
 ] as const;
@@ -32,7 +35,7 @@ const LISTS = [
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   for (const key of LISTS) client.setQueryData([...key], []);
-  const { result } = renderHook(() => useProjectCardActions('p1', 'acme'), {
+  const { result } = renderHook(() => useProjectActions('p1'), {
     wrapper: ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     ),
@@ -44,9 +47,9 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('useProjectCardActions', () => {
+describe('useProjectActions', () => {
   for (const action of ['duplicate', 'archive', 'restore'] as const) {
-    it(`${action} refreshes both studio lists, the Recent landing and the project`, async () => {
+    it(`${action} refreshes every studio's lists, the Recent landing and the project`, async () => {
       vi.mocked(projectsApi[action]).mockResolvedValue({ name: 'Copy' } as never);
       const { client, result } = setup();
 
