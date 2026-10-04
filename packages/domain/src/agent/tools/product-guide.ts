@@ -219,8 +219,15 @@ export function renderProductGuide(): string {
       "chip that could not be uploaded or read shows a red mark and says why; it has to be removed with its X before " +
       "the message can go. Something that cannot be attached at all -- too many items, a file too large or of a " +
       `kind that is not taken, or ${quoted(t("chat.composer.attachTooLong"))} -- is said on a line beside the ` +
-      "plus sign. Dropping or pasting a file into the box attaches nothing. A sent message cannot be edited and a " +
+      "plus sign. Pasting canvas nodes copied on the canvas, or a picture copied in this chat, into the box " +
+      "attaches them too. A sent message cannot be edited and a " +
       "reply cannot be regenerated: to ask again, send another message.",
+    "Typing @ in the box opens a list, just above the @, of the attachments that have finished uploading; it " +
+      `reads ${quoted(t("chat.composer.atEmpty"))} when there are none and ${quoted(t("chat.composer.atNoMatch"))} ` +
+      "when what is typed after the @ matches none. Typing narrows it, the arrow keys move through it, Enter or " +
+      "Tab puts the highlighted one into the text as a small block with its name, and Escape closes it. One " +
+      "Backspace removes a block, and removing an attachment removes its blocks. The message is sent with " +
+      "those references, so it is clear which attachment each one means.",
     "While a reply is being written a small dot pulses at its end. Hovering a message the reader sent shows " +
       "when it was sent and a copy icon. A reply may start with a fold " +
       `that opens to show the thinking; it reads ${quoted(t("chat.thinkingNow"))} while the thinking runs, and ` +
