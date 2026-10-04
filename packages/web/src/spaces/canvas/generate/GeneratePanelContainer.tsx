@@ -492,7 +492,13 @@ function GeneratePanelBody({
   // t2i flip — killing it would strand the user mid-pick. The mode can flip
   // locally or via a collaborator writing setNodeMode, so react to vm.mode,
   // not just the toggle.
+  //
+  // Only to a change of it: effects run again when a hidden Space is shown
+  // (inner#1235), and a mode that did not change ends nothing.
+  const modeSeen = React.useRef(vm.mode);
   React.useEffect(() => {
+    if (modeSeen.current === vm.mode) return;
+    modeSeen.current = vm.mode;
     const session = sessionStore.getState().pickSession;
     if (
       !imageModeTakesReferences(vm.mode) &&

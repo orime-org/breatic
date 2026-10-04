@@ -15,7 +15,7 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
 import type { ModelCatalog, ModelEntry } from '@breatic/shared';
-import type { ReactNode } from 'react';
+import { Activity, type ReactNode } from 'react';
 
 vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
@@ -321,6 +321,11 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     const { rerender } = render(modeTree(client, 'i2i'));
     act(() => {
       canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+    });
+    // The panel has to be up in i2i before the pick starts, or the change to
+    // t2i below is the panel's first render rather than a change of mode.
+    await screen.findByTestId('generate-tool-focus');
+    act(() => {
       canvasSessions.of('s').getState().startFocusPick('target');
     });
     await waitFor(() =>
@@ -341,6 +346,42 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     listSpy.mockRestore();
   });
 
+  // A Space switched away from is hidden, and showing it again runs every
+  // effect once more (inner#1235). The mode did not change across that, so a
+  // focus pick the reader left running in t2i is still theirs when they come
+  // back, the way a reference or style pick is.
+  it('keeps a focus pick running in t2i across a hide and a show', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([T2I_MODEL, I2I_MODEL]));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const inSpace = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+      <Activity mode={mode}>{modeTree(client, 't2i')}</Activity>
+    );
+    const { rerender } = render(inSpace('visible'));
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().startFocusPick('target');
+    });
+    await waitFor(() =>
+      expect(canvasSessions.of('s').getState().pickSession?.purpose).toBe('focus'),
+    );
+    vi.mocked(toast.warning).mockClear();
+
+    await act(async () => {
+      rerender(inSpace('hidden'));
+    });
+    await act(async () => {
+      rerender(inSpace('visible'));
+    });
+
+    expect(canvasSessions.of('s').getState().pickSession?.purpose).toBe('focus');
+    expect(toast.warning).not.toHaveBeenCalled();
+    listSpy.mockRestore();
+  });
+
   // The same ending, worded for the other author. A mode change reaching this
   // client through the document is either its own write coming back or news
   // from a collaborator, and the message differs: one is "you did this", the
@@ -357,6 +398,11 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     const { rerender } = render(modeTree(client, 'i2i', byPeer));
     act(() => {
       canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+    });
+    // The panel has to be up in i2i before the pick starts, or the change to
+    // t2i below is the panel's first render rather than a change of mode.
+    await screen.findByTestId('generate-tool-focus');
+    act(() => {
       canvasSessions.of('s').getState().startFocusPick('target');
     });
     await waitFor(() =>
