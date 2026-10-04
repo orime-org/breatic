@@ -511,13 +511,18 @@ export async function duplicate(
 /**
  * Name a copy in the reader's language, the copy mark in front so it shows
  * even when a card cuts a long name short. The source name is shortened so
- * the whole stays within the column; counted in characters, as the column is.
+ * the whole stays within the project name limit, counted as that limit is,
+ * without splitting a character in two.
  * @param sourceName - The name of the project being copied
  * @returns The copy's name
  */
 function copyName(sourceName: string): string {
-  const markLength = [...t("server.project.copy_name", { name: "" })].length;
-  const kept = [...sourceName].slice(0, PROJECT_NAME_MAX_CHARS - markLength).join("");
+  const room = PROJECT_NAME_MAX_CHARS - t("server.project.copy_name", { name: "" }).length;
+  let kept = "";
+  for (const char of sourceName) {
+    if (kept.length + char.length > room) break;
+    kept += char;
+  }
   return t("server.project.copy_name", { name: kept });
 }
 

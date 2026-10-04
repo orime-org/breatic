@@ -202,7 +202,16 @@ describe("duplicate", () => {
     await projectService.update(s.projectId, s.ownerId, { name: long });
     const copy = await runWithLocale("en", () => projectService.duplicate(s.projectId, s.ownerId));
     expect(copy.name.startsWith("Copy of 名")).toBe(true);
-    expect([...copy.name]).toHaveLength(255);
+    expect(copy.name).toHaveLength(255);
+  });
+
+  it("fits a copy of a name made of emoji within what a rename accepts", async () => {
+    const s = await seedScene();
+    await projectService.update(s.projectId, s.ownerId, { name: "😀".repeat(127) });
+    const copy = await runWithLocale("en", () => projectService.duplicate(s.projectId, s.ownerId));
+    expect(copy.name.length).toBeLessThanOrEqual(255);
+    expect(copy.name.endsWith("😀")).toBe(true);
+    await projectService.update(copy.id, s.ownerId, { name: copy.name.slice(0, -2) });
   });
 
   it("is refused to an editor and to a viewer", async () => {

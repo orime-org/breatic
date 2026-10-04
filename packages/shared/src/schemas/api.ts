@@ -359,7 +359,12 @@ export type NodeHistorySnapshotInput = z.infer<
 
 // ── Projects ─────────────────────────────────────────────────────────
 
-/** The longest project name, in characters; the `projects.name` column holds this many. */
+/**
+ * The longest project name, counted in UTF-16 code units as zod's `.max` and an
+ * input's `maxLength` count. The `projects.name` column counts characters, of
+ * which a string never has more than code units, so it always holds a name
+ * within this limit.
+ */
 export const PROJECT_NAME_MAX_CHARS = 255;
 
 export const projectCreateSchema = z.object({
