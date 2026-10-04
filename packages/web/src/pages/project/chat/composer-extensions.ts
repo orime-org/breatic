@@ -6,8 +6,8 @@ import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
 import Placeholder from '@tiptap/extension-placeholder';
 import Text from '@tiptap/extension-text';
+import { UndoRedo } from '@tiptap/extensions';
 import { splitBlock } from '@tiptap/pm/commands';
-import { history, redo, undo } from '@tiptap/pm/history';
 import { Plugin, type Transaction } from '@tiptap/pm/state';
 import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
@@ -16,21 +16,6 @@ import { MACHINE_EDIT_META } from '@web/features/reference-mention/reference-men
 import { ChatReference } from '@web/pages/project/chat/chat-reference';
 import { draftLength, followAttachments } from '@web/pages/project/chat/composer-draft';
 import type { TrayItem } from '@web/stores/chat-attachments';
-
-/** Undo and redo for a box with no collaboration behind it. */
-const ComposerHistory = Extension.create({
-  name: 'composerHistory',
-  addProseMirrorPlugins() {
-    return [history()];
-  },
-  addKeyboardShortcuts() {
-    return {
-      'Mod-z': () => undo(this.editor.state, this.editor.view.dispatch),
-      'Mod-Shift-z': () => redo(this.editor.state, this.editor.view.dispatch),
-      'Mod-y': () => redo(this.editor.state, this.editor.view.dispatch),
-    };
-  },
-});
 
 /** What the chat box reads live and reports. */
 export interface ComposerWiring {
@@ -119,7 +104,7 @@ export function composerExtensions(wiring: ComposerWiring): AnyExtension[] {
     Document,
     Paragraph,
     Text,
-    ComposerHistory,
+    UndoRedo,
     Placeholder.configure({ placeholder: wiring.placeholder }),
     ChatReference.configure({
       isAttached: (id) => wiring.attachments().some((a) => a.id === id),

@@ -433,6 +433,24 @@ describe('@ in the chat box', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it('undoes with Mod+Z and redoes with Shift as well', () => {
+    setup();
+    type('abc');
+    // Mod is Cmd on a Mac and Ctrl elsewhere; this environment is not a Mac.
+    const key = (extra: KeyboardEventInit): void => {
+      act(() => {
+        box().view.dom.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true, ...extra }),
+        );
+      });
+    };
+
+    key({});
+    expect(box().state.doc.textContent).toBe('');
+    key({ shiftKey: true });
+    expect(box().state.doc.textContent).toBe('abc');
+  });
+
   it('copies a block as its name in plain text', () => {
     setup({ draft: `look at ${attachmentMarker('a1')} please`, attachments: [cover] });
     act(() => box().commands.selectAll());
