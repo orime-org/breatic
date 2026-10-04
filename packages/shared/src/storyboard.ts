@@ -12,6 +12,7 @@
  * its shots are written into the prompt instead.
  */
 
+import { appliesInMode } from "@shared/param-modes.js";
 import type { ParamDescriptor } from "@shared/types/model-catalog.js";
 
 /** The mode a node's shots belong to. */
@@ -45,16 +46,6 @@ export interface StoryboardSpec {
 }
 
 /**
- * Whether a declared param applies in a mode.
- * @param spec - The param's declaration.
- * @param mode - The mode.
- * @returns True when it names no modes or names this one.
- */
-function appliesIn(spec: ParamDescriptor, mode: string): boolean {
-  return spec.modes === undefined || spec.modes.includes(mode);
-}
-
-/**
  * The storyboard a model declares for a mode: its `fill: storyboard` list
  * param and the `fill: storyboard` param beside it that names the tier. Only
  * the multi-shot mode has one.
@@ -68,7 +59,7 @@ export function storyboardSpec(
 ): StoryboardSpec | undefined {
   if (mode !== MULTI_SHOT_MODE) return undefined;
   const entries = Object.entries(params).filter(
-    ([, spec]) => spec.fill === "storyboard" && appliesIn(spec, mode),
+    ([, spec]) => spec.fill === "storyboard" && appliesInMode(spec, mode),
   );
   const shots = entries.find(([, spec]) => spec.type === "items");
   if (shots === undefined) return undefined;
@@ -116,10 +107,12 @@ function writeShots(template: string, shots: readonly StoryboardShotInput[]): st
     .map((shot, index) => {
       const end = start + shot.duration;
       const line = template
-        .replaceAll("{n}", String(index + 1))
-        .replaceAll("{start}", String(start))
-        .replaceAll("{end}", String(end))
-        .replaceAll("{prompt}", shot.prompt);
+        // Function replacements: a string one reads `$&`, `$$` and the like
+        // in the reader's words as patterns.
+        .replaceAll("{n}", () => String(index + 1))
+        .replaceAll("{start}", () => String(start))
+        .replaceAll("{end}", () => String(end))
+        .replaceAll("{prompt}", () => shot.prompt);
       start = end;
       return line;
     })
@@ -148,25 +141,4 @@ export function storyboardSend(spec: StoryboardSpec, shots: readonly StoryboardS
     },
     prompt: undefined,
   };
-}
-
-/**
- * The stored params a run in this mode keeps: params are stored per model, so
- * one set in another mode is still in the record and is dropped here.
- * @param params - The params stored for the model.
- * @param declared - The model's params.
- * @param mode - The mode the run is in.
- * @returns The params without those declared only for other modes.
- */
-export function paramsForMode(
-  params: Readonly<Record<string, unknown>>,
-  declared: Readonly<Record<string, ParamDescriptor>>,
-  mode: string,
-): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(params).filter(([name]) => {
-      const spec = declared[name];
-      return spec === undefined || appliesIn(spec, mode);
-    }),
-  );
 }

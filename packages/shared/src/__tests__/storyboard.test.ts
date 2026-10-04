@@ -7,9 +7,9 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { paramsForMode } from "@shared/param-modes.js";
 import {
   MULTI_SHOT_MAX_SHOTS,
-  paramsForMode,
   storyboardSend,
   storyboardSpec,
 } from "@shared/storyboard.js";
@@ -120,6 +120,17 @@ describe("what a multi-shot run sends", () => {
       params: {},
       prompt: "Shot 1 [0-2s]: a paper boat\nShot 2 [2-5s]: the pond at dusk",
     });
+  });
+});
+
+describe("the words a shot carries into the prompt", () => {
+  it("are written as typed, whatever dollar signs they hold", () => {
+    const spec = storyboardSpec(seedance, "multi_shot")!;
+    const sent = storyboardSend(spec, [
+      { prompt: "a sign reads $$9.99", duration: 2 },
+      { prompt: "price tag $& and $` and $'", duration: 3 },
+    ]);
+    expect(sent.prompt).toBe("Shot 1 [0-2s]: a sign reads $$9.99\nShot 2 [2-5s]: price tag $& and $` and $'");
   });
 });
 

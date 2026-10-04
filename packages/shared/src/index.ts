@@ -391,11 +391,11 @@ export {
   retotal,
   stepShot,
 } from "@shared/storyboard-durations.js";
-export { modelLabel, type NamedModel } from "@shared/model-label.js";
+export { modelLabel, modelLabelParts, type ModelLabelParts, type NamedModel } from "@shared/model-label.js";
+export { appliesInMode, paramsForMode } from "@shared/param-modes.js";
 export {
   MULTI_SHOT_MAX_SHOTS,
   MULTI_SHOT_MODE,
-  paramsForMode,
   storyboardSend,
   storyboardSpec,
 } from "@shared/storyboard.js";
