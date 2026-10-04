@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
+import { Activity } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlowProvider } from '@xyflow/react';
 
@@ -137,6 +138,37 @@ function holdADraft(
     target: use === 'edit' ? { kind: 'body' } : null,
   });
 }
+
+describe('an open sticky across a switch of Space', () => {
+  // inner#1235 A14: a Space switched away from is hidden, not left. The note
+  // stays expanded and a rewrite half written stays held; only closing the
+  // tab drops them, and that drops this canvas's whole session.
+  it('stays expanded with its rewrite held when its Space is hidden and shown', () => {
+    holdADraft('typing', 'edit');
+    const inSpace = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+      <Activity mode={mode}>{tree(NODES)}</Activity>
+    );
+    const view = render(inSpace('visible'));
+
+    act(() => view.rerender(inSpace('hidden')));
+    act(() => view.rerender(inSpace('visible')));
+
+    expect(stillOpen()).toBe(true);
+    expect(canvasSessions.of('s1').getState().annotationDrafts['n1']).toBeDefined();
+  });
+
+  it('collapses the note it leaves when another note is opened', () => {
+    const board = [...NODES, { ...NODES[0], id: 'n2' } as CanvasNodeView];
+    holdADraft('typing', 'edit');
+    const view = mount(board);
+
+    act(() => canvasSessions.of('s1').getState().openAnnotationPanel('n2'));
+    view.rerender(tree(board));
+
+    expect(canvasSessions.of('s1').getState().annotationDrafts['n1']).toBeUndefined();
+    expect(canvasSessions.of('s1').getState().panelHostId).toBe('n2');
+  });
+});
 
 describe('a note that goes missing under an open sticky', () => {
   it('says so when a collaborator deleted it while somebody was writing', () => {
