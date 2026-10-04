@@ -21,12 +21,12 @@ import { EditorState, Selection, TextSelection } from '@tiptap/pm/state';
 import { makeMentionSuggestion } from '@web/features/reference-mention/mention-suggestion';
 import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
 import { useTranslation } from '@web/i18n/use-translation';
+import { AttachmentKindIcon } from '@web/pages/project/chat/AttachmentChip';
 import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
 import { chatReferenceContent } from '@web/pages/project/chat/chat-reference';
 import { ATTACHMENTS_CHANGED_META, composerExtensions } from '@web/pages/project/chat/composer-extensions';
 import { draftContent, draftOf } from '@web/pages/project/chat/composer-draft';
 import { parseClipboardNodes, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
-import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import type { TrayItem } from '@web/stores/chat-attachments';
 
 /** What the box is told and what it reports. */
@@ -287,10 +287,9 @@ function labelOf(item: TrayItem): string {
  * @returns The row's content.
  */
 function AttachmentRow({ item, label }: { item: TrayItem; label: string }): React.JSX.Element {
-  const Icon = getNodeIcon(item.type === 'canvas' ? 'group' : item.type);
   return (
     <>
-      <Icon className='h-3 w-3 shrink-0 text-muted-foreground' aria-hidden='true' />
+      <AttachmentKindIcon type={item.type} />
       <span className='truncate'>{label}</span>
     </>
   );

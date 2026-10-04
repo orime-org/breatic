@@ -86,6 +86,17 @@ function press(key: string): void {
   });
 }
 
+/**
+ * Lets a block's view render: TipTap draws a React node view a microtask after
+ * the edit that made it, before the browser paints.
+ * @returns Resolves once it has.
+ */
+async function settle(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
+
 describe('@ in the chat box', () => {
   it('lists the attached items that are ready', async () => {
     setup({ attachments: [cover, pending] });
@@ -109,6 +120,7 @@ describe('@ in the chat box', () => {
     press('ArrowDown');
     press('Enter');
 
+    await settle();
     expect(screen.getByTestId('chat-reference')).toHaveTextContent('brief.pdf');
     expect(onChange).toHaveBeenLastCalledWith(expect.stringContaining(attachmentMarker('a2')));
     expect(onChange.mock.lastCall?.[0]).not.toContain('@ ');
@@ -124,9 +136,10 @@ describe('@ in the chat box', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('takes the block out the moment its attachment is removed', () => {
+  it('takes the block out the moment its attachment is removed', async () => {
     const draft = `look ${attachmentMarker('a1')} here`;
     const { onChange, rerender } = setup({ draft, attachments: [cover] });
+    await settle();
     expect(screen.getByTestId('chat-reference')).toBeInTheDocument();
 
     rerender({ draft, attachments: [] });
@@ -156,12 +169,13 @@ describe('@ in the chat box', () => {
     expect(screen.queryByTestId('chat-reference')).toBeNull();
   });
 
-  it('keeps the block and shows the new name when the attachment is replaced', () => {
+  it('keeps the block and shows the new name when the attachment is replaced', async () => {
     const draft = `look ${attachmentMarker('a1')}`;
     const { rerender } = setup({ draft, attachments: [cover] });
 
     rerender({ draft, attachments: [{ ...cover, name: 'cover-v2.png' }] });
 
+    await settle();
     expect(screen.getByTestId('chat-reference')).toHaveTextContent('cover-v2.png');
   });
 
@@ -276,6 +290,7 @@ describe('@ in the chat box', () => {
     };
     try {
       setup({ draft: `see ${attachmentMarker('b1')}`, attachments: [bare] });
+      await settle();
       const english = screen.getByTestId('chat-reference').textContent;
 
       await act(async () => {
@@ -300,7 +315,7 @@ describe('@ in the chat box', () => {
     expect(onChange).toHaveBeenLastCalledWith(`${'y'.repeat(9_997)}\u{1F600}o`);
   });
 
-  it('keeps a pasted block, counted as one with its spaces, when the paste is cut', () => {
+  it('keeps a pasted block, counted as one with its spaces, when the paste is cut', async () => {
     const { onChange } = setup({ draft: 'y'.repeat(9_990), attachments: [cover] });
     act(() => {
       box().commands.focus('end');
@@ -308,6 +323,7 @@ describe('@ in the chat box', () => {
     });
 
     expect(String(onChange.mock.lastCall?.[0]).slice(9_990)).toBe(`ab ${attachmentMarker('a1')} cdefg`);
+    await settle();
     expect(screen.getByTestId('chat-reference')).toHaveTextContent('cover.png');
   });
 
@@ -380,6 +396,7 @@ describe('@ in the chat box', () => {
         box().view.pasteHTML('<span data-reference-mention="" data-source-id="b1">Image</span>');
       });
 
+      await settle();
       expect(screen.getByTestId('chat-reference').textContent).not.toBe('Image');
       expect(screen.getByTestId('chat-reference').textContent).not.toBe('');
     } finally {
@@ -389,7 +406,7 @@ describe('@ in the chat box', () => {
     }
   });
 
-  it('shows the current name on a block an undo brings back', () => {
+  it('shows the current name on a block an undo brings back', async () => {
     const draft = `look ${attachmentMarker('a1')}`;
     const { onChange, rerender } = setup({ draft, attachments: [cover] });
     act(() => {
@@ -407,6 +424,7 @@ describe('@ in the chat box', () => {
       undo(e.state, e.view.dispatch);
     });
 
+    await settle();
     expect(screen.getByTestId('chat-reference')).toHaveTextContent('cover-v2.png');
   });
 
@@ -525,7 +543,7 @@ describe('@ in the chat box', () => {
     expect(box().state.doc.childCount).toBe(2);
   });
 
-  it('names the blocks a draft starts with, once, under StrictMode', () => {
+  it('names the blocks a draft starts with, once, under StrictMode', async () => {
     const onChange = vi.fn();
     render(
       <React.StrictMode>
@@ -534,6 +552,7 @@ describe('@ in the chat box', () => {
       </React.StrictMode>,
     );
 
+    await settle();
     expect(screen.getByTestId('chat-reference')).toHaveTextContent('cover.png');
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -632,8 +651,9 @@ describe('@ in the chat box', () => {
     expect(row !== null && row.closest<HTMLElement>('body > div')?.style.display !== 'none').toBe(false);
   });
 
-  it('marks a block with its kind as an icon, and previews the attachment on hover', () => {
+  it('marks a block with its kind as an icon, and previews the attachment on hover', async () => {
     setup({ draft: `see ${attachmentMarker('a1')} `, attachments: [cover] });
+    await settle();
     const block = screen.getByTestId('chat-reference');
     expect(block.querySelector('svg')).not.toBeNull();
     expect(block.textContent).toBe('cover.png');

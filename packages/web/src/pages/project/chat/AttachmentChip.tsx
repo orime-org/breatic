@@ -59,21 +59,12 @@ function AttachmentChipInner({
   testId,
 }: AttachmentChipProps): React.JSX.Element {
   const t = useTranslation();
-  const preview = React.useMemo(() => previewOf(chip), [chip]);
   // Only the kind and name open the preview: the remove button is a different
   // control, and it takes the keyboard when a neighbouring card is removed.
   // Wrapped whether or not there is anything to show yet, so the label keeps
   // its element when an upload finishes.
   const label = (
-    <HoverPreview
-      kind={preview && preview.kind !== 'nodes' ? preview.kind : 'image'}
-      src={preview && 'src' in preview ? preview.src : undefined}
-      poster={preview?.kind === 'video' ? preview.poster : undefined}
-      text={preview?.kind === 'text' ? preview.text : undefined}
-      body={preview?.kind === 'nodes' ? <NodeRows rows={preview.rows} more={preview.more} /> : undefined}
-      alt={name}
-      side='top'
-    >
+    <AttachmentHover chip={chip} name={name}>
       <span className='inline-flex min-w-0 items-center gap-1'>
         {status === 'uploading' ? (
           <Loader2
@@ -85,16 +76,14 @@ function AttachmentChipInner({
           // reach 4.5:1 at this size. The border, tint and icon carry the red.
           <AlertCircle className='h-3 w-3 shrink-0 text-status-error-foreground' aria-hidden='true' />
         ) : (
-          <span className='shrink-0 text-2xs text-muted-foreground'>
-            {t('chat.attachment.kind', { kind: type })}
-          </span>
+          <AttachmentKindIcon type={type} />
         )}
         <span className='truncate'>{attachmentLabel(t, { name, type, chip })}</span>
         {status === 'failed' && failure ? (
           <span className='shrink-0'>{t('chat.composer.attachmentFailed', { reason: failure })}</span>
         ) : null}
       </span>
-    </HoverPreview>
+    </AttachmentHover>
   );
   return (
     <span
@@ -125,6 +114,52 @@ function AttachmentChipInner({
         </Button>
       ) : null}
     </span>
+  );
+}
+
+/**
+ * An attachment's kind, as the icon it has wherever it is shown: on its card,
+ * in the `@` list, as a block in the words.
+ * @param root0 - The component props.
+ * @param root0.type - What kind of thing it is.
+ * @returns The icon.
+ */
+export function AttachmentKindIcon({ type }: { type: ChatAttachedChip['type'] }): React.JSX.Element {
+  const Icon = getNodeIcon(type === 'canvas' ? 'group' : type);
+  return <Icon className='h-3 w-3 shrink-0 text-muted-foreground' aria-hidden='true' />;
+}
+
+/**
+ * What hovering an attachment shows, wherever it is shown: its card and a
+ * block that refers to it open the same preview.
+ * @param root0 - The component props.
+ * @param root0.chip - What is sent for the item, once it has it.
+ * @param root0.name - What the reader sees it called.
+ * @param root0.children - What opens the preview.
+ * @returns The hover target.
+ */
+export function AttachmentHover({
+  chip,
+  name,
+  children,
+}: {
+  chip: ChatAttachedChip | undefined;
+  name: string;
+  children: React.ReactElement;
+}): React.JSX.Element {
+  const preview = React.useMemo(() => previewOf(chip), [chip]);
+  return (
+    <HoverPreview
+      kind={preview && preview.kind !== 'nodes' ? preview.kind : 'image'}
+      src={preview && 'src' in preview ? preview.src : undefined}
+      poster={preview?.kind === 'video' ? preview.poster : undefined}
+      text={preview?.kind === 'text' ? preview.text : undefined}
+      body={preview?.kind === 'nodes' ? <NodeRows rows={preview.rows} more={preview.more} /> : undefined}
+      alt={name}
+      side='top'
+    >
+      {children}
+    </HoverPreview>
   );
 }
 

@@ -13,7 +13,12 @@ import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { attachmentMarker, messageLength, messageSegments } from '@breatic/shared';
 
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
-import { CHAT_REFERENCE_LABEL_ATTR, chatReferenceContent } from '@web/pages/project/chat/chat-reference';
+import {
+  CHAT_REFERENCE_KIND_ATTR,
+  CHAT_REFERENCE_LABEL_ATTR,
+  CHAT_REFERENCE_READY_ATTR,
+  chatReferenceContent,
+} from '@web/pages/project/chat/chat-reference';
 import type { TrayItem } from '@web/stores/chat-attachments';
 
 /**
@@ -69,7 +74,8 @@ export function draftLength(doc: PMNode, attached: ReadonlyArray<{ readonly id: 
 /**
  * Brings every block in line with what is attached: a block whose attachment
  * left goes, on its own (the spaces around it are the reader's words), and
- * the rest show their attachment's name as it reads now.
+ * the rest show their attachment's name as it reads now, its kind, and
+ * whether it is ready.
  * @param state - The box's state.
  * @param attached - What is attached.
  * @param labelOf - The name an attachment shows.
@@ -87,8 +93,15 @@ export function followAttachments(
     if (node.type.name !== REFERENCE_MENTION_NODE) return;
     const item = byId.get(String(node.attrs[MENTION_SOURCE_ID_ATTR]));
     if (!item) stale.push(pos);
-    else if (node.attrs[CHAT_REFERENCE_LABEL_ATTR] !== labelOf(item)) {
-      tr.setNodeAttribute(pos, CHAT_REFERENCE_LABEL_ATTR, labelOf(item));
+    else {
+      const shown = {
+        [CHAT_REFERENCE_LABEL_ATTR]: labelOf(item),
+        [CHAT_REFERENCE_KIND_ATTR]: item.type,
+        [CHAT_REFERENCE_READY_ATTR]: item.status === 'ready',
+      };
+      for (const [attr, value] of Object.entries(shown)) {
+        if (node.attrs[attr] !== value) tr.setNodeAttribute(pos, attr, value);
+      }
     }
   });
   // Last first, so each deletion leaves the earlier positions where they were.

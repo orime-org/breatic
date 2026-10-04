@@ -5,6 +5,7 @@ import * as React from 'react';
 import { resolvedSegments, type ChatAttachedChip } from '@breatic/shared';
 
 import { useTranslation } from '@web/i18n/use-translation';
+import { AttachmentHover, AttachmentKindIcon } from '@web/pages/project/chat/AttachmentChip';
 import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
 import { REFERENCE_BLOCK_CLASS } from '@web/pages/project/chat/chat-reference';
 
@@ -30,9 +31,12 @@ export function UserWords({ content, attachments }: UserWordsProps): React.JSX.E
     <span className='whitespace-pre-wrap break-words'>
       {resolvedSegments(attachments ?? [], content).map((segment, i) =>
         segment.kind === 'reference' ? (
-          <span key={i} data-testid='message-reference' className={REFERENCE_BLOCK_CLASS}>
-            <span className='truncate'>{attachmentLabel(t, segment.chip)}</span>
-          </span>
+          <AttachmentHover key={i} chip={segment.chip} name={attachmentLabel(t, segment.chip)}>
+            <span data-testid='message-reference' className={REFERENCE_BLOCK_CLASS}>
+              <AttachmentKindIcon type={segment.chip.type} />
+              <span className='truncate'>{attachmentLabel(t, segment.chip)}</span>
+            </span>
+          </AttachmentHover>
         ) : (
           <React.Fragment key={i}>{segment.kind === 'text' ? segment.text : segment.marker}</React.Fragment>
         ),

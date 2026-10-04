@@ -202,6 +202,7 @@ export function composerExtensions(wiring: ComposerWiring): AnyExtension[] {
     Placeholder.configure({ placeholder: wiring.placeholder }),
     ChatReference.configure({
       isAttached: (id) => wiring.attachments().some((a) => a.id === id),
+      attachmentOf: (id) => wiring.attachments().find((a) => a.id === id),
     }),
     composerRules(wiring),
   ];
