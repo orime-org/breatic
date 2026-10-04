@@ -138,7 +138,9 @@ export function renderProductGuide(): string {
       "An item someone is waiting on, such as an invitation or a transfer, shows how long is left and " +
       `${quoted(t("notifications.openDecision"))}, which leaves this page for a page where it is answered; it ` +
       `goes once it is answered or runs out. Any other item shows ${quoted(t("notifications.markRead"))}, ` +
-      "which takes it off the list.",
+      "which takes it off the list. While any such item is there, the header has " +
+      `${quoted(t("notifications.markAllRead"))} beside the count, which takes all of them off at once and leaves ` +
+      "the items someone is waiting on.",
     `When a new version of the site is out, a ${quoted(t("project.update.available"))} button appears on the ` +
       `right; it opens ${quoted(t("project.update.title"))} with ${quoted(t("project.update.description"))} ` +
       `(${quoted(t("project.update.busy"))} while an upload runs) and asks whether to refresh now ` +

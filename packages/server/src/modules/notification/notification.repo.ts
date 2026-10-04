@@ -17,10 +17,10 @@
  * See spec: access-permission design (2026-05-28) § 7.
  */
 
-import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { notifications } from "@breatic/core";
-import type { NotificationEntity } from "@breatic/shared";
+import { REQUEST_NOTIFICATION_TYPES, type NotificationEntity } from "@breatic/shared";
 import type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 
 /**
@@ -45,6 +45,8 @@ export type NotificationType =
   | "membership.ended"
   | "membership.upgrade_incomplete"
   | "storage.quota_exceeded";
+
+REQUEST_NOTIFICATION_TYPES satisfies readonly NotificationType[];
 
 export type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 
@@ -244,21 +246,38 @@ export async function retire(id: string, tx?: DbTx): Promise<void> {
 }
 
 /**
- * Mark all of a user's unread notifications as read.
+ * Mark all of a user's unread notifications as read, except the requests they
+ * still have to answer: the bell lists unread rows only, so marking a request
+ * read would take it out of the bell unanswered.
+ *
+ * Rows another transaction holds are skipped, not waited on. The rows it
+ * touches are news only, and the transactions that retire several entries
+ * across statements (archiving, re-addressing requests on an owner change)
+ * touch requests only, so the two never lock the same rows; skipping keeps it
+ * from waiting on, and deadlocking with, any holder should that ever change.
+ * Every writer to this table only sets `read_at`, so a held row is being
+ * marked read by its holder; if that holder rolls back, the row stays unread
+ * until the next "mark all read".
  * @param userId - Inbox owner whose unread notifications to clear
- * @returns count of rows updated.
+ * @returns count of rows this call marked read.
  */
 export async function markAllRead(userId: string): Promise<number> {
-  const rows = await db
-    .update(notifications)
-    .set({ readAt: sql`now()` })
+  const unlocked = db
+    .select({ id: notifications.id })
+    .from(notifications)
     .where(
       and(
         eq(notifications.userId, userId),
         isNull(notifications.readAt),
         isNull(notifications.deletedAt),
+        notInArray(notifications.type, [...REQUEST_NOTIFICATION_TYPES]),
       ),
     )
+    .for("update", { skipLocked: true });
+  const rows = await db
+    .update(notifications)
+    .set({ readAt: sql`now()` })
+    .where(inArray(notifications.id, unlocked))
     .returning({ id: notifications.id });
   return rows.length;
 }

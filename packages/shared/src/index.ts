@@ -676,3 +676,4 @@ export {
   type ReferenceKind,
   type ReferencePool,
 } from "@shared/reference-pool.js";
+export { REQUEST_NOTIFICATION_TYPES, isRequestNotification } from "@shared/request-notifications.js";
