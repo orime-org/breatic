@@ -107,6 +107,9 @@ export function makeMentionSuggestion<T>(
     // handling off this call.
     items: ({ query }): T[] => resolveList(query).items,
     command: ({ editor, range, props }): void => {
+      // The plugin drops the `@` on the first transaction after the editor
+      // turns read-only; until then nothing may be picked into it.
+      if (!editor.isEditable) return;
       editor.chain().focus().insertContentAt(range, input.content(props)).run();
     },
     render: () => {
@@ -116,6 +119,8 @@ export function makeMentionSuggestion<T>(
       let stopAutoUpdate: (() => void) | null = null;
       /** Document-level outside-click dismisser. */
       let onOutsidePointerDown: ((event: PointerEvent) => void) | null = null;
+      /** Editor focusout dismisser: focus given to another control. */
+      let onFocusOut: ((event: FocusEvent) => void) | null = null;
       /**
        * Consumer A (#1805): re-shows a hidden popup on a LOCAL caret-placement
        * transaction (selection-only). Held for teardown via editor.off.
@@ -204,7 +209,7 @@ export function makeMentionSuggestion<T>(
        * @param editor - The editor (its settled state is read live).
        */
       const reshowIfActiveHidden = (editor: Editor): void => {
-        if (!el || visible) return;
+        if (!el || visible || !editor.isEditable) return;
         const st = SuggestionPluginKey.getState(editor.state) as
           | { active?: boolean; query?: string }
           | undefined;
@@ -268,6 +273,17 @@ export function makeMentionSuggestion<T>(
             props: listProps(props.query),
             editor: props.editor,
           });
+          /**
+           * Hides the list when the reader turned to something outside both it
+           * and the editor. Hiding keeps the plugin active (see below).
+           * @param target - Where the pointer went down or focus went.
+           */
+          const hideUnlessWithin = (target: EventTarget | null): void => {
+            if (!(target instanceof Node) || !el) return;
+            if (el.contains(target) || props.editor.view.dom.contains(target)) return;
+            visible = false; // user closed it — a remote edit must not re-open
+            applyVisibility();
+          };
           el = document.createElement('div');
           el.style.position = 'absolute';
           el.style.top = '0';
@@ -298,18 +314,17 @@ export function makeMentionSuggestion<T>(
           // the popup. Capture phase, so a click whose handler stops
           // propagation is still seen.
           onOutsidePointerDown = (event: PointerEvent): void => {
-            const target = event.target as Node | null;
-            if (
-              el &&
-              target &&
-              !el.contains(target) &&
-              !props.editor.view.dom.contains(target)
-            ) {
-              visible = false; // user closed it — a remote edit must not re-open
-              applyVisibility();
-            }
+            hideUnlessWithin(event.target);
           };
           document.addEventListener('pointerdown', onOutsidePointerDown, true);
+          // Focus handed to another control on the page (Shift+Tab, or a
+          // script focusing one) leaves the list the same way a click there
+          // does. A null target is the window losing focus, which leaves the
+          // page as it was.
+          onFocusOut = (event: FocusEvent): void => {
+            if (event.relatedTarget !== null) hideUnlessWithin(event.relatedTarget);
+          };
+          props.editor.view.dom.addEventListener('focusout', onFocusOut);
           // Re-show a hidden popup when the LOCAL user clicks / arrows the caret
           // back into the still-active `@` range (#1805): the outside-click
           // handler HIDES the popup (display:none) without exiting the suggestion
@@ -415,6 +430,10 @@ export function makeMentionSuggestion<T>(
               true,
             );
             onOutsidePointerDown = null;
+          }
+          if (onFocusOut) {
+            props.editor.view.dom.removeEventListener('focusout', onFocusOut);
+            onFocusOut = null;
           }
           if (onEditorTransaction) {
             props.editor.off('transaction', onEditorTransaction);

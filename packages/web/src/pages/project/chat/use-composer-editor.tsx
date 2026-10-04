@@ -23,8 +23,8 @@ import { dispatchMachineEdit } from '@web/features/reference-mention/reference-m
 import { useTranslation } from '@web/i18n/use-translation';
 import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
 import { chatReferenceContent } from '@web/pages/project/chat/chat-reference';
-import { ATTACHMENTS_CHANGED_META, composerExtensions } from '@web/pages/project/chat/composer-extensions';
-import { draftContent, draftLength, draftOf } from '@web/pages/project/chat/composer-draft';
+import { ATTACHMENTS_CHANGED_META, composerExtensions, settledLength } from '@web/pages/project/chat/composer-extensions';
+import { draftContent, draftOf } from '@web/pages/project/chat/composer-draft';
 import { parseClipboardNodes, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import type { TrayItem } from '@web/stores/chat-attachments';
@@ -148,16 +148,22 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
             live.current.onPasteCanvas(nodes);
             return true;
           }
-          // A paste is measured as what it would insert -- blocks count once,
-          // as everywhere in the box -- and one that does not fit is cut down
-          // to what is left, with the limit said out loud.
+          // A paste is measured as what the box would hold after it, as every
+          // edit is, and one that does not fit is cut down to the longest
+          // start that does, with the limit said out loud.
           const attached = live.current.attachments;
-          const after = draftLength(view.state.tr.replaceSelection(slice).doc, attached);
-          if (after <= CHAT_MESSAGE_MAX_CHARS) return false;
-          const room = CHAT_MESSAGE_MAX_CHARS - draftLength(view.state.tr.deleteSelection().doc, attached);
+          /**
+           * Whether the box would stay under the limit with this part pasted.
+           * @param part - What would be inserted.
+           * @returns True when it fits.
+           */
+          const fits = (part: Slice): boolean =>
+            settledLength(view.state, view.state.tr.replaceSelection(part), attached) <= CHAT_MESSAGE_MAX_CHARS;
+          if (fits(slice)) return false;
           live.current.onRefusedAtLimit();
-          const fitted = fitInto(slice, room);
-          if (fitted) view.dispatch(view.state.tr.replaceSelection(fitted));
+          const fitted = longestFittingStart(slice, fits);
+          // Dispatched as prosemirror-view dispatches a paste of its own.
+          if (fitted) view.dispatch(view.state.tr.replaceSelection(fitted).scrollIntoView().setMeta('paste', true).setMeta('uiEvent', 'paste'));
           return true;
         },
       },
@@ -228,46 +234,51 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
 }
 
 /**
- * The longest start of a paste that fits in the room, counted the way the
- * draft is: text by `String.length` (an emoji takes two), a block as one, a
- * line break as one. Cut between characters, never inside one.
+ * The longest start of a paste that still fits. Cut after a whole character,
+ * a whole block, or at the start of a line; a longer start never measures
+ * shorter, so the cuts are searched by halves.
  * @param slice - What would be inserted.
- * @param room - How much the limit has left.
+ * @param fits - Whether a part of it fits.
  * @returns What fits, or null when nothing does.
  */
-function fitInto(slice: Slice, room: number): Slice | null {
-  let left = room;
-  let cut = -1;
+function longestFittingStart(slice: Slice, fits: (part: Slice) => boolean): Slice | null {
+  const cuts: number[] = [];
   let firstBlock = true;
   slice.content.nodesBetween(0, slice.content.size, (node, pos) => {
-    if (cut >= 0) return false;
     if (node.isTextblock) {
-      if (!firstBlock && left < 1) cut = pos;
-      else if (!firstBlock) left -= 1;
+      if (!firstBlock) cuts.push(pos + 1);
       firstBlock = false;
-      return cut < 0;
+      return true;
     }
     if (node.isText) {
-      let used = 0;
+      let at = pos;
       for (const char of node.text ?? '') {
-        if (char.length > left) {
-          cut = pos + used;
-          return false;
-        }
-        left -= char.length;
-        used += char.length;
+        at += char.length;
+        cuts.push(at);
       }
       return false;
     }
-    if (node.isInline) {
-      if (left < 1) cut = pos;
-      else left -= 1;
-      return false;
-    }
-    return true;
+    if (node.isInline) cuts.push(pos + node.nodeSize);
+    return !node.isInline;
   });
-  const content = cut < 0 ? slice.content : slice.content.cut(0, cut);
-  return content.size > 0 ? Slice.maxOpen(content) : null;
+  /**
+   * The paste up to one of its cuts.
+   * @param i - Which cut.
+   * @returns The start of the paste.
+   */
+  const startAt = (i: number): Slice => Slice.maxOpen(slice.content.cut(0, cuts[i]));
+  let low = 0;
+  let high = cuts.length - 1;
+  let best: Slice | null = null;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const part = startAt(mid);
+    if (fits(part)) {
+      best = part;
+      low = mid + 1;
+    } else high = mid - 1;
+  }
+  return best;
 }
 
 /** What the box was last given from outside it. */

@@ -8,7 +8,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Text from '@tiptap/extension-text';
 import { UndoRedo } from '@tiptap/extensions';
 import { splitBlock } from '@tiptap/pm/commands';
-import { Plugin, type Transaction } from '@tiptap/pm/state';
+import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
 
@@ -39,6 +39,32 @@ export interface ComposerWiring {
  * line with it.
  */
 export const ATTACHMENTS_CHANGED_META = 'composerAttachmentsChanged';
+
+/** True while {@link settledLength} applies a transaction aside; the limit lets it through. */
+let measuring = false;
+
+/**
+ * The length the reader will see once the box has applied an edit and
+ * everything its rules add after it: ProseMirror refuses or keeps a
+ * transaction before those follow-ups exist, so the edit is applied aside to
+ * measure them.
+ * @param state - The box's state before the edit.
+ * @param tr - The edit.
+ * @param attached - What is attached; only their ids are read.
+ * @returns The settled length.
+ */
+export function settledLength(
+  state: EditorState,
+  tr: Transaction,
+  attached: ReadonlyArray<{ readonly id: string }>,
+): number {
+  measuring = true;
+  try {
+    return draftLength(state.applyTransaction(tr).state.doc, attached);
+  } finally {
+    measuring = false;
+  }
+}
 
 /**
  * The box's own rules: the `@` list, Enter sends, the limit holds, and every
@@ -76,13 +102,14 @@ function composerRules(wiring: ComposerWiring): AnyExtension {
             },
           },
           // Refuses an edit that would take the words past the limit, as the
-          // reader counts them. Follow-ups other plugins append (the spaces
-          // kept around a block) and writes the reader did not make are let
+          // reader counts them once the box has settled it (the spaces kept
+          // around a block included). Writes the reader did not make are let
           // through; an edit that shortens is always fine.
           filterTransaction: (tr: Transaction, state): boolean => {
-            if (!tr.docChanged || tr.getMeta('appendedTransaction') || tr.getMeta(MACHINE_EDIT_META)) return true;
-            const after = draftLength(tr.doc, wiring.attachments());
-            if (after <= CHAT_MESSAGE_MAX_CHARS || after <= draftLength(state.doc, wiring.attachments())) return true;
+            if (measuring || !tr.docChanged || tr.getMeta(MACHINE_EDIT_META)) return true;
+            const attached = wiring.attachments();
+            const after = settledLength(state, tr, attached);
+            if (after <= CHAT_MESSAGE_MAX_CHARS || after <= draftLength(state.doc, attached)) return true;
             wiring.onRefusedAtLimit();
             return false;
           },
