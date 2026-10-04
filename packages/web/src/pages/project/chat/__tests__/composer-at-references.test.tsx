@@ -9,6 +9,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
 import { undo } from '@tiptap/pm/history';
+import { TextSelection, type Transaction } from '@tiptap/pm/state';
 import { attachmentMarker, getLocale, messageLength, setLocale } from '@breatic/shared';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
@@ -298,14 +299,14 @@ describe('@ in the chat box', () => {
     expect(onChange).toHaveBeenLastCalledWith(`${'y'.repeat(9_997)}\u{1F600}o`);
   });
 
-  it('keeps a pasted block, counted as one, when the paste is cut', () => {
+  it('keeps a pasted block, counted as one with its spaces, when the paste is cut', () => {
     const { onChange } = setup({ draft: 'y'.repeat(9_990), attachments: [cover] });
     act(() => {
       box().commands.focus('end');
       box().view.pasteHTML('ab<span data-reference-mention="" data-source-id="a1">x</span>cdefghijklmnop');
     });
 
-    expect(String(onChange.mock.lastCall?.[0]).slice(9_990)).toBe(`ab${attachmentMarker('a1')}cdefghi`);
+    expect(String(onChange.mock.lastCall?.[0]).slice(9_990)).toBe(`ab ${attachmentMarker('a1')} cdefg`);
     expect(screen.getByTestId('chat-reference')).toHaveTextContent('cover.png');
   });
 
@@ -547,6 +548,84 @@ describe('@ in the chat box', () => {
 
     expect(screen.queryByTestId('reference-mention-option-a1')).toBeNull();
     expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('picks a row with the spaces around its block when they fit under the limit', async () => {
+    const { onChange } = setup({ draft: 'y'.repeat(9_997), attachments: [cover] });
+    act(() => box().commands.focus('end'));
+    type('@');
+    await waitFor(() => screen.getByTestId('reference-mention-option-a1'));
+    press('Enter');
+
+    expect(String(onChange.mock.lastCall?.[0]).slice(9_995)).toBe(`yy ${attachmentMarker('a1')} `);
+    expect(screen.queryByTestId('chat-composer-limit')).toBeNull();
+  });
+
+  it('refuses a pick whose block and spaces would pass the limit, keeping the words', async () => {
+    const { onChange } = setup({ draft: 'y'.repeat(9_998), attachments: [cover] });
+    act(() => box().commands.focus('end'));
+    type('@');
+    await waitFor(() => screen.getByTestId('reference-mention-option-a1'));
+    press('Enter');
+
+    expect(screen.queryByTestId('chat-reference')).toBeNull();
+    expect(String(onChange.mock.lastCall?.[0])).toBe(`${'y'.repeat(9_998)}@`);
+    expect(screen.getByTestId('chat-composer-limit')).toBeInTheDocument();
+  });
+
+  it('scrolls a cut paste into view and marks it as a paste, as an uncut one is', () => {
+    setup({ draft: 'y'.repeat(9_990) });
+    act(() => box().commands.focus('end'));
+    const view = box().view;
+    const dispatched: Transaction[] = [];
+    const real = view.dispatch.bind(view);
+    view.dispatch = (tr: Transaction): void => {
+      if (tr.docChanged) dispatched.push(tr);
+      real(tr);
+    };
+    fireEvent.paste(view.dom, {
+      clipboardData: { files: [], getData: (kind: string) => (kind === 'text/plain' ? 'z'.repeat(50) : '') },
+    });
+
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]?.scrolledIntoView).toBe(true);
+    expect(dispatched[0]?.getMeta('uiEvent')).toBe('paste');
+    expect(dispatched[0]?.getMeta('paste')).toBe(true);
+  });
+
+  it('neither shows the list again nor picks from it while it is read-only', async () => {
+    const { onChange, rerender } = setup({ attachments: [cover] });
+    act(() => box().commands.focus('end'));
+    type('look @co');
+    await waitFor(() => screen.getByTestId('reference-mention-option-a1'));
+    act(() => {
+      screen.getByTestId('chat-composer-send').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    });
+    const draft = String(onChange.mock.lastCall?.[0]);
+    rerender({ draft, attachments: [cover], turnPhase: 'sending' });
+
+    const e = box();
+    e.view.posAtCoords = (() => ({ pos: e.state.selection.from, inside: -1 })) as typeof e.view.posAtCoords;
+    act(() => {
+      e.view.dom.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(screen.getByTestId('reference-mention-option-a1')).not.toBeVisible();
+
+    fireEvent.click(screen.getByTestId('reference-mention-option-a1'));
+    press('Enter');
+    expect(String(onChange.mock.lastCall?.[0])).toBe(draft);
+    expect(screen.queryByTestId('chat-reference')).toBeNull();
+  });
+
+  it('does not open the list on a caret placed in an @ while it is read-only', () => {
+    setup({ draft: 'look @co here', attachments: [cover], turnPhase: 'sending' });
+    act(() => {
+      const e = box();
+      e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, 9)));
+    });
+
+    const row = screen.queryByTestId('reference-mention-option-a1');
+    expect(row !== null && row.closest<HTMLElement>('body > div')?.style.display !== 'none').toBe(false);
   });
 
   it('copies a block as its name in plain text', () => {

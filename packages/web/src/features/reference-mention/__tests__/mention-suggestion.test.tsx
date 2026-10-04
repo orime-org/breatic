@@ -247,6 +247,73 @@ describe('the shared @ list', () => {
     expect(chips(e)).toEqual([]);
   });
 
+  it('hides the list when the keyboard moves focus to another control, and leaves Enter to the editor', async () => {
+    const e = await makeEditor();
+    const other = document.body.appendChild(document.createElement('button'));
+    act(() => e.view.focus());
+    type(e, '@');
+    await listShown();
+    expect(document.activeElement).toBe(e.view.dom);
+
+    act(() => other.focus());
+
+    const pop = document.querySelector<HTMLElement>('[data-testid="reference-mention-option-a"]')?.closest<HTMLElement>('body > div');
+    expect(pop?.style.display).toBe('none');
+    act(() => e.commands.focus());
+    press(e, 'Enter');
+    expect(chips(e)).toEqual([]);
+  });
+
+  it('keeps the list when focus moves onto one of its own rows', async () => {
+    const e = await makeEditor();
+    act(() => e.commands.focus());
+    type(e, '@');
+    await listShown();
+    const row = document.querySelector<HTMLElement>('[data-testid="reference-mention-option-b"]');
+
+    act(() => row?.focus());
+    act(() => row?.click());
+
+    expect(chips(e)).toEqual(['b']);
+  });
+
+  it('keeps the list when the window loses focus with nothing else taking it', async () => {
+    const e = await makeEditor();
+    act(() => e.commands.focus());
+    type(e, '@');
+    await listShown();
+
+    act(() => {
+      e.view.dom.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }));
+    });
+
+    const pop = document.querySelector<HTMLElement>('[data-testid="reference-mention-option-a"]')?.closest<HTMLElement>('body > div');
+    expect(pop?.style.display).toBe('');
+  });
+
+  it('neither shows nor picks while the editor is read-only', async () => {
+    const e = await makeEditor();
+    act(() => e.commands.focus());
+    type(e, '@');
+    await listShown();
+    act(() => {
+      document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      e.setEditable(false);
+    });
+
+    // A click back on the caret dispatches nothing, so the plugin still holds
+    // the `@` as active until the next transaction.
+    e.view.posAtCoords = (() => ({ pos: e.state.selection.from, inside: -1 })) as typeof e.view.posAtCoords;
+    act(() => {
+      e.view.dom.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    const row = document.querySelector<HTMLElement>('[data-testid="reference-mention-option-a"]');
+    expect(row?.closest<HTMLElement>('body > div')?.style.display).toBe('none');
+    act(() => row?.click());
+    press(e, 'Enter');
+    expect(chips(e)).toEqual([]);
+  });
+
   it('sits where the caller places it', async () => {
     const e = await makeEditor('top-start');
     type(e, '@');
