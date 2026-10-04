@@ -35,6 +35,7 @@ import { setLocale, setLocaleMessages } from '@breatic/shared';
 
 import { canvasGraphs } from '@web/stores/canvas-graph';
 import { canvasSessions } from '@web/stores/canvas-session';
+import { endAllTextNodeEditors } from '@web/spaces/canvas/text-node-editors';
 import { LOCALE_CATALOGS } from '@web/test-utils/locale-catalogs';
 
 // Register every locale we ship, once, so components rendered through
@@ -90,12 +91,14 @@ afterEach(() => {
   // that flips it means a test can end any way it likes, including failing
   // between the two calls.
   onlineManager.setOnline(true);
-  // A canvas's render buffer and session are kept by Space id for as long as
-  // the tab is open, so they outlive an unmount the way the online state does:
-  // every test renders a fresh canvas, and a later one using the same Space id
-  // would otherwise start on another test's nodes and open panel.
+  // A canvas's render buffer, session and text editors are kept by Space id
+  // for as long as the tab is open, so they outlive an unmount the way the
+  // online state does: every test renders a fresh canvas, and a later one
+  // using the same Space id would otherwise start on another test's nodes and
+  // open panel.
   canvasGraphs.clear();
   canvasSessions.clear();
+  endAllTextNodeEditors();
   // `localStorage` is process-wide the same way the two above are, and what it
   // holds now decides what a page renders: the project page opens on the tab
   // strip stored under the signed-in account, so a file that leaves one behind

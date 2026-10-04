@@ -74,6 +74,14 @@ const TYPE_ICON: Record<SpaceType, typeof FileText> = {
   timeline: Clock,
 };
 
+/**
+ * Keeps a press on a tab from moving focus onto it.
+ * @param event - The mousedown on the tab.
+ */
+function preventFocusOnPress(event: React.MouseEvent): void {
+  event.preventDefault();
+}
+
 const NODE_KIND_ICON: Partial<Record<string, typeof FileText>> = {
   text: Type,
   image: ImageIcon,
@@ -212,6 +220,13 @@ export function SpaceTab({
       role='tab'
       aria-selected={active}
       onClick={editing ? undefined : onActivate}
+      // Pressing a tab switches Space without taking focus, as a browser's or
+      // an editor's tab strip does: whatever the reader was writing in keeps
+      // the caret until its Space is hidden, so switching back finds them
+      // still writing. Safari and Firefox never focus a pressed button, so
+      // this also makes Chrome agree with them. Not while renaming, where the
+      // press places the caret in the name.
+      onMouseDown={editing ? undefined : preventFocusOnPress}
       data-testid={`space-tab-${id}`}
       className={cn(
         'group inline-flex shrink-0 cursor-pointer items-center whitespace-nowrap border-0 text-sm',

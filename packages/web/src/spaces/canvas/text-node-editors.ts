@@ -22,13 +22,16 @@ const editors = new Map<string, Map<string, Editor>>();
  * The kept editor of a node, built on first use.
  * @param spaceId - The Space the node is on.
  * @param nodeId - The node.
- * @param build - Builds the editor when none is kept.
+ * @param build - Builds the editor when none is kept, or the kept one no
+ *   longer fits.
+ * @param fits - Whether a kept editor still fits what the caller has now.
  * @returns The editor.
  */
 export function textNodeEditor(
   spaceId: string,
   nodeId: string,
   build: () => Editor,
+  fits: (kept: Editor) => boolean = () => true,
 ): Editor {
   let space = editors.get(spaceId);
   if (space === undefined) {
@@ -36,7 +39,8 @@ export function textNodeEditor(
     editors.set(spaceId, space);
   }
   const kept = space.get(nodeId);
-  if (kept !== undefined && !kept.isDestroyed) return kept;
+  if (kept !== undefined && !kept.isDestroyed && fits(kept)) return kept;
+  kept?.destroy();
   const editor = build();
   space.set(nodeId, editor);
   return editor;

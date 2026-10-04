@@ -7,7 +7,12 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { ensureTextBody } from '@web/data/yjs/canvas-space';
 import { useEditedTextBody, useTextBody } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
-import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
+import {
+  useCanvasContext,
+  useCanvasSession,
+  useCanvasSessionStore,
+} from '@web/spaces/canvas/canvas-context';
+import { endTextNodeEditor } from '@web/spaces/canvas/text-node-editors';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { TextNodeView } from '@web/data/yjs/node-view';
@@ -15,7 +20,6 @@ import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFr
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
-import { useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import {
   TEXT_BODY_BOX,
   TEXT_BODY_MAX_HEIGHT,
@@ -83,15 +87,25 @@ export const TextNode = React.memo(function TextNode({
   const nodeId = React.useContext(NodeIdContext);
   const { projectId, spaceId, readOnly, caretProvider } = useCanvasContext();
   const text = useTextBody(projectId, spaceId, nodeId ?? '');
-  // The open editor IS the fragment it is bound to, and that fragment is
-  // followed rather than snapshotted — see the hook for why a snapshot goes
+  // Whether this node is being written in is the canvas session's, not this
+  // component's: hiding the Space takes the node down and puts it back, and
+  // the reader who comes back is still writing (inner#1235 A13). The fragment
+  // is followed rather than snapshotted — see the hook for why a snapshot goes
   // silent when a concurrent repair replaces the node's body.
-  const {
-    body: editedBody,
-    open: openEditor,
-    close: closeEditor,
-  } = useEditedTextBody(projectId, spaceId, nodeId ?? '');
-  const editing = editedBody !== null;
+  const sessionStore = useCanvasSessionStore();
+  const editing = useCanvasSession((s) => s.editingTextNode === nodeId);
+  const endWriting = React.useCallback((): void => {
+    if (!nodeId) return;
+    sessionStore.getState().endTextEdit(nodeId);
+    endTextNodeEditor(spaceId, nodeId);
+  }, [sessionStore, spaceId, nodeId]);
+  const editedBody = useEditedTextBody(
+    projectId,
+    spaceId,
+    nodeId ?? '',
+    editing,
+    endWriting,
+  );
   const displayRef = React.useRef<HTMLDivElement>(null);
 
   // Display state clips, so a bottom fade hints "there's more" — but only when
@@ -125,11 +139,11 @@ export const TextNode = React.memo(function TextNode({
    */
   const leaveEdit = React.useCallback(
     (focus: 'return-focus' | 'keep-focus'): void => {
-      closeEditor();
+      endWriting();
       if (focus === 'keep-focus' || !nodeId) return;
       nodeShell(nodeId)?.focus();
     },
-    [closeEditor, nodeId],
+    [endWriting, nodeId],
   );
 
   // Whether this node can be written in, worked out ONCE and read by both the
@@ -176,7 +190,6 @@ export const TextNode = React.memo(function TextNode({
    * write, so it happens when somebody actually intends to write, and never
    * for a viewer.
    */
-  const sessionStore = useCanvasSessionStore();
   const startEdit = React.useCallback((): void => {
     // Not the writability gate — `canEdit` below already covers `readOnly`.
     // This return is toast POLICY: a viewer double-clicking a locked node
@@ -199,9 +212,10 @@ export const TextNode = React.memo(function TextNode({
       return;
     }
     if (!canEdit) return;
-    const fragment = ensureTextBody(projectId, spaceId, nodeId);
-    if (fragment) openEditor(fragment);
-  }, [sessionStore, readOnly, nodeId, editBlock, canEdit, t, projectId, spaceId, openEditor]);
+    if (ensureTextBody(projectId, spaceId, nodeId)) {
+      sessionStore.getState().startTextEdit(nodeId);
+    }
+  }, [sessionStore, readOnly, nodeId, editBlock, canEdit, t, projectId, spaceId]);
 
   // A lock or a task can land WHILE somebody is writing. Close the editor when
   // it does — but what is already written stays: it reached the document as it
@@ -285,7 +299,7 @@ export const TextNode = React.memo(function TextNode({
           // Relative wrapper so the display fade can overlay the body's bottom
           // edge without affecting layout.
           <div className='relative'>
-            {editing ? (
+            {editedBody !== null && nodeId ? (
               // `nowheel` (the wheel scrolls the text being edited) and
               // `nodrag` (a pointer press selects text instead of dragging the
               // node) sit on the ScrollArea root — ReactFlow checks ancestors.
@@ -293,6 +307,8 @@ export const TextNode = React.memo(function TextNode({
               // actually scrolls.
               <ScrollArea className='nowheel nodrag' viewportClassName={TEXT_BODY_MAX_HEIGHT}>
                 <TextNodeEditor
+                  spaceId={spaceId}
+                  nodeId={nodeId}
                   fragment={editedBody}
                   caretProvider={caretProvider}
                   placeholder={t('canvas.textNode.editorPlaceholder')}

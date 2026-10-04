@@ -37,6 +37,10 @@ import {
 } from '@web/data/yjs/project-meta';
 import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
+import {
+  endAllTextNodeEditors,
+  endSpaceTextNodeEditors,
+} from '@web/spaces/canvas/text-node-editors';
 import { LeaveProjectGuard } from '@web/pages/project/LeaveProjectGuard';
 import { ProjectJoinGate } from '@web/pages/project/ProjectJoinGate';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
@@ -222,7 +226,13 @@ function ProjectWorkspace({
   // a full unmount and a project-id change; runs on leave only (a fresh entry
   // stays untouched). The workspace's own `key` does not cover these: a
   // singleton does not reset with component-local state.
-  React.useEffect(() => () => resetProjectUiStores(projectId), [projectId]);
+  React.useEffect(
+    () => () => {
+      resetProjectUiStores(projectId);
+      endAllTextNodeEditors();
+    },
+    [projectId],
+  );
 
   const projectName = project.name;
   // Fail-safe default: if `myRole` is missing (glitch / pre-load race),
@@ -435,6 +445,7 @@ function ProjectWorkspace({
       evictDocumentEditor(docName.documentSpace(projectId, id));
       canvasSessions.drop(id);
       canvasGraphs.drop(id);
+      endSpaceTextNodeEditors(id);
     }
     if (departed.length > 0) {
       setVisited((prev) => new Set([...prev].filter((id) => !departed.includes(id))));

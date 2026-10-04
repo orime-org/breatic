@@ -59,6 +59,8 @@ const EDITORS = [
       caretProvider: { awareness: Awareness },
     ): React.JSX.Element => (
       <TextNodeEditor
+        spaceId='s'
+        nodeId='n'
         fragment={fragment}
         caretProvider={caretProvider}
         placeholder='p'

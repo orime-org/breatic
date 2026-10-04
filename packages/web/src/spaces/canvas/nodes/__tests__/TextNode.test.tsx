@@ -470,7 +470,7 @@ describe('TextNode', () => {
       expect(editor()).toBeNull();
     });
 
-    it('closes when focus goes somewhere else on the page', () => {
+    it('closes when focus goes somewhere else on the page', async () => {
       // Clicking away is how most people leave an inline editor, and an editor
       // that never closes leaves a contenteditable on the node — which is what
       // makes ReactFlow swallow Delete, so the node cannot be removed either.
@@ -483,8 +483,25 @@ describe('TextNode', () => {
       document.body.appendChild(elsewhere);
       fireEvent.blur(editor() as HTMLElement, { relatedTarget: elsewhere });
 
-      expect(editor()).toBeNull();
+      await waitFor(() => expect(editor()).toBeNull());
       elsewhere.remove();
+    });
+
+    it('stays open when the blur comes from the editor being taken off the page', async () => {
+      // Hiding the Space unmounts the editor's host, which moves the editor
+      // into a detached element; Chrome fires the blur while it is still on
+      // the page, so only what happens next says it was not the reader
+      // leaving (inner#1235 A13).
+      seedNode('x');
+      renderNode();
+      enterByDoubleClick();
+      const el = editor() as HTMLElement;
+
+      fireEvent.blur(el, { relatedTarget: null });
+      document.createElement('div').append(el);
+      await Promise.resolve();
+
+      expect(canvasSessions.of(SID).getState().editingTextNode).toBe(NODE);
     });
 
     it('stays open when focus moves inside the editor itself', () => {
