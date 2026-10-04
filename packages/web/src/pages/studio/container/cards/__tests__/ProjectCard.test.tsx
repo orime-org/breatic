@@ -48,6 +48,11 @@ const project: ContainerProject = {
   canRestore: false,
 };
 
+// The flags the server sends for each caller on a live project
+// (projectGovernance: the studio admin and the owner manage, only the admin archives).
+const AS_STUDIO_ADMIN = { canManageMeta: true, canDuplicate: true, canArchive: true, canRestore: false };
+const AS_NOBODY = { canManageMeta: false, canDuplicate: false, canArchive: false, canRestore: false };
+
 function setup(p: ContainerProject = project) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -105,22 +110,22 @@ describe('ProjectCard', () => {
     expect(cover?.querySelector('[data-testid="default-project-cover"]')).toBeNull();
   });
 
-  it('lists rename, cover and duplicate for an owner or editor, and no archive', async () => {
+  it('lists rename, cover and duplicate for the project owner, and no archive', async () => {
     setup();
     await userEvent.setup().click(screen.getByRole('button', { name: 'More actions' }));
     const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent);
     expect(items).toEqual(['Rename', 'Upload cover', 'Duplicate']);
   });
 
-  it('lists rename, cover and archive for a studio admin who is not on the project', async () => {
-    setup({ ...project, myRole: null, canDuplicate: false, canArchive: true });
+  it('lists rename, cover, duplicate and archive for a studio admin who is not on the project', async () => {
+    setup({ ...project, myRole: null, ...AS_STUDIO_ADMIN });
     await userEvent.setup().click(screen.getByRole('button', { name: 'More actions' }));
     const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent);
-    expect(items).toEqual(['Rename', 'Upload cover', 'Archive']);
+    expect(items).toEqual(['Rename', 'Upload cover', 'Duplicate', 'Archive']);
   });
 
   it('shows no ⋯ menu when the viewer may do none of it', () => {
-    setup({ ...project, myRole: 'viewer', canManageMeta: false, canDuplicate: false });
+    setup({ ...project, myRole: 'viewer', ...AS_NOBODY });
     expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
   });
 
@@ -148,7 +153,7 @@ describe('ProjectCard', () => {
 
   it('archives only after the confirmation', async () => {
     const user = userEvent.setup();
-    setup({ ...project, canArchive: true });
+    setup({ ...project, ...AS_STUDIO_ADMIN });
     await user.click(screen.getByRole('button', { name: 'More actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Archive' }));
     const dialog = await screen.findByTestId('archive-project-dialog');
@@ -191,7 +196,7 @@ describe('ProjectCard', () => {
   });
 
   it('opens the join dialog in place for a project the viewer is not on', async () => {
-    setup({ ...project, myRole: null });
+    setup({ ...project, myRole: null, ...AS_NOBODY });
     expect(screen.queryByRole('link')).toBeNull();
     expect(screen.queryByText('Owner')).toBeNull();
 

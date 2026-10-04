@@ -35,8 +35,8 @@ const SHARED_STUDIO: ContainerProject = {
   myRole: 'editor',
   createdAt: '2026-06-01T00:00:00.000Z',
   archivedAt: null,
-  canManageMeta: true,
-  canDuplicate: true,
+  canManageMeta: false,
+  canDuplicate: false,
   canArchive: false,
   canRestore: false,
 };
@@ -79,7 +79,7 @@ describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
   // Which entries the menu holds is the server's answer; a viewer it grants
   // nothing to gets no ⋯ at all.
   it('hides the menu when the server grants the viewer nothing', () => {
-    renderProject({ ...SHARED_STUDIO, myRole: 'viewer', canManageMeta: false, canDuplicate: false });
+    renderProject({ ...SHARED_STUDIO, myRole: 'viewer' });
     expect(screen.queryByRole('button', MORE)).toBeNull();
   });
 
