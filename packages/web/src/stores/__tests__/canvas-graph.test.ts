@@ -4,45 +4,45 @@
 import type { Edge, Node } from '@xyflow/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { useCanvasGraphStore } from '@web/stores/canvas-graph';
+import { canvasGraphs } from '@web/stores/canvas-graph';
 
 /**
  * The canvas graph store (#1647 step 4) owns the ReactFlow render buffer
  * (flowNodes / flowEdges) — a plain (non-immer) zustand store, because the node
  * array is high-frequency and immer's autoFreeze / proxy would freeze the node
  * objects and interfere with ReactFlow's controlled rendering. It exposes
- * functional-updater setters (so the reference-stable mirror merge can run
- * against the current buffer) and a reset for space switches.
+ * functional-updater setters so the reference-stable mirror merge can run
+ * against the current buffer. Every open Space keeps its canvas mounted, so
+ * each Space has its own buffer (inner#1235 §5.2).
  */
-describe('useCanvasGraphStore', () => {
+describe('canvasGraphs', () => {
   beforeEach(() => {
-    useCanvasGraphStore.getState().reset();
+    canvasGraphs.clear();
   });
 
+  const graph = (): ReturnType<typeof canvasGraphs.of> => canvasGraphs.of('s');
+
   it('starts empty', () => {
-    const s = useCanvasGraphStore.getState();
+    const s = graph().getState();
     expect(s.flowNodes).toEqual([]);
     expect(s.flowEdges).toEqual([]);
   });
 
   it('setFlowNodes applies the updater against the current buffer', () => {
     const a = { id: 'a', type: 'text', position: { x: 0, y: 0 }, data: {} } as Node;
-    useCanvasGraphStore.getState().setFlowNodes(() => [a]);
-    expect(useCanvasGraphStore.getState().flowNodes).toEqual([a]);
+    graph().getState().setFlowNodes(() => [a]);
+    expect(graph().getState().flowNodes).toEqual([a]);
 
     // The updater receives the current buffer, so it can append / reconcile.
     const b = { id: 'b', type: 'image', position: { x: 1, y: 1 }, data: {} } as Node;
-    useCanvasGraphStore.getState().setFlowNodes((prev) => [...prev, b]);
-    expect(useCanvasGraphStore.getState().flowNodes.map((n) => n.id)).toEqual([
-      'a',
-      'b',
-    ]);
+    graph().getState().setFlowNodes((prev) => [...prev, b]);
+    expect(graph().getState().flowNodes.map((n) => n.id)).toEqual(['a', 'b']);
   });
 
   it('does NOT freeze the stored node objects (immer autoFreeze would break ReactFlow)', () => {
     const node = { id: 'a', type: 'text', position: { x: 0, y: 0 }, data: {} } as Node;
-    useCanvasGraphStore.getState().setFlowNodes(() => [node]);
-    const stored = useCanvasGraphStore.getState().flowNodes[0];
+    graph().getState().setFlowNodes(() => [node]);
+    const stored = graph().getState().flowNodes[0];
     expect(Object.isFrozen(stored)).toBe(false);
     // The exact same object reference is stored (no proxy wrapping).
     expect(stored).toBe(node);
@@ -50,17 +50,23 @@ describe('useCanvasGraphStore', () => {
 
   it('setFlowEdges applies the updater against the current buffer', () => {
     const e = { id: 'e1', source: 'a', target: 'b', type: 'scissors' } as Edge;
-    useCanvasGraphStore.getState().setFlowEdges(() => [e]);
-    expect(useCanvasGraphStore.getState().flowEdges).toEqual([e]);
+    graph().getState().setFlowEdges(() => [e]);
+    expect(graph().getState().flowEdges).toEqual([e]);
   });
 
-  it('reset clears both buffers (space switch)', () => {
+  it('keeps one Space buffer apart from another', () => {
     const a = { id: 'a', type: 'text', position: { x: 0, y: 0 }, data: {} } as Node;
-    const e = { id: 'e1', source: 'a', target: 'b', type: 'scissors' } as Edge;
-    useCanvasGraphStore.getState().setFlowNodes(() => [a]);
-    useCanvasGraphStore.getState().setFlowEdges(() => [e]);
-    useCanvasGraphStore.getState().reset();
-    expect(useCanvasGraphStore.getState().flowNodes).toEqual([]);
-    expect(useCanvasGraphStore.getState().flowEdges).toEqual([]);
+    canvasGraphs.of('s1').getState().setFlowNodes(() => [a]);
+
+    expect(canvasGraphs.of('s2').getState().flowNodes).toEqual([]);
+    expect(canvasGraphs.of('s1').getState().flowNodes).toEqual([a]);
+  });
+
+  it('starts a dropped Space over from an empty buffer', () => {
+    const a = { id: 'a', type: 'text', position: { x: 0, y: 0 }, data: {} } as Node;
+    canvasGraphs.of('s1').getState().setFlowNodes(() => [a]);
+    canvasGraphs.drop('s1');
+
+    expect(canvasGraphs.of('s1').getState().flowNodes).toEqual([]);
   });
 });
