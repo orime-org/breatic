@@ -22,7 +22,6 @@ import { projectCreateSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { requireRoleOnParam } from "@server/middleware/role.js";
-import type { AuthRoleVariables } from "@server/middleware/role.js";
 import {
   creditViewService,
   projectService,
@@ -254,20 +253,6 @@ projects.post(
   },
 );
 
-// ── Membership-gated writes ────────────────────────────────────────
-//
-// Every route registered on `membershipScoped` below sits behind
-// `requireRoleOnParam('id', minRole)`. Rename and cover are registered on
-// `projects` itself: their gate (`canManageMeta`) is decided in the service,
-// since a studio admin who is not on the project may use them. The
-// middleware resolves the caller's role on `:id`, rejects
-// non-members / insufficient roles with 403, and stamps the role on
-// `c.var.role`. (The read path `GET /:id` above is intentionally NOT here —
-// it answers a studio member who is not on the project with 403 and anyone
-// else without access with 404, which the middleware cannot tell apart.)
-
-const membershipScoped = new Hono<{ Variables: AuthRoleVariables }>();
-
 /** Body schema for `PATCH /projects/:id` — any subset of the mutable fields. */
 const projectUpdateSchema = z
   .object({
@@ -328,23 +313,22 @@ projects.put(
 /**
  * `POST /projects/:id/duplicate` — fork a project into a new one.
  *
- * Requires `editor`: the copy carries all of the source's content. The
- * duplicate's only member is the caller, as its owner; the source's members
- * are not copied.
+ * Gated in the service by `canDuplicate`: an editor or owner of the
+ * project, which must be live. The duplicate's only member is the caller, as
+ * its owner; the source's members are not copied.
  * @returns `201` with `{ data: ProjectEntity }` — the NEW project
  */
-membershipScoped.post(
+projects.post(
   "/:id/duplicate",
-  requireRoleOnParam("id", "editor"),
+  validate("param", z.object({ id: z.string().uuid() })),
   async (c) => {
     const user = c.get("user");
-    const id = c.req.param("id");
+    const { id } = c.req.valid("param");
     const copy = await projectService.duplicate(id, user.id);
     return c.json({ data: copy }, 201);
   },
 );
 
-projects.route("/", membershipScoped);
 
 // `projectAuthService` and `NotFoundError` / `t` are imported above
 // because future route additions on this surface will use them; if

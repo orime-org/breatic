@@ -50,8 +50,9 @@ export async function loadProjectRole(
 
 /**
  * Resolve a caller's real role on a project and whether it is archived — what
- * the project page shows. Never use it to gate a write; that is
- * {@link loadProjectRole}.
+ * the project page shows. A write is gated on it only through the project
+ * management rule, which reads the archive state alongside the role; every
+ * other write gates on {@link loadProjectRole}.
  * @param userId - Authenticated user UUID
  * @param projectId - Project UUID from request input
  * @returns The stored role and archive state, or `null` if the project is

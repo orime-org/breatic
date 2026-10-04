@@ -247,16 +247,26 @@ export async function archiveProject(
   return "done";
 }
 
+/** What a restore did: `full` when the studio had no room for it. */
+export type RestoreOutcome = ArchiveOutcome | "full";
+
 /**
  * Restore an archived project and queue the command that drops its live
  * connections so they come back writable. The caller has already locked the
- * studio row and checked it has room for one more live project.
+ * studio row. The project row is locked and found archived before the
+ * studio's room is asked about, so a project that is already live is
+ * answered as such even in a full studio.
  * @param id - Project UUID
  * @param tx - The enclosing transaction
- * @returns `done`, `missing` when there is no live project row, or
- *   `unchanged` when it is not archived
+ * @param hasRoom - Whether the studio can take one more live project
+ * @returns `done`, `missing` when there is no live project row, `unchanged`
+ *   when it is not archived, or `full` when the studio has no room
  */
-export async function restoreProject(id: string, tx: DbTx): Promise<ArchiveOutcome> {
+export async function restoreProject(
+  id: string,
+  tx: DbTx,
+  hasRoom: () => Promise<boolean>,
+): Promise<RestoreOutcome> {
   const [row] = await tx
     .select({ archivedAt: projects.archivedAt })
     .from(projects)
@@ -265,6 +275,7 @@ export async function restoreProject(id: string, tx: DbTx): Promise<ArchiveOutco
     .limit(1);
   if (!row) return "missing";
   if (row.archivedAt === null) return "unchanged";
+  if (!(await hasRoom())) return "full";
   const now = new Date();
   await tx
     .update(projects)

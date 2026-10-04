@@ -29,9 +29,11 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { ConflictError, ForbiddenError, getLimitsForStudio, initCore } from "@breatic/core";
+import { ConflictError, ForbiddenError, getLimitsForStudio, initCore, loadLocales } from "@breatic/core";
+import { t } from "@breatic/shared";
 
 initCore(process.env);
+loadLocales();
 
 import * as projectService from "@server/modules/project/project.service.js";
 import * as roleUpgradeService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
@@ -286,6 +288,16 @@ describe("restore", () => {
     await fillLiveProjects(studioId, adminId, await projectLimit(studioId));
     await expect(projectService.restore(projectId, adminId)).rejects.toBeInstanceOf(ConflictError);
     expect((await archiveState(projectId)).archived_at).toBeInstanceOf(Date);
+  });
+
+  it("says a project already restored is not archived, even when that restore filled the studio", async () => {
+    const { adminId, studioId, projectId } = await seedScene();
+    await projectService.archive(projectId, adminId);
+    await fillLiveProjects(studioId, adminId, (await projectLimit(studioId)) - 1);
+    await projectService.restore(projectId, adminId);
+    await expect(projectService.restore(projectId, adminId)).rejects.toThrow(
+      t("server.project.not_archived"),
+    );
   });
 
   it("succeeds one below the limit: the archived project itself does not take a slot", async () => {

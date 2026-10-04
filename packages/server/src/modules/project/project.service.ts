@@ -33,6 +33,7 @@ import type {
   ProjectRole,
   ProjectSummary,
   SpaceType,
+  StudioRole,
 } from "@breatic/shared";
 
 /**
@@ -245,9 +246,16 @@ export async function loadForViewer(
   if (access !== null) {
     const project = await projectRepo.getProjectById(projectId);
     if (!project) throw new NotFoundError(t("server.error.not_found"));
-    const canRestore =
-      access.archived &&
-      (await studioAuthService.loadStudioRole(userId, project.studioId)) === "admin";
+    // Only an archived project can be restored, so only then is the studio
+    // role worth a read.
+    const studioRole = access.archived
+      ? await studioAuthService.loadStudioRole(userId, project.studioId)
+      : null;
+    const { canRestore } = projectPermissions({
+      studioRole,
+      projectRole: access.role,
+      archived: access.archived,
+    });
     return { project, myRole: access.role, canRestore };
   }
 
@@ -351,12 +359,40 @@ export async function update(
   return writeMeta(projectId, patch);
 }
 
+/** A live project and what its management rule reads about one caller. */
+interface ManagementFacts {
+  project: ProjectEntity;
+  studioRole: StudioRole;
+  projectRole: ProjectRole | null;
+}
+
+/**
+ * Read, once, what `projectPermissions` decides on: the caller's role in the
+ * project's studio and their stored role on the project. The stored role is
+ * the real one, not the archive-capped one; the rule reads the archive state
+ * itself. Plain reads, taken before any row lock.
+ * @param projectId - Project UUID
+ * @param userId - Authenticated user UUID
+ * @returns The project and the caller's two roles
+ * @throws {NotFoundError} when the project is missing / deleted, or the caller
+ *   is not in its studio (existence is hidden from outsiders)
+ */
+async function managementFacts(projectId: string, userId: string): Promise<ManagementFacts> {
+  const project = await projectRepo.getProjectById(projectId);
+  if (!project) throw new NotFoundError(t("server.error.not_found"));
+  const [studioRole, access] = await Promise.all([
+    studioAuthService.loadStudioRole(userId, project.studioId),
+    projectAuthService.loadProjectAccess(userId, projectId),
+  ]);
+  if (studioRole === null) throw new NotFoundError(t("server.error.not_found"));
+  return { project, studioRole, projectRole: access?.role ?? null };
+}
+
 /**
  * Require the caller may rename the project and change its cover.
  *
- * The studio admin may, whether or not they are on the project; so may its
- * owner and editors. Nobody may while it is archived. The studio role is a
- * plain read taken before any row lock.
+ * Asked as of a live project, so someone who may manage it hears that it is
+ * archived (409) and someone who may not hears that they may not (403).
  * @param projectId - Project UUID
  * @param userId - Authenticated user UUID
  * @returns The project
@@ -366,19 +402,10 @@ export async function update(
  * @throws {ConflictError} when the project is archived
  */
 async function assertCanManageMeta(projectId: string, userId: string): Promise<ProjectEntity> {
-  const project = await projectRepo.getProjectById(projectId);
-  if (!project) throw new NotFoundError(t("server.error.not_found"));
-  const [studioRole, access] = await Promise.all([
-    studioAuthService.loadStudioRole(userId, project.studioId),
-    projectAuthService.loadProjectAccess(userId, projectId),
-  ]);
-  if (studioRole === null) throw new NotFoundError(t("server.error.not_found"));
-  const authorised = projectPermissions({
-    studioRole,
-    projectRole: access?.role ?? null,
-    archived: false,
-  }).canManageMeta;
-  if (!authorised) throw new ForbiddenError(t("server.error.forbidden"));
+  const { project, ...roles } = await managementFacts(projectId, userId);
+  if (!projectPermissions({ ...roles, archived: false }).canManageMeta) {
+    throw new ForbiddenError(t("server.error.forbidden"));
+  }
   if (project.archivedAt !== null) throw new ConflictError(t("server.project.archived"));
   return project;
 }
@@ -461,9 +488,10 @@ export async function setCover(
  * @param sourceId - UUID of the project to duplicate
  * @param userId - Authenticated user UUID (becomes new project owner)
  * @returns The newly created duplicate project entity
- * @throws {NotFoundError} if the source project does not exist
- *   or the caller has no membership
- * @throws {ForbiddenError} if the caller is below editor on the source, or it is archived
+ * @throws {NotFoundError} if the source project does not exist, or the caller
+ *   is not in its studio
+ * @throws {ForbiddenError} if the caller is not an editor or owner of the
+ *   source, or it is archived
  * @throws {ConflictError} if the source's studio already holds as many
  *   projects as its tier allows
  */
@@ -471,7 +499,10 @@ export async function duplicate(
   sourceId: string,
   userId: string,
 ): Promise<ProjectEntity> {
-  await assertAccess(sourceId, userId, "editor");
+  const { project: current, ...roles } = await managementFacts(sourceId, userId);
+  if (!projectPermissions({ ...roles, archived: current.archivedAt !== null }).canDuplicate) {
+    throw new ForbiddenError(t("server.error.forbidden"));
+  }
 
   return db.transaction(async (tx) => {
     // Read first, because the studio to lock is the SOURCE's — a copy lands
@@ -499,27 +530,6 @@ export async function assertNotArchived(projectId: string | null): Promise<void>
 }
 
 /**
- * Load a live project and require the caller to be its studio's admin.
- *
- * The admin check is a plain read taken before any row lock, so it adds no
- * lock to the orders the archive and restore transactions take.
- * @param projectId - Project UUID
- * @param userId - Authenticated user UUID
- * @returns The project
- * @throws {NotFoundError} when the project is missing / deleted, or the caller
- *   is not in its studio (existence is hidden from outsiders)
- * @throws {ForbiddenError} when the caller is in the studio but not its admin
- */
-async function requireStudioAdminOf(projectId: string, userId: string): Promise<ProjectEntity> {
-  const project = await projectRepo.getProjectById(projectId);
-  if (!project) throw new NotFoundError(t("server.error.not_found"));
-  const studioRole = await studioAuthService.loadStudioRole(userId, project.studioId);
-  if (studioRole === null) throw new NotFoundError(t("server.error.not_found"));
-  if (studioRole !== "admin") throw new ForbiddenError(t("server.error.forbidden"));
-  return project;
-}
-
-/**
  * Archive a project. Studio admin only; the project's own owner does not get
  * to. It becomes read-only for every member until restored.
  * @param projectId - Project UUID
@@ -529,7 +539,10 @@ async function requireStudioAdminOf(projectId: string, userId: string): Promise<
  * @throws {ConflictError} when the project is already archived
  */
 export async function archive(projectId: string, userId: string): Promise<void> {
-  await requireStudioAdminOf(projectId, userId);
+  const { studioRole, projectRole } = await managementFacts(projectId, userId);
+  if (!projectPermissions({ studioRole, projectRole, archived: false }).canArchive) {
+    throw new ForbiddenError(t("server.error.forbidden"));
+  }
   const outcome = await db.transaction((tx) => projectRepo.archiveProject(projectId, userId, tx));
   if (outcome === "missing") throw new NotFoundError(t("server.error.not_found"));
   if (outcome === "unchanged") throw new ConflictError(t("server.project.already_archived"));
@@ -547,15 +560,22 @@ export async function archive(projectId: string, userId: string): Promise<void> 
  *   at its project limit
  */
 export async function restore(projectId: string, userId: string): Promise<void> {
-  const project = await requireStudioAdminOf(projectId, userId);
+  const { project, ...roles } = await managementFacts(projectId, userId);
+  if (!projectPermissions({ ...roles, archived: true }).canRestore) {
+    throw new ForbiddenError(t("server.error.forbidden"));
+  }
+  const { studioId } = project;
+  let limit = 0;
   const outcome = await db.transaction(async (tx) => {
-    if (!(await studioRepo.lockStudio(project.studioId, tx))) return "missing" as const;
-    const { projects_per_studio: limit } = await getLimitsForStudio(project.studioId, tx);
-    if ((await projectRepo.countLiveProjectsInStudio(project.studioId, tx)) >= limit) {
-      throw new ConflictError(t("server.project.restore_limit_reached", { limit }));
-    }
-    return projectRepo.restoreProject(projectId, tx);
+    if (!(await studioRepo.lockStudio(studioId, tx))) return "missing" as const;
+    limit = (await getLimitsForStudio(studioId, tx)).projects_per_studio;
+    return projectRepo.restoreProject(
+      projectId,
+      tx,
+      async () => (await projectRepo.countLiveProjectsInStudio(studioId, tx)) < limit,
+    );
   });
   if (outcome === "missing") throw new NotFoundError(t("server.error.not_found"));
   if (outcome === "unchanged") throw new ConflictError(t("server.project.not_archived"));
+  if (outcome === "full") throw new ConflictError(t("server.project.restore_limit_reached", { limit }));
 }
