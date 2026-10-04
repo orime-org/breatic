@@ -270,7 +270,7 @@ const projectUpdateSchema = z
  *
  * PATCH semantic = client sends only fields to change (per the
  * access-permission design D1; aligns with `members.patch` precedent).
- * Gated in the service by `canManageMeta`: the studio's admin or the
+ * Gated in the service by `assertMayManage`: the studio's admin or the
  * project's owner; refused on an archived project.
  * @returns `200` with `{ data: ProjectEntity }`
  */
@@ -314,7 +314,7 @@ projects.put(
 /**
  * `POST /projects/:id/duplicate` — fork a project into a new one.
  *
- * Gated in the service by `canDuplicate`: the studio's admin or the
+ * Gated in the service by `assertMayManage`: the studio's admin or the
  * project's owner, and the project must be live. The duplicate's only member is the caller, as
  * its owner; the source's members are not copied.
  * @returns `201` with `{ data: ProjectEntity }` — the NEW project

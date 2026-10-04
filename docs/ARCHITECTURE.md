@@ -42,7 +42,7 @@ packages/
 ├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — asset(资产登记 / studio 内去重 / 回收队列)· auth(studio 级鉴权:studioAuth.service + studioMembers.repo)· credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费 + upstreamStep.repo〔`task_upstream_steps`,一个任务的每次上游调用〕+ upstreamClone.repo〔`studio_upstream_clones`,studio 克隆过的音色 / 人声 / 元素〕)· node-history · agent(skills-loader/agent-config〔模型+指令+工具的唯一装配点〕/skill-gate/skill-availability/turn-finalizer/tools/llm)· model-catalog · node-task(PR4 自 core 迁入,各域 *.repo/*.service 功能文件夹)· understand(按一个地址取媒体、问模型一句话,worker 的理解那一路调它)
 ├── server/   # HTTP 壳 (Hono): routes/(account/auth/chat/canvas/credits/decisions/mini-tools/models/projects/members/project-invitations/project-join-requests/role-upgrade-requests/notifications/skills/studios/subscription/tasks/text-tools/users/payment/activities〔project 活动流读取〕/assets〔上传握手 + 删除上报〕) + middleware/(路由层=接线员,不写业务;`rateLimitFor` 限流走 `config/rate-limits.yaml`;`validate(target, schema)` 是路由校验请求的唯一入口——包一层 `@hono/zod-validator` 把它「自己发响应」变成「抛 `ValidationError`」,于是校验失败也走 `errorHandler` 这一个出口;`localeMiddleware` 用 AsyncLocalStorage 钉住这次请求的语言,出口那里还读得到) + modules/(server 私有领域,**按域分功能文件夹**,每域 service+repo+test:account/activity〔活动流写入 + 读取〕/asset/auth〔含 user.repo + recovery-code + signup-code〔启用邮件时的待验证注册,存 Redis〕〕/conversation/credit/decision/memory/notification/payment/project〔含 projectMembers〕/project-invite〔含 project-invite-mail〕/project-join-request/recent/role-upgrade-request/skill/studio/subscription/task〔节点任务行的开启与计数发布〕/text-tool,barrel index.ts re-export) + infra/(stripe/mailer) + config/(auth/pricing/text-tools/limits/rate-limits;**运行参数一律 yaml、禁硬编码**)(healthz 走独立 :3001 进程)
 ├── worker/   # BullMQ 壳: handlers/(dispatch.ts=4 路分发 + step-deps〔多步上游调用读写的两张表 + 素材的缓存键 + 可灵元素的一句描述〕+ local/{runtime,video} 本地 ffmpeg 执行) + providers/(图片 / 视频 / 音频 / 语音同一条路,全部跑在 WaveSpeed:generate / plan-steps / run-steps / upstream-body〔按 yaml 的 `upstream` 声明拼请求体,`joins` 槽位并进它点名的池子〕/ wavespeed + families/{minimax-speech,nano-banana};three-d/ 自成一路) + 根(index 入口 / voice-samples〔维护样音的人本地跑的入口,生成固定样音地址还缺的样音〕/ mini-tool-registry / bootstrap-config)
-├── collab/   # Hocuspocus 独立进程: hooks/(auth/meta-write-attempt-log/presence/awareness-identity/presence-wiring/unload-gate〔文档离开内存前的最后一次存盘〕) + services/(persistence〔谁可以写库的唯一决定处〕/store-tracker〔有没有没存下的内容 + 一次性 arm〕/store-loop〔10 秒一轮的定时存盘,唯一的重试机制〕/store-alert/rescue-file〔存不进库时内容落本地,永不自动清理〕/event-stream/space-rpc/task-listener/members-sync/lazy-seed/lifecycle-listener/connection-registry/connection-tracking/space-delete-lock/yjs-documents.repo) + infra/(health-checks · connection-gate〔连接准入:升级阶段从原始对端地址裁决,回环豁免、非回环取 nginx 的 x-real-ip 否则 403;裁决本身随请求头传下去〕 · client-identity〔上面那条规则的纯判定〕 · socket-ceilings〔库里几个「超了就关整条 socket」的上限,从一个声明数推导〕) + 根(index/hocuspocus 装配/config)
+├── collab/   # Hocuspocus 独立进程: hooks/(auth/meta-write-attempt-log/presence/awareness-identity/presence-wiring/unload-gate〔文档离开内存前的最后一次存盘〕) + services/(persistence〔谁可以写库的唯一决定处〕/store-tracker〔有没有没存下的内容 + 一次性 arm〕/store-loop〔10 秒一轮的定时存盘,唯一的重试机制〕/store-alert/rescue-file〔存不进库时内容落本地,永不自动清理〕/event-stream/space-rpc/task-listener/members-sync/lazy-seed/lifecycle-listener/connection-registry/connection-tracking/role-recheck〔连接注册后再读一次角色,变了就按重新认证的原因关掉〕/space-delete-lock/yjs-documents.repo) + infra/(health-checks · connection-gate〔连接准入:升级阶段从原始对端地址裁决,回环豁免、非回环取 nginx 的 x-real-ip 否则 403;裁决本身随请求头传下去〕 · client-identity〔上面那条规则的纯判定〕 · socket-ceilings〔库里几个「超了就关整条 socket」的上限,从一个声明数推导〕) + 根(index/hocuspocus 装配/config)
 ├── web/      # React app — see the [Frontend](#frontend) part
 ├── integration-tests/ # 不构建、不部署:横跨两个以上服务的集成测试(src/__tests__/),加上所有起容器的集成套件共用的容器启动(src/test-utils/:containers 起 PG + Redis 并迁移两个库、env 把地址写进每个测试文件的 process.env)。服务源码按路径别名读,不声明 server / worker / collab
 └── ingest/   # Cloudflare Worker(`wrangler`,不在上面那条依赖链上):浏览器把分片发给它,它转写 R2 的分片上传并边写边算 sha256。**字节也可以不经过任何人的手** —— 交给它一个地址(`POST /fetch`),它自己去拉、边拉边写边算,后端的生成结果和用户提交的外链都走这条。**它也是字节出去的那一端**:`GET|HEAD /download/{key}` 把对象带着 `Content-Disposition: attachment` 答出来,而那个头是浏览器把一个跨域响应收进自己下载列表的唯一途径 —— 桶在它自己的域名上,这个头只能由发字节的人加。
@@ -117,9 +117,9 @@ config/ skills/ locales/ (git-tracked)
 
 | 端点 | 行为 |
 |---|---|
-| `POST /chat/open` | 入参只有 `project_id`。返回这个用户在这个 project 的会话**第一页**(页大小取 `config/agent.yaml` 的 `conversation_page_size`)、后面还有没有,以及**最近交互**那条的消息;这个 project 一条会话都没有时**当场建一个空的**再返回。**它是唯一会自动建会话的入口**,`POST /chat/conversations` 是读者按「+」时的那条,只建不猜 |
+| `POST /chat/open` | 入参只有 `project_id`。返回这个用户在这个 project 的会话**第一页**(页大小取 `config/agent.yaml` 的 `conversation_page_size`)、后面还有没有,以及**最近交互**那条的消息;这个 project 一条会话都没有时**当场建一个空的**再返回(project 已归档时不建,答 404)。**它是唯一会自动建会话的入口**,`POST /chat/conversations` 是读者按「+」时的那条,只建不猜 |
 | `POST /chat/message` | `conversation_id` **必填**,只写不建 |
-| `POST /chat/conversations` | 读者按「+」时的那条,只建不猜 |
+| `POST /chat/conversations` | 读者按「+」时的那条,只建不猜;project 已归档时答 404 |
 | `PATCH /chat/conversations/:id` | 改名。**不动 `updated_at`**(见下) |
 | `GET /chat/conversations` | 列表,游标分页(见下) |
 
@@ -127,9 +127,9 @@ config/ skills/ locales/ (git-tracked)
 
 **为什么游标是两列而不是 offset**:这个顺序会随读者说话而动,offset 会漏行也会重复。第二键取会话 ID,让同一时刻的多条有稳定次序;判据写成 `(updated_at <) OR (updated_at = AND id <)`,两半必须一起给 —— 只给一半是在按另一个顺序翻页。
 
-**写入前三查,一律 404**(`conversationService.assertWritable`,`POST /chat/message` · `PATCH /chat/conversations/:id` 走它):这条会话属于这个用户 · 属于这个 project · 没被软删。第三样不是边角料 —— 一个标签页记着会话 7、用户在另一个标签页把它删了,前两样对它都成立。三种可区分的答案会让状态码自己交代是哪一条没过,所以答案必须一样。
+**写入前三查,一律 404**(`conversationService.assertWritable`,`POST /chat/message` · `PATCH /chat/conversations/:id` 走它):这条会话属于这个用户 · 属于这个 project · 没被软删。第三样不是边角料 —— 一个标签页记着会话 7、用户在另一个标签页把它删了,前两样对它都成立。三种可区分的答案会让状态码自己交代是哪一条没过,所以答案必须一样。三查都过之后,project 已归档答 409(`assertNotArchived`)。
 
-**删除走的是另一套,还没收拢**:`DELETE /chat/conversations/:id` 用的是 `validateOwnership`,只查「存不存在」和「是不是这个用户的」,而且不是他的时答 403 —— 403 跟 404 的差别本身就说出了这条会话存在。归 todo,别照着它写新的读路由。
+**删除走的是另一套,还没收拢**:`DELETE /chat/conversations/:id` 用的是 `validateOwnership`,只查「存不存在」和「是不是这个用户的」(project 已归档另答 409),而且不是他的时答 403 —— 403 跟 404 的差别本身就说出了这条会话存在。归 todo,别照着它写新的读路由。
 
 **打开时两把锁,各管一段,顺序固定**(先咨询锁后项目行锁,全仓只有这一处取那把咨询锁,不会成环):
 

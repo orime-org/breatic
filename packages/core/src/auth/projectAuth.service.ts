@@ -32,8 +32,10 @@ import type { ProjectRole } from "@breatic/shared";
  * Resolve the role a caller may WRITE with on a project.
  *
  * An archived project is read-only for everyone, so every member reads as
- * viewer there. This is the single point that makes it so: every write gate
- * (server `requireRole` / `assertAccess`, collab `onAuthenticate`) reads it.
+ * viewer there. Every write gated on the project role (server `requireRole` /
+ * `assertAccess`, collab `onAuthenticate`) reads it; writes gated on who owns
+ * a row check the archive state themselves, and filings refuse it through
+ * `lockLiveProject`.
  * @param userId - Authenticated user UUID
  * @param projectId - Project UUID from request input
  * @returns The role (viewer on an archived project), or `null` if the project
@@ -51,8 +53,8 @@ export async function loadProjectRole(
 /**
  * Resolve a caller's real role on a project and whether it is archived — what
  * the project page shows. A write is gated on it only through the project
- * management rule, which reads the archive state alongside the role; every
- * other write gates on {@link loadProjectRole}.
+ * management rule, which reads the archive state alongside the role; the
+ * writes gated on the project role use {@link loadProjectRole}.
  * @param userId - Authenticated user UUID
  * @param projectId - Project UUID from request input
  * @returns The stored role and archive state, or `null` if the project is

@@ -473,9 +473,9 @@ export async function setCover(
  *
  * Reads the source WITHOUT locking it, then waits for the studio row. If the
  * source is archived during that wait, the copy is still made from what was
- * read — snapshot semantics. The four other places that add something to a
- * project (`projectInvite`, `roleUpgradeRequest`, `conversation`,
- * `projectTransfer`) do take `lockLiveProject` first, because what they insert
+ * read — snapshot semantics. The other places that add something to a
+ * project (`projectInvite`, `projectJoinRequest`, `roleUpgradeRequest`,
+ * `conversation`, `projectTransfer`) do take `lockLiveProject` first, because what they insert
  * hangs off the project. A duplicate is a free-standing new project, so no
  * lock is taken.
  * @param sourceId - UUID of the project to duplicate
