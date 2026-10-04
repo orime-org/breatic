@@ -141,6 +141,22 @@ test('keys typed while a new conversation opens land in the box', async ({ page 
   await expect(box).toHaveText('still here');
 });
 
+test('a new conversation opens on its own empty draft, not the words left in the last one', async ({ page }) => {
+  await pasteText(page, MARKER + JSON.stringify([PICTURE]));
+  const box = page.getByTestId('chat-composer-box');
+  await box.pressSequentially('look at @');
+  await expect(page.locator('[data-testid^="reference-mention-option-"]').first()).toBeVisible();
+  await box.press('Enter');
+  await box.pressSequentially(' here');
+  await expect(page.getByTestId('chat-reference')).toBeVisible();
+
+  await page.getByTestId('new-conversation').click();
+
+  await expect(box).toHaveAttribute('contenteditable', 'true', { timeout: 20_000 });
+  await expect(box).toHaveText('');
+  await expect(page.getByTestId('chat-composer-chips')).toHaveCount(0);
+});
+
 test('removing the attachment takes its block out of the words', async ({ page }) => {
   await pasteText(page, MARKER + JSON.stringify([PICTURE]));
   const box = page.getByTestId('chat-composer-box');
