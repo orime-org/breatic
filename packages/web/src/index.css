@@ -1897,6 +1897,17 @@ body {
   padding: 0 0 0.5rem 0;
 }
 
+/* A table every column of which has a stored width is as wide as its columns,
+   and scrolls in its frame when that is wider (inner#1126 A12). The library
+   pins every table to `width: auto !important` (`editor.css:150-153`), so the
+   width prosemirror-tables writes onto such a table never lands and the
+   columns are squeezed to the frame; the table's own max-content width, which
+   is the sum of its columns, is a floor it keeps. A table with a column the
+   browser sizes is left as it is drawn today. */
+.doc-body [data-content-type='table'] table:not(:has(td:not([colwidth]))):not(:has(th:not([colwidth]))) {
+  min-width: max-content;
+}
+
 /* A table in the product's tokens, both themes (inner#1126 A13). BlockNote
    writes fixed values for each of these — `#ddd` lines, `#c8c8ff66` over a
    selected cell, `#adf` for the resize line. */

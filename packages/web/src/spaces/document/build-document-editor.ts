@@ -47,6 +47,7 @@ import { documentEnterExtension } from '@web/spaces/document/document-enter';
 import { documentKeyboardMoveExtension } from '@web/spaces/document/document-keyboard-move';
 import { documentTabExtension } from '@web/spaces/document/document-tab';
 import { documentTableKeysExtension } from '@web/spaces/document/document-table-keys';
+import { documentTableColumnWidthsExtension } from '@web/spaces/document/document-table-column-widths';
 import { documentTableTargetExtension } from '@web/spaces/document/document-table-target';
 import { documentTableDragExtension } from '@web/spaces/document/document-table-drag';
 import { documentPasteHandler } from '@web/spaces/document/document-table-paste';
@@ -136,6 +137,7 @@ export function buildDocumentEditor(
       documentTabExtension(),
       documentTableKeysExtension(),
       documentTableTargetExtension(),
+      documentTableColumnWidthsExtension(),
       documentTableDragExtension(),
       documentKeyboardMoveExtension(),
       documentTrailingPressExtension(),

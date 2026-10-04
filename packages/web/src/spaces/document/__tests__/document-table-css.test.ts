@@ -53,6 +53,14 @@ describe('a table in the body', () => {
     expect(layer).toContain('pointer-events: none');
   });
 
+  it('lets a table whose every column has a stored width grow to the sum of its columns (A12)', () => {
+    // The library's own rule pins every table to \`width: auto !important\`,
+    // so the width prosemirror-tables writes onto a fully sized table never
+    // lands; a floor of the table's own max-content width does.
+    const body = ruleBody('table:not(:has(td:not([colwidth]))):not(:has(th:not([colwidth])))');
+    expect(body).toContain('min-width: max-content');
+  });
+
   it('keeps room under the table for its scrollbar, and none on the other sides', () => {
     // A wide table's scrollbar lies along the bottom of its frame; the room
     // keeps it under the last row rather than over it. The row and column

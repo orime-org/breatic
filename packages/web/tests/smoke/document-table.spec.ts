@@ -478,6 +478,35 @@ test('A12: dragging a column edge widens it, and a wide table scrolls in its own
   expect(frame!.scroll).toBeGreaterThan(frame!.client);
 });
 
+test('A12: dragging the last column wider leaves every other column as wide as it was', async () => {
+  await openFreshDocument(page);
+  await insertTable(page, 2, 4);
+  // A column whose words ask for more room than the others: the browser
+  // widens it to fill what the table has left.
+  await fill(page, ['', 'long words that wrap inside the second column of this table', '', '']);
+  const widths = (): Promise<number[]> =>
+    page.locator(`${EDITOR} table tr`).first().locator('td').evaluateAll((tds) =>
+      tds.map((td) => Math.round(td.getBoundingClientRect().width)),
+    );
+  const before = await widths();
+  // The edge of the second row's last cell, half way down: the caret is in
+  // the first row's last cell, whose top-right corner holds its cell button.
+  const last = await page.locator(`${EDITOR} table tr`).nth(1).locator('td').nth(3).boundingBox();
+  const edge = last!.x + last!.width - 1;
+  const y = last!.y + last!.height / 2;
+  // Onto the edge from inside the cell, so the resize handle comes up first.
+  await page.mouse.move(edge - 20, y);
+  await page.mouse.move(edge, y, { steps: 3 });
+  await expect(page.locator(`${EDITOR} .column-resize-handle`)).not.toHaveCount(0);
+  await page.mouse.down();
+  await page.mouse.move(edge + 150, y, { steps: 8 });
+  await page.mouse.up();
+
+  const after = await widths();
+  expect(after.slice(0, 3)).toEqual(before.slice(0, 3));
+  expect(after[3]).toBeGreaterThan(before[3] + 100);
+});
+
 test('A6, A11 and A12: on a wide table scrolled sideways, the row handle stays in the frame and the cell button leaves with its cell', async () => {
   await openFreshDocument(page);
   await insertTable(page, 2, 9);
