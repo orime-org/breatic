@@ -34,7 +34,7 @@ import { MainAgent } from "@server/agent/main-agent.js";
 import { toUiMessages } from "@server/modules/conversation/message-part-mapping.js";
 import type { UIMessageChunk } from "ai";
 import { runWithContext, logger, getAgentConfig, ValidationError } from "@breatic/core";
-import { attachmentSection, messageLength, t } from "@breatic/shared";
+import { attachmentSection, messageLength, referenceCount, t } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
 
 /**
@@ -50,11 +50,11 @@ import type { ChatAttachedChip } from "@breatic/shared";
  * did not ask.
  * @param message - What the user typed.
  * @param chips - What the user attached.
- * @throws {AppError} With 422 when the words, the number of attached items or
- *   the attachments' length is over its limit.
+ * @throws {AppError} With 422 when the words, the number of references, the
+ *   number of attached items or the attachments' length is over its limit.
  */
 function assertSayable(message: string, chips: readonly ChatAttachedChip[]): void {
-  const { user_message_max_chars, attachment_max_chars, attachment_max_items } =
+  const { user_message_max_chars, user_message_max_references, attachment_max_chars, attachment_max_items } =
     getAgentConfig();
   // Measured the way the box shows it: a reference is the one block the
   // reader sees, not the longer marker it is written as.
@@ -65,6 +65,12 @@ function assertSayable(message: string, chips: readonly ChatAttachedChip[]): voi
         limit: user_message_max_chars,
         actual: said,
       }),
+    );
+  }
+  const references = referenceCount(chips, message);
+  if (references > user_message_max_references) {
+    throw new ValidationError(
+      t("server.chat.references_too_many", { limit: user_message_max_references, actual: references }),
     );
   }
   if (chips.length > attachment_max_items) {

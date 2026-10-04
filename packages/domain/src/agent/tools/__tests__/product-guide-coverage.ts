@@ -485,6 +485,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.chat.attachments_too_long": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.chat.attachments_too_many": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.chat.message_too_long": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.chat.references_too_many": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.conversation.attachment_limit_reached": { excluded: REASONS.NO_CALLER },
   "server.conversation.attachment_not_found": { excluded: REASONS.NO_CALLER },
   "server.conversation.attachment_not_yours": { excluded: REASONS.NO_CALLER },

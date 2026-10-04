@@ -219,6 +219,44 @@ describe("what one turn may send", () => {
     expect(res.status).toBe(200);
   });
 
+  it("refuses more references than one message may carry", async () => {
+    const { projectId, conversationId, cookie } = await seedOwner();
+    const attached = chip(1, 10);
+    const limit = getAgentConfig().user_message_max_references;
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: attachmentMarker(attached.id).repeat(limit + 1),
+        project_id: projectId,
+        conversation_id: conversationId,
+        attached_chips: [attached],
+      },
+      cookie,
+    );
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
+  });
+
+  it("admits a message that lands exactly on the reference limit", async () => {
+    const { projectId, conversationId, cookie } = await seedOwner();
+    const attached = chip(1, 10);
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: attachmentMarker(attached.id).repeat(getAgentConfig().user_message_max_references),
+        project_id: projectId,
+        conversation_id: conversationId,
+        attached_chips: [attached],
+      },
+      cookie,
+    );
+
+    expect(res.status).toBe(200);
+  });
+
   it("measures the attachments apart from the words", async () => {
     // Each half is under its own limit, and together they are past the limit
     // on the words: the attachments do not eat into what the reader may type.

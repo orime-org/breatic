@@ -164,7 +164,8 @@
     "chat": {
       "message_too_long": "이 메시지는 너무 깁니다. 최대 {limit, number}자까지이며, 이 메시지는 {actual, number}자입니다.",
       "attachments_too_long": "첨부한 내용이 너무 깁니다. 최대 {limit, number}자까지이며, 현재 {actual, number}자입니다.",
-      "attachments_too_many": "첨부가 너무 많습니다. 최대 {limit, number}개까지이며, 이 메시지는 {actual, number}개입니다."
+      "attachments_too_many": "첨부가 너무 많습니다. 최대 {limit, number}개까지이며, 이 메시지는 {actual, number}개입니다.",
+      "references_too_many": "첨부 참조가 너무 많습니다. 메시지 하나에 최대 {limit, number}번까지이며, 이 메시지에는 {actual, number}번 있습니다."
     },
     "mail": {
       "studio_invite": {

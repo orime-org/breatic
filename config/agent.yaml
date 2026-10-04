@@ -71,6 +71,11 @@ max_output_tokens: 16384
 # this one is where a client cannot skip it.
 user_message_max_chars: 15000
 
+# How many references to attachments one message may carry. Each counts as one
+# character against the limit above, so this is what bounds how much they
+# expand to in what the model is sent.
+user_message_max_references: 100
+
 # How long the items attached to one message may be, in characters, measured
 # on the attachment section as the model is sent it. Apart from the words: an
 # extracted document is far longer than a typed question. The browser checks

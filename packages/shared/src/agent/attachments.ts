@@ -124,6 +124,17 @@ export function messageLength(chips: ReadonlyArray<{ readonly id: string }>, mes
 }
 
 /**
+ * How many references in the typed words point at this message's attachments.
+ * @param chips - What the user attached to the message; only their ids are read.
+ * @param message - What the user typed.
+ * @returns The count.
+ */
+export function referenceCount(chips: ReadonlyArray<{ readonly id: string }>, message: string): number {
+  const ids = new Set(chips.map((c) => c.id));
+  return messageSegments(message).filter((s) => s.kind === "reference" && ids.has(s.id)).length;
+}
+
+/**
  * The attached items, laid out the way the model reads them.
  *
  * Shared because the browser and the server measure this same text against

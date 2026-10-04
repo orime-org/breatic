@@ -20,6 +20,7 @@ import {
   messageLength,
   messageSegments,
   messageWithNames,
+  referenceCount,
   userTurnForModel,
 } from "@shared/agent/attachments.js";
 import type { ChatAttachedChip } from "@shared/schemas/api.js";
@@ -166,5 +167,12 @@ describe("the typed words split around their references", () => {
   it("is one text run when there is no reference", () => {
     expect(messageSegments("plain\nwords")).toEqual([{ kind: "text", text: "plain\nwords" }]);
     expect(messageSegments("")).toEqual([]);
+  });
+});
+
+describe("how many references a message carries", () => {
+  it("counts the ones pointing at its attachments only", () => {
+    expect(referenceCount([image], `${attachmentMarker("a1")} ${attachmentMarker("a1")} ${attachmentMarker("x")}`)).toBe(2);
+    expect(referenceCount([], attachmentMarker("a1"))).toBe(0);
   });
 });

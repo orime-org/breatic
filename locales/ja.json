@@ -164,7 +164,8 @@
     "chat": {
       "message_too_long": "このメッセージは長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "attachments_too_long": "添付した内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
-      "attachments_too_many": "添付が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。"
+      "attachments_too_many": "添付が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
+      "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。"
     },
     "mail": {
       "studio_invite": {
