@@ -434,6 +434,30 @@ test('A11: the cell button is on the caret cell only, and aligns that cell', asy
   expect(again!.y).toBeGreaterThanOrEqual(redrawn!.y);
 });
 
+test('A11: after switching to another Space and back, the cell button follows the caret again', async () => {
+  const a = await openFreshDocument(page);
+  await smallTable(page);
+  await cell(page, 'b2').click();
+  await expect(page.getByTestId('doc-table-cell-button')).toBeVisible();
+
+  const b = await createSpace(page, 'document', `table-other-${Date.now()}`);
+  createdSpaceIds.push(b);
+  await expect(page.locator(EDITOR)).toBeVisible({ timeout: 15_000 });
+  await page.locator(EDITOR).click();
+  await page.keyboard.type('elsewhere');
+  await page.getByTestId(`space-tab-${a}`).click();
+  await expect(cell(page, 'a1')).toBeVisible({ timeout: 15_000 });
+
+  await clickAndSettle(page, cell(page, 'a1'));
+
+  const button = await page.getByTestId('doc-table-cell-button').boundingBox();
+  const a1 = await cell(page, 'a1').boundingBox();
+  expect(button!.x).toBeGreaterThanOrEqual(a1!.x);
+  expect(button!.x + button!.width).toBeLessThanOrEqual(a1!.x + a1!.width);
+  expect(button!.y).toBeGreaterThanOrEqual(a1!.y);
+  expect(button!.y + button!.height).toBeLessThanOrEqual(a1!.y + a1!.height);
+});
+
 test('A12: dragging a column edge widens it, and a wide table scrolls in its own frame', async () => {
   await openFreshDocument(page);
   await smallTable(page);

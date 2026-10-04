@@ -136,10 +136,16 @@ export function DocumentTableCellButton({
     },
   );
   const { refs, floatingStyles, middlewareData } = useFloating({
-    elements: { reference: cellElement },
     middleware: [onVisibleCorner],
     whileElementsMounted: autoUpdate,
   });
+  // The reference is handed over on every change. @floating-ui/react 0.27.20
+  // holds the first `elements.reference` it receives in state for the hook's
+  // whole life (`useFloatingRootContext`), and a Space reopened from its tab
+  // hands back its editor with the caret already in a cell.
+  React.useLayoutEffect(() => {
+    refs.setReference(cellElement);
+  }, [refs, cellElement]);
   const hidden = (middlewareData.onVisibleCorner as { hidden?: boolean } | undefined)?.hidden === true;
   const style = React.useMemo<React.CSSProperties>(
     () => (hidden ? { ...floatingStyles, visibility: 'hidden' } : floatingStyles),

@@ -124,6 +124,47 @@ describe('the cell button (A11)', () => {
     expect(screen.queryByTestId('doc-table-cell-button')).toBeNull();
   });
 
+  it('follows the caret to another cell when it was already in a cell as the button mounted', async () => {
+    // A Space reopened from its tab gets back the editor it left, caret and all,
+    // so the button's first cell is known on its very first render.
+    const boxes: Record<string, DOMRect> = { a1: new DOMRect(0, 0, 100, 40), b2: new DOMRect(100, 40, 100, 40) };
+    const measure = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+      // Everything else is a roomy ancestor, so nothing clips the cell.
+      return (this.tagName === 'TD' && boxes[this.textContent ?? '']) || new DOMRect(0, 0, 1000, 1000);
+    };
+    const html = document.documentElement;
+    Object.defineProperty(html, 'clientWidth', { configurable: true, value: 1000 });
+    Object.defineProperty(html, 'clientHeight', { configurable: true, value: 1000 });
+    try {
+      /** Where the button is drawn now. */
+      const at = (): string => (screen.getByTestId('doc-table-cell-button').closest('[style]') as HTMLElement).style.transform;
+      // Where a button mounted with the caret already in b2 is drawn.
+      const fresh = open();
+      caretIn(fresh.editor, 'b2');
+      const first = render(<DocumentTableCellButton editor={fresh.editor} viewport={fresh.viewport} />);
+      await act(async () => {});
+      const onB2 = at();
+      first.unmount();
+
+      const { editor, viewport } = open();
+      caretIn(editor, 'a1');
+      render(<DocumentTableCellButton editor={editor} viewport={viewport} />);
+      await act(async () => {});
+      const onA1 = at();
+      expect(onA1).not.toBe(onB2);
+
+      caretIn(editor, 'b2');
+      await act(async () => {});
+
+      expect(at()).toBe(onB2);
+    } finally {
+      Element.prototype.getBoundingClientRect = measure;
+      delete (html as unknown as Record<string, unknown>)['clientWidth'];
+      delete (html as unknown as Record<string, unknown>)['clientHeight'];
+    }
+  });
+
   it('offers alignment, fill and split, split greyed on a cell never merged', () => {
     const { editor, viewport } = open();
     render(<DocumentTableCellButton editor={editor} viewport={viewport} />);
