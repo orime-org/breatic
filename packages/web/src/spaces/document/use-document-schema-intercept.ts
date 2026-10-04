@@ -89,38 +89,37 @@ export function useDocumentSchemaIntercept({
     };
   }, [metaDoc]);
 
-  const [state, setState] = React.useState<DocumentSchemaInterceptState>(derive);
-
-  React.useEffect(() => {
-    /**
-     * Recompute from the meta document, and keep the previous object when the
-     * answer has not moved.
-     *
-     * Yjs fires `update` on every change, local and remote alike. Handing
-     * back a fresh object literal each time would fail `Object.is` on every
-     * one of them and re-render the subtree for an answer that changed on
-     * almost none — twice over, since the tab-scoped guard runs this hook as
-     * well.
-     * @returns Nothing.
-     */
-    const update = (): void =>
-      setState((prev) => {
-        const next = derive();
-        return prev.intercepted === next.intercepted &&
-          prev.publishedAt === next.publishedAt
-          ? prev
-          : next;
-      });
-
-    // The published vocabulary can arrive after mount — on reconnect, or when
-    // the server restarts onto a new release.
-    metaDoc.on('update', update);
-    update();
-
-    return () => {
-      metaDoc.off('update', update);
-    };
-  }, [metaDoc, derive]);
-
-  return state;
+  // Read during render, so a change that lands while the Space is hidden is
+  // what the first render on the way back sees (inner#1235): the editor below
+  // reads it in an effect that runs before this component's own.
+  //
+  // Yjs fires `update` on every change, local and remote alike, so the
+  // snapshot keeps the previous object while the answer has not moved;
+  // a fresh literal each time would re-render the subtree for nothing.
+  const last = React.useRef<DocumentSchemaInterceptState | null>(null);
+  const getSnapshot = React.useCallback((): DocumentSchemaInterceptState => {
+    const next = derive();
+    const prev = last.current;
+    if (
+      prev !== null &&
+      prev.intercepted === next.intercepted &&
+      prev.publishedAt === next.publishedAt
+    ) {
+      return prev;
+    }
+    last.current = next;
+    return next;
+  }, [derive]);
+  // The published vocabulary can arrive after mount — on reconnect, or when
+  // the server restarts onto a new release.
+  const subscribe = React.useCallback(
+    (onChange: () => void): (() => void) => {
+      metaDoc.on('update', onChange);
+      return () => {
+        metaDoc.off('update', onChange);
+      };
+    },
+    [metaDoc],
+  );
+  return React.useSyncExternalStore(subscribe, getSnapshot);
 }
