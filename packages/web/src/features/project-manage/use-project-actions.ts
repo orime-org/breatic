@@ -33,7 +33,6 @@ export function useProjectActions(projectId: string): ProjectActions {
   const t = useTranslation();
   const queryClient = useQueryClient();
 
-
   const duplicate = useMutation({
     mutationFn: () => projectsApi.duplicate(projectId),
     onSuccess: (copy) => {

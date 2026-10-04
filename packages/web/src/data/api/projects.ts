@@ -119,7 +119,8 @@ export const projectsApi = {
   },
   /**
    * `PUT /api/v1/projects/:id/cover` — point the project's cover at an
-   * uploaded picture. Owner-only.
+   * uploaded picture. Same gate as a rename: the studio's admin or the
+   * project's owner.
    * @param id the bare project uuid.
    * @param assetId the uploaded picture's ledger row.
    * @returns the updated project.
