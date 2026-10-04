@@ -52,7 +52,7 @@ import {
 import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import { useRefreshOnReauth } from '@web/pages/project/use-refresh-on-reauth';
-import { useRenameProject } from '@web/pages/project/use-rename-project';
+import { useRenameProject } from '@web/features/project-manage/use-rename-project';
 import {
   initialTabState,
   reduceTabState,

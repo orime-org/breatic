@@ -18,14 +18,10 @@ interface RenameContext {
 }
 
 /**
- * Rename mutation for a project (the in-project title editor). It optimistically
- * updates the in-project header (`['project', id]`), rolls back + toasts on
- * error, and on success refreshes the in-project header, the studio
- * container's projects lists and the Recent landing, so the new name shows
- * wherever the project is listed. It also backs the studio card's rename. The studio list is keyed `['studio', <slug>, 'projects']`; since
- * ProjectPage has no slug, it is matched by predicate (#1068 — the previous
- * `['projects', 'list']` key was dead after the studio redesign re-keyed the
- * list, so the rename never refreshed it).
+ * Rename a project, from the project page's title or a studio card's menu.
+ * The project page header (`['project', id]`) changes at once and is put back,
+ * with a toast, if the rename fails; on success every listing that shows the
+ * name is refreshed through {@link invalidateProjectListings}.
  * @param projectId the project being renamed.
  * @returns the rename mutation (call `.mutate(newName)`).
  */

@@ -14,7 +14,7 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
 import { isStudioProjectsListKey, projectsApi } from '@web/data/api/projects';
 import { toast } from 'sonner';
 import { t } from '@breatic/shared';
-import { useRenameProject } from '@web/pages/project/use-rename-project';
+import { useRenameProject } from '@web/features/project-manage/use-rename-project';
 
 // ── pure predicate (the matching logic the bug got wrong) ──────────────────
 describe('isStudioProjectsListKey (spec: studio container projects list key)', () => {
