@@ -30,11 +30,12 @@ const MODES_YAML = resolve(
   "../../../../../config/models/modes.yaml",
 );
 
-/** The two models that carry an end frame (config/models/video/*.yaml). */
+/** The image-to-video models that also take an end frame (config/models/video/*.yaml). */
 const FIRST_LAST_MODELS = [
   "gemini-omni-1.1-flash-image-to-video",
   "minimax-h3-image-to-video",
   "wan-3.0-image-to-video",
+  "seedance-2.5-image-to-video",
 ];
 
 beforeAll(() => {
