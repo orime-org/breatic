@@ -1043,6 +1043,21 @@ function CanvasSpaceInner({
   // reproduced on a board.
   React.useEffect(() => () => endAnnotationPlacement(), [endAnnotationPlacement]);
 
+  // Track an in-flight front-end operation (upload / extraction / focus crop)
+  // in the per-space operation registry (#1617): register on start, unregister
+  // once the work settles — which for these flows is once the browser's half is over:
+  // the bytes are delivered and whatever this side writes locally is written.
+  // Closing the space tab is blocked while any operation is registered, so that
+  // write gets a chance to sync before detach.
+  const trackOperation = React.useCallback(
+    (operationId: string, work: Promise<unknown>): void => {
+      const ops = useSpaceOperationsStore.getState();
+      ops.register(spaceId, operationId);
+      void work.finally(() => ops.unregister(spaceId, operationId));
+    },
+    [spaceId],
+  );
+
   // A confirmed focus marquee (#1782): gate the pool cap (counting the
   // in-flight placeholders so a burst of confirms cannot overshoot), park a
   // pending rail entry, then run crop-export → upload → focusImages append.
@@ -1113,113 +1128,116 @@ function CanvasSpaceInner({
         nodeId: panelNodeId,
         name: sourceName,
       });
-      void runFocusCrop(
-        {
-          sourceUrl,
-          sourceName,
-          sourceTimeSeconds: result.sourceTimeSeconds,
-          crop: result.crop,
-          projectId,
-        },
-        {
-          exportCrop: exportCropBlob,
-          uploadFile: async (file, pid) => {
-            const { fileUrl } = await uploadMedia(file, {
-              projectId: pid,
-              spaceId,
-              // No node: a crop is a pool entry, so there is no handling to
-              // fence and nothing for the server to announce to. That is
-              // also why this path reads its URL from the answer rather
-              // than from Yjs (design §9).
-              // A byproduct: registered in the ledger for attribution and
-              // dedup, without an activity-feed row of its own.
-              derived: true,
-            });
-            // The rejection carries the REASON as its message (Gate-2 R5): a
-            // hashing failure cannot be fixed by retrying on this page, so the
-            // crop pipeline must be able to say "reload" rather than the
-            // generic "try again".
-            if (fileUrl === undefined) throw new UploadFailedError('upload');
-            return fileUrl;
+      trackOperation(
+        pendingId,
+        runFocusCrop(
+          {
+            sourceUrl,
+            sourceName,
+            sourceTimeSeconds: result.sourceTimeSeconds,
+            crop: result.crop,
+            projectId,
           },
-          addFocusImage: (image) => {
-            sessionStore.getState().removePendingFocusUpload(pendingId);
-            // A refused append must be SAID — the upload already succeeded,
-            // and silence here loses the crop after real side effects
-            // (round-7). Each refusal gets its TRUTHFUL message (round-8:
-            // one boolean told "pool full (200)" when the panel node was
-            // deleted mid-upload), and the just-uploaded orphan asset is
-            // reported deleted (ledger parity with the ✕ path) unless the
-            // URL survives elsewhere.
-            const outcome = addNodeFocusImage(
-              projectId,
-              spaceId,
-              panelNodeId,
-              image,
-            );
-            if (outcome === 'added') return;
-            if (outcome === 'pool-full') {
-              toast.warning(
-                t('canvas.generatePanel.referencePoolFull', {
-                  cap: MAX_FOCUS_ENTRIES,
-                }),
+          {
+            exportCrop: exportCropBlob,
+            uploadFile: async (file, pid) => {
+              const { fileUrl } = await uploadMedia(file, {
+                projectId: pid,
+                spaceId,
+                // No node: a crop is a pool entry, so there is no handling to
+                // fence and nothing for the server to announce to. That is
+                // also why this path reads its URL from the answer rather
+                // than from Yjs (design §9).
+                // A byproduct: registered in the ledger for attribution and
+                // dedup, without an activity-feed row of its own.
+                derived: true,
+              });
+              // The rejection carries the REASON as its message (Gate-2 R5): a
+              // hashing failure cannot be fixed by retrying on this page, so the
+              // crop pipeline must be able to say "reload" rather than the
+              // generic "try again".
+              if (fileUrl === undefined) throw new UploadFailedError('upload');
+              return fileUrl;
+            },
+            addFocusImage: (image) => {
+              sessionStore.getState().removePendingFocusUpload(pendingId);
+              // A refused append must be SAID — the upload already succeeded,
+              // and silence here loses the crop after real side effects
+              // (round-7). Each refusal gets its TRUTHFUL message (round-8:
+              // one boolean told "pool full (200)" when the panel node was
+              // deleted mid-upload), and the just-uploaded orphan asset is
+              // reported deleted (ledger parity with the ✕ path) unless the
+              // URL survives elsewhere.
+              const outcome = addNodeFocusImage(
+                projectId,
+                spaceId,
+                panelNodeId,
+                image,
               );
-            } else {
-              toast.warning(t('canvas.generatePanel.focusCropDiscarded'));
-            }
-            if (
-              isReportableAssetUrl(image.url) &&
+              if (outcome === 'added') return;
+              if (outcome === 'pool-full') {
+                toast.warning(
+                  t('canvas.generatePanel.referencePoolFull', {
+                    cap: MAX_FOCUS_ENTRIES,
+                  }),
+                );
+              } else {
+                toast.warning(t('canvas.generatePanel.focusCropDiscarded'));
+              }
+              if (
+                isReportableAssetUrl(image.url) &&
               !assetUrlSurvives(
                 image.url,
                 readCanvasGraph(projectId, spaceId).nodes,
               )
-            ) {
-              void assetsApi
-                .reportDeleted({
-                  projectId,
-                  entries: [
-                    {
-                      fileUrl: image.url,
-                      kind: 'image',
-                      nodeId: panelNodeId,
-                      spaceId,
-                    },
-                  ],
-                })
-                .catch(() => {
+              ) {
+                void assetsApi
+                  .reportDeleted({
+                    projectId,
+                    entries: [
+                      {
+                        fileUrl: image.url,
+                        kind: 'image',
+                        nodeId: panelNodeId,
+                        spaceId,
+                      },
+                    ],
+                  })
+                  .catch(() => {
                   // Silent: audit-feed miss at worst (reportDeletedAssets
                   // parity).
-                });
-            }
+                  });
+              }
+            },
+            onFailure: (stage) => {
+              sessionStore.getState().removePendingFocusUpload(pendingId);
+              // Two of these are not retryable, and saying "try again" to
+              // either is worse than useless: a hashing refusal hits the same
+              // broken worker on this page (Gate-2 R5), and a full account has
+              // no room to find in the seconds a retry takes (#89).
+              if (stage === 'hash') {
+                toast.error(t('canvas.upload.hashUnavailable'));
+                return;
+              }
+              if (stage === 'storage') {
+                toast.error(t('canvas.upload.storageFull'));
+                return;
+              }
+              toast.error(
+                t(
+                  stage === 'export'
+                    ? 'canvas.generatePanel.focusExportFailed'
+                    : 'canvas.generatePanel.focusUploadFailed',
+                ),
+              );
+            },
+            makeId: newId,
           },
-          onFailure: (stage) => {
-            sessionStore.getState().removePendingFocusUpload(pendingId);
-            // Two of these are not retryable, and saying "try again" to
-            // either is worse than useless: a hashing refusal hits the same
-            // broken worker on this page (Gate-2 R5), and a full account has
-            // no room to find in the seconds a retry takes (#89).
-            if (stage === 'hash') {
-              toast.error(t('canvas.upload.hashUnavailable'));
-              return;
-            }
-            if (stage === 'storage') {
-              toast.error(t('canvas.upload.storageFull'));
-              return;
-            }
-            toast.error(
-              t(
-                stage === 'export'
-                  ? 'canvas.generatePanel.focusExportFailed'
-                  : 'canvas.generatePanel.focusUploadFailed',
-              ),
-            );
-          },
-          makeId: newId,
-        },
+        ),
       );
       return true;
     },
-    [graphStore, sessionStore, focusCropTargetId, projectId, spaceId, t],
+    [graphStore, sessionStore, trackOperation, focusCropTargetId, projectId, spaceId, t],
   );
   // Warm the reference-pool cap knob (#1782) once per canvas mount. A
   // failure leaves the soft cap off (degrade-to-uncapped by design — no
@@ -2477,20 +2495,6 @@ function CanvasSpaceInner({
   // the media path's ending comes from the task row (#186 §3.7.3) and the local
   // extraction, which has no row, keeps its own `data.errorMessage` (§3.7.4).
   // No file is rejected. Created nodes are batch-selected once mirrored back.
-  // Track an in-flight front-end operation (upload / extraction) in the
-  // per-space operation registry (#1617): register on start, unregister once the
-  // work settles — which for these flows is once the browser's half is over:
-  // the bytes are delivered and whatever this side writes locally is written.
-  // Closing the space tab is blocked while any operation is registered, so that
-  // write gets a chance to sync before detach.
-  const trackOperation = React.useCallback(
-    (operationId: string, work: Promise<unknown>): void => {
-      const ops = useSpaceOperationsStore.getState();
-      ops.register(spaceId, operationId);
-      void work.finally(() => ops.unregister(spaceId, operationId));
-    },
-    [spaceId],
-  );
 
   // Whoever is at this browser: stamped on everything created here, which is
   // both the nodes a drop makes and the Group it wraps them in.
