@@ -257,9 +257,10 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
           triggerTestId='generate-video-mode-trigger'
         />
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
-        {currentModel && videoParamsPickerHasOptions(currentModel) ? (
+        {currentModel && videoParamsPickerHasOptions(currentModel, mode) ? (
           <VideoParamsPicker
             model={currentModel}
+            mode={mode}
             params={params}
             onChange={onChangeParams}
             durationFloor={durationFloor}

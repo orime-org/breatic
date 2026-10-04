@@ -11,7 +11,8 @@
  * declaration: `values` is a row of options (a true/false pair is a switch),
  * `min`/`max` is a slider, `type: text` is a text box. The `label` is what
  * marks a param as one of these. A list of entries (`type: items`) is a list
- * editor whose rows follow the entry's `fields`.
+ * editor whose rows follow the entry's `fields`. A param declared for some
+ * modes only is drawn in those modes only, so every reader names the mode.
  */
 
 import type { ItemField, ModelEntry, ParamDescriptor } from '@breatic/shared';
@@ -82,14 +83,16 @@ function fieldControl(name: string, field: ItemField): ItemFieldControl {
 }
 
 /**
- * The controls only this model has, in the order it declares them.
+ * The controls only this model has in a mode, in the order it declares them.
  * @param model - The active model.
- * @returns One control per labelled param the panel fills.
+ * @param mode - The mode the panel is in.
+ * @returns One control per labelled param the panel fills in that mode.
  */
-export function modelControls(model: ModelEntry): ModelControl[] {
+export function modelControls(model: ModelEntry, mode: string): ModelControl[] {
   const controls: ModelControl[] = [];
   for (const [name, spec] of Object.entries(model.params)) {
     if (spec.fill !== 'panel' || typeof spec.label !== 'string') continue;
+    if (spec.modes !== undefined && !spec.modes.includes(mode)) continue;
     const control = controlFor(name, spec);
     if (control) controls.push(control);
   }
@@ -103,16 +106,18 @@ export function modelControls(model: ModelEntry): ModelControl[] {
  * draws, memoised on their values; the model's own ones join that record the
  * same way, so a change to any other param does not redraw the popover.
  * @param model - The active model, or undefined before one resolves.
+ * @param mode - The mode the panel is in.
  * @param params - Everything the node holds for it.
  * @returns The own controls' values, by param name.
  */
 export function ownControlValues(
   model: ModelEntry | undefined,
+  mode: string,
   params: Readonly<Record<string, unknown>>,
 ): Record<string, unknown> {
   if (!model) return {};
   const out: Record<string, unknown> = {};
-  for (const control of modelControls(model)) {
+  for (const control of modelControls(model, mode)) {
     if (params[control.name] !== undefined) out[control.name] = params[control.name];
   }
   return out;
@@ -123,6 +128,7 @@ export function ownControlValues(
  * choice by its option's name, a range by its number, a switch by its name
  * while it is on, a text box or a list by its name while it holds something.
  * @param model - The active model.
+ * @param mode - The mode the panel is in.
  * @param params - What the node holds for it, with the model's defaults resolved in.
  * @param nameOf - A param's name on screen.
  * @param include - Which controls to summarise; all of them when absent.
@@ -130,12 +136,13 @@ export function ownControlValues(
  */
 export function ownControlSummary(
   model: ModelEntry,
+  mode: string,
   params: Readonly<Record<string, unknown>>,
   nameOf: (name: string) => string,
   include?: (control: ModelControl) => boolean,
 ): string[] {
   const parts: string[] = [];
-  for (const control of modelControls(model)) {
+  for (const control of modelControls(model, mode)) {
     if (include && !include(control)) continue;
     const shown = params[control.name];
     if (control.kind === 'choice' && (typeof shown === 'string' || typeof shown === 'number')) {

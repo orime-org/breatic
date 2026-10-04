@@ -648,6 +648,7 @@
         "horizontal_angle": "Horizontal angle",
         "vertical_angle": "Vertical angle",
         "negative_prompt": "Negative prompt",
+        "auto_shots": "Auto multi-shot",
         "motion": "Motion",
         "order": "Order",
         "model_mode": "Region",

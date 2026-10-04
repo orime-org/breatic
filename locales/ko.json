@@ -636,6 +636,7 @@
         "horizontal_angle": "수평 각도",
         "vertical_angle": "수직 각도",
         "negative_prompt": "네거티브 프롬프트",
+        "auto_shots": "자동 멀티샷",
         "motion": "움직임 정도",
         "order": "순서",
         "model_mode": "영역",

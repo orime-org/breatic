@@ -636,6 +636,7 @@
         "horizontal_angle": "水平角度",
         "vertical_angle": "垂直角度",
         "negative_prompt": "ネガティブプロンプト",
+        "auto_shots": "自動マルチショット",
         "motion": "動きの大きさ",
         "order": "順序",
         "model_mode": "範囲",

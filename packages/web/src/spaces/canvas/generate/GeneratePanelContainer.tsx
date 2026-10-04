@@ -289,7 +289,7 @@ function GeneratePanelBody({
   const aperture = asStr(vm.params.aperture);
   const enableCamera = vm.params.enable_camera === true;
   // The model's own controls (#2156), keyed on their values like the rest.
-  const ownKey = JSON.stringify(ownControlValues(vm.modelEntry, vm.params));
+  const ownKey = JSON.stringify(ownControlValues(vm.modelEntry, vm.mode, vm.params));
   const stableParams = React.useMemo(
     () => ({
       ...(JSON.parse(ownKey) as Record<string, unknown>),

@@ -68,6 +68,8 @@ export interface VoiceSource {
 interface AudioSettingsPickerProps {
   /** The current model, whose declarations decide what is offered. */
   model: ModelEntry;
+  /** The mode the panel is in; a control declared only for other modes is not drawn. */
+  mode: string;
   /** Everything the node holds for the active model, by param name. */
   value: Record<string, unknown>;
   /** Called with the changed params only. */
@@ -115,6 +117,7 @@ function panelKey(row: SettingsRow): string {
  * rather than the yaml's English `label`: this panel is read in five languages.
  * @param root0 - Component props.
  * @param root0.model - The current model.
+ * @param root0.mode - The mode the panel is in.
  * @param root0.value - What the node holds for it.
  * @param root0.onChange - Called with the changed params.
  * @param root0.voice - The voice list.
@@ -122,6 +125,7 @@ function panelKey(row: SettingsRow): string {
  */
 export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
   model,
+  mode,
   value,
   onChange,
   voice,
@@ -135,7 +139,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
   // the panel it sits in (a ReactFlow NodeToolbar that tracks its node).
   useFollowCanvasViewport(open);
 
-  const layout = React.useMemo(() => settingsLayout(model, value), [model, value]);
+  const layout = React.useMemo(() => settingsLayout(model, mode, value), [model, mode, value]);
   const standIn = layout.standIn;
   // The language the reader picked, for a voice that has a sample in each: the
   // model's param whose values name languages.
@@ -181,7 +185,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
 
   // The dialogue's speakers, one entry per speaker row, and which field of an
   // entry is the name (the text field) and which the voice (the choice).
-  const speakerControl = standIn === null ? undefined : modelControls(model).find((c) => c.name === standIn.name);
+  const speakerControl = standIn === null ? undefined : modelControls(model, mode).find((c) => c.name === standIn.name);
   const speakerFields = speakerControl?.kind === 'items' ? speakerControl.fields : [];
   const nameField = speakerFields.find((f) => f.kind === 'text')?.name;
   const voiceField = speakerFields.find((f) => f.kind === 'choice')?.name;
@@ -218,7 +222,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
    */
   const voiceNameOf = (id: string): string => voice.list.voices.find((v) => v.id === id)?.name ?? id;
 
-  if (!hasSettings(model)) return null;
+  if (!hasSettings(model, mode)) return null;
 
   /**
    * What a row of the first panel says it is set to.
@@ -271,7 +275,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
       const shown = asNumber(value[control.name]);
       return shown === undefined ? undefined : formatAudioParam(control.name, shown, t);
     }),
-    ...ownControlSummary(model, value, (name) => t(`canvas.generatePanel.param.${name}`), inlineOnly),
+    ...ownControlSummary(model, mode, value, (name) => t(`canvas.generatePanel.param.${name}`), inlineOnly),
   ]
     .filter((part): part is string => part !== undefined && part !== '')
     .join(' · ') || t('canvas.generatePanel.audioSettings');
@@ -363,6 +367,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
               ))}
               <ModelParamControls
                 model={model}
+                mode={mode}
                 value={value}
                 onChange={onChange}
                 include={inlineOnly}
@@ -433,7 +438,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                 />
               </>
             ) : (
-              <ItemsPanel model={model} name={openRow.name} held={value[openRow.name]} onChange={onChange} />
+              <ItemsPanel model={model} mode={mode} name={openRow.name} held={value[openRow.name]} onChange={onChange} />
             )}
           </SecondPanelFrame>
         ) : null}
@@ -444,6 +449,8 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
 
 interface ItemsPanelProps {
   model: ModelEntry;
+  /** The mode the panel is in; a control declared only for other modes is not drawn. */
+  mode: string;
   name: string;
   held: unknown;
   onChange: (partial: Record<string, unknown>) => void;
@@ -453,14 +460,15 @@ interface ItemsPanelProps {
  * A list of entries in the second panel: MiniMax's pronunciations.
  * @param root0 - Props.
  * @param root0.model - The active model.
+ * @param root0.mode - The mode the panel is in.
  * @param root0.name - The list param's name.
  * @param root0.held - What the node holds for it.
  * @param root0.onChange - Called with the new list.
  * @returns The panel.
  */
-function ItemsPanel({ model, name, held, onChange }: ItemsPanelProps): React.JSX.Element | null {
+function ItemsPanel({ model, mode, name, held, onChange }: ItemsPanelProps): React.JSX.Element | null {
   const t = useTranslation();
-  const control = modelControls(model).find((c) => c.name === name);
+  const control = modelControls(model, mode).find((c) => c.name === name);
   if (control?.kind !== 'items') return null;
   const spec = model.params[name];
   return (

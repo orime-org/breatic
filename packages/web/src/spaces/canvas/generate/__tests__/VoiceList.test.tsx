@@ -115,7 +115,7 @@ const VOICED: ModelEntry = {
 function renderPill(over: Record<string, unknown> = {}): ReturnType<typeof render> {
   const voice = { list: state(), selectedId: null, selectedName: null, ...NOOPS, ...over };
   return render(
-    <AudioSettingsPicker model={VOICED} value={{}} onChange={() => {}} voice={voice as never} />,
+    <AudioSettingsPicker mode='tts' model={VOICED} value={{}} onChange={() => {}} voice={voice as never} />,
   );
 }
 
@@ -373,7 +373,7 @@ describe('the voice list samples (#1960 A2)', () => {
     };
     const voice = { list: state({ voices: [kore] }), selectedId: null, selectedName: null, ...NOOPS };
     render(
-      <AudioSettingsPicker
+      <AudioSettingsPicker mode='tts'
         model={multilingual}
         value={{ language: 'Japanese (Japan)' }}
         onChange={() => {}}

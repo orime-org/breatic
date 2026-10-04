@@ -245,7 +245,7 @@ function claimsFor(
     for (const param of PANEL[node].controls) controls.add(param);
     // Every panel also draws the controls only this model has, by the shape
     // its declaration takes — the same function the popovers call.
-    for (const control of modelControls({ params: model.params } as unknown as ModelEntry)) {
+    for (const control of modelControls({ params: model.params } as unknown as ModelEntry, mode)) {
       controls.add(control.name);
     }
   }
@@ -448,7 +448,7 @@ describe('what the catalog declares', () => {
       if (!nodesOffering(model).includes('video')) {
         return 'declares fill: storyboard while only the video panel draws the storyboard controls';
       }
-      const spec = storyboardSpec(model.params as Record<string, ParamDescriptor>);
+      const spec = storyboardSpec(model.params as Record<string, ParamDescriptor>, 'multi_shot');
       if (spec === undefined) return 'declares fill: storyboard without a fill: storyboard items param to hold the shots';
       if (param !== spec.shotsParam && param !== spec.tierParam) {
         return `is a third fill: storyboard param beside '${spec.shotsParam}' and '${String(spec.tierParam)}', and the controls write neither shots nor tier into it`;
