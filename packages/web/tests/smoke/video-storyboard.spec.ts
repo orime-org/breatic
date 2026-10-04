@@ -267,7 +267,14 @@ test('names a model by its vendor, joining a variant on only where namesakes mee
   await expect(page.getByTestId('generate-model-option-gemini-omni-1.1-flash-reference-to-video')).toContainText(
     'Gemini Omni 1.1 Flash Reference',
   );
-  await page.keyboard.press('Escape');
+  await page.getByTestId('generate-model-option-gemini-omni-1.1-flash-reference-to-video').click();
+  // The button cuts the vendor's name short and keeps the variant whole.
+  const variant = page.getByTestId('generate-model-trigger-variant');
+  await expect(variant).toHaveText('Reference');
+  const [v, b] = [await variant.boundingBox(), await page.getByTestId('generate-model-trigger').boundingBox()];
+  if (!v || !b) throw new Error('model button not laid out');
+  expect(v.x + v.width).toBeLessThanOrEqual(b.x + b.width);
+  expect(await variant.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 });
 
 for (const [label, model] of [['Kling', KLING], ['Wan', WAN]] as const) {
