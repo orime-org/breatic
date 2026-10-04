@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, fireEvent, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import * as canvasSpace from '@web/data/yjs/canvas-space';
 import {
@@ -15,7 +16,8 @@ import {
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { createGroupNode } from '@web/spaces/canvas/node-factory';
 import { GROUP_PADDING } from '@web/spaces/canvas/group-geometry';
-import { useUIStore } from '@web/stores';
+import { useCanvasStore, useUIStore } from '@web/stores';
+import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import {
   clickNode,
@@ -73,19 +75,60 @@ function stored(id: string): { x: number; y: number; parentId?: string } {
  * @param y - Its y position.
  */
 function seedImage(id: string, x: number, y: number, locked = false): void {
+  seed('image', id, x, y, { locked, content: `${id}.png` });
+}
+
+/**
+ * Writes a node of any kind into the document.
+ * @param type - The node kind.
+ * @param id - The node id.
+ * @param x - Its x position.
+ * @param y - Its y position.
+ * @param data - Data fields beyond the ones every node carries.
+ */
+function seed(
+  type: 'image' | 'audio' | 'video' | 'text',
+  id: string,
+  x: number,
+  y: number,
+  data: Record<string, unknown> = {},
+): void {
   addNode('p', 's', {
     id,
-    type: 'image',
+    type,
     position: { x, y },
     data: {
       name: id,
       createdAt: 1,
       createdBy: 'u',
-      locked,
+      locked: false,
       attachments: [],
-      content: `${id}.png`,
+      ...data,
     },
   });
+}
+
+/**
+ * Seeds a 400x300 Group at (100, 100) holding one image member.
+ * @param memberAt - The member's position inside the Group.
+ */
+function seedGroup(memberAt: { x: number; y: number }): void {
+  seedImage('m', 0, 0);
+  createGroup(
+    'p',
+    's',
+    createGroupNode('g', { x: 100, y: 100 }, 400, 300, 'u'),
+    [{ id: 'm', position: memberAt }],
+  );
+}
+
+/**
+ * The Group's stored width.
+ * @returns The width in its data.
+ */
+function groupWidth(): unknown {
+  const g = readNodes(doc()).find((n) => n.id === 'g');
+  return (g?.data as { width?: number } | undefined)?.width;
 }
 
 /**
@@ -112,6 +155,19 @@ function mount(): void {
 }
 
 /**
+ * Mounts the canvas read-only, as a viewer sees it.
+ */
+function mountReadOnly(): void {
+  mockUseCanvasSpace.mockReturnValue(mockSpace([...readNodes(doc())], true));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <CanvasSpace projectId='p' spaceId='s' readOnly />
+    </QueryClientProvider>,
+  );
+}
+
+/**
  * The element xyflow renders for a node.
  * @param id - The node id.
  * @returns The node wrapper.
@@ -128,9 +184,9 @@ function shell(id: string): HTMLElement {
  * @param key - The key.
  * @param shiftKey - Whether Shift is held.
  */
-function press(id: string, key: string, shiftKey = false): void {
+function press(id: string, key: string, shiftKey = false, repeat = false): void {
   act(() => {
-    fireEvent.keyDown(shell(id), { key, shiftKey });
+    fireEvent.keyDown(shell(id), { key, shiftKey, repeat });
   });
 }
 
@@ -140,6 +196,7 @@ describe('arrow keys move the selected nodes in the document (inner#1010)', () =
     _resetCanvasUndoCacheForTests();
     mockUseCanvasSpace.mockReset();
     useUIStore.setState({ activeRegion: 'space' });
+    useCanvasStore.setState({ snapToGrid: false });
   });
 
   it('B1: a nudge on a selected node lands in the document', async () => {
@@ -176,13 +233,7 @@ describe('arrow keys move the selected nodes in the document (inner#1010)', () =
   });
 
   it('B5: a nudged Group moves whole, keeping its size and its members', async () => {
-    seedImage('m', 0, 0);
-    createGroup(
-      'p',
-      's',
-      createGroupNode('g', { x: 100, y: 100 }, 400, 300, 'u'),
-      [{ id: 'm', position: { x: GROUP_PADDING, y: GROUP_PADDING } }],
-    );
+    seedGroup({ x: GROUP_PADDING, y: GROUP_PADDING });
     mount();
     clickNode('g');
     press('g', 'ArrowRight');
@@ -196,24 +247,111 @@ describe('arrow keys move the selected nodes in the document (inner#1010)', () =
     });
   });
 
-  it('a key that moves nothing writes nothing', () => {
+  it('an arrow key on a node that is not selected writes nothing', () => {
     seedImage('a', 100, 100);
     const write = vi.spyOn(canvasSpace, 'setNodePosition');
     mount();
+    press('a', 'ArrowRight');
+    expect(shell('a').style.transform).toBe('translate(100px,100px)');
+    expect(write).not.toHaveBeenCalled();
+    write.mockRestore();
+  });
+
+  it('B4: holding a key down is one undo step for the whole move', async () => {
+    seedImage('a', 100, 100);
+    const undo = getCanvasUndoManager(doc(), NAME);
+    mount();
     clickNode('a');
-    press('a', 'Enter');
+    const before = undo.undoStack.length;
+    press('a', 'ArrowRight');
+    press('a', 'ArrowRight', false, true);
+    press('a', 'ArrowRight', false, true);
+    press('a', 'ArrowRight', false, true);
+    await waitFor(() => expect(stored('a').x).toBe(120));
+    expect(undo.undoStack.length).toBe(before + 1);
+    act(() => {
+      undo.undo();
+    });
+    expect(stored('a').x).toBe(100);
+  });
+
+  it('B4: a fresh press after a held one starts a new undo step', async () => {
+    seedImage('a', 100, 100);
+    const undo = getCanvasUndoManager(doc(), NAME);
+    mount();
+    clickNode('a');
+    const before = undo.undoStack.length;
+    press('a', 'ArrowRight');
+    press('a', 'ArrowRight', false, true);
+    press('a', 'ArrowDown');
+    await waitFor(() => expect(stored('a')).toMatchObject({ x: 110, y: 105 }));
+    expect(undo.undoStack.length).toBe(before + 2);
+    act(() => {
+      undo.undo();
+    });
+    expect(stored('a')).toMatchObject({ x: 110, y: 100 });
+  });
+
+  it('B3: with snap to grid on, a step is one grid dot and lands on the grid', async () => {
+    seedImage('a', 100, 100);
+    useCanvasStore.setState({ snapToGrid: true });
+    mount();
+    clickNode('a');
+    press('a', 'ArrowRight');
+    await waitFor(() => expect(stored('a')).toMatchObject({ x: 120, y: 96 }));
+  });
+
+  it('B5: a member nudged past its Group edge grows the Group, one undo step', async () => {
+    // EMPTY_NODE_SIZE is 288 wide, so x=88 puts the member's right edge on the padding line.
+    seedGroup({ x: 88, y: GROUP_PADDING });
+    const undo = getCanvasUndoManager(doc(), NAME);
+    mount();
+    clickNode('m');
+    const before = undo.undoStack.length;
+    press('m', 'ArrowRight', true);
+    await waitFor(() => expect(groupWidth()).toBe(420));
+    expect(stored('m')).toEqual({ x: 108, y: GROUP_PADDING, parentId: 'g' });
+    expect(stored('g')).toMatchObject({ x: 100, y: 100 });
+    expect(undo.undoStack.length).toBe(before + 1);
+    act(() => {
+      undo.undo();
+    });
+    expect(groupWidth()).toBe(400);
+    expect(stored('m').x).toBe(88);
+  });
+
+  it('B6: a read-only canvas neither moves nor writes', () => {
+    seedImage('a', 100, 100);
+    const write = vi.spyOn(canvasSpace, 'setNodePosition');
+    mountReadOnly();
+    clickNode('a');
+    press('a', 'ArrowRight');
+    expect(shell('a').style.transform).toBe('translate(100px,100px)');
+    expect(write).not.toHaveBeenCalled();
+    write.mockRestore();
+  });
+
+  it('arrow keys while typing in a text node move the caret, not the node', async () => {
+    seed('text', 't', 100, 100);
+    const write = vi.spyOn(canvasSpace, 'setNodePosition');
+    mount();
+    clickNode('t');
+    act(() => {
+      fireEvent.keyDown(shell('t'), { key: 'Enter' });
+    });
+    await waitFor(() => expect(document.querySelector('.ProseMirror')).not.toBeNull());
+    act(() => {
+      fireEvent.keyDown(document.querySelector('.ProseMirror') as HTMLElement, {
+        key: 'ArrowRight',
+      });
+    });
+    expect(shell('t').style.transform).toBe('translate(100px,100px)');
     expect(write).not.toHaveBeenCalled();
     write.mockRestore();
   });
 
   it('B5: with a Group and its member both selected, only the Group is written', async () => {
-    seedImage('m', 0, 0);
-    createGroup(
-      'p',
-      's',
-      createGroupNode('g', { x: 100, y: 100 }, 400, 300, 'u'),
-      [{ id: 'm', position: { x: GROUP_PADDING, y: GROUP_PADDING } }],
-    );
+    seedGroup({ x: GROUP_PADDING, y: GROUP_PADDING });
     const write = vi.spyOn(canvasSpace, 'setNodePosition');
     mount();
     selectAll(['g', 'm']);
@@ -229,6 +367,42 @@ describe('arrow keys move the selected nodes in the document (inner#1010)', () =
     mount();
     clickNode('a');
     press('a', 'ArrowRight');
+    expect(shell('a').style.transform).toBe('translate(100px,100px)');
+    expect(write).not.toHaveBeenCalled();
+    write.mockRestore();
+  });
+
+  it('B8: arrow keys on a video seek bar move the playhead, not the node', () => {
+    seed('video', 'v', 100, 100, { content: 'v.mp4' });
+    const write = vi.spyOn(canvasSpace, 'setNodePosition');
+    mount();
+    clickNode('v');
+    const thumb = shell('v').querySelector<HTMLElement>('[role="slider"]')!;
+    act(() => {
+      fireEvent.keyDown(thumb, { key: 'ArrowLeft' });
+    });
+    expect(shell('v').style.transform).toBe('translate(100px,100px)');
+    expect(write).not.toHaveBeenCalled();
+    write.mockRestore();
+  });
+
+  it('B8: arrow keys on the volume slider change the volume, not the node', async () => {
+    seed('audio', 'a', 100, 100, { content: 'a.mp3' });
+    const write = vi.spyOn(canvasSpace, 'setNodePosition');
+    mount();
+    clickNode('a');
+    act(() => {
+      fireEvent.click(shell('a').querySelector('[data-testid="volume-button"]')!);
+    });
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="volume"] [role="slider"]')).not.toBeNull(),
+    );
+    act(() => {
+      fireEvent.keyDown(
+        document.querySelector('[data-testid="volume"] [role="slider"]') as HTMLElement,
+        { key: 'ArrowDown' },
+      );
+    });
     expect(shell('a').style.transform).toBe('translate(100px,100px)');
     expect(write).not.toHaveBeenCalled();
     write.mockRestore();
