@@ -7,7 +7,7 @@
  * The unit tests pin what the canvas writes; this file checks what a person
  * sees: a node moved with the arrow keys moves on a second connection too,
  * stays where it was put after a reload, and comes back with one undo per
- * press. Two pages in one context: the second tab is a peer of the first.
+ * press, or one undo for a whole held key. Two pages in one context: the second tab is a peer of the first.
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *

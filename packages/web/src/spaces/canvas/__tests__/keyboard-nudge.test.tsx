@@ -369,7 +369,7 @@ describe('arrow keys move the selected nodes in the document (inner#1010)', () =
     expect(stored('a').x).toBe(105);
   });
 
-  it('B3: with snap to grid on, a step is one grid dot and lands on the grid', async () => {
+  it('B3: with snap to grid on, a press steps one grid dot and lands on the grid', async () => {
     seedImage('a', 100, 100);
     useCanvasStore.setState({ snapToGrid: true });
     mount();
@@ -408,7 +408,7 @@ describe('arrow keys move the selected nodes in the document (inner#1010)', () =
     write.mockRestore();
   });
 
-  it('arrow keys while typing in a text node move the caret, not the node', async () => {
+  it('arrow keys while typing in a text node leave the node where it is', async () => {
     seed('text', 't', 100, 100);
     const write = vi.spyOn(canvasSpace, 'setNodePosition');
     mount();
@@ -449,7 +449,7 @@ describe('arrow keys move the selected nodes in the document (inner#1010)', () =
     write.mockRestore();
   });
 
-  it('B8: arrow keys on a video seek bar move the playhead, not the node', () => {
+  it('B8: arrow keys on a video seek bar leave the node where it is', () => {
     seed('video', 'v', 100, 100, { content: 'v.mp4' });
     const write = vi.spyOn(canvasSpace, 'setNodePosition');
     mount();
@@ -463,7 +463,7 @@ describe('arrow keys move the selected nodes in the document (inner#1010)', () =
     write.mockRestore();
   });
 
-  it('B8: arrow keys on the volume slider change the volume, not the node', async () => {
+  it('B8: arrow keys on the volume slider leave the node where it is', async () => {
     seed('audio', 'a', 100, 100, { content: 'a.mp3' });
     const write = vi.spyOn(canvasSpace, 'setNodePosition');
     mount();
@@ -485,7 +485,7 @@ describe('arrow keys move the selected nodes in the document (inner#1010)', () =
     write.mockRestore();
   });
 
-  it('B8: arrow keys on a media slider move the playhead, not the node', () => {
+  it('B8: arrow keys on an audio seek bar leave the node where it is', () => {
     addNode('p', 's', {
       id: 'a',
       type: 'audio',

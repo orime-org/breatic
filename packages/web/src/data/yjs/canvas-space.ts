@@ -283,7 +283,8 @@ export function _resetCanvasUndoCacheForTests(): void {
  * @param spaceId - Canvas space whose doc to mutate.
  * @param fn - Runs the individual mutations; their writes join this one transaction.
  * @param joinStep - The undo step to merge into, when it is still on top.
- * @returns The undo step this batch landed in, or undefined when it wrote nothing.
+ * @returns The undo step this batch landed in: `joinStep` when it merged into
+ *   it, otherwise the new step on top, or undefined when it wrote nothing.
  */
 export function runCanvasUndoBatch(
   projectId: string,
