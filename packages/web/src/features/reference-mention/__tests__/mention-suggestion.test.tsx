@@ -277,6 +277,20 @@ describe('the shared @ list', () => {
     expect(chips(e)).toEqual(['b']);
   });
 
+  it('hides the list when focus moves from one of its rows to another control', async () => {
+    const e = await makeEditor();
+    const other = document.body.appendChild(document.createElement('button'));
+    act(() => e.view.focus());
+    type(e, '@');
+    await listShown();
+    const row = document.querySelector<HTMLElement>('[data-testid="reference-mention-option-a"]');
+    act(() => row?.focus());
+
+    act(() => other.focus());
+
+    expect(row?.closest<HTMLElement>('body > div')?.style.display).toBe('none');
+  });
+
   it('keeps the list when the window loses focus with nothing else taking it', async () => {
     const e = await makeEditor();
     act(() => e.commands.focus());

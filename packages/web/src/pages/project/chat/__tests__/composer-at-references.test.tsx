@@ -13,6 +13,7 @@ import { TextSelection, type Transaction } from '@tiptap/pm/state';
 import { attachmentMarker, getLocale, messageLength, setLocale } from '@breatic/shared';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
+import { HOVER_OPEN_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
 import type { TrayItem } from '@web/stores/chat-attachments';
 
 const cover: TrayItem = {
@@ -626,6 +627,34 @@ describe('@ in the chat box', () => {
 
     const row = screen.queryByTestId('reference-mention-option-a1');
     expect(row !== null && row.closest<HTMLElement>('body > div')?.style.display !== 'none').toBe(false);
+  });
+
+  it('marks a block with its kind as an icon, and previews the attachment on hover', () => {
+    setup({ draft: `see ${attachmentMarker('a1')} `, attachments: [cover] });
+    const block = screen.getByTestId('chat-reference');
+    expect(block.querySelector('svg')).not.toBeNull();
+    expect(block.textContent).toBe('cover.png');
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.pointerEnter(block, { pointerType: 'mouse' });
+      act(() => {
+        vi.advanceTimersByTime(HOVER_OPEN_DELAY_MS + 10);
+      });
+      expect(screen.getByTestId('hover-preview-content').querySelector('img')?.getAttribute('src')).toBe('u');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaves the clipboard alone when an empty box is selected and copied', () => {
+    setup({ draft: '' });
+    act(() => box().commands.selectAll());
+    const setData = vi.fn();
+    const event = fireEvent.copy(box().view.dom, { clipboardData: { clearData: vi.fn(), setData } });
+
+    expect(setData).not.toHaveBeenCalled();
+    expect(event).toBe(true);
   });
 
   it('copies a block as its name in plain text', () => {

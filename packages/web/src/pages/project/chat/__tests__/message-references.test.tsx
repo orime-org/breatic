@@ -5,11 +5,12 @@
 // copying the message gives the attachments' names.
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { attachmentMarker } from '@breatic/shared';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
+import { HOVER_OPEN_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
 const said: ChatMessage = {
@@ -25,6 +26,24 @@ describe('a sent message with references', () => {
 
     expect(screen.getByTestId('message-reference')).toHaveTextContent('cover.png');
     expect(screen.getByTestId('message-bubble-content')).not.toHaveTextContent(attachmentMarker('a1'));
+  });
+
+  it('marks the block with its kind as an icon, and previews the attachment on hover', () => {
+    vi.useFakeTimers();
+    try {
+      render(<MessageBubble message={said} />);
+      const block = screen.getByTestId('message-reference');
+
+      expect(block.querySelector('svg')).not.toBeNull();
+      expect(block.textContent).toBe('cover.png');
+      fireEvent.pointerEnter(block, { pointerType: 'mouse' });
+      act(() => {
+        vi.advanceTimersByTime(HOVER_OPEN_DELAY_MS + 10);
+      });
+      expect(screen.getByTestId('hover-preview-content').querySelector('img')?.getAttribute('src')).toBe('u');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('leaves a marker for something it did not carry as the text it is', () => {
