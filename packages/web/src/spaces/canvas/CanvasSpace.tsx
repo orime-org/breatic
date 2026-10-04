@@ -33,6 +33,7 @@ import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
+import { claimRegion } from '@web/features/active-region/use-track-active-region';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { useKeyboardNudge } from '@web/spaces/canvas/use-keyboard-nudge';
 import { canGenerate, newId } from '@breatic/shared';
@@ -254,8 +255,9 @@ import {
   clipboardBoundingBox,
   cloneForPaste,
   externalParentAbs,
+  canvasTakesPaste,
+  pasteOffsetFor,
   parseClipboardNodes,
-  pasteAnchorOffset,
   serializeNodes,
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
@@ -2885,10 +2887,13 @@ function CanvasSpaceInner({
      * @param event - The clipboard paste event.
      */
     const onPaste = (event: ClipboardEvent): void => {
-      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      const text = event.clipboardData?.getData('text/plain') ?? '';
+      if (readOnly) return;
+      if (!canvasTakesPaste(event.target, text)) return;
       // A caret in a field is answered by the field or by the browser, so
       // this key is theirs while one is there.
       if (isEditableTarget(event.target as Element | null)) return;
+      claimRegion('space');
 
       // File paste (screenshot / copied file) carries binary in
       // `clipboardData.files` — route it through the upload flow, dropped at
@@ -2908,8 +2913,6 @@ function CanvasSpaceInner({
         return;
       }
 
-      const text = event.clipboardData?.getData('text/plain') ?? '';
-
       const clipboardNodes = parseClipboardNodes(text);
       if (clipboardNodes && clipboardNodes.length > 0) {
         event.preventDefault();
@@ -2921,8 +2924,8 @@ function CanvasSpaceInner({
         if (rect) {
           const tl = screenToFlowPosition({ x: rect.left, y: rect.top });
           const br = screenToFlowPosition({ x: rect.right, y: rect.bottom });
-          offset = pasteAnchorOffset(
-            clipboardBoundingBox(clipboardNodes),
+          offset = pasteOffsetFor(
+            clipboardNodes,
             { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y },
             PASTE_OFFSET_PX,
           );

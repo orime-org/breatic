@@ -201,7 +201,7 @@ const DialogHeader = ({
     )}
     {...props}
   >
-    <div className='flex min-h-[var(--btn-chrome)] min-w-0 flex-col justify-center gap-1 text-left'>
+    <div className='flex min-h-[var(--btn-chrome)] min-w-0 flex-1 flex-col justify-center gap-1 text-left'>
       {children}
     </div>
     {hideClose ? null : (
