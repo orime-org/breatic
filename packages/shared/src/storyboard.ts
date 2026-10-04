@@ -7,8 +7,8 @@
  *
  * A node keeps one list of shots, and only the multi-shot mode uses it. A
  * model takes shots through a `fill: storyboard` list param declared for that
- * mode. Kling has a field for them upstream (`multi_prompt`, beside its tier
- * param `shot_type`); a model with no such field declares `into_prompt`, and
+ * mode. Kling has a field for them upstream (`multi_prompt`, beside `shot_type`,
+ * which offers the one value a run sends); a model with no such field declares `into_prompt`, and
  * its shots are written into the prompt instead.
  */
 
@@ -21,15 +21,15 @@ export const MULTI_SHOT_MODE = "multi_shot";
 /** The most shots the multi-shot mode takes, whatever a model allows. */
 export const MULTI_SHOT_MAX_SHOTS = 6;
 
-/** The tier Kling's shots go out under when each one is written by hand. */
-const CUSTOM_TIER = "customize";
-
 /** A model's storyboard in the multi-shot mode, as its catalog entry declares it. */
 export interface StoryboardSpec {
   /** The list param the shots go out in, or are read from for the prompt. */
   readonly shotsParam: string;
-  /** The param naming the tier upstream, when the model has one. */
-  readonly tierParam: string | undefined;
+  /**
+   * The values a run sends beside the shots, read off the model's other
+   * `fill: storyboard` params that offer exactly one (Kling's `shot_type`).
+   */
+  readonly fixed: Readonly<Record<string, unknown>>;
   /** The field of a shot that carries its seconds, when a shot has one. */
   readonly secondsField: string | undefined;
   /**
@@ -47,7 +47,7 @@ export interface StoryboardSpec {
 
 /**
  * The storyboard a model declares for a mode: its `fill: storyboard` list
- * param and the `fill: storyboard` param beside it that names the tier. Only
+ * param and the single-valued `fill: storyboard` params beside it. Only
  * the multi-shot mode has one.
  * @param params - The model's params.
  * @param mode - The mode the panel is in.
@@ -63,12 +63,16 @@ export function storyboardSpec(
   );
   const shots = entries.find(([, spec]) => spec.type === "items");
   if (shots === undefined) return undefined;
-  const tier = entries.find(([name]) => name !== shots[0]);
   const [shotsParam, spec] = shots;
+  const fixed = Object.fromEntries(
+    entries.flatMap(([name, other]) =>
+      name !== shotsParam && other.values?.length === 1 ? [[name, other.values[0]]] : [],
+    ),
+  );
   const seconds = Object.keys(spec.fields ?? {}).find((field) => field !== "prompt");
   return {
     shotsParam,
-    tierParam: tier?.[0],
+    fixed,
     secondsField: seconds,
     totalParam: seconds !== undefined && seconds in params ? seconds : undefined,
     maxShots: Math.min(spec.max_items ?? MULTI_SHOT_MAX_SHOTS, MULTI_SHOT_MAX_SHOTS),
@@ -120,7 +124,7 @@ function writeShots(template: string, shots: readonly StoryboardShotInput[]): st
 }
 
 /**
- * What a multi-shot run sends: Kling its tier and each shot as a field, a
+ * What a multi-shot run sends: Kling its fixed values and each shot as a field, a
  * model with no field for shots one prompt that writes them all out.
  * @param spec - The model's storyboard.
  * @param shots - The shots, in order, with their words already plain text.
@@ -130,11 +134,10 @@ export function storyboardSend(spec: StoryboardSpec, shots: readonly StoryboardS
   if (spec.intoPrompt !== undefined) {
     return { params: {}, prompt: writeShots(spec.intoPrompt, shots) };
   }
-  const tier = spec.tierParam === undefined ? {} : { [spec.tierParam]: CUSTOM_TIER };
   const seconds = spec.secondsField;
   return {
     params: {
-      ...tier,
+      ...spec.fixed,
       [spec.shotsParam]: shots.map((shot) =>
         seconds === undefined ? { prompt: shot.prompt } : { prompt: shot.prompt, [seconds]: shot.duration },
       ),

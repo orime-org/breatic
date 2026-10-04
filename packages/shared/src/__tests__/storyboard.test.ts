@@ -54,10 +54,10 @@ const other: Record<string, ParamDescriptor> = {
 };
 
 describe("what a model says about its storyboard", () => {
-  it("gives Kling's shots, tier and seconds in the multi-shot mode", () => {
+  it("gives Kling's shots, the value it always sends beside them and seconds in the multi-shot mode", () => {
     expect(storyboardSpec(kling, "multi_shot")).toEqual({
       shotsParam: "multi_prompt",
-      tierParam: "shot_type",
+      fixed: { shot_type: "customize" },
       secondsField: "duration",
       totalParam: "duration",
       maxShots: 6,
@@ -88,7 +88,7 @@ describe("what a model says about its storyboard", () => {
   it("carries the prompt template of a model that takes its shots in the prompt", () => {
     expect(storyboardSpec(seedance, "multi_shot")).toMatchObject({
       shotsParam: "shots",
-      tierParam: undefined,
+      fixed: {},
       secondsField: "duration",
       totalParam: "duration",
       intoPrompt: "Shot {n} [{start}-{end}s]: {prompt}",

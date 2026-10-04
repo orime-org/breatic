@@ -73,7 +73,7 @@ describe("the models the multi-shot mode offers", () => {
     const spec = storyboardSpec((entry.params ?? {}) as Record<string, ParamDescriptor>, "multi_shot");
     expect(spec).toMatchObject({
       shotsParam: "shots",
-      tierParam: undefined,
+      fixed: {},
       secondsField: "duration",
       totalParam: "duration",
       maxShots: 6,
@@ -87,7 +87,7 @@ describe("the models the multi-shot mode offers", () => {
     const params = (videoEntry(name).params ?? {}) as Record<string, ParamDescriptor>;
     expect(storyboardSpec(params, "multi_shot")).toMatchObject({
       shotsParam: "multi_prompt",
-      tierParam: "shot_type",
+      fixed: { shot_type: "customize" },
       totalParam: "duration",
       maxShots: 6,
       intoPrompt: undefined,

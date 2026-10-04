@@ -450,11 +450,8 @@ describe('what the catalog declares', () => {
       }
       const spec = storyboardSpec(model.params as Record<string, ParamDescriptor>, 'multi_shot');
       if (spec === undefined) return 'declares fill: storyboard without a fill: storyboard items param to hold the shots';
-      if (param !== spec.shotsParam && param !== spec.tierParam) {
-        return `is a third fill: storyboard param beside '${spec.shotsParam}' and '${String(spec.tierParam)}', and the controls write neither shots nor tier into it`;
-      }
-      if (spec.tierParam === undefined && spec.intoPrompt === undefined) {
-        return 'has shots but neither a fill: storyboard param naming the tier nor into_prompt, so the shots reach the upstream nowhere';
+      if (param !== spec.shotsParam && !(param in spec.fixed)) {
+        return `is a fill: storyboard param beside '${spec.shotsParam}' with more than one value, and the shots write none of them into it`;
       }
       const fields = (model.params[spec.shotsParam] as { fields?: Record<string, unknown> }).fields ?? {};
       if (!('prompt' in fields)) return `'${spec.shotsParam}' has no prompt field, and each shot's text box writes one`;
