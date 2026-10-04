@@ -95,6 +95,15 @@ type StripFace = 'grip' | 'plus' | 'table';
 /** Quote is out of reach: the line is already in a quote. Module-level so the memo sees one set. */
 const QUOTE_GREYED: ReadonlySet<InsertChoice> = new Set<InsertChoice>(['quote']);
 
+/**
+ * How much further out the table entry stands than the other faces. A row
+ * handle is 12px wide and stands on the table's left line, its centre about
+ * 4px inside it; on the first row it is level with the table entry, and WCAG
+ * 2.2 SC 2.5.8 keeps a 24px circle around it clear of other targets. The
+ * circle reaches 8px past the line, so the entry stands 8px further out.
+ */
+const TABLE_ENTRY_OUTSET = 8;
+
 /** Each face's test id. */
 const TEST_ID: Readonly<Record<StripFace, string>> = {
   grip: 'doc-block-handle',
@@ -282,7 +291,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
       // `.bn-toggle-button`). The handle's own half is also covered by the UA
       // style on `[draggable=true]`; this reaches the rest of the strip.
       className='flex select-none items-center gap-0.5'
-      style={{ transform: `translateY(${String(offset)}px)` }}
+      style={{ transform: `translate(${String(face === 'table' ? -TABLE_ENTRY_OUTSET : 0)}px, ${String(offset)}px)` }}
     >
       <DropdownMenu open={menuOpen} onOpenChange={onMenuOpenChange}>
         {/* `flex`, so this wrapper is exactly as tall as the handle. As a
