@@ -58,10 +58,12 @@ test('every toast shows its text on its own row, centred', async ({ browser }) =
   await page.goto('/');
   await page.waitForSelector('section[aria-label^="Notifications"]', { state: 'attached' });
 
-  await page.evaluate(async (messages) => {
-    const { toast } = (await import(/* @vite-ignore */ '/lib/toast.ts')) as { toast: typeof appToast };
+  // The dev server serves `src/` at its root, so the app's toast entry is
+  // `/lib/toast.ts` there; passed in as a value, TypeScript does not resolve it.
+  await page.evaluate(async ({ entry, messages }) => {
+    const { toast } = (await import(/* @vite-ignore */ entry)) as { toast: typeof appToast };
     for (const message of messages) toast.success(message);
-  }, MESSAGES);
+  }, { entry: '/lib/toast.ts', messages: MESSAGES });
   await page.mouse.move(5, 895);
   await expect(page.locator('[data-sonner-toast]')).toHaveCount(MESSAGES.length);
   await page.waitForTimeout(600);
