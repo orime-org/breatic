@@ -5,10 +5,10 @@
 // reference to it in the words.
 
 import { describe, it, expect, vi } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
 import { undo } from '@tiptap/pm/history';
-import { attachmentMarker, messageLength } from '@breatic/shared';
+import { attachmentMarker, getLocale, messageLength, setLocale } from '@breatic/shared';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import type { TrayItem } from '@web/stores/chat-attachments';
@@ -260,5 +260,40 @@ describe('@ in the chat box', () => {
     rerender({ attachments: [{ ...pending, status: 'ready', chip: { id: 'a3', type: 'video', name: 'clip.mp4', data_snapshot: {} } }] });
 
     await waitFor(() => expect(screen.getByTestId('reference-mention-option-a3')).toBeVisible());
+  });
+
+  it('renames a block in the language just picked', async () => {
+    const before = getLocale();
+    const bare: TrayItem = {
+      id: 'b1',
+      name: '',
+      type: 'image',
+      status: 'ready',
+      chip: { id: 'b1', type: 'image', name: '', data_snapshot: { url: 'u' } },
+    };
+    try {
+      setup({ draft: `see ${attachmentMarker('b1')}`, attachments: [bare] });
+      const english = screen.getByTestId('chat-reference').textContent;
+
+      await act(async () => {
+        await setLocale('zh-CN');
+      });
+
+      await waitFor(() => expect(screen.getByTestId('chat-reference').textContent).not.toBe(english));
+    } finally {
+      await act(async () => {
+        await setLocale(before);
+      });
+    }
+  });
+
+  it('cuts a paste between characters, never inside one', () => {
+    const { onChange } = setup({ draft: 'y'.repeat(9_999) });
+    act(() => box().commands.focus('end'));
+    fireEvent.paste(box().view.dom, {
+      clipboardData: { files: [], getData: (type: string) => (type === 'text/plain' ? '\u{1F600}ok' : '') },
+    });
+
+    expect(String(onChange.mock.lastCall?.[0] ?? '')).not.toMatch(/[\uD800-\uDBFF]$/);
   });
 });
