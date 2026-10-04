@@ -70,7 +70,7 @@ import * as blankPng from '@web/spaces/canvas/empty-image/generate-blank-png';
 import { serializeNodes } from '@web/spaces/canvas/node-clipboard';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import { useCanvasStore, useUIStore } from '@web/stores';
-import { useCanvasGraphStore } from '@web/stores/canvas-graph';
+import { canvasGraphs } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { assetsApi } from '@web/data/api';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
@@ -501,8 +501,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       // the mocked space would never reach the copy path. Mark it where the
       // canvas actually reads it: its ReactFlow mirror.
       act(() => {
-        useCanvasGraphStore
-          .getState()
+        canvasGraphs.of('s').getState()
           .setFlowNodes((prev) =>
             prev.map((n) => (n.id === 'n1' ? { ...n, selected: true } : n)),
           );
@@ -2301,12 +2300,12 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     await waitFor(() =>
-      expect(useCanvasGraphStore.getState().flowNodes).toHaveLength(1),
+      expect(canvasGraphs.of('s').getState().flowNodes).toHaveLength(1),
     );
-    const before = useCanvasGraphStore.getState().flowNodes;
+    const before = canvasGraphs.of('s').getState().flowNodes;
     const pane = document.querySelector('.react-flow__pane');
     clickPane(pane as Element);
-    expect(useCanvasGraphStore.getState().flowNodes).toBe(before);
+    expect(canvasGraphs.of('s').getState().flowNodes).toBe(before);
   });
 
   // Viewer gate (the canvas-internal backstop for the HIGH review finding):
@@ -3613,8 +3612,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       );
       renderSpace();
       act(() => {
-        useCanvasGraphStore
-          .getState()
+        canvasGraphs.of('s').getState()
           .setFlowNodes((prev) => prev.map((n) => ({ ...n, selected: true })));
       });
     };
@@ -3883,12 +3881,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         mountWithSelection(3);
         const { removeElements } = spyWrites();
         act(() => {
-          useCanvasGraphStore
-            .getState()
+          canvasGraphs.of('s').getState()
             .setFlowNodes((prev) =>
               prev.map((n) => ({ ...n, selected: n.id === 'n1' })),
             );
-          useCanvasGraphStore.getState().setFlowEdges(() => [
+          canvasGraphs.of('s').getState().setFlowEdges(() => [
             { id: 'e1', source: 'n2', target: 'n3', selected: true },
             { id: 'e2', source: 'n2', target: 'n3', selected: false },
           ]);
@@ -4727,8 +4724,7 @@ describe('placing a note (#1881)', () => {
         </QueryClientProvider>,
       );
       act(() => {
-        useCanvasGraphStore
-          .getState()
+        canvasGraphs.of('s').getState()
           .setFlowNodes((prev) => prev.map((n) => ({ ...n, selected: true })));
       });
       const removeElements = vi.spyOn(canvasSpace, 'removeElements');

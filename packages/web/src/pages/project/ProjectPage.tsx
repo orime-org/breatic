@@ -64,6 +64,7 @@ import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
+import { canvasGraphs } from '@web/stores/canvas-graph';
 import {
   canvasSessions,
   createCanvasSessionStore,
@@ -424,6 +425,7 @@ function ProjectWorkspace({
       evictCanvasUndoManager(docName.canvasSpace(projectId, id));
       evictDocumentEditor(docName.documentSpace(projectId, id));
       canvasSessions.drop(id);
+      canvasGraphs.drop(id);
     }
   }, [projectId, tabs.openIds]);
 

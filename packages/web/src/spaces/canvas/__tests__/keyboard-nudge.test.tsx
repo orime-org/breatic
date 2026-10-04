@@ -19,7 +19,7 @@ import { createGroupNode } from '@web/spaces/canvas/node-factory';
 import { GROUP_PADDING } from '@web/spaces/canvas/group-geometry';
 import { useCanvasStore, useUIStore } from '@web/stores';
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
-import { useCanvasGraphStore } from '@web/stores/canvas-graph';
+import { canvasGraphs } from '@web/stores/canvas-graph';
 import {
   clickNode,
   mockSpace,
@@ -139,8 +139,7 @@ function groupWidth(): unknown {
 function selectAll(ids: ReadonlyArray<string>): void {
   const picked = new Set(ids);
   act(() => {
-    useCanvasGraphStore
-      .getState()
+    canvasGraphs.of('s').getState()
       .setFlowNodes((prev) =>
         prev.map((n) => ({ ...n, selected: picked.has(n.id) })),
       );

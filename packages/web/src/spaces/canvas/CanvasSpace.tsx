@@ -28,6 +28,7 @@ import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
 import * as React from 'react';
 import { createPortal } from 'react-dom';
+import { useStore as useStoreOf } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { toast } from '@web/lib/toast';
@@ -271,7 +272,7 @@ import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
 import { isProposalIntent, useCanvasStore } from '@web/stores';
-import { useCanvasGraphStore } from '@web/stores/canvas-graph';
+import { canvasGraphs } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import {
   readSpaceViewport,
@@ -796,23 +797,12 @@ function CanvasSpaceInner({
   // The ReactFlow render buffer lives in a dedicated plain zustand store
   // (#1647 step 4), not local state, so discrete consumers can subscribe to
   // just their slice instead of the whole component re-running on every change.
-  const flowNodes = useCanvasGraphStore((s) => s.flowNodes);
-  const setFlowNodes = useCanvasGraphStore((s) => s.setFlowNodes);
-  const flowEdges = useCanvasGraphStore((s) => s.flowEdges);
-  const setFlowEdges = useCanvasGraphStore((s) => s.setFlowEdges);
-  // Clear the shared buffer BEFORE this space's first paint. A space switch
-  // remounts this body (keyed on space id), but the buffer is a global store
-  // that survives the remount, so it still holds the PREVIOUS space's nodes on
-  // the new mount. A passive unmount cleanup runs only after the next space has
-  // already painted → the new space flashes the old nodes for one frame
-  // (adversarial finding, #1647). `useLayoutEffect` on mount resets before
-  // paint, restoring the pre-store `useState([])` empty start; the mirror
-  // effect below then fills it with this space's nodes. Also reset on unmount so
-  // a closed space leaves nothing lingering in the singleton.
-  React.useLayoutEffect(() => {
-    useCanvasGraphStore.getState().reset();
-    return () => useCanvasGraphStore.getState().reset();
-  }, []);
+  // One per Space, kept while its tab is open (inner#1235).
+  const graphStore = canvasGraphs.of(spaceId);
+  const flowNodes = useStoreOf(graphStore, (s) => s.flowNodes);
+  const setFlowNodes = useStoreOf(graphStore, (s) => s.setFlowNodes);
+  const flowEdges = useStoreOf(graphStore, (s) => s.flowEdges);
+  const setFlowEdges = useStoreOf(graphStore, (s) => s.setFlowEdges);
   const containerRef = React.useRef<HTMLDivElement>(null);
   // Presence: one awareness for the space, shared with the carets.
   const { caretProvider } = useCanvasContext();
@@ -944,7 +934,7 @@ function CanvasSpaceInner({
   // node still exists) — that keeps a marquee alive across a pan-away-and-
   // back (adversarial round-8 of #1782, where an img-absent discard was
   // eating careful selections on every pan).
-  const focusTargetVerdict = useCanvasGraphStore((st): FocusTargetVerdict => {
+  const focusTargetVerdict = useStoreOf(graphStore, (st): FocusTargetVerdict => {
     if (focusTarget === null) return 'ok';
     const node = st.flowNodes.find((n) => n.id === focusTarget.id);
     if (!node) return 'gone';
@@ -1025,7 +1015,7 @@ function CanvasSpaceInner({
       const session = sessionStore.getState().pickSession;
       if (session?.purpose !== 'focus') return false;
       const panelNodeId = session.nodeId;
-      const graph = useCanvasGraphStore.getState();
+      const graph = graphStore.getState();
       const source = graph.flowNodes.find((n) => n.id === focusCropTargetId);
       const data = source?.data as
         | { content?: unknown; name?: unknown }
@@ -1189,7 +1179,7 @@ function CanvasSpaceInner({
       );
       return true;
     },
-    [sessionStore, focusCropTargetId, projectId, spaceId, t],
+    [graphStore, sessionStore, focusCropTargetId, projectId, spaceId, t],
   );
   // Warm the reference-pool cap knob (#1782) once per canvas mount. A
   // failure leaves the soft cap off (degrade-to-uncapped by design — no
@@ -1576,7 +1566,7 @@ function CanvasSpaceInner({
         ?.closest('.react-flow__node[data-id]')
         ?.getAttribute('data-id');
       const frozen = id
-        ? lockedNodeIds(useCanvasGraphStore.getState().flowNodes)
+        ? lockedNodeIds(graphStore.getState().flowNodes)
         : null;
       start = id && frozen?.has(id) ? { x: e.clientX, y: e.clientY } : null;
       warned = false;
@@ -1617,7 +1607,7 @@ function CanvasSpaceInner({
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
     };
-  }, [t, readOnly]);
+  }, [graphStore, t, readOnly]);
 
 
   // Veto deletions BEFORE ReactFlow touches the local buffer: a locked group's
@@ -1715,14 +1705,14 @@ function CanvasSpaceInner({
       // valid snap and then silently no-op at the addEdge write boundary —
       // reject it here so the gesture reads invalid while still in-flight.
       if (connection.source === connection.target) return false;
-      const { flowNodes } = useCanvasGraphStore.getState();
+      const { flowNodes } = graphStore.getState();
       const sourceKind =
         flowNodes.find((n) => n.id === connection.source)?.type ?? '';
       const targetKind =
         flowNodes.find((n) => n.id === connection.target)?.type ?? '';
       return canConnect(sourceKind, targetKind);
     },
-    [],
+    [graphStore],
   );
 
   // Localized node-kind display name for the connection-rules toast; an
@@ -1864,7 +1854,7 @@ function CanvasSpaceInner({
         from,
         toNodeId: targetEl?.getAttribute('data-id') ?? null,
         kindOf: (id) =>
-          useCanvasGraphStore.getState().flowNodes.find((n) => n.id === id)
+          graphStore.getState().flowNodes.find((n) => n.id === id)
             ?.type,
       });
       if (!rejection) return;
@@ -1875,7 +1865,7 @@ function CanvasSpaceInner({
         }),
       );
     },
-    [t, kindLabel],
+    [graphStore, t, kindLabel],
   );
 
   const onConnect = React.useCallback(
@@ -1885,7 +1875,7 @@ function CanvasSpaceInner({
       // blocks an invalid drop in the UI, so this only fires if ReactFlow
       // hands over a connection that bypassed the drag validation — reject
       // silently rather than write a rule-breaking edge.
-      const { flowNodes } = useCanvasGraphStore.getState();
+      const { flowNodes } = graphStore.getState();
       const sourceKind =
         flowNodes.find((n) => n.id === connection.source)?.type ?? '';
       const targetKind =
@@ -1898,8 +1888,7 @@ function CanvasSpaceInner({
       // A re-drag of an EXISTING connection overwrites the same deterministic
       // edge id (idempotent) — it adds nothing to the pool, so it must not
       // trip the cap gate into a false "pool full" rejection (round-3).
-      const duplicateEdge = useCanvasGraphStore
-        .getState()
+      const duplicateEdge = graphStore.getState()
         .flowEdges.some(
           (e) => e.id === `${connection.source}->${connection.target}`,
         );
@@ -1907,7 +1896,7 @@ function CanvasSpaceInner({
         !duplicateEdge &&
         cap !== null &&
         referencePoolCount(
-          useCanvasGraphStore.getState().flowEdges,
+          graphStore.getState().flowEdges,
           flowNodes,
           connection.target,
         ) +
@@ -1931,7 +1920,7 @@ function CanvasSpaceInner({
         toast.error(t('canvas.generatePanel.referenceAddFailed'));
       }
     },
-    [sessionStore, projectId, spaceId, t],
+    [graphStore, sessionStore, projectId, spaceId, t],
   );
 
   // Reference-pick mode (Generate panel "add reference from canvas"): while a
@@ -1966,8 +1955,7 @@ function CanvasSpaceInner({
         // copy alone could open a crop the verdict ends on its first pass —
         // and the snapshot taken off the render copy would be compared
         // against fresher content, ejecting the user the instant they click.
-        const fresh = useCanvasGraphStore
-          .getState()
+        const fresh = graphStore.getState()
           .flowNodes.find((n) => n.id === node.id);
         if (!fresh || !isFocusCandidate(fresh, target)) {
           // The node looked pickable — the dimming reads the render copy, and
@@ -2032,8 +2020,7 @@ function CanvasSpaceInner({
         (e) => e.target === target && e.source === node.id,
       );
       if (alreadyReferenced) return;
-      const targetNode = useCanvasGraphStore
-        .getState()
+      const targetNode = graphStore.getState()
         .flowNodes.find((n) => n.id === target);
       const targetKind = targetNode?.type ?? '';
       if (!canConnect(node.type ?? '', targetKind)) {
@@ -2059,8 +2046,8 @@ function CanvasSpaceInner({
       if (
         cap !== null &&
         referencePoolCount(
-          useCanvasGraphStore.getState().flowEdges,
-          useCanvasGraphStore.getState().flowNodes,
+          graphStore.getState().flowEdges,
+          graphStore.getState().flowNodes,
           target,
         ) +
           pendingFocusCount(sessionStore, target) >=
@@ -2081,7 +2068,7 @@ function CanvasSpaceInner({
       // Stay in pick mode either way; Exit is the only way out (item 7).
       if (!added) toast.error(t('canvas.generatePanel.referenceAddFailed'));
     },
-    [sessionStore, projectId, spaceId, flowEdges, t, kindLabel, endPick],
+    [graphStore, sessionStore, projectId, spaceId, flowEdges, t, kindLabel, endPick],
   );
 
   // Where the new note goes, in canvas coordinates, while its box is open.
@@ -3945,8 +3932,7 @@ function CanvasSpaceInner({
         // no `React.memo` below would ever bail. Same lazy read as the
         // connect guard above, and the edges a delete needs are the ones on
         // screen when it happens.
-        const touching = useCanvasGraphStore
-          .getState()
+        const touching = graphStore.getState()
           .flowEdges.filter(
             (edge) => edge.source === nodeId || edge.target === nodeId,
           );
@@ -4084,6 +4070,7 @@ function CanvasSpaceInner({
       activateNodeUpload,
     }),
     [
+      graphStore,
       projectId,
       spaceId,
       readOnly,
@@ -4960,7 +4947,8 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // what they read rather than re-running an O(N) derivation on every change
   // (`stores/canvas-graph.ts`), and an author list changes only when the
   // document does.
-  const namedOnTheBoard = useCanvasGraphStore(
+  const namedOnTheBoard = useStoreOf(
+    canvasGraphs.of(props.spaceId),
     useShallow((st) => everyAnnotationAuthor(st.flowNodes)),
   );
   const annotationNames = useUserProfiles(namedOnTheBoard);
