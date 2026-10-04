@@ -74,7 +74,7 @@ const declarationSchema = z.object({
   // endpoint spells it differently (Kling's switch sends "intelligence").
   upstream_values: z.record(z.string(), z.string()).optional(),
   // A list the endpoint has no field for: each entry is written into the
-  // prompt with this template (inner#827).
+  // prompt with this template.
   into_prompt: z.string().optional(),
   // How a value reads on screen, when its own spelling is not that sentence
   // (`left_right` reads "Left first"). English, like `label`.

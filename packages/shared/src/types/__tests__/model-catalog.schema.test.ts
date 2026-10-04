@@ -244,13 +244,13 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(sanitizeModelCatalog(raw).total).toBe(0);
   });
 
-  it("lists the six video modes the panel offers, and no mini-tool mode (#1896)", () => {
+  it("lists the seven video modes the panel offers, and no mini-tool mode (#1896)", () => {
     // A product decision (user 2026-08-08), not a formula: what this list
     // contains IS the rule, and there is no separate predicate. Most of what
     // was left out works on a video that already exists, which is the shape of
     // the decision — but `motion` takes a character image and is out anyway,
     // so a reader who re-derives the list from that shape gets it wrong. The
-    // panel narrows its picker to these six, which is what keeps a mini-tool
+    // panel narrows its picker to these seven, which is what keeps a mini-tool
     // entry out of the model list.
     expect([...IMAGE_GENERATION_MODES]).toEqual(["t2i", "i2i"]);
     expect([...AUDIO_GENERATION_MODES]).toEqual([
@@ -266,6 +266,7 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
       "first_last",
       "animate",
       "ref",
+      "multi_shot",
       "talking_head",
     ]);
 

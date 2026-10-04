@@ -317,7 +317,7 @@ export const IMAGE_GENERATION_MODES = ["t2i", "i2i"] as const;
  * mode with no row there.
  *
  * Which modes belong here is the user's decision (2026-08-08), not a formula:
- * these six go in the Generate panel and `extend` / `edit` / `motion` /
+ * these seven go in the Generate panel and `extend` / `edit` / `motion` /
  * `upscale` / `interpolate` go to the mini-tool system. Four of those five do
  * work on a video that already exists, which is the shape of the decision —
  * but `motion` does not: `kling-v3-pro-motion` takes a character image, and it
@@ -340,6 +340,7 @@ export const VIDEO_GENERATION_MODES = [
   "first_last",
   "animate",
   "ref",
+  "multi_shot",
   "talking_head",
 ] as const;
 

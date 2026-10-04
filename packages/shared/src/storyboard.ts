@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The multi-shot mode's storyboard (inner#827): what a model says about its
+ * The multi-shot mode's storyboard: what a model says about its
  * shots in that mode, and what a run sends for them.
  *
  * A node keeps one list of shots, and only the multi-shot mode uses it. A
