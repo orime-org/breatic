@@ -523,6 +523,16 @@ describe("an owner change against a project archive", () => {
     expect(sqlStateOf(otherError)).not.toBe(DEADLOCK);
     expect(sweepError).toBeNull();
     expect(otherError).toBeNull();
+    // Both writes landed: the project went to the studio admin and stayed archived.
+    const [owner] = await sql<{ user_id: string }[]>`
+      SELECT user_id FROM project_members
+      WHERE project_id = ${s.projectId} AND role = 'owner' AND deleted_at IS NULL
+    `;
+    expect(owner!.user_id).toBe(s.adminId);
+    const [project] = await sql<{ archived_at: Date | null }[]>`
+      SELECT archived_at FROM projects WHERE id = ${s.projectId}
+    `;
+    expect(project!.archived_at).toBeInstanceOf(Date);
   });
 });
 
