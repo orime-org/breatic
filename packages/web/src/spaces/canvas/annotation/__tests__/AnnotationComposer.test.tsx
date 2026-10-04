@@ -86,12 +86,27 @@ describe('the box that opens at the drop point', () => {
     expect(box).toHaveValue('镜头');
   });
 
-  it('throws them away on blur too — nothing here existed yet', () => {
+  it('throws them away on blur too — nothing here existed yet', async () => {
     const box = open();
     fireEvent.change(box, { target: { value: 'half a thought' } });
     fireEvent.blur(box);
+    await Promise.resolve();
     expect(onCommit).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('keeps them when the blur comes from its Space being hidden', async () => {
+    // Switching Space hides this one, which takes focus out of the box; the
+    // words are waiting for the reader when they come back (inner#1235 A14).
+    const box = open();
+    fireEvent.change(box, { target: { value: 'half a thought' } });
+
+    fireEvent.blur(box);
+    box.checkVisibility = (): boolean => false;
+    await Promise.resolve();
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(box).toHaveValue('half a thought');
   });
 
   it('keeps them when the whole window loses focus', () => {
@@ -114,7 +129,7 @@ describe('the box that opens at the drop point', () => {
     hasFocus.mockRestore();
   });
 
-  it('keeps them when the blur is an IME candidate window opening', () => {
+  it('keeps them when the blur is an IME candidate window opening', async () => {
     // §6.2's one criterion covers every way out of this box, and a blur is
     // the way out that carries no answer of its own — a keystroke says
     // `isComposing`, a focus loss says nothing. Some engines take focus to
@@ -129,6 +144,7 @@ describe('the box that opens at the drop point', () => {
     // And once the IME hands the words back, the box is ordinary again.
     fireEvent.compositionEnd(box);
     fireEvent.blur(box);
+    await Promise.resolve();
     expect(onClose).toHaveBeenCalled();
     expect(onCommit).not.toHaveBeenCalled();
   });
@@ -153,6 +169,27 @@ describe('the box that opens at the drop point', () => {
     const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
     box.dispatchEvent(press);
     expect(press.defaultPrevented).toBe(false);
+  });
+
+  it('opens on the words it was given and reports each change', () => {
+    // The canvas library takes this box down while its Space is hidden and
+    // puts it back when shown; the words live with the canvas and come back
+    // through here (inner#1235 A14).
+    const onDraft = vi.fn();
+    render(
+      <AnnotationComposer
+        onCommit={onCommit}
+        onClose={onClose}
+        initialText='half a thought'
+        onDraft={onDraft}
+      />,
+    );
+    const box = screen.getByTestId('annotation-composer-input');
+    expect(box).toHaveValue('half a thought');
+
+    fireEvent.change(box, { target: { value: 'half a thought, more' } });
+
+    expect(onDraft).toHaveBeenLastCalledWith('half a thought, more');
   });
 
   it('puts the caret in the box without being asked', () => {

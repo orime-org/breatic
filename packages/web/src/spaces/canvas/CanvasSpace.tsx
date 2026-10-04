@@ -2177,6 +2177,13 @@ function CanvasSpaceInner({
     x: number;
     y: number;
   } | null>(null);
+  // What is written in that box so far. Kept here because the canvas library
+  // takes the box down while this Space is hidden and puts it back when shown
+  // (inner#1235 A14); a ref, since nothing here renders from it.
+  const composerDraft = React.useRef('');
+  const keepComposerDraft = React.useCallback((text: string): void => {
+    composerDraft.current = text;
+  }, []);
 
   // Enter on the new-note box: this is the moment the node exists. Everything
   // before it lived in one browser.
@@ -2264,6 +2271,7 @@ function CanvasSpaceInner({
               endAnnotationPlacement();
               return;
             }
+            composerDraft.current = '';
             setComposerAt(
               screenToFlowPosition({ x: event.clientX, y: event.clientY }),
             );
@@ -4600,6 +4608,8 @@ function CanvasSpaceInner({
                     createAnnotationAt(composerAt, content);
                   }}
                   onClose={() => setComposerAt(null)}
+                  initialText={composerDraft.current}
+                  onDraft={keepComposerDraft}
                 />
               </div>
             </ViewportPortal>

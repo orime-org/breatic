@@ -160,3 +160,29 @@ test('a prompt being written stays with its caret and undo across a switch', asy
   await page.keyboard.press('ControlOrMeta+z');
   await expect(prompt).not.toHaveText('a red fox!');
 });
+
+test('a note being written stays open with its words across a switch', async ({ page }) => {
+  // A14: the box exists nowhere but on this screen, so hiding the Space must
+  // not read as the reader having left it.
+  await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  await page.getByTestId('tool-comment').click();
+  const pane = visibleSpace(page).locator('.react-flow__pane');
+  const box = await pane.boundingBox();
+  if (box === null) throw new Error('the canvas pane has no box');
+  await page.mouse.click(box.x + box.width * 0.45, box.y + box.height * 0.4);
+  const composer = visibleSpace(page).getByTestId('annotation-composer-input');
+  await expect(composer).toBeFocused({ timeout: 15_000 });
+  await page.keyboard.type('half a thought');
+
+  await showSpace(page, second);
+  await showSpace(page, first);
+
+  await expect(composer).toHaveValue('half a thought');
+  await composer.click();
+  await page.keyboard.type(' finished');
+  await page.keyboard.press('Enter');
+  await expect(composer).toHaveCount(0);
+});

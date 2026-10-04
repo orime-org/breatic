@@ -29,6 +29,7 @@ import type * as Y from 'yjs';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
+import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
 import { keptEditor } from '@web/spaces/canvas/kept-editors';
 import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
 
@@ -247,24 +248,11 @@ export function TextNodeEditor({
           },
         },
         onBlur: ({ editor: instance, event }): void => {
-          // Switching windows or tabs is not leaving the node: the whole
-          // document loses focus, and coming back should find the caret where
-          // it was rather than a node that closed itself while nobody was
-          // looking.
-          if (!document.hasFocus()) return;
-          // Focus moving to something inside the editor is not leaving either.
+          // Focus moving to something inside the editor is not leaving.
           const next = event.relatedTarget;
           if (next instanceof Node && instance.view.dom.contains(next)) return;
-          // Nor is the canvas being hidden by a switch of Space, and the reader
-          // comes back to it. Hiding takes the editor off the page — its host
-          // unmounts and moves it into a detached element — and Chrome fires
-          // this blur while it is still attached, so whether it was taken off
-          // is only known once the commit doing it has run.
-          queueMicrotask(() => {
-            const dom = instance.view.dom;
-            if (instance.isDestroyed || !dom.isConnected) return;
-            if (dom.checkVisibility?.() === false) return;
-            wiring.onLeave('keep-focus');
+          whenBlurLeaves(instance.view.dom, () => {
+            if (!instance.isDestroyed) wiring.onLeave('keep-focus');
           });
         },
       });

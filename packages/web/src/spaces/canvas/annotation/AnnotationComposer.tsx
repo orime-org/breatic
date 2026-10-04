@@ -19,6 +19,7 @@ import * as React from 'react';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
+import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
 import {
   pressLandedOnTheBox,
   usePressKeepsFocus,
@@ -42,6 +43,14 @@ interface AnnotationComposerProps {
   onCommit: (content: string) => void;
   /** Called whenever the box closes, whether or not anything was written. */
   onClose: () => void;
+  /**
+   * The words the box opens on. The canvas library takes this box down while
+   * its Space is hidden and puts it back when shown, so the words are kept by
+   * the canvas and handed back here (inner#1235 A14).
+   */
+  initialText?: string;
+  /** Called with the words each time they change. */
+  onDraft?: (text: string) => void;
 }
 
 /**
@@ -49,11 +58,15 @@ interface AnnotationComposerProps {
  * @param root0 - The component props.
  * @param root0.onCommit - Receives the body worth writing.
  * @param root0.onClose - Runs when the box closes, committed or not.
+ * @param root0.initialText - The words the box opens on.
+ * @param root0.onDraft - Receives the words each time they change.
  * @returns The floating composer.
  */
 export function AnnotationComposer({
   onCommit,
   onClose,
+  initialText = '',
+  onDraft,
 }: AnnotationComposerProps): React.JSX.Element {
   const t = useTranslation();
   const boxRef = React.useRef<HTMLTextAreaElement>(null);
@@ -63,7 +76,7 @@ export function AnnotationComposer({
   const [shell, setShell] = React.useState<HTMLDivElement | null>(null);
   usePressKeepsFocus(shell, pressLandedOnTheBox);
   const [draft, setDraft] = React.useState<DraftState>(() =>
-    reduceDraft(CLOSED_DRAFT, { type: 'open', use: 'annotation', text: '' }),
+    reduceDraft(CLOSED_DRAFT, { type: 'open', use: 'annotation', text: initialText }),
   );
   // The draft as it stands at the moment of an event: a state updater must
   // stay pure, and under StrictMode it runs twice, so the commit is written
@@ -87,10 +100,11 @@ export function AnnotationComposer({
       if (next === draftRef.current) return;
       draftRef.current = next;
       setDraft(next);
+      onDraft?.(next.text);
       if (next.commit !== undefined) onCommit(next.commit);
       if (next.mode === 'closed') onClose();
     },
-    [onCommit, onClose],
+    [onCommit, onClose, onDraft],
   );
   // §6.2's one criterion for the IME, asked by every way out of this box —
   // here that is the blur as well as the keyboard.
@@ -116,17 +130,11 @@ export function AnnotationComposer({
           data-testid='annotation-composer-input'
           onChange={(e) => apply({ type: 'type', text: e.target.value })}
           {...placingBoxKeys.box}
-          onBlur={() => {
-            // Leaving the browser is not leaving the box: the whole document
-            // loses focus, and coming back should find the words still here.
-            // `relatedTarget` cannot tell that apart from a press on
-            // something unfocusable, so the question is whether the document
-            // has focus at all — the same criterion the text node's editor
-            // asks (`TextNodeEditor.tsx`). This box is the one whose content
-            // exists nowhere else, so nothing brings it back.
-            if (!document.hasFocus()) return;
+          onBlur={(event) => {
+            // This box is the one whose content exists nowhere else, so a
+            // blur that is not the reader leaving must not end it.
             if (placingBoxKeys.composing()) return;
-            apply({ type: 'blur' });
+            whenBlurLeaves(event.currentTarget, () => apply({ type: 'blur' }));
           }}
         />
       </NoteScroller>
