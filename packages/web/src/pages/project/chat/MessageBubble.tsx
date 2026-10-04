@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { messageWithNames } from '@breatic/shared';
 
 import { cn } from '@web/lib/utils';
+import { useTranslation } from '@web/i18n/use-translation';
 
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { ProposalCard } from '@web/pages/project/chat/ProposalCard';
@@ -14,6 +14,7 @@ import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
 import { ToolRunLine } from '@web/pages/project/chat/ToolRunLine';
 import { TurnActions } from '@web/pages/project/chat/TurnActions';
 import { UserWords } from '@web/pages/project/chat/user-words';
+import { wordsWithLabels } from '@web/pages/project/chat/attachment-label';
 import { FailedSteps, TurnEnding } from '@web/pages/project/chat/TurnEnding';
 import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
 import type { ChatMessage } from '@web/pages/project/chat/types';
@@ -56,6 +57,7 @@ export const MessageBubble = React.memo(function MessageBubble({
   consolidating,
   onThinkingOpen,
 }: MessageBubbleProps): React.JSX.Element {
+  const t = useTranslation();
   const isUser = message.role === 'user';
   // The newest call still running, which is the one the line names. Several
   // can run at once -- nothing disables parallel tool calls -- and one line
@@ -197,7 +199,7 @@ export const MessageBubble = React.memo(function MessageBubble({
             line too, so a turn that searched and said nothing still has one. */}
         {running || (message.content === '' && message.sources === undefined) ? null : (
           <TurnActions
-            text={isUser ? messageWithNames(message.attachments ?? [], message.content) : message.content}
+            text={isUser ? wordsWithLabels(t, message.content, message.attachments) : message.content}
             {...(isUser ? { own: true } : {})}
             {...(isUser && message.sentAt !== undefined ? { sentAt: message.sentAt } : {})}
             {...(!isUser && message.sources !== undefined ? { sources: message.sources } : {})}

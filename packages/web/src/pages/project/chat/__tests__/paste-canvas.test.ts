@@ -42,8 +42,21 @@ describe('canvas text pasted into the chat box', () => {
     if (pasted?.kind !== 'item') return;
     expect(pasted.item.type).toBe('canvas');
     expect(pasted.item.name).toBe('Shots');
-    expect(pasted.item.chip?.data_snapshot).toEqual({ nodes: [group, member], edges: [] });
+    expect(pasted.item.chip?.data_snapshot).toEqual({
+      nodes: [
+        { id: 'g1', type: 'group', position: { x: 0, y: 0 }, data: { kind: 'group', name: 'Shots' } },
+        { id: 'n1', type: 'text', position: { x: 10, y: 10 }, parentId: 'g1', data: { kind: 'text', body: 'hi' } },
+      ],
+      edges: [],
+    });
     expect(pastedCanvas([group, member], () => false)).toEqual(pasted);
+  });
+
+  it('names a picture with no title after the file in its address', () => {
+    const bare = { ...picture, name: undefined, content: 'https://img.example/path/neon-night.jpg?w=64' };
+    const pasted = pastedCanvas([bare], () => false);
+
+    expect(pasted?.kind === 'item' ? pasted.item.name : null).toBe('neon-night.jpg');
   });
 
   it('gives nothing for an empty payload', () => {

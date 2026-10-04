@@ -8,7 +8,7 @@
 
 import type { ChatAttachedChip } from '@breatic/shared';
 
-import { hashOf, pickId } from '@web/spaces/canvas/attach-nodes';
+import { hashOf, nodeNameOf, pickId } from '@web/spaces/canvas/attach-nodes';
 import type { ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 import type { TrayItem } from '@web/stores/chat-attachments';
 
@@ -29,7 +29,7 @@ export function pastedCanvas(nodes: readonly ClipboardNode[], onCanvas: (id: str
   const lone = nodes.length === 1 ? nodes[0] : undefined;
   if (lone?.external === true && lone.type === 'image' && typeof lone.content === 'string') {
     const id = `image-${hashOf([lone.content])}`;
-    const name = lone.name ?? '';
+    const name = lone.name ?? fileNameOf(lone.content);
     const chip: ChatAttachedChip = { id, type: 'image', name, data_snapshot: { url: lone.content } };
     return { kind: 'item', item: { id, name, type: 'image', status: 'ready', chip } };
   }
@@ -41,7 +41,46 @@ export function pastedCanvas(nodes: readonly ClipboardNode[], onCanvas: (id: str
   const ids = top.flatMap((n) => (n.id === undefined ? [] : [n.id]));
   if (ids.length === top.length && ids.every(onCanvas)) return { kind: 'onCanvas', ids };
   const id = pickId(nodes.map((n) => n.id ?? JSON.stringify(n)));
-  const name = top.length === 1 ? (top[0]?.name ?? '') : '';
-  const chip: ChatAttachedChip = { id, type: 'canvas', name, data_snapshot: { nodes: [...nodes], edges: [] } };
+  const entries = nodes.map(entryOf);
+  const lead = top.length === 1 ? top[0] : undefined;
+  const name = lead ? nodeNameOf(entryOf(lead).data) : '';
+  const chip: ChatAttachedChip = { id, type: 'canvas', name, data_snapshot: { nodes: entries, edges: [] } };
   return { kind: 'item', item: { id, name, type: 'canvas', status: 'ready', chip } };
+}
+
+/**
+ * One clipboard node in the shape "Add to Agent" hands a node over in, so the
+ * card previews it and the model reads it the same way.
+ * @param node - The clipboard node.
+ * @returns Its snapshot entry.
+ */
+function entryOf(node: ClipboardNode): { data: Record<string, unknown> } & Record<string, unknown> {
+  // A text node's words are its body; the media kinds keep their asset as content.
+  const words = node.content === undefined ? {} : node.type === 'text' ? { body: node.content } : { content: node.content };
+  return {
+    ...(node.id === undefined ? {} : { id: node.id }),
+    type: node.type,
+    position: node.position,
+    ...(node.parentId === undefined ? {} : { parentId: node.parentId }),
+    data: {
+      kind: node.type,
+      ...(node.name === undefined ? {} : { name: node.name }),
+      ...words,
+      ...(node.coverUrl === undefined ? {} : { coverUrl: node.coverUrl }),
+    },
+  };
+}
+
+/**
+ * The file name at the end of an address, or empty when it has none.
+ * @param address - The address.
+ * @returns The decoded last path segment.
+ */
+function fileNameOf(address: string): string {
+  try {
+    const last = new URL(address).pathname.split('/').pop() ?? '';
+    return decodeURIComponent(last);
+  } catch {
+    return '';
+  }
 }

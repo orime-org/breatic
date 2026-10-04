@@ -32,11 +32,14 @@ const ComposerHistory = Extension.create({
  * and reference blocks. No formatting: what is sent is plain words.
  * @param input - The box's live inputs.
  * @param input.placeholder - Reads the placeholder sentence.
+ * @param input.isAttached - Whether an attachment id is attached; a pasted
+ *   block for anything else comes in as plain words.
  * @param input.suggestion - The `@` list, when the box has one.
  * @returns The extensions.
  */
 export function composerExtensions(input: {
   placeholder: () => string;
+  isAttached?: (id: string) => boolean;
   suggestion?: Omit<SuggestionOptions<TrayItem>, 'editor'>;
 }): AnyExtension[] {
   return [
@@ -45,6 +48,9 @@ export function composerExtensions(input: {
     Text,
     ComposerHistory,
     Placeholder.configure({ placeholder: input.placeholder }),
-    ChatReference.configure({ suggestion: input.suggestion ?? null }),
+    ChatReference.configure({
+      suggestion: input.suggestion ?? null,
+      ...(input.isAttached ? { isAttached: input.isAttached } : {}),
+    }),
   ];
 }

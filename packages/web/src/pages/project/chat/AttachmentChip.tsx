@@ -7,20 +7,11 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { ChatAttachedChip } from '@breatic/shared';
+import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
 import { previewOf, type PreviewRow } from '@web/pages/project/chat/attachment-preview';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { TrayFailure, TrayStatus } from '@web/stores/chat-attachments';
-
-/**
- * How many canvas nodes an item holds.
- * @param chip - What is sent for the item, once it has it.
- * @returns The count for a piece of the canvas, or undefined for a file.
- */
-function nodeCountOf(chip: ChatAttachedChip | undefined): number | undefined {
-  const nodes = chip?.type === 'canvas' ? chip.data_snapshot.nodes : undefined;
-  return Array.isArray(nodes) ? nodes.length : undefined;
-}
 
 interface AttachmentChipProps {
   /** Which item this is, handed back to `onRemove`. */
@@ -69,7 +60,6 @@ function AttachmentChipInner({
 }: AttachmentChipProps): React.JSX.Element {
   const t = useTranslation();
   const preview = React.useMemo(() => previewOf(chip), [chip]);
-  const count = nodeCountOf(chip);
   // Only the kind and name open the preview: the remove button is a different
   // control, and it takes the keyboard when a neighbouring card is removed.
   // Wrapped whether or not there is anything to show yet, so the label keeps
@@ -99,7 +89,7 @@ function AttachmentChipInner({
             {t('chat.attachment.kind', { kind: type })}
           </span>
         )}
-        <span className='truncate'>{name || t('chat.attachment.nodes', { count: count ?? 0 })}</span>
+        <span className='truncate'>{attachmentLabel(t, chip ? { name, type, chip } : { name, type })}</span>
         {status === 'failed' && failure ? (
           <span className='shrink-0'>{t('chat.composer.attachmentFailed', { reason: failure })}</span>
         ) : null}

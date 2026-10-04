@@ -15,7 +15,6 @@ import { Extension, type Editor } from '@tiptap/core';
 import { splitBlock } from '@tiptap/pm/commands';
 import { Plugin, type Transaction } from '@tiptap/pm/state';
 import { useEditor } from '@tiptap/react';
-import { SuggestionPluginKey } from '@tiptap/suggestion';
 import * as React from 'react';
 import { CHAT_MESSAGE_MAX_CHARS, messageLength } from '@breatic/shared';
 
@@ -25,13 +24,21 @@ import {
   dispatchMachineEdit,
   MACHINE_EDIT_META,
 } from '@web/features/reference-mention/reference-mention-local-input';
-import { planCascadeDeletion } from '@web/features/reference-mention/reference-mention-whitespace';
 import { useTranslation } from '@web/i18n/use-translation';
-import { CHAT_REFERENCE_LABEL_ATTR, chatReferenceContent } from '@web/pages/project/chat/chat-reference';
+import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
+import {
+  CHAT_REFERENCE_LABEL_ATTR,
+  CHAT_REFERENCE_PRIORITY,
+  chatReferenceContent,
+} from '@web/pages/project/chat/chat-reference';
 import { composerExtensions } from '@web/pages/project/chat/composer-extensions';
 import { draftContent, draftOf } from '@web/pages/project/chat/composer-draft';
 import { parseClipboardNodes, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
+import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import type { TrayItem } from '@web/stores/chat-attachments';
+
+/** Below the reference block's priority, above TipTap's default of 100. */
+const COMPOSER_RULES_PRIORITY = CHAT_REFERENCE_PRIORITY - 50;
 
 /** What the box is told and what it reports. */
 export interface ComposerEditorInput {
@@ -74,57 +81,49 @@ function lengthOf(doc: Editor['state']['doc'], attachments: ReadonlyArray<TrayIt
  */
 export function useComposerEditor(input: ComposerEditorInput): Editor | null {
   const t = useTranslation();
-  // Read through refs: the editor is built once, and these change under it.
-  const live = React.useRef(input);
-  live.current = input;
-  const placeholder = t('chat.composer.placeholder');
-  const placeholderRef = React.useRef(placeholder);
-  placeholderRef.current = placeholder;
-  const emptyLabels = React.useRef({ empty: '', noMatch: '' });
-  emptyLabels.current = { empty: t('chat.composer.atEmpty'), noMatch: t('chat.composer.atNoMatch') };
+  // Read through one ref: the editor is built once, and all of these change
+  // under it.
+  const live = React.useRef({ ...input, t });
+  live.current = { ...input, t };
   // The draft this editor last reported, so the panel handing the same string
   // back is not mistaken for a write from outside.
   const reported = React.useRef(input.draft);
-
   /**
-   * What a block for an item shows: its name, or for an unnamed piece of the
-   * canvas, how many nodes it holds.
+   * What the block for an item shows, in the language now on screen.
+   * @param item - The tray item.
+   * @returns Its label.
    */
-  const labelOf = React.useCallback(
-    (item: TrayItem): string => {
-      if (item.name) return item.name;
-      const nodes = item.chip?.data_snapshot.nodes;
-      return t('chat.attachment.nodes', { count: Array.isArray(nodes) ? nodes.length : 0 });
-    },
-    [t],
-  );
-  const labelRef = React.useRef(labelOf);
-  labelRef.current = labelOf;
+  const labelNow = (item: TrayItem): string => attachmentLabel(live.current.t, item);
 
   const editor = useEditor(
     {
       immediatelyRender: true,
       extensions: [
         ...composerExtensions({
-          placeholder: () => placeholderRef.current,
+          placeholder: () => live.current.t('chat.composer.placeholder'),
+          isAttached: (id) => live.current.attachments.some((a) => a.id === id),
           suggestion: makeMentionSuggestion<TrayItem>({
             resolveList: (query) => {
               const ready = live.current.attachments.filter((a) => a.status === 'ready');
               const q = query.toLowerCase();
               return {
-                items: ready.filter((a) => labelRef.current(a).toLowerCase().includes(q)),
-                emptyLabel: ready.length === 0 ? emptyLabels.current.empty : emptyLabels.current.noMatch,
+                items: ready.filter((a) => labelNow(a).toLowerCase().includes(q)),
+                emptyLabel: live.current.t(ready.length === 0 ? 'chat.composer.atEmpty' : 'chat.composer.atNoMatch'),
               };
             },
-            content: (item) => chatReferenceContent(item.id, labelRef.current(item)),
+            content: (item) => chatReferenceContent(item.id, labelNow(item)),
             itemKey: (item) => item.id,
-            renderItem: (item) => <AttachmentRow item={item} label={labelRef.current(item)} />,
+            renderItem: (item) => <AttachmentRow item={item} label={labelNow(item)} />,
             // Above the `@`: the box sits at the bottom of the column.
             placement: 'top-start',
           }),
         }),
         Extension.create({
           name: 'composerRules',
+          // Between the reference block and TipTap's own keymap: the `@` list
+          // sees a key first, and Enter is settled here before the default
+          // keymap would break the line.
+          priority: COMPOSER_RULES_PRIORITY,
           addProseMirrorPlugins() {
             return [
               new Plugin({
@@ -133,10 +132,22 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
                 appendTransaction: (trs, _old, state): Transaction | null => {
                   if (!trs.some((tr) => tr.docChanged)) return null;
                   const stale = stalePositions(state.doc, live.current.attachments);
-                  if (stale.size === 0) return null;
+                  if (stale.length === 0) return null;
                   const tr = state.tr;
-                  for (const { from, to } of planCascadeDeletion(state.doc, stale)) tr.delete(from, to);
+                  for (const pos of stale) tr.delete(pos, pos + 1);
                   return tr.setMeta('addToHistory', false);
+                },
+                props: {
+                  // Runs after the `@` list's own key handling: a list on
+                  // screen takes Enter first, and once it is closed or hidden
+                  // Enter is the box's again.
+                  handleKeyDown: (view, event): boolean => {
+                    if (event.key !== 'Enter' || event.isComposing) return false;
+                    event.preventDefault();
+                    if (event.shiftKey) splitBlock(view.state, view.dispatch);
+                    else live.current.onEnter();
+                    return true;
+                  },
                 },
                 // Refuses an edit that would take the words past the limit, as
                 // the reader counts them. Follow-ups other plugins append (the
@@ -158,7 +169,7 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
           },
         }),
       ],
-      content: draftContent(input.draft, (id) => nameIn(live.current.attachments, id, labelRef.current)),
+      content: draftContent(input.draft, (id) => nameIn(live.current.attachments, id, labelNow)),
       editorProps: {
         attributes: {
           'data-testid': 'chat-composer-textarea',
@@ -166,18 +177,6 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
           'aria-multiline': 'true',
           class:
             'block w-full whitespace-pre-wrap break-words px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none',
-        },
-        handleKeyDown: (view, event): boolean => {
-          if (event.key !== 'Enter' || event.isComposing) return false;
-          // The `@` list takes this Enter; it is the list's to pick with.
-          if (SuggestionPluginKey.getState(view.state)?.active === true) return false;
-          event.preventDefault();
-          if (event.shiftKey) {
-            splitBlock(view.state, view.dispatch);
-          } else {
-            live.current.onEnter();
-          }
-          return true;
         },
         handlePaste: (view, event): boolean => {
           const files = [...(event.clipboardData?.files ?? [])];
@@ -226,7 +225,7 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
     if (!editor || editor.isDestroyed || input.draft === reported.current) return;
     reported.current = input.draft;
     const doc = editor.schema.nodeFromJSON(
-      draftContent(input.draft, (id) => nameIn(live.current.attachments, id, labelRef.current)),
+      draftContent(input.draft, (id) => nameIn(live.current.attachments, id, labelNow)),
     );
     dispatchMachineEdit(editor.view, editor.state.tr.replaceWith(0, editor.state.doc.content.size, doc.content));
   }, [editor, input.draft]);
@@ -235,8 +234,8 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
   // whose attachment was replaced shows the new name.
   React.useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    syncBlocks(editor, input.attachments, labelOf);
-  }, [editor, input.attachments, labelOf]);
+    syncBlocks(editor, input.attachments, (item) => attachmentLabel(t, item));
+  }, [editor, input.attachments, t]);
 
   // Read-only keeps the keyboard: ProseMirror drops `contenteditable` and
   // nothing else, so the box needs a tab stop of its own to keep focus.
@@ -281,20 +280,22 @@ function nameIn(
 }
 
 /**
- * Where the blocks are whose attachment is not attached.
+ * Where the blocks are whose attachment is not attached. A block goes on its
+ * own: the spaces around it are the reader's words.
  * @param doc - The box's document.
  * @param attachments - What is attached.
- * @returns Their positions.
+ * @returns Their positions, last first.
  */
-function stalePositions(doc: Editor['state']['doc'], attachments: ReadonlyArray<TrayItem>): Set<number> {
+function stalePositions(doc: Editor['state']['doc'], attachments: ReadonlyArray<TrayItem>): number[] {
   const ids = new Set(attachments.map((a) => a.id));
-  const stale = new Set<number>();
+  const stale: number[] = [];
   doc.descendants((node, pos) => {
     if (node.type.name === REFERENCE_MENTION_NODE && !ids.has(String(node.attrs[MENTION_SOURCE_ID_ATTR]))) {
-      stale.add(pos);
+      stale.push(pos);
     }
   });
-  return stale;
+  // Last first, so each delete leaves the earlier positions where they were.
+  return stale.reverse();
 }
 
 /**
@@ -319,26 +320,26 @@ function syncBlocks(
       renames.push({ pos, label: labelOf(item) });
     }
   });
-  if (stale.size === 0 && renames.length === 0) return;
+  if (stale.length === 0 && renames.length === 0) return;
   const tr = editor.state.tr;
   for (const { pos, label } of renames) tr.setNodeAttribute(pos, CHAT_REFERENCE_LABEL_ATTR, label);
-  // Ranges come back descending, so each delete leaves the lower ones valid.
-  for (const { from, to } of planCascadeDeletion(tr.doc, stale)) tr.delete(from, to);
+  for (const pos of stale) tr.delete(pos, pos + 1);
   dispatchMachineEdit(editor.view, tr);
 }
 
 /**
- * One row of the `@` list: the item's kind, then its name.
+ * One row of the `@` list: the icon of the item's kind, then its name. A piece
+ * of the canvas takes the group's icon, being several nodes held together.
  * @param root0 - Component props.
  * @param root0.item - The tray item.
  * @param root0.label - What it is called.
  * @returns The row's content.
  */
 function AttachmentRow({ item, label }: { item: TrayItem; label: string }): React.JSX.Element {
-  const t = useTranslation();
+  const Icon = getNodeIcon(item.type === 'canvas' ? 'group' : item.type);
   return (
     <>
-      <span className='shrink-0 text-2xs text-muted-foreground'>{t('chat.attachment.kind', { kind: item.type })}</span>
+      <Icon className='h-3 w-3 shrink-0 text-muted-foreground' aria-hidden='true' />
       <span className='truncate'>{label}</span>
     </>
   );

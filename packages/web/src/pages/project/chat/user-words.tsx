@@ -5,6 +5,7 @@ import * as React from 'react';
 import { attachmentMarker, messageSegments, type ChatAttachedChip } from '@breatic/shared';
 
 import { useTranslation } from '@web/i18n/use-translation';
+import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
 import { REFERENCE_BLOCK_CLASS } from '@web/pages/project/chat/chat-reference';
 
 interface UserWordsProps {
@@ -32,12 +33,9 @@ export function UserWords({ content, attachments }: UserWordsProps): React.JSX.E
         const chip = segment.kind === 'reference' ? byId.get(segment.id) : undefined;
         if (segment.kind === 'text') return <React.Fragment key={i}>{segment.text}</React.Fragment>;
         if (chip === undefined) return <React.Fragment key={i}>{attachmentMarker(segment.id)}</React.Fragment>;
-        const nodes = chip.data_snapshot.nodes;
         return (
           <span key={i} data-testid='message-reference' className={REFERENCE_BLOCK_CLASS}>
-            <span className='truncate'>
-              {chip.name || t('chat.attachment.nodes', { count: Array.isArray(nodes) ? nodes.length : 0 })}
-            </span>
+            <span className='truncate'>{attachmentLabel(t, { name: chip.name, type: chip.type, chip })}</span>
           </span>
         );
       })}

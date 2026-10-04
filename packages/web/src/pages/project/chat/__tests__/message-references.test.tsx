@@ -43,4 +43,21 @@ describe('a sent message with references', () => {
 
     expect(writeText).toHaveBeenCalledWith(`compare cover.png with ${attachmentMarker('gone')}`);
   });
+
+  it('copies an unnamed piece of the canvas the way the bubble names it', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const picked: ChatMessage = {
+      id: 'm2',
+      role: 'user',
+      content: `see ${attachmentMarker('c1')}`,
+      attachments: [{ id: 'c1', type: 'canvas', name: '', data_snapshot: { nodes: [{}, {}, {}], edges: [] } }],
+    };
+    render(<MessageBubble message={picked} />);
+
+    await userEvent.click(screen.getByTestId('turn-copy'));
+
+    expect(writeText).toHaveBeenCalledWith(`see ${screen.getByTestId('message-reference').textContent ?? ''}`);
+    expect(writeText).not.toHaveBeenCalledWith(expect.stringContaining('canvas, 3 nodes'));
+  });
 });

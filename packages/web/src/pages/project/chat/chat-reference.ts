@@ -31,6 +31,11 @@ export const CHAT_REFERENCE_LABEL_ATTR = 'label';
 export interface ChatReferenceOptions {
   /** The `@` list, or null for a box with no list (tests of the draft). */
   suggestion: Omit<SuggestionOptions<TrayItem>, 'editor'> | null;
+  /**
+   * Whether an attachment id is attached. A pasted block for anything else —
+   * the generate panel's chips share this markup — is read as plain words.
+   */
+  isAttached: (id: string) => boolean;
 }
 
 /**
@@ -46,8 +51,15 @@ export function chatReferenceContent(id: string, label: string): { type: string;
   };
 }
 
+/**
+ * Ahead of the box's own key handling, so a key reaches the `@` list first.
+ * TipTap runs the plugins of a higher priority first.
+ */
+export const CHAT_REFERENCE_PRIORITY = 200;
+
 export const ChatReference = Node.create<ChatReferenceOptions>({
   name: REFERENCE_MENTION_NODE,
+  priority: CHAT_REFERENCE_PRIORITY,
   group: 'inline',
   inline: true,
   atom: true,
@@ -55,7 +67,7 @@ export const ChatReference = Node.create<ChatReferenceOptions>({
   draggable: true,
 
   addOptions() {
-    return { suggestion: null };
+    return { suggestion: null, isAttached: () => true };
   },
 
   addAttributes() {
@@ -75,7 +87,12 @@ export const ChatReference = Node.create<ChatReferenceOptions>({
   },
 
   parseHTML() {
-    return [{ tag: 'span[data-reference-mention]' }];
+    return [
+      {
+        tag: 'span[data-reference-mention]',
+        getAttrs: (el) => (this.options.isAttached(el.getAttribute('data-source-id') ?? '') ? null : false),
+      },
+    ];
   },
 
   renderHTML({ node, HTMLAttributes }) {

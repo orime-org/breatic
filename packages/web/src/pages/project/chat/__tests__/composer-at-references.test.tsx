@@ -129,7 +129,7 @@ describe('@ in the chat box', () => {
     rerender({ draft, attachments: [] });
 
     expect(screen.queryByTestId('chat-reference')).toBeNull();
-    expect(onChange.mock.lastCall?.[0]).not.toContain(attachmentMarker('a1'));
+    expect(onChange.mock.lastCall?.[0]).toBe('look  here');
   });
 
   it('does not let an undo bring back a block whose attachment is gone', () => {
@@ -185,5 +185,59 @@ describe('@ in the chat box', () => {
     const last = String(onChange.mock.lastCall?.[0]);
     expect(last.endsWith('z')).toBe(true);
     expect(messageLength([cover], last)).toBe(10_000);
+  });
+
+  it('sends on Enter once the list was hidden by a click elsewhere', async () => {
+    const onChange = vi.fn();
+    const { onSubmit, rerender } = setup({ attachments: [cover], onChange });
+    act(() => box().commands.focus('end'));
+    type('hi @co');
+    await waitFor(() => screen.getByTestId('reference-mention-option-a1'));
+    act(() => {
+      document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    });
+    expect(screen.getByTestId('reference-mention-option-a1')).not.toBeVisible();
+    rerender({ draft: String(onChange.mock.lastCall?.[0]), attachments: [cover] });
+
+    press('Enter');
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(box().state.doc.childCount).toBe(1);
+  });
+
+  it('shows each row with the icon of its kind', async () => {
+    setup({ attachments: [cover] });
+    type('@');
+
+    const row = await screen.findByTestId('reference-mention-option-a1');
+    expect(row.querySelector('svg')).not.toBeNull();
+    expect(row).toHaveTextContent(/^cover\.png$/);
+  });
+
+  it('names an attachment with no name after its kind, never a node count', async () => {
+    const bare: TrayItem = {
+      id: 'b1',
+      name: '',
+      type: 'image',
+      status: 'ready',
+      chip: { id: 'b1', type: 'image', name: '', data_snapshot: { url: 'u' } },
+    };
+    setup({ attachments: [bare] });
+    type('@');
+
+    const row = await screen.findByTestId('reference-mention-option-b1');
+    expect(row).toHaveTextContent('Image');
+    expect(row).not.toHaveTextContent(/node/i);
+  });
+
+  it('pastes a reference block for something not attached as plain words', () => {
+    setup({ attachments: [cover] });
+    act(() => {
+      box().commands.focus();
+      box().view.pasteHTML('make <span data-reference-mention="" data-source-id="node-1"></span> run');
+    });
+
+    expect(screen.queryByTestId('chat-reference')).toBeNull();
+    expect(box().state.doc.textContent).toBe('make run');
   });
 });
