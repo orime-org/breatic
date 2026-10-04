@@ -493,7 +493,7 @@ describe("what the guide says", () => {
 
   it("says how @ references an attachment", () => {
     expect(webSource("pages/project/chat/use-composer-editor.tsx")).toContain("placement: 'top-start'");
-    expect(webSource("features/reference-mention/mention-list.tsx")).toContain("event.key === 'Enter' || event.key === 'Tab'");
+    expect(webSource("features/reference-mention/mention-list.tsx")).toContain("event.key === 'Enter' || (event.key === 'Tab' && !event.shiftKey)");
     const chat = section("The chat panel");
     expect(chat).toMatch(/Typing @ in the box opens a list, just above the @/);
     expect(chat).toMatch(/Enter or Tab puts the highlighted one into the text/);
