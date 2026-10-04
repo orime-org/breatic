@@ -24,9 +24,10 @@ import * as studioService from "@server/modules/studio/studio.service.js";
 import { studioAuthService } from "@breatic/domain";
 import { db, getLimitsForStudio } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { PROJECT_NAME_MAX_CHARS, t } from "@breatic/shared";
+import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 import { ROLE_RANK } from "@breatic/shared";
+import { copyName } from "@server/modules/project/copy-name.js";
 import { mayArchive, mayManage, projectPermissions } from "@server/modules/project/projectGovernance.js";
 import type {
   ProjectEntity,
@@ -506,24 +507,6 @@ export async function duplicate(
     await assertStudioHasProjectRoom(source.studioId, tx);
     return projectRepo.duplicateProject(tx, userId, source, copyName(source.name));
   });
-}
-
-/**
- * Name a copy in the reader's language, the copy mark in front so it shows
- * even when a card cuts a long name short. The source name is shortened so
- * the whole stays within the project name limit, counted as that limit is,
- * without splitting a character in two.
- * @param sourceName - The name of the project being copied
- * @returns The copy's name
- */
-function copyName(sourceName: string): string {
-  const room = PROJECT_NAME_MAX_CHARS - t("server.project.copy_name", { name: "" }).length;
-  let kept = "";
-  for (const char of sourceName) {
-    if (kept.length + char.length > room) break;
-    kept += char;
-  }
-  return t("server.project.copy_name", { name: kept });
 }
 
 /**
