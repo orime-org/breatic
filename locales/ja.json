@@ -1122,6 +1122,7 @@
         "codeBlock": "コードブロック",
         "taskList": "タスクリスト",
         "divider": "区切り線",
+        "table": "表",
         "align": "配置",
         "alignLeft": "左揃え",
         "alignCenter": "中央揃え",
@@ -1192,7 +1193,29 @@
         "insertHere": "ここに挿入",
         "duplicate": "このブロックを複製",
         "insertBelow": "下に挿入",
-        "delete": "ブロックを削除"
+        "delete": "ブロックを削除",
+        "indent": "インデント",
+        "unindent": "インデント解除",
+        "deleteTable": "表を削除"
+      },
+      "table": {
+        "pickSize": "サイズを選択",
+        "size": "{rows} 行 × {cols} 列",
+        "cellFill": "セルの背景色",
+        "insertRowAbove": "上に行を挿入",
+        "insertRowBelow": "下に行を挿入",
+        "insertColumnLeft": "左に列を挿入",
+        "insertColumnRight": "右に列を挿入",
+        "headerRow": "見出し行",
+        "headerColumn": "見出し列",
+        "deleteRow": "行を削除",
+        "deleteColumn": "列を削除",
+        "rowHandle": "行",
+        "columnHandle": "列",
+        "cellMenu": "セルのオプション",
+        "splitCell": "セルを分割",
+        "mergeCells": "セルを結合",
+        "textHighlight": "背景（文字のハイライト）"
       }
     },
     "readOnlyReconnect": "再接続"

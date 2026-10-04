@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The seven rows of the block handle menu, and what each one runs.
+ * The rows of the block handle menu, and what each one runs: the seven of a
+ * block's grip, or the six of a table's entry.
  *
  * Every row acts on the block the pointer is over, never on the reader's
  * selection (A5) — which is why each command here is handed that block's id
  * and why none of them moves the caret.
  *
  * Which rows there are, and in what order, is `document-block-menu-rows.ts`;
- * this file is the wiring.
+ * the strip hands the list in, and this file is the wiring.
  */
 
 import * as React from 'react';
@@ -67,19 +68,21 @@ import {
 import {
   deleteRow,
   duplicateRow,
+  indentReach,
+  indentRow,
   type HandleEditor,
+  type IndentReach,
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
 import { openCommentDraft } from '@web/spaces/document/document-comment-entries';
 import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import {
-  insertRowForMenu,
+  insertBelow,
   type InsertChoice,
 } from '@web/spaces/document/document-insert-row';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
-import { DIVIDER } from '@web/spaces/document/document-divider';
 
 /**
  * How far from the menu's edge its submenus sit.
@@ -104,6 +107,8 @@ interface DocumentBlockMenuProps {
   block: PressedBlock;
   /** Closes the menu. */
   close: () => void;
+  /** The rows to draw, in order. */
+  rows?: readonly BlockMenuRow[];
 }
 
 /**
@@ -126,6 +131,8 @@ interface StyleFaces {
   readonly colour: ColourFace;
   /** Whether this row holds words a comment could mark (A3). */
   readonly canComment: boolean;
+  /** Which way the row can be indented. */
+  readonly indent: IndentReach;
   /** Whether the eight rows that set a block's type reach this row. */
   readonly holdsText: boolean;
   /**
@@ -146,6 +153,8 @@ function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
   return (
     a.align === b.align &&
     a.canComment === b.canComment &&
+    a.indent.in === b.indent.in &&
+    a.indent.out === b.indent.out &&
     a.holdsText === b.holdsText &&
     a.quotable === b.quotable &&
     sameColours(a.colour, b.colour)
@@ -171,6 +180,7 @@ function facesFor(editor: HandleEditor, blockId: string): StyleFaces {
       align: alignFaceOver(tr.doc, over),
       colour: colourFaceOver(tr.doc, over),
       canComment: canCommentOver(tr.doc, over),
+      indent: indentReach(tr.doc, blockId),
       holdsText: blocksUnder(tr.doc, over).length > 0,
       quotable: blocksUnderFor(tr.doc, over, 'quote').length > 0,
     };
@@ -199,17 +209,19 @@ function useFacesOf(editor: HandleEditor, blockId: string): StyleFaces {
 }
 
 /**
- * The menu's seven rows.
+ * The menu's rows.
  * @param props - See {@link DocumentBlockMenuProps}.
  * @param props.editor - The editor to write to.
  * @param props.block - The block the pointer is over.
  * @param props.close - Closes the menu.
+ * @param props.rows - The rows to draw; a block's grip rows when left out.
  * @returns The rows.
  */
 export function DocumentBlockMenu({
   editor,
   block,
   close,
+  rows = BLOCK_MENU_ROWS,
 }: DocumentBlockMenuProps): React.JSX.Element {
   const t = useTranslation();
   const ticked = ticksFor(editor, block.id);
@@ -263,11 +275,7 @@ export function DocumentBlockMenu({
     (choice: InsertChoice): void => {
       const live = rowNow();
       if (live !== undefined) {
-        if (choice === DIVIDER) {
-          insertRowForMenu(editor, live, [DIVIDER]);
-        } else {
-          runBlockType(editor, choice, insertRowForMenu(editor, live), false);
-        }
+        insertBelow(editor, live, choice);
       }
       close();
     },
@@ -297,7 +305,7 @@ export function DocumentBlockMenu({
 
   return (
     <>
-      {BLOCK_MENU_ROWS.map((row) => {
+      {rows.map((row) => {
         const label = t(row.labelKey);
         const Icon = row.Icon;
 
@@ -444,6 +452,26 @@ export function DocumentBlockMenu({
           );
         }
 
+        if (row.id === 'indent' || row.id === 'unindent') {
+          const inward = row.id === 'indent';
+          return (
+            <DropdownMenuItem
+              key={row.id}
+              data-testid={`doc-block-row-${row.id}`}
+              {...itemWithin(inward ? faces.indent.in : faces.indent.out, () => {
+                const live = rowNow();
+                if (live !== undefined) {
+                  indentRow(editor, live.id, inward);
+                }
+                close();
+              })}
+            >
+              <Icon />
+              {label}
+            </DropdownMenuItem>
+          );
+        }
+
         if (row.id === 'comment') {
           // Acts on the whole row, which `selectionOverBlockContent` turns
           // into a range without dispatching a selection — the reader's caret
@@ -470,10 +498,9 @@ export function DocumentBlockMenu({
                   close();
                   return;
                 }
-                openCommentDraft(editor as never, {
-                  from: over.from,
-                  to: over.to,
-                });
+                openCommentDraft(editor as never, [
+                  { from: over.from, to: over.to },
+                ]);
                 close();
               })}
             >

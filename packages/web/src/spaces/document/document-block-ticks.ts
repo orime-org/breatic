@@ -25,6 +25,9 @@ import type { Selection } from '@tiptap/pm/state';
 import { ORDERED_LIST, QUOTED } from '@web/spaces/document/document-list-block';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 
+/** The table block's content node. */
+const TABLE = 'table';
+
 /** The nine rows the menu offers. */
 export type BlockTypeId =
   | 'paragraph'
@@ -194,8 +197,7 @@ export interface BlockUnder {
  * Read separately they can drift apart, and `runBlockType` reads both within
  * one call: it takes the positions from {@link blocksUnderFor} and asks
  * `tickedOver`, which runs the same walk (`blocksOf`) with the same rule for
- * dividers, whether the row it is about to
- * set is already on. This one is what the rows that are not about block type
+ * dividers and tables, whether the row it is about to set is already on. This one is what the rows that are not about block type
  * read — alignment, and whether the menu has anything to act on.
  * @param doc - The document.
  * @param selection - The selection over it.
@@ -208,12 +210,12 @@ export function blocksUnder(doc: PMNode, selection: Selection): BlockUnder[] {
 /**
  * The blocks one row acts on and ticks over.
  *
- * Quote is the one row a divider can carry (#124, A10): it sits across block
- * types, and a divider inside a quote draws the quote's rule like any other
- * block. So the quote row's blocks are the words plus the dividers in the
- * range, and every other row's are the words alone — a divider is not a
- * heading, and counting it would untick a heading row over two headings with a
- * divider between them.
+ * Quote is the one row a divider or a table can carry (#124 A10, #1126 A14):
+ * it sits across block types, and either one inside a quote draws the quote's
+ * rule like any other block. So the quote row's blocks are the words plus the
+ * dividers and tables in the range, and every other row's are the words alone
+ * — a divider or a table is not a heading, and counting one would untick a
+ * heading row over two headings around it.
  *
  * The fallback block is left out on purpose. It stands in for an element a
  * newer build wrote, and the binding builds it from the element's name alone
@@ -234,23 +236,28 @@ export function blocksUnderFor(
 
 /**
  * The walk both readings share.
+ *
+ * A table is one block: the walk never goes into it, so the lines in its cells
+ * are never blocks of their own. Block types cannot be written into a cell,
+ * and a cell's line handed to `updateBlockTr` throws.
  * @param doc - The document.
  * @param selection - The selection over it.
- * @param withDividers - Whether dividers count.
+ * @param withWordless - Whether dividers and tables count.
  * @returns The blocks, in document order.
  */
 function blocksOf(
   doc: PMNode,
   selection: Selection,
-  withDividers: boolean,
+  withWordless: boolean,
 ): BlockUnder[] {
   const found: BlockUnder[] = [];
   doc.nodesBetween(selection.from, selection.to, (node, pos) => {
-    if (node.isTextblock || (withDividers && node.type.name === DIVIDER)) {
+    const wordless = node.type.name === DIVIDER || node.type.name === TABLE;
+    if (node.isTextblock || (withWordless && wordless)) {
       found.push({ node, pos });
       return false;
     }
-    return true;
+    return node.type.name !== TABLE;
   });
   return found;
 }
@@ -262,13 +269,13 @@ function blocksOf(
  * @returns The ticked rows.
  */
 export function tickedOver(doc: PMNode, selection: Selection): Set<BlockTypeId> {
-  // One walk: the quote row reads the words and the dividers, every other row
-  // the words alone (see {@link blocksUnderFor}).
-  const withDividers = blocksOf(doc, selection, true);
-  const words = withDividers.filter(({ node }) => node.isTextblock);
+  // One walk: the quote row reads the words, dividers and tables, every other
+  // row the words alone (see {@link blocksUnderFor}).
+  const withWordless = blocksOf(doc, selection, true);
+  const words = withWordless.filter(({ node }) => node.isTextblock);
   return new Set(
     ROWS.filter((id) => {
-      const blocks = id === 'quote' ? withDividers : words;
+      const blocks = id === 'quote' ? withWordless : words;
       return blocks.length > 0 && blocks.every(({ node }) => isRow(node, id));
     }),
   );

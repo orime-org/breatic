@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The colour panel: two rows of eight and a reset button.
+ * The colour panel: rows of eight and a reset button.
  *
  * The demo's `.color-panel`. The text row is a default plus the seven hues,
  * each colouring the letter A; the background row is a "none" cell plus the
- * same seven as swatches.
+ * same seven as swatches. In a table a third row of the same swatches fills
+ * the cells themselves, and a table handle's menu draws that row alone
+ * (inner#1126).
  *
  * NO OVERLAY SHELL OF ITS OWN. Two carriers offer this panel — the bubble
  * bar's colour slot and the block handle's menu — and each wraps it in its own
@@ -138,6 +140,23 @@ function ColourCell({
   );
 }
 
+/**
+ * The row for a table cell's own fill (inner#1126): the same none cell and
+ * seven swatches as the fill row, written to the cells rather than as a mark
+ * on the words in them.
+ */
+export interface CellFillRow {
+  /** The hue the cells carry, {@link NO_COLOUR} for none, undefined when they differ. */
+  readonly face: string | undefined;
+  /** Puts a hue on the cells. */
+  readonly onSet: (hue: ColourHue) => void;
+  /** Takes the cells' fill off. */
+  readonly onClear: () => void;
+}
+
+/** Both mark rows, which every carrier but a table's draws. */
+const BOTH_KINDS: readonly ColourKind[] = ['textColor', 'backgroundColor'];
+
 /** What the panel needs from whichever overlay is carrying it. */
 export interface ColourPanelProps {
   /** The stem of every test id in the panel. */
@@ -148,6 +167,70 @@ export interface ColourPanelProps {
   onSet: (kind: ColourKind, hue: ColourHue) => void;
   /** Takes the given rows' colours off. */
   onClear: (kinds: readonly ColourKind[]) => void;
+  /** Which mark rows to draw; both when left out. */
+  kinds?: readonly ColourKind[];
+  /** The cell fill row, drawn after the mark rows when given. */
+  cell?: CellFillRow;
+}
+
+/** What one swatch row needs. */
+interface SwatchRowProps {
+  /** The stem of the row's test ids. */
+  testStem: string;
+  /** The hue in force, {@link NO_COLOUR} for none. */
+  active: string | undefined;
+  /** What the none cell writes. */
+  onNone: () => void;
+  /** What a hue writes. */
+  onHue: (hue: ColourHue) => void;
+}
+
+/**
+ * A row of swatches: a none cell and the seven hues as fills.
+ * @param props - See {@link SwatchRowProps}.
+ * @param props.testStem - The stem of the row's test ids.
+ * @param props.active - The hue in force.
+ * @param props.onNone - What the none cell writes.
+ * @param props.onHue - What a hue writes.
+ * @returns The row.
+ */
+function SwatchRow({ testStem, active, onNone, onHue }: SwatchRowProps): React.JSX.Element {
+  return (
+    <div className='flex gap-1.5 px-2 pb-3'>
+      {/* No background, drawn as the demo's `.color-cell-none` is,
+          and likewise the one in force. */}
+      <ColourCell
+        testId={`${testStem}-none`}
+        selected={active === NO_COLOUR}
+        className={cn('bg-background', NO_FILL)}
+        onPick={onNone}
+      />
+      {COLOUR_HUES.map((hue) => (
+        <ColourCell
+          key={hue}
+          testId={`${testStem}-${hue}`}
+          selected={active === hue}
+          // The same token the text this cell produces is filled with
+          // (`index.css`), so the swatch and the result read one value. The
+          // two edges travel as custom properties {@link COLOUR_CELL} reads:
+          // the hue at 40% while the pointer is elsewhere, the hue itself
+          // under it — the seven cells stay told apart by their own colour
+          // either way, which is what the edge was added for (#905 visual
+          // round, finding 1).
+          style={
+            {
+              background: `var(--color-palette-${hue}-highlight)`,
+              '--cell-edge': `var(--color-palette-${hue}-border)`,
+              '--cell-edge-over': `var(--color-palette-${hue})`,
+            } as React.CSSProperties
+          }
+          onPick={() => {
+            onHue(hue);
+          }}
+        />
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -157,6 +240,8 @@ export interface ColourPanelProps {
  * @param props.face - What the range reads as.
  * @param props.onSet - Puts a hue on one row.
  * @param props.onClear - Takes the given rows' colours off.
+ * @param props.kinds - Which mark rows to draw.
+ * @param props.cell - The cell fill row.
  * @returns The panel.
  */
 export const DocumentColourPanel = React.memo(function DocumentColourPanel({
@@ -164,84 +249,81 @@ export const DocumentColourPanel = React.memo(function DocumentColourPanel({
   face,
   onSet,
   onClear,
+  kinds = BOTH_KINDS,
+  cell,
 }: ColourPanelProps): React.JSX.Element {
   const t = useTranslation();
   const { text: activeText, fill: activeFill } = face;
   return (
     <>
-      <BubbleMenuHeading>
-        {t('spaces.document.commands.textColor')}
-      </BubbleMenuHeading>
-      <div className='flex gap-1.5 px-2 pb-3'>
-        {/* The default sits first, and reads as the one in force while the
+      {kinds.includes('textColor') ? (
+        <>
+          <BubbleMenuHeading>
+            {t('spaces.document.commands.textColor')}
+          </BubbleMenuHeading>
+          <div className='flex gap-1.5 px-2 pb-3'>
+            {/* The default sits first, and reads as the one in force while the
             range carries no colour (the demo marks it `data-selected`). It
             draws a plain `A` in the body's own ink: the default is a colour,
             one that follows the theme — dark on a light ground, light on a
             dark one — where the fill row's first cell is the absence of one
             (user 2026-09-12). */}
-        <ColourCell
-          testId={`${idStem}-text-default`}
-          selected={activeText === NO_COLOUR}
-          face='A'
-          className='font-semibold'
-          onPick={() => {
-            onClear(['textColor']);
-          }}
-        />
-        {COLOUR_HUES.map((hue) => (
-          <ColourCell
-            key={hue}
-            testId={`${idStem}-text-${hue}`}
-            selected={activeText === hue}
-            face='A'
-            className='font-semibold'
-            style={{ color: `var(--color-palette-${hue})` }}
-            onPick={() => {
-              onSet('textColor', hue);
+            <ColourCell
+              testId={`${idStem}-text-default`}
+              selected={activeText === NO_COLOUR}
+              face='A'
+              className='font-semibold'
+              onPick={() => {
+                onClear(['textColor']);
+              }}
+            />
+            {COLOUR_HUES.map((hue) => (
+              <ColourCell
+                key={hue}
+                testId={`${idStem}-text-${hue}`}
+                selected={activeText === hue}
+                face='A'
+                className='font-semibold'
+                style={{ color: `var(--color-palette-${hue})` }}
+                onPick={() => {
+                  onSet('textColor', hue);
+                }}
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
+      {kinds.includes('backgroundColor') ? (
+        <>
+          <BubbleMenuHeading>
+            {/* Beside a cell fill row the text's own background says which
+                of the two fills it is. */}
+            {t(cell === undefined ? 'spaces.document.commands.fillColor' : 'spaces.document.table.textHighlight')}
+          </BubbleMenuHeading>
+          <SwatchRow
+            testStem={`${idStem}-fill`}
+            active={activeFill}
+            onNone={() => {
+              onClear(['backgroundColor']);
             }}
-          />
-        ))}
-      </div>
-      <BubbleMenuHeading>
-        {t('spaces.document.commands.fillColor')}
-      </BubbleMenuHeading>
-      <div className='flex gap-1.5 px-2 pb-3'>
-        {/* No background, drawn as the demo's `.color-cell-none` is,
-            and likewise the one in force. */}
-        <ColourCell
-          testId={`${idStem}-fill-none`}
-          selected={activeFill === NO_COLOUR}
-          className={cn('bg-background', NO_FILL)}
-          onPick={() => {
-            onClear(['backgroundColor']);
-          }}
-        />
-        {COLOUR_HUES.map((hue) => (
-          <ColourCell
-            key={hue}
-            testId={`${idStem}-fill-${hue}`}
-            selected={activeFill === hue}
-            // The same token the text this cell produces is filled with
-            // (`index.css`), so the swatch and the result read one value. The
-            // two edges travel as custom properties {@link COLOUR_CELL} reads:
-            // the hue at 40% while the pointer is elsewhere, the hue itself
-            // under it — the seven cells stay told apart by their own colour
-            // either way, which is what the edge was added for (#905 visual
-            // round, finding 1).
-            style={
-              {
-                background: `var(--color-palette-${hue}-highlight)`,
-                '--cell-edge': `var(--color-palette-${hue}-border)`,
-                '--cell-edge-over': `var(--color-palette-${hue})`,
-              } as React.CSSProperties
-            }
-            onPick={() => {
+            onHue={(hue) => {
               onSet('backgroundColor', hue);
             }}
           />
-        ))}
-      </div>
-      {/* Takes both marks off the range (the demo's `.color-reset`). */}
+        </>
+      ) : null}
+      {cell !== undefined ? (
+        <>
+          <BubbleMenuHeading>{t('spaces.document.table.cellFill')}</BubbleMenuHeading>
+          <SwatchRow
+            testStem={`${idStem}-cell`}
+            active={cell.face}
+            onNone={cell.onClear}
+            onHue={cell.onSet}
+          />
+        </>
+      ) : null}
+      {/* Takes every row it draws off the range (the demo's `.color-reset`). */}
       <div className='px-2 pb-1 pt-0.5'>
         <Button
           variant='outline'
@@ -253,7 +335,8 @@ export const DocumentColourPanel = React.memo(function DocumentColourPanel({
           // under it (the demo's `.color-reset` is transparent).
           className='h-8 w-full bg-transparent text-sm'
           onClick={() => {
-            onClear(['textColor', 'backgroundColor']);
+            if (kinds.length > 0) onClear(kinds);
+            cell?.onClear();
           }}
         >
           {t('spaces.document.commands.colorReset')}

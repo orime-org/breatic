@@ -60,6 +60,19 @@ export interface ToolDef {
    */
   canRun: (e: ToolEditor) => boolean;
   run: (e: ToolEditor) => void;
+  /**
+   * Whether the button is on the bar at all, for a command that belongs to
+   * one kind of selection only. Left out, it always is.
+   */
+  shownWhen?: (e: ToolEditor) => boolean;
+}
+
+/**
+ * The answer for a tool that is always on the bar.
+ * @returns True.
+ */
+function alwaysShown(): boolean {
+  return true;
 }
 
 /**
@@ -75,14 +88,16 @@ export const ToolButton = React.memo(function ToolButton({
 }: {
   tool: ToolDef;
   editor: ToolEditor;
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   const t = useTranslation();
   // Both answers are scalars, so identity is the right comparison and the
   // default one.
   const active = useEditorSnapshot(editor, tool.isActive);
   const available = useEditorSnapshot(editor, tool.canRun);
+  const shown = useEditorSnapshot(editor, tool.shownWhen ?? alwaysShown);
   const state = { active, available };
   const Icon = tool.Icon;
+  if (!shown) return null;
   return (
     <Button
       variant={state.active ? 'secondary' : 'ghost'}

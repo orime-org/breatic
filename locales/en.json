@@ -1122,6 +1122,7 @@
         "codeBlock": "Code block",
         "taskList": "To-do list",
         "divider": "Divider",
+        "table": "Table",
         "align": "Alignment",
         "alignLeft": "Left",
         "alignCenter": "Centre",
@@ -1192,7 +1193,29 @@
         "insertHere": "Insert here",
         "duplicate": "Duplicate block",
         "insertBelow": "Insert below",
-        "delete": "Delete block"
+        "delete": "Delete block",
+        "indent": "Indent",
+        "unindent": "Outdent",
+        "deleteTable": "Delete table"
+      },
+      "table": {
+        "pickSize": "Select a size",
+        "size": "{rows, plural, one {# row} other {# rows}} × {cols, plural, one {# column} other {# columns}}",
+        "cellFill": "Cell fill",
+        "insertRowAbove": "Insert row above",
+        "insertRowBelow": "Insert row below",
+        "insertColumnLeft": "Insert column left",
+        "insertColumnRight": "Insert column right",
+        "headerRow": "Header row",
+        "headerColumn": "Header column",
+        "deleteRow": "Delete row",
+        "deleteColumn": "Delete column",
+        "rowHandle": "Row",
+        "columnHandle": "Column",
+        "cellMenu": "Cell options",
+        "splitCell": "Split cell",
+        "mergeCells": "Merge cells",
+        "textHighlight": "Highlight"
       }
     },
     "readOnlyReconnect": "Reconnect"

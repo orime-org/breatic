@@ -3,19 +3,22 @@
 
 /**
  * The insert menu's rows: the eight block types other than text, then the
- * divider in a group of its own.
+ * divider and the table in a group of their own.
  *
  * Two places open it — the grip menu's insert-below submenu and the plus on an
  * empty paragraph (#1097) — and they differ only in what a pick does, so the
  * list itself is drawn here once.
  */
 
-import { Minus } from 'lucide-react';
+import { Minus, Table } from 'lucide-react';
 import * as React from 'react';
 
 import {
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
@@ -25,7 +28,8 @@ import {
 import { blockTypeItem } from '@web/spaces/document/document-block-type';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
-import type { InsertChoice } from '@web/spaces/document/document-insert-row';
+import type { InsertChoice, TableSize } from '@web/spaces/document/document-insert-row';
+import { DocumentTableSizeGrid } from '@web/spaces/document/DocumentTableSizeGrid';
 
 interface DocumentInsertChoicesProps {
   /** What picking an entry does. */
@@ -49,6 +53,12 @@ export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
   unreachable,
 }: DocumentInsertChoicesProps): React.JSX.Element {
   const t = useTranslation();
+  const onPickTable = React.useCallback(
+    (table: TableSize): void => {
+      onPick({ table });
+    },
+    [onPick],
+  );
   return (
     <>
       {INSERT_MENU_ROWS.map((id, index) => {
@@ -70,8 +80,9 @@ export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
           </React.Fragment>
         );
       })}
-      {/* Not a block type: a divider holds no text, so it has no row in the
-          block type menu and sits in a group of its own here. */}
+      {/* Not block types: a divider holds no text and a table holds cells, so
+          neither has a row in the block type menu; they sit in a group of
+          their own here. */}
       <DropdownMenuSeparator className='my-0' />
       <DropdownMenuItem
         data-testid='doc-block-insert-divider'
@@ -82,6 +93,15 @@ export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
         <Minus />
         {t('spaces.document.commands.divider')}
       </DropdownMenuItem>
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger data-testid='doc-block-insert-table'>
+          <Table />
+          {t('spaces.document.commands.table')}
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent className='min-w-0'>
+          <DocumentTableSizeGrid onPick={onPickTable} />
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
     </>
   );
 });

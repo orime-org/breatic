@@ -33,7 +33,9 @@ import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
+import { claimRegion } from '@web/features/active-region/use-track-active-region';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
+import { useKeyboardNudge } from '@web/spaces/canvas/use-keyboard-nudge';
 import { canGenerate, newId } from '@breatic/shared';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 
@@ -89,6 +91,7 @@ import {
   useCanvasSpace,
   type CanvasEdge,
   type CanvasNodeView,
+  type CanvasUndoStep,
   readCanvasGraph,
   readTextBodies,
 } from '@web/data/yjs/canvas-space';
@@ -252,8 +255,9 @@ import {
   clipboardBoundingBox,
   cloneForPaste,
   externalParentAbs,
+  canvasTakesPaste,
+  pasteOffsetFor,
   parseClipboardNodes,
-  pasteAnchorOffset,
   serializeNodes,
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
@@ -2883,10 +2887,13 @@ function CanvasSpaceInner({
      * @param event - The clipboard paste event.
      */
     const onPaste = (event: ClipboardEvent): void => {
-      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      const text = event.clipboardData?.getData('text/plain') ?? '';
+      if (readOnly) return;
+      if (!canvasTakesPaste(event.target, text)) return;
       // A caret in a field is answered by the field or by the browser, so
       // this key is theirs while one is there.
       if (isEditableTarget(event.target as Element | null)) return;
+      claimRegion('space');
 
       // File paste (screenshot / copied file) carries binary in
       // `clipboardData.files` — route it through the upload flow, dropped at
@@ -2906,8 +2913,6 @@ function CanvasSpaceInner({
         return;
       }
 
-      const text = event.clipboardData?.getData('text/plain') ?? '';
-
       const clipboardNodes = parseClipboardNodes(text);
       if (clipboardNodes && clipboardNodes.length > 0) {
         event.preventDefault();
@@ -2919,8 +2924,8 @@ function CanvasSpaceInner({
         if (rect) {
           const tl = screenToFlowPosition({ x: rect.left, y: rect.top });
           const br = screenToFlowPosition({ x: rect.right, y: rect.bottom });
-          offset = pasteAnchorOffset(
-            clipboardBoundingBox(clipboardNodes),
+          offset = pasteOffsetFor(
+            clipboardNodes,
             { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y },
             PASTE_OFFSET_PX,
           );
@@ -3063,6 +3068,61 @@ function CanvasSpaceInner({
   // children relative to their Group), so there is no manual member-carry ref or
   // drag-start snapshot — onNodeDragStop alone resolves the whole result
   // (reparent + position + Group auto-expand). See planDragStop.
+  /**
+   * Plan where moved nodes land and write it as one undo step. A drag release
+   * and an arrow-key nudge both end here, so a nudge lands exactly where a
+   * drag to the same place would.
+   * @param dragged - The nodes the user moved, as the render buffer has them.
+   * @param joinStep - The undo step the write joins, when it is still on top.
+   * @returns The undo step the write landed in.
+   */
+  const commitMove = React.useCallback(
+    (
+      dragged: ReadonlyArray<Node>,
+      joinStep?: CanvasUndoStep,
+    ): CanvasUndoStep | undefined => {
+      // A drop is judged against what the user aimed at, so the screen answers
+      // for landings and for where a node goes when it leaves a Group. The
+      // document answers wherever a stored value will later have somebody
+      // else's travel subtracted from it. The two are separate conversions
+      // because they disagree by exactly that travel.
+      // Which view feeds which planner argument is the whole decision, and it
+      // is made in `planDragStop` so a test can hand it two frames that
+      // disagree — this component can hand it only the one the canvas is in.
+      const ops = planDragStop({
+        dragged,
+        onScreen: buffer.onScreen() as Node[],
+        settled: buffer.settled(),
+        heldByRemote: buffer.heldByRemote(),
+        resizedByRemote: buffer.resizedByRemote(),
+        paintedAt: (id) => getInternalNode(id)?.internals.positionAbsolute,
+      });
+      // Commit the whole move as ONE atomic undo entry: a reparent fires a
+      // parent change AND a position change, plus any Group expansion — without
+      // batching, captureTimeout:0 would split them so undo restored a
+      // half-applied state. Every member position already reads against the
+      // origin an expansion is moving its Group to, so each node takes one
+      // write and the Group's own geometry is all the expansion writes.
+      return runCanvasUndoBatch(
+        projectId,
+        spaceId,
+        () => {
+          for (const r of ops.reparents) {
+            setNodeParent(projectId, spaceId, r.id, r.parentId, r.position);
+          }
+          for (const p of ops.positions) {
+            setNodePosition(projectId, spaceId, p.id, p.position, p.parentId);
+          }
+          for (const e of ops.expansions) {
+            resizeGroup(projectId, spaceId, e.groupId, e.position, e.width, e.height);
+          }
+        },
+        joinStep,
+      );
+    },
+    [projectId, spaceId, buffer, getInternalNode],
+  );
+
   // Typed by ReactFlow's own `OnNodeDrag` rather than by spelling the
   // parameters out. The hand-written version named `React.MouseEvent`, which
   // was never what arrives: the callback is handed d3's `sourceEvent`, a
@@ -3081,43 +3141,11 @@ function CanvasSpaceInner({
         gesture.abandon();
         return;
       }
-      // A drop is judged against what the user aimed at, so the screen answers
-      // for landings and for where a node goes when it leaves a Group. The
-      // document answers wherever a stored value will later have somebody
-      // else's travel subtracted from it. The two are separate conversions
-      // because they disagree by exactly that travel.
-      // Which view feeds which planner argument is the whole decision, and it
-      // is made in `planDragStop` so a test can hand it two frames that
-      // disagree — this component can hand it only the one the canvas is in.
-      const ops = planDragStop({
-        dragged,
-        onScreen: buffer.onScreen() as Node[],
-        settled: buffer.settled(),
-        heldByRemote: buffer.heldByRemote(),
-        resizedByRemote: buffer.resizedByRemote(),
-        paintedAt: (id) => getInternalNode(id)?.internals.positionAbsolute,
-      });
-      // Commit the whole drag-stop as ONE atomic undo entry: a reparent fires a
-      // parent change AND a position change, plus any Group expansion — without
-      // batching, captureTimeout:0 would split them so undo restored a
-      // half-applied state. Every member position already reads against the
-      // origin an expansion is moving its Group to, so each node takes one
-      // write and the Group's own geometry is all the expansion writes.
       gesture.end(() => {
-        runCanvasUndoBatch(projectId, spaceId, () => {
-          for (const r of ops.reparents) {
-            setNodeParent(projectId, spaceId, r.id, r.parentId, r.position);
-          }
-          for (const p of ops.positions) {
-            setNodePosition(projectId, spaceId, p.id, p.position, p.parentId);
-          }
-          for (const e of ops.expansions) {
-            resizeGroup(projectId, spaceId, e.groupId, e.position, e.width, e.height);
-          }
-        });
+        commitMove(dragged);
       });
     },
-    [readOnly, projectId, spaceId, buffer, gesture, getInternalNode],
+    [readOnly, gesture, commitMove],
   );
 
   // Wrap the loose selection in a new Group (group redesign). The Group
@@ -4233,6 +4261,26 @@ function CanvasSpaceInner({
     );
   }, [renderNodes, pickSession, flowEdges]);
 
+  // Arrow keys move the selected nodes through xyflow; this writes each
+  // nudge the way a drag release would.
+  const commitNudge = React.useCallback(
+    (
+      moved: ReadonlyArray<string>,
+      joinStep: CanvasUndoStep | undefined,
+    ): CanvasUndoStep | undefined => {
+      const ids = new Set(moved);
+      return commitMove(
+        buffer.onScreen().filter((node) => ids.has(node.id)),
+        joinStep,
+      );
+    },
+    [buffer, commitMove],
+  );
+  const nudgeKeys = useKeyboardNudge({
+    gestureRunning: gesture.isRunning,
+    commit: commitNudge,
+  });
+
   // Stable menu-callback references (#1647 step 4E): the context menus are
   // React.memo'd, so their `onOpenChange` / action props must be stable
   // references to let the memo bail — a fresh inline arrow each render would
@@ -4323,6 +4371,9 @@ function CanvasSpaceInner({
         />
         <ReactFlow
           ref={setFlowShell}
+          onKeyDownCapture={nudgeKeys.onKeyDownCapture}
+          onKeyDown={nudgeKeys.onKeyDown}
+          onPointerDownCapture={nudgeKeys.onPointerDownCapture}
           nodes={pickedNodes}
           edges={flowEdges}
           nodeTypes={FLOW_NODE_TYPES}

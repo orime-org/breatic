@@ -4,7 +4,7 @@
 import * as React from 'react';
 
 import { regionOf } from '@web/features/active-region/keyboard-scope';
-import { useUIStore } from '@web/stores/ui';
+import { type ActiveRegion, useUIStore } from '@web/stores/ui';
 
 /**
  * Drops a live highlight unless it sits inside the space region.
@@ -27,6 +27,19 @@ function dropHighlightOutsideSpace(): void {
     anchor instanceof Element ? anchor : (anchor?.parentElement ?? null);
   if (element !== null && regionOf(element) === 'space') return;
   selection.removeAllRanges();
+}
+
+/**
+ * Hands a region the keyboard, and drops a highlight it no longer speaks for.
+ *
+ * Besides the events tracked below, the canvas calls this when it takes a
+ * paste made while another region held the keyboard: the pasted nodes are
+ * selected on it, so the undo, delete or Escape that follows belongs there.
+ * @param region - The region the user is now working in.
+ */
+export function claimRegion(region: ActiveRegion): void {
+  if (region === 'space') dropHighlightOutsideSpace();
+  useUIStore.getState().setActiveRegion(region);
 }
 
 /**
@@ -54,8 +67,7 @@ export function useTrackActiveRegion(): void {
       if (!(event.target instanceof Element)) return;
       const region = regionOf(event.target);
       if (!region) return;
-      if (region === 'space') dropHighlightOutsideSpace();
-      useUIStore.getState().setActiveRegion(region);
+      claimRegion(region);
     };
     document.addEventListener('pointerdown', claim, true);
     document.addEventListener('focusin', claim, true);

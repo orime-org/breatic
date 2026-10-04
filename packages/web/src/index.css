@@ -1846,6 +1846,178 @@ body {
   border-top-color: var(--color-border);
 }
 
+/* A table wider than the column scrolls inside its block, in the ScrollArea
+   `document-table-blocknote.tsx` wraps it in. The library's wrapper is a
+   scroller of its own (`overflow-x: auto` from prosemirror-tables), which
+   would put a second, native scrollbar inside ours.
+   The wrapper keeps room under the table as tall as that scrollbar, which
+   lies along the bottom of the frame: without it the scrollbar sits over the
+   last row. The row and column handles are drawn in the library's portal,
+   centred on the table's left and top lines, so the other sides need none. */
+.doc-body .doc-table-scroller {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The edge on a side of a wide table that still has more to scroll (inner#1126
+   A21): a line along the frame and a fade inward. It stops above the room the
+   wrapper keeps for the scrollbar, and takes no presses. */
+@layer components {
+  .doc-table-frame {
+    position: relative;
+  }
+
+  .doc-table-overflow-edge {
+    position: absolute;
+    top: 0;
+    bottom: 0.5rem;
+    width: 12px;
+    pointer-events: none;
+    opacity: 0;
+  }
+
+  .doc-table-overflow-edge[data-on] {
+    opacity: 1;
+  }
+
+  .doc-table-overflow-edge[data-overflow-edge='left'] {
+    left: 0;
+    border-left: 1px solid var(--color-border);
+    background: linear-gradient(to right, var(--overflow-shade), transparent);
+  }
+
+  .doc-table-overflow-edge[data-overflow-edge='right'] {
+    right: 0;
+    border-right: 1px solid var(--color-border);
+    background: linear-gradient(to left, var(--overflow-shade), transparent);
+  }
+}
+.doc-body [data-content-type='table'] .tableWrapper {
+  overflow: visible;
+  padding: 0 0 0.5rem 0;
+}
+
+/* A table every column of which has a stored width is as wide as its columns,
+   and scrolls in its frame when that is wider (inner#1126 A12). The library
+   pins every table to `width: auto !important` (`editor.css:150-153`), so the
+   width prosemirror-tables writes onto such a table never lands and the
+   columns are squeezed to the frame; the table's own max-content width, which
+   is the sum of its columns, is a floor it keeps. A table with a column the
+   browser sizes is left as it is drawn today. */
+.doc-body [data-content-type='table'] table:not(:has(td:not([colwidth]))):not(:has(th:not([colwidth]))) {
+  min-width: max-content;
+}
+
+/* A table in the product's tokens, both themes (inner#1126 A13). BlockNote
+   writes fixed values for each of these — `#ddd` lines, `5px 10px` around a
+   cell's words, `#c8c8ff66` over a selected cell, `#adf` for the resize
+   line. */
+.doc-body [data-content-type='table'] td {
+  border-color: var(--color-border);
+  padding: var(--space-3) var(--space-5);
+}
+
+.doc-body [data-content-type='table'] th {
+  border-color: var(--color-border);
+  padding: var(--space-3) var(--space-5);
+  background-color: var(--color-muted);
+}
+
+/* Selected cells, and the cells an open row or column menu acts on: one look
+   (inner#1126 A6). The library draws this layer for `.selectedCell` only, so
+   the rule draws it whole. */
+.doc-body .selectedCell::after,
+.doc-body .doc-table-target::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: var(--color-selection);
+}
+
+/* The tint above is a layer over the whole cell, at z-index 2; the cell's
+   line of words goes above it, so a selected cell reads like selected text:
+   the colour behind the words, the words in their own colour. The line only:
+   the column-resize line is a child of the cell as well, drawn by being
+   absolutely placed. */
+.doc-body .selectedCell > p,
+.doc-body .doc-table-target > p {
+  position: relative;
+  z-index: 3;
+}
+
+.doc-body .column-resize-handle {
+  background-color: var(--color-ring);
+}
+
+/* Where a dragged row or column lands: a line along the edge of the row or
+   the cells it would go next to, in the colour and thickness of the line a
+   dragged block draws (`dropCursor` in `build-document-editor.ts`). */
+.doc-body .doc-table-drop-row-before {
+  box-shadow: inset 0 2px 0 var(--color-status-selected);
+}
+
+.doc-body .doc-table-drop-row-after {
+  box-shadow: inset 0 -2px 0 var(--color-status-selected);
+}
+
+.doc-body .doc-table-drop-column-before {
+  box-shadow: inset 2px 0 0 var(--color-status-selected);
+}
+
+.doc-body .doc-table-drop-column-after {
+  box-shadow: inset -2px 0 0 var(--color-status-selected);
+}
+
+/* A row or column handle always moves off the spot the library places its
+   box on: it is centred on the table's line, which is the frame's left line
+   when the table is scrolled sideways, and the column handle steps aside from the
+   cell button (`placeStyle` and `framePlaceOf` in `DocumentTableHandles.tsx`);
+   the library's box stays on that spot, over whatever is there, so it lets
+   presses through and only the handle takes them. */
+@layer components {
+  div:has(> .doc-table-handle) {
+    pointer-events: none;
+  }
+
+  .doc-table-handle {
+    pointer-events: auto;
+  }
+}
+
+/* A cell's fill: the tint a highlight on words uses, so the panel's swatch,
+   a highlight and a filled cell read one value. The library knows its own
+   colour names and not ours. */
+
+.doc-body [data-content-type='table'] [data-background-color='red'] {
+  background-color: var(--color-palette-red-highlight);
+}
+
+.doc-body [data-content-type='table'] [data-background-color='orange'] {
+  background-color: var(--color-palette-orange-highlight);
+}
+
+.doc-body [data-content-type='table'] [data-background-color='green'] {
+  background-color: var(--color-palette-green-highlight);
+}
+
+.doc-body [data-content-type='table'] [data-background-color='blue'] {
+  background-color: var(--color-palette-blue-highlight);
+}
+
+.doc-body [data-content-type='table'] [data-background-color='violet'] {
+  background-color: var(--color-palette-violet-highlight);
+}
+
+.doc-body [data-content-type='table'] [data-background-color='pink'] {
+  background-color: var(--color-palette-pink-highlight);
+}
+
+.doc-body [data-content-type='table'] [data-background-color='teal'] {
+  background-color: var(--color-palette-teal-highlight);
+}
+
 /* The caret ProseMirror draws in a gap no text caret can stand in — above a
    divider that opens the document, say. The library's own is a fixed black
    that vanishes on the dark theme (#101). */

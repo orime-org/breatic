@@ -235,7 +235,11 @@ export function renderProductGuide(): string {
       "copy icon when hovered. A to-do list in a reply shows each item's box ticked or empty. Small numbered " +
       "circles in the text are sources: hovering one shows it and " +
       "clicking opens it. Pictures found for the reader appear as a row of squares, the last showing a plus and " +
-      "a number when there are more; clicking one opens it large. Under a finished reply are a copy icon and, " +
+      "a number when there are more; clicking one opens it large. Hovering a picture square (not the one with the " +
+      "number) shows a copy icon at its " +
+      `top-right corner, and the large view has ${quoted(t("chat.action.copy"))} beside its close button; pasting ` +
+      "the copy onto the canvas with Cmd/Ctrl+V makes a picture node, which shows the picture once it has been " +
+      "fetched into the project. Under a finished reply are a copy icon and, " +
       `when it used sources, a button such as ${quoted(t("chat.sources.count", { count: 3 }))}, which lists ` +
       "them. A reply that did not end normally says so on its last line, with one of these:",
     `  - ${quoted(t("chat.error.turnFailed"))}`,
@@ -286,7 +290,9 @@ export function renderProductGuide(): string {
       "that connection, and the one you pick appears there, already connected.",
     "- Paste with Cmd/Ctrl+V: a copied node, a file or screenshot, or plain text, which becomes a text node. " +
       "The canvas's keys, this one included, act once the space was the last thing clicked and nothing is being " +
-      "typed in; after typing in this chat they go to the chat box. To hand them back, click one of the selected " +
+      "typed in. A copied node or a picture copied in this chat pastes onto the canvas even after a click in " +
+      "this chat, as long as nothing is being typed in and no menu or large view is open. After typing in this " +
+      "chat the other keys go to the chat box. To hand them back, click one of the selected " +
       "nodes or the space's tab, which keeps the selection; clicking an empty spot on the canvas also works but " +
       "clears the selection.",
     `- Double-clicking empty canvas does nothing. An empty canvas shows ${quoted(t("canvas.emptyState.title"))} ` +
@@ -428,7 +434,10 @@ export function renderProductGuide(): string {
       "to 800 and press Enter. The minimap can be dragged to move the view and scrolled to zoom. The left menu " +
       "and this bar slide out of sight while nodes are being picked for a panel. Each space reopens where you " +
       "left it; one never opened before frames all its nodes.",
-    "Drag a node, a group or a note to move it; with snap to grid on, a dragged node lands on the grid. A " +
+    "Drag a node, a group or a note to move it; with snap to grid on, a dragged node lands on the grid. " +
+      "Right after clicking a node or dragging a box over several, the arrow keys move what is selected a " +
+      "little at a time and further with Shift (with snap to grid on, one grid dot at a time, or four with " +
+      "Shift); undo takes back one press, or all of a key held down. A " +
       `locked one does not move and shows ${quoted(t("canvas.gate.locked"))} Picture, video, sound and text ` +
       "nodes cannot be resized: zoom the canvas to see them larger. Only a group has resize handles.",
     "Scroll to pan, or hold Space and drag (while typing in a text node, over the task list or the history " +
@@ -813,7 +822,9 @@ export function renderProductGuide(): string {
     "- Clicking the empty space below the last block starts a new block there, unless the last block is already " +
       "empty. Clicking a to-do's box ticks or unticks it. Clicking a link opens it in a new tab. Selected words " +
       "can be dragged elsewhere. Pasting Markdown turns it into headings, lists and so on (inside a code block it " +
-      "stays plain text); pasting a picture or file does nothing.",
+      "stays plain text); a table copied from a spreadsheet, a web page or Markdown arrives as a table, keeping " +
+      "only the words of any list in its cells and dropping pictures; pasted with the caret in a cell, it fills " +
+      "the cells from that one instead. Pasting a picture or file does nothing.",
     "- Selecting text shows a bar, left to right: an icon of the current block type with a small arrow, an " +
       "alignment icon with an arrow, bold B, italic I, strikethrough S and underline U icons, a link icon, a code " +
       "icon, the letter A with an arrow (colour), a speech-bubble icon (comment), and a sparkle with the word " +
@@ -859,7 +870,13 @@ export function renderProductGuide(): string {
       `and ${quoted(t("spaces.document.commands.color"))} open a submenu when hovered; ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} lists the block types other than ` +
       `${quoted(t("spaces.document.commands.paragraph"))}, then ${quoted(t("spaces.document.commands.divider"))} ` +
-      "on its own, and puts a new line of the one picked below; the divider comes with an empty line under it. " +
+      `and ${quoted(t("spaces.document.commands.table"))} on their own, and puts a new line of the one picked ` +
+      "below; the divider and the table each come with an empty line under them, and a new table puts the caret " +
+      "in its first cell. " +
+      `${quoted(t("spaces.document.commands.table"))} opens a grid of squares, nine across and nine down, with ` +
+      `${quoted(t("spaces.document.table.pickSize"))} under it; moving over it lights the squares up to the ` +
+      `pointer and the words under it change to the size, such as ${quoted(t("spaces.document.table.size", { rows: 3, cols: 4 }))}, and clicking ` +
+      "puts a table of that size there; the arrow keys and Enter do the same. " +
       "Typing --- at the start of a line puts a divider above that line. Clicking a divider selects it, and " +
       "Backspace or Delete removes it. On a divider's handle menu, " +
       `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.commands.color"))} and ` +
@@ -869,6 +886,44 @@ export function renderProductGuide(): string {
       "plain line below, press Enter at the end of the line (Shift+Enter in a code block); if the new line kept " +
       "the list or to-do of the one above, Cmd+Alt+0 makes it plain text, and if it kept the quote, Cmd+Shift+B " +
       "takes the quote off.",
+    "- A table shows a table icon at the left of its first row instead of the six dots. Drag it to move the " +
+      `whole table; click it for a menu with ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
+      `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
+      `${quoted(t("spaces.document.blockHandle.unindent"))}, ${quoted(t("spaces.document.commands.comment"))} and ` +
+      `${quoted(t("spaces.document.blockHandle.deleteTable"))}. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
+      `and ${quoted(t("spaces.document.blockHandle.unindent"))} are greyed when the table cannot move that way, ` +
+      `and ${quoted(t("spaces.document.commands.comment"))} when no cell has words.`,
+    "- Hovering a cell, with no text selected, shows a small handle of dots at the left of its row and one above " +
+      "its column; dragging either moves the row or column, with a line showing where it will land. Clicking the " +
+      `row's handle opens ${quoted(t("spaces.document.table.insertRowAbove"))}, ` +
+      `${quoted(t("spaces.document.table.insertRowBelow"))}, ${quoted(t("spaces.document.table.headerRow"))}, ` +
+      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +
+      `${quoted(t("spaces.document.table.deleteRow"))}; the column's has ` +
+      `${quoted(t("spaces.document.table.insertColumnLeft"))}, ${quoted(t("spaces.document.table.insertColumnRight"))}, ` +
+      `${quoted(t("spaces.document.table.headerColumn"))}, ${quoted(t("spaces.document.commands.align"))}, ` +
+      `${quoted(t("spaces.document.table.cellFill"))} and ${quoted(t("spaces.document.table.deleteColumn"))}. ` +
+      `${quoted(t("spaces.document.table.headerRow"))} can be picked only on the first row and ` +
+      `${quoted(t("spaces.document.table.headerColumn"))} only on the first column, and shows a tick when on. ` +
+      `${quoted(t("spaces.document.commands.align"))} and ${quoted(t("spaces.document.table.cellFill"))} open a ` +
+      "submenu when hovered and act on the whole row or column; the fill submenu is a row of colours, the first " +
+      `square taking the fill off, then ${quoted(t("spaces.document.commands.colorReset"))}. Deleting the last row or ` +
+      "column deletes the table. Rows and columns are added from these two menus, and Tab in the last cell adds " +
+      "a row. While one of these " +
+      "menus is open, the cells it acts on are tinted the way selected cells are. Dragging the line on a " +
+      "column's right side changes that column's width only; the other columns keep theirs and the table " +
+      "grows. A table wider than the page scrolls sideways inside its own frame.",
+    "- With the caret in a cell, a small box with a down arrow shows at that cell's top right corner; it opens " +
+      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +
+      `${quoted(t("spaces.document.table.splitCell"))} for that cell, and ` +
+      `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged. Tab moves to the next ` +
+      "cell, and in the last cell it adds a row first; Shift+Tab moves back. Enter and Shift+Enter break the line " +
+      "inside the cell. A cell holds only words: no lists, headings or other blocks. Dragging across cells " +
+      "selects them. With words selected inside one cell, or with cells selected, the text bar has its block " +
+      "type button greyed and in its colour menu the rows " +
+      `${quoted(t("spaces.document.commands.textColor"))}, ${quoted(t("spaces.document.table.textHighlight"))} and ` +
+      `${quoted(t("spaces.document.table.cellFill"))}; with cells selected it also shows a merge icon after the ` +
+      "speech bubble that merges them into one. With every cell of an empty table selected, Backspace or " +
+      "Delete removes the table.",
     `- An empty document shows ${quoted(t("spaces.document.placeholder"))}. Three dots at the top right open a ` +
       `menu: ${quoted(t("spaces.document.docMenu.comments"))}, which ends in ` +
       `${quoted(t("spaces.document.docMenu.commentsUnresolved", { count: 2 }))} or ` +
@@ -910,7 +965,7 @@ export function renderProductGuide(): string {
       `With only resolved ones, ${quoted(t("spaces.document.comment.filterOpen"))} shows ` +
       `${quoted(t("spaces.document.comment.nothingUnresolved"))}`,
     "- There is no slash menu. Not available yet: the AI commands, snapshots, images or other media, " +
-      "tables, toggle lists, and headings below level 3.",
+      "toggle lists, and headings below level 3.",
     "",
     "## When something is wrong",
     `- ${quoted(t("connection.banner.disconnected.text"))} across the top, with ` +

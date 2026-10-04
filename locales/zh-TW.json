@@ -1122,6 +1122,7 @@
         "codeBlock": "程式碼區塊",
         "taskList": "待辦清單",
         "divider": "分隔線",
+        "table": "表格",
         "align": "對齊",
         "alignLeft": "靠左",
         "alignCenter": "置中",
@@ -1192,7 +1193,29 @@
         "insertHere": "在此插入",
         "duplicate": "複製副本",
         "insertBelow": "在下方插入",
-        "delete": "刪除區塊"
+        "delete": "刪除區塊",
+        "indent": "縮排",
+        "unindent": "取消縮排",
+        "deleteTable": "刪除表格"
+      },
+      "table": {
+        "pickSize": "選擇列數與欄數",
+        "size": "{rows} 列 × {cols} 欄",
+        "cellFill": "儲存格底色",
+        "insertRowAbove": "在上方插入列",
+        "insertRowBelow": "在下方插入列",
+        "insertColumnLeft": "在左側插入欄",
+        "insertColumnRight": "在右側插入欄",
+        "headerRow": "標題列",
+        "headerColumn": "標題欄",
+        "deleteRow": "刪除列",
+        "deleteColumn": "刪除欄",
+        "rowHandle": "列",
+        "columnHandle": "欄",
+        "cellMenu": "儲存格選項",
+        "splitCell": "分割儲存格",
+        "mergeCells": "合併儲存格",
+        "textHighlight": "背景（醒目提示文字）"
       }
     },
     "readOnlyReconnect": "重新連線"

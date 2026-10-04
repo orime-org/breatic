@@ -301,7 +301,7 @@ test('the plus stands where the handle stands, at the handle’s size (#1097 A8)
   expect(Math.abs(await gapToFirstLine(page))).toBeLessThan(CENTRED_WITHIN);
 });
 
-test('the strip stays on the body\'s left edge for an indented row (#1097 A13)', async () => {
+test('the strip stays 12px out from the body\'s left edge for an indented row (#1097 A13)', async () => {
   await openFreshDocument(page);
   await typeLines(page, ['top', 'nested']);
   await page.keyboard.press('Tab');
@@ -315,13 +315,14 @@ test('the strip stays on the body\'s left edge for an indented row (#1097 A13)',
     return box.x;
   };
   const top = await xOf(0, 'doc-block-handle');
-  // And that line is the body's edge: the strip's right side meets the root
-  // block group's left, as it does where the library places it.
+  // And that line stands 12px out from the body's edge: the strip's right
+  // side is 12px left of the root block group's left (inner#1126, user
+  // 2026-10-04), the clearance a table's row handle on that edge needs.
   const bodyLeft = await page.evaluate(
     (editor) => document.querySelector(editor)?.firstElementChild?.getBoundingClientRect().left ?? Number.NaN,
     EDITOR,
   );
-  expect(Math.abs(top + 24 - bodyLeft)).toBeLessThan(CENTRED_WITHIN);
+  expect(Math.abs(top + 24 + 12 - bodyLeft)).toBeLessThan(CENTRED_WITHIN);
   // Row 1 is nested under row 0, row 2 is an empty paragraph nested beside it.
   // Within a pixel, as A2 holds the vertical: the edge lands on subpixels.
   // Polled: floating-ui places the carrier asynchronously after the hover.
@@ -334,7 +335,8 @@ test('the strip stays on the body\'s left edge for an indented row (#1097 A13)',
   }
 
   // The indent beside a nested row's first line is body, not strip: a click
-  // there reaches the editor while the strip stands at the body's edge.
+  // there reaches the editor while the strip stands 12px out from the body's
+  // edge.
   await page.mouse.move(5, 5);
   await hoverRow(page, 1);
   const words = await page.locator(`${EDITOR} .bn-block-content`).nth(1).locator('.bn-inline-content').boundingBox();
@@ -1468,13 +1470,15 @@ test('offers the insert rows in the block type menu’s own order', async () => 
   );
 
   // Paragraph is the one row insert leaves out: the row it makes is already
-  // one, so offering it would offer nothing. The divider comes after them: it
-  // is not a block type, so the block type menu has no row for it (#124).
+  // one, so offering it would offer nothing. The divider and the table come
+  // after them: neither is a block type, so the block type menu has no row
+  // for either (#124, inner#1126).
   expect(inserts.map((id) => id.replace('doc-block-insert-', ''))).toEqual([
     ...types
       .map((id) => id.replace('doc-block-type-', ''))
       .filter((id) => id !== 'paragraph'),
     'divider',
+    'table',
   ]);
 
   await closeHandleMenu(page);
@@ -1603,7 +1607,8 @@ test('rules the insert submenu the same way', async () => {
   // The same three dimensions, on the menu that makes a row rather than
   // changes one: six rows set the type, one sets the number, one sets the
   // quote. Paragraph is absent, so the first group is one shorter than the
-  // block type menu's. The divider closes it in a group of its own (#124).
+  // block type menu's. The divider and the table close it in a group of their
+  // own (#124, inner#1126).
   await openFreshDocument(page);
   await typeLines(page, ['a row to act on']);
   await openHandleMenu(page);
@@ -1638,6 +1643,7 @@ test('rules the insert submenu the same way', async () => {
     'doc-block-insert-quote',
     'separator',
     'doc-block-insert-divider',
+    'doc-block-insert-table',
   ]);
 
   await closeHandleMenu(page);

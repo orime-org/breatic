@@ -21,7 +21,7 @@ import { DOCUMENT_SCHEMA, documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DIVIDER } from '@web/spaces/document/document-divider';
-import { insertRowForMenu } from '@web/spaces/document/document-insert-row';
+import { insertBelow } from '@web/spaces/document/document-insert-row';
 import { IN_SELECTION_CLASS } from '@web/spaces/document/document-selection-paint';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -220,7 +220,7 @@ describe('the handle menu Divider row (A2)', () => {
       { type: 'paragraph', content: 'after' },
     ]);
 
-    insertRowForMenu(editor, (editor.document as Seen[])[0] as never, [DIVIDER]);
+    insertBelow(editor, (editor.document as Seen[])[0] as never, DIVIDER);
 
     expect(shape(editor.document)).toEqual([
       'paragraph:pressed',
@@ -236,7 +236,7 @@ describe('the handle menu Divider row (A2)', () => {
       { type: 'paragraph', props: { quoted: true }, content: 'pressed' },
     ]);
 
-    insertRowForMenu(editor, (editor.document as Seen[])[0] as never, [DIVIDER]);
+    insertBelow(editor, (editor.document as Seen[])[0] as never, DIVIDER);
 
     const [, divider, line] = editor.document as Seen[];
     expect(divider!.props['quoted']).toBe(true);
@@ -252,7 +252,7 @@ describe('the handle menu Divider row (A2)', () => {
       },
     ]);
 
-    insertRowForMenu(editor, (editor.document as Seen[])[0] as never, [DIVIDER]);
+    insertBelow(editor, (editor.document as Seen[])[0] as never, DIVIDER);
 
     expect(shape(editor.document)).toEqual([
       [

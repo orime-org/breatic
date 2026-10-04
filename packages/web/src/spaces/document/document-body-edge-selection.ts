@@ -21,6 +21,7 @@
 import { createExtension } from '@blocknote/core';
 import type { Node, ResolvedPos } from '@tiptap/pm/model';
 import { AllSelection, NodeSelection, Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
 import type { Mappable } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -384,15 +385,21 @@ export function bodyEdgeBetween(doc: Node, anchor: number, head: number): Select
 }
 
 /**
- * The ends of a selection with an end on an edge of the body moved into the
- * nearest text, for whoever places something at an end. A collaborator's
- * caret is drawn at the head (y-prosemirror `cursor-plugin.js:106-118`), and an
- * edge sits inside a block but outside its content, where a caret element has
- * no line to stand on.
+ * The ends of a selection moved into the nearest text, for whoever places
+ * something at an end: the text bar, a collaborator's caret (drawn at the
+ * head, y-prosemirror `cursor-plugin.js:106-118`), the caret a closing panel
+ * leaves. Two kinds of end sit outside any line of text: an edge of the body,
+ * inside a block but outside its content; and an end of a selection of table
+ * cells, which is the position before a cell, between two cells. The latter
+ * moves to the start of its cell's text.
  * @param selection - The selection.
  * @returns Its anchor and head, each in text or where it was.
  */
 export function textEnds(selection: Selection): { anchor: number; head: number } {
+  if (selection instanceof CellSelection) {
+    // Before the cell, then into it, then into the line it holds.
+    return { anchor: selection.$anchorCell.pos + 2, head: selection.$headCell.pos + 2 };
+  }
   if (!(selection instanceof BodyEdgeSelection)) return { anchor: selection.anchor, head: selection.head };
   const doc = selection.$head.doc;
   /**
@@ -416,6 +423,15 @@ export function textEnds(selection: Selection): { anchor: number; head: number }
  * @returns A text caret.
  */
 export function caretAt(selection: Selection, dir: 1 | -1): Selection {
+  if (selection instanceof CellSelection) {
+    // The first cell in the document's order opens the selection and the last
+    // one closes it, whichever corner it was dragged from; the ranges come
+    // head cell first. Each range's ends sit on its cell's content edges, so
+    // the caret is searched for inward, into that cell.
+    const edges = selection.ranges.map((range) => (dir < 0 ? range.$from : range.$to));
+    const edge = edges.reduce((best, $pos) => ((dir < 0 ? $pos.pos < best.pos : $pos.pos > best.pos) ? $pos : best));
+    return Selection.near(edge, dir < 0 ? 1 : -1);
+  }
   const { anchor, head } = textEnds(selection);
   return TextSelection.create(selection.$head.doc, (dir < 0 ? Math.min : Math.max)(anchor, head));
 }
