@@ -250,4 +250,15 @@ describe('@ in the chat box', () => {
 
     expect(String(onChange.mock.lastCall?.[0])).toBe(`${'y'.repeat(9_998)}ab`);
   });
+
+  it('brings an open list up to date when an attachment becomes ready', async () => {
+    const { rerender } = setup({ attachments: [pending] });
+    act(() => box().commands.focus('end'));
+    type('@');
+    await waitFor(() => expect(screen.getByTestId('reference-mention-empty')).toBeVisible());
+
+    rerender({ attachments: [{ ...pending, status: 'ready', chip: { id: 'a3', type: 'video', name: 'clip.mp4', data_snapshot: {} } }] });
+
+    await waitFor(() => expect(screen.getByTestId('reference-mention-option-a3')).toBeVisible());
+  });
 });
