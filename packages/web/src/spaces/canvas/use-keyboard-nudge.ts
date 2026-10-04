@@ -4,6 +4,8 @@
 import { useStoreApi, type InternalNode } from '@xyflow/react';
 import * as React from 'react';
 
+import type { CanvasUndoStep } from '@web/data/yjs/canvas-space';
+
 /** The keys xyflow nudges selected nodes with (`arrowKeyDiffs`). */
 const ARROW_KEYS: ReadonlySet<string> = new Set([
   'ArrowUp',
@@ -32,16 +34,19 @@ export interface KeyboardNudgeOptions {
   /**
    * Plans and writes a move, the same as a drag release.
    * @param moved - The ids xyflow moved.
-   * @param held - Whether this continues a held run, so the move joins the
-   *   undo step that run is writing into.
+   * @param joinStep - The undo step a held run is writing into, if any.
+   * @returns The undo step the move landed in.
    */
-  commit: (moved: ReadonlyArray<string>, held: boolean) => void;
+  commit: (
+    moved: ReadonlyArray<string>,
+    joinStep: CanvasUndoStep | undefined,
+  ) => CanvasUndoStep | undefined;
 }
 
 /** A nudge xyflow made that the next render will write. */
 interface PendingNudge {
   moved: ReadonlyArray<string>;
-  held: boolean;
+  repeat: boolean;
 }
 
 /**
@@ -89,9 +94,9 @@ export function useKeyboardNudge(
     null,
   );
   const pending = React.useRef<PendingNudge | null>(null);
-  // A held run is open from the nudge that starts it until the pointer is
-  // pressed; a repeat outside one starts its own step.
-  const runOpen = React.useRef(false);
+  // The undo step the current held run writes into. A fresh press or a
+  // pointer press ends the run, so a repeat after either starts its own step.
+  const runStep = React.useRef<CanvasUndoStep | undefined>(undefined);
 
   const onKeyDownCapture = React.useCallback(
     (event: React.KeyboardEvent): void => {
@@ -112,6 +117,7 @@ export function useKeyboardNudge(
       const snapshot = before.current;
       before.current = null;
       if (snapshot === null || !ARROW_KEYS.has(event.key)) return;
+      if (!event.repeat) runStep.current = undefined;
       if (gestureRunning()) return;
       const lookup = store.getState().nodeLookup;
       const moved: string[] = [];
@@ -123,15 +129,13 @@ export function useKeyboardNudge(
         if (carriedBySelectedAncestor(node, lookup)) continue;
         moved.push(id);
       }
-      if (moved.length === 0) return;
-      pending.current = { moved, held: event.repeat && runOpen.current };
-      runOpen.current = true;
+      if (moved.length > 0) pending.current = { moved, repeat: event.repeat };
     },
     [store, gestureRunning],
   );
 
   const onPointerDownCapture = React.useCallback((): void => {
-    runOpen.current = false;
+    runStep.current = undefined;
   }, []);
 
   // No dependencies: a nudge is only recorded in the same event that moved
@@ -140,7 +144,10 @@ export function useKeyboardNudge(
     const nudge = pending.current;
     if (nudge === null) return;
     pending.current = null;
-    commit(nudge.moved, nudge.held);
+    runStep.current = commit(
+      nudge.moved,
+      nudge.repeat ? runStep.current : undefined,
+    );
   });
 
   return React.useMemo(
