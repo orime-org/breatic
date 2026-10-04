@@ -386,6 +386,53 @@ describe('@ in the chat box', () => {
     expect(screen.getByTestId('chat-reference')).toHaveTextContent('cover-v2.png');
   });
 
+  it('empties the box when the server takes the message and its attachments together', () => {
+    const { onChange, rerender } = setup({ draft: `look ${attachmentMarker('a1')} here`, attachments: [cover] });
+
+    // The server's first word clears the draft and the sent attachments in one render.
+    rerender({ draft: '', attachments: [] });
+
+    expect(box().state.doc.textContent).toBe('');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('empties the box when the first word frees it in the same render that clears it', () => {
+    const { onChange, rerender } = setup({
+      turnPhase: 'sending',
+      draft: `look ${attachmentMarker('a1')} here`,
+      attachments: [cover],
+    });
+
+    rerender({ turnPhase: 'running', draft: '', attachments: [] });
+
+    expect(box().state.doc.textContent).toBe('');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('does not run the attachment rule on every keystroke', () => {
+    const tray = [cover];
+    const { onChange, rerender } = setup({ draft: '', attachments: tray });
+    const seen: boolean[] = [];
+    box().on('transaction', ({ transaction }) => seen.push(transaction.getMeta('composerAttachmentsChanged') === true));
+    type('hi');
+    rerender({ draft: String(onChange.mock.lastCall?.[0]), attachments: tray });
+
+    expect(seen.filter(Boolean)).toHaveLength(0);
+  });
+
+  it('leaves the next conversation its own draft when the last one held a block', () => {
+    const { onChange, rerender } = setup({
+      conversationId: 'c1',
+      draft: `look ${attachmentMarker('a1')} here`,
+      attachments: [cover],
+    });
+
+    rerender({ conversationId: 'c2', draft: 'B words', attachments: [] });
+
+    expect(box().state.doc.textContent).toBe('B words');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('copies a block as its name in plain text', () => {
     setup({ draft: `look at ${attachmentMarker('a1')} please`, attachments: [cover] });
     act(() => box().commands.selectAll());

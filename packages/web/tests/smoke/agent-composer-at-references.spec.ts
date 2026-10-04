@@ -114,6 +114,9 @@ test('@ lists the attachment just above the @, and the pick goes out as a refere
   expect(body.message).toContain(`@[attachment:${id}]`);
 
   await expect(page.getByTestId('message-reference')).toHaveText('Neon street', { timeout: 20_000 });
+  // The server's first word takes the words and the attachment together.
+  await expect(page.getByTestId('chat-composer-chips')).toHaveCount(0);
+  await expect(box).toHaveText('');
 });
 
 test('the full-width at sign a CJK input method types opens the list too', async ({ page }) => {
