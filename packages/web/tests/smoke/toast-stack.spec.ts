@@ -4,16 +4,15 @@
 /**
  * Several different toasts at once.
  *
- * Sonner collapses older toasts behind the newest one and hides their text
- * until the stack is hovered. Each older toast has to sit behind the newest
- * one, not on a row of its own where it shows as an empty bar; hovering opens
- * the stack so every message can be read; the stack stays centred.
+ * Every toast is open: each one shows its text on a row of its own, centred,
+ * with no two overlapping. Sonner shows at most three at a time; a fourth
+ * hides the oldest.
  *
  * The toasts come from the app's own entry (`lib/toast.ts`), loaded through the
  * dev server — the part under test is how the Toaster lays them out.
  *
  *   pnpm --filter @breatic/web test:smoke -- toast-stack
- */
+ * */
 import { expect, test, type Page } from 'playwright/test';
 
 import type { toast as appToast } from '@web/lib/toast';
@@ -53,7 +52,7 @@ async function measure(page: Page): Promise<ToastBox[]> {
   );
 }
 
-test('older toasts stack behind the newest and open on hover', async ({ browser }) => {
+test('every toast shows its text on its own row, centred', async ({ browser }) => {
   const context = await browser.newContext({ storageState: STATE_FILE.A, viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
   await page.goto('/');
@@ -67,23 +66,14 @@ test('older toasts stack behind the newest and open on hover', async ({ browser 
   await expect(page.locator('[data-sonner-toast]')).toHaveCount(MESSAGES.length);
   await page.waitForTimeout(600);
 
-  const collapsed = await measure(page);
-  const front = collapsed.find((t) => t.front)!;
-  expect(front.text).toBe(MESSAGES[MESSAGES.length - 1]);
-  expect(Math.abs(front.centre - 720)).toBeLessThanOrEqual(2);
-  for (const back of collapsed.filter((t) => !t.front)) {
-    expect(back.top, `"${back.text}" sits on a row of its own`).toBeLessThan(front.bottom);
-  }
-
-  await page.locator('[data-sonner-toast][data-front="true"]').hover();
-  await page.waitForTimeout(600);
-  const expanded = (await measure(page)).sort((a, b) => a.top - b.top);
-  for (const t of expanded) {
-    expect(t.titleOpacity, `"${t.text}" is unreadable when the stack is open`).toBe(1);
+  const toasts = (await measure(page)).sort((a, b) => a.top - b.top);
+  expect(toasts.map((t) => t.text)).toEqual([...MESSAGES].reverse());
+  for (const t of toasts) {
+    expect(t.titleOpacity, `"${t.text}" shows no text`).toBe(1);
     expect(Math.abs(t.centre - 720)).toBeLessThanOrEqual(2);
   }
-  for (let i = 1; i < expanded.length; i++) {
-    expect(expanded[i].top).toBeGreaterThanOrEqual(expanded[i - 1].bottom);
+  for (let i = 1; i < toasts.length; i++) {
+    expect(toasts[i].top, `"${toasts[i].text}" overlaps the toast above it`).toBeGreaterThanOrEqual(toasts[i - 1].bottom);
   }
 
   await context.close();
