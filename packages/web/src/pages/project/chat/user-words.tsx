@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import type { ChatAttachedChip } from '@breatic/shared';
+import { resolvedSegments, type ChatAttachedChip } from '@breatic/shared';
 
 import { useTranslation } from '@web/i18n/use-translation';
-import { attachmentLabel, resolvedSegments } from '@web/pages/project/chat/attachment-label';
+import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
 import { REFERENCE_BLOCK_CLASS } from '@web/pages/project/chat/chat-reference';
 
 interface UserWordsProps {
@@ -28,7 +28,7 @@ export function UserWords({ content, attachments }: UserWordsProps): React.JSX.E
   const t = useTranslation();
   return (
     <span className='whitespace-pre-wrap break-words'>
-      {resolvedSegments(content, attachments).map((segment, i) =>
+      {resolvedSegments(attachments ?? [], content).map((segment, i) =>
         segment.kind === 'reference' ? (
           <span key={i} data-testid='message-reference' className={REFERENCE_BLOCK_CLASS}>
             <span className='truncate'>{attachmentLabel(t, segment.chip)}</span>

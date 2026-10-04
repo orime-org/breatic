@@ -422,10 +422,11 @@ export {
   messageLength,
   messageSegments,
   referenceCount,
+  resolvedSegments,
   wordsForTitle,
   userTurnForModel,
 } from "@shared/agent/attachments.js";
-export type { AttachmentDataPart, MessageSegment } from "@shared/agent/attachments.js";
+export type { AttachmentDataPart, MessageSegment, ResolvedSegment } from "@shared/agent/attachments.js";
 export {
   carrying,
   FAILURE_LINES,

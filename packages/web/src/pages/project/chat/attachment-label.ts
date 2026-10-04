@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { attachmentMarker, messageSegments, type ChatAttachedChip } from '@breatic/shared';
+import { resolvedSegments, type ChatAttachedChip } from '@breatic/shared';
 
 import type { useTranslation } from '@web/i18n/use-translation';
 
@@ -34,32 +34,6 @@ export function attachmentLabel(t: Translate, item: Labelled): string {
   return t('chat.attachment.kind', { kind: item.type });
 }
 
-/** One run of a sent message: plain text, or a reference matched to its attachment. */
-export type ResolvedSegment =
-  | { kind: 'text'; text: string }
-  | { kind: 'reference'; chip: ChatAttachedChip }
-  | { kind: 'unattached'; marker: string };
-
-/**
- * A sent message split around its references, each matched to the attachment
- * it points at; a marker for anything the message did not carry stays the
- * text it is.
- * @param content - What the reader typed.
- * @param attachments - What the message carried.
- * @returns The runs.
- */
-export function resolvedSegments(
-  content: string,
-  attachments: readonly ChatAttachedChip[] | undefined,
-): ResolvedSegment[] {
-  const byId = new Map((attachments ?? []).map((chip) => [chip.id, chip]));
-  return messageSegments(content).map((segment): ResolvedSegment => {
-    if (segment.kind === 'text') return segment;
-    const chip = byId.get(segment.id);
-    return chip ? { kind: 'reference', chip } : { kind: 'unattached', marker: attachmentMarker(segment.id) };
-  });
-}
-
 /**
  * Typed words as plain text, each reference read as its attachment's label.
  * @param t - The translator.
@@ -72,7 +46,7 @@ export function wordsWithLabels(
   content: string,
   attachments: readonly ChatAttachedChip[] | undefined,
 ): string {
-  return resolvedSegments(content, attachments)
+  return resolvedSegments(attachments ?? [], content)
     .map((s) => (s.kind === 'text' ? s.text : s.kind === 'reference' ? attachmentLabel(t, s.chip) : s.marker))
     .join('');
 }

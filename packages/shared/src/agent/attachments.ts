@@ -82,24 +82,57 @@ export function messageSegments(message: string): MessageSegment[] {
 }
 
 /**
- * Rewrite each marker that points at one of this message's attachments.
- * Markers for anything else stay as the text they are.
+ * One run of the typed words with its reference matched: plain text, a
+ * reference to one of the message's attachments (with its place among them,
+ * from 1), or a marker for anything the message did not carry.
+ */
+export type ResolvedSegment<C> =
+  | { kind: "text"; text: string }
+  | { kind: "reference"; chip: C; n: number }
+  | { kind: "unattached"; marker: string };
+
+/**
+ * The typed words split around their references, each matched to the
+ * attachment it points at. The one place a marker is matched to an
+ * attachment.
  * @param chips - What the user attached to the message, in order.
  * @param message - What the user typed.
- * @param write - What a marker becomes, given its attachment and its place.
- * @returns The rewritten words.
+ * @returns The runs.
  */
-function rewriteMarkers<C extends { readonly id: string }>(
+export function resolvedSegments<C extends { readonly id: string }>(
+  chips: readonly C[],
+  message: string,
+): ResolvedSegment<C>[] {
+  const place = new Map<string, number>();
+  chips.forEach((chip, i) => {
+    if (!place.has(chip.id)) place.set(chip.id, i);
+  });
+  return messageSegments(message).map((segment): ResolvedSegment<C> => {
+    if (segment.kind === "text") return segment;
+    const at = place.get(segment.id);
+    const chip = at === undefined ? undefined : chips[at];
+    return chip === undefined || at === undefined
+      ? { kind: "unattached", marker: attachmentMarker(segment.id) }
+      : { kind: "reference", chip, n: at + 1 };
+  });
+}
+
+/**
+ * The typed words with each reference written out; a marker for anything the
+ * message did not carry stays the text it is.
+ * @param chips - What the user attached to the message, in order.
+ * @param message - What the user typed.
+ * @param write - What a reference becomes, given its attachment and its place.
+ * @returns The words.
+ */
+function writeReferences<C extends { readonly id: string }>(
   chips: readonly C[],
   message: string,
   write: (chip: C, n: number) => string,
 ): string {
-  if (chips.length === 0) return message;
-  return message.replace(MARKER, (marker, id: string) => {
-    const at = chips.findIndex((c) => c.id === id);
-    const chip = chips[at];
-    return chip === undefined ? marker : write(chip, at + 1);
-  });
+  return resolvedSegments(chips, message)
+    .map((s) => (s.kind === "text" ? s.text : s.kind === "reference" ? write(s.chip, s.n) : s.marker))
+    .join("");
 }
 
 /**
@@ -111,7 +144,7 @@ function rewriteMarkers<C extends { readonly id: string }>(
  * @returns The words.
  */
 export function wordsForTitle(chips: readonly ChatAttachedChip[], message: string): string {
-  return rewriteMarkers(chips, message, (chip) => chip.name);
+  return writeReferences(chips, message, (chip) => chip.name);
 }
 
 /**
@@ -122,7 +155,7 @@ export function wordsForTitle(chips: readonly ChatAttachedChip[], message: strin
  * @returns The length.
  */
 export function messageLength(chips: ReadonlyArray<{ readonly id: string }>, message: string): number {
-  return rewriteMarkers(chips, message, () => "@").length;
+  return writeReferences(chips, message, () => "@").length;
 }
 
 /**
@@ -132,8 +165,7 @@ export function messageLength(chips: ReadonlyArray<{ readonly id: string }>, mes
  * @returns The count.
  */
 export function referenceCount(chips: ReadonlyArray<{ readonly id: string }>, message: string): number {
-  const ids = new Set(chips.map((c) => c.id));
-  return messageSegments(message).filter((s) => s.kind === "reference" && ids.has(s.id)).length;
+  return resolvedSegments(chips, message).filter((s) => s.kind === "reference").length;
 }
 
 /**
@@ -164,6 +196,6 @@ export function attachmentSection(chips: readonly ChatAttachedChip[]): string {
  */
 export function userTurnForModel(chips: readonly ChatAttachedChip[], message: string): string {
   if (chips.length === 0) return message;
-  const words = rewriteMarkers(chips, message, (chip, n) => `[Attachment ${String(n)}: ${titleOf(chip)}]`);
+  const words = writeReferences(chips, message, (chip, n) => `[Attachment ${String(n)}: ${titleOf(chip)}]`);
   return `${attachmentSection(chips)}\n\n## User message\n\n${words}`;
 }
