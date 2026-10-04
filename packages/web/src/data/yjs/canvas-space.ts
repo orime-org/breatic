@@ -151,6 +151,9 @@ const EDGES_KEY = 'edgesMap';
  */
 export const CANVAS_UNDO = Symbol('canvas-undo');
 
+/** One entry on a canvas undo stack. */
+export type CanvasUndoStep = Y.UndoManager['undoStack'][number];
+
 /**
  * Origin for frontend content writes (upload completion / failure). Excluded
  * from the undo manager's `trackedOrigins` so a content arrival does NOT enter
@@ -271,28 +274,32 @@ export function _resetCanvasUndoCacheForTests(): void {
  * {@link createCanvasUndoManager} for why `captureTimeout: 0` makes this
  * explicit batching necessary).
  *
- * `joinPrevious` folds this batch into the undo step before it instead, which
- * is how a held arrow key stays one step: the manager merges a change made
- * within `captureTimeout` of the last one, so the timeout is lifted for this
- * one transaction only.
+ * `joinStep` folds this batch into that undo step instead, which is how a held
+ * arrow key stays one step: the manager merges a change made within
+ * `captureTimeout` of the last one into the step on top, so the timeout is
+ * lifted for this one transaction, and only while the step on top is still
+ * `joinStep` — any other write in between leaves a different step on top.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space whose doc to mutate.
  * @param fn - Runs the individual mutations; their writes join this one transaction.
- * @param joinPrevious - Whether to merge into the previous undo step.
+ * @param joinStep - The undo step to merge into, when it is still on top.
+ * @returns The undo step this batch landed in, or undefined when it wrote nothing.
  */
 export function runCanvasUndoBatch(
   projectId: string,
   spaceId: string,
   fn: () => void,
-  joinPrevious = false,
-): void {
+  joinStep?: CanvasUndoStep,
+): CanvasUndoStep | undefined {
   const name = docName.canvasSpace(projectId, spaceId);
   const doc = getDoc(name);
-  if (!joinPrevious) {
-    doc.transact(fn, CANVAS_UNDO);
-    return;
-  }
   const undoManager = getCanvasUndoManager(doc, name);
+  const before = undoManager.undoStack.at(-1);
+  if (joinStep === undefined || before !== joinStep) {
+    doc.transact(fn, CANVAS_UNDO);
+    const after = undoManager.undoStack.at(-1);
+    return after === before ? undefined : after;
+  }
   const timeout = undoManager.captureTimeout;
   undoManager.captureTimeout = Number.POSITIVE_INFINITY;
   try {
@@ -300,6 +307,7 @@ export function runCanvasUndoBatch(
   } finally {
     undoManager.captureTimeout = timeout;
   }
+  return joinStep;
 }
 
 /**

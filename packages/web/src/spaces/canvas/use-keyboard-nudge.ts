@@ -12,12 +12,14 @@ const ARROW_KEYS: ReadonlySet<string> = new Set([
   'ArrowRight',
 ]);
 
-/** The two listeners the canvas wrapper takes, in capture and bubble order. */
+/** The listeners the canvas wrapper takes. */
 export interface KeyboardNudgeHandlers {
   /** Records where the selected nodes are before xyflow handles the key. */
   onKeyDownCapture: (event: React.KeyboardEvent) => void;
   /** Notes which of them xyflow moved, for the write after the next render. */
   onKeyDown: (event: React.KeyboardEvent) => void;
+  /** Ends a held run: anything the pointer does comes between its presses. */
+  onPointerDownCapture: () => void;
 }
 
 /** What the nudge needs from the canvas. */
@@ -30,8 +32,8 @@ export interface KeyboardNudgeOptions {
   /**
    * Plans and writes a move, the same as a drag release.
    * @param moved - The ids xyflow moved.
-   * @param held - Whether the key is held down, so the move joins the undo
-   *   step of the press that started it.
+   * @param held - Whether this continues a held run, so the move joins the
+   *   undo step that run is writing into.
    */
   commit: (moved: ReadonlyArray<string>, held: boolean) => void;
 }
@@ -87,6 +89,9 @@ export function useKeyboardNudge(
     null,
   );
   const pending = React.useRef<PendingNudge | null>(null);
+  // A held run is open from the nudge that starts it until the pointer is
+  // pressed; a repeat outside one starts its own step.
+  const runOpen = React.useRef(false);
 
   const onKeyDownCapture = React.useCallback(
     (event: React.KeyboardEvent): void => {
@@ -118,10 +123,16 @@ export function useKeyboardNudge(
         if (carriedBySelectedAncestor(node, lookup)) continue;
         moved.push(id);
       }
-      if (moved.length > 0) pending.current = { moved, held: event.repeat };
+      if (moved.length === 0) return;
+      pending.current = { moved, held: event.repeat && runOpen.current };
+      runOpen.current = true;
     },
     [store, gestureRunning],
   );
+
+  const onPointerDownCapture = React.useCallback((): void => {
+    runOpen.current = false;
+  }, []);
 
   // No dependencies: a nudge is only recorded in the same event that moved
   // nodes, so the commit right after it is the one that rendered the move.
@@ -133,7 +144,7 @@ export function useKeyboardNudge(
   });
 
   return React.useMemo(
-    () => ({ onKeyDownCapture, onKeyDown }),
-    [onKeyDownCapture, onKeyDown],
+    () => ({ onKeyDownCapture, onKeyDown, onPointerDownCapture }),
+    [onKeyDownCapture, onKeyDown, onPointerDownCapture],
   );
 }

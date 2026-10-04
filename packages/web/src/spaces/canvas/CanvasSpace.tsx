@@ -90,6 +90,7 @@ import {
   useCanvasSpace,
   type CanvasEdge,
   type CanvasNodeView,
+  type CanvasUndoStep,
   readCanvasGraph,
   readTextBodies,
 } from '@web/data/yjs/canvas-space';
@@ -3069,10 +3070,14 @@ function CanvasSpaceInner({
    * and an arrow-key nudge both end here, so a nudge lands exactly where a
    * drag to the same place would.
    * @param dragged - The nodes the user moved, as the render buffer has them.
-   * @param joinPrevious - Whether the write joins the previous undo step.
+   * @param joinStep - The undo step the write joins, when it is still on top.
+   * @returns The undo step the write landed in.
    */
   const commitMove = React.useCallback(
-    (dragged: ReadonlyArray<Node>, joinPrevious = false): void => {
+    (
+      dragged: ReadonlyArray<Node>,
+      joinStep?: CanvasUndoStep,
+    ): CanvasUndoStep | undefined => {
       // A drop is judged against what the user aimed at, so the screen answers
       // for landings and for where a node goes when it leaves a Group. The
       // document answers wherever a stored value will later have somebody
@@ -3095,7 +3100,7 @@ function CanvasSpaceInner({
       // half-applied state. Every member position already reads against the
       // origin an expansion is moving its Group to, so each node takes one
       // write and the Group's own geometry is all the expansion writes.
-      runCanvasUndoBatch(
+      return runCanvasUndoBatch(
         projectId,
         spaceId,
         () => {
@@ -3109,7 +3114,7 @@ function CanvasSpaceInner({
             resizeGroup(projectId, spaceId, e.groupId, e.position, e.width, e.height);
           }
         },
-        joinPrevious,
+        joinStep,
       );
     },
     [projectId, spaceId, buffer, getInternalNode],
@@ -3133,7 +3138,9 @@ function CanvasSpaceInner({
         gesture.abandon();
         return;
       }
-      gesture.end(() => commitMove(dragged));
+      gesture.end(() => {
+        commitMove(dragged);
+      });
     },
     [readOnly, gesture, commitMove],
   );
@@ -4253,10 +4260,15 @@ function CanvasSpaceInner({
 
   // Arrow keys move the selected nodes through xyflow; this writes each
   // nudge the way a drag release would.
+  // The undo step the current held run writes into.
+  const heldRunStep = React.useRef<CanvasUndoStep | undefined>(undefined);
   const commitNudge = React.useCallback(
     (moved: ReadonlyArray<string>, held: boolean): void => {
       const ids = new Set(moved);
-      commitMove(buffer.onScreen().filter((node) => ids.has(node.id)), held);
+      heldRunStep.current = commitMove(
+        buffer.onScreen().filter((node) => ids.has(node.id)),
+        held ? heldRunStep.current : undefined,
+      );
     },
     [buffer, commitMove],
   );
@@ -4357,6 +4369,7 @@ function CanvasSpaceInner({
           ref={setFlowShell}
           onKeyDownCapture={nudgeKeys.onKeyDownCapture}
           onKeyDown={nudgeKeys.onKeyDown}
+          onPointerDownCapture={nudgeKeys.onPointerDownCapture}
           nodes={pickedNodes}
           edges={flowEdges}
           nodeTypes={FLOW_NODE_TYPES}
