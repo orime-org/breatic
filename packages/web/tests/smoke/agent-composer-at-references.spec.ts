@@ -130,6 +130,26 @@ test('the full-width at sign a CJK input method types opens the list too', async
   await expect(box).toHaveText(/^写真の/);
 });
 
+test('Shift+Tab out of an open @ list hides it and leaves the focused control uncovered', async ({ page }) => {
+  await pasteText(page, MARKER + JSON.stringify([PICTURE]));
+  const box = page.getByTestId('chat-composer-box');
+  await box.pressSequentially('look at @');
+  const option = page.locator('[data-testid^="reference-mention-option-"]').first();
+  await expect(option).toBeVisible();
+
+  await box.press('Shift+Tab');
+
+  await expect(option).toBeHidden();
+  const uncovered = await page.evaluate(() => {
+    const focused = document.activeElement as HTMLElement | null;
+    if (focused === null || focused === document.body) return null;
+    const r = focused.getBoundingClientRect();
+    const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return top !== null && (top === focused || focused.contains(top));
+  });
+  expect(uncovered).toBe(true);
+});
+
 test('keys typed while a new conversation opens land in the box', async ({ page }) => {
   const box = page.getByTestId('chat-composer-box');
   await page.getByTestId('new-conversation').click();
