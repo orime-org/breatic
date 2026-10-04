@@ -4,7 +4,7 @@
 import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
 
-import type { ModelEntry } from '@breatic/shared';
+import { modelLabel, type ModelEntry } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -63,7 +63,7 @@ export const ModelPicker = React.memo(function ModelPicker({
           className='flex h-8 min-w-0 max-w-[8rem] items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <ModelIcon name={current?.icon} className='h-4 w-4 shrink-0' />
-          <span className='truncate'>{current?.display_name ?? value}</span>
+          <span className='truncate'>{current ? modelLabel(current, models) : value}</span>
           <ChevronDown
             className='h-3.5 w-3.5 shrink-0 opacity-60'
             aria-hidden='true'
@@ -120,7 +120,7 @@ export const ModelPicker = React.memo(function ModelPicker({
                     one long string would stretch the popover past the viewport. */}
                 <span className='flex min-w-0 flex-1 flex-col items-start'>
                   <span className='w-full truncate text-left'>
-                    {m.display_name}
+                    {modelLabel(m, models)}
                   </span>
                   {m.description !== '' && (
                     <span className='w-full truncate text-left text-xs text-muted-foreground'>

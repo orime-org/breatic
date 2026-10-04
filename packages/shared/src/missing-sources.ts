@@ -10,6 +10,7 @@
  * mode has to have one member holding something.
  */
 
+import { appliesInMode } from "@shared/param-modes.js";
 import type { SourceGroup } from "@shared/types/model-catalog.js";
 
 /** What the check reads off one declared param. */
@@ -64,7 +65,7 @@ export function missingSources(
   for (const [name, slot] of Object.entries(model.params)) {
     if (slot.fill !== "canvas" && slot.fill !== "pool") continue;
     if (slot.optional === true) continue;
-    if (slot.modes !== undefined && !slot.modes.includes(mode)) continue;
+    if (!appliesInMode(slot, mode)) continue;
     if (!holdsSource(slot, params[name])) missing.push([name]);
   }
   for (const group of model.source_groups ?? []) {

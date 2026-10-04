@@ -653,6 +653,7 @@
         "horizontal_angle": "Horizontal angle",
         "vertical_angle": "Vertical angle",
         "negative_prompt": "Negative prompt",
+        "auto_shots": "Auto multi-shot",
         "motion": "Motion",
         "order": "Order",
         "model_mode": "Region",
@@ -667,10 +668,6 @@
         "pronunciation": "Read as"
       },
       "storyboard": {
-        "label": "Storyboard",
-        "perShot": "Edit per shot",
-        "autoHint": "The model splits the shots",
-        "back": "Back to auto storyboard",
         "shot": "Shot {n, number}",
         "removeShot": "Remove",
         "addShot": "Add shot",

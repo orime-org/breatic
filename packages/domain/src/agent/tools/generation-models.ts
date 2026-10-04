@@ -63,17 +63,16 @@ function renderPrice(price: CreditEstimate): string {
 }
 
 /**
- * What a model's storyboard lets a proposal do, for a model that has one.
+ * What the multi-shot mode asks of a proposal on this model, in that mode.
  * @param model - The model to describe.
- * @returns A sentence to append to its line, or the empty string.
+ * @returns A sentence to append to its line, or the empty string outside the multi-shot mode.
  */
 function renderStoryboard(model: PricedModelInfo): string {
   const board = model.storyboard;
   if (!board) return "";
-  const shots = board.maxShots !== undefined ? `at most ${board.maxShots} shots` : "shots";
   const chars = board.maxChars !== undefined ? `, each at most ${board.maxChars} characters` : "";
   const total = board.totalParam !== undefined ? `, whole seconds adding up to ${board.totalParam}` : "";
-  return ` Takes a storyboard: set storyboard "auto" to let it split the prompt into shots, or give shots (${shots}${chars}${total}) to write each one, leaving prompt out.`;
+  return ` Give shots (at most ${board.maxShots} shots${chars}${total}), each written out, and leave prompt out.`;
 }
 
 /**

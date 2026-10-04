@@ -21,7 +21,7 @@ import {
 
 const sum = (ds: readonly number[]): number => ds.reduce((a, b) => a + b, 0);
 
-describe("entering the per-shot tier", () => {
+describe("entering the multi-shot mode", () => {
   it("starts two shots splitting the total, the longer one last", () => {
     expect(enterCustom([], 5)).toEqual([2, 3]);
     expect(enterCustom([], 4)).toEqual([2, 2]);

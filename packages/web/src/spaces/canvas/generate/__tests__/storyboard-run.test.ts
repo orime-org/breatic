@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What the storyboard adds to a run, by the tier in effect (#2218, design §6).
+ * What the multi-shot mode's shots add to a run: Kling's go out in their own
+ * field, another model's are written into the prompt.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -18,12 +19,24 @@ const KLING: Record<string, ParamDescriptor> = {
     default: null,
     type: 'items',
     max_items: 6,
+    modes: ['multi_shot'],
     fill: 'storyboard',
     fields: { prompt: { type: 'text', max_chars: 512 }, duration: { values: [1, 2, 3, 4, 5] } },
   },
-  shot_type: { description: '', default: null, values: ['intelligence', 'customize'], fill: 'storyboard' },
+  shot_type: { description: '', default: null, values: ['customize'], modes: ['multi_shot'], fill: 'storyboard' },
 };
-const spec = storyboardSpec(KLING);
+const WAN: Record<string, ParamDescriptor> = {
+  duration: { description: '', default: 5, min: 2, max: 30, fill: 'panel' },
+  shots: {
+    description: '',
+    default: null,
+    type: 'items',
+    modes: ['multi_shot'],
+    into_prompt: 'Shot {n} [{start}-{end}s]: {prompt}',
+    fill: 'storyboard',
+    fields: { prompt: { type: 'text' }, duration: { values: [1, 2, 3, 4, 5] } },
+  },
+};
 
 /**
  * A shot holding one line.
@@ -42,37 +55,40 @@ function shot(id: string, text: string, duration: number): { id: string; prompt:
 }
 
 const SHOTS = [shot('a', 'a paper boat', 2), shot('b', 'the pond', 3)];
+const GATE = {
+  shots: [{ text: 'a paper boat', duration: 2 }, { text: 'the pond', duration: 3 }],
+  total: 5,
+  maxShots: 6,
+};
 
-describe('the storyboard part of a run', () => {
-  it('adds nothing and keeps the prompt when off', () => {
-    expect(storyboardRun(spec, 'off', SHOTS, 5, [], {})).toEqual({ sendsPrompt: true, params: {}, gate: undefined });
-  });
-
-  it('names the automatic tier and keeps the prompt', () => {
-    expect(storyboardRun(spec, 'auto', SHOTS, 5, [], {})).toEqual({
+describe('the shots part of a run', () => {
+  it('adds nothing and keeps the main prompt outside the multi-shot mode', () => {
+    expect(storyboardRun(storyboardSpec(KLING, 't2v'), SHOTS, 5, [], {})).toEqual({
       sendsPrompt: true,
-      params: { shot_type: 'intelligence' },
+      writtenPrompt: undefined,
+      params: {},
       gate: undefined,
     });
   });
 
-  it('sends every shot in place of the prompt, and hands the gate the same shots', () => {
-    expect(storyboardRun(spec, 'custom', SHOTS, 5, [], {})).toEqual({
+  it('sends Kling every shot in its own field in place of the prompt, and hands the gate the same shots', () => {
+    expect(storyboardRun(storyboardSpec(KLING, 'multi_shot'), SHOTS, 5, [], {})).toEqual({
       sendsPrompt: false,
+      writtenPrompt: undefined,
       params: {
         shot_type: 'customize',
         multi_prompt: [{ prompt: 'a paper boat', duration: 2 }, { prompt: 'the pond', duration: 3 }],
       },
-      gate: {
-        shots: [{ text: 'a paper boat', duration: 2 }, { text: 'the pond', duration: 3 }],
-        total: 5,
-        maxShots: 6,
-        maxChars: 512,
-      },
+      gate: { ...GATE, maxChars: 512 },
     });
   });
 
-  it('is off on a model with no storyboard, whatever tier is asked', () => {
-    expect(storyboardRun(undefined, 'custom', SHOTS, 5, [], {})).toEqual({ sendsPrompt: true, params: {}, gate: undefined });
+  it('writes the shots into the prompt for a model with no field for them', () => {
+    expect(storyboardRun(storyboardSpec(WAN, 'multi_shot'), SHOTS, 5, [], {})).toEqual({
+      sendsPrompt: false,
+      writtenPrompt: 'Shot 1 [0-2s]: a paper boat\nShot 2 [2-5s]: the pond',
+      params: {},
+      gate: { ...GATE, maxChars: undefined },
+    });
   });
 });

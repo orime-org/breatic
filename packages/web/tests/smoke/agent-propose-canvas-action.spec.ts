@@ -200,9 +200,9 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
   });
 });
 
-test('proposes a storyboard, and the panel opens on its shots @needs-model', async () => {
-  // A13 (#2218): a proposal carrying shots lands with the storyboard on, in
-  // the per-shot tier, each shot holding the words the agent wrote.
+test('proposes a multi-shot video, and the panel opens on its shots @needs-model', async () => {
+  // A proposal carrying shots lands in the multi-shot mode, each shot holding
+  // the words the agent wrote.
   test.setTimeout(240_000);
   const composer = page.getByTestId('chat-composer-textarea');
   await expect(composer).toBeVisible({ timeout: 20_000 });
@@ -210,7 +210,7 @@ test('proposes a storyboard, and the panel opens on its shots @needs-model', asy
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   await composer.fill(
-    'Set up a 5-second text-to-video on Kling 3.0 4K as a storyboard of two shots: first a paper boat on a still pond, then the boat drifting into fog. Do not ask me anything, just propose it.',
+    'Set up a 5-second multi-shot video on Kling 3.0 4K with two shots: first a paper boat on a still pond, then the boat drifting into fog. Do not ask me anything, just propose it.',
   );
   await composer.press('Enter');
 
@@ -227,10 +227,7 @@ test('proposes a storyboard, and the panel opens on its shots @needs-model', asy
 
   // The node that generates is selected with its panel open.
   await expect(page.getByTestId('generate-storyboard-shots')).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByTestId('generate-storyboard-switch')).toHaveAttribute(
-    'data-state',
-    'checked',
-  );
+  await expect(page.getByTestId('generate-video-mode-trigger')).toContainText('Multi-Shot');
   for (const shot of [1, 2]) {
     const words = await page.getByTestId(`generate-storyboard-shot-${String(shot)}-editor`).innerText();
     expect(words.trim().length, `shot ${String(shot)} is empty`).toBeGreaterThan(0);

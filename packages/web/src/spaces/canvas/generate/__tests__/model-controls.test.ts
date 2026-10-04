@@ -50,6 +50,7 @@ describe('modelControls', () => {
           fill: 'panel',
         },
       }),
+      't2i',
     );
     expect(controls).toEqual([
       { kind: 'toggle', name: 'transparency' },
@@ -68,6 +69,7 @@ describe('modelControls', () => {
           fill: 'panel',
         },
       }),
+      't2i',
     );
     expect(controls).toEqual([
       {
@@ -86,6 +88,7 @@ describe('modelControls', () => {
       model({
         chaos: { description: '', label: 'Chaos', min: 0, max: 100, default: 0, fill: 'panel' },
       }),
+      't2i',
     );
     expect(controls).toEqual([
       { kind: 'range', name: 'chaos', min: 0, max: 100, step: 1 },
@@ -103,6 +106,7 @@ describe('modelControls', () => {
           fill: 'panel',
         },
       }),
+      't2i',
     );
     expect(controls).toEqual([
       { kind: 'text', name: 'negative_prompt' },
@@ -122,6 +126,7 @@ describe('modelControls', () => {
           fields: { speaker: { type: 'text' }, voice: { values: ['Kore', 'Puck'] } },
         },
       }),
+      't2i',
     );
     expect(controls).toEqual([
       {
@@ -150,8 +155,23 @@ describe('modelControls', () => {
         aspect_ratio: { description: '', values: ['1:1'], default: '1:1', fill: 'panel' },
         seed: { description: '', label: 'Seed', min: 0, max: 9, default: 0, fill: 'none' },
       }),
+      't2i',
     );
     expect(controls).toEqual([]);
+  });
+
+  it('leaves out a control declared only for other modes', () => {
+    const auto = {
+      description: '',
+      label: 'Auto multi-shot',
+      values: [true, false],
+      default: false,
+      modes: ['t2v'],
+      fill: 'panel' as const,
+    };
+    expect(modelControls(model({ auto_shots: auto }), 't2v')).toEqual([{ kind: 'toggle', name: 'auto_shots' }]);
+    expect(modelControls(model({ auto_shots: auto }), 'multi_shot')).toEqual([]);
+    expect(ownControlSummary(model({ auto_shots: auto }), 'multi_shot', { auto_shots: true }, (n) => n)).toEqual([]);
   });
 
   it('keeps the order the model declares its params in', () => {
@@ -160,6 +180,7 @@ describe('modelControls', () => {
         weird: { description: '', label: 'Weird', min: 0, max: 3000, default: 0, fill: 'panel' },
         chaos: { description: '', label: 'Chaos', min: 0, max: 100, default: 0, fill: 'panel' },
       }),
+      't2i',
     );
     expect(controls.map((c) => c.name)).toEqual(['weird', 'chaos']);
   });
@@ -175,20 +196,20 @@ describe('ownControlSummary', () => {
   const nameOf = (name: string): string => `name:${name}`;
 
   it('says what each choice and range stands on in a freshly resolved record', () => {
-    expect(ownControlSummary(OWN, resolveParamsForModel(OWN, {}), nameOf)).toEqual(['Low', '20']);
+    expect(ownControlSummary(OWN, 't2i', resolveParamsForModel(OWN, {}), nameOf)).toEqual(['Low', '20']);
   });
 
   it('names a text param only while it holds something', () => {
-    expect(ownControlSummary(OWN, { quality: 'low', chaos: 5, negative_prompt: 'blur' }, nameOf)).toEqual([
+    expect(ownControlSummary(OWN, 't2i', { quality: 'low', chaos: 5, negative_prompt: 'blur' }, nameOf)).toEqual([
       'Low',
       '5',
       'name:negative_prompt',
     ]);
-    expect(ownControlSummary(OWN, { quality: 'low', chaos: 5, negative_prompt: '' }, nameOf)).toEqual(['Low', '5']);
+    expect(ownControlSummary(OWN, 't2i', { quality: 'low', chaos: 5, negative_prompt: '' }, nameOf)).toEqual(['Low', '5']);
   });
 
   it('reads what the node holds, and names a switch only while it is on', () => {
-    expect(ownControlSummary(OWN, { quality: 'xhigh', chaos: 5, transparency: true }, nameOf)).toEqual([
+    expect(ownControlSummary(OWN, 't2i', { quality: 'xhigh', chaos: 5, transparency: true }, nameOf)).toEqual([
       'XHigh',
       '5',
       'name:transparency',

@@ -58,13 +58,13 @@ const FULL = model({
 
 describe('VideoParamsPicker', () => {
   it('caps the pill at 150px, like the image and audio params pills', () => {
-    render(<VideoParamsPicker model={FULL} params={{ aspect_ratio: '16:9' }} onChange={() => {}} />);
+    render(<VideoParamsPicker mode='t2v' model={FULL} params={{ aspect_ratio: '16:9' }} onChange={() => {}} />);
     expect(screen.getByTestId('generate-video-params-trigger').className).toContain('max-w-[150px]');
   });
 
   it('shows ratio, resolution and duration on the trigger', () => {
     render(
-      <VideoParamsPicker
+      <VideoParamsPicker mode='t2v'
         model={FULL}
         params={{ aspect_ratio: '16:9', resolution: '720p', duration: 6 }}
         onChange={() => {}}
@@ -80,7 +80,7 @@ describe('VideoParamsPicker', () => {
       aspect_ratio: RATIO,
       emotion: { description: '', label: 'Emotion', values: ['happy', 'neutral'], default: 'neutral', fill: 'panel' },
     });
-    render(<VideoParamsPicker model={own} params={resolveParamsForModel(own, { aspect_ratio: '1:1' })} onChange={() => {}} />);
+    render(<VideoParamsPicker mode='t2v' model={own} params={resolveParamsForModel(own, { aspect_ratio: '1:1' })} onChange={() => {}} />);
     expect(screen.getByTestId('generate-video-params-trigger')).toHaveTextContent('1:1 · Neutral');
   });
 
@@ -91,7 +91,7 @@ describe('VideoParamsPicker', () => {
       negative_prompt: { description: '', label: 'Negative prompt', type: 'text', default: null, fill: 'panel' },
     });
     const { rerender } = render(
-      <VideoParamsPicker
+      <VideoParamsPicker mode='t2v'
         model={own}
         params={{ aspect_ratio: '16:9', resolution: '720p', duration: 6, generate_audio: true, negative_prompt: 'blur' }}
         onChange={() => {}}
@@ -100,7 +100,7 @@ describe('VideoParamsPicker', () => {
     const trigger = screen.getByTestId('generate-video-params-trigger');
     expect(trigger).toHaveTextContent('16:9 · 720p · 6s · Generate audio · Negative prompt');
     rerender(
-      <VideoParamsPicker
+      <VideoParamsPicker mode='t2v'
         model={own}
         params={{ aspect_ratio: '16:9', resolution: '720p', duration: 6, generate_audio: false, negative_prompt: '' }}
         onChange={() => {}}
@@ -115,7 +115,7 @@ describe('VideoParamsPicker', () => {
     // with blanks in it.
     const noResolution = model({ aspect_ratio: RATIO, duration: DURATION_LIST });
     render(
-      <VideoParamsPicker
+      <VideoParamsPicker mode='t2v'
         model={noResolution}
         params={{ aspect_ratio: '9:16', resolution: '720p', duration: 4 }}
         onChange={() => {}}
@@ -128,7 +128,7 @@ describe('VideoParamsPicker', () => {
 
   it('offers every group the model declares, current value marked', () => {
     render(
-      <VideoParamsPicker
+      <VideoParamsPicker mode='t2v'
         model={FULL}
         params={{ aspect_ratio: '16:9', resolution: '720p', duration: 6 }}
         onChange={() => {}}
@@ -149,7 +149,7 @@ describe('VideoParamsPicker', () => {
   it('holds back totals below one second per shot (#2218)', () => {
     const onChange = vi.fn();
     render(
-      <VideoParamsPicker model={FULL} params={{ duration: 6 }} onChange={onChange} durationFloor={5} />,
+      <VideoParamsPicker mode='t2v' model={FULL} params={{ duration: 6 }} onChange={onChange} durationFloor={5} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     expect(screen.getByTestId('generate-video-duration-option-4')).toBeDisabled();
@@ -163,7 +163,7 @@ describe('VideoParamsPicker', () => {
     // than offering a switch the model will ignore.
     const silent = model({ aspect_ratio: RATIO, duration: DURATION_LIST });
     render(
-      <VideoParamsPicker model={silent} params={{}} onChange={() => {}} />,
+      <VideoParamsPicker mode='t2v' model={silent} params={{}} onChange={() => {}} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     expect(screen.queryByTestId('generate-video-audio-toggle')).toBeNull();
@@ -179,7 +179,7 @@ describe('VideoParamsPicker', () => {
     // the content against 12px on the other three sides (#2115).
     const onlyResolution = model({ resolution: RESOLUTION });
     render(
-      <VideoParamsPicker
+      <VideoParamsPicker mode='t2v'
         model={onlyResolution}
         params={{}}
         onChange={() => {}}
@@ -195,7 +195,7 @@ describe('VideoParamsPicker', () => {
     // The complement: a rule that dropped the margin everywhere would pass the
     // case above and collapse every gap in the popover.
     render(
-      <VideoParamsPicker
+      <VideoParamsPicker mode='t2v'
         model={FULL}
         params={{}}
         onChange={() => {}}
@@ -210,7 +210,7 @@ describe('VideoParamsPicker', () => {
   it('picking a ratio reports the aspect_ratio', () => {
     const onChange = vi.fn();
     render(
-      <VideoParamsPicker model={FULL} params={{}} onChange={onChange} />,
+      <VideoParamsPicker mode='t2v' model={FULL} params={{}} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(screen.getByTestId('generate-video-ratio-option-1:1'));
@@ -222,7 +222,7 @@ describe('VideoParamsPicker', () => {
     // string in the payload where the provider expects 6.
     const onChange = vi.fn();
     render(
-      <VideoParamsPicker model={FULL} params={{}} onChange={onChange} />,
+      <VideoParamsPicker mode='t2v' model={FULL} params={{}} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(screen.getByTestId('generate-video-duration-option-6'));
@@ -239,7 +239,7 @@ describe('VideoParamsPicker', () => {
     });
     const onChange = vi.fn();
     render(
-      <VideoParamsPicker model={ranged} params={{}} onChange={onChange} />,
+      <VideoParamsPicker mode='t2v' model={ranged} params={{}} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     expect(screen.getByTestId('generate-video-duration-option-4')).toBeVisible();
@@ -252,7 +252,7 @@ describe('VideoParamsPicker', () => {
   it('toggling audio reports a boolean', () => {
     const onChange = vi.fn();
     render(
-      <VideoParamsPicker
+      <VideoParamsPicker mode='t2v'
         model={FULL}
         params={{ generate_audio: true }}
         onChange={onChange}

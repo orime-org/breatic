@@ -283,28 +283,29 @@ describe("what the guide says", () => {
     expect(doc).not.toMatch(/marked not open yet\)/);
   });
 
-  it("walks through a storyboard split into shots, and says each mode keeps its own prompt", () => {
+  it("walks through the multi-shot mode, and says each mode keeps its own prompt", () => {
     const panel = section("Inside the generation panel");
-    expect(panel).toMatch(/- Storyboard, on the video models that offer it/);
-    expect(panel).toMatch(/"Edit per shot" at the right end of that row splits it by hand/);
-    expect(panel).toMatch(/the right end of the row reads "Add shot" then "Back to auto storyboard"/);
-    expect(panel).toMatch(/the shots' seconds keep adding up to the video's length/);
+    expect(panel).toMatch(/- Multi-Shot, a mode in the video panel's mode picker: the prompt box gives way to one card per shot/);
+    expect(panel).toMatch(/switching into it with no shots lays out two/);
+    expect(panel).toMatch(/Under the cards, in the middle, is "Add shot"/);
+    expect(panel).toMatch(/The shots' seconds keep adding up to the video's length/);
+    expect(panel).toMatch(/"Auto multi-shot" switch in the settings pill/);
     expect(panel).toMatch(/each mode keeps its own words/);
     expect(section("Generating")).toMatch(/"Shot 2 is empty"/);
-    expect(section("Groups and undo")).toMatch(/a video's storyboard and its shots/);
+    expect(section("Groups and undo")).toMatch(/a video's shots/);
   });
 
   it("says when each storyboard control is greyed and what happens when the shots stop fitting", () => {
     const panel = section("Inside the generation panel");
     // VideoGeneratePanelContainer.tsx: one lastFocusedBox, written by the shots and by the main prompt.
-    expect(panel).toMatch(/puts it in that shot box if the prompt box clicked into last was a shot/);
-    expect(panel).toMatch(/after clicking the main prompt box, it goes into the first shot/);
+    expect(panel).toMatch(/puts it in the shot box clicked into last, or in the first shot/);
     expect(panel).toMatch(/minus is greyed at one second or when there is only one shot/);
     expect(panel).toMatch(/plus is greyed when no other shot has a second to spare/);
     expect(panel).toMatch(/"Remove" is greyed while only one shot is left/);
     // storyboard-durations.ts stepShot: later shots first, then earlier ones.
     expect(panel).toMatch(/the minus gives one to the shot after it, or to the one before it on the last shot/);
     // storyboard-durations.ts addShot: null when total <= shot count, whatever each shot holds.
+    expect(panel).toMatch(/When no shot can be added, "Add shot" gives way to "Up to 6 shots" at six shots/);
     expect(panel).toMatch(/"Lengthen the video to add a shot" when the video has no more seconds than there are shots/);
     // storyboard-durations.ts removeShot: re-splits only once the shots fit the seconds.
     expect(panel).toMatch(/remove shots until there are no more shots than seconds, and the rest are re-split, or pick a duration at least as long as the number of shots/);

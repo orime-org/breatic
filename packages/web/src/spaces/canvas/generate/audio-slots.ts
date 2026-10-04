@@ -19,7 +19,7 @@
  * is an edge between two nodes, a slot is a value copied onto this one.
  */
 
-import { PANEL_EDITOR_PARAM, missingSources } from '@breatic/shared';
+import { PANEL_EDITOR_PARAM, appliesInMode, missingSources } from '@breatic/shared';
 import type { MissingSource, ModelEntry } from '@breatic/shared';
 import { AudioLines, Clapperboard, Image, Mic, Music2, Music4 } from 'lucide-react';
 
@@ -216,5 +216,5 @@ export function audioMissing(
 export function modelTakesLyrics(model: ModelEntry | undefined, mode: string): boolean {
   const spec = model?.params?.[PANEL_EDITOR_PARAM];
   if (spec?.fill !== 'editor') return false;
-  return spec.modes === undefined || spec.modes.includes(mode);
+  return appliesInMode(spec, mode);
 }

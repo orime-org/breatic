@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What a node's panel would run right now: the mode, model, params and
- * storyboard tier in effect (#2218). The attach snapshot reports this beside
+ * What a node's panel would run right now: the mode, model and params in
+ * effect. The attach snapshot reports this beside
  * the node's stored data, resolved by the rules the panels resolve by.
  */
 
@@ -35,9 +35,10 @@ function video(name: string, mode: string[], params: Record<string, ParamDescrip
   };
 }
 
-const kling = video('kling', ['t2v'], {
-  multi_prompt: { description: '', default: null, type: 'items', max_items: 6, fill: 'storyboard', fields: { prompt: { type: 'text' }, duration: { values: [1, 2] } } },
-  shot_type: { description: '', default: null, values: ['intelligence', 'customize'], fill: 'storyboard' },
+const kling = video('kling', ['t2v', 'multi_shot'], {
+  multi_prompt: { description: '', default: null, type: 'items', max_items: 6, modes: ['multi_shot'], fill: 'storyboard', fields: { prompt: { type: 'text' }, duration: { values: [1, 2] } } },
+  shot_type: { description: '', default: null, values: ['customize'], modes: ['multi_shot'], fill: 'storyboard' },
+  auto_shots: { description: '', label: 'Auto multi-shot', default: false, values: [true, false], modes: ['t2v'], fill: 'panel' },
 });
 const minimax = video('minimax', ['t2v']);
 const STYLE: ParamDescriptor = {
@@ -86,34 +87,21 @@ function noVoice(): undefined {
 
 describe('what a node would run right now', () => {
   it('falls back to the first served mode and model when nothing is stored', () => {
-    const now = currentGeneration('video', { kind: 'video', status: 'idle' } as never, catalog, () => undefined, noVoice);
-    expect(now).toMatchObject({ mode: 't2v', model: 'kling', params: { duration: 5 }, storyboard: 'off' });
+    const now = currentGeneration('video', { kind: 'video', status: 'idle' } as never, catalog, noVoice);
+    expect(now).toMatchObject({ mode: 't2v', model: 'kling', params: { duration: 5 } });
   });
 
-  it('reads the stored tier on a model that takes a storyboard', () => {
-    const now = currentGeneration(
-      'video',
-      { kind: 'video', status: 'idle', mode: 't2v', model: 'kling', paramsByModel: { kling: { duration: 3 } } } as never,
-      catalog,
-      () => 'custom',
-      noVoice,
-    );
-    expect(now).toMatchObject({ mode: 't2v', model: 'kling', params: { duration: 3 }, storyboard: 'custom' });
-  });
-
-  it('is off on a model that takes none, whatever tier was stored', () => {
-    const now = currentGeneration(
-      'video',
-      { kind: 'video', status: 'idle', mode: 't2v', model: 'minimax' } as never,
-      catalog,
-      () => 'custom',
-      noVoice,
-    );
-    expect(now).toMatchObject({ model: 'minimax', storyboard: 'off' });
+  it('leaves out a param declared for another mode, as the run does', () => {
+    const content = { kind: 'video', status: 'idle', model: 'kling', paramsByModel: { kling: { duration: 3, auto_shots: true } } };
+    const inT2v = currentGeneration('video', { ...content, mode: 't2v' } as never, catalog, noVoice);
+    expect(inT2v?.params).toMatchObject({ duration: 3, auto_shots: true });
+    const inMultiShot = currentGeneration('video', { ...content, mode: 'multi_shot' } as never, catalog, noVoice);
+    expect(inMultiShot).toMatchObject({ mode: 'multi_shot', model: 'kling', params: { duration: 3 } });
+    expect(inMultiShot?.params).not.toHaveProperty('auto_shots');
   });
 
   it('sends the first listed voice when nobody picked one, as the audio panel does', () => {
-    const now = currentGeneration('audio', { kind: 'audio', status: 'idle', mode: 'tts' } as never, catalog, () => undefined, () => ({ id: 'first' }));
+    const now = currentGeneration('audio', { kind: 'audio', status: 'idle', mode: 'tts' } as never, catalog, () => ({ id: 'first' }));
     expect(now).toMatchObject({ mode: 'tts', model: 'speech', params: { voice_id: 'first' } });
   });
 
@@ -122,7 +110,6 @@ describe('what a node would run right now', () => {
       'audio',
       { kind: 'audio', status: 'idle', mode: 'tts', model: 'speech', paramsByModel: { speech: { voice_id: 'mine' } } } as never,
       catalog,
-      () => undefined,
       () => ({ id: 'first' }),
     );
     expect(now?.params).toMatchObject({ voice_id: 'mine' });
@@ -136,7 +123,6 @@ describe('what a node would run right now', () => {
         paramsByModel: { dialogue: { voice_id: 'Puck', speakers: TWO, _stand_in_on: true } },
       } as never,
       catalog,
-      () => undefined,
       noVoice,
     );
     expect(now?.params).toMatchObject({ speakers: TWO });
@@ -152,7 +138,6 @@ describe('what a node would run right now', () => {
         paramsByModel: { dialogue: { voice_id: 'Puck', speakers: TWO } },
       } as never,
       catalog,
-      () => undefined,
       noVoice,
     );
     expect(now?.params).toMatchObject({ voice_id: 'Puck' });
@@ -164,7 +149,6 @@ describe('what a node would run right now', () => {
       'video',
       { kind: 'video', status: 'idle', mode: 't2v', model: 'seedance', styleImageUrls: ['s1', 's2', 's3', 's4'] } as never,
       catalog,
-      () => undefined,
       noVoice,
     );
     expect(now?.params.style_images).toEqual(['s1', 's2', 's3']);
@@ -175,7 +159,6 @@ describe('what a node would run right now', () => {
       'image',
       { kind: 'image', status: 'idle', mode: 't2i', model: 'krea', styleImageUrls: ['s1'] } as never,
       catalog,
-      () => undefined,
       noVoice,
     );
     expect(now?.params.style_images).toEqual(['s1']);
@@ -186,13 +169,12 @@ describe('what a node would run right now', () => {
       'video',
       { kind: 'video', status: 'idle', mode: 't2v', model: 'minimax', styleImageUrls: ['s1'] } as never,
       catalog,
-      () => undefined,
       noVoice,
     );
     expect(now?.params.style_images).toBeUndefined();
   });
 
   it('is null without a catalog', () => {
-    expect(currentGeneration('video', { kind: 'video', status: 'idle' } as never, undefined, () => undefined, noVoice)).toBeNull();
+    expect(currentGeneration('video', { kind: 'video', status: 'idle' } as never, undefined, noVoice)).toBeNull();
   });
 });

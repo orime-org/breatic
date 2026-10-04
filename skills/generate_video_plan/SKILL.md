@@ -58,9 +58,10 @@ For batch generation (e.g. multi-scene storyboard, a series of clips):
 
 - For the highest quality from a prompt → Gemini Omni 1.1 Flash (synced audio, up to 4K)
 - For long single takes → Wan 3.0 (up to 30s with native audio)
-- For an image that starts the shot → MiniMax H3 Image-to-Video, Gemini Omni 1.1 Flash Image-to-Video
-- For a fixed first and last frame → FLUX 3 Start-End, Gemini Omni, MiniMax H3, Wan 3.0
-- For reference-based consistency → MiniMax H3 Reference, Gemini Omni 1.1 Flash Reference, Wan 3.0 Reference, HappyHorse 1.1 Reference
+- For an image that starts the shot → MiniMax H3, Gemini Omni 1.1 Flash (in i2v)
+- For a fixed first and last frame → FLUX 3, Gemini Omni 1.1 Flash, MiniMax H3, Wan 3.0 (in first_last)
+- For reference-based consistency → MiniMax H3, Gemini Omni 1.1 Flash, Wan 3.0, HappyHorse 1.1 (in ref)
+- For a video written shot by shot, each shot with its own prompt and seconds → the multi_shot mode
 - For a character that stays the same across the clip → Kling Video O3 4K (images become elements)
 - For a talking character → OmniHuman 1.5 (portrait + audio), Sync Lipsync 3 (redub real footage)
 

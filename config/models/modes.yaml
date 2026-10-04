@@ -89,6 +89,12 @@ video:
         consistency, with reference videos and reference audio on the models
         that take them. Unlike i2v, the references guide the result rather
         than being the first frame.
+    multi_shot:
+      label: Multi-Shot
+      description: >
+        Describe one video shot by shot: each shot gets its own prompt, and the
+        model cuts between them in order. Some models also take a first frame
+        or reference images.
     extend:
       label: Video Extension
       description: >
@@ -124,6 +130,7 @@ video:
     - User describes a scene with NO media → **t2v**
     - User has a single image to animate → **i2v**
     - User has multiple reference images for character/style consistency → **ref**
+    - User wants to write the video shot by shot, each with its own prompt → **multi_shot**
     - User has a video to continue → **extend**
     - User has a video to modify → **edit**
     - User wants motion-driven character animation → **motion** or **animate**

@@ -641,6 +641,7 @@
         "horizontal_angle": "水平角度",
         "vertical_angle": "垂直角度",
         "negative_prompt": "反向提示词",
+        "auto_shots": "自动分镜",
         "motion": "运动幅度",
         "order": "顺序",
         "model_mode": "区域",
@@ -655,10 +656,6 @@
         "pronunciation": "读作"
       },
       "storyboard": {
-        "label": "分镜",
-        "perShot": "逐镜头编辑",
-        "autoHint": "由模型拆分镜头",
-        "back": "返回自动分镜",
         "shot": "镜头 {n, number}",
         "removeShot": "删除",
         "addShot": "添加镜头",

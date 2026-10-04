@@ -88,7 +88,7 @@ export interface ItemField {
 
 /**
  * How a parameter's value reaches the run (#269). `storyboard` is filled from
- * the node's per-mode storyboard: its shots and its tier (#2218).
+ * the node's shots in the multi-shot mode (`storyboard.ts`).
  */
 export type ParamFill = "canvas" | "pool" | "editor" | "panel" | "remote" | "storyboard" | "none";
 
@@ -166,6 +166,18 @@ export interface ParamDescriptor {
   fields?: Readonly<Record<string, ItemField>>;
   /** The upstream field this param is sent as, when the names differ. */
   upstream?: string;
+  /**
+   * What a value is sent as upstream, keyed by the value's string form, when
+   * the panel's value is not the endpoint's (Kling's switch sends
+   * `shot_type: "intelligence"`). A value not listed goes as it is.
+   */
+  upstream_values?: Readonly<Record<string, string>>;
+  /**
+   * For an `items` list the endpoint has no field for: each entry is written
+   * into the prompt with this template instead (`{n}` its place from 1,
+   * `{start}`/`{end}` its running seconds, `{prompt}` its text), one per line.
+   */
+  into_prompt?: string;
   /** Marks a control only this model has; its name on screen comes from the locales. */
   label?: string;
   /** How a value of `values` reads on screen, when its spelling is not that; English. */
@@ -197,7 +209,10 @@ export type SourceType = "image" | "video" | "audio";
 /** Single model definition — one entry in the catalog response. */
 export interface ModelEntry {
   name: string;
+  /** The vendor's name for the model; `modelLabel` builds what a list shows. */
   display_name: string;
+  /** What tells this model apart from another one sharing its name in some mode. */
+  variant?: string;
   modality: ModelModality;
   mode: string | string[];
   description: string;
@@ -305,7 +320,7 @@ export const IMAGE_GENERATION_MODES = ["t2i", "i2i"] as const;
  * mode with no row there.
  *
  * Which modes belong here is the user's decision (2026-08-08), not a formula:
- * these six go in the Generate panel and `extend` / `edit` / `motion` /
+ * these seven go in the Generate panel and `extend` / `edit` / `motion` /
  * `upscale` / `interpolate` go to the mini-tool system. Four of those five do
  * work on a video that already exists, which is the shape of the decision —
  * but `motion` does not: `kling-v3-pro-motion` takes a character image, and it
@@ -328,6 +343,7 @@ export const VIDEO_GENERATION_MODES = [
   "first_last",
   "animate",
   "ref",
+  "multi_shot",
   "talking_head",
 ] as const;
 
@@ -434,6 +450,8 @@ const paramDescriptorSchema = z
     replaces: z.string().optional().catch(undefined),
     fields: z.record(z.string(), itemFieldSchema).optional().catch(undefined),
     upstream: z.string().optional().catch(undefined),
+    upstream_values: z.record(z.string(), z.string()).optional().catch(undefined),
+    into_prompt: z.string().optional().catch(undefined),
     label: z.string().optional().catch(undefined),
     value_labels: z.record(z.string(), z.string()).optional().catch(undefined),
     value_locales: z.array(z.string()).optional().catch(undefined),
@@ -481,6 +499,7 @@ const modelEntrySchema = z.object({
   // Identity: no `.catch`, so an entry with no usable name fails and is dropped.
   name: z.string().min(1),
   display_name: z.string().catch(""),
+  variant: z.string().optional().catch(undefined),
   modality: z
     .enum(["image", "video", "audio", "tts", "three_d"])
     .catch("image"),
