@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import { COLOUR_HUES } from '@web/spaces/document/document-colour-run';
 
-import { declarationsOf, ruleBody } from './index-css-rules';
+import { declarationsOf, ruleBody, selectorEndingIn } from './index-css-rules';
 
 describe('a table in the body', () => {
   it('fills a cell with the same tint a highlight uses, for every hue', () => {
@@ -37,6 +37,20 @@ describe('a table in the body', () => {
     const body = ruleBody('.doc-body .selectedCell > p');
     expect(body).toContain('position: relative');
     expect(body).toContain('z-index: 3');
+  });
+
+  it('paints the cells a row or column menu acts on the way selected cells are painted (A6)', () => {
+    // One rule for both, so the two can never look different.
+    expect(selectorEndingIn('.doc-table-target::after')).toBe(selectorEndingIn('.selectedCell::after'));
+    expect(selectorEndingIn('.doc-table-target > p')).toBe(selectorEndingIn('.selectedCell > p'));
+    // The library draws the layer for `.selectedCell` only, so the shared
+    // rule draws it whole.
+    const layer = ruleBody('.doc-table-target::after');
+    expect(layer).toContain('content: \'\'');
+    expect(layer).toContain('position: absolute');
+    expect(layer).toContain('inset: 0');
+    expect(layer).toContain('z-index: 2');
+    expect(layer).toContain('pointer-events: none');
   });
 
   it('keeps room under the table for its scrollbar, and none on the other sides', () => {

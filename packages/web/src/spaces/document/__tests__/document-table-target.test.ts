@@ -146,3 +146,46 @@ describe('the target cell of a table menu', () => {
     expect(tableTargetOf(editor.prosemirrorState)).toBeNull();
   });
 });
+
+describe('the cells a row or column menu acts on (A6)', () => {
+  /**
+   * The words of the cells marked as the open menu's target.
+   * @returns Them, in document order.
+   */
+  const marked = (): string[] =>
+    Array.from(document.querySelectorAll('.doc-table-target')).map((cell) => cell.textContent ?? '');
+
+  it('are marked across the row while a row menu holds the cell', () => {
+    const editor = open();
+    setTableTarget(editor.prosemirrorView!, cellOf(editor, 'b2'), 'row');
+
+    expect(marked()).toEqual(['a2', 'b2']);
+  });
+
+  it('are marked down the column while a column menu holds the cell', () => {
+    const editor = open();
+    setTableTarget(editor.prosemirrorView!, cellOf(editor, 'b2'), 'column');
+
+    expect(marked()).toEqual(['b1', 'b2']);
+  });
+
+  it('are not marked for the cell button, which acts on its one cell', () => {
+    const editor = open();
+    setTableTarget(editor.prosemirrorView!, cellOf(editor, 'b2'));
+
+    expect(marked()).toEqual([]);
+  });
+
+  it('follow the row when a row is added above it, and go when the menu lets go', () => {
+    const editor = open();
+    const view = editor.prosemirrorView!;
+    setTableTarget(view, cellOf(editor, 'b2'), 'row');
+
+    insertRow(editor, cellOf(editor, 'a1'), 'above');
+    expect(marked()).toEqual(['a2', 'b2']);
+
+    setTableTarget(view, null);
+    expect(marked()).toEqual([]);
+  });
+});
+

@@ -318,7 +318,7 @@ export function DocumentTableHandle({
         if (state?.rowIndex === undefined || state.colIndex === undefined) return;
         const pos = cellPosOf(view.state.doc, state.block.id, state.rowIndex, state.colIndex);
         if (pos === null) return;
-        setTableTarget(view, pos);
+        setTableTarget(view, pos, row ? 'row' : 'column');
         handles.freezeHandles();
         hideOtherElements(true);
       } else {
@@ -329,7 +329,7 @@ export function DocumentTableHandle({
       held.current.open = next;
       setOpen(next);
     },
-    [editor, handles, hideOtherElements, state],
+    [editor, handles, hideOtherElements, row, state],
   );
   const close = React.useCallback((): void => {
     onOpenChange(false);

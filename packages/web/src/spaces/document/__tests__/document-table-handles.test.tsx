@@ -128,6 +128,22 @@ describe('the row handle (A6)', () => {
     ]);
   });
 
+  it('marks the row it acts on while its menu is open, and the column handle its column', () => {
+    openOver(1, 1);
+    const marked = (): string[] =>
+      Array.from(document.querySelectorAll('.doc-table-target')).map((cell) => cell.textContent ?? '');
+    const row = render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+    expect(marked()).toEqual(['a2', 'b2']);
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+    expect(marked()).toEqual([]);
+    row.unmount();
+
+    render(<DocumentTableHandle orientation='column' hideOtherElements={() => undefined} />);
+    fireEvent.click(screen.getByTestId('doc-table-col-handle'));
+    expect(marked()).toEqual(['b1', 'b2']);
+  });
+
   it('holds the hovered cell, freezes the handles, and lets go when it closes', () => {
     const editor = openOver(1, 1);
     const hide = vi.fn();

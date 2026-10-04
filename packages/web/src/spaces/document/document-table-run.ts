@@ -328,6 +328,19 @@ function scopeRect(
 }
 
 /**
+ * The cells a command written to a scope reaches, from one cell in it.
+ * @param doc - The document.
+ * @param cellPos - The position before the cell.
+ * @param scope - Its row, its column, or the cell alone.
+ * @returns The positions before those cells, or none when no cell is there.
+ */
+export function cellsOfScope(doc: PMNode, cellPos: number, scope: CellScope): number[] {
+  const at = cellAt(doc, cellPos);
+  if (at === null) return [];
+  return at.map.cellsInRect(scopeRect(at, scope)).map((rel) => at.tableStart + rel);
+}
+
+/**
  * The position before a cell, from the table block's id and the cell's place
  * among the nodes — the indices the library's handles report.
  * @param doc - The document.
