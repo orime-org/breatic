@@ -1281,6 +1281,7 @@
     "empty": "保留中の通知はありません",
     "loading": "読み込み中…",
     "markRead": "既読にする",
+    "markAllRead": "すべて既読にする",
     "headline": {
       "roleUpgradeRequest": "{actor} さんが {project} の Editor 権限をリクエストしました",
       "roleUpgradeApproved": "{actor} さんが {project} の Editor 権限を承認しました",

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell } from 'lucide-react';
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { isRequestNotification } from '@breatic/shared';
 import { expiresInLabel } from '@web/lib/expires-in';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
 
@@ -103,6 +104,19 @@ export function BellMenu(): React.JSX.Element {
       });
     },
   });
+  const markAllReadMutation = useMutation({
+    mutationFn: () => notificationsApi.markAllRead(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['notifications', 'unread'],
+      });
+    },
+  });
+  // Requests stay in the bell until answered, so only news rows can be cleared.
+  const hasNewsRow = React.useMemo(
+    () => notifications.some((n) => !isRequestNotification(n.type)),
+    [notifications],
+  );
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -132,8 +146,25 @@ export function BellMenu(): React.JSX.Element {
           <span className='text-2xs font-medium uppercase tracking-wide text-muted-foreground'>
             {t('notifications.title')}
           </span>
-          <span className='text-2xs tabular-nums text-muted-foreground'>
-            {count}
+          <span className='flex items-center gap-2'>
+            {hasNewsRow ? (
+              <Button
+                variant='ghost'
+                size={null}
+                className='h-auto rounded-chrome px-1.5 py-0.5 text-2xs text-muted-foreground'
+                onClick={() => markAllReadMutation.mutate()}
+                disabled={markAllReadMutation.isPending}
+                data-testid='bell-mark-all-read'
+              >
+                {t('notifications.markAllRead')}
+              </Button>
+            ) : null}
+            <span
+              className='text-2xs tabular-nums text-muted-foreground'
+              data-testid='bell-count'
+            >
+              {count}
+            </span>
           </span>
         </div>
         {inboxQuery.isLoading ? (
@@ -194,19 +225,6 @@ function NotificationItem({
   const t = useTranslation();
   const headline = notificationHeadline(notification, resolved, t);
   const subtitle = subtitleFor(notification, t);
-  // Both ask the owner to let someone in further, and both carry what the
-  // requester typed rather than a role on offer.
-  const isUpgradeRequest =
-    notification.type === 'access.role_upgrade_request' ||
-    notification.type === 'project.join_request';
-  const isTransferRequest =
-    notification.type === 'studio.transfer_request' ||
-    notification.type === 'project.transfer_request';
-  const isStudioInviteRequest =
-    notification.type === 'studio.invite_request';
-  const isProjectInviteRequest =
-    notification.type === 'project.invite_request';
-  const isInviteRequest = isStudioInviteRequest || isProjectInviteRequest;
   // Everything with a deadline shows its countdown. The role upgrade was left
   // out while it had no deadline to show; it has one now, and it was the only
   // time-boxed row in the list hiding that fact from the person deciding it.
@@ -214,9 +232,7 @@ function NotificationItem({
   // KIND whose payload has no token has nowhere to send anybody, and drawing
   // the button anyway is how you get an affordance that silently does nothing.
   const token = shareTokenOf(notification.payload);
-  const isDecidable =
-    (isUpgradeRequest || isInviteRequest || isTransferRequest) &&
-    token !== null;
+  const isDecidable = isRequestNotification(notification.type) && token !== null;
 
   return (
     <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent'>

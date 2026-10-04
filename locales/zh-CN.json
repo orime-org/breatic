@@ -1281,6 +1281,7 @@
     "empty": "没有待处理通知",
     "loading": "加载中…",
     "markRead": "标为已读",
+    "markAllRead": "全部已读",
     "headline": {
       "roleUpgradeRequest": "{actor} 申请 {project} 的 Editor 权限",
       "roleUpgradeApproved": "{actor} 通过了你在 {project} 的 Editor 权限",

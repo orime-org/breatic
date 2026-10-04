@@ -1281,6 +1281,7 @@
     "empty": "대기 중인 알림이 없습니다",
     "loading": "불러오는 중…",
     "markRead": "읽음으로 표시",
+    "markAllRead": "모두 읽음으로 표시",
     "headline": {
       "roleUpgradeRequest": "{actor}님이 {project}의 Editor 액세스를 요청했습니다",
       "roleUpgradeApproved": "{actor}님이 {project}의 Editor 액세스를 승인했습니다",

@@ -1281,6 +1281,7 @@
     "empty": "No pending notifications",
     "loading": "Loading…",
     "markRead": "Mark read",
+    "markAllRead": "Mark all read",
     "headline": {
       "roleUpgradeRequest": "{actor} requested editor access on {project}",
       "roleUpgradeApproved": "{actor} approved your editor access on {project}",

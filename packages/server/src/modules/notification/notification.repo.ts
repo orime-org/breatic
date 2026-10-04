@@ -17,10 +17,10 @@
  * See spec: access-permission design (2026-05-28) § 7.
  */
 
-import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { notifications } from "@breatic/core";
-import type { NotificationEntity } from "@breatic/shared";
+import { REQUEST_NOTIFICATION_TYPES, type NotificationEntity } from "@breatic/shared";
 import type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 
 /**
@@ -244,7 +244,9 @@ export async function retire(id: string, tx?: DbTx): Promise<void> {
 }
 
 /**
- * Mark all of a user's unread notifications as read.
+ * Mark all of a user's unread notifications as read, except the requests they
+ * still have to answer: the bell lists unread rows only, so marking a request
+ * read would take it out of the bell unanswered.
  *
  * Rows another transaction holds are skipped, not waited on. Archiving a
  * project and re-addressing requests on an owner change retire several bell
@@ -265,6 +267,7 @@ export async function markAllRead(userId: string): Promise<number> {
         eq(notifications.userId, userId),
         isNull(notifications.readAt),
         isNull(notifications.deletedAt),
+        notInArray(notifications.type, [...REQUEST_NOTIFICATION_TYPES]),
       ),
     )
     .for("update", { skipLocked: true });
