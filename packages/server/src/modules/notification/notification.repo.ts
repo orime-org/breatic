@@ -250,8 +250,8 @@ export async function retire(id: string, tx?: DbTx): Promise<void> {
  * still have to answer: the bell lists unread rows only, so marking a request
  * read would take it out of the bell unanswered.
  *
- * Rows another transaction holds are skipped, not waited on. Today the rows
- * it touches are news only, and the transactions that retire several entries
+ * Rows another transaction holds are skipped, not waited on. The rows it
+ * touches are news only, and the transactions that retire several entries
  * across statements (archiving, re-addressing requests on an owner change)
  * touch requests only, so the two never lock the same rows; skipping keeps it
  * from waiting on, and deadlocking with, any holder should that ever change.
