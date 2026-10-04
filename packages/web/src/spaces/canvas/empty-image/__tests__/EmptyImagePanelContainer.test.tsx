@@ -6,7 +6,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { ReactFlow } from '@xyflow/react';
 
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
-import { useCanvasStore } from '@web/stores';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 /**
  * Mount the container inside a REAL ReactFlow holding `target` (NodeToolbar
@@ -28,7 +28,7 @@ function mountContainer(
 
 describe('EmptyImagePanelContainer', () => {
   beforeEach(() => {
-    useCanvasStore.setState({ panelHostId: null, panelKind: null, pickSession: null });
+    canvasSessions.of('').setState({ panelHostId: null, panelKind: null, pickSession: null });
   });
 
   it('renders nothing until the reset panel is opened', () => {
@@ -39,7 +39,7 @@ describe('EmptyImagePanelContainer', () => {
   it('renders nothing when a Generate panel (not reset) is open on the host', () => {
     mountContainer(vi.fn());
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('').getState().openGeneratePanel('target', 'image');
     });
     // Same host, but panelKind='generate' → this container stays closed.
     expect(screen.queryByTestId('empty-image-execute')).not.toBeInTheDocument();
@@ -48,7 +48,7 @@ describe('EmptyImagePanelContainer', () => {
   it('renders the panel when openEmptyImagePanel targets an existing node', () => {
     mountContainer(vi.fn());
     act(() => {
-      useCanvasStore.getState().openEmptyImagePanel('target');
+      canvasSessions.of('').getState().openEmptyImagePanel('target');
     });
     expect(screen.getByTestId('empty-image-execute')).toBeInTheDocument();
   });
@@ -57,7 +57,7 @@ describe('EmptyImagePanelContainer', () => {
     const onReset = vi.fn();
     mountContainer(onReset);
     act(() => {
-      useCanvasStore.getState().openEmptyImagePanel('target');
+      canvasSessions.of('').getState().openEmptyImagePanel('target');
     });
     fireEvent.click(screen.getByTestId('empty-image-execute'));
     expect(onReset).toHaveBeenCalledWith(
@@ -69,17 +69,17 @@ describe('EmptyImagePanelContainer', () => {
   it('Exit closes the active panel', () => {
     mountContainer(vi.fn());
     act(() => {
-      useCanvasStore.getState().openEmptyImagePanel('target');
+      canvasSessions.of('').getState().openEmptyImagePanel('target');
     });
     fireEvent.click(screen.getByTestId('empty-image-exit'));
-    expect(useCanvasStore.getState().panelHostId).toBeNull();
-    expect(useCanvasStore.getState().panelKind).toBeNull();
+    expect(canvasSessions.of('').getState().panelHostId).toBeNull();
+    expect(canvasSessions.of('').getState().panelKind).toBeNull();
   });
 
   it('closes the panel when the host node disappears (collaborator delete)', () => {
     const { rerender } = mountContainer(vi.fn(), [{ id: 'target' }]);
     act(() => {
-      useCanvasStore.getState().openEmptyImagePanel('target');
+      canvasSessions.of('').getState().openEmptyImagePanel('target');
     });
     expect(screen.getByTestId('empty-image-execute')).toBeInTheDocument();
     // The host vanishes from the live node list → node-gone guard closes it.
@@ -88,6 +88,6 @@ describe('EmptyImagePanelContainer', () => {
         <EmptyImagePanelContainer nodes={[]} onReset={vi.fn()} />
       </ReactFlow>,
     );
-    expect(useCanvasStore.getState().panelHostId).toBeNull();
+    expect(canvasSessions.of('').getState().panelHostId).toBeNull();
   });
 });

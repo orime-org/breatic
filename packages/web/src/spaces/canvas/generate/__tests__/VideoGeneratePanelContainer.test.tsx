@@ -74,11 +74,11 @@ import {
   type CanvasContextValue,
 } from '@web/spaces/canvas/canvas-context';
 import { modelsApi } from '@web/data/api';
-import { useCanvasStore } from '@web/stores';
 import {
   LOCALE_CATALOGS,
   readPath,
 } from '@web/test-utils/locale-catalogs';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 /**
  * The mode the panel binds its editors to: the node's stored mode, else the
@@ -382,7 +382,7 @@ async function openPanelInMode(
   seedVideoNode(data);
   const view = mountContainer('video', data, board, author);
   act(() => {
-    useCanvasStore.getState().openGeneratePanel('target', 'video');
+    canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
   });
   await screen.findByTestId('generate-video-execute');
   // Since #1966 the frame withholds the whole panel until a catalog is in hand,
@@ -461,7 +461,7 @@ describe('VideoGeneratePanelContainer', () => {
     vi.mocked(toast.error).mockClear();
     vi.mocked(toast.warning).mockClear();
     _resetForTests();
-    useCanvasStore.setState({
+    canvasSessions.of('s').setState({
       panelHostId: null,
       panelKind: null,
       pickSession: null,
@@ -475,7 +475,7 @@ describe('VideoGeneratePanelContainer', () => {
     vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
     mountContainer('video');
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'video');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
     });
     await waitFor(() => {
       expect(screen.getByTestId('generate-video-execute')).toBeInTheDocument();
@@ -488,10 +488,10 @@ describe('VideoGeneratePanelContainer', () => {
     vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
     mountContainer('image');
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     await waitFor(() => {
-      expect(useCanvasStore.getState().panelKind).toBe('generate');
+      expect(canvasSessions.of('s').getState().panelKind).toBe('generate');
     });
     expect(screen.queryByTestId('generate-video-execute')).toBeNull();
   });
@@ -500,7 +500,7 @@ describe('VideoGeneratePanelContainer', () => {
     vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
     mountContainer('video');
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'video');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
     });
     await waitFor(() => {
       expect(screen.getByTestId('generate-model-trigger')).toHaveTextContent(
@@ -515,7 +515,7 @@ describe('VideoGeneratePanelContainer', () => {
     vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
     const view = mountContainer('video');
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'video');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
     });
     await waitFor(() => {
       expect(screen.getByTestId('generate-video-execute')).toBeInTheDocument();
@@ -548,7 +548,7 @@ describe('VideoGeneratePanelContainer', () => {
       </QueryClientProvider>,
     );
     await waitFor(() => {
-      expect(useCanvasStore.getState().panelHostId).toBeNull();
+      expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
     });
     expect(screen.queryByTestId('generate-video-execute')).toBeNull();
   });
@@ -559,12 +559,12 @@ describe('VideoGeneratePanelContainer', () => {
     vi.spyOn(modelsApi, 'list').mockRejectedValue(new Error('boom'));
     mountContainer('video');
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'video');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
     });
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledTimes(1);
     });
-    expect(useCanvasStore.getState().panelHostId).toBeNull();
+    expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
     expect(screen.queryByTestId('generate-video-execute')).toBeNull();
   });
 
@@ -580,7 +580,7 @@ describe('VideoGeneratePanelContainer', () => {
       typePrompt('a drone shot over a canyon at dawn');
       mountContainer('video');
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       const execute = await screen.findByTestId('generate-video-execute');
       await waitFor(() => expect(execute).not.toBeDisabled());
@@ -636,7 +636,7 @@ describe('VideoGeneratePanelContainer', () => {
         paramsByModel: { 'veo-3.1': { duration: 8 } },
       });
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       const execute = await screen.findByTestId('generate-video-execute');
       await waitFor(() => expect(execute).not.toBeDisabled());
@@ -654,7 +654,7 @@ describe('VideoGeneratePanelContainer', () => {
       const execute = await openReadyPanel();
       fireEvent.click(execute);
       await waitFor(() =>
-        expect(useCanvasStore.getState().panelHostId).toBeNull(),
+        expect(canvasSessions.of('s').getState().panelHostId).toBeNull(),
       );
     });
 
@@ -706,7 +706,7 @@ describe('VideoGeneratePanelContainer', () => {
       typePrompt('first draft');
       mountContainer('video');
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       const execute = await screen.findByTestId('generate-video-execute');
       await waitFor(() => expect(execute).not.toBeDisabled());
@@ -733,7 +733,7 @@ describe('VideoGeneratePanelContainer', () => {
       typePrompt('a drone shot over a canyon at dawn');
       mountContainer('video');
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       const execute = await screen.findByTestId('generate-video-execute');
       await waitFor(() => expect(execute).not.toBeDisabled());
@@ -751,7 +751,7 @@ describe('VideoGeneratePanelContainer', () => {
       typePrompt('a drone shot over a canyon at dawn');
       mountContainer('video');
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       const execute = await screen.findByTestId('generate-video-execute');
       await waitFor(() => expect(execute).not.toBeDisabled());
@@ -780,12 +780,12 @@ describe('VideoGeneratePanelContainer', () => {
       const execute = await openReadyPanel();
       fireEvent.click(execute);
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('other', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('other', 'video');
       });
       await act(async () => {
         release({ id: 't1' } as Task);
       });
-      expect(useCanvasStore.getState().panelHostId).toBe('other');
+      expect(canvasSessions.of('s').getState().panelHostId).toBe('other');
     });
 
     it('refuses to submit against a locked node and says why', async () => {
@@ -798,14 +798,14 @@ describe('VideoGeneratePanelContainer', () => {
       typePrompt('a drone shot over a canyon at dawn');
       mountContainer('video');
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       const execute = await screen.findByTestId('generate-video-execute');
       await waitFor(() => expect(execute).not.toBeDisabled());
       fireEvent.click(execute);
       await waitFor(() => expect(toast.warning).toHaveBeenCalled());
       expect(create).not.toHaveBeenCalled();
-      expect(useCanvasStore.getState().panelHostId).toBe('target');
+      expect(canvasSessions.of('s').getState().panelHostId).toBe('target');
     });
 
     it('explains a rejected submit and lets the user try again', async () => {
@@ -821,7 +821,7 @@ describe('VideoGeneratePanelContainer', () => {
       const execute = await openReadyPanel();
       fireEvent.click(execute);
       await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
-      expect(useCanvasStore.getState().panelHostId).toBe('target');
+      expect(canvasSessions.of('s').getState().panelHostId).toBe('target');
       await waitFor(() => expect(execute).not.toBeDisabled());
       fireEvent.click(execute);
       await waitFor(() => expect(create).toHaveBeenCalledTimes(2));
@@ -840,7 +840,7 @@ describe('VideoGeneratePanelContainer', () => {
       seedVideoNode(stored);
       mountContainer('video', stored);
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       await waitFor(() => {
         expect(
@@ -865,7 +865,7 @@ describe('VideoGeneratePanelContainer', () => {
       seedVideoNode();
       mountContainer('video');
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       const trigger = await screen.findByTestId('generate-video-mode-trigger');
       // 触发器一出现就是可点的：#1966 起没有目录面板就不挂载，#1951 起
@@ -904,7 +904,7 @@ describe('VideoGeneratePanelContainer', () => {
       seedVideoNode();
       mountContainer('video', undefined, { nodes: [SOURCE], edges: WIRE });
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       expect(await screen.findByTestId('generate-ref-e1')).toBeInTheDocument();
     });
@@ -918,7 +918,7 @@ describe('VideoGeneratePanelContainer', () => {
         edges: [{ id: 'e9', source: 'src', target: 'other' }],
       });
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       await screen.findByTestId('generate-video-execute');
       expect(screen.queryByTestId('generate-ref-e9')).toBeNull();
@@ -930,7 +930,7 @@ describe('VideoGeneratePanelContainer', () => {
       addEdge('p', 's', { id: 'e1', source: 'src', target: 'target' });
       mountContainer('video', undefined, { nodes: [SOURCE], edges: WIRE });
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       fireEvent.click(await screen.findByTestId('generate-ref-remove-e1'));
       await waitFor(() => {
@@ -948,16 +948,16 @@ describe('VideoGeneratePanelContainer', () => {
       seedVideoNode(stored);
       mountContainer('video', stored);
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       const tool = await screen.findByTestId('generate-video-tool-reference');
       fireEvent.click(tool);
-      expect(useCanvasStore.getState().pickSession).toEqual({
+      expect(canvasSessions.of('s').getState().pickSession).toEqual({
         nodeId: 'target',
         purpose: 'reference',
       });
       fireEvent.click(tool);
-      expect(useCanvasStore.getState().pickSession).toBeNull();
+      expect(canvasSessions.of('s').getState().pickSession).toBeNull();
     });
   });
 
@@ -975,7 +975,7 @@ describe('VideoGeneratePanelContainer', () => {
       typePrompt('drift from dusk to dawn');
       mountContainer('video', stored);
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       await screen.findByTestId('generate-video-execute');
       await screen.findByTestId('generate-video-tool-end-frame');
@@ -987,7 +987,7 @@ describe('VideoGeneratePanelContainer', () => {
       // no longer renders, and the banner's Exit is the only way out.
       const view = await openPanelInMode('first_last', 'kling-i2v');
       fireEvent.click(await screen.findByTestId('generate-video-tool-end-frame'));
-      expect(useCanvasStore.getState().pickSession?.purpose).toBe('endFrame');
+      expect(canvasSessions.of('s').getState().pickSession?.purpose).toBe('endFrame');
       vi.mocked(toast.warning).mockClear();
 
       // The mode moves to one with no end-frame slot — a plain image-to-video.
@@ -996,7 +996,7 @@ describe('VideoGeneratePanelContainer', () => {
       view.rerender(panelTree('video', moved));
 
       await waitFor(() =>
-        expect(useCanvasStore.getState().pickSession).toBeNull(),
+        expect(canvasSessions.of('s').getState().pickSession).toBeNull(),
       );
       expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
         en.canvas.generatePanel.pickEnded,
@@ -1011,7 +1011,7 @@ describe('VideoGeneratePanelContainer', () => {
       const byPeer = (): boolean => false;
       const view = await openPanelInMode('first_last', 'kling-i2v', {}, {}, byPeer);
       fireEvent.click(await screen.findByTestId('generate-video-tool-end-frame'));
-      expect(useCanvasStore.getState().pickSession?.purpose).toBe('endFrame');
+      expect(canvasSessions.of('s').getState().pickSession?.purpose).toBe('endFrame');
       vi.mocked(toast.warning).mockClear();
 
       const moved = { mode: 'i2v', model: 'kling-i2v' };
@@ -1019,7 +1019,7 @@ describe('VideoGeneratePanelContainer', () => {
       view.rerender(panelTree('video', moved, {}, byPeer));
 
       await waitFor(() =>
-        expect(useCanvasStore.getState().pickSession).toBeNull(),
+        expect(canvasSessions.of('s').getState().pickSession).toBeNull(),
       );
       expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
         en.canvas.generatePanel.pickEndedByPeer,
@@ -1042,12 +1042,12 @@ describe('VideoGeneratePanelContainer', () => {
       // would make the second pick replace the first.
       await openFirstLastPanel();
       fireEvent.click(screen.getByTestId('generate-video-tool-first-frame'));
-      expect(useCanvasStore.getState().pickSession).toEqual({
+      expect(canvasSessions.of('s').getState().pickSession).toEqual({
         nodeId: 'target',
         purpose: 'firstFrame',
       });
       fireEvent.click(screen.getByTestId('generate-video-tool-end-frame'));
-      expect(useCanvasStore.getState().pickSession).toEqual({
+      expect(canvasSessions.of('s').getState().pickSession).toEqual({
         nodeId: 'target',
         purpose: 'endFrame',
       });
@@ -1129,7 +1129,7 @@ describe('VideoGeneratePanelContainer', () => {
       typePrompt('make it drift toward the sea');
       mountContainer('video', stored);
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       await screen.findByTestId('generate-video-execute');
       // The panel does not mount until the catalog lands (#1966), and the slot only
@@ -1144,7 +1144,7 @@ describe('VideoGeneratePanelContainer', () => {
       seedVideoNode();
       mountContainer('video');
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       await screen.findByTestId('generate-video-execute');
       expect(
@@ -1163,12 +1163,12 @@ describe('VideoGeneratePanelContainer', () => {
       await openI2vPanel();
       const slot = screen.getByTestId('generate-video-tool-first-frame');
       fireEvent.click(slot);
-      expect(useCanvasStore.getState().pickSession).toEqual({
+      expect(canvasSessions.of('s').getState().pickSession).toEqual({
         nodeId: 'target',
         purpose: 'firstFrame',
       });
       fireEvent.click(slot);
-      expect(useCanvasStore.getState().pickSession).toBeNull();
+      expect(canvasSessions.of('s').getState().pickSession).toBeNull();
     });
 
     it('shows the picked copy and clears it on ✕', async () => {
@@ -1199,7 +1199,7 @@ describe('VideoGeneratePanelContainer', () => {
       fireEvent.click(execute);
       await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
       expect(create).not.toHaveBeenCalled();
-      expect(useCanvasStore.getState().panelHostId).toBe('target');
+      expect(canvasSessions.of('s').getState().panelHostId).toBe('target');
     });
 
     it('sends the picked frame as the image param', async () => {
@@ -1232,7 +1232,7 @@ describe('VideoGeneratePanelContainer', () => {
       typePrompt('a drone shot over a canyon at dawn');
       mountContainer('video');
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       const execute = await screen.findByTestId('generate-video-execute');
       await waitFor(() => expect(execute).not.toBeDisabled());
@@ -1314,7 +1314,7 @@ describe('VideoGeneratePanelContainer', () => {
       typePromptMentioning('the two of them walk into frame', mentioned);
       mountContainer('video', stored, { nodes: SOURCES, edges: WIRES });
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       // The prompt reaches the container through the editor's change
       // callback, a tick after the button first renders — every case here
@@ -1408,7 +1408,7 @@ describe('VideoGeneratePanelContainer', () => {
       seedVideoNode(stored);
       mountContainer('video', stored, { nodes: SOURCES, edges: WIRES });
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       const insert = await screen.findByTestId('generate-ref-insert-r-a');
       // #1945: the dim moved from the controls to the ROW, so it covers every
@@ -1675,7 +1675,7 @@ describe('VideoGeneratePanelContainer', () => {
       seedVideoNode(data);
       mountContainer('video', data);
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       await new Promise((r) => setTimeout(r, 30));
       expect(
@@ -1713,7 +1713,7 @@ describe('VideoGeneratePanelContainer', () => {
       typePrompt('一段写给文生视频的描述');
       const view = mountContainer('video', t2v);
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       const before = await screen.findByTestId('generate-prompt-editor');
       expect(before.textContent).toContain('一段写给文生视频的描述');
@@ -1755,7 +1755,7 @@ describe('VideoGeneratePanelContainer', () => {
         model: 'veo-3.1',
       });
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       await screen.findByTestId('generate-prompt-editor');
       view.rerender(panelTree('video', talkingHead));
@@ -1797,7 +1797,7 @@ describe('VideoGeneratePanelContainer', () => {
       seedVideoNode(); // 没有 model，没有 paramsByModel
       mountContainer('video');
       act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
       });
       fireEvent.click(
         await screen.findByTestId('generate-video-params-trigger'),
@@ -1829,7 +1829,7 @@ describe('VideoGeneratePanelContainer — 点不动的时候说清缺什么 (#19
   beforeEach(() => {
     _resetForTests();
     vi.mocked(toast.warning).mockClear();
-    useCanvasStore.setState({
+    canvasSessions.of('s').setState({
       panelHostId: null,
       panelKind: null,
       pickSession: null,
@@ -1882,7 +1882,7 @@ describe('这个部署服务不了的档 (#1951)', () => {
     seedVideoNode({ mode: 't2v', model: 'veo' });
     mountContainer('video', { mode: 't2v', model: 'veo' });
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'video');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
     });
     fireEvent.click(await screen.findByTestId('generate-video-mode-trigger'));
     expect(screen.getByTestId('generate-video-mode-t2v')).toBeInTheDocument();
@@ -1897,7 +1897,7 @@ describe('这个部署服务不了的档 (#1951)', () => {
     seedVideoNode({ mode: 'i2v', model: 'kling-i2v' });
     mountContainer('video', { mode: 'i2v', model: 'kling-i2v' });
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'video');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
     });
     const trigger = await screen.findByTestId('generate-video-mode-trigger');
     await waitFor(() => expect(trigger.textContent).not.toBe(''));
@@ -2027,7 +2027,7 @@ describe('视频面板的聚焦裁剪（#1978）', () => {
     // 直到上传成功那一刻才凭空冒出一行（ReferenceRail 在两者皆空时返回 null）。
     await openPanelInMode('ref', 'kling-o3-pro-ref');
     act(() => {
-      useCanvasStore.getState().addPendingFocusUpload({
+      canvasSessions.of('s').getState().addPendingFocusUpload({
         id: 'p1',
         nodeId: 'target',
         name: 'Hero',
@@ -2043,12 +2043,12 @@ describe('视频面板的聚焦裁剪（#1978）', () => {
     // 过滤在不在，队列里得同时有别人的那一条。
     await openPanelInMode('ref', 'kling-o3-pro-ref');
     act(() => {
-      useCanvasStore.getState().addPendingFocusUpload({
+      canvasSessions.of('s').getState().addPendingFocusUpload({
         id: 'mine',
         nodeId: 'target',
         name: 'Hero',
       });
-      useCanvasStore.getState().addPendingFocusUpload({
+      canvasSessions.of('s').getState().addPendingFocusUpload({
         id: 'theirs',
         nodeId: 'someone-else',
         name: 'Theirs',
@@ -2120,7 +2120,7 @@ describe('视频面板的聚焦按钮（#1978）', () => {
     expect(focus).toHaveAttribute('aria-pressed', 'false');
 
     fireEvent.click(focus);
-    expect(useCanvasStore.getState().pickSession).toEqual({
+    expect(canvasSessions.of('s').getState().pickSession).toEqual({
       nodeId: 'target',
       purpose: 'focus',
     });
@@ -2133,7 +2133,7 @@ describe('视频面板的聚焦按钮（#1978）', () => {
     });
 
     fireEvent.click(screen.getByTestId('generate-video-tool-focus'));
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
     await waitFor(() => {
       expect(screen.getByTestId('generate-video-tool-focus')).toHaveAttribute(
         'aria-pressed',
@@ -2149,7 +2149,7 @@ describe('视频面板的聚焦按钮（#1978）', () => {
     await screen.findByTestId('generate-video-tool-focus');
 
     act(() => {
-      useCanvasStore.getState().startFocusPick('someone-else');
+      canvasSessions.of('s').getState().startFocusPick('someone-else');
     });
 
     await waitFor(() => {
@@ -2187,7 +2187,7 @@ describe('a model that states how much text it takes', () => {
     typePrompt('a drifting shot that runs well past the twenty characters this model takes');
     mountContainer('video', stored);
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'video');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
     });
     await screen.findByTestId('generate-video-execute');
     vi.mocked(toast.warning).mockClear();
@@ -2234,7 +2234,7 @@ describe('the storyboard (#2218)', () => {
     before();
     mountContainer('video', stored);
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'video');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
     });
     await screen.findByTestId('generate-video-execute');
   }
@@ -2255,7 +2255,7 @@ describe('the storyboard (#2218)', () => {
   beforeEach(() => {
     _resetForTests();
     vi.mocked(toast.warning).mockClear();
-    useCanvasStore.setState({ panelHostId: null, panelKind: null, pickSession: null });
+    canvasSessions.of('s').setState({ panelHostId: null, panelKind: null, pickSession: null });
   });
   afterEach(() => {
     vi.restoreAllMocks();

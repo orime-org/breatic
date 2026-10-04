@@ -25,7 +25,7 @@ import {
   hasRetryFile,
 } from '@web/spaces/canvas/upload-retry-files';
 import { countsColumnOffset } from '@web/spaces/canvas/overlay-scale';
-import { useCanvasStore } from '@web/stores/canvas';
+import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 
 /** The media a refusal can name formats for. */
 const LISTED_MEDIA = ['image', 'video', 'audio'] as const;
@@ -84,7 +84,7 @@ function OpenNodeTaskPanel({
 }: OpenNodeTaskPanelProps): React.JSX.Element {
   const t = useTranslation();
   const zoom = useStore((s) => s.transform[2]);
-  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
+  const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
   const queryClient = useQueryClient();
   // Close when the host disappears (a collaborator deletes it) — mirrors the
   // Generate / reset / history panels' node-gone guard, which
@@ -233,9 +233,9 @@ function OpenNodeTaskPanel({
 export function NodeTaskPanelContainer(
   props: NodeTaskPanelContainerProps,
 ): React.JSX.Element | null {
-  const host = useCanvasStore((s) => s.panelHostId);
-  const kind = useCanvasStore((s) => s.panelKind);
-  const status = useCanvasStore((s) => s.taskPanelStatus);
+  const host = useCanvasSession((s) => s.panelHostId);
+  const kind = useCanvasSession((s) => s.panelKind);
+  const status = useCanvasSession((s) => s.taskPanelStatus);
   if (kind !== 'tasks' || host == null || status == null) return null;
   // key={host} remounts the panel when it switches nodes, so a second node
   // never renders the first one's rows while its own fetch is in flight.

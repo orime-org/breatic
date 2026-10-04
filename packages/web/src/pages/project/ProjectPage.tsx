@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { fetchProjectCredits } from '@web/data/api/credits';
 import * as React from 'react';
+import { useStore } from 'zustand';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
 
@@ -63,6 +64,10 @@ import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
+import {
+  canvasSessions,
+  createCanvasSessionStore,
+} from '@web/stores/canvas-session';
 import { SpaceDocSync } from '@web/pages/project/SpaceDocSync';
 import {
   Group,
@@ -85,6 +90,9 @@ import { useAgentColumnWidth } from '@web/pages/project/use-agent-column-width';
  * `overflow: auto` hard-coded. Both columns lay their children out with flex
  * and own their scrolling, so the wrapper has to hand both back.
  */
+/** The session the left menu reads while no canvas is on screen. */
+const NO_CANVAS_SESSION = createCanvasSessionStore();
+
 const PANEL_STYLE = { display: 'flex', overflow: 'visible' } as const;
 
 /**
@@ -258,26 +266,10 @@ function ProjectWorkspace({
   // Chrome → canvas mailbox: the node-library dropdown posts the picked type
   // here; the canvas resolves the viewport-centre drop point (see CanvasSpace).
   const requestNodeCreate = useCanvasStore((s) => s.requestNodeCreate);
-  const startAnnotationPlacement = useCanvasStore(
-    (s) => s.startAnnotationPlacement,
-  );
-  const endAnnotationPlacement = useCanvasStore(
-    (s) => s.endAnnotationPlacement,
-  );
   // Upload-button path: chrome owns the hidden file picker (it must open
   // synchronously inside the button click to keep the browser's user-
   // activation) and posts the picked files to the canvas via this mailbox.
-  // The chrome half of the placing mode: the canvas owns the flag, the menu
-  // has to show which button it belongs to (design §6.4.1).
-  const placingAnnotation = useCanvasStore((s) => s.placingAnnotation);
   const requestUpload = useCanvasStore((s) => s.requestUpload);
-  // A running reference pick slides the floating chrome out of the way
-  // (batch-2 item 13): the canvas is a selection surface for that session and
-  // the menus would only distract / steal clicks. Boolean selector so chrome
-  // re-renders on pick enter/exit only, not on every picked-node change.
-  // Any canvas pick (reference or style) turns the canvas into a selection
-  // surface, so chrome menus are concealed for the duration of either.
-  const picking = useCanvasStore((s) => s.pickSession !== null);
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const {
     spaces,
@@ -389,6 +381,31 @@ function ProjectWorkspace({
     (s) => s.id === tabs.activeId,
   );
 
+  // The left menu acts on the canvas on screen, so it reads that canvas's own
+  // session; with no canvas on screen it reads one that never changes.
+  const activeCanvasSession =
+    activeSpace?.type === 'canvas'
+      ? canvasSessions.of(activeSpace.id)
+      : NO_CANVAS_SESSION;
+  const startAnnotationPlacement = useStore(
+    activeCanvasSession,
+    (s) => s.startAnnotationPlacement,
+  );
+  const endAnnotationPlacement = useStore(
+    activeCanvasSession,
+    (s) => s.endAnnotationPlacement,
+  );
+  // The chrome half of the placing mode: the canvas owns the flag, the menu
+  // has to show which button it belongs to (design §6.4.1).
+  const placingAnnotation = useStore(activeCanvasSession, (s) => s.placingAnnotation);
+  // A running reference pick slides the floating chrome out of the way
+  // (batch-2 item 13): the canvas is a selection surface for that session and
+  // the menus would only distract / steal clicks. Boolean selector so chrome
+  // re-renders on pick enter/exit only, not on every picked-node change.
+  // Any canvas pick (reference or style) turns the canvas into a selection
+  // surface, so chrome menus are concealed for the duration of either.
+  const picking = useStore(activeCanvasSession, (s) => s.pickSession !== null);
+
   // Discard the in-memory state of a tab once it has left the strip —
   // whether the user closed it or the Space was deleted out from under it.
   //
@@ -406,6 +423,7 @@ function ProjectWorkspace({
     for (const id of departed) {
       evictCanvasUndoManager(docName.canvasSpace(projectId, id));
       evictDocumentEditor(docName.documentSpace(projectId, id));
+      canvasSessions.drop(id);
     }
   }, [projectId, tabs.openIds]);
 

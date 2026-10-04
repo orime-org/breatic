@@ -80,6 +80,7 @@ import { bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import * as downloadLib from '@web/lib/download';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 
@@ -90,7 +91,7 @@ const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 // test that opens a pick session. File level, so no describe can be ordered
 // into a dirty start.
 beforeEach(() => {
-  useCanvasStore.setState({ panelHostId: null, panelKind: null, pickSession: null });
+  canvasSessions.of('s').setState({ panelHostId: null, panelKind: null, pickSession: null });
   // The active region is a module singleton for the same reason, and the
   // canvas gates read it on every key.
   useUIStore.setState({ activeRegion: 'space' });
@@ -890,7 +891,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     // this mount lacks, stopped being true when `renderSpace` started
     // providing one.)
     act(() => {
-      useCanvasStore.getState().startReferencePick('target');
+      canvasSessions.of('s').getState().startReferencePick('target');
     });
     const cls = (id: string): string =>
       document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
@@ -923,13 +924,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     mockUseCanvasSpace.mockReturnValue(styleNodes([]));
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startStylePick('target', 3);
+      canvasSessions.of('s').getState().startStylePick('target', 3);
     });
     clickSource();
     await waitFor(() =>
       expect(append).toHaveBeenCalledWith('p', 's', 'target', 'styleImageUrls', 'https://cdn/x.png', 3),
     );
-    expect(useCanvasStore.getState().pickSession?.purpose).toBe('style');
+    expect(canvasSessions.of('s').getState().pickSession?.purpose).toBe('style');
     append.mockRestore();
   });
 
@@ -938,11 +939,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     mockUseCanvasSpace.mockReturnValue(styleNodes([]));
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startStylePick('target', 3);
+      canvasSessions.of('s').getState().startStylePick('target', 3);
     });
     clickSource();
     await waitFor(() => expect(append).toHaveBeenCalled());
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
     append.mockRestore();
   });
 
@@ -950,7 +951,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     mockUseCanvasSpace.mockReturnValue(styleNodes(['https://cdn/x.png']));
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startStylePick('target', 3);
+      canvasSessions.of('s').getState().startStylePick('target', 3);
     });
     const cls = (id: string): string =>
       document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ?? '';
@@ -977,7 +978,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startFirstFramePick('target');
+      canvasSessions.of('s').getState().startFirstFramePick('target');
     });
     expect(
       screen.getByText('Pick an image on the canvas to be the first frame'),
@@ -1014,7 +1015,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     tool.setAttribute('data-testid', 'generate-video-tool-first-frame');
     document.body.appendChild(tool);
     act(() => {
-      useCanvasStore.getState().startFirstFramePick('target');
+      canvasSessions.of('s').getState().startFirstFramePick('target');
     });
     fireEvent.click(screen.getByTestId('reference-pick-exit'));
     expect(document.activeElement).toBe(tool);
@@ -1043,7 +1044,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     tool.setAttribute('data-testid', 'generate-audio-tool-reference');
     document.body.appendChild(tool);
     act(() => {
-      useCanvasStore.getState().startReferencePick('target');
+      canvasSessions.of('s').getState().startReferencePick('target');
     });
     fireEvent.click(screen.getByTestId('reference-pick-exit'));
     expect(document.activeElement).toBe(tool);
@@ -1075,7 +1076,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     tool.setAttribute('data-testid', VIDEO_SLOTS.endFrame.testId);
     document.body.appendChild(tool);
     act(() => {
-      useCanvasStore.getState().startEndFramePick('target');
+      canvasSessions.of('s').getState().startEndFramePick('target');
     });
     fireEvent.click(screen.getByTestId('reference-pick-exit'));
     expect(document.activeElement).toBe(tool);
@@ -1121,7 +1122,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startReferencePick('target');
+      canvasSessions.of('s').getState().startReferencePick('target');
     });
     const cls = (id: string): string =>
       document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
@@ -1163,7 +1164,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startReferencePick('target');
+      canvasSessions.of('s').getState().startReferencePick('target');
     });
     act(() => {
       fireEvent.click(
@@ -1179,7 +1180,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       expect.objectContaining({ source: 'src-image', target: 'target' }),
     );
     // The pick stays open (continuous select).
-    expect(useCanvasStore.getState().pickSession?.nodeId).toBe('target');
+    expect(canvasSessions.of('s').getState().pickSession?.nodeId).toBe('target');
     warnSpy.mockRestore();
     addEdgeSpy.mockRestore();
   });
@@ -1356,7 +1357,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startEndFramePick('target');
+      canvasSessions.of('s').getState().startEndFramePick('target');
     });
     act(() => {
       document
@@ -1368,14 +1369,14 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(setSlot).not.toHaveBeenCalled();
     expect(addEdgeSpy).not.toHaveBeenCalled();
     // Still picking: the click was refused, not consumed.
-    expect(useCanvasStore.getState().pickSession).toEqual({
+    expect(canvasSessions.of('s').getState().pickSession).toEqual({
       nodeId: 'target',
       purpose: 'endFrame',
     });
     setSlot.mockRestore();
     addEdgeSpy.mockRestore();
     act(() => {
-      useCanvasStore.setState({ pickSession: null });
+      canvasSessions.of('s').setState({ pickSession: null });
     });
   });
 
@@ -1403,7 +1404,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startEndFramePick('target');
+      canvasSessions.of('s').getState().startEndFramePick('target');
     });
     act(() => {
       document
@@ -1422,7 +1423,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       'https://cdn/l.png',
     );
     // One slot, one pick — the session completes on selection.
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
     setSlot.mockRestore();
   });
 
@@ -1455,7 +1456,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startDrivingVideoPick('target');
+      canvasSessions.of('s').getState().startDrivingVideoPick('target');
     });
     act(() => {
       document
@@ -1466,14 +1467,14 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     });
     expect(setSlot).not.toHaveBeenCalled();
     expect(addEdgeSpy).not.toHaveBeenCalled();
-    expect(useCanvasStore.getState().pickSession).toEqual({
+    expect(canvasSessions.of('s').getState().pickSession).toEqual({
       nodeId: 'target',
       purpose: 'drivingVideo',
     });
     setSlot.mockRestore();
     addEdgeSpy.mockRestore();
     act(() => {
-      useCanvasStore.setState({ pickSession: null });
+      canvasSessions.of('s').setState({ pickSession: null });
     });
   });
 
@@ -1506,7 +1507,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startDrivingVideoPick('target');
+      canvasSessions.of('s').getState().startDrivingVideoPick('target');
     });
     act(() => {
       document
@@ -1521,7 +1522,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       url: 'https://cdn/driving.mp4',
       cover: 'https://cdn/driving-cover.png',
     });
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
     setSlot.mockRestore();
   });
 
@@ -1554,7 +1555,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startCharacterImagePick('target');
+      canvasSessions.of('s').getState().startCharacterImagePick('target');
     });
     act(() => {
       document
@@ -1568,7 +1569,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     setSlot.mockRestore();
     addEdgeSpy.mockRestore();
     act(() => {
-      useCanvasStore.setState({ pickSession: null });
+      canvasSessions.of('s').setState({ pickSession: null });
     });
   });
 
@@ -1614,7 +1615,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startEndFramePick('target');
+      canvasSessions.of('s').getState().startEndFramePick('target');
     });
     const cls = (id: string): string =>
       document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
@@ -1626,7 +1627,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(cls('src-image')).toContain('canvas-pick-selectable');
     expect(cls('src-image')).not.toContain('canvas-pick-dimmed');
     act(() => {
-      useCanvasStore.setState({ pickSession: null });
+      canvasSessions.of('s').setState({ pickSession: null });
     });
   });
 
@@ -1645,7 +1646,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startEndFramePick('target');
+      canvasSessions.of('s').getState().startEndFramePick('target');
     });
     expect(
       screen.getByText('Pick an image on the canvas to be the end frame'),
@@ -1654,7 +1655,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       screen.queryByText('Pick an image on the canvas to be the first frame'),
     ).toBeNull();
     act(() => {
-      useCanvasStore.setState({ pickSession: null });
+      canvasSessions.of('s').setState({ pickSession: null });
     });
   });
 
@@ -1679,7 +1680,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startReferencePick('target');
+      canvasSessions.of('s').getState().startReferencePick('target');
     });
     // The panel that carries the pick's Exit trigger stays on screen for the
     // whole session, and `onExitPick` hands focus back to it.
@@ -1694,7 +1695,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       act(() => {
         fireEvent.keyDown(prompt, { key: 'Escape' });
       });
-      expect(useCanvasStore.getState().pickSession).toBeNull();
+      expect(canvasSessions.of('s').getState().pickSession).toBeNull();
       // The reader is mid-sentence in that box; ending the pick is theirs to
       // ask for, the caret is not.
       expect(document.activeElement).toBe(prompt);
@@ -1719,12 +1720,12 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startReferencePick('target');
+      canvasSessions.of('s').getState().startReferencePick('target');
     });
     act(() => {
       fireEvent.keyDown(keyTarget(), { key: 'Escape' });
     });
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
   });
 
   it('Escape exits a pick session only past the shared guards (#8)', () => {
@@ -1742,7 +1743,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startReferencePick('target');
+      canvasSessions.of('s').getState().startReferencePick('target');
     });
     // Guard set (mirrors the focus handler): a consumed Esc never exits.
     act(() => {
@@ -1754,16 +1755,16 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       prevented.preventDefault();
       window.dispatchEvent(prevented);
     });
-    expect(useCanvasStore.getState().pickSession).not.toBeNull();
+    expect(canvasSessions.of('s').getState().pickSession).not.toBeNull();
     // An auto-repeat Esc is ignored too.
     act(() => {
       fireEvent.keyDown(keyTarget(), { key: 'Escape', repeat: true });
     });
-    expect(useCanvasStore.getState().pickSession).not.toBeNull();
+    expect(canvasSessions.of('s').getState().pickSession).not.toBeNull();
     act(() => {
       fireEvent.keyDown(keyTarget(), { key: 'Escape' });
     });
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
   });
 
   it('an Esc consumed while a tooltip is open stays consumed — layered peel (adversarial r2)', () => {
@@ -1787,7 +1788,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startReferencePick('target');
+      canvasSessions.of('s').getState().startReferencePick('target');
     });
     const tip = document.createElement('div');
     tip.setAttribute('role', 'tooltip');
@@ -1802,12 +1803,12 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         prevented.preventDefault();
         window.dispatchEvent(prevented);
       });
-      expect(useCanvasStore.getState().pickSession).not.toBeNull();
+      expect(canvasSessions.of('s').getState().pickSession).not.toBeNull();
       // The next, unconsumed press exits.
       act(() => {
         fireEvent.keyDown(keyTarget(), { key: 'Escape' });
       });
-      expect(useCanvasStore.getState().pickSession).toBeNull();
+      expect(canvasSessions.of('s').getState().pickSession).toBeNull();
     } finally {
       tip.remove();
     }
@@ -1830,7 +1831,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startReferencePick('target');
+      canvasSessions.of('s').getState().startReferencePick('target');
     });
     const alert = document.createElement('div');
     alert.setAttribute('role', 'alertdialog');
@@ -1842,7 +1843,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       act(() => {
         fireEvent.keyDown(keyTarget(), { key: 'Escape' });
       });
-      expect(useCanvasStore.getState().pickSession).not.toBeNull();
+      expect(canvasSessions.of('s').getState().pickSession).not.toBeNull();
     } finally {
       alert.remove();
     }
@@ -1879,7 +1880,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       </QueryClientProvider>,
     );
     act(() => {
-      useCanvasStore.setState({
+      canvasSessions.of('s').setState({
         panelHostId: 'target', panelKind: 'generate',
         pickSession: { nodeId: 'target', purpose: 'reference' },
       });
@@ -1889,8 +1890,8 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     // With selectionOnDrag (our Figma-like left-drag marquee) ReactFlow routes
     // pane clicks through pointerdown→pointerup, not the click event.
     clickPane(pane as Element);
-    expect(useCanvasStore.getState().panelHostId).toBe('target');
-    expect(useCanvasStore.getState().pickSession?.nodeId).toBe('target');
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('target');
+    expect(canvasSessions.of('s').getState().pickSession?.nodeId).toBe('target');
     // The banner is neutral card chrome (user 2026-07-14, reversing the
     // batch-2 item-11 violet tint) — the violet pick glow on candidate nodes
     // stays the mode indicator.
@@ -1926,7 +1927,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       </QueryClientProvider>,
     );
     act(() => {
-      useCanvasStore.setState({
+      canvasSessions.of('s').setState({
         panelHostId: 'target', panelKind: 'generate',
         pickSession: null,
       });
@@ -1934,7 +1935,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     const pane = document.querySelector('.react-flow__pane');
     expect(pane).not.toBeNull();
     clickPane(pane as Element);
-    expect(useCanvasStore.getState().panelHostId).toBeNull();
+    expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
   });
 
   // Selection-driven panel lifecycle (user bug report 2026-07-11): the panel
@@ -1961,7 +1962,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       </QueryClientProvider>,
     );
     act(() => {
-      useCanvasStore.setState({
+      canvasSessions.of('s').setState({
         panelHostId: 'target', panelKind: 'generate',
         pickSession: null,
       });
@@ -1994,7 +1995,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       </QueryClientProvider>,
     );
     await waitFor(() =>
-      expect(useCanvasStore.getState().panelHostId).toBeNull(),
+      expect(canvasSessions.of('s').getState().panelHostId).toBeNull(),
     );
     addNode.mockRestore();
   });
@@ -2019,7 +2020,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       </QueryClientProvider>,
     );
     act(() => {
-      useCanvasStore.setState({
+      canvasSessions.of('s').setState({
         panelHostId: 'target', panelKind: 'generate',
         pickSession: null,
       });
@@ -2051,7 +2052,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       </QueryClientProvider>,
     );
     await waitFor(() =>
-      expect(useCanvasStore.getState().panelHostId).toBeNull(),
+      expect(canvasSessions.of('s').getState().panelHostId).toBeNull(),
     );
     addNode.mockRestore();
   });
@@ -2084,7 +2085,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       </QueryClientProvider>,
     );
     act(() => {
-      useCanvasStore.setState({
+      canvasSessions.of('s').setState({
         panelHostId: 'target', panelKind: 'generate',
         pickSession: { nodeId: 'target', purpose: 'reference' },
       });
@@ -2092,8 +2093,8 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     act(() => {
       screen.getByTestId('reference-pick-exit').click();
     });
-    expect(useCanvasStore.getState().panelHostId).toBe('target');
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('target');
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
     await waitFor(() =>
       expect(
         document.querySelector('[data-id="target"]')?.className,
@@ -2125,7 +2126,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       </QueryClientProvider>,
     );
     act(() => {
-      useCanvasStore.setState({
+      canvasSessions.of('s').setState({
         panelHostId: 'target', panelKind: 'generate',
         pickSession: null,
       });
@@ -2152,7 +2153,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     const pane = document.querySelector('.react-flow__pane');
     clickPane(pane as Element);
     await waitFor(() =>
-      expect(useCanvasStore.getState().panelHostId).toBeNull(),
+      expect(canvasSessions.of('s').getState().panelHostId).toBeNull(),
     );
   });
 
@@ -2184,7 +2185,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       </QueryClientProvider>,
     );
     act(() => {
-      useCanvasStore.setState({
+      canvasSessions.of('s').setState({
         panelHostId: 'target', panelKind: 'generate',
         pickSession: null,
       });
@@ -2198,7 +2199,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     // simulate the selection move via the machine-visible path (ReactFlow's
     // native click-select), then reopen Generate on the SAME host.
     act(() => {
-      useCanvasStore.setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
+      canvasSessions.of('s').setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
     });
     const otherEl = document.querySelector('[data-id="other"]');
     act(() => {
@@ -2208,15 +2209,15 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     });
     // Reopen on the same host (context menu → Generate): clears the pick.
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
     await waitFor(() =>
       expect(
         document.querySelector('[data-id="target"]')?.className,
       ).toContain('selected'),
     );
-    expect(useCanvasStore.getState().panelHostId).toBe('target');
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('target');
   });
 
   // Round-2 adversarial: opening the panel on an ALREADY-selected host used
@@ -2265,7 +2266,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     });
     // Open Generate on node ONE (host already selected, node TWO co-selected).
     act(() => {
-      useCanvasStore.setState({
+      canvasSessions.of('s').setState({
         panelHostId: one.id, panelKind: 'generate',
         pickSession: null,
       });
@@ -2278,7 +2279,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(
       document.querySelector(`[data-id="${one.id}"]`)?.className,
     ).toContain('selected');
-    expect(useCanvasStore.getState().panelHostId).toBe(one.id);
+    expect(canvasSessions.of('s').getState().panelHostId).toBe(one.id);
     addNode.mockRestore();
   });
 
@@ -2710,13 +2711,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     // Pick state only — the panel (its own catalog/query stack) is not
     // needed to prove the gesture gate.
     act(() => {
-      useCanvasStore.setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
+      canvasSessions.of('s').setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
     });
     expect(
       document.querySelector('.react-flow__handle')?.className,
     ).not.toContain('connectable');
     act(() => {
-      useCanvasStore.setState({ pickSession: null });
+      canvasSessions.of('s').setState({ pickSession: null });
     });
     expect(
       document.querySelector('.react-flow__handle')?.className,
@@ -2742,7 +2743,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
+      canvasSessions.of('s').setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
     });
     const node = document.querySelector('.react-flow__node');
     act(() => {
@@ -2759,7 +2760,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     });
     expect(screen.queryByTestId('create-node-text')).toBeNull();
     act(() => {
-      useCanvasStore.setState({ pickSession: null });
+      canvasSessions.of('s').setState({ pickSession: null });
     });
   });
 
@@ -2789,7 +2790,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     document.body.appendChild(trigger);
     try {
       act(() => {
-        useCanvasStore.setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
+        canvasSessions.of('s').setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
       });
       const exit = screen.getByTestId('reference-pick-exit');
       act(() => {
@@ -2797,12 +2798,12 @@ describe('CanvasSpace (ReactFlow mount)', () => {
           new MouseEvent('click', { bubbles: true, cancelable: true }),
         );
       });
-      expect(useCanvasStore.getState().pickSession).toBeNull();
+      expect(canvasSessions.of('s').getState().pickSession).toBeNull();
       expect(document.activeElement).toBe(trigger);
     } finally {
       trigger.remove();
       act(() => {
-        useCanvasStore.setState({ pickSession: null });
+        canvasSessions.of('s').setState({ pickSession: null });
       });
     }
   });
@@ -2829,13 +2830,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
+      canvasSessions.of('s').setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
     });
     // Simulate an orphaned focus (the disabled-trigger / panel-X / node-gone
     // paths all land here) and end the pick WITHOUT the banner hand-off.
     act(() => {
       document.body.focus();
-      useCanvasStore.setState({ pickSession: null });
+      canvasSessions.of('s').setState({ pickSession: null });
     });
     expect(document.activeElement).toBe(document.body);
   });
@@ -2858,11 +2859,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     document.body.appendChild(elsewhere);
     try {
       act(() => {
-        useCanvasStore.setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
+        canvasSessions.of('s').setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
       });
       act(() => {
         elsewhere.focus();
-        useCanvasStore.setState({ pickSession: null });
+        canvasSessions.of('s').setState({ pickSession: null });
       });
       expect(document.activeElement).toBe(elsewhere);
     } finally {
@@ -2897,7 +2898,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     try {
       renderSpace();
       act(() => {
-        useCanvasStore.setState({ pickSession: { nodeId: 'other', purpose: 'reference' } });
+        canvasSessions.of('s').setState({ pickSession: { nodeId: 'other', purpose: 'reference' } });
       });
       const placeholder = screen.getByTestId('node-placeholder');
       act(() => {
@@ -2910,7 +2911,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       // Control: off pick mode the same double-click opens the picker — proves
       // the gate (not a broken wire) is what suppressed it above.
       act(() => {
-        useCanvasStore.setState({ pickSession: null });
+        canvasSessions.of('s').setState({ pickSession: null });
       });
       act(() => {
         placeholder.dispatchEvent(
@@ -2920,7 +2921,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       expect(clickSpy).toHaveBeenCalledTimes(1);
     } finally {
       act(() => {
-        useCanvasStore.setState({ pickSession: null });
+        canvasSessions.of('s').setState({ pickSession: null });
       });
       clickSpy.mockRestore();
     }
@@ -3027,7 +3028,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       .spyOn(canvasSpace, 'isNodeLocked')
       .mockReturnValue(true);
     try {
-      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+      canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
       renderSpace();
       const node = document.querySelector('.react-flow__node');
       act(() => {
@@ -3039,12 +3040,12 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       // Panel opens even though the node is locked; NO menu-click toast — the
       // gate fires only at Execute (the gate-2 test proves the write is blocked).
       expect(warnSpy).not.toHaveBeenCalled();
-      expect(useCanvasStore.getState().panelKind).toBe('resetEmpty');
-      expect(useCanvasStore.getState().panelHostId).toBe('img');
+      expect(canvasSessions.of('s').getState().panelKind).toBe('resetEmpty');
+      expect(canvasSessions.of('s').getState().panelHostId).toBe('img');
     } finally {
       warnSpy.mockRestore();
       lockedSpy.mockRestore();
-      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+      canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
     }
   });
 
@@ -3079,7 +3080,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       .spyOn(downloadLib, 'triggerDownload')
       .mockImplementation(() => {});
     try {
-      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+      canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
       renderSpace();
       const node = document.querySelector(
         '.react-flow__node[data-id="clicked"]',
@@ -3096,7 +3097,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       );
     } finally {
       started.mockRestore();
-      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+      canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
     }
   });
 
@@ -3146,7 +3147,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
     renderSpace(true);
     act(() => {
       document
@@ -3161,26 +3162,26 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   });
 
   it('offers download on a video node showing its asset (#2108 A2)', () => {
-    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
     expect(
       downloadOffered({ kind: 'video', status: 'idle', content: SHOWN }),
     ).toBe(true);
   });
 
   it('offers download on an audio node showing its asset (#2108 A3)', () => {
-    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
     expect(
       downloadOffered({ kind: 'audio', status: 'idle', content: SHOWN }),
     ).toBe(true);
   });
 
   it('offers no download on a node showing nothing (#2108 A4)', () => {
-    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
     expect(downloadOffered({ kind: 'image', status: 'idle' })).toBe(false);
   });
 
   it('offers download on a node still showing content while a task runs (#2108 A14)', () => {
-    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
     expect(
       downloadOffered({ kind: 'image', status: 'handling', content: SHOWN }),
     ).toBe(true);
@@ -3189,7 +3190,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   it('offers download again once the failed node shows its content (#2108 A4)', () => {
     // The error box gives the body back while this node's task list is open
     // beside it, so the reader sees the image and can take it.
-    useCanvasStore.setState({
+    canvasSessions.of('s').setState({
       panelHostId: 'n',
       panelKind: 'tasks',
       taskPanelStatus: 'failed',
@@ -3199,14 +3200,14 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         downloadOffered({ kind: 'image', status: 'error', content: SHOWN }),
       ).toBe(true);
     } finally {
-      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+      canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
     }
   });
 
   it('still offers no download when the open task list belongs elsewhere (#2108 A4)', () => {
     // Somebody else's list is open, so this node is still showing its error
     // box — there is nothing on screen to take.
-    useCanvasStore.setState({
+    canvasSessions.of('s').setState({
       panelHostId: 'somebody-else',
       panelKind: 'tasks',
       taskPanelStatus: 'failed',
@@ -3216,7 +3217,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         downloadOffered({ kind: 'image', status: 'error', content: SHOWN }),
       ).toBe(false);
     } finally {
-      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+      canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
     }
   });
 
@@ -3246,19 +3247,19 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     try {
       renderSpace();
       act(() => {
-        useCanvasStore.getState().openEmptyImagePanel('img');
+        canvasSessions.of('s').getState().openEmptyImagePanel('img');
       });
       // The node gets locked while the panel is open.
       lockedSpy.mockReturnValue(true);
       fireEvent.click(screen.getByTestId('empty-image-execute'));
       expect(warnSpy).toHaveBeenCalledTimes(1);
       expect(genSpy).not.toHaveBeenCalled();
-      expect(useCanvasStore.getState().panelHostId).toBeNull();
+      expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
     } finally {
       warnSpy.mockRestore();
       genSpy.mockRestore();
       lockedSpy.mockRestore();
-      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+      canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
     }
   });
 
@@ -3289,15 +3290,15 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     try {
       renderSpace();
       act(() => {
-        useCanvasStore.getState().openEmptyImagePanel('img');
+        canvasSessions.of('s').getState().openEmptyImagePanel('img');
       });
       fireEvent.click(screen.getByTestId('empty-image-execute'));
       expect(genSpy).toHaveBeenCalledWith(1024, 1024, '#ffffff');
-      expect(useCanvasStore.getState().panelHostId).toBeNull();
+      expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
     } finally {
       genSpy.mockRestore();
       lockedSpy.mockRestore();
-      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+      canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
     }
   });
 
@@ -3334,7 +3335,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startFocusPick('target');
+      canvasSessions.of('s').getState().startFocusPick('target');
     });
     const cls = (id: string): string =>
       document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
@@ -3369,7 +3370,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startFocusPick('target');
+      canvasSessions.of('s').getState().startFocusPick('target');
     });
     expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
     act(() => {
@@ -3403,7 +3404,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startFocusPick('target');
+      canvasSessions.of('s').getState().startFocusPick('target');
     });
     const cls = (id: string): string =>
       document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
@@ -3456,7 +3457,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startFocusPick('target');
+      canvasSessions.of('s').getState().startFocusPick('target');
     });
     const cls = (id: string): string =>
       document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
@@ -3492,7 +3493,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startFocusPick('target');
+      canvasSessions.of('s').getState().startFocusPick('target');
     });
     const cls =
       document.querySelector('.react-flow__node[data-id="target"]')?.className ??
@@ -3550,7 +3551,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       );
       renderSpace();
       act(() => {
-        useCanvasStore.getState().startFocusPick('target');
+        canvasSessions.of('s').getState().startFocusPick('target');
       });
       act(() => {
         fireEvent.click(
@@ -3788,14 +3789,14 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         mockUseCanvasSpace.mockReturnValue(mockSpace());
         renderSpace();
         act(() => {
-          useCanvasStore.getState().startReferencePick('n1');
+          canvasSessions.of('s').getState().startReferencePick('n1');
         });
         act(() => {
           keyTarget().dispatchEvent(
             new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
           );
         });
-        expect(useCanvasStore.getState().pickSession).not.toBeNull();
+        expect(canvasSessions.of('s').getState().pickSession).not.toBeNull();
       });
     });
 
@@ -4153,7 +4154,7 @@ describe('reference-pick interaction contract', () => {
       'canvas-picking',
     );
     act(() => {
-      useCanvasStore.setState({
+      canvasSessions.of('s').setState({
         panelHostId: 'target', panelKind: 'generate',
         pickSession: { nodeId: 'target', purpose: 'reference' },
       });
@@ -4165,7 +4166,7 @@ describe('reference-pick interaction contract', () => {
     );
     // Store is module-global — clear so later suites start clean.
     act(() => {
-      useCanvasStore.setState({
+      canvasSessions.of('s').setState({
         panelHostId: null, panelKind: null,
         pickSession: null,
       });
@@ -4341,6 +4342,7 @@ describe('placing a note (#1881)', () => {
     mockUseCanvasSpace.mockReset();
     vi.mocked(useSocket).mockReset();
     useCanvasStore.getState().reset();
+    canvasSessions.clear();
     useCurrentUserStore.getState().setUser({
       id: 'u-1',
       name: 'Ada',
@@ -4371,7 +4373,7 @@ describe('placing a note (#1881)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     const view = renderSpace();
     act(() => {
-      useCanvasStore.getState().startAnnotationPlacement();
+      canvasSessions.of('s').getState().startAnnotationPlacement();
     });
     clickPane(dropLayer(), at);
     return view;
@@ -4410,11 +4412,11 @@ describe('placing a note (#1881)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     const { unmount } = renderSpace();
     act(() => {
-      useCanvasStore.getState().startAnnotationPlacement();
+      canvasSessions.of('s').getState().startAnnotationPlacement();
     });
-    expect(useCanvasStore.getState().placingAnnotation).toBe(true);
+    expect(canvasSessions.of('s').getState().placingAnnotation).toBe(true);
     unmount();
-    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+    expect(canvasSessions.of('s').getState().placingAnnotation).toBe(false);
   });
 
   it('puts the tool away on Escape, dropping nothing', () => {
@@ -4424,7 +4426,7 @@ describe('placing a note (#1881)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startAnnotationPlacement();
+      canvasSessions.of('s').getState().startAnnotationPlacement();
     });
     const inside = document.createElement('div');
     inside.tabIndex = 0;
@@ -4434,7 +4436,7 @@ describe('placing a note (#1881)', () => {
       act(() => {
         fireEvent.keyDown(inside, { key: 'Escape' });
       });
-      expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+      expect(canvasSessions.of('s').getState().placingAnnotation).toBe(false);
     } finally {
       inside.remove();
     }
@@ -4468,8 +4470,8 @@ describe('placing a note (#1881)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().openAnnotationPanel('n-note');
-      useCanvasStore.getState().startAnnotationPlacement();
+      canvasSessions.of('s').getState().openAnnotationPanel('n-note');
+      canvasSessions.of('s').getState().startAnnotationPlacement();
     });
     const inside = document.createElement('div');
     inside.tabIndex = 0;
@@ -4479,12 +4481,12 @@ describe('placing a note (#1881)', () => {
       act(() => {
         fireEvent.keyDown(inside, { key: 'Escape' });
       });
-      expect(useCanvasStore.getState().placingAnnotation).toBe(false);
-      expect(useCanvasStore.getState().panelKind).toBe('annotation');
+      expect(canvasSessions.of('s').getState().placingAnnotation).toBe(false);
+      expect(canvasSessions.of('s').getState().panelKind).toBe('annotation');
       act(() => {
         fireEvent.keyDown(inside, { key: 'Escape' });
       });
-      expect(useCanvasStore.getState().panelKind).toBeNull();
+      expect(canvasSessions.of('s').getState().panelKind).toBeNull();
     } finally {
       inside.remove();
     }
@@ -4502,8 +4504,8 @@ describe('placing a note (#1881)', () => {
       mockSpace({ deletedByPeer: () => false }),
     );
     act(() => {
-      useCanvasStore.getState().openAnnotationPanel('n-mine');
-      useCanvasStore.getState().setAnnotationDraft('n-mine', {
+      canvasSessions.of('s').getState().openAnnotationPanel('n-mine');
+      canvasSessions.of('s').getState().setAnnotationDraft('n-mine', {
         draft: { mode: 'typing', use: 'reply', text: 'half an answer', opened: '' },
         target: null,
       });
@@ -4511,7 +4513,7 @@ describe('placing a note (#1881)', () => {
     const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
     renderSpace();
     expect(warnSpy).not.toHaveBeenCalled();
-    expect(useCanvasStore.getState().panelKind).toBeNull();
+    expect(canvasSessions.of('s').getState().panelKind).toBeNull();
     warnSpy.mockRestore();
   });
 
@@ -4531,7 +4533,7 @@ describe('placing a note (#1881)', () => {
       </QueryClientProvider>,
     );
     act(() => {
-      useCanvasStore.getState().startAnnotationPlacement();
+      canvasSessions.of('s').getState().startAnnotationPlacement();
     });
     clickPane(dropLayer());
     expect(screen.getByTestId('annotation-composer-input')).toBeInTheDocument();
@@ -4586,11 +4588,11 @@ describe('placing a note (#1881)', () => {
       document.querySelector('[data-testid="annotation-drop-layer"]');
     expect(layer()).toBeNull();
     act(() => {
-      useCanvasStore.getState().startAnnotationPlacement();
+      canvasSessions.of('s').getState().startAnnotationPlacement();
     });
     expect(layer()?.className).toContain('annotation-drop-layer');
     act(() => {
-      useCanvasStore.getState().endAnnotationPlacement();
+      canvasSessions.of('s').getState().endAnnotationPlacement();
     });
     expect(layer()).toBeNull();
   });
@@ -4615,7 +4617,7 @@ describe('placing a note (#1881)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startAnnotationPlacement();
+      canvasSessions.of('s').getState().startAnnotationPlacement();
     });
     const layer = dropLayer();
     const pane = document.querySelector('.react-flow__pane');
@@ -4646,7 +4648,7 @@ describe('placing a note (#1881)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startAnnotationPlacement();
+      canvasSessions.of('s').getState().startAnnotationPlacement();
     });
     const menu = new MouseEvent('contextmenu', {
       bubbles: true,
@@ -4656,7 +4658,7 @@ describe('placing a note (#1881)', () => {
       dropLayer().dispatchEvent(menu);
     });
     expect(menu.defaultPrevented).toBe(true);
-    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+    expect(canvasSessions.of('s').getState().placingAnnotation).toBe(false);
     expect(screen.queryByTestId('annotation-composer')).toBeNull();
   });
 
@@ -4667,11 +4669,11 @@ describe('placing a note (#1881)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     renderSpace(true);
     act(() => {
-      useCanvasStore.getState().startAnnotationPlacement();
+      canvasSessions.of('s').getState().startAnnotationPlacement();
     });
     clickPane(dropLayer());
     expect(screen.queryByTestId('annotation-composer')).toBeNull();
-    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+    expect(canvasSessions.of('s').getState().placingAnnotation).toBe(false);
   });
 
   it.each([
@@ -4745,18 +4747,18 @@ describe('placing a note (#1881)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     renderSpace();
     act(() => {
-      useCanvasStore.setState({
+      canvasSessions.of('s').setState({
         pickSession: { nodeId: 'host', purpose: 'reference' },
       });
-      useCanvasStore.getState().startAnnotationPlacement();
+      canvasSessions.of('s').getState().startAnnotationPlacement();
     });
     // Arming puts the other mode down, so there is only ever one to spend.
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
   });
 
   it('spends the armed tool on the click that places the note', () => {
     armAndClickTheBoard();
-    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+    expect(canvasSessions.of('s').getState().placingAnnotation).toBe(false);
     expect(screen.getByTestId('annotation-composer')).toBeInTheDocument();
   });
 
@@ -4784,7 +4786,7 @@ describe('placing a note (#1881)', () => {
     const chrome = document.createElement('div');
     parent.append(chrome);
     act(() => {
-      useCanvasStore.getState().startAnnotationPlacement();
+      canvasSessions.of('s').getState().startAnnotationPlacement();
     });
     act(() => {
       chrome.dispatchEvent(
@@ -4792,7 +4794,7 @@ describe('placing a note (#1881)', () => {
       );
     });
     expect(screen.queryByTestId('annotation-composer')).toBeNull();
-    expect(useCanvasStore.getState().placingAnnotation).toBe(true);
+    expect(canvasSessions.of('s').getState().placingAnnotation).toBe(true);
   });
 
   it('creates the note the box was typed into, where it was dropped', async () => {
@@ -4895,17 +4897,17 @@ describe('placing a note (#1881)', () => {
       }),
     );
     act(() => {
-      useCanvasStore.getState().openAnnotationPanel('n-note');
-      useCanvasStore.getState().setAnnotationDraft('n-note', {
+      canvasSessions.of('s').getState().openAnnotationPanel('n-note');
+      canvasSessions.of('s').getState().setAnnotationDraft('n-note', {
         draft: { mode: 'typing', use: 'reply', text: 'half an answer', opened: '' },
         target: null,
       });
     });
     const view = renderSpace();
-    expect(useCanvasStore.getState().annotationDrafts['n-note']).toBeDefined();
+    expect(canvasSessions.of('s').getState().annotationDrafts['n-note']).toBeDefined();
     view.unmount();
-    expect(useCanvasStore.getState().annotationDrafts['n-note']).toBeUndefined();
-    expect(useCanvasStore.getState().panelKind).toBeNull();
+    expect(canvasSessions.of('s').getState().annotationDrafts['n-note']).toBeUndefined();
+    expect(canvasSessions.of('s').getState().panelKind).toBeNull();
   });
 });
 

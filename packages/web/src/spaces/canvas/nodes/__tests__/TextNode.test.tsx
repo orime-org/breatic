@@ -44,7 +44,6 @@ import {
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { TextNode } from '@web/spaces/canvas/nodes/TextNode';
 import { TEXT_BODY_BOX } from '@web/spaces/canvas/nodes/TextNodeEditor';
-import { useCanvasStore } from '@web/stores';
 import type { TextNodeView } from '@web/data/yjs/node-view';
 
 vi.mock('sonner', () => ({
@@ -56,6 +55,7 @@ vi.mock('sonner', () => ({
   },
 }));
 import { toast } from 'sonner';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 const PID = 'p1';
 const SID = 's1';
@@ -313,13 +313,13 @@ describe('TextNode', () => {
       seedNode();
       renderNode();
       act(() => {
-        useCanvasStore.getState().startReferencePick('other-node');
+        canvasSessions.of(SID).getState().startReferencePick('other-node');
       });
       fireEvent.click(screen.getByTestId('node-placeholder'), { detail: 0 });
       expect(editor()).toBeNull();
       // And nothing was written: a bodyless node stays bodyless.
       act(() => {
-        useCanvasStore.setState({ pickSession: null });
+        canvasSessions.of(SID).setState({ pickSession: null });
       });
       fireEvent.click(screen.getByTestId('node-placeholder'), { detail: 0 });
       expect(editor()).not.toBeNull();

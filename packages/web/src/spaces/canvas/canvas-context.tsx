@@ -22,6 +22,13 @@ import * as React from 'react';
 
 import type { ProjectRole } from '@breatic/shared';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
+import { useStore } from 'zustand';
+
+import {
+  canvasSessions,
+  type CanvasSessionState,
+  type CanvasSessionStore,
+} from '@web/stores/canvas-session';
 
 /** The canvas subtree's document coordinates, permissions, and caret wiring. */
 export interface CanvasContextValue {
@@ -81,4 +88,22 @@ export const CanvasContext = React.createContext<CanvasContextValue>(NO_CANVAS);
  */
 export function useCanvasContext(): CanvasContextValue {
   return React.useContext(CanvasContext);
+}
+
+/**
+ * The session store of the canvas this component renders inside, found by
+ * its Space id.
+ * @returns The store.
+ */
+export function useCanvasSessionStore(): CanvasSessionStore {
+  return canvasSessions.of(useCanvasContext().spaceId);
+}
+
+/**
+ * Read a slice of the session of the canvas this component renders inside.
+ * @param selector - What to read.
+ * @returns The slice.
+ */
+export function useCanvasSession<T>(selector: (s: CanvasSessionState) => T): T {
+  return useStore(useCanvasSessionStore(), selector);
 }

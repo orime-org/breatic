@@ -20,7 +20,7 @@ import type { GenerationNodeType } from '@breatic/shared';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { useCanvasStore } from '@web/stores';
+import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { filterAvailableModes } from '@web/spaces/canvas/generate/mode-selection';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
@@ -45,9 +45,9 @@ export function useOpenPanelNode(
   kind: GeneratePanelKind,
   nodes: ReadonlyArray<Pick<CanvasNodeView, 'id'>>,
 ): string | null {
-  const host = useCanvasStore((s) => s.panelHostId);
-  const openKind = useCanvasStore((s) => s.panelKind);
-  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
+  const host = useCanvasSession((s) => s.panelHostId);
+  const openKind = useCanvasSession((s) => s.panelKind);
+  const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
   const nodeId = openKind === kind ? host : null;
   const nodeGone = nodeId != null && !nodes.some((n) => n.id === nodeId);
   React.useEffect(() => {
@@ -131,7 +131,7 @@ export function CatalogGatedFrame({
   children,
 }: CatalogGatedFrameProps): React.JSX.Element | null {
   const t = useTranslation();
-  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
+  const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
   const { isError, data, fetchStatus } = useQuery(modelCatalogQuery());
   const catalogError = isError && data === undefined;
   // Offline is its own outcome, not a slow one (#1966). react-query's default

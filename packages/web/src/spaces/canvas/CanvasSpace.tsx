@@ -270,7 +270,7 @@ import {
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
-import { isProposalIntent, useCanvasStore, taskPanelOpenFor } from '@web/stores';
+import { isProposalIntent, useCanvasStore } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import {
@@ -278,6 +278,8 @@ import {
   writeSpaceViewport,
 } from '@web/lib/project-tabs-storage';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
+import { taskPanelOpenFor, type CanvasSessionStore } from '@web/stores/canvas-session';
+import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 
 /** Node types a focus pick can crop (#1782 images, #1987 video frames). */
 const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
@@ -860,18 +862,18 @@ function CanvasSpaceInner({
   // toolbar, consumed here to mount/unmount the map.
   const minimapVisible = useCanvasStore((s) => s.minimapVisible);
   const snapToGrid = useCanvasStore((s) => s.snapToGrid);
-  const openGeneratePanel = useCanvasStore((s) => s.openGeneratePanel);
-  const openEmptyImagePanel = useCanvasStore((s) => s.openEmptyImagePanel);
-  const openHistoryPanel = useCanvasStore((s) => s.openHistoryPanel);
-  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
-  const panelHostId = useCanvasStore((s) => s.panelHostId);
-  const pickSession = useCanvasStore((s) => s.pickSession);
+  const openGeneratePanel = useCanvasSession((s) => s.openGeneratePanel);
+  const openEmptyImagePanel = useCanvasSession((s) => s.openEmptyImagePanel);
+  const openHistoryPanel = useCanvasSession((s) => s.openHistoryPanel);
+  const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
+  const panelHostId = useCanvasSession((s) => s.panelHostId);
+  const pickSession = useCanvasSession((s) => s.pickSession);
   // The node a pick is running for, or null — stands in
   // for the mechanical "is a pick active / which node" checks that don't care
   // about the purpose. The purpose is read separately where completion /
   // candidate-dimming / banner text branch on it (#1664).
   const pickForNodeId = pickSession?.nodeId ?? null;
-  const endPick = useCanvasStore((s) => s.endPick);
+  const endPick = useCanvasSession((s) => s.endPick);
   // Banner Exit (a11y, adversarial round-1): the Exit button unmounts with
   // the banner, dropping keyboard focus to <body>. Hand focus to the panel's
   // pick trigger — still mounted, because the pick keeps the panel open. The
@@ -884,8 +886,9 @@ function CanvasSpaceInner({
   // asking the store a second question. Nothing on screen — a pick that
   // outlived its panel — leaves focus where it already is; where focus goes
   // after a pick ends is #125.
+  const sessionStore = useCanvasSessionStore();
   const onExitPick = React.useCallback((): void => {
-    const purpose = useCanvasStore.getState().pickSession?.purpose;
+    const purpose = sessionStore.getState().pickSession?.purpose;
     endPick();
     if (purpose === undefined) return;
     // A caret mid-sentence is a live surface: Escape reaches here from the
@@ -902,7 +905,7 @@ function CanvasSpaceInner({
         return;
       }
     }
-  }, [endPick]);
+  }, [sessionStore, endPick]);
   /**
    * Return the focus session to its PICK state (user 2026-07-17 A): drop
    * the crop target so the overlay unmounts, but keep the session — the
@@ -994,8 +997,8 @@ function CanvasSpaceInner({
     pickSession !== null &&
     (pickSession.purpose !== 'focus' || focusCropTargetId === null);
   useEscapeInSpace(pickEscActive, onExitPick);
-  const placingAnnotation = useCanvasStore((s) => s.placingAnnotation);
-  const endAnnotationPlacement = useCanvasStore(
+  const placingAnnotation = useCanvasSession((s) => s.placingAnnotation);
+  const endAnnotationPlacement = useCanvasSession(
     (s) => s.endAnnotationPlacement,
   );
   // Escape puts the annotation tool away without dropping anything. The box
@@ -1019,7 +1022,7 @@ function CanvasSpaceInner({
     // hand-written shape here is a place fields go missing without anything
     // noticing, and `natural` already had.
     (result: FocusCropConfirm): boolean => {
-      const session = useCanvasStore.getState().pickSession;
+      const session = sessionStore.getState().pickSession;
       if (session?.purpose !== 'focus') return false;
       const panelNodeId = session.nodeId;
       const graph = useCanvasGraphStore.getState();
@@ -1045,7 +1048,7 @@ function CanvasSpaceInner({
         MAX_FOCUS_NAME,
       );
       const cap = getCachedReferencePoolCap();
-      const store = useCanvasStore.getState();
+      const store = sessionStore.getState();
       // Crops-only hard ceiling BEFORE the upload (round-9): with the knob
       // above 200 (or unloaded), the write-side MAX_FOCUS_ENTRIES refusal
       // used to fire only AFTER a successful upload + ledger report.
@@ -1053,7 +1056,7 @@ function CanvasSpaceInner({
         ?.data as { focusImages?: unknown } | undefined;
       if (
         validFocusImages(panelData?.focusImages).length +
-          pendingFocusCount(panelNodeId) >=
+          pendingFocusCount(sessionStore, panelNodeId) >=
         MAX_FOCUS_ENTRIES
       ) {
         toast.warning(
@@ -1066,7 +1069,7 @@ function CanvasSpaceInner({
       if (
         cap !== null &&
         referencePoolCount(graph.flowEdges, graph.flowNodes, panelNodeId) +
-          pendingFocusCount(panelNodeId) >=
+          pendingFocusCount(sessionStore, panelNodeId) >=
           cap
       ) {
         // Rejection keeps the marquee (the overlay clears only on true) —
@@ -1110,7 +1113,7 @@ function CanvasSpaceInner({
             return fileUrl;
           },
           addFocusImage: (image) => {
-            useCanvasStore.getState().removePendingFocusUpload(pendingId);
+            sessionStore.getState().removePendingFocusUpload(pendingId);
             // A refused append must be SAID — the upload already succeeded,
             // and silence here loses the crop after real side effects
             // (round-7). Each refusal gets its TRUTHFUL message (round-8:
@@ -1160,7 +1163,7 @@ function CanvasSpaceInner({
             }
           },
           onFailure: (stage) => {
-            useCanvasStore.getState().removePendingFocusUpload(pendingId);
+            sessionStore.getState().removePendingFocusUpload(pendingId);
             // Two of these are not retryable, and saying "try again" to
             // either is worse than useless: a hashing refusal hits the same
             // broken worker on this page (Gate-2 R5), and a full account has
@@ -1186,7 +1189,7 @@ function CanvasSpaceInner({
       );
       return true;
     },
-    [focusCropTargetId, projectId, spaceId, t],
+    [sessionStore, focusCropTargetId, projectId, spaceId, t],
   );
   // Warm the reference-pool cap knob (#1782) once per canvas mount. A
   // failure leaves the soft cap off (degrade-to-uncapped by design — no
@@ -1908,7 +1911,7 @@ function CanvasSpaceInner({
           flowNodes,
           connection.target,
         ) +
-          pendingFocusCount(connection.target) >=
+          pendingFocusCount(sessionStore, connection.target) >=
           cap
       ) {
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
@@ -1928,7 +1931,7 @@ function CanvasSpaceInner({
         toast.error(t('canvas.generatePanel.referenceAddFailed'));
       }
     },
-    [projectId, spaceId, t],
+    [sessionStore, projectId, spaceId, t],
   );
 
   // Reference-pick mode (Generate panel "add reference from canvas"): while a
@@ -1943,7 +1946,7 @@ function CanvasSpaceInner({
       // the panel switched to another node between render and this click, the
       // closure would wire the pick to the PREVIOUS node. The purpose decides
       // whether the click wires an i2i reference edge or fills a source slot.
-      const session = useCanvasStore.getState().pickSession;
+      const session = sessionStore.getState().pickSession;
       if (!session) return;
       const target = session.nodeId;
       // Clicking the target itself is always a no-op (dimmed for both purposes).
@@ -2060,7 +2063,7 @@ function CanvasSpaceInner({
           useCanvasGraphStore.getState().flowNodes,
           target,
         ) +
-          pendingFocusCount(target) >=
+          pendingFocusCount(sessionStore, target) >=
           cap
       ) {
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
@@ -2078,7 +2081,7 @@ function CanvasSpaceInner({
       // Stay in pick mode either way; Exit is the only way out (item 7).
       if (!added) toast.error(t('canvas.generatePanel.referenceAddFailed'));
     },
-    [projectId, spaceId, flowEdges, t, kindLabel, endPick],
+    [sessionStore, projectId, spaceId, flowEdges, t, kindLabel, endPick],
   );
 
   // Where the new note goes, in canvas coordinates, while its box is open.
@@ -2215,11 +2218,11 @@ function CanvasSpaceInner({
   // per-handler close enumeration).
   const onNodeClick = React.useCallback(
     (event: React.MouseEvent, node: Node): void => {
-      if (useCanvasStore.getState().pickSession) {
+      if (sessionStore.getState().pickSession) {
         onPickNodeClick(event, node);
       }
     },
-    [onPickNodeClick],
+    [sessionStore, onPickNodeClick],
   );
 
   // Clicking the empty canvas deselects everything (nodes AND edges — native
@@ -2231,19 +2234,19 @@ function CanvasSpaceInner({
   // identity when nothing was selected, so idle misclicks re-render nothing.
   const onPaneClick = React.useCallback(
     (): void => {
-      if (useCanvasStore.getState().pickSession != null) return;
+      if (sessionStore.getState().pickSession != null) return;
       setFlowNodes((current) => reconcileSelection(current, () => false));
       setFlowEdges((current) => reconcileSelection(current, () => false));
       rfStoreApi.setState({ nodesSelectionActive: false });
     },
-    [setFlowNodes, setFlowEdges, rfStoreApi],
+    [sessionStore, setFlowNodes, setFlowEdges, rfStoreApi],
   );
 
   // Recenter the picking node so it stays findable while selecting references
   // across a large canvas (user 2026-07-10 item 7 locate). Pans only — keeps the
   // current zoom.
   const onLocateSource = React.useCallback((): void => {
-    const id = useCanvasStore.getState().pickSession?.nodeId ?? null;
+    const id = sessionStore.getState().pickSession?.nodeId ?? null;
     if (id == null) return;
     // A grouped member stores its position relative to its Group, so
     // `node.position` is NOT canvas-absolute — setCenter expects absolute
@@ -2260,7 +2263,7 @@ function CanvasSpaceInner({
       zoom: rfZoom,
       duration: 300,
     });
-  }, [getInternalNode, setCenter, rfZoom]);
+  }, [sessionStore, getInternalNode, setCenter, rfZoom]);
 
   // Put a node a press just wrote in front of the reader, together with the
   // node it was read from. Pans only, keeping the reader's zoom, the way
@@ -2773,10 +2776,10 @@ function CanvasSpaceInner({
       // A reference pick owns pointer interactions until Exit (adversarial
       // round-1): the create/paste menu would mutate the pick surface and its
       // creations auto-select mid-session. Fresh store read — closures stale.
-      if (useCanvasStore.getState().pickSession) return;
+      if (sessionStore.getState().pickSession) return;
       setContextMenu({ open: true, x: event.clientX, y: event.clientY });
     },
-    [readOnly],
+    [sessionStore, readOnly],
   );
 
   const onContextMenuPick = React.useCallback(
@@ -2805,7 +2808,7 @@ function CanvasSpaceInner({
       // Pick session gate (adversarial round-1): the node menu's Upload
       // silently no-ops behind the item-12 gate and its Delete would mutate
       // the pick surface — the pick owns node interactions until Exit.
-      if (useCanvasStore.getState().pickSession) return;
+      if (sessionStore.getState().pickSession) return;
       const locked = Boolean((node.data as { locked?: unknown }).locked);
       setNodeMenu({
         open: true,
@@ -2818,7 +2821,7 @@ function CanvasSpaceInner({
         isText: node.type === 'text',
       });
     },
-    [readOnly],
+    [sessionStore, readOnly],
   );
 
   // Selection / edge right-click: ReactFlow leaked the browser menu on these two
@@ -2829,10 +2832,10 @@ function CanvasSpaceInner({
       event.preventDefault();
       if (readOnly) return;
       // Same pick-session gate as the node / pane menus.
-      if (useCanvasStore.getState().pickSession) return;
+      if (sessionStore.getState().pickSession) return;
       setSelectionMenu({ open: true, x: event.clientX, y: event.clientY });
     },
-    [readOnly],
+    [sessionStore, readOnly],
   );
 
   const onEdgeContextMenu = React.useCallback(
@@ -2840,7 +2843,7 @@ function CanvasSpaceInner({
       event.preventDefault();
       if (readOnly) return;
       // Same pick-session gate — deleting an edge mid-pick mutates the rail.
-      if (useCanvasStore.getState().pickSession) return;
+      if (sessionStore.getState().pickSession) return;
       setEdgeMenu({
         open: true,
         x: event.clientX,
@@ -2848,7 +2851,7 @@ function CanvasSpaceInner({
         edgeId: edge.id,
       });
     },
-    [readOnly],
+    [sessionStore, readOnly],
   );
 
   const onToggleNodeLock = React.useCallback((): void => {
@@ -3558,7 +3561,7 @@ function CanvasSpaceInner({
       // double-click on an empty node — or the node-menu Upload, both funnel
       // here — must not pop the file picker over the running pick session.
       // Read fresh from the store; the render closure can be stale.
-      if (useCanvasStore.getState().pickSession) return;
+      if (sessionStore.getState().pickSession) return;
       const accept = UPLOAD_ACCEPT[modality];
       const input = uploadInputRef.current;
       if (!accept || !input) return; // 3d / web have no picker yet
@@ -3572,7 +3575,7 @@ function CanvasSpaceInner({
       input.value = '';
       input.click();
     },
-    [readOnly, projectId, spaceId, t],
+    [sessionStore, readOnly, projectId, spaceId, t],
   );
   // Node menu Upload: open the file picker for the right-clicked node and fill
   // (or replace) its content — the menu form of the empty-node double-click.
@@ -3750,7 +3753,7 @@ function CanvasSpaceInner({
   // all, so the item and its target come from one answer (#2108).
   // The same question the node body asks itself, asked the same way: a failed
   // node shows its content again while its own task list is open beside it.
-  const menuHostTasksOpen = useCanvasStore(taskPanelOpenFor(nodeMenu.nodeId));
+  const menuHostTasksOpen = useCanvasSession(taskPanelOpenFor(nodeMenu.nodeId));
   const menuDownloadUrl = React.useMemo(
     () =>
       readOnly
@@ -4862,11 +4865,12 @@ function CanvasSpaceInner({
  * pending crop occupies its slot BEFORE its Yjs write lands (adversarial
  * 2026-07-16: the edge gates ignoring pending let a same-client burst
  * overshoot the cap the confirm gate guards).
+ * @param session - The canvas's session store.
  * @param nodeId - The pool's target node.
  * @returns The number of in-flight focus uploads for that node.
  */
-function pendingFocusCount(nodeId: string): number {
-  return useCanvasStore
+function pendingFocusCount(session: CanvasSessionStore, nodeId: string): number {
+  return session
     .getState()
     .pendingFocusUploads.filter((p) => p.nodeId === nodeId).length;
 }

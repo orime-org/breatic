@@ -37,7 +37,7 @@ vi.mock('@web/i18n/use-translation', () => ({
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { canvasApi } from '@web/data/api/canvas';
 import { NodeTaskPanelContainer } from '@web/spaces/canvas/tasks/NodeTaskPanelContainer';
-import { useCanvasStore } from '@web/stores/canvas';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 type Nodes = React.ComponentProps<typeof NodeTaskPanelContainer>['nodes'];
 
@@ -97,14 +97,14 @@ function mount(hostNodes: Nodes = nodes()): ReturnType<typeof render> {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(canvasApi.listNodeTasks).mockResolvedValue([]);
-  useCanvasStore.getState().openTaskPanel('target', 'failed');
+  canvasSessions.of('').getState().openTaskPanel('target', 'failed');
 });
 
 describe('NodeTaskPanelContainer', () => {
   it('closes when its host node disappears', async () => {
     const view = mount();
     await waitFor(() =>
-      expect(useCanvasStore.getState().panelHostId).toBe('target'),
+      expect(canvasSessions.of('').getState().panelHostId).toBe('target'),
     );
 
     // A collaborator deleted the node this panel hangs on. Its three sibling
@@ -113,7 +113,7 @@ describe('NodeTaskPanelContainer', () => {
     view.rerender(panel([]));
 
     await waitFor(() =>
-      expect(useCanvasStore.getState().panelHostId).toBeNull(),
+      expect(canvasSessions.of('').getState().panelHostId).toBeNull(),
     );
   });
 
@@ -160,7 +160,7 @@ describe('NodeTaskPanelContainer', () => {
     fireEvent.click(row);
 
     await waitFor(() =>
-      expect(useCanvasStore.getState().panelHostId).toBeNull(),
+      expect(canvasSessions.of('').getState().panelHostId).toBeNull(),
     );
   });
 

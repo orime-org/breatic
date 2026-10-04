@@ -6,7 +6,7 @@ import * as React from 'react';
 
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { useCanvasStore } from '@web/stores/canvas';
+import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 
 import { NodeHistoryPanel } from '@web/spaces/canvas/history/NodeHistoryPanel';
 import { currentEntryId } from '@web/spaces/canvas/history/history-format';
@@ -94,8 +94,8 @@ export function NodeHistoryPanelContainer({
   spaceId,
   onRestore,
 }: NodeHistoryPanelContainerProps): React.JSX.Element | null {
-  const host = useCanvasStore((s) => s.panelHostId);
-  const kind = useCanvasStore((s) => s.panelKind);
+  const host = useCanvasSession((s) => s.panelHostId);
+  const kind = useCanvasSession((s) => s.panelKind);
   if (kind !== 'history' || host == null) return null;
   // key={host} remounts the whole open panel (its query view AND its
   // `useDelayedFlag` grace state) when the panel switches hosts — so a fast
@@ -145,7 +145,7 @@ function OpenNodeHistoryPanel({
   spaceId,
   onRestore,
 }: OpenNodeHistoryPanelProps): React.JSX.Element | null {
-  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
+  const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
   const hostNode = nodes.find((n) => n.id === nodeId);
   // Close when the host disappears (a collaborator deletes it) — mirrors the
   // Generate / reset panels' node-gone guard.

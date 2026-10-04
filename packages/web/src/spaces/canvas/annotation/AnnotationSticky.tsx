@@ -54,7 +54,7 @@ import {
   type DraftState,
   type DraftTarget,
 } from '@web/stores/annotation-draft';
-import { useCanvasStore, type OpenAnnotationDraft } from '@web/stores/canvas';
+import { type OpenAnnotationDraft } from '@web/stores/canvas';
 import {
   annotationRights,
   canPostAnnotations,
@@ -63,6 +63,7 @@ import {
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 
 /**
  * Whether an entry is the one the open box belongs to.
@@ -112,8 +113,8 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
   // component: the canvas culls offscreen nodes and a draft held here went out
   // with the DOM. Reading it back is a subscription to this one key, so a
   // keystroke on one sticky redraws that sticky and nothing else.
-  const open_ = useCanvasStore((s) => s.annotationDrafts[nodeId]);
-  const setAnnotationDraft = useCanvasStore((s) => s.setAnnotationDraft);
+  const open_ = useCanvasSession((s) => s.annotationDrafts[nodeId]);
+  const setAnnotationDraft = useCanvasSession((s) => s.setAnnotationDraft);
   const draft = open_?.draft ?? CLOSED_DRAFT;
   const target = open_?.target ?? null;
 
@@ -187,10 +188,11 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
    * the render's own copy answers both without a ref to keep in step.
    * @returns The open box, or a closed draft with no target.
    */
+  const sessionStore = useCanvasSessionStore();
   const readDraft = React.useCallback((): OpenAnnotationDraft => {
-    const held = useCanvasStore.getState().annotationDrafts[nodeId];
+    const held = sessionStore.getState().annotationDrafts[nodeId];
     return held ?? { draft: CLOSED_DRAFT, target: null };
-  }, [nodeId]);
+  }, [sessionStore, nodeId]);
 
   const apply = React.useCallback(
     (action: DraftAction): void => {

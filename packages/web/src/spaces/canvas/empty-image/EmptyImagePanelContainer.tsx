@@ -4,7 +4,7 @@
 import { NodeToolbar, Position } from '@xyflow/react';
 import * as React from 'react';
 
-import { useCanvasStore } from '@web/stores/canvas';
+import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 
 import {
   EmptyImagePanel,
@@ -33,9 +33,9 @@ export function EmptyImagePanelContainer({
   nodes,
   onReset,
 }: EmptyImagePanelContainerProps): React.JSX.Element | null {
-  const host = useCanvasStore((s) => s.panelHostId);
-  const kind = useCanvasStore((s) => s.panelKind);
-  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
+  const host = useCanvasSession((s) => s.panelHostId);
+  const kind = useCanvasSession((s) => s.panelKind);
+  const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
   // Only this container's kind; the Generate panel shares `panelHostId`.
   const nodeId = kind === 'resetEmpty' ? host : null;
   // Close when the host disappears (a collaborator deletes it) so we never

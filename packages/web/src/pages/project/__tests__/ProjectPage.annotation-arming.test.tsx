@@ -86,6 +86,7 @@ vi.mock('@web/data/api', async () => {
 });
 
 import ProjectPage from '@web/pages/project/ProjectPage';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 /**
  * The providers the page expects around it.
@@ -138,6 +139,7 @@ describe('the comment button and the annotation tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useCanvasStore.getState().reset();
+    canvasSessions.clear();
     useUIStore.setState({ chatPanelCollapsed: false });
     useCurrentUserStore.setState({
       user: {
@@ -158,11 +160,11 @@ describe('the comment button and the annotation tool', () => {
     setup();
     const comment = await screen.findByTestId('tool-comment');
     expect(comment).toHaveAttribute('aria-pressed', 'false');
-    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+    expect(canvasSessions.of('22222222-2222-4222-8222-222222222222').getState().placingAnnotation).toBe(false);
 
     await user.click(comment);
 
-    expect(useCanvasStore.getState().placingAnnotation).toBe(true);
+    expect(canvasSessions.of('22222222-2222-4222-8222-222222222222').getState().placingAnnotation).toBe(true);
     await waitFor(() => {
       expect(screen.getByTestId('tool-comment')).toHaveAttribute(
         'aria-pressed',
@@ -180,11 +182,11 @@ describe('the comment button and the annotation tool', () => {
     const comment = await screen.findByTestId('tool-comment');
 
     await user.click(comment);
-    expect(useCanvasStore.getState().placingAnnotation).toBe(true);
+    expect(canvasSessions.of('22222222-2222-4222-8222-222222222222').getState().placingAnnotation).toBe(true);
 
     await user.click(screen.getByTestId('tool-comment'));
 
-    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+    expect(canvasSessions.of('22222222-2222-4222-8222-222222222222').getState().placingAnnotation).toBe(false);
     await waitFor(() => {
       expect(screen.getByTestId('tool-comment')).toHaveAttribute(
         'aria-pressed',

@@ -25,7 +25,7 @@ describe('canvas session store', () => {
     const b = createCanvasSessionStore();
 
     a.getState().openGeneratePanel('node-a', 'image');
-    b.getState().startPick('node-b', 'reference');
+    b.getState().startReferencePick('node-b');
 
     expect(a.getState().panelHostId).toBe('node-a');
     expect(a.getState().pickSession).toBeNull();
@@ -37,7 +37,7 @@ describe('canvas session store', () => {
     const store = createCanvasSessionStore();
 
     store.getState().startAnnotationPlacement();
-    store.getState().startPick('node-a', 'reference');
+    store.getState().startReferencePick('node-a');
     expect(store.getState().placingAnnotation).toBe(false);
     expect(store.getState().pickSession).toEqual({ nodeId: 'node-a', purpose: 'reference' });
 
@@ -62,14 +62,13 @@ describe('canvas session store', () => {
     expect(store.getState().panelHostId).toBeNull();
   });
 
-  it('finds the store of a registered Space and forgets it on release', () => {
-    const store = createCanvasSessionStore();
+  it('keeps one store per Space until the Space is dropped', () => {
+    const a = canvasSessions.of('space-a');
 
-    const release = canvasSessions.register('space-a', store);
-    expect(canvasSessions.get('space-a')).toBe(store);
-    expect(canvasSessions.get('space-b')).toBeUndefined();
+    expect(canvasSessions.of('space-a')).toBe(a);
+    expect(canvasSessions.of('space-b')).not.toBe(a);
 
-    release();
-    expect(canvasSessions.get('space-a')).toBeUndefined();
+    canvasSessions.drop('space-a');
+    expect(canvasSessions.of('space-a')).not.toBe(a);
   });
 });

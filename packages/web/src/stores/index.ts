@@ -19,12 +19,12 @@ export { usePreferencesStore } from '@web/stores/preferences';
 export type { ThemeMode } from '@web/stores/preferences';
 export { useCurrentUserStore } from '@web/stores/current-user';
 export type { CurrentUser, UserRole } from '@web/stores/current-user';
+export { useCanvasStore, isProposalIntent } from '@web/stores/canvas';
 export {
-  useCanvasStore,
-  isProposalIntent,
+  canvasSessions,
   taskPanelStatusFor,
   taskPanelOpenFor,
-} from '@web/stores/canvas';
+} from '@web/stores/canvas-session';
 export type { CreateIntent } from '@web/stores/canvas';
 export { useMiniToolStore } from '@web/stores/mini-tool';
 export type { MiniToolStatus, MiniToolSession } from '@web/stores/mini-tool';

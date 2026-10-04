@@ -5,7 +5,8 @@ import { useStore, type NodeProps } from '@xyflow/react';
 import type { ComponentType } from 'react';
 import * as React from 'react';
 
-import { useCanvasStore, taskPanelStatusFor } from '@web/stores';
+import { taskPanelStatusFor } from '@web/stores/canvas-session';
+import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { readOccupants } from '@web/spaces/canvas/attach-occupants';
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import type { GroupResizeBound } from '@web/spaces/canvas/group-geometry';
@@ -159,13 +160,14 @@ function makeFlowNode(
     // native double-click text selection is separately killed by user-select:none
     // (index.css .canvas-picking). Read the flag lazily so no node re-renders on
     // pick toggle.
+    const sessionStore = useCanvasSessionStore();
     const onDoubleClickCapture = React.useCallback(
       (event: React.MouseEvent): void => {
-        if (useCanvasStore.getState().pickSession != null) {
+        if (sessionStore.getState().pickSession != null) {
           event.stopPropagation();
         }
       },
-      [],
+      [sessionStore],
     );
     // The task counts sit outside the node's top-right corner, one per state
     // this node has something in (#186 §7.1). Which one is pressed is the
@@ -175,9 +177,9 @@ function makeFlowNode(
       data.kind === 'group' || data.kind === 'annotation'
         ? null
         : (data.taskCounts ?? NO_TASKS);
-    const taskPanelOpenHere = useCanvasStore(taskPanelStatusFor(props.id));
-    const openTaskPanel = useCanvasStore((s) => s.openTaskPanel);
-    const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
+    const taskPanelOpenHere = useCanvasSession(taskPanelStatusFor(props.id));
+    const openTaskPanel = useCanvasSession((s) => s.openTaskPanel);
+    const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
     const onOpenTasks = React.useCallback(
       (next: TaskStatus | null): void => {
         if (next === null) closeActivePanel();

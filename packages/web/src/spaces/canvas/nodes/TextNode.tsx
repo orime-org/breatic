@@ -15,7 +15,7 @@ import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFr
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
-import { useCanvasStore } from '@web/stores';
+import { useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import {
   TEXT_BODY_BOX,
   TEXT_BODY_MAX_HEIGHT,
@@ -176,6 +176,7 @@ export const TextNode = React.memo(function TextNode({
    * write, so it happens when somebody actually intends to write, and never
    * for a viewer.
    */
+  const sessionStore = useCanvasSessionStore();
   const startEdit = React.useCallback((): void => {
     // Not the writability gate — `canEdit` below already covers `readOnly`.
     // This return is toast POLICY: a viewer double-clicking a locked node
@@ -192,7 +193,7 @@ export const TextNode = React.memo(function TextNode({
     // the same way `activateNodeUpload` does — then any future door is covered
     // by construction. Silent like the read-only refusal: the pick is what the
     // user is doing, and it is visibly in progress.
-    if (useCanvasStore.getState().pickSession) return;
+    if (sessionStore.getState().pickSession) return;
     if (editBlock) {
       warnNodeGate(t(editBlock.toastKey));
       return;
@@ -200,7 +201,7 @@ export const TextNode = React.memo(function TextNode({
     if (!canEdit) return;
     const fragment = ensureTextBody(projectId, spaceId, nodeId);
     if (fragment) openEditor(fragment);
-  }, [readOnly, nodeId, editBlock, canEdit, t, projectId, spaceId, openEditor]);
+  }, [sessionStore, readOnly, nodeId, editBlock, canEdit, t, projectId, spaceId, openEditor]);
 
   // A lock or a task can land WHILE somebody is writing. Close the editor when
   // it does — but what is already written stays: it reached the document as it
