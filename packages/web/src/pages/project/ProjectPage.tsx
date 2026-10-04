@@ -38,9 +38,9 @@ import {
 import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import {
-  endAllTextNodeEditors,
-  endSpaceTextNodeEditors,
-} from '@web/spaces/canvas/text-node-editors';
+  endAllKeptEditors,
+  endSpaceKeptEditors,
+} from '@web/spaces/canvas/kept-editors';
 import { LeaveProjectGuard } from '@web/pages/project/LeaveProjectGuard';
 import { ProjectJoinGate } from '@web/pages/project/ProjectJoinGate';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
@@ -229,7 +229,7 @@ function ProjectWorkspace({
   React.useEffect(
     () => () => {
       resetProjectUiStores(projectId);
-      endAllTextNodeEditors();
+      endAllKeptEditors();
     },
     [projectId],
   );
@@ -445,7 +445,7 @@ function ProjectWorkspace({
       evictDocumentEditor(docName.documentSpace(projectId, id));
       canvasSessions.drop(id);
       canvasGraphs.drop(id);
-      endSpaceTextNodeEditors(id);
+      endSpaceKeptEditors(id);
     }
     if (departed.length > 0) {
       setVisited((prev) => new Set([...prev].filter((id) => !departed.includes(id))));

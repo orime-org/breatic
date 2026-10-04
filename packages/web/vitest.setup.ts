@@ -35,7 +35,7 @@ import { setLocale, setLocaleMessages } from '@breatic/shared';
 
 import { canvasGraphs } from '@web/stores/canvas-graph';
 import { canvasSessions } from '@web/stores/canvas-session';
-import { endAllTextNodeEditors } from '@web/spaces/canvas/text-node-editors';
+import { endAllKeptEditors } from '@web/spaces/canvas/kept-editors';
 import { LOCALE_CATALOGS } from '@web/test-utils/locale-catalogs';
 
 // Register every locale we ship, once, so components rendered through
@@ -98,7 +98,7 @@ afterEach(() => {
   // open panel.
   canvasGraphs.clear();
   canvasSessions.clear();
-  endAllTextNodeEditors();
+  endAllKeptEditors();
   // `localStorage` is process-wide the same way the two above are, and what it
   // holds now decides what a page renders: the project page opens on the tab
   // strip stored under the signed-in account, so a file that leaves one behind

@@ -12,7 +12,7 @@ import {
   useCanvasSession,
   useCanvasSessionStore,
 } from '@web/spaces/canvas/canvas-context';
-import { endTextNodeEditor } from '@web/spaces/canvas/text-node-editors';
+import { endKeptEditor } from '@web/spaces/canvas/kept-editors';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { TextNodeView } from '@web/data/yjs/node-view';
@@ -97,7 +97,7 @@ export const TextNode = React.memo(function TextNode({
   const endWriting = React.useCallback((): void => {
     if (!nodeId) return;
     sessionStore.getState().endTextEdit(nodeId);
-    endTextNodeEditor(spaceId, nodeId);
+    endKeptEditor(spaceId, nodeId);
   }, [sessionStore, spaceId, nodeId]);
   const editedBody = useEditedTextBody(
     projectId,

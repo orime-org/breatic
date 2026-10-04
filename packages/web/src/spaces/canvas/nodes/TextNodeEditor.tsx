@@ -29,7 +29,7 @@ import type * as Y from 'yjs';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
-import { textNodeEditor } from '@web/spaces/canvas/text-node-editors';
+import { keptEditor } from '@web/spaces/canvas/kept-editors';
 import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
 
 /**
@@ -274,7 +274,7 @@ export function TextNodeEditor({
     // A kept editor is reused while it is bound to the same body and the same
     // caret connection; a body replaced by a repair, or the connection's
     // first arrival, builds a new one.
-    return textNodeEditor(spaceId, nodeId, build, (kept) => {
+    return keptEditor(spaceId, nodeId, build, (kept) => {
       const bound = wiringOf.get(kept);
       return bound?.fragment === fragment && bound.caretProvider === caretProvider;
     });
