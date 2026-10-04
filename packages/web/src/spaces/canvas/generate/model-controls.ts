@@ -15,7 +15,7 @@
  * modes only is drawn in those modes only, so every reader names the mode.
  */
 
-import type { ItemField, ModelEntry, ParamDescriptor } from '@breatic/shared';
+import { appliesInMode, type ItemField, type ModelEntry, type ParamDescriptor } from '@breatic/shared';
 
 import type { ParamOption } from '@web/spaces/canvas/generate/ParamOptionGroup';
 
@@ -92,7 +92,7 @@ export function modelControls(model: ModelEntry, mode: string): ModelControl[] {
   const controls: ModelControl[] = [];
   for (const [name, spec] of Object.entries(model.params)) {
     if (spec.fill !== 'panel' || typeof spec.label !== 'string') continue;
-    if (spec.modes !== undefined && !spec.modes.includes(mode)) continue;
+    if (!appliesInMode(spec, mode)) continue;
     const control = controlFor(name, spec);
     if (control) controls.push(control);
   }

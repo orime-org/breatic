@@ -6,6 +6,8 @@ import { describe, it, expect } from 'vitest';
 import { buildGenerateTaskPayload, imageEstimateInput } from '@web/spaces/canvas/generate/task-payload';
 
 const BASE = {
+  // A mode with no params scoped to other modes: nothing is left behind.
+  generation: { mode: 't2i', declared: {} },
   nodeId: 'node-1',
   projectId: 'proj-1',
   spaceId: 'space-1',

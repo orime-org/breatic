@@ -627,6 +627,7 @@ function GeneratePanelBody({
         spaceId,
         model: fresh.model,
         params: fresh.params,
+        generation: { mode: fresh.mode, declared: fresh.modelEntry?.params ?? {} },
         promptText: freshPrompt,
         poolParams: poolParams(fresh.pool, fresh.referenceUrls),
       });
