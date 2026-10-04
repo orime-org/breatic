@@ -34,10 +34,10 @@ import {
 import { wasLastChangeLocalUserInput } from '@web/features/reference-mention/reference-mention-local-input';
 
 /**
- * What opens the list: `@`, and the full-width `＠` a Chinese, Japanese or
- * Korean input method types in full-width mode.
+ * What opens the list: `@`, and the full-width at sign (U+FF20) a Chinese,
+ * Japanese or Korean input method types in full-width mode.
  */
-const AT_SIGNS = ['@', '＠'] as const;
+const AT_SIGNS = ['@', '\uFF20'] as const;
 
 /**
  * The `@` match nearest the caret, whichever at sign opened it.
