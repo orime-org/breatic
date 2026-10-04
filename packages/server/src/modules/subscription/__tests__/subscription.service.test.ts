@@ -183,6 +183,23 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     expect(call.cancel_url).not.toContain("session_id");
   });
 
+  it("turns on Stripe Tax and saves the billing address to the customer", async () => {
+    // The customer exists before checkout and carries no address, so Stripe
+    // can only tax on the address typed into checkout once it is written back.
+    // The subscription keeps the setting, so renewals and upgrades are taxed.
+    situationIs("none");
+    await service.startCheckout({
+      userId: USER,
+      tier: "pro",
+      period: "month",
+      returnUrl: RETURN_URL,
+    });
+
+    const call = stripe.checkout.sessions.create.mock.calls[0]?.[0];
+    expect(call.automatic_tax).toEqual({ enabled: true });
+    expect(call.customer_update).toEqual({ address: "auto" });
+  });
+
   it("keeps the checkout in the query when the page left had a fragment (#307 A5)", async () => {
     // The return reads the query string only. A fragment left on the address
     // would swallow whatever is appended after it.
