@@ -348,6 +348,27 @@ describe('arrow keys move the selected nodes in the document (inner#1010)', () =
     expect(undo.undoStack.length).toBe(before + 2);
   });
 
+  it('B4: a fresh press that moves nothing still ends the previous held run', async () => {
+    seedImage('a', 100, 100);
+    const undo = getCanvasUndoManager(doc(), NAME);
+    mount();
+    clickNode('a');
+    const before = undo.undoStack.length;
+    press('a', 'ArrowRight');
+    await waitFor(() => expect(stored('a').x).toBe(105));
+    // A fresh press xyflow does not act on: the node is not selected for it.
+    selectAll([]);
+    press('a', 'ArrowRight');
+    selectAll(['a']);
+    press('a', 'ArrowRight', false, true);
+    await waitFor(() => expect(stored('a').x).toBe(110));
+    expect(undo.undoStack.length).toBe(before + 2);
+    act(() => {
+      undo.undo();
+    });
+    expect(stored('a').x).toBe(105);
+  });
+
   it('B3: with snap to grid on, a step is one grid dot and lands on the grid', async () => {
     seedImage('a', 100, 100);
     useCanvasStore.setState({ snapToGrid: true });
