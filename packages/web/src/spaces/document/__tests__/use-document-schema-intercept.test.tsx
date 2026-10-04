@@ -11,7 +11,8 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, render } from '@testing-library/react';
+import * as React from 'react';
 import * as Y from 'yjs';
 import {
   DOCUMENT_SCHEMA,
@@ -135,5 +136,50 @@ describe('版本号跟 meta 里的不一样：拦', () => {
     act(() => publish(metaDoc, 'another-build'));
 
     expect(result.current.intercepted).toBe(true);
+  });
+});
+
+// A Space hidden while the server publishes a newer vocabulary is shown again
+// with its effects run in child-then-parent order (inner#1235 §5.3). The
+// editor below the page reads the answer in its own effect on the way back,
+// so the answer has to be the new one by then, not one effect later.
+describe('an intercept that lands while the Space is hidden', () => {
+  it('is what the children read on the way back', () => {
+    const metaDoc = meta();
+    publish(metaDoc);
+    const seen: boolean[] = [];
+    /**
+     * Records what its effect is handed.
+     * @param props - Props.
+     * @param props.intercepted - The answer it is handed.
+     * @returns Nothing visible.
+     */
+    function Reader({ intercepted }: { intercepted: boolean }): null {
+      React.useEffect(() => {
+        seen.push(intercepted);
+      }, [intercepted]);
+      return null;
+    }
+    /**
+     * Reads the intercept and hands it down.
+     * @returns The reader.
+     */
+    function Page(): React.JSX.Element {
+      const { intercepted } = useDocumentSchemaIntercept({ metaDoc });
+      return <Reader intercepted={intercepted} />;
+    }
+    const inSpace = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+      <React.Activity mode={mode}>
+        <Page />
+      </React.Activity>
+    );
+    const view = render(inSpace('visible'));
+    act(() => view.rerender(inSpace('hidden')));
+    act(() => publish(metaDoc, '999.0.0'));
+    seen.length = 0;
+
+    act(() => view.rerender(inSpace('visible')));
+
+    expect(seen).toEqual([true]);
   });
 });
