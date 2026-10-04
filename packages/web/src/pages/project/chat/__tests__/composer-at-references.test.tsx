@@ -287,13 +287,41 @@ describe('@ in the chat box', () => {
     }
   });
 
-  it('cuts a paste between characters, never inside one', () => {
-    const { onChange } = setup({ draft: 'y'.repeat(9_999) });
+  it('cuts a paste to the room left, counting an emoji as the two it costs', () => {
+    const { onChange } = setup({ draft: 'y'.repeat(9_997) });
     act(() => box().commands.focus('end'));
     fireEvent.paste(box().view.dom, {
       clipboardData: { files: [], getData: (type: string) => (type === 'text/plain' ? '\u{1F600}ok' : '') },
     });
 
-    expect(String(onChange.mock.lastCall?.[0] ?? '')).not.toMatch(/[\uD800-\uDBFF]$/);
+    expect(onChange).toHaveBeenLastCalledWith(`${'y'.repeat(9_997)}\u{1F600}o`);
+  });
+
+  it('keeps a paste to itself while it is read-only', () => {
+    const onPasteCanvas = vi.fn();
+    const outside = vi.fn();
+    document.addEventListener('paste', outside);
+    try {
+      setup({ turnPhase: 'sending', onPasteCanvas });
+      fireEvent.paste(box().view.dom, {
+        clipboardData: { files: [], getData: (type: string) => (type === 'text/plain' ? '__breatic_canvas_nodes__:[]' : '') },
+      });
+    } finally {
+      document.removeEventListener('paste', outside);
+    }
+
+    expect(outside).not.toHaveBeenCalled();
+    expect(onPasteCanvas).not.toHaveBeenCalled();
+  });
+
+  it('copies a block as its name in plain text', () => {
+    setup({ draft: `look at ${attachmentMarker('a1')} please`, attachments: [cover] });
+    act(() => box().commands.selectAll());
+    const written = new Map<string, string>();
+    fireEvent.copy(box().view.dom, {
+      clipboardData: { clearData: () => written.clear(), setData: (type: string, value: string) => written.set(type, value) },
+    });
+
+    expect(written.get('text/plain')).toBe('look at cover.png please');
   });
 });

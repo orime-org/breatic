@@ -190,6 +190,27 @@ describe('the shared @ list', () => {
     expect(chips(e)).toEqual([]);
   });
 
+  it('opens on the full-width at sign a CJK input method types, and filters after it', async () => {
+    const e = await makeEditor();
+    type(e, '写真の＠be');
+    await listShown();
+
+    expect(document.querySelector('[data-testid="reference-mention-option-b"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="reference-mention-option-a"]')).toBeNull();
+    press(e, 'Enter');
+    expect(chips(e)).toEqual(['b']);
+    expect(e.state.doc.textContent).toBe('写真の');
+  });
+
+  it('follows the nearer of the two at signs', async () => {
+    const e = await makeEditor();
+    type(e, '＠x then @al');
+    await listShown();
+
+    expect(document.querySelector('[data-testid="reference-mention-option-a"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="reference-mention-option-b"]')).toBeNull();
+  });
+
   it('sits where the caller places it', async () => {
     const e = await makeEditor('top-start');
     type(e, '@');
