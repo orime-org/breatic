@@ -157,6 +157,31 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     );
   }, [handle]);
 
+  // Back on screen after a switch of Space, the caret goes back in if it was
+  // here when the Space was hidden (inner#1235 A1): hiding takes focus out of
+  // the editor, and the editor still holds the selection to put it back at.
+  // Read in a layout cleanup, which runs before the Space is hidden; put back
+  // a task later, once the Space is on screen again. Both read the DOM the
+  // editor is mounted in: an editor with no view throws on any read of it.
+  const hadFocus = React.useRef(false);
+  React.useLayoutEffect(() => {
+    const container = body.current;
+    return () => {
+      hadFocus.current = container?.contains(document.activeElement) ?? false;
+    };
+  }, [handle]);
+  React.useEffect(() => {
+    if (!hadFocus.current) return undefined;
+    const id = window.setTimeout(() => {
+      hadFocus.current = false;
+      const editable = body.current?.querySelector('.ProseMirror');
+      if (editable && !editable.contains(document.activeElement)) {
+        handle.editor.prosemirrorView?.focus();
+      }
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [handle]);
+
   return (
     // `isolate` keeps the z-values below local: the entry has to paint over
     // the body and the bubble bar over the entry, and neither of those two

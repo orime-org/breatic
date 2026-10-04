@@ -189,6 +189,27 @@ test('a note being written stays open with its words across a switch', async ({ 
   await expect(composer).toHaveCount(0);
 });
 
+test('a document being written keeps its caret across a switch', async ({ page }) => {
+  // A1: the reader comes back to the place they were typing, and the next
+  // keystroke lands there.
+  await openFreshProject(page);
+  const [doc] = await addSpaces(page, 1, 'document');
+  const [first] = (await stripIds(page)) as [string, string];
+  await showSpace(page, doc!);
+  const editor = page.locator(DOCUMENT_EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('new-space-button')).toBeFocused();
+  await editor.click();
+  await page.keyboard.type('first line');
+
+  await showSpace(page, first);
+  await showSpace(page, doc!);
+
+  await expect(editor).toBeFocused();
+  await page.keyboard.type(' kept');
+  await expect(editor.locator('p').first()).toHaveText('first line kept');
+});
+
 test('a document scrolled down comes back at the same place', async ({ page }) => {
   // A1: hiding a Space takes its scroller out of layout, and a scroller out
   // of layout reads 0; the reader comes back to the line they left.
