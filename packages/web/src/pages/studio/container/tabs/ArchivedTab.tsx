@@ -12,8 +12,6 @@ import { EmptyState } from '@web/pages/studio/shared/EmptyState';
 
 interface ArchivedTabProps {
   projects: readonly ContainerProject[];
-  /** The studio these projects belong to; a card refreshes its lists after a restore. */
-  studioSlug: string;
 }
 
 // Same grid as the Projects tab: an archived card is the same card.
@@ -23,12 +21,11 @@ const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3';
  * The Archived tab, the studio admin's alone: the studio's archived projects as
  * the same cards the Projects tab uses, each carrying the archived badge and a
  * menu that only restores. Nothing is created from here.
- * @param props - The archived projects and their studio.
+ * @param props - The archived projects.
  * @param props.projects - The studio's archived projects.
- * @param props.studioSlug - The studio they belong to.
  * @returns The Archived tab content.
  */
-export function ArchivedTab({ projects, studioSlug }: ArchivedTabProps): React.JSX.Element {
+export function ArchivedTab({ projects }: ArchivedTabProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <>
@@ -42,7 +39,7 @@ export function ArchivedTab({ projects, studioSlug }: ArchivedTabProps): React.J
       ) : (
         <div className={GRID}>
           {projects.map((project) => (
-            <ProjectCard key={project.id} project={project} studioSlug={studioSlug} />
+            <ProjectCard key={project.id} project={project} />
           ))}
         </div>
       )}

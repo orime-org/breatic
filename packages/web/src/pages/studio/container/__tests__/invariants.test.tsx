@@ -90,7 +90,7 @@ describe('studio tabs — empty state (spec §3.13)', () => {
   it('shows the empty hint and the new-project card when there are no projects', () => {
     render(
       <MemoryRouter>
-        <ProjectsTab projects={[]} studioRole='admin' studioSlug='acme' />
+        <ProjectsTab projects={[]} studioRole='admin' />
       </MemoryRouter>,
     );
     expect(screen.getByText(/No projects yet/)).toBeInTheDocument();

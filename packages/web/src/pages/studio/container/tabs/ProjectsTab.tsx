@@ -23,8 +23,6 @@ interface ProjectsTabProps {
   projects: readonly ContainerProject[];
   /** The viewer's studio role (`null` = non-member) — decides whether the create entry shows. */
   studioRole: StudioRole | null;
-  /** The studio these projects belong to; a card refreshes its list after a cover change. */
-  studioSlug: string;
   /** Called when a project is created via the dialog (stub no-op in slice 3). */
   onCreateProject?: (values: NewItemValues) => void;
   /** The studios the viewer may create in — rendered as the dialog's selector (spec §7.1). */
@@ -46,7 +44,6 @@ const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3';
  * @param props the projects, the viewer's studio role and the create callback.
  * @param props.projects the studio's projects.
  * @param props.studioRole the viewer's studio role.
- * @param props.studioSlug the studio these projects belong to.
  * @param props.onCreateProject called when a project is created via the dialog.
  * @param props.creatableStudios the studios the viewer may create in (selector).
  * @param props.defaultStudioId the studio pre-selected when the dialog opens.
@@ -55,7 +52,6 @@ const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3';
 export function ProjectsTab({
   projects,
   studioRole,
-  studioSlug,
   onCreateProject,
   creatableStudios,
   defaultStudioId,
@@ -84,11 +80,7 @@ export function ProjectsTab({
       ) : (
         <div className={GRID}>
           {projects.map((project) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              studioSlug={studioSlug}
-            />
+            <ProjectCard key={project.id} project={project} />
           ))}
         </div>
       )}

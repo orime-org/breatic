@@ -45,7 +45,7 @@ function renderProject(project: ContainerProject) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <MemoryRouter>
-        <ProjectCard project={project} studioSlug='acme' />
+        <ProjectCard project={project} />
       </MemoryRouter>
     </QueryClientProvider>,
   );

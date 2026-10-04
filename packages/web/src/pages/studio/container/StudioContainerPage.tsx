@@ -219,14 +219,13 @@ export default function StudioContainerPage(): React.JSX.Element {
                 <ProjectsTab
                   projects={projects}
                   studioRole={view.studio.myStudioRole}
-                  studioSlug={view.studio.slug}
                   onCreateProject={createProject}
                   creatableStudios={creatable}
                   defaultStudioId={defaultStudioId}
                 />
               ) : null}
               {tab === 'archived' ? (
-                <ArchivedTab projects={archivedProjects} studioSlug={view.studio.slug} />
+                <ArchivedTab projects={archivedProjects} />
               ) : null}
               {tab === 'collections' ? (
                 <CollectionsTab

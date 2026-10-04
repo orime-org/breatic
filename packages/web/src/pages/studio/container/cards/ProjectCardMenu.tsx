@@ -25,8 +25,6 @@ import { checkPickedFile } from '@web/pages/studio/container/dialogs/crop-image'
 
 interface ProjectCardMenuProps {
   project: ContainerProject;
-  /** The studio whose Projects tab lists the project. */
-  studioSlug: string;
 }
 
 /**
@@ -51,18 +49,17 @@ export function hasCardMenu(project: ContainerProject): boolean {
  * is drawn by the operating system and has no place in the UI, and a
  * screen-reader-only input would still be an invisible stop in the tab order.
  * The menu entry drives it.
- * @param props - The project and its studio.
+ * @param props - The card's project.
  * @param props.project - The card's project.
- * @param props.studioSlug - The studio whose lists are refreshed afterwards.
  * @returns The menu with its file picker and dialogs.
  */
-export function ProjectCardMenu({ project, studioSlug }: ProjectCardMenuProps): React.JSX.Element {
+export function ProjectCardMenu({ project }: ProjectCardMenuProps): React.JSX.Element {
   const t = useTranslation();
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const [picked, setPicked] = React.useState<File | null>(null);
   const [renaming, setRenaming] = React.useState(false);
   const [confirmingArchive, setConfirmingArchive] = React.useState(false);
-  const cover = useProjectCover(project.id, studioSlug);
+  const cover = useProjectCover(project.id);
   const rename = useRenameProject(project.id);
   const actions = useProjectActions(project.id);
   const { reset, done } = cover;

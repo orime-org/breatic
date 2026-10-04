@@ -22,8 +22,6 @@ const ROLE_KEY: Record<ItemRole, string> = {
 
 interface ProjectCardProps {
   project: ContainerProject;
-  /** The studio the card is listed in, refreshed after the cover changes. */
-  studioSlug: string;
 }
 
 /**
@@ -36,15 +34,11 @@ interface ProjectCardProps {
  * shows no role. An archived card carries the archived badge, still opens for
  * a member (read-only), and does nothing for anyone else: an archived project
  * takes no join requests.
- * @param props the project and the studio slug.
+ * @param props the card's props.
  * @param props.project the project to render.
- * @param props.studioSlug the studio the card is listed in.
  * @returns the project card.
  */
-export function ProjectCard({
-  project,
-  studioSlug,
-}: ProjectCardProps): React.JSX.Element {
+export function ProjectCard({ project }: ProjectCardProps): React.JSX.Element {
   const t = useTranslation();
   const [joinOpen, setJoinOpen] = React.useState(false);
   const openJoin = React.useCallback(() => setJoinOpen(true), []);
@@ -96,7 +90,7 @@ export function ProjectCard({
         </span>
       ) : null}
       {hasCardMenu(project) ? (
-        <ProjectCardMenu project={project} studioSlug={studioSlug} />
+        <ProjectCardMenu project={project} />
       ) : null}
     </div>
   );

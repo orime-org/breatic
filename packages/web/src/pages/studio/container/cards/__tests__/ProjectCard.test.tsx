@@ -53,7 +53,7 @@ function setup(p: ContainerProject = project) {
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <ProjectCard project={p} studioSlug='acme' />
+        <ProjectCard project={p} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
