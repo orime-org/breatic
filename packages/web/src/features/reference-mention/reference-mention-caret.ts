@@ -72,7 +72,9 @@ import { ySyncPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
 import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
 
 /**
- * A recorded selection range as Yjs RELATIVE positions. Absolute positions
+ * A recorded selection range.
+ *
+ * Under collaboration it is held as Yjs RELATIVE positions. Absolute positions
  * cannot survive the real collab pipeline: y-prosemirror delivers EVERY
  * Yjs-origin change (a remote wire edit, a yUndo undo/redo) as one full-doc
  * ReplaceStep, whose StepMap collapses all interior positions (adversarial
@@ -80,13 +82,14 @@ import { dispatchMachineEdit } from '@web/features/reference-mention/reference-m
  * DIFFERENT paragraph destroyed the record). Relative positions are
  * y-prosemirror's own tool for surviving that (its selection restore uses
  * them) and need no per-transaction mapping at all.
+ *
+ * An editor with no Yjs document behind it holds absolute positions instead,
+ * mapped through each transaction: every change there is a plain ProseMirror
+ * step, so the mapping is exact.
  */
-interface DragRecord {
-  /** Recorded selection start (Yjs relative position). */
-  from: RelativePosition;
-  /** Recorded selection end (Yjs relative position). */
-  to: RelativePosition;
-}
+type DragRecord =
+  | { kind: 'relative'; from: RelativePosition; to: RelativePosition }
+  | { kind: 'absolute'; from: number; to: number };
 
 /** The y-sync plugin state internals needed for position conversion. */
 interface YSyncState {
@@ -121,8 +124,10 @@ function recordFromRange(
   to: number,
 ): DragRecord | null {
   const y = ySyncStateOf(state);
-  if (y === null || y.binding === null) return null;
+  if (y === null) return { kind: 'absolute', from, to };
+  if (y.binding === null) return null;
   return {
+    kind: 'relative',
     from: absolutePositionToRelativePosition(
       from,
       y.type,
@@ -147,6 +152,7 @@ function recordToRange(
   state: EditorState,
   record: DragRecord,
 ): { from: number; to: number } | null {
+  if (record.kind === 'absolute') return { from: record.from, to: record.to };
   const y = ySyncStateOf(state);
   if (y === null || y.binding === null) return null;
   const from = relativePositionToAbsolutePosition(
@@ -378,10 +384,25 @@ function setChipDragImage(view: EditorView, event: Event): void {
  */
 function sameRecord(a: DragRecord | null, b: DragRecord | null): boolean {
   if (a === null || b === null) return a === b;
+  if (a.kind === 'absolute' || b.kind === 'absolute') {
+    return a.kind === b.kind && a.from === b.from && a.to === b.to;
+  }
   return (
     compareRelativePositions(a.from, b.from) &&
     compareRelativePositions(a.to, b.to)
   );
+}
+
+/**
+ * Carries an absolute record through a transaction; a relative one needs no
+ * mapping.
+ * @param record - The record, or null.
+ * @param tr - The applied transaction.
+ * @returns The record in the new document.
+ */
+function mapRecord(record: DragRecord | null, tr: Transaction): DragRecord | null {
+  if (record === null || record.kind === 'relative') return record;
+  return { kind: 'absolute', from: tr.mapping.map(record.from), to: tr.mapping.map(record.to, -1) };
 }
 
 /**
@@ -534,11 +555,13 @@ export function createReferenceMentionCaret(): Plugin {
       apply: (tr, value): DragPluginState => {
         // Relative positions track the Yjs document by identity — no
         // per-transaction mapping (which a full-doc y-sync ReplaceStep would
-        // destroy anyway, adversarial R3).
+        // destroy anyway, adversarial R3). Absolute ones follow the mapping.
         const meta = tr.getMeta(referenceMentionCaretKey) as
           | DragPluginState
           | undefined;
-        return meta !== undefined ? meta : value;
+        if (meta !== undefined) return meta;
+        if (!tr.docChanged) return value;
+        return { record: mapRecord(value.record, tr), source: mapRecord(value.source, tr) };
       },
     },
     appendTransaction(transactions, _oldState, newState): Transaction | null {

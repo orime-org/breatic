@@ -28,6 +28,7 @@
  */
 
 import type { Editor } from '@tiptap/core';
+import { isHistoryTransaction } from '@tiptap/pm/history';
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -95,7 +96,10 @@ export function createLocalUserInputTracker(): Plugin<boolean> {
         // doc transactions or MACHINE_EDIT_META-tagged (every machine dispatch
         // rides dispatchMachineEdit — the tracker, the caret plugin, and
         // PromptEditor's effects), so the same test classifies them correctly.
-        const isRemoteOrUndo = tr.getMeta(ySyncPluginKey) !== undefined;
+        // An editor with no collaboration undoes through the plain history
+        // plugin instead, which tags its own transactions.
+        const isRemoteOrUndo =
+          tr.getMeta(ySyncPluginKey) !== undefined || isHistoryTransaction(tr);
         // Machine-derived local dispatch (cascade-clear / chip display sync).
         const isMachine = tr.getMeta(MACHINE_EDIT_META) === true;
         return !isRemoteOrUndo && !isMachine;
