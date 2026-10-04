@@ -302,7 +302,7 @@ export async function listByStudioForViewer(
   options: { archived: boolean },
 ): Promise<ProjectSummary[]> {
   const studioRole = await studioAuthService.loadStudioRole(viewerUserId, studioId);
-  if (options.archived && studioRole !== "admin") {
+  if (options.archived && !mayArchive({ studioRole, projectRole: null })) {
     throw new ForbiddenError(t("server.error.forbidden"));
   }
   if (studioRole === null) return [];
