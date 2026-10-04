@@ -12,7 +12,7 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type Locator } from 'playwright/test';
+import { test, expect, type Locator, type Page } from 'playwright/test';
 
 import { openGenerate, seedNode, registerCanvasStage } from '../helpers/audio-panel';
 
@@ -25,6 +25,18 @@ registerCanvasStage();
  */
 async function fits(button: Locator): Promise<boolean> {
   return button.evaluate((el) => el.scrollWidth <= el.clientWidth);
+}
+
+/**
+ * Switch the interface language through its menu.
+ * @param p - The page.
+ * @param code - The locale to switch to.
+ */
+async function switchLanguage(p: Page, code: string): Promise<void> {
+  await p.getByTestId('lang-trigger').click();
+  await expect(p.getByTestId('lang-popover')).toBeVisible();
+  await p.getByTestId(`lang-option-${code}`).click();
+  await expect(p.getByTestId('lang-popover')).toHaveCount(0);
 }
 
 test('an image model shows every param it stands on, named from the locales', async ({ page }) => {
@@ -78,20 +90,25 @@ test('a video model names its own params and cuts none of their options', async 
 });
 
 test('a param is named in the reader\'s language, its options stay as the vendor spells them', async ({ page }) => {
-  await page.evaluate(() => localStorage.setItem('breatic.locale', 'zh-CN'));
-  await page.reload();
-  const nodeId = crypto.randomUUID();
-  await seedNode(nodeId, 'video', undefined, -350);
-  await openGenerate(nodeId, 'generate-video-execute');
+  // The interface follows the account language, so the switch goes through
+  // the language menu, which records it on the account, and is put back.
+  await switchLanguage(page, 'zh-CN');
+  try {
+    const nodeId = crypto.randomUUID();
+    await seedNode(nodeId, 'video', undefined, -350);
+    await openGenerate(nodeId, 'generate-video-execute');
 
-  await page.getByTestId('generate-video-mode-trigger').click();
-  await page.getByTestId('generate-video-mode-talking-head').click();
-  await page.getByTestId('generate-model-trigger').click();
-  await page.getByTestId('generate-model-option-sync-react-1').click();
-  await page.getByTestId('generate-video-params-trigger').click();
-  await expect(page.getByText('情绪', { exact: true })).toBeVisible();
-  await expect(page.getByTestId('generate-param-emotion-option-happy')).toHaveText('Happy');
-  await page.evaluate(() => localStorage.removeItem('breatic.locale'));
+    await page.getByTestId('generate-video-mode-trigger').click();
+    await page.getByTestId('generate-video-mode-talking-head').click();
+    await page.getByTestId('generate-model-trigger').click();
+    await page.getByTestId('generate-model-option-sync-react-1').click();
+    await page.getByTestId('generate-video-params-trigger').click();
+    await expect(page.getByText('情绪', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('generate-param-emotion-option-happy')).toHaveText('Happy');
+    await page.keyboard.press('Escape');
+  } finally {
+    await switchLanguage(page, 'en');
+  }
 });
 
 test('the image panel draws no unbuilt buttons', async ({ page }) => {
