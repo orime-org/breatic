@@ -364,6 +364,36 @@ describe('ChatPanel', () => {
     expect(screen.queryByTestId('chat-notice-action')).not.toBeInTheDocument();
   });
 
+  it('keeps the keyboard on the box when the chat it waited for opens', async () => {
+    let land: (() => void) | undefined;
+    vi.mocked(chatApi.openChat).mockImplementation(
+      () =>
+        new Promise((res) => {
+          land = (): void =>
+            res({
+              conversations: [{ id: CONV }],
+              hasMoreConversations: false,
+              current: { conversation: { id: CONV }, messages: [], hasMore: false },
+            } as never);
+        }),
+    );
+    renderPanel();
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+    const waiting = screen.getByTestId('chat-composer-box');
+    act(() => waiting.focus());
+
+    await act(async () => {
+      land?.();
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-composer-box')).toHaveAttribute('contenteditable', 'true'),
+    );
+
+    expect(screen.getByTestId('chat-composer-box')).toBe(waiting);
+    expect(document.activeElement).toBe(waiting);
+  });
+
   it('holds the box still until the chat has opened', async () => {
     // 打开期间不能打字(user 2026-08-16 拍定)——屏幕上还没有会话,这一刻打进去
     // 的话没有地方可去。这条测试此前断言的是反过来那条(已被推翻的规则),而且

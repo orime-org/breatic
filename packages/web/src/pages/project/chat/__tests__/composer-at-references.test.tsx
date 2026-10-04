@@ -322,6 +322,70 @@ describe('@ in the chat box', () => {
     expect(screen.queryByTestId('chat-reference')).toBeNull();
   });
 
+  it('leaves the last conversation\'s typing out of undo once the conversation changes', () => {
+    const { onChange, rerender } = setup({ conversationId: 'c1', draft: '' });
+    type('abc');
+    const typed = String(onChange.mock.lastCall?.[0]);
+
+    // The next conversation's draft happens to read the same.
+    rerender({ conversationId: 'c2', draft: typed });
+    act(() => {
+      const e = box();
+      undo(e.state, e.view.dispatch);
+    });
+
+    expect(box().state.doc.textContent).toBe('abc');
+  });
+
+  it('names a pasted block after its attachment in the language now on screen', async () => {
+    const before = getLocale();
+    const bare: TrayItem = {
+      id: 'b1',
+      name: '',
+      type: 'image',
+      status: 'ready',
+      chip: { id: 'b1', type: 'image', name: '', data_snapshot: { url: 'u' } },
+    };
+    try {
+      setup({ attachments: [bare] });
+      await act(async () => {
+        await setLocale('zh-CN');
+      });
+      act(() => {
+        box().commands.focus();
+        box().view.pasteHTML('<span data-reference-mention="" data-source-id="b1">Image</span>');
+      });
+
+      expect(screen.getByTestId('chat-reference').textContent).not.toBe('Image');
+      expect(screen.getByTestId('chat-reference').textContent).not.toBe('');
+    } finally {
+      await act(async () => {
+        await setLocale(before);
+      });
+    }
+  });
+
+  it('shows the current name on a block an undo brings back', () => {
+    const draft = `look ${attachmentMarker('a1')}`;
+    const { rerender } = setup({ draft, attachments: [cover] });
+    act(() => {
+      const e = box();
+      let at = -1;
+      e.state.doc.descendants((n, pos) => {
+        if (n.type.name === 'referenceMention') at = pos;
+      });
+      e.view.dispatch(e.state.tr.delete(at, at + 1));
+    });
+    rerender({ draft: 'look ', attachments: [{ ...cover, name: 'cover-v2.png' }] });
+
+    act(() => {
+      const e = box();
+      undo(e.state, e.view.dispatch);
+    });
+
+    expect(screen.getByTestId('chat-reference')).toHaveTextContent('cover-v2.png');
+  });
+
   it('copies a block as its name in plain text', () => {
     setup({ draft: `look at ${attachmentMarker('a1')} please`, attachments: [cover] });
     act(() => box().commands.selectAll());
