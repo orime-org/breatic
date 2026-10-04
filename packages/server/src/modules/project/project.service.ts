@@ -371,7 +371,7 @@ export async function update(
   return writeMeta(projectId, patch);
 }
 
-/** A live project and what its management rule reads about one caller. */
+/** A project, live or archived, and the caller's two roles on it. */
 interface ManagementFacts {
   project: ProjectEntity;
   studioRole: StudioRole;

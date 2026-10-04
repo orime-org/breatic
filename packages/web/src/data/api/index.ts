@@ -15,7 +15,7 @@ export { ApiException, type ApiError, type Pagination, type PageMeta } from '@we
 export { accountApi } from '@web/data/api/account';
 export { authApi, type AuthUser } from '@web/data/api/auth';
 export { usersApi, type UserSummary } from '@web/data/api/users';
-export { invalidateProjectListings, isStudioProjectsListKey, projectsApi, type ProjectSummary, type ProjectDetail } from '@web/data/api/projects';
+export { invalidateProjectListings, projectsApi, type ProjectSummary, type ProjectDetail } from '@web/data/api/projects';
 export { studiosApi } from '@web/data/api/studios';
 // spacesApi removed 2026-05-23: see ADR yjs-collab-only-write-authz.
 // Space lifecycle (create / delete / lock / restore) now routes through

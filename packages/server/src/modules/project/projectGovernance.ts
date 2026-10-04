@@ -9,9 +9,9 @@
  * duplicate; only the studio admin may archive and restore. Nobody else may
  * do any of it, editors included.
  *
- * One rule, read in two places: the studio's project lists send it as flags
- * so a card's menu offers exactly what the server will accept, and the write
- * paths check it before they write. Managing the object is not entering the
+ * One rule, read by the studio's project lists and the project page, which
+ * send it as flags so a card's menu and the title offer exactly what the
+ * server will accept, and by the write paths before they write. Managing the object is not entering the
  * project: the studio admin may rename a project they are not on, and still
  * has to ask to join before they can open it.
  */

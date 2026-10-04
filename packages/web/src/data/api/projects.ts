@@ -53,9 +53,8 @@ export interface LiveTransfer {
 
 /**
  * Whether a React Query key is a studio container projects-list key, i.e.
- * `['studio', <slug>, 'projects']` (spec §6 / slice 2). Used to invalidate
- * every studio's projects list after a project rename without knowing the
- * studio slug (ProjectPage only has the project id).
+ * `['studio', <slug>, 'projects']` (spec §6 / slice 2), so every studio's
+ * lists can be refreshed from a caller that knows only the project id.
  * @param key the React Query key to test.
  * @returns whether the key is a studio projects-list key.
  */
