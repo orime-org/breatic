@@ -168,6 +168,7 @@ export function makeMentionSuggestion<T>(
         const { items, emptyLabel } = resolveList(query);
         component?.updateProps({
           items,
+          query,
           command: (item: T) => latestProps?.command(item),
           emptyLabel,
           itemKey: input.itemKey,
@@ -261,6 +262,7 @@ export function makeMentionSuggestion<T>(
           component = new ReactRenderer(MentionList as React.ComponentType<MentionListProps<T>>, {
             props: {
               ...resolveList(props.query),
+              query: props.query,
               command: (item: T) => latestProps?.command(item),
               itemKey: input.itemKey,
               renderItem: input.renderItem,

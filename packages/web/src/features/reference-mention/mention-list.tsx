@@ -32,6 +32,8 @@ export interface MentionListProps<T> {
   emptyLabel: string;
   /** A stable key for a row, also used in its test id. */
   itemKey: (item: T) => string;
+  /** What is typed after the `@`; a change of it puts the highlight back on the first row. */
+  query: string;
   /** What a row shows. */
   renderItem: (item: T) => React.ReactNode;
 }
@@ -44,23 +46,29 @@ export interface MentionListProps<T> {
  * @param root0.emptyLabel - Localized empty-state text.
  * @param root0.itemKey - A stable key for a row.
  * @param root0.renderItem - What a row shows.
+ * @param root0.query - What is typed after the `@`.
  * @param ref - Imperative handle exposing `onKeyDown` to the suggestion.
  * @returns The popup list.
  */
 function MentionListInner<T>(
-  { items, command, emptyLabel, itemKey, renderItem }: MentionListProps<T>,
+  { items, command, emptyLabel, itemKey, renderItem, query }: MentionListProps<T>,
   ref: React.ForwardedRef<MentionListRef>,
 ): React.JSX.Element {
-  const [selected, setSelected] = React.useState(0);
+  // The highlight is the row the reader moved to, kept by its key: rows that
+  // come and go around it (an upload finishing, a collaborator's edit, a
+  // fresh array for the same rows) leave it where it is. It goes back to the
+  // first row when the reader changes the query, or when its row is gone.
+  const [picked, setPicked] = React.useState<{ key: string; query: string } | null>(null);
+  const at = picked !== null && picked.query === query ? items.findIndex((item) => itemKey(item) === picked.key) : -1;
+  const selected = at >= 0 ? at : 0;
   const listRef = React.useRef<HTMLDivElement>(null);
-  // Reset the highlight when the row CONTENT changes — never on array
-  // identity. @tiptap/suggestion re-runs items() (a fresh array) whenever the
-  // suggestion range MOVES, and a collaborator typing anywhere before the `@`
-  // in the shared prompt moves it; an identity-keyed reset made that remote
-  // keystroke silently snap the highlight to row 0 so Enter inserted the
-  // wrong reference (adversarial round-1).
-  const contentKey = items.map(itemKey).join('\u001f');
-  React.useEffect(() => setSelected(0), [contentKey]);
+  const select = React.useCallback(
+    (index: number): void => {
+      const item = items[index];
+      if (item !== undefined) setPicked({ key: itemKey(item), query });
+    },
+    [items, itemKey, query],
+  );
   // Keep the keyboard-selected row visible (I1, user 2026-07-12). The popup's
   // own viewport is its only scrolling ancestor while the popup is on screen,
   // so `block: 'nearest'` moves nothing else.
@@ -82,11 +90,11 @@ function MentionListInner<T>(
       onKeyDown: (event: KeyboardEvent): boolean => {
         if (items.length === 0) return false;
         if (event.key === 'ArrowUp') {
-          setSelected((s) => (s + items.length - 1) % items.length);
+          select((selected + items.length - 1) % items.length);
           return true;
         }
         if (event.key === 'ArrowDown') {
-          setSelected((s) => (s + 1) % items.length);
+          select((selected + 1) % items.length);
           return true;
         }
         if (event.key === 'Enter' || event.key === 'Tab') {
@@ -96,7 +104,7 @@ function MentionListInner<T>(
         return false;
       },
     }),
-    [items, selected, pick],
+    [items, selected, pick, select],
   );
 
   if (items.length === 0) {
@@ -128,7 +136,7 @@ function MentionListInner<T>(
             type='button'
             data-testid={`reference-mention-option-${itemKey(item)}`}
             onClick={() => pick(i)}
-            onMouseEnter={() => setSelected(i)}
+            onMouseEnter={() => select(i)}
             // justify-start: the Button base centres its content, and these
             // rows read from the left edge.
             className={

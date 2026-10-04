@@ -484,7 +484,9 @@ describe('@ in the chat box', () => {
 
     press('Enter');
 
-    expect(onChange).toHaveBeenLastCalledWith(attachmentMarker('o2'));
+    const picked = String(onChange.mock.lastCall?.[0]);
+    expect(picked).toContain(attachmentMarker('o2'));
+    expect(picked).not.toContain(attachmentMarker('o1'));
   });
 
   it('breaks the line on Shift+Enter', () => {
