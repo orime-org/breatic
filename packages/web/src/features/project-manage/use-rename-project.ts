@@ -6,7 +6,7 @@ import {
   useQueryClient,
   type UseMutationResult,
 } from '@tanstack/react-query';
-import { toast } from '@web/lib/toast';
+import { toastFailure } from '@web/features/project-manage/toast-failure';
 
 import { invalidateProjectListings, projectsApi } from '@web/data/api/projects';
 import type { ProjectDetail } from '@web/data/api/projects';
@@ -46,8 +46,7 @@ export function useRenameProject(
       if (ctx && 'previous' in ctx) {
         queryClient.setQueryData(['project', projectId], ctx.previous);
       }
-      const message = err instanceof Error ? err.message : '';
-      toast.error(t('project.header.renameFailed'), { description: message });
+      toastFailure(t('project.header.renameFailed'))(err);
     },
     onSuccess: () => invalidateProjectListings(queryClient, projectId),
   });

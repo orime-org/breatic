@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { invalidateProjectListings, projectsApi } from '@web/data/api';
 import { useTranslation } from '@web/i18n/use-translation';
+import { toastFailure } from '@web/features/project-manage/toast-failure';
 import { toast } from '@web/lib/toast';
 
 /** A project's server-side management actions, each settling with a toast. */
@@ -32,46 +33,30 @@ export function useProjectActions(projectId: string): ProjectActions {
   const t = useTranslation();
   const queryClient = useQueryClient();
 
-  /**
-   * Refetch everything that shows which list this project is in.
-   */
-  const refresh = (): void => {
-    invalidateProjectListings(queryClient, projectId);
-  };
-
-  /**
-   * Toast a failed action with the server's own reason underneath.
-   * @param title - The action's failure headline.
-   * @returns The `onError` handler.
-   */
-  const failWith = (title: string) => (err: unknown): void => {
-    const message = err instanceof Error ? err.message : '';
-    toast.error(title, { description: message || undefined });
-  };
 
   const duplicate = useMutation({
     mutationFn: () => projectsApi.duplicate(projectId),
     onSuccess: (copy) => {
-      refresh();
+      invalidateProjectListings(queryClient, projectId);
       toast.success(t('studio.container.card.duplicated', { name: copy.name }));
     },
-    onError: failWith(t('studio.container.card.duplicateFailed')),
+    onError: toastFailure(t('studio.container.card.duplicateFailed')),
   });
   const archive = useMutation({
     mutationFn: () => projectsApi.archive(projectId),
     onSuccess: () => {
-      refresh();
+      invalidateProjectListings(queryClient, projectId);
       toast.success(t('studio.container.card.archived'));
     },
-    onError: failWith(t('studio.container.card.archiveFailed')),
+    onError: toastFailure(t('studio.container.card.archiveFailed')),
   });
   const restore = useMutation({
     mutationFn: () => projectsApi.restore(projectId),
     onSuccess: () => {
-      refresh();
+      invalidateProjectListings(queryClient, projectId);
       toast.success(t('studio.container.card.restored'));
     },
-    onError: failWith(t('studio.container.card.restoreFailed')),
+    onError: toastFailure(t('studio.container.card.restoreFailed')),
   });
 
   return {
