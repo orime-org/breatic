@@ -14,7 +14,7 @@
 import type { Editor } from '@tiptap/core';
 import { useEditor } from '@tiptap/react';
 import * as React from 'react';
-import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
+import { CHAT_MESSAGE_MAX_CHARS, getLocale } from '@breatic/shared';
 
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { makeMentionSuggestion } from '@web/features/reference-mention/mention-suggestion';
@@ -59,6 +59,9 @@ export interface ComposerEditorInput {
  */
 export function useComposerEditor(input: ComposerEditorInput): Editor | null {
   const t = useTranslation();
+  // The language now on screen. `t` itself never changes when it does, so the
+  // effects that must follow the language list this instead.
+  const locale = getLocale();
   // Read through one ref: the editor is built once, and all of these change
   // under it.
   const live = React.useRef({ ...input, t });
@@ -119,14 +122,14 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
             // Pasted files are attached, as if picked with the attach button,
             // and the clipboard's text is left out of the box: copying a file
             // also puts its name there.
-            if (!live.current.readOnly) live.current.onPasteFiles(files);
+            live.current.onPasteFiles(files);
             return true;
           }
           // The canvas's own clipboard text becomes an attachment; text that
           // only looks like it is pasted as the words it is.
           const nodes = parseClipboardNodes(event.clipboardData?.getData('text/plain') ?? '');
           if (nodes !== null) {
-            if (!live.current.readOnly) live.current.onPasteCanvas(nodes);
+            live.current.onPasteCanvas(nodes);
             return true;
           }
           // A paste is measured as what it would insert -- blocks count once,
@@ -138,7 +141,8 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
           const room = CHAT_MESSAGE_MAX_CHARS - draftLength(view.state.tr.deleteSelection().doc, attached);
           live.current.onRefusedAtLimit();
           const words = slice.content.textBetween(0, slice.content.size, '\n');
-          if (room > 0) view.dispatch(view.state.tr.insertText(words.slice(0, room)));
+          // Cut by character: a code-unit cut can split an emoji in half.
+          if (room > 0) view.dispatch(view.state.tr.insertText(Array.from(words).slice(0, room).join('')));
           return true;
         },
       },
@@ -168,13 +172,13 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
   React.useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     syncBlocks(editor, input.attachments, labelNow);
-  }, [editor, input.attachments, t]);
+  }, [editor, input.attachments, locale]);
 
   // An open list reads the tray and the language live, and neither changes
   // through an edit in the box.
   React.useEffect(() => {
     refreshList.current?.();
-  }, [input.attachments, t]);
+  }, [input.attachments, locale]);
 
   // Read-only keeps the keyboard: ProseMirror drops `contenteditable` and
   // nothing else, so the box needs a tab stop of its own to keep focus.

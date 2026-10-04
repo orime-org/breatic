@@ -379,7 +379,6 @@ export function makeMentionSuggestion<T>(
           place(props.clientRect);
         },
         onKeyDown: (props: SuggestionKeyDownProps): boolean => {
-          if (props.event.key === 'Escape') return true;
           // A list the reader closed (or never saw) takes no keys: Enter is
           // theirs again, to send or to break the line.
           if (!visible) return false;
