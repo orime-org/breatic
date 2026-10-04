@@ -302,7 +302,7 @@ describe("what the guide says", () => {
     // storyboard-durations.ts stepShot: later shots first, then earlier ones.
     expect(panel).toMatch(/the minus gives one to the shot after it, or to the one before it on the last shot/);
     // storyboard-durations.ts addShot: null when total <= shot count, whatever each shot holds.
-    expect(panel).toMatch(/"Add shot" is greyed, with the reason to its left, "Up to 6 shots" at six shots/);
+    expect(panel).toMatch(/When no shot can be added, "Add shot" gives way to "Up to 6 shots" at six shots/);
     expect(panel).toMatch(/"Lengthen the video to add a shot" when the video has no more seconds than there are shots/);
     // storyboard-durations.ts removeShot: re-splits only once the shots fit the seconds.
     expect(panel).toMatch(/remove shots until there are no more shots than seconds, and the rest are re-split, or pick a duration at least as long as the number of shots/);

@@ -578,7 +578,7 @@ export function renderProductGuide(): string {
       "model, re-splits the shots. A duration shortened in another mode can leave fewer seconds than shots; " +
       "they then stay as they were and pressing generate says they do not add up: remove shots until there are " +
       "no more shots than seconds, and the rest are re-split, or pick a duration at least as long as the number " +
-      `of shots. ${quoted(t("canvas.generatePanel.storyboard.addShot"))} is greyed, with the reason to its left, ` +
+      `of shots. When no shot can be added, ${quoted(t("canvas.generatePanel.storyboard.addShot"))} gives way to ` +
       `${quoted(t("canvas.generatePanel.storyboard.shotCapReached", { max: 6 }))} at six shots, or ` +
       `${quoted(t("canvas.generatePanel.storyboard.noSecondToSpare"))} when the video has no more seconds than ` +
       "there are shots; " +

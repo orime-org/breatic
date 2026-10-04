@@ -3,8 +3,8 @@
 
 /**
  * What the multi-shot mode's controls say on their own: the shot list holds
- * only the shots, and the row under it adds one, or says why it cannot, to
- * the left of the button on the same line.
+ * only the shots, and the row under it shows either "+ Add shot" or, when a
+ * shot cannot be added, the reason in its place.
  */
 
 import { render, screen } from '@testing-library/react';
@@ -40,15 +40,11 @@ describe('the shot list', () => {
 });
 
 describe('adding a shot', () => {
-  it('greys the button and names the next step to its left on the same line when every second is spoken for', () => {
+  it('shows the reason in place of the button when every second is spoken for', () => {
     row('canvas.generatePanel.storyboard.noSecondToSpare');
 
-    const button = screen.getByTestId('generate-storyboard-add');
-    expect(button).toBeDisabled();
-    const reason = screen.getByTestId('generate-storyboard-add-blocked');
-    expect(reason).toHaveTextContent('Lengthen the video to add a shot');
-    expect(reason.parentElement).toBe(button.parentElement);
-    expect(reason.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByTestId('generate-storyboard-add')).toBeNull();
+    expect(screen.getByTestId('generate-storyboard-add-blocked')).toHaveTextContent('Lengthen the video to add a shot');
   });
 
   it('names the shot cap when no more shots are taken', () => {
@@ -64,13 +60,9 @@ describe('adding a shot', () => {
     expect(screen.queryByTestId('generate-storyboard-add-blocked')).toBeNull();
   });
 
-  it('sizes the button to its words and keeps it the same whether or not it can act', () => {
+  it('sizes the button to its words', () => {
     row();
-    const open = screen.getByTestId('generate-storyboard-add').className;
-    row('canvas.generatePanel.storyboard.noSecondToSpare');
-    const blocked = screen.getAllByTestId('generate-storyboard-add')[1]?.className;
 
-    expect(open).not.toMatch(/\b(flex-1|w-full)\b/);
-    expect(blocked).toBe(open);
+    expect(screen.getByTestId('generate-storyboard-add').className).not.toMatch(/\b(flex-1|w-full)\b/);
   });
 });

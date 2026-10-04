@@ -4,8 +4,8 @@
 /**
  * The multi-shot mode's controls, laid out after Kling's own: a list of shots
  * in place of the prompt box, each with its seconds and its own prompt box,
- * and under it a centred "+ Add shot" whose reason, when it cannot act, sits
- * to its left on the same line.
+ * and under it, centred, "+ Add shot", or in its place the reason a shot
+ * cannot be added.
  *
  * Presentational: which buttons can act is read off the duration rules in
  * `@breatic/shared`, and every write is a callback the container owns.
@@ -21,18 +21,18 @@ import { useTranslation } from '@web/i18n/use-translation';
 interface AddShotRowProps {
   /** The most shots the mode takes for this model. */
   maxShots: number;
-  /** The i18n key of why "+ Add shot" cannot act, or undefined when it can. */
+  /** The i18n key of why a shot cannot be added, or undefined when one can. */
   addBlocked: string | undefined;
   /** Add a shot at the end. */
   onAdd: () => void;
 }
 
 /**
- * The row under the shots: "+ Add shot" in the middle, sized to its words,
- * with the reason it cannot act to its left on the same line.
+ * The row under the shots: "+ Add shot" in the middle, sized to its words, or
+ * in its place, when a shot cannot be added, the reason why.
  * @param root0 - Component props.
  * @param root0.maxShots - The shot cap.
- * @param root0.addBlocked - Why "+ Add shot" cannot act.
+ * @param root0.addBlocked - Why a shot cannot be added.
  * @param root0.onAdd - Adds a shot.
  * @returns The row.
  */
@@ -43,24 +43,24 @@ export const AddShotRow = React.memo(function AddShotRow({
 }: AddShotRowProps): React.JSX.Element {
   const t = useTranslation();
   return (
-    <div data-testid='generate-storyboard-add-row' className='flex items-center justify-center gap-2'>
+    <div data-testid='generate-storyboard-add-row' className='flex items-center justify-center'>
       {addBlocked !== undefined ? (
-        <span data-testid='generate-storyboard-add-blocked' className='min-w-0 text-xs text-muted-foreground'>
+        <span data-testid='generate-storyboard-add-blocked' className='text-xs text-muted-foreground'>
           {t(addBlocked, { max: maxShots })}
         </span>
-      ) : null}
-      <Button
-        type='button'
-        variant='outline'
-        size='compact'
-        data-testid='generate-storyboard-add'
-        disabled={addBlocked !== undefined}
-        onClick={onAdd}
-        className='shrink-0 gap-1 text-xs disabled:cursor-not-allowed disabled:opacity-50'
-      >
-        <Plus className='h-3.5 w-3.5' aria-hidden='true' />
-        {t('canvas.generatePanel.storyboard.addShot')}
-      </Button>
+      ) : (
+        <Button
+          type='button'
+          variant='outline'
+          size='compact'
+          data-testid='generate-storyboard-add'
+          onClick={onAdd}
+          className='shrink-0 gap-1 text-xs'
+        >
+          <Plus className='h-3.5 w-3.5' aria-hidden='true' />
+          {t('canvas.generatePanel.storyboard.addShot')}
+        </Button>
+      )}
     </div>
   );
 });

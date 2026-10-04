@@ -201,7 +201,7 @@ test('writes the shots into the prompt for a model with no field for them', asyn
   expect(params).not.toHaveProperty('shots');
 });
 
-test('puts add-shot in the middle under the shots, its reason to its left when it cannot act', async () => {
+test('puts add-shot in the middle under the shots, and the reason there in its place when it cannot act', async () => {
   const nodeId = await seedVideoNode(page);
   await openGenerate(page, nodeId);
   await writeTwoShots(page, KLING);
@@ -218,12 +218,12 @@ test('puts add-shot in the middle under the shots, its reason to its left when i
   await page.getByTestId('generate-video-duration-option-3').click();
   await page.keyboard.press('Escape');
   await add.click();
-  await expect(add).toBeDisabled();
+  await expect(add).toHaveCount(0);
   const reason = page.getByTestId('generate-storyboard-add-blocked');
-  const [r, b] = [await reason.boundingBox(), await add.boundingBox()];
-  if (!r || !b) throw new Error('reason not laid out');
-  expect(r.x + r.width).toBeLessThanOrEqual(b.x);
-  expect(Math.abs(r.y + r.height / 2 - (b.y + b.height / 2))).toBeLessThan(2);
+  const [r, l] = [await reason.boundingBox(), await list.boundingBox()];
+  if (!r || !l) throw new Error('reason not laid out');
+  expect(r.y).toBeGreaterThan(l.y + l.height - 1);
+  expect(Math.abs(r.x + r.width / 2 - (l.x + l.width / 2))).toBeLessThan(2);
 });
 
 test('offers auto multi-shot on Kling in text to video only, and sends it', async () => {
