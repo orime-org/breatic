@@ -14,6 +14,7 @@ import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
 import { useComposerEditor } from '@web/pages/project/chat/use-composer-editor';
 import { NO_ATTACHMENTS, type TrayItem } from '@web/stores/chat-attachments';
 import type { TurnPhase } from '@web/stores/conversation-runtime';
+import type { ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 
 /**
  * The id the at-limit line carries, so the box can point at it.
@@ -55,6 +56,8 @@ interface ChatComposerProps {
   onAbort?: () => void;
   /** Called with the files the reader picked. */
   onAttachFiles?: (files: File[]) => void;
+  /** Called with canvas nodes pasted into the box. */
+  onPasteCanvas?: (nodes: ClipboardNode[]) => void;
   /** Called with an item's id to take it out. */
   onRemoveAttachment?: (id: string) => void;
 }
@@ -88,6 +91,7 @@ interface ChatComposerProps {
  * @param root0.onSubmit - Called to send the draft message.
  * @param root0.onAbort - Called to abort the in-flight streaming response.
  * @param root0.onAttachFiles - Called with the files the reader picked.
+ * @param root0.onPasteCanvas - Called with canvas nodes pasted into the box.
  * @param root0.onRemoveAttachment - Called with an item's id to take it out.
  * @returns The composer card with attachments, the box, and action buttons.
  */
@@ -102,6 +106,7 @@ function ChatComposerInner({
   onSubmit,
   onAbort,
   onAttachFiles,
+  onPasteCanvas,
   onRemoveAttachment,
 }: ChatComposerProps): React.JSX.Element {
   const t = useTranslation();
@@ -126,6 +131,7 @@ function ChatComposerInner({
     onChange,
     onEnter: () => submitRef.current(),
     onPasteFiles: (files) => onAttachFiles?.(files),
+    onPasteCanvas: (nodes) => onPasteCanvas?.(nodes),
     onRefusedAtLimit: atLimit.sayAgain,
   });
 
