@@ -200,6 +200,19 @@ test('each press is one undo step', async () => {
   await expect.poll(() => stored(mover, id)).toMatchObject({ x: 200 });
 });
 
+test('a held arrow key is one undo step for the whole move', async () => {
+  const id = `h-${Date.now()}`;
+  await seed(mover, 'image', id, { x: 200, y: 200 });
+  await expect.poll(() => drawnAt(mover, id)).not.toBeNull();
+  await clickNode(id);
+  // A second `down` on a key already held is sent with `repeat: true`.
+  for (let i = 0; i < 4; i += 1) await mover.keyboard.down('ArrowRight');
+  await mover.keyboard.up('ArrowRight');
+  await expect.poll(() => stored(mover, id)).toMatchObject({ x: 220 });
+  await mover.keyboard.press('ControlOrMeta+z');
+  await expect.poll(() => stored(mover, id)).toMatchObject({ x: 200, y: 200 });
+});
+
 test('a marquee selection moves together', async () => {
   const a = `a-${Date.now()}`;
   const b = `b-${Date.now()}`;
