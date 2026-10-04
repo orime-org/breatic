@@ -49,6 +49,60 @@ function titleOf(chip: ChatAttachedChip): string {
   return Array.isArray(nodes) ? `${chip.type}, ${nodes.length} nodes` : chip.type;
 }
 
+/** Where a reference to an attachment sits in the typed words. */
+const MARKER = /@\[attachment:([^\]\s]+)\]/g;
+
+/**
+ * A reference to an attachment, as it is written into the typed words.
+ * @param id - The attachment it points at.
+ * @returns The marker.
+ */
+export function attachmentMarker(id: string): string {
+  return `@[attachment:${id}]`;
+}
+
+/**
+ * Rewrite each marker that points at one of this message's attachments.
+ * Markers for anything else stay as the text they are.
+ * @param chips - What the user attached to the message, in order.
+ * @param message - What the user typed.
+ * @param write - What a marker becomes, given its attachment and its place.
+ * @returns The rewritten words.
+ */
+function rewriteMarkers(
+  chips: readonly ChatAttachedChip[],
+  message: string,
+  write: (chip: ChatAttachedChip, n: number) => string,
+): string {
+  if (chips.length === 0) return message;
+  return message.replace(MARKER, (marker, id: string) => {
+    const at = chips.findIndex((c) => c.id === id);
+    const chip = chips[at];
+    return chip === undefined ? marker : write(chip, at + 1);
+  });
+}
+
+/**
+ * The typed words with each reference read as its attachment's name.
+ * @param chips - What the user attached to the message.
+ * @param message - What the user typed.
+ * @returns The words as plain text.
+ */
+export function messageWithNames(chips: readonly ChatAttachedChip[], message: string): string {
+  return rewriteMarkers(chips, message, (chip) => titleOf(chip));
+}
+
+/**
+ * How long the typed words are, counting each reference as one character, the
+ * way the reader sees it in the box.
+ * @param chips - What the user attached to the message.
+ * @param message - What the user typed.
+ * @returns The length.
+ */
+export function messageLength(chips: readonly ChatAttachedChip[], message: string): number {
+  return rewriteMarkers(chips, message, () => "@").length;
+}
+
 /**
  * The attached items, laid out the way the model reads them.
  *
@@ -61,7 +115,10 @@ function titleOf(chip: ChatAttachedChip): string {
 export function attachmentSection(chips: readonly ChatAttachedChip[]): string {
   if (chips.length === 0) return "";
   const items = chips
-    .map((c) => `### ${titleOf(c)} (type: ${c.type})\n${JSON.stringify(c.data_snapshot, null, 2)}`)
+    .map(
+      (c, i) =>
+        `### Attachment ${String(i + 1)}: ${titleOf(c)} (type: ${c.type})\n${JSON.stringify(c.data_snapshot, null, 2)}`,
+    )
     .join("\n\n");
   return `## Attached content (a snapshot taken when it was attached)\n\n${items}`;
 }
@@ -74,5 +131,6 @@ export function attachmentSection(chips: readonly ChatAttachedChip[]): string {
  */
 export function userTurnForModel(chips: readonly ChatAttachedChip[], message: string): string {
   if (chips.length === 0) return message;
-  return `${attachmentSection(chips)}\n\n## User message\n\n${message}`;
+  const words = rewriteMarkers(chips, message, (chip, n) => `[Attachment ${String(n)}: ${titleOf(chip)}]`);
+  return `${attachmentSection(chips)}\n\n## User message\n\n${words}`;
 }

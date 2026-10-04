@@ -92,7 +92,7 @@ describe("an unnamed piece of the canvas", () => {
       data_snapshot: { nodes: [{ id: "a" }, { id: "b" }], edges: [] },
     };
 
-    expect(attachmentSection([piece])).toContain("### canvas, 2 nodes (type: canvas)");
+    expect(attachmentSection([piece])).toContain("### Attachment 1: canvas, 2 nodes (type: canvas)");
   });
 });
 
