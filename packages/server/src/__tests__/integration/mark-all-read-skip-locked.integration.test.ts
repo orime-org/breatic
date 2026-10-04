@@ -108,6 +108,21 @@ describe("markAllRead", () => {
     }
   });
 
+  it("leaves a request the user still has to answer unread", async () => {
+    const user = await insertUser();
+    const news = await insertUnread(user);
+    const waiting = await notificationRepo.create({
+      userId: user,
+      type: "project.join_request",
+      payload: { shareToken: "tok" },
+      expiresAt: new Date(Date.now() + 24 * 3600_000),
+    });
+
+    expect(await notificationRepo.markAllRead(user)).toBe(1);
+    expect(await isUnread(news)).toBe(false);
+    expect(await isUnread(waiting.id)).toBe(true);
+  });
+
   it("marks all of a user's unread rows and leaves another user's alone", async () => {
     const user = await insertUser();
     const stranger = await insertUser();
