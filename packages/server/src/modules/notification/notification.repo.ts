@@ -250,13 +250,14 @@ export async function retire(id: string, tx?: DbTx): Promise<void> {
  * still have to answer: the bell lists unread rows only, so marking a request
  * read would take it out of the bell unanswered.
  *
- * Rows another transaction holds are skipped, not waited on. Archiving a
- * project and re-addressing requests on an owner change retire several bell
- * entries across separate statements, in no fixed order, so a bulk update that
- * waited on one row while holding another could close a cycle with them
- * (40P01). Every writer to this table only sets `read_at`, so a held row is
- * being marked read by its holder; if that holder rolls back, the row stays
- * unread until the next "mark all read".
+ * Rows another transaction holds are skipped, not waited on. Today the rows
+ * it touches are news only, and the transactions that retire several entries
+ * across statements (archiving, re-addressing requests on an owner change)
+ * touch requests only, so the two never lock the same rows; skipping keeps it
+ * from waiting on, and deadlocking with, any holder should that ever change.
+ * Every writer to this table only sets `read_at`, so a held row is being
+ * marked read by its holder; if that holder rolls back, the row stays unread
+ * until the next "mark all read".
  * @param userId - Inbox owner whose unread notifications to clear
  * @returns count of rows this call marked read.
  */

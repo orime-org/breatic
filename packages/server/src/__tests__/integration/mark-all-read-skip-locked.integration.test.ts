@@ -2,16 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * "Mark all read" never waits on a notification row another transaction holds
- * — real Postgres.
+ * "Mark all read" — real Postgres.
  *
- * Several transactions retire more than one bell entry across separate
- * statements (archiving a project, re-addressing requests when an owner
- * changes), so they lock notification rows in no fixed order. A bulk update
- * that waits on one row while holding another can close a cycle with any of
- * them, and Postgres breaks that with 40P01. Here another connection holds one
- * of the user's unread rows: mark-all-read has to come back without waiting,
- * having marked every other row and left the held one to its holder.
+ * It marks the user's unread news and leaves requests they still have to
+ * answer, expired ones included. It never waits on a row another transaction
+ * holds: here another connection holds one of the user's unread news rows (as
+ * a concurrent mark-read would), and mark-all-read has to come back without
+ * waiting, having marked every other row and left the held one to its holder.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
