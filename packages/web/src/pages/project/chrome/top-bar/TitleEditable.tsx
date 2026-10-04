@@ -37,7 +37,7 @@ interface TitleEditableProps {
    * Whether the title is editable (default true). When false the title is
    * a plain read-only span — no double-click-to-edit, no keyboard edit
    * affordance, not exposed as a focusable textbox. The project page passes
-   * `canManageMeta`; the server's `assertCanManageMeta` is the real
+   * `canManageMeta`; the server's `assertMayManage` is the real
    * enforcement, this is UX only.
    */
   editable?: boolean;

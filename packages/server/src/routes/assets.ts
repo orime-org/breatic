@@ -247,7 +247,7 @@ assets.post(
     // cover follows the cover rule (the studio admin may set it without being
     // on the project); a studio's own picture is its admin's to change.
     if (body.project_id !== undefined && body.purpose === "project_cover") {
-      await projectService.assertCanManageMeta(body.project_id, user.id);
+      await projectService.assertMayManage(body.project_id, user.id);
     } else if (body.project_id !== undefined) {
       await projectService.assertAccess(body.project_id, user.id, "editor");
     } else {

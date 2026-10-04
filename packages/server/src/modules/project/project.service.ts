@@ -201,10 +201,6 @@ async function studioProjectRoom(studioId: string, tx: DbTx): Promise<ProjectRoo
  * Today only personal studios exist (single admin), so only `admin` is
  * exercised against real data; the `maintainer` branch activates with team
  * studios.
- *
- * Who may copy, archive or restore an existing project is decided by
- * `projectPermissions` (projectGovernance.ts); transferring ownership asks the
- * project's `owner` role.
  * @param userId - Authenticated user UUID
  * @param studioId - The studio the project would be created in
  * @throws {ForbiddenError} if the caller is not an admin/maintainer of the studio
@@ -347,7 +343,7 @@ export async function listByStudioSlug(
 /**
  * Update mutable project metadata.
  *
- * Gated by {@link assertCanManageMeta}: the studio's admin or the project's
+ * Gated by {@link assertMayManage}: the studio's admin or the project's
  * owner, on a live project.
  * @param projectId - Project UUID to update
  * @param userId - Authenticated user UUID
@@ -368,7 +364,7 @@ export async function update(
     description?: string | null;
   },
 ): Promise<ProjectEntity> {
-  await assertCanManageMeta(projectId, userId);
+  await assertMayManage(projectId, userId);
   return writeMeta(projectId, patch);
 }
 
@@ -402,8 +398,9 @@ async function managementFacts(projectId: string, userId: string): Promise<Manag
 }
 
 /**
- * Require the caller may rename the project and change its cover — also the
- * rule the cover upload ticket checks before it signs anything.
+ * Require the caller may manage the project as an object: rename it, change
+ * its cover (the cover upload ticket checks this before it signs anything)
+ * and duplicate it.
  *
  * Asked as of a live project, so someone who may manage it hears that it is
  * archived (409) and someone who may not hears that they may not (403).
@@ -415,7 +412,7 @@ async function managementFacts(projectId: string, userId: string): Promise<Manag
  * @throws {ForbiddenError} when the caller is in the studio but may not manage it
  * @throws {ConflictError} when the project is archived
  */
-export async function assertCanManageMeta(projectId: string, userId: string): Promise<ProjectEntity> {
+export async function assertMayManage(projectId: string, userId: string): Promise<ProjectEntity> {
   const { project, ...roles } = await managementFacts(projectId, userId);
   if (!mayManage(roles)) throw new ForbiddenError(t("server.error.forbidden"));
   if (project.archivedAt !== null) throw new ConflictError(t("server.project.archived"));
@@ -445,7 +442,7 @@ async function writeMeta(
  *
  * The URL is read off the ledger row, so the cover can only name an image the
  * project's own studio stores. The picture it replaces stays in the ledger.
- * Gated like a rename (see {@link assertCanManageMeta}); this is the only
+ * Gated like a rename (see {@link assertMayManage}); this is the only
  * place `thumbnail_url` is written besides duplicating a project.
  * @param projectId - Project UUID
  * @param userId - Authenticated user UUID
@@ -461,7 +458,7 @@ export async function setCover(
   userId: string,
   assetId: string,
 ): Promise<ProjectEntity> {
-  const project = await assertCanManageMeta(projectId, userId);
+  const project = await assertMayManage(projectId, userId);
   const url = await pictureUrl(project.studioId, assetId);
   return writeMeta(projectId, { thumbnailUrl: url });
 }
@@ -495,9 +492,7 @@ export async function duplicate(
   sourceId: string,
   userId: string,
 ): Promise<ProjectEntity> {
-  const { project: current, ...roles } = await managementFacts(sourceId, userId);
-  if (!mayManage(roles)) throw new ForbiddenError(t("server.error.forbidden"));
-  if (current.archivedAt !== null) throw new ConflictError(t("server.project.archived"));
+  await assertMayManage(sourceId, userId);
 
   return db.transaction(async (tx) => {
     // Read first, because the studio to lock is the SOURCE's — a copy lands
