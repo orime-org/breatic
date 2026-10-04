@@ -93,9 +93,15 @@ export function DocumentSpace({
   // empty — and what fills the space is a statement of the very problem.
   const unavailable = refused && !hasEverSynced;
 
-  // Told once per transition, not re-announced on every render.
+  // Told once per transition into it. Effects run again when a hidden Space is
+  // shown (inner#1235), and that is not a second refusal.
+  const refusalTold = React.useRef(false);
   React.useEffect(() => {
-    if (refused && hasEverSynced) toast.error(t('spaces.document.refusedNotice'));
+    const refusedWithContent = refused && hasEverSynced;
+    if (refusedWithContent && !refusalTold.current) {
+      toast.error(t('spaces.document.refusedNotice'));
+    }
+    refusalTold.current = refusedWithContent;
   }, [refused, hasEverSynced, t]);
 
   // The editor belongs to the document, not to this component: switching Space

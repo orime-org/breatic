@@ -3,6 +3,7 @@
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
+import { Activity } from 'react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
@@ -139,6 +140,31 @@ describe('DocumentSpace', () => {
       ).toBe('true'),
     );
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
+  });
+
+  // A Space switched away from is hidden and shown again, which runs its
+  // effects once more (inner#1235 C11). The refusal did not happen again.
+  it('tells a refusal once, not again each time its Space is shown', async () => {
+    socketState.hasEverSynced = true;
+    socketState.status = 'authFailed';
+    socketState.authFailedReason = 'Forbidden';
+    socketState.writeAccess = 'denied';
+    const inSpace = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+      <Activity mode={mode}>
+        <DocumentSpace projectId='p1' spaceId='doc-revoked-shown' />
+      </Activity>
+    );
+    const { rerender } = render(inSpace('visible'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      rerender(inSpace('hidden'));
+    });
+    await act(async () => {
+      rerender(inSpace('visible'));
+    });
+
+    expect(toast.error).toHaveBeenCalledTimes(1);
   });
 
   it('leaves the degrade notice to the outlet, and still takes typing', async () => {
