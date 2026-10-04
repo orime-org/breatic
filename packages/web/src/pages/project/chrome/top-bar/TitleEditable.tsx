@@ -19,11 +19,10 @@ interface TitleEditableProps {
   /**
    * How many characters the name may run to.
    *
-   * Defaults to what a project name may hold, which is what this box was
-   * written for. A caller whose thing is stored with a different limit passes
-   * its own -- otherwise opening this box and closing it again would shorten
-   * a name that is perfectly legal where it lives, without the reader having
-   * changed a thing.
+   * Defaults to 80, a display cap. A caller whose thing is stored with a
+   * limit of its own passes it -- otherwise opening this box and closing it
+   * again would shorten a name that is perfectly legal where it lives,
+   * without the reader having changed a thing.
    */
   maxLength?: number;
   /**
@@ -96,7 +95,7 @@ const DEFAULT_TITLE_MAX_WIDTH = 320;
  * @param root0.value - Current project title shown in static mode and seeded as the edit draft.
  * @param root0.onChange - Called with the trimmed, length-capped new title once the user commits a rename.
  * @param root0.maxWidth - Visible width cap in pixels; defaults to 320.
- * @param root0.maxLength - How many characters the name may run to; defaults to what a project name may hold.
+ * @param root0.maxLength - How many characters the name may run to; defaults to 80, a display cap.
  * @param root0.placeholder - What to show while the thing has no name of its own.
  * @param root0.editable - Whether the title can be edited; defaults to true. When false the span is read-only.
  * @returns the static truncated title span, or the editing input while in edit mode.

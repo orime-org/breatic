@@ -6,6 +6,7 @@ import type { ConnectionStatus } from '@web/data/yjs/use-socket';
 
 import { ArrowLeft, Star } from 'lucide-react';
 import type * as React from 'react';
+import { PROJECT_NAME_MAX_CHARS } from '@breatic/shared';
 import { Link } from 'react-router-dom';
 
 import { chromeBarBox } from '@web/pages/project/chrome/bar-box';
@@ -140,6 +141,7 @@ export function TopBar({
         <TitleEditable
           value={projectName}
           onChange={onRename}
+          maxLength={PROJECT_NAME_MAX_CHARS}
           editable={canRename}
         />
         <RoleTag role={actualRole} projectId={projectId} frozen={archived} />

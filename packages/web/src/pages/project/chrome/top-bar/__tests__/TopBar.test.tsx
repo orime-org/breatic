@@ -230,6 +230,17 @@ describe('TopBar', () => {
       expect(await screen.findByTestId('title-input')).toBeInTheDocument();
     });
 
+    it('opening and leaving a long title without typing keeps the whole name', async () => {
+      const user = userEvent.setup();
+      const long = 'n'.repeat(200);
+      const { onRename } = setup({ projectName: long });
+      await user.dblClick(screen.getByTestId('title-display'));
+      const input = await screen.findByTestId('title-input');
+      expect((input as HTMLInputElement).value).toBe(long);
+      await user.keyboard('{Enter}');
+      expect(onRename).not.toHaveBeenCalled();
+    });
+
     it('a reader who may not rename stays on the plain title, an editor included', async () => {
       const user = userEvent.setup();
       setup({ role: 'editor', canRename: false, projectName: 'Old' });
