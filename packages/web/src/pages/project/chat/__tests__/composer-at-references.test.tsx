@@ -7,6 +7,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
+import { undo } from '@tiptap/pm/history';
 import { attachmentMarker, messageLength } from '@breatic/shared';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
@@ -129,6 +130,27 @@ describe('@ in the chat box', () => {
 
     expect(screen.queryByTestId('chat-reference')).toBeNull();
     expect(onChange.mock.lastCall?.[0]).not.toContain(attachmentMarker('a1'));
+  });
+
+  it('does not let an undo bring back a block whose attachment is gone', () => {
+    const draft = `look ${attachmentMarker('a1')} here`;
+    const { rerender } = setup({ draft, attachments: [cover] });
+    act(() => {
+      const e = box();
+      let at = -1;
+      e.state.doc.descendants((n, pos) => {
+        if (n.type.name === 'referenceMention') at = pos;
+      });
+      e.view.dispatch(e.state.tr.delete(at, at + 1));
+    });
+    rerender({ draft: 'look  here', attachments: [] });
+
+    act(() => {
+      const e = box();
+      undo(e.state, e.view.dispatch);
+    });
+
+    expect(screen.queryByTestId('chat-reference')).toBeNull();
   });
 
   it('keeps the block and shows the new name when the attachment is replaced', () => {
