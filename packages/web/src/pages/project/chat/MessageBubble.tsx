@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { messageWithNames } from '@breatic/shared';
 
 import { cn } from '@web/lib/utils';
 
@@ -12,6 +13,7 @@ import { AssetRow } from '@web/pages/project/chat/AssetRow';
 import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
 import { ToolRunLine } from '@web/pages/project/chat/ToolRunLine';
 import { TurnActions } from '@web/pages/project/chat/TurnActions';
+import { UserWords } from '@web/pages/project/chat/user-words';
 import { FailedSteps, TurnEnding } from '@web/pages/project/chat/TurnEnding';
 import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
 import type { ChatMessage } from '@web/pages/project/chat/types';
@@ -141,9 +143,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                 otherwise. Measured in a browser: a 159-character URL in a
                 300px column drew 787px wide, 487 of them outside the bubble.
                 `.chat-markdown` answers the same thing on the reply's side. */}
-              {isUser ? (
-                <span className='whitespace-pre-wrap break-words'>{message.content}</span>
-              ) : null}
+              {isUser ? <UserWords content={message.content} attachments={message.attachments} /> : null}
               {!isUser && message.content ? (
                 <MarkdownMessage
                   content={message.content}
@@ -197,7 +197,7 @@ export const MessageBubble = React.memo(function MessageBubble({
             line too, so a turn that searched and said nothing still has one. */}
         {running || (message.content === '' && message.sources === undefined) ? null : (
           <TurnActions
-            text={message.content}
+            text={isUser ? messageWithNames(message.attachments ?? [], message.content) : message.content}
             {...(isUser ? { own: true } : {})}
             {...(isUser && message.sentAt !== undefined ? { sentAt: message.sentAt } : {})}
             {...(!isUser && message.sources !== undefined ? { sources: message.sources } : {})}

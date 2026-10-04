@@ -20,6 +20,10 @@ import { createLocalUserInputTracker } from '@web/features/reference-mention/ref
 import { createReferenceMentionRangeHighlight } from '@web/features/reference-mention/reference-mention-range-decoration';
 import type { TrayItem } from '@web/stores/chat-attachments';
 
+/** How a reference block looks, in the box and in a sent message alike. */
+export const REFERENCE_BLOCK_CLASS =
+  'reference-mention inline-flex h-[18px] max-w-[10rem] select-none items-center overflow-hidden rounded-content-xs border border-border bg-muted px-1.5 align-[-1.25px] text-xs text-foreground';
+
 /** Attr key carrying the attachment's name as the block shows it. */
 export const CHAT_REFERENCE_LABEL_ATTR = 'label';
 
@@ -81,8 +85,7 @@ export const ChatReference = Node.create<ChatReferenceOptions>({
         ...HTMLAttributes,
         'data-reference-mention': '',
         'data-testid': 'chat-reference',
-        class:
-          'reference-mention inline-flex h-[18px] max-w-[10rem] select-none items-center overflow-hidden rounded-content-xs border border-border bg-muted px-1.5 align-[-1.25px] text-xs text-foreground',
+        class: REFERENCE_BLOCK_CLASS,
       },
       ['span', { class: 'truncate' }, String(node.attrs[CHAT_REFERENCE_LABEL_ATTR] ?? '')],
     ];
