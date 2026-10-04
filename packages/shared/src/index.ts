@@ -284,6 +284,7 @@ export {
   chatRenameConversationSchema,
   CHAT_MESSAGE_MAX_CHARS,
   CONVERSATION_TITLE_MAX_CHARS,
+  PROJECT_NAME_MAX_CHARS,
 } from "@shared/schemas/index.js";
 
 export type {

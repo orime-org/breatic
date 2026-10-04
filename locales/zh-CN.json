@@ -77,7 +77,8 @@
       "only_viewer_can_request_upgrade": "只有 Viewer 可以申请角色升级",
       "no_active_owner": "这个 Project 没有在任的 Owner",
       "not_found": "找不到这个 Project",
-      "archived": "这个 Project 已归档，只能查看。"
+      "archived": "这个 Project 已归档，只能查看。",
+      "copy_name": "副本 - {name}"
     },
     "payment": {
       "tier_not_found": "未知的套餐：{tier}。可选：{available}",

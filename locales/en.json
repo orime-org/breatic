@@ -74,7 +74,8 @@
       "only_viewer_can_request_upgrade": "Only a Viewer can request a role upgrade",
       "no_active_owner": "This project has no active Owner",
       "not_found": "Project not found",
-      "archived": "This project is archived and can only be viewed."
+      "archived": "This project is archived and can only be viewed.",
+      "copy_name": "Copy of {name}"
     },
     "text_tool": {
       "already_running": "Another text tool is already running. Please wait."

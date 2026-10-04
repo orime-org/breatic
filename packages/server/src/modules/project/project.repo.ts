@@ -506,7 +506,7 @@ export async function updateProjectMeta(
  * Duplicate a project.
  *
  * Writes, in the caller's transaction:
- *   - The `projects` row (name with " (copy)" suffix, same
+ *   - The `projects` row (named by the caller, same
  *     description / thumbnail, same `studio_id`, new
  *     `created_by_user_id` = caller)
  *   - One `project_members` row with `role='owner'` for the caller
@@ -542,19 +542,21 @@ export async function updateProjectMeta(
  *   ownership of the source; that happens in project.service.ts)
  * @param source - The project being copied, already loaded and verified live
  *   by the caller (which needs its `studioId` to know what to lock)
+ * @param name - The copy's name, already fitted to the column by the caller
  * @returns The freshly created project entity
  */
 export async function duplicateProject(
   tx: Tx,
   creatorUserId: string,
   source: ProjectEntity,
+  name: string,
 ): Promise<ProjectEntity> {
   const inserted = await tx
     .insert(projects)
     .values({
       studioId: source.studioId,
       createdByUserId: creatorUserId,
-      name: `${source.name} (copy)`,
+      name,
       slug: `${source.slug}-copy`.slice(0, 120),
       description: source.description,
       thumbnailUrl: source.thumbnailUrl,

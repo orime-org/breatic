@@ -63,13 +63,13 @@ describe('useProjectActions', () => {
   }
 
   it('names the copy in the duplicate toast', async () => {
-    vi.mocked(projectsApi.duplicate).mockResolvedValue({ name: 'Alley (copy)' } as never);
+    vi.mocked(projectsApi.duplicate).mockResolvedValue({ name: 'Copy of Alley' } as never);
     const { result } = setup();
 
     act(() => result.current.duplicate());
 
     await waitFor(() =>
-      expect(toast.success).toHaveBeenCalledWith('Duplicated as “Alley (copy)”'),
+      expect(toast.success).toHaveBeenCalledWith('Duplicated as “Copy of Alley”'),
     );
   });
 

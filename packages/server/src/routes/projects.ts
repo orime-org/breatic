@@ -30,7 +30,7 @@ import {
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import { projectAuthService } from "@breatic/core";
 import { NotFoundError } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { PROJECT_NAME_MAX_CHARS, t } from "@breatic/shared";
 import type { ProjectDetail } from "@breatic/shared";
 
 const projects = new Hono<{ Variables: AuthVariables }>();
@@ -257,7 +257,7 @@ projects.post(
 /** Body schema for `PATCH /projects/:id` — any subset of the mutable fields. */
 const projectUpdateSchema = z
   .object({
-    name: z.string().min(1).max(255).optional(),
+    name: z.string().min(1).max(PROJECT_NAME_MAX_CHARS).optional(),
     description: z.string().max(2000).nullable().optional(),
   })
   .refine(

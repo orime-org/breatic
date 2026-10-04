@@ -29,7 +29,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { ConflictError, ForbiddenError, initCore } from "@breatic/core";
+import { ConflictError, ForbiddenError, initCore, loadLocales, runWithLocale } from "@breatic/core";
 
 initCore(process.env);
 
@@ -40,6 +40,7 @@ import * as recentRepo from "@server/modules/recent/recent.repo.js";
 let sql: ReturnType<typeof postgres>;
 
 beforeAll(() => {
+  loadLocales();
   sql = postgres(inject("DATABASE_URL"), {
     max: 4,
     prepare: false,
@@ -185,6 +186,23 @@ describe("duplicate", () => {
     await projectService.archive(s.projectId, s.adminId);
     await expect(projectService.duplicate(s.projectId, s.ownerId)).rejects.toBeInstanceOf(ConflictError);
     await expect(projectService.duplicate(s.projectId, s.editorId)).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("names the copy in the reader's language, the copy mark first", async () => {
+    const s = await seedScene();
+    const en = await runWithLocale("en", () => projectService.duplicate(s.projectId, s.ownerId));
+    expect(en.name).toBe(`Copy of ${await nameOf(s.projectId)}`);
+    const zh = await runWithLocale("zh-CN", () => projectService.duplicate(s.projectId, s.ownerId));
+    expect(zh.name).toBe(`副本 - ${await nameOf(s.projectId)}`);
+  });
+
+  it("shortens a name at the length limit so the copy still fits and keeps its mark", async () => {
+    const s = await seedScene();
+    const long = "名".repeat(255);
+    await projectService.update(s.projectId, s.ownerId, { name: long });
+    const copy = await runWithLocale("en", () => projectService.duplicate(s.projectId, s.ownerId));
+    expect(copy.name.startsWith("Copy of 名")).toBe(true);
+    expect([...copy.name]).toHaveLength(255);
   });
 
   it("is refused to an editor and to a viewer", async () => {

@@ -176,7 +176,7 @@ async function duplicateAsService(
   return db.transaction(async (tx) => {
     const source = await projectRepo.getProjectById(sourceId, tx);
     if (!source) throw new Error(`source project ${sourceId} not found`);
-    return projectRepo.duplicateProject(tx, creatorUserId, source);
+    return projectRepo.duplicateProject(tx, creatorUserId, source, `Copy of ${source.name}`);
   });
 }
 

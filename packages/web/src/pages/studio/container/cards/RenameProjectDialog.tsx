@@ -14,10 +14,9 @@ import {
 } from '@web/components/ui/dialog';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
+import { PROJECT_NAME_MAX_CHARS } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 
-/** The server's ceiling on a project name (`PATCH /projects/:id`). */
-const NAME_MAX = 255;
 
 interface RenameProjectDialogProps {
   open: boolean;
@@ -79,7 +78,7 @@ export function RenameProjectDialog({
               id='rename-project-name'
               autoComplete='off'
               value={name}
-              maxLength={NAME_MAX}
+              maxLength={PROJECT_NAME_MAX_CHARS}
               onChange={(event) => setName(event.target.value)}
               required
             />

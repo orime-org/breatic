@@ -15,7 +15,7 @@ import { expectNoA11yViolations } from '@web/test-utils/a11y';
 vi.mock('@web/data/api/projects', () => ({
   projectsApi: {
     rename: vi.fn(() => Promise.resolve({ name: 'Renamed' })),
-    duplicate: vi.fn(() => Promise.resolve({ name: 'Cyberpunk Alley (copy)' })),
+    duplicate: vi.fn(() => Promise.resolve({ name: 'Copy of Cyberpunk Alley' })),
     archive: vi.fn(() => Promise.resolve({ ok: true })),
     restore: vi.fn(() => Promise.resolve({ ok: true })),
   },

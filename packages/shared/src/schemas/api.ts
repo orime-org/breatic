@@ -359,10 +359,13 @@ export type NodeHistorySnapshotInput = z.infer<
 
 // ── Projects ─────────────────────────────────────────────────────────
 
+/** The longest project name, in characters; the `projects.name` column holds this many. */
+export const PROJECT_NAME_MAX_CHARS = 255;
+
 export const projectCreateSchema = z.object({
   /** The studio to create the project in — the create gate checks the caller's role on it (admin/maintainer). */
   studioId: z.string().uuid(),
-  name: z.string().min(1).max(255),
+  name: z.string().min(1).max(PROJECT_NAME_MAX_CHARS),
   slug: z
     .string()
     .min(6)

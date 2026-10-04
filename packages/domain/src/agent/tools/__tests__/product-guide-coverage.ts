@@ -586,6 +586,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.project.archived": { excluded: REASONS.ARCHIVED_ONLY },
   "server.project.collaborator_limit_reached": { described: /a full project says how many collaborators its plan allows: the plan of the studio.s admin, so only their upgrade raises it/ },
   "server.project.collaborator_limit_reached_for_invitee": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.project.copy_name": { excluded: REASONS.FILLS_A_VALUE },
   "server.project.join_already_member": { excluded: REASONS.OUTSIDERS_ONLY },
   "server.project.join_already_pending": { excluded: REASONS.OUTSIDERS_ONLY },
   "server.project.limit_reached": { excluded: REASONS.NOT_ON_THESE_SCREENS },

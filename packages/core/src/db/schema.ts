@@ -32,6 +32,7 @@ import {
 // still being defined at the point the reference is written.
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { MessagePart } from "@breatic/shared";
+import { PROJECT_NAME_MAX_CHARS } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -261,7 +262,7 @@ export const projects = pgTable(
     createdByUserId: uuid("created_by_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    name: varchar("name", { length: 255 }).notNull(),
+    name: varchar("name", { length: PROJECT_NAME_MAX_CHARS }).notNull(),
     description: text("description"),
     thumbnailUrl: text("thumbnail_url"),
     // URL slug for /project/{slug}-{uuid}. Format-validated app-side, NOT
