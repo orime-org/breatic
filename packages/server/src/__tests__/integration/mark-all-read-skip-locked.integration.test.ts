@@ -123,6 +123,20 @@ describe("markAllRead", () => {
     expect(await isUnread(waiting.id)).toBe(true);
   });
 
+  it("marks exactly the rows the unread count counts as news, leaving expired requests out", async () => {
+    const user = await insertUser();
+    const expired = await notificationRepo.create({
+      userId: user,
+      type: "studio.transfer_request",
+      payload: { shareToken: "tok" },
+      expiresAt: new Date(Date.now() - 60_000),
+    });
+
+    expect(await notificationRepo.countUnread(user)).toBe(0);
+    expect(await notificationRepo.markAllRead(user)).toBe(0);
+    expect(await isUnread(expired.id)).toBe(true);
+  });
+
   it("marks all of a user's unread rows and leaves another user's alone", async () => {
     const user = await insertUser();
     const stranger = await insertUser();
