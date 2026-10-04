@@ -184,8 +184,8 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
   });
 
   it("turns on Stripe Tax and saves the billing address to the customer", async () => {
-    // The customer exists before checkout and carries no address, so Stripe
-    // can only tax on the address typed into checkout once it is written back.
+    // Checkout taxes on the address stored on the customer, so the address
+    // typed into checkout has to be written back for the tax to follow it.
     // The subscription keeps the setting, so renewals and upgrades are taxed.
     situationIs("none");
     await service.startCheckout({
