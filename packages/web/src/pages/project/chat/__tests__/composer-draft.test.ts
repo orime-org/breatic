@@ -11,7 +11,7 @@ import { attachmentMarker } from '@breatic/shared';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { makeMentionSuggestion } from '@web/features/reference-mention/mention-suggestion';
 import { chatReferenceContent } from '@web/pages/project/chat/chat-reference';
-import { composerExtensions } from '@web/pages/project/chat/composer-extensions';
+import { ATTACHMENTS_CHANGED_META, composerExtensions } from '@web/pages/project/chat/composer-extensions';
 import type { TrayItem } from '@web/stores/chat-attachments';
 import { draftContent, draftOf } from '@web/pages/project/chat/composer-draft';
 
@@ -33,9 +33,10 @@ function holding(draft: string): Editor {
     extensions: composerExtensions({
       placeholder: () => '',
       attachments: () => ['a', 'b', 'c'].map((id) => ({ id, name: `name-${id}`, type: 'image' as const, status: 'ready' as const })),
+      labelOf: (item) => item.name,
       suggestion: makeMentionSuggestion<TrayItem>({
         resolveList: () => ({ items: [], emptyLabel: '' }),
-        content: (item) => chatReferenceContent(item.id, item.name),
+        content: (item) => chatReferenceContent(item.id),
         itemKey: (item) => item.id,
         renderItem: (item) => item.name,
         placement: 'top-start',
@@ -43,7 +44,7 @@ function holding(draft: string): Editor {
       onEnter: () => undefined,
       onRefusedAtLimit: () => undefined,
     }),
-    content: draftContent(draft, (id) => `name-${id}`),
+    content: draftContent(draft),
   });
   return editor;
 }
@@ -55,8 +56,9 @@ describe('the chat draft', () => {
     expect(draftOf(holding(draft).state.doc)).toBe(draft);
   });
 
-  it('shows each reference as a block carrying its id and name', () => {
+  it('shows each reference as a block carrying its id and its attachment\'s name', () => {
     const e = holding(`x ${attachmentMarker('a')}`);
+    e.view.dispatch(e.state.tr.setMeta(ATTACHMENTS_CHANGED_META, true));
     const blocks: { id: unknown; label: unknown }[] = [];
     e.state.doc.descendants((n) => {
       if (n.type.name === REFERENCE_MENTION_NODE) {

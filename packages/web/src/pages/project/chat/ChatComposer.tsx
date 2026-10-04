@@ -25,6 +25,8 @@ import type { ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 export const CHAT_LIMIT_NOTICE_ID = 'chat-composer-at-limit';
 
 interface ChatComposerProps {
+  /** The conversation the box writes into. */
+  conversationId?: string | null;
   draft: string;
   /**
    * How far along the turn is, which decides what stands where Send does.
@@ -81,6 +83,7 @@ interface ChatComposerProps {
  *   - The bottom-right corner has 4 states: disabled send, ready send,
  *     waiting (a spinner, nothing to press), streaming (Abort)
  * @param root0 - The component props.
+ * @param root0.conversationId - The conversation the box writes into.
  * @param root0.draft - The current draft text in the input.
  * @param root0.turnPhase - How far along the turn is: idle, sending, running.
  * @param root0.navigating - The panel is on its way to another conversation.
@@ -96,6 +99,7 @@ interface ChatComposerProps {
  * @returns The composer card with attachments, the box, and action buttons.
  */
 function ChatComposerInner({
+  conversationId = null,
   draft,
   turnPhase = 'idle',
   navigating = false,
@@ -123,6 +127,7 @@ function ChatComposerInner({
   // Read through a ref: the editor is built once, and Enter reaches it there.
   const submitRef = React.useRef<() => void>(() => undefined);
   const editor = useComposerEditor({
+    conversationId,
     draft,
     attachments,
     readOnly: frozen,

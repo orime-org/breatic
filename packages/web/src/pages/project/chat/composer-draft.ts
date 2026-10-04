@@ -9,25 +9,27 @@
 
 import type { JSONContent } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { attachmentMarker, messageLength, messageSegments } from '@breatic/shared';
 
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
-import { chatReferenceContent } from '@web/pages/project/chat/chat-reference';
+import { CHAT_REFERENCE_LABEL_ATTR, chatReferenceContent } from '@web/pages/project/chat/chat-reference';
+import type { TrayItem } from '@web/stores/chat-attachments';
 
 /**
- * The box's content for a draft.
+ * The box's content for a draft. Blocks come without names; the box's rules
+ * give each one its attachment's name.
  * @param draft - The draft string.
- * @param nameOf - The name a referenced attachment shows.
  * @returns The document as TipTap JSON.
  */
-export function draftContent(draft: string, nameOf: (id: string) => string): JSONContent {
+export function draftContent(draft: string): JSONContent {
   return {
     type: 'doc',
     content: draft.split('\n').map((line): JSONContent => {
       const content = messageSegments(line).map((segment): JSONContent =>
         segment.kind === 'text'
           ? { type: 'text', text: segment.text }
-          : chatReferenceContent(segment.id, nameOf(segment.id)),
+          : chatReferenceContent(segment.id),
       );
       return content.length > 0 ? { type: 'paragraph', content } : { type: 'paragraph' };
     }),
@@ -65,19 +67,31 @@ export function draftLength(doc: PMNode, attached: ReadonlyArray<{ readonly id: 
 }
 
 /**
- * Where the blocks are whose attachment is not attached. A block goes on its
- * own: the spaces around it are the reader's words.
- * @param doc - The box's document.
- * @param attached - What is attached; only their ids are read.
- * @returns Their positions, last first, so each can be deleted in turn.
+ * Brings every block in line with what is attached: a block whose attachment
+ * left goes, on its own (the spaces around it are the reader's words), and
+ * the rest show their attachment's name as it reads now.
+ * @param state - The box's state.
+ * @param attached - What is attached.
+ * @param labelOf - The name an attachment shows.
+ * @returns The transaction that does it, or null when every block is in line.
  */
-export function stalePositions(doc: PMNode, attached: ReadonlyArray<{ readonly id: string }>): number[] {
-  const ids = new Set(attached.map((a) => a.id));
+export function followAttachments(
+  state: EditorState,
+  attached: ReadonlyArray<TrayItem>,
+  labelOf: (item: TrayItem) => string,
+): Transaction | null {
+  const byId = new Map(attached.map((item) => [item.id, item]));
+  const tr = state.tr;
   const stale: number[] = [];
-  doc.descendants((node, pos) => {
-    if (node.type.name === REFERENCE_MENTION_NODE && !ids.has(String(node.attrs[MENTION_SOURCE_ID_ATTR]))) {
-      stale.push(pos);
+  state.doc.descendants((node, pos) => {
+    if (node.type.name !== REFERENCE_MENTION_NODE) return;
+    const item = byId.get(String(node.attrs[MENTION_SOURCE_ID_ATTR]));
+    if (!item) stale.push(pos);
+    else if (node.attrs[CHAT_REFERENCE_LABEL_ATTR] !== labelOf(item)) {
+      tr.setNodeAttribute(pos, CHAT_REFERENCE_LABEL_ATTR, labelOf(item));
     }
   });
-  return stale.reverse();
+  // Last first, so each deletion leaves the earlier positions where they were.
+  for (const pos of stale.reverse()) tr.delete(pos, pos + 1);
+  return tr.docChanged ? tr : null;
 }

@@ -14,7 +14,7 @@ import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
 
 import { MACHINE_EDIT_META } from '@web/features/reference-mention/reference-mention-local-input';
 import { ChatReference } from '@web/pages/project/chat/chat-reference';
-import { draftLength, stalePositions } from '@web/pages/project/chat/composer-draft';
+import { draftLength, followAttachments } from '@web/pages/project/chat/composer-draft';
 import type { TrayItem } from '@web/stores/chat-attachments';
 
 /** Undo and redo for a box with no collaboration behind it. */
@@ -38,6 +38,8 @@ export interface ComposerWiring {
   placeholder: () => string;
   /** Reads what is attached now. */
   attachments: () => ReadonlyArray<TrayItem>;
+  /** The name an attachment shows, in the language now on screen. */
+  labelOf: (item: TrayItem) => string;
   /** The `@` list. */
   suggestion: Omit<SuggestionOptions<TrayItem>, 'editor'>;
   /** Enter without Shift, outside an IME composition, with no `@` list taking it. */
@@ -47,8 +49,15 @@ export interface ComposerWiring {
 }
 
 /**
- * The box's own rules: the `@` list, Enter sends, the limit holds, and a
- * block whose attachment has gone does not come back. The plugins run in the
+ * Meta on a transaction that changes nothing in the box but says what is
+ * attached, or the language, has changed; the box's rules bring the blocks in
+ * line with it.
+ */
+export const ATTACHMENTS_CHANGED_META = 'composerAttachmentsChanged';
+
+/**
+ * The box's own rules: the `@` list, Enter sends, the limit holds, and every
+ * block follows what is attached -- whichever way it got into the box. The plugins run in the
  * order listed, so the `@` list sees a key before Enter is settled; the
  * priority puts both ahead of TipTap's default keymap (100), which would
  * otherwise break the line.
@@ -63,15 +72,14 @@ function composerRules(wiring: ComposerWiring): AnyExtension {
       return [
         Suggestion<TrayItem>({ editor: this.editor, ...wiring.suggestion }),
         new Plugin({
-          // An undo or a draft written in can bring back a block whose
-          // attachment has since gone; it goes again straight away.
+          // Typing, a pick, a paste, a drop, an undo or a draft written in can
+          // each bring a block in, and the tray or the language can change
+          // under the blocks already there: every block is checked here,
+          // after any of them.
           appendTransaction: (trs, _old, state): Transaction | null => {
-            if (!trs.some((tr) => tr.docChanged)) return null;
-            const stale = stalePositions(state.doc, wiring.attachments());
-            if (stale.length === 0) return null;
-            const tr = state.tr;
-            for (const pos of stale) tr.delete(pos, pos + 1);
-            return tr.setMeta('addToHistory', false);
+            if (!trs.some((tr) => tr.docChanged || tr.getMeta(ATTACHMENTS_CHANGED_META))) return null;
+            const tr = followAttachments(state, wiring.attachments(), wiring.labelOf);
+            return tr ? tr.setMeta('addToHistory', false) : null;
           },
           props: {
             handleKeyDown: (view, event): boolean => {

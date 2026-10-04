@@ -14,22 +14,24 @@
 import type { Editor } from '@tiptap/core';
 import { useEditor } from '@tiptap/react';
 import * as React from 'react';
-import { CHAT_MESSAGE_MAX_CHARS, getLocale } from '@breatic/shared';
+import { CHAT_MESSAGE_MAX_CHARS, getLocale, t as sharedT } from '@breatic/shared';
+import { EditorState } from '@tiptap/pm/state';
 
-import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { makeMentionSuggestion } from '@web/features/reference-mention/mention-suggestion';
 import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
 import { useTranslation } from '@web/i18n/use-translation';
 import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
-import { CHAT_REFERENCE_LABEL_ATTR, chatReferenceContent } from '@web/pages/project/chat/chat-reference';
-import { composerExtensions } from '@web/pages/project/chat/composer-extensions';
-import { draftContent, draftLength, draftOf, stalePositions } from '@web/pages/project/chat/composer-draft';
+import { chatReferenceContent } from '@web/pages/project/chat/chat-reference';
+import { ATTACHMENTS_CHANGED_META, composerExtensions } from '@web/pages/project/chat/composer-extensions';
+import { draftContent, draftLength, draftOf } from '@web/pages/project/chat/composer-draft';
 import { parseClipboardNodes, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import type { TrayItem } from '@web/stores/chat-attachments';
 
 /** What the box is told and what it reports. */
 export interface ComposerEditorInput {
+  /** The conversation the box writes into; its undo history is its own. */
+  conversationId: string | null;
   /** The draft as the panel holds it. */
   draft: string;
   /** What is attached to the next message. */
@@ -73,12 +75,8 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
   // the tray changes with no edit in the box: an upload finishing, an item
   // added from the canvas or taken out.
   const refreshList = React.useRef<(() => void) | null>(null);
-  /**
-   * What the block for an item shows, in the language now on screen.
-   * @param item - The tray item.
-   * @returns Its label.
-   */
-  const labelNow = React.useCallback((item: TrayItem): string => attachmentLabel(t, item), [t]);
+  // The conversation whose undo history the editor holds.
+  const conversation = React.useRef(input.conversationId);
 
   const editor = useEditor(
     {
@@ -87,6 +85,7 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
         ...composerExtensions({
           placeholder: () => t('chat.composer.placeholder'),
           attachments: () => live.current.attachments,
+          labelOf,
           onEnter: () => live.current.onEnter(),
           onRefusedAtLimit: () => live.current.onRefusedAtLimit(),
           suggestion: makeMentionSuggestion<TrayItem>({
@@ -94,20 +93,20 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
               const ready = live.current.attachments.filter((a) => a.status === 'ready');
               const q = query.toLowerCase();
               return {
-                items: ready.filter((a) => labelNow(a).toLowerCase().includes(q)),
+                items: ready.filter((a) => labelOf(a).toLowerCase().includes(q)),
                 emptyLabel: t(ready.length === 0 ? 'chat.composer.atEmpty' : 'chat.composer.atNoMatch'),
               };
             },
-            content: (item) => chatReferenceContent(item.id, labelNow(item)),
+            content: (item) => chatReferenceContent(item.id),
             itemKey: (item) => item.id,
-            renderItem: (item) => <AttachmentRow item={item} label={labelNow(item)} />,
+            renderItem: (item) => <AttachmentRow item={item} label={labelOf(item)} />,
             // Above the `@`: the box sits at the bottom of the column.
             placement: 'top-start',
             refreshRef: refreshList,
           }),
         }),
       ],
-      content: draftContent(input.draft, (id) => nameIn(live.current.attachments, id, labelNow)),
+      content: draftContent(input.draft),
       editorProps: {
         attributes: {
           'data-testid': 'chat-composer-box',
@@ -167,23 +166,32 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
     [],
   );
 
+  // Another conversation: the same box takes a fresh state, so the keyboard
+  // stays where it is and nothing typed in the last one can be undone here.
+  React.useEffect(() => {
+    if (!editor || editor.isDestroyed || input.conversationId === conversation.current) return;
+    conversation.current = input.conversationId;
+    reported.current = input.draft;
+    const doc = editor.schema.nodeFromJSON(draftContent(input.draft));
+    editor.view.updateState(EditorState.create({ doc, plugins: editor.state.plugins }));
+    dispatchMachineEdit(editor.view, editor.state.tr.setMeta(ATTACHMENTS_CHANGED_META, true));
+  }, [editor, input.conversationId, input.draft]);
+
   // A draft written from outside: the server's first word emptying the box,
   // a quick action, a draft restored.
   React.useEffect(() => {
     if (!editor || editor.isDestroyed || input.draft === reported.current) return;
     reported.current = input.draft;
-    const doc = editor.schema.nodeFromJSON(
-      draftContent(input.draft, (id) => nameIn(live.current.attachments, id, labelNow)),
-    );
+    const doc = editor.schema.nodeFromJSON(draftContent(input.draft));
     dispatchMachineEdit(editor.view, editor.state.tr.replaceWith(0, editor.state.doc.content.size, doc.content));
-  }, [editor, input.draft, labelNow]);
+  }, [editor, input.draft]);
 
-  // Blocks follow the attachments: one whose attachment left goes, and one
-  // whose attachment was replaced shows the new name.
-  React.useEffect(() => {
+  // The tray or the language changed under the blocks; the box's rules bring
+  // them in line. Before paint, so a block never shows without its name.
+  React.useLayoutEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    syncBlocks(editor, input.attachments, labelNow);
-  }, [editor, input.attachments, locale, labelNow]);
+    dispatchMachineEdit(editor.view, editor.state.tr.setMeta(ATTACHMENTS_CHANGED_META, true));
+  }, [editor, input.attachments, locale]);
 
   // An open list reads the tray and the language live, and neither changes
   // through an edit in the box.
@@ -234,48 +242,12 @@ function fitInto(words: string, room: number): string {
 }
 
 /**
- * The name a block for an attachment id shows, or empty for one not attached.
- * @param attachments - What is attached.
- * @param id - The attachment id.
- * @param labelOf - The name an item shows.
- * @returns The name.
+ * What an attachment's block and row show, in the language now on screen.
+ * @param item - The tray item.
+ * @returns Its label.
  */
-function nameIn(
-  attachments: ReadonlyArray<TrayItem>,
-  id: string,
-  labelOf: (item: TrayItem) => string,
-): string {
-  const item = attachments.find((a) => a.id === id);
-  return item ? labelOf(item) : '';
-}
-
-/**
- * Takes out blocks whose attachment left and renames the rest, in one write
- * the reader did not make.
- * @param editor - The box.
- * @param attachments - What is attached now.
- * @param labelOf - The name an item shows.
- */
-function syncBlocks(
-  editor: Editor,
-  attachments: ReadonlyArray<TrayItem>,
-  labelOf: (item: TrayItem) => string,
-): void {
-  const byId = new Map(attachments.map((a) => [a.id, a]));
-  const stale = stalePositions(editor.state.doc, attachments);
-  const renames: { pos: number; label: string }[] = [];
-  editor.state.doc.descendants((node, pos) => {
-    if (node.type.name !== REFERENCE_MENTION_NODE) return;
-    const item = byId.get(String(node.attrs[MENTION_SOURCE_ID_ATTR]));
-    if (item && node.attrs[CHAT_REFERENCE_LABEL_ATTR] !== labelOf(item)) {
-      renames.push({ pos, label: labelOf(item) });
-    }
-  });
-  if (stale.length === 0 && renames.length === 0) return;
-  const tr = editor.state.tr;
-  for (const { pos, label } of renames) tr.setNodeAttribute(pos, CHAT_REFERENCE_LABEL_ATTR, label);
-  for (const pos of stale) tr.delete(pos, pos + 1);
-  dispatchMachineEdit(editor.view, tr);
+function labelOf(item: TrayItem): string {
+  return attachmentLabel(sharedT, item);
 }
 
 /**

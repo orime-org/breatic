@@ -4,7 +4,8 @@
 /**
  * A reference to an attachment, as a block in the chat box: the attachment's
  * name in a small chip, picked from the list `@` opens. It carries the
- * attachment id, which is what is sent; the name is kept current by the box.
+ * attachment id, which is what is sent; the name is written by the box's
+ * rules, from what is attached and the language on screen.
  *
  * Named like the generate panel's chip so the shared caret and whitespace
  * plugins treat it as one; the chat box has its own schema, so the two never
@@ -37,14 +38,10 @@ export interface ChatReferenceOptions {
 /**
  * The content a reference block is inserted as.
  * @param id - The attachment it points at.
- * @param label - What the block shows.
  * @returns The block's content.
  */
-export function chatReferenceContent(id: string, label: string): { type: string; attrs: Record<string, unknown> } {
-  return {
-    type: REFERENCE_MENTION_NODE,
-    attrs: { [MENTION_SOURCE_ID_ATTR]: id, [CHAT_REFERENCE_LABEL_ATTR]: label },
-  };
+export function chatReferenceContent(id: string): { type: string; attrs: Record<string, unknown> } {
+  return { type: REFERENCE_MENTION_NODE, attrs: { [MENTION_SOURCE_ID_ATTR]: id } };
 }
 
 export const ChatReference = Node.create<ChatReferenceOptions>({
@@ -70,7 +67,7 @@ export const ChatReference = Node.create<ChatReferenceOptions>({
       },
       [CHAT_REFERENCE_LABEL_ATTR]: {
         default: '',
-        parseHTML: (el) => el.textContent ?? '',
+        parseHTML: () => '',
         renderHTML: () => ({}),
       },
     };

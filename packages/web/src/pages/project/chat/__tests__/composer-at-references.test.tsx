@@ -367,7 +367,7 @@ describe('@ in the chat box', () => {
 
   it('shows the current name on a block an undo brings back', () => {
     const draft = `look ${attachmentMarker('a1')}`;
-    const { rerender } = setup({ draft, attachments: [cover] });
+    const { onChange, rerender } = setup({ draft, attachments: [cover] });
     act(() => {
       const e = box();
       let at = -1;
@@ -376,7 +376,7 @@ describe('@ in the chat box', () => {
       });
       e.view.dispatch(e.state.tr.delete(at, at + 1));
     });
-    rerender({ draft: 'look ', attachments: [{ ...cover, name: 'cover-v2.png' }] });
+    rerender({ draft: String(onChange.mock.lastCall?.[0]), attachments: [{ ...cover, name: 'cover-v2.png' }] });
 
     act(() => {
       const e = box();
