@@ -122,8 +122,8 @@ function pickId(ids: readonly string[]): string {
  *
  * One press is one item: the picked nodes as they are -- each with where it
  * sits, the group it is in and its data -- and the links between them. The
- * data is everything the node stores -- every mode's prompt, lyrics and
- * storyboard, whatever the model in use takes -- with fragments as plain
+ * data is everything the node stores -- every mode's prompt and lyrics and
+ * the video node's shots, whatever the model in use takes -- with fragments as plain
  * text, and a generating node also says what it would run right now
  * (#2218), so the agent can tell what is written from what is in effect. Named after the node or group when one was picked,
  * and left unnamed for several, which the card counts.
