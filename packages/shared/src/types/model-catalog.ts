@@ -166,6 +166,18 @@ export interface ParamDescriptor {
   fields?: Readonly<Record<string, ItemField>>;
   /** The upstream field this param is sent as, when the names differ. */
   upstream?: string;
+  /**
+   * What a value is sent as upstream, keyed by the value's string form, when
+   * the panel's value is not the endpoint's (Kling's switch sends
+   * `shot_type: "intelligence"`). A value not listed goes as it is.
+   */
+  upstream_values?: Readonly<Record<string, string>>;
+  /**
+   * For an `items` list the endpoint has no field for: each entry is written
+   * into the prompt with this template instead (`{n}` its place from 1,
+   * `{start}`/`{end}` its running seconds, `{prompt}` its text), one per line.
+   */
+  into_prompt?: string;
   /** Marks a control only this model has; its name on screen comes from the locales. */
   label?: string;
   /** How a value of `values` reads on screen, when its spelling is not that; English. */

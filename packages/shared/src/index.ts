@@ -391,8 +391,14 @@ export {
   retotal,
   stepShot,
 } from "@shared/storyboard-durations.js";
-export { asStoryboardKind, effectiveStoryboardKind, storyboardParams, storyboardSpec } from "@shared/storyboard.js";
-export type { StoryboardKind, StoryboardShotInput, StoryboardSpec } from "@shared/storyboard.js";
+export {
+  MULTI_SHOT_MAX_SHOTS,
+  MULTI_SHOT_MODE,
+  paramsForMode,
+  storyboardSend,
+  storyboardSpec,
+} from "@shared/storyboard.js";
+export type { StoryboardSend, StoryboardShotInput, StoryboardSpec } from "@shared/storyboard.js";
 export { missingSources, fitsSomeMode } from "@shared/missing-sources.js";
 export { formatCredits } from "@shared/format-credits.js";
 export type { MissingSource, SourceSlot, SourcedModel } from "@shared/missing-sources.js";
