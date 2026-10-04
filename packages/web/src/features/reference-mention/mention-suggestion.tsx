@@ -15,6 +15,7 @@ import { autoUpdate, computePosition, offset, type Placement } from '@floating-u
 import type { Transaction } from '@tiptap/pm/state';
 import { ReactRenderer } from '@tiptap/react';
 import {
+  exitSuggestion,
   SuggestionPluginKey,
   type SuggestionKeyDownProps,
   type SuggestionOptions,
@@ -379,7 +380,17 @@ export function makeMentionSuggestion<T>(
         },
         onKeyDown: (props: SuggestionKeyDownProps): boolean => {
           if (props.event.key === 'Escape') return true;
-          return component?.ref?.onKeyDown(props.event) ?? false;
+          // A list the reader closed (or never saw) takes no keys: Enter is
+          // theirs again, to send or to break the line.
+          if (!visible) return false;
+          if (component?.ref?.onKeyDown(props.event) === true) return true;
+          // Enter or Tab with nothing to pick ends the `@` there, leaving what
+          // was typed as plain text; it neither sends nor breaks the line.
+          if (props.event.key === 'Enter' || props.event.key === 'Tab') {
+            exitSuggestion(props.view);
+            return true;
+          }
+          return false;
         },
         onExit: (props: SuggestionProps<T>): void => {
           stopAutoUpdate?.();

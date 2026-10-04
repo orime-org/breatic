@@ -89,7 +89,7 @@ function MentionListInner<T>(
           setSelected((s) => (s + 1) % items.length);
           return true;
         }
-        if (event.key === 'Enter') {
+        if (event.key === 'Enter' || event.key === 'Tab') {
           pick(selected);
           return true;
         }
