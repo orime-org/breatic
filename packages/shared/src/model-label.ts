@@ -17,6 +17,25 @@ export interface NamedModel {
   readonly variant?: string;
 }
 
+/** A model's name on screen, in the two parts a narrow place shows differently. */
+export interface ModelLabelParts {
+  /** The vendor's name. */
+  readonly name: string;
+  /** The variant joined on after it, when another model in the list shares the name. */
+  readonly variant: string | undefined;
+}
+
+/**
+ * A model's name in a list of models offered together, in two parts.
+ * @param model - The model being named.
+ * @param peers - Every model in the same list, the model itself included.
+ * @returns Its vendor's name, and its variant when another model in the list has the same name.
+ */
+export function modelLabelParts(model: NamedModel, peers: readonly NamedModel[]): ModelLabelParts {
+  const shared = peers.some((peer) => peer !== model && peer.display_name === model.display_name);
+  return { name: model.display_name, variant: shared ? model.variant : undefined };
+}
+
 /**
  * A model's name in a list of models offered together.
  * @param model - The model being named.
@@ -24,6 +43,6 @@ export interface NamedModel {
  * @returns Its vendor's name, followed by its variant when another model in the list has the same name.
  */
 export function modelLabel(model: NamedModel, peers: readonly NamedModel[]): string {
-  const shared = peers.some((peer) => peer !== model && peer.display_name === model.display_name);
-  return shared && model.variant !== undefined ? `${model.display_name} ${model.variant}` : model.display_name;
+  const { name, variant } = modelLabelParts(model, peers);
+  return variant === undefined ? name : `${name} ${variant}`;
 }

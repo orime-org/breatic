@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { modelLabel } from "@shared/model-label.js";
+import { modelLabel, modelLabelParts } from "@shared/model-label.js";
 
 /**
  * A catalog entry as far as its name goes.
@@ -44,5 +44,18 @@ describe("a model's name on screen", () => {
 
   it("is the vendor's name when the model is not in the list it is named against", () => {
     expect(modelLabel(GEMINI_REF, [KLING])).toBe("Gemini Omni 1.1 Flash");
+  });
+});
+
+describe("a model's name in two parts", () => {
+  it("gives the variant apart from the vendor's name where it is joined on", () => {
+    expect(modelLabelParts(GEMINI_REF, [GEMINI_T2V, GEMINI_REF])).toEqual({
+      name: "Gemini Omni 1.1 Flash",
+      variant: "Reference",
+    });
+  });
+
+  it("gives no variant where the name stands alone", () => {
+    expect(modelLabelParts(GEMINI_REF, [GEMINI_REF, KLING])).toEqual({ name: "Gemini Omni 1.1 Flash", variant: undefined });
   });
 });
