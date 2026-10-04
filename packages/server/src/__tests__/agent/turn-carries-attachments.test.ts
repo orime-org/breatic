@@ -132,6 +132,18 @@ describe("a turn opened by a message with attachments", () => {
     expect(titleForTurn).toHaveBeenCalledWith("c1", "what is in cover.png?");
   });
 
+  it("leaves an unnamed piece of the canvas out of the conversation's name", async () => {
+    const piece: ChatAttachedChip = {
+      id: "p1",
+      type: "canvas",
+      name: "",
+      data_snapshot: { nodes: [{ id: "n1" }, { id: "n2" }], edges: [] },
+    };
+    await runOneTurn(`merge ${attachmentMarker(piece.id)} into one`, [piece]);
+
+    expect(titleForTurn).toHaveBeenCalledWith("c1", "merge  into one");
+  });
+
   it("sends the model the attachments and the words on this same turn", async () => {
     await runOneTurn("what is in this?", [image]);
 

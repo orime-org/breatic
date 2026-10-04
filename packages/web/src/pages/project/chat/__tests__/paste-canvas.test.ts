@@ -52,11 +52,11 @@ describe('canvas text pasted into the chat box', () => {
     expect(pastedCanvas([group, member], () => false)).toEqual(pasted);
   });
 
-  it('names a picture with no title after the file in its address', () => {
-    const bare = { ...picture, name: undefined, content: 'https://img.example/path/neon-night.jpg?w=64' };
+  it('leaves a picture with no title unnamed rather than making a name up from its address', () => {
+    const bare = { ...picture, name: undefined, content: 'https://imgs.search.example/sig/rs:fit:64/g:ce/aHR0cHM6Ly9pbWcu/Y2F0LmpwZw' };
     const pasted = pastedCanvas([bare], () => false);
 
-    expect(pasted?.kind === 'item' ? pasted.item.name : null).toBe('neon-night.jpg');
+    expect(pasted?.kind === 'item' ? pasted.item.name : null).toBe('');
   });
 
   it('gives nothing for an empty payload', () => {

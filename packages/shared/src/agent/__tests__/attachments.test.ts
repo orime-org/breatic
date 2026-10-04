@@ -19,7 +19,7 @@ import {
   chipOfPart,
   messageLength,
   messageSegments,
-  messageWithNames,
+  wordsForTitle,
   referenceCount,
   userTurnForModel,
 } from "@shared/agent/attachments.js";
@@ -138,12 +138,12 @@ describe("a reference to an attachment inside the typed words", () => {
     expect(userTurnForModel([], words)).toBe(words);
   });
 
-  it("reads as the attachment name in plain text", () => {
-    expect(messageWithNames([image, doc], `${attachmentMarker("a1")} and ${attachmentMarker("a2")}`)).toBe(
+  it("reads as the attachment name in a title, and as nothing for an unnamed one", () => {
+    expect(wordsForTitle([image, doc], `${attachmentMarker("a1")} and ${attachmentMarker("a2")}`)).toBe(
       "cover.png and brief.pdf",
     );
-    expect(messageWithNames([picked], attachmentMarker("a4"))).toBe("canvas, 2 nodes");
-    expect(messageWithNames([], `x ${attachmentMarker("a1")}`)).toBe(`x ${attachmentMarker("a1")}`);
+    expect(wordsForTitle([picked], `merge ${attachmentMarker("a4")} now`)).toBe("merge  now");
+    expect(wordsForTitle([], `x ${attachmentMarker("a1")}`)).toBe(`x ${attachmentMarker("a1")}`);
   });
 
   it("counts as one character toward the message limit", () => {

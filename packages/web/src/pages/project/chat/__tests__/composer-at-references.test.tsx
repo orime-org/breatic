@@ -240,4 +240,14 @@ describe('@ in the chat box', () => {
     expect(screen.queryByTestId('chat-reference')).toBeNull();
     expect(box().state.doc.textContent).toBe('make run');
   });
+
+  it('cuts a paste holding a block down to the room left instead of refusing it', () => {
+    const { onChange } = setup({ draft: 'y'.repeat(9_998), attachments: [cover] });
+    act(() => {
+      box().commands.focus('end');
+      box().view.pasteHTML('ab<span data-reference-mention="" data-source-id="a1">cover.png</span>');
+    });
+
+    expect(String(onChange.mock.lastCall?.[0])).toBe(`${'y'.repeat(9_998)}ab`);
+  });
 });
