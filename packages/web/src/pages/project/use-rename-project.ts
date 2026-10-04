@@ -8,7 +8,7 @@ import {
 } from '@tanstack/react-query';
 import { toast } from '@web/lib/toast';
 
-import { isStudioProjectsListKey, projectsApi } from '@web/data/api/projects';
+import { invalidateProjectListings, projectsApi } from '@web/data/api/projects';
 import type { ProjectDetail } from '@web/data/api/projects';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -53,15 +53,6 @@ export function useRenameProject(
       const message = err instanceof Error ? err.message : '';
       toast.error(t('project.header.renameFailed'), { description: message });
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-      // Refresh every studio's projects list (the rename changes a name shown
-      // there). Matched by predicate because ProjectPage has no studio slug.
-      void queryClient.invalidateQueries({
-        predicate: (query) => isStudioProjectsListKey(query.queryKey),
-      });
-      // The Recent landing shows the name as well.
-      void queryClient.invalidateQueries({ queryKey: ['studios', 'recent'] });
-    },
+    onSuccess: () => invalidateProjectListings(queryClient, projectId),
   });
 }

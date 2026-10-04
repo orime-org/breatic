@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import type { QueryClient } from '@tanstack/react-query';
 import type { ProjectRole, SpaceType } from '@breatic/shared';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@web/data/api/request';
 
@@ -60,6 +61,20 @@ export interface LiveTransfer {
  */
 export function isStudioProjectsListKey(key: readonly unknown[]): boolean {
   return key[0] === 'studio' && key[2] === 'projects';
+}
+
+/**
+ * Refetch everything that shows a project's name or which list it is in:
+ * every studio's projects lists, the recent page and the project itself.
+ * @param queryClient - The app's query client.
+ * @param projectId - The project that changed.
+ */
+export function invalidateProjectListings(queryClient: QueryClient, projectId: string): void {
+  void queryClient.invalidateQueries({
+    predicate: (query) => isStudioProjectsListKey(query.queryKey),
+  });
+  void queryClient.invalidateQueries({ queryKey: ['studios', 'recent'] });
+  void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
 }
 
 export const projectsApi = {

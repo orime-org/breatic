@@ -3,7 +3,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { isStudioProjectsListKey, projectsApi } from '@web/data/api';
+import { invalidateProjectListings, projectsApi } from '@web/data/api';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 
@@ -36,11 +36,7 @@ export function useProjectActions(projectId: string): ProjectActions {
    * Refetch everything that shows which list this project is in.
    */
   const refresh = (): void => {
-    void queryClient.invalidateQueries({
-      predicate: (query) => isStudioProjectsListKey(query.queryKey),
-    });
-    void queryClient.invalidateQueries({ queryKey: ['studios', 'recent'] });
-    void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+    invalidateProjectListings(queryClient, projectId);
   };
 
   /**
