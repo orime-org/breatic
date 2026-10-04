@@ -32,7 +32,7 @@ interface DocumentInterceptGuardProps {
  * represent what arrives. A background tab does that just as readily as the
  * visible one — the rewriting is driven by remote updates, not by typing.
  *
- * So this is mounted once per OPEN tab (from `SpaceDocSync`), which is the
+ * So this is mounted once per OPEN tab (from `OpenSpace`), which is the
  * scope the verdict needs. `DocumentSpace` keeps deciding whether to BUILD an
  * editor; destroying one that exists lives here, and only here.
  * @param root0 - Which document to watch.

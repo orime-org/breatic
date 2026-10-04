@@ -8,7 +8,7 @@ import { Button } from '@web/components/ui/button';
 import { getDoc } from '@web/data/yjs/manager';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
-import { DOC_NAME_BUILDERS } from '@web/pages/project/SpaceDocSync';
+import { DOC_NAME_BUILDERS } from '@web/data/yjs/space-connection';
 import type { SpaceType } from '@breatic/shared';
 
 interface SpaceReadOnlyNoticeProps {
@@ -28,7 +28,7 @@ interface SpaceReadOnlyNoticeProps {
  * Split out so the hook is never called conditionally: a Space type with no
  * document of its own (timeline today) has no connection to report on, and the
  * outer component returns before this one mounts. Same shape as
- * `SpaceDocSync` / `SpaceDocAttach` next door, for the same reason.
+ * `OpenSpace` / `SpaceConnection` next door, for the same reason.
  * @param root0 - Which document to report on, and who is looking at it.
  * @param root0.name - Canonical document name.
  * @param root0.readOnly - True when this person's role is view-only.

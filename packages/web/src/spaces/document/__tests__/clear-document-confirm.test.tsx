@@ -46,6 +46,18 @@ vi.mock('@web/data/yjs/use-socket', () => ({
     authFailedReason: null,
   }),
 }));
+vi.mock('@web/data/yjs/space-connection', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@web/data/yjs/space-connection')>();
+  const { useSocket } = await import('@web/data/yjs/use-socket');
+  return {
+    ...actual,
+    // The body reads the connection its tab holds; here that is whatever the
+    // `useSocket` stub above answers.
+    useSpaceConnection: () => useSocket({ name: '', doc: undefined as never }),
+  };
+});
+
 
 describe('the whole-document delete asks first', () => {
   beforeEach(() => {

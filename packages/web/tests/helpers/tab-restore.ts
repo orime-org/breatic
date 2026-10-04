@@ -60,13 +60,17 @@ export async function activeId(p: Page): Promise<string | null> {
 }
 
 /**
- * The canvas camera as the library holds it.
+ * The camera of the canvas on screen, as the library holds it. Every open
+ * canvas stays in the page, hidden, so this reads the one that is shown.
  * @param p - The page to read.
  * @returns The offset and the zoom.
  */
 export async function camera(p: Page): Promise<{ x: number; y: number; zoom: number }> {
   return p.evaluate(() => {
-    const el = document.querySelector('.react-flow__viewport') as HTMLElement | null;
+    const el =
+      [...document.querySelectorAll<HTMLElement>('.react-flow__viewport')].find((v) =>
+        v.checkVisibility(),
+      ) ?? null;
     const m = new DOMMatrixReadOnly(el ? getComputedStyle(el).transform : '');
     return { x: Math.round(m.e), y: Math.round(m.f), zoom: Number(m.a.toFixed(3)) };
   });
@@ -167,7 +171,7 @@ export async function openFreshProject(p: Page): Promise<string> {
   await openSmokeProject(p);
   await p.evaluate(() => window.localStorage.removeItem('breatic.projectTabs'));
   await p.reload();
-  await expect(p.locator('.react-flow__pane').first()).toBeVisible({ timeout: 20_000 });
+  await expect(p.locator('.react-flow__pane:visible')).toBeVisible({ timeout: 20_000 });
   return p.url();
 }
 

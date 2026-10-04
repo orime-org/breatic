@@ -314,7 +314,7 @@ export function runCanvasUndoBatch(
 /**
  * Subscribe to a canvas-space document. Observes the cached Y.Doc only — the
  * document is kept attached to the shared collab socket by its open tab's
- * `SpaceDocSync`, so this hook never opens its own connection (attach follows
+ * `OpenSpace`, so this hook never opens its own connection (attach follows
  * tab open / close, not the active render).
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space whose nodes and edges to observe.

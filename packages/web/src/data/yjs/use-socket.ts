@@ -69,7 +69,7 @@ function readWriteAccess(provider: HocuspocusProvider): WriteAccess {
   return provider.authorizedScope === 'readonly' ? 'denied' : 'granted';
 }
 
-interface SocketState {
+export interface SocketState {
   /** The active provider (null until first connect). */
   provider: HocuspocusProvider | null;
   /**

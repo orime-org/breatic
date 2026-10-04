@@ -27,7 +27,7 @@ vi.mock('@web/data/yjs/use-socket', () => ({
 
 vi.mock('@web/pages/project/SpaceOutlet', async () => {
   const { useSpaceConnection } = await import(
-    '@web/pages/project/space-connection'
+    '@web/data/yjs/space-connection'
   );
   return {
     /**

@@ -9,7 +9,7 @@ import { createMemoryRouter, matchRoutes } from 'react-router-dom';
 // component (e.g. /project/:id → ProjectPage, top-bar mounts). ProjectPage gates
 // its body on the meta doc's collab socket status, so stub the socket to a
 // terminal `connected` state — the real WebSocket lifecycle is covered by
-// collab-socket / use-socket / SpaceDocSync unit tests, not here.
+// collab-socket / use-socket / OpenSpace unit tests, not here.
 vi.mock('@web/data/yjs/use-socket', () => ({
   useSocket: (): {
     provider: null;

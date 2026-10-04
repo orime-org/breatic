@@ -221,8 +221,7 @@ import {
   useCanvasContext,
 } from '@web/spaces/canvas/canvas-context';
 import { useUserProfiles } from '@web/data/use-user-profiles';
-import { useSocket } from '@web/data/yjs/use-socket';
-import { docName, getDoc } from '@web/data/yjs/manager';
+import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
 import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
@@ -277,6 +276,7 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 import {
   readSpaceViewport,
   writeSpaceViewport,
+  type StoredViewport,
 } from '@web/lib/project-tabs-storage';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { taskPanelOpenFor, type CanvasSessionStore } from '@web/stores/canvas-session';
@@ -743,6 +743,45 @@ const XYFLOW_SELECTED_NODE_Z = 1000;
 const ANNOTATION_COMPOSER_Z = FOCUS_TARGET_Z + XYFLOW_SELECTED_NODE_Z + 1;
 
 /**
+ * Puts a hidden canvas back the way it was when it is shown again.
+ *
+ * Hiding resets ReactFlow's store: the camera goes to the identity and the
+ * selection box goes away. The camera comes back from what `onMoveEnd` stored
+ * for this Space while the reader worked; a Space with nothing stored is left
+ * to the framing. Rendered inside `<ReactFlow>` after the pane, so on show its
+ * effect runs after the library has built the pan-zoom it moves.
+ * @param root0 - Props.
+ * @param root0.readCamera - Reads the camera stored for this Space.
+ * @param root0.selectionBoxAtHide - Whether the selection box was up at hide.
+ * @returns Nothing visible.
+ */
+function RestoreFlowOnShow({
+  readCamera,
+  selectionBoxAtHide,
+}: {
+  readCamera: () => StoredViewport | null;
+  selectionBoxAtHide: React.RefObject<boolean>;
+}): null {
+  const { setViewport } = useReactFlow();
+  const store = useStoreApi();
+  React.useEffect(() => {
+    const camera = readCamera();
+    if (camera !== null) void setViewport(camera, { duration: 0 });
+    if (selectionBoxAtHide.current) store.setState({ nodesSelectionActive: true });
+  }, [readCamera, selectionBoxAtHide, setViewport, store]);
+  return null;
+}
+
+/**
+ *
+ * @param root0
+ * @param root0.projectId
+ * @param root0.spaceId
+ * @param root0.readOnly
+ * @param root0.myRole
+ * @param root0.synced
+ */
+/**
  * Canvas body — mounts ReactFlow over the Yjs-backed canvas space.
  *
  * Yjs is the single source of truth: `useCanvasSpace` observes the doc and
@@ -1195,8 +1234,8 @@ function CanvasSpaceInner({
   }, [rfZoom, setZoom]);
 
   // ---- Camera, kept for the next visit (#2165) ----
-  // Read once: this component is keyed on the Space id, so a switch back is a
-  // fresh mount and reads again.
+  // Read at mount. A Space switched away from and back to is the same mount,
+  // shown again, and `RestoreFlowOnShow` reads it again there.
   const [storedViewport] = React.useState(() =>
     readSpaceViewport(viewerId, projectId, spaceId),
   );
@@ -1231,9 +1270,23 @@ function CanvasSpaceInner({
    * untouched (measured — 0 changes across two resizes).
    */
   const cameraPlaced = React.useRef(false);
+  /**
+   * Whether the camera has been placed — as state, so `fitView` turns off
+   * once it has. The library frames again every time a hidden canvas is shown
+   * while `fitView` is on, which would throw away the stored camera
+   * `RestoreFlowOnShow` puts back.
+   */
+  const [framed, setFramed] = React.useState(false);
   const noteCameraPlaced = React.useCallback((): void => {
     cameraPlaced.current = true;
+    setFramed(true);
   }, []);
+  /**
+   * Whether the selection box was up when this canvas was last hidden
+   * (inner#1235). Hiding resets ReactFlow's store, which drops it, and it is
+   * kept nowhere else; `RestoreFlowOnShow` puts it back.
+   */
+  const selectionBoxAtHide = React.useRef(false);
   /**
    * Whether this canvas has already been left.
    *
@@ -1255,6 +1308,10 @@ function CanvasSpaceInner({
     const [x, y, zoom] = rfStoreApi.getState().transform;
     writeSpaceViewport(viewerId, projectId, spaceId, { x, y, zoom });
   }, [rfStoreApi, viewerId, projectId, spaceId]);
+  const readStoredCamera = React.useCallback(
+    (): StoredViewport | null => readSpaceViewport(viewerId, projectId, spaceId),
+    [viewerId, projectId, spaceId],
+  );
   const rememberViewport = React.useCallback((): void => {
     cameraPlaced.current = true;
     storeCamera();
@@ -1276,9 +1333,12 @@ function CanvasSpaceInner({
     return () => {
       window.removeEventListener('pagehide', flush);
       flush();
+      // Read here, before the library's own cleanup resets its store: React
+      // cleans up a parent before its children when a subtree is hidden.
+      selectionBoxAtHide.current = rfStoreApi.getState().nodesSelectionActive;
       left.current = true;
     };
-  }, [storeCamera]);
+  }, [storeCamera, rfStoreApi]);
   // Panel ⇄ selection binding (user-ratified 2026-07-11) — one state machine,
   // not one-shot effects: while the binding is not yet ESTABLISHED (host never
   // seen selected), keep asserting the host as the sole selection; once
@@ -4432,7 +4492,7 @@ function CanvasSpaceInner({
           // aimed opens where they left it, and one they have not opens framing
           // what is on it. `fitView` wins when both are given, so only one is.
           defaultViewport={storedViewport ?? undefined}
-          fitView={storedViewport === null}
+          fitView={storedViewport === null && !framed}
           // Clamp the open / fit-to-window auto-zoom to 10%–100% (#1547) so a
           // sparse space doesn't zoom in to the 800% global ceiling; the manual
           // zoom presets still use the full global range below.
@@ -4474,6 +4534,10 @@ function CanvasSpaceInner({
           // ctrl-wheel / pinch — ReactFlow's default zoomOnDoubleClick is true.
           zoomOnDoubleClick={false}
         >
+          <RestoreFlowOnShow
+            readCamera={readStoredCamera}
+            selectionBoxAtHide={selectionBoxAtHide}
+          />
           {/* Everyone else's pointer. Inside ReactFlow because it portals into
               the viewport, so pan and zoom carry it with the nodes. */}
           {dropLayer}
@@ -4906,17 +4970,13 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // until it has one, so without this the first Generate of a session pays for
   // the round trip with a blank patch of screen.
   usePrefetchModelCatalog();
-  const canvasDocName = docName.canvasSpace(props.projectId, props.spaceId);
-  const canvasDoc = React.useMemo(() => getDoc(canvasDocName), [canvasDocName]);
   // Resolved once, here, and handed to every collaborative editor on the board
-  // — the text nodes and the generation prompt. `useSocket` reference-counts
-  // the shared provider the space's tab already holds, so this opens no second
-  // connection; what it buys is a single answer to "whose caret is this",
-  // instead of one per editor that could drift apart.
-  const { provider: caretProvider, synced } = useSocket({
-    name: canvasDocName,
-    doc: canvasDoc,
-  });
+  // — the text nodes and the generation prompt — so there is a single answer
+  // to "whose caret is this", instead of one per editor that could drift
+  // apart. Read from the connection the Space's tab holds (`OpenSpace`): this
+  // body is hidden rather than unmounted on a tab switch, and a subscription
+  // of its own would start over unsynced on the way back.
+  const { provider: caretProvider, synced } = useSpaceConnection();
   const canvas = React.useMemo<CanvasContextValue>(
     () => ({
       projectId: props.projectId,

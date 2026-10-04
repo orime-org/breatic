@@ -63,13 +63,12 @@ import {
 import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open';
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
-import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 import { canvasGraphs } from '@web/stores/canvas-graph';
 import {
   canvasSessions,
   createCanvasSessionStore,
 } from '@web/stores/canvas-session';
-import { SpaceDocSync } from '@web/pages/project/SpaceDocSync';
+import { OpenSpace } from '@web/pages/project/OpenSpace';
 import {
   Group,
   Panel,
@@ -382,6 +381,16 @@ function ProjectWorkspace({
     (s) => s.id === tabs.activeId,
   );
 
+  // The tabs that have been on screen since they opened. A tab's body mounts
+  // the first time it is on screen, so restoring a strip of many tabs mounts
+  // one body, not all of them.
+  const [visited, setVisited] = React.useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  if (activeSpace !== undefined && !visited.has(activeSpace.id)) {
+    setVisited(new Set(visited).add(activeSpace.id));
+  }
+
   // The left menu acts on the canvas on screen, so it reads that canvas's own
   // session; with no canvas on screen it reads one that never changes.
   const activeCanvasSession =
@@ -426,6 +435,9 @@ function ProjectWorkspace({
       evictDocumentEditor(docName.documentSpace(projectId, id));
       canvasSessions.drop(id);
       canvasGraphs.drop(id);
+    }
+    if (departed.length > 0) {
+      setVisited((prev) => new Set([...prev].filter((id) => !departed.includes(id))));
     }
   }, [projectId, tabs.openIds]);
 
@@ -805,18 +817,6 @@ function ProjectWorkspace({
           a front-end operation is still syncing (#1787) — the in-app companion
           to the beforeunload guard. Renders nothing while not blocked. */}
           <LeaveProjectGuard />
-          {/* Keep every OPEN Space tab's Yjs doc attached to the shared collab
-          socket. Attach follows tab open / close — NOT the active tab — so
-          background tabs stay live and re-activating one is instant (user
-          requirement 2026-06-18). Renders nothing. */}
-          {openTabs.map((tab) => (
-            <SpaceDocSync
-              key={tab.id}
-              projectId={projectId}
-              spaceId={tab.id}
-              type={tab.type}
-            />
-          ))}
           <ConnectionBanner
             status={connectionStatus}
             onReload={() => window.location.reload()}
@@ -967,22 +967,22 @@ function ProjectWorkspace({
                 UI that must escape the box (menus / tooltips) portals to
                 document.body and is unaffected. */}
                   <div className='relative flex-1 overflow-hidden'>
-                    {activeSpace ? (
-                    // key on the Space id so switching tabs REMOUNTS the body,
-                    // which is what gives each Space its own camera: the mount
-                    // aims at what this browser stored for that Space, and
-                    // frames its nodes when there is nothing stored (#1378,
-                    // #2165). Cheap: a remount only re-binds the already-
-                    // attached doc, it does not rebuild a WebSocket.
-                      <SpaceOutlet
-                        key={activeSpace.id}
+                    {/* Every open tab holds its document's connection; the
+                    one on screen shows its body, and a tab switched away from
+                    keeps its body mounted and hidden (inner#1235). */}
+                    {openTabs.map((tab) => (
+                      <OpenSpace
+                        key={tab.id}
                         projectId={projectId}
-                        spaceId={activeSpace.id}
-                        type={activeSpace.type}
+                        spaceId={tab.id}
+                        type={tab.type}
+                        active={tab.id === activeSpace?.id}
+                        visited={visited.has(tab.id)}
                         readOnly={isViewer}
                         myRole={role}
                       />
-                    ) : (
+                    ))}
+                    {activeSpace ? null : (
                       <div
                         data-testid='no-active-space'
                         className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'

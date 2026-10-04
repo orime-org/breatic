@@ -47,6 +47,18 @@ vi.mock('@web/data/yjs/use-socket', () => ({
     }),
   ),
 }));
+vi.mock('@web/data/yjs/space-connection', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@web/data/yjs/space-connection')>();
+  const { useSocket } = await import('@web/data/yjs/use-socket');
+  return {
+    ...actual,
+    // The body reads the connection its tab holds; here that is whatever the
+    // `useSocket` stub above answers.
+    useSpaceConnection: () => useSocket({ name: '', doc: undefined as never }),
+  };
+});
+
 
 // #1987: the pass-through test reads what the BOTTOM of the confirm chain
 // receives, so the orchestrator is a spy. Nothing else in this file touches
@@ -298,22 +310,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   });
 
   // Every collaborative editor on the board — the text nodes, the generation
-  // prompt — publishes its caret through the provider resolved here. It has to
-  // be the SPACE document's: carets sent into any other awareness reach nobody
-  // on this canvas, and the failure is silent, because a caret that never
-  // arrives looks exactly like a collaborator who is not typing.
-  it('resolves the caret channel from the space document, not some other doc', () => {
-    mockUseCanvasSpace.mockReturnValue(mockSpace());
-    renderSpace();
-    const names = vi
-      .mocked(useSocket)
-      .mock.calls.map((call) => call[0]?.name);
-    expect(names).toContain(docName.canvasSpace('p', 's'));
-  });
-
-  // The other half of the channel (#1774 round-4): resolving the right
-  // provider proves nothing if it never REACHES an editor. This walks the
-  // whole wire — useSocket's provider → canvas context → TextNode → editor
+  // prompt — publishes its caret through the provider of the connection the
+  // Space's tab holds; which document that tab connects to is pinned in
+  // `OpenSpace.attach.test.tsx`. Resolving the right provider proves nothing
+  // if it never REACHES an editor (#1774 round-4). This walks the
+  // whole wire — the tab's provider → canvas context → TextNode → editor
   // extensions — and asserts at the far end: opening a text node publishes
   // the local identity into the space awareness, which is what a collaborator
   // actually receives. Sever the wire anywhere (the context handing out null

@@ -157,7 +157,7 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
     // in front of content the local Y.Doc already holds.
     const doc = new Y.Doc();
     const name = 'project-p1/document-s1';
-    // The tab-scoped keeper (SpaceDocSync's role) — holds a reference for as
+    // The tab-scoped keeper (OpenSpace's role) — holds a reference for as
     // long as the Space tab is open.
     renderHook(() => useSocket({ name, doc }), { wrapper: wrapper('u1') });
     // The body component (DocumentSpace's role) — remounted on a tab switch.

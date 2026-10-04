@@ -12,7 +12,7 @@
  * 而验收 14 选 `destroy()` 而不是 `setEditable(false)`，全部理由就是「存在的
  * 编辑器本身就会污染共享文档」——那个理由对切走的那些 space 同样成立。
  *
- * `SpaceDocSync` 是对**每个已打开 tab** 挂一个的，作用域正好。
+ * `OpenSpace` 是对**每个已打开 tab** 挂一个的，作用域正好。
  */
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
@@ -26,7 +26,7 @@ import {
 } from '@breatic/shared';
 
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
-import { SpaceDocSync } from '@web/pages/project/SpaceDocSync';
+import { OpenSpace } from '@web/pages/project/OpenSpace';
 import {
   adoptDocumentEditor,
   getDocumentEditor,
@@ -95,7 +95,7 @@ describe('一个开着但没在看的 document tab', () => {
     publishDifferent(metaDoc);
 
     // 现在用户在看别的 Space，所以 DocumentSpace 没有挂载 —— 只有这个。
-    render(<SpaceDocSync projectId={PID} spaceId={SID} type='document' />);
+    render(<OpenSpace projectId={PID} spaceId={SID} type='document' active={false} visited={false} />);
 
     expect(viewOf(handle.editor)).toBeNull();
   });
@@ -118,7 +118,7 @@ describe('一个开着但没在看的 document tab', () => {
     });
     show(handle);
 
-    render(<SpaceDocSync projectId={PID} spaceId='s-ok' type='document' />);
+    render(<OpenSpace projectId={PID} spaceId='s-ok' type='document' active={false} visited={false} />);
 
     expect(viewOf(handle.editor)).not.toBeNull();
   });
