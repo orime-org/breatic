@@ -34,7 +34,7 @@ import { MainAgent } from "@server/agent/main-agent.js";
 import { toUiMessages } from "@server/modules/conversation/message-part-mapping.js";
 import type { UIMessageChunk } from "ai";
 import { runWithContext, logger, getAgentConfig, ValidationError } from "@breatic/core";
-import { attachmentSection, t } from "@breatic/shared";
+import { attachmentSection, messageLength, t } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
 
 /**
@@ -56,11 +56,14 @@ import type { ChatAttachedChip } from "@breatic/shared";
 function assertSayable(message: string, chips: readonly ChatAttachedChip[]): void {
   const { user_message_max_chars, attachment_max_chars, attachment_max_items } =
     getAgentConfig();
-  if (message.length > user_message_max_chars) {
+  // Measured the way the box shows it: a reference is the one block the
+  // reader sees, not the longer marker it is written as.
+  const said = messageLength(chips, message);
+  if (said > user_message_max_chars) {
     throw new ValidationError(
       t("server.chat.message_too_long", {
         limit: user_message_max_chars,
-        actual: message.length,
+        actual: said,
       }),
     );
   }

@@ -27,7 +27,7 @@ import { creditLotService, createUsageRecorder, usageContextFor } from "@breatic
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import type { ChatAttachedChip, MessagePart, ToolFailure } from "@breatic/shared";
-import { userTurnForModel, wireLineOf } from "@breatic/shared";
+import { messageWithNames, userTurnForModel, wireLineOf } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
@@ -118,7 +118,10 @@ export class MainAgent {
     // is to name it after. Sent on the stream rather than left for the client
     // to work out: the list and the header are showing a placeholder right
     // now, and nothing else would ever correct them.
-    const title = await conversationService.titleForTurn(conversationId, said);
+    const title = await conversationService.titleForTurn(
+      conversationId,
+      messageWithNames(attached, said),
+    );
 
     // Everything slow happens inside the stream, not before it. The three
     // round trips for memory, the conversation and its history, and then the
