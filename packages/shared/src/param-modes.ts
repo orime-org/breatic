@@ -3,8 +3,9 @@
 
 /**
  * Which of a model's params apply in a mode. A param naming `modes` applies in
- * those alone; the panel draws its control and the run sends its value by this
- * one rule, so the two cannot disagree.
+ * those alone; every reader asks this one function (the panel's controls,
+ * slots and pools, the run's params, the agent's checks), so none can
+ * disagree.
  */
 
 import type { ParamDescriptor } from "@shared/types/model-catalog.js";

@@ -5,6 +5,7 @@
  * Which modes a generation node can currently be set to, and what each is for.
  */
 import {
+  appliesInMode,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   modelLabel,
@@ -351,7 +352,7 @@ function reachedBy(
 ): "canvas" | "panel" | "nothing" | "elsewhere" {
   // `modes` says which of the model's modes this parameter applies to; absent
   // means all of them.
-  const here = spec.modes === undefined || spec.modes.includes(mode);
+  const here = appliesInMode(spec, mode);
   if (spec.fill === "canvas" || spec.fill === "pool") {
     // A carrier belonging to another mode of the same model: nothing here
     // fills it, and the caller drops it rather than offering it to be set.

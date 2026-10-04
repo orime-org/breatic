@@ -14,6 +14,7 @@
  */
 
 import { itemCap } from "@shared/item-cap.js";
+import { appliesInMode } from "@shared/param-modes.js";
 import { positiveCap } from "@shared/reference-cap.js";
 import type { ParamDescriptor } from "@shared/types/model-catalog.js";
 
@@ -59,7 +60,7 @@ export function referencePool(
   const pool: ReferencePool = {};
   for (const [param, spec] of Object.entries(model?.params ?? {})) {
     if (spec.fill !== "pool") continue;
-    if (spec.modes !== undefined && !spec.modes.includes(mode)) continue;
+    if (!appliesInMode(spec, mode)) continue;
     const kind = asKind(spec.accepts);
     if (kind !== undefined) pool[kind] = { param, cap: positiveCap(itemCap(spec)), mention: spec.mention };
   }

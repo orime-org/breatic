@@ -10,7 +10,7 @@
  * under the other.
  */
 
-import type { ParamDescriptor } from '@breatic/shared';
+import { appliesInMode, type ParamDescriptor } from '@breatic/shared';
 
 /** What a param filled off the canvas says about itself here. */
 export interface CanvasFill {
@@ -32,6 +32,6 @@ export function filledFromCanvas(
 ): CanvasFill | undefined {
   if (spec?.fill !== 'canvas' && spec?.fill !== 'pool') return undefined;
   // `modes` narrows a param to some of the model's modes; absent means all.
-  if (spec.modes !== undefined && !spec.modes.includes(mode)) return undefined;
+  if (!appliesInMode(spec, mode)) return undefined;
   return { fill: spec.fill, optional: spec.optional === true };
 }
