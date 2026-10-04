@@ -54,7 +54,7 @@ async function toolsUsed(p: Page): Promise<string[]> {
 async function ask(p: Page, question: string): Promise<ReturnType<Page['getByTestId']>> {
   await p.getByTestId('new-conversation').click();
   await expect(p.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
-  const composer = p.getByTestId('chat-composer-textarea');
+  const composer = p.getByTestId('chat-composer-box');
   await composer.fill(question);
   await composer.press('Enter');
   await expect(p.getByTestId('message-bubble')).toHaveCount(2, { timeout: 200_000 });

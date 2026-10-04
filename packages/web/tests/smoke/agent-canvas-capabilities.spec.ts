@@ -66,7 +66,7 @@ test.afterEach(async () => {
 });
 
 test('names a model this deployment can actually serve @needs-model', async () => {
-  const composer = page.getByTestId('chat-composer-textarea');
+  const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
   const servable = await servableImageModels(page, 'i2i');

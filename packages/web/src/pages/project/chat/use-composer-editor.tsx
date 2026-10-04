@@ -172,7 +172,7 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
       content: draftContent(input.draft, (id) => nameIn(live.current.attachments, id, labelNow)),
       editorProps: {
         attributes: {
-          'data-testid': 'chat-composer-textarea',
+          'data-testid': 'chat-composer-box',
           role: 'textbox',
           'aria-multiline': 'true',
           class:

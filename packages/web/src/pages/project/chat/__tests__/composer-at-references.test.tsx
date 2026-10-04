@@ -57,7 +57,7 @@ function setup(props: Partial<Props> = {}): {
  * @returns The editor.
  */
 function box(): Editor {
-  const el = screen.getByTestId('chat-composer-textarea') as unknown as { editor?: Editor };
+  const el = screen.getByTestId('chat-composer-box') as unknown as { editor?: Editor };
   if (!el.editor) throw new Error('no editor on the box');
   return el.editor;
 }

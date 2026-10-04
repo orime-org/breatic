@@ -30,7 +30,7 @@ async function pasteInto(
   page: Page,
   clip: { file?: { name: string; type: string; base64: string }; text?: string },
 ): Promise<void> {
-  await page.getByTestId('chat-composer-textarea').focus();
+  await page.getByTestId('chat-composer-box').focus();
   await page.evaluate((c) => {
     const data = new DataTransfer();
     if (c.file) {
@@ -38,7 +38,7 @@ async function pasteInto(
       data.items.add(new File([bytes], c.file.name, { type: c.file.type }));
     }
     if (c.text !== undefined) data.setData('text/plain', c.text);
-    const box = document.querySelector('[data-testid="chat-composer-textarea"]');
+    const box = document.querySelector('[data-testid="chat-composer-box"]');
     const event = new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true });
     if (box && box.dispatchEvent(event) && c.text !== undefined) {
       // Nothing kept the browser from inserting it, so insert it as it would.
@@ -57,7 +57,7 @@ test('a pasted picture lands in the tray, as a picked one does @needs-storage', 
   await pasteInto(page, { file: { name: 'pasted.png', type: 'image/png', base64: PNG_BASE64 }, text: 'pasted.png' });
 
   await expect(page.getByTestId('chat-composer-chips')).toContainText('pasted.png', { timeout: 20_000 });
-  await expect(page.getByTestId('chat-composer-textarea')).toHaveText('');
+  await expect(page.getByTestId('chat-composer-box')).toHaveText('');
 });
 
 test('a pasted file the attach button refuses is refused with the same notice', async ({ page }) => {
@@ -70,5 +70,5 @@ test('a pasted file the attach button refuses is refused with the same notice', 
 test('a plain-text paste still goes into the box', async ({ page }) => {
   await pasteInto(page, { text: 'hello from the clipboard' });
 
-  await expect(page.getByTestId('chat-composer-textarea')).toHaveText('hello from the clipboard');
+  await expect(page.getByTestId('chat-composer-box')).toHaveText('hello from the clipboard');
 });

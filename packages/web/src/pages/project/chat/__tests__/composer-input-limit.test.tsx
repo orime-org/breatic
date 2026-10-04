@@ -45,7 +45,7 @@ function setup(draft: string): { fill: (next: string) => void } {
  * @returns The editor.
  */
 function box(): Editor {
-  const el = screen.getByTestId('chat-composer-textarea') as unknown as { editor?: Editor };
+  const el = screen.getByTestId('chat-composer-box') as unknown as { editor?: Editor };
   if (!el.editor) throw new Error('no editor on the box');
   return el.editor;
 }
@@ -129,7 +129,7 @@ describe('输入框的上限', () => {
     vi.useFakeTimers();
     try {
       fillToLimit();
-      const box = screen.getByTestId('chat-composer-textarea');
+      const box = screen.getByTestId('chat-composer-box');
       act(() => {
         vi.advanceTimersByTime(NOTICE_LINGERS_MS);
       });

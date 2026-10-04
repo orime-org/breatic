@@ -44,7 +44,7 @@ function setup(props: Partial<Parameters<typeof ChatComposer>[0]> = {}): {
  * @returns False when the composer kept the browser from inserting the paste.
  */
 function paste(files: File[], text = ''): boolean {
-  return fireEvent.paste(screen.getByTestId('chat-composer-textarea'), {
+  return fireEvent.paste(screen.getByTestId('chat-composer-box'), {
     clipboardData: { files, getData: (type: string) => (type === 'text/plain' ? text : '') },
   });
 }
@@ -77,7 +77,7 @@ describe('pasting into the composer', () => {
     paste([], 'hello');
 
     expect(onAttachFiles).not.toHaveBeenCalled();
-    expect(screen.getByTestId('chat-composer-textarea')).toHaveTextContent('hello');
+    expect(screen.getByTestId('chat-composer-box')).toHaveTextContent('hello');
   });
 
   it('attaches nothing while the attach button is off', () => {
@@ -95,7 +95,7 @@ describe('pasting into the composer', () => {
     paste([], `${CLIPBOARD_MARKER}${JSON.stringify([node])}`);
 
     expect(onPasteCanvas).toHaveBeenCalledWith([node]);
-    expect(screen.getByTestId('chat-composer-textarea')).not.toHaveTextContent(CLIPBOARD_MARKER);
+    expect(screen.getByTestId('chat-composer-box')).not.toHaveTextContent(CLIPBOARD_MARKER);
   });
 
   it('pastes canvas text that does not parse as the words it is', () => {
@@ -104,6 +104,6 @@ describe('pasting into the composer', () => {
     paste([], `${CLIPBOARD_MARKER}not json`);
 
     expect(onPasteCanvas).not.toHaveBeenCalled();
-    expect(screen.getByTestId('chat-composer-textarea')).toHaveTextContent('not json');
+    expect(screen.getByTestId('chat-composer-box')).toHaveTextContent('not json');
   });
 });

@@ -592,7 +592,7 @@ test('leaves the focus where the reader put it when Escape takes it away', async
   await expect(page.getByTestId('doc-link-url')).toBeVisible({
     timeout: 5_000,
   });
-  await page.getByTestId('chat-composer-textarea').focus();
+  await page.getByTestId('chat-composer-box').focus();
   await page.waitForTimeout(200);
 
   await page.keyboard.press('Escape');
@@ -600,7 +600,7 @@ test('leaves the focus where the reader put it when Escape takes it away', async
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
   });
-  await expect(page.getByTestId('chat-composer-textarea')).toBeFocused();
+  await expect(page.getByTestId('chat-composer-box')).toBeFocused();
 });
 
 test('goes on a confirm, having written the address', async ({ page }) => {

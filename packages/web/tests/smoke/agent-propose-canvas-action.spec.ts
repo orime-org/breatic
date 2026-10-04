@@ -69,7 +69,7 @@ test.afterEach(async () => {
 test('proposes a pair of nodes, and one press puts them on the canvas wired @needs-model', async () => {
   // A real turn: the wait is on a model, and on the catalog calls before it.
   test.setTimeout(240_000);
-  const composer = page.getByTestId('chat-composer-textarea');
+  const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
   // Pan away from where the space opened. A reader asking for this has been
@@ -204,7 +204,7 @@ test('proposes a storyboard, and the panel opens on its shots @needs-model', asy
   // A13 (#2218): a proposal carrying shots lands with the storyboard on, in
   // the per-shot tier, each shot holding the words the agent wrote.
   test.setTimeout(240_000);
-  const composer = page.getByTestId('chat-composer-textarea');
+  const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
   await page.getByTestId('new-conversation').click();
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });

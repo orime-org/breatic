@@ -159,7 +159,7 @@ describe('ChatPanel', () => {
     const user = userEvent.setup();
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
-    await user.type(screen.getByTestId('chat-composer-textarea'), 'Hi!');
+    await user.type(screen.getByTestId('chat-composer-box'), 'Hi!');
     expect(conversationRuntime.draftOf(CONV)).toBe('Hi!');
   });
 
@@ -265,7 +265,7 @@ describe('ChatPanel', () => {
 
     // The box shows what was sent and accepts nothing more, so there is never
     // a moment where it holds one sentence of ours and another of theirs.
-    const box = screen.getByTestId('chat-composer-textarea');
+    const box = screen.getByTestId('chat-composer-box');
     expect(box).toHaveAttribute('contenteditable', 'false');
     expect(box).toHaveAttribute('aria-readonly', 'true');
     await user.type(box, ' and one more thing');
@@ -278,7 +278,7 @@ describe('ChatPanel', () => {
     // And then it is emptied, with no rule applied to the text: only one
     // thing could have been in it.
     await waitFor(() => expect(conversationRuntime.draftOf(CONV)).toBe(''));
-    expect(screen.getByTestId('chat-composer-textarea')).toHaveAttribute('contenteditable', 'true');
+    expect(screen.getByTestId('chat-composer-box')).toHaveAttribute('contenteditable', 'true');
   });
 
   it('says so on the composer when the message never went out', async () => {
@@ -383,7 +383,7 @@ describe('ChatPanel', () => {
     renderPanel();
 
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
-    expect(screen.getByTestId('chat-composer-textarea')).toHaveAttribute('aria-readonly', 'true');
+    expect(screen.getByTestId('chat-composer-box')).toHaveAttribute('aria-readonly', 'true');
 
     await act(async () => {
       land?.();
@@ -391,7 +391,7 @@ describe('ChatPanel', () => {
     });
 
     await waitFor(() =>
-      expect(screen.getByTestId('chat-composer-textarea')).toHaveAttribute('contenteditable', 'true'),
+      expect(screen.getByTestId('chat-composer-box')).toHaveAttribute('contenteditable', 'true'),
     );
   });
 
@@ -407,7 +407,7 @@ describe('ChatPanel', () => {
       expect(screen.getByTestId('chat-notice')).toHaveTextContent('Network error'),
     );
 
-    expect(screen.getByTestId('chat-composer-textarea')).not.toBeDisabled();
+    expect(screen.getByTestId('chat-composer-box')).not.toBeDisabled();
   });
 
   it('keeps what the user typed when the chat could not be opened', async () => {
@@ -431,7 +431,7 @@ describe('ChatPanel', () => {
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
     await waitFor(() =>
-      expect(screen.getByTestId('chat-composer-textarea')).not.toBeDisabled(),
+      expect(screen.getByTestId('chat-composer-box')).not.toBeDisabled(),
     );
 
     conversationRuntime.setDraft(CONV, 'is anyone there');

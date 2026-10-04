@@ -51,7 +51,7 @@ test.beforeEach(async ({ browser }) => {
  *   the model answered in prose instead of searching looks like.
  */
 async function aTurnThatFoundPictures(target: Page): Promise<void> {
-  const composer = target.getByTestId('chat-composer-textarea');
+  const composer = target.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
   await target.getByTestId('new-conversation').click();

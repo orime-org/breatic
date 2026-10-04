@@ -82,7 +82,7 @@ describe('the box the reader types in', () => {
   it('starts one line tall', () => {
     render(<ChatComposer {...BASICS} />);
 
-    const box = screen.getByTestId('chat-composer-textarea');
+    const box = screen.getByTestId('chat-composer-box');
     expect(box.querySelectorAll('p')).toHaveLength(1);
     expect(box.className).not.toMatch(/min-h-/);
   });
@@ -90,7 +90,7 @@ describe('the box the reader types in', () => {
   it('grows with what is typed, and scrolls in the panel rather than in itself', () => {
     render(<ChatComposer {...BASICS} />);
 
-    const box = screen.getByTestId('chat-composer-textarea');
+    const box = screen.getByTestId('chat-composer-box');
     // The box takes the height of its content; the ceiling belongs to the
     // wrapper, whose scrollbar is the panel's own rather than the browser's.
     expect(box.className).not.toMatch(/overflow-(y-)?(auto|scroll)|max-h-/);
@@ -101,7 +101,7 @@ describe('the box the reader types in', () => {
   it('leaves the scroll position alone when what is written changes', () => {
     const { rerender } = render(<ChatComposer {...BASICS} draft='one line' />);
 
-    const box = screen.getByTestId('chat-composer-textarea');
+    const box = screen.getByTestId('chat-composer-box');
     const viewport = box.closest('[data-radix-scroll-area-viewport]');
     if (viewport === null) throw new Error('the composer has no scrolling viewport');
 

@@ -74,7 +74,7 @@ describe('taking an attached item out', () => {
     render(<Tray ids={['a']} />);
     removeWithKeyboard('a');
 
-    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-textarea'));
+    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-box'));
   });
 
   it('leaves the keyboard where it is when another item is taken out', () => {

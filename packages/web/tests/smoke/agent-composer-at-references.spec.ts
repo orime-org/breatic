@@ -36,12 +36,12 @@ const ELSEWHERE = [
  * @param text - What the clipboard carries.
  */
 async function pasteText(page: Page, text: string): Promise<void> {
-  await page.getByTestId('chat-composer-textarea').focus();
+  await page.getByTestId('chat-composer-box').focus();
   await page.evaluate((t) => {
     const data = new DataTransfer();
     data.setData('text/plain', t);
     document
-      .querySelector('[data-testid="chat-composer-textarea"]')
+      .querySelector('[data-testid="chat-composer-box"]')
       ?.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
   }, text);
 }
@@ -56,7 +56,7 @@ test('a pasted picture is attached rather than pasted as text', async ({ page })
   await pasteText(page, MARKER + JSON.stringify([PICTURE]));
 
   await expect(page.getByTestId('chat-composer-chips')).toContainText('Neon street');
-  await expect(page.getByTestId('chat-composer-textarea')).toHaveText('');
+  await expect(page.getByTestId('chat-composer-box')).toHaveText('');
 });
 
 test('nodes from another canvas are attached as one piece named after the group', async ({ page }) => {
@@ -69,7 +69,7 @@ test('@ lists the attachment just above the @, and the pick goes out as a refere
   await pasteText(page, MARKER + JSON.stringify([PICTURE]));
   await expect(page.getByTestId('chat-composer-chips')).toContainText('Neon street');
 
-  const box = page.getByTestId('chat-composer-textarea');
+  const box = page.getByTestId('chat-composer-box');
   await box.pressSequentially('what is in @');
   const option = page.locator('[data-testid^="reference-mention-option-"]').first();
   await expect(option).toBeVisible();
@@ -77,7 +77,7 @@ test('@ lists the attachment just above the @, and the pick goes out as a refere
 
   // Above the `@`, its left edge on the `@`'s, with a gap between.
   const at = await page.evaluate(() => {
-    const root = document.querySelector('[data-testid="chat-composer-textarea"]');
+    const root = document.querySelector('[data-testid="chat-composer-box"]');
     const walker = document.createTreeWalker(root as Node, NodeFilter.SHOW_TEXT);
     while (walker.nextNode()) {
       const node = walker.currentNode as Text;
@@ -118,7 +118,7 @@ test('@ lists the attachment just above the @, and the pick goes out as a refere
 
 test('removing the attachment takes its block out of the words', async ({ page }) => {
   await pasteText(page, MARKER + JSON.stringify([PICTURE]));
-  const box = page.getByTestId('chat-composer-textarea');
+  const box = page.getByTestId('chat-composer-box');
   await box.pressSequentially('look at @');
   await expect(page.locator('[data-testid^="reference-mention-option-"]').first()).toBeVisible();
   await box.press('Enter');
