@@ -47,7 +47,7 @@ function selectionOf(p: Page): Promise<string> {
  * Wait until the write-back ProseMirror scheduled when the editor last took
  * the focus has run. A timer due no earlier than it, set after it, runs after
  * it: timers run in the order they fall due, and in the order they were set
- * when due together. A focus still on its way (a menu closing hands it back a
+ * when due together; a timer already overdue still runs before a new one. A focus still on its way (a menu closing hands it back a
  * task later) is the caller's to wait for first.
  * @param p - The page.
  */
@@ -57,9 +57,10 @@ async function focusSettled(p: Page): Promise<void> {
       editor: { view: { hasFocus: () => boolean; input: { lastFocus: number } } };
     }).editor;
     if (!view.hasFocus()) return;
+    // Even once 20ms have passed the write-back may not have run yet: a busy
+    // page runs a timer late. One set now still runs after it.
     const left = view.input.lastFocus + 20 - Date.now();
-    if (left < 0) return;
-    await new Promise((settle) => setTimeout(settle, left + 1));
+    await new Promise((settle) => setTimeout(settle, Math.max(0, left + 1)));
   }, EDITOR);
 }
 
