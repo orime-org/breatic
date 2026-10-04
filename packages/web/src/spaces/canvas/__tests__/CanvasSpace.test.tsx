@@ -3505,10 +3505,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
   });
 
-  it('贯通：浮层交出的时间点原样到达 runFocusCrop 的入参（#1987 A9）', () => {
-    // 从浮层到取源之间有五个环节，其中一个是函数赋值 —— 编译器管不住它，
-    // 少给一个字段照样编译通过（`natural` 今天就是这么被吃掉的）。所以这条
-    // 走完整条链：真的点节点、真的画选框、真的点确认，然后看最下游收到什么。
+  /**
+   * Picks a video source for `target`, draws a crop at 4.375s and confirms it.
+   * @returns Restores the measured rectangles.
+   */
+  const confirmVideoCrop = (): (() => void) => {
     const rect = vi
       .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
       .mockImplementation(function (this: HTMLElement) {
@@ -3525,67 +3526,98 @@ describe('CanvasSpace (ReactFlow mount)', () => {
           toJSON: () => ({}),
         } as DOMRect;
       });
-    try {
-      mockUseCanvasSpace.mockReturnValue(
-        mockSpace({
-          nodes: [
-            {
-              id: 'target',
-              type: 'image',
-              position: { x: 0, y: 0 },
-              data: { kind: 'image', status: 'idle' },
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'src-video',
+            type: 'video',
+            position: { x: 300, y: 0 },
+            data: {
+              kind: 'video',
+              content: 'https://cdn/clip.mp4',
+              name: 'Video Node 3',
+              status: 'idle',
             },
-            {
-              id: 'src-video',
-              type: 'video',
-              position: { x: 300, y: 0 },
-              data: {
-                kind: 'video',
-                content: 'https://cdn/clip.mp4',
-                name: 'Video Node 3',
-                status: 'idle',
-              },
-            },
-          ],
-        }),
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      canvasSessions.of('s').getState().startFocusPick('target');
+    });
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.react-flow__node[data-id="src-video"]')!,
       );
-      renderSpace();
-      act(() => {
-        canvasSessions.of('s').getState().startFocusPick('target');
-      });
-      act(() => {
-        fireEvent.click(
-          document.querySelector('.react-flow__node[data-id="src-video"]')!,
-        );
-      });
-      const video = screen.getByTestId('media-element') as HTMLVideoElement;
-      Object.defineProperty(video, 'videoWidth', { value: 800, configurable: true });
-      Object.defineProperty(video, 'videoHeight', { value: 600, configurable: true });
-      // 用户拖时间轴停在的那一帧，故意不是整秒。
-      Object.defineProperty(video, 'currentTime', {
-        value: 4.375,
-        writable: true,
-        configurable: true,
-      });
-      act(() => {
-        fireEvent(window, new Event('resize'));
-      });
-      const layer = screen.getByTestId('focus-crop-layer');
-      act(() => {
-        fireEvent.pointerDown(layer, { clientX: 150, clientY: 100, button: 0 });
-        fireEvent.pointerMove(layer, { clientX: 250, clientY: 180 });
-        fireEvent.pointerUp(layer);
-      });
-      act(() => {
-        fireEvent.click(screen.getByTestId('focus-crop-confirm'));
-      });
+    });
+    const video = screen.getByTestId('media-element') as HTMLVideoElement;
+    Object.defineProperty(video, 'videoWidth', { value: 800, configurable: true });
+    Object.defineProperty(video, 'videoHeight', { value: 600, configurable: true });
+    // 用户拖时间轴停在的那一帧，故意不是整秒。
+    Object.defineProperty(video, 'currentTime', {
+      value: 4.375,
+      writable: true,
+      configurable: true,
+    });
+    act(() => {
+      fireEvent(window, new Event('resize'));
+    });
+    const layer = screen.getByTestId('focus-crop-layer');
+    act(() => {
+      fireEvent.pointerDown(layer, { clientX: 150, clientY: 100, button: 0 });
+      fireEvent.pointerMove(layer, { clientX: 250, clientY: 180 });
+      fireEvent.pointerUp(layer);
+    });
+    act(() => {
+      fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+    });
+    return () => rect.mockRestore();
+  };
+
+  it('贯通：浮层交出的时间点原样到达 runFocusCrop 的入参（#1987 A9）', () => {
+    // 从浮层到取源之间有五个环节，其中一个是函数赋值 —— 编译器管不住它，
+    // 少给一个字段照样编译通过（`natural` 今天就是这么被吃掉的）。所以这条
+    // 走完整条链：真的点节点、真的画选框、真的点确认，然后看最下游收到什么。
+    const restore = confirmVideoCrop();
+    try {
       expect(mockRunFocusCrop).toHaveBeenCalledTimes(1);
       expect(mockRunFocusCrop.mock.calls[0]![0]).toMatchObject({
         sourceUrl: 'https://cdn/clip.mp4',
         sourceTimeSeconds: 4.375,
       });
     } finally {
-      rect.mockRestore();
+      restore();
+    }
+  });
+
+  // A crop's upload is front-end work like any other upload on the canvas:
+  // while it is out, closing this Space's tab is held back, so the image it
+  // brings back has the document to land in (inner#1235 A17).
+  it('holds the Space as busy while a confirmed crop is uploading', async () => {
+    let finish: () => void = () => {};
+    mockRunFocusCrop.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const restore = confirmVideoCrop();
+    try {
+      expect(useSpaceOperationsStore.getState().hasOperations('s')).toBe(true);
+      await act(async () => {
+        finish();
+      });
+      expect(useSpaceOperationsStore.getState().hasOperations('s')).toBe(false);
+    } finally {
+      restore();
     }
   });
 
