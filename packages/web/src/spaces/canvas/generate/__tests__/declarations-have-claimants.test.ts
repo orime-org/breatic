@@ -453,7 +453,9 @@ describe('what the catalog declares', () => {
       if (param !== spec.shotsParam && param !== spec.tierParam) {
         return `is a third fill: storyboard param beside '${spec.shotsParam}' and '${String(spec.tierParam)}', and the controls write neither shots nor tier into it`;
       }
-      if (spec.tierParam === undefined) return 'has shots but no fill: storyboard param naming the tier';
+      if (spec.tierParam === undefined && spec.intoPrompt === undefined) {
+        return 'has shots but neither a fill: storyboard param naming the tier nor into_prompt, so the shots reach the upstream nowhere';
+      }
       const fields = (model.params[spec.shotsParam] as { fields?: Record<string, unknown> }).fields ?? {};
       if (!('prompt' in fields)) return `'${spec.shotsParam}' has no prompt field, and each shot's text box writes one`;
       return spec.totalParam === undefined

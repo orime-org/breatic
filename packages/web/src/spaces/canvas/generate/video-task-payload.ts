@@ -36,8 +36,9 @@ export interface VideoTaskInput {
   /** Model params already reconciled for the model (ratio, resolution, duration, audio). */
   params: Record<string, unknown>;
   /**
-   * Plain-text prompt (extracted from the rich-text prompt); undefined under
-   * the per-shot storyboard, whose shots stand in for it (#2218).
+   * Plain-text prompt (extracted from the rich-text prompt), or the shots
+   * written into one prompt in the multi-shot mode; undefined when the shots
+   * go out in a field of their own and stand in for it.
    */
   promptText: string | undefined;
   /**
@@ -54,7 +55,7 @@ export interface VideoTaskInput {
    * model takes no pool, or when nothing is mentioned.
    */
   poolParams: Readonly<Record<string, readonly string[]>>;
-  /** What the effective storyboard tier adds, as `storyboardParams` builds it (#2218). */
+  /** What the multi-shot mode adds, as `storyboardSend` builds it. */
   storyboardParams: Readonly<Record<string, unknown>>;
 }
 

@@ -2,134 +2,65 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The video panel's storyboard controls (#2218, design §5.2), laid out after
- * Kling's own: a switch under the prompt box whose row ends with the way into
- * the per-shot tier, or in that tier with "+ shot" and the way back in the
- * same place (#2252); above it in that tier, a list of shots, each with its
- * seconds and its own prompt box.
+ * The multi-shot mode's controls, laid out after Kling's own: a list of shots
+ * in place of the prompt box, each with its seconds and its own prompt box,
+ * and under it a centred "+ Add shot" whose reason, when it cannot act, sits
+ * to its left on the same line.
  *
  * Presentational: which buttons can act is read off the duration rules in
  * `@breatic/shared`, and every write is a callback the container owns.
  */
 
-import { ArrowLeft, Minus, Plus } from 'lucide-react';
+import { Minus, Plus } from 'lucide-react';
 import * as React from 'react';
-import { addShot, stepShot, type StoryboardKind } from '@breatic/shared';
+import { addShot, stepShot } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
-import { Switch } from '@web/components/ui/switch';
 import { useTranslation } from '@web/i18n/use-translation';
 
-interface StoryboardSwitchRowProps {
-  /** The tier stored for this mode. */
-  kind: StoryboardKind;
-  /** The most shots the model takes; undefined when uncapped. */
-  maxShots: number | undefined;
-  /** The i18n key of why "+ shot" cannot act, or undefined when it can. */
+interface AddShotRowProps {
+  /** The most shots the mode takes for this model. */
+  maxShots: number;
+  /** The i18n key of why "+ Add shot" cannot act, or undefined when it can. */
   addBlocked: string | undefined;
-  /** Turn the storyboard on (automatic tier) or off. */
-  onToggle: (on: boolean) => void;
-  /** Go into the per-shot tier. */
-  onEnterShots: () => void;
-  /** Leave the per-shot tier for the automatic one. */
-  onBack: () => void;
   /** Add a shot at the end. */
   onAdd: () => void;
 }
 
 /**
- * The switch under the prompt box. Its right end holds the way into the
- * per-shot tier, or in that tier "+ shot" and the way back.
+ * The row under the shots: "+ Add shot" in the middle, sized to its words,
+ * with the reason it cannot act to its left on the same line.
  * @param root0 - Component props.
- * @param root0.kind - The stored tier.
  * @param root0.maxShots - The shot cap.
- * @param root0.addBlocked - Why "+ shot" cannot act.
- * @param root0.onToggle - Turns the storyboard on or off.
- * @param root0.onEnterShots - Goes into the per-shot tier.
- * @param root0.onBack - Returns to the automatic tier.
+ * @param root0.addBlocked - Why "+ Add shot" cannot act.
  * @param root0.onAdd - Adds a shot.
  * @returns The row.
  */
-export const StoryboardSwitchRow = React.memo(function StoryboardSwitchRow({
-  kind,
+export const AddShotRow = React.memo(function AddShotRow({
   maxShots,
   addBlocked,
-  onToggle,
-  onEnterShots,
-  onBack,
   onAdd,
-}: StoryboardSwitchRowProps): React.JSX.Element {
+}: AddShotRowProps): React.JSX.Element {
   const t = useTranslation();
-  const blocked = kind === 'custom' ? addBlocked : undefined;
   return (
-    <div className='flex flex-col gap-1'>
-      <div className='flex items-center gap-2'>
-        <label className='flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap'>
-          <Switch
-            checked={kind !== 'off'}
-            onCheckedChange={onToggle}
-            data-testid='generate-storyboard-switch'
-          />
-          <span className='text-xs font-medium text-foreground'>
-            {t('canvas.generatePanel.storyboard.label')}
-          </span>
-          {/* The track alone does not read as on or off against the panel, so
-              the state is said in words, as ParamToggleRow does. */}
-          <span aria-hidden='true' data-testid='generate-storyboard-state' className='text-xs text-muted-foreground'>
-            {kind === 'off' ? t('canvas.generatePanel.switchOff') : t('canvas.generatePanel.switchOn')}
-          </span>
-        </label>
-        {kind === 'auto' ? (
-          <span className='min-w-0 text-xs text-muted-foreground'>
-            {t('canvas.generatePanel.storyboard.autoHint')}
-          </span>
-        ) : null}
-        <div data-testid='generate-storyboard-actions' className='ml-auto flex shrink-0 items-center gap-2'>
-          {kind === 'custom' ? (
-            <>
-              <Button
-                type='button'
-                variant='outline'
-                size='compact'
-                data-testid='generate-storyboard-add'
-                disabled={blocked !== undefined}
-                onClick={onAdd}
-                className='gap-1 text-xs disabled:cursor-not-allowed disabled:opacity-50'
-              >
-                <Plus className='h-3.5 w-3.5' aria-hidden='true' />
-                {t('canvas.generatePanel.storyboard.addShot')}
-              </Button>
-              <Button
-                type='button'
-                variant='outline'
-                size='compact'
-                data-testid='generate-storyboard-back'
-                onClick={onBack}
-                className='gap-1 text-xs'
-              >
-                <ArrowLeft className='h-3.5 w-3.5' aria-hidden='true' />
-                {t('canvas.generatePanel.storyboard.back')}
-              </Button>
-            </>
-          ) : (
-            <Button
-              type='button'
-              variant='outline'
-              size='compact'
-              data-testid='generate-storyboard-per-shot'
-              onClick={onEnterShots}
-              className='text-xs'
-            >
-              {t('canvas.generatePanel.storyboard.perShot')}
-            </Button>
-          )}
-        </div>
-      </div>
-      {blocked !== undefined ? (
-        <span data-testid='generate-storyboard-add-blocked' className='self-end text-xs text-muted-foreground'>
-          {t(blocked, { max: maxShots ?? 0 })}
+    <div data-testid='generate-storyboard-add-row' className='flex items-center justify-center gap-2'>
+      {addBlocked !== undefined ? (
+        <span data-testid='generate-storyboard-add-blocked' className='min-w-0 text-xs text-muted-foreground'>
+          {t(addBlocked, { max: maxShots })}
         </span>
       ) : null}
+      <Button
+        type='button'
+        variant='outline'
+        size='compact'
+        data-testid='generate-storyboard-add'
+        disabled={addBlocked !== undefined}
+        onClick={onAdd}
+        className='shrink-0 gap-1 text-xs disabled:cursor-not-allowed disabled:opacity-50'
+      >
+        <Plus className='h-3.5 w-3.5' aria-hidden='true' />
+        {t('canvas.generatePanel.storyboard.addShot')}
+      </Button>
     </div>
   );
 });
@@ -161,16 +92,16 @@ interface ShotListProps<Shot extends ShotRow> {
 export function addBlockedKey(
   durations: readonly number[],
   total: number,
-  maxShots: number | undefined,
+  maxShots: number,
 ): string | undefined {
-  if (addShot(durations, total, maxShots ?? Number.POSITIVE_INFINITY) !== null) return undefined;
-  return maxShots !== undefined && durations.length >= maxShots
+  if (addShot(durations, total, maxShots) !== null) return undefined;
+  return durations.length >= maxShots
     ? 'canvas.generatePanel.storyboard.shotCapReached'
     : 'canvas.generatePanel.storyboard.noSecondToSpare';
 }
 
 /**
- * The per-shot tier's cards, one per shot.
+ * The multi-shot mode's cards, one per shot.
  * @param root0 - Component props.
  * @param root0.shots - The shots.
  * @param root0.onStep - Steps a shot's seconds.
