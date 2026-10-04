@@ -67,7 +67,8 @@ export const ChatReference = Node.create<ChatReferenceOptions>({
   draggable: true,
 
   addOptions() {
-    return { suggestion: null, isAttached: () => true };
+    // Configured by the box; until then a pasted block is read as words.
+    return { suggestion: null, isAttached: () => false };
   },
 
   addAttributes() {

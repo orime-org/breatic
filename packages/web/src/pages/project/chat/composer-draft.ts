@@ -9,10 +9,10 @@
 
 import type { JSONContent } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { attachmentMarker, messageSegments } from '@breatic/shared';
+import { attachmentMarker, messageLength, messageSegments } from '@breatic/shared';
 
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
-import { CHAT_REFERENCE_LABEL_ATTR } from '@web/pages/project/chat/chat-reference';
+import { chatReferenceContent } from '@web/pages/project/chat/chat-reference';
 
 /**
  * The box's content for a draft.
@@ -27,10 +27,7 @@ export function draftContent(draft: string, nameOf: (id: string) => string): JSO
       const content = messageSegments(line).map((segment): JSONContent =>
         segment.kind === 'text'
           ? { type: 'text', text: segment.text }
-          : {
-            type: REFERENCE_MENTION_NODE,
-            attrs: { [MENTION_SOURCE_ID_ATTR]: segment.id, [CHAT_REFERENCE_LABEL_ATTR]: nameOf(segment.id) },
-          },
+          : chatReferenceContent(segment.id, nameOf(segment.id)),
       );
       return content.length > 0 ? { type: 'paragraph', content } : { type: 'paragraph' };
     }),
@@ -55,4 +52,32 @@ export function draftOf(doc: PMNode): string {
     lines.push(line);
   });
   return lines.join('\n');
+}
+
+/**
+ * How long the draft in a document is, a reference counting as one.
+ * @param doc - The box's document.
+ * @param attached - What is attached; only their ids are read.
+ * @returns The length the reader sees.
+ */
+export function draftLength(doc: PMNode, attached: ReadonlyArray<{ readonly id: string }>): number {
+  return messageLength(attached, draftOf(doc));
+}
+
+/**
+ * Where the blocks are whose attachment is not attached. A block goes on its
+ * own: the spaces around it are the reader's words.
+ * @param doc - The box's document.
+ * @param attached - What is attached; only their ids are read.
+ * @returns Their positions, last first, so each can be deleted in turn.
+ */
+export function stalePositions(doc: PMNode, attached: ReadonlyArray<{ readonly id: string }>): number[] {
+  const ids = new Set(attached.map((a) => a.id));
+  const stale: number[] = [];
+  doc.descendants((node, pos) => {
+    if (node.type.name === REFERENCE_MENTION_NODE && !ids.has(String(node.attrs[MENTION_SOURCE_ID_ATTR]))) {
+      stale.push(pos);
+    }
+  });
+  return stale.reverse();
 }

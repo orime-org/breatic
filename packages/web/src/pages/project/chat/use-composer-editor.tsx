@@ -11,34 +11,22 @@
  * `@` list.
  */
 
-import { Extension, type Editor } from '@tiptap/core';
-import { splitBlock } from '@tiptap/pm/commands';
-import { Plugin, type Transaction } from '@tiptap/pm/state';
+import type { Editor } from '@tiptap/core';
 import { useEditor } from '@tiptap/react';
 import * as React from 'react';
-import { CHAT_MESSAGE_MAX_CHARS, messageLength } from '@breatic/shared';
+import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
 
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { makeMentionSuggestion } from '@web/features/reference-mention/mention-suggestion';
-import {
-  dispatchMachineEdit,
-  MACHINE_EDIT_META,
-} from '@web/features/reference-mention/reference-mention-local-input';
+import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
 import { useTranslation } from '@web/i18n/use-translation';
 import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
-import {
-  CHAT_REFERENCE_LABEL_ATTR,
-  CHAT_REFERENCE_PRIORITY,
-  chatReferenceContent,
-} from '@web/pages/project/chat/chat-reference';
+import { CHAT_REFERENCE_LABEL_ATTR, chatReferenceContent } from '@web/pages/project/chat/chat-reference';
 import { composerExtensions } from '@web/pages/project/chat/composer-extensions';
-import { draftContent, draftOf } from '@web/pages/project/chat/composer-draft';
+import { draftContent, draftLength, draftOf, stalePositions } from '@web/pages/project/chat/composer-draft';
 import { parseClipboardNodes, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import type { TrayItem } from '@web/stores/chat-attachments';
-
-/** Below the reference block's priority, above TipTap's default of 100. */
-const COMPOSER_RULES_PRIORITY = CHAT_REFERENCE_PRIORITY - 50;
 
 /** What the box is told and what it reports. */
 export interface ComposerEditorInput {
@@ -62,16 +50,6 @@ export interface ComposerEditorInput {
   onPasteCanvas: (nodes: ClipboardNode[]) => void;
   /** Called when the limit turned something away. */
   onRefusedAtLimit: () => void;
-}
-
-/**
- * How long the draft in a document is, a reference counting as one.
- * @param doc - The document.
- * @param attachments - What is attached.
- * @returns The length the reader sees.
- */
-function lengthOf(doc: Editor['state']['doc'], attachments: ReadonlyArray<TrayItem>): number {
-  return messageLength(attachments, draftOf(doc));
 }
 
 /**
@@ -101,7 +79,9 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
       extensions: [
         ...composerExtensions({
           placeholder: () => live.current.t('chat.composer.placeholder'),
-          isAttached: (id) => live.current.attachments.some((a) => a.id === id),
+          attachments: () => live.current.attachments,
+          onEnter: () => live.current.onEnter(),
+          onRefusedAtLimit: () => live.current.onRefusedAtLimit(),
           suggestion: makeMentionSuggestion<TrayItem>({
             resolveList: (query) => {
               const ready = live.current.attachments.filter((a) => a.status === 'ready');
@@ -117,56 +97,6 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
             // Above the `@`: the box sits at the bottom of the column.
             placement: 'top-start',
           }),
-        }),
-        Extension.create({
-          name: 'composerRules',
-          // Between the reference block and TipTap's own keymap: the `@` list
-          // sees a key first, and Enter is settled here before the default
-          // keymap would break the line.
-          priority: COMPOSER_RULES_PRIORITY,
-          addProseMirrorPlugins() {
-            return [
-              new Plugin({
-                // An undo or a draft written in can bring back a block whose
-                // attachment has since gone; it goes again straight away.
-                appendTransaction: (trs, _old, state): Transaction | null => {
-                  if (!trs.some((tr) => tr.docChanged)) return null;
-                  const stale = stalePositions(state.doc, live.current.attachments);
-                  if (stale.length === 0) return null;
-                  const tr = state.tr;
-                  for (const pos of stale) tr.delete(pos, pos + 1);
-                  return tr.setMeta('addToHistory', false);
-                },
-                props: {
-                  // Runs after the `@` list's own key handling: a list on
-                  // screen takes Enter first, and once it is closed or hidden
-                  // Enter is the box's again.
-                  handleKeyDown: (view, event): boolean => {
-                    if (event.key !== 'Enter' || event.isComposing) return false;
-                    event.preventDefault();
-                    if (event.shiftKey) splitBlock(view.state, view.dispatch);
-                    else live.current.onEnter();
-                    return true;
-                  },
-                },
-                // Refuses an edit that would take the words past the limit, as
-                // the reader counts them. Follow-ups other plugins append (the
-                // spaces kept around a block) and writes the reader did not
-                // make are let through; an edit that shortens is always fine.
-                filterTransaction: (tr: Transaction, state): boolean => {
-                  if (!tr.docChanged || tr.getMeta('appendedTransaction') || tr.getMeta(MACHINE_EDIT_META)) {
-                    return true;
-                  }
-                  const after = lengthOf(tr.doc, live.current.attachments);
-                  if (after <= CHAT_MESSAGE_MAX_CHARS || after <= lengthOf(state.doc, live.current.attachments)) {
-                    return true;
-                  }
-                  live.current.onRefusedAtLimit();
-                  return false;
-                },
-              }),
-            ];
-          },
         }),
       ],
       content: draftContent(input.draft, (id) => nameIn(live.current.attachments, id, labelNow)),
@@ -198,9 +128,9 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
           // as everywhere in the box -- and one that does not fit is cut down
           // to what is left, as plain words, with the limit said out loud.
           const attached = live.current.attachments;
-          const after = lengthOf(view.state.tr.replaceSelection(slice).doc, attached);
+          const after = draftLength(view.state.tr.replaceSelection(slice).doc, attached);
           if (after <= CHAT_MESSAGE_MAX_CHARS) return false;
-          const room = CHAT_MESSAGE_MAX_CHARS - lengthOf(view.state.tr.deleteSelection().doc, attached);
+          const room = CHAT_MESSAGE_MAX_CHARS - draftLength(view.state.tr.deleteSelection().doc, attached);
           live.current.onRefusedAtLimit();
           const words = slice.content.textBetween(0, slice.content.size, '\n');
           if (room > 0) view.dispatch(view.state.tr.insertText(words.slice(0, room)));
@@ -232,7 +162,7 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
   // whose attachment was replaced shows the new name.
   React.useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    syncBlocks(editor, input.attachments, (item) => attachmentLabel(t, item));
+    syncBlocks(editor, input.attachments, labelNow);
   }, [editor, input.attachments, t]);
 
   // Read-only keeps the keyboard: ProseMirror drops `contenteditable` and
@@ -275,25 +205,6 @@ function nameIn(
 ): string {
   const item = attachments.find((a) => a.id === id);
   return item ? labelOf(item) : '';
-}
-
-/**
- * Where the blocks are whose attachment is not attached. A block goes on its
- * own: the spaces around it are the reader's words.
- * @param doc - The box's document.
- * @param attachments - What is attached.
- * @returns Their positions, last first.
- */
-function stalePositions(doc: Editor['state']['doc'], attachments: ReadonlyArray<TrayItem>): number[] {
-  const ids = new Set(attachments.map((a) => a.id));
-  const stale: number[] = [];
-  doc.descendants((node, pos) => {
-    if (node.type.name === REFERENCE_MENTION_NODE && !ids.has(String(node.attrs[MENTION_SOURCE_ID_ATTR]))) {
-      stale.push(pos);
-    }
-  });
-  // Last first, so each delete leaves the earlier positions where they were.
-  return stale.reverse();
 }
 
 /**

@@ -9,7 +9,10 @@ import { Editor } from '@tiptap/core';
 import { attachmentMarker } from '@breatic/shared';
 
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
+import { makeMentionSuggestion } from '@web/features/reference-mention/mention-suggestion';
+import { chatReferenceContent } from '@web/pages/project/chat/chat-reference';
 import { composerExtensions } from '@web/pages/project/chat/composer-extensions';
+import type { TrayItem } from '@web/stores/chat-attachments';
 import { draftContent, draftOf } from '@web/pages/project/chat/composer-draft';
 
 let editor: Editor | null = null;
@@ -27,7 +30,19 @@ afterEach(() => {
 function holding(draft: string): Editor {
   editor = new Editor({
     element: document.createElement('div'),
-    extensions: composerExtensions({ placeholder: () => '' }),
+    extensions: composerExtensions({
+      placeholder: () => '',
+      attachments: () => ['a', 'b', 'c'].map((id) => ({ id, name: `name-${id}`, type: 'image' as const, status: 'ready' as const })),
+      suggestion: makeMentionSuggestion<TrayItem>({
+        resolveList: () => ({ items: [], emptyLabel: '' }),
+        content: (item) => chatReferenceContent(item.id, item.name),
+        itemKey: (item) => item.id,
+        renderItem: (item) => item.name,
+        placement: 'top-start',
+      }),
+      onEnter: () => undefined,
+      onRefusedAtLimit: () => undefined,
+    }),
     content: draftContent(draft, (id) => `name-${id}`),
   });
   return editor;

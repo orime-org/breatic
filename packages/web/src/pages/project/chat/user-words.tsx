@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { attachmentMarker, messageSegments, type ChatAttachedChip } from '@breatic/shared';
+import type { ChatAttachedChip } from '@breatic/shared';
 
 import { useTranslation } from '@web/i18n/use-translation';
-import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
+import { attachmentLabel, resolvedSegments } from '@web/pages/project/chat/attachment-label';
 import { REFERENCE_BLOCK_CLASS } from '@web/pages/project/chat/chat-reference';
 
 interface UserWordsProps {
@@ -26,19 +26,17 @@ interface UserWordsProps {
  */
 export function UserWords({ content, attachments }: UserWordsProps): React.JSX.Element {
   const t = useTranslation();
-  const byId = new Map((attachments ?? []).map((chip) => [chip.id, chip]));
   return (
     <span className='whitespace-pre-wrap break-words'>
-      {messageSegments(content).map((segment, i) => {
-        const chip = segment.kind === 'reference' ? byId.get(segment.id) : undefined;
-        if (segment.kind === 'text') return <React.Fragment key={i}>{segment.text}</React.Fragment>;
-        if (chip === undefined) return <React.Fragment key={i}>{attachmentMarker(segment.id)}</React.Fragment>;
-        return (
+      {resolvedSegments(content, attachments).map((segment, i) =>
+        segment.kind === 'reference' ? (
           <span key={i} data-testid='message-reference' className={REFERENCE_BLOCK_CLASS}>
-            <span className='truncate'>{attachmentLabel(t, { name: chip.name, type: chip.type, chip })}</span>
+            <span className='truncate'>{attachmentLabel(t, segment.chip)}</span>
           </span>
-        );
-      })}
+        ) : (
+          <React.Fragment key={i}>{segment.kind === 'text' ? segment.text : segment.marker}</React.Fragment>
+        ),
+      )}
     </span>
   );
 }

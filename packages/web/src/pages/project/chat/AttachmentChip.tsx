@@ -89,7 +89,7 @@ function AttachmentChipInner({
             {t('chat.attachment.kind', { kind: type })}
           </span>
         )}
-        <span className='truncate'>{attachmentLabel(t, chip ? { name, type, chip } : { name, type })}</span>
+        <span className='truncate'>{attachmentLabel(t, { name, type, chip })}</span>
         {status === 'failed' && failure ? (
           <span className='shrink-0'>{t('chat.composer.attachmentFailed', { reason: failure })}</span>
         ) : null}

@@ -57,6 +57,7 @@ describe('a sent message with references', () => {
 
     await userEvent.click(screen.getByTestId('turn-copy'));
 
+    expect(screen.getByTestId('message-reference')).toHaveTextContent('3');
     expect(writeText).toHaveBeenCalledWith(`see ${screen.getByTestId('message-reference').textContent ?? ''}`);
     expect(writeText).not.toHaveBeenCalledWith(expect.stringContaining('canvas, 3 nodes'));
   });
