@@ -270,8 +270,8 @@ const projectUpdateSchema = z
  *
  * PATCH semantic = client sends only fields to change (per the
  * access-permission design D1; aligns with `members.patch` precedent).
- * Gated in the service by `canManageMeta`: the studio's admin, or an editor
- * or owner of the project; refused on an archived project.
+ * Gated in the service by `canManageMeta`: the studio's admin or the
+ * project's owner; refused on an archived project.
  * @returns `200` with `{ data: ProjectEntity }`
  */
 projects.patch(
