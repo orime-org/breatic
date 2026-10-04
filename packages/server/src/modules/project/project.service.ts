@@ -179,13 +179,9 @@ async function assertStudioHasProjectRoom(
  * exercised against real data; the `maintainer` branch activates with team
  * studios.
  *
- * **Creating is the only one of the four project-lifecycle actions that asks a
- * STUDIO role.** Copying, deleting and transferring ownership all ask a
- * PROJECT role (`viewer`, `owner`, `owner`), which is why a studio guest with
- * `viewer` on one project can fork a new project into that studio today.
- * user 2026-08-13 settled the direction: all four belong on the studio role.
- * Tracked as its own task; not changed here, since it is a permission model
- * decision rather than part of the per-studio project ceiling.
+ * Who may copy, archive or restore an existing project is decided by
+ * `projectPermissions` (projectGovernance.ts); transferring ownership asks the
+ * project's `owner` role.
  * @param userId - Authenticated user UUID
  * @param studioId - The studio the project would be created in
  * @throws {ForbiddenError} if the caller is not an admin/maintainer of the studio
@@ -474,17 +470,15 @@ export async function setCover(
  * The caller becomes the only member of the new project, as its owner (same
  * studio as the source); the source's members are not copied. The caller must
  * be an editor or owner of the source — the copy carries all of its content —
- * and an archived source cannot be copied (its role is capped at viewer).
+ * and an archived source is refused at the check.
  *
  * Reads the source WITHOUT locking it, then waits for the studio row. If the
- * source is deleted during that wait, the copy is still made from what was
- * read — snapshot semantics, and deliberately so. The four other places that
- * add something to a project (`projectInvite`, `roleUpgradeRequest`,
- * `conversation`, `projectTransfer`) do take `lockLiveProject` first, but for a
- * reason that does not apply here: what they insert HANGS OFF the project, so
- * without the lock a live row commits against a dead project — undecidable and
- * unreapable. A duplicate is a free-standing new project; deleting the source
- * leaves it perfectly consistent. No invariant is broken, so no lock is taken.
+ * source is archived during that wait, the copy is still made from what was
+ * read — snapshot semantics. The four other places that add something to a
+ * project (`projectInvite`, `roleUpgradeRequest`, `conversation`,
+ * `projectTransfer`) do take `lockLiveProject` first, because what they insert
+ * hangs off the project. A duplicate is a free-standing new project, so no
+ * lock is taken.
  * @param sourceId - UUID of the project to duplicate
  * @param userId - Authenticated user UUID (becomes new project owner)
  * @returns The newly created duplicate project entity

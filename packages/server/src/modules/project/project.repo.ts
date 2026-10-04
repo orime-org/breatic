@@ -94,25 +94,16 @@ export async function getIdentitiesByProjectIds(
  * Lock the project row for the length of a transaction that adds something to
  * it, and report whether it is still alive.
  *
- * Filing a request, an offer or an invite must not land on a project that is
- * being deleted, and checking liveness without a lock does not achieve that:
- * the insert's own foreign key takes only `FOR KEY SHARE`, which does not
- * conflict with the delete's `FOR NO KEY UPDATE`, so the two transactions run
- * straight past each other. The cascade then cannot see the uncommitted row,
- * and what commits is a live pending row on a dead project — undecidable
- * (every decision path resolves the caller's role through a join that filters
- * deleted projects), unreapable (the reaper only runs from a new request, which
- * needs a live project), holding its uniqueness slot forever and blocking the
- * project's hard delete through its restrict FK. Exactly the row the cascade
- * exists to prevent.
+ * Filing a request, an offer or an invite must not land on an archived (or
+ * soft-deleted) project, and checking liveness without a lock does not achieve
+ * that: the insert's own foreign key takes only `FOR KEY SHARE`, which does not
+ * conflict with the archive's row update, so the two transactions run straight
+ * past each other. The archive's sweep then cannot see the uncommitted row, and
+ * what commits is a pending request on a project that takes none.
  *
- * `FOR UPDATE` on both sides is what makes them serialise. The delete takes it
- * first thing; a creator takes it and then finds either a live project (and
- * proceeds, with the delete waiting) or a dead one (and refuses).
- *
- * An archived project is not live either: it takes no new request, offer or
- * invite until it is restored, and archiving sweeps the pending ones under
- * this same row lock.
+ * `FOR UPDATE` on both sides is what makes them serialise. `archiveProject`
+ * takes it first thing; a creator takes it and then finds either a live project
+ * (and proceeds, with the archive waiting) or one that is not (and refuses).
  * @param id - Project UUID
  * @param tx - The creating transaction; the lock is meaningless without one
  * @returns `true` when the project is neither deleted nor archived, and is now locked

@@ -60,7 +60,7 @@ type ProjectControlEvent = MembersChangedEvent | ActivityNewControlEvent;
  * the role lookup with the freshly-written `project_members` state.
  * @param hocuspocus - Running Hocuspocus server whose loaded documents are scanned for the user's connections.
  * @param projectId - Project whose docs the kick is restricted to.
- * @param userId - User whose connections are closed with code 4403 to force an onAuthenticate re-check.
+ * @param userId - User whose connections are closed with the permissionChanged reason, which makes the web client re-authenticate.
  */
 function kickUserFromProject(
   hocuspocus: Hocuspocus,
