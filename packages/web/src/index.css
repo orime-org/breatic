@@ -1906,7 +1906,7 @@ body {
 
 .doc-body [data-content-type='table'] th {
   border-color: var(--color-border);
-  background-color: var(--color-accent);
+  background-color: var(--color-muted);
 }
 
 .doc-body .selectedCell::after {

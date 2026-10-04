@@ -19,7 +19,6 @@ import {
   useFloating,
   type Middleware,
 } from '@floating-ui/react';
-import { cellAround } from '@tiptap/pm/tables';
 import type { EditorState } from '@tiptap/pm/state';
 import { ChevronDown, TableCellsSplit } from 'lucide-react';
 import * as React from 'react';
@@ -40,13 +39,10 @@ import {
   onTargetCell,
   useCloseWhenTargetGone,
 } from '@web/spaces/document/document-table-menu-parts';
+import { caretCellOf, cellButtonBox } from '@web/spaces/document/document-table-control-place';
 import { isMerged, splitCellAt } from '@web/spaces/document/document-table-run';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
-
-/** The button's side, and its inset from the cell's top-right corner. */
-const BUTTON = 20;
-const INSET = 2;
 
 /**
  * Puts the button on the top-right corner of the part of its cell the reader
@@ -64,16 +60,13 @@ const onVisibleCorner: Middleware = {
   async fn(state) {
     const cut = await detectOverflow(state, { elementContext: 'reference' });
     const { x, y, width, height } = state.rects.reference;
-    const left = x + Math.max(0, cut.left);
-    const right = x + width - Math.max(0, cut.right);
-    const top = y + Math.max(0, cut.top);
-    const bottom = y + height - Math.max(0, cut.bottom);
-    const room = BUTTON + 2 * INSET;
-    return {
-      x: right - INSET - BUTTON,
-      y: top + INSET,
-      data: { hidden: right - left < room || bottom - top < room },
-    };
+    const place = cellButtonBox({
+      left: x + Math.max(0, cut.left),
+      top: y + Math.max(0, cut.top),
+      right: x + width - Math.max(0, cut.right),
+      bottom: y + height - Math.max(0, cut.bottom),
+    });
+    return place === null ? { data: { hidden: true } } : { x: place.left, y: place.top, data: { hidden: false } };
   },
 };
 
@@ -82,16 +75,6 @@ interface DocumentTableCellButtonProps {
   readonly editor: HandleEditor;
   /** Where the button is drawn. */
   readonly viewport: HTMLElement;
-}
-
-/**
- * The cell the caret stands in, while the selection is a caret.
- * @param state - The editor state.
- * @returns The position before the cell, or null.
- */
-function caretCellOf(state: EditorState): number | null {
-  if (!state.selection.empty) return null;
-  return cellAround(state.selection.$head)?.pos ?? null;
 }
 
 /**
@@ -184,11 +167,11 @@ export function DocumentTableCellButton({
               <span aria-hidden className='pointer-events-none absolute inset-0' />
             </DropdownMenuTrigger>
             <Button
-              variant={null}
+              variant='chrome-ghost'
               size={null}
               aria-label={t('spaces.document.table.cellMenu')}
               data-testid='doc-table-cell-button'
-              className='flex size-5 items-center justify-center rounded-chrome-sm border border-border bg-popover text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-3'
+              className='flex size-5 items-center justify-center rounded-chrome-sm border border-border bg-popover [&_svg]:size-3'
               // The caret stays where the reader left it: a press here does not
               // take the focus from the body.
               onMouseDown={(event) => {

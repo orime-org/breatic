@@ -23,7 +23,7 @@ describe('a table in the body', () => {
 
   it('draws its lines, its header, its selected cells and its resize line in tokens', () => {
     expect(ruleBody('[data-content-type=\'table\'] td')).toContain('border-color: var(--color-border)');
-    expect(ruleBody('[data-content-type=\'table\'] th')).toContain('background-color: var(--color-accent)');
+    expect(ruleBody('[data-content-type=\'table\'] th')).toContain('background-color: var(--color-muted)');
     expect(ruleBody('.selectedCell::after')).toContain('background: var(--color-selection)');
     expect(ruleBody('.column-resize-handle')).toContain('background-color: var(--color-ring)');
   });

@@ -34,6 +34,7 @@ import {
   PanelLeft,
   PanelTop,
 } from 'lucide-react';
+import type { EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import * as React from 'react';
 
@@ -66,6 +67,13 @@ import {
   useCloseWhenTargetGone,
   useHoldsSelection,
 } from '@web/spaces/document/document-table-menu-parts';
+import {
+  caretCellOf,
+  cellButtonBox,
+  columnHandleCentre,
+  COLUMN_HANDLE_HEIGHT,
+  type Box,
+} from '@web/spaces/document/document-table-control-place';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
 import { endTableDrag, startTableDrag } from '@web/spaces/document/document-table-drag';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
@@ -95,9 +103,6 @@ const TABLE_LINE_TYPE = 'application/x-doc-table-line';
 /** The delete row's icon, shared with the block handle's menu. */
 const DeleteIcon = BLOCK_MENU_ROWS.find((row) => row.id === 'delete')!.Icon;
 
-/** The column handle's width (`w-6`). */
-const COLUMN_HANDLE_WIDTH = 24;
-
 /** Where a handle is drawn against its table's scroll frame. */
 interface FramePlace {
   /** How far the handle moves across, onto the part of the table in view. */
@@ -110,17 +115,39 @@ interface FramePlace {
 const IN_PLACE: FramePlace = { shift: 0, hidden: false };
 
 /**
+ * The cell button's box, when the caret's cell is in this table.
+ * @param view - The editor view.
+ * @param table - The table.
+ * @param frame - The table's scroll frame.
+ * @param caretCell - The position before the caret's cell, or null.
+ * @returns The box, or null when no button is shown here.
+ */
+function cellButtonIn(view: EditorView, table: Element, frame: DOMRect, caretCell: number | null): Box | null {
+  const cell = caretCell === null ? null : view.nodeDOM(caretCell);
+  if (!(cell instanceof Element) || !table.contains(cell)) return null;
+  const box = cell.getBoundingClientRect();
+  return cellButtonBox({
+    left: Math.max(box.left, frame.left),
+    top: box.top,
+    right: Math.min(box.right, frame.right),
+    bottom: box.bottom,
+  });
+}
+
+/**
  * Where a handle is drawn against the table's scroll frame. The controller
  * places the row handle at the table's own left edge
  * (`TableHandlesController.tsx:108-124`) and the column handle centred over
  * the hovered cell (`:125-141`); on a table scrolled sideways either can lie
  * outside the frame. The row handle moves in by the width scrolled out of it;
- * the column handle moves to the centre of the part of its cell in view, and
- * is hidden when that part is narrower than the handle.
+ * the column handle moves onto the part of its cell in view, aside from the
+ * cell button there (`columnHandleCentre`), and is hidden when that part has
+ * no room for it.
  * @param view - The editor view.
  * @param blockId - The table block's id.
  * @param row - Whether this is the row handle.
  * @param cell - The hovered cell's box, as the controller read it, if it has.
+ * @param caretCell - The position before the caret's cell, or null.
  * @returns The placement.
  */
 function framePlaceOf(
@@ -128,16 +155,22 @@ function framePlaceOf(
   blockId: string,
   row: boolean,
   cell: DOMRect | undefined,
+  caretCell: number | null,
 ): FramePlace {
   const table = view?.dom.querySelector(`[data-id="${CSS.escape(blockId)}"] table`);
   const frame = table?.closest('[data-radix-scroll-area-viewport]');
-  if (!table || !frame) return IN_PLACE;
+  if (view === undefined || !table || !frame) return IN_PLACE;
   const box = frame.getBoundingClientRect();
   if (row) return { shift: Math.max(0, box.left - table.getBoundingClientRect().left), hidden: false };
   if (cell === undefined) return IN_PLACE;
-  const left = Math.max(cell.left, box.left);
-  const right = Math.min(cell.right, box.right);
-  return { shift: (left + right) / 2 - (cell.left + cell.width / 2), hidden: right - left < COLUMN_HANDLE_WIDTH };
+  const visible = {
+    left: Math.max(cell.left, box.left),
+    top: cell.top,
+    right: Math.min(cell.right, box.right),
+    bottom: cell.bottom,
+  };
+  const x = columnHandleCentre(visible, table.getBoundingClientRect().top, cellButtonIn(view, table, box, caretCell));
+  return x === null ? { shift: 0, hidden: true } : { shift: x - (cell.left + cell.width / 2), hidden: false };
 }
 
 /** The handle menu's own reading of its target cell. */
@@ -305,12 +338,21 @@ export function DocumentTableHandle({
 
   // Read against the frame whenever the controller places the handles; it
   // hides them on a scroll.
+  const caretCell = useEditorSnapshot(
+    editor as never,
+    (current: { prosemirrorState: EditorState }) => caretCellOf(current.prosemirrorState),
+  );
   const placeStyle = React.useMemo<React.CSSProperties | undefined>(() => {
     const place =
-      state === undefined ? IN_PLACE : framePlaceOf(editor.prosemirrorView, state.block.id, row, state.referencePosCell);
+      state === undefined
+        ? IN_PLACE
+        : framePlaceOf(editor.prosemirrorView, state.block.id, row, state.referencePosCell, caretCell);
     if (place.hidden) return { visibility: 'hidden' };
-    return place.shift === 0 ? undefined : { transform: `translateX(${place.shift}px)` };
-  }, [editor, row, state]);
+    // The controller puts the column handle's top edge on the table's top
+    // line; half its height up centres it on that line.
+    const lift = row ? 0 : -COLUMN_HANDLE_HEIGHT / 2;
+    return place.shift === 0 && lift === 0 ? undefined : { transform: `translate(${place.shift}px, ${lift}px)` };
+  }, [editor, row, state, caretCell]);
 
   if (state === undefined || (holdsSelection && !open)) return null;
   const index = row ? state.rowIndex : state.colIndex;
@@ -326,14 +368,14 @@ export function DocumentTableHandle({
           <span aria-hidden className='pointer-events-none absolute inset-0' />
         </DropdownMenuTrigger>
         <Button
-          variant={null}
+          variant='chrome-ghost'
           size={null}
           aria-label={t(row ? 'spaces.document.table.rowHandle' : 'spaces.document.table.columnHandle')}
           data-testid={row ? 'doc-table-row-handle' : 'doc-table-col-handle'}
           className={
             row
-              ? 'flex h-6 w-3 items-center justify-center rounded-chrome-sm border border-border bg-popover text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-3'
-              : 'flex h-3 w-6 items-center justify-center rounded-chrome-sm border border-border bg-popover text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-3'
+              ? 'flex h-6 w-3 items-center justify-center rounded-chrome-sm border border-border bg-popover [&_svg]:size-3'
+              : 'flex h-3 w-6 items-center justify-center rounded-chrome-sm border border-border bg-popover [&_svg]:size-3'
           }
           draggable
           onDragStart={(event) => {
