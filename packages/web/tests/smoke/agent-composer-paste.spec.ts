@@ -57,7 +57,7 @@ test('a pasted picture lands in the tray, as a picked one does @needs-storage', 
   await pasteInto(page, { file: { name: 'pasted.png', type: 'image/png', base64: PNG_BASE64 }, text: 'pasted.png' });
 
   await expect(page.getByTestId('chat-composer-chips')).toContainText('pasted.png', { timeout: 20_000 });
-  await expect(page.getByTestId('chat-composer-textarea')).toHaveValue('');
+  await expect(page.getByTestId('chat-composer-textarea')).toHaveText('');
 });
 
 test('a pasted file the attach button refuses is refused with the same notice', async ({ page }) => {
@@ -70,5 +70,5 @@ test('a pasted file the attach button refuses is refused with the same notice', 
 test('a plain-text paste still goes into the box', async ({ page }) => {
   await pasteInto(page, { text: 'hello from the clipboard' });
 
-  await expect(page.getByTestId('chat-composer-textarea')).toHaveValue('hello from the clipboard');
+  await expect(page.getByTestId('chat-composer-textarea')).toHaveText('hello from the clipboard');
 });
