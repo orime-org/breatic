@@ -46,7 +46,7 @@ function highlighted(): string | null {
 describe('ReferenceMentionList — rows read from the left edge (user 2026-08-21 #1993)', () => {
   it('leaves no centring class on the row', () => {
     const { container } = render(
-      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow} items={[row('a')]} command={vi.fn()} emptyLabel='none' />,
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow} items={[row('a')]} command={vi.fn()} emptyLabel='none' query='' />,
     );
     // The row is wider than its content, so where the content sits is decided
     // by the flex main axis. `Button`'s cva base centres it, and `cn` resolves
@@ -76,7 +76,7 @@ describe('ReferenceMentionList — focus rows carry the crop badge (user 2026-07
           },
         ]}
         command={() => {}}
-        emptyLabel='empty'
+        emptyLabel='empty' query=''
       />,
     );
     const badge = document.querySelector(
@@ -118,7 +118,7 @@ describe('ReferenceMentionList — keyboard highlight vs re-rendered pools', () 
         ref={ref}
         items={[row('a'), row('b'), row('c')]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     sendKey(ref, 'ArrowDown');
@@ -131,7 +131,7 @@ describe('ReferenceMentionList — keyboard highlight vs re-rendered pools', () 
         ref={ref}
         items={[row('a'), row('b'), row('c')]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     expect(highlighted()).toBe('c');
@@ -145,7 +145,7 @@ describe('ReferenceMentionList — keyboard highlight vs re-rendered pools', () 
         ref={ref}
         items={[row('a'), row('b'), row('c')]}
         command={command}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     sendKey(ref, 'ArrowDown');
@@ -154,7 +154,7 @@ describe('ReferenceMentionList — keyboard highlight vs re-rendered pools', () 
         ref={ref}
         items={[row('a'), row('b'), row('c')]}
         command={command}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     sendKey(ref, 'Enter');
@@ -162,14 +162,14 @@ describe('ReferenceMentionList — keyboard highlight vs re-rendered pools', () 
     expect(command.mock.calls[0][0].sourceNodeId).toBe('b');
   });
 
-  it('resets the highlight when the row CONTENT changes (typed query narrowed the pool)', () => {
+  it('resets the highlight when the typed query changes', () => {
     const ref = React.createRef<MentionListRef>();
     const { rerender } = render(
       <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
         ref={ref}
         items={[row('a'), row('b'), row('c')]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     sendKey(ref, 'ArrowDown');
@@ -179,7 +179,51 @@ describe('ReferenceMentionList — keyboard highlight vs re-rendered pools', () 
         ref={ref}
         items={[row('a'), row('c')]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query='x'
+      />,
+    );
+    expect(highlighted()).toBe('a');
+  });
+
+  it('keeps the highlighted row when the rows change under the same query', () => {
+    const ref = React.createRef<MentionListRef>();
+    const { rerender } = render(
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
+        ref={ref}
+        items={[row('a'), row('b'), row('c')]}
+        command={vi.fn()}
+        emptyLabel='none' query=''
+      />,
+    );
+    sendKey(ref, 'ArrowDown');
+    rerender(
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
+        ref={ref}
+        items={[row('z'), row('a'), row('b'), row('c')]}
+        command={vi.fn()}
+        emptyLabel='none' query=''
+      />,
+    );
+    expect(highlighted()).toBe('b');
+  });
+
+  it('moves the highlight to the first row when the highlighted one goes', () => {
+    const ref = React.createRef<MentionListRef>();
+    const { rerender } = render(
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
+        ref={ref}
+        items={[row('a'), row('b'), row('c')]}
+        command={vi.fn()}
+        emptyLabel='none' query=''
+      />,
+    );
+    sendKey(ref, 'ArrowDown');
+    rerender(
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
+        ref={ref}
+        items={[row('a'), row('c')]}
+        command={vi.fn()}
+        emptyLabel='none' query=''
       />,
     );
     expect(highlighted()).toBe('a');
@@ -205,7 +249,7 @@ describe('ReferenceMentionList — keyboard selection scrolls into view', () => 
           ref={ref}
           items={items}
           command={vi.fn()}
-          emptyLabel='none'
+          emptyLabel='none' query=''
         />,
       );
       scrolled.length = 0; // ignore the mount-time scroll of row 0
@@ -241,7 +285,7 @@ describe('ReferenceMentionList — no-thumbnail modality icon', () => {
       <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
         items={[noThumb('t', 'text')]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     expect(container.querySelector('.lucide-file-text')).not.toBeNull();
@@ -253,7 +297,7 @@ describe('ReferenceMentionList — no-thumbnail modality icon', () => {
       <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
         items={[noThumb('a', 'audio')]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     expect(container.querySelector('.lucide-music')).not.toBeNull();
@@ -278,7 +322,7 @@ describe('ReferenceMentionList — video reference thumbnail (#1824 consumer ⑥
           },
         ]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     const img = container.querySelector('img');
@@ -300,7 +344,7 @@ describe('ReferenceMentionList — video reference thumbnail (#1824 consumer ⑥
           },
         ]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     expect(container.querySelector('.lucide-video')).not.toBeNull();

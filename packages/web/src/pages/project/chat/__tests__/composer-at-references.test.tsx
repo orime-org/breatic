@@ -4,6 +4,7 @@
 // Typing `@` in the chat box picks one of the attached items and puts a
 // reference to it in the words.
 
+import * as React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
@@ -449,6 +450,80 @@ describe('@ in the chat box', () => {
     expect(box().state.doc.textContent).toBe('');
     key({ shiftKey: true });
     expect(box().state.doc.textContent).toBe('abc');
+  });
+
+  it('keeps a list closed by a click elsewhere closed when an attachment before the @ is removed', async () => {
+    const tray = [cover, brief];
+    const { onChange, rerender } = setup({ draft: `${attachmentMarker('a1')} `, attachments: tray });
+    act(() => box().commands.focus('end'));
+    type('@b');
+    await waitFor(() => expect(screen.getByTestId('reference-mention-option-a2')).toBeVisible());
+    act(() => {
+      document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    });
+    rerender({ draft: String(onChange.mock.lastCall?.[0]), attachments: tray });
+
+    rerender({ draft: String(onChange.mock.lastCall?.[0]), attachments: [brief] });
+
+    expect(screen.queryByTestId('chat-reference')).toBeNull();
+    expect(screen.getByTestId('reference-mention-option-a2')).not.toBeVisible();
+  });
+
+  it('keeps the highlighted row when another attachment becomes ready', async () => {
+    const one: TrayItem = { ...cover, id: 'o1', name: 'one.png', chip: { ...cover.chip!, id: 'o1', name: 'one.png' } };
+    const two: TrayItem = { ...cover, id: 'o2', name: 'two.png', chip: { ...cover.chip!, id: 'o2', name: 'two.png' } };
+    const three: TrayItem = { id: 'o3', name: 'three.png', type: 'image', status: 'uploading' };
+    const { onChange, rerender } = setup({ attachments: [one, two, three] });
+    act(() => box().commands.focus('end'));
+    type('@');
+    await waitFor(() => screen.getByTestId('reference-mention-option-o2'));
+    press('ArrowDown');
+    const ready = { ...three, status: 'ready' as const, chip: { ...cover.chip!, id: 'o3', name: 'three.png' } };
+    rerender({ draft: String(onChange.mock.lastCall?.[0]), attachments: [one, two, ready] });
+    await waitFor(() => screen.getByTestId('reference-mention-option-o3'));
+
+    press('Enter');
+
+    expect(onChange).toHaveBeenLastCalledWith(attachmentMarker('o2'));
+  });
+
+  it('breaks the line on Shift+Enter', () => {
+    const { onSubmit } = setup({ draft: 'one' });
+    act(() => box().commands.focus('end'));
+    act(() => {
+      box().view.dom.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true }),
+      );
+    });
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(box().state.doc.childCount).toBe(2);
+  });
+
+  it('names the blocks a draft starts with, once, under StrictMode', () => {
+    const onChange = vi.fn();
+    render(
+      <React.StrictMode>
+        {/* A draft as the box writes it: a block keeps a space on either side. */}
+        <ChatComposer draft={`see ${attachmentMarker('a1')} `} attachments={[cover]} onChange={onChange} onSubmit={vi.fn()} />
+      </React.StrictMode>,
+    );
+
+    expect(screen.getByTestId('chat-reference')).toHaveTextContent('cover.png');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('closes the list when the conversation changes', async () => {
+    const tray = [cover];
+    const { onChange, rerender } = setup({ conversationId: 'c1', attachments: tray });
+    act(() => box().commands.focus('end'));
+    type('@');
+    await waitFor(() => expect(screen.getByTestId('reference-mention-option-a1')).toBeVisible());
+
+    rerender({ conversationId: 'c2', draft: '', attachments: tray });
+
+    expect(screen.queryByTestId('reference-mention-option-a1')).toBeNull();
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 
   it('copies a block as its name in plain text', () => {

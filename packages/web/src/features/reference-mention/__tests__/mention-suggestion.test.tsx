@@ -211,6 +211,29 @@ describe('the shared @ list', () => {
     expect(document.querySelector('[data-testid="reference-mention-option-b"]')).toBeNull();
   });
 
+  it('closes on Esc, keeps what was typed, and leaves the next Enter to the editor', async () => {
+    const e = await makeEditor();
+    type(e, '@al');
+    await listShown();
+    press(e, 'Escape');
+
+    await waitFor(() => expect(document.querySelector('[data-testid^="reference-mention-option-"]')).toBeNull());
+    expect(e.state.doc.textContent).toBe('@al');
+    press(e, 'Enter');
+    expect(chips(e)).toEqual([]);
+  });
+
+  it('inserts the row that is clicked', async () => {
+    const e = await makeEditor();
+    type(e, '@');
+    await listShown();
+    act(() => {
+      (document.querySelector('[data-testid="reference-mention-option-b"]') as HTMLElement).click();
+    });
+
+    expect(chips(e)).toEqual(['b']);
+  });
+
   it('sits where the caller places it', async () => {
     const e = await makeEditor('top-start');
     type(e, '@');
