@@ -10,10 +10,11 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
  * even when a card cuts a long name short.
  *
  * The source name is shortened so the whole stays within the project name
- * limit (counted in UTF-16 code units, as that limit is), cut only between
- * characters the reader sees as one, and with no whitespace left at the end:
- * every rename entry trims, so a trailing space would be taken for an edit
- * the moment the name was opened.
+ * limit (counted in UTF-16 code units, as that limit is) and cut only between
+ * characters the reader sees as one. When not even the first character fits,
+ * the copy is named by the mark alone. The whole is trimmed: every rename
+ * entry trims, so a space at either end would be taken for an edit the moment
+ * the name was opened.
  * @param sourceName - The name of the project being copied
  * @returns The copy's name
  */
@@ -24,5 +25,5 @@ export function copyName(sourceName: string): string {
     if (kept.length + segment.length > room) break;
     kept += segment;
   }
-  return t("server.project.copy_name", { name: kept.trimEnd() });
+  return t("server.project.copy_name", { name: kept }).trim();
 }

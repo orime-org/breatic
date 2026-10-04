@@ -3,8 +3,8 @@
 
 /**
  * A copy's name must hold four things at once, in every locale and for any
- * legal source name: it fits the project name limit, it starts with the whole
- * copy mark, it never ends inside a character the reader sees as one, and it
+ * legal source name: it fits the project name limit, it starts with the copy
+ * mark, it never ends inside a character the reader sees as one, and it
  * has no whitespace at either end (every rename entry trims, so a name with
  * one would be rewritten the moment someone opened it).
  */
@@ -39,6 +39,8 @@ const SOURCES: Record<string, string> = {
   "a letter with a combining mark at the cut": `${"x".repeat(246)}é${"y".repeat(7)}`,
   "emoji throughout": "😀".repeat(127),
   "CJK throughout": "名".repeat(PROJECT_NAME_MAX_CHARS),
+  "one character longer than the room left": `a${"\u0301".repeat(PROJECT_NAME_MAX_CHARS - 1)}`,
+  "only whitespace": "   ",
 };
 
 beforeAll(() => {
@@ -50,14 +52,16 @@ describe("copyName", () => {
     for (const [label, source] of Object.entries(SOURCES)) {
       it(`${locale}: ${label}`, () => {
         runWithLocale(locale, () => {
-          const mark = t("server.project.copy_name", { name: "" });
+          const mark = t("server.project.copy_name", { name: "" }).trim();
           const name = copyName(source);
           expect(name.length).toBeLessThanOrEqual(PROJECT_NAME_MAX_CHARS);
           expect(name.startsWith(mark)).toBe(true);
           expect(name).toBe(name.trim());
-          const kept = name.slice(mark.length);
           expect(
-            boundaries(source).some((cut) => source.slice(0, cut).trimEnd() === kept),
+            boundaries(source).some(
+              (cut) =>
+                t("server.project.copy_name", { name: source.slice(0, cut) }).trim() === name,
+            ),
           ).toBe(true);
         });
       });
