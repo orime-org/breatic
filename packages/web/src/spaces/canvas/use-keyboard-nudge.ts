@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { useStoreApi, type InternalNode, type Node } from '@xyflow/react';
+import { useStoreApi, type InternalNode } from '@xyflow/react';
 import * as React from 'react';
 
 /** The keys xyflow nudges selected nodes with (`arrowKeyDiffs`). */
@@ -22,10 +22,6 @@ export interface KeyboardNudgeHandlers {
 
 /** What the nudge needs from the canvas. */
 export interface KeyboardNudgeOptions {
-  /** The nodes handed to ReactFlow; the write waits for them to change. */
-  rendered: ReadonlyArray<Node>;
-  /** A read-only canvas writes nothing. */
-  readOnly: boolean;
   /**
    * Whether this client is dragging or resizing; that gesture's release writes.
    * @returns True while a gesture is held.
@@ -34,8 +30,16 @@ export interface KeyboardNudgeOptions {
   /**
    * Plans and writes a move, the same as a drag release.
    * @param moved - The ids xyflow moved.
+   * @param held - Whether the key is held down, so the move joins the undo
+   *   step of the press that started it.
    */
-  commit: (moved: ReadonlyArray<string>) => void;
+  commit: (moved: ReadonlyArray<string>, held: boolean) => void;
+}
+
+/** A nudge xyflow made that the next render will write. */
+interface PendingNudge {
+  moved: ReadonlyArray<string>;
+  held: boolean;
 }
 
 /**
@@ -66,22 +70,23 @@ function carriedBySelectedAncestor(
  *
  * xyflow moves the nodes itself (on the focused node or the selection rect)
  * between the wrapper's capture and bubble phases, so comparing positions
- * across the two names exactly the nodes it moved. The write waits for the
- * render that follows: a nudged Group's unselected members only get their new
- * absolute positions when ReactFlow's `StoreUpdater` effect re-adopts the
- * nodes, and that child effect runs before this component's own.
- * @param options - The rendered nodes, read-only flag, gesture probe and writer.
+ * across the two names exactly the nodes it moved; a read-only or locked node
+ * is one xyflow does not move. The write waits for the render that follows: a
+ * nudged Group's unselected members only get their new absolute positions when
+ * ReactFlow's `StoreUpdater` effect re-adopts the nodes, and that child effect
+ * runs before this component's own.
+ * @param options - The gesture probe and the writer.
  * @returns The listeners to put on the ReactFlow wrapper.
  */
 export function useKeyboardNudge(
   options: KeyboardNudgeOptions,
 ): KeyboardNudgeHandlers {
-  const { rendered, readOnly, gestureRunning, commit } = options;
+  const { gestureRunning, commit } = options;
   const store = useStoreApi();
   const before = React.useRef<Map<string, { x: number; y: number }> | null>(
     null,
   );
-  const pending = React.useRef<ReadonlyArray<string> | null>(null);
+  const pending = React.useRef<PendingNudge | null>(null);
 
   const onKeyDownCapture = React.useCallback(
     (event: React.KeyboardEvent): void => {
@@ -102,7 +107,7 @@ export function useKeyboardNudge(
       const snapshot = before.current;
       before.current = null;
       if (snapshot === null || !ARROW_KEYS.has(event.key)) return;
-      if (readOnly || gestureRunning()) return;
+      if (gestureRunning()) return;
       const lookup = store.getState().nodeLookup;
       const moved: string[] = [];
       for (const [id, was] of snapshot) {
@@ -113,18 +118,19 @@ export function useKeyboardNudge(
         if (carriedBySelectedAncestor(node, lookup)) continue;
         moved.push(id);
       }
-      if (moved.length > 0) pending.current = moved;
+      if (moved.length > 0) pending.current = { moved, held: event.repeat };
     },
-    [store, readOnly, gestureRunning],
+    [store, gestureRunning],
   );
 
+  // No dependencies: a nudge is only recorded in the same event that moved
+  // nodes, so the commit right after it is the one that rendered the move.
   React.useEffect(() => {
-    const moved = pending.current;
-    if (moved === null) return;
+    const nudge = pending.current;
+    if (nudge === null) return;
     pending.current = null;
-    if (readOnly) return;
-    commit(moved);
-  }, [rendered, readOnly, commit]);
+    commit(nudge.moved, nudge.held);
+  });
 
   return React.useMemo(
     () => ({ onKeyDownCapture, onKeyDown }),

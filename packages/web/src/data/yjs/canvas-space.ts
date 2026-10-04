@@ -270,17 +270,36 @@ export function _resetCanvasUndoCacheForTests(): void {
  * even when it moves N nodes and changes group membership (see
  * {@link createCanvasUndoManager} for why `captureTimeout: 0` makes this
  * explicit batching necessary).
+ *
+ * `joinPrevious` folds this batch into the undo step before it instead, which
+ * is how a held arrow key stays one step: the manager merges a change made
+ * within `captureTimeout` of the last one, so the timeout is lifted for this
+ * one transaction only.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space whose doc to mutate.
  * @param fn - Runs the individual mutations; their writes join this one transaction.
+ * @param joinPrevious - Whether to merge into the previous undo step.
  */
 export function runCanvasUndoBatch(
   projectId: string,
   spaceId: string,
   fn: () => void,
+  joinPrevious = false,
 ): void {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  doc.transact(fn, CANVAS_UNDO);
+  const name = docName.canvasSpace(projectId, spaceId);
+  const doc = getDoc(name);
+  if (!joinPrevious) {
+    doc.transact(fn, CANVAS_UNDO);
+    return;
+  }
+  const undoManager = getCanvasUndoManager(doc, name);
+  const timeout = undoManager.captureTimeout;
+  undoManager.captureTimeout = Number.POSITIVE_INFINITY;
+  try {
+    doc.transact(fn, CANVAS_UNDO);
+  } finally {
+    undoManager.captureTimeout = timeout;
+  }
 }
 
 /**

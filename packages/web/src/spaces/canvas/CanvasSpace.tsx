@@ -3069,9 +3069,10 @@ function CanvasSpaceInner({
    * and an arrow-key nudge both end here, so a nudge lands exactly where a
    * drag to the same place would.
    * @param dragged - The nodes the user moved, as the render buffer has them.
+   * @param joinPrevious - Whether the write joins the previous undo step.
    */
   const commitMove = React.useCallback(
-    (dragged: ReadonlyArray<Node>): void => {
+    (dragged: ReadonlyArray<Node>, joinPrevious = false): void => {
       // A drop is judged against what the user aimed at, so the screen answers
       // for landings and for where a node goes when it leaves a Group. The
       // document answers wherever a stored value will later have somebody
@@ -3094,17 +3095,22 @@ function CanvasSpaceInner({
       // half-applied state. Every member position already reads against the
       // origin an expansion is moving its Group to, so each node takes one
       // write and the Group's own geometry is all the expansion writes.
-      runCanvasUndoBatch(projectId, spaceId, () => {
-        for (const r of ops.reparents) {
-          setNodeParent(projectId, spaceId, r.id, r.parentId, r.position);
-        }
-        for (const p of ops.positions) {
-          setNodePosition(projectId, spaceId, p.id, p.position, p.parentId);
-        }
-        for (const e of ops.expansions) {
-          resizeGroup(projectId, spaceId, e.groupId, e.position, e.width, e.height);
-        }
-      });
+      runCanvasUndoBatch(
+        projectId,
+        spaceId,
+        () => {
+          for (const r of ops.reparents) {
+            setNodeParent(projectId, spaceId, r.id, r.parentId, r.position);
+          }
+          for (const p of ops.positions) {
+            setNodePosition(projectId, spaceId, p.id, p.position, p.parentId);
+          }
+          for (const e of ops.expansions) {
+            resizeGroup(projectId, spaceId, e.groupId, e.position, e.width, e.height);
+          }
+        },
+        joinPrevious,
+      );
     },
     [projectId, spaceId, buffer, getInternalNode],
   );
@@ -4248,15 +4254,13 @@ function CanvasSpaceInner({
   // Arrow keys move the selected nodes through xyflow; this writes each
   // nudge the way a drag release would.
   const commitNudge = React.useCallback(
-    (moved: ReadonlyArray<string>): void => {
+    (moved: ReadonlyArray<string>, held: boolean): void => {
       const ids = new Set(moved);
-      commitMove(buffer.onScreen().filter((node) => ids.has(node.id)) as Node[]);
+      commitMove(buffer.onScreen().filter((node) => ids.has(node.id)), held);
     },
     [buffer, commitMove],
   );
   const nudgeKeys = useKeyboardNudge({
-    rendered: pickedNodes,
-    readOnly,
     gestureRunning: gesture.isRunning,
     commit: commitNudge,
   });
