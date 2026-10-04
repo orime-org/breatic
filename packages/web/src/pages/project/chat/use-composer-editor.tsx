@@ -68,15 +68,20 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
   // under it.
   const live = React.useRef(input);
   live.current = input;
-  // The draft this editor last reported, so the panel handing the same string
-  // back is not mistaken for a write from outside.
-  const reported = React.useRef(input.draft);
   // The open `@` list writes its refresh here. What it lists is the tray, and
   // the tray changes with no edit in the box: an upload finishing, an item
   // added from the canvas or taken out.
   const refreshList = React.useRef<(() => void) | null>(null);
-  // The conversation whose undo history the editor holds.
-  const conversation = React.useRef(input.conversationId);
+  // The draft this editor last reported, so the panel handing the same string
+  // back is not mistaken for a write from outside.
+  const reported = React.useRef(input.draft);
+  // What the box was last given from outside it.
+  const given = React.useRef<Given>({
+    conversationId: input.conversationId,
+    draft: input.draft,
+    attachments: null,
+    locale: null,
+  });
 
   const editor = useEditor(
     {
@@ -166,38 +171,35 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
     [],
   );
 
-  // Another conversation: the same box takes a fresh state, so the keyboard
-  // stays where it is and nothing typed in the last one can be undone here.
-  React.useEffect(() => {
-    if (!editor || editor.isDestroyed || input.conversationId === conversation.current) return;
-    conversation.current = input.conversationId;
-    reported.current = input.draft;
-    const doc = editor.schema.nodeFromJSON(draftContent(input.draft));
-    editor.view.updateState(EditorState.create({ doc, plugins: editor.state.plugins }));
-    dispatchMachineEdit(editor.view, editor.state.tr.setMeta(ATTACHMENTS_CHANGED_META, true));
-  }, [editor, input.conversationId, input.draft]);
-
-  // A draft written from outside: the server's first word emptying the box,
-  // a quick action, a draft restored.
-  React.useEffect(() => {
-    if (!editor || editor.isDestroyed || input.draft === reported.current) return;
-    reported.current = input.draft;
-    const doc = editor.schema.nodeFromJSON(draftContent(input.draft));
-    dispatchMachineEdit(editor.view, editor.state.tr.replaceWith(0, editor.state.doc.content.size, doc.content));
-  }, [editor, input.draft]);
-
-  // The tray or the language changed under the blocks; the box's rules bring
-  // them in line. Before paint, so a block never shows without its name.
+  // Everything the box takes from outside -- the conversation, its draft, the
+  // tray, the language -- can change in one render: the server's first word
+  // empties the draft and the tray together, and a switch brings the other
+  // conversation's draft and tray. They are applied here, in this order, so the
+  // attachment rule only ever runs on the document for the draft now given.
+  // Before paint, so a block never shows without its name.
   React.useLayoutEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    dispatchMachineEdit(editor.view, editor.state.tr.setMeta(ATTACHMENTS_CHANGED_META, true));
-  }, [editor, input.attachments, locale]);
-
-  // An open list reads the tray and the language live, and neither changes
-  // through an edit in the box.
-  React.useEffect(() => {
-    refreshList.current?.();
-  }, [input.attachments, locale]);
+    const was = given.current;
+    given.current = { conversationId: input.conversationId, draft: input.draft, attachments: input.attachments, locale };
+    const trayOrLanguage = input.attachments !== was.attachments || locale !== was.locale;
+    if (input.conversationId !== was.conversationId) {
+      reported.current = input.draft;
+      // Another conversation: the same box takes a fresh state, so the
+      // keyboard stays where it is and nothing typed in the last one can be
+      // undone here.
+      editor.view.updateState(EditorState.create({ doc: editor.schema.nodeFromJSON(draftContent(input.draft)), plugins: editor.state.plugins }));
+      dispatchMachineEdit(editor.view, editor.state.tr.setMeta(ATTACHMENTS_CHANGED_META, true));
+    } else if (input.draft !== was.draft && input.draft !== reported.current) {
+      // A draft written from outside: the server's first word emptying the
+      // box, a quick action, a draft restored. The attachment rule runs on it.
+      reported.current = input.draft;
+      dispatchMachineEdit(editor.view, editor.state.tr.replaceWith(0, editor.state.doc.content.size, editor.schema.nodeFromJSON(draftContent(input.draft)).content));
+    } else if (trayOrLanguage) {
+      dispatchMachineEdit(editor.view, editor.state.tr.setMeta(ATTACHMENTS_CHANGED_META, true));
+    }
+    // An open list reads the tray and the language live.
+    if (trayOrLanguage) refreshList.current?.();
+  }, [editor, input.conversationId, input.draft, input.attachments, locale]);
 
   // Read-only keeps the keyboard: ProseMirror drops `contenteditable` and
   // nothing else, so the box needs a tab stop of its own to keep focus.
@@ -239,6 +241,15 @@ function fitInto(words: string, room: number): string {
     cut += char;
   }
   return cut;
+}
+
+/** What the box was last given from outside it. */
+interface Given {
+  conversationId: string | null;
+  draft: string;
+  /** Null until the first time, so the blocks a draft starts with get their names. */
+  attachments: ReadonlyArray<TrayItem> | null;
+  locale: string | null;
 }
 
 /**
