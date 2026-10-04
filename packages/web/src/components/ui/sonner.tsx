@@ -11,7 +11,7 @@ import { Toaster as Sonner, type ToasterProps } from 'sonner';
  *
  * Mount once at the app root:
  *   <App>...</App>
- *   <Toaster richColors closeButton position="bottom-right" />
+ *   <Toaster position='top-center' duration={3000} expand />
  *
  * Then fire toasts through the wrapper — `import { toast } from '@web/lib/toast'`
  * (typed + content-deduped) — NEVER straight from 'sonner'; the
@@ -50,13 +50,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
       theme={theme}
       className='toaster group'
       // `--width: max-content` lets each toast shrink-wrap its own text
-      // (replacing sonner default 356px). Pairs with the global CSS in
-      // `src/index.css` that switches the ol to `display: inline-flex`
-      // + the li from `position: absolute` to relative so the ol
-      // actually fits its children — without that override the ol
-      // collapses to width 0 and top-center centering computes around
-      // a zero-width box (toast renders right-of-center, see chrome
-      // MCP smoke 2026-05-26).
+      // (replacing sonner default 356px). The list then has no width of its
+      // own, so each toast starts at the centre line; `src/index.css` pulls
+      // it back by half its width with `translate`.
       //
       // Earlier `fit-content` attempt caused CJK toasts to collapse
       // to one-character columns: with the toast container
