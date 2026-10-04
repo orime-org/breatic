@@ -487,6 +487,30 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(params?.negative_prompt?.type).toBe("text");
   });
 
+  it("keeps what a value is sent as upstream and how shots are written into the prompt", () => {
+    const raw = catalog([
+      entry("kling", {
+        params: {
+          auto_shots: {
+            description: "",
+            values: [true, false],
+            upstream: "shot_type",
+            upstream_values: { true: "intelligence" },
+            default: false,
+          },
+          shots: { description: "", type: "items", into_prompt: "Shot {n}: {prompt}", default: null },
+          broken: { description: "", values: ["a"], upstream_values: "a", into_prompt: 3, default: "a" },
+        },
+      }),
+    ]);
+    const params = sanitizeModelCatalog(raw).image[0]?.params;
+    expect(params?.auto_shots?.upstream_values).toEqual({ true: "intelligence" });
+    expect(params?.shots?.into_prompt).toBe("Shot {n}: {prompt}");
+    expect(params?.broken?.upstream_values).toBeUndefined();
+    expect(params?.broken?.into_prompt).toBeUndefined();
+    expect(params?.broken?.values).toEqual(["a"]);
+  });
+
   it("keeps how each value of a choice reads, and drops a malformed map", () => {
     const labels = { meanwhile: "Together", left_right: "Left first" };
     const raw = catalog([

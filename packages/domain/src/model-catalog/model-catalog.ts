@@ -67,9 +67,13 @@ export interface FullParamSpec {
   /** Another param this one stands in for; the body sends only one of the two. */
   replaces?: string;
   /** The value that is sent as nothing: holding it leaves the param out. */
-  absent_value?: string;
+  absent_value?: string | number | boolean;
   /** The upstream field this param is sent as, when it is not the param's name. */
   upstream?: string;
+  /** What a value is sent as upstream, keyed by the value's string form. */
+  upstream_values?: Record<string, string>;
+  /** The template each entry of a list is written into the prompt with. */
+  into_prompt?: string;
   /** How the param's value reaches the run. */
   fill?: string;
   /**

@@ -446,6 +446,8 @@ const paramDescriptorSchema = z
     replaces: z.string().optional().catch(undefined),
     fields: z.record(z.string(), itemFieldSchema).optional().catch(undefined),
     upstream: z.string().optional().catch(undefined),
+    upstream_values: z.record(z.string(), z.string()).optional().catch(undefined),
+    into_prompt: z.string().optional().catch(undefined),
     label: z.string().optional().catch(undefined),
     value_labels: z.record(z.string(), z.string()).optional().catch(undefined),
     value_locales: z.array(z.string()).optional().catch(undefined),
