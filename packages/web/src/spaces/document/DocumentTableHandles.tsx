@@ -112,7 +112,7 @@ interface FramePlace {
   readonly hidden: boolean;
 }
 
-/** A handle drawn where the controller put it. */
+/** No move against the frame; the nudge onto its line still applies. */
 const IN_PLACE: FramePlace = { shift: 0, hidden: false };
 
 /**

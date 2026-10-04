@@ -3,8 +3,8 @@
 
 /**
  * Where the strip sits against the row it points at: vertically on the row's
- * first line (A2), horizontally on the body's left edge (#1097 A13, see
- * `stripPlacement`).
+ * first line (A2), horizontally `STRIP_OUTSET` out from the body's left edge
+ * (#1097 A13, inner#1126, see `stripPlacement`).
  *
  * The strip is centred on the row's FIRST VISIBLE LINE, not on the row: a
  * heading is taller than the strip and a wrapped paragraph is several lines
@@ -66,7 +66,8 @@ export const STRIP_OUTSET = 12;
  * from (`SideMenu.ts:257-266`). Moving the carrier rather than the strip
  * inside it leaves nothing of it in the indent, where a click has to reach
  * the row; and the x comes from the same reference rect floating-ui placed
- * with, so a stale reference after a move still lands on the edge.
+ * with, so a stale reference after a move still lands `STRIP_OUTSET` out
+ * from the edge.
  * @param bodyOf - Reads the editable element, undefined before it mounts.
  * @returns The options to hand `SideMenuController`.
  */

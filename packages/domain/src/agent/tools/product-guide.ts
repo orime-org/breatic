@@ -891,9 +891,10 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.commands.align"))} and ${quoted(t("spaces.document.table.cellFill"))} open a ` +
       "submenu when hovered and act on the whole row or column; the fill submenu is a row of colours, the first " +
       `square taking the fill off, then ${quoted(t("spaces.document.commands.colorReset"))}. Deleting the last row or ` +
-      "column deletes the table. Rows and columns are added only from these two menus. Dragging the line " +
-      "between two columns changes their width; a table wider than the page scrolls sideways inside its own " +
-      "frame.",
+      "column deletes the table. Rows and columns are added only from these two menus. While one of these " +
+      "menus is open, the cells it acts on are tinted the way selected cells are. Dragging the line on a " +
+      "column's right side changes that column's width only; the other columns keep theirs and the table " +
+      "grows. A table wider than the page scrolls sideways inside its own frame.",
     "- With the caret in a cell, a small box with a down arrow shows at that cell's top right corner; it opens " +
       `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +
       `${quoted(t("spaces.document.table.splitCell"))} for that cell, and ` +

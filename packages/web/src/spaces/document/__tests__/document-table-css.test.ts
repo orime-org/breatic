@@ -68,14 +68,15 @@ describe('a table in the body', () => {
   it('keeps room under the table for its scrollbar, and none on the other sides', () => {
     // A wide table's scrollbar lies along the bottom of its frame; the room
     // keeps it under the last row rather than over it. The row and column
-    // handles float outside the table.
+    // handles are drawn in the library's portal, centred on the table's lines.
     const paddings = declarationsOf('[data-content-type=\'table\'] .tableWrapper', 'padding');
     expect(paddings.map(({ value }) => value)).toEqual(['0 0 0.5rem 0']);
   });
 
   it('lets presses through the library box a moved row or column handle leaves behind', () => {
-    // The handle is translated onto the part of the table in view; the box the
-    // library places it in stays where it was and must not take a press.
+    // The handle is always translated, centred on its line and onto the part
+    // of the table in view; the box the library places it in stays where it
+    // was and must not take a press.
     expect(ruleBody('div:has(> .doc-table-handle)')).toContain('pointer-events: none');
     expect(ruleBody('.doc-table-handle')).toContain('pointer-events: auto');
   });

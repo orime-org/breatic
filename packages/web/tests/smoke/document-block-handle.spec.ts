@@ -335,7 +335,8 @@ test('the strip stays 12px out from the body\'s left edge for an indented row (#
   }
 
   // The indent beside a nested row's first line is body, not strip: a click
-  // there reaches the editor while the strip stands at the body's edge.
+  // there reaches the editor while the strip stands 12px out from the body's
+  // edge.
   await page.mouse.move(5, 5);
   await hoverRow(page, 1);
   const words = await page.locator(`${EDITOR} .bn-block-content`).nth(1).locator('.bn-inline-content').boundingBox();

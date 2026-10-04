@@ -1852,8 +1852,8 @@ body {
    would put a second, native scrollbar inside ours.
    The wrapper keeps room under the table as tall as that scrollbar, which
    lies along the bottom of the frame: without it the scrollbar sits over the
-   last row. The row and column handles float outside the table, so the other
-   sides need none. */
+   last row. The row and column handles are drawn in the library's portal,
+   centred on the table's left and top lines, so the other sides need none. */
 .doc-body .doc-table-scroller {
   flex: 1 1 auto;
   min-width: 0;
@@ -1970,11 +1970,12 @@ body {
   box-shadow: inset -2px 0 0 var(--color-status-selected);
 }
 
-/* A row or column handle moves off the spot the library places its box on
-   when the table is scrolled sideways (`framePlaceOf` in
-   `DocumentTableHandles.tsx`); the library's box stays on that spot, over
-   whatever is there, so it lets presses through and only the handle takes
-   them. */
+/* A row or column handle always moves off the spot the library places its
+   box on: it is centred on the table's line, moved into the frame when the
+   table is scrolled sideways, and the column handle steps aside from the
+   cell button (`placeStyle` and `framePlaceOf` in `DocumentTableHandles.tsx`);
+   the library's box stays on that spot, over whatever is there, so it lets
+   presses through and only the handle takes them. */
 @layer components {
   div:has(> .doc-table-handle) {
     pointer-events: none;
