@@ -458,6 +458,22 @@ test('A11: after switching to another Space and back, the cell button follows th
   expect(button!.y + button!.height).toBeLessThanOrEqual(a1!.y + a1!.height);
 });
 
+test('A6: the row and column handles sit centred on the table\'s lines, the table icon clear of the first row handle', async () => {
+  await openFreshDocument(page);
+  await smallTable(page);
+  await hoverCell(page, 'a1');
+  const row = await page.getByTestId('doc-table-row-handle').boundingBox();
+  const column = await page.getByTestId('doc-table-col-handle').boundingBox();
+  const icon = await page.getByTestId('doc-block-table-handle').boundingBox();
+  const table = await page.locator(`${EDITOR} table`).first().boundingBox();
+
+  expect(Math.abs(row!.x + row!.width / 2 - table!.x)).toBeLessThan(1.5);
+  expect(Math.abs(column!.y + column!.height / 2 - table!.y)).toBeLessThan(1.5);
+  // WCAG 2.2 SC 2.5.8: the 24px circle around the 12px row handle stays clear
+  // of the table icon beside it on the first row.
+  expect(icon!.x + icon!.width).toBeLessThanOrEqual(row!.x + row!.width / 2 - 12 + 0.5);
+});
+
 test('A12: dragging a column edge widens it, and a wide table scrolls in its own frame', async () => {
   await openFreshDocument(page);
   await smallTable(page);

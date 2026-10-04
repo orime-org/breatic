@@ -71,7 +71,8 @@ import {
   caretCellOf,
   cellButtonBox,
   columnHandleCentre,
-  COLUMN_HANDLE_HEIGHT,
+  COLUMN_HANDLE_NUDGE,
+  ROW_HANDLE_NUDGE,
   type Box,
 } from '@web/spaces/document/document-table-control-place';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
@@ -348,10 +349,11 @@ export function DocumentTableHandle({
         ? IN_PLACE
         : framePlaceOf(editor.prosemirrorView, state.block.id, row, state.referencePosCell, caretCell);
     if (place.hidden) return { visibility: 'hidden' };
-    // The controller puts the column handle's top edge on the table's top
-    // line; half its height up centres it on that line.
-    const lift = row ? 0 : -COLUMN_HANDLE_HEIGHT / 2;
-    return place.shift === 0 && lift === 0 ? undefined : { transform: `translate(${place.shift}px, ${lift}px)` };
+    // Centred on its line: the row handle on the table's left line, the
+    // column handle on its top line.
+    const across = place.shift + (row ? ROW_HANDLE_NUDGE : 0);
+    const up = row ? 0 : COLUMN_HANDLE_NUDGE;
+    return { transform: `translate(${String(across)}px, ${String(up)}px)` };
   }, [editor, row, state, caretCell]);
 
   if (state === undefined || (holdsSelection && !open)) return null;

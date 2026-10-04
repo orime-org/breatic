@@ -47,11 +47,20 @@ import type { Middleware } from '@floating-ui/react';
 import * as React from 'react';
 
 /**
+ * How far the strip stands out from the body's left edge, the same on every
+ * row (user 2026-10-04). A table's row handle is 12px wide and centred on the
+ * table's left line, which is the body's edge; WCAG 2.2 SC 2.5.8 keeps a
+ * 24px circle around it clear of other targets, and that circle reaches 12px
+ * past the edge.
+ */
+export const STRIP_OUTSET = 12;
+
+/**
  * The carrier's placement: the library's left-start against the row, with its
  * table of per-type offsets replaced by one sideways move.
  *
- * The move puts the carrier on the body's left edge whatever the row's
- * nesting (#1097 A13, user 2026-10-01): the reference is the row's own
+ * The move puts the carrier `STRIP_OUTSET` out from the body's left edge
+ * whatever the row's nesting (#1097 A13, user 2026-10-01): the reference is the row's own
  * container, which a nested row has indented with it. The body's edge is the
  * root block group, the element the library itself takes the side menu's x
  * from (`SideMenu.ts:257-266`). Moving the carrier rather than the strip
@@ -75,7 +84,7 @@ export function stripPlacement(bodyOf: () => HTMLElement | undefined): {
             const root = bodyOf()?.firstElementChild;
             if (root == null) return {};
             const rowLeft = elements.reference.getBoundingClientRect().left;
-            return { x: x + root.getBoundingClientRect().left - rowLeft };
+            return { x: x + root.getBoundingClientRect().left - rowLeft - STRIP_OUTSET };
           },
         },
       ],

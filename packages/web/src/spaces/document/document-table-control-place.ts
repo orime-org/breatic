@@ -28,9 +28,25 @@ export interface Box {
 const BUTTON = 20;
 const INSET = 2;
 
-/** The column handle's width and height (`w-6`, `h-3`). */
+/** The column handle's width and height (`w-6`, `h-3`), and the row handle's width (`w-3`). */
 export const COLUMN_HANDLE_WIDTH = 24;
 export const COLUMN_HANDLE_HEIGHT = 12;
+const ROW_HANDLE_WIDTH = 12;
+
+/**
+ * How far inside the table's line the library puts a handle's inner edge:
+ * `offset(-10)` for the row handle on the left line, `offset(-12)` for the
+ * column handle on the top line (`TableHandlesController.tsx:195-216`).
+ */
+const LIBRARY_ROW_INSET = 10;
+const LIBRARY_COLUMN_INSET = 12;
+
+/**
+ * How far each handle moves from where the library puts it to sit centred on
+ * its line, the row handle across and the column handle up.
+ */
+export const ROW_HANDLE_NUDGE = ROW_HANDLE_WIDTH / 2 - LIBRARY_ROW_INSET;
+export const COLUMN_HANDLE_NUDGE = COLUMN_HANDLE_HEIGHT / 2 - LIBRARY_COLUMN_INSET;
 
 /** The diameter SC 2.5.8 keeps clear around a target under 24px. */
 const CLEARANCE = 24;

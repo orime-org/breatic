@@ -301,7 +301,7 @@ test('the plus stands where the handle stands, at the handle’s size (#1097 A8)
   expect(Math.abs(await gapToFirstLine(page))).toBeLessThan(CENTRED_WITHIN);
 });
 
-test('the strip stays on the body\'s left edge for an indented row (#1097 A13)', async () => {
+test('the strip stays 12px out from the body\'s left edge for an indented row (#1097 A13)', async () => {
   await openFreshDocument(page);
   await typeLines(page, ['top', 'nested']);
   await page.keyboard.press('Tab');
@@ -315,13 +315,14 @@ test('the strip stays on the body\'s left edge for an indented row (#1097 A13)',
     return box.x;
   };
   const top = await xOf(0, 'doc-block-handle');
-  // And that line is the body's edge: the strip's right side meets the root
-  // block group's left, as it does where the library places it.
+  // And that line stands 12px out from the body's edge: the strip's right
+  // side is 12px left of the root block group's left (inner#1126, user
+  // 2026-10-04), the clearance a table's row handle on that edge needs.
   const bodyLeft = await page.evaluate(
     (editor) => document.querySelector(editor)?.firstElementChild?.getBoundingClientRect().left ?? Number.NaN,
     EDITOR,
   );
-  expect(Math.abs(top + 24 - bodyLeft)).toBeLessThan(CENTRED_WITHIN);
+  expect(Math.abs(top + 24 + 12 - bodyLeft)).toBeLessThan(CENTRED_WITHIN);
   // Row 1 is nested under row 0, row 2 is an empty paragraph nested beside it.
   // Within a pixel, as A2 holds the vertical: the edge lands on subpixels.
   // Polled: floating-ui places the carrier asynchronously after the hover.

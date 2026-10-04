@@ -93,7 +93,7 @@ describe('the strip on a table (A5)', () => {
     expect(screen.queryByTestId('doc-block-plus')).toBeNull();
   });
 
-  it('stands 8px further out than on other rows, clear of the first row handle (WCAG 2.2 SC 2.5.8)', () => {
+  it('stands where the strip stands on every other row', () => {
     openOver([{ type: 'paragraph', content: 'above' }, TABLE], 1);
     const { unmount } = render(<DocumentBlockHandle />);
     const onTable = (screen.getByTestId('doc-block-table-handle').closest('[data-row-id]') as HTMLElement).style.transform;
@@ -102,8 +102,8 @@ describe('the strip on a table (A5)', () => {
     render(<DocumentBlockHandle />);
     const onParagraph = (screen.getByTestId('doc-block-handle').closest('[data-row-id]') as HTMLElement).style.transform;
 
-    expect(onTable).toMatch(/^translate\(-8px, /);
-    expect(onParagraph).toMatch(/^translate\(0px, /);
+    expect(onTable).toMatch(/^translateY\(/);
+    expect(onParagraph).toMatch(/^translateY\(/);
   });
 
   it('opens the six table rows', () => {
