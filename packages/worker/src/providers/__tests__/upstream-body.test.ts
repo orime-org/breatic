@@ -8,8 +8,9 @@
  * read as a value when the run carries none.
  */
 
-import { describe, it, expect } from "vitest";
-import type { FullModelEntry } from "@breatic/domain";
+import { beforeAll, describe, it, expect } from "vitest";
+import { initCore } from "@breatic/core";
+import { getFullModelConfig, type FullModelEntry } from "@breatic/domain";
 
 import { upstreamBody } from "@worker/providers/upstream-body.js";
 
@@ -207,5 +208,44 @@ describe("upstreamBody", () => {
       images: ["a", "s1"],
       prompt: "Turn image 1 into a poster. Style references: image 2. Apply their style to the result.",
     });
+  });
+});
+
+describe("upstreamBody — Seedance 2.5 image-to-video from the real catalog", () => {
+  beforeAll(() => {
+    initCore({ DATABASE_URL: "postgres://localhost:5432/breatic_test" });
+  });
+
+  /**
+   * The catalog entry the worker builds the request from.
+   * @returns The entry.
+   * @throws {Error} When the catalog has no such model.
+   */
+  function seedance(): FullModelEntry {
+    const found = getFullModelConfig("video").models.find((m) => m.name === "seedance-2.5-image-to-video");
+    if (!found) throw new Error("seedance-2.5-image-to-video missing from the video catalog");
+    return found;
+  }
+
+  it("sends the end frame as last_image beside the first frame", () => {
+    const body = upstreamBody(
+      seedance(),
+      { image: "https://a/first.png", end_image: "https://a/last.png", resolution: "720p", duration: 5, generate_audio: true },
+      "a pan",
+    );
+    expect(body).toEqual({
+      prompt: "a pan",
+      image: "https://a/first.png",
+      last_image: "https://a/last.png",
+      resolution: "720p",
+      duration: 5,
+      generate_audio: true,
+    });
+  });
+
+  it("sends no last_image when the run carries no end frame", () => {
+    const body = upstreamBody(seedance(), { image: "https://a/first.png", resolution: "480p", duration: 4 }, "a pan");
+    expect(body).not.toHaveProperty("last_image");
+    expect(body).toMatchObject({ image: "https://a/first.png", resolution: "480p", duration: 4 });
   });
 });
