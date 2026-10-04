@@ -17,7 +17,7 @@ import { expect, test, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, liveModuleUrl } from './live-module';
 import { openSmokeProject } from './project';
-import { createSpace, deleteSpace, visibleSpace } from './space';
+import { createSpace, deleteSpace, visibleSpace, type SpaceKind } from './space';
 
 /** Wide enough for a strip of several tabs and a minimap beside the canvas. */
 export const VIEWPORT = { width: 1400, height: 900 };
@@ -179,12 +179,17 @@ export async function openFreshProject(p: Page): Promise<string> {
  * Add canvas Spaces to the open project, removed when the case ends.
  * @param p - A page with the project open.
  * @param count - How many to make.
+ * @param kind - Which kind of Space to make.
  * @returns Their ids, in the order they were made.
  */
-export async function addSpaces(p: Page, count: number): Promise<string[]> {
+export async function addSpaces(
+  p: Page,
+  count: number,
+  kind: SpaceKind = 'canvas',
+): Promise<string[]> {
   const made: string[] = [];
   for (let i = 0; i < count; i += 1) {
-    const id = await createSpace(p, 'canvas', `restore-${Date.now()}-${i}`);
+    const id = await createSpace(p, kind, `restore-${Date.now()}-${i}`);
     mine.push(id);
     made.push(id);
   }

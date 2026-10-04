@@ -12,7 +12,7 @@
 import { expect, test, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, TEXT_BODY, liveModuleUrl } from '../helpers/live-module';
-import { visibleSpace } from '../helpers/space';
+import { DOCUMENT_EDITOR, visibleSpace } from '../helpers/space';
 import {
   activeId,
   addSpaces,
@@ -187,6 +187,33 @@ test('a note being written stays open with its words across a switch', async ({ 
   await page.keyboard.type(' finished');
   await page.keyboard.press('Enter');
   await expect(composer).toHaveCount(0);
+});
+
+test('a document scrolled down comes back at the same place', async ({ page }) => {
+  // A1: hiding a Space takes its scroller out of layout, and a scroller out
+  // of layout reads 0; the reader comes back to the line they left.
+  await openFreshProject(page);
+  const [doc] = await addSpaces(page, 1, 'document');
+  const [first] = (await stripIds(page)) as [string, string];
+  await showSpace(page, doc!);
+  const editor = page.locator(DOCUMENT_EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('new-space-button')).toBeFocused();
+  await editor.click();
+  for (let i = 0; i < 40; i += 1) {
+    await page.keyboard.type(`line ${String(i)} of a document long enough to scroll`);
+    await page.keyboard.press('Enter');
+  }
+  const scroller = visibleSpace(page).locator(
+    '.doc-body-scroller [data-radix-scroll-area-viewport]',
+  );
+  await scroller.evaluate((el) => el.scrollTo(0, 300));
+  await expect.poll(() => scroller.evaluate((el) => Math.round(el.scrollTop))).toBe(300);
+
+  await showSpace(page, first);
+  await showSpace(page, doc!);
+
+  await expect.poll(() => scroller.evaluate((el) => Math.round(el.scrollTop))).toBe(300);
 });
 
 test.describe('on a Mac, where Cmd is the canvas library\'s add-to-selection key', () => {
