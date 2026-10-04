@@ -50,7 +50,7 @@ initCore(process.env);
 import * as roleUpgradeService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
-import * as projectRepo from "@server/modules/project/project.repo.js";
+import * as projectService from "@server/modules/project/project.service.js";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -349,16 +349,13 @@ describe("a request whose premise is gone is written down too", () => {
   });
 });
 
-describe("a request cannot be filed onto a project that is being deleted", () => {
-  it("role upgrade: filing after the delete is refused, not orphaned", async () => {
-    // The window this closes: the insert's own foreign key takes only
-    // FOR KEY SHARE, which does not conflict with the delete's FOR NO KEY
-    // UPDATE, so without an explicit lock the two transactions run past each
-    // other and the cascade cannot see the uncommitted row. What commits is a
-    // live pending request on a dead project — undecidable, unreapable, and
-    // holding its slot forever.
-    const { memberId, projectId } = await seedScene();
-    await projectRepo.deleteProject(projectId);
+describe("a request cannot be filed onto an archived project", () => {
+  it("role upgrade: filing after the archive is refused, not orphaned", async () => {
+    // An archived project takes no new request: archiving swept the pending
+    // ones under the project row lock, and `lockLiveProject` refuses a new one
+    // filed after it, so nothing pending can sit on an archived project.
+    const { ownerId, memberId, projectId } = await seedScene();
+    await projectService.archive(projectId, ownerId);
 
     await expect(
       roleUpgradeService.request({
@@ -370,14 +367,14 @@ describe("a request cannot be filed onto a project that is being deleted", () =>
 
     const rows = await sql<{ c: number }[]>`
       SELECT count(*)::int AS c FROM role_upgrade_requests
-      WHERE project_id = ${projectId} AND deleted_at IS NULL
+      WHERE project_id = ${projectId} AND status = 'pending' AND deleted_at IS NULL
     `;
     expect(rows[0]!.c).toBe(0);
   });
 
-  it("project transfer: offering after the delete is refused, not orphaned", async () => {
+  it("project transfer: offering after the archive is refused, not orphaned", async () => {
     const { ownerId, memberId, projectId } = await seedScene();
-    await projectRepo.deleteProject(projectId);
+    await projectService.archive(projectId, ownerId);
 
     await expect(
       projectTransferService.requestProjectTransfer(
@@ -424,65 +421,6 @@ describe("a decision is credited only to someone who still holds the project", (
       status: "pending",
       bellUnread: true,
     });
-  });
-});
-
-describe("a deleted project takes its outstanding requests with it", () => {
-  it("role upgrade: the request does not outlive the project", async () => {
-    // Left behind it is both undecidable and unkillable: every decision path
-    // resolves the caller's role through a join that filters deleted projects,
-    // so it answers 403 forever and deliberately leaves the row pending; the
-    // reaper only runs from a new request, which needs a live project. The row
-    // would hold its slot permanently and its restrict FK would block any
-    // future hard delete.
-    const { memberId, projectId } = await seedScene();
-    await roleUpgradeService.request({
-      requesterUserId: memberId,
-      projectId,
-      projectName: "Demo",
-    });
-    const requestId = await liveRequestId(
-      "role_upgrade_requests",
-      "project_id",
-      projectId,
-    );
-
-    await projectRepo.deleteProject(projectId);
-
-    const rows = await sql<{ deleted_at: Date | null }[]>`
-      SELECT deleted_at FROM role_upgrade_requests WHERE id = ${requestId}
-    `;
-    expect(rows[0]!.deleted_at).not.toBeNull();
-    // And the announcement comes down with it. The unread query hides an entry
-    // only once its own deadline passes, so a week-long request would otherwise
-    // leave Approve and Reject standing over a row that now answers 404.
-    expect((await stateOf("role_upgrade_requests", requestId)).bellUnread).toBe(
-      false,
-    );
-  });
-
-  it("project transfer: the offer does not outlive the project", async () => {
-    const { ownerId, memberId, projectId } = await seedScene();
-    await projectTransferService.requestProjectTransfer(
-      projectId,
-      ownerId,
-      memberId,
-    );
-    const transferId = await liveRequestId(
-      "project_transfers",
-      "project_id",
-      projectId,
-    );
-
-    await projectRepo.deleteProject(projectId);
-
-    const rows = await sql<{ deleted_at: Date | null }[]>`
-      SELECT deleted_at FROM project_transfers WHERE id = ${transferId}
-    `;
-    expect(rows[0]!.deleted_at).not.toBeNull();
-    expect((await stateOf("project_transfers", transferId)).bellUnread).toBe(
-      false,
-    );
   });
 });
 

@@ -66,11 +66,16 @@
       "already_member": "That user already has access.",
       "already_invited": "That user already has a pending invitation.",
       "limit_reached": "{limit, plural, =0 {This studio's plan does not allow creating projects. Upgrade to create one.} one {This studio's plan allows 1 project. Upgrade to create more.} other {This studio's plan allows up to # projects. Upgrade to create more.}}",
+      "already_archived": "This project is already archived.",
+      "not_archived": "This project is not archived.",
+      "restore_limit_reached": "{limit, plural, one {This studio's plan allows 1 project. Archive another project or upgrade to restore this one.} other {This studio's plan allows up to # projects. Archive another project or upgrade to restore this one.}}",
       "collaborator_limit_reached": "{limit, plural, =0 {This project does not allow collaborators. Upgrade to add some.} one {This project allows 1 collaborator. Upgrade to add more.} other {This project allows up to # collaborators. Upgrade to add more.}}",
       "collaborator_limit_reached_for_invitee": "This project is full. Ask its Owner to make room.",
       "only_viewer_can_request_upgrade": "Only a Viewer can request a role upgrade",
       "no_active_owner": "This project has no active Owner",
-      "not_found": "Project not found"
+      "not_found": "Project not found",
+      "archived": "This project is archived and can only be viewed.",
+      "copy_name": "Copy of {name}"
     },
     "text_tool": {
       "already_running": "Another text tool is already running. Please wait."
@@ -953,6 +958,10 @@
       "busy": "An upload or another operation is in progress. Refreshing will interrupt it. We recommend waiting until it finishes.",
       "later": "Later",
       "refresh": "Update"
+    },
+    "archived": {
+      "banner": "This project is archived and can only be viewed",
+      "restore": "Restore"
     }
   },
   "common": {
@@ -1367,7 +1376,8 @@
         "members": "Members",
         "credits": "Credits",
         "settings": "Settings",
-        "navLabel": "Studio sections"
+        "navLabel": "Studio sections",
+        "archived": "Archived"
       },
       "works": {
         "emptyHint": "Works are the finished products a project publishes (a complete video, a mini-game…) — your Studio's public face. Once publishing ships, your published works will appear here.",
@@ -1397,7 +1407,24 @@
       "card": {
         "assetCount": "{count} assets",
         "more": "More actions",
-        "createdAt": "Created {time}"
+        "createdAt": "Created {time}",
+        "rename": "Rename",
+        "duplicate": "Duplicate",
+        "archive": "Archive",
+        "restore": "Restore",
+        "archivedBadge": "Archived",
+        "renameTitle": "Rename project",
+        "renameLabel": "Name",
+        "save": "Save",
+        "cancel": "Cancel",
+        "archiveTitle": "Archive “{name}”?",
+        "archiveBody": "Once archived, everyone can only view it, and anyone editing is disconnected. A studio admin can restore it.",
+        "duplicated": "Duplicated as “{name}”",
+        "duplicateFailed": "Couldn't duplicate",
+        "archived": "Archived",
+        "archiveFailed": "Couldn't archive",
+        "restored": "Restored",
+        "restoreFailed": "Couldn't restore"
       },
       "projects": {
         "new": "New project",
@@ -1579,6 +1606,10 @@
           "storage": "Storage is full. The cover was not uploaded.",
           "upload": "The cover was not changed. Try again."
         }
+      },
+      "archived": {
+        "emptyTitle": "No archived projects",
+        "emptyHint": "Archived projects show up here, and can be restored at any time."
       }
     },
     "rail": {
@@ -1637,7 +1668,8 @@
     "withdraw": "Withdraw request",
     "requestFailed": "Couldn't send the request. Try again.",
     "withdrawFailed": "Couldn't withdraw the request. Try again.",
-    "loadFailed": "Couldn't open this project. Try again."
+    "loadFailed": "Couldn't open this project. Try again.",
+    "archived": "This project is archived"
   },
   "activity": {
     "description": "Uploads, generations, and Space / member changes",

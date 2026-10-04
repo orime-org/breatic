@@ -66,11 +66,16 @@
       "already_member": "そのユーザーはすでにアクセス権を持っています。",
       "already_invited": "そのユーザーには保留中の招待があります。",
       "limit_reached": "{limit, plural, =0 {この Studio のプランでは Project を作成できません。アップグレードすると作成できます。} other {この Studio のプランで作成できる Project は最大 # 件です。アップグレードするとさらに作成できます。}}",
+      "already_archived": "この Project はすでにアーカイブされています。",
+      "not_archived": "この Project はアーカイブされていません。",
+      "restore_limit_reached": "{limit, plural, other {この Studio のプランで持てる Project は最大 # 件です。ほかの Project をアーカイブするか、アップグレードすると復元できます。}}",
       "collaborator_limit_reached": "{limit, plural, =0 {この Project ではコラボレーターを追加できません。アップグレードすると追加できます。} other {この Project のコラボレーターは最大 # 人です。アップグレードするとさらに追加できます。}}",
       "collaborator_limit_reached_for_invitee": "この Project のコラボレーター枠は満員です。Owner に空きを作ってもらってください。",
       "only_viewer_can_request_upgrade": "ロールの昇格を申請できるのは Viewer だけです",
       "no_active_owner": "この Project には現任の Owner がいません",
-      "not_found": "Project が見つかりません"
+      "not_found": "Project が見つかりません",
+      "archived": "この Project はアーカイブ済みのため閲覧のみです。",
+      "copy_name": "コピー - {name}"
     },
     "payment": {
       "tier_not_found": "不明なプラン：{tier}。選択可能：{available}",
@@ -953,6 +958,10 @@
       "busy": "アップロードなどの操作が進行中です。再読み込みすると中断されるため、完了するまでお待ちください。",
       "later": "後で",
       "refresh": "更新"
+    },
+    "archived": {
+      "banner": "この Project はアーカイブ済みのため閲覧のみです",
+      "restore": "復元"
     }
   },
   "common": {
@@ -1367,7 +1376,8 @@
         "members": "メンバー",
         "credits": "クレジット",
         "settings": "設定",
-        "navLabel": "Studio セクション"
+        "navLabel": "Studio セクション",
+        "archived": "アーカイブ済み"
       },
       "works": {
         "emptyHint": "Work は Project から公開する独立した成果物(完成した動画 / ミニゲームなど)で、Studio の対外的な顔です。公開機能が実装されると、公開した Work がここに表示されます。",
@@ -1397,7 +1407,24 @@
       "card": {
         "assetCount": "アセット {count} 個",
         "more": "その他の操作",
-        "createdAt": "{time}に作成"
+        "createdAt": "{time}に作成",
+        "rename": "名前を変更",
+        "duplicate": "複製",
+        "archive": "アーカイブ",
+        "restore": "復元",
+        "archivedBadge": "アーカイブ済み",
+        "renameTitle": "Project の名前を変更",
+        "renameLabel": "名前",
+        "save": "保存",
+        "cancel": "キャンセル",
+        "archiveTitle": "「{name}」をアーカイブしますか？",
+        "archiveBody": "アーカイブすると全員が閲覧のみになり、編集中のユーザーは切断されます。Studio Admin は復元できます。",
+        "duplicated": "「{name}」として複製しました",
+        "duplicateFailed": "複製できませんでした",
+        "archived": "アーカイブしました",
+        "archiveFailed": "アーカイブできませんでした",
+        "restored": "復元しました",
+        "restoreFailed": "復元できませんでした"
       },
       "projects": {
         "new": "Project を新規作成",
@@ -1579,6 +1606,10 @@
           "storage": "ストレージがいっぱいです。カバーはアップロードされていません。",
           "upload": "カバーを変更できませんでした。もう一度お試しください。"
         }
+      },
+      "archived": {
+        "emptyTitle": "アーカイブ済みの Project はありません",
+        "emptyHint": "アーカイブした Project はここに表示され、いつでも復元できます。"
       }
     },
     "rail": {
@@ -1637,7 +1668,8 @@
     "withdraw": "リクエストを取り消す",
     "requestFailed": "リクエストを送信できませんでした。もう一度お試しください。",
     "withdrawFailed": "取り消せませんでした。もう一度お試しください。",
-    "loadFailed": "この Project を開けませんでした。もう一度お試しください。"
+    "loadFailed": "この Project を開けませんでした。もう一度お試しください。",
+    "archived": "この Project はアーカイブ済みです"
   },
   "activity": {
     "description": "アップロード、生成、Space とメンバーの変更",

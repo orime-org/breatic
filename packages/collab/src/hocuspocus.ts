@@ -25,6 +25,7 @@ import {
   getRedis,
   getCollabRedis,
   getProjectConcurrentEditorLimit,
+  projectAuthService,
   sendMail,
   MONOREPO_ROOT,
 } from "@breatic/core";
@@ -34,6 +35,7 @@ import {
   createConnectionRegistry,
   type SeatClaim,
 } from "@collab/services/connection-registry.js";
+import { recheckRoleOnConnect } from "@collab/services/role-recheck.js";
 import {
   shouldRegisterConnection,
   shouldTrackConnection,
@@ -416,6 +418,18 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         now: Date.now,
         staleAfterMs: timings.presenceStaleAfterMs,
       });
+
+      // Last, once this connection can be found: an archive, restore or role
+      // change that committed after the handshake read the role has already
+      // run its kick, and only this read catches it.
+      try {
+        await recheckRoleOnConnect(
+          { documentName, userId: auth.user.id, grantedRole: auth.user.role, connection },
+          projectAuthService.loadProjectRole,
+        );
+      } catch (err) {
+        logger.error({ err, documentName, userId: auth.user.id }, "role_recheck_failed");
+      }
     },
 
     // Whose caret is whose, decided here rather than taken from the client.

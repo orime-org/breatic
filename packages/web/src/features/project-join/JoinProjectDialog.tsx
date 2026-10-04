@@ -133,7 +133,22 @@ export function JoinProjectDialog({
   const pending = data?.pendingRequest ?? null;
 
   let content: React.JSX.Element;
-  if (sent) {
+  if (data?.project.archivedAt != null) {
+    // An archived project takes no join requests, so there is nothing to ask.
+    content = (
+      <>
+        <DialogHeader>
+          <DialogTitle>{projectName}</DialogTitle>
+          <DialogDescription>{t('projectJoin.archived')}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button type='button' onClick={close}>
+            {t('projectJoin.ok')}
+          </Button>
+        </DialogFooter>
+      </>
+    );
+  } else if (sent) {
     content = (
       <>
         <DialogHeader>

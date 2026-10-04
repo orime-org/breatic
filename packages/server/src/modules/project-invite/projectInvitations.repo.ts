@@ -165,7 +165,7 @@ export async function attachNotification(
  * Which project an invitation points at, read WITHOUT a lock.
  *
  * `confirmInvite` is handed an invitation id and nothing else, but it has to
- * take the project's row lock BEFORE the accept CAS: `deleteProject` locks
+ * take the project's row lock BEFORE the accept CAS: `archiveProject` locks
  * `projects` first and only then touches `project_invitations`, so a confirm
  * that took those two in the other order would close a deadlock cycle. This
  * read exists to break that ordering problem, and reading it unlocked is safe

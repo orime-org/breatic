@@ -127,7 +127,9 @@ export const mocks = {
     update: vi.fn(),
     duplicate: vi.fn(),
     saveCanvas: vi.fn(),
-    deleteProject: vi.fn(),
+    archive: vi.fn(),
+    restore: vi.fn(),
+    assertMayManage: vi.fn().mockResolvedValue(undefined),
   },
   conversationService: {
     assertAccess: vi.fn().mockResolvedValue(undefined),

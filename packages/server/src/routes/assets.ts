@@ -243,9 +243,12 @@ assets.post(
     const user = c.get("user");
     const body = c.req.valid("json");
 
-    // Upload is a write — edit-or-above can ask for a ticket. A studio's own
-    // picture is its admin's to change.
-    if (body.project_id !== undefined) {
+    // Upload is a write — edit-or-above can ask for a ticket. A project's
+    // cover follows the cover rule (the studio admin may set it without being
+    // on the project); a studio's own picture is its admin's to change.
+    if (body.project_id !== undefined && body.purpose === "project_cover") {
+      await projectService.assertMayManage(body.project_id, user.id);
+    } else if (body.project_id !== undefined) {
       await projectService.assertAccess(body.project_id, user.id, "editor");
     } else {
       await studioAuthService.assertStudioRole(user.id, body.studio_id, "admin");

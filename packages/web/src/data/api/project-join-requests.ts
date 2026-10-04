@@ -5,7 +5,8 @@ import { apiDelete, apiGet, apiPost } from '@web/data/api/request';
 
 /** What the join dialog shows about a project the caller cannot enter. */
 export interface MyJoinRequest {
-  project: { id: string; name: string; studioSlug: string };
+  /** `archivedAt` is set when the project is archived, which takes no requests. */
+  project: { id: string; name: string; studioSlug: string; archivedAt: string | null };
   /** The caller's own live request here, or null when they have none. */
   pendingRequest: { id: string; createdAt: string } | null;
 }

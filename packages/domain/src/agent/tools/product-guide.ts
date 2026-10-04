@@ -98,8 +98,8 @@ export function renderProductGuide(): string {
     "",
     "## The top bar",
     "Left to right: the brand mark, which opens our website in a new tab; an arrow with the word Studio, which " +
-      "goes back to the studio; the project's name, which double-clicking renames (Enter or clicking away saves, " +
-      "Esc or an empty name keeps the old one); and the reader's role, " +
+      "goes back to the studio; the project's name, which the project's owner or the studio's admin renames by " +
+      "double-clicking it (Enter or clicking away saves, Esc or an empty name keeps the old one); and the reader's role, " +
       `${quoted(t("role.owner"))} or ${quoted(t("role.editor"))}.`,
     "On the right: the members' pictures with a small arrow, which open " +
       `${quoted(t("members.popover.title"))}; for the owner that list ends with ` +
@@ -973,8 +973,8 @@ export function renderProductGuide(): string {
       `comes back. ${quoted(t("connection.banner.authFailed.text"))} offers ` +
       `${quoted(t("connection.banner.authFailed.action"))} and ${quoted(t("connection.banner.reload"))}, and ` +
       "covers the work area the same way. It shows when the session ran out, and also when the reader was " +
-      "removed from the project or the project was deleted: if signing in again does not let them back in, it " +
-      "is one of those, and the project's owner can say which. With a document open, " +
+      "removed from the project: if signing in again does not let them back in, they were removed, and the " +
+      "project's owner can say why. With a document open, " +
       `${quoted(t("spaces.document.refusedNotice"))} also shows for a moment; nothing typed after it is saved, ` +
       "but the keyboard still reaches the document: press Cmd/Ctrl+A twice, then Cmd/Ctrl+C, to copy it out " +
       "before signing in again or reloading.",

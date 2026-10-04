@@ -66,11 +66,16 @@
       "already_member": "해당 사용자는 이미 접근 권한을 가지고 있습니다.",
       "already_invited": "해당 사용자에게 이미 대기 중인 초대가 있습니다.",
       "limit_reached": "{limit, plural, =0 {이 Studio의 요금제에서는 Project를 만들 수 없습니다. 업그레이드하면 만들 수 있습니다.} other {이 Studio의 요금제에서는 Project를 최대 #개까지 만들 수 있습니다. 업그레이드하면 더 만들 수 있습니다.}}",
+      "already_archived": "이미 보관된 Project입니다.",
+      "not_archived": "보관되지 않은 Project입니다.",
+      "restore_limit_reached": "{limit, plural, other {이 Studio의 요금제에서는 Project를 최대 #개까지 둘 수 있습니다. 다른 Project를 보관하거나 업그레이드하면 복원할 수 있습니다.}}",
       "collaborator_limit_reached": "{limit, plural, =0 {이 Project에는 협업자를 추가할 수 없습니다. 업그레이드하면 추가할 수 있습니다.} other {이 Project의 협업자는 최대 #명까지 둘 수 있습니다. 업그레이드하면 더 추가할 수 있습니다.}}",
       "collaborator_limit_reached_for_invitee": "이 Project의 협업자 자리가 모두 찼습니다. Owner에게 자리를 비워 달라고 요청하세요.",
       "only_viewer_can_request_upgrade": "역할 승급은 Viewer만 신청할 수 있습니다",
       "no_active_owner": "이 Project에는 현재 Owner가 없습니다",
-      "not_found": "Project를 찾을 수 없습니다"
+      "not_found": "Project를 찾을 수 없습니다",
+      "archived": "이 Project는 보관되어 보기만 할 수 있습니다.",
+      "copy_name": "사본 - {name}"
     },
     "text_tool": {
       "already_running": "다른 텍스트 도구가 이미 실행 중입니다. 잠시 기다려 주세요."
@@ -953,6 +958,10 @@
       "busy": "업로드 또는 다른 작업이 진행 중입니다. 새로고침하면 중단되므로 완료될 때까지 기다리는 것이 좋습니다.",
       "later": "나중에",
       "refresh": "업데이트"
+    },
+    "archived": {
+      "banner": "이 Project는 보관되어 보기만 할 수 있습니다",
+      "restore": "복원"
     }
   },
   "common": {
@@ -1367,7 +1376,8 @@
         "members": "멤버",
         "credits": "크레딧",
         "settings": "설정",
-        "navLabel": "Studio 섹션"
+        "navLabel": "Studio 섹션",
+        "archived": "보관됨"
       },
       "works": {
         "emptyHint": "Work은 Project에서 발행한 독립 완성물(완성된 동영상 / 미니게임…)로, Studio의 대외적인 얼굴입니다. 발행 기능이 출시되면 발행한 Work이 여기에 표시됩니다.",
@@ -1397,7 +1407,24 @@
       "card": {
         "assetCount": "에셋 {count}개",
         "more": "더보기",
-        "createdAt": "{time}에 생성"
+        "createdAt": "{time}에 생성",
+        "rename": "이름 변경",
+        "duplicate": "복제",
+        "archive": "보관",
+        "restore": "복원",
+        "archivedBadge": "보관됨",
+        "renameTitle": "Project 이름 변경",
+        "renameLabel": "이름",
+        "save": "저장",
+        "cancel": "취소",
+        "archiveTitle": "‘{name}’을(를) 보관할까요?",
+        "archiveBody": "보관하면 모두가 보기만 할 수 있고, 편집 중인 사람은 연결이 끊깁니다. Studio Admin이 복원할 수 있습니다.",
+        "duplicated": "‘{name}’(으)로 복제했습니다",
+        "duplicateFailed": "복제하지 못했습니다",
+        "archived": "보관했습니다",
+        "archiveFailed": "보관하지 못했습니다",
+        "restored": "복원했습니다",
+        "restoreFailed": "복원하지 못했습니다"
       },
       "projects": {
         "new": "새 Project",
@@ -1579,6 +1606,10 @@
           "storage": "저장 공간이 가득 찼습니다. 커버가 업로드되지 않았습니다.",
           "upload": "커버를 변경하지 못했습니다. 다시 시도하세요."
         }
+      },
+      "archived": {
+        "emptyTitle": "보관된 Project가 없습니다",
+        "emptyHint": "보관한 Project는 여기에 표시되며 언제든 복원할 수 있습니다."
       }
     },
     "rail": {
@@ -1637,7 +1668,8 @@
     "withdraw": "요청 철회",
     "requestFailed": "요청을 보내지 못했습니다. 다시 시도하세요.",
     "withdrawFailed": "철회하지 못했습니다. 다시 시도하세요.",
-    "loadFailed": "이 Project를 열지 못했습니다. 다시 시도하세요."
+    "loadFailed": "이 Project를 열지 못했습니다. 다시 시도하세요.",
+    "archived": "이 Project는 보관되었습니다"
   },
   "activity": {
     "description": "업로드, 생성, Space 및 멤버 변경",

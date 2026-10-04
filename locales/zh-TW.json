@@ -66,11 +66,16 @@
       "already_member": "該使用者已有存取權限。",
       "already_invited": "該使用者已有一個待確認的邀請。",
       "limit_reached": "{limit, plural, =0 {這個 Studio 的會員等級不支援建立 Project，升級後即可建立。} other {這個 Studio 的會員等級最多可建立 # 個 Project，升級可建立更多。}}",
+      "already_archived": "這個 Project 已封存。",
+      "not_archived": "這個 Project 未封存。",
+      "restore_limit_reached": "{limit, plural, other {這個 Studio 的會員等級最多可有 # 個 Project，封存其他 Project 或升級後才能還原。}}",
       "collaborator_limit_reached": "{limit, plural, =0 {這個 Project 不支援新增協作者，升級後即可新增。} other {這個 Project 最多可有 # 位協作者，升級可新增更多。}}",
       "collaborator_limit_reached_for_invitee": "這個 Project 的協作者名額已滿，請聯絡它的 Owner 騰出名額。",
       "only_viewer_can_request_upgrade": "只有 Viewer 可以申請角色升級",
       "no_active_owner": "這個 Project 沒有在任的 Owner",
-      "not_found": "找不到這個 Project"
+      "not_found": "找不到這個 Project",
+      "archived": "這個 Project 已封存，只能檢視。",
+      "copy_name": "副本 - {name}"
     },
     "payment": {
       "tier_not_found": "未知的方案：{tier}。可選：{available}",
@@ -953,6 +958,10 @@
       "busy": "有上傳或其他操作正在進行，重新整理會中斷操作。建議完成後再重新整理。",
       "later": "稍後",
       "refresh": "更新"
+    },
+    "archived": {
+      "banner": "這個 Project 已封存，只能檢視",
+      "restore": "還原"
     }
   },
   "common": {
@@ -1367,7 +1376,8 @@
         "members": "成員",
         "credits": "點數",
         "settings": "設定",
-        "navLabel": "Studio 分區"
+        "navLabel": "Studio 分區",
+        "archived": "已封存"
       },
       "works": {
         "emptyHint": "Works 是從 Project 發布出來的獨立成品(完整影片 / 小遊戲…),是 Studio 對外的門面。功能上線後,已發布的成品會在這裡展示。",
@@ -1397,7 +1407,24 @@
       "card": {
         "assetCount": "{count} 個素材",
         "more": "更多操作",
-        "createdAt": "建立於 {time}"
+        "createdAt": "建立於 {time}",
+        "rename": "重新命名",
+        "duplicate": "複製",
+        "archive": "封存",
+        "restore": "還原",
+        "archivedBadge": "已封存",
+        "renameTitle": "重新命名 Project",
+        "renameLabel": "名稱",
+        "save": "儲存",
+        "cancel": "取消",
+        "archiveTitle": "封存「{name}」？",
+        "archiveBody": "封存後所有人只能檢視，正在編輯的人會被中斷連線。Studio Admin 可以還原。",
+        "duplicated": "已複製為「{name}」",
+        "duplicateFailed": "複製失敗",
+        "archived": "已封存",
+        "archiveFailed": "封存失敗",
+        "restored": "已還原",
+        "restoreFailed": "還原失敗"
       },
       "projects": {
         "new": "新增 Project",
@@ -1579,6 +1606,10 @@
           "storage": "儲存空間已滿，封面沒有上傳。",
           "upload": "封面沒有更新，請再試一次。"
         }
+      },
+      "archived": {
+        "emptyTitle": "沒有已封存的 Project",
+        "emptyHint": "封存的 Project 會出現在這裡，可以隨時還原。"
       }
     },
     "rail": {
@@ -1637,7 +1668,8 @@
     "withdraw": "撤回申請",
     "requestFailed": "申請沒有送出，請重試。",
     "withdrawFailed": "撤回沒有成功，請重試。",
-    "loadFailed": "沒能打開這個 Project，請重試。"
+    "loadFailed": "沒能打開這個 Project，請重試。",
+    "archived": "這個 Project 已封存"
   },
   "activity": {
     "description": "上傳、生成、Space 與成員變更",

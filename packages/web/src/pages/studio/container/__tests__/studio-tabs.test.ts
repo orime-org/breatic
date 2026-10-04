@@ -14,9 +14,10 @@ import {
 } from '@web/pages/studio/container/studio-tabs';
 
 describe('studio-tabs (spec §6.1 — Works tab at the 3rd position)', () => {
-  it('orders the six tabs projects → collections → works → members → credits → settings', () => {
+  it('orders the seven tabs projects → archived → collections → works → members → credits → settings', () => {
     expect(STUDIO_TABS.map((tab) => tab.key)).toEqual([
       'projects',
+      'archived',
       'collections',
       'works',
       'members',
@@ -25,8 +26,8 @@ describe('studio-tabs (spec §6.1 — Works tab at the 3rd position)', () => {
     ]);
   });
 
-  it('places Works at index 2 (the 3rd position, not the end)', () => {
-    expect(STUDIO_TABS[2]?.key).toBe('works');
+  it('places Works right after Collections, not at the end', () => {
+    expect(STUDIO_TABS[3]?.key).toBe('works');
   });
 
   it('marks Works as non-team-only so it shows for personal studios too', () => {
@@ -34,33 +35,34 @@ describe('studio-tabs (spec §6.1 — Works tab at the 3rd position)', () => {
     expect(works?.teamOnly).toBe(false);
   });
 
-  it('shows Works for a team studio (6 tabs, Members included)', () => {
+  it('shows Works for a team studio (7 tabs for its admin, Members included)', () => {
     const keys = visibleStudioTabs('team', 'admin').map((tab) => tab.key);
     expect(keys).toContain('works');
     expect(keys).toContain('members');
-    expect(keys).toHaveLength(6);
+    expect(keys).toHaveLength(7);
   });
 
-  it('shows all 6 tabs for a personal studio (Members now read-only, A 方案)', () => {
+  it('shows all 7 tabs to a personal studio\'s admin (Members read-only there)', () => {
     const keys = visibleStudioTabs('personal', 'admin').map((tab) => tab.key);
     expect(keys).toContain('works');
     expect(keys).toContain('members');
-    expect(keys).toHaveLength(6);
+    expect(keys).toHaveLength(7);
   });
 });
 
-describe('visibleStudioTabs — Credits belongs to the studio admin alone', () => {
-  it('keeps Credits for the admin', () => {
+describe('visibleStudioTabs — Archived and Credits belong to the studio admin alone', () => {
+  it('keeps Archived and Credits for the admin', () => {
     for (const type of ['team', 'personal'] as const) {
-      expect(
-        visibleStudioTabs(type, 'admin').map((tab) => tab.key),
-      ).toContain('credits');
+      const keys = visibleStudioTabs(type, 'admin').map((tab) => tab.key);
+      expect(keys).toContain('archived');
+      expect(keys).toContain('credits');
     }
   });
 
-  it('drops Credits for every other role, leaving the other five', () => {
+  it('drops Archived and Credits for every other role, leaving the other five', () => {
     for (const role of ['maintainer', 'guest'] as const) {
       const keys = visibleStudioTabs('team', role).map((tab) => tab.key);
+      expect(keys).not.toContain('archived');
       expect(keys).not.toContain('credits');
       expect(keys).toHaveLength(5);
     }

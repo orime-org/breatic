@@ -9,43 +9,47 @@
  * transactional-outbox relay) and performs the yjs-DB side that can no
  * longer ride the server's business transaction:
  *
- *   - `project:deleted`    → soft-delete every `project-{id}/*` doc in
- *                            the yjs DB + close live connections (a stale
- *                            tab can't keep writing a deleted project).
  *   - `project:duplicated` → copy `project-{src}/*` → `project-{new}/*`
  *                            in the yjs DB + close the new project's
  *                            connections so a client that raced in and
  *                            lazy-seeded a default meta reloads the
  *                            copied source content.
+ *   - `project:archived`   → close live connections, so members
+ *                            re-authenticate and come back read-only.
+ *   - `project:restored`   → close live connections, so members
+ *                            re-authenticate and come back writable.
  *
  * Durable resume — the last handled stream id is persisted to Redis so
- * a collab restart never drops an in-flight command (a dropped delete =
- * data leak, a dropped duplicate = empty project). Handlers are
- * idempotent (the repo's `deleted_at IS NULL` guard + `ON CONFLICT`),
- * so at-least-once redelivery is safe; a transient DB error throws and
- * the consumer retries.
+ * a collab restart never drops an in-flight command (a dropped duplicate
+ * = empty project, a dropped archive = writers who stay writable). Handlers
+ * are idempotent (`ON CONFLICT` on the copy; a kick of no connections is a
+ * no-op), so at-least-once redelivery is safe; a transient DB error throws
+ * and the consumer retries.
  */
 
 import type { Hocuspocus } from "@hocuspocus/server";
 import { createLogger, lifecycleStreamKey } from "@breatic/core";
-import { parseDocName, type ProjectLifecycleEvent } from "@breatic/shared";
+import { COLLAB_REAUTH_REASONS, parseDocName, type ProjectLifecycleEvent } from "@breatic/shared";
 import { startStreamConsumer } from "@collab/services/event-stream.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 
 const logger = createLogger("lifecycle-listener");
 
 /**
- * WebSocket close codes for the lifecycle kick. Distinct from
- * members-sync's 4403 ("permission changed, re-auth"): both of these
- * trigger a client reconnect, after which `onAuthenticate` decides the
- * outcome — a deleted project is refused (project gone), a duplicated
- * project re-loads its now-correct meta.
+ * Close frames for the lifecycle kick. Hocuspocus closes one document of a
+ * shared socket with a CLOSE message that carries only the reason; the client
+ * sees the code as 1000. So the REASON is the contract: for the reasons in
+ * the web client's re-authenticate list it re-sends its token for that
+ * document on the same socket, and `onAuthenticate` decides the outcome — an
+ * archived project comes back read-only, a restored one writable, a
+ * duplicated one re-loads its now-correct meta.
  */
-const CLOSE_PROJECT_DELETED = { code: 4404, reason: "Project deleted" } as const;
 const CLOSE_PROJECT_REFRESHED = {
   code: 4406,
-  reason: "Project content updated",
+  reason: COLLAB_REAUTH_REASONS.projectContentUpdated,
 } as const;
+const CLOSE_PROJECT_ARCHIVED = { code: 4407, reason: COLLAB_REAUTH_REASONS.projectArchived } as const;
+const CLOSE_PROJECT_RESTORED = { code: 4408, reason: COLLAB_REAUTH_REASONS.projectRestored } as const;
 
 /**
  * Build the Redis key where this consumer persists its last-handled
@@ -103,12 +107,6 @@ export async function handleLifecycleEvent(
   hocuspocus: Hocuspocus,
   event: ProjectLifecycleEvent,
 ): Promise<void> {
-  if (event.type === "project:deleted") {
-    await yjsDocumentsRepo.softDeleteByProjectPrefix(event.projectId);
-    kickAllFromProject(hocuspocus, event.projectId, CLOSE_PROJECT_DELETED);
-    logger.info({ projectId: event.projectId }, "project_deleted_cascade_handled");
-    return;
-  }
   if (event.type === "project:duplicated") {
     await yjsDocumentsRepo.duplicateByProjectPrefix(event.sourceId, event.newId);
     kickAllFromProject(hocuspocus, event.newId, CLOSE_PROJECT_REFRESHED);
@@ -116,6 +114,16 @@ export async function handleLifecycleEvent(
       { sourceId: event.sourceId, newId: event.newId },
       "project_duplicated_copy_handled",
     );
+    return;
+  }
+  if (event.type === "project:archived") {
+    kickAllFromProject(hocuspocus, event.projectId, CLOSE_PROJECT_ARCHIVED);
+    logger.info({ projectId: event.projectId }, "project_archived_kick_handled");
+    return;
+  }
+  if (event.type === "project:restored") {
+    kickAllFromProject(hocuspocus, event.projectId, CLOSE_PROJECT_RESTORED);
+    logger.info({ projectId: event.projectId }, "project_restored_kick_handled");
     return;
   }
   // Forward-compat: an unknown command type is skipped (not retried), so

@@ -34,6 +34,7 @@ import {
 import { CollectionsTab } from '@web/pages/studio/container/tabs/CollectionsTab';
 import { CreditsTab } from '@web/pages/studio/container/tabs/CreditsTab';
 import { MembersTab } from '@web/pages/studio/container/tabs/MembersTab';
+import { ArchivedTab } from '@web/pages/studio/container/tabs/ArchivedTab';
 import { ProjectsTab } from '@web/pages/studio/container/tabs/ProjectsTab';
 import { SettingsTab } from '@web/pages/studio/container/tabs/SettingsTab';
 import { WorksTab } from '@web/pages/studio/container/tabs/WorksTab';
@@ -55,6 +56,11 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
     thumbnailUrl: p.thumbnailUrl,
     myRole: p.myRole,
     createdAt: new Date(p.createdAt).toISOString(),
+    archivedAt: p.archivedAt === null ? null : new Date(p.archivedAt).toISOString(),
+    canManageMeta: p.canManageMeta,
+    canDuplicate: p.canDuplicate,
+    canArchive: p.canArchive,
+    canRestore: p.canRestore,
   };
 }
 
@@ -65,8 +71,8 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
  * - **member** (`myStudioRole !== null`): projects / collections / works /
  *   members / settings, the same for personal studios — their Members section
  *   is read-only rather than absent (decision A, 2026-06-08). Works sits at the
- *   3rd position (spec §6.1). The studio's admin also gets Credits, which sits
- *   between members and settings.
+ *   3rd position (spec §6.1). The studio's admin also gets Archived, right
+ *   after Projects, and Credits, between members and settings.
  * - **non-member** (`myStudioRole === null`, decision A: 200 + null): the
  *   header + `NonMemberView` (a "Works" empty state), with NO sections — no
  *   studio data is rendered, so private content cannot leak (spec §6.3).
@@ -89,6 +95,13 @@ export default function StudioContainerPage(): React.JSX.Element {
     queryKey: ['studio', slug, 'projects'],
     queryFn: () => studiosApi.listProjects(slug),
     enabled: studioQuery.isSuccess,
+  });
+  // Archived projects are the studio admin's alone; nobody else is sent for them.
+  const isStudioAdmin = studioQuery.data?.myStudioRole === 'admin';
+  const archivedQuery = useQuery({
+    queryKey: ['studio', slug, 'projects', 'archived'],
+    queryFn: () => studiosApi.listProjects(slug, true),
+    enabled: isStudioAdmin,
   });
   const membersQuery = useQuery({
     queryKey: ['studio', slug, 'members'],
@@ -117,6 +130,9 @@ export default function StudioContainerPage(): React.JSX.Element {
   // Projects (slice 2) + members (slice 3) come from the real API; the other
   // tab CONTENTS stay EMPTY (not faked) until their own slices wire real APIs.
   const projects: ContainerProject[] = (projectsQuery.data ?? []).map(
+    toContainerProject,
+  );
+  const archivedProjects: ContainerProject[] = (archivedQuery.data ?? []).map(
     toContainerProject,
   );
   const membersView = membersQuery.data;
@@ -192,6 +208,7 @@ export default function StudioContainerPage(): React.JSX.Element {
             slug={slug}
             counts={{
               projects: projects.length,
+              ...(isStudioAdmin ? { archived: archivedProjects.length } : {}),
               collections: view.collections.length,
               members: members.length,
             }}
@@ -202,11 +219,13 @@ export default function StudioContainerPage(): React.JSX.Element {
                 <ProjectsTab
                   projects={projects}
                   studioRole={view.studio.myStudioRole}
-                  studioSlug={view.studio.slug}
                   onCreateProject={createProject}
                   creatableStudios={creatable}
                   defaultStudioId={defaultStudioId}
                 />
+              ) : null}
+              {tab === 'archived' ? (
+                <ArchivedTab projects={archivedProjects} />
               ) : null}
               {tab === 'collections' ? (
                 <CollectionsTab

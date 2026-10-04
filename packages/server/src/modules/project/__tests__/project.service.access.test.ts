@@ -36,7 +36,7 @@ vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unkno
   const actual = await importActual();
   return {
     ...actual,
-    projectAuthService: { loadProjectRole: vi.fn() },
+    projectAuthService: { loadProjectRole: vi.fn(), loadProjectAccess: vi.fn() },
   };
 });
 
@@ -68,11 +68,12 @@ function makeProject(over: Partial<ProjectEntity> = {}): ProjectEntity {
     createdAt: new Date("2026-06-07T00:00:00Z"),
     updatedAt: new Date("2026-06-07T00:00:00Z"),
     deletedAt: null,
+    archivedAt: null,
     ...over,
   };
 }
 
-const loadProjectRole = vi.mocked(projectAuthService.loadProjectRole);
+const loadProjectAccess = vi.mocked(projectAuthService.loadProjectAccess);
 const loadStudioRole = vi.mocked(studioAuthService.loadStudioRole);
 const getProjectById = vi.mocked(projectRepo.getProjectById);
 const listRepo = vi.mocked(projectRepo.listProjectsByStudioForViewer);
@@ -83,19 +84,20 @@ beforeEach(() => {
 });
 
 describe("project.service.loadForViewer — members enter, studio members are refused", () => {
-  it("returns an existing member's role unchanged", async () => {
-    loadProjectRole.mockResolvedValue("editor");
+  it("returns an existing member's role unchanged, and an editor may not rename", async () => {
+    loadProjectAccess.mockResolvedValue({ role: "editor", archived: false });
+    loadStudioRole.mockResolvedValue("maintainer");
     getProjectById.mockResolvedValue(makeProject());
 
     const result = await loadForViewer("p-1", "u-1");
 
     expect(result.myRole).toBe("editor");
     expect(result.project.id).toBe("p-1");
-    expect(loadStudioRole).not.toHaveBeenCalled();
+    expect(result.canManageMeta).toBe(false);
   });
 
   it("refuses a studio member who is not on the project with 403", async () => {
-    loadProjectRole.mockResolvedValue(null);
+    loadProjectAccess.mockResolvedValue(null);
     getProjectById.mockResolvedValue(makeProject({ studioId: "s-9" }));
     loadStudioRole.mockResolvedValue("guest");
 
@@ -104,7 +106,7 @@ describe("project.service.loadForViewer — members enter, studio members are re
   });
 
   it("refuses a studio admin who is not on the project with 403 too", async () => {
-    loadProjectRole.mockResolvedValue(null);
+    loadProjectAccess.mockResolvedValue(null);
     getProjectById.mockResolvedValue(makeProject());
     loadStudioRole.mockResolvedValue("admin");
 
@@ -112,7 +114,7 @@ describe("project.service.loadForViewer — members enter, studio members are re
   });
 
   it("hides the project (404) from someone outside the studio", async () => {
-    loadProjectRole.mockResolvedValue(null);
+    loadProjectAccess.mockResolvedValue(null);
     getProjectById.mockResolvedValue(makeProject());
     loadStudioRole.mockResolvedValue(null);
 
@@ -120,7 +122,7 @@ describe("project.service.loadForViewer — members enter, studio members are re
   });
 
   it("throws NotFound for a missing / soft-deleted project", async () => {
-    loadProjectRole.mockResolvedValue(null);
+    loadProjectAccess.mockResolvedValue(null);
     getProjectById.mockResolvedValue(null);
 
     await expect(loadForViewer("p-1", "u-1")).rejects.toBeInstanceOf(NotFoundError);
@@ -132,7 +134,7 @@ describe("project.service.listByStudioForViewer — studio members see every pro
   it("returns [] for a non-studio-member without touching the repo", async () => {
     loadStudioRole.mockResolvedValue(null);
 
-    const result = await listByStudioForViewer("s-1", "u-1");
+    const result = await listByStudioForViewer("s-1", "u-1", { archived: false });
 
     expect(result).toEqual([]);
     expect(listRepo).not.toHaveBeenCalled();
@@ -142,9 +144,9 @@ describe("project.service.listByStudioForViewer — studio members see every pro
     loadStudioRole.mockResolvedValue("guest");
     listRepo.mockResolvedValue([]);
 
-    await listByStudioForViewer("s-1", "u-1");
+    await listByStudioForViewer("s-1", "u-1", { archived: false });
 
-    expect(listRepo).toHaveBeenCalledWith("s-1", "u-1");
+    expect(listRepo).toHaveBeenCalledWith("s-1", "u-1", false);
   });
 });
 
@@ -154,16 +156,16 @@ describe("project.service.listByStudioSlug — slug resolution", () => {
     loadStudioRole.mockResolvedValue("guest");
     listRepo.mockResolvedValue([]);
 
-    await listByStudioSlug("acme", "u-1");
+    await listByStudioSlug("acme", "u-1", { archived: false });
 
     expect(getStudioBySlug).toHaveBeenCalledWith("acme");
-    expect(listRepo).toHaveBeenCalledWith("s-7", "u-1");
+    expect(listRepo).toHaveBeenCalledWith("s-7", "u-1", false);
   });
 
   it("throws NotFound for an unknown slug", async () => {
     getStudioBySlug.mockResolvedValue(null);
 
-    await expect(listByStudioSlug("nope", "u-1")).rejects.toBeInstanceOf(NotFoundError);
+    await expect(listByStudioSlug("nope", "u-1", { archived: false })).rejects.toBeInstanceOf(NotFoundError);
     expect(listRepo).not.toHaveBeenCalled();
   });
 });

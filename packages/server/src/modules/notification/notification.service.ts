@@ -447,8 +447,7 @@ export async function createProjectTransferRequest(input: {
       payload: input.payload as unknown as Record<string, unknown>,
       // The entry IS about a project, and the column is what says so. The
       // role-upgrade entries have always set it; these two did not, which left
-      // them invisible to anything that reasons about a project's notifications
-      // — the delete cascade among them.
+      // them invisible to anything that reasons about a project's notifications.
       projectId: input.payload.projectId,
       expiresAt: input.expiresAt,
     },
@@ -477,8 +476,7 @@ export async function createProjectTransferApproved(input: {
       payload: input.payload as unknown as Record<string, unknown>,
       // The entry IS about a project, and the column is what says so. The
       // role-upgrade entries have always set it; these two did not, which left
-      // them invisible to anything that reasons about a project's notifications
-      // — the delete cascade among them.
+      // them invisible to anything that reasons about a project's notifications.
       projectId: input.payload.projectId,
     },
     input.tx,
