@@ -127,6 +127,17 @@ test('the full-width at sign a CJK input method types opens the list too', async
   await expect(box).toHaveText(/^写真の/);
 });
 
+test('keys typed while a new conversation opens land in the box', async ({ page }) => {
+  const box = page.getByTestId('chat-composer-box');
+  await page.getByTestId('new-conversation').click();
+  await box.focus();
+  await expect(box).toHaveAttribute('contenteditable', 'true', { timeout: 20_000 });
+
+  await page.keyboard.type('still here');
+
+  await expect(box).toHaveText('still here');
+});
+
 test('removing the attachment takes its block out of the words', async ({ page }) => {
   await pasteText(page, MARKER + JSON.stringify([PICTURE]));
   const box = page.getByTestId('chat-composer-box');
