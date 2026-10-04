@@ -314,6 +314,14 @@ describe('@ in the chat box', () => {
     expect(onPasteCanvas).not.toHaveBeenCalled();
   });
 
+  it('takes a block out with one Backspace', () => {
+    setup({ draft: `see ${attachmentMarker('a1')}`, attachments: [cover] });
+    act(() => box().commands.focus('end'));
+    press('Backspace');
+
+    expect(screen.queryByTestId('chat-reference')).toBeNull();
+  });
+
   it('copies a block as its name in plain text', () => {
     setup({ draft: `look at ${attachmentMarker('a1')} please`, attachments: [cover] });
     act(() => box().commands.selectAll());

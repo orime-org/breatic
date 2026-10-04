@@ -9,11 +9,11 @@ import Text from '@tiptap/extension-text';
 import { splitBlock } from '@tiptap/pm/commands';
 import { history, redo, undo } from '@tiptap/pm/history';
 import { Plugin, type Transaction } from '@tiptap/pm/state';
-import type { SuggestionOptions } from '@tiptap/suggestion';
+import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
 
 import { MACHINE_EDIT_META } from '@web/features/reference-mention/reference-mention-local-input';
-import { CHAT_REFERENCE_PRIORITY, ChatReference } from '@web/pages/project/chat/chat-reference';
+import { ChatReference } from '@web/pages/project/chat/chat-reference';
 import { draftLength, stalePositions } from '@web/pages/project/chat/composer-draft';
 import type { TrayItem } from '@web/stores/chat-attachments';
 
@@ -47,19 +47,21 @@ export interface ComposerWiring {
 }
 
 /**
- * The box's own rules: Enter sends, the limit holds, and a block whose
- * attachment has gone does not come back. Between the reference block and
- * TipTap's own keymap: the `@` list sees a key first, and Enter is settled
- * here before the default keymap would break the line.
+ * The box's own rules: the `@` list, Enter sends, the limit holds, and a
+ * block whose attachment has gone does not come back. The plugins run in the
+ * order listed, so the `@` list sees a key before Enter is settled; the
+ * priority puts both ahead of TipTap's default keymap (100), which would
+ * otherwise break the line.
  * @param wiring - The box's live inputs.
  * @returns The extension.
  */
 function composerRules(wiring: ComposerWiring): AnyExtension {
   return Extension.create({
     name: 'composerRules',
-    priority: CHAT_REFERENCE_PRIORITY - 50,
+    priority: 150,
     addProseMirrorPlugins() {
       return [
+        Suggestion<TrayItem>({ editor: this.editor, ...wiring.suggestion }),
         new Plugin({
           // An undo or a draft written in can bring back a block whose
           // attachment has since gone; it goes again straight away.
@@ -112,7 +114,6 @@ export function composerExtensions(wiring: ComposerWiring): AnyExtension[] {
     ComposerHistory,
     Placeholder.configure({ placeholder: wiring.placeholder }),
     ChatReference.configure({
-      suggestion: wiring.suggestion,
       isAttached: (id) => wiring.attachments().some((a) => a.id === id),
     }),
     composerRules(wiring),

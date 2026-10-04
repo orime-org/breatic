@@ -12,13 +12,11 @@
  */
 
 import { Node } from '@tiptap/core';
-import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
 
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { createReferenceMentionCaret } from '@web/features/reference-mention/reference-mention-caret';
 import { createLocalUserInputTracker } from '@web/features/reference-mention/reference-mention-local-input';
 import { createReferenceMentionRangeHighlight } from '@web/features/reference-mention/reference-mention-range-decoration';
-import type { TrayItem } from '@web/stores/chat-attachments';
 
 /** How a reference block looks, in the box and in a sent message alike. */
 export const REFERENCE_BLOCK_CLASS =
@@ -29,8 +27,6 @@ export const CHAT_REFERENCE_LABEL_ATTR = 'label';
 
 /** Options for {@link ChatReference}. */
 export interface ChatReferenceOptions {
-  /** The `@` list, or null for a box with no list (tests of the draft). */
-  suggestion: Omit<SuggestionOptions<TrayItem>, 'editor'> | null;
   /**
    * Whether an attachment id is attached. A pasted block for anything else —
    * the generate panel's chips share this markup — is read as plain words.
@@ -51,15 +47,8 @@ export function chatReferenceContent(id: string, label: string): { type: string;
   };
 }
 
-/**
- * Ahead of the box's own key handling, so a key reaches the `@` list first.
- * TipTap runs the plugins of a higher priority first.
- */
-export const CHAT_REFERENCE_PRIORITY = 200;
-
 export const ChatReference = Node.create<ChatReferenceOptions>({
   name: REFERENCE_MENTION_NODE,
-  priority: CHAT_REFERENCE_PRIORITY,
   group: 'inline',
   inline: true,
   atom: true,
@@ -68,7 +57,7 @@ export const ChatReference = Node.create<ChatReferenceOptions>({
 
   addOptions() {
     // Configured by the box; until then a pasted block is read as words.
-    return { suggestion: null, isAttached: () => false };
+    return { isAttached: () => false };
   },
 
   addAttributes() {
@@ -109,9 +98,12 @@ export const ChatReference = Node.create<ChatReferenceOptions>({
     ];
   },
 
+  renderText({ node }) {
+    return String(node.attrs[CHAT_REFERENCE_LABEL_ATTR] ?? '');
+  },
+
   addProseMirrorPlugins() {
     return [
-      ...(this.options.suggestion ? [Suggestion<TrayItem>({ editor: this.editor, ...this.options.suggestion })] : []),
       createReferenceMentionCaret(),
       createLocalUserInputTracker(),
       createReferenceMentionRangeHighlight(),

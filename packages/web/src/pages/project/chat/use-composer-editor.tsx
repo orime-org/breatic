@@ -64,8 +64,8 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
   const locale = getLocale();
   // Read through one ref: the editor is built once, and all of these change
   // under it.
-  const live = React.useRef({ ...input, t });
-  live.current = { ...input, t };
+  const live = React.useRef(input);
+  live.current = input;
   // The draft this editor last reported, so the panel handing the same string
   // back is not mistaken for a write from outside.
   const reported = React.useRef(input.draft);
@@ -78,14 +78,14 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
    * @param item - The tray item.
    * @returns Its label.
    */
-  const labelNow = (item: TrayItem): string => attachmentLabel(live.current.t, item);
+  const labelNow = React.useCallback((item: TrayItem): string => attachmentLabel(t, item), [t]);
 
   const editor = useEditor(
     {
       immediatelyRender: true,
       extensions: [
         ...composerExtensions({
-          placeholder: () => live.current.t('chat.composer.placeholder'),
+          placeholder: () => t('chat.composer.placeholder'),
           attachments: () => live.current.attachments,
           onEnter: () => live.current.onEnter(),
           onRefusedAtLimit: () => live.current.onRefusedAtLimit(),
@@ -95,7 +95,7 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
               const q = query.toLowerCase();
               return {
                 items: ready.filter((a) => labelNow(a).toLowerCase().includes(q)),
-                emptyLabel: live.current.t(ready.length === 0 ? 'chat.composer.atEmpty' : 'chat.composer.atNoMatch'),
+                emptyLabel: t(ready.length === 0 ? 'chat.composer.atEmpty' : 'chat.composer.atNoMatch'),
               };
             },
             content: (item) => chatReferenceContent(item.id, labelNow(item)),
@@ -115,6 +115,17 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
           'aria-multiline': 'true',
           class:
             'block w-full whitespace-pre-wrap break-words px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none',
+        },
+        handleDOMEvents: {
+          // Read-only, ProseMirror skips its own paste handling, and the event
+          // would go on to the page: the canvas takes canvas nodes pasted
+          // outside a field. The box keeps it, as a read-only field does.
+          paste: (view, event): boolean => {
+            if (view.editable) return false;
+            event.preventDefault();
+            event.stopPropagation();
+            return true;
+          },
         },
         handlePaste: (view, event, slice): boolean => {
           const files = [...(event.clipboardData?.files ?? [])];
@@ -141,8 +152,8 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
           const room = CHAT_MESSAGE_MAX_CHARS - draftLength(view.state.tr.deleteSelection().doc, attached);
           live.current.onRefusedAtLimit();
           const words = slice.content.textBetween(0, slice.content.size, '\n');
-          // Cut by character: a code-unit cut can split an emoji in half.
-          if (room > 0) view.dispatch(view.state.tr.insertText(Array.from(words).slice(0, room).join('')));
+          const cut = fitInto(words, room);
+          if (cut) view.dispatch(view.state.tr.insertText(cut));
           return true;
         },
       },
@@ -165,14 +176,14 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
       draftContent(input.draft, (id) => nameIn(live.current.attachments, id, labelNow)),
     );
     dispatchMachineEdit(editor.view, editor.state.tr.replaceWith(0, editor.state.doc.content.size, doc.content));
-  }, [editor, input.draft]);
+  }, [editor, input.draft, labelNow]);
 
   // Blocks follow the attachments: one whose attachment left goes, and one
   // whose attachment was replaced shows the new name.
   React.useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     syncBlocks(editor, input.attachments, labelNow);
-  }, [editor, input.attachments, locale]);
+  }, [editor, input.attachments, locale, labelNow]);
 
   // An open list reads the tray and the language live, and neither changes
   // through an edit in the box.
@@ -204,6 +215,22 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
   }, [editor, input.ariaLabel, input.describedBy]);
 
   return editor;
+}
+
+/**
+ * The longest start of the words that fits in the room, cut between
+ * characters. The limit counts as `String.length` does, so an emoji takes two.
+ * @param words - What would be inserted.
+ * @param room - How much the limit has left.
+ * @returns What fits.
+ */
+function fitInto(words: string, room: number): string {
+  let cut = '';
+  for (const char of words) {
+    if (cut.length + char.length > room) break;
+    cut += char;
+  }
+  return cut;
 }
 
 /**
