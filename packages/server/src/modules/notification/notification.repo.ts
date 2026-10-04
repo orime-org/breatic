@@ -46,6 +46,8 @@ export type NotificationType =
   | "membership.upgrade_incomplete"
   | "storage.quota_exceeded";
 
+REQUEST_NOTIFICATION_TYPES satisfies readonly NotificationType[];
+
 export type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 
 /**

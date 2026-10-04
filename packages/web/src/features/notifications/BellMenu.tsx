@@ -150,9 +150,9 @@ export function BellMenu(): React.JSX.Element {
           <span className='flex items-center gap-2'>
             {hasNewsRow ? (
               <Button
-                variant='ghost'
+                variant='chrome-ghost'
                 size={null}
-                className='h-auto rounded-chrome px-1.5 py-0.5 text-2xs text-muted-foreground'
+                className='h-auto px-1.5 py-0.5 text-2xs'
                 onClick={() => markAllReadMutation.mutate()}
                 disabled={markAllReadMutation.isPending}
                 data-testid='bell-mark-all-read'

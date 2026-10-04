@@ -84,7 +84,6 @@ test('mark all read clears the news and keeps the request waiting on A', async (
   expect(buttonBox!.x + buttonBox!.width).toBeLessThanOrEqual(countBox!.x);
   await expect(popover.locator('[data-testid^="bell-mark-read-"]')).toHaveCount(1);
   const decisions = popover.locator('[data-testid^="bell-open-decision-"]');
-  // Earlier runs may have left requests waiting on A; this one added one more.
   const waiting = await decisions.count();
   expect(waiting).toBeGreaterThanOrEqual(1);
 
@@ -94,6 +93,20 @@ test('mark all read clears the news and keeps the request waiting on A', async (
   await expect(markAll).toHaveCount(0);
   await expect(count).toHaveText(String(waiting));
   await expect(page.getByTestId('bell-unread-dot')).toBeVisible();
+
+  // Answer the request this run filed, so A's inbox ends as it started.
+  const bellA = await dataOf<{ items: { type: string; payload: { shareToken?: string; projectId?: string } }[] }>(
+    await a.request.get('/api/v1/users/me/notifications'),
+    'A bell',
+  );
+  const requestToken = bellA.items.find(
+    (n) => n.type === 'project.join_request' && n.payload.projectId === project.id,
+  )?.payload.shareToken;
+  expect(requestToken, 'A got no join request').toBeDefined();
+  await dataOf(
+    await a.request.post('/api/v1/decisions/respond', { data: { token: requestToken, action: 'decline' } }),
+    'A declines',
+  );
 
   await a.close();
   await b.close();

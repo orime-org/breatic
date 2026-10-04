@@ -831,8 +831,9 @@ export async function createProjectJoinDecision(input: {
 }
 
 /**
- * Mark all of a user's unread notifications as read. Idempotent —
- * returns the count of rows updated (0 if nothing was unread).
+ * Mark the user's unread notifications read, except requests still waiting on
+ * an answer; rows another transaction holds are skipped. Idempotent — returns
+ * the count of rows updated (0 if nothing was left to mark).
  * @param userId - Inbox owner whose unread notifications to clear
  * @returns Count of notifications marked read (0 if none were unread)
  */
