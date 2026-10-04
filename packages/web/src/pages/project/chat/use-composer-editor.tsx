@@ -66,6 +66,10 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
   // The draft this editor last reported, so the panel handing the same string
   // back is not mistaken for a write from outside.
   const reported = React.useRef(input.draft);
+  // The open `@` list writes its refresh here. What it lists is the tray, and
+  // the tray changes with no edit in the box: an upload finishing, an item
+  // added from the canvas or taken out.
+  const refreshList = React.useRef<(() => void) | null>(null);
   /**
    * What the block for an item shows, in the language now on screen.
    * @param item - The tray item.
@@ -96,6 +100,7 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
             renderItem: (item) => <AttachmentRow item={item} label={labelNow(item)} />,
             // Above the `@`: the box sits at the bottom of the column.
             placement: 'top-start',
+            refreshRef: refreshList,
           }),
         }),
       ],
@@ -164,6 +169,12 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
     if (!editor || editor.isDestroyed) return;
     syncBlocks(editor, input.attachments, labelNow);
   }, [editor, input.attachments, t]);
+
+  // An open list reads the tray and the language live, and neither changes
+  // through an edit in the box.
+  React.useEffect(() => {
+    refreshList.current?.();
+  }, [input.attachments, t]);
 
   // Read-only keeps the keyboard: ProseMirror drops `contenteditable` and
   // nothing else, so the box needs a tab stop of its own to keep focus.
