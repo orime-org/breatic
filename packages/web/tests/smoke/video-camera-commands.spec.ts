@@ -4,7 +4,7 @@
 /**
  * Camera commands on MiniMax H3 (inner#1241): the picker sits in the settings
  * row, keeps opposite directions and Static shot apart, previews each command
- * through the shared hover card, and writes the picks as one bracket at the
+ * in a pane at the top, and writes the picks as one bracket at the
  * caret the reader left -- in the prompt, or in the shot box in the multi-shot
  * mode -- which the submit carries.
  *
@@ -164,17 +164,17 @@ test('picks camera commands and writes them at the caret, then sends them', asyn
   await expect(page.getByTestId(option('Truck left'))).not.toHaveAttribute('aria-current', 'true');
   await expect(page.getByTestId(option('Truck right'))).toHaveText(/Truck right\s*3/);
 
-  // A disabled command previews too, above itself.
+  await expect(page.getByTestId('generate-video-camera-count')).toHaveText('3/3 · [Push in,Zoom out,Truck right]');
+
+  // A disabled command previews too, in the pane above every row, which covers none of them.
+  const pane = page.getByTestId('generate-video-camera-preview');
   await page.getByTestId(option('Shake')).locator('..').hover();
-  // The card of the command hovered before may still be closing beside it.
-  const card = page
-    .getByTestId('hover-preview-content')
-    .filter({ has: page.locator('video[src$="camera-previews/minimax-h3/shake.mp4"]') });
-  await expect(card).toBeVisible();
-  const shake = await page.getByTestId(option('Shake')).boundingBox();
-  const cardBox = await card.boundingBox();
-  if (!shake || !cardBox) throw new Error('preview not drawn');
-  expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(shake.y + 1);
+  await expect(pane.locator('video')).toHaveAttribute('src', /camera-previews\/minimax-h3\/shake-640\.mp4$/);
+  const paneBox = await pane.boundingBox();
+  const firstRow = await page.getByTestId(option('Truck left')).boundingBox();
+  if (!paneBox || !firstRow) throw new Error('picker not drawn');
+  expect(paneBox.y + paneBox.height).toBeLessThanOrEqual(firstRow.y);
+  await expect(page.getByTestId('hover-preview-content')).toHaveCount(0);
   await page.keyboard.press('Escape');
 
   // The caret goes after "a red", then the picker takes focus, then the bracket lands there.
