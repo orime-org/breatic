@@ -115,7 +115,8 @@ export const CameraCommandPicker = React.memo(function CameraCommandPicker({
         // edge rather than flipping while following.
         avoidCollisions={false}
         aria-label={t('canvas.generatePanel.cameraCommands')}
-        className='w-80 p-3 shadow-md'
+        // As wide as its widest row, so every label and option fits in every locale.
+        className='w-max p-3 shadow-md'
       >
         <div
           data-testid='generate-video-camera-preview'
@@ -123,7 +124,6 @@ export const CameraCommandPicker = React.memo(function CameraCommandPicker({
         >
           {previewed ? (
             <>
-              { }
               <video
                 key={previewed.preview_url}
                 src={previewed.preview_url}
@@ -131,9 +131,12 @@ export const CameraCommandPicker = React.memo(function CameraCommandPicker({
                 autoPlay
                 loop
                 playsInline
-                className='block h-full w-full object-cover'
+                // A clip that cannot load leaves the pane as it was before any hover.
+                onError={() => setPreviewed(null)}
+                // Out of flow, so the clip's own size never feeds the popover's width.
+                className='absolute inset-0 h-full w-full object-cover'
               />
-              <span className='absolute bottom-1.5 left-2 text-xs text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.6)]'>
+              <span className='absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-4 text-xs text-white'>
                 {previewed.name}
               </span>
             </>
@@ -141,13 +144,13 @@ export const CameraCommandPicker = React.memo(function CameraCommandPicker({
             t('canvas.generatePanel.cameraCommandsPreviewHint')
           )}
         </div>
-        <div className='flex flex-col gap-1.5'>
+        <div className='grid grid-cols-[max-content_1fr] items-center gap-x-2 gap-y-1.5'>
           {groups.map((group) => (
-            <div key={group.key} className='flex items-center gap-2'>
-              <p className='w-14 shrink-0 text-xs font-medium text-muted-foreground'>
+            <React.Fragment key={group.key}>
+              <p className='whitespace-nowrap text-xs font-medium text-muted-foreground'>
                 {t(`canvas.generatePanel.cameraCommandGroup.${group.key}`)}
               </p>
-              <div className='flex flex-1 gap-1.5'>
+              <div className='flex gap-1.5'>
                 {group.commands.map((command) => {
                   const order = picked.indexOf(command.name);
                   return (
@@ -156,6 +159,11 @@ export const CameraCommandPicker = React.memo(function CameraCommandPicker({
                       key={command.name}
                       className='flex flex-1'
                       onPointerEnter={() => setPreviewed(command)}
+                      // Keyboard focus only: opening the popover focuses the first
+                      // option, and that alone should leave the hint in place.
+                      onFocus={(e) => {
+                        if (e.target.matches(':focus-visible')) setPreviewed(command);
+                      }}
                     >
                       <Button
                         type='button'
@@ -167,22 +175,31 @@ export const CameraCommandPicker = React.memo(function CameraCommandPicker({
                         onClick={() => setPicked((now) => pickCameraCommand(now, command.name))}
                         className={PARAM_OPTION_CLASS}
                       >
+                        {/* The order number's room is held on both sides whether or
+                            not it shows, so a pick neither resizes the popover nor
+                            moves the name off centre. */}
+                        <span aria-hidden='true' className='invisible mr-1.5 tabular-nums'>
+                          {CAMERA_COMMANDS_PER_BRACKET}
+                        </span>
                         {command.name}
-                        {order >= 0 ? (
-                          <span className='ml-1.5 tabular-nums text-muted-foreground'>{order + 1}</span>
-                        ) : null}
+                        <span
+                          data-testid={`generate-video-camera-order-${slug(command.name)}`}
+                          className={`ml-1.5 tabular-nums text-muted-foreground ${order >= 0 ? '' : 'invisible'}`}>
+                          {order >= 0 ? order + 1 : CAMERA_COMMANDS_PER_BRACKET}
+                        </span>
                       </Button>
                     </span>
                   );
                 })}
               </div>
-            </div>
+            </React.Fragment>
           ))}
         </div>
         <div className='mt-3 flex items-end justify-between gap-2 border-t border-border pt-3'>
           <span
             data-testid='generate-video-camera-count'
-            className='min-w-0 text-xs tabular-nums text-muted-foreground [overflow-wrap:anywhere]'
+            // Zero width of its own: it wraps inside what the rows give the popover, never widens it.
+            className='w-0 min-w-0 flex-1 text-xs tabular-nums text-muted-foreground [overflow-wrap:anywhere]'
           >
             {picked.length}/{CAMERA_COMMANDS_PER_BRACKET}
             {picked.length > 0 ? ` · ${cameraCommandBracket(picked)}` : null}

@@ -162,7 +162,9 @@ test('picks camera commands and writes them at the caret, then sends them', asyn
   await expect(page.getByTestId(option('Pan left'))).toBeDisabled();
   await page.getByTestId(option('Truck right')).click();
   await expect(page.getByTestId(option('Truck left'))).not.toHaveAttribute('aria-current', 'true');
-  await expect(page.getByTestId(option('Truck right'))).toHaveText(/Truck right\s*3/);
+  await expect(page.getByTestId('generate-video-camera-order-truck-right')).toBeVisible();
+  await expect(page.getByTestId('generate-video-camera-order-truck-right')).toHaveText('3');
+  await expect(page.getByTestId('generate-video-camera-order-pan-left')).toBeHidden();
 
   await expect(page.getByTestId('generate-video-camera-count')).toHaveText('3/3 · [Push in,Zoom out,Truck right]');
 
@@ -175,6 +177,31 @@ test('picks camera commands and writes them at the caret, then sends them', asyn
   if (!paneBox || !firstRow) throw new Error('picker not drawn');
   expect(paneBox.y + paneBox.height).toBeLessThanOrEqual(firstRow.y);
   await expect(page.getByTestId('hover-preview-content')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // The widest row, numbers showing, stays inside the popover, and a pick never resizes it.
+  await page.getByTestId('generate-video-camera-trigger').click();
+  const popover = page.locator('[data-radix-popper-content-wrapper] > *').filter({ has: pane });
+  // Layout width: the open animation scales the box, which a rect would include.
+  const widthBefore = await popover.evaluate((box) => (box as HTMLElement).offsetWidth);
+  for (const name of ['Shake', 'Tracking shot']) await page.getByTestId(option(name)).click();
+  const fit = await popover.evaluate((box) => {
+    const inner = box.getBoundingClientRect().right - parseFloat(getComputedStyle(box).paddingRight);
+    const parts = [...box.querySelectorAll('[data-testid^="generate-video-camera-option-"], p')] as HTMLElement[];
+    return {
+      width: (box as HTMLElement).offsetWidth,
+      out: parts.filter((e) => e.getBoundingClientRect().right > inner + 0.5).map((e) => e.textContent),
+      wrapped: parts.filter((e) => e.tagName === 'P' && e.getBoundingClientRect().height > parseFloat(getComputedStyle(e).lineHeight) + 1).map((e) => e.textContent),
+    };
+  });
+  expect(fit.out).toEqual([]);
+  expect(fit.wrapped).toEqual([]);
+  expect(fit.width).toBe(widthBefore);
+
+  // Moving through the options with Tab previews each one the focus lands on.
+  await page.getByTestId(option('Shake')).focus();
+  await page.keyboard.press('Tab');
+  await expect(pane.locator('video')).toHaveAttribute('src', /tracking-shot-640\.mp4$/);
   await page.keyboard.press('Escape');
 
   // The caret goes after "a red", then the picker takes focus, then the bracket lands there.

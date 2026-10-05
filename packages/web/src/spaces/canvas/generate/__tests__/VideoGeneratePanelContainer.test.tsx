@@ -2623,6 +2623,35 @@ describe('camera commands (inner#1241)', () => {
     expect(screen.queryByTestId('hover-preview-content')).toBeNull();
   });
 
+  it('leaves the hint in place when opening focuses the first option, a focus no key made', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    const pane = await screen.findByTestId('generate-video-camera-preview');
+    fireEvent.focus(screen.getByTestId(option('Tilt up')));
+    expect(pane.querySelector('video')).toBeNull();
+  });
+
+  it('goes back to the hint when a clip cannot load', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    const pane = await screen.findByTestId('generate-video-camera-preview');
+    fireEvent.pointerEnter(screen.getByTestId(option('Shake')).parentElement as HTMLElement);
+    fireEvent.error(pane.querySelector('video') as HTMLVideoElement);
+    expect(pane.querySelector('video')).toBeNull();
+    expect(pane.textContent).toBe(en.canvas.generatePanel.cameraCommandsPreviewHint);
+  });
+
+  it('shows the pick order only on picked commands', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    for (const name of ['Push in', 'Zoom out']) fireEvent.click(await screen.findByTestId(option(name)));
+    const order = (name: string): HTMLElement =>
+      screen.getByTestId(`generate-video-camera-order-${name.toLowerCase().replace(/ /g, '-')}`);
+    expect(order('Zoom out').textContent).toBe('2');
+    expect(order('Zoom out')).not.toHaveClass('invisible');
+    expect(order('Pan left')).toHaveClass('invisible');
+  });
+
   it('shows the picks as their bracket beside the count', async () => {
     await openOn('t2v', 'minimax-h3-text-to-video');
     fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
