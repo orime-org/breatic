@@ -50,4 +50,4 @@ docker run --rm --entrypoint cat <带摘要的后端镜像> /app/build-info.json
 
 在 GitHub 设置保护 `v*` 标签不被更新、删除，并按仓库能力启用不可变 Release；创建权限仅给可信发布人员。管理员还需保留在用的镜像摘要和附件。
 
-本地 Docker 按 [LOCAL-CN.md](LOCAL-CN.md) 取某个发布版本的源码，其中的 `docker-compose.yml` 运行的就是该版本的镜像。Ingest 构建检查不等于发布 Worker，仍需从匹配源码单独部署。
+本地 Docker 按 [LOCAL-CN.md](LOCAL-CN.md) 取某个发布版本的源码，从 `v0.0.2` 起，其中的 `docker-compose.yml` 运行的就是该版本的镜像。Ingest 构建检查不等于发布 Worker，仍需从匹配源码单独部署。

@@ -50,7 +50,7 @@ cp .env.docker .env
 
 Alternatively, extract that Release's source ZIP and enter the directory containing `docker-compose.yml`, `Dockerfile` and `package.json`. Run subsequent commands from that root. Do not overwrite an existing `.env`.
 
-**Keep versions together.** Images, Ingest source and configuration must match the selected release. The release's `docker-compose.yml` already names its own images, so the source you download decides the version. See [Versioned releases](RELEASE.md).
+**Keep versions together.** Images, Ingest source and configuration must match the selected release. From `v0.0.2` on, the release's `docker-compose.yml` already names its own images, so the source you download decides the version. Releases before `v0.0.2` ship their own LOCAL.md, which asks for `BREATIC_TAG`. See [Versioned releases](RELEASE.md).
 
 ## 3. Configure the application
 

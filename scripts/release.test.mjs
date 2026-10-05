@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildInfo, composeImageTags, releaseManifest } from './release.mjs';
+import { buildInfo, checkComposeTag, composeImageTags, releaseManifest } from './release.mjs';
 const sha = 'a'.repeat(40);
 const backend = `ghcr.io/orime-org/breatic@sha256:${'b'.repeat(64)}`;
 const web = `ghcr.io/orime-org/breatic-web@sha256:${'c'.repeat(64)}`;
@@ -67,6 +67,15 @@ const composeWith = (backendTag, webTag = backendTag) => [
 test('compose image tags are read from every product image line', () => {
   assert.deepEqual(composeImageTags(composeWith('v0.2.0')), ['v0.2.0', 'v0.2.0', 'v0.2.0', 'v0.2.0', 'v0.2.0']);
   assert.deepEqual(composeImageTags(composeWith('v0.2.0', 'v0.1.0')), ['v0.1.0', 'v0.2.0', 'v0.2.0', 'v0.2.0', 'v0.2.0']);
+  const quoted = composeWith('v0.2.0')
+    .replace('image: ghcr.io/orime-org/breatic-web:v0.2.0', 'image: "ghcr.io/orime-org/breatic-web:v0.2.0"')
+    .replace('image: ghcr.io/orime-org/breatic:v0.2.0', "image: 'ghcr.io/orime-org/breatic:v0.2.0'  # pinned");
+  assert.deepEqual(composeImageTags(quoted), ['v0.2.0', 'v0.2.0', 'v0.2.0', 'v0.2.0', 'v0.2.0']);
+});
+
+test('a missing product image line is reported as a line count, not as a wrong tag', () => {
+  const missing = composeWith('v0.2.0').replace(/\n  worker:\n.*/, '');
+  assert.throws(() => checkComposeTag('v0.2.0', missing), /found 4 product image lines, expected 5/);
 });
 
 test('a stable tag must match all five compose images; candidates are not checked', () => {
@@ -92,8 +101,7 @@ test('a stable tag must match all five compose images; candidates are not checke
 
 test('the repository compose file pins one stable release for every product image', () => {
   const text = readFileSync(fileURLToPath(new URL('../docker-compose.yml', import.meta.url)), 'utf8');
-  const tags = composeImageTags(text);
-  assert.equal(tags.length, 5);
-  assert.equal(new Set(tags).size, 1);
-  assert.match(tags[0], /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
+  const [tag] = composeImageTags(text);
+  assert.doesNotMatch(tag, /-rc\./);
+  checkComposeTag(tag, text);
 });

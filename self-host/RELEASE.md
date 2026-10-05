@@ -50,4 +50,4 @@ A tag identifies one release forever. The draft reserves the version before the 
 
 Protect `v*` tags from update/deletion in repository settings and enable GitHub immutable releases where available. Only trusted maintainers should be able to create release tags. Workflow guards prevent ordinary accidental reruns; administrators must also preserve registry digests and release assets.
 
-For local Docker use, obtain the source of a release as described in [LOCAL.md](LOCAL.md); its `docker-compose.yml` runs that release's images. Building Ingest checks its Dockerfile but does not publish its Worker; deploy Ingest from the matching source separately.
+For local Docker use, obtain the source of a release as described in [LOCAL.md](LOCAL.md); from `v0.0.2` on, its `docker-compose.yml` runs that release's images. Building Ingest checks its Dockerfile but does not publish its Worker; deploy Ingest from the matching source separately.
