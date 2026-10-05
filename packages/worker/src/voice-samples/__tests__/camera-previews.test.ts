@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import type { FullModelEntry } from "@breatic/domain";
 
-import { CAMERA_PREVIEW_SCENE, planCameraPreviews } from "@worker/voice-samples/camera-previews.js";
+import { CAMERA_PREVIEW_SCENE, planCameraPreviews, previewTranscodeArgs } from "@worker/voice-samples/camera-previews.js";
 
 const COMMANDS = [
   { name: "Pan left", sample_key: "camera-previews/h3/pan-left.mp4" },
@@ -48,7 +48,26 @@ describe("planCameraPreviews", () => {
     ]);
   });
 
+  it("sends the scene under the field the entry names for its prompt", () => {
+    const named = { ...entry("h3-t2v", ["t2v"], COMMANDS), prompt_upstream: "text" } as FullModelEntry;
+    const [job] = planCameraPreviews([named]);
+    expect(job?.body.text).toBe(`${CAMERA_PREVIEW_SCENE} [Pan left]`);
+    expect(job?.body).not.toHaveProperty("prompt");
+  });
+
   it("refuses commands no text-to-video entry can make, naming the key", () => {
     expect(() => planCameraPreviews([entry("h3-i2v", ["i2v"], COMMANDS)])).toThrow(/camera-previews\/h3\/pan-left\.mp4/);
+  });
+});
+
+describe("previewTranscodeArgs", () => {
+  it("makes a small silent clip whose index sits at the front", () => {
+    const args = previewTranscodeArgs("in.mp4", "out.mp4");
+    expect(args[args.indexOf("-i") + 1]).toBe("in.mp4");
+    expect(args.at(-1)).toBe("out.mp4");
+    expect(args).toContain("-an");
+    expect(args[args.indexOf("-movflags") + 1]).toBe("+faststart");
+    expect(args[args.indexOf("-vf") + 1]).toBe("scale=640:-2");
+    expect(args[args.indexOf("-c:v") + 1]).toBe("libx264");
   });
 });
