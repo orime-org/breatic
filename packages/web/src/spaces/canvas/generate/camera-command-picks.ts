@@ -18,10 +18,10 @@ import {
  */
 function displacedBy(picked: readonly string[], command: string): string[] {
   if (command === STATIC_SHOT) return picked.filter((p) => p !== STATIC_SHOT);
-  const axis: readonly string[] | undefined = CAMERA_COMMAND_AXES.find((pair) =>
-    (pair as readonly string[]).includes(command),
-  );
-  const opposite = axis?.find((c) => c !== command);
+  const directions: readonly string[] | undefined = CAMERA_COMMAND_AXES.find((axis) =>
+    (axis.directions as readonly string[]).includes(command),
+  )?.directions;
+  const opposite = directions?.find((c) => c !== command);
   return picked.filter((p) => p === STATIC_SHOT || p === opposite);
 }
 

@@ -93,7 +93,7 @@ function renderCameraCommands(model: PricedModelInfo): string {
   const where = model.storyboard ? " into the shot it belongs to" : " into the prompt";
   return (
     ` Reads camera commands written${where}: ${commands.map((c) => `[${c}]`).join(" ")}.` +
-    ` Commands inside one bracket, comma-separated, run at the same time, at most ${CAMERA_COMMANDS_PER_BRACKET} in one bracket;` +
+    ` Commands inside one bracket, comma-separated with no space, as in [Truck left,Push in], run at the same time, at most ${CAMERA_COMMANDS_PER_BRACKET} in one bracket;` +
     ` separate brackets run in the order they appear; never put the opposite directions of one axis, or [${STATIC_SHOT}] with a movement, in one bracket.`
   );
 }

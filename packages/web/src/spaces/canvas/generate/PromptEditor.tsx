@@ -372,7 +372,7 @@ export const PromptEditor = React.forwardRef<
       insertText: (text: string): void => {
         if (!editor || editor.isDestroyed) return;
         const { state } = editor;
-        const { from, to } = caretPlacedRef.current || editor.isFocused
+        const { from, to } = caretPlacedRef.current
           ? state.selection
           : Selection.atEnd(state.doc);
         /**

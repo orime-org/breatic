@@ -404,6 +404,7 @@ export {
   STATIC_SHOT,
   isCameraCommand,
   type CameraCommand,
+  type CameraCommandAxis,
 } from "@shared/camera-commands.js";
 export { appliesInMode, paramsForMode } from "@shared/param-modes.js";
 export {

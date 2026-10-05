@@ -33,18 +33,26 @@ export const CAMERA_COMMANDS = [
 /** One documented command. */
 export type CameraCommand = (typeof CAMERA_COMMANDS)[number];
 
+/** One camera axis: the name its row goes by, and its two directions. */
+export interface CameraCommandAxis {
+  /** Names the axis wherever it is shown, e.g. the picker's row label. */
+  key: string;
+  /** The two directions, which one bracket must not hold together. */
+  directions: readonly [CameraCommand, CameraCommand];
+}
+
 /**
- * The two directions of each camera axis. One bracket runs its commands at
- * the same time, so both directions of an axis in one bracket ask the camera
- * to move two opposite ways at once.
+ * The six camera axes. One bracket runs its commands at the same time, so
+ * both directions of an axis in one bracket ask the camera to move two
+ * opposite ways at once.
  */
-export const CAMERA_COMMAND_AXES: ReadonlyArray<readonly [CameraCommand, CameraCommand]> = [
-  ["Truck left", "Truck right"],
-  ["Pan left", "Pan right"],
-  ["Push in", "Pull out"],
-  ["Pedestal up", "Pedestal down"],
-  ["Tilt up", "Tilt down"],
-  ["Zoom in", "Zoom out"],
+export const CAMERA_COMMAND_AXES: readonly CameraCommandAxis[] = [
+  { key: "truck", directions: ["Truck left", "Truck right"] },
+  { key: "pan", directions: ["Pan left", "Pan right"] },
+  { key: "dolly", directions: ["Push in", "Pull out"] },
+  { key: "pedestal", directions: ["Pedestal up", "Pedestal down"] },
+  { key: "tilt", directions: ["Tilt up", "Tilt down"] },
+  { key: "zoom", directions: ["Zoom in", "Zoom out"] },
 ];
 
 /** The command that holds the camera still, which every movement contradicts. */

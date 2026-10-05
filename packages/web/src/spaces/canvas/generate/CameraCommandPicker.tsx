@@ -26,9 +26,6 @@ import { PARAMS_PILL_CLASS } from '@web/spaces/canvas/generate/generate-tools';
 import { PARAM_OPTION_CLASS } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
-/** The row a command sits in: the six axes in order, then everything on none. */
-const GROUP_KEYS = ['truck', 'pan', 'dolly', 'pedestal', 'tilt', 'zoom'] as const;
-
 interface CameraCommandPickerProps {
   /** The commands the current model reads, each with its preview clip. */
   commands: readonly CameraCommandEntry[];
@@ -44,10 +41,10 @@ interface CameraCommandPickerProps {
 function groupsOf(
   commands: readonly CameraCommandEntry[],
 ): Array<{ key: string; commands: CameraCommandEntry[] }> {
-  const onAxis = new Set<string>(CAMERA_COMMAND_AXES.flat());
-  const rows = CAMERA_COMMAND_AXES.map((axis, i) => ({
-    key: GROUP_KEYS[i] as string,
-    commands: commands.filter((c) => (axis as readonly string[]).includes(c.name)),
+  const onAxis = new Set<string>(CAMERA_COMMAND_AXES.flatMap((axis) => axis.directions));
+  const rows = CAMERA_COMMAND_AXES.map((axis) => ({
+    key: axis.key,
+    commands: commands.filter((c) => (axis.directions as readonly string[]).includes(c.name)),
   }));
   rows.push({ key: 'other', commands: commands.filter((c) => !onAxis.has(c.name)) });
   return rows.filter((row) => row.commands.length > 0);
