@@ -74,7 +74,9 @@ function placeCaret(editor: DrivenEditor, at: number): void {
 
 describe('PromptEditorHandle.insertText', () => {
   it('appends to the end of a prompt the reader never put a caret in', async () => {
-    const { handle, reported } = await mount('a red car');
+    const { handle, editor, reported } = await mount('a red car');
+    // A selection the reader did not make, away from the end: the end still wins.
+    act(() => editor.commands.setTextSelection(1));
     act(() => handle.current?.insertText('[Pan left]'));
     await waitFor(() => expect(reported()).toBe('a red car [Pan left]'));
   });
@@ -94,6 +96,14 @@ describe('PromptEditorHandle.insertText', () => {
     placeCaret(editor, 2);
     act(() => handle.current?.insertText('[Zoom in]'));
     await waitFor(() => expect(reported()).toBe('a [Zoom in] red car'));
+  });
+
+  it('keeps a space on both sides when the caret sits inside a word', async () => {
+    const { handle, editor, reported } = await mount('a red car');
+    // Position 4 is between "r" and "ed".
+    placeCaret(editor, 4);
+    act(() => handle.current?.insertText('[Tilt up]'));
+    await waitFor(() => expect(reported()).toBe('a r [Tilt up] ed car'));
   });
 
   it('writes the text alone into an empty prompt', async () => {
