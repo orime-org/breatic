@@ -220,6 +220,8 @@ import {
   type CanvasContextValue,
   canvasRootOf,
   useCanvasContext,
+  useCanvasSession,
+  useCanvasSessionStore,
 } from '@web/spaces/canvas/canvas-context';
 import { useUserProfiles } from '@web/data/use-user-profiles';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
@@ -277,7 +279,6 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 import { readSpaceViewport, writeSpaceViewport } from '@web/lib/project-tabs-storage';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { taskPanelOpenFor, type CanvasSessionStore } from '@web/stores/canvas-session';
-import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 
 /** Node types a focus pick can crop (#1782 images, #1987 video frames). */
 const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);

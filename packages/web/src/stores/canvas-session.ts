@@ -18,9 +18,119 @@ import type { NodeType } from '@breatic/shared';
 import { immer } from 'zustand/middleware/immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
-import type { OpenAnnotationDraft, PickSession } from '@web/stores/canvas';
+import type { DraftState, DraftTarget } from '@web/stores/annotation-draft';
 
 import { createSpaceRegistry } from '@web/stores/space-registry';
+
+/**
+ * The box one sticky has open, and which of its entries it belongs to.
+ *
+ * Kept here rather than inside the node that draws it because the canvas runs
+ * with `onlyRenderVisibleElements`: panning a sticky off screen unmounts its
+ * DOM, and a draft held in that component went with it -- measured on a real
+ * board, two screens away and back left the box closed and half a reply gone,
+ * with nothing said about it. The node is still in the document the whole
+ * time, so what the reader is writing has to outlive the element as well.
+ *
+ * Same reason the crop marquee's target sits in `CanvasSpace` rather than in
+ * the node being cropped (#1782 adversarial round 8).
+ */
+export interface OpenAnnotationDraft {
+  readonly draft: DraftState;
+  readonly target: DraftTarget;
+}
+
+
+/**
+ * What a canvas node-pick session wires when the user clicks a node:
+ *   - `reference` — an i2i source edge (clicked → target) feeding the reference
+ *     rail (a connection IS a reference).
+ *   - `focus` — opens a crop marquee on the clicked image node (#1782); each
+ *     confirmed crop uploads a standalone copy and APPENDS it to the target's
+ *     `focusImages` (no edge, no source relationship). Continuous like
+ *     reference — the user may crop several regions on the SAME node and
+ *     across nodes — until manual Exit.
+ *   - `firstFrame` — COPIES the clicked image node's asset URL into a video
+ *     node's `firstFrameUrl` (#1896), the image-to-video first frame: a
+ *     pick-time snapshot with NO relationship to the source node, then the
+ *     session auto-exits (single slot, unlike the continuous reference pick).
+ *   - `endFrame` — the same, into `endFrameUrl` (#1904): where the first-last
+ *     frame mode ends. Independent of the first frame in every way — either
+ *     one can be picked or replaced at any time, and only execute asks for
+ *     both (user 2026-08-10).
+ *   - `characterImage` — the same, into `characterImageUrl` (#1918): one
+ *     picture of a person, for both modes that animate one — the figure
+ *     image animation drives, and the portrait the talking head speaks with
+ *     (#1935). Its own slot rather than the first frame's, though both travel
+ *     as `image`, because a pick survives a mode switch and these two mean
+ *     different things.
+ *   - `drivingVideo` — the same, into `drivingVideo` (#1918), but from a
+ *     VIDEO node: the performance whose motion is transferred onto the
+ *     character. The first SLOT pick that takes something other than an image
+ *     (`reference` has always taken any node the edge rules allow), so
+ *     it copies the node's poster alongside the asset — the toolbar shows a
+ *     pick with an `<img>` and a video URL would paint nothing.
+ *   - `drivingAudio` — the same, into `drivingAudio` (#1935), but from an
+ *     AUDIO node: the track the talking head's lips follow. Stored in the
+ *     same one-field shape as `drivingVideo` for the same reason, though an
+ *     audio node has no poster to copy, so the toolbar keeps showing the
+ *     slot's icon.
+ *   - `sourceVideo` / `leftAudio` / `rightAudio` — the same, into their own
+ *     fields (#2156): the clip a lipsync model redoes, and the two speakers'
+ *     tracks of a two-person talking head.
+ *   - `refAudio` — the same, into `refAudio` (#1960 PR2), also from an AUDIO
+ *     node: the voice a cloning model speaks the new lines in. Its own slot
+ *     rather than `drivingAudio`'s, though both travel as `audio`, because
+ *     the two are picked on different panels for different jobs and a pick
+ *     survives a mode switch.
+ *   - `musicSong` / `coverSong` / `musicMelody` / `musicVocal` — more of the
+ *     same into their own slots (#1960, #2156), all from AUDIO nodes: the
+ *     track a new song is written after, a song to cover, a melody, a
+ *     singing voice. One per role because the vendor reads each under its own
+ *     name and a user may give any combination of them.
+ *   - `soundVideo` / `moodImage` — the picture a sound or a score follows,
+ *     from a VIDEO node, and the picture music takes its mood from, from an
+ *     IMAGE node (#2156).
+ */
+export type PickPurpose =
+  | 'reference'
+  | 'focus'
+  | 'firstFrame'
+  | 'endFrame'
+  | 'characterImage'
+  | 'drivingVideo'
+  | 'drivingAudio'
+  | 'sourceVideo'
+  | 'leftAudio'
+  | 'rightAudio'
+  | 'refAudio'
+  | 'musicSong'
+  | 'coverSong'
+  | 'musicMelody'
+  | 'musicVocal'
+  | 'soundVideo'
+  | 'moodImage'
+  | 'style';
+
+
+/**
+ * An in-progress "pick a node from the canvas" session. Only one is active at a
+ * time — the SAME interaction (click a node, continuous until Exit, locate,
+ * dim non-candidates) with two completion targets discriminated by `purpose`.
+ * One source of truth, never a second parallel field per purpose.
+ */
+export interface PickSession {
+  /** The generative node the pick feeds (the pick target). */
+  nodeId: string;
+  /** What clicking a node wires — a reference edge, or a copied source. */
+  purpose: PickPurpose;
+  /**
+   * How many files the slot being filled holds, for a slot holding several
+   * (inner#826): the pick keeps going until the slot is full or the reader
+   * exits. Absent for every one-file slot, whose pick ends on the first click.
+   */
+  capacity?: number;
+}
 
 /** One canvas's session state and its writers. */
 export interface CanvasSessionState {

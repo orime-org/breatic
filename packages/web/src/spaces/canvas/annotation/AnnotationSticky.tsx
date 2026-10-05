@@ -54,16 +54,19 @@ import {
   type DraftState,
   type DraftTarget,
 } from '@web/stores/annotation-draft';
-import { type OpenAnnotationDraft } from '@web/stores/canvas';
+import type { OpenAnnotationDraft } from '@web/stores/canvas-session';
 import {
   annotationRights,
   canPostAnnotations,
   type AnnotationRights,
 } from '@web/spaces/canvas/annotation/rights';
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
-import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
+import {
+  useCanvasContext,
+  useCanvasSession,
+  useCanvasSessionStore,
+} from '@web/spaces/canvas/canvas-context';
 import { useCurrentUserStore } from '@web/stores/current-user';
-import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 
 /**
  * Whether an entry is the one the open box belongs to.

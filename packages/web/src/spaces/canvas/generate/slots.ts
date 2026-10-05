@@ -28,7 +28,7 @@ import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { usableDuration } from '@web/spaces/canvas/generate/slot-pick';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import type { PickPurpose } from '@web/stores/canvas';
+import type { PickPurpose } from '@web/stores/canvas-session';
 
 /** What one slot is made of. */
 export interface SlotSpec {
