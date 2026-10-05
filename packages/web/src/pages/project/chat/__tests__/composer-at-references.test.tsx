@@ -734,6 +734,20 @@ describe('@ in the chat box', () => {
     expect(onChange).toHaveBeenLastCalledWith(plain);
   });
 
+  it('copies lines out one line break apart and pastes them back as they were', () => {
+    const { onChange } = setup({ draft: 'one\ntwo' });
+    act(() => box().commands.selectAll());
+    const written = new Map<string, string>();
+    fireEvent.copy(box().view.dom, {
+      clipboardData: { clearData: () => written.clear(), setData: (type: string, value: string) => written.set(type, value) },
+    });
+    expect(written.get('text/plain')).toBe('one\ntwo');
+
+    act(() => box().commands.focus('end'));
+    fireEvent.paste(box().view.dom, { clipboardData: { files: [], getData: (type: string) => written.get(type) ?? '' } });
+    expect(onChange).toHaveBeenLastCalledWith('one\ntwoone\ntwo');
+  });
+
   it('cuts a composition that ends past the limit as soon as it ends', async () => {
     const { onChange } = setup({ draft: `ab${'y'.repeat(9_997)}` });
     const view = box().view as unknown as { input: { composing: boolean } } & Editor['view'];

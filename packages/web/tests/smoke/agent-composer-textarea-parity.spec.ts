@@ -262,3 +262,37 @@ test('words dragged in from a web page land as its plain text, line breaks and i
 
   await expect.poll(async () => (await read(page)).text).toBe(`hello ${WEB_PLAIN}`);
 });
+
+for (const [where, expected] of [
+  ['below the last line', ' world\nabchello'],
+  ['to the right of a shorter line', ' worldhello\nabc'],
+] as const) {
+  test(`a word dragged within the box ${where} joins that line, as in the textarea`, async ({ page }) => {
+    await start(page, '');
+    await page.keyboard.type('hello world');
+    await page.keyboard.press('Shift+Enter');
+    await page.keyboard.type('abc');
+    const at = await page.evaluate(([sel, w]) => {
+      const el = document.querySelector(sel as string) as HTMLElement;
+      const e = (el as unknown as { editor: { commands: { setTextSelection: (r: { from: number; to: number }) => void }; view: { coordsAtPos: (p: number) => { left: number; right: number; top: number; bottom: number } } } }).editor;
+      e.commands.setTextSelection({ from: 1, to: 6 });
+      const word = e.view.coordsAtPos(3);
+      const first = e.view.coordsAtPos(12);
+      const last = e.view.coordsAtPos(16);
+      const box = el.getBoundingClientRect();
+      return w === 'below the last line'
+        ? { sx: word.left, sy: (word.top + word.bottom) / 2, tx: last.left + 30, ty: box.bottom - 2 }
+        : { sx: word.left, sy: (word.top + word.bottom) / 2, tx: box.right - 8, ty: (first.top + first.bottom) / 2 };
+    }, [BOX, where]);
+    // A press held still is what makes the browser start dragging the selection.
+    await page.mouse.move(at.sx, at.sy);
+    await page.mouse.down();
+    await page.waitForTimeout(150);
+    await page.mouse.move(at.sx + 10, at.sy + 2, { steps: 5 });
+    await page.waitForTimeout(100);
+    await page.mouse.move(at.tx, at.ty, { steps: 20 });
+    await page.mouse.up();
+
+    await expect.poll(async () => (await read(page)).text).toBe(expected);
+  });
+}
