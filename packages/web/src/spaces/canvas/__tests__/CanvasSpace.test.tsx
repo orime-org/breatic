@@ -2136,7 +2136,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         document.querySelector('[data-id="target"]')?.className,
       ).toContain('selected'),
     );
-    // Space-tab switch away and back: unmount + fresh mount, store untouched.
+    // The body mounted again with its session kept: unmount + fresh mount.
     view.unmount();
     render(
       <QueryClientProvider client={client}>

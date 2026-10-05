@@ -198,10 +198,11 @@ describe('DocumentSpace', () => {
   // now lives (`SpaceReadOnlyNotice.test.tsx`, "says nothing to a viewer"),
   // where deleting the role term does turn it red.
 
-  it('shows the content again immediately after a Space-tab switch', async () => {
-    // Switching Space tabs unmounts and remounts this body — `SpaceOutlet` is
-    // keyed on the Space id. The content is plainly still there across one: the
-    // Y.Doc, the editor and its undo stack are all held elsewhere. So the gate
+  it('shows the content again immediately when its body is mounted again', async () => {
+    // The body can unmount and mount again while its tab keeps the document
+    // open (a notice taking its place, StrictMode). The content is plainly
+    // still there across that: the Y.Doc, the editor and its undo stack are
+    // all held elsewhere. So the gate
     // that withholds the editor must not restart from zero here, or the user
     // gets a loading placeholder in front of a document already in memory.
     //
