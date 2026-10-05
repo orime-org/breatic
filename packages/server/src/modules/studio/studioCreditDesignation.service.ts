@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { ConflictError } from "@breatic/core";
-import { creditLotService } from "@breatic/domain";
+import { creditLotService, studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import type { CreditLotEntity } from "@breatic/shared";
 import * as transfersRepo from "@server/modules/studio/studioTransfers.repo.js";
@@ -20,7 +20,7 @@ import * as transfersRepo from "@server/modules/studio/studioTransfers.repo.js";
  * @param input.requestingUserId - Who is asking. Must be the buyer.
  * @param input.studioId - The studio to point it at, or null to unassign.
  * @returns The pack as it now stands.
- * @throws {ConflictError} If a transfer of the target studio is waiting.
+ * @throws {ConflictError} If the caller administers the target and its transfer is waiting.
  * @throws {NotFoundError} If the pack does not exist or belongs to someone else.
  * @throws {ForbiddenError} If the caller does not administer the target studio.
  * @throws {AppError} 409 if the pack is in the refund flow.
@@ -30,8 +30,11 @@ export async function designateLot(input: {
   requestingUserId: string;
   studioId: string | null;
 }): Promise<CreditLotEntity> {
+  // Only an admin of the target hears about its transfer; anyone else falls
+  // through to the 403 and its audit line, as when nothing is pending.
   if (
     input.studioId !== null &&
+    (await studioMembersRepo.getRole(input.studioId, input.requestingUserId)) === "admin" &&
     (await transfersRepo.findLiveForContainer(input.studioId)) !== null
   ) {
     throw new ConflictError(t("server.studio.designation_during_transfer"));

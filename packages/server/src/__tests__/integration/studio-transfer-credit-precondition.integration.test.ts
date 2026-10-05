@@ -180,6 +180,18 @@ describe("pointing a pack at a studio", () => {
     expect(lotAfter.designatedStudioId).toBe(s.studioId);
   });
 
+  // The pending transfer is the studio's business; someone who does not
+  // administer it gets the same 403 as when nothing is pending.
+  it("refuses a non-admin with 403 whether or not a transfer waits", async () => {
+    const s = await seedStudio();
+    const lot = await insertLot(s.memberId, null);
+    await studioTransferService.requestTransfer(s.slug, s.adminId, s.memberId);
+
+    await expect(
+      studioCreditDesignation.designateLot({ lotId: lot, requestingUserId: s.memberId, studioId: s.studioId }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
   it("still lets a pack be unassigned while a transfer waits", async () => {
     const s = await seedStudio();
     const lot = await insertLot(s.adminId, null);
