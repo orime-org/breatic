@@ -437,9 +437,9 @@ test('keeps each project on its own strip when the browser goes back to it', asy
   // And the record still says the same thing for both.
   const firstId = first.slice(-36);
   const record = (await stored(page)) as Record<string, Record<string, {
-    tabs: Array<{ spaceId: string }>;
+    tabs: Array<{ spaceId: string; open: boolean }>;
   }>>;
   const slot = Object.values(record).map((p) => p[firstId]).find(Boolean);
-  expect(slot?.tabs.map((t) => t.spaceId)).toEqual(firstStrip);
+  expect(slot?.tabs.filter((t) => t.open).map((t) => t.spaceId)).toEqual(firstStrip);
   for (const id of secondStrip) expect(firstStrip).not.toContain(id);
 });
