@@ -7,6 +7,7 @@
  * nothing new only asks, and a rerun makes only what a previous run could not.
  */
 
+import type { ResumeContext } from "@worker/providers/shared.js";
 import type { VoiceSampleJob } from "@worker/voice-samples/plan.js";
 
 /** The key the storage check asks about. */
@@ -53,7 +54,7 @@ export function servedFromHead(key: string, status: number): boolean {
 export interface SyncDeps {
   /** Whether the sample address already serves this key. */
   exists: (key: string) => Promise<boolean>;
-  /** Run the paid prediction and answer where its output is; reused by later passes once it succeeds. */
+  /** Run the paid prediction and answer where its output is. */
   predict: (job: VoiceSampleJob) => Promise<string>;
   /** Fetch the prediction's output. */
   download: (url: string) => Promise<Buffer>;
@@ -61,6 +62,8 @@ export interface SyncDeps {
   finish?: (job: VoiceSampleJob, bytes: Buffer) => Promise<Buffer>;
   /** Store the bytes under the key. */
   upload: (key: string, bytes: Buffer) => Promise<void>;
+  /** Checks that what follows a prediction can run; awaited once, before the first prediction, when a sample is missing. */
+  beforeMaking?: () => Promise<void>;
   /** How many passes a failing sample gets. */
   attempts: number;
   /** How many samples are made at once. */
@@ -107,22 +110,16 @@ export async function syncVoiceSamples(jobs: readonly VoiceSampleJob[], deps: Sy
   // Kept in catalog order, whatever order the checks answered in.
   missing.sort((a, b) => jobs.indexOf(a) - jobs.indexOf(b));
 
+  if (missing.length > 0) await deps.beforeMaking?.();
+
   let made = 0;
   let pending = missing;
   const errors = new Map<string, string>();
-  // A later pass reuses the output a prediction already answered, so a failed
-  // download, finish or upload is retried without paying for the sample again.
-  const predicted = new Map<string, string>();
   for (let pass = 0; pass < deps.attempts && pending.length > 0; pass += 1) {
     const failedThisPass: VoiceSampleJob[] = [];
     await eachLimited(pending, concurrency, async (job) => {
       try {
-        let url = predicted.get(job.key);
-        if (url === undefined) {
-          url = await deps.predict(job);
-          predicted.set(job.key, url);
-        }
-        const raw = await deps.download(url);
+        const raw = await deps.download(await deps.predict(job));
         await deps.upload(job.key, deps.finish ? await deps.finish(job, raw) : raw);
         made += 1;
         errors.delete(job.key);
@@ -137,5 +134,35 @@ export async function syncVoiceSamples(jobs: readonly VoiceSampleJob[], deps: Sy
     present: jobs.length - missing.length,
     made,
     failed: pending.map((job) => ({ key: job.key, error: errors.get(job.key) ?? "" })),
+  };
+}
+
+/**
+ * A prediction that is paid for once per sample across passes: the upstream
+ * task it submitted is kept by sample key, and a later pass polls that task
+ * again. A task the upstream itself failed is dropped, so the next pass
+ * submits a new one.
+ * @param run - Runs one prediction with the resume context it is given.
+ * @param startsOver - Whether an error means the upstream failed the task.
+ * @returns The prediction step for {@link syncVoiceSamples}.
+ */
+export function resumablePredict(
+  run: (job: VoiceSampleJob, resume: ResumeContext) => Promise<string>,
+  startsOver: (err: unknown) => boolean,
+): (job: VoiceSampleJob) => Promise<string> {
+  const submitted = new Map<string, string>();
+  return async (job) => {
+    try {
+      return await run(job, {
+        storedTaskId: submitted.get(job.key) ?? null,
+        persistTaskId: async (id) => {
+          submitted.set(job.key, id);
+        },
+        externalTaskId: job.key,
+      });
+    } catch (err) {
+      if (startsOver(err)) submitted.delete(job.key);
+      throw err;
+    }
   };
 }
