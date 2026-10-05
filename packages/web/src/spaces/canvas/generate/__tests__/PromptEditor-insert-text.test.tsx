@@ -6,7 +6,7 @@
  * caret, although opening the popover took focus away from the editor.
  */
 
-import { act, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
@@ -21,8 +21,7 @@ import {
 interface DrivenEditor {
   commands: {
     insertContent: (s: string) => void;
-    focus: (at?: number | 'end') => void;
-    blur: () => void;
+    setTextSelection: (at: number) => void;
   };
   isFocused: boolean;
 }
@@ -61,6 +60,18 @@ async function mount(text: string): Promise<{
   return { handle, editor, reported: () => onTextChange.mock.lastCall?.[0] as string };
 }
 
+/**
+ * Puts the caret at a position the way a reader's click does. jsdom gives a
+ * contenteditable no real focus, so the focus event the click would fire is
+ * dispatched on the editor's element, where ProseMirror and TipTap listen.
+ * @param editor - The live editor.
+ * @param at - The document position.
+ */
+function placeCaret(editor: DrivenEditor, at: number): void {
+  act(() => editor.commands.setTextSelection(at));
+  fireEvent.focus(document.querySelector('.ProseMirror') as HTMLElement);
+}
+
 describe('PromptEditorHandle.insertText', () => {
   it('appends to the end of a prompt the reader never put a caret in', async () => {
     const { handle, reported } = await mount('a red car');
@@ -71,8 +82,8 @@ describe('PromptEditorHandle.insertText', () => {
   it('lands at the caret the reader left before focus moved to the popover', async () => {
     const { handle, editor, reported } = await mount('a red car');
     // Position 6 is after "a red" (the paragraph opens at 1).
-    act(() => editor.commands.focus(6));
-    act(() => editor.commands.blur());
+    placeCaret(editor, 6);
+    fireEvent.blur(document.querySelector('.ProseMirror') as HTMLElement);
     expect(editor.isFocused).toBe(false);
     act(() => handle.current?.insertText('[Push in]'));
     await waitFor(() => expect(reported()).toBe('a red [Push in] car'));
@@ -80,7 +91,7 @@ describe('PromptEditorHandle.insertText', () => {
 
   it('lands at the caret while the editor still has focus', async () => {
     const { handle, editor, reported } = await mount('a red car');
-    act(() => editor.commands.focus(2));
+    placeCaret(editor, 2);
     act(() => handle.current?.insertText('[Zoom in]'));
     await waitFor(() => expect(reported()).toBe('a [Zoom in] red car'));
   });
