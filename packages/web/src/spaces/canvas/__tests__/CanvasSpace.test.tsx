@@ -4426,13 +4426,15 @@ describe('placing a note (#1881)', () => {
     // zoom (§8.7.4). At 50% somebody would write into a half-size box and
     // watch their words double the moment they pressed Enter.
     armAndClickTheBoard();
-    // After mounting: the canvas mirrors ReactFlow's own zoom into the store
-    // as it comes up, which would overwrite a value set before that.
+    const pane = document.querySelector('.react-flow__pane') as Element;
     act(() => {
-      useCanvasStore.getState().setZoom(0.5);
+      fireEvent.wheel(pane, { deltaY: 200, ctrlKey: true });
     });
+    const viewport = document.querySelector('.react-flow__viewport') as HTMLElement;
+    const zoom = Number(/scale\(([^)]+)\)/.exec(viewport.style.transform)?.[1]);
+    expect(zoom).not.toBe(1);
     const layer = screen.getByTestId('annotation-composer-layer');
-    expect(layer.style.transform).toContain('scale(2)');
+    expect(layer.style.transform).toContain(`scale(${String(1 / zoom)})`);
   });
 
   it('disarms the tool when the canvas goes away', () => {
