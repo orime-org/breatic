@@ -20,6 +20,8 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 
 import type { OpenAnnotationDraft, PickSession } from '@web/stores/canvas';
 
+import { createSpaceRegistry } from '@web/stores/space-registry';
+
 /** One canvas's session state and its writers. */
 export interface CanvasSessionState {
   /**
@@ -388,39 +390,11 @@ export function createCanvasSessionStore(): CanvasSessionStore {
   );
 }
 
-/** Every open Space's canvas session, by Space id. */
-const sessions = new Map<string, CanvasSessionStore>();
-
 /**
  * Canvas sessions live as long as their Space's tab: created on first use,
  * dropped when the tab is closed, all cleared when the project is left.
  */
-export const canvasSessions = {
-  /**
-   * The session of a Space, created on first use.
-   * @param spaceId - The Space.
-   * @returns Its store; the same one until the Space is dropped.
-   */
-  of(spaceId: string): CanvasSessionStore {
-    let store = sessions.get(spaceId);
-    if (store === undefined) {
-      store = createCanvasSessionStore();
-      sessions.set(spaceId, store);
-    }
-    return store;
-  },
-  /**
-   * Forget a Space's session, when its tab is closed.
-   * @param spaceId - The Space.
-   */
-  drop(spaceId: string): void {
-    sessions.delete(spaceId);
-  },
-  /** Forget every session, when the project is left. */
-  clear(): void {
-    sessions.clear();
-  },
-};
+export const canvasSessions = createSpaceRegistry<CanvasSessionStore>(createCanvasSessionStore);
 
 /**
  * Which task state one node's own list is open on, or null.

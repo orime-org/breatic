@@ -4,6 +4,8 @@
 import type { Edge, Node } from '@xyflow/react';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
+import { createSpaceRegistry } from '@web/stores/space-registry';
+
 /**
  * Canvas graph store (#1647 step 4) — owns one canvas's ReactFlow render
  * buffer. Every open Space keeps its canvas mounted (inner#1235), so each Space
@@ -49,36 +51,8 @@ function createCanvasGraphStore(): CanvasGraphStore {
   }));
 }
 
-/** Every open Space's canvas render buffer, by Space id. */
-const graphs = new Map<string, CanvasGraphStore>();
-
 /**
  * Canvas render buffers live as long as their Space's tab: created on first
  * use, dropped when the tab is closed, all cleared when the project is left.
  */
-export const canvasGraphs = {
-  /**
-   * The render buffer of a Space, created on first use.
-   * @param spaceId - The Space.
-   * @returns Its store; the same one until the Space is dropped.
-   */
-  of(spaceId: string): CanvasGraphStore {
-    let store = graphs.get(spaceId);
-    if (store === undefined) {
-      store = createCanvasGraphStore();
-      graphs.set(spaceId, store);
-    }
-    return store;
-  },
-  /**
-   * Forget a Space's buffer, when its tab is closed.
-   * @param spaceId - The Space.
-   */
-  drop(spaceId: string): void {
-    graphs.delete(spaceId);
-  },
-  /** Forget every buffer, when the project is left. */
-  clear(): void {
-    graphs.clear();
-  },
-};
+export const canvasGraphs = createSpaceRegistry<CanvasGraphStore>(createCanvasGraphStore);
