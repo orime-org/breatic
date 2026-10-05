@@ -94,7 +94,6 @@ const keptOf = new WeakMap<
   Editor,
   {
     wiring: PromptWiring;
-    fragment: Y.XmlFragment;
     caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
     mentionEmptyLabel: string;
     mentionNoMatchLabel: string;
@@ -359,7 +358,6 @@ export const PromptEditor = React.forwardRef<
       });
       keptOf.set(built, {
         wiring,
-        fragment,
         caretProvider,
         mentionEmptyLabel,
         mentionNoMatchLabel,
@@ -377,8 +375,8 @@ export const PromptEditor = React.forwardRef<
       });
       return built;
     };
-    // A kept editor is reused while it is bound to the same prompt and caret
-    // connection with the same captured strings. The two mention labels are
+    // A kept editor is reused while it is bound to the same caret connection
+    // with the same captured strings (the key is the prompt's own). The two mention labels are
     // baked into the extensions and change only on a locale switch; the caret
     // connection arrives once, on the socket's first connect; the name
     // RESOLVER keeps one identity for the editor's whole life and reads the
@@ -387,8 +385,7 @@ export const PromptEditor = React.forwardRef<
     return keptEditor(spaceId, key, build, (kept) => {
       const bound = keptOf.get(kept);
       return (
-        bound?.fragment === fragment &&
-        bound.caretProvider === caretProvider &&
+        bound?.caretProvider === caretProvider &&
         bound.mentionEmptyLabel === mentionEmptyLabel &&
         bound.mentionNoMatchLabel === mentionNoMatchLabel &&
         bound.resolveName === resolveName

@@ -89,14 +89,14 @@ import {
 } from '@web/pages/project/agent-column-width';
 import { useAgentColumnWidth } from '@web/pages/project/use-agent-column-width';
 
+/** The session the left menu reads while no canvas is on screen. */
+const NO_CANVAS_SESSION = createCanvasSessionStore();
+
 /**
  * Undoes the library's inner wrapper, which is a block box with
  * `overflow: auto` hard-coded. Both columns lay their children out with flex
  * and own their scrolling, so the wrapper has to hand both back.
  */
-/** The session the left menu reads while no canvas is on screen. */
-const NO_CANVAS_SESSION = createCanvasSessionStore();
-
 const PANEL_STYLE = { display: 'flex', overflow: 'visible' } as const;
 
 /**
