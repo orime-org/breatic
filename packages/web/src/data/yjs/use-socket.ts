@@ -87,8 +87,9 @@ export interface SocketState {
    * reconnect, so a dropped socket is no reason to take it off screen.
    *
    * Survives this component being unmounted and remounted, because it is kept
-   * with the document in the provider registry rather than here. That is what a
-   * Space-tab switch does, and the content is plainly still there across one.
+   * with the document in the provider registry rather than here: the tab holds
+   * the document open, not this component, and the content is plainly still
+   * there across a remount.
    */
   hasEverSynced: boolean;
   /** High-level connection lifecycle for banner UI. */

@@ -6,8 +6,9 @@
  * editor they belong to (#18, design §9.4.1 · §9.6).
  *
  * This is the one place those words are held. The boxes live in the panel,
- * which a Space tab switch mounts again; the editor does not go with it — it
- * belongs to the document (`document-editor-cache.ts`) — so the boxes read
+ * which unmounts whenever the document body gives way to a notice; the editor
+ * does not go with it — it belongs to the document
+ * (`document-editor-cache.ts`) — so the boxes read
  * and write here and keep nothing of their own. Unsent words are the reader's
  * until they send or clear them.
  *

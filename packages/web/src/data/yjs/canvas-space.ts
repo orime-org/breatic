@@ -213,7 +213,8 @@ export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
 
 /**
  * Process-wide cache of canvas undo managers, keyed by canvas-space document
- * name — so a stack survives the tab switch that remounts `useCanvasSpace`.
+ * name — so a stack outlives any remount of `useCanvasSpace` while its tab is
+ * open.
  * The caching itself (stale-binding heal, eviction on doc destroy) is shared
  * with the other Space types; see {@link createDocScopedCache}.
  */
@@ -412,11 +413,11 @@ export function useCanvasSpace(
 
   // Per-space undo manager, fetched from the doc-keyed cache (NOT created +
   // destroyed with this component). The cache binds the manager's lifetime to
-  // the space DOC, so a tab switch — which remounts this hook via
-  // `key={activeSpace.id}` — re-fetches the SAME manager with its undo stack
-  // intact (the cross-space-preservation fix). Closing the tab evicts it
-  // (`ProjectPage.onCloseTab` → `evictCanvasUndoManager`) so a reopened space
-  // starts empty; a page refresh is a new JS context so the cache is empty by
+  // the space DOC, so a remount of this hook while the tab is open re-fetches
+  // the SAME manager with its undo stack intact. A tab leaving the strip
+  // evicts it (`ProjectPage`'s effect over the open tabs →
+  // `evictCanvasUndoManager`) so a reopened space starts empty; a page
+  // refresh is a new JS context so the cache is empty by
   // construction. This effect only attaches / detaches the availability
   // listeners — it must NOT destroy the manager on unmount. `canUndo` /
   // `canRedo` are mirrored into React state both from the manager's stack
@@ -449,8 +450,8 @@ export function useCanvasSpace(
     syncAvailability();
     return () => {
       // Detach this component's listeners but DO NOT destroy the manager — it
-      // is owned by the doc-keyed cache and must outlive this remount so the
-      // undo stack survives a tab switch. Eviction happens on tab close.
+      // is owned by the doc-keyed cache and must outlive this component.
+      // Eviction happens when the tab leaves the strip.
       undoManager.off('stack-item-added', syncAvailability);
       undoManager.off('stack-item-popped', syncAvailability);
       undoManager.off('stack-cleared', syncAvailability);

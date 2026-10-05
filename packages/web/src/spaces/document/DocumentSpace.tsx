@@ -104,9 +104,10 @@ export function DocumentSpace({
     refusalTold.current = refusedWithContent;
   }, [refused, hasEverSynced, t]);
 
-  // The editor belongs to the document, not to this component: switching Space
-  // tabs remounts this body, and what the Y.Doc does not hold — undo stack,
-  // selection, composition state — would go with it.
+  // The editor belongs to the document, not to this component: this body can
+  // unmount while the tab keeps the document open (the notices below take its
+  // place), and what the Y.Doc does not hold — undo stack, selection,
+  // composition state — would go with it.
   // This build's vocabulary against the one the server publishes, and against
   // what this document actually holds. Read from the project's meta document —
   // the same instance the project page is already subscribed to, since
