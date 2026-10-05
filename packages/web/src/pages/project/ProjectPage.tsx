@@ -387,6 +387,14 @@ function ProjectWorkspace({
     [tabs.openIds, spaces],
   );
 
+  // The bodies in an order the strip cannot change: a body React moves is
+  // taken off the page and put back, which resets every scroll position in it.
+  // Opening or closing a tab only adds or removes one.
+  const openBodies: ReadonlyArray<ProjectSpace> = React.useMemo(
+    () => [...openTabs].sort((a, b) => (a.id < b.id ? -1 : 1)),
+    [openTabs],
+  );
+
   const activeSpace: ProjectSpace | undefined = openTabs.find(
     (s) => s.id === tabs.activeId,
   );
@@ -981,7 +989,7 @@ function ProjectWorkspace({
                     {/* Every open tab holds its document's connection; the
                     one on screen shows its body, and a tab switched away from
                     keeps its body mounted and hidden (inner#1235). */}
-                    {openTabs.map((tab) => (
+                    {openBodies.map((tab) => (
                       <OpenSpace
                         key={tab.id}
                         projectId={projectId}

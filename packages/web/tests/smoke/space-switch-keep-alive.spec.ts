@@ -16,6 +16,7 @@ import { expect, test, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, TEXT_BODY, liveModuleUrl } from '../helpers/live-module';
 import { selectFirstParagraph } from '../helpers/bubble-bar';
+import { dragTabOnto } from '../helpers/tab-strip';
 import { DOCUMENT_EDITOR, VISIBLE_SPACE, visibleSpace } from '../helpers/space';
 import {
   activeId,
@@ -625,6 +626,34 @@ test('the background of the canvas on screen moves with that canvas when another
   await page.mouse.wheel(37, 11);
 
   await expect.poll(async () => (await grid()).x).not.toBe(before.x);
+});
+
+test('reordering the tabs leaves a document where the reader scrolled it', async ({ page }) => {
+  // A1: dragging a tab to another place on the strip moves the tab, not the
+  // Space's content, which stays scrolled where the reader left it.
+  await openFreshProject(page);
+  const [docA, docB] = await addSpaces(page, 2, 'document');
+  await expect(page.getByTestId('new-space-button')).toBeFocused();
+  await showSpace(page, docA!);
+  const editor = page.locator(DOCUMENT_EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await editor.click();
+  for (let i = 0; i < 40; i += 1) {
+    await page.keyboard.type(`line ${String(i)} of a document long enough to scroll`);
+    await page.keyboard.press('Enter');
+  }
+  const scroller = visibleSpace(page).locator(
+    '.doc-body-scroller [data-radix-scroll-area-viewport]',
+  );
+  await scroller.evaluate((el) => el.scrollTo(0, 300));
+  await expect.poll(() => scroller.evaluate((el) => Math.round(el.scrollTop))).toBe(300);
+
+  await dragTabOnto(page, docA!, docB!);
+  await expect.poll(async () => (await stripIds(page)).indexOf(docA!)).toBeGreaterThan(
+    (await stripIds(page)).indexOf(docB!),
+  );
+
+  await expect.poll(() => scroller.evaluate((el) => Math.round(el.scrollTop))).toBe(300);
 });
 
 test.describe('on a Mac, where Cmd is the canvas library\'s add-to-selection key', () => {
