@@ -566,6 +566,17 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.duration"))}, a ${quoted(t("canvas.generatePanel.generateAudio"))} ` +
       "switch on models that can, and any settings of the model's own. A setting the model does not have is left " +
       "out.",
+    `- On a video model that reads camera commands (MiniMax H3), a ${quoted(t("canvas.generatePanel.cameraCommands"))} ` +
+      "pill with a four-arrow icon follows the settings pill. Clicking it opens the commands laid out in rows by " +
+      "axis, named in English as the model reads them (for example Truck left, Pan right, Push in, Static shot); " +
+      "hovering one opens a clip previewing it. Clicking a command picks it and shows its pick order after its " +
+      "name, clicking it again drops it. Picking the other direction of the same row replaces the one picked, and " +
+      "Static shot replaces every movement. Up to three can be picked; at three, every command that would not " +
+      "replace a pick greys out. " +
+      `${quoted(t("canvas.generatePanel.cameraCommandsInsert"))} writes the picks into the prompt as one bracket, ` +
+      "such as [Push in,Zoom out], at the caret last left in the prompt box, or at its end if none was; in " +
+      "Multi-Shot it goes into the shot box clicked into last, or the first shot. The bracket is ordinary text " +
+      "that can be edited or deleted, and inserting again elsewhere makes a second movement that follows the first.",
     `- Multi-Shot, a mode in the video panel's mode picker: the prompt box gives way to one card per shot, and ` +
       "switching into it with no shots lays out two, splitting the video's length. A card, such as " +
       `${quoted(t("canvas.generatePanel.storyboard.shot", { n: 1 }))}, has a minus and a plus around its ` +

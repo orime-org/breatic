@@ -31,6 +31,34 @@ interface ParamOptionGroupProps {
 }
 
 /**
+ * How one option button looks, in every params popover and in the camera
+ * command picker, so an option reads the same wherever it is offered.
+ *
+ * max-w + truncate: catalog values carry no length cap at the sanitize
+ * boundary — a verbose value must clip inside the popover, not overflow it.
+ */
+export const PARAM_OPTION_CLASS =
+  // Each row takes as many options as fit at their own text width (never
+  // under 3rem) and then stretches them to span the width, the last row
+  // included — a group whose count does not divide evenly ends on a wide
+  // option rather than on a narrow one beside 177px of nothing. The basis is
+  // the text: `truncate` makes the minimum width 0, so a fixed basis packs
+  // a long label into a slot narrower than its text and cuts it.
+  'grow basis-auto min-w-12 ' +
+  // The height is stated rather than left to the padding, so every option in
+  // every params popover is one height and the next one added has a value to
+  // copy. `--btn-compact` is the shortest rung the chrome ladder states.
+  'h-[var(--btn-compact)] ' +
+  'max-w-full truncate rounded-overlay border border-border px-2 text-xs text-foreground transition-colors ' +
+  'hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
+  'aria-[current=true]:border-active-border aria-[current=true]:bg-accent-strong ' +
+  // The whole group shares this list, so hover has to answer the same way:
+  // plain hover outranks the chosen fill and would take the mark off the
+  // option the pointer is on.
+  'aria-[current=true]:hover:bg-accent-strong ' +
+  'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent';
+
+/**
  * One parameter rendered as a labelled row of options — the single shape all
  * option-style params use (user 2026-08-08: ratio, resolution and duration are
  * one form, not three).
@@ -63,28 +91,6 @@ export function ParamOptionGroup({
   className,
 }: ParamOptionGroupProps): React.JSX.Element | null {
   if (options.length === 0) return null;
-  // max-w + truncate: catalog values carry no length cap at the sanitize
-  // boundary — a verbose value must clip inside the popover, not overflow it.
-  const optionClass =
-    // Each row takes as many options as fit at their own text width (never
-    // under 3rem) and then stretches them to span the width, the last row
-    // included — a group whose count does not divide evenly ends on a wide
-    // option rather than on a narrow one beside 177px of nothing. The basis is
-    // the text: `truncate` makes the minimum width 0, so a fixed basis packs
-    // a long label into a slot narrower than its text and cuts it.
-    'grow basis-auto min-w-12 ' +
-    // The height is stated rather than left to the padding, so every option in
-    // every params popover is one height and the next one added has a value to
-    // copy. `--btn-compact` is the shortest rung the chrome ladder states.
-    'h-[var(--btn-compact)] ' +
-    'max-w-full truncate rounded-overlay border border-border px-2 text-xs text-foreground transition-colors ' +
-    'hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
-    'aria-[current=true]:border-active-border aria-[current=true]:bg-accent-strong ' +
-    // The whole group shares this list, so hover has to answer the same way:
-    // plain hover outranks the chosen fill and would take the mark off the
-    // option the pointer is on.
-    'aria-[current=true]:hover:bg-accent-strong ' +
-    'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent';
   return (
     <div className={className}>
       <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{label}</p>
@@ -105,7 +111,7 @@ export function ParamOptionGroup({
             aria-current={value === option.value}
             disabled={option.disabled}
             onClick={() => onSelect(option.value)}
-            className={optionClass}
+            className={PARAM_OPTION_CLASS}
           >
             {option.label}
           </Button>

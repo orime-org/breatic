@@ -683,7 +683,18 @@
       "styleTip": "Pick up to 3 images as style references",
       "selectStyleFromCanvas": "Select style references from the canvas",
       "removeStyle": "Remove style reference",
-      "errorNoStyleImage": "Pick a style image first"
+      "errorNoStyleImage": "Pick a style image first",
+      "cameraCommands": "Camera",
+      "cameraCommandsInsert": "Insert",
+      "cameraCommandGroup": {
+        "truck": "Truck",
+        "pan": "Pan",
+        "dolly": "Dolly",
+        "pedestal": "Pedestal",
+        "tilt": "Tilt",
+        "zoom": "Zoom",
+        "other": "Other"
+      }
     },
     "edge": {
       "delete": "Delete connection"

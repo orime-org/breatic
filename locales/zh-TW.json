@@ -671,7 +671,18 @@
       "styleTip": "從畫布選最多 3 張圖作為風格參考",
       "selectStyleFromCanvas": "從畫布選擇風格參考",
       "removeStyle": "移除風格參考",
-      "errorNoStyleImage": "先挑一張風格圖"
+      "errorNoStyleImage": "先挑一張風格圖",
+      "cameraCommands": "運鏡",
+      "cameraCommandsInsert": "插入",
+      "cameraCommandGroup": {
+        "truck": "橫移",
+        "pan": "搖",
+        "dolly": "推拉",
+        "pedestal": "升降",
+        "tilt": "俯仰",
+        "zoom": "變焦",
+        "other": "其他"
+      }
     },
     "nodeMenu": {
       "generate": "生成",

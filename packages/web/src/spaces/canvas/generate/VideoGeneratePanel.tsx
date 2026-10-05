@@ -13,6 +13,7 @@ import {
   type ExecuteRefusal,
 } from '@breatic/shared';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { CameraCommandPicker } from '@web/spaces/canvas/generate/CameraCommandPicker';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
@@ -90,6 +91,8 @@ interface VideoGeneratePanelProps {
   onRemoveReference: (item: ReferenceRailItem) => void;
   /** Insert one reference as an `@` chip in the prompt. */
   onInsertReference: (item: ReferenceRailItem) => void;
+  /** Writes bracketed camera commands into the prompt box the reader is in (inner#1241). */
+  onInsertCameraCommands: (text: string) => void;
   /** The source slots the active mode collects, in display order. */
   slots: readonly VideoSlot[];
   /** What is picked, by slot. */
@@ -175,6 +178,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   referencePicking,
   onRemoveReference,
   onInsertReference,
+  onInsertCameraCommands,
   slots,
   slotUrls,
   slotThumbnails,
@@ -265,6 +269,9 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
             onChange={onChangeParams}
             durationFloor={durationFloor}
           />
+        ) : null}
+        {currentModel?.camera_commands && currentModel.camera_commands.length > 0 ? (
+          <CameraCommandPicker commands={currentModel.camera_commands} onInsert={onInsertCameraCommands} />
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>

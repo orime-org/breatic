@@ -671,7 +671,18 @@
       "styleTip": "이미지를 최대 3장 스타일 참조로 선택",
       "selectStyleFromCanvas": "캔버스에서 스타일 참조 선택",
       "removeStyle": "스타일 참조 제거",
-      "errorNoStyleImage": "먼저 스타일 이미지를 선택하세요"
+      "errorNoStyleImage": "먼저 스타일 이미지를 선택하세요",
+      "cameraCommands": "카메라 무빙",
+      "cameraCommandsInsert": "삽입",
+      "cameraCommandGroup": {
+        "truck": "트럭",
+        "pan": "팬",
+        "dolly": "달리",
+        "pedestal": "페디스털",
+        "tilt": "틸트",
+        "zoom": "줌",
+        "other": "기타"
+      }
     },
     "nodeMenu": {
       "generate": "생성",
