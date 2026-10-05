@@ -206,6 +206,14 @@ export interface ModelProvider {
 /** A kind of node a source slot takes. */
 export type SourceType = "image" | "video" | "audio";
 
+/** One camera command a model reads out of its prompt. */
+export interface CameraCommandEntry {
+  /** The command as it is written inside the brackets. */
+  name: string;
+  /** Where the clip showing this command plays from. */
+  preview_url: string;
+}
+
 /** Single model definition — one entry in the catalog response. */
 export interface ModelEntry {
   name: string;
@@ -259,6 +267,12 @@ export interface ModelEntry {
    * invented here would refuse text the vendor accepts.
    */
   max_input_chars?: number;
+  /**
+   * The bracketed camera commands this model reads out of its prompt
+   * (inner#1241), each with the clip that previews it. Absent on a model that
+   * reads none.
+   */
+  camera_commands?: readonly CameraCommandEntry[];
   /**
    * Brand icon name for the Generate picker (mapped to an inline SVG on the
    * frontend, e.g. `nano-banana` / `openai` / `seedream`). Optional only so
@@ -564,6 +578,12 @@ const modelEntrySchema = z.object({
   // malformed one degrades to absent for the same reason a bad rate does: a
   // number this side invented would refuse text the vendor accepts.
   max_input_chars: z.number().optional().catch(undefined),
+  // A malformed list degrades to absent: the panel then offers no picker,
+  // where a half-parsed one would offer commands with no clip.
+  camera_commands: z
+    .array(z.object({ name: z.string(), preview_url: z.string() }))
+    .optional()
+    .catch(undefined),
 });
 
 /** One modality bucket: a non-array coerces to [], garbage entries drop out. */

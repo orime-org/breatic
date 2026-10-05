@@ -65,6 +65,7 @@ export type {
   RemoteParamSource,
   ModelProvider,
   ModelEntry,
+  CameraCommandEntry,
   PricingContract,
   ExtraStep,
   SourceGroup,
@@ -396,6 +397,14 @@ export {
   stepShot,
 } from "@shared/storyboard-durations.js";
 export { modelLabel, type NamedModel } from "@shared/model-label.js";
+export {
+  CAMERA_COMMANDS,
+  CAMERA_COMMAND_AXES,
+  CAMERA_COMMANDS_PER_BRACKET,
+  STATIC_SHOT,
+  isCameraCommand,
+  type CameraCommand,
+} from "@shared/camera-commands.js";
 export { appliesInMode, paramsForMode } from "@shared/param-modes.js";
 export {
   storyboardSend,
