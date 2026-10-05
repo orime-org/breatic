@@ -119,7 +119,7 @@ export function makeMentionSuggestion<T>(
       let stopAutoUpdate: (() => void) | null = null;
       /** Document-level outside-click dismisser. */
       let onOutsidePointerDown: ((event: PointerEvent) => void) | null = null;
-      /** Editor focusout dismisser: focus given to another control. */
+      /** Focus dismisser: focus given to another control on the page. */
       let onFocusIn: ((event: FocusEvent) => void) | null = null;
       /**
        * Consumer A (#1805): re-shows a hidden popup on a LOCAL caret-placement
