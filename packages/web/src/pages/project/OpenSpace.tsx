@@ -65,6 +65,10 @@ function SpaceConnection({
  * the tab is on screen and from then on is hidden rather than unmounted when
  * the reader switches away, so it comes back as it was left; closing the tab
  * unmounts it.
+ *
+ * Memoized: its props are all plain values, and the project page re-renders on
+ * every zoom step of the canvas on screen; a hidden body would be rendered
+ * again each time.
  * @param root0 - Tab props.
  * @param root0.projectId - Project the Space belongs to.
  * @param root0.spaceId - The Space.
@@ -75,7 +79,7 @@ function SpaceConnection({
  * @param root0.myRole - The current user's role on the project.
  * @returns The tab's connection and, once visited, its body.
  */
-export function OpenSpace({
+export const OpenSpace = React.memo(function OpenSpace({
   projectId,
   spaceId,
   type,
@@ -107,4 +111,4 @@ export function OpenSpace({
       {body}
     </SpaceConnection>
   );
-}
+});
