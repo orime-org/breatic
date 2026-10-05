@@ -21,6 +21,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { validate } from "@server/middleware/validate.js";
 import { creditLotService } from "@breatic/domain";
 import { creditViewService, paymentService } from "@server/modules";
+import * as studioCreditDesignation from "@server/modules/studio/studioCreditDesignation.service.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { env, logger, ForbiddenError } from "@breatic/core";
 import { logFulfillment } from "@server/modules/payment/fulfillment-log.js";
@@ -120,7 +121,8 @@ credits.get("/ledger", validate("query", creditLedgerQuerySchema), async (c) => 
  * to unassign.
  * @returns `200` with the purchase as it now stands; `403` when the caller
  *   does not administer the target studio, `404` when the purchase is not
- *   theirs, `409` when it is in the refund flow, `422` on a malformed body.
+ *   theirs, `409` when it is in the refund flow or a transfer of the target
+ *   studio is pending, `422` on a malformed body.
  */
 credits.patch(
   "/lots/:id/designation",
@@ -131,7 +133,7 @@ credits.patch(
     const lotId = c.req.valid("param").id;
     const studioId = c.req.valid("json").studioId;
     try {
-      const data = await creditLotService.designateLot({
+      const data = await studioCreditDesignation.designateLot({
         lotId,
         requestingUserId: user.id,
         studioId,

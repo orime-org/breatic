@@ -186,3 +186,6 @@ export type {
   UnderstandAnswer,
   UnderstandAt,
 } from "@domain/understand/index.js";
+
+// ── Mail (notification mail sent by the worker) ──
+export { MAIL_QUEUE, enqueueMail, type MailJob } from "@domain/mail/mail-queue.js";

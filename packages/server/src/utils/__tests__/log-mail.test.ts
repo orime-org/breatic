@@ -3,8 +3,13 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+import type * as CoreModule from "@breatic/core";
+
 const logger = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
-vi.mock("@breatic/core", () => ({ logger }));
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof CoreModule>()),
+  logger,
+}));
 
 import { logMailResult } from "@server/utils/log-mail.js";
 
