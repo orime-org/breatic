@@ -17,7 +17,7 @@ export const CAMERA_PREVIEW_SCENE =
 
 /**
  * What a run sends besides the prompt: each of the entry's panel params at its
- * own default, so a clip costs what the model's cheapest default run costs.
+ * own default, so a clip costs what a run at the model's defaults costs.
  * @param model - The text-to-video entry making the clips.
  * @returns The params, in the upstream's field names.
  */
@@ -57,7 +57,26 @@ export function planCameraPreviews(models: readonly FullModelEntry[]): VoiceSamp
     return {
       model: maker.name,
       key,
-      body: { prompt: `${CAMERA_PREVIEW_SCENE} [${command}]`, ...defaultsOf(maker) },
+      body: { [maker.prompt_upstream ?? "prompt"]: `${CAMERA_PREVIEW_SCENE} [${command}]`, ...defaultsOf(maker) },
     };
   });
+}
+
+/**
+ * The ffmpeg arguments that turn a generated clip into its preview: 640 wide,
+ * no sound, and the index (`moov`) moved to the front so a browser can start
+ * playing before the whole file has arrived.
+ * @param input - The generated clip's path.
+ * @param output - Where the preview is written.
+ * @returns The arguments, input first and output last.
+ */
+export function previewTranscodeArgs(input: string, output: string): string[] {
+  return [
+    "-y", "-i", input,
+    "-an",
+    "-vf", "scale=640:-2",
+    "-c:v", "libx264", "-preset", "slow", "-crf", "30", "-pix_fmt", "yuv420p",
+    "-movflags", "+faststart",
+    output,
+  ];
 }
