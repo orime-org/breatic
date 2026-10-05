@@ -107,10 +107,8 @@ async function syncKind(
   return syncVoiceSamples(sample.jobs, {
     exists: async (key) =>
       servedFromHead(key, (await httpRequest(voiceSampleUrl(key), { method: "HEAD" }, { replaySafe: true })).status),
-    generate: async (job) => {
-      const bytes = await generate(sample.modality, job);
-      return sample.finish ? sample.finish(job, bytes) : bytes;
-    },
+    generate: (job) => generate(sample.modality, job),
+    finish: sample.finish,
     upload: async (key, bytes) => {
       await storage.upload(key, bytes, sample.contentType);
     },

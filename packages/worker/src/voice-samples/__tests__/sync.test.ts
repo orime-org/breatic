@@ -42,6 +42,21 @@ describe("syncVoiceSamples", () => {
     expect(report.made).toBe(2);
     expect(report.failed).toEqual([{ key: "voice-samples/m/c.mp3", error: "voice not found" }]);
   });
+
+  it("generates a sample once when a later step fails, and runs only the later steps again", async () => {
+    const generate = vi.fn().mockResolvedValue(Buffer.from("raw"));
+    const finish = vi.fn()
+      .mockRejectedValueOnce(new Error("ffmpeg exited 1"))
+      .mockResolvedValue(Buffer.from("small"));
+    const upload = vi.fn()
+      .mockRejectedValueOnce(new Error("upload timed out"))
+      .mockResolvedValue(undefined);
+    const report = await syncVoiceSamples([JOBS[0]!], { exists: async () => false, generate, finish, upload, attempts: 3 });
+    expect(report).toEqual({ present: 0, made: 1, failed: [] });
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(finish).toHaveBeenCalledTimes(3);
+    expect(upload.mock.calls.map(([, bytes]) => String(bytes))).toEqual(["small", "small"]);
+  });
 });
 
 describe("servedFromHead", () => {
