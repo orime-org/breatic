@@ -124,7 +124,7 @@ describe('SpaceDrawer', () => {
   });
 
   // The list scrolls inside a clipping viewport; a tooltip rendered inside it
-  // loses whatever part pokes above the viewport's top edge (inner#1261).
+  // loses whatever part pokes above the viewport's top edge.
   it('renders a row action tooltip outside the scrolling list', async () => {
     const user = userEvent.setup();
     setup();
