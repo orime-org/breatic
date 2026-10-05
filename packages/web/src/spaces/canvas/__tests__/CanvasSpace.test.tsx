@@ -66,7 +66,9 @@ vi.mock('@web/data/yjs/space-connection', async (importOriginal) => {
 vi.mock('@web/spaces/canvas/focus/run-focus-crop', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('@web/spaces/canvas/focus/run-focus-crop')>();
-  return { ...actual, runFocusCrop: vi.fn() };
+  // Resolves like the real one: the canvas tracks the crop as an operation
+  // until it settles.
+  return { ...actual, runFocusCrop: vi.fn(() => Promise.resolve()) };
 });
 
 vi.mock('@web/components/ui/tooltip', () => ({
