@@ -1506,7 +1506,7 @@
         "description": "簡介",
         "dangerTitle": "危險操作",
         "transfer": "轉讓 Studio",
-        "dangerHint": "轉讓會把 Studio（含 Projects、Collections）交給另一位成員；發起前需先在頭像選單 →「點數」→「指定」裡取消指定給它的點數包。修改 Slug 會讓所有現有連結失效。僅 Admin 可操作。",
+        "dangerHint": "轉讓會把 Studio（含 Projects、Collections）交給另一位成員，發起前需先取消指定給它的點數包。修改 Slug 會讓所有現有連結失效。僅 Admin 可操作。",
         "dangerHintPersonal": "你的 Slug 就是你的 @handle，也是這個 Studio 的網址。修改無法復原。",
         "transferTitle": "轉讓 Studio 所有權",
         "transferBody": "選擇一位 Maintainer 成為新的 Admin。對方接受後轉讓才生效,你會變成 Maintainer。",

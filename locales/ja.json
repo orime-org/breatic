@@ -1506,7 +1506,7 @@
         "description": "説明",
         "dangerTitle": "危険な操作",
         "transfer": "Studio を譲渡",
-        "dangerHint": "譲渡すると Studio（Projects・Collections）が別のメンバーに移ります。先にアバターメニュー →「クレジット」→「割り当て」で、この Studio に割り当てたクレジットパックを解除してください。Slug を変更すると既存のリンクはすべて無効になります。Admin のみ可能です。",
+        "dangerHint": "譲渡すると Studio（Projects・Collections）が別のメンバーに移ります。先にこの Studio に割り当てたクレジットパックを解除してください。Slug を変更すると既存のリンクはすべて無効になります。Admin のみ可能です。",
         "dangerHintPersonal": "Slug はあなたの @handle であり、この Studio のアドレスでもあります。変更は元に戻せません。",
         "transferTitle": "Studio の所有権を委譲",
         "transferBody": "新しい Admin になる Maintainer を選びます。相手が承認すると委譲が有効になり、あなたは Maintainer になります。",

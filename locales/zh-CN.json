@@ -1506,7 +1506,7 @@
         "description": "简介",
         "dangerTitle": "危险操作",
         "transfer": "转让 Studio",
-        "dangerHint": "转让会把 Studio（含 Projects、Collections）交给另一位成员；发起前需先在头像菜单 →「积分」→「指定」里取消指定给它的积分包。修改 Slug 会让所有现有链接失效。仅 Admin 可操作。",
+        "dangerHint": "转让会把 Studio（含 Projects、Collections）交给另一位成员，发起前需先取消指定给它的积分包。修改 Slug 会让所有现有链接失效。仅 Admin 可操作。",
         "dangerHintPersonal": "你的 Slug 就是你的 @handle，也是这个 Studio 的网址。修改不可撤销。",
         "transferTitle": "转让 Studio 所有权",
         "transferBody": "选择一位 Maintainer 成为新的 Admin。对方接受后转让才生效,你会变成 Maintainer。",

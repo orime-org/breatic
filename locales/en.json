@@ -59,7 +59,7 @@
       "member_limit_reached_for_invitee": "This studio is full. Ask its Admin to make room.",
       "leave_last_admin": "Transfer the admin role before leaving this Studio.",
       "transfer_credits_designated": "A credit pack is still assigned to this Studio. Unassign it under avatar menu → Credits → Assign, then start the transfer.",
-      "designation_during_transfer": "This Studio has a pending transfer. Packs can be assigned to it again after the transfer is withdrawn or settled."
+      "designation_during_transfer": "This Studio has a pending transfer. Credit packs can be assigned to it again once the transfer is withdrawn or ends."
     },
     "project": {
       "join_already_member": "You're already a member of this project.",
@@ -1506,7 +1506,7 @@
         "description": "Description",
         "dangerTitle": "Danger zone",
         "transfer": "Transfer Studio",
-        "dangerHint": "Transferring hands the Studio — its Projects and Collections — to another member. Unassign any credit packs assigned to it first (avatar menu → Credits → Assign). Changing the Slug breaks every existing link. Admin only.",
+        "dangerHint": "Transferring hands the Studio — its Projects and Collections — to another member; unassign its credit packs first. Changing the Slug breaks every existing link. Admin only.",
         "dangerHintPersonal": "Your Slug is your @handle and the address of this Studio. Changing it cannot be undone.",
         "transferTitle": "Transfer Studio ownership",
         "transferBody": "Choose a Maintainer to become the new Admin. They must accept before the transfer takes effect; you become a Maintainer.",
