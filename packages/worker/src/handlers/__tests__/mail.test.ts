@@ -7,7 +7,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Job } from "bullmq";
+import { UnrecoverableError, type Job } from "bullmq";
 
 import type * as CoreModule from "@breatic/core";
 
@@ -66,9 +66,22 @@ describe("a mail job", () => {
   });
 
   it("throws a failed send so the queue tries again", async () => {
-    const boom = new Error("smtp refused");
+    const boom = Object.assign(new Error("try later"), { responseCode: 421 });
     sendMail.mockRejectedValue(boom);
 
-    await expect(runMail(job())).rejects.toBe(boom);
+    const err = await runMail(job()).catch((e: unknown) => e);
+    expect(err).toBe(boom);
+    expect(err).not.toBeInstanceOf(UnrecoverableError);
+  });
+
+  // RFC 5321 4.2.1: a 5yz reply is a permanent failure; sending again cannot succeed.
+  it("ends a send the server refused for good, without retrying", async () => {
+    sendMail.mockRejectedValue(
+      Object.assign(new Error("Message failed: 554 Reject by content spam"), { responseCode: 554 }),
+    );
+
+    const err = await runMail(job()).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UnrecoverableError);
+    expect((err as Error).message).toContain("554 Reject by content spam");
   });
 });

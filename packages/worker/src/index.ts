@@ -207,8 +207,9 @@ export function startWorker(): void {
   });
 
   // Notification mail a request queued instead of waiting on SMTP (#1232).
-  // A send that throws retries on the shared options; what is left after the
-  // last attempt is a mail never sent, and the bell already told the user.
+  // A send that throws retries on the shared options, except one the server
+  // refused for good; what is left after that is a mail never sent, and the
+  // bell already told the user.
   const mail = createWorker<MailJob>(MAIL_QUEUE, (job) => runMail(job));
 
   mail.on("failed", (job, err) => {
