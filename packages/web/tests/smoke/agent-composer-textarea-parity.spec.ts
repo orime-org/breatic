@@ -217,3 +217,48 @@ test('a line break still follows a composition that stopped at the limit', async
 
   await expect.poll(async () => (await read(page)).text.endsWith('你\n')).toBe(true);
 });
+
+for (const [language, steps, commit, kept] of [
+  ['Korean', ['ㅎ', '하', '한', '한ㄱ', '한그', '한글'], '한글', '한'],
+  ['Japanese', ['に', 'にほ', 'にほん'], 'にほん', 'に'],
+] as const) {
+  test(`a ${language} composition committed as it showed is cut from its own end as it ends`, async ({ page }) => {
+    await start(page, `ab${'y'.repeat(LIMIT - 3)}`);
+    await compose(page, [...steps], commit);
+
+    await expect.poll(async () => (await read(page)).text, { timeout: 1_000 }).toBe(`ab${'y'.repeat(LIMIT - 3)}${kept}`);
+    // Moving the caret afterwards leaves the reader's earlier words alone.
+    await page.evaluate((sel) => {
+      (document.querySelector(sel) as unknown as { editor: { commands: { setTextSelection: (p: number) => void } } }).editor.commands.setTextSelection(2);
+    }, BOX);
+    expect((await read(page)).text).toBe(`ab${'y'.repeat(LIMIT - 3)}${kept}`);
+  });
+}
+
+const WEB_PLAIN = 'def f():\n    return 1\n\nprint(f())';
+const WEB_HTML = '<pre>def f():\n    return 1\n\nprint(f())</pre>';
+
+test('words copied from a web page are pasted as its plain text, line breaks and indents kept', async ({ page }) => {
+  await start(page, 'hello ');
+  await page.evaluate(([html, plain]) => navigator.clipboard.write([
+    new ClipboardItem({ 'text/html': new Blob([html as string], { type: 'text/html' }), 'text/plain': new Blob([plain as string], { type: 'text/plain' }) }),
+  ]), [WEB_HTML, WEB_PLAIN]);
+  await page.keyboard.press('ControlOrMeta+V');
+
+  await expect.poll(async () => (await read(page)).text).toBe(`hello ${WEB_PLAIN}`);
+});
+
+test('words dragged in from a web page land as its plain text, line breaks and indents kept', async ({ page }) => {
+  await start(page, 'hello ');
+  const { x, y } = await page.evaluate((sel) => {
+    const b = (document.querySelector(sel) as HTMLElement).getBoundingClientRect();
+    return { x: b.right - 10, y: b.top + 14 };
+  }, BOX);
+  const cdp = await page.context().newCDPSession(page);
+  const data = { items: [{ mimeType: 'text/html', data: WEB_HTML }, { mimeType: 'text/plain', data: WEB_PLAIN }], dragOperationsMask: 1 };
+  await cdp.send('Input.dispatchDragEvent', { type: 'dragEnter', x, y, data });
+  await cdp.send('Input.dispatchDragEvent', { type: 'dragOver', x, y, data });
+  await cdp.send('Input.dispatchDragEvent', { type: 'drop', x, y, data });
+
+  await expect.poll(async () => (await read(page)).text).toBe(`hello ${WEB_PLAIN}`);
+});
