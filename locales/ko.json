@@ -682,7 +682,8 @@
         "tilt": "틸트",
         "zoom": "줌",
         "other": "기타"
-      }
+      },
+      "cameraCommandsPreviewHint": "명령에 마우스를 올리면 미리 볼 수 있습니다"
     },
     "nodeMenu": {
       "generate": "생성",

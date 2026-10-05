@@ -682,7 +682,8 @@
         "tilt": "チルト",
         "zoom": "ズーム",
         "other": "その他"
-      }
+      },
+      "cameraCommandsPreviewHint": "コマンドにカーソルを合わせるとプレビューします"
     },
     "nodeMenu": {
       "generate": "生成",

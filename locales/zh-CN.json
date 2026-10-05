@@ -682,7 +682,8 @@
         "tilt": "俯仰",
         "zoom": "变焦",
         "other": "其他"
-      }
+      },
+      "cameraCommandsPreviewHint": "悬停指令即可预览"
     },
     "nodeMenu": {
       "generate": "生成",

@@ -694,7 +694,8 @@
         "tilt": "Tilt",
         "zoom": "Zoom",
         "other": "Other"
-      }
+      },
+      "cameraCommandsPreviewHint": "Hover a command to preview it"
     },
     "edge": {
       "delete": "Delete connection"
