@@ -36,7 +36,7 @@ interface OpenSpaceProps {
  * @param root0.children - What reads the connection.
  * @returns The children inside the connection context.
  */
-function SpaceConnection({
+export function SpaceConnection({
   name,
   children,
 }: {

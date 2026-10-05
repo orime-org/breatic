@@ -20,9 +20,9 @@ const connection = {
   writeAccess: 'granted',
   authFailedReason: null,
 };
-const useSocketMock = vi.fn(() => connection);
+const useSocketMock = vi.fn((_options: { name: string }) => connection);
 vi.mock('@web/data/yjs/use-socket', () => ({
-  useSocket: () => useSocketMock(),
+  useSocket: (options: { name: string }) => useSocketMock(options),
 }));
 
 vi.mock('@web/pages/project/SpaceOutlet', async () => {
@@ -49,6 +49,7 @@ vi.mock('@web/spaces/document/document-intercept-guard', () => ({
   DocumentInterceptGuard: (): null => null,
 }));
 
+import { docName } from '@web/data/yjs/manager';
 import { OpenSpace } from '@web/pages/project/OpenSpace';
 
 const PID = '11111111-1111-4111-8111-111111111111';
@@ -82,6 +83,26 @@ describe('OpenSpace — the tab holds the connection, the body reads it', () => 
     expect(screen.getByTestId('body')).not.toBeVisible();
     expect(screen.getByTestId('body').textContent).toBe('synced');
     expect(useSocketMock).toHaveBeenCalled();
+  });
+
+  it('connects to the document of this Space, of this kind, in this project', () => {
+    // Everything under the tab reads this connection, the read-only notice
+    // included; a canvas and a document Space sharing an id are two documents
+    // with two separate seat ceilings.
+    useSocketMock.mockClear();
+    render(
+      <OpenSpace
+        projectId={PID}
+        spaceId={SID}
+        type='canvas'
+        active
+        visited
+        readOnly={false}
+      />,
+    );
+    expect(useSocketMock).toHaveBeenCalledWith(
+      expect.objectContaining({ name: docName.canvasSpace(PID, SID) }),
+    );
   });
 
   it('holds the connection but renders no body for a tab never visited', () => {

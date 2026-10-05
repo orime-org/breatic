@@ -71,16 +71,12 @@ export function SpaceOutlet({
   // than something the server took away.
   //
   // A newly registered Space type is NOT covered by this alone — the notice
-  // resolves a document name through `DOC_NAME_BUILDERS`, and a type missing
-  // from that table renders nothing. Adding a type means both tables.
+  // reads the connection `OpenSpace` holds for the document `DOC_NAME_BUILDERS`
+  // names, and a type missing from that table has no connection, so the notice
+  // shows nothing. Adding a type means both tables.
   return (
     <div className='relative h-full w-full' data-space-outlet={spaceId}>
-      <SpaceReadOnlyNotice
-        projectId={projectId}
-        spaceId={spaceId}
-        type={type}
-        readOnly={readOnly}
-      />
+      <SpaceReadOnlyNotice readOnly={readOnly} />
       <Body
         projectId={projectId}
         spaceId={spaceId}

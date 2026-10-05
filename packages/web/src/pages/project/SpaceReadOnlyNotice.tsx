@@ -5,16 +5,10 @@ import * as React from 'react';
 import { TriangleAlert } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
-import { getDoc } from '@web/data/yjs/manager';
-import { useSocket } from '@web/data/yjs/use-socket';
+import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { useTranslation } from '@web/i18n/use-translation';
-import { DOC_NAME_BUILDERS } from '@web/data/yjs/space-connection';
-import type { SpaceType } from '@breatic/shared';
 
 interface SpaceReadOnlyNoticeProps {
-  projectId: string;
-  spaceId: string;
-  type: SpaceType;
   /**
    * True when this person's ROLE is view-only. Load-bearing, not decoration —
    * see the note on causes in {@link SpaceReadOnlyNotice}.
@@ -23,27 +17,51 @@ interface SpaceReadOnlyNoticeProps {
 }
 
 /**
- * The notice itself, for a Space that has a document.
+ * Says so when THIS Space's connection was granted read-only although this
+ * person's role can write.
  *
- * Split out so the hook is never called conditionally: a Space type with no
- * document of its own (timeline today) has no connection to report on, and the
- * outer component returns before this one mounts. Same shape as
- * `OpenSpace` / `SpaceConnection` next door, for the same reason.
- * @param root0 - Which document to report on, and who is looking at it.
- * @param root0.name - Canonical document name.
+ * ## What it does and does not announce
+ *
+ * Only a connection-level degrade — the document is at the ceiling its tier
+ * allows, or that ceiling could not be resolved at all. A viewer is told
+ * nothing (read-only is their role, not something taken away), the project
+ * meta document never reaches here, and a refused document is out of scope
+ * (which is not the same as saying somebody else reports it — see the note in
+ * the function body, where all three exclusions are worked out).
+ *
+ * ## Why it lives inside the Space rather than in the page chrome
+ *
+ * Read-only is a property of ONE document. The ceiling counts the writable
+ * connections to a single Space, so the canvas can be full while the document
+ * Space beside it has room. Note what "connection" means on each side: the
+ * browser opens ONE WebSocket per tab and attaches each Space's document to it
+ * (`data/yjs/collab-socket.tsx`), while the server counts seats per document,
+ * keyed by socket. So one tab with three Spaces open holds one socket and up
+ * to three seats — one in each document's ledger, and only for the documents
+ * this connection may actually write, since a read-only attachment takes no
+ * seat at all. A notice in the page chrome would claim something about the
+ * whole project that is not true of it (user 2026-08-14).
+ *
+ * ## Why it is not a toast
+ *
+ * It used to be one, and a toast is the wrong shape: it disappears after four
+ * seconds, while this holds for as long as the connection does. Whoever missed
+ * those four seconds only finds out by watching their edits fail to stick.
+ *
+ * ## Which connection
+ *
+ * The tab's own (`useSpaceConnection`), held by `OpenSpace` from open to close
+ * for this Space's document. A Space type with no document has no connection
+ * around it, reads write access as unknown, and so shows nothing.
+ * @param root0 - Who is looking.
  * @param root0.readOnly - True when this person's role is view-only.
  * @returns The notice, or null when this connection's read-only is not a degrade.
  */
-function DocReadOnlyNotice({
-  name,
-  readOnly,
-}: {
-  name: string;
-  readOnly: boolean;
-}): React.JSX.Element | null {
+export function SpaceReadOnlyNotice({
+  readOnly = false,
+}: SpaceReadOnlyNoticeProps): React.JSX.Element | null {
   const t = useTranslation();
-  const doc = React.useMemo(() => getDoc(name), [name]);
-  const { writeAccess, status } = useSocket({ name, doc });
+  const { writeAccess, status } = useSpaceConnection();
 
   // The server sends ONE flag for three different causes (collab
   // `hooks/auth.ts`: `readOnly = kind === "meta" || role === "viewer" ||
@@ -63,8 +81,9 @@ function DocReadOnlyNotice({
   // different reason — telling that person to wait for a seat is an
   // instruction they cannot carry out. **Nobody else announces it on a
   // canvas.** `DocumentSpace` does say it (`spaces.document.refusedNotice`,
-  // plus its unavailable card), but `CanvasSpace` reads only `provider` off
-  // `useSocket` and has no refusal branch at all, so a refused canvas document
+  // plus its unavailable card), but `CanvasSpace` reads only `provider` and
+  // `synced` off its connection and has no refusal branch at all, so a refused
+  // canvas document
   // is currently silent everywhere. That gap is not this component's to close —
   // this notice is about seats, and a refusal is not a seat problem — but do
   // not read the exclusion as "some other component has it covered".
@@ -95,59 +114,5 @@ function DocReadOnlyNotice({
         {t('spaces.readOnlyReconnect')}
       </Button>
     </div>
-  );
-}
-
-/**
- * Says so when THIS Space's connection was granted read-only although this
- * person's role can write.
- *
- * ## What it does and does not announce
- *
- * Only a connection-level degrade — the document is at the ceiling its tier
- * allows, or that ceiling could not be resolved at all. A viewer is told
- * nothing (read-only is their role, not something taken away), the project
- * meta document never reaches here, and a refused document is out of scope
- * (which is not the same as saying somebody else reports it — see the note in
- * {@link DocReadOnlyNotice}, where all three exclusions are worked out).
- *
- * ## Why it lives inside the Space rather than in the page chrome
- *
- * Read-only is a property of ONE document. The ceiling counts the writable
- * connections to a single Space, so the canvas can be full while the document
- * Space beside it has room. Note what "connection" means on each side: the
- * browser opens ONE WebSocket per tab and attaches each Space's document to it
- * (`data/yjs/collab-socket.tsx`), while the server counts seats per document,
- * keyed by socket. So one tab with three Spaces open holds one socket and up
- * to three seats — one in each document's ledger, and only for the documents
- * this connection may actually write, since a read-only attachment takes no
- * seat at all. A notice in the page chrome would claim something about the
- * whole project that is not true of it (user 2026-08-14).
- *
- * ## Why it is not a toast
- *
- * It used to be one, and a toast is the wrong shape: it disappears after four
- * seconds, while this holds for as long as the connection does. Whoever missed
- * those four seconds only finds out by watching their edits fail to stick.
- * @param root0 - Which Space's connection to report on, and who is looking.
- * @param root0.projectId - Project the Space belongs to.
- * @param root0.spaceId - The Space.
- * @param root0.type - Space type, which decides the document name.
- * @param root0.readOnly - True when this person's role is view-only.
- * @returns The notice, or null for a Space type with no document.
- */
-export function SpaceReadOnlyNotice({
-  projectId,
-  spaceId,
-  type,
-  readOnly = false,
-}: SpaceReadOnlyNoticeProps): React.JSX.Element | null {
-  const buildName = DOC_NAME_BUILDERS[type];
-  if (!buildName) return null;
-  return (
-    <DocReadOnlyNotice
-      name={buildName(projectId, spaceId)}
-      readOnly={readOnly}
-    />
   );
 }
