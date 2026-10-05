@@ -29,31 +29,35 @@ interface CameraCommandCandidate {
 /**
  * Why one declared command is wrong, or null when it is right.
  * @param entry - The declared entry, unchecked.
- * @param seen - What the entries before it on the same model declared.
- * @param seen.names - Their command names.
- * @param seen.keys - Their clip keys.
+ * @param names - Command names declared before it on the same model.
+ * @param commandOf - The command each clip key already belongs to, across the modality.
  * @returns The reason, naming the command where it has one.
  */
 function wrongWith(
   entry: unknown,
-  seen: { names: ReadonlySet<string>; keys: ReadonlySet<string> },
+  names: ReadonlySet<string>,
+  commandOf: ReadonlyMap<string, string>,
 ): string | null {
   const { name, sample_key: key } = (entry ?? {}) as { name?: unknown; sample_key?: unknown };
   if (typeof name !== "string" || !isCameraCommand(name)) {
     return `declares camera command '${String(name)}', which MiniMax does not document`;
   }
-  if (seen.names.has(name)) return `declares camera command '${name}' twice`;
+  if (names.has(name)) return `declares camera command '${name}' twice`;
   if (typeof key !== "string" || key.length === 0 || /\s/.test(key)) {
     return `declares camera command '${name}' without a whitespace-free sample_key`;
   }
   // One clip shows one motion; a second command on it would preview as the first.
-  if (seen.keys.has(key)) return `declares camera command '${name}' with sample_key '${key}', which another command already uses`;
+  const owner = commandOf.get(key);
+  if (owner !== undefined && owner !== name) {
+    return `declares camera command '${name}' with sample_key '${key}', already the clip for '${owner}'`;
+  }
   return null;
 }
 
 /**
  * Assert that every model in one modality declares its camera commands as
- * documented names, once each, each with a clip key of its own.
+ * documented names, once each, each with a clip key that only ever shows that
+ * command — entries may share a clip, never for different commands.
  * @param modality - The modality being loaded, named in the error.
  * @param models - The models parsed out of that modality's yaml files.
  * @throws {Error} when a model declares a malformed list.
@@ -62,18 +66,19 @@ export function assertCameraCommands(
   modality: string,
   models: readonly CameraCommandCandidate[],
 ): void {
+  const commandOf = new Map<string, string>();
   for (const model of models) {
     if (model.camera_commands === undefined) continue;
     if (!Array.isArray(model.camera_commands)) {
       throw new Error(`config/models/${modality}: ${model.name} declares camera_commands that is not a list`);
     }
-    const seen = { names: new Set<string>(), keys: new Set<string>() };
+    const names = new Set<string>();
     for (const entry of model.camera_commands as unknown[]) {
-      const wrong = wrongWith(entry, seen);
+      const wrong = wrongWith(entry, names, commandOf);
       if (wrong !== null) throw new Error(`config/models/${modality}: ${model.name} ${wrong}`);
       const { name, sample_key: key } = entry as DeclaredCameraCommand;
-      seen.names.add(name);
-      seen.keys.add(key);
+      names.add(name);
+      commandOf.set(key, name);
     }
   }
 }

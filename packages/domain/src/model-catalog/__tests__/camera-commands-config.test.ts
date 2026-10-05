@@ -79,6 +79,22 @@ describe("the loader's check", () => {
       ]),
     ).toThrow(/Pan right.*camera-previews\/m\/pan-left\.mp4/);
   });
+
+  it("lets entries share a clip for the same command, and refuses one shared for another command", () => {
+    const left = { name: "Pan left", sample_key: "camera-previews/m/pan-left.mp4" };
+    expect(() =>
+      assertCameraCommands("video", [
+        { name: "a", camera_commands: [left] },
+        { name: "b", camera_commands: [left] },
+      ]),
+    ).not.toThrow();
+    expect(() =>
+      assertCameraCommands("video", [
+        { name: "a", camera_commands: [left] },
+        { name: "b", camera_commands: [{ name: "Pan right", sample_key: left.sample_key }] },
+      ]),
+    ).toThrow(/b .*Pan right.*camera-previews\/m\/pan-left\.mp4/);
+  });
 });
 
 describe("what the wire carries", () => {
