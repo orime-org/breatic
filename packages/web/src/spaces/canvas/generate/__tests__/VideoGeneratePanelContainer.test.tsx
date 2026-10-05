@@ -2603,18 +2603,32 @@ describe('camera commands (inner#1241)', () => {
     expect(createTask.mock.calls[0]?.[0]?.params.prompt).toBe('Shot 1 [0-2s]: [Pan left]\nShot 2 [2-5s]: [Tilt up]');
   });
 
-  it('previews a command, a disabled one included, through the shared hover card', async () => {
+  it('previews the hovered command, a disabled one included, in the pane at the top, and keeps the last one', async () => {
     await openOn('t2v', 'minimax-h3-text-to-video');
     fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
-    for (const name of ['Truck left', 'Push in', 'Zoom out']) fireEvent.click(await screen.findByTestId(option(name)));
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const pane = await screen.findByTestId('generate-video-camera-preview');
+    expect(pane.querySelector('video')).toBeNull();
+    expect(pane.textContent).toBe(en.canvas.generatePanel.cameraCommandsPreviewHint);
+    for (const name of ['Truck left', 'Push in', 'Zoom out']) fireEvent.click(screen.getByTestId(option(name)));
     const shake = screen.getByTestId(option('Shake'));
     expect(shake).toBeDisabled();
     fireEvent.pointerEnter(shake.parentElement as HTMLElement);
-    await act(async () => {
-      vi.advanceTimersByTime(600);
-    });
-    const card = await screen.findByTestId('hover-preview-content');
-    expect(card.querySelector('video')?.getAttribute('src')).toBe(clip('Shake'));
+    const video = pane.querySelector('video');
+    expect(video?.getAttribute('src')).toBe(clip('Shake'));
+    expect(video?.muted).toBe(true);
+    expect(video?.loop).toBe(true);
+    expect(video?.autoplay).toBe(true);
+    fireEvent.pointerLeave(shake.parentElement as HTMLElement);
+    expect(pane.querySelector('video')?.getAttribute('src')).toBe(clip('Shake'));
+    expect(screen.queryByTestId('hover-preview-content')).toBeNull();
+  });
+
+  it('shows the picks as their bracket beside the count', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    const count = await screen.findByTestId('generate-video-camera-count');
+    expect(count.textContent).toBe('0/3');
+    for (const name of ['Push in', 'Zoom out']) fireEvent.click(screen.getByTestId(option(name)));
+    expect(count.textContent).toBe('2/3 · [Push in,Zoom out]');
   });
 });
