@@ -8,6 +8,7 @@
  */
 
 import type { FullModelEntry } from "@breatic/domain";
+import { cameraCommandBracket } from "@breatic/shared";
 
 import type { VoiceSampleJob } from "@worker/voice-samples/plan.js";
 
@@ -48,16 +49,17 @@ function servesTextToVideo(model: FullModelEntry): boolean {
  */
 export function planCameraPreviews(models: readonly FullModelEntry[]): VoiceSampleJob[] {
   const keys = [...new Set(models.flatMap((m) => (m.camera_commands ?? []).map((c) => c.sample_key)))];
+  const declared = models.flatMap((maker) =>
+    servesTextToVideo(maker) ? (maker.camera_commands ?? []).map((command) => ({ maker, command })) : [],
+  );
   return keys.map((key) => {
-    const maker = models.find(
-      (m) => servesTextToVideo(m) && (m.camera_commands ?? []).some((c) => c.sample_key === key),
-    );
-    if (!maker) throw new Error(`${key}: no text-to-video entry declares it, so nothing can make the clip`);
-    const command = (maker.camera_commands ?? []).find((c) => c.sample_key === key)?.name;
+    const found = declared.find(({ command }) => command.sample_key === key);
+    if (!found) throw new Error(`${key}: no text-to-video entry declares it, so nothing can make the clip`);
+    const { maker, command } = found;
     return {
       model: maker.name,
       key,
-      body: { [maker.prompt_upstream ?? "prompt"]: `${CAMERA_PREVIEW_SCENE} [${command}]`, ...defaultsOf(maker) },
+      body: { [maker.prompt_upstream ?? "prompt"]: `${CAMERA_PREVIEW_SCENE} ${cameraCommandBracket([command.name])}`, ...defaultsOf(maker) },
     };
   });
 }

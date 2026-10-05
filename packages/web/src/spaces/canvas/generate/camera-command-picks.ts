@@ -52,12 +52,3 @@ export function pickCameraCommand(picked: readonly string[], command: string): s
   const displaced = displacedBy(picked, command);
   return [...picked.filter((p) => !displaced.includes(p)), command];
 }
-
-/**
- * The picks written as one bracket, the form MiniMax reads them in.
- * @param picked - The commands, in pick order.
- * @returns The bracket, e.g. `[Push in,Zoom out]`.
- */
-export function cameraCommandBracket(picked: readonly string[]): string {
-  return `[${picked.join(',')}]`;
-}

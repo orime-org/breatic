@@ -8,6 +8,7 @@ import {
   CAMERA_COMMAND_AXES,
   CAMERA_COMMANDS_PER_BRACKET,
   STATIC_SHOT,
+  cameraCommandBracket,
 } from "../camera-commands.js";
 import { modelCatalogSchema } from "../types/model-catalog.js";
 
@@ -33,6 +34,13 @@ describe("the camera command vocabulary", () => {
   it("names the still camera and the per-bracket cap MiniMax recommends", () => {
     expect(STATIC_SHOT).toBe("Static shot");
     expect(CAMERA_COMMANDS_PER_BRACKET).toBe(3);
+  });
+});
+
+describe("cameraCommandBracket", () => {
+  it("writes the commands in order, comma-separated with no space, in one bracket", () => {
+    expect(cameraCommandBracket(["Pan left"])).toBe("[Pan left]");
+    expect(cameraCommandBracket(["Push in", "Zoom out", "Truck right"])).toBe("[Push in,Zoom out,Truck right]");
   });
 });
 

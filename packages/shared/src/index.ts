@@ -402,6 +402,7 @@ export {
   CAMERA_COMMAND_AXES,
   CAMERA_COMMANDS_PER_BRACKET,
   STATIC_SHOT,
+  cameraCommandBracket,
   isCameraCommand,
   type CameraCommand,
   type CameraCommandAxis,

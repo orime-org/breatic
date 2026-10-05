@@ -5,7 +5,6 @@ import { CAMERA_COMMANDS } from '@breatic/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
-  cameraCommandBracket,
   canPickCameraCommand,
   pickCameraCommand,
 } from '@web/spaces/canvas/generate/camera-command-picks';
@@ -50,12 +49,5 @@ describe('canPickCameraCommand', () => {
     expect([...pickable].sort()).toEqual(
       ['Truck left', 'Truck right', 'Push in', 'Pull out', 'Zoom in', 'Zoom out', 'Static shot'].sort(),
     );
-  });
-});
-
-describe('cameraCommandBracket', () => {
-  it('writes the picks in pick order, comma-separated, in one bracket', () => {
-    expect(cameraCommandBracket(['Pan left'])).toBe('[Pan left]');
-    expect(cameraCommandBracket(['Push in', 'Zoom out', 'Truck right'])).toBe('[Push in,Zoom out,Truck right]');
   });
 });

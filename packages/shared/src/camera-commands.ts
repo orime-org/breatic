@@ -62,6 +62,16 @@ export const STATIC_SHOT: CameraCommand = "Static shot";
 export const CAMERA_COMMANDS_PER_BRACKET = 3;
 
 /**
+ * Commands written as one bracket, the form MiniMax reads them in: they run at
+ * the same time, comma-separated with no space.
+ * @param commands - The commands, in the order they were picked.
+ * @returns The bracket, e.g. `[Push in,Zoom out]`.
+ */
+export function cameraCommandBracket(commands: readonly string[]): string {
+  return `[${commands.join(",")}]`;
+}
+
+/**
  * Whether a string is one of the documented commands.
  * @param name - The string to check.
  * @returns True when it is.

@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import {
   CAMERA_COMMANDS_PER_BRACKET,
+  cameraCommandBracket,
   formatCredits,
   GENERATION_NODE_MODES,
   STATIC_SHOT,
@@ -92,9 +93,9 @@ function renderCameraCommands(model: PricedModelInfo): string {
   if (!commands || commands.length === 0) return "";
   const where = model.storyboard ? " into the shot it belongs to" : " into the prompt";
   return (
-    ` Reads camera commands written${where}: ${commands.map((c) => `[${c}]`).join(" ")}.` +
-    ` Commands inside one bracket, comma-separated with no space, as in [Truck left,Push in], run at the same time, at most ${CAMERA_COMMANDS_PER_BRACKET} in one bracket;` +
-    ` separate brackets run in the order they appear; never put the opposite directions of one axis, or [${STATIC_SHOT}] with a movement, in one bracket.`
+    ` Reads camera commands written${where}: ${commands.map((c) => cameraCommandBracket([c])).join(" ")}.` +
+    ` Commands inside one bracket, comma-separated with no space, as in ${cameraCommandBracket(["Truck left", "Push in"])}, run at the same time, at most ${CAMERA_COMMANDS_PER_BRACKET} in one bracket;` +
+    ` separate brackets run in the order they appear; never put the opposite directions of one axis, or ${cameraCommandBracket([STATIC_SHOT])} with a movement, in one bracket.`
   );
 }
 
