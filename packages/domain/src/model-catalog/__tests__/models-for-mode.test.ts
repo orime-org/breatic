@@ -179,6 +179,17 @@ describe("facts the catalog carries that change what to propose", () => {
     expect(capped.length, "a reference list states its cap").toBeGreaterThan(0);
   });
 
+  it.each([
+    ["i2v", "Seedance 2.5"],
+    ["first_last", "Seedance 2.5"],
+    ["multi_shot", "Seedance 2.5 Image-to-Video"],
+  ])("offers Seedance 2.5 image-to-video in %s, under the name the picker shows", (mode, shown) => {
+    const answer = modelsForMode("video", mode);
+    if (!answer.available) throw new Error(`${mode} has models`);
+    const seedance = answer.models.find((model) => model.name === "seedance-2.5-image-to-video");
+    expect(seedance?.displayName).toBe(shown);
+  });
+
   it("carries the name the picker shows beside the name a node stores", () => {
     // The picker renders display_name and never the id, so an answer carrying
     // only the id asks the reader to map "kling-o3-pro" onto "Kling O3 Pro".
