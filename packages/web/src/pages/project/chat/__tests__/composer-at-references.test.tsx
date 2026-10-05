@@ -690,4 +690,79 @@ describe('@ in the chat box', () => {
 
     expect(written.get('text/plain')).toBe('look at cover.png please');
   });
+
+  it('keeps the spaces around a pasted block when the paste is cut just after it', () => {
+    const { onChange } = setup({ draft: 'x'.repeat(9_996), attachments: [cover] });
+    act(() => {
+      box().commands.focus('end');
+      box().view.pasteHTML('<span data-reference-mention="" data-source-id="a1">x</span>zz');
+    });
+
+    expect(String(onChange.mock.lastCall?.[0]).slice(9_996)).toBe(` ${attachmentMarker('a1')} z`);
+  });
+
+  it('previews what an attachment holds now once it is attached again under the same id', async () => {
+    const { rerender } = setup({ draft: `see ${attachmentMarker('a1')} `, attachments: [cover] });
+    await settle();
+    rerender({ attachments: [{ ...cover, chip: { ...cover.chip!, data_snapshot: { url: 'new' } } }] });
+    await settle();
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.pointerEnter(screen.getByTestId('chat-reference'), { pointerType: 'mouse' });
+      act(() => {
+        vi.advanceTimersByTime(HOVER_OPEN_DELAY_MS + 10);
+      });
+      expect(screen.getByTestId('hover-preview-content').querySelector('img')?.getAttribute('src')).toBe('new');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('pastes the plain text of a web page, its line breaks kept, when it holds no block', () => {
+    const { onChange } = setup({ draft: '' });
+    act(() => box().commands.focus('end'));
+    const plain = 'def f():\n    return 1\n\nprint(f())';
+    fireEvent.paste(box().view.dom, {
+      clipboardData: {
+        files: [],
+        getData: (type: string) =>
+          type === 'text/plain' ? plain : type === 'text/html' ? '<pre>def f():\n    return 1\n\nprint(f())</pre><br>' : '',
+      },
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith(plain);
+  });
+
+  it('cuts a composition that ends past the limit as soon as it ends', async () => {
+    const { onChange } = setup({ draft: `ab${'y'.repeat(9_997)}` });
+    const view = box().view as unknown as { input: { composing: boolean } } & Editor['view'];
+    act(() => {
+      box().commands.focus('end');
+      view.input.composing = true;
+      view.dispatch(view.state.tr.insertText('한글').setMeta('composition', 1));
+    });
+    await act(async () => {
+      view.input.composing = false;
+      view.dom.dispatchEvent(new CompositionEvent('compositionend', { data: '한글', bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith(`ab${'y'.repeat(9_997)}한`);
+  });
+
+  it('cuts an overflowing composition from its own end even when the caret has moved first', () => {
+    const { onChange } = setup({ draft: `ab${'y'.repeat(9_997)}` });
+    const view = box().view as unknown as { input: { composing: boolean } } & Editor['view'];
+    act(() => {
+      box().commands.focus('end');
+      view.input.composing = true;
+      view.dispatch(view.state.tr.insertText('한글').setMeta('composition', 1));
+      view.input.composing = false;
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 2)));
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith(`ab${'y'.repeat(9_997)}한`);
+  });
 });
