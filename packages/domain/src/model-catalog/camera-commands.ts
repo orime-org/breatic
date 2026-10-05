@@ -29,24 +29,31 @@ interface CameraCommandCandidate {
 /**
  * Why one declared command is wrong, or null when it is right.
  * @param entry - The declared entry, unchecked.
- * @param seen - Names already declared before it on the same model.
+ * @param seen - What the entries before it on the same model declared.
+ * @param seen.names - Their command names.
+ * @param seen.keys - Their clip keys.
  * @returns The reason, naming the command where it has one.
  */
-function wrongWith(entry: unknown, seen: ReadonlySet<string>): string | null {
+function wrongWith(
+  entry: unknown,
+  seen: { names: ReadonlySet<string>; keys: ReadonlySet<string> },
+): string | null {
   const { name, sample_key: key } = (entry ?? {}) as { name?: unknown; sample_key?: unknown };
   if (typeof name !== "string" || !isCameraCommand(name)) {
     return `declares camera command '${String(name)}', which MiniMax does not document`;
   }
-  if (seen.has(name)) return `declares camera command '${name}' twice`;
+  if (seen.names.has(name)) return `declares camera command '${name}' twice`;
   if (typeof key !== "string" || key.length === 0 || /\s/.test(key)) {
     return `declares camera command '${name}' without a whitespace-free sample_key`;
   }
+  // One clip shows one motion; a second command on it would preview as the first.
+  if (seen.keys.has(key)) return `declares camera command '${name}' with sample_key '${key}', which another command already uses`;
   return null;
 }
 
 /**
  * Assert that every model in one modality declares its camera commands as
- * documented names, once each, each with a clip key.
+ * documented names, once each, each with a clip key of its own.
  * @param modality - The modality being loaded, named in the error.
  * @param models - The models parsed out of that modality's yaml files.
  * @throws {Error} when a model declares a malformed list.
@@ -60,11 +67,13 @@ export function assertCameraCommands(
     if (!Array.isArray(model.camera_commands)) {
       throw new Error(`config/models/${modality}: ${model.name} declares camera_commands that is not a list`);
     }
-    const seen = new Set<string>();
+    const seen = { names: new Set<string>(), keys: new Set<string>() };
     for (const entry of model.camera_commands as unknown[]) {
       const wrong = wrongWith(entry, seen);
       if (wrong !== null) throw new Error(`config/models/${modality}: ${model.name} ${wrong}`);
-      seen.add((entry as DeclaredCameraCommand).name);
+      const { name, sample_key: key } = entry as DeclaredCameraCommand;
+      seen.names.add(name);
+      seen.keys.add(key);
     }
   }
 }

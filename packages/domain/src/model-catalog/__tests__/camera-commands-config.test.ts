@@ -70,6 +70,15 @@ describe("the loader's check", () => {
     expect(() => check([{ name: "Pan left" }])).toThrow(/Pan left/);
     expect(() => check([{ name: "Pan left", sample_key: "camera-previews/m/pan left.mp4" }])).toThrow(/Pan left/);
   });
+
+  it("refuses two commands sharing one clip, which would preview one as the other", () => {
+    expect(() =>
+      check([
+        { name: "Pan left", sample_key: "camera-previews/m/pan-left.mp4" },
+        { name: "Pan right", sample_key: "camera-previews/m/pan-left.mp4" },
+      ]),
+    ).toThrow(/Pan right.*camera-previews\/m\/pan-left\.mp4/);
+  });
 });
 
 describe("what the wire carries", () => {
