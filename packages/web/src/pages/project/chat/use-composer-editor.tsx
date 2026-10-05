@@ -15,8 +15,8 @@ import type { Editor } from '@tiptap/core';
 import { useEditor } from '@tiptap/react';
 import * as React from 'react';
 import { getLocale, t as sharedT } from '@breatic/shared';
-import { Fragment, Slice, type Schema } from '@tiptap/pm/model';
-import { EditorState, Selection, TextSelection } from '@tiptap/pm/state';
+import type { Slice } from '@tiptap/pm/model';
+import { EditorState } from '@tiptap/pm/state';
 
 import { makeMentionSuggestion } from '@web/features/reference-mention/mention-suggestion';
 import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
@@ -24,7 +24,12 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { AttachmentKindIcon } from '@web/pages/project/chat/AttachmentChip';
 import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
 import { chatReferenceContent } from '@web/pages/project/chat/chat-reference';
-import { ATTACHMENTS_CHANGED_META, composerExtensions } from '@web/pages/project/chat/composer-extensions';
+import {
+  ATTACHMENTS_CHANGED_META,
+  composerExtensions,
+  plainTextOf,
+  plainTextSlice,
+} from '@web/pages/project/chat/composer-extensions';
 import { draftContent, draftOf } from '@web/pages/project/chat/composer-draft';
 import { parseClipboardNodes, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 import type { TrayItem } from '@web/stores/chat-attachments';
@@ -113,6 +118,9 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
         }),
       ],
       content: draftContent(input.draft),
+      // Lines go to the clipboard one line break apart, as the draft joins
+      // them and as the textarea copied them.
+      coreExtensionOptions: { clipboardTextSerializer: { blockSeparator: '\n' } },
       editorProps: {
         attributes: {
           'data-testid': 'chat-composer-box',
@@ -169,29 +177,6 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
           // Everything else is pasted as ProseMirror pastes it; one past the
           // limit has its end cut once it is in (composerRules).
           return false;
-        },
-        // A drop beside the text -- past a line's end, under the last line --
-        // lands between paragraphs, where ProseMirror would start a new one.
-        // The textarea put it on the nearest line; so does this, doing what
-        // ProseMirror's own drop does from there.
-        handleDrop: (view, event, slice, moved): boolean => {
-          if (moved) return false;
-          const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
-          if (!at) return false;
-          const $at = view.state.doc.resolve(at.pos);
-          const text = plainTextOf(event.dataTransfer);
-          const taken = text === null ? slice : plainTextSlice(text, view.state.schema);
-          if (taken.size === 0 || ($at.parent.inlineContent && taken === slice)) return false;
-          // A drop beside the text -- past a line's end, under the last line --
-          // lands between paragraphs, where ProseMirror would start a new one;
-          // the textarea put it on the nearest line, and so does this.
-          const pos = $at.parent.inlineContent ? at.pos : Selection.near($at, -1).head;
-          // What ProseMirror's own drop does from there.
-          const tr = view.state.tr.replaceRange(pos, pos, taken);
-          tr.setSelection(TextSelection.between(tr.doc.resolve(pos), tr.doc.resolve(tr.mapping.map(pos, 1))));
-          view.focus();
-          view.dispatch(tr.setMeta('uiEvent', 'drop'));
-          return true;
         },
         clipboardTextParser: (text, $context): Slice => plainTextSlice(text, $context.doc.type.schema),
       },
@@ -264,32 +249,6 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
 function nothingSelected(state: EditorState): boolean {
   const { from, to } = state.selection;
   return state.doc.textBetween(from, to, '\n', () => '\uFFFC') === '';
-}
-
-/**
- * The plain text to take from a paste or a drop whose HTML holds none of the
- * box's blocks: the page's own text, its line breaks and indents as the
- * textarea received them.
- * @param data - The clipboard or the drag's data.
- * @returns The text, or null when ProseMirror's own reading applies.
- */
-function plainTextOf(data: DataTransfer | null): string | null {
-  const html = data?.getData('text/html') ?? '';
-  if (html === '' || html.includes('data-reference-mention')) return null;
-  const text = data?.getData('text/plain') ?? '';
-  return text === '' ? null : text;
-}
-
-/**
- * Plain text as the box holds it: joined to the line it lands on, a paragraph
- * per line, blank lines kept.
- * @param text - The text.
- * @param schema - The box's schema.
- * @returns The slice to insert.
- */
-function plainTextSlice(text: string, schema: Schema): Slice {
-  const lines = text.split(/\r\n?|\n/).map((line) => schema.node('paragraph', null, line === '' ? [] : [schema.text(line)]));
-  return Slice.maxOpen(Fragment.from(lines));
 }
 
 /** What the box was last given from outside it. */

@@ -8,7 +8,8 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Text from '@tiptap/extension-text';
 import { UndoRedo } from '@tiptap/extensions';
 import { splitBlock } from '@tiptap/pm/commands';
-import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
+import { Fragment, Slice, type Schema } from '@tiptap/pm/model';
+import { Plugin, PluginKey, Selection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
@@ -216,6 +217,75 @@ function composerRules(wiring: ComposerWiring): AnyExtension {
 }
 
 /**
+ * The plain text to take from a paste or a drop whose HTML holds none of the
+ * box's blocks: the page's own text, its line breaks and indents as the
+ * textarea received them.
+ * @param data - The clipboard or the drag's data.
+ * @returns The text, or null when ProseMirror's own reading applies.
+ */
+export function plainTextOf(data: DataTransfer | null): string | null {
+  const html = data?.getData('text/html') ?? '';
+  if (html === '' || html.includes('data-reference-mention')) return null;
+  const text = data?.getData('text/plain') ?? '';
+  return text === '' ? null : text;
+}
+
+/**
+ * Plain text as the box holds it: joined to the line it lands on, a paragraph
+ * per line, blank lines kept.
+ * @param text - The text.
+ * @param schema - The box's schema.
+ * @returns The slice to insert.
+ */
+export function plainTextSlice(text: string, schema: Schema): Slice {
+  const lines = text.split(/\r\n?|\n/).map((line) => schema.node('paragraph', null, line === '' ? [] : [schema.text(line)]));
+  return Slice.maxOpen(Fragment.from(lines));
+}
+
+/**
+ * Where text dropped into the box lands, as the textarea put it: on the line
+ * under the pointer, or, beside the text (past a line's end, under the last
+ * line), at the end of the nearest line; ProseMirror would start a new line
+ * there. Words dragged in from a page are taken as its plain text, as a paste
+ * is. Below the reference block's plugins, so a move's source selection is
+ * already restored when it runs.
+ * @returns The extension.
+ */
+function composerDrop(): AnyExtension {
+  return Extension.create({
+    name: 'composerDrop',
+    priority: 50,
+    addProseMirrorPlugins() {
+      return [
+        new Plugin({
+          props: {
+            handleDrop: (view, event, slice, moved): boolean => {
+              const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
+              if (!at) return false;
+              const $at = view.state.doc.resolve(at.pos);
+              const text = moved ? null : plainTextOf(event.dataTransfer);
+              const taken = text === null ? slice : plainTextSlice(text, view.state.schema);
+              if (taken.size === 0 || ($at.parent.inlineContent && taken === slice)) return false;
+              const target = $at.parent.inlineContent ? at.pos : Selection.near($at, -1).head;
+              // What ProseMirror's own drop does from there: a move takes its
+              // source out first.
+              const tr = view.state.tr;
+              if (moved) tr.deleteSelection();
+              const pos = tr.mapping.map(target);
+              tr.replaceRange(pos, pos, taken);
+              tr.setSelection(TextSelection.between(tr.doc.resolve(pos), tr.doc.resolve(tr.mapping.map(pos, 1))));
+              view.focus();
+              view.dispatch(tr.setMeta('uiEvent', 'drop'));
+              return true;
+            },
+          },
+        }),
+      ];
+    },
+  });
+}
+
+/**
  * What the chat box is built from: plain paragraphs, undo, the placeholder,
  * reference blocks and the box's own rules. No formatting: what is sent is
  * plain words.
@@ -233,5 +303,6 @@ export function composerExtensions(wiring: ComposerWiring): AnyExtension[] {
       isAttached: (id) => wiring.attachments().some((a) => a.id === id),
     }),
     composerRules(wiring),
+    composerDrop(),
   ];
 }
