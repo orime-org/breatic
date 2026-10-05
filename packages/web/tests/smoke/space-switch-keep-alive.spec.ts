@@ -986,6 +986,10 @@ test('a reply not sent yet and the comment panel are where they were after a swi
 
   await expect(reply).toHaveValue('half a reply');
   expect(await card.boundingBox()).toEqual(before);
+  // A19: the caret is back in the reply, so the next keys go on writing it.
+  await expect(reply).toBeFocused();
+  await page.keyboard.type('!');
+  await expect(reply).toHaveValue('half a reply!');
 });
 
 test('the button on a table cell is on that cell after a switch', async ({ page }) => {

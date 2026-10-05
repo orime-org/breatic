@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 
 import { SpaceReadOnlyNotice } from '@web/pages/project/SpaceReadOnlyNotice';
 import type { ProjectRole, SpaceType } from '@breatic/shared';
 
+import { useBoxFocusReturn } from '@web/lib/use-focus-return';
 import { SPACE_TYPES } from '@web/spaces';
 
 interface SpaceOutletProps {
@@ -49,6 +50,12 @@ export function SpaceOutlet({
   readOnly,
   myRole,
 }: SpaceOutletProps): React.JSX.Element {
+  // Hidden by a switch of Space and shown again, the caret goes back into the
+  // last element focused in this Space if it was still there on hide
+  // (inner#1235 A19). React's focus events pass through portals, so a box in
+  // a popover is recorded too.
+  const lastFocused = React.useRef<HTMLElement | null>(null);
+  useBoxFocusReturn(lastFocused);
   const def = SPACE_TYPES[type];
   if (!def) {
     return (
@@ -75,7 +82,13 @@ export function SpaceOutlet({
   // names, and a type missing from that table has no connection, so the notice
   // shows nothing. Adding a type means both tables.
   return (
-    <div className='relative h-full w-full' data-space-outlet={spaceId}>
+    <div
+      className='relative h-full w-full'
+      data-space-outlet={spaceId}
+      onFocusCapture={(event) => {
+        if (event.target instanceof HTMLElement) lastFocused.current = event.target;
+      }}
+    >
       <SpaceReadOnlyNotice readOnly={readOnly} />
       <Body
         projectId={projectId}

@@ -55,17 +55,13 @@ export function useFocusReturn(
 }
 
 /**
- * {@link useFocusReturn} for a plain box held by a ref.
- * @param box - The box the caret goes back into.
- * @param enabled - Whether there is a box to put the caret back into.
+ * {@link useFocusReturn} for a plain element held by a ref.
+ * @param box - The element the caret goes back into.
  */
-export function useBoxFocusReturn(
-  box: React.RefObject<HTMLElement | null>,
-  enabled = true,
-): void {
+export function useBoxFocusReturn(box: React.RefObject<HTMLElement | null>): void {
   const [memo] = React.useState<FocusReturn>(() => ({ hadFocus: false, returning: false }));
   useFocusReturn(
-    enabled ? memo : undefined,
+    memo,
     () => box.current !== null && document.activeElement === box.current,
     () => box.current?.focus(),
   );

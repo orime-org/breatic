@@ -8,7 +8,6 @@ import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { EmptyImageColorPicker } from '@web/spaces/canvas/empty-image/EmptyImageColorPicker';
 import { CROP_RATIOS } from '@web/lib/crop-math';
-import { useBoxFocusReturn } from '@web/lib/use-focus-return';
 import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 
@@ -54,10 +53,6 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
   const { spaceId } = useCanvasContext();
   const [width, setWidth] = React.useState(String(EMPTY_IMAGE_DEFAULT));
   const [height, setHeight] = React.useState(String(EMPTY_IMAGE_DEFAULT));
-  // Back on screen after a switch of Space, the caret goes back into the size
-  // box it was in (inner#1235 A13).
-  const sizeBox = React.useRef<HTMLInputElement | null>(null);
-  useBoxFocusReturn(sizeBox);
   const [color, setColor] = React.useState(EMPTY_IMAGE_DEFAULT_COLOR);
   // Which ratio preset is active (highlighted); cleared once W/H is hand-edited.
   const [activeRatio, setActiveRatio] = React.useState<number | null>(1);
@@ -123,12 +118,7 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
         <span className='text-xs font-medium text-muted-foreground'>
           {t('canvas.emptyImage.sections.resolution')}
         </span>
-        <div
-          className='flex items-center gap-2 text-xs text-muted-foreground'
-          onFocusCapture={(e) => {
-            if (e.target instanceof HTMLInputElement) sizeBox.current = e.target;
-          }}
-        >
+        <div className='flex items-center gap-2 text-xs text-muted-foreground'>
           <label className='flex items-center gap-1'>
             {t('canvas.emptyImage.width')}
             <input

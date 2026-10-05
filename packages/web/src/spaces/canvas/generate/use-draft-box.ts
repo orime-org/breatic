@@ -3,7 +3,6 @@
 
 import * as React from 'react';
 
-import { useBoxFocusReturn } from '@web/lib/use-focus-return';
 import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 
@@ -22,8 +21,7 @@ export interface DraftBoxProps {
  * word is not the reader finishing.
  *
  * Its Space hidden by a switch of Space is not the reader leaving: the words
- * typed so far stay in the box, and the caret goes back in when the Space is
- * shown again (inner#1235 A13).
+ * typed so far stay in the box (inner#1235 A13).
  * @param held - The value the node holds.
  * @param onCommit - Called with a changed value.
  * @returns The props for the box.
@@ -36,7 +34,6 @@ export function useDraftBox(held: string, onCommit: (next: string) => void): Dra
     if (draft !== null && draft !== held) onCommit(draft);
     setDraft(null);
   }, [draft, held, onCommit]);
-  useBoxFocusReturn(ref);
   const onChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => {
     setDraft(event.target.value);
   }, []);
