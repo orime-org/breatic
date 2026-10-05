@@ -578,7 +578,6 @@ function AudioGeneratePanelBody({
   const promptLabel =
     modeOption.promptLabelKey === undefined ? undefined : t(modeOption.promptLabelKey);
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
-  const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
   const promptSlot = React.useMemo(
     () =>
       fragment ? (
@@ -599,7 +598,6 @@ function AudioGeneratePanelBody({
           // no audio model declares a pool for one to travel in.
           referenceKinds={NO_REFERENCE_KINDS}
           mentionEmptyLabel={mentionEmptyLabel}
-          mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
         />
       ) : null,
@@ -610,7 +608,6 @@ function AudioGeneratePanelBody({
       onPromptFocus,
       references,
       mentionEmptyLabel,
-      mentionNoMatchLabel,
       caretProvider,
       lyrics,
       promptEditorRef,
@@ -642,7 +639,6 @@ function AudioGeneratePanelBody({
           references={references}
           referenceKinds={NO_REFERENCE_KINDS}
           mentionEmptyLabel={mentionEmptyLabel}
-          mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
         />
       ) : null,
@@ -654,7 +650,6 @@ function AudioGeneratePanelBody({
       onLyricsFocus,
       references,
       mentionEmptyLabel,
-      mentionNoMatchLabel,
       caretProvider,
       lyricsEditorRef,
     ],

@@ -159,7 +159,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.generatePanel.itemsRemove": { excluded: REASONS.SCREEN_READER, look: /an X on each to remove it/ },
   "canvas.generatePanel.leftAudioTip": { excluded: REASONS.SAYS_WHAT_TO_PICK },
   "canvas.generatePanel.locateSource": { excluded: REASONS.SCREEN_READER, look: /a target-like icon beside the words/ },
-  "canvas.generatePanel.mentionNoMatch": { excluded: REASONS.EMPTY_OR_SEARCH },
   "canvas.generatePanel.moodImageTip": { excluded: REASONS.SAYS_WHAT_TO_PICK },
   "canvas.generatePanel.musicLyricsPlaceholder": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "canvas.generatePanel.musicMelodyTip": { excluded: REASONS.SAYS_WHAT_TO_PICK },

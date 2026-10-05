@@ -61,7 +61,6 @@ function makeEditor(): Editor {
         suggestion: makeReferenceSuggestion({
           getPool: () => [],
           emptyLabel: 'No references',
-          noMatchLabel: 'No matches',
         }),
       }),
     ],
@@ -701,7 +700,6 @@ describe('undo — a chip and its invariant spaces undo together (Yjs yUndo)', (
           suggestion: makeReferenceSuggestion({
             getPool: () => [],
             emptyLabel: 'No references',
-            noMatchLabel: 'No matches',
           }),
         }),
       ],

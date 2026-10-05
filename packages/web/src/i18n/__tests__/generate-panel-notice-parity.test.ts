@@ -39,7 +39,6 @@ const NOTICE_KEYS = [
   // `@` 弹层没得提供时的两句（#1952）：一句说这一档一项都用不了，一句说
   // 你打的字把它们筛光了。缺哪句，那个语种的用户打完 `@` 只看得到裸 key。
   'canvas.generatePanel.mentionEmpty',
-  'canvas.generatePanel.mentionNoMatch',
 ] as const;
 
 describe.each(NOTICE_KEYS)('%s 五个语种都有', (key) => {

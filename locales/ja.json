@@ -251,8 +251,7 @@
       "attachUnsupported": "{filename} は添付できません",
       "attachTooLarge": "{filename} は大きすぎて添付できません",
       "attachUnavailable": "今は添付できません。もう一度お試しください。",
-      "atEmpty": "参照できる添付はありません",
-      "atNoMatch": "一致する添付はありません"
+      "atEmpty": "参照できる添付はありません"
     },
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
@@ -456,7 +455,6 @@
       "exit": "終了",
       "promptPlaceholder": "生成したい画像を説明してください。@ で参照を追加",
       "mentionEmpty": "参照できるものがありません",
-      "mentionNoMatch": "一致するものがありません",
       "voicePlaceholder": "音声が未選択",
       "voiceSearchPlaceholder": "音声を検索…",
       "voiceLoading": "音声を読み込み中…",

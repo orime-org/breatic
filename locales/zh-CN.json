@@ -251,8 +251,7 @@
       "attachUnsupported": "{filename} 不能附带",
       "attachTooLarge": "{filename} 太大，不能附带",
       "attachUnavailable": "暂时无法添加，请重试。",
-      "atEmpty": "没有可引用的附件",
-      "atNoMatch": "没有匹配的附件"
+      "atEmpty": "没有可引用的附件"
     },
     "empty": {
       "greetingWithName": "嗨, {name}!",
@@ -456,7 +455,6 @@
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的画面内容，@ 引用参考",
       "mentionEmpty": "没有可引用的内容",
-      "mentionNoMatch": "没有匹配的内容",
       "voicePlaceholder": "未选音色",
       "voiceSearchPlaceholder": "搜索音色…",
       "voiceLoading": "正在加载音色…",

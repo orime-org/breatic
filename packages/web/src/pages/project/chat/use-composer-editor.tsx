@@ -100,7 +100,7 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
               const q = query.toLowerCase();
               return {
                 items: ready.filter((a) => labelOf(a).toLowerCase().includes(q)),
-                emptyLabel: t(ready.length === 0 ? 'chat.composer.atEmpty' : 'chat.composer.atNoMatch'),
+                emptyLabel: t('chat.composer.atEmpty'),
               };
             },
             content: (item) => chatReferenceContent(item.id),

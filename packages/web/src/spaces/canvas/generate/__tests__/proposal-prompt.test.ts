@@ -62,7 +62,6 @@ function roundTrip(
         suggestion: makeReferenceSuggestion({
           getPool: () => [],
           emptyLabel: '',
-          noMatchLabel: '',
         }),
       }),
       Collaboration.configure({ fragment }),

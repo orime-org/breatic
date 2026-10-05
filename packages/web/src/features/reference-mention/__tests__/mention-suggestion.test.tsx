@@ -54,12 +54,13 @@ afterEach(() => {
 /**
  * An editor whose chip node opens the shared `@` list over {@link ROWS}.
  * @param placement - Where the list sits against the `@`.
+ * @param rows - What can be picked.
  * @returns The editor.
  */
-async function makeEditor(placement: 'top-start' | 'bottom-start' = 'top-start'): Promise<Editor> {
+async function makeEditor(placement: 'top-start' | 'bottom-start' = 'top-start', rows: Row[] = ROWS): Promise<Editor> {
   const suggestion = makeMentionSuggestion<Row>({
     resolveList: (query) => {
-      const items = ROWS.filter((r) => r.name.toLowerCase().includes(query.toLowerCase()));
+      const items = rows.filter((r) => r.name.toLowerCase().includes(query.toLowerCase()));
       return { items, emptyLabel: 'Nothing to pick' };
     },
     content: (row) => ({ type: REFERENCE_MENTION_NODE, attrs: { [MENTION_SOURCE_ID_ATTR]: row.id } }),
@@ -134,6 +135,16 @@ function listShown(): Promise<unknown> {
 }
 
 /**
+ * Whether any of the list is on screen: its rows or its empty sentence, under
+ * a frame that is not hidden.
+ * @returns True while some of it shows.
+ */
+function listOnScreen(): boolean {
+  const part = document.querySelector('[data-testid^="reference-mention-option-"], [data-testid="reference-mention-empty"]');
+  return part !== null && part.closest<HTMLElement>('body > div')?.style.display !== 'none';
+}
+
+/**
  * The ids of the chips in the document, in order.
  * @param e - The editor.
  * @returns The ids.
@@ -168,13 +179,47 @@ describe('the shared @ list', () => {
   });
 
   it('only closes the list when Enter finds nothing to pick', async () => {
-    const e = await makeEditor();
-    type(e, '@zz');
+    const e = await makeEditor('top-start', []);
+    type(e, '@');
     await listShown();
     press(e, 'Enter');
 
     expect(document.querySelector('[data-testid="reference-mention-empty"]')).toBeNull();
     expect(e.state.doc.childCount).toBe(1);
+    expect(e.state.doc.textContent).toBe('@');
+  });
+
+  it('shows nothing once what follows the @ matches no row, and shows the rows again when it does', async () => {
+    const e = await makeEditor();
+    type(e, '@al');
+    await listShown();
+    type(e, 'z');
+    await act(async () => {});
+
+    expect(listOnScreen()).toBe(false);
+    act(() => {
+      const end = e.state.selection.from;
+      e.view.dispatch(e.state.tr.delete(end - 1, end));
+    });
+    await listShown();
+    expect(document.querySelector('[data-testid="reference-mention-option-a"]')).not.toBeNull();
+  });
+
+  it('shows nothing for text after an @ that names no row, as pasted Chinese does', async () => {
+    const e = await makeEditor();
+    type(e, '第三方的@撒发的多少是收到');
+    await act(async () => {});
+
+    expect(listOnScreen()).toBe(false);
+  });
+
+  it('leaves Enter to the editor while what follows the @ matches no row', async () => {
+    const e = await makeEditor();
+    type(e, '@zz');
+    await act(async () => {});
+    press(e, 'Enter');
+
+    expect(e.state.doc.childCount).toBe(2);
     expect(e.state.doc.textContent).toBe('@zz');
   });
 

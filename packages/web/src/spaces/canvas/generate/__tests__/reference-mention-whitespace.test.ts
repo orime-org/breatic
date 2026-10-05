@@ -58,7 +58,6 @@ function makeEditor(): Editor {
         suggestion: makeReferenceSuggestion({
           getPool: () => [],
           emptyLabel: 'No references',
-          noMatchLabel: 'No matches',
         }),
       }),
     ],

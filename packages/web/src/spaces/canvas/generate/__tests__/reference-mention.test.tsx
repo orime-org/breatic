@@ -45,7 +45,6 @@ function makeEditor(): Editor {
         suggestion: makeReferenceSuggestion({
           getPool: () => [],
           emptyLabel: 'No references',
-          noMatchLabel: 'No matches',
         }),
       }),
     ],
@@ -81,7 +80,6 @@ describe('ReferenceMention — @ suggestion wiring', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [],
       emptyLabel: 'No references',
-      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         referenceKinds: ['image'],
         takesPrompt: true,
@@ -129,7 +127,6 @@ describe('ReferenceMention — @ suggestion wiring', () => {
           Parameters<typeof makeReferenceSuggestion>[0]['getPool']
         >,
       emptyLabel: 'No references',
-      noMatchLabel: 'No matches',
       // The image panel in image-to-image: it reads the pool, and images are
       // what it reads. Stating the mode is what #1945 changed — the verdict
       // did not. The picker now asks the same predicate as the rail's insert
@@ -161,7 +158,6 @@ describe('ReferenceMention — @ suggestion wiring', () => {
           Parameters<typeof makeReferenceSuggestion>[0]['getPool']
         >,
       emptyLabel: 'No references',
-      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         referenceKinds: [],
         takesPrompt: true,
@@ -250,7 +246,6 @@ describe('makeReferenceSuggestion — the popup shows what the LIVE pool matches
     const suggestion = makeReferenceSuggestion({
       getPool: () => [row],
       emptyLabel: 'No references',
-      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         referenceKinds: ['image'],
         takesPrompt: true,
@@ -301,7 +296,6 @@ describe('makeReferenceSuggestion — the popup shows what the LIVE pool matches
     const suggestion = makeReferenceSuggestion({
       getPool: () => pool,
       emptyLabel: 'No references',
-      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         referenceKinds: ['image'],
         takesPrompt: true,
@@ -393,7 +387,6 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
       const s = makeReferenceSuggestion({
         getPool: () => pool,
         emptyLabel: 'No references',
-        noMatchLabel: 'No matches',
         getUsabilityContext: () => ({
           referenceKinds: hideImages ? [] : ['image'],
           takesPrompt: true,
@@ -423,7 +416,6 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow, imageRow, focusRow],
       emptyLabel: 'No references',
-      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         referenceKinds: hideImages ? [] : ['image'],
         takesPrompt: true,
@@ -521,7 +513,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
-      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         referenceKinds: ['image'],
         takesPrompt: true,
@@ -574,7 +565,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
-      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         referenceKinds: ['image'],
         takesPrompt: true,
@@ -612,7 +602,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => pool,
       emptyLabel: 'No references',
-      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         referenceKinds: ['image'],
         takesPrompt: true,
@@ -681,7 +670,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
           suggestion: makeReferenceSuggestion({
             getPool: () => pool,
             emptyLabel: 'No references',
-            noMatchLabel: 'No matches',
           }),
         }),
       ],
@@ -772,7 +760,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
-      noMatchLabel: 'No matches',
     }); // no isLocalUserInput → the real tracker drives visibility
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -891,7 +878,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
-      noMatchLabel: 'No matches',
     }); // real tracker drives visibility
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -937,7 +923,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
-      noMatchLabel: 'No matches',
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -977,7 +962,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
-      noMatchLabel: 'No matches',
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');

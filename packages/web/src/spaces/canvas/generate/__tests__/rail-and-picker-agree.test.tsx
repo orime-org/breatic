@@ -60,7 +60,6 @@ function pickerOffers(referenceKinds: readonly ReferenceKind[], takesPrompt: boo
   const suggestion = makeReferenceSuggestion({
     getPool: () => ROWS,
     emptyLabel: 'empty',
-    noMatchLabel: 'no-match',
     getUsabilityContext: () => ({ referenceKinds, takesPrompt }),
   });
   const items = suggestion.items;

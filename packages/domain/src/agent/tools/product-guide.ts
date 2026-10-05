@@ -223,8 +223,8 @@ export function renderProductGuide(): string {
       "attaches them too. A sent message cannot be edited and a " +
       "reply cannot be regenerated: to ask again, send another message.",
     "Typing @ in the box opens a list, just above the @, of the attachments that have finished uploading; it " +
-      `reads ${quoted(t("chat.composer.atEmpty"))} when there are none and ${quoted(t("chat.composer.atNoMatch"))} ` +
-      "when what is typed after the @ matches none. Typing narrows it, the arrow keys move through it, Enter or " +
+      `reads ${quoted(t("chat.composer.atEmpty"))} when there are none. Typing narrows it and the list goes away ` +
+      "while what is typed after the @ matches none, so the @ stays ordinary text; the arrow keys move through it, Enter or " +
       "Tab puts the highlighted one into the text as a small block with its name, and Escape closes it. One " +
       "Backspace removes a block, and removing an attachment removes its blocks. The message is sent with " +
       "those references, so it is clear which attachment each one means.",
@@ -709,7 +709,7 @@ export function renderProductGuide(): string {
     "Connected nodes and focus crops are offered but not sent until the prompt mentions them. In the prompt, type " +
       "@ and choose from the list that opens: it holds the nodes connected into this one and this node's focus " +
       "crops, less any the current mode and model cannot take. Letters typed after @ narrow the list, which shows " +
-      "up to eight rows; the arrow keys move through it, Enter picks and Esc closes it. Only choosing a row makes " +
+      "up to eight rows and goes away while they match none; the arrow keys move through it, Enter picks and Esc closes it. Only choosing a row makes " +
       "a mention, and typing the name alone does not. With nothing to offer the list shows " +
       `${quoted(t("canvas.generatePanel.mentionEmpty"))}. Clicking a chip in the strip above the prompt inserts ` +
       "it too; a faded chip shows a message saying why instead, such as " +

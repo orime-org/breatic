@@ -692,7 +692,6 @@ function GeneratePanelBody({
   // a ref and republished in place.
   const promptPlaceholder = t('canvas.generatePanel.promptPlaceholder');
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
-  const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
   // The model's pool says which `@` chips it uses; text-to-image models take
   // none, so there every media chip contributes nothing and greys (§2.4 C).
   const referenceKinds = useReferenceKinds(vm.pool);
@@ -714,7 +713,6 @@ function GeneratePanelBody({
           references={stableReferences}
           referenceKinds={referenceKinds}
           mentionEmptyLabel={mentionEmptyLabel}
-          mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
           mentionTokens={stableMentionTokens}
         />
@@ -724,7 +722,6 @@ function GeneratePanelBody({
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
-      mentionNoMatchLabel,
       onPromptChange,
       handleAtMentionsChange,
       stableReferences,

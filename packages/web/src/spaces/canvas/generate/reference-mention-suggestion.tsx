@@ -42,10 +42,6 @@ const ANY_CONTEXT: ReferenceUsabilityContext = {
  * @param input.getPool - Reads the CURRENT reference pool (incoming edges); a
  *   getter so the editor need not rebuild when the pool changes.
  * @param input.emptyLabel - Localized text for "this mode has nothing to offer".
- * @param input.noMatchLabel - Localized text for "there IS something, your query
- *   filtered it out". Required, never optional falling back to `emptyLabel`: a
- *   path that forgot to pass it would silently say the wrong one of the two and
- *   nothing would go red (user 2026-08-19).
  * @param input.getUsabilityContext - Live getter for what the active mode does with
  *   references; rows the mode cannot consume are left out of the picker
  *   entirely — absent from the list, not listed and greyed (user
@@ -62,7 +58,6 @@ const ANY_CONTEXT: ReferenceUsabilityContext = {
 export function makeReferenceSuggestion(input: {
   getPool: () => ReferenceRailItem[];
   emptyLabel: string;
-  noMatchLabel: string;
   getUsabilityContext?: () => ReferenceUsabilityContext;
   refreshRef?: RefreshHandleRef;
   isLocalUserInput?: (editor: Editor) => boolean;
@@ -101,10 +96,10 @@ export function makeReferenceSuggestion(input: {
   };
 
   /**
-   * What to put in the popup for a query: the rows, and — when there are none
-   * — which of the two sentences is true.
+   * What to put in the popup for a query: the rows, and the sentence a bare
+   * `@` shows when there are none.
    * @param query - The text typed after `@`.
-   * @returns The rows to list and the empty-state text to show if they run out.
+   * @returns The rows to list and the empty-state text.
    */
   const resolveList = (
     query: string,
@@ -114,13 +109,7 @@ export function makeReferenceSuggestion(input: {
     const items = usable
       .filter((r) => (r.sourceNodeName || '').toLowerCase().includes(q))
       .slice(0, 8);
-    return {
-      items,
-      // Nothing this mode can use at all, or something it can use that the
-      // typed query filtered out — two different situations, and telling the
-      // second one it has nothing would be a lie (user 2026-08-19).
-      emptyLabel: usable.length === 0 ? input.emptyLabel : input.noMatchLabel,
-    };
+    return { items, emptyLabel: input.emptyLabel };
   };
 
   return makeMentionSuggestion<ReferenceRailItem>({

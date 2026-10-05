@@ -96,7 +96,6 @@ async function mountWithChip(): Promise<{
       references={[imgRef]}
       referenceKinds={['image']}
       mentionEmptyLabel='No references'
-      mentionNoMatchLabel='No matches'
     />,
   );
   await waitFor(() => expect(ref.current).not.toBeNull());
@@ -278,7 +277,6 @@ async function mountWithTwoChips(): Promise<{
       references={[imgRef, chipRefB]}
       referenceKinds={['image']}
       mentionEmptyLabel='No references'
-      mentionNoMatchLabel='No matches'
     />,
   );
   await waitFor(() => expect(ref.current).not.toBeNull());
@@ -623,7 +621,6 @@ describe('drop residue heal (D1)', () => {
           suggestion: makeReferenceSuggestion({
             getPool: () => [],
             emptyLabel: 'No references',
-            noMatchLabel: 'No matches',
           }),
         }),
       ],
@@ -917,7 +914,6 @@ describe('drag source restore on drop (#1776, Safari selection-follows-drop-care
           suggestion: makeReferenceSuggestion({
             getPool: () => [],
             emptyLabel: 'No references',
-            noMatchLabel: 'No matches',
           }),
         }),
       ],
@@ -1102,7 +1098,6 @@ describe('unified chip drag ghost (Safari had none — tiptap only sets one via 
           suggestion: makeReferenceSuggestion({
             getPool: () => [],
             emptyLabel: 'No references',
-            noMatchLabel: 'No matches',
           }),
         }),
       ],

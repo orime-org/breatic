@@ -251,8 +251,7 @@
       "attachUnsupported": "{filename} can’t be attached",
       "attachTooLarge": "{filename} is too large to attach",
       "attachUnavailable": "Couldn’t attach right now. Try again.",
-      "atEmpty": "Nothing attached to mention",
-      "atNoMatch": "No matching attachment"
+      "atEmpty": "Nothing attached to mention"
     },
     "empty": {
       "greetingWithName": "Hi, {name}!",
@@ -468,7 +467,6 @@
       "exit": "Exit",
       "promptPlaceholder": "Describe the image you want to generate, @ to add a reference",
       "mentionEmpty": "No references available",
-      "mentionNoMatch": "No matches",
       "voicePlaceholder": "No voice chosen",
       "voiceSearchPlaceholder": "Search voices…",
       "voiceLoading": "Loading voices…",

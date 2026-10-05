@@ -39,7 +39,6 @@ function seededEditor(): Editor {
         suggestion: makeReferenceSuggestion({
           getPool: () => [],
           emptyLabel: 'none',
-          noMatchLabel: 'No matches',
         }),
       }),
     ],

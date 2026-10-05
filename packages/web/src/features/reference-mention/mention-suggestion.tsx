@@ -141,34 +141,45 @@ export function makeMentionSuggestion<T>(
        */
       let latestProps: SuggestionProps<T> | null = null;
       /**
-       * Whether the popup should be on screen right now.
-       *
-       * ONE variable, and {@link applyVisibility} is the only thing that writes
-       * it into the DOM. It used to be two — a dismissal flag plus whatever
-       * `el.style.display` happened to say — because a popup could be hidden
-       * for a second reason: zero matches. That reason is gone (#1952, the
-       * popup is always shown and says a sentence instead), which left the two
-       * always carrying the same answer.
-       *
-       * False means the user closed it, or something other than the user put
-       * an `@` in range. A remote collaborator's edit fires onUpdate exactly
-       * like local typing (a peer inserting before the `@` shifts the range),
-       * so content refreshes must not touch this (collaboration residual 1).
+       * Whether the reader wants the popup: false means the user closed it, or
+       * something other than the user put an `@` in range. A remote
+       * collaborator's edit fires onUpdate exactly like local typing (a peer
+       * inserting before the `@` shifts the range), so content refreshes must
+       * not touch this (collaboration residual 1).
        */
-      let visible = false;
+      let wanted = false;
+      /**
+       * Whether the current query has something to show: a bare `@` always
+       * does (its rows, or the sentence saying there are none to pick), and a
+       * typed query only while it matches a row. Text that names nothing after
+       * an `@` is ordinary text, as in GitHub, Discourse and Mastodon, which
+       * show no list for a query without results; in Chinese or Japanese it can
+       * run on for a whole paragraph, since no space ends it.
+       */
+      let showable = false;
+      /**
+       * Whether the popup is on screen: the only answer {@link applyVisibility}
+       * writes into the DOM, and the one the keys follow.
+       * @returns True while it is shown.
+       */
+      const onScreen = (): boolean => wanted && showable;
       /**
        * Everything the list is given for a query, in one place for the first
        * render and every refresh alike.
        * @param query - The text typed after `@`.
        * @returns The list's props.
        */
-      const listProps = (query: string): MentionListProps<T> => ({
-        ...resolveList(query),
-        query,
-        command: (item: T) => latestProps?.command(item),
-        itemKey: input.itemKey,
-        renderItem: input.renderItem,
-      });
+      const listProps = (query: string): MentionListProps<T> => {
+        const list = resolveList(query);
+        showable = query === '' || list.items.length > 0;
+        return {
+          ...list,
+          query,
+          command: (item: T) => latestProps?.command(item),
+          itemKey: input.itemKey,
+          renderItem: input.renderItem,
+        };
+      };
       /**
        * Updates the popup's list CONTENT only — never its visibility. The pick
        * command is read live from {@link latestProps} (bound to the current `@`
@@ -187,11 +198,11 @@ export function makeMentionSuggestion<T>(
       };
 
       /**
-       * Writes {@link visible} into the DOM. The only place that touches
+       * Writes {@link onScreen} into the DOM. The only place that touches
        * `el.style.display`, so intent and appearance cannot drift apart.
        */
       const applyVisibility = (): void => {
-        if (el) el.style.display = visible ? '' : 'none';
+        if (el) el.style.display = onScreen() ? '' : 'none';
       };
 
       /**
@@ -209,12 +220,12 @@ export function makeMentionSuggestion<T>(
        * @param editor - The editor (its settled state is read live).
        */
       const reshowIfActiveHidden = (editor: Editor): void => {
-        if (!el || visible || !editor.isEditable) return;
+        if (!el || wanted || !editor.isEditable) return;
         const st = SuggestionPluginKey.getState(editor.state) as
           | { active?: boolean; query?: string }
           | undefined;
         if (st?.active !== true || !editor.state.selection.empty) return;
-        visible = true;
+        wanted = true;
         updateContent(st.query ?? '');
         applyVisibility();
       };
@@ -281,7 +292,7 @@ export function makeMentionSuggestion<T>(
           const hideUnlessWithin = (target: EventTarget | null): void => {
             if (!(target instanceof Node) || !el) return;
             if (el.contains(target) || props.editor.view.dom.contains(target)) return;
-            visible = false; // user closed it — a remote edit must not re-open
+            wanted = false; // user closed it — a remote edit must not re-open
             applyVisibility();
           };
           el = document.createElement('div');
@@ -296,10 +307,12 @@ export function makeMentionSuggestion<T>(
           // stale list. The caller runs this refresh when that happens.
           if (input.refreshRef) {
             input.refreshRef.current = (): void => {
-              // CONTENT only, and only while on screen. It never opens or closes
-              // anything: a popup the user closed stays closed, and an emptied
-              // list shows a sentence rather than disappearing (#1952).
-              if (el && visible && latestProps) updateContent(latestProps.query);
+              // Never opens a popup the user closed. One they want follows what
+              // the query now matches: a bare `@` whose rows all left says the
+              // sentence; a typed query whose last match left hides.
+              if (!el || !wanted || !latestProps) return;
+              updateContent(latestProps.query);
+              applyVisibility();
             };
           }
           // Clicking outside the popup AND the editor does NOT move the ProseMirror selection, so the suggestion
@@ -357,7 +370,7 @@ export function makeMentionSuggestion<T>(
           // flash structurally impossible (nothing shows unless the settled caret
           // already validates the click's own coordinates).
           onEditorClick = (event: MouseEvent): void => {
-            if (!el || visible) return;
+            if (!el || wanted) return;
             const pos = props.editor.view.posAtCoords({
               left: event.clientX,
               top: event.clientY,
@@ -383,7 +396,7 @@ export function makeMentionSuggestion<T>(
           // a remote insert before the `@`, and a whole-paragraph setContent all
           // produce update-only sequences; the only EXIT observed (typing a
           // space) is terminal, with no START behind it.
-          visible = isLocalUserInput(props.editor);
+          wanted = isLocalUserInput(props.editor);
           applyVisibility();
           place(props.clientRect);
         },
@@ -397,20 +410,17 @@ export function makeMentionSuggestion<T>(
           // the user closed (residual 1; the round-4 hole was that the old
           // "not remote" test let the local cascade through).
           updateContent(props.query);
-          if (isLocalUserInput(props.editor)) {
-            // Local keystroke = the user re-engaging, so it re-opens a popup
-            // they had closed. A non-local change refreshes content only —
-            // there is nothing left for it to decide about visibility now that
-            // an empty list is shown rather than hidden.
-            visible = true;
-            applyVisibility();
-          }
+          // Local keystroke = the user re-engaging, so it re-opens a popup they
+          // had closed. A non-local change leaves that alone; either way the
+          // popup follows whether the query still matches.
+          if (isLocalUserInput(props.editor)) wanted = true;
+          applyVisibility();
           place(props.clientRect);
         },
         onKeyDown: (props: SuggestionKeyDownProps): boolean => {
           // A list the reader closed (or never saw) takes no keys: Enter is
           // theirs again, to send or to break the line.
-          if (!visible) return false;
+          if (!onScreen()) return false;
           if (component?.ref?.onKeyDown(props.event) === true) return true;
           // Enter or Tab with nothing to pick ends the `@` there, leaving what
           // was typed as plain text; it neither sends nor breaks the line.
@@ -444,7 +454,8 @@ export function makeMentionSuggestion<T>(
             onEditorClick = null;
           }
           if (input.refreshRef) input.refreshRef.current = null;
-          visible = false;
+          wanted = false;
+          showable = false;
           latestProps = null;
           el?.remove();
           el = null;

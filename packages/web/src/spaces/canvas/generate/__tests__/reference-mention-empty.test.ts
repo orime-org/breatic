@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * `@` 弹层没得提供时说的那两句话（#1952）。
+ * What the `@` popup shows when it has nothing to list (#1952). A bare `@`
+ * always shows it, saying there is nothing usable whatever the cause (no edge,
+ * nothing in it, or a mode that cannot take it). A typed name that matches no
+ * row hides it, so the `@` reads as ordinary text.
  *
- * 三条拍板叠在一起决定了这里的行为：弹层一律出现、零匹配也出现（I3 作废，
- * user 2026-08-18）；空的成因不分（没连线 / 没内容 / 模式不支持共用一句）；
- * 但「有货只是你打的字筛掉了」是另一件事，说第二句（user 2026-08-19）。
- *
- * 判据只能在这一层做：`MentionList` 收到的是已经过滤完的 items，
- * 分辨不出这些行是被模式滤光的还是被名字滤光的。
+ * The rows the list receives are already filtered, so only this layer can tell
+ * a mode that left nothing from a name that matched nothing.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -25,7 +24,6 @@ import { ReferenceMention } from '@web/spaces/canvas/generate/reference-mention'
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 
 const EMPTY = 'EMPTY-LABEL';
-const NO_MATCH = 'NO-MATCH-LABEL';
 
 const imageRow: ReferenceRailItem = {
   refId: 'i->me',
@@ -50,7 +48,6 @@ function makeEditor(): Editor {
         suggestion: makeReferenceSuggestion({
           getPool: () => [],
           emptyLabel: EMPTY,
-          noMatchLabel: NO_MATCH,
         }),
       }),
     ],
@@ -104,7 +101,6 @@ function openPopup(opts: {
   const suggestion = makeReferenceSuggestion({
     getPool: () => opts.pool,
     emptyLabel: EMPTY,
-    noMatchLabel: NO_MATCH,
     getUsabilityContext: () => ({
       referenceKinds: opts.referenceKinds ?? ['image'],
       takesPrompt: true,
@@ -134,7 +130,7 @@ function openPopup(opts: {
   };
 }
 
-describe('弹层一律出现，零匹配也出现', () => {
+describe('a bare @ shows the popup even with nothing to list', () => {
   it('池子空时打 `@`，弹层不藏起来', () => {
     const p = openPopup({ pool: [] });
     try {
@@ -154,7 +150,7 @@ describe('弹层一律出现，零匹配也出现', () => {
   });
 });
 
-describe('两句话：没得提供，还是你打的字筛掉了', () => {
+describe('what an empty popup says, and when it hides', () => {
   it('模式过滤后一项不剩 —— 说「没有可引用的内容」', () => {
     const p = openPopup({ pool: [], query: '' });
     try {
@@ -173,17 +169,17 @@ describe('两句话：没得提供，还是你打的字筛掉了', () => {
     }
   });
 
-  it('模式过滤后有货、名字没匹配上 —— 说「没有匹配的内容」', () => {
+  it('hides the popup when the pool has rows and the typed name matches none', () => {
     const p = openPopup({ pool: [imageRow], query: 'zzz' });
     try {
       expect(p.lastProps()?.items).toEqual([]);
-      expect(p.lastProps()?.emptyLabel).toBe(NO_MATCH);
+      expect(p.el.style.display).toBe('none');
     } finally {
       p.close();
     }
   });
 
-  it('有匹配时列表照常给行，那两句都不出场', () => {
+  it('有匹配时列表照常给行，那句话不出场', () => {
     const p = openPopup({ pool: [imageRow], query: 'pi' });
     try {
       expect((p.lastProps()?.items as ReferenceRailItem[]).length).toBe(1);
