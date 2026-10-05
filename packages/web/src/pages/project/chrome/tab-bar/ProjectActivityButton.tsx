@@ -365,7 +365,7 @@ export function ProjectActivityButton({
             scrolling, no layout space, hover changes color only. */}
         <ScrollArea className='min-h-0 flex-1'>
           <ul
-            className='flex flex-col gap-0.5 px-2'
+            className='flex flex-col gap-0.5 px-2 py-2'
             role='list'
             data-testid='project-activity-list'
           >
