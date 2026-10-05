@@ -22,6 +22,7 @@ import {
   activeId,
   addSpaces,
   camera,
+  storedViewport,
   openFreshProject,
   projectIdOf,
   stripIds,
@@ -654,6 +655,280 @@ test('reordering the tabs leaves a document where the reader scrolled it', async
   );
 
   await expect.poll(() => scroller.evaluate((el) => Math.round(el.scrollTop))).toBe(300);
+});
+
+/**
+ * Adds an image node showing a decoded picture.
+ * @param p - A page with the Space open.
+ * @param projectId - The project.
+ * @param spaceId - The Space.
+ * @param id - The node id.
+ * @param at - Where it goes, in canvas coordinates.
+ */
+async function seedPicture(
+  p: Page,
+  projectId: string,
+  spaceId: string,
+  id: string,
+  at: { x: number; y: number },
+): Promise<void> {
+  // The crop export asks for the picture again in CORS mode, with a query.
+  await p.route('**/keep-alive-picture.png*', (route) =>
+    route.fulfill({
+      contentType: 'image/png',
+      body: PNG,
+      headers: { 'Access-Control-Allow-Origin': '*' },
+    }),
+  );
+  const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
+  await p.evaluate(
+    async ([pid, sid, nodeId, url, src, x, y]: string[]) => {
+      const canvas = (await import(/* @vite-ignore */ url!)) as {
+        addNode: (p: string, s: string, n: unknown) => void;
+      };
+      canvas.addNode(pid!, sid!, {
+        id: nodeId,
+        type: 'image',
+        position: { x: Number(x), y: Number(y) },
+        data: {
+          name: 'keep-alive',
+          createdAt: Date.now(),
+          createdBy: 'keep-alive',
+          locked: false,
+          state: 'idle',
+          attachments: [],
+          content: src,
+        },
+      });
+    },
+    [
+      projectId,
+      spaceId,
+      id,
+      canvasAt,
+      `${new URL(p.url()).origin}/keep-alive-picture.png`,
+      String(at.x),
+      String(at.y),
+    ],
+  );
+  await expect
+    .poll(
+      () =>
+        visibleSpace(p)
+          .locator(`.react-flow__node[data-id="${id}"] [data-testid="image-node-img"]`)
+          .evaluate((el: HTMLImageElement) => el.naturalWidth),
+      { timeout: 20_000 },
+    )
+    .toBeGreaterThan(0);
+}
+
+/**
+ * Opens the Generate panel on a node.
+ * @param p - The page.
+ * @param nodeId - The node.
+ */
+async function openGenerate(p: Page, nodeId: string): Promise<void> {
+  await visibleSpace(p)
+    .locator(`.react-flow__node[data-id="${nodeId}"]`)
+    .click({ button: 'right', position: { x: 4, y: 4 } });
+  await p.getByTestId('node-menu-generate').click();
+  await expect(visibleSpace(p).getByTestId('generate-prompt-editor')).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+test('choosing Generate again on the open panel keeps what was typed undoable', async ({
+  page,
+}) => {
+  // A13: the open panel chosen again on its own node is the same panel, and
+  // its prompt editor keeps its undo history.
+  const projectUrl = await openFreshProject(page);
+  const [space] = (await stripIds(page)) as [string];
+  await seedPicture(page, projectIdOf(projectUrl), space, 'again-host', { x: 0, y: 0 });
+  await openGenerate(page, 'again-host');
+  const prompt = visibleSpace(page).getByTestId('generate-prompt-editor').locator('.ProseMirror');
+  await prompt.click();
+  await page.keyboard.type('a red cat');
+
+  await openGenerate(page, 'again-host');
+  await prompt.click();
+  await page.keyboard.press('ControlOrMeta+z');
+
+  await expect(prompt).not.toContainText('a red cat');
+});
+
+test('a focus pick left on a canvas is still on when the canvas is shown again', async ({
+  page,
+}) => {
+  // A15: switching away and back is not the pick ending, and says nothing.
+  const projectUrl = await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  const projectId = projectIdOf(projectUrl);
+  await seedPicture(page, projectId, first, 'pick-host', { x: 0, y: 0 });
+  await seedPicture(page, projectId, first, 'pick-source', { x: 520, y: 0 });
+  await openGenerate(page, 'pick-host');
+  await page.getByTestId('generate-tool-focus').click();
+  const banner = visibleSpace(page).getByTestId('reference-pick-banner');
+  await expect(banner).toBeVisible();
+
+  await showSpace(page, second);
+  await showSpace(page, first);
+
+  await expect(banner).toBeVisible();
+  await expect(page.getByText('Selection ended.')).toHaveCount(0);
+  await visibleSpace(page)
+    .locator('.react-flow__node[data-id="pick-source"] [data-testid="image-node-img"]')
+    .click();
+  await expect(page.getByTestId('focus-crop-controls')).toBeVisible({ timeout: 10_000 });
+});
+
+test('a tab with a focus crop still uploading cannot be closed', async ({ page }) => {
+  // A17: closing is held back while the cropped picture is on its way.
+  const projectUrl = await openFreshProject(page);
+  const [space] = (await stripIds(page)) as [string];
+  const projectId = projectIdOf(projectUrl);
+  await seedPicture(page, projectId, space, 'crop-host', { x: 0, y: 0 });
+  await seedPicture(page, projectId, space, 'crop-source', { x: 520, y: 0 });
+  await openGenerate(page, 'crop-host');
+  await page.getByTestId('generate-tool-focus').click();
+  await visibleSpace(page)
+    .locator('.react-flow__node[data-id="crop-source"] [data-testid="image-node-img"]')
+    .click();
+  await expect(page.getByTestId('focus-crop-controls')).toBeVisible({ timeout: 10_000 });
+  await page.getByTestId('focus-ratio-original').click();
+  // The upload is held so that it is still on its way when the tab is closed.
+  await page.route('**/assets/upload-ticket**', () => undefined);
+  await page.getByTestId('focus-crop-confirm').click();
+
+  await page.locator(`[data-testid="space-tab-${space}"]`).hover();
+  await page.locator(`[data-testid="space-tab-close-${space}"]`).click();
+
+  await expect(
+    page.getByText('An operation is still in progress — finish it before closing this Space.'),
+  ).toBeVisible();
+  expect(await stripIds(page)).toContain(space);
+});
+
+test('a panel whose node a collaborator deleted while hidden closes and says so', async ({
+  page,
+}) => {
+  // A16: the reader comes back to the panel gone and the reason on screen.
+  const projectUrl = await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  const projectId = projectIdOf(projectUrl);
+  await seedPicture(page, projectId, first, 'doomed-host', { x: 0, y: 0 });
+  await openGenerate(page, 'doomed-host');
+  await showSpace(page, second);
+
+  const peer = await page.context().newPage();
+  try {
+    await peer.goto(projectUrl);
+    await peer.locator(`[data-testid="space-tab-${first}"]`).click();
+    await expect(visibleSpace(peer).locator('.react-flow__node[data-id="doomed-host"]')).toBeVisible({
+      timeout: 20_000,
+    });
+    const canvasAt = await liveModuleUrl(peer, CANVAS_SPACE);
+    await peer.evaluate(
+      async ([pid, sid, url]: string[]) => {
+        const canvas = (await import(/* @vite-ignore */ url!)) as {
+          removeNode: (p: string, s: string, id: string) => void;
+        };
+        canvas.removeNode(pid!, sid!, 'doomed-host');
+      },
+      [projectId, first, canvasAt],
+    );
+    await expect(peer.locator('.react-flow__node[data-id="doomed-host"]')).toHaveCount(0);
+    await page.waitForTimeout(2_000);
+
+    await showSpace(page, first);
+
+    await expect(page.getByText('A collaborator deleted the node.')).toBeVisible();
+    await expect(visibleSpace(page).getByTestId('generate-prompt-editor')).toHaveCount(0);
+  } finally {
+    await peer.close();
+  }
+});
+
+test('a closed tab leaves the page, and opens again from storage', async ({ page }) => {
+  // A8: closing unmounts the Space and releases what it held; opening it
+  // again starts from storage, which keeps no camera for a closed tab.
+  await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  const pane = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
+  if (pane === null) throw new Error('the pane has no box');
+  await page.mouse.move(pane.x + 300, pane.y + 300);
+  await page.mouse.wheel(120, 80);
+  await expect.poll(async () => (await camera(page)).x).not.toBe(0);
+  const aimed = await camera(page);
+  await showSpace(page, second);
+
+  await page.locator(`[data-testid="space-tab-${first}"]`).hover();
+  await page.locator(`[data-testid="space-tab-close-${first}"]`).click();
+  await expect.poll(() => stripIds(page)).not.toContain(first);
+  await expect(page.locator(`[data-space-outlet="${first}"]`)).toHaveCount(0);
+
+  expect(await storedViewport(page, first)).toBeNull();
+
+  await page.getByTestId('space-drawer-trigger').click();
+  await page.getByTestId(`space-drawer-row-${first}`).click();
+  await expect.poll(() => activeId(page)).toBe(first);
+  if (await page.getByTestId('space-drawer').isVisible()) await page.keyboard.press('Escape');
+  await expect(page.getByTestId('space-drawer')).toBeHidden();
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  expect(await camera(page)).not.toEqual(aimed);
+});
+
+test('a hidden document shows no floating bar, no caret to others, and takes in their writes', async ({
+  page,
+}) => {
+  // A5 and A6 for a document: hidden, its bubble bar is off screen and a
+  // collaborator no longer sees this reader's caret; what the collaborator
+  // writes meanwhile is there when it is shown again.
+  const projectUrl = await openFreshProject(page);
+  const [docA, docB] = await addSpaces(page, 2, 'document');
+  await expect(page.getByTestId('new-space-button')).toBeFocused();
+  await showSpace(page, docA!);
+  const editor = page.locator(DOCUMENT_EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await editor.click();
+  await page.keyboard.type('the reader was here');
+
+  const peer = await page.context().newPage();
+  try {
+    await peer.goto(projectUrl);
+    await peer.locator(`[data-testid="space-tab-${docA!}"]`).click();
+    const peerEditor = peer.locator(DOCUMENT_EDITOR);
+    await expect(peerEditor).toContainText('the reader was here', { timeout: 20_000 });
+    const carets = peer.locator(
+      `${VISIBLE_SPACE} .collaboration-carets__caret:not(.collaboration-carets__caret--blurred)`,
+    );
+    await expect(carets).toHaveCount(1, { timeout: 15_000 });
+
+    await selectFirstParagraph(page);
+    await expect(page.getByTestId('doc-bubble-tool-comment')).toBeVisible();
+    await showSpace(page, docB!);
+
+    await expect(page.getByTestId('doc-bubble-tool-comment')).toBeHidden();
+    await expect(carets).toHaveCount(0, { timeout: 15_000 });
+
+    await peerEditor.click();
+    await peer.keyboard.press('ControlOrMeta+End');
+    await peer.keyboard.press('Enter');
+    await peer.keyboard.type('written while it was hidden');
+    await page.waitForTimeout(2_000);
+    await showSpace(page, docA!);
+
+    await expect(editor).toContainText('written while it was hidden');
+  } finally {
+    await peer.close();
+  }
 });
 
 test.describe('on a Mac, where Cmd is the canvas library\'s add-to-selection key', () => {
