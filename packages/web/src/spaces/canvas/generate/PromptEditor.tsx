@@ -269,7 +269,6 @@ export const PromptEditor = React.forwardRef<
   // replaced by another, ends it; a panel taken down with a hidden Space and
   // put back does not (inner#1235 A13).
   const panelSession = useCanvasSession((st) => st.panelSession);
-  const panelOpen = useCanvasSession((st) => st.panelHostId !== null);
   const resolveName = collaboratorNames?.resolve;
   const editor = React.useMemo((): Editor => {
     const key = promptKey(fragment);
@@ -367,17 +366,17 @@ export const PromptEditor = React.forwardRef<
       });
       // Ends with the opening of the panel it was built in.
       const session = sessionStore.getState().panelSession;
-      const hostOpen = sessionStore.getState().panelHostId !== null;
       const stop = sessionStore.subscribe((st) => {
-        if (st.panelSession === session && (st.panelHostId !== null) === hostOpen) return;
+        if (st.panelSession === session) return;
         stop();
         if (!built.isDestroyed) endKeptEditor(spaceId, key);
       });
       return built;
     };
     // A kept editor is reused while it is bound to the same caret connection
-    // with the same captured strings (the key is the prompt's own). The two mention labels are
-    // baked into the extensions and change only on a locale switch; the caret
+    // with the same captured strings (the key is the prompt's own). The two
+    // mention labels are baked into the extensions and change only on a
+    // locale switch; the caret
     // connection arrives once, on the socket's first connect; the name
     // RESOLVER keeps one identity for the editor's whole life and reads the
     // current roster itself, so it is compared rather than the roster bundle,
@@ -392,10 +391,10 @@ export const PromptEditor = React.forwardRef<
       );
     });
     // Everything else reaches a kept editor through its wiring below, not by
-    // rebuilding it. The panel's session and openness are listed so that a
-    // panel ending under a mounted editor builds this one a new editor.
+    // rebuilding it. The panel's session is listed so that a panel ending
+    // under a mounted editor builds this one a new editor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spaceId, fragment, caretProvider, mentionEmptyLabel, mentionNoMatchLabel, resolveName, panelSession, panelOpen]);
+  }, [spaceId, fragment, caretProvider, mentionEmptyLabel, mentionNoMatchLabel, resolveName, panelSession]);
 
   const kept = keptOf.get(editor);
   if (kept !== undefined) {

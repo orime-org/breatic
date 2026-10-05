@@ -220,6 +220,26 @@ function endPanel(s: CanvasSessionState): void {
   s.panelSession += 1;
 }
 
+/**
+ * Open a panel on a node in the canvas's one panel slot. A pick in progress
+ * ends, so it cannot wire the next click to the node it was started on. Only
+ * a different host or kind is a new opening: choosing the panel already open
+ * again keeps it, its prompt editor and that editor's undo history.
+ * @param s - The draft state being written.
+ * @param nodeId - The node the panel opens on.
+ * @param kind - Which panel.
+ */
+function openPanel(
+  s: CanvasSessionState,
+  nodeId: string,
+  kind: NonNullable<CanvasSessionState['panelKind']>,
+): void {
+  if (s.panelHostId !== nodeId || s.panelKind !== kind) s.panelSession += 1;
+  s.panelHostId = nodeId;
+  s.panelKind = kind;
+  s.pickSession = null;
+}
+
 /** The two slots that read the canvas's next click. */
 interface CanvasModeSlots {
   placingAnnotation: boolean;
@@ -293,54 +313,16 @@ export function createCanvasSessionStore(): CanvasSessionStore {
           // under an image body, which reads as a working panel operating on
           // the wrong thing; nothing happening is the honest outcome.
           if (!kind) return;
-          s.panelHostId = nodeId;
-          s.panelKind = kind;
-          s.panelSession += 1;
-          // Switching the panel to another node (or from the reset panel) must
-          // exit any in-progress pick — otherwise a stale pick would wire the
-          // next click to the PREVIOUS node (closeActivePanel clears it too).
-          s.pickSession = null;
+          openPanel(s, nodeId, kind);
         }),
-      openEmptyImagePanel: (nodeId) =>
-        set((s) => {
-          // Opening reset replaces any open panel (Generate included) — single
-          // host + kind makes the two mutually exclusive with no manual bookkeeping.
-          s.panelHostId = nodeId;
-          s.panelKind = 'resetEmpty';
-          s.panelSession += 1;
-          s.pickSession = null;
-        }),
-      openHistoryPanel: (nodeId) =>
-        set((s) => {
-          // History browse is another node-anchored panel in the same mutually-
-          // exclusive slot; clearing pickSession matches the other two openers so
-          // a stale Generate pick can't wire the next click to a previous node.
-          s.panelHostId = nodeId;
-          s.panelKind = 'history';
-          s.panelSession += 1;
-          s.pickSession = null;
-        }),
+      openEmptyImagePanel: (nodeId) => set((s) => openPanel(s, nodeId, 'resetEmpty')),
+      openHistoryPanel: (nodeId) => set((s) => openPanel(s, nodeId, 'history')),
       openTaskPanel: (nodeId, status) =>
         set((s) => {
-          // The fourth node-anchored panel in the same exclusive slot; clearing
-          // pickSession matches the other three openers so a stale Generate pick
-          // cannot wire the next click to a previous node.
-          s.panelHostId = nodeId;
-          s.panelKind = 'tasks';
-          s.panelSession += 1;
+          openPanel(s, nodeId, 'tasks');
           s.taskPanelStatus = status;
-          s.pickSession = null;
         }),
-      openAnnotationPanel: (nodeId) =>
-        set((s) => {
-          // The fifth panel in the exclusive slot; clearing pickSession matches
-          // the other four openers so a stale Generate pick cannot wire the next
-          // click to a previous node.
-          s.panelHostId = nodeId;
-          s.panelKind = 'annotation';
-          s.panelSession += 1;
-          s.pickSession = null;
-        }),
+      openAnnotationPanel: (nodeId) => set((s) => openPanel(s, nodeId, 'annotation')),
       closeActivePanel: () => set(endPanel),
       startTextEdit: (nodeId) =>
         set((s) => {

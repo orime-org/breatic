@@ -62,6 +62,25 @@ describe('canvas session store', () => {
     expect(store.getState().panelHostId).toBeNull();
   });
 
+  it('keeps the opening when the panel already open is chosen again on its host', () => {
+    // Re-choosing Generate on the node whose panel is open is the same panel;
+    // a new session would end the prompt editor and its undo history.
+    const store = createCanvasSessionStore();
+    store.getState().openGeneratePanel('node-a', 'image');
+    const first = store.getState().panelSession;
+
+    store.getState().startReferencePick('node-a');
+    store.getState().openGeneratePanel('node-a', 'image');
+
+    expect(store.getState().panelSession).toBe(first);
+    expect(store.getState().pickSession).toBeNull();
+    store.getState().openHistoryPanel('node-a');
+    expect(store.getState().panelSession).not.toBe(first);
+    const history = store.getState().panelSession;
+    store.getState().openHistoryPanel('node-b');
+    expect(store.getState().panelSession).not.toBe(history);
+  });
+
   it('keeps one store per Space until the Space is dropped', () => {
     const a = canvasSessions.of('space-a');
 
