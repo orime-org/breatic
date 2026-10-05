@@ -67,16 +67,11 @@ export function makeReferenceSuggestion(input: {
    *
    * Reads the LIVE inputs (`getPool` + `getUsabilityContext`) on every call, so
    * every popup show path agrees: the plugin's `items()` on each keystroke, and
-   * the focus re-show below. `@tiptap/suggestion` only re-runs `items()` on a
+   * the shared list's re-show (features/reference-mention/mention-suggestion). `@tiptap/suggestion` only re-runs `items()` on a
    * query / range change (its `handleChange`), so a mode toggle — which lives
    * on the canvas node, not the prompt doc — never triggered a recompute; a
    * popup hidden (by clicking the mode picker) and re-shown on refocus then
    * kept the pre-toggle list. Computing here fixes that (#1799/#1800).
-   *
-   * Split from the query filter because the two empty states are different
-   * sentences and only this layer can tell them apart: `MentionList`
-   * receives the rows AFTER both filters and cannot see which one emptied the
-   * list.
    * @returns The rows the active mode accepts.
    */
   const usableRows = (): ReferenceRailItem[] => {

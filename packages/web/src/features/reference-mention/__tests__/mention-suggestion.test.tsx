@@ -233,6 +233,7 @@ describe('the shared @ list', () => {
     press(e, 'Enter');
 
     expect(chips(e)).toEqual([]);
+    expect(e.state.doc.childCount).toBe(2);
   });
 
   it('opens on the full-width at sign a CJK input method types, and filters after it', async () => {

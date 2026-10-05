@@ -59,8 +59,8 @@ export type RefreshHandleRef = { current: (() => void) | null };
 /** What an editor tells the shared `@` list. */
 export interface MentionSuggestionInput<T> {
   /**
-   * The rows for a query, and — when there are none — which empty-state
-   * sentence is true. Called on every show, so it reads live inputs.
+   * The rows for a query, and the sentence a bare `@` shows when there are
+   * none. Called on every show, so it reads live inputs.
    */
   resolveList: (query: string) => { items: T[]; emptyLabel: string };
   /** The node content a picked row is inserted as. */

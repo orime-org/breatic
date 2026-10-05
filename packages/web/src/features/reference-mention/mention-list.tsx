@@ -25,10 +25,7 @@ export interface MentionListProps<T> {
   items: T[];
   /** Picks a row. */
   command: (item: T) => void;
-  /**
-   * Localized text for an empty list. WHICH sentence it is gets decided one
-   * layer up, where both filters are still visible (#1952).
-   */
+  /** Localized text shown when a bare `@` has no rows to pick. */
   emptyLabel: string;
   /** A stable key for a row, also used in its test id. */
   itemKey: (item: T) => string;
@@ -116,8 +113,7 @@ function MentionListInner<T>(
   if (items.length === 0) {
     return (
       <div
-        // Named so a container test can read WHICH of the two sentences landed
-        // here; picking the wrong one type-checks (both are strings).
+        // Named so a container test can find the empty sentence.
         data-testid='reference-mention-empty'
         className='w-56 rounded-overlay border border-border bg-popover px-3 py-2 text-xs text-muted-foreground shadow-md'
       >

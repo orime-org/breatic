@@ -36,8 +36,8 @@ const NOTICE_KEYS = [
   'canvas.generatePanel.catalogUnavailable',
   'canvas.generatePanel.catalogOffline',
   'canvas.generatePanel.catalogNoModels',
-  // `@` 弹层没得提供时的两句（#1952）：一句说这一档一项都用不了，一句说
-  // 你打的字把它们筛光了。缺哪句，那个语种的用户打完 `@` 只看得到裸 key。
+  // What a bare `@` shows when this mode can use none of the references
+  // (#1952). Missing in a locale, readers of it see the raw key.
   'canvas.generatePanel.mentionEmpty',
 ] as const;
 

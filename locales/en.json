@@ -251,7 +251,7 @@
       "attachUnsupported": "{filename} can’t be attached",
       "attachTooLarge": "{filename} is too large to attach",
       "attachUnavailable": "Couldn’t attach right now. Try again.",
-      "atEmpty": "Nothing attached to mention"
+      "atEmpty": "No attachments to mention"
     },
     "empty": {
       "greetingWithName": "Hi, {name}!",
