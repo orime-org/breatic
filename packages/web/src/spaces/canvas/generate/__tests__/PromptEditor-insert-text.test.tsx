@@ -106,6 +106,38 @@ describe('PromptEditorHandle.insertText', () => {
     await waitFor(() => expect(reported()).toBe('a r [Tilt up] ed car'));
   });
 
+  it('appends again once the editor is rebuilt for another prompt, whatever caret the old one had', async () => {
+    const onTextChange = vi.fn();
+    const handle = React.createRef<PromptEditorHandle>();
+    const element = (fragment: Y.XmlFragment): React.JSX.Element => (
+      <PromptEditor
+        ref={handle}
+        fragment={fragment}
+        placeholder='Describe'
+        onTextChange={onTextChange}
+        onAtMentionsChange={vi.fn()}
+        references={[]}
+        referenceKinds={[]}
+        mentionEmptyLabel='No references'
+        mentionNoMatchLabel='No matches'
+      />
+    );
+    const { rerender } = render(element(new Y.Doc().getXmlFragment('prompt')), { wrapper: TooltipProvider });
+    await waitFor(() => expect(document.querySelector('.ProseMirror')).not.toBeNull());
+    const first = (document.querySelector('.ProseMirror') as unknown as { editor: DrivenEditor }).editor;
+    act(() => first.commands.insertContent('old prompt'));
+    placeCaret(first, 2);
+    rerender(element(new Y.Doc().getXmlFragment('prompt')));
+    await waitFor(() =>
+      expect((document.querySelector('.ProseMirror') as unknown as { editor: DrivenEditor }).editor).not.toBe(first),
+    );
+    const second = (document.querySelector('.ProseMirror') as unknown as { editor: DrivenEditor }).editor;
+    act(() => second.commands.insertContent('a red car'));
+    act(() => second.commands.setTextSelection(1));
+    act(() => handle.current?.insertText('[Tilt down]'));
+    await waitFor(() => expect(onTextChange.mock.lastCall?.[0]).toBe('a red car [Tilt down]'));
+  });
+
   it('writes the text alone into an empty prompt', async () => {
     const { handle, reported } = await mount('');
     act(() => handle.current?.insertText('[Static shot]'));
