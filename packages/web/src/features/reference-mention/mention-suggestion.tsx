@@ -380,8 +380,8 @@ export function makeMentionSuggestion<T>(
           };
           props.editor.view.dom.addEventListener('click', onEditorClick);
           // Decide the initial visibility. A LOCAL start — the user typed `@` —
-          // shows, whatever the list holds (#1952: an empty list is a sentence,
-          // not a disappearance). Anything else reaching
+          // is wanted; it shows while the query has something to show (see
+          // `showable`). Anything else reaching
           // onStart must NOT pop a picker this user never opened (residual 1):
           // a remote peer's edit, or a local machine-derived cascade, can put an
           // `@` in range without any intent behind it.
