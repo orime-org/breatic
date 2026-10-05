@@ -487,18 +487,21 @@ describe('TextNode', () => {
       elsewhere.remove();
     });
 
-    it('stays open when the blur comes from the editor being taken off the page', async () => {
+    it('stays open when the blur comes from its Space being hidden', async () => {
       // Hiding the Space unmounts the editor's host, which moves the editor
-      // into a detached element; Chrome fires the blur while it is still on
-      // the page, so only what happens next says it was not the reader
+      // into a detached element; Chrome fires the blur while the Space is
+      // still on screen, so only what happens next says it was not the reader
       // leaving (inner#1235 A13).
       seedNode('x');
-      renderNode();
+      const outlet = document.body.appendChild(document.createElement('div'));
+      outlet.setAttribute('data-space-outlet', SID);
+      render(tree(), { container: outlet.appendChild(document.createElement('div')) });
       enterByDoubleClick();
       const el = editor() as HTMLElement;
 
       fireEvent.blur(el, { relatedTarget: null });
       document.createElement('div').append(el);
+      outlet.style.setProperty('display', 'none', 'important');
       await Promise.resolve();
 
       expect(canvasSessions.of(SID).getState().editingTextNode).toBe(NODE);

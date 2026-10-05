@@ -98,11 +98,16 @@ describe('the box that opens at the drop point', () => {
   it('keeps them when the blur comes from its Space being hidden', async () => {
     // Switching Space hides this one, which takes focus out of the box; the
     // words are waiting for the reader when they come back (inner#1235 A14).
-    const box = open();
+    const outlet = document.body.appendChild(document.createElement('div'));
+    outlet.setAttribute('data-space-outlet', 's1');
+    render(<AnnotationComposer onCommit={onCommit} onClose={onClose} />, {
+      container: outlet.appendChild(document.createElement('div')),
+    });
+    const box = screen.getByTestId('annotation-composer-input');
     fireEvent.change(box, { target: { value: 'half a thought' } });
 
     fireEvent.blur(box);
-    box.checkVisibility = (): boolean => false;
+    outlet.style.setProperty('display', 'none', 'important');
     await Promise.resolve();
 
     expect(onClose).not.toHaveBeenCalled();
