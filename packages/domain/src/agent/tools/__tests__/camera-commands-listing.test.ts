@@ -61,6 +61,7 @@ describe("camera commands in the model listing", () => {
     expect(line).toMatch(/at most 3 in one bracket/);
     expect(line).toMatch(/run at the same time/);
     expect(line).toMatch(/opposite directions of one axis/);
+    expect(line).toMatch(/comma-separated with no space, as in \[Truck left,Push in\]/);
   });
 
   it("says where the commands go in the multi-shot mode", async () => {

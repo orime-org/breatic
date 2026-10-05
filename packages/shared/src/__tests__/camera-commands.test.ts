@@ -22,9 +22,10 @@ describe("the camera command vocabulary", () => {
     );
   });
 
-  it("pairs the six axes from commands in the vocabulary, each command on one axis at most", () => {
-    expect(CAMERA_COMMAND_AXES).toHaveLength(6);
-    const onAxis = CAMERA_COMMAND_AXES.flat();
+  it("pairs the six axes from commands in the vocabulary, each named once and each command on one axis at most", () => {
+    expect(CAMERA_COMMAND_AXES.map((axis) => axis.key)).toEqual(["truck", "pan", "dolly", "pedestal", "tilt", "zoom"]);
+    const onAxis = CAMERA_COMMAND_AXES.flatMap((axis) => axis.directions);
+    for (const axis of CAMERA_COMMAND_AXES) expect(axis.directions).toHaveLength(2);
     expect(new Set(onAxis).size).toBe(onAxis.length);
     for (const name of onAxis) expect(CAMERA_COMMANDS).toContain(name);
   });
