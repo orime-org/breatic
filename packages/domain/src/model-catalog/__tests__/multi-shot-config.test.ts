@@ -142,7 +142,7 @@ describe("the names the multi-shot mode shows", () => {
   });
 });
 
-describe("which model each image mode opens with", () => {
+describe("which model each mode Seedance 2.5 image-to-video joins opens with", () => {
   // The panel opens a mode on the first model the catalog lists for it, so a
   // new entry placed ahead of these would change what every reader sees.
   it.each([

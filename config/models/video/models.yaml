@@ -166,7 +166,7 @@ models:
     mode: ["t2v", "multi_shot"]
     takes_prompt: true
     tier: "optional"
-    description: "Native 4K from 50 reference assets"
+    description: "4K from 50 reference assets"
     guide: "Bring your own cast, look and soundtrack: the only text-to-video call that takes reference images, videos and audio, and returns 4K."
     generation_time: 600
     icon: "seedream"
@@ -561,8 +561,8 @@ models:
     mode: ["i2v", "first_last", "multi_shot"]
     takes_prompt: true
     tier: "optional"
-    description: "Native 4K from a frame, up to 30s"
-    guide: "Start from a still, optionally end on another, and get up to 30 seconds of native 4K with its own soundtrack."
+    description: "4K from a frame, up to 30s"
+    guide: "Start from a still, optionally end on another, and get up to 30 seconds at up to 4K with native sound."
     generation_time: 600
     icon: "seedream"
     params:
