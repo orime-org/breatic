@@ -54,7 +54,7 @@ let measuring = false;
  * @param attached - What is attached; only their ids are read.
  * @returns The settled length.
  */
-export function settledLength(
+function settledLength(
   state: EditorState,
   tr: Transaction,
   attached: ReadonlyArray<{ readonly id: string }>,

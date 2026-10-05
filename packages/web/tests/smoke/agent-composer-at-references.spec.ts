@@ -65,7 +65,8 @@ test('nodes from another canvas are attached as one piece named after the group'
   await expect(page.getByTestId('chat-composer-chips')).toContainText('Shot list');
 });
 
-test('@ lists the attachment just above the @, and the pick goes out as a reference', async ({ page }) => {
+test('@ lists the attachment just above the @, and the pick goes out as a reference', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await pasteText(page, MARKER + JSON.stringify([PICTURE]));
   await expect(page.getByTestId('chat-composer-chips')).toContainText('Neon street');
 
@@ -117,6 +118,16 @@ test('@ lists the attachment just above the @, and the pick goes out as a refere
   // The server's first word takes the words and the attachment together.
   await expect(page.getByTestId('chat-composer-chips')).toHaveCount(0);
   await expect(box).toHaveText('');
+
+  // Selecting the sent words and copying them gives the attachment's name.
+  await page.getByTestId('message-reference').evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el.closest('.whitespace-pre-wrap') ?? el);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+  });
+  await page.keyboard.press('ControlOrMeta+C');
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('what is in Neon street ?');
 });
 
 test('the full-width at sign a CJK input method types opens the list too', async ({ page }) => {

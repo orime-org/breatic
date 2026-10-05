@@ -5,6 +5,7 @@ import * as React from 'react';
 import { resolvedSegments, type ChatAttachedChip } from '@breatic/shared';
 
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import { AttachmentHover, AttachmentKindIcon } from '@web/pages/project/chat/AttachmentChip';
 import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
 import { REFERENCE_BLOCK_CLASS } from '@web/pages/project/chat/chat-reference';
@@ -29,18 +30,29 @@ export function UserWords({ content, attachments }: UserWordsProps): React.JSX.E
   const t = useTranslation();
   return (
     <span className='whitespace-pre-wrap break-words'>
-      {resolvedSegments(attachments ?? [], content).map((segment, i) =>
-        segment.kind === 'reference' ? (
-          <AttachmentHover key={i} chip={segment.chip} name={attachmentLabel(t, segment.chip)}>
-            <span data-testid='message-reference' className={REFERENCE_BLOCK_CLASS}>
-              <AttachmentKindIcon type={segment.chip.type} />
-              <span className='truncate'>{attachmentLabel(t, segment.chip)}</span>
+      {resolvedSegments(attachments ?? [], content).map((segment, i) => {
+        if (segment.kind !== 'reference') {
+          return <React.Fragment key={i}>{segment.kind === 'text' ? segment.text : segment.marker}</React.Fragment>;
+        }
+        const label = attachmentLabel(t, segment.chip);
+        return (
+          <AttachmentHover key={i} chip={segment.chip} name={label}>
+            {/* Selectable and laid out inline, unlike the box's block: a
+                selection copied from the history carries the name on its line,
+                as the copy button's does. A flex block would put its parts on
+                lines of their own in the copied text. */}
+            <span
+              data-testid='message-reference'
+              className={cn(REFERENCE_BLOCK_CLASS, 'inline-block select-text whitespace-nowrap align-[-4.25px] leading-4')}
+            >
+              <span className='mr-1 inline-block align-[-1.5px]'>
+                <AttachmentKindIcon type={segment.chip.type} />
+              </span>
+              {label}
             </span>
           </AttachmentHover>
-        ) : (
-          <React.Fragment key={i}>{segment.kind === 'text' ? segment.text : segment.marker}</React.Fragment>
-        ),
-      )}
+        );
+      })}
     </span>
   );
 }
