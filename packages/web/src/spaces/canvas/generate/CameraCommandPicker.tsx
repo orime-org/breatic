@@ -7,6 +7,7 @@ import * as React from 'react';
 import {
   CAMERA_COMMAND_AXES,
   CAMERA_COMMANDS_PER_BRACKET,
+  cameraCommandBracket,
   type CameraCommandEntry,
 } from '@breatic/shared';
 
@@ -18,7 +19,6 @@ import {
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
-  cameraCommandBracket,
   canPickCameraCommand,
   pickCameraCommand,
 } from '@web/spaces/canvas/generate/camera-command-picks';
@@ -82,12 +82,20 @@ export const CameraCommandPicker = React.memo(function CameraCommandPicker({
   useFollowCanvasViewport(open);
   const groups = React.useMemo(() => groupsOf(commands), [commands]);
 
+  // Every open starts empty: the content stays live through its close
+  // animation, and a hover or click there must not carry into the next open.
   const onOpenChange = React.useCallback((next: boolean) => {
     setOpen(next);
-    if (!next) {
+    if (next) {
       setPicked([]);
       setPreviewed(null);
     }
+  }, []);
+  // Focus goes to the popover itself, so every option's focus is one the
+  // reader moved there, and the pane shows its hint until they do.
+  const focusPopover = React.useCallback((event: Event) => {
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).focus();
   }, []);
   const insert = React.useCallback(() => {
     onInsert(cameraCommandBracket(picked));
@@ -114,6 +122,7 @@ export const CameraCommandPicker = React.memo(function CameraCommandPicker({
         // Same as the params popover: it follows the canvas and clips at the
         // edge rather than flipping while following.
         avoidCollisions={false}
+        onOpenAutoFocus={focusPopover}
         aria-label={t('canvas.generatePanel.cameraCommands')}
         // As wide as its widest row, so every label and option fits in every locale.
         className='w-max p-3 shadow-md'
@@ -159,11 +168,7 @@ export const CameraCommandPicker = React.memo(function CameraCommandPicker({
                       key={command.name}
                       className='flex flex-1'
                       onPointerEnter={() => setPreviewed(command)}
-                      // Keyboard focus only: opening the popover focuses the first
-                      // option, and that alone should leave the hint in place.
-                      onFocus={(e) => {
-                        if (e.target.matches(':focus-visible')) setPreviewed(command);
-                      }}
+                      onFocus={() => setPreviewed(command)}
                     >
                       <Button
                         type='button'

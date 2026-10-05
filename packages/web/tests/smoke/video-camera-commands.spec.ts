@@ -204,6 +204,28 @@ test('picks camera commands and writes them at the caret, then sends them', asyn
   await expect(pane.locator('video')).toHaveAttribute('src', /tracking-shot-640\.mp4$/);
   await page.keyboard.press('Escape');
 
+  // Every open starts on the hint: from the keyboard, by mouse after an Escape,
+  // and after a hover that landed while the popover was fading out.
+  const trigger = page.getByTestId('generate-video-camera-trigger');
+  await trigger.focus();
+  await page.keyboard.press('Enter');
+  await expect(pane).toBeVisible();
+  await expect(pane.locator('video')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await trigger.click();
+  await expect(pane).toBeVisible();
+  await expect(pane.locator('video')).toHaveCount(0);
+  const shakeBox = await page.getByTestId(option('Shake')).boundingBox();
+  if (!shakeBox) throw new Error('picker not drawn');
+  await page.keyboard.press('Escape');
+  await page.mouse.move(shakeBox.x + 5, shakeBox.y + 5);
+  await page.mouse.move(shakeBox.x + 10, shakeBox.y + 6);
+  await expect(pane).toHaveCount(0);
+  await trigger.click();
+  await expect(pane).toBeVisible();
+  await expect(pane.locator('video')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
   // The caret goes after "a red", then the picker takes focus, then the bracket lands there.
   const editor = page.getByTestId('generate-prompt-editor');
   await editor.click();

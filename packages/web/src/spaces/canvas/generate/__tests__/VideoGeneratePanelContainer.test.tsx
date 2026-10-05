@@ -2623,12 +2623,14 @@ describe('camera commands (inner#1241)', () => {
     expect(screen.queryByTestId('hover-preview-content')).toBeNull();
   });
 
-  it('leaves the hint in place when opening focuses the first option, a focus no key made', async () => {
+  it('opens with focus on the popover itself, so the hint stays until the reader moves to a command', async () => {
     await openOn('t2v', 'minimax-h3-text-to-video');
     fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
     const pane = await screen.findByTestId('generate-video-camera-preview');
-    fireEvent.focus(screen.getByTestId(option('Tilt up')));
+    await waitFor(() => expect(document.activeElement).toBe(pane.closest('[role="dialog"]')));
     expect(pane.querySelector('video')).toBeNull();
+    fireEvent.focus(screen.getByTestId(option('Tilt up')));
+    expect(pane.querySelector('video')?.getAttribute('src')).toBe(clip('Tilt up'));
   });
 
   it('goes back to the hint when a clip cannot load', async () => {
