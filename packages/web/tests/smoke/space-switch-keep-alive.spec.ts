@@ -955,6 +955,89 @@ test('a node name being typed stays open and unsent across a switch', async ({ p
   await expect(node.getByTestId('node-header-name')).toHaveText('Hero shot');
 });
 
+test('a reply not sent yet and the comment panel are where they were after a switch', async ({
+  page,
+}) => {
+  // A1 and A2: the panel's cards stand where they stood, and the words in a
+  // reply box are still there.
+  const { canvas, doc } = await canvasAndDocument(page);
+  await page.keyboard.type('a line worth answering');
+  await selectFirstParagraph(page);
+  await page.getByTestId('doc-bubble-tool-comment').click();
+  await page.getByTestId('doc-comment-draft-input').fill('worth answering');
+  await page.getByTestId('doc-comment-draft-save').click();
+  await expect(page.getByTestId('doc-comment-draft-card')).toHaveCount(0);
+  await page.getByTestId('doc-comment-card').click();
+  const reply = page.getByTestId('doc-comment-reply-input');
+  await expect(reply).toBeVisible();
+  await reply.click();
+  await page.keyboard.type('half a reply');
+  const card = page.getByTestId('doc-comment-card');
+  const before = await card.boundingBox();
+
+  await showSpace(page, canvas);
+  await showSpace(page, doc);
+
+  await expect(reply).toHaveValue('half a reply');
+  expect(await card.boundingBox()).toEqual(before);
+});
+
+test('the button on a table cell is on that cell after a switch', async ({ page }) => {
+  // A1: the cell button comes back on the cell the caret is in.
+  const { canvas, doc } = await canvasAndDocument(page);
+  await page.keyboard.type('above');
+  const row = await page
+    .locator(`${DOCUMENT_EDITOR} > .bn-block-group > .bn-block-outer > .bn-block > .bn-block-content`)
+    .first()
+    .boundingBox();
+  if (row === null) throw new Error('the first row has no box');
+  await page.mouse.move(row.x + 40, row.y + Math.min(row.height / 2, 12), { steps: 3 });
+  await page.getByTestId('doc-block-handle').click();
+  await page.getByTestId('doc-block-row-insertBelow').hover();
+  await page.getByTestId('doc-block-insert-table').hover();
+  await page.getByTestId('doc-table-size-2-3').click();
+  await page.keyboard.type('c1');
+  const button = page.getByTestId('doc-table-cell-button');
+  await expect(button).toBeVisible();
+  const before = await button.boundingBox();
+
+  await showSpace(page, canvas);
+  await showSpace(page, doc);
+
+  await expect(button).toBeVisible();
+  expect(await button.boundingBox()).toEqual(before);
+});
+
+test('a generation answered while its Space was hidden leaves the panel ready', async ({
+  page,
+}) => {
+  // A7: the submit was on its way when the reader switched away; coming back,
+  // the panel is not stuck submitting.
+  const projectUrl = await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  await seedPicture(page, projectIdOf(projectUrl), first, 'gen-host', { x: 0, y: 0 });
+  await openGenerate(page, 'gen-host');
+  const prompt = visibleSpace(page).getByTestId('generate-prompt-editor').locator('.ProseMirror');
+  await prompt.click();
+  await page.keyboard.type('a quiet harbour at dawn');
+  // The answer comes back after the switch, and is a refusal: nothing is spent.
+  await page.route('**/canvas/tasks', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    await route.fulfill({ status: 500, json: { success: false, error: 'held' } });
+  });
+  await visibleSpace(page).getByTestId('generate-execute').click();
+  await expect(visibleSpace(page).getByTestId('generate-execute-pending')).toBeVisible();
+
+  await showSpace(page, second);
+  await page.waitForTimeout(4_000);
+  await showSpace(page, first);
+
+  await expect(visibleSpace(page).getByTestId('generate-execute-pending')).toHaveCount(0);
+  await expect(visibleSpace(page).getByTestId('generate-execute')).toBeEnabled();
+});
+
 test.describe('on a Mac, where Cmd is the canvas library\'s add-to-selection key', () => {
   // The library reads the platform from the user agent, and the smoke device
   // reports Windows, where the key is Control and a Control press on macOS is
