@@ -50,7 +50,7 @@ cp .env.docker .env
 
 也可以下载该 Release 的源码 ZIP，进入同时包含 `docker-compose.yml`、`Dockerfile` 和 `package.json` 的目录。后续命令均在仓库根目录执行。已存在 `.env` 时不要覆盖。
 
-**版本要配套**：主站镜像、Ingest 源码和配置使用同一发布版本。从 `v0.0.2` 起，发布版本源码里的 `docker-compose.yml` 已写明该版本的镜像，下载哪个版本的源码就运行哪个版本；`v0.0.2` 之前的版本按其源码自带的 LOCAL 文档填写 `BREATIC_TAG`。发布与版本查询见 [版本发布](RELEASE-CN.md)。
+**版本要配套**：主站镜像、Ingest 源码和配置使用同一发布版本。从 `v0.0.2` 起，正式版本源码里的 `docker-compose.yml` 已写明该版本的镜像（候选版本 `-rc` 的源码写的是即将发布的正式版本），下载哪个版本的源码就运行哪个版本；`v0.0.2` 之前的版本按其源码自带的 LOCAL 文档填写 `BREATIC_TAG`。发布与版本查询见 [版本发布](RELEASE-CN.md)。
 
 ## 3. 配置主站
 

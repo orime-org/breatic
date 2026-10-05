@@ -46,7 +46,7 @@ Build arguments are `RELEASE_VERSION` and `VCS_REF` for the backend; `VITE_RELEA
 
 ## Interrupted or repeated publication
 
-A tag identifies one release forever. The draft reserves the version before the first registry push. A rerun cannot replace an existing draft or published Release. If publication fails after reservation, preserve the failed draft for investigation and use a new version tag; do not deploy partial images. Do not delete/recreate or move release tags to retry. Failed checks before reservation can be rerun, except a `docker-compose.yml` mismatch, which fails the same way on every rerun of that tag. Before tagging a new version, merge the PR that sets `docker-compose.yml` to it.
+A tag identifies one release forever. The draft reserves the version before the first registry push. A rerun cannot replace an existing draft or published Release. If publication fails after reservation, preserve the failed draft for investigation and use a new version tag; do not deploy partial images. Do not delete/recreate or move release tags to retry. Failed checks before reservation can be rerun, except a `docker-compose.yml` mismatch, which fails the same way on every rerun of that tag. Before retrying with a new stable version, merge the PR that sets `docker-compose.yml` to it; a new candidate number keeps `docker-compose.yml` unchanged.
 
 Protect `v*` tags from update/deletion in repository settings and enable GitHub immutable releases where available. Only trusted maintainers should be able to create release tags. Workflow guards prevent ordinary accidental reruns; administrators must also preserve registry digests and release assets.
 

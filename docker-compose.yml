@@ -1,10 +1,11 @@
 # docker-compose.yml — deployment stack.
 #
 # Default: pulls pre-built images from GHCR. The image tags below are the
-# release this source belongs to: deploy the source of a release and you run
-# that release. Each release bumps them before it is tagged, and CI refuses a
-# release tag that does not match (scripts/release.mjs compose-tag). Deployers
-# never build from source — that's CI's job.
+# stable release this source belongs to: deploy the source of a stable release
+# and you run that release. They are bumped before the release (and before its
+# first -rc tag); CI refuses a stable tag that does not match
+# (scripts/release.mjs compose-tag). Candidate sources name the upcoming
+# stable version. Deployers never build from source — that's CI's job.
 #
 # Developers contributing to breatic should use `pnpm dev` instead; this
 # compose file is not in the dev path. The only shared concern is the
