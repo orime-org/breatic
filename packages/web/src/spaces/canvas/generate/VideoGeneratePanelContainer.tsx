@@ -765,9 +765,9 @@ function VideoGeneratePanelBody({
       return;
     }
     submittingRef.current = true;
-    // Which opening of the panel this submit came from. The body is unmounted
-    // whenever its Space is hidden, so the answer may land after it is gone;
-    // it closes this opening and nothing the reader opened since.
+    // Which opening of the panel this submit came from: the answer may land
+    // after the reader closed or replaced this panel, and then it closes
+    // nothing they opened since.
     const session = sessionStore.getState().panelSession;
     setIsSubmitting(true);
     try {

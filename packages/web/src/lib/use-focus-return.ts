@@ -6,8 +6,8 @@ import * as React from 'react';
 /**
  * Whether the caret goes back into an editor when it is shown again. Kept by
  * the caller beside whatever outlives the component — an editor kept across
- * mounts carries its own, so a return still waiting when the component is
- * taken down again reaches the next mount.
+ * mounts carries its own, so a return still waiting when the component
+ * unmounts again reaches the next mount.
  */
 export interface FocusReturn {
   /** The caret was in the editor when it was last hidden. */

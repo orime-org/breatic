@@ -8,10 +8,9 @@
  * every part of it is here for a reason a click makes: a text box contributes
  * a state value, a ref mirroring it, the setter that writes both, and the
  * editor handle that serializes it at that instant — because React state lags
- * a frame and the handler reads it synchronously. Beside the boxes sit the
- * in-flight flag (mirrored for the same reason) and the mount flag, which is
- * how a submit already on its way tells that the panel it started from has
- * gone.
+ * a frame and the handler reads it synchronously. Beside the boxes sits the
+ * in-flight flag, mirrored for the same reason. Which opening of the panel a
+ * submit closes is the canvas session's `panelSession`, not this hook's.
  *
  * Held together rather than declared per panel because they are one mechanism:
  * a fourth panel that copied all but one part would look right and drop a

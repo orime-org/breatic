@@ -59,9 +59,9 @@ function readPublished(metaDoc: Y.Doc): Record<string, unknown> | undefined {
  *
  * ## Derived, not stored across mounts
  *
- * The verdict is read straight off the meta document once on mount and again
- * whenever it changes. The answer is held in component state so renders in
- * between reuse it, but nothing outlives the mount: closing the Space's tab
+ * The verdict is read off the meta document on every render
+ * (`useSyncExternalStore`); the last answer is kept so renders reuse it while
+ * it has not moved, but nothing outlives the mount: closing the Space's tab
  * unmounts this, and opening it again derives the same answer from the same
  * document. A flag kept anywhere more durable would have to be held in step
  * with it, and being out of step is the only way it could be wrong.

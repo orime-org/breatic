@@ -157,8 +157,8 @@ interface TextNodeEditorProps {
 
 /**
  * What a kept editor reads from whichever component is showing it now. The
- * component that built it may have been taken down with a hidden canvas
- * since, so its handlers read through this rather than through that
+ * component that built it may have unmounted since (StrictMode mounts it
+ * twice), so its handlers read through this rather than through that
  * component's closure.
  */
 interface EditorWiring {

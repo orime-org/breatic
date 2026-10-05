@@ -73,8 +73,8 @@ const DIM_CHIP: Readonly<Record<ReferenceKind, string>> = {
 };
 /**
  * What a kept editor reads from whichever component is showing it now. The
- * component that built it may have been taken down with a hidden canvas since,
- * so its handlers and extensions read through this rather than that
+ * component that built it may have unmounted since (StrictMode mounts it
+ * twice), so its handlers and extensions read through this rather than that
  * component's closure.
  */
 interface PromptWiring {
@@ -266,8 +266,7 @@ export const PromptEditor = React.forwardRef<
   const { spaceId } = useCanvasContext();
   const sessionStore = useCanvasSessionStore();
   // Which opening of the panel this editor belongs to: a panel closed, or
-  // replaced by another, ends it; a panel taken down with a hidden Space and
-  // put back does not (inner#1235 A13).
+  // replaced by another, ends it; hiding the Space does not (inner#1235 A13).
   const panelSession = useCanvasSession((st) => st.panelSession);
   const resolveName = collaboratorNames?.resolve;
   const editor = React.useMemo((): Editor => {

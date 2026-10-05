@@ -5,11 +5,10 @@
  * The canvas editors kept across a hidden Space, by Space and key
  * (inner#1235 A13).
  *
- * A canvas whose Space is hidden has its nodes and their panels taken down by
- * the canvas library and put back when it is shown, and the component that
- * owned an editor goes with them. The caret and the undo history live on the
- * editor instance, so the instance is kept here and the component only shows
- * it. Each owner ends its editor when what it was for ends — a text node
+ * A hidden Space has its effects cleaned up, and a TipTap editor owned by a
+ * component is destroyed in that cleanup, which cannot tell hiding from
+ * unmounting. The caret and the undo history live on the editor instance, so
+ * the instance is kept here and the component only shows it. Each owner ends its editor when what it was for ends — a text node
  * stops being written in, a panel closes — and a closed tab or a left project
  * ends them all.
  */

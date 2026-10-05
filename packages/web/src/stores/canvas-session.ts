@@ -245,8 +245,8 @@ export interface CanvasSessionState {
   closePanelOfSession: (session: number) => void;
   /**
    * The text node being written in, or null. Here rather than on the node:
-   * a hidden canvas has its nodes taken down and put back by the library, and
-   * the reader who comes back is still writing (inner#1235 A13).
+   * one text node per canvas is written in at a time, and the reader who comes
+   * back to a hidden Space is still writing (inner#1235 A13).
    */
   editingTextNode: string | null;
   /** Start writing in a text node. */
