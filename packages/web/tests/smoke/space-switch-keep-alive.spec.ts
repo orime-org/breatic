@@ -266,11 +266,13 @@ test('a document being written keeps its caret across a switch', async ({ page }
   // keystroke lands there.
   await openFreshProject(page);
   const [doc] = await addSpaces(page, 1, 'document');
+  // The dialog hands focus back to its button once it has closed; a click in
+  // the editor before that would have its caret taken away.
+  await expect(page.getByTestId('new-space-button')).toBeFocused();
   const [first] = (await stripIds(page)) as [string, string];
   await showSpace(page, doc!);
   const editor = page.locator(DOCUMENT_EDITOR);
   await expect(editor).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId('new-space-button')).toBeFocused();
   await editor.click();
   await page.keyboard.type('first line');
 
@@ -287,11 +289,13 @@ test('a document scrolled down comes back at the same place', async ({ page }) =
   // of layout reads 0; the reader comes back to the line they left.
   await openFreshProject(page);
   const [doc] = await addSpaces(page, 1, 'document');
+  // The dialog hands focus back to its button once it has closed; a click in
+  // the editor before that would have its caret taken away.
+  await expect(page.getByTestId('new-space-button')).toBeFocused();
   const [first] = (await stripIds(page)) as [string, string];
   await showSpace(page, doc!);
   const editor = page.locator(DOCUMENT_EDITOR);
   await expect(editor).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId('new-space-button')).toBeFocused();
   await editor.click();
   for (let i = 0; i < 40; i += 1) {
     await page.keyboard.type(`line ${String(i)} of a document long enough to scroll`);
