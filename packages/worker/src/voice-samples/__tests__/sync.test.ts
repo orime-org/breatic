@@ -18,7 +18,8 @@ describe("syncVoiceSamples", () => {
     const upload = vi.fn().mockResolvedValue(undefined);
     const report = await syncVoiceSamples(JOBS, {
       exists: async (key) => key.endsWith("a.mp3"),
-      generate: async () => Buffer.from("mp3"),
+      predict: async (job) => `https://out.test/${job.key}`,
+      download: async () => Buffer.from("mp3"),
       upload,
       attempts: 1,
     });
@@ -30,12 +31,13 @@ describe("syncVoiceSamples", () => {
     let calls = 0;
     const report = await syncVoiceSamples(JOBS, {
       exists: async () => false,
-      generate: async (job) => {
+      predict: async (job) => {
         calls += 1;
         if (job.key.endsWith("b.mp3") && calls < 4) throw new Error("rate limit exceeded");
         if (job.key.endsWith("c.mp3")) throw new Error("voice not found");
-        return Buffer.from("mp3");
+        return `https://out.test/${job.key}`;
       },
+      download: async () => Buffer.from("mp3"),
       upload: async () => undefined,
       attempts: 3,
     });
@@ -43,17 +45,23 @@ describe("syncVoiceSamples", () => {
     expect(report.failed).toEqual([{ key: "voice-samples/m/c.mp3", error: "voice not found" }]);
   });
 
-  it("generates a sample once when a later step fails, and runs only the later steps again", async () => {
-    const generate = vi.fn().mockResolvedValue(Buffer.from("raw"));
+  it("pays for a sample once when a later step fails, and runs only the later steps again", async () => {
+    const predict = vi.fn().mockResolvedValue("https://out.test/a.mp3");
+    const download = vi.fn()
+      .mockRejectedValueOnce(new Error("connection reset"))
+      .mockResolvedValue(Buffer.from("raw"));
     const finish = vi.fn()
       .mockRejectedValueOnce(new Error("ffmpeg exited 1"))
       .mockResolvedValue(Buffer.from("small"));
     const upload = vi.fn()
       .mockRejectedValueOnce(new Error("upload timed out"))
       .mockResolvedValue(undefined);
-    const report = await syncVoiceSamples([JOBS[0]!], { exists: async () => false, generate, finish, upload, attempts: 3 });
+    const report = await syncVoiceSamples([JOBS[0]!], {
+      exists: async () => false, predict, download, finish, upload, attempts: 4,
+    });
     expect(report).toEqual({ present: 0, made: 1, failed: [] });
-    expect(generate).toHaveBeenCalledTimes(1);
+    expect(predict).toHaveBeenCalledTimes(1);
+    expect(download.mock.calls.map(([url]) => url)).toEqual(Array(4).fill("https://out.test/a.mp3"));
     expect(finish).toHaveBeenCalledTimes(3);
     expect(upload.mock.calls.map(([, bytes]) => String(bytes))).toEqual(["small", "small"]);
   });

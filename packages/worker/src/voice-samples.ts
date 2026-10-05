@@ -38,25 +38,35 @@ import {
 const ATTEMPTS = 3;
 
 /**
- * Make one sample's bytes through the model's own provider.
+ * Run one sample's paid prediction through the model's own provider.
  * @param modality - The catalog the model is in: `tts` for a voice, `video` for a camera clip.
  * @param job - The sample.
- * @returns The bytes the prediction answers.
+ * @returns Where the prediction's output is.
  * @throws {Error} When the prediction fails or answers no output.
  */
-async function generate(modality: "tts" | "video", job: VoiceSampleJob): Promise<Buffer> {
+async function predict(modality: "tts" | "video", job: VoiceSampleJob): Promise<string> {
   const resolved = resolveModel(modality, job.model);
   const release = await acquireSemaphore(resolved.providerName, resolved.maxConcurrency);
   try {
     const { outputs } = await runPrediction(resolved, resolved.modelId, job.body);
     const url = outputs[0];
     if (typeof url !== "string") throw new Error(`${job.key}: the prediction answered no output`);
-    const res = await httpRequest(url, {}, { replaySafe: true });
-    if (!res.ok) throw new Error(`${job.key}: fetching the output answered ${res.status}`);
-    return Buffer.from(await res.arrayBuffer());
+    return url;
   } finally {
     release();
   }
+}
+
+/**
+ * Fetch a prediction's output.
+ * @param url - Where the prediction put it.
+ * @returns Its bytes.
+ * @throws {Error} When the fetch fails.
+ */
+async function download(url: string): Promise<Buffer> {
+  const res = await httpRequest(url, {}, { replaySafe: true });
+  if (!res.ok) throw new Error(`${url}: fetching the output answered ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
 }
 
 /**
@@ -107,7 +117,8 @@ async function syncKind(
   return syncVoiceSamples(sample.jobs, {
     exists: async (key) =>
       servedFromHead(key, (await httpRequest(voiceSampleUrl(key), { method: "HEAD" }, { replaySafe: true })).status),
-    generate: (job) => generate(sample.modality, job),
+    predict: (job) => predict(sample.modality, job),
+    download,
     finish: sample.finish,
     upload: async (key, bytes) => {
       await storage.upload(key, bytes, sample.contentType);
@@ -123,6 +134,10 @@ async function syncKind(
 async function main(): Promise<void> {
   const storage = await getStorageAdapter();
   assertUploadsReachSampleAddress((key) => storage.publicUrl(key), voiceSampleUrl);
+  // Camera clips are transcoded after their paid prediction; stop before paying when ffmpeg cannot run.
+  await spawnCollected("ffmpeg", ["-version"]).catch((err: unknown) => {
+    throw new Error("ffmpeg must run on this machine to make camera preview clips", { cause: err });
+  });
   const kinds: SampleKind[] = [
     { kind: "voice", modality: "tts", contentType: "audio/mpeg",
       jobs: planVoiceSamples(getFullModelConfig("tts").models, getVoiceSampleConfig()) },
