@@ -59,6 +59,7 @@
     "@tiptap/extension-paragraph": "catalog:",
     "@tiptap/extension-placeholder": "catalog:",
     "@tiptap/extension-text": "catalog:",
+    "@tiptap/extensions": "catalog:",
     "@tiptap/pm": "catalog:",
     "@tiptap/react": "catalog:",
     "@tiptap/starter-kit": "catalog:",

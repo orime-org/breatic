@@ -49,7 +49,7 @@ async function sendOne(page: Page): Promise<void> {
   await openSmokeProject(page);
   await page.getByTestId('new-conversation').click();
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
-  const composer = page.getByTestId('chat-composer-textarea');
+  const composer = page.getByTestId('chat-composer-box');
   await composer.fill('outcome probe');
   await composer.press('Enter');
   await expect(page.getByTestId('message-bubble')).toHaveCount(2, { timeout: 20_000 });

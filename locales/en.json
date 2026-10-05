@@ -171,7 +171,8 @@
     "chat": {
       "message_too_long": "This message is too long. It may hold at most {limit, number} characters; this one holds {actual, number}.",
       "attachments_too_long": "The attached content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
-      "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}."
+      "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}.",
+      "references_too_many": "Too many references to attachments. A message may carry at most {limit, number}; this one carries {actual, number}."
     },
     "mail": {
       "studio_invite": {
@@ -256,7 +257,8 @@
       "attachTooLong": "Too much content attached. Attach fewer items or shorter files.",
       "attachUnsupported": "{filename} can’t be attached",
       "attachTooLarge": "{filename} is too large to attach",
-      "attachUnavailable": "Couldn’t attach right now. Try again."
+      "attachUnavailable": "Couldn’t attach right now. Try again.",
+      "atEmpty": "No attachments to mention"
     },
     "empty": {
       "greetingWithName": "Hi, {name}!",
@@ -472,7 +474,6 @@
       "exit": "Exit",
       "promptPlaceholder": "Describe the image you want to generate, @ to add a reference",
       "mentionEmpty": "No references available",
-      "mentionNoMatch": "No matches",
       "voicePlaceholder": "No voice chosen",
       "voiceSearchPlaceholder": "Search voices…",
       "voiceLoading": "Loading voices…",

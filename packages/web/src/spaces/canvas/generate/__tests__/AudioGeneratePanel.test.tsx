@@ -440,7 +440,6 @@ describe('PromptEditor — where each box starts', () => {
         references={[]}
         referenceKinds={[]}
         mentionEmptyLabel='e'
-        mentionNoMatchLabel='n'
       />,
     );
     const viewport = container.querySelector('[data-radix-scroll-area-viewport]');

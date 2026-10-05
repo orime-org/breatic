@@ -15,11 +15,7 @@
 
 import type { JSONContent } from '@tiptap/core';
 
-/** ProseMirror / TipTap node name for an `@`-picked reference-image mention. */
-export const REFERENCE_MENTION_NODE = 'referenceMention';
-
-/** Attr key on a reference-mention node carrying its source image node id. */
-export const MENTION_SOURCE_ID_ATTR = 'sourceNodeId';
+import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 
 /**
  * Extracts the source node ids of all `@`-mentioned reference images in a

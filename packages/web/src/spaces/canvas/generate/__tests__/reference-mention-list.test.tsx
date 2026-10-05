@@ -5,10 +5,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { act, render } from '@testing-library/react';
 import * as React from 'react';
 
-import {
-  ReferenceMentionList,
-  type ReferenceMentionListRef,
-} from '@web/spaces/canvas/generate/reference-mention-list';
+import { MentionList, type MentionListRef } from '@web/features/reference-mention/mention-list';
+import { referenceKey, renderReferenceRow } from '@web/spaces/canvas/generate/reference-mention-list';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 
 const row = (id: string): ReferenceRailItem => ({
@@ -25,7 +23,7 @@ const row = (id: string): ReferenceRailItem => ({
  * @param key - The KeyboardEvent key.
  */
 function sendKey(
-  ref: React.RefObject<ReferenceMentionListRef | null>,
+  ref: React.RefObject<MentionListRef | null>,
   key: string,
 ): void {
   act(() => {
@@ -48,7 +46,7 @@ function highlighted(): string | null {
 describe('ReferenceMentionList — rows read from the left edge (user 2026-08-21 #1993)', () => {
   it('leaves no centring class on the row', () => {
     const { container } = render(
-      <ReferenceMentionList items={[row('a')]} command={vi.fn()} emptyLabel='none' />,
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow} items={[row('a')]} command={vi.fn()} emptyLabel='none' query='' />,
     );
     // The row is wider than its content, so where the content sits is decided
     // by the flex main axis. `Button`'s cva base centres it, and `cn` resolves
@@ -65,7 +63,7 @@ describe('ReferenceMentionList — rows read from the left edge (user 2026-08-21
 describe('ReferenceMentionList — focus rows carry the crop badge (user 2026-07-17 #4)', () => {
   it('renders thumbnail → crop badge → name for a focus row; no badge on node rows', () => {
     render(
-      <ReferenceMentionList
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
         items={[
           row('a'),
           {
@@ -78,7 +76,7 @@ describe('ReferenceMentionList — focus rows carry the crop badge (user 2026-07
           },
         ]}
         command={() => {}}
-        emptyLabel='empty'
+        emptyLabel='empty' query=''
       />,
     );
     const badge = document.querySelector(
@@ -114,13 +112,13 @@ describe('ReferenceMentionList — focus rows carry the crop badge (user 2026-07
 // must key on CONTENT.
 describe('ReferenceMentionList — keyboard highlight vs re-rendered pools', () => {
   it('keeps the highlight when a new-identity array carries the same rows (remote prompt edit)', () => {
-    const ref = React.createRef<ReferenceMentionListRef>();
+    const ref = React.createRef<MentionListRef>();
     const { rerender } = render(
-      <ReferenceMentionList
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
         ref={ref}
         items={[row('a'), row('b'), row('c')]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     sendKey(ref, 'ArrowDown');
@@ -129,34 +127,34 @@ describe('ReferenceMentionList — keyboard highlight vs re-rendered pools', () 
     // Same content, fresh array identity — exactly what suggestion onUpdate
     // hands over after a remote edit shifts the range.
     rerender(
-      <ReferenceMentionList
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
         ref={ref}
         items={[row('a'), row('b'), row('c')]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     expect(highlighted()).toBe('c');
   });
 
   it('Enter after a same-content re-render picks the highlighted row, not row 0', () => {
-    const ref = React.createRef<ReferenceMentionListRef>();
+    const ref = React.createRef<MentionListRef>();
     const command = vi.fn();
     const { rerender } = render(
-      <ReferenceMentionList
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
         ref={ref}
         items={[row('a'), row('b'), row('c')]}
         command={command}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     sendKey(ref, 'ArrowDown');
     rerender(
-      <ReferenceMentionList
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
         ref={ref}
         items={[row('a'), row('b'), row('c')]}
         command={command}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     sendKey(ref, 'Enter');
@@ -164,24 +162,98 @@ describe('ReferenceMentionList — keyboard highlight vs re-rendered pools', () 
     expect(command.mock.calls[0][0].sourceNodeId).toBe('b');
   });
 
-  it('resets the highlight when the row CONTENT changes (typed query narrowed the pool)', () => {
-    const ref = React.createRef<ReferenceMentionListRef>();
+  it('resets the highlight when the typed query changes', () => {
+    const ref = React.createRef<MentionListRef>();
     const { rerender } = render(
-      <ReferenceMentionList
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
         ref={ref}
         items={[row('a'), row('b'), row('c')]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     sendKey(ref, 'ArrowDown');
     sendKey(ref, 'ArrowDown');
     rerender(
-      <ReferenceMentionList
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
         ref={ref}
         items={[row('a'), row('c')]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query='x'
+      />,
+    );
+    expect(highlighted()).toBe('a');
+  });
+
+  it('keeps the highlighted row when the rows change under the same query', () => {
+    const ref = React.createRef<MentionListRef>();
+    const { rerender } = render(
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
+        ref={ref}
+        items={[row('a'), row('b'), row('c')]}
+        command={vi.fn()}
+        emptyLabel='none' query=''
+      />,
+    );
+    sendKey(ref, 'ArrowDown');
+    rerender(
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
+        ref={ref}
+        items={[row('z'), row('a'), row('b'), row('c')]}
+        command={vi.fn()}
+        emptyLabel='none' query=''
+      />,
+    );
+    expect(highlighted()).toBe('b');
+  });
+
+  it('puts the highlight on the first row when the query changes back, too', () => {
+    const ref = React.createRef<MentionListRef>();
+    const view = (query: string, items: ReferenceRailItem[]): React.JSX.Element => (
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
+        ref={ref} items={items} command={vi.fn()} emptyLabel='none' query={query} />
+    );
+    const { rerender } = render(view('', [row('a'), row('b'), row('c')]));
+    sendKey(ref, 'ArrowDown');
+    rerender(view('x', [row('a'), row('b')]));
+    rerender(view('', [row('a'), row('b'), row('c')]));
+
+    expect(highlighted()).toBe('a');
+  });
+
+  it('leaves Shift+Tab alone so the keyboard can move back', () => {
+    const ref = React.createRef<MentionListRef>();
+    const command = vi.fn();
+    render(
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
+        ref={ref} items={[row('a')]} command={command} emptyLabel='none' query='' />,
+    );
+    let taken = true;
+    act(() => {
+      taken = ref.current?.onKeyDown(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true })) ?? true;
+    });
+
+    expect(taken).toBe(false);
+    expect(command).not.toHaveBeenCalled();
+  });
+
+  it('moves the highlight to the first row when the highlighted one goes', () => {
+    const ref = React.createRef<MentionListRef>();
+    const { rerender } = render(
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
+        ref={ref}
+        items={[row('a'), row('b'), row('c')]}
+        command={vi.fn()}
+        emptyLabel='none' query=''
+      />,
+    );
+    sendKey(ref, 'ArrowDown');
+    rerender(
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
+        ref={ref}
+        items={[row('a'), row('c')]}
+        command={vi.fn()}
+        emptyLabel='none' query=''
       />,
     );
     expect(highlighted()).toBe('a');
@@ -200,14 +272,14 @@ describe('ReferenceMentionList — keyboard selection scrolls into view', () => 
       scrolled.push(this as Element);
     };
     try {
-      const ref = React.createRef<ReferenceMentionListRef>();
+      const ref = React.createRef<MentionListRef>();
       const items = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(row);
       render(
-        <ReferenceMentionList
+        <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
           ref={ref}
           items={items}
           command={vi.fn()}
-          emptyLabel='none'
+          emptyLabel='none' query=''
         />,
       );
       scrolled.length = 0; // ignore the mount-time scroll of row 0
@@ -240,10 +312,10 @@ describe('ReferenceMentionList — no-thumbnail modality icon', () => {
 
   it('shows the text modality icon (not the broken-image glyph) for a text source', () => {
     const { container } = render(
-      <ReferenceMentionList
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
         items={[noThumb('t', 'text')]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     expect(container.querySelector('.lucide-file-text')).not.toBeNull();
@@ -252,10 +324,10 @@ describe('ReferenceMentionList — no-thumbnail modality icon', () => {
 
   it('shows the audio modality icon for an audio source with no thumbnail', () => {
     const { container } = render(
-      <ReferenceMentionList
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
         items={[noThumb('a', 'audio')]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     expect(container.querySelector('.lucide-music')).not.toBeNull();
@@ -269,7 +341,7 @@ describe('ReferenceMentionList — no-thumbnail modality icon', () => {
 describe('ReferenceMentionList — video reference thumbnail (#1824 consumer ⑥)', () => {
   it('renders the cover frame as the <img> for a video source with a cover', () => {
     const { container } = render(
-      <ReferenceMentionList
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
         items={[
           {
             refId: 'v->me',
@@ -280,7 +352,7 @@ describe('ReferenceMentionList — video reference thumbnail (#1824 consumer ⑥
           },
         ]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     const img = container.querySelector('img');
@@ -290,7 +362,7 @@ describe('ReferenceMentionList — video reference thumbnail (#1824 consumer ⑥
 
   it('shows the video modality icon (not a broken image) for a coverless video', () => {
     const { container } = render(
-      <ReferenceMentionList
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
         items={[
           {
             refId: 'v->me',
@@ -302,7 +374,7 @@ describe('ReferenceMentionList — video reference thumbnail (#1824 consumer ⑥
           },
         ]}
         command={vi.fn()}
-        emptyLabel='none'
+        emptyLabel='none' query=''
       />,
     );
     expect(container.querySelector('.lucide-video')).not.toBeNull();

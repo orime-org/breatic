@@ -221,8 +221,15 @@ export function renderProductGuide(): string {
       "chip that could not be uploaded or read shows a red mark and says why; it has to be removed with its X before " +
       "the message can go. Something that cannot be attached at all -- too many items, a file too large or of a " +
       `kind that is not taken, or ${quoted(t("chat.composer.attachTooLong"))} -- is said on a line beside the ` +
-      "plus sign. Dropping or pasting a file into the box attaches nothing. A sent message cannot be edited and a " +
+      "plus sign. Pasting canvas nodes copied on the canvas, or a picture copied in this chat, into the box " +
+      "attaches them too. A sent message cannot be edited and a " +
       "reply cannot be regenerated: to ask again, send another message.",
+    "Typing @ in the box opens a list, just above the @, of the attachments that have finished uploading; it " +
+      `reads ${quoted(t("chat.composer.atEmpty"))} when there are none. Typing narrows it and the list goes away ` +
+      "while what is typed after the @ matches none, so the @ stays ordinary text; the arrow keys move through it, Enter or " +
+      "Tab puts the highlighted one into the text as a small block with its name, and Escape closes it. One " +
+      "Backspace removes a block, and removing an attachment removes its blocks. The message is sent with " +
+      "those references, so it is clear which attachment each one means.",
     "While a reply is being written a small dot pulses at its end. Hovering a message the reader sent shows " +
       "when it was sent and a copy icon. A reply may start with a fold " +
       `that opens to show the thinking; it reads ${quoted(t("chat.thinkingNow"))} while the thinking runs, and ` +
@@ -701,7 +708,7 @@ export function renderProductGuide(): string {
     "Connected nodes and focus crops are offered but not sent until the prompt mentions them. In the prompt, type " +
       "@ and choose from the list that opens: it holds the nodes connected into this one and this node's focus " +
       "crops, less any the current mode and model cannot take. Letters typed after @ narrow the list, which shows " +
-      "up to eight rows; the arrow keys move through it, Enter picks and Esc closes it. Only choosing a row makes " +
+      "up to eight rows and goes away while they match none; the arrow keys move through it, Enter picks and Esc closes it. Only choosing a row makes " +
       "a mention, and typing the name alone does not. With nothing to offer the list shows " +
       `${quoted(t("canvas.generatePanel.mentionEmpty"))}. Clicking a chip in the strip above the prompt inserts ` +
       "it too; a faded chip shows a message saying why instead, such as " +

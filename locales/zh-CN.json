@@ -171,7 +171,8 @@
     "chat": {
       "message_too_long": "这条消息太长了。最多 {limit, number} 个字符，这条有 {actual, number} 个。",
       "attachments_too_long": "附带的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
-      "attachments_too_many": "附带的内容太多了。最多 {limit, number} 项，这条有 {actual, number} 项。"
+      "attachments_too_many": "附带的内容太多了。最多 {limit, number} 项，这条有 {actual, number} 项。",
+      "references_too_many": "引用附件的次数太多。一条消息最多 {limit, number} 次，这条有 {actual, number} 次。"
     },
     "mail": {
       "studio_invite": {
@@ -256,7 +257,8 @@
       "attachTooLong": "附带的内容太多了，请少挂几项或换短一点的文件。",
       "attachUnsupported": "{filename} 不能附带",
       "attachTooLarge": "{filename} 太大，不能附带",
-      "attachUnavailable": "暂时无法添加，请重试。"
+      "attachUnavailable": "暂时无法添加，请重试。",
+      "atEmpty": "没有可引用的附件"
     },
     "empty": {
       "greetingWithName": "嗨, {name}!",
@@ -460,7 +462,6 @@
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的画面内容，@ 引用参考",
       "mentionEmpty": "没有可引用的内容",
-      "mentionNoMatch": "没有匹配的内容",
       "voicePlaceholder": "未选音色",
       "voiceSearchPlaceholder": "搜索音色…",
       "voiceLoading": "正在加载音色…",

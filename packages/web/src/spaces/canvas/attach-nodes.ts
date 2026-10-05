@@ -9,7 +9,7 @@ import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { ContentNodeView } from '@web/data/yjs/node-view';
 import { toAbsolutePosition } from '@web/spaces/canvas/group-geometry';
 import { currentGeneration } from '@web/spaces/canvas/generate/current-generation';
-import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import {
   MENTION_KIND_ATTR,
   MENTION_LABEL_ATTR,
@@ -109,12 +109,21 @@ export function nodeNameOf(data: { kind?: unknown; name?: unknown; content?: unk
  * @param ids - The node ids.
  * @returns The same string for the same set.
  */
-function pickId(ids: readonly string[]): string {
+export function pickId(ids: readonly string[]): string {
+  return `canvas-${ids.length}-${hashOf(ids)}`;
+}
+
+/**
+ * A short stable hash of some strings, whatever their order.
+ * @param parts - The strings.
+ * @returns The hash, base 36.
+ */
+export function hashOf(parts: readonly string[]): string {
   let hash = 0x811c9dc5;
-  for (const ch of [...ids].sort().join('\u0000')) {
+  for (const ch of [...parts].sort().join('\u0000')) {
     hash = Math.imul(hash ^ ch.charCodeAt(0), 0x01000193) >>> 0;
   }
-  return `canvas-${ids.length}-${hash.toString(36)}`;
+  return hash.toString(36);
 }
 
 /**

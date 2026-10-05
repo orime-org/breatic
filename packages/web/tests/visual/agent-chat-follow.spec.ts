@@ -60,7 +60,7 @@ async function isWriting(p: Page): Promise<boolean> {
  * @returns Nothing.
  */
 async function ask(p: Page, prompt: string): Promise<void> {
-  const composer = p.getByTestId('chat-composer-textarea');
+  const composer = p.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
   await p.getByTestId('new-conversation').click();
   await expect(p.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
@@ -163,7 +163,7 @@ test('a reader at the end keeps it when their composer takes the room @needs-mod
   await aFinishedTurn(page);
   expect(await distanceFromEnd(page)).toBeLessThan(80);
 
-  const composer = page.getByTestId('chat-composer-textarea');
+  const composer = page.getByTestId('chat-composer-box');
   await composer.click();
   for (let line = 0; line < 8; line += 1) {
     await composer.type(`line ${String(line)}`);

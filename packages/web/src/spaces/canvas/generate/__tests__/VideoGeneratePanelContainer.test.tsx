@@ -1910,13 +1910,13 @@ describe('这个部署服务不了的档 (#1951)', () => {
   });
 });
 
-describe('VideoGeneratePanelContainer — 两句空态各自取自己那个 key (#1952)', () => {
+describe('VideoGeneratePanelContainer — what the @ list says when it has nothing to list', () => {
   /**
    * 那句话在 en 里的原文。
    * @param key - `canvas.generatePanel` 下的键名。
    * @returns 该键在英文目录里的值。
    */
-  function sentence(key: 'mentionEmpty' | 'mentionNoMatch'): string {
+  function sentence(key: 'mentionEmpty'): string {
     return readPath(
       LOCALE_CATALOGS[0][1],
       `canvas.generatePanel.${key}`,
@@ -1965,24 +1965,24 @@ describe('VideoGeneratePanelContainer — 两句空态各自取自己那个 key 
     const box = document.querySelector(
       '[data-testid="reference-mention-empty"]',
     );
-    return { text: box?.textContent ?? null, unmount: view.unmount };
+    const shown = box?.closest<HTMLElement>('body > div')?.style.display !== 'none';
+    return { text: shown ? (box?.textContent ?? null) : null, unmount: view.unmount };
   }
 
-  // 跟图片面板那条同一个理由，见那边的注释：断言「两句不一样」挡不住把两个
-  // key 对调，而对调是同样两行、同样 typecheck 绿的第二种错。
-  it('每一句各自取自己那个 key，不是「两句不一样」就算数', async () => {
-    // t2v 不吃参考素材，那条图片边一项都用不了。
+  it('says there is nothing usable for a bare @, and shows nothing for a query that matches no row', async () => {
+    // t2v takes no reference material, so the image edge offers nothing.
     const nothingUsable = await emptyStateText('t2v', 'veo-3.1', '');
     expect(nothingUsable.text).toBe(sentence('mentionEmpty'));
     nothingUsable.unmount();
 
-    // ref 档吃图片参考，池子非空，只是打的字没匹配上。
+    // ref takes image references, so the pool is not empty; the typed query
+    // matches none of it and the list stays hidden.
     const nothingMatched = await emptyStateText(
       'ref',
       'kling-o3-pro-ref',
       'zzz',
     );
-    expect(nothingMatched.text).toBe(sentence('mentionNoMatch'));
+    expect(nothingMatched.text).toBeNull();
     nothingMatched.unmount();
   });
 });

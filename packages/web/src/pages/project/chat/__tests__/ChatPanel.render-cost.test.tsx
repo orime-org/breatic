@@ -16,6 +16,7 @@
  */
 
 import type * as ChatApiModule from '@web/data/api/chat';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
@@ -100,7 +101,11 @@ afterEach(() => {
 
 describe('a reply arriving piece by piece', () => {
   it('does not re-render the composer or the history sheet', async () => {
-    render(<ChatPanel historyOpen={false} onHistoryOpenChange={() => undefined} projectId='p1' />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPanel historyOpen={false} onHistoryOpenChange={() => undefined} projectId='p1' />
+      </QueryClientProvider>,
+    );
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
     // Sent through the session rather than the composer, because the composer

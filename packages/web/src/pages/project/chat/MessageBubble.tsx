@@ -4,6 +4,7 @@
 import * as React from 'react';
 
 import { cn } from '@web/lib/utils';
+import { useTranslation } from '@web/i18n/use-translation';
 
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { ProposalCard } from '@web/pages/project/chat/ProposalCard';
@@ -12,6 +13,8 @@ import { AssetRow } from '@web/pages/project/chat/AssetRow';
 import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
 import { ToolRunLine } from '@web/pages/project/chat/ToolRunLine';
 import { TurnActions } from '@web/pages/project/chat/TurnActions';
+import { UserWords } from '@web/pages/project/chat/user-words';
+import { wordsWithLabels } from '@web/pages/project/chat/attachment-label';
 import { FailedSteps, TurnEnding } from '@web/pages/project/chat/TurnEnding';
 import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
 import type { ChatMessage } from '@web/pages/project/chat/types';
@@ -54,6 +57,7 @@ export const MessageBubble = React.memo(function MessageBubble({
   consolidating,
   onThinkingOpen,
 }: MessageBubbleProps): React.JSX.Element {
+  const t = useTranslation();
   const isUser = message.role === 'user';
   // The newest call still running, which is the one the line names. Several
   // can run at once -- nothing disables parallel tool calls -- and one line
@@ -141,9 +145,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                 otherwise. Measured in a browser: a 159-character URL in a
                 300px column drew 787px wide, 487 of them outside the bubble.
                 `.chat-markdown` answers the same thing on the reply's side. */}
-              {isUser ? (
-                <span className='whitespace-pre-wrap break-words'>{message.content}</span>
-              ) : null}
+              {isUser ? <UserWords content={message.content} attachments={message.attachments} /> : null}
               {!isUser && message.content ? (
                 <MarkdownMessage
                   content={message.content}
@@ -197,7 +199,7 @@ export const MessageBubble = React.memo(function MessageBubble({
             line too, so a turn that searched and said nothing still has one. */}
         {running || (message.content === '' && message.sources === undefined) ? null : (
           <TurnActions
-            text={message.content}
+            text={isUser ? wordsWithLabels(t, message.content, message.attachments) : message.content}
             {...(isUser ? { own: true } : {})}
             {...(isUser && message.sentAt !== undefined ? { sentAt: message.sentAt } : {})}
             {...(!isUser && message.sources !== undefined ? { sources: message.sources } : {})}

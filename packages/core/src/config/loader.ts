@@ -138,6 +138,12 @@ const agentConfigSchema = z.object({
    */
   user_message_max_chars: z.number().int().positive().default(15000),
   /**
+   * How many references to attachments one message may carry. Each counts as
+   * one character against `user_message_max_chars`, so this is what bounds how
+   * much they expand to in what the model is sent.
+   */
+  user_message_max_references: z.number().int().positive().default(100),
+  /**
    * How long the items attached to one message may be, in characters,
    * measured on the attachment section as the model is sent it.
    *

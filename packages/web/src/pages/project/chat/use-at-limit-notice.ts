@@ -18,9 +18,9 @@ interface AtLimitNotice {
  * A thing that happened rather than a state the box is in, which is what
  * every other word this panel says is, and what keeps it from sitting there
  * as a label on a full box. It is said when the text first reaches the limit,
- * and again whenever a keystroke is turned away after that: `maxLength`
- * refuses one without a word and without an `input` event, so a reader who
- * kept typing past the first time would otherwise be typing into silence.
+ * and again whenever a keystroke is turned away after that: the box's limit
+ * turns it away without changing anything on screen, so a reader who kept
+ * typing past the first time would otherwise be typing into silence.
  * @param length - How long the draft is.
  * @param limit - How long it may be.
  * @returns Whether to say it, and a way to say it again.
