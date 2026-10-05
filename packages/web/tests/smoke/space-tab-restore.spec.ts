@@ -184,9 +184,8 @@ test('comes back to the camera the user aimed, across a switch and a reload', as
 });
 
 test('puts back both the offset and the zoom of a Space switched away from', async ({ page }) => {
-  // A Space switched away from stays mounted and hidden (inner#1235), and
-  // hiding resets the library's camera. The camera stored while the reader
-  // worked is what comes back, the zoom as well as the offset.
+  // A Space switched away from stays mounted and hidden (inner#1235), and its
+  // camera comes back as the reader left it, the zoom as well as the offset.
   await openFreshProject(page);
   await addSpaces(page, 1);
   const [first, second] = (await stripIds(page)) as [string, string];

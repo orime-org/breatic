@@ -996,11 +996,9 @@ function CanvasSpaceInner({
   // already down.
   useEscapeInSpace(placingAnnotation, endAnnotationPlacement);
 
-  // The tool is armed in the chrome and spent here, so it outlives this canvas
-  // unless something puts it down (§6.4's last row). The store is a module
-  // singleton reset per PROJECT, and a Space switch is not that: left armed,
-  // the first click on the next canvas dropped a note box nobody asked for —
-  // reproduced on a board.
+  // The tool is armed in the chrome and spent here. Hiding this canvas puts it
+  // down, as it does a menu (§6.4's last row): coming back finds nothing armed
+  // that the reader did not just arm.
   React.useEffect(() => () => endAnnotationPlacement(), [endAnnotationPlacement]);
 
   // Shown again, the canvas library still holds a key that was down when this

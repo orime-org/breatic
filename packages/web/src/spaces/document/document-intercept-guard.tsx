@@ -20,8 +20,8 @@ interface DocumentInterceptGuardProps {
  *
  * ## Why this is not inside `DocumentSpace`
  *
- * `DocumentSpace` is rendered for the ACTIVE Space only, while an editor is
- * cached per document and deliberately outlives a tab switch — it keeps the
+ * `DocumentSpace`'s effects run only while its Space is shown, while an editor
+ * is cached per document and deliberately outlives a tab switch — it keeps the
  * undo stack, the selection and any in-flight composition, and it keeps
  * receiving remote updates the whole time. Those two scopes do not match: once
  * the user looks at something else, the editor for the Space they left is still
