@@ -853,9 +853,11 @@ test('a panel whose node a collaborator deleted while hidden closes and says so'
   }
 });
 
-test('a closed tab leaves the page, and opens again from storage', async ({ page }) => {
-  // A8: closing unmounts the Space and releases what it held; opening it
-  // again starts from storage, which keeps no camera for a closed tab.
+test('a closed tab leaves the page, and opens again on the camera it was closed on', async ({
+  page,
+}) => {
+  // A8: closing unmounts the Space and releases what it held. A18: storage
+  // keeps the closed tab's camera, so opening it again lands where it was.
   await openFreshProject(page);
   await addSpaces(page, 1);
   const [first, second] = (await stripIds(page)) as [string, string];
@@ -866,6 +868,10 @@ test('a closed tab leaves the page, and opens again from storage', async ({ page
   await page.mouse.move(pane.x + 300, pane.y + 300);
   await page.mouse.wheel(120, 80);
   await expect.poll(async () => (await camera(page)).x).not.toBe(0);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -200);
+  await page.keyboard.up('Control');
+  await expect.poll(async () => (await camera(page)).zoom).not.toBe(1);
   const aimed = await camera(page);
   await showSpace(page, second);
 
@@ -874,7 +880,7 @@ test('a closed tab leaves the page, and opens again from storage', async ({ page
   await expect.poll(() => stripIds(page)).not.toContain(first);
   await expect(page.locator(`[data-space-outlet="${first}"]`)).toHaveCount(0);
 
-  expect(await storedViewport(page, first)).toBeNull();
+  expect(await storedViewport(page, first)).not.toBeNull();
 
   await page.getByTestId('space-drawer-trigger').click();
   await page.getByTestId(`space-drawer-row-${first}`).click();
@@ -882,7 +888,7 @@ test('a closed tab leaves the page, and opens again from storage', async ({ page
   if (await page.getByTestId('space-drawer').isVisible()) await page.keyboard.press('Escape');
   await expect(page.getByTestId('space-drawer')).toBeHidden();
   await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
-  expect(await camera(page)).not.toEqual(aimed);
+  await expect.poll(() => camera(page)).toEqual(aimed);
 });
 
 test('a hidden document shows no floating bar, no caret to others, and takes in their writes', async ({

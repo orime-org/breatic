@@ -4914,7 +4914,7 @@ describe('the camera this Space is left on (#2165)', () => {
     window.localStorage.setItem(
       KEY,
       JSON.stringify({
-        [VIEWER]: { p: { tabs: [{ spaceId: 's', viewport }], activeId: 's' } },
+        [VIEWER]: { p: { tabs: [{ spaceId: 's', open: true, viewport }], activeId: 's' } },
       }),
     );
   };

@@ -68,6 +68,7 @@ const slotSchema = z.object({
   tabs: z.array(
     z.object({
       spaceId: z.string().min(1),
+      open: z.boolean(),
       viewport: viewportSchema,
     }),
   ),
@@ -200,12 +201,16 @@ export function readProjectTabs(
   if (userId === undefined || userId === '') return null;
   const slot = readSlot(readRecord(), userId, projectId);
   if (slot === null) return null;
-  return { openIds: slot.tabs.map((t) => t.spaceId), activeId: slot.activeId };
+  return {
+    openIds: slot.tabs.filter((t) => t.open).map((t) => t.spaceId),
+    activeId: slot.activeId,
+  };
 }
 
 /**
- * Store the strip as it now stands, carrying each surviving tab's camera with
- * it and dropping the camera of every tab that left.
+ * Store the strip as it now stands. A tab that left it stays in the record,
+ * marked closed, with its camera, so opening it again lands where it was
+ * (inner#1235 A18).
  * @param userId - The signed-in account; nothing is written without one.
  * @param projectId - The project the strip belongs to.
  * @param openIds - The tabs, in the order they are painted.
@@ -219,15 +224,20 @@ export function writeOpenTabs(
 ): void {
   if (userId === undefined || userId === '') return;
   const record = readRecord();
-  const previous = readSlot(record, userId, projectId);
-  const cameras = new Map(
-    (previous?.tabs ?? []).map((t) => [t.spaceId, t.viewport] as const),
-  );
+  const previous = readSlot(record, userId, projectId)?.tabs ?? [];
+  const cameras = new Map(previous.map((t) => [t.spaceId, t.viewport] as const));
+  const open = new Set(openIds);
   writeSlot(record, userId, projectId, {
-    tabs: openIds.map((spaceId) => ({
-      spaceId,
-      viewport: cameras.get(spaceId) ?? null,
-    })),
+    tabs: [
+      ...openIds.map((spaceId) => ({
+        spaceId,
+        open: true,
+        viewport: cameras.get(spaceId) ?? null,
+      })),
+      ...previous
+        .filter((t) => !open.has(t.spaceId))
+        .map((t) => ({ ...t, open: false })),
+    ],
     activeId,
   });
 }
@@ -237,10 +247,9 @@ export function writeOpenTabs(
  * @param userId - The signed-in account; nothing is read without one.
  * @param projectId - The project the Space belongs to.
  * @param spaceId - The Space being opened.
- * @returns The stored camera, or null. Null is also the answer for a Space
- *   that is not an open tab, for one whose tab left the strip and came back
- *   (`writeOpenTabs` drops the camera of every tab that leaves), and for a
- *   stored camera the canvas would refuse.
+ * @returns The stored camera, open tab or closed, or null. Null is also the
+ *   answer for a Space never opened as a tab and for a stored camera the
+ *   canvas would refuse.
  */
 export function readSpaceViewport(
   userId: string | undefined,
@@ -255,8 +264,8 @@ export function readSpaceViewport(
 /**
  * Store where the camera now sits on one Space, leaving its neighbours alone.
  *
- * A Space that is not an open tab has nowhere to be stored — the strip is what
- * bounds this record — so the call does nothing.
+ * A Space never opened as a tab has nowhere to be stored — the tabs are what
+ * bound this record — so the call does nothing.
  * @param userId - The signed-in account; nothing is written without one.
  * @param projectId - The project the Space belongs to.
  * @param spaceId - The Space whose camera moved.
