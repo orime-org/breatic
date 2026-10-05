@@ -120,7 +120,7 @@ export function makeMentionSuggestion<T>(
       /** Document-level outside-click dismisser. */
       let onOutsidePointerDown: ((event: PointerEvent) => void) | null = null;
       /** Editor focusout dismisser: focus given to another control. */
-      let onFocusOut: ((event: FocusEvent) => void) | null = null;
+      let onFocusIn: ((event: FocusEvent) => void) | null = null;
       /**
        * Consumer A (#1805): re-shows a hidden popup on a LOCAL caret-placement
        * transaction (selection-only). Held for teardown via editor.off.
@@ -319,15 +319,12 @@ export function makeMentionSuggestion<T>(
           document.addEventListener('pointerdown', onOutsidePointerDown, true);
           // Focus handed to another control on the page (Shift+Tab, or a
           // script focusing one) leaves the list the same way a click there
-          // does. A null target is the window losing focus, which leaves the
-          // page as it was.
-          onFocusOut = (event: FocusEvent): void => {
-            if (event.relatedTarget !== null) hideUnlessWithin(event.relatedTarget);
+          // does, from the editor or from a row of the list alike. The window
+          // losing focus moves it nowhere on the page, and keeps the list.
+          onFocusIn = (event: FocusEvent): void => {
+            hideUnlessWithin(event.target);
           };
-          props.editor.view.dom.addEventListener('focusout', onFocusOut);
-          // Focus can also leave from a row of the list itself (a press on a
-          // row dragged off before release leaves the row focused).
-          el.addEventListener('focusout', onFocusOut);
+          document.addEventListener('focusin', onFocusIn, true);
           // Re-show a hidden popup when the LOCAL user clicks / arrows the caret
           // back into the still-active `@` range (#1805): the outside-click
           // handler HIDES the popup (display:none) without exiting the suggestion
@@ -434,9 +431,9 @@ export function makeMentionSuggestion<T>(
             );
             onOutsidePointerDown = null;
           }
-          if (onFocusOut) {
-            props.editor.view.dom.removeEventListener('focusout', onFocusOut);
-            onFocusOut = null;
+          if (onFocusIn) {
+            document.removeEventListener('focusin', onFocusIn, true);
+            onFocusIn = null;
           }
           if (onEditorTransaction) {
             props.editor.off('transaction', onEditorTransaction);
