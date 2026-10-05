@@ -16,7 +16,7 @@ import { expect, test, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, TEXT_BODY, liveModuleUrl } from '../helpers/live-module';
 import { selectFirstParagraph } from '../helpers/bubble-bar';
-import { DOCUMENT_EDITOR, visibleSpace } from '../helpers/space';
+import { DOCUMENT_EDITOR, VISIBLE_SPACE, visibleSpace } from '../helpers/space';
 import {
   activeId,
   addSpaces,
@@ -593,6 +593,38 @@ test('a peer sees the pointer go when the Space is hidden, and their writes are 
   } finally {
     await peer.close();
   }
+});
+
+test('the background of the canvas on screen moves with that canvas when another is kept', async ({
+  page,
+}) => {
+  // A3: with two canvases on the page, the dot grid shown is the shown
+  // canvas's own, so it follows that canvas's pan.
+  await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  for (const id of [first, second]) {
+    await showSpace(page, id);
+    await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  }
+  const grid = (): Promise<{ own: boolean; x: string | null }> =>
+    page.evaluate((space) => {
+      const rect = document.querySelector(`${space} [data-testid="rf__background"] rect`);
+      const id = (rect?.getAttribute('fill') ?? '').slice(5, -1);
+      const pattern = document.getElementById(id);
+      return {
+        own: pattern?.closest('[data-space-outlet]') === rect?.closest('[data-space-outlet]'),
+        x: pattern?.getAttribute('x') ?? null,
+      };
+    }, VISIBLE_SPACE);
+  const before = await grid();
+  expect(before.own).toBe(true);
+  const pane = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
+  if (pane === null) throw new Error('the pane has no box');
+  await page.mouse.move(pane.x + 300, pane.y + 300);
+  await page.mouse.wheel(37, 11);
+
+  await expect.poll(async () => (await grid()).x).not.toBe(before.x);
 });
 
 test.describe('on a Mac, where Cmd is the canvas library\'s add-to-selection key', () => {

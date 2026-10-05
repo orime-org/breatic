@@ -4378,6 +4378,10 @@ function CanvasSpaceInner({
           onChange={onUploadInputChange}
         />
         <ReactFlow
+          // The ids the library writes into the page (the dot grid's pattern,
+          // edge markers) are built from this; every kept canvas needs its own,
+          // or the one on screen draws with a hidden canvas's grid.
+          id={`canvas-${spaceId}`}
           ref={setFlowShell}
           onKeyDownCapture={nudgeKeys.onKeyDownCapture}
           onKeyDown={nudgeKeys.onKeyDown}
