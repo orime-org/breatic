@@ -125,3 +125,27 @@ export async function sendMail(options: SendMailOptions): Promise<SendMailResult
 
   return { status: "sent" };
 }
+
+/** The log line a {@link SendMailResult} calls for. */
+export interface MailLogLine {
+  level: "info" | "warn";
+  msg: string;
+  fields: Record<string, unknown>;
+}
+
+/**
+ * Map a send result to the log line the caller should write, so every place
+ * that sends mail logs by one rule. A sent mail is left to the caller's own
+ * line, and a disabled backend writes nothing.
+ * @param result - What {@link sendMail} returned.
+ * @returns The line to write, or null for none.
+ */
+export function describeMailResult(result: SendMailResult): MailLogLine | null {
+  if (result.status === "backend_console") {
+    return { level: "info", msg: "[console] email", fields: { to: result.to, html: result.html } };
+  }
+  if (result.status === "skipped" && result.reason === "smtp_not_configured") {
+    return { level: "warn", msg: "email_not_sent_smtp_not_configured", fields: { to: result.to } };
+  }
+  return null;
+}
