@@ -69,7 +69,7 @@ describe("previewTranscodeArgs", () => {
     expect(args[args.indexOf("-movflags") + 1]).toBe("+faststart");
     expect(args[args.indexOf("-vf") + 1]).toBe("scale=640:-2");
     expect(args[args.indexOf("-c:v") + 1]).toBe("libx264");
-    // 4:2:0 is the H.264 profile Safari and Firefox decode; a 4:4:4 source would otherwise carry through.
+    // 4:2:0 chroma keeps the stream in a profile Safari and Firefox decode (High, not High 4:4:4); a 4:4:4 source would otherwise carry through.
     expect(args[args.indexOf("-pix_fmt") + 1]).toBe("yuv420p");
     expect(args[args.indexOf("-crf") + 1]).toBe("30");
   });

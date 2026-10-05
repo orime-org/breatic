@@ -60,7 +60,8 @@ export interface PromptEditorHandle {
   /**
    * Inserts plain text at the caret the reader last left in this editor, or
    * at the end when they never put one here. A popover opening
-   * takes focus away, so "has a caret" means "was focused since it mounted",
+   * takes focus away, so "has a caret" means "was focused since this editor
+   * was last created",
    * and the selection ProseMirror keeps through the blur is where it goes.
    * A space is added on a side that would otherwise touch a word.
    * @param text - The text to insert.
@@ -231,7 +232,8 @@ export const PromptEditor = React.forwardRef<
   const onFocusRef = React.useRef(onFocus);
   onFocusRef.current = onFocus;
   // Whether the reader has put a caret in the current editor: the editor is
-  // rebuilt per fragment, so `onCreate` clears it and `onFocus` sets it.
+  // rebuilt whenever its `useEditor` deps change (fragment, locale labels,
+  // caret provider, name resolver), so `onCreate` clears it and `onFocus` sets it.
   const caretPlacedRef = React.useRef(false);
   // Read through a ref for the same reason the pool is: the two `onUpdate`
   // handlers are baked into the editor at creation, and rebuilding it to change

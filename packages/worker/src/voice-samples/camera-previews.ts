@@ -3,8 +3,8 @@
 
 /**
  * Which camera command preview clips the sample address has to serve, and how
- * each is made. Every clip shows the same scene with one command,
- * so the clips differ only in how the camera moves.
+ * each is made. Every clip is generated from the same scene description with
+ * one command, so the camera movement is the intended difference between them.
  */
 
 import type { FullModelEntry } from "@breatic/domain";
