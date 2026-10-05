@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import { useFocusReturn, type FocusReturn } from '@web/lib/use-focus-return';
+import { useBoxFocusReturn } from '@web/lib/use-focus-return';
 import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
@@ -111,15 +111,7 @@ export function useInlineRename({
   }, [editing]);
   // Back on screen after a switch of Space, the caret goes back in where it
   // was (inner#1235 A13).
-  const [focusReturn] = React.useState<FocusReturn>(() => ({
-    hadFocus: false,
-    returning: false,
-  }));
-  useFocusReturn(
-    editing ? focusReturn : undefined,
-    () => inputRef.current !== null && document.activeElement === inputRef.current,
-    () => inputRef.current?.focus(),
-  );
+  useBoxFocusReturn(inputRef, editing);
 
   const startEdit = React.useCallback((): void => {
     if (readOnly || locked) return;

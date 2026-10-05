@@ -22,9 +22,9 @@ export interface FocusReturn {
  *
  * Read in a layout cleanup, which runs before hiding moves the editor off the
  * page and focus with it. Put back a task later, the way an editor's own
- * autofocus waits: a mount undone straight away (Strict Mode, the canvas
- * library putting its panels back) moves the editor out of the page again,
- * and focus put in before that would be lost and read as the reader leaving.
+ * autofocus waits: a mount undone straight away (Strict Mode) moves the
+ * editor out of the page again, and focus put in before that would be lost
+ * and read as the reader leaving.
  * @param memo - Where the answer is kept, or undefined when there is nothing
  *   to put the caret back into.
  * @param hasFocus - Whether the caret is in the editor now.
@@ -52,4 +52,21 @@ export function useFocusReturn(
     }, 0);
     return () => window.clearTimeout(id);
   }, [memo]);
+}
+
+/**
+ * {@link useFocusReturn} for a plain box held by a ref.
+ * @param box - The box the caret goes back into.
+ * @param enabled - Whether there is a box to put the caret back into.
+ */
+export function useBoxFocusReturn(
+  box: React.RefObject<HTMLElement | null>,
+  enabled = true,
+): void {
+  const [memo] = React.useState<FocusReturn>(() => ({ hadFocus: false, returning: false }));
+  useFocusReturn(
+    enabled ? memo : undefined,
+    () => box.current !== null && document.activeElement === box.current,
+    () => box.current?.focus(),
+  );
 }

@@ -83,8 +83,7 @@ export function SpaceReadOnlyNotice({
   // canvas.** `DocumentSpace` does say it (`spaces.document.refusedNotice`,
   // plus its unavailable card), but `CanvasSpace` reads only `provider` and
   // `synced` off its connection and has no refusal branch at all, so a refused
-  // canvas document
-  // is currently silent everywhere. That gap is not this component's to close —
+  // canvas document is currently silent everywhere. That gap is not this component's to close —
   // this notice is about seats, and a refusal is not a seat problem — but do
   // not read the exclusion as "some other component has it covered".
   //

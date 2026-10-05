@@ -410,8 +410,7 @@ export const PromptEditor = React.forwardRef<
   }
   // Back on screen after a switch of Space, the caret goes back in if it was
   // here when the Space was hidden. Kept with the editor, so a return still
-  // waiting when the canvas library takes its panels down once more right
-  // after showing them is carried to the next mount.
+  // waiting when Strict Mode undoes a mount is carried to the next mount.
   useFocusReturn(
     keptOf.get(editor),
     () => !editor.isDestroyed && editor.view.hasFocus(),

@@ -40,7 +40,6 @@ export interface OpenAnnotationDraft {
   readonly target: DraftTarget;
 }
 
-
 /**
  * What a canvas node-pick session wires when the user clicks a node:
  *   - `reference` — an i2i source edge (clicked → target) feeding the reference
@@ -111,7 +110,6 @@ export type PickPurpose =
   | 'soundVideo'
   | 'moodImage'
   | 'style';
-
 
 /**
  * An in-progress "pick a node from the canvas" session. Only one is active at a

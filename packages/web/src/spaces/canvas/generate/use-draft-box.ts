@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import { useFocusReturn, type FocusReturn } from '@web/lib/use-focus-return';
+import { useBoxFocusReturn } from '@web/lib/use-focus-return';
 import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 
@@ -36,15 +36,7 @@ export function useDraftBox(held: string, onCommit: (next: string) => void): Dra
     if (draft !== null && draft !== held) onCommit(draft);
     setDraft(null);
   }, [draft, held, onCommit]);
-  const [focusReturn] = React.useState<FocusReturn>(() => ({
-    hadFocus: false,
-    returning: false,
-  }));
-  useFocusReturn(
-    focusReturn,
-    () => ref.current !== null && document.activeElement === ref.current,
-    () => ref.current?.focus(),
-  );
+  useBoxFocusReturn(ref);
   const onChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => {
     setDraft(event.target.value);
   }, []);

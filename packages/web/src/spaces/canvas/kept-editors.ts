@@ -8,9 +8,9 @@
  * A hidden Space has its effects cleaned up, and a TipTap editor owned by a
  * component is destroyed in that cleanup, which cannot tell hiding from
  * unmounting. The caret and the undo history live on the editor instance, so
- * the instance is kept here and the component only shows it. Each owner ends its editor when what it was for ends — a text node
- * stops being written in, a panel closes — and a closed tab or a left project
- * ends them all.
+ * the instance is kept here and the component only shows it. Each owner ends
+ * its editor when what it was for ends — a text node stops being written in,
+ * a panel closes — and a closed tab or a left project ends them all.
  */
 
 import type { Editor } from '@tiptap/core';
