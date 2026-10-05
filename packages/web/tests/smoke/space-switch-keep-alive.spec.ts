@@ -9,9 +9,13 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { expect, test, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, TEXT_BODY, liveModuleUrl } from '../helpers/live-module';
+import { selectFirstParagraph } from '../helpers/bubble-bar';
 import { DOCUMENT_EDITOR, visibleSpace } from '../helpers/space';
 import {
   activeId,
@@ -349,6 +353,246 @@ test('a wide table scrolled sideways comes back at the same place', async ({ pag
   await showSpace(page, doc!);
 
   await expect.poll(() => frame.evaluate((el) => Math.round(el.scrollLeft))).toBe(200);
+});
+
+/** A 320x240 solid PNG, inline so it decodes with no network. */
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAUAAAADwCAIAAAD+Tyo8AAACD0lEQVR42u3TQQkAAAgEwUtnCJMY3w7+hIFJsLCpHuCpSAAGBgwMGBgMDBgYMDBgYDAwYGDAwGBgwMCAgQEDg4EBAwMGBgwMBgYMDBgYDAwYGDAwYGAwMGBgwMCAgcHAgIEBA4OBAQMDBgYMDAYGDAwYGAysAhgYMDBgYDAwYGDAwICBwcCAgQEDg4EBAwMGBgwMBgYMDBgYMDAYGDAwYGAwMGBgwMCAgcHAgIEBAwMGBgMDBgYMDAYGDAwYGDAwGBgwMGBgMDBgYMDAgIHBwICBAQMDBgYDAwYGDAwGBgwMGBgwMBgYMDBgYMDAYGDAwICBwcCAgQEDAwYGAwMGBgwMGBgMDBgYMDAYGDAwYGDAwGBgwMCAgcHAgIEBAwMGBgMDBgYMDBgYDAwYGDAwGBgwMGBgwMBgYMDAgIEBA4OBAQMDBgYDAwYGDAwYGAwMGBgwMBhYBTAwYGDAwGBgwMCAgQEDg4EBAwMGBgMDBgYMDBgYDAwYGDAwYGAwMGBgwMBgYMDAgIEBA4OBAQMDBgYMDAYGDAwYGAwMGBgwMGBgMDBgYMDAYGDAwICBAQODgQEDAwYGDAwGBgwMGBgMDBgYMDBgYDAwYGDAwICBwcCAgQEDg4EBAwMGBgwMBgYMDBgYMDAYGDAwYGAwMGBgwMCAgcHAgIEBA4OBAQMDBgYMDAYGDAwYGDAwGBgwMHC3pCIzOUa0Hy8AAAAASUVORK5CYII=',
+  'base64',
+);
+
+/** Real decoded media, both tracks present (64x48, 15 seconds). */
+const CLIP = readFileSync(resolve(__dirname, '../fixtures/media-history.mp4'));
+
+/**
+ * Opens a fresh project with a document Space beside its canvas, the document
+ * shown with the caret in its body.
+ * @param p - The page.
+ * @returns The canvas Space and the document Space.
+ */
+async function canvasAndDocument(p: Page): Promise<{ canvas: string; doc: string }> {
+  await openFreshProject(p);
+  const [doc] = await addSpaces(p, 1, 'document');
+  await expect(p.getByTestId('new-space-button')).toBeFocused();
+  const [canvas] = (await stripIds(p)) as [string, string];
+  await showSpace(p, doc!);
+  const editor = p.locator(DOCUMENT_EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await editor.click();
+  return { canvas, doc: doc! };
+}
+
+test('a document\'s undo history and its controls are all there after a switch', async ({ page }) => {
+  // A1: the next undo takes back what was typed before the switch, and the
+  // block handle and the bubble bar come up as they did before it.
+  const { canvas, doc } = await canvasAndDocument(page);
+  await page.keyboard.type('typed before the switch');
+
+  await showSpace(page, canvas);
+  await showSpace(page, doc);
+
+  const editor = page.locator(DOCUMENT_EDITOR);
+  await expect(editor).toBeFocused();
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(editor.locator('p').first()).toHaveText('');
+  await page.keyboard.press('ControlOrMeta+Shift+z');
+  await expect(editor.locator('p').first()).toHaveText('typed before the switch');
+
+  const row = await editor.locator('p').first().boundingBox();
+  if (row === null) throw new Error('the first row has no box');
+  await page.mouse.move(row.x + 40, row.y + row.height / 2, { steps: 3 });
+  await expect(visibleSpace(page).getByTestId('doc-block-handle')).toBeVisible();
+  await selectFirstParagraph(page);
+  await expect(page.getByTestId('doc-bubble-tool-comment')).toBeVisible();
+});
+
+test('a comment not sent yet is still being written after a switch', async ({ page }) => {
+  // A2: the draft card and its words are where the reader left them.
+  const { canvas, doc } = await canvasAndDocument(page);
+  await page.keyboard.type('a line to comment on');
+  await selectFirstParagraph(page);
+  await page.getByTestId('doc-bubble-tool-comment').click();
+  const draft = page.getByTestId('doc-comment-draft-input');
+  await draft.fill('words not sent yet');
+
+  await showSpace(page, canvas);
+  await showSpace(page, doc);
+
+  await expect(draft).toBeVisible();
+  await expect(draft).toHaveValue('words not sent yet');
+});
+
+test('the nodes selected on a canvas are still selected after a switch', async ({ page }) => {
+  // A3.
+  const projectUrl = await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  await seedNode(page, projectIdOf(projectUrl), first, 'kept-selected', 'image');
+  const node = visibleSpace(page).locator('.react-flow__node[data-id="kept-selected"]');
+  await expect(node).toBeVisible({ timeout: 20_000 });
+  await node.click();
+  await expect(node).toHaveClass(/selected/);
+
+  await showSpace(page, second);
+  await showSpace(page, first);
+
+  await expect(node).toHaveClass(/selected/);
+});
+
+test('the zoom readout and a zoom act on the canvas on screen only', async ({ page }) => {
+  // A4: zooming one canvas leaves the one kept hidden alone, and the readout
+  // reads whichever is shown.
+  await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  const firstCamera = await camera(page);
+  const firstReadout = await page.getByTestId('zoom-readout').textContent();
+
+  await showSpace(page, second);
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  const pane = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
+  if (pane === null) throw new Error('the pane has no box');
+  await page.mouse.move(pane.x + pane.width / 2, pane.y + pane.height / 2);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -400);
+  await page.keyboard.up('Control');
+  await expect.poll(async () => (await camera(page)).zoom).not.toBe(firstCamera.zoom);
+  await expect(page.getByTestId('zoom-readout')).not.toHaveText(firstReadout ?? '');
+
+  await showSpace(page, first);
+
+  expect(await camera(page)).toEqual(firstCamera);
+  await expect(page.getByTestId('zoom-readout')).toHaveText(firstReadout ?? '');
+});
+
+test('an upload started on one canvas lands there, done, while another is shown', async ({ page }) => {
+  // A4: the upload tool puts the file on the canvas on screen. A7: switching
+  // away before it finishes still leaves a finished node to come back to.
+  await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await showSpace(page, second);
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  const onSecond = await visibleSpace(page).locator('.react-flow__node').count();
+  await showSpace(page, first);
+  const ids = (): Promise<string[]> =>
+    visibleSpace(page)
+      .locator('.react-flow__node')
+      .evaluateAll((els) => els.map((el) => el.getAttribute('data-id') ?? ''));
+  const before = await ids();
+  await page
+    .locator('input[data-testid="canvas-upload-input"][multiple]')
+    .setInputFiles([{ name: 'kept-upload.png', mimeType: 'image/png', buffer: PNG }]);
+  await expect.poll(async () => (await ids()).length).toBe(before.length + 1);
+  const added = (await ids()).find((id) => !before.includes(id))!;
+
+  await showSpace(page, second);
+  await page.waitForTimeout(10_000);
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(onSecond);
+  await showSpace(page, first);
+
+  const img = visibleSpace(page)
+    .locator(`.react-flow__node[data-id="${added}"]`)
+    .getByTestId('image-node-img');
+  await expect(img).toBeVisible({ timeout: 60_000 });
+  await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth), {
+    timeout: 30_000,
+  }).toBe(320);
+});
+
+test('a hidden canvas takes no keys and stops what it was playing', async ({ page }) => {
+  // A5: keys pressed in the document do not reach the canvas behind it, and a
+  // video playing on the canvas pauses when it is hidden.
+  const { canvas, doc } = await canvasAndDocument(page);
+  const projectId = projectIdOf(page.url());
+  await showSpace(page, canvas);
+  const src = `${new URL(page.url()).origin}/keep-alive-clip.mp4`;
+  await page.route('**/keep-alive-clip.mp4', (route) =>
+    route.fulfill({ contentType: 'video/mp4', body: CLIP }),
+  );
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  await page.evaluate(
+    async ([at, pid, sid, url]: string[]) => {
+      const mod = (await import(/* @vite-ignore */ at!)) as {
+        addNode: (p: string, s: string, n: unknown) => void;
+      };
+      mod.addNode(pid!, sid!, {
+        id: 'kept-video',
+        type: 'video',
+        position: { x: 0, y: 0 },
+        data: {
+          name: 'keep-alive',
+          createdAt: Date.now(),
+          createdBy: 'keep-alive',
+          locked: false,
+          state: 'idle',
+          attachments: [],
+          content: url,
+        },
+      });
+    },
+    [canvasAt, projectId, canvas, src],
+  );
+  const node = page.locator('.react-flow__node[data-id="kept-video"]');
+  const media = node.getByTestId('media-element');
+  await expect
+    .poll(() => media.evaluate((el: HTMLMediaElement) => el.readyState), { timeout: 20_000 })
+    .toBeGreaterThanOrEqual(2);
+  await node.click({ position: { x: 4, y: 4 } });
+  await expect(node).toHaveClass(/selected/);
+  await node.getByTestId('play-toggle').click();
+  await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.paused)).toBe(false);
+
+  await showSpace(page, doc);
+  await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.paused)).toBe(true);
+  await page.locator(DOCUMENT_EDITOR).click();
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Delete');
+
+  await showSpace(page, canvas);
+  await expect(node).toBeVisible();
+});
+
+test('a peer sees the pointer go when the Space is hidden, and their writes are there on return', async ({
+  page,
+}) => {
+  // A5: a hidden canvas shows nobody where this reader's pointer is. A6: what
+  // another person changed in the meantime is on the canvas when it is shown.
+  const projectUrl = await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  const peer = await page.context().newPage();
+  try {
+    await peer.goto(projectUrl);
+    await peer.locator(`[data-testid="space-tab-${first}"]`).click();
+    await expect(visibleSpace(peer).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+
+    const pane = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
+    if (pane === null) throw new Error('the pane has no box');
+    await page.mouse.move(pane.x + pane.width / 2, pane.y + pane.height / 2, { steps: 4 });
+    const pointer = visibleSpace(peer).locator('[data-testid^="canvas-cursor-"]');
+    await expect(pointer).toHaveCount(1, { timeout: 15_000 });
+
+    await showSpace(page, second);
+    await expect(pointer).toHaveCount(0, { timeout: 15_000 });
+
+    await seedNode(peer, projectIdOf(projectUrl), first, 'peer-wrote-this', 'image');
+    await expect(visibleSpace(peer).locator('.react-flow__node[data-id="peer-wrote-this"]'))
+      .toBeVisible({ timeout: 20_000 });
+    await page.waitForTimeout(2_000);
+    await showSpace(page, first);
+
+    await expect(visibleSpace(page).locator('.react-flow__node[data-id="peer-wrote-this"]'))
+      .toBeVisible({ timeout: 20_000 });
+  } finally {
+    await peer.close();
+  }
 });
 
 test.describe('on a Mac, where Cmd is the canvas library\'s add-to-selection key', () => {
