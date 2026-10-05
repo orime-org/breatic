@@ -8,16 +8,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Text from '@tiptap/extension-text';
 import { UndoRedo } from '@tiptap/extensions';
 import { splitBlock } from '@tiptap/pm/commands';
-import { Fragment, Slice, type Schema } from '@tiptap/pm/model';
-import {
-  NodeSelection,
-  Plugin,
-  PluginKey,
-  Selection,
-  TextSelection,
-  type EditorState,
-  type Transaction,
-} from '@tiptap/pm/state';
+import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
@@ -225,96 +216,6 @@ function composerRules(wiring: ComposerWiring): AnyExtension {
 }
 
 /**
- * The plain text to take from a paste or a drop whose HTML holds none of the
- * box's blocks: the page's own text, its line breaks and indents as the
- * textarea received them.
- * @param data - The clipboard or the drag's data.
- * @returns The text, or null when ProseMirror's own reading applies.
- */
-export function plainTextOf(data: DataTransfer | null): string | null {
-  const html = data?.getData('text/html') ?? '';
-  if (html === '' || html.includes('data-reference-mention')) return null;
-  const text = data?.getData('text/plain') ?? '';
-  return text === '' ? null : text;
-}
-
-/**
- * Plain text as the box holds it: joined to the line it lands on, a paragraph
- * per line, blank lines kept.
- * @param text - The text.
- * @param schema - The box's schema.
- * @returns The slice to insert.
- */
-export function plainTextSlice(text: string, schema: Schema): Slice {
-  const lines = text.split(/\r\n?|\n/).map((line) => schema.node('paragraph', null, line === '' ? [] : [schema.text(line)]));
-  return Slice.maxOpen(Fragment.from(lines));
-}
-
-/**
- * Where what is dropped into the box lands, as the textarea put it: on the
- * line under the pointer, or, beside the text (past a line's end, under the
- * last line), at the end of the nearest line; ProseMirror would start a new
- * line there. Its first and last lines join the lines it lands between, words
- * dragged in from a page are taken as its plain text, as a paste is, and a
- * move dropped onto what it was dragged from changes nothing. The rest is
- * ProseMirror's own drop, step for step. Below the reference block's plugins,
- * so a move's source selection is already restored when it runs.
- * @returns The extension.
- */
-function composerDrop(): AnyExtension {
-  return Extension.create({
-    name: 'composerDrop',
-    priority: 50,
-    addProseMirrorPlugins() {
-      return [
-        new Plugin({
-          props: {
-            handleDrop: (view, event, slice, moved): boolean => {
-              const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
-              if (!at) return false;
-              const $at = view.state.doc.resolve(at.pos);
-              const text = moved ? null : plainTextOf(event.dataTransfer);
-              const dropped = text === null ? slice : plainTextSlice(text, view.state.schema);
-              if (dropped.size === 0) return false;
-              const target = $at.parent.inlineContent ? at.pos : Selection.near($at, -1).head;
-              // A block pressed and dragged without being selected first is
-              // the drag's own node; anything else moves the selection.
-              // prosemirror-view sets that node on `dragging` and reads it in
-              // its own drop; its type declaration leaves it out.
-              const dragged = view.dragging as { node?: NodeSelection } | null;
-              const source = moved ? (dragged?.node ?? view.state.selection) : null;
-              if (source && target >= source.from && target <= source.to) return true;
-              const taken = Slice.maxOpen(dropped.content);
-              const tr = view.state.tr;
-              source?.replace(tr);
-              const pos = tr.mapping.map(target);
-              const single = taken.openStart === 0 && taken.openEnd === 0 && taken.content.childCount === 1 ? taken.content.firstChild : null;
-              const before = tr.doc;
-              if (single) tr.replaceRangeWith(pos, pos, single);
-              else tr.replaceRange(pos, pos, taken);
-              if (tr.doc.eq(before)) return true;
-              const $pos = tr.doc.resolve(pos);
-              if (single && NodeSelection.isSelectable(single) && $pos.nodeAfter?.sameMarkup(single)) {
-                tr.setSelection(new NodeSelection($pos));
-              } else {
-                let end = tr.mapping.map(target);
-                tr.mapping.maps[tr.mapping.maps.length - 1]?.forEach((_from, _to, _newFrom, newTo) => {
-                  end = newTo;
-                });
-                tr.setSelection(TextSelection.between($pos, tr.doc.resolve(end)));
-              }
-              view.focus();
-              view.dispatch(tr.setMeta('uiEvent', 'drop'));
-              return true;
-            },
-          },
-        }),
-      ];
-    },
-  });
-}
-
-/**
  * What the chat box is built from: plain paragraphs, undo, the placeholder,
  * reference blocks and the box's own rules. No formatting: what is sent is
  * plain words.
@@ -332,6 +233,5 @@ export function composerExtensions(wiring: ComposerWiring): AnyExtension[] {
       isAttached: (id) => wiring.attachments().some((a) => a.id === id),
     }),
     composerRules(wiring),
-    composerDrop(),
   ];
 }

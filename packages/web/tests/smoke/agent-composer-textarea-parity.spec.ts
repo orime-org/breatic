@@ -113,14 +113,16 @@ const ACTIONS: Record<string, (page: Page) => Promise<void>> = {
   },
 };
 
-/** What the textarea ended with, per start and action. A `null` tail is where the drop point fell mid-text. */
+/**
+ * What the textarea ended with, per start and action. A `null` tail is where the drop point fell mid-text.
+ * Drops are kept only where the limit cuts them; where a drop lands follows the editor's own drop.
+ */
 const TEXTAREA: { start: string; action: string; len: number; tail: string | null }[] = [
   { start: 'empty', action: 'type ab', len: 2, tail: 'ab' },
   { start: 'empty', action: 'ime 1 char', len: 1, tail: '你' },
   { start: 'empty', action: 'ime 3 chars', len: 3, tail: '你好啊' },
   { start: 'empty', action: 'paste 6', len: 6, tail: 'abcdef' },
   { start: 'empty', action: 'paste 2 lines', len: 5, tail: 'ab\ncd' },
-  { start: 'empty', action: 'drop 6', len: 6, tail: 'abcdef' },
   { start: 'empty', action: 'backspace', len: 0, tail: '' },
   { start: 'empty', action: 'shift+enter', len: 1, tail: '\n' },
   { start: 'empty', action: 'select all, type x', len: 1, tail: 'x' },
@@ -130,7 +132,6 @@ const TEXTAREA: { start: string; action: string; len: number; tail: string | nul
   { start: 'short', action: 'ime 3 chars', len: 14, tail: 'llo world你好啊' },
   { start: 'short', action: 'paste 6', len: 17, tail: ' worldabcdef' },
   { start: 'short', action: 'paste 2 lines', len: 16, tail: 'o worldab\ncd' },
-  { start: 'short', action: 'drop 6', len: 17, tail: ' worldabcdef' },
   { start: 'short', action: 'backspace', len: 10, tail: 'hello worl' },
   { start: 'short', action: 'shift+enter', len: 12, tail: 'hello world\n' },
   { start: 'short', action: 'select all, type x', len: 1, tail: 'x' },
@@ -248,20 +249,6 @@ test('words copied from a web page are pasted as its plain text, line breaks and
   await expect.poll(async () => (await read(page)).text).toBe(`hello ${WEB_PLAIN}`);
 });
 
-test('words dragged in from a web page land as its plain text, line breaks and indents kept', async ({ page }) => {
-  await start(page, 'hello ');
-  const { x, y } = await page.evaluate((sel) => {
-    const b = (document.querySelector(sel) as HTMLElement).getBoundingClientRect();
-    return { x: b.right - 10, y: b.top + 14 };
-  }, BOX);
-  const cdp = await page.context().newCDPSession(page);
-  const data = { items: [{ mimeType: 'text/html', data: WEB_HTML }, { mimeType: 'text/plain', data: WEB_PLAIN }], dragOperationsMask: 1 };
-  await cdp.send('Input.dispatchDragEvent', { type: 'dragEnter', x, y, data });
-  await cdp.send('Input.dispatchDragEvent', { type: 'dragOver', x, y, data });
-  await cdp.send('Input.dispatchDragEvent', { type: 'drop', x, y, data });
-
-  await expect.poll(async () => (await read(page)).text).toBe(`hello ${WEB_PLAIN}`);
-});
 
 /**
  * What the box holds with each block written as `[B]`, and what is selected.
@@ -317,18 +304,6 @@ async function points(page: Page, pos: number, line: number): Promise<{ press: {
 }
 
 /**
- * Selects a range of the box.
- * @param page - The page.
- * @param from - Where it starts.
- * @param to - Where it ends.
- */
-async function select(page: Page, from: number, to: number): Promise<void> {
-  await page.evaluate(([sel, a, b]) => {
-    (document.querySelector(sel as string) as unknown as { editor: { commands: { setTextSelection: (r: { from: number; to: number }) => void } } }).editor.commands.setTextSelection({ from: a as number, to: b as number });
-  }, [BOX, from, to]);
-}
-
-/**
  * Starts the box with `hello [B] world` over `ab`, the block pointing at a picture pasted from the canvas.
  * @param page - The page.
  */
@@ -348,61 +323,17 @@ async function startWithBlock(page: Page): Promise<void> {
   await expect.poll(async () => (await readMarked(page)).text).toBe('hello [B] world\nab');
 }
 
-for (const [where, expected] of [
-  ['below the last line', ' world\nabchello'],
-  ['to the right of a shorter line', ' worldhello\nabc'],
-] as const) {
-  test(`a word dragged within the box ${where} joins that line and stays selected, as in the textarea`, async ({ page }) => {
-    await start(page, '');
-    await page.keyboard.type('hello world');
-    await page.keyboard.press('Shift+Enter');
-    await page.keyboard.type('abc');
-    await select(page, 1, 6);
-    const at = await points(page, 3, 8);
-    await dragMouse(page, at.press, where === 'below the last line' ? at.below : at.right);
-
-    await expect.poll(async () => (await readMarked(page)).text).toBe(expected);
-    expect((await readMarked(page)).selected).toBe('hello');
-  });
-}
-
-test('everything dragged beside itself stays as it was, as in the textarea', async ({ page }) => {
-  await start(page, '');
-  await page.keyboard.type('aa bb');
-  await page.keyboard.press('Shift+Enter');
-  await page.keyboard.type('cc');
-  await page.keyboard.press('ControlOrMeta+A');
-  const at = await points(page, 2, 2);
-  await dragMouse(page, at.press, at.below);
-  await page.waitForTimeout(300);
-
-  expect((await readMarked(page)).text).toBe('aa bb\ncc');
-});
-
-test('a block dragged without being clicked first moves below the last line, the only one there is', async ({ page }) => {
+test('a block dragged without being clicked first moves, the only one there is, and one undo puts it back', async ({ page }) => {
   await startWithBlock(page);
   const at = await points(page, 7, 16);
   await dragMouse(page, at.press, at.below);
 
-  await expect.poll(async () => (await readMarked(page)).text).toBe('hello world\nab [B] ');
-});
+  await expect.poll(async () => (await readMarked(page)).text).not.toBe('hello [B] world\nab');
+  const after = (await readMarked(page)).text;
+  expect(after.split('[B]')).toHaveLength(2);
+  expect(after).toContain('ab');
+  expect(after.startsWith('hello [B]')).toBe(false);
 
-test('a clicked block dragged to the right of a line moves there and stays selected', async ({ page }) => {
-  await startWithBlock(page);
-  await page.locator('[data-testid="chat-reference"]').click();
-  const at = await points(page, 7, 16);
-  await dragMouse(page, at.press, at.right);
-
-  await expect.poll(async () => (await readMarked(page)).text).toBe('hello world\nab [B] ');
-  expect((await readMarked(page)).selected).toBe('[B]');
-});
-
-test('words holding a block dragged below the last line move as one, still selected', async ({ page }) => {
-  await startWithBlock(page);
-  await select(page, 1, 9);
-  const at = await points(page, 3, 16);
-  await dragMouse(page, at.press, at.below);
-
-  await expect.poll(async () => (await readMarked(page)).text).toBe('world\nabhello [B] ');
-  expect((await readMarked(page)).selected).toBe('hello [B] ');
+  await page.keyboard.press('ControlOrMeta+Z');
+  await expect.poll(async () => (await readMarked(page)).text).toBe('hello [B] world\nab');
 });

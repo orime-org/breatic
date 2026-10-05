@@ -15,7 +15,7 @@ import type { Editor } from '@tiptap/core';
 import { useEditor } from '@tiptap/react';
 import * as React from 'react';
 import { getLocale, t as sharedT } from '@breatic/shared';
-import type { Slice } from '@tiptap/pm/model';
+import { Fragment, Slice, type Schema } from '@tiptap/pm/model';
 import { EditorState } from '@tiptap/pm/state';
 
 import { makeMentionSuggestion } from '@web/features/reference-mention/mention-suggestion';
@@ -24,12 +24,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { AttachmentKindIcon } from '@web/pages/project/chat/AttachmentChip';
 import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
 import { chatReferenceContent } from '@web/pages/project/chat/chat-reference';
-import {
-  ATTACHMENTS_CHANGED_META,
-  composerExtensions,
-  plainTextOf,
-  plainTextSlice,
-} from '@web/pages/project/chat/composer-extensions';
+import { ATTACHMENTS_CHANGED_META, composerExtensions } from '@web/pages/project/chat/composer-extensions';
 import { draftContent, draftOf } from '@web/pages/project/chat/composer-draft';
 import { parseClipboardNodes, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 import type { TrayItem } from '@web/stores/chat-attachments';
@@ -249,6 +244,32 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
 function nothingSelected(state: EditorState): boolean {
   const { from, to } = state.selection;
   return state.doc.textBetween(from, to, '\n', () => '\uFFFC') === '';
+}
+
+/**
+ * The plain text to take from a paste whose HTML holds none of the box's
+ * blocks: the page's own text, its line breaks and indents as the textarea
+ * received them.
+ * @param data - The clipboard's data.
+ * @returns The text, or null when ProseMirror's own reading applies.
+ */
+function plainTextOf(data: DataTransfer | null): string | null {
+  const html = data?.getData('text/html') ?? '';
+  if (html === '' || html.includes('data-reference-mention')) return null;
+  const text = data?.getData('text/plain') ?? '';
+  return text === '' ? null : text;
+}
+
+/**
+ * Plain text as the box holds it: joined to the line it lands on, a paragraph
+ * per line, blank lines kept.
+ * @param text - The text.
+ * @param schema - The box's schema.
+ * @returns The slice to insert.
+ */
+function plainTextSlice(text: string, schema: Schema): Slice {
+  const lines = text.split(/\r\n?|\n/).map((line) => schema.node('paragraph', null, line === '' ? [] : [schema.text(line)]));
+  return Slice.maxOpen(Fragment.from(lines));
 }
 
 /** What the box was last given from outside it. */

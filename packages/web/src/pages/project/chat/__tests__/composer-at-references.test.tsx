@@ -9,8 +9,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
 import { undo } from '@tiptap/pm/history';
-import { DOMParser, Slice } from '@tiptap/pm/model';
-import { AllSelection, NodeSelection, TextSelection, type Transaction } from '@tiptap/pm/state';
+import { TextSelection, type Transaction } from '@tiptap/pm/state';
 import { attachmentMarker, getLocale, messageLength, setLocale } from '@breatic/shared';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
@@ -96,39 +95,6 @@ async function settle(): Promise<void> {
   await act(async () => {
     await Promise.resolve();
   });
-}
-
-/**
- * Drops onto the box at a document position the way ProseMirror's drop handler
- * calls the box: jsdom has no layout, so the point under the pointer is given.
- * @param pos - Where the pointer is, as a document position.
- * @param slice - What is dropped.
- * @param moved - Whether it moves out of the box itself.
- * @param data - The drag's data, for a drop from outside.
- * @param node - The block dragged without being selected first.
- */
-function dropAt(pos: number, slice: Slice, moved: boolean, data?: Record<string, string>, node?: NodeSelection): void {
-  const e = box();
-  e.view.posAtCoords = (() => ({ pos, inside: -1 })) as typeof e.view.posAtCoords;
-  const view = e.view as unknown as { dragging: { slice: Slice; move: boolean; node?: NodeSelection } | null };
-  view.dragging = moved ? { slice, move: true, node } : null;
-  const event = { clientX: 0, clientY: 0, dataTransfer: data ? { getData: (type: string) => data[type] ?? '' } : null } as unknown as DragEvent;
-  act(() => {
-    e.view.someProp('handleDrop', (f) => f(e.view, event, slice, moved));
-  });
-  view.dragging = null;
-}
-
-/**
- * Where the first reference block in the box is.
- * @returns Its position.
- */
-function blockPos(): number {
-  let at = -1;
-  box().state.doc.descendants((node, pos) => {
-    if (at < 0 && node.type.name === 'referenceMention') at = pos;
-  });
-  return at;
 }
 
 describe('@ in the chat box', () => {
@@ -812,51 +778,5 @@ describe('@ in the chat box', () => {
     });
 
     expect(onChange).toHaveBeenLastCalledWith(`ab${'y'.repeat(9_997)}한`);
-  });
-  it('moves a block dragged without being selected first, leaving the selected words alone', () => {
-    const { onChange } = setup({ draft: `a ${attachmentMarker('a1')} b\nlast word`, attachments: [cover] });
-    const e = box();
-    const lastLine = e.state.doc.child(0).nodeSize + 1;
-    act(() => e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, lastLine, lastLine + 4))));
-    const node = NodeSelection.create(e.state.doc, blockPos());
-    dropAt(e.state.doc.content.size, node.content(), true, undefined, node);
-
-    expect(onChange).toHaveBeenLastCalledWith(`a b\nlast word ${attachmentMarker('a1')} `);
-    expect(box().state.selection).toBeInstanceOf(NodeSelection);
-  });
-
-  it('selects the words a move beside the text took there', () => {
-    setup({ draft: 'hello world\nlast' });
-    const e = box();
-    act(() => e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, 1, 7))));
-    dropAt(e.state.doc.content.size, e.state.selection.content(), true);
-
-    const { doc, selection } = box().state;
-    expect(doc.textBetween(0, doc.content.size, '\n')).toBe('world\nlasthello ');
-    expect(doc.textBetween(selection.from, selection.to)).toBe('hello ');
-  });
-
-  it('leaves the box as it was when everything is dragged beside itself', () => {
-    const { onChange } = setup({ draft: 'aa bb\ncc' });
-    const e = box();
-    act(() => e.view.dispatch(e.state.tr.setSelection(new AllSelection(e.state.doc))));
-    onChange.mockClear();
-    dropAt(e.state.doc.content.size, e.state.selection.content(), true);
-
-    expect(onChange).not.toHaveBeenCalled();
-  });
-
-  it('joins words dragged in from another editor to the line they land beside', () => {
-    const { onChange } = setup({ draft: 'aa\ncc', attachments: [cover] });
-    const e = box();
-    const end = e.state.doc.content.size;
-    const html = '<p data-pm-slice="0 0 []">x <span data-reference-mention="" data-source-id="a1">x</span> y</p><p>cc</p>';
-    // Closed at both ends, as ProseMirror reads the HTML an editor copies.
-    const dom = document.createElement('div');
-    dom.innerHTML = html;
-    const slice = new Slice(DOMParser.fromSchema(e.schema).parseSlice(dom).content, 0, 0);
-    dropAt(end, slice, false, { 'text/html': html, 'text/plain': 'x cover.png y\ncc' });
-
-    expect(onChange).toHaveBeenLastCalledWith(`aa\nccx ${attachmentMarker('a1')} y\ncc`);
   });
 });
