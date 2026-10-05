@@ -101,7 +101,11 @@ export function useVoiceList(model: string | undefined): VoiceListHandle {
     voicesApi
       .list(model, { query, cursor })
       .then((page) => dispatch({ type: 'moreArrived', requestId, page }))
-      .catch(() => dispatch({ type: 'moreFailed', requestId }));
+      .catch(() => {
+        // The same page is what a retry asks for.
+        sentMore.current = null;
+        dispatch({ type: 'moreFailed', requestId });
+      });
   }, [loadingMore, model, query, cursor, requestId]);
 
   const onOpenChange = React.useCallback((open: boolean) => {
