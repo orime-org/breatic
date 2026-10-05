@@ -218,6 +218,7 @@ import {
 import {
   CanvasContext,
   type CanvasContextValue,
+  canvasRootOf,
   useCanvasContext,
 } from '@web/spaces/canvas/canvas-context';
 import { useUserProfiles } from '@web/data/use-user-profiles';
@@ -884,7 +885,7 @@ function CanvasSpaceInner({
     // trigger below.
     if (isEditableTarget(document.activeElement)) return;
     for (const testId of Object.values(PICK_PURPOSE_UI[purpose].trigger)) {
-      const trigger = document.querySelector<HTMLElement>(
+      const trigger = canvasRootOf(spaceId).querySelector<HTMLElement>(
         `[data-testid="${testId}"]`,
       );
       if (trigger) {
@@ -892,7 +893,7 @@ function CanvasSpaceInner({
         return;
       }
     }
-  }, [sessionStore, endPick]);
+  }, [sessionStore, endPick, spaceId]);
   /**
    * Return the focus session to its PICK state (user 2026-07-17 A): drop
    * the crop target so the overlay unmounts, but keep the session — the
@@ -959,7 +960,9 @@ function CanvasSpaceInner({
     // never grab focus from elsewhere. The effect runs while the overlay DOM
     // is still mounted (unmount lands next render), so the containment check
     // still sees it.
-    const overlay = document.querySelector('[data-testid="focus-crop-overlay"]');
+    const overlay = canvasRootOf(spaceId).querySelector(
+      '[data-testid="focus-crop-overlay"]',
+    );
     if (overlay?.contains(document.activeElement)) {
       handOffFocusToPickBanner(overlay);
     }
@@ -968,7 +971,7 @@ function CanvasSpaceInner({
     const author = getLastWriteWasLocal() ? 'local' : 'peer';
     toast.warning(t(FOCUS_EXIT_TOAST_KEY[author][focusTargetVerdict]));
     setFocusTarget(null);
-  }, [focusTargetVerdict, getLastWriteWasLocal, t]);
+  }, [focusTargetVerdict, getLastWriteWasLocal, t, spaceId]);
   // Esc during a focus session with NO crop target yet (round-4): the
   // overlay owns the two-stage Esc but is unmounted until the first image
   // is clicked, leaving Esc silently dead in the banner-only state. Same

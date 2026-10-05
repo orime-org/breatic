@@ -8,6 +8,7 @@ import { ensureTextBody } from '@web/data/yjs/canvas-space';
 import { useEditedTextBody, useTextBody } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
+  canvasRootOf,
   useCanvasContext,
   useCanvasSession,
   useCanvasSessionStore,
@@ -33,11 +34,12 @@ import {
  * of the editor, and attaching the Enter listener — and it encodes how
  * ReactFlow stamps its wrappers. Two copies of that coupling would be free to
  * drift the day the selector or the id escaping has to change.
+ * @param spaceId - The Space whose canvas holds the node.
  * @param nodeId - The node whose wrapper to find.
  * @returns The wrapper element, or null.
  */
-function nodeShell(nodeId: string): HTMLElement | null {
-  const shell = document.querySelector(
+function nodeShell(spaceId: string, nodeId: string): HTMLElement | null {
+  const shell = canvasRootOf(spaceId).querySelector(
     `.react-flow__node[data-id="${nodeId}"]`,
   );
   return shell instanceof HTMLElement ? shell : null;
@@ -141,9 +143,9 @@ export const TextNode = React.memo(function TextNode({
     (focus: 'return-focus' | 'keep-focus'): void => {
       endWriting();
       if (focus === 'keep-focus' || !nodeId) return;
-      nodeShell(nodeId)?.focus();
+      nodeShell(spaceId, nodeId)?.focus();
     },
-    [endWriting, nodeId],
+    [endWriting, nodeId, spaceId],
   );
 
   // Whether this node can be written in, worked out ONCE and read by both the
@@ -255,7 +257,7 @@ export const TextNode = React.memo(function TextNode({
     // never attach to exactly the nodes most in need of a way in. ReactFlow
     // stamps `data-id` on the wrapper it makes focusable, so this is the same
     // element either way.
-    const shell = nodeShell(nodeId);
+    const shell = nodeShell(spaceId, nodeId);
     if (!shell) return undefined;
     /**
      * Open the editor when Enter is pressed on the node itself.
@@ -272,7 +274,7 @@ export const TextNode = React.memo(function TextNode({
     // newline while the editor is open is the target check above and nothing
     // else — an Enter typed in the editor bubbles out to the wrapper, but its
     // target is the editor, so it is let through untouched.
-  }, [nodeId]);
+  }, [nodeId, spaceId]);
 
   const hasContent = text.length > 0;
 

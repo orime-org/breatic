@@ -26,6 +26,7 @@ import {
 } from '@web/lib/crop-math';
 import { Slider } from '@web/components/ui/slider';
 import { formatSeconds } from '@web/spaces/canvas/lib/duration';
+import { canvasRootOf, useCanvasContext } from '@web/spaces/canvas/canvas-context';
 
 /**
  * The croppable element inside ONE target node. Image nodes render an `<img>`;
@@ -224,6 +225,7 @@ export function FocusCropOverlay({
   onConfirm,
   onBackToPick,
 }: FocusCropOverlayProps): React.JSX.Element | null {
+  const { spaceId } = useCanvasContext();
   const t = useTranslation();
   const rootRef = React.useRef<HTMLDivElement>(null);
   // Viewport transform — any pan / zoom re-measures the image box.
@@ -278,7 +280,7 @@ export function FocusCropOverlay({
 
   const measure = React.useCallback((): void => {
     const root = rootRef.current;
-    const el = document.querySelector(cropSourceSelector(nodeId));
+    const el = canvasRootOf(spaceId).querySelector(cropSourceSelector(nodeId));
     if (!root || !isCropSource(el)) {
       // The target's source element is ABSENT. Node deletion unmounts the whole
       // overlay upstream (round-8), so reaching here is viewport CULLING
@@ -415,7 +417,7 @@ export function FocusCropOverlay({
     // clearMarquee is a stable empty-dep callback, so measure's identity
     // still changes only with nodeId — the layout effect below depends on
     // that identity to keep one MutationObserver alive across renders.
-  }, [nodeId, clearMarquee]);
+  }, [nodeId, clearMarquee, spaceId]);
 
   // Switching the crop target discards the in-progress marquee. A LAYOUT
   // effect declared BEFORE the measure effect: layout effects run in
@@ -527,7 +529,7 @@ export function FocusCropOverlay({
     // childList catches the remount, attributes catches both the src swap
     // (same-size regenerate, round-2) and node style resizes; the
     // measure-managed ResizeObserver rebinds itself per source identity.
-    const container = document.querySelector(
+    const container = canvasRootOf(spaceId).querySelector(
       `.react-flow__node[data-id="${CSS.escape(nodeId)}"]`,
     );
     const mo = container ? new MutationObserver(measure) : null;
@@ -538,7 +540,7 @@ export function FocusCropOverlay({
       window.removeEventListener('resize', measure);
       mo?.disconnect();
     };
-  }, [measure, transform, nodePosition.x, nodePosition.y, nodeId]);
+  }, [measure, transform, nodePosition.x, nodePosition.y, nodeId, spaceId]);
 
 
   // Disconnect the measure-managed ResizeObserver on FINAL unmount only —
@@ -740,7 +742,7 @@ export function FocusCropOverlay({
      */
     const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
-      const pane = document.querySelector('.react-flow__pane');
+      const pane = canvasRootOf(spaceId).querySelector('.react-flow__pane');
       if (!pane) return;
       pane.dispatchEvent(
         new WheelEvent('wheel', {
@@ -764,7 +766,7 @@ export function FocusCropOverlay({
     // over empty overlay area never target it and pass to the canvas.
     root.addEventListener('wheel', onWheel, { passive: false });
     return () => root.removeEventListener('wheel', onWheel);
-  }, []);
+  }, [spaceId]);
 
   /**
    * Finish the active interaction (pointer up / cancel) — only the owning
@@ -824,7 +826,7 @@ export function FocusCropOverlay({
   const onConfirmClick = (): void => {
     if (!rect || box === null) return;
     if (!isCropUsable(rect, box, naturalSize)) return;
-    const el = document.querySelector(cropSourceSelector(nodeId));
+    const el = canvasRootOf(spaceId).querySelector(cropSourceSelector(nodeId));
     // Confirm-time swap check (round-2): the MutationObserver discards the
     // marquee live, but a swap can still land between the last measure and
     // this click — never crop NEW content at OLD marquee coordinates.

@@ -16,11 +16,16 @@
  *
  * Coalescing is the caller's to decide: this fires once per delivery, however
  * many records that delivery queued.
+ * @param root - The canvas's root (`canvasRootOf`), so another Space's kept
+ *   canvas is not the one watched.
  * @param onChange - Run on every viewport move.
- * @returns The teardown; a no-op when there is no canvas on the page.
+ * @returns The teardown; a no-op when there is no canvas under `root`.
  */
-export function observeViewportTransform(onChange: () => void): () => void {
-  const viewport = document.querySelector('.react-flow__viewport');
+export function observeViewportTransform(
+  root: ParentNode,
+  onChange: () => void,
+): () => void {
+  const viewport = root.querySelector('.react-flow__viewport');
   if (!viewport) return () => undefined;
   const observer = new MutationObserver(onChange);
   observer.observe(viewport, { attributes: true, attributeFilter: ['style'] });

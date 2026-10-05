@@ -279,7 +279,7 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
     // from here on produces null — the same null that is already published,
     // which the de-duplication drops. That is what keeps a later pan from
     // reviving the arrow at a stale spot.
-    const stopWatching = observeViewportTransform(() => throttle.schedule());
+    const stopWatching = observeViewportTransform(container, () => throttle.schedule());
     // The conversion subtracts the container's own rect, so its size and place
     // on screen are as much an input as the viewport's transform: a sidebar
     // opening moves the canvas point a resting pointer maps to.
