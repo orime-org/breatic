@@ -9,7 +9,15 @@ import Text from '@tiptap/extension-text';
 import { UndoRedo } from '@tiptap/extensions';
 import { splitBlock } from '@tiptap/pm/commands';
 import { Fragment, Slice, type Schema } from '@tiptap/pm/model';
-import { Plugin, PluginKey, Selection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
+import {
+  NodeSelection,
+  Plugin,
+  PluginKey,
+  Selection,
+  TextSelection,
+  type EditorState,
+  type Transaction,
+} from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
@@ -243,12 +251,14 @@ export function plainTextSlice(text: string, schema: Schema): Slice {
 }
 
 /**
- * Where text dropped into the box lands, as the textarea put it: on the line
- * under the pointer, or, beside the text (past a line's end, under the last
- * line), at the end of the nearest line; ProseMirror would start a new line
- * there. Words dragged in from a page are taken as its plain text, as a paste
- * is. Below the reference block's plugins, so a move's source selection is
- * already restored when it runs.
+ * Where what is dropped into the box lands, as the textarea put it: on the
+ * line under the pointer, or, beside the text (past a line's end, under the
+ * last line), at the end of the nearest line; ProseMirror would start a new
+ * line there. Its first and last lines join the lines it lands between, words
+ * dragged in from a page are taken as its plain text, as a paste is, and a
+ * move dropped onto what it was dragged from changes nothing. The rest is
+ * ProseMirror's own drop, step for step. Below the reference block's plugins,
+ * so a move's source selection is already restored when it runs.
  * @returns The extension.
  */
 function composerDrop(): AnyExtension {
@@ -264,16 +274,35 @@ function composerDrop(): AnyExtension {
               if (!at) return false;
               const $at = view.state.doc.resolve(at.pos);
               const text = moved ? null : plainTextOf(event.dataTransfer);
-              const taken = text === null ? slice : plainTextSlice(text, view.state.schema);
-              if (taken.size === 0 || ($at.parent.inlineContent && taken === slice)) return false;
+              const dropped = text === null ? slice : plainTextSlice(text, view.state.schema);
+              if (dropped.size === 0) return false;
               const target = $at.parent.inlineContent ? at.pos : Selection.near($at, -1).head;
-              // What ProseMirror's own drop does from there: a move takes its
-              // source out first.
+              // A block pressed and dragged without being selected first is
+              // the drag's own node; anything else moves the selection.
+              // prosemirror-view sets that node on `dragging` and reads it in
+              // its own drop; its type declaration leaves it out.
+              const dragged = view.dragging as { node?: NodeSelection } | null;
+              const source = moved ? (dragged?.node ?? view.state.selection) : null;
+              if (source && target >= source.from && target <= source.to) return true;
+              const taken = Slice.maxOpen(dropped.content);
               const tr = view.state.tr;
-              if (moved) tr.deleteSelection();
+              source?.replace(tr);
               const pos = tr.mapping.map(target);
-              tr.replaceRange(pos, pos, taken);
-              tr.setSelection(TextSelection.between(tr.doc.resolve(pos), tr.doc.resolve(tr.mapping.map(pos, 1))));
+              const single = taken.openStart === 0 && taken.openEnd === 0 && taken.content.childCount === 1 ? taken.content.firstChild : null;
+              const before = tr.doc;
+              if (single) tr.replaceRangeWith(pos, pos, single);
+              else tr.replaceRange(pos, pos, taken);
+              if (tr.doc.eq(before)) return true;
+              const $pos = tr.doc.resolve(pos);
+              if (single && NodeSelection.isSelectable(single) && $pos.nodeAfter?.sameMarkup(single)) {
+                tr.setSelection(new NodeSelection($pos));
+              } else {
+                let end = tr.mapping.map(target);
+                tr.mapping.maps[tr.mapping.maps.length - 1]?.forEach((_from, _to, _newFrom, newTo) => {
+                  end = newTo;
+                });
+                tr.setSelection(TextSelection.between($pos, tr.doc.resolve(end)));
+              }
               view.focus();
               view.dispatch(tr.setMeta('uiEvent', 'drop'));
               return true;
