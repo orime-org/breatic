@@ -39,6 +39,7 @@ import { dispatchMachineEdit } from '@web/spaces/canvas/generate/reference-menti
 import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { planCascadeDeletion } from '@web/spaces/canvas/generate/reference-mention-whitespace';
+import { useFocusReturn } from '@web/lib/use-focus-return';
 
 /** Imperative handle exposed to the container to insert a reference at the cursor. */
 export interface PromptEditorHandle {
@@ -99,7 +100,6 @@ const keptOf = new WeakMap<
     mentionNoMatchLabel: string;
     resolveName: unknown;
     hadFocus: boolean;
-    /** A return of the caret is scheduled and has not run yet. */
     returning: boolean;
   }
 >();
@@ -411,31 +411,16 @@ export const PromptEditor = React.forwardRef<
     });
   }
   // Back on screen after a switch of Space, the caret goes back in if it was
-  // here when the Space was hidden. Read in a layout cleanup, which runs
-  // before the editor's host moves it off the page and focus with it. A task
-  // later, the way the editor's own autofocus waits: a mount that is undone
-  // straight away moves the editor out of the page again — Strict Mode does
-  // that, and so does the canvas library putting its panels back, which takes
-  // them down once more right after showing them. A return still waiting when
-  // that happens is carried to the next mount.
-  React.useLayoutEffect(
-    () => () => {
-      const bound = keptOf.get(editor);
-      if (bound === undefined || editor.isDestroyed) return;
-      bound.hadFocus = editor.view.hasFocus() || bound.returning;
+  // here when the Space was hidden. Kept with the editor, so a return still
+  // waiting when the canvas library takes its panels down once more right
+  // after showing them is carried to the next mount.
+  useFocusReturn(
+    keptOf.get(editor),
+    () => !editor.isDestroyed && editor.view.hasFocus(),
+    () => {
+      if (!editor.isDestroyed) editor.view.focus();
     },
-    [editor],
   );
-  React.useEffect(() => {
-    const bound = keptOf.get(editor);
-    if (bound === undefined || !bound.hadFocus) return undefined;
-    bound.returning = true;
-    const id = window.setTimeout(() => {
-      bound.returning = false;
-      if (!editor.isDestroyed && !editor.view.hasFocus()) editor.view.focus();
-    }, 0);
-    return () => window.clearTimeout(id);
-  }, [editor]);
   // A kept editor shown again reported its values when it was built, to
   // whichever container showed it then; this one has to hear them too.
   React.useEffect(() => {

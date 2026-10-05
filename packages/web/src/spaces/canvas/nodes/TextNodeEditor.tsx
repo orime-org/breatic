@@ -32,6 +32,7 @@ import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-n
 import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
 import { keptEditor } from '@web/spaces/canvas/kept-editors';
 import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
+import { type FocusReturn, useFocusReturn } from '@web/lib/use-focus-return';
 
 /**
  * The box metrics the two states of a text node's body MUST share.
@@ -172,6 +173,8 @@ const wiringOf = new WeakMap<
     wiring: EditorWiring;
     fragment: Y.XmlFragment;
     caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
+    /** The reader is writing here, so the caret goes in on every show. */
+    focusReturn: FocusReturn;
   }
 >();
 
@@ -256,7 +259,12 @@ export function TextNodeEditor({
           });
         },
       });
-      wiringOf.set(built, { wiring, fragment, caretProvider });
+      wiringOf.set(built, {
+        wiring,
+        fragment,
+        caretProvider,
+        focusReturn: { hadFocus: true, returning: false },
+      });
       return built;
     };
     // A kept editor is reused while it is bound to the same body and the same
@@ -280,16 +288,14 @@ export function TextNodeEditor({
     if (editor.isEditable !== editable) editor.setEditable(editable);
   }, [editor, editable]);
   // Back on screen after a switch of Space, the caret goes back in: the reader
-  // was writing here when they left. A task later, the way the editor's own
-  // autofocus waits: a mount that is undone straight away (Strict Mode) moves
-  // the editor out of the page, and focus put in before that would be lost
-  // and read as the reader leaving.
-  React.useEffect(() => {
-    const id = window.setTimeout(() => {
-      if (!editor.isDestroyed && !editor.view.hasFocus()) editor.view.focus();
-    }, 0);
-    return () => window.clearTimeout(id);
-  }, [editor]);
+  // was writing here when they left.
+  useFocusReturn(
+    bound?.focusReturn,
+    () => !editor.isDestroyed && editor.view.hasFocus(),
+    () => {
+      if (!editor.isDestroyed) editor.view.focus();
+    },
+  );
   // Publish this window's focus and dim collaborators who have left theirs.
   // The other half of the caret story: without it this client publishes into a
   // void, and renders a flag nobody sets.
