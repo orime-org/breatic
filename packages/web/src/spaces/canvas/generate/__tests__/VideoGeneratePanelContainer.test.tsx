@@ -2544,7 +2544,9 @@ describe('camera commands', () => {
   async function insert(...names: string[]): Promise<void> {
     fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
     for (const name of names) fireEvent.click(await screen.findByTestId(option(name)));
-    fireEvent.click(screen.getByTestId('generate-video-camera-insert'));
+    fireEvent.click(await screen.findByTestId('generate-video-camera-insert'));
+    // The popover is closed before the next open, as a reader's next click would find it.
+    await waitFor(() => expect(screen.queryByTestId('generate-video-camera-insert')).toBeNull());
   }
 
   beforeEach(() => {
@@ -2594,6 +2596,10 @@ describe('camera commands', () => {
     await screen.findByTestId('generate-storyboard-shot-2-editor');
     await insert('Pan left');
     await waitFor(() => expect(readShots('p', 's', 'target')?.[0]?.prompt.toString()).toContain('[Pan left]'));
+    // The insert hands focus back to the first shot on the next frame; the reader clicks the second one after that.
+    await act(async () => {
+      await new Promise<void>((done) => requestAnimationFrame(() => done()));
+    });
     const second = screen.getByTestId('generate-storyboard-shot-2-editor').querySelector('.ProseMirror') as HTMLElement;
     fireEvent.focus(second);
     await insert('Tilt up');
