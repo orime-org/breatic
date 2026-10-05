@@ -5,7 +5,18 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import { AnnotationComposer } from '@web/spaces/canvas/annotation/AnnotationComposer';
+import { CanvasContext, type CanvasContextValue } from '@web/spaces/canvas/canvas-context';
+
 import { NOTE_BOX_MAX_HEIGHT } from '@web/spaces/canvas/annotation/caps';
+
+/** A canvas on Space `s1`, the outlet these cases put on the page. */
+const CANVAS: CanvasContextValue = {
+  projectId: 'p',
+  spaceId: 's1',
+  readOnly: false,
+  myRole: 'owner',
+  caretProvider: null,
+};
 
 const onCommit = vi.fn();
 const onClose = vi.fn();
@@ -100,9 +111,12 @@ describe('the box that opens at the drop point', () => {
     // words are waiting for the reader when they come back (inner#1235 A14).
     const outlet = document.body.appendChild(document.createElement('div'));
     outlet.setAttribute('data-space-outlet', 's1');
-    render(<AnnotationComposer onCommit={onCommit} onClose={onClose} />, {
-      container: outlet.appendChild(document.createElement('div')),
-    });
+    render(
+      <CanvasContext.Provider value={CANVAS}>
+        <AnnotationComposer onCommit={onCommit} onClose={onClose} />
+      </CanvasContext.Provider>,
+      { container: outlet.appendChild(document.createElement('div')) },
+    );
     const box = screen.getByTestId('annotation-composer-input');
     fireEvent.change(box, { target: { value: 'half a thought' } });
 

@@ -931,6 +931,30 @@ test('a hidden document shows no floating bar, no caret to others, and takes in 
   }
 });
 
+test('a node name being typed stays open and unsent across a switch', async ({ page }) => {
+  // A13: renaming is writing too; switching away is not the reader done.
+  const projectUrl = await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  await seedNode(page, projectIdOf(projectUrl), first, 'rename-me', 'image');
+  const node = visibleSpace(page).locator('.react-flow__node[data-id="rename-me"]');
+  await expect(node).toBeVisible({ timeout: 20_000 });
+  await node.getByTestId('node-header-name').dblclick();
+  const input = node.getByTestId('node-header-input');
+  await expect(input).toBeFocused();
+  await page.keyboard.type('Hero sh');
+
+  await showSpace(page, second);
+  await showSpace(page, first);
+
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('Hero sh');
+  await page.keyboard.type('ot');
+  await page.keyboard.press('Enter');
+  await expect(node.getByTestId('node-header-name')).toHaveText('Hero shot');
+});
+
 test.describe('on a Mac, where Cmd is the canvas library\'s add-to-selection key', () => {
   // The library reads the platform from the user agent, and the smoke device
   // reports Windows, where the key is Control and a Control press on macOS is

@@ -254,7 +254,7 @@ export function TextNodeEditor({
           // Focus moving to something inside the editor is not leaving.
           const next = event.relatedTarget;
           if (next instanceof Node && instance.view.dom.contains(next)) return;
-          whenBlurLeaves(instance.view.dom, () => {
+          whenBlurLeaves(spaceId, () => {
             if (!instance.isDestroyed) wiring.onLeave('keep-focus');
           });
         },

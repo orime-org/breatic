@@ -6,17 +6,22 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
 
 /**
- * A box inside a Space outlet, attached to the page.
- * @returns The outlet and the box.
+ * Puts a Space outlet on the page.
+ * @param spaceId - The Space.
+ * @returns The outlet.
  */
-function boxInSpace(): { outlet: HTMLElement; box: HTMLElement } {
-  const outlet = document.createElement('div');
-  outlet.setAttribute('data-space-outlet', 's1');
-  const box = document.createElement('div');
-  outlet.appendChild(box);
-  document.body.appendChild(outlet);
-  return { outlet, box };
+function outlet(spaceId: string): HTMLElement {
+  const el = document.createElement('div');
+  el.setAttribute('data-space-outlet', spaceId);
+  document.body.appendChild(el);
+  return el;
 }
+
+/**
+ * Settles the microtask the decision waits for.
+ * @returns Nothing.
+ */
+const settle = (): Promise<void> => Promise.resolve();
 
 afterEach(() => {
   document.body.innerHTML = '';
@@ -26,42 +31,53 @@ afterEach(() => {
 describe('whenBlurLeaves', () => {
   it('leaves when focus moves elsewhere on the page', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
-    const { box } = boxInSpace();
+    outlet('s1');
     const leave = vi.fn();
-    whenBlurLeaves(box, leave);
-    await Promise.resolve();
+    whenBlurLeaves('s1', leave);
+    await settle();
     expect(leave).toHaveBeenCalledTimes(1);
   });
 
   it('stays when the whole window lost focus', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(false);
-    const { box } = boxInSpace();
+    outlet('s1');
     const leave = vi.fn();
-    whenBlurLeaves(box, leave);
-    await Promise.resolve();
+    whenBlurLeaves('s1', leave);
+    await settle();
     expect(leave).not.toHaveBeenCalled();
   });
 
   it('stays when its Space is hidden by a switch of Space', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
-    const { outlet, box } = boxInSpace();
+    const space = outlet('s1');
     const leave = vi.fn();
-    whenBlurLeaves(box, leave);
-    // The editor's DOM is moved out as the Space is hidden.
-    box.remove();
-    outlet.style.setProperty('display', 'none', 'important');
-    await Promise.resolve();
+    whenBlurLeaves('s1', leave);
+    space.style.setProperty('display', 'none', 'important');
+    await settle();
     expect(leave).not.toHaveBeenCalled();
   });
 
-  it('leaves when the box is taken off a Space that stays on screen', async () => {
+  it('stays for a box in a popover outside the Space when that Space is hidden', async () => {
+    // A popover renders under <body>, not in the Space outlet; which Space it
+    // belongs to is the canvas's, not the DOM's.
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const space = outlet('s1');
+    const popoverBox = document.body.appendChild(document.createElement('input'));
+    const leave = vi.fn();
+    whenBlurLeaves('s1', leave);
+    popoverBox.remove();
+    space.style.setProperty('display', 'none', 'important');
+    await settle();
+    expect(leave).not.toHaveBeenCalled();
+  });
+
+  it('leaves when its Space stays on screen though the box was taken off it', async () => {
     // A node deleted, or culled out of view, while the reader was in it.
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
-    const { box } = boxInSpace();
+    outlet('s1');
     const leave = vi.fn();
-    whenBlurLeaves(box, leave);
-    box.remove();
-    await Promise.resolve();
+    whenBlurLeaves('s1', leave);
+    await settle();
     expect(leave).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,14 +1,30 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi, afterEach } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import * as React from 'react';
 
 import { EmptyImagePanel } from '@web/spaces/canvas/empty-image/EmptyImagePanel';
+import { CanvasContext, type CanvasContextValue } from '@web/spaces/canvas/canvas-context';
+
 import {
   expectChosenFill,
   expectHoverableSiblingFill,
 } from '@web/test-utils/selection-fill';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+/** A canvas on Space `s1`, the outlet these cases put on the page. */
+const CANVAS: CanvasContextValue = {
+  projectId: 'p',
+  spaceId: 's1',
+  readOnly: false,
+  myRole: 'owner',
+  caretProvider: null,
+};
 
 describe('EmptyImagePanel', () => {
   it('executes with the default 1024² white spec', () => {
@@ -85,5 +101,46 @@ describe('EmptyImagePanel', () => {
     fireEvent.click(screen.getByTestId('empty-image-exit'));
     expect(onExit).toHaveBeenCalledTimes(1);
     expect(onExecute).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The panel inside a Space that can be hidden.
+ * @param root0 - Props.
+ * @param root0.hidden - Whether the Space is switched away from.
+ * @returns The Space.
+ */
+function Space({ hidden }: { hidden: boolean }): React.JSX.Element {
+  return (
+    <div data-space-outlet='s1' style={hidden ? { display: 'none' } : undefined}>
+      <CanvasContext.Provider value={CANVAS}>
+        <React.Activity mode={hidden ? 'hidden' : 'visible'}>
+          <EmptyImagePanel onExecute={vi.fn()} onExit={() => {}} />
+        </React.Activity>
+      </CanvasContext.Provider>
+    </div>
+  );
+}
+
+describe('EmptyImagePanel in a Space switched away from', () => {
+  it('keeps a size being typed and the caret in its box', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const view = render(<Space hidden={false} />);
+    const width = screen.getByTestId('empty-image-width') as HTMLInputElement;
+    width.focus();
+    fireEvent.change(width, { target: { value: '10' } });
+
+    view.rerender(<Space hidden />);
+    fireEvent.blur(width);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    view.rerender(<Space hidden={false} />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(width.value).toBe('10');
+    expect(document.activeElement).toBe(width);
   });
 });

@@ -31,6 +31,7 @@ import {
 } from '@web/spaces/canvas/annotation/caps';
 import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
 import { NoteScroller } from '@web/spaces/canvas/annotation/NoteScroller';
+import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import {
   CLOSED_DRAFT,
   reduceDraft,
@@ -57,6 +58,7 @@ export function AnnotationComposer({
   onClose,
 }: AnnotationComposerProps): React.JSX.Element {
   const t = useTranslation();
+  const { spaceId } = useCanvasContext();
   const boxRef = React.useRef<HTMLTextAreaElement>(null);
   // A press anywhere in the shell but the box leaves the caret where it is:
   // losing focus is how this box is told the person is done, and for a note
@@ -117,11 +119,11 @@ export function AnnotationComposer({
           data-testid='annotation-composer-input'
           onChange={(e) => apply({ type: 'type', text: e.target.value })}
           {...placingBoxKeys.box}
-          onBlur={(event) => {
+          onBlur={() => {
             // This box is the one whose content exists nowhere else, so a
             // blur that is not the reader leaving must not end it.
             if (placingBoxKeys.composing()) return;
-            whenBlurLeaves(event.currentTarget, () => apply({ type: 'blur' }));
+            whenBlurLeaves(spaceId, () => apply({ type: 'blur' }));
           }}
         />
       </NoteScroller>
