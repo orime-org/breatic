@@ -103,6 +103,29 @@ async function showSpace(p: Page, spaceId: string): Promise<void> {
   await expect.poll(() => activeId(p)).toBe(spaceId);
 }
 
+test('a canvas keeps its nodes, not rebuilt ones, across a switch', async ({ page }) => {
+  // Everything a node holds on screen — a video's position, a panel's scroll —
+  // lives on its elements; the reader comes back to those elements, not new ones.
+  const projectUrl = await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  await seedNode(page, projectIdOf(projectUrl), first, 'kept-node', 'image');
+  const node = visibleSpace(page).locator('.react-flow__node[data-id="kept-node"]');
+  await expect(node).toBeVisible({ timeout: 20_000 });
+  await node.evaluate((el) => {
+    (el as unknown as { keptMark?: boolean }).keptMark = true;
+  });
+
+  await showSpace(page, second);
+  await showSpace(page, first);
+
+  await expect(node).toBeVisible();
+  expect(
+    await node.evaluate((el) => (el as unknown as { keptMark?: boolean }).keptMark === true),
+  ).toBe(true);
+});
+
 test('a text node being written stays open with its caret and undo across a switch', async ({
   page,
 }) => {
