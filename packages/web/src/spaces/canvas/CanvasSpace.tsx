@@ -273,11 +273,7 @@ import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
 import { isProposalIntent, useCanvasStore } from '@web/stores';
 import { canvasGraphs } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
-import {
-  readSpaceViewport,
-  writeSpaceViewport,
-  type StoredViewport,
-} from '@web/lib/project-tabs-storage';
+import { readSpaceViewport, writeSpaceViewport } from '@web/lib/project-tabs-storage';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { taskPanelOpenFor, type CanvasSessionStore } from '@web/stores/canvas-session';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
@@ -741,36 +737,6 @@ const XYFLOW_SELECTED_NODE_Z = 1000;
  * `z-index: 1001` inline and the viewport carries 2.
  */
 const ANNOTATION_COMPOSER_Z = FOCUS_TARGET_Z + XYFLOW_SELECTED_NODE_Z + 1;
-
-/**
- * Puts a hidden canvas back the way it was when it is shown again.
- *
- * Hiding resets ReactFlow's store: the camera goes to the identity and the
- * selection box goes away. The camera comes back from what `onMoveEnd` stored
- * for this Space while the reader worked; a Space with nothing stored is left
- * to the framing. Rendered inside `<ReactFlow>` after the pane, so on show its
- * effect runs after the library has built the pan-zoom it moves.
- * @param root0 - Props.
- * @param root0.readCamera - Reads the camera stored for this Space.
- * @param root0.selectionBoxAtHide - Whether the selection box was up at hide.
- * @returns Nothing visible.
- */
-function RestoreFlowOnShow({
-  readCamera,
-  selectionBoxAtHide,
-}: {
-  readCamera: () => StoredViewport | null;
-  selectionBoxAtHide: React.RefObject<boolean>;
-}): null {
-  const { setViewport } = useReactFlow();
-  const store = useStoreApi();
-  React.useEffect(() => {
-    const camera = readCamera();
-    if (camera !== null) void setViewport(camera, { duration: 0 });
-    if (selectionBoxAtHide.current) store.setState({ nodesSelectionActive: true });
-  }, [readCamera, selectionBoxAtHide, setViewport, store]);
-  return null;
-}
 
 /**
  * Canvas body — mounts ReactFlow over the Yjs-backed canvas space.
@@ -1256,7 +1222,7 @@ function CanvasSpaceInner({
 
   // ---- Camera, kept for the next visit (#2165) ----
   // Read at mount. A Space switched away from and back to is the same mount,
-  // shown again, and `RestoreFlowOnShow` reads it again there.
+  // shown again with its camera where it was.
   const [storedViewport] = React.useState(() =>
     readSpaceViewport(viewerId, projectId, spaceId),
   );
@@ -1291,48 +1257,15 @@ function CanvasSpaceInner({
    * untouched (measured — 0 changes across two resizes).
    */
   const cameraPlaced = React.useRef(false);
-  /**
-   * Whether the camera has been placed — as state, so `fitView` turns off
-   * once it has. The library frames again every time a hidden canvas is shown
-   * while `fitView` is on, which would throw away the stored camera
-   * `RestoreFlowOnShow` puts back.
-   */
-  const [framed, setFramed] = React.useState(false);
   const noteCameraPlaced = React.useCallback((): void => {
     cameraPlaced.current = true;
-    setFramed(true);
   }, []);
-  /**
-   * Whether the selection box was up when this canvas was last hidden
-   * (inner#1235). Hiding resets ReactFlow's store, which drops it, and it is
-   * kept nowhere else; `RestoreFlowOnShow` puts it back.
-   */
-  const selectionBoxAtHide = React.useRef(false);
-  /**
-   * Whether this canvas has already been left.
-   *
-   * Tearing the canvas down resets the library's transform, and that reset
-   * reaches this component as one more `onPanZoomEnd` — the same event a
-   * reader's pan ends with, except that it reports the identity transform and
-   * arrives after the cleanup below has stored the real camera. Measured on a
-   * Space the reader had panned: `{-2004.5, -1395, 1}` written from the
-   * cleanup, then `{0, 0, 1}` written from `onPanZoomEnd`, which is what the
-   * next visit read.
-   *
-   * The effect body clears it again, so a run that ends because one of the
-   * ids changed goes on storing the camera.
-   */
-  const left = React.useRef(false);
   /** Store where the camera sits right now. */
   const storeCamera = React.useCallback((): void => {
-    if (left.current) return;
     const [x, y, zoom] = rfStoreApi.getState().transform;
     writeSpaceViewport(viewerId, projectId, spaceId, { x, y, zoom });
   }, [rfStoreApi, viewerId, projectId, spaceId]);
-  const readStoredCamera = React.useCallback(
-    (): StoredViewport | null => readSpaceViewport(viewerId, projectId, spaceId),
-    [viewerId, projectId, spaceId],
-  );
+
   const rememberViewport = React.useCallback((): void => {
     cameraPlaced.current = true;
     storeCamera();
@@ -1344,7 +1277,6 @@ function CanvasSpaceInner({
   // being put into the back/forward cache fires `pagehide` and runs no effect
   // cleanup at all.
   React.useEffect(() => {
-    left.current = false;
     /** Store the camera, once there is one worth storing. */
     const flush = (): void => {
       if (!cameraPlaced.current) return;
@@ -1354,12 +1286,8 @@ function CanvasSpaceInner({
     return () => {
       window.removeEventListener('pagehide', flush);
       flush();
-      // Read here, before the library's own cleanup resets its store: React
-      // cleans up a parent before its children when a subtree is hidden.
-      selectionBoxAtHide.current = rfStoreApi.getState().nodesSelectionActive;
-      left.current = true;
     };
-  }, [storeCamera, rfStoreApi]);
+  }, [storeCamera]);
   // Panel ⇄ selection binding (user-ratified 2026-07-11) — one state machine,
   // not one-shot effects: while the binding is not yet ESTABLISHED (host never
   // seen selected), keep asserting the host as the sole selection; once
@@ -2179,13 +2107,6 @@ function CanvasSpaceInner({
     x: number;
     y: number;
   } | null>(null);
-  // What is written in that box so far. Kept here because the canvas library
-  // takes the box down while this Space is hidden and puts it back when shown
-  // (inner#1235 A14); a ref, since nothing here renders from it.
-  const composerDraft = React.useRef('');
-  const keepComposerDraft = React.useCallback((text: string): void => {
-    composerDraft.current = text;
-  }, []);
 
   // Enter on the new-note box: this is the moment the node exists. Everything
   // before it lived in one browser.
@@ -2273,7 +2194,6 @@ function CanvasSpaceInner({
               endAnnotationPlacement();
               return;
             }
-            composerDraft.current = '';
             setComposerAt(
               screenToFlowPosition({ x: event.clientX, y: event.clientY }),
             );
@@ -4527,7 +4447,7 @@ function CanvasSpaceInner({
           // aimed opens where they left it, and one they have not opens framing
           // what is on it. `fitView` wins when both are given, so only one is.
           defaultViewport={storedViewport ?? undefined}
-          fitView={storedViewport === null && !framed}
+          fitView={storedViewport === null}
           // Clamp the open / fit-to-window auto-zoom to 10%–100% (#1547) so a
           // sparse space doesn't zoom in to the 800% global ceiling; the manual
           // zoom presets still use the full global range below.
@@ -4569,10 +4489,6 @@ function CanvasSpaceInner({
           // ctrl-wheel / pinch — ReactFlow's default zoomOnDoubleClick is true.
           zoomOnDoubleClick={false}
         >
-          <RestoreFlowOnShow
-            readCamera={readStoredCamera}
-            selectionBoxAtHide={selectionBoxAtHide}
-          />
           {/* Everyone else's pointer. Inside ReactFlow because it portals into
               the viewport, so pan and zoom carry it with the nodes. */}
           {dropLayer}
@@ -4610,8 +4526,6 @@ function CanvasSpaceInner({
                     createAnnotationAt(composerAt, content);
                   }}
                   onClose={() => setComposerAt(null)}
-                  initialText={composerDraft.current}
-                  onDraft={keepComposerDraft}
                 />
               </div>
             </ViewportPortal>

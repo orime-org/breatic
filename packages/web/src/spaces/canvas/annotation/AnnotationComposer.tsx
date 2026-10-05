@@ -43,14 +43,6 @@ interface AnnotationComposerProps {
   onCommit: (content: string) => void;
   /** Called whenever the box closes, whether or not anything was written. */
   onClose: () => void;
-  /**
-   * The words the box opens on. The canvas library takes this box down while
-   * its Space is hidden and puts it back when shown, so the words are kept by
-   * the canvas and handed back here (inner#1235 A14).
-   */
-  initialText?: string;
-  /** Called with the words each time they change. */
-  onDraft?: (text: string) => void;
 }
 
 /**
@@ -58,15 +50,11 @@ interface AnnotationComposerProps {
  * @param root0 - The component props.
  * @param root0.onCommit - Receives the body worth writing.
  * @param root0.onClose - Runs when the box closes, committed or not.
- * @param root0.initialText - The words the box opens on.
- * @param root0.onDraft - Receives the words each time they change.
  * @returns The floating composer.
  */
 export function AnnotationComposer({
   onCommit,
   onClose,
-  initialText = '',
-  onDraft,
 }: AnnotationComposerProps): React.JSX.Element {
   const t = useTranslation();
   const boxRef = React.useRef<HTMLTextAreaElement>(null);
@@ -76,7 +64,7 @@ export function AnnotationComposer({
   const [shell, setShell] = React.useState<HTMLDivElement | null>(null);
   usePressKeepsFocus(shell, pressLandedOnTheBox);
   const [draft, setDraft] = React.useState<DraftState>(() =>
-    reduceDraft(CLOSED_DRAFT, { type: 'open', use: 'annotation', text: initialText }),
+    reduceDraft(CLOSED_DRAFT, { type: 'open', use: 'annotation', text: '' }),
   );
   // The draft as it stands at the moment of an event: a state updater must
   // stay pure, and under StrictMode it runs twice, so the commit is written
@@ -100,11 +88,10 @@ export function AnnotationComposer({
       if (next === draftRef.current) return;
       draftRef.current = next;
       setDraft(next);
-      onDraft?.(next.text);
       if (next.commit !== undefined) onCommit(next.commit);
       if (next.mode === 'closed') onClose();
     },
-    [onCommit, onClose, onDraft],
+    [onCommit, onClose],
   );
   // §6.2's one criterion for the IME, asked by every way out of this box —
   // here that is the blur as well as the keyboard.

@@ -171,27 +171,6 @@ describe('the box that opens at the drop point', () => {
     expect(press.defaultPrevented).toBe(false);
   });
 
-  it('opens on the words it was given and reports each change', () => {
-    // The canvas library takes this box down while its Space is hidden and
-    // puts it back when shown; the words live with the canvas and come back
-    // through here (inner#1235 A14).
-    const onDraft = vi.fn();
-    render(
-      <AnnotationComposer
-        onCommit={onCommit}
-        onClose={onClose}
-        initialText='half a thought'
-        onDraft={onDraft}
-      />,
-    );
-    const box = screen.getByTestId('annotation-composer-input');
-    expect(box).toHaveValue('half a thought');
-
-    fireEvent.change(box, { target: { value: 'half a thought, more' } });
-
-    expect(onDraft).toHaveBeenLastCalledWith('half a thought, more');
-  });
-
   it('puts the caret in the box without being asked', () => {
     // Somebody pressed the tool and then clicked a spot. Typing is the next
     // thing they mean to do.
