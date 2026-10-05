@@ -841,10 +841,6 @@ function CanvasSpaceInner({
   // store for the toolbar's read-out, and run the toolbar's commands (posted
   // through the store mailbox) against ReactFlow here, where the API exists.
   const setZoom = useCanvasStore((s) => s.setZoom);
-  // The live zoom, for the new-note box: it hangs in the viewport portal and
-  // would otherwise scale with the board, while the sticky it turns into holds
-  // one screen size (#1881 §8.7.4).
-  const zoom = useCanvasStore((s) => s.zoom);
   // Minimap visibility (single source, #1548) — toggled by the viewport
   // toolbar, consumed here to mount/unmount the map.
   const minimapVisible = useCanvasStore((s) => s.minimapVisible);
@@ -1216,6 +1212,9 @@ function CanvasSpaceInner({
     void canvasApi.fetchLimits().catch(() => undefined);
   }, []);
 
+  // This canvas's own zoom: mirrored for the toolbar below, and it undoes the
+  // board's scale on the new-note box, which hangs in the viewport portal while
+  // the sticky it turns into holds one screen size (#1881 §8.7.4).
   const rfZoom = useStore((s) => s.transform[2]);
   React.useEffect(() => {
     setZoom(rfZoom);
@@ -4521,7 +4520,7 @@ function CanvasSpaceInner({
                 // transform is the right tool here and the wrong one on the
                 // pin: nothing measures this box, and xyflow measures that one.
                 style={{
-                  transform: `translate(${composerAt.x}px, ${composerAt.y}px) scale(${1 / zoom})`,
+                  transform: `translate(${composerAt.x}px, ${composerAt.y}px) scale(${1 / rfZoom})`,
                   transformOrigin: 'top left',
                   zIndex: ANNOTATION_COMPOSER_Z,
                 }}
