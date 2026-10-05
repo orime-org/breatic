@@ -313,6 +313,44 @@ test('a document scrolled down comes back at the same place', async ({ page }) =
   await expect.poll(() => scroller.evaluate((el) => Math.round(el.scrollTop))).toBe(300);
 });
 
+test('a wide table scrolled sideways comes back at the same place', async ({ page }) => {
+  // A1: the document's DOM is put back into its body when the Space is shown
+  // again; a wide table's frame must still be where the reader scrolled it.
+  await openFreshProject(page);
+  const [doc] = await addSpaces(page, 1, 'document');
+  await expect(page.getByTestId('new-space-button')).toBeFocused();
+  const [first] = (await stripIds(page)) as [string, string];
+  await showSpace(page, doc!);
+  const editor = page.locator(DOCUMENT_EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await editor.click();
+  await page.keyboard.type('above');
+  const row = await page
+    .locator(`${DOCUMENT_EDITOR} > .bn-block-group > .bn-block-outer > .bn-block > .bn-block-content`)
+    .first()
+    .boundingBox();
+  if (row === null) throw new Error('the first row has no box');
+  await page.mouse.move(row.x + 40, row.y + Math.min(row.height / 2, 12), { steps: 3 });
+  await page.getByTestId('doc-block-handle').click();
+  await page.getByTestId('doc-block-row-insertBelow').hover();
+  await page.getByTestId('doc-block-insert-table').hover();
+  await page.getByTestId('doc-table-size-2-9').click();
+  for (let i = 0; i < 9; i += 1) {
+    if (i > 0) await page.keyboard.press('Tab');
+    await page.keyboard.type(`column ${String(i)} wide enough`);
+  }
+  const frame = page.locator(`${DOCUMENT_EDITOR} [data-radix-scroll-area-viewport]`).first();
+  await frame.evaluate((viewport) => {
+    viewport.scrollLeft = 200;
+  });
+  await expect.poll(() => frame.evaluate((el) => Math.round(el.scrollLeft))).toBe(200);
+
+  await showSpace(page, first);
+  await showSpace(page, doc!);
+
+  await expect.poll(() => frame.evaluate((el) => Math.round(el.scrollLeft))).toBe(200);
+});
+
 test.describe('on a Mac, where Cmd is the canvas library\'s add-to-selection key', () => {
   // The library reads the platform from the user agent, and the smoke device
   // reports Windows, where the key is Control and a Control press on macOS is

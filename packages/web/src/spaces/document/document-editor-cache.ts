@@ -217,9 +217,10 @@ export type ShowableEditor = Pick<DocumentEditorHandle, 'editor' | 'surface'>;
  * wrong is in the module comment — a rebuilt view, a mismatched transaction,
  * and the old view's plugin views left running.
  *
- * Adopting into a container that already holds the surface is what StrictMode's
- * double-invoked effect does, and `appendChild` of a node already in place is a
- * no-op move.
+ * Adopting into a container that already holds the surface — StrictMode's
+ * double-invoked effect, and a Space shown again — leaves it where it is.
+ * `appendChild` always takes a node out and puts it back, and that resets
+ * every scroll position inside it, a wide table's frame among them.
  * @param handle - The handle {@link getDocumentEditor} returned.
  * @param container - The element that should hold the editor's DOM.
  */
@@ -227,6 +228,7 @@ export function adoptDocumentEditor(
   handle: ShowableEditor,
   container: HTMLElement,
 ): void {
+  if (handle.surface.parentElement === container) return;
   container.appendChild(handle.surface);
   // `mount()` is what builds the view, so its absence is what "not yet
   // mounted" means. Asking the editor is more direct than a flag here that
