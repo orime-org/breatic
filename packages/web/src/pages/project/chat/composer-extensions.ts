@@ -8,7 +8,8 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Text from '@tiptap/extension-text';
 import { UndoRedo } from '@tiptap/extensions';
 import { splitBlock } from '@tiptap/pm/commands';
-import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
+import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
 
@@ -79,16 +80,21 @@ function isBatch(tr: Transaction): boolean {
 }
 
 /**
+ * Where a batch let past the limit ends, followed through every later edit
+ * until the box has cut it; null when there is none.
+ */
+const overflowKey = new PluginKey<number | null>('composerOverflow');
+
+/**
  * The edit that brings the box back to the limit by cutting what stands just
- * before the selection's end -- where a paste, a drop or a composition ends.
- * Cut between whole characters; a longer cut never measures longer, so the
- * cut is found by halves.
+ * before where a batch ends. Cut between whole characters; a longer cut never
+ * measures longer, so the cut is found by halves.
  * @param state - The box's state.
+ * @param to - Where the batch ends.
  * @param attached - What is attached; only their ids are read.
  * @returns The edit, or null when the box is within the limit.
  */
-function trimToLimit(state: EditorState, attached: ReadonlyArray<{ readonly id: string }>): Transaction | null {
-  const to = state.selection.to;
+function trimToLimit(state: EditorState, to: number, attached: ReadonlyArray<{ readonly id: string }>): Transaction | null {
   /**
    * Whether cutting from a position up to the end leaves the box within the limit.
    * @param from - Where the cut starts.
@@ -121,16 +127,35 @@ function trimToLimit(state: EditorState, attached: ReadonlyArray<{ readonly id: 
  * @returns The extension.
  */
 function composerRules(wiring: ComposerWiring): AnyExtension {
-  // A batch let past the limit, waiting to be cut once its composition (if
-  // any) is over.
-  let overflowing = false;
+  /**
+   * Cuts a batch that went past the limit once the box is no longer composing:
+   * the box keeps the longest start of what came in that fits, as the
+   * textarea's maxLength did.
+   * @param view - The box.
+   */
+  const cutOverflow = (view: EditorView): void => {
+    const end = overflowKey.getState(view.state);
+    if (end === null || end === undefined || view.composing || view.isDestroyed) return;
+    const trim = trimToLimit(view.state, end, wiring.attachments());
+    dispatchMachineEdit(view, (trim?.scrollIntoView() ?? view.state.tr).setMeta(overflowKey, null));
+    if (trim !== null) wiring.onRefusedAtLimit();
+  };
   return Extension.create({
     name: 'composerRules',
     priority: 150,
     addProseMirrorPlugins() {
       return [
         Suggestion<TrayItem>({ editor: this.editor, ...wiring.suggestion }),
-        new Plugin({
+        new Plugin<number | null>({
+          key: overflowKey,
+          state: {
+            init: () => null,
+            apply: (tr, end) => {
+              const meta = tr.getMeta(overflowKey) as number | null | undefined;
+              if (meta !== undefined) return meta;
+              return end === null ? null : tr.mapping.map(end);
+            },
+          },
           // Typing, a pick, a paste, a drop, an undo or a draft written in can
           // each bring a block in, and the tray or the language can change
           // under the blocks already there: every block is checked here,
@@ -140,19 +165,20 @@ function composerRules(wiring: ComposerWiring): AnyExtension {
             const tr = followAttachments(state, wiring.attachments(), wiring.labelOf);
             return tr ? tr.setMeta('addToHistory', false) : null;
           },
-          // Once the box is no longer composing, a batch that went past the
-          // limit loses its end: the box keeps the longest start of what came
-          // in that fits, as the textarea's maxLength did.
-          view: () => ({
-            update: (view): void => {
-              if (!overflowing || view.composing) return;
-              overflowing = false;
-              const trim = trimToLimit(view.state, wiring.attachments());
-              if (trim === null) return;
-              dispatchMachineEdit(view, trim.scrollIntoView());
-              wiring.onRefusedAtLimit();
-            },
-          }),
+          // A batch is cut after the edit that brought it in, or, for a
+          // composition, as soon as it ends: an input method whose final text
+          // is what it showed while composing ends without another edit.
+          view: (view) => {
+            /** Cuts once ProseMirror has read the composition's last change. */
+            const onCompositionEnd = (): void => {
+              queueMicrotask(() => cutOverflow(view));
+            };
+            view.dom.addEventListener('compositionend', onCompositionEnd);
+            return {
+              update: cutOverflow,
+              destroy: () => view.dom.removeEventListener('compositionend', onCompositionEnd),
+            };
+          },
           props: {
             handleKeyDown: (view, event): boolean => {
               if (event.key !== 'Enter' || event.isComposing) return false;
@@ -173,8 +199,11 @@ function composerRules(wiring: ComposerWiring): AnyExtension {
             const attached = wiring.attachments();
             const after = settledLength(state, tr, attached);
             if (after <= CHAT_MESSAGE_MAX_CHARS || after <= draftLength(state.doc, attached)) return true;
+            // What the box's plugins add to a batch still waiting to be cut
+            // (the spaces around a block it brought) is part of it.
+            if (overflowKey.getState(state) != null) return true;
             if (isBatch(tr)) {
-              overflowing = true;
+              tr.setMeta(overflowKey, tr.selection.to);
               return true;
             }
             wiring.onRefusedAtLimit();
@@ -202,7 +231,6 @@ export function composerExtensions(wiring: ComposerWiring): AnyExtension[] {
     Placeholder.configure({ placeholder: wiring.placeholder }),
     ChatReference.configure({
       isAttached: (id) => wiring.attachments().some((a) => a.id === id),
-      attachmentOf: (id) => wiring.attachments().find((a) => a.id === id),
     }),
     composerRules(wiring),
   ];

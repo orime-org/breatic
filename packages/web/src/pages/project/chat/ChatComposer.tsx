@@ -10,6 +10,7 @@ import { EditorContent } from '@tiptap/react';
 import { CHAT_MESSAGE_MAX_CHARS, messageLength } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
+import { ChatAttachmentsContext } from '@web/pages/project/chat/chat-reference';
 import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
 import { useComposerEditor } from '@web/pages/project/chat/use-composer-editor';
 import { NO_ATTACHMENTS, type TrayItem } from '@web/stores/chat-attachments';
@@ -255,7 +256,9 @@ function ChatComposerInner({
           panel's own: a box left to scroll itself draws the browser's
           scrollbar, which is a different shape in every engine. */}
       <ScrollArea viewportClassName='max-h-[210px]'>
-        <EditorContent editor={editor} />
+        <ChatAttachmentsContext.Provider value={attachments}>
+          <EditorContent editor={editor} />
+        </ChatAttachmentsContext.Provider>
       </ScrollArea>
       <div className='flex items-center justify-between gap-2 px-2 pb-2 pt-1.5'>
         <div className='flex min-w-0 flex-1 items-center gap-1.5'>

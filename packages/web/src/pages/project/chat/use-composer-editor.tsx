@@ -15,7 +15,7 @@ import type { Editor } from '@tiptap/core';
 import { useEditor } from '@tiptap/react';
 import * as React from 'react';
 import { getLocale, t as sharedT } from '@breatic/shared';
-import { Fragment, Slice } from '@tiptap/pm/model';
+import { Fragment, Slice, type Schema } from '@tiptap/pm/model';
 import { EditorState, Selection, TextSelection } from '@tiptap/pm/state';
 
 import { makeMentionSuggestion } from '@web/features/reference-mention/mention-suggestion';
@@ -133,13 +133,20 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
           // textarea; ProseMirror would write an empty string over it.
           copy: (view): boolean => nothingSelected(view.state),
           cut: (view): boolean => nothingSelected(view.state),
-          // Read-only, ProseMirror skips its own paste handling, and the event
-          // would go on to the page: the canvas takes canvas nodes pasted
-          // outside a field. The box keeps it, as a read-only field does.
           paste: (view, event): boolean => {
-            if (view.editable) return false;
+            if (view.editable) {
+              // Words copied from a page are taken as the page's plain text, as
+              // the textarea took them; only the box's own blocks need its HTML.
+              const text = plainTextOf(event.clipboardData);
+              if (text === null || (event.clipboardData?.files.length ?? 0) > 0) return false;
+              view.pasteText(text, event);
+            } else {
+              // Read-only, ProseMirror skips its own paste handling, and the
+              // event would go on to the page: the canvas takes canvas nodes
+              // pasted outside a field. The box keeps it, as a read-only field does.
+              event.stopPropagation();
+            }
             event.preventDefault();
-            event.stopPropagation();
             return true;
           },
         },
@@ -168,26 +175,25 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
         // The textarea put it on the nearest line; so does this, doing what
         // ProseMirror's own drop does from there.
         handleDrop: (view, event, slice, moved): boolean => {
-          if (moved || slice.size === 0) return false;
+          if (moved) return false;
           const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
           if (!at) return false;
           const $at = view.state.doc.resolve(at.pos);
-          if ($at.parent.inlineContent) return false;
-          const pos = Selection.near($at, -1).head;
-          const tr = view.state.tr.replaceRange(pos, pos, slice);
+          const text = plainTextOf(event.dataTransfer);
+          const taken = text === null ? slice : plainTextSlice(text, view.state.schema);
+          if (taken.size === 0 || ($at.parent.inlineContent && taken === slice)) return false;
+          // A drop beside the text -- past a line's end, under the last line --
+          // lands between paragraphs, where ProseMirror would start a new one;
+          // the textarea put it on the nearest line, and so does this.
+          const pos = $at.parent.inlineContent ? at.pos : Selection.near($at, -1).head;
+          // What ProseMirror's own drop does from there.
+          const tr = view.state.tr.replaceRange(pos, pos, taken);
           tr.setSelection(TextSelection.between(tr.doc.resolve(pos), tr.doc.resolve(tr.mapping.map(pos, 1))));
           view.focus();
           view.dispatch(tr.setMeta('uiEvent', 'drop'));
           return true;
         },
-        // Plain text -- pasted, or dropped from outside -- as the textarea took
-        // it: joined to the line it lands on, a paragraph per line, blank
-        // lines kept.
-        clipboardTextParser: (text, $context): Slice => {
-          const schema = $context.doc.type.schema;
-          const lines = text.split(/\r\n?|\n/).map((line) => schema.node('paragraph', null, line === '' ? [] : [schema.text(line)]));
-          return Slice.maxOpen(Fragment.from(lines));
-        },
+        clipboardTextParser: (text, $context): Slice => plainTextSlice(text, $context.doc.type.schema),
       },
       onUpdate: ({ editor: e }) => {
         const next = draftOf(e.state.doc);
@@ -258,6 +264,32 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
 function nothingSelected(state: EditorState): boolean {
   const { from, to } = state.selection;
   return state.doc.textBetween(from, to, '\n', () => '\uFFFC') === '';
+}
+
+/**
+ * The plain text to take from a paste or a drop whose HTML holds none of the
+ * box's blocks: the page's own text, its line breaks and indents as the
+ * textarea received them.
+ * @param data - The clipboard or the drag's data.
+ * @returns The text, or null when ProseMirror's own reading applies.
+ */
+function plainTextOf(data: DataTransfer | null): string | null {
+  const html = data?.getData('text/html') ?? '';
+  if (html === '' || html.includes('data-reference-mention')) return null;
+  const text = data?.getData('text/plain') ?? '';
+  return text === '' ? null : text;
+}
+
+/**
+ * Plain text as the box holds it: joined to the line it lands on, a paragraph
+ * per line, blank lines kept.
+ * @param text - The text.
+ * @param schema - The box's schema.
+ * @returns The slice to insert.
+ */
+function plainTextSlice(text: string, schema: Schema): Slice {
+  const lines = text.split(/\r\n?|\n/).map((line) => schema.node('paragraph', null, line === '' ? [] : [schema.text(line)]));
+  return Slice.maxOpen(Fragment.from(lines));
 }
 
 /** What the box was last given from outside it. */
