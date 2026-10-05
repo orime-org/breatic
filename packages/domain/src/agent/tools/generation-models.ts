@@ -7,7 +7,13 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-import { formatCredits, GENERATION_NODE_MODES, type GenerationNodeType } from "@breatic/shared";
+import {
+  CAMERA_COMMANDS_PER_BRACKET,
+  formatCredits,
+  GENERATION_NODE_MODES,
+  STATIC_SHOT,
+  type GenerationNodeType,
+} from "@breatic/shared";
 import type { CreditEstimate } from "@breatic/shared/pricing";
 
 import {
@@ -76,6 +82,23 @@ function renderStoryboard(model: PricedModelInfo): string {
 }
 
 /**
+ * Which camera commands this model reads out of its prompt and how to write
+ * them, as MiniMax documents the syntax (inner#1241).
+ * @param model - The model to describe.
+ * @returns A sentence to append to its line, or the empty string when it reads none.
+ */
+function renderCameraCommands(model: PricedModelInfo): string {
+  const commands = model.cameraCommands;
+  if (!commands || commands.length === 0) return "";
+  const where = model.storyboard ? " into the shot it belongs to" : " into the prompt";
+  return (
+    ` Reads camera commands written${where}: ${commands.map((c) => `[${c}]`).join(" ")}.` +
+    ` Commands inside one bracket, comma-separated, run at the same time, at most ${CAMERA_COMMANDS_PER_BRACKET} in one bracket;` +
+    ` separate brackets run in the order they appear; never put the opposite directions of one axis, or [${STATIC_SHOT}] with a movement, in one bracket.`
+  );
+}
+
+/**
  * One model rendered for the model to read.
  * @param model - The model to describe.
  * @returns Its name, what it is for, what it costs, and its parameters.
@@ -114,7 +137,7 @@ function renderModel(model: PricedModelInfo): string {
   const routing = shared
     .map((kind) => ` Of the ${String(kind)} nodes wired in, the first in the order the proposal lists its nodes is the one the reader picks into its ${String(kind)} slot; later ones go to its pool.`)
     .join("");
-  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderStoryboard(model)}`;
+  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderStoryboard(model)}${renderCameraCommands(model)}`;
   const params = Object.entries(model.params).filter(([, spec]) => !spec.fromStoryboard).map(([name, spec]) => {
     // Shape and cap belong to the parameter, so they are stated whatever else
     // it says about itself -- including for a slot, where together they are

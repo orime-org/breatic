@@ -186,6 +186,11 @@ export interface ModelInfo {
    */
   takesPrompt: boolean;
   /**
+   * The bracketed camera commands it reads out of its prompt (inner#1241),
+   * for a model that declares them.
+   */
+  cameraCommands?: string[];
+  /**
    * The node's other modes this entry serves, when it serves more than one.
    *
    * {@link ModelInfo.what} is written once for the whole entry, so an entry
@@ -508,6 +513,9 @@ export function modelsForMode(
         ? { maxInputChars: entry.max_input_chars }
         : {}),
       takesPrompt: entry.takes_prompt,
+      ...(entry.camera_commands !== undefined
+        ? { cameraCommands: entry.camera_commands.map((command) => command.name) }
+        : {}),
       ...(others.length > 0 ? { alsoServes: others } : {}),
       ...(storyboard ? { storyboard } : {}),
       params: Object.fromEntries(
