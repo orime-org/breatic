@@ -57,7 +57,9 @@
       "cannot_change_admin_role": "Admin 角色只能透過轉讓變更。",
       "member_limit_reached": "{limit, plural, =0 {這個 Studio 的會員等級不支援新增成員，升級後即可新增。} other {這個 Studio 的會員等級最多可有 # 位成員，升級可新增更多。}}",
       "member_limit_reached_for_invitee": "這個 Studio 的成員名額已滿，請聯絡它的 Admin 騰出名額。",
-      "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。"
+      "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。",
+      "transfer_credits_designated": "還有點數包指定給這個 Studio。請先在頭像選單 →「點數」→「指定」裡取消指定，再發起轉讓。",
+      "designation_during_transfer": "這個 Studio 有待接受的轉讓，撤回或轉讓結束後才能再為它指定點數包。"
     },
     "project": {
       "join_already_member": "你已經是這個 Project 的成員。",
@@ -1504,7 +1506,7 @@
         "description": "簡介",
         "dangerTitle": "危險操作",
         "transfer": "轉讓 Studio",
-        "dangerHint": "轉讓會把整個 Studio（含 Projects、Collections 與錢包）交給另一位成員；修改 Slug 會讓所有現有連結失效。僅 Admin 可操作。",
+        "dangerHint": "轉讓會把 Studio（含 Projects、Collections）交給另一位成員；發起前需先在頭像選單 →「點數」→「指定」裡取消指定給它的點數包。修改 Slug 會讓所有現有連結失效。僅 Admin 可操作。",
         "dangerHintPersonal": "你的 Slug 就是你的 @handle，也是這個 Studio 的網址。修改無法復原。",
         "transferTitle": "轉讓 Studio 所有權",
         "transferBody": "選擇一位 Maintainer 成為新的 Admin。對方接受後轉讓才生效,你會變成 Maintainer。",

@@ -131,7 +131,7 @@ describe("starting a Studio transfer", () => {
 
     await expect(
       studioTransferService.requestTransfer(s.slug, s.adminId, s.memberId),
-    ).rejects.toMatchObject({ status: 409 });
+    ).rejects.toMatchObject({ statusCode: 409 });
     expect(await transferCount(s.studioId)).toBe(0);
     const [bell] = await sql<{ c: number }[]>`
       SELECT count(*)::int AS c FROM notifications
@@ -166,9 +166,12 @@ describe("pointing a pack at a studio", () => {
 
     await expect(
       studioCreditDesignation.designateLot({ lotId: lot, requestingUserId: s.adminId, studioId: s.studioId }),
-    ).rejects.toMatchObject({ status: 409 });
+    ).rejects.toMatchObject({ statusCode: 409 });
 
-    await studioTransferService.withdrawTransfer(s.slug);
+    const [offer] = await sql<{ id: string }[]>`
+      SELECT id FROM studio_transfers WHERE studio_id = ${s.studioId}
+    `;
+    await studioTransferService.withdrawTransfer(offer!.id, s.slug);
     const lotAfter = await studioCreditDesignation.designateLot({
       lotId: lot,
       requestingUserId: s.adminId,

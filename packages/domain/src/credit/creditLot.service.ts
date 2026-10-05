@@ -907,3 +907,21 @@ export async function releaseDesignations(input: {
     await creditLotRepo.setDesignation(lotId, null, input.tx);
   }
 }
+
+/**
+ * Whether any live purchase still points at a studio.
+ *
+ * A Studio transfer may start only once this is false: the admin unassigns
+ * their packs first, so the change of hands never takes credits by surprise.
+ * Spent packs keep their last designation but cannot be unassigned from the
+ * credits panel, so they are left to `releaseDesignations` at acceptance.
+ * @param studioId - The studio being handed over.
+ * @param tx - The transaction the offer is filed in.
+ * @returns True if at least one active pack names the studio.
+ */
+export async function hasActiveDesignationsTo(
+  studioId: string,
+  tx: DbTx,
+): Promise<boolean> {
+  return (await creditLotRepo.countActiveDesignatedToStudio(studioId, tx)) > 0;
+}

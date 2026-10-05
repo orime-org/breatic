@@ -27,7 +27,7 @@
  *      lock come back empty at the one moment it was needed.
  */
 
-import { and, asc, desc, eq, inArray, isNull, isNotNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, isNotNull, lt, or, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@breatic/core";
@@ -714,6 +714,32 @@ export async function listDesignatedLotIds(
     )
     .orderBy(asc(creditLots.createdAt), asc(creditLots.id));
   return rows.map((row) => row.id);
+}
+
+/**
+ * Count the active lots, of any buyer, that point at a studio.
+ *
+ * A spent lot keeps its designation but the credits panel offers no way to
+ * unassign it, so only active lots count.
+ * @param studioId - The studio they point at.
+ * @param tx - The enclosing transaction.
+ * @returns How many there are.
+ */
+export async function countActiveDesignatedToStudio(
+  studioId: string,
+  tx: DbTx,
+): Promise<number> {
+  const [row] = await tx
+    .select({ c: count() })
+    .from(creditLots)
+    .where(
+      and(
+        eq(creditLots.designatedStudioId, studioId),
+        eq(creditLots.lifecycle, "active"),
+        isNull(creditLots.deletedAt),
+      ),
+    );
+  return row?.c ?? 0;
 }
 
 /**
