@@ -205,6 +205,19 @@ const GENERATE_PANEL_BY_TYPE: Partial<
   audio: 'generateAudio',
 };
 
+/**
+ * Close whichever bottom panel is open, ending that opening: a late answer
+ * to it no longer names the panel on screen.
+ * @param s - The draft state being written.
+ */
+function endPanel(s: CanvasSessionState): void {
+  s.panelHostId = null;
+  s.panelKind = null;
+  s.taskPanelStatus = null;
+  s.pickSession = null;
+  s.panelSession += 1;
+}
+
 /** The two slots that read the canvas's next click. */
 interface CanvasModeSlots {
   placingAnnotation: boolean;
@@ -326,13 +339,7 @@ export function createCanvasSessionStore(): CanvasSessionStore {
           s.panelSession += 1;
           s.pickSession = null;
         }),
-      closeActivePanel: () =>
-        set((s) => {
-          s.panelHostId = null;
-          s.panelKind = null;
-          s.taskPanelStatus = null;
-          s.pickSession = null;
-        }),
+      closeActivePanel: () => set(endPanel),
       startTextEdit: (nodeId) =>
         set((s) => {
           s.editingTextNode = nodeId;
@@ -343,11 +350,7 @@ export function createCanvasSessionStore(): CanvasSessionStore {
         }),
       closePanelOfSession: (session) =>
         set((s) => {
-          if (s.panelSession !== session) return;
-          s.panelHostId = null;
-          s.panelKind = null;
-          s.taskPanelStatus = null;
-          s.pickSession = null;
+          if (s.panelSession === session) endPanel(s);
         }),
       startReferencePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'reference' })),
       startFirstFramePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'firstFrame' })),
