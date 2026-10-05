@@ -52,8 +52,12 @@ export default function App(): React.JSX.Element {
               No `richColors`: type is signalled by a colored left border +
               icon (design B), styled by `data-type` in index.css using the
               design status tokens — a quieter accent than sonner's full-color
-              fill, and consistent with the app's status palette. */}
-          <Toaster position='top-center' duration={3000} />
+              fill, and consistent with the app's status palette.
+              `expand`: every toast stays open on a row of its own. Each toast
+              is as wide as its text, and sonner's collapsed stack assumes one
+              width — older, wider toasts showed past the newest as empty
+              edges. Sonner shows three at a time; a fourth hides the oldest. */}
+          <Toaster position='top-center' duration={3000} expand />
         </AuthBootstrap>
       </TooltipProvider>
     </QueryClientProvider>
