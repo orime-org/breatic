@@ -44,6 +44,7 @@ const emailB = credentialsFor('B').email;
 
 const EDITOR = '[data-testid="document-space"] .ProseMirror';
 const ROW = 'a row a viewer may read but not touch';
+const CELL = 'a cell a viewer may read';
 
 let ownerContext: BrowserContext;
 let viewerContext: BrowserContext;
@@ -170,6 +171,16 @@ test.beforeEach(async ({ browser }) => {
   await expect(editor).toBeVisible({ timeout: 15_000 });
   await editor.click();
   await owner.keyboard.type(ROW);
+  // A table under the row, pasted the way a reader pastes one (inner#1126 A18).
+  await owner.keyboard.press('Enter');
+  await owner.evaluate(([selector, words]) => {
+    const transfer = new DataTransfer();
+    transfer.setData('text/html', `<table><tbody><tr><td>${words}</td><td>b1</td></tr></tbody></table>`);
+    document.querySelector(selector)!.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true }),
+    );
+  }, [EDITOR, CELL] as const);
+  await expect(owner.locator(`${EDITOR} table`)).toHaveCount(1);
 
   // A fresh membership every run, so the invite is never refused for somebody
   // who is already in.
@@ -241,4 +252,22 @@ test('the same gesture on the owner page does bring a handle', async () => {
   await expect(owner.locator(EDITOR)).toContainText(ROW, { timeout: 20_000 });
 
   expect(await handlesAfterHover(owner)).toBe(1);
+});
+
+test('a viewer reads a table and gets none of its controls, nor can type in it', async () => {
+  await openTheSpace(viewer);
+  const cell = viewer.locator(`${EDITOR} td`).filter({ hasText: CELL });
+  await expect(cell).toHaveCount(1, { timeout: 20_000 });
+
+  const box = await cell.boundingBox();
+  if (box === null) throw new Error('the cell has no box');
+  await viewer.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await cell.click();
+  await viewer.keyboard.type('x');
+  // The same wait the strip gets above, for controls that would be coming.
+  await viewer.waitForTimeout(500);
+
+  await expect(viewer.getByTestId(/^doc-table-(row|col)-handle$|^doc-table-cell-button$/)).toHaveCount(0);
+  await expect(viewer.getByTestId('doc-block-table-handle')).toHaveCount(0);
+  await expect(cell).toHaveText(CELL);
 });

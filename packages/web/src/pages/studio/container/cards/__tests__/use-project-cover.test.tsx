@@ -17,7 +17,10 @@ vi.mock('@web/pages/studio/shared/upload-picture', async (importOriginal) => ({
 }));
 
 const { setCover } = vi.hoisted(() => ({ setCover: vi.fn() }));
-vi.mock('@web/data/api/projects', () => ({ projectsApi: { setCover } }));
+vi.mock('@web/data/api/projects', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/projects')>()),
+  projectsApi: { setCover },
+}));
 
 import { useProjectCover } from '@web/pages/studio/container/cards/use-project-cover';
 import { UploadFailedError } from '@web/data/upload/media-upload';
@@ -33,7 +36,7 @@ function setup(): ReturnType<typeof renderHook<ReturnType<typeof useProjectCover
   const wrapper = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
-  return renderHook(() => useProjectCover('p1', 'acme'), { wrapper });
+  return renderHook(() => useProjectCover('p1'), { wrapper });
 }
 
 beforeEach(() => {
@@ -41,7 +44,7 @@ beforeEach(() => {
 });
 
 describe('useProjectCover', () => {
-  it('uploads the crop as a cover, points the project at it, and refreshes both lists', async () => {
+  it('uploads the crop as a cover, points the project at it, and refreshes every listing', async () => {
     uploadPicture.mockResolvedValue('asset-1');
     setCover.mockResolvedValue({ id: 'p1' });
     const { result } = setup();
@@ -58,8 +61,12 @@ describe('useProjectCover', () => {
       purpose: 'project_cover',
     });
     await waitFor(() => expect(result.current.done).toBe(true));
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['studio', 'acme', 'projects'] });
+    const studioList = invalidate.mock.calls.find(([filters]) => filters?.predicate);
+    expect(
+      studioList?.[0]?.predicate?.({ queryKey: ['studio', 'acme', 'projects'] } as never),
+    ).toBe(true);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['studios', 'recent'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'p1'] });
     expect(result.current.error).toBeNull();
   });
 

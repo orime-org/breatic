@@ -14,7 +14,6 @@ import {
   AUDIO_GENERATION_MODES,
   CANVAS_NODES_KEY,
   GENERATION_NODE_MODES,
-  VIDEO_GENERATION_MODES,
   canGenerate,
 } from '@breatic/shared';
 
@@ -151,6 +150,9 @@ const EDGES_KEY = 'edgesMap';
  */
 export const CANVAS_UNDO = Symbol('canvas-undo');
 
+/** One entry on a canvas undo stack. */
+export type CanvasUndoStep = Y.UndoManager['undoStack'][number];
+
 /**
  * Origin for frontend content writes (upload completion / failure). Excluded
  * from the undo manager's `trackedOrigins` so a content arrival does NOT enter
@@ -270,17 +272,42 @@ export function _resetCanvasUndoCacheForTests(): void {
  * even when it moves N nodes and changes group membership (see
  * {@link createCanvasUndoManager} for why `captureTimeout: 0` makes this
  * explicit batching necessary).
+ *
+ * `joinStep` folds this batch into that undo step instead, which is how a held
+ * arrow key stays one step: the manager merges a change made within
+ * `captureTimeout` of the last one into the step on top, so the timeout is
+ * lifted for this one transaction, and only while the step on top is still
+ * `joinStep` — any other write in between leaves a different step on top.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space whose doc to mutate.
  * @param fn - Runs the individual mutations; their writes join this one transaction.
+ * @param joinStep - The undo step to merge into, when it is still on top.
+ * @returns The undo step this batch landed in: `joinStep` when it merged into
+ *   it, otherwise the new step on top, or undefined when it wrote nothing.
  */
 export function runCanvasUndoBatch(
   projectId: string,
   spaceId: string,
   fn: () => void,
-): void {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  doc.transact(fn, CANVAS_UNDO);
+  joinStep?: CanvasUndoStep,
+): CanvasUndoStep | undefined {
+  const name = docName.canvasSpace(projectId, spaceId);
+  const doc = getDoc(name);
+  const undoManager = getCanvasUndoManager(doc, name);
+  const before = undoManager.undoStack.at(-1);
+  if (joinStep === undefined || before !== joinStep) {
+    doc.transact(fn, CANVAS_UNDO);
+    const after = undoManager.undoStack.at(-1);
+    return after === before ? undefined : after;
+  }
+  const timeout = undoManager.captureTimeout;
+  undoManager.captureTimeout = Number.POSITIVE_INFINITY;
+  try {
+    doc.transact(fn, CANVAS_UNDO);
+  } finally {
+    undoManager.captureTimeout = timeout;
+  }
+  return joinStep;
 }
 
 /**
@@ -469,12 +496,12 @@ export function useCanvasSpace(
  * style brief (#1960, #2218). Seeded empty; {@link getLyricsFragment} only
  * reads.
  *
- * `storyboards` — one storyboard per video mode, off with no shots (#2218);
- * `node-storyboard.ts` reads and edits it.
+ * `shots` — the video node's shots, empty, which only the multi-shot mode
+ * uses; `node-storyboard.ts` reads and edits it.
  * @param data - The plain wire data fields to write.
  * @param type - The node's modality, which decides which containers are
  *   seeded: `body` for text, `prompts` for generate-capable modalities,
- *   `lyrics` for audio, `storyboards` for video, and `replies` for an
+ *   `lyrics` for audio, `shots` for video, and `replies` for an
  *   annotation.
  * @returns A Y.Map populated with the defined data fields.
  */
@@ -538,18 +565,9 @@ function buildDataMap(
   // Every audio mode gets lyrics: which modes' models take them is a catalog
   // fact this birth does not know, and a container born later would race.
   if (type === 'audio') map.set('lyrics', fragmentsFor(AUDIO_GENERATION_MODES));
-  // One storyboard per video mode, off with no shots (#2218). Each shot is
-  // inserted whole with its own fragment, so concurrent adds both survive.
-  if (type === 'video') {
-    const boards = new Y.Map<Y.Map<unknown>>();
-    for (const mode of VIDEO_GENERATION_MODES) {
-      const board = new Y.Map<unknown>();
-      board.set('kind', 'off');
-      board.set('shots', new Y.Array<Y.Map<unknown>>());
-      boards.set(mode, board);
-    }
-    map.set('storyboards', boards);
-  }
+  // The multi-shot mode's shots. Each shot is inserted whole with its own
+  // fragment, so concurrent adds both survive.
+  if (type === 'video') map.set('shots', new Y.Array<Y.Map<unknown>>());
   // Same reasoning as the crops container, and the same race #1880 recorded:
   // two people replying to an annotation that has none would each create a
   // Y.Array under this key and the merge would keep one, taking a reply with

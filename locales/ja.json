@@ -57,7 +57,9 @@
       "cannot_change_admin_role": "Admin ロールは譲渡によってのみ変更できます。",
       "member_limit_reached": "{limit, plural, =0 {この Studio のプランではメンバーを追加できません。アップグレードすると追加できます。} other {この Studio のプランのメンバーは最大 # 人です。アップグレードするとさらに追加できます。}}",
       "member_limit_reached_for_invitee": "この Studio のメンバー枠は満員です。Admin に空きを作ってもらってください。",
-      "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。"
+      "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。",
+      "transfer_credits_designated": "この Studio にまだクレジットパックが割り当てられています。アバターメニュー →「クレジット」→「割り当て」で解除してから譲渡してください。",
+      "designation_during_transfer": "この Studio には承認待ちの譲渡があります。譲渡を取り消すか終了した後に、再びパックを割り当てられます。"
     },
     "project": {
       "join_already_member": "すでにこの Project のメンバーです。",
@@ -66,11 +68,16 @@
       "already_member": "そのユーザーはすでにアクセス権を持っています。",
       "already_invited": "そのユーザーには保留中の招待があります。",
       "limit_reached": "{limit, plural, =0 {この Studio のプランでは Project を作成できません。アップグレードすると作成できます。} other {この Studio のプランで作成できる Project は最大 # 件です。アップグレードするとさらに作成できます。}}",
+      "already_archived": "この Project はすでにアーカイブされています。",
+      "not_archived": "この Project はアーカイブされていません。",
+      "restore_limit_reached": "{limit, plural, other {この Studio のプランで持てる Project は最大 # 件です。ほかの Project をアーカイブするか、アップグレードすると復元できます。}}",
       "collaborator_limit_reached": "{limit, plural, =0 {この Project ではコラボレーターを追加できません。アップグレードすると追加できます。} other {この Project のコラボレーターは最大 # 人です。アップグレードするとさらに追加できます。}}",
       "collaborator_limit_reached_for_invitee": "この Project のコラボレーター枠は満員です。Owner に空きを作ってもらってください。",
       "only_viewer_can_request_upgrade": "ロールの昇格を申請できるのは Viewer だけです",
       "no_active_owner": "この Project には現任の Owner がいません",
-      "not_found": "Project が見つかりません"
+      "not_found": "Project が見つかりません",
+      "archived": "この Project はアーカイブ済みのため閲覧のみです。",
+      "copy_name": "コピー - {name}"
     },
     "payment": {
       "tier_not_found": "不明なプラン：{tier}。選択可能：{available}",
@@ -637,6 +644,7 @@
         "horizontal_angle": "水平角度",
         "vertical_angle": "垂直角度",
         "negative_prompt": "ネガティブプロンプト",
+        "auto_shots": "自動マルチショット",
         "motion": "動きの大きさ",
         "order": "順序",
         "model_mode": "範囲",
@@ -651,10 +659,6 @@
         "pronunciation": "読み"
       },
       "storyboard": {
-        "label": "ストーリーボード",
-        "perShot": "ショットごとに編集",
-        "autoHint": "モデルがショットを分割します",
-        "back": "自動ストーリーボードに戻る",
         "shot": "ショット {n, number}",
         "removeShot": "削除",
         "addShot": "ショットを追加",
@@ -954,6 +958,10 @@
       "busy": "アップロードなどの操作が進行中です。再読み込みすると中断されるため、完了するまでお待ちください。",
       "later": "後で",
       "refresh": "更新"
+    },
+    "archived": {
+      "banner": "この Project はアーカイブ済みのため閲覧のみです",
+      "restore": "復元"
     }
   },
   "common": {
@@ -1114,6 +1122,7 @@
         "codeBlock": "コードブロック",
         "taskList": "タスクリスト",
         "divider": "区切り線",
+        "table": "表",
         "align": "配置",
         "alignLeft": "左揃え",
         "alignCenter": "中央揃え",
@@ -1184,7 +1193,29 @@
         "insertHere": "ここに挿入",
         "duplicate": "このブロックを複製",
         "insertBelow": "下に挿入",
-        "delete": "ブロックを削除"
+        "delete": "ブロックを削除",
+        "indent": "インデント",
+        "unindent": "インデント解除",
+        "deleteTable": "表を削除"
+      },
+      "table": {
+        "pickSize": "サイズを選択",
+        "size": "{rows} 行 × {cols} 列",
+        "cellFill": "セルの背景色",
+        "insertRowAbove": "上に行を挿入",
+        "insertRowBelow": "下に行を挿入",
+        "insertColumnLeft": "左に列を挿入",
+        "insertColumnRight": "右に列を挿入",
+        "headerRow": "見出し行",
+        "headerColumn": "見出し列",
+        "deleteRow": "行を削除",
+        "deleteColumn": "列を削除",
+        "rowHandle": "行",
+        "columnHandle": "列",
+        "cellMenu": "セルのオプション",
+        "splitCell": "セルを分割",
+        "mergeCells": "セルを結合",
+        "textHighlight": "背景（文字のハイライト）"
       }
     },
     "readOnlyReconnect": "再接続"
@@ -1250,6 +1281,7 @@
     "empty": "保留中の通知はありません",
     "loading": "読み込み中…",
     "markRead": "既読にする",
+    "markAllRead": "すべて既読にする",
     "headline": {
       "roleUpgradeRequest": "{actor} さんが {project} の Editor 権限をリクエストしました",
       "roleUpgradeApproved": "{actor} さんが {project} の Editor 権限を承認しました",
@@ -1345,7 +1377,8 @@
         "members": "メンバー",
         "credits": "クレジット",
         "settings": "設定",
-        "navLabel": "Studio セクション"
+        "navLabel": "Studio セクション",
+        "archived": "アーカイブ済み"
       },
       "works": {
         "emptyHint": "Work は Project から公開する独立した成果物(完成した動画 / ミニゲームなど)で、Studio の対外的な顔です。公開機能が実装されると、公開した Work がここに表示されます。",
@@ -1375,7 +1408,24 @@
       "card": {
         "assetCount": "アセット {count} 個",
         "more": "その他の操作",
-        "createdAt": "{time}に作成"
+        "createdAt": "{time}に作成",
+        "rename": "名前を変更",
+        "duplicate": "複製",
+        "archive": "アーカイブ",
+        "restore": "復元",
+        "archivedBadge": "アーカイブ済み",
+        "renameTitle": "Project の名前を変更",
+        "renameLabel": "名前",
+        "save": "保存",
+        "cancel": "キャンセル",
+        "archiveTitle": "「{name}」をアーカイブしますか？",
+        "archiveBody": "アーカイブすると全員が閲覧のみになり、編集中のユーザーは切断されます。Studio Admin は復元できます。",
+        "duplicated": "「{name}」として複製しました",
+        "duplicateFailed": "複製できませんでした",
+        "archived": "アーカイブしました",
+        "archiveFailed": "アーカイブできませんでした",
+        "restored": "復元しました",
+        "restoreFailed": "復元できませんでした"
       },
       "projects": {
         "new": "Project を新規作成",
@@ -1457,7 +1507,7 @@
         "description": "説明",
         "dangerTitle": "危険な操作",
         "transfer": "Studio を譲渡",
-        "dangerHint": "譲渡すると Studio 全体（Projects・Collections・ウォレット）が別のメンバーに移ります。Slug を変更すると既存のリンクはすべて無効になります。Admin のみ可能です。",
+        "dangerHint": "譲渡すると Studio（Projects・Collections）が別のメンバーに移ります。先にこの Studio に割り当てたクレジットパックを解除してください。Slug を変更すると既存のリンクはすべて無効になります。Admin のみ可能です。",
         "dangerHintPersonal": "Slug はあなたの @handle であり、この Studio のアドレスでもあります。変更は元に戻せません。",
         "transferTitle": "Studio の所有権を委譲",
         "transferBody": "新しい Admin になる Maintainer を選びます。相手が承認すると委譲が有効になり、あなたは Maintainer になります。",
@@ -1557,6 +1607,10 @@
           "storage": "ストレージがいっぱいです。カバーはアップロードされていません。",
           "upload": "カバーを変更できませんでした。もう一度お試しください。"
         }
+      },
+      "archived": {
+        "emptyTitle": "アーカイブ済みの Project はありません",
+        "emptyHint": "アーカイブした Project はここに表示され、いつでも復元できます。"
       }
     },
     "rail": {
@@ -1615,7 +1669,8 @@
     "withdraw": "リクエストを取り消す",
     "requestFailed": "リクエストを送信できませんでした。もう一度お試しください。",
     "withdrawFailed": "取り消せませんでした。もう一度お試しください。",
-    "loadFailed": "この Project を開けませんでした。もう一度お試しください。"
+    "loadFailed": "この Project を開けませんでした。もう一度お試しください。",
+    "archived": "この Project はアーカイブ済みです"
   },
   "activity": {
     "description": "アップロード、生成、Space とメンバーの変更",

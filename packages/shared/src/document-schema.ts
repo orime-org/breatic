@@ -93,7 +93,7 @@ export interface DocumentSchema {
  * beside it, which decides who stops editing, is computed from the lists.
  */
 export const DOCUMENT_SCHEMA: DocumentSchema = {
-  publishedAt: "2026-09-30T00:00:00Z",
+  publishedAt: "2026-10-03T00:00:00Z",
 
   // Attribute names are here because adding an attribute to a node both sides
   // already know (a heading gaining an alignment, say) leaves no trace in the
@@ -142,6 +142,25 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "textColor",
     ],
     paragraph: ["backgroundColor", "quoted", "textAlignment", "textColor"],
+    table: ["quoted", "textColor"],
+    tableCell: [
+      "backgroundColor",
+      "colspan",
+      "colwidth",
+      "rowspan",
+      "textAlignment",
+      "textColor",
+    ],
+    tableHeader: [
+      "backgroundColor",
+      "colspan",
+      "colwidth",
+      "rowspan",
+      "textAlignment",
+      "textColor",
+    ],
+    tableParagraph: [],
+    tableRow: [],
     text: [],
     // The three stand-in types. They must exist in every version: content one
     // build cannot represent is wrapped in these rather than deleted, and a

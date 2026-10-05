@@ -21,14 +21,13 @@ import { useTextBodies } from '@web/data/yjs/use-text-body';
 import {
   addStoryboardShot,
   enterStoryboardShots,
-  readStoryboard,
+  readShots,
   removeStoryboardShot,
   retotalStoryboard,
-  setStoryboardKind,
   stepStoryboardShot,
   type StoryboardShotView,
 } from '@web/data/yjs/node-storyboard';
-import { useStoryboard } from '@web/data/yjs/use-storyboard';
+import { useShots } from '@web/data/yjs/use-storyboard';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
@@ -36,12 +35,10 @@ import { useCanvasStore } from '@web/stores';
 import {
   evaluateExecute,
   extractPromptText,
-  effectiveStoryboardKind,
   storyboardSpec,
   type ExecuteVerdict,
   type ModelEntry,
   type ReferencePool,
-  type StoryboardKind,
   type StoryboardSpec,
 } from '@breatic/shared';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
@@ -72,7 +69,7 @@ import {
   PromptEditor,
   type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
-import { ShotList, StoryboardSwitchRow, addBlockedKey } from '@web/spaces/canvas/generate/StoryboardControls';
+import { AddShotRow, ShotList, addBlockedKey } from '@web/spaces/canvas/generate/StoryboardControls';
 import { mentionedSourceIds } from '@web/spaces/canvas/generate/fragment-prompt';
 import { storyboardRun } from '@web/spaces/canvas/generate/storyboard-run';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
@@ -123,12 +120,14 @@ function IGNORE(): void {
 }
 
 /**
- * A model's storyboard, when it has one.
+ * A model's storyboard in a mode: defined only in the multi-shot mode, for a
+ * model that takes shots there.
  * @param entry - The current model.
+ * @param mode - The mode the panel is in.
  * @returns Its storyboard spec.
  */
-function specOf(entry: ModelEntry | undefined): StoryboardSpec | undefined {
-  return entry ? storyboardSpec(entry.params) : undefined;
+function specOf(entry: ModelEntry | undefined, mode: string): StoryboardSpec | undefined {
+  return entry ? storyboardSpec(entry.params, mode) : undefined;
 }
 
 /**
@@ -279,17 +278,13 @@ function VideoGeneratePanelBody({
     catalog?.credit_multiplier ?? 1,
   );
 
-  // The mode's storyboard (#2218). Only a model declaring one can use it, so
-  // the tier in effect is the stored one on such a model and off on any other;
-  // the stored one stays as it is while the reader moves between models.
-  const spec = React.useMemo(() => specOf(vm.modelEntry), [vm.modelEntry]);
-  const storyboard = useStoryboard(projectId, spaceId, nodeId, mode);
-  const storedKind: StoryboardKind = storyboard?.kind ?? 'off';
-  const tier = effectiveStoryboardKind(vm.modelEntry?.params ?? {}, storyboard?.kind);
+  // The node's shots, which only the multi-shot mode shows and sends: `spec`
+  // is defined there alone, for a model that takes shots.
+  const spec = React.useMemo(() => specOf(vm.modelEntry, mode), [vm.modelEntry, mode]);
   const total = totalOf(spec, vm.params);
   // A fresh list only when a shot is added, removed, brought back or given
-  // other seconds; words typed in a shot leave it as it is (`useStoryboard`).
-  const shots = storyboard?.shots;
+  // other seconds; words typed in a shot leave it as it is (`useShots`).
+  const shots = useShots(projectId, spaceId, nodeId);
 
   // The box the caret was last in, so the rail's insert button lands there:
   // the main prompt, or one shot's box by its id. Same shape as the audio
@@ -299,7 +294,7 @@ function VideoGeneratePanelBody({
   // The rail refuses a row the prompt cannot take itself (#1966), so this
   // only routes the insert: the shot box the caret was last in, else the
   // first shot box, else the main prompt. Shot boxes are mounted only in the
-  // per-shot tier and leave the map when they unmount.
+  // multi-shot mode and leave the map when they unmount.
   const handleInsertReference = React.useCallback(
     (item: ReferenceRailItem) => {
       (
@@ -416,15 +411,15 @@ function VideoGeneratePanelBody({
       // switch back to it restores this model rather than the default, and
       // give the picked model its OWN params rather than the outgoing
       // model's (#1948).
-      const { paramsByModel } = resolveModelSwitch(freshContent(), picked);
-      setNodeModel(
-        projectId,
-        spaceId,
-        nodeId,
-        nodeVideoMode(graph.nodes, nodeId, availableModes),
-        modelId,
-        paramsByModel,
-      );
+      const { params, paramsByModel } = resolveModelSwitch(freshContent(), picked);
+      const liveMode = nodeVideoMode(graph.nodes, nodeId, availableModes);
+      // In the multi-shot mode the shots follow the new model's total, in the
+      // same undo step as the switch.
+      const pickedSpec = specOf(picked, liveMode);
+      runCanvasUndoBatch(projectId, spaceId, () => {
+        setNodeModel(projectId, spaceId, nodeId, liveMode, modelId, paramsByModel);
+        if (pickedSpec) retotalStoryboard(projectId, spaceId, nodeId, totalOf(pickedSpec, params));
+      });
     },
     [models, availableModes, projectId, spaceId, nodeId, freshContent, t],
   );
@@ -452,7 +447,15 @@ function VideoGeneratePanelBody({
       // modality that serves none does not open a panel at all. Kept as
       // defence against a layer above breaking.
       if (!model) return;
-      setNodeMode(projectId, spaceId, nodeId, target, model, paramsByModel);
+      // Entering the multi-shot mode with no shots lays out two, splitting
+      // the model's total, in the same step as the switch.
+      const targetSpec = specOf(models.find((m) => m.name === model), target);
+      runCanvasUndoBatch(projectId, spaceId, () => {
+        setNodeMode(projectId, spaceId, nodeId, target, model, paramsByModel);
+        if (targetSpec) {
+          enterStoryboardShots(projectId, spaceId, nodeId, totalOf(targetSpec, paramsByModel[model] ?? {}));
+        }
+      });
     },
     [models, projectId, spaceId, nodeId, freshContent],
   );
@@ -471,55 +474,40 @@ function VideoGeneratePanelBody({
         partial,
         live.model,
       );
-      // A new total re-splits the shots in the per-shot tier (design §5.3);
-      // `retotalStoryboard` leaves the other tiers' shots alone. One gesture,
-      // so one undo takes back both.
-      const liveSpec = specOf(live.modelEntry);
+      // A new total re-splits the shots in the multi-shot mode; outside it
+      // they are not showing and stay as they are. One gesture, so one undo
+      // takes back both.
+      const liveSpec = specOf(live.modelEntry, live.mode);
       const next = liveSpec?.totalParam === undefined
         ? undefined
         : (partial as Record<string, unknown>)[liveSpec.totalParam];
       runCanvasUndoBatch(projectId, spaceId, () => {
         setNodeParams(projectId, spaceId, nodeId, paramsByModel);
-        if (typeof next === 'number') retotalStoryboard(projectId, spaceId, nodeId, live.mode, next);
+        if (typeof next === 'number') retotalStoryboard(projectId, spaceId, nodeId, next);
       });
     },
     [projectId, spaceId, nodeId, freshVm, freshContent],
   );
 
-  // Storyboard writes (#2218). Each reads the mode and the total off live
-  // Yjs at click time, for the reason the other writes do: a collaborator may
-  // have switched either since this render.
-  const liveBoard = React.useCallback(() => {
+  // Shot writes. Each reads the model and the total off live Yjs at click
+  // time, for the reason the other writes do: a collaborator may have
+  // switched either since this render.
+  const liveShots = React.useCallback(() => {
     const live = freshVm();
-    const spec = specOf(live.modelEntry);
-    return { mode: live.mode, spec, total: totalOf(spec, live.params) };
+    const liveSpec = specOf(live.modelEntry, live.mode);
+    return { spec: liveSpec, total: totalOf(liveSpec, live.params) };
   }, [freshVm]);
-  const onToggleStoryboard = React.useCallback(
-    (on: boolean) => setStoryboardKind(projectId, spaceId, nodeId, freshVm().mode, on ? 'auto' : 'off'),
-    [projectId, spaceId, nodeId, freshVm],
-  );
-  const onEnterShots = React.useCallback(() => {
-    const { mode: liveMode, total: liveTotal } = liveBoard();
-    enterStoryboardShots(projectId, spaceId, nodeId, liveMode, liveTotal);
-  }, [projectId, spaceId, nodeId, liveBoard]);
-  const onBackToAuto = React.useCallback(
-    () => setStoryboardKind(projectId, spaceId, nodeId, freshVm().mode, 'auto'),
-    [projectId, spaceId, nodeId, freshVm],
-  );
   const onAddShot = React.useCallback(() => {
-    const { mode: liveMode, spec: liveSpec, total: liveTotal } = liveBoard();
-    addStoryboardShot(projectId, spaceId, nodeId, liveMode, liveTotal, liveSpec?.maxShots ?? Number.POSITIVE_INFINITY);
-  }, [projectId, spaceId, nodeId, liveBoard]);
+    const { spec: liveSpec, total: liveTotal } = liveShots();
+    if (liveSpec) addStoryboardShot(projectId, spaceId, nodeId, liveTotal, liveSpec.maxShots);
+  }, [projectId, spaceId, nodeId, liveShots]);
   const onStepShot = React.useCallback(
-    (shotId: string, delta: 1 | -1) => stepStoryboardShot(projectId, spaceId, nodeId, freshVm().mode, shotId, delta),
-    [projectId, spaceId, nodeId, freshVm],
+    (shotId: string, delta: 1 | -1) => stepStoryboardShot(projectId, spaceId, nodeId, shotId, delta),
+    [projectId, spaceId, nodeId],
   );
   const onRemoveShot = React.useCallback(
-    (shotId: string) => {
-      const { mode: liveMode, total: liveTotal } = liveBoard();
-      removeStoryboardShot(projectId, spaceId, nodeId, liveMode, shotId, liveTotal);
-    },
-    [projectId, spaceId, nodeId, liveBoard],
+    (shotId: string) => removeStoryboardShot(projectId, spaceId, nodeId, shotId, liveShots().total),
+    [projectId, spaceId, nodeId, liveShots],
   );
 
   // Reference and first frame are TOGGLES: start the pick when this node is not
@@ -671,23 +659,20 @@ function VideoGeneratePanelBody({
       warnNodeGate(t(gateBlock.toastKey));
       return;
     }
-    // Which sources the run sends depends on the tier in effect (design
-    // §5.4): the main prompt's `@` under off and auto, the union of every
-    // shot's under the per-shot tier, read off the shots the node holds right
-    // now. The tier needs the model, so the model is read first.
+    // Which sources the run sends depends on the mode: the main prompt's `@`
+    // outside the multi-shot mode, the union of every shot's in it, read off
+    // the shots the node holds right now. Whether the run is multi-shot needs
+    // the mode and the model, so they are read first.
     const probe = freshVm();
-    const liveSpec = specOf(probe.modelEntry);
-    const board = readStoryboard(projectId, spaceId, nodeId, probe.mode);
-    const liveTier = effectiveStoryboardKind(probe.modelEntry?.params ?? {}, board?.kind);
-    const liveShots = board?.shots ?? [];
-    const mentioned = liveTier === 'custom'
-      ? liveShots.flatMap((shot) => mentionedSourceIds(shot.prompt))
+    const liveSpec = specOf(probe.modelEntry, probe.mode);
+    const shotsNow = liveSpec ? (readShots(projectId, spaceId, nodeId) ?? []) : [];
+    const mentioned = liveSpec
+      ? shotsNow.flatMap((shot) => mentionedSourceIds(shot.prompt))
       : atMentionedRef.current;
     const fresh = freshVm(new Set(mentioned));
     const run = storyboardRun(
       liveSpec,
-      liveTier,
-      liveShots,
+      shotsNow,
       totalOf(liveSpec, fresh.params),
       referencesRef.current,
       fresh.mentionTokens,
@@ -703,9 +688,14 @@ function VideoGeneratePanelBody({
     // previous mode — `onPromptChange` is the only writer and nothing
     // clears it, and the editor does not call back on unmount — so without
     // this line a talking-head task would carry the last mode's words.
-    const freshPrompt = fresh.promptRequired && run.sendsPrompt
-      ? (promptEditorRef.current?.serializePrompt(fresh.mentionTokens) ?? promptTextRef.current)
-      : '';
+    //
+    // In the multi-shot mode the prompt is the shots written out, for a model
+    // with no field for them, and nothing for Kling.
+    const freshPrompt = !fresh.promptRequired
+      ? ''
+      : run.sendsPrompt
+        ? (promptEditorRef.current?.serializePrompt(fresh.mentionTokens) ?? promptTextRef.current)
+        : (run.writtenPrompt ?? '');
     // One evaluation, its own inputs: the button asked the same question of
     // the RENDER-time view model, this asks it of live Yjs. Never reuse the
     // button's answer — React batching and live collaboration make a render
@@ -775,7 +765,8 @@ function VideoGeneratePanelBody({
         spaceId,
         model: fresh.model,
         params: fresh.params,
-        promptText: run.sendsPrompt ? freshPrompt : undefined,
+        generation: { mode: fresh.mode, declared: fresh.modelEntry?.params ?? {} },
+        promptText: run.sendsPrompt || run.writtenPrompt !== undefined ? freshPrompt : undefined,
         storyboardParams: run.params,
         // The payload's source fields are built FROM the drawn slots, so a
         // pick left behind by a mode or model switch has no way in.
@@ -940,54 +931,27 @@ function VideoGeneratePanelBody({
       stableMentionTokens,
     ],
   );
-  const hasStoryboard = spec !== undefined;
-  const maxShots = spec?.maxShots;
   const addBlocked = React.useMemo(
-    () => (shots ? addBlockedKey(shots.map((shot) => shot.duration), total, maxShots) : undefined),
-    [shots, total, maxShots],
+    () => (spec && shots ? addBlockedKey(shots.map((shot) => shot.duration), total, spec.maxShots) : undefined),
+    [spec, shots, total],
   );
   const promptSlot = React.useMemo(() => {
     if (!vm.promptRequired) return <PromptNotUsedNotice />;
-    const switchRow = hasStoryboard ? (
-      <StoryboardSwitchRow
-        kind={storedKind}
-        maxShots={maxShots}
-        addBlocked={addBlocked}
-        onToggle={onToggleStoryboard}
-        onEnterShots={onEnterShots}
-        onBack={onBackToAuto}
-        onAdd={onAddShot}
-      />
-    ) : null;
-    return tier === 'custom' && shots ? (
+    // The shots take the prompt box's place in the multi-shot mode.
+    if (!spec || !shots) return mainEditor;
+    return (
       <>
-        <ShotList
-          shots={shots}
-          onStep={onStepShot}
-          onRemove={onRemoveShot}
-          renderEditor={renderShotEditor}
-        />
-        {switchRow}
-      </>
-    ) : (
-      <>
-        {mainEditor}
-        {switchRow}
+        <ShotList shots={shots} onStep={onStepShot} onRemove={onRemoveShot} renderEditor={renderShotEditor} />
+        <AddShotRow maxShots={spec.maxShots} addBlocked={addBlocked} onAdd={onAddShot} />
       </>
     );
   }, [
     vm.promptRequired,
-    hasStoryboard,
-    storedKind,
-    tier,
     shots,
-    maxShots,
+    spec,
     addBlocked,
     mainEditor,
     renderShotEditor,
-    onToggleStoryboard,
-    onEnterShots,
-    onBackToAuto,
     onStepShot,
     onRemoveShot,
     onAddShot,
@@ -1044,7 +1008,7 @@ function VideoGeneratePanelBody({
         })?.refusal ?? null
       }
       promptSlot={promptSlot}
-      durationFloor={tier === 'custom' ? shots?.length : undefined}
+      durationFloor={spec ? shots?.length : undefined}
       onExit={closeActivePanel}
       onSelectModel={onSelectModel}
       onChangeParams={onChangeParams}

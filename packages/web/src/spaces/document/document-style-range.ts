@@ -136,23 +136,29 @@ function eachRunOver(
   mark: MarkType,
   visit: (marks: readonly Mark[], over?: { from: number; to: number }) => boolean,
 ): boolean {
-  const { from, to } = selection;
   let reached = false;
   let going = true;
-  doc.nodesBetween(from, to, (node: PMNode, pos, parent) => {
-    if (!going || !node.isText) {
-      return going;
-    }
-    if (!landsOn(parent!, node.marks, mark)) {
+  // Range by range: a selection over several table cells is one range per
+  // cell, and its own `from` and `to` are the first of them alone.
+  for (const range of selection.ranges) {
+    const from = range.$from.pos;
+    const to = range.$to.pos;
+    doc.nodesBetween(from, to, (node: PMNode, pos, parent) => {
+      if (!going || !node.isText) {
+        return going;
+      }
+      if (!landsOn(parent!, node.marks, mark)) {
+        return false;
+      }
+      reached = true;
+      going = visit(node.marks, {
+        from: Math.max(pos, from),
+        to: Math.min(pos + node.nodeSize, to),
+      });
       return false;
-    }
-    reached = true;
-    going = visit(node.marks, {
-      from: Math.max(pos, from),
-      to: Math.min(pos + node.nodeSize, to),
     });
-    return false;
-  });
+    if (!going) break;
+  }
   return reached;
 }
 

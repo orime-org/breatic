@@ -44,13 +44,14 @@ import type {
  * in the same transaction that opens it, so there is no moment where the
  * draft is open and some other card is the one being read (design §9.4.1).
  * @param editor - The document editor.
- * @param range - Where the comment will go.
- * @returns True when a draft opened; false when that range holds no words to
- *   comment on, in which case nothing happened.
+ * @param ranges - Where the comment will go: one stretch, or one per selected
+ *   table cell.
+ * @returns True when a draft opened; false when those stretches hold no words
+ *   to comment on, in which case nothing happened.
  */
 export function openCommentDraft(
   editor: ToolEditor,
-  range: DraftRange,
+  ranges: readonly DraftRange[],
 ): boolean {
   const view = editor.prosemirrorView;
   if (view === null) return false;
@@ -58,14 +59,14 @@ export function openCommentDraft(
   // thing `selectionOverBlockContent` builds for the commands behind the
   // block handle, and for the same reason: the predicate reads a range, and
   // the reader's own caret is not it.
-  const asking = TextSelection.create(view.state.doc, range.from, range.to);
-  if (!canCommentOver(view.state.doc, asking)) return false;
+  const { doc } = view.state;
+  const holdsWords = ranges.some(({ from, to }) =>
+    canCommentOver(doc, TextSelection.create(doc, from, to)),
+  );
+  if (!holdsWords) return false;
   view.dispatch(
     view.state.tr
-      .setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
-        from: range.from,
-        to: range.to,
-      })
+      .setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, ranges)
       .setMeta(DOCUMENT_COMMENT_SELECTION, [DRAFT_THREAD_ID]),
   );
   return true;
@@ -105,7 +106,10 @@ export const commentTool: ToolDef = {
   run: (editor: ToolEditor): void => {
     const view = editor.prosemirrorView;
     if (view === null) return;
-    const { from, to } = view.state.selection;
-    openCommentDraft(editor, { from, to });
+    // One stretch per range: a selection over table cells is one per cell.
+    openCommentDraft(
+      editor,
+      view.state.selection.ranges.map((range) => ({ from: range.$from.pos, to: range.$to.pos })),
+    );
   },
 };

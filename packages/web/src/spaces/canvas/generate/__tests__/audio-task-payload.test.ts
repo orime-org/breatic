@@ -30,6 +30,8 @@ function model(name: string, modality: ModelEntry['modality']): ModelEntry {
 }
 
 const BASE = {
+  // A mode with no params scoped to other modes: nothing is left behind.
+  generation: { mode: 'tts', declared: {} },
   nodeId: 'n1',
   projectId: 'p1',
   spaceId: 's1',

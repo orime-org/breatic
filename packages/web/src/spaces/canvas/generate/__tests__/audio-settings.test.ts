@@ -63,7 +63,7 @@ const MINIMAX = model({
 
 describe('settingsLayout', () => {
   it('lays Gemini out as reading mode, then language, then voice', () => {
-    const layout = settingsLayout(GEMINI, {});
+    const layout = settingsLayout(GEMINI, 'tts', {});
     expect(layout.standIn?.name).toBe('speakers');
     expect(layout.rows).toEqual([
       { kind: 'choice', name: 'language' },
@@ -73,7 +73,7 @@ describe('settingsLayout', () => {
   });
 
   it('swaps the voice row for the speakers in a dialogue', () => {
-    expect(settingsLayout(GEMINI, { [STAND_IN_ON]: true }).rows).toEqual([
+    expect(settingsLayout(GEMINI, 'tts', { [STAND_IN_ON]: true }).rows).toEqual([
       { kind: 'choice', name: 'language' },
       { kind: 'speaker', name: 'speakers', index: 0 },
       { kind: 'speaker', name: 'speakers', index: 1 },
@@ -81,7 +81,7 @@ describe('settingsLayout', () => {
   });
 
   it('keeps a short choice in place and opens a list of entries beside', () => {
-    const layout = settingsLayout(MINIMAX, {});
+    const layout = settingsLayout(MINIMAX, 'tts', {});
     expect(layout.rows).toEqual([
       { kind: 'items', name: 'pronunciation_dict' },
       { kind: 'voice', name: 'voice_id' },
@@ -92,8 +92,8 @@ describe('settingsLayout', () => {
 
 describe('hasSettings', () => {
   it('is false only for a model with no voice and no control', () => {
-    expect(hasSettings(model({}))).toBe(false);
-    expect(hasSettings(GEMINI)).toBe(true);
+    expect(hasSettings(model({}), 'tts')).toBe(false);
+    expect(hasSettings(GEMINI, 'tts')).toBe(true);
   });
 });
 

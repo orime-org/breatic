@@ -63,7 +63,8 @@ import type { Refused } from "@server/utils/deferred-decision.js";
 /**
  * The current admin offers the studio to an existing member.
  *
- * Refuses personal studios, and requires the proposed new admin to be a
+ * Refuses personal studios, and a studio that an active credit pack still
+ * points at: the admin unassigns those first. Requires the proposed new admin to be a
  * distinct active non-guest member. The offer row and its bell entry are
  * written in one transaction and carry the same deadline — they are two
  * projections of one fact, and a null `expires_at` on the bell side reads as
@@ -75,7 +76,8 @@ import type { Refused } from "@server/utils/deferred-decision.js";
  * @param origin - Request Origin for the best-effort email link; omit to skip it
  * @throws {NotFoundError} studio not found, or the recipient is not an active member
  * @throws {ForbiddenError} the studio is personal (admin cannot be transferred)
- * @throws {ConflictError} this studio already has a live offer outstanding
+ * @throws {ConflictError} this studio already has a live offer outstanding,
+ *   or an active credit pack still points at it
  * @throws {ValidationError} the recipient is the acting admin themselves, or a guest
  */
 export async function requestTransfer(
@@ -109,6 +111,9 @@ export async function requestTransfer(
   let shareToken = "";
   try {
     shareToken = await db.transaction(async (tx) => {
+      if (await creditLotService.hasActiveDesignationsTo(studio.id, tx)) {
+        throw new ConflictError(t("server.studio.transfer_credits_designated"));
+      }
       const filed = await transfersRepo.createPending({
         studioId: studio.id,
         fromUserId: fromAdminUserId,

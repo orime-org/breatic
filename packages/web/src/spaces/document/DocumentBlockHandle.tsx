@@ -31,7 +31,7 @@
  */
 
 import { SideMenuExtension } from '@blocknote/core/extensions';
-import { GripVertical, Plus } from 'lucide-react';
+import { GripVertical, Plus, Table } from 'lucide-react';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import * as React from 'react';
 
@@ -61,7 +61,10 @@ import {
   type ReaderPlace,
 } from '@web/spaces/document/document-drag-selection';
 import { deleteRow } from '@web/spaces/document/document-handle-commands';
-import { BLOCK_MENU_ROWS } from '@web/spaces/document/document-block-menu-rows';
+import {
+  BLOCK_MENU_ROWS,
+  TABLE_MENU_ROWS,
+} from '@web/spaces/document/document-block-menu-rows';
 import { itemWithin } from '@web/spaces/document/document-block-menu-parts';
 import {
   fillEmptyRow,
@@ -82,11 +85,34 @@ import { useRowNow } from '@web/spaces/document/use-row-now';
  */
 const STRIP_BUTTON = 'size-6 shrink-0 [&_svg]:size-4 text-muted-foreground';
 
-/** Which button the strip shows: the drag handle, or the plus (#1097). */
-type StripFace = 'grip' | 'plus';
+/**
+ * Which button the strip shows: the drag handle, the plus (#1097), or the
+ * table entry (inner#1126 A5). The grip and the table entry both drag the row;
+ * they open different menus.
+ */
+type StripFace = 'grip' | 'plus' | 'table';
 
 /** Quote is out of reach: the line is already in a quote. Module-level so the memo sees one set. */
 const QUOTE_GREYED: ReadonlySet<InsertChoice> = new Set<InsertChoice>(['quote']);
+
+/** Each face's test id. */
+const TEST_ID: Readonly<Record<StripFace, string>> = {
+  grip: 'doc-block-handle',
+  plus: 'doc-block-plus',
+  table: 'doc-block-table-handle',
+};
+
+/**
+ * The icon a face draws.
+ * @param props - The face.
+ * @param props.face - Which face.
+ * @returns Its icon.
+ */
+function FaceIcon({ face }: { face: StripFace }): React.JSX.Element {
+  if (face === 'plus') return <Plus />;
+  if (face === 'table') return <Table />;
+  return <GripVertical />;
+}
 
 /** The grip menu's delete row, whose icon and label the plus menu shows too. */
 const DELETE_ROW = BLOCK_MENU_ROWS.find((row) => row.id === 'delete')!;
@@ -99,6 +125,8 @@ interface RowReading {
   readonly quoted: boolean;
   /** The row is the document's only block, so deleting it changes nothing. */
   readonly lone: boolean;
+  /** The row is a table, so the strip shows the table entry. */
+  readonly table: boolean;
 }
 
 /**
@@ -108,7 +136,9 @@ interface RowReading {
  * @returns True when every field matches.
  */
 function sameReading(a: RowReading, b: RowReading): boolean {
-  return a.empty === b.empty && a.quoted === b.quoted && a.lone === b.lone;
+  return (
+    a.empty === b.empty && a.quoted === b.quoted && a.lone === b.lone && a.table === b.table
+  );
 }
 
 /**
@@ -168,6 +198,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
           empty: isEmptyParagraph(live),
           quoted: live?.props?.[QUOTED] === true,
           lone: only != null && only.attrs.id === live?.id && only.childCount === 1,
+          table: live?.type === 'table',
         };
       },
       [rowNow],
@@ -224,18 +255,13 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
     return null;
   }
 
-  // The face stays what the reader started with: a drag off the grip keeps
-  // the grip, so the drag's own end runs on the button it began on — on drop
-  // the row under the pointer's start point can be an empty paragraph; an
-  // open menu keeps the face it opened from.
-  const face: StripFace = dragActive
-    ? 'grip'
-    : menuOpen
-      ? menuFace
-      : row.empty
-        ? 'plus'
-        : 'grip';
-  const grip = face === 'grip';
+  // The face stays what the reader started with: a drag keeps the face it
+  // started from, so the drag's own end runs on the button it began on — on
+  // drop the row under the pointer's start point can be an empty paragraph;
+  // an open menu keeps the face it opened from.
+  const face: StripFace =
+    dragActive || menuOpen ? menuFace : row.empty ? 'plus' : row.table ? 'table' : 'grip';
+  const drags = face !== 'plus';
 
   return (
     <div
@@ -277,17 +303,18 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
             variant='ghost'
             size={null}
             aria-label={t(
-              grip
+              drags
                 ? 'spaces.document.blockHandle.dragTip'
                 : 'spaces.document.blockHandle.insertHere',
             )}
-            data-testid={grip ? 'doc-block-handle' : 'doc-block-plus'}
-            className={grip ? `${STRIP_BUTTON} cursor-grab` : STRIP_BUTTON}
-            draggable={grip ? true : undefined}
+            data-testid={TEST_ID[face]}
+            className={drags ? `${STRIP_BUTTON} cursor-grab` : STRIP_BUTTON}
+            draggable={drags ? true : undefined}
             onDragStart={(event) => {
               // Read before the library takes the selection for its own
               // (`blockDragStart` puts a node selection on the row).
               setDragActive(true);
+              setMenuFace(face);
               place.current = readerPlace(editor.prosemirrorView.state);
               // Which row is in flight, for the drop to read out of the
               // document rather than out of the payload (§8).
@@ -322,7 +349,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
               onMenuOpenChange(!menuOpen);
             }}
           >
-            {grip ? <GripVertical /> : <Plus />}
+            <FaceIcon face={face} />
           </Button>
         </div>
         <DropdownMenuContent
@@ -348,7 +375,14 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
             if (unclaimed) editor.focus();
           }}
         >
-          {menuFace === 'plus' ? (
+          {menuFace === 'table' ? (
+            <DocumentBlockMenu
+              editor={editor as never}
+              block={block}
+              close={closeMenu}
+              rows={TABLE_MENU_ROWS}
+            />
+          ) : menuFace === 'plus' ? (
             <>
               <DocumentInsertChoices
                 onPick={onFill}

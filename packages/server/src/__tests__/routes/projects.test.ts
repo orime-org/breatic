@@ -55,10 +55,19 @@ describe("Projects routes", () => {
       // every project route is behind it, and a per-route validator is one
       // more thing each new route has to remember.
       const res = await createApp().request(
-        "/api/v1/projects/not-a-uuid",
-        { method: "DELETE", headers: AUTH },
+        "/api/v1/projects/not-a-uuid/transfer-owner",
+        { method: "POST", headers: AUTH, body: JSON.stringify({ toUserId: "u-2" }) },
       );
       expect(res.status).toBe(403);
+    });
+
+    it("refuses a malformed id on a route gated in the service with 422", async () => {
+      const res = await createApp().request(
+        "/api/v1/projects/not-a-uuid/duplicate",
+        { method: "POST", headers: AUTH },
+      );
+      expect(res.status).toBe(422);
+      expect(mocks.projectService.duplicate).not.toHaveBeenCalled();
     });
   });
 
@@ -103,18 +112,35 @@ describe("Projects routes", () => {
     });
   });
 
-  describe("DELETE /projects/:id — soft delete", () => {
-    it("soft-deletes and returns 200", async () => {
-      mocks.projectService.deleteProject.mockResolvedValue(undefined);
-
-      const app = createApp();
-      const res = await app.request(`/api/v1/projects/${PROJ_UUID}`, {
-        method: "DELETE",
+  describe("POST /projects/:id/archive and /restore — studio admin, decided in the service", () => {
+    it("archives for the caller and answers 200 without asking the caller's project role", async () => {
+      mocks.projectService.archive.mockResolvedValue(undefined);
+      const res = await createApp().request(`/api/v1/projects/${PROJ_UUID}/archive`, {
+        method: "POST",
         headers: AUTH,
       });
-
       expect(res.status).toBe(200);
-      expect(mocks.projectService.deleteProject).toHaveBeenCalledWith(PROJ_UUID, "user-1");
+      expect(mocks.projectService.archive).toHaveBeenCalledWith(PROJ_UUID, "user-1");
+      expect(mocks.projectAuthService.loadProjectRole).not.toHaveBeenCalled();
+    });
+
+    it("restores for the caller and answers 200", async () => {
+      mocks.projectService.restore.mockResolvedValue(undefined);
+      const res = await createApp().request(`/api/v1/projects/${PROJ_UUID}/restore`, {
+        method: "POST",
+        headers: AUTH,
+      });
+      expect(res.status).toBe(200);
+      expect(mocks.projectService.restore).toHaveBeenCalledWith(PROJ_UUID, "user-1");
+    });
+
+    it("refuses a malformed project id before reaching the service", async () => {
+      const res = await createApp().request("/api/v1/projects/not-a-uuid/archive", {
+        method: "POST",
+        headers: AUTH,
+      });
+      expect(res.status).toBe(422);
+      expect(mocks.projectService.archive).not.toHaveBeenCalled();
     });
   });
 

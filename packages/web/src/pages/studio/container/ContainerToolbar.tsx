@@ -7,18 +7,28 @@ import { ChevronDown, LayoutGrid, List, Plus } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 
-interface ContainerToolbarProps {
+/**
+ * The create entry: a label whenever the tab can create at all, and the
+ * opener when this viewer may. A tab nothing is created from (Archived)
+ * passes neither.
+ */
+type ContainerToolbarCreate =
+  | {
+      /** Localized create-button label ("New project" / "New collection"). */
+      createLabel: string;
+      /**
+       * Opens the create dialog. When omitted (a guest, who cannot create), the
+       * create button is hidden — the rest of the toolbar still shows.
+       */
+      onCreate?: () => void;
+    }
+  | { createLabel?: never; onCreate?: never };
+
+type ContainerToolbarProps = ContainerToolbarCreate & {
   /** Section title (the localized tab name). */
   title: string;
   /** Item count shown in the muted chip after the title. */
   count: number;
-  /** Localized create-button label ("New project" / "New collection"). */
-  createLabel: string;
-  /**
-   * Opens the create dialog. When omitted (a guest, who cannot create), the
-   * create button is hidden — the rest of the toolbar still shows.
-   */
-  onCreate?: () => void;
   /**
    * Whether to show the sort + grid/list view-toggle placeholders. Default
    * `true` (projects / collections). The Members tab passes `false` — a member
@@ -26,7 +36,7 @@ interface ContainerToolbarProps {
    * invite button.
    */
   showViewControls?: boolean;
-}
+};
 
 /**
  * The Projects / Collections tab toolbar (locked mock `.toolbar`): a title + count
@@ -40,7 +50,7 @@ interface ContainerToolbarProps {
  * @param root0 - Component props.
  * @param root0.title - the section title (localized tab name).
  * @param root0.count - the item count.
- * @param root0.createLabel - the create-button label.
+ * @param root0.createLabel - the create-button label (absent on a tab nothing is created from).
  * @param root0.onCreate - opens the create dialog (omit to hide the button).
  * @param root0.showViewControls - whether to show the sort + grid/list view-toggle placeholders (default true; the Members tab passes false).
  * @returns the tab toolbar.

@@ -524,15 +524,21 @@ describe('evaluateExecute — more references than the model takes', () => {
   });
 });
 
-describe('evaluateExecute — the per-shot storyboard (#2218)', () => {
+describe('evaluateExecute — the multi-shot mode', () => {
   const shots = [
     { text: 'a paper boat, close-up', duration: 2 },
     { text: 'the pond at dusk', duration: 3 },
   ];
   const custom = { ...ok, promptText: '', storyboard: { shots, total: 5, maxShots: 6, maxChars: 512 } };
 
-  it('does not ask for the main prompt, which the per-shot tier does not send', () => {
+  it('does not ask for the main prompt, which the multi-shot mode does not send', () => {
     expect(refusalOf(custom)).toBeNull();
+  });
+
+  it('holds the prompt the shots are written into to the model\'s cap', () => {
+    const written = 'Shot 1 [0-2s]: a paper boat\nShot 2 [2-5s]: the pond';
+    expect(refusalOf({ ...custom, promptText: written, maxInputChars: written.length })).toBeNull();
+    expect(refusalOf({ ...custom, promptText: written, maxInputChars: written.length - 1 })).toBe('prompt-too-long');
   });
 
   it('still asks for the main prompt when no storyboard is in effect', () => {

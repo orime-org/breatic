@@ -44,8 +44,7 @@ interface AgentColHeaderProps {
  * paged, so the number held here would not be the total anyway.
  *
  * The name uses `TitleEditable`, the same box as the project title in the top
- * bar, with the length a conversation name may run to rather than the default
- * that box carries for project names.
+ * bar, with the length a conversation name may run to.
  *
  * The name and the words shown while there is none travel separately, because
  * they are different things: a conversation with no name holds null, and the

@@ -717,6 +717,33 @@ export async function listDesignatedLotIds(
 }
 
 /**
+ * Whether any active lot, of any buyer, points at a studio.
+ *
+ * A spent lot keeps its designation but the credits panel offers no way to
+ * unassign it, so only active lots count.
+ * @param studioId - The studio they point at.
+ * @param tx - The enclosing transaction.
+ * @returns True if at least one does.
+ */
+export async function hasActiveDesignatedToStudio(
+  studioId: string,
+  tx: DbTx,
+): Promise<boolean> {
+  const rows = await tx
+    .select({ id: creditLots.id })
+    .from(creditLots)
+    .where(
+      and(
+        eq(creditLots.designatedStudioId, studioId),
+        eq(creditLots.lifecycle, "active"),
+        isNull(creditLots.deletedAt),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
  * Point a lot at a studio, or at nothing.
  *
  * The caller holds the row lock and has already checked that the lifecycle

@@ -48,6 +48,8 @@ const CAMERA_PANEL_WIDTH = 520;
 interface RatioResolutionPickerProps {
   /** The current model, whose params define the allowed ratios / resolutions. */
   model: ModelEntry;
+  /** The mode the panel is in; a control declared only for other modes is not drawn. */
+  mode: string;
   /** What the node holds for this model: ratio and resolution, and the model's own params. */
   value: RatioResolutionValue & Readonly<Record<string, unknown>>;
   /** Called with the changed field only. */
@@ -74,12 +76,14 @@ export const RATIO_RESOLUTION_PARAMS = ['aspect_ratio', 'resolution'] as const;
  * (#2254). Closes on Escape or an outside click.
  * @param root0 - Component props.
  * @param root0.model - The current model.
+ * @param root0.mode - The mode the panel is in.
  * @param root0.value - The current ratio + resolution.
  * @param root0.onChange - Called with the changed field.
  * @returns The ratio + resolution picker.
  */
 export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   model,
+  mode,
   value,
   onChange,
 }: RatioResolutionPickerProps): React.JSX.Element {
@@ -112,14 +116,14 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
     label: String(v),
   }));
   const hasShared = ratios.length + resolutions.length > 0;
-  const hasOwn = modelControls(model).length > 0;
+  const hasOwn = modelControls(model, mode).length > 0;
   // A model with none of the shared two still has its own controls to open.
   // The pill reads in the popover's order, top to bottom.
   const label =
     [
       value.resolution,
       value.aspect_ratio === undefined ? undefined : optionLabel({}, value.aspect_ratio),
-      ...ownControlSummary(model, value, (name) => t(`canvas.generatePanel.param.${name}`)),
+      ...ownControlSummary(model, mode, value, (name) => t(`canvas.generatePanel.param.${name}`)),
       cameraSupported && cameraOn ? t('canvas.generatePanel.camera') : undefined,
     ]
       .filter(Boolean)
@@ -180,6 +184,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
         />
         <ModelParamControls
           model={model}
+          mode={mode}
           value={value}
           onChange={onChange}
           className={hasShared ? SECTION_BREAK : undefined}

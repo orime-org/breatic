@@ -194,6 +194,8 @@ function setup(): void {
     createdByUserId: 'u-me',
     myRole: 'owner',
     deletedAt: null,
+    archivedAt: null,
+    canRestore: false,
   });
   membersListMock.mockResolvedValue({ members: [] });
   render(

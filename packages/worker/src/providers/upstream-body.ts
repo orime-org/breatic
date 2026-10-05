@@ -11,6 +11,15 @@ import type { FullModelEntry } from "@breatic/domain";
 import { completeEntries, isPresent, joinSlotFiles } from "@breatic/shared";
 
 /**
+ * Whether a value is one a choice can hold, and so one `upstream_values` can name.
+ * @param value - The run's value for a param.
+ * @returns True for a string, number or boolean.
+ */
+function isChoice(value: unknown): value is string | number | boolean {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+}
+
+/**
  * Builds the upstream request body for one run.
  * @param entry - The model's catalog entry.
  * @param given - The run's params under our names, validated and defaulted.
@@ -45,8 +54,10 @@ export function upstreamBody(
     const spec = entry.params?.[name];
     // An upstream taking objects gets each URL under the key it names.
     const itemKey = typeof spec?.item_key === "string" ? spec.item_key : undefined;
+    // A value the endpoint spells differently goes under its spelling.
+    const spelled = isChoice(value) ? (spec?.upstream_values?.[String(value)] ?? value) : value;
     body[spec?.upstream ?? name] =
-      itemKey !== undefined && Array.isArray(value) ? value.map((url: unknown) => ({ [itemKey]: url })) : value;
+      itemKey !== undefined && Array.isArray(spelled) ? spelled.map((url: unknown) => ({ [itemKey]: url })) : spelled;
   }
   if (entry.takes_prompt === true && prompt !== "") {
     body[entry.prompt_upstream ?? "prompt"] = prompt;

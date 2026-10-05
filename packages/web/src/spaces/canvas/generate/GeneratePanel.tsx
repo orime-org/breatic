@@ -219,6 +219,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         {currentModel ? (
           <RatioResolutionPicker
             model={currentModel}
+            mode={mode}
             value={params}
             onChange={onChangeParams}
           />

@@ -12,11 +12,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { CanvasProposal, ProposalNode } from '@breatic/shared';
+import type { CanvasProposal, ModelCatalog, ModelEntry, ProposalNode } from '@breatic/shared';
 
 import { nameableFeeders } from '@breatic/shared';
 
-import { shapeOf, todosOf } from '@web/pages/project/chat/proposal-card';
+import { nameOf, shapeOf, todosOf } from '@web/pages/project/chat/proposal-card';
 
 /** An empty node waiting for the reader's material. */
 const empty = (name: string): ProposalNode => ({ role: 'source', type: 'image', name });
@@ -378,5 +378,34 @@ describe('a proposal stored before the check answered these questions', () => {
     );
 
     expect(nameableFeeders(proposal, 2)).toEqual({ sources: [null, 1], upstream: [], slotted: [] });
+  });
+});
+
+describe('the model a flow runs on, by name', () => {
+  /**
+   * A video model entry.
+   * @param name - Its id.
+   * @param mode - The modes it serves.
+   * @param variant - What tells it apart from a namesake.
+   * @returns The entry.
+   */
+  function entry(name: string, mode: string[], variant: string): ModelEntry {
+    return { name, display_name: 'Gemini Omni 1.1 Flash', variant, modality: 'video', mode } as unknown as ModelEntry;
+  }
+  const catalog = {
+    image: [],
+    video: [entry('g-t2v', ['t2v', 'multi_shot'], 'Text-to-Video'), entry('g-ref', ['ref', 'multi_shot'], 'Reference')],
+    audio: [],
+    tts: [],
+    three_d: [],
+  } as unknown as ModelCatalog;
+
+  it('is named as the mode\'s picker names it', () => {
+    expect(nameOf(catalog, 'g-ref', 'multi_shot')).toBe('Gemini Omni 1.1 Flash Reference');
+    expect(nameOf(catalog, 'g-ref', 'ref')).toBe('Gemini Omni 1.1 Flash');
+  });
+
+  it('falls back to the id for a model the catalog does not carry', () => {
+    expect(nameOf(catalog, 'gone', 'ref')).toBe('gone');
   });
 });

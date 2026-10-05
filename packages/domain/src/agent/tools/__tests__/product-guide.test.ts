@@ -78,6 +78,9 @@ function namedIds(text: string): string[] {
   return [...text.matchAll(/'([a-z]\w*(?:\.\w+)+)'/g)].map((m) => m[1] ?? "");
 }
 
+/** Where the block menu's rows end and the table entry's menu begins, in their shared source. */
+const TABLE_ROWS = "export const TABLE_MENU_ROWS";
+
 /** The guide's own source, where every message id it shows is spelled out. */
 const source = readFileSync(resolve(import.meta.dirname, "..", "product-guide.ts"), "utf8");
 
@@ -280,28 +283,29 @@ describe("what the guide says", () => {
     expect(doc).not.toMatch(/marked not open yet\)/);
   });
 
-  it("walks through a storyboard split into shots, and says each mode keeps its own prompt", () => {
+  it("walks through the multi-shot mode, and says each mode keeps its own prompt", () => {
     const panel = section("Inside the generation panel");
-    expect(panel).toMatch(/- Storyboard, on the video models that offer it/);
-    expect(panel).toMatch(/"Edit per shot" at the right end of that row splits it by hand/);
-    expect(panel).toMatch(/the right end of the row reads "Add shot" then "Back to auto storyboard"/);
-    expect(panel).toMatch(/the shots' seconds keep adding up to the video's length/);
+    expect(panel).toMatch(/- Multi-Shot, a mode in the video panel's mode picker: the prompt box gives way to one card per shot/);
+    expect(panel).toMatch(/switching into it with no shots lays out two/);
+    expect(panel).toMatch(/Under the cards, in the middle, is "Add shot"/);
+    expect(panel).toMatch(/The shots' seconds keep adding up to the video's length/);
+    expect(panel).toMatch(/"Auto multi-shot" switch in the settings pill/);
     expect(panel).toMatch(/each mode keeps its own words/);
     expect(section("Generating")).toMatch(/"Shot 2 is empty"/);
-    expect(section("Groups and undo")).toMatch(/a video's storyboard and its shots/);
+    expect(section("Groups and undo")).toMatch(/a video's shots/);
   });
 
   it("says when each storyboard control is greyed and what happens when the shots stop fitting", () => {
     const panel = section("Inside the generation panel");
     // VideoGeneratePanelContainer.tsx: one lastFocusedBox, written by the shots and by the main prompt.
-    expect(panel).toMatch(/puts it in that shot box if the prompt box clicked into last was a shot/);
-    expect(panel).toMatch(/after clicking the main prompt box, it goes into the first shot/);
+    expect(panel).toMatch(/puts it in the shot box clicked into last, or in the first shot/);
     expect(panel).toMatch(/minus is greyed at one second or when there is only one shot/);
     expect(panel).toMatch(/plus is greyed when no other shot has a second to spare/);
     expect(panel).toMatch(/"Remove" is greyed while only one shot is left/);
     // storyboard-durations.ts stepShot: later shots first, then earlier ones.
     expect(panel).toMatch(/the minus gives one to the shot after it, or to the one before it on the last shot/);
     // storyboard-durations.ts addShot: null when total <= shot count, whatever each shot holds.
+    expect(panel).toMatch(/When no shot can be added, "Add shot" gives way to "Up to 6 shots" at six shots/);
     expect(panel).toMatch(/"Lengthen the video to add a shot" when the video has no more seconds than there are shots/);
     // storyboard-durations.ts removeShot: re-splits only once the shots fit the seconds.
     expect(panel).toMatch(/remove shots until there are no more shots than seconds, and the rest are re-split, or pick a duration at least as long as the number of shots/);
@@ -544,10 +548,26 @@ describe("what the guide says", () => {
   it("lists the block menu rows in the order the menu shows them", () => {
     const handle = section("Document spaces").split("Hovering any other line")[1]?.split("\n")[0] ?? "";
     // The rows in the order the menu's own table lists them.
-    const rows = webSource("spaces/document/document-block-menu-rows.ts");
+    const [rows = ""] = webSource("spaces/document/document-block-menu-rows.ts").split(TABLE_ROWS);
     const ids = [...rows.matchAll(/labelKey: '(spaces\.document\.[\w.]+)'/g)].map((m) => m[1] ?? "");
     expect(ids).toEqual(namedIds(rows));
     expectRowsInOrder(handle, ids.map((id) => [id]));
+  });
+
+  it("lists the table entry's menu rows in the order the menu shows them", () => {
+    const entry = section("Document spaces").split("A table shows a table icon")[1]?.split("\n")[0] ?? "";
+    const [rows = "", table = ""] = webSource("spaces/document/document-block-menu-rows.ts").split(TABLE_ROWS);
+    const labelOf = new Map(
+      [...rows.matchAll(/id: '(\w+)',\s*labelKey: '([\w.]+)'/g)].map((m) => [m[1] ?? "", m[2] ?? ""]),
+    );
+    // A row of its own names its label; one taken from the block menu as it
+    // is names only the row it takes.
+    const ids = table
+      .split("\n")
+      .map((line) => /labelKey: '([\w.]+)'/.exec(line)?.[1] ?? labelOf.get(/rowOf\('(\w+)'\)/.exec(line)?.[1] ?? ""))
+      .filter((id): id is string => id !== undefined);
+    expect(ids).toHaveLength(table.split("\n").filter((line) => /rowOf|labelKey/.test(line)).length);
+    expectRowsInOrder(entry, ids.map((id) => [id]));
   });
 
   it("keeps its hand-written list of creatable types in the create menu's order", () => {

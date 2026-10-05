@@ -21,10 +21,7 @@ const { service, warn } = vi.hoisted(() => ({
   warn: vi.fn(),
 }));
 
-vi.mock("@breatic/domain", async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>();
-  return { ...actual, creditLotService: service };
-});
+vi.mock("@server/modules/studio/studioCreditDesignation.service.js", () => service);
 
 vi.mock("@server/middleware/rate-limit.js", () => ({
   rateLimitFor: () => async (_c: unknown, next: () => Promise<void>) => next(),

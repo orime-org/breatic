@@ -5,8 +5,10 @@
  * Which modes a generation node can currently be set to, and what each is for.
  */
 import {
+  appliesInMode,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
+  modelLabel,
   paramValues,
   storyboardSpec,
   type ControlGate,
@@ -126,8 +128,8 @@ export interface ParamInfo {
    */
   optional?: true;
   /**
-   * Filled from the node's storyboard (#2218): a proposal reaches it through
-   * its `storyboard` and `shots`, never through `params`.
+   * Filled from the node's shots: a proposal reaches it through its `shots`,
+   * never through `params`.
    */
   fromStoryboard?: true;
   /**
@@ -196,8 +198,9 @@ export interface ModelInfo {
   /** Its parameters, keyed by the name the node stores them under. */
   params: Record<string, ParamInfo>;
   /**
-   * The storyboard it takes (#2218), for a model that declares one: how many
-   * shots, how long each may be written, and what their seconds add up to.
+   * The shots it takes in the multi-shot mode, for a model that declares
+   * them: how many, how long each may be written, and what their seconds add
+   * up to. Absent in every other mode.
    */
   storyboard?: StoryboardSpec;
 }
@@ -349,7 +352,7 @@ function reachedBy(
 ): "canvas" | "panel" | "nothing" | "elsewhere" {
   // `modes` says which of the model's modes this parameter applies to; absent
   // means all of them.
-  const here = spec.modes === undefined || spec.modes.includes(mode);
+  const here = appliesInMode(spec, mode);
   if (spec.fill === "canvas" || spec.fill === "pool") {
     // A carrier belonging to another mode of the same model: nothing here
     // fills it, and the caller drops it rather than offering it to be set.
@@ -480,8 +483,8 @@ export function modelsForMode(
   const entries = entriesForNode(nodeType);
   const usable = usableModes(panelModes, entries);
   if (!usable.includes(mode)) return { available: false, offered: usable };
-  const models = entries
-    .filter((entry) => modesOf(entry).includes(mode))
+  const inMode = entries.filter((entry) => modesOf(entry).includes(mode));
+  const models = inMode
     .map((entry) => {
       // Only this node's modes: an entry also serving a mini-tool operation
       // names one the picker never offers, which is a mode to nobody here.
@@ -491,10 +494,11 @@ export function modelsForMode(
       const reached = Object.entries(entry.params).map(
         ([name, spec]) => [name, spec, reachedBy(spec, mode)] as const,
       );
-      const storyboard = storyboardSpec(entry.params);
+      const storyboard = storyboardSpec(entry.params, mode);
       return {
       name: entry.name,
-      displayName: entry.display_name,
+      // The name this mode's picker shows, so the agent and the reader say the same one.
+      displayName: modelLabel(entry, inMode),
       // The guide is written for a model to read and says what the thing is
       // good at; the description is written for a person and says what it is.
       // Either answers "should I propose this one", so take whichever exists.

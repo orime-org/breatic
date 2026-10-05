@@ -160,7 +160,7 @@ async function postAComment(editor: Editor): Promise<string> {
   const view = editor.prosemirrorView!;
   const { from, to } = firstRun(editor);
   view.dispatch(
-    view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, { from, to }),
+    view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [{ from, to }]),
   );
   const thread = await postComment(editor, 'have a look');
   return thread!.id;

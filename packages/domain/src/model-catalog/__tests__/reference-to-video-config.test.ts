@@ -42,8 +42,8 @@ function videoEntry(name: string): FullModelEntry {
 }
 
 describe("reference-to-video config wiring", () => {
-  it.each(REF_MODELS)("%s declares the ref mode", (name) => {
-    expect(videoEntry(name).mode).toBe("ref");
+  it.each(REF_MODELS)("%s declares the ref and multi-shot modes", (name) => {
+    expect(videoEntry(name).mode).toEqual(["ref", "multi_shot"]);
   });
 
   it.each(REF_MODELS)("%s caps each pool where its upstream does", (name, caps) => {
@@ -70,8 +70,10 @@ describe("reference-to-video config wiring", () => {
   it.each(REF_MODELS.filter(([, caps]) => Object.keys(caps).length > 1))(
     "%s needs at least one pool filled",
     (name, caps) => {
+      const anyOf = ["images", "videos", "audios"].filter((p) => p in caps);
       expect(videoEntry(name).source_groups).toEqual([
-        { mode: "ref", any_of: ["images", "videos", "audios"].filter((p) => p in caps) },
+        { mode: "ref", any_of: anyOf },
+        { mode: "multi_shot", any_of: anyOf },
       ]);
     },
   );

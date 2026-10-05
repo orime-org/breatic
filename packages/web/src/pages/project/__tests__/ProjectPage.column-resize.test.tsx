@@ -91,6 +91,8 @@ function setup(role: ProjectRole): void {
     createdByUserId: 'u-me',
     myRole: role,
     deletedAt: null,
+    archivedAt: null,
+    canRestore: false,
   });
   membersListMock.mockResolvedValue({ members: [] });
   render(

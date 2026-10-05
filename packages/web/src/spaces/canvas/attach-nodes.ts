@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { asStoryboardKind, isGenerationNodeType, type ChatAttachedChip, type ModelCatalog, type StoryboardKind } from '@breatic/shared';
+import { isGenerationNodeType, type ChatAttachedChip, type ModelCatalog } from '@breatic/shared';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import * as Y from 'yjs';
 
@@ -56,17 +56,6 @@ function plain(value: unknown): unknown {
   }
   if (value instanceof Y.Array) return value.toArray().map(plain);
   return value;
-}
-
-/**
- * The tier stored for a mode, read off a node's plain data.
- * @param data - The node's plain data.
- * @param mode - The mode.
- * @returns The stored tier, if any.
- */
-function storedTier(data: Record<string, unknown>, mode: string): StoryboardKind | undefined {
-  const boards = data.storyboards as Record<string, { kind?: unknown }> | undefined;
-  return asStoryboardKind(boards?.[mode]?.kind);
 }
 
 /**
@@ -142,8 +131,8 @@ export function hashOf(parts: readonly string[]): string {
  *
  * One press is one item: the picked nodes as they are -- each with where it
  * sits, the group it is in and its data -- and the links between them. The
- * data is everything the node stores -- every mode's prompt, lyrics and
- * storyboard, whatever the model in use takes -- with fragments as plain
+ * data is everything the node stores -- every mode's prompt and lyrics and
+ * the video node's shots, whatever the model in use takes -- with fragments as plain
  * text, and a generating node also says what it would run right now
  * (#2218), so the agent can tell what is written from what is in effect. Named after the node or group when one was picked,
  * and left unnamed for several, which the card counts.
@@ -193,7 +182,6 @@ export function itemForPick(
         kind,
           node.data as ContentNodeView,
           readers.catalog,
-          (mode) => storedTier(data, mode),
           readers.firstVoiceOf,
       )
       : null;

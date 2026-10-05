@@ -114,6 +114,42 @@ test('asked about a document, reads the guide @needs-model', async () => {
   expect(text, `the reply: ${text}`).toMatch(/(^|\s)#{1,3}\s|(Alt|Option|⌥)\s*\+?\s*1/m);
 });
 
+test('asked how to insert a table and add a row, names the controls the screen shows @needs-model', async () => {
+  test.setTimeout(300_000);
+  spaces.push(await createSpace(page, 'document', `guide-table-${String(Date.now())}`));
+  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  await editor.click();
+  await page.keyboard.type('lead');
+
+  // The labels as this reader's screen shows them: the insert submenu, the
+  // table row in it, and the row handle's "insert below".
+  const row = await page.locator('[data-testid="document-space"] .bn-block-content').first().boundingBox();
+  if (row === null) throw new Error('the line has no box');
+  await page.mouse.move(row.x + 40, row.y + Math.min(row.height / 2, 12), { steps: 3 });
+  await page.getByTestId('doc-block-handle').click();
+  const insertBelow = (await page.getByTestId('doc-block-row-insertBelow').innerText()).trim();
+  await page.getByTestId('doc-block-row-insertBelow').hover();
+  const table = (await page.getByTestId('doc-block-insert-table').innerText()).trim();
+  await page.getByTestId('doc-block-insert-table').hover();
+  await page.getByTestId('doc-table-size-2-2').click();
+  await page.locator('[data-testid="document-space"] .bn-block-content').first().click();
+  const cell = await page.locator('[data-testid="document-space"] td').first().boundingBox();
+  if (cell === null) throw new Error('the table has no cell');
+  await page.mouse.move(cell.x + cell.width / 2, cell.y + cell.height / 2, { steps: 3 });
+  await page.getByTestId('doc-table-row-handle').click();
+  const rowBelow = (await page.getByTestId('doc-table-row-insertBelow').innerText()).trim();
+  await page.keyboard.press('Escape');
+
+  const reply = await ask(page, '文档里怎么插入一个表格？插好之后怎么在某一行下面再加一行？');
+
+  const used = await toolsUsed(page);
+  expect(used, `tools used: ${used.join(', ')}`).toContain('get_product_guide');
+  const text = await reply.innerText();
+  for (const label of [insertBelow, table, rowBelow]) {
+    expect(text, `the reply: ${text}`).toContain(label);
+  }
+});
+
 test('writes a formula and HTML the way the reply renders them @needs-model', async () => {
   test.setTimeout(300_000);
   spaces.push(await createSpace(page, 'canvas', `format-${String(Date.now())}`));

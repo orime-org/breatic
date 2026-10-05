@@ -49,6 +49,7 @@ import {
   promptTextOf,
   proposalMarkSegments,
   referenceCapExceeded,
+  storyboardSend,
   type CanvasProposal,
   type ControlGate,
   type GenerationNodeType,
@@ -136,13 +137,6 @@ const proposalNode = z
           "node wired in, the k-th ref mark with the k-th other, in the " +
           "order the nodes are listed",
       ),
-    storyboard: z
-      .literal("auto")
-      .optional()
-      .describe(
-        "role generate only, on a model that takes a storyboard: the model " +
-          "splits the prompt into shots itself",
-      ),
     shots: z
       .array(
         z
@@ -155,10 +149,10 @@ const proposalNode = z
       .min(1)
       .optional()
       .describe(
-        "role generate only, on a model that takes a storyboard: each shot's " +
-          "own prompt and whole seconds, which add up to the duration. The " +
-          "main prompt is not sent then, so leave it out. Marks count across " +
-          "the prompt, then each shot in order",
+        "role generate only, in mode multi_shot and nowhere else: each " +
+          "shot's own prompt and whole seconds, which add up to the duration. " +
+          "The main prompt is not sent then, so leave it out. Marks count " +
+          "across the prompt, then each shot in order",
       ),
   })
   .strict();
@@ -333,7 +327,7 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
     if (info.fromStoryboard === true) {
       return {
         ok: false,
-        reason: `"${key}" is set by the node's storyboard. Leave it out of params and use storyboard or shots.`,
+        reason: `"${key}" is set by the node's shots. Leave it out of params and give shots.`,
       };
     }
     if (info.noControl === true) {
@@ -447,21 +441,22 @@ function checkGenerateNode(
   const values = checkParams(chosen, node);
   if (!values.ok) return values;
 
+  // Defined in the multi-shot mode alone, for a model that takes shots there.
   const board = chosen.storyboard;
-  if ((node.shots !== undefined || node.storyboard !== undefined) && board === undefined) {
+  if (node.shots !== undefined && board === undefined) {
     return {
       ok: false,
-      reason: `"${model}" takes no storyboard. Leave storyboard and shots out, or propose a model that takes one.`,
+      reason: `Shots belong to the multi_shot mode. Propose mode "multi_shot" with a model that takes them, or leave shots out.`,
     };
   }
-  if (node.shots !== undefined && node.storyboard !== undefined) {
+  if (board !== undefined && node.shots === undefined) {
     return {
       ok: false,
-      reason: `Give either storyboard "auto" (the model splits the prompt) or shots (each written out), not both.`,
+      reason: `In the multi_shot mode the shots are what is generated. Give shots, each with its own prompt and seconds.`,
     };
   }
-  // The per-shot run sends the shots in place of the main prompt, so marks in
-  // a main prompt beside them would be counted and priced but never sent.
+  // The multi-shot run sends the shots in place of the main prompt, so marks
+  // in a main prompt beside them would be counted and priced but never sent.
   if (node.shots !== undefined && (node.prompt?.length ?? 0) > 0) {
     return {
       ok: false,
@@ -603,8 +598,13 @@ function checkGenerateNode(
   const total = totalParam === undefined
     ? undefined
     : Number(node.params?.[totalParam] ?? chosen.params[totalParam]?.default);
+  // What goes out as the prompt: the shots written into one, for a model with
+  // no field for them, so its length is held to the model's cap.
+  const sent = board === undefined
+    ? measured
+    : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "");
   const verdict = evaluateExecute({
-    promptText: measured,
+    promptText: sent,
     model,
     nodeStatus: "idle",
     isSubmitting: false,
@@ -615,7 +615,7 @@ function checkGenerateNode(
           storyboard: {
             shots,
             total,
-            ...(board?.maxShots === undefined ? {} : { maxShots: board.maxShots }),
+            ...(board === undefined ? {} : { maxShots: board.maxShots }),
             ...(board?.maxChars === undefined ? {} : { maxChars: board.maxChars }),
           },
         }
@@ -637,7 +637,7 @@ function checkGenerateNode(
     };
   }
   if (verdict?.refusal === "prompt-too-long") {
-    const written = [...extractPromptText(measured)].length;
+    const written = [...extractPromptText(sent)].length;
     // The words are often in another node, and "shorten it" is not something
     // the model can act on until it knows which one.
     const holding = pointed
@@ -645,7 +645,7 @@ function checkGenerateNode(
       .map((n) => `"${n?.name ?? ""}"`);
     return {
       ok: false,
-      reason: `"${model}" takes ${String(chosen.maxInputChars)} characters and this prompt is ${String(written)}${holding.length > 0 ? `, counting the words in ${holding.join(", ")}` : ""}. Shorten it, or propose a model that takes it.`,
+      reason: `"${model}" takes ${String(chosen.maxInputChars)} characters and this prompt is ${String(written)}${board === undefined ? "" : " with the shots written into it"}${holding.length > 0 ? `, counting the words in ${holding.join(", ")}` : ""}. Shorten it, or propose a model that takes it.`,
     };
   }
 
@@ -691,8 +691,7 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
     node.mode !== undefined ||
     node.model !== undefined ||
     node.params !== undefined ||
-    node.shots !== undefined ||
-    node.storyboard !== undefined;
+    node.shots !== undefined;
   if (node.role === "source") {
     // Words are the one kind of material nobody has to go and find: an empty
     // text node is a click away, so proposing one asks for work rather than
@@ -706,7 +705,7 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
     if (configured || node.prompt !== undefined) {
       return {
         ok: false,
-        reason: `"${node.name}" is an empty node for the reader to fill, so it takes no mode, model, parameters, storyboard or prompt.`,
+        reason: `"${node.name}" is an empty node for the reader to fill, so it takes no mode, model, parameters, shots or prompt.`,
       };
     }
     return { ok: true };
@@ -722,7 +721,7 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
   if (configured) {
     return {
       ok: false,
-      reason: `"${node.name}" already holds its words, so it takes no mode, model or storyboard -- nothing is generated there.`,
+      reason: `"${node.name}" already holds its words, so it takes no mode, model or shots -- nothing is generated there.`,
     };
   }
   // Both marks that reach outside the words land as a mention, and a text

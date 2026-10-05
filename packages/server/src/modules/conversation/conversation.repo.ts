@@ -257,8 +257,7 @@ export async function findMostRecentlyUsed(
  * cascade is idempotent and never overwrites an existing timestamp.
  *
  * Must be called inside a transaction — the caller owns the atomicity
- * boundary so `deleteProject` can wrap both conversation and non-
- * conversation children in one transaction.
+ * boundary.
  * @param tx - Transaction handle from {@link db.transaction}
  * @param convIds - Conversation UUIDs to cascade (safe with 0 entries)
  * @param now - Timestamp to stamp on every affected row (defaults to `new Date()`)

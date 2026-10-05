@@ -67,6 +67,7 @@ import {
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { AllSelection } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
 import { textEnds } from '@web/spaces/document/document-body-edge-selection';
 import {
   FloatingPortal,
@@ -80,6 +81,7 @@ import {
 
 
 import { commentTool } from '@web/spaces/document/document-comment-entries';
+import { mergeCellsTool } from '@web/spaces/document/document-table-tools';
 import {
   ToolButton,
   type ToolDef,
@@ -168,7 +170,7 @@ const BUBBLE_GROUPS: BubbleGroup[] = [
     tools: INLINE_TOOLS,
     panels: [DocumentLinkPopover],
     slot: ColorSlot,
-    after: [commentTool],
+    after: [commentTool, mergeCellsTool],
   },
   { key: 'ai', tools: [], panels: [], slot: AiSlot },
 ];
@@ -563,6 +565,9 @@ function BubbleBar({
     // focusable at all, so it stays `<body>` — measured both ways, reading the
     // DOM took the bar off screen the moment an overlay opened.
     if (!view.hasFocus() && !overlayOpenRef.current) return false;
+    // Selected cells are something to act on even with no words in them: the
+    // bar is where they are aligned, filled and merged (inner#1126 A9).
+    if (selection instanceof CellSelection) return true;
     return hasTextIn(doc, selection.from, selection.to);
   }, [editor]);
 

@@ -125,8 +125,8 @@ interface VideoGeneratePanelProps {
   /** The collaborative prompt editor, injected by the container (TipTap + Yjs). */
   promptSlot: React.ReactNode;
   /**
-   * The fewest seconds the total may be set to, under the per-shot storyboard:
-   * one per shot (#2218, design §5.3). Undefined outside that tier.
+   * The fewest seconds the total may be set to in the multi-shot mode: one
+   * per shot. Undefined outside that mode.
    */
   durationFloor?: number;
   /** Close the panel without generating. */
@@ -257,9 +257,10 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
           triggerTestId='generate-video-mode-trigger'
         />
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
-        {currentModel && videoParamsPickerHasOptions(currentModel) ? (
+        {currentModel && videoParamsPickerHasOptions(currentModel, mode) ? (
           <VideoParamsPicker
             model={currentModel}
+            mode={mode}
             params={params}
             onChange={onChangeParams}
             durationFloor={durationFloor}

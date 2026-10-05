@@ -109,8 +109,9 @@ export type {
   Space,
   MembersChangedEvent,
   ActivityNewControlEvent,
-  ProjectDeletedLifecycleEvent,
   ProjectDuplicatedLifecycleEvent,
+  ProjectArchivedLifecycleEvent,
+  ProjectRestoredLifecycleEvent,
   ProjectLifecycleEvent,
   Voice,
   VoicePage,
@@ -283,6 +284,7 @@ export {
   chatRenameConversationSchema,
   CHAT_MESSAGE_MAX_CHARS,
   CONVERSATION_TITLE_MAX_CHARS,
+  PROJECT_NAME_MAX_CHARS,
 } from "@shared/schemas/index.js";
 
 export type {
@@ -331,6 +333,8 @@ export {
   isProjectScopedDocName,
 } from "@shared/yjs-doc-names.js";
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
+
+export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
 
 export {
   documentBodyFragment,
@@ -391,8 +395,13 @@ export {
   retotal,
   stepShot,
 } from "@shared/storyboard-durations.js";
-export { asStoryboardKind, effectiveStoryboardKind, storyboardParams, storyboardSpec } from "@shared/storyboard.js";
-export type { StoryboardKind, StoryboardShotInput, StoryboardSpec } from "@shared/storyboard.js";
+export { modelLabel, type NamedModel } from "@shared/model-label.js";
+export { appliesInMode, paramsForMode } from "@shared/param-modes.js";
+export {
+  storyboardSend,
+  storyboardSpec,
+} from "@shared/storyboard.js";
+export type { StoryboardSend, StoryboardShotInput, StoryboardSpec } from "@shared/storyboard.js";
 export { missingSources, fitsSomeMode } from "@shared/missing-sources.js";
 export { formatCredits } from "@shared/format-credits.js";
 export type { MissingSource, SourceSlot, SourcedModel } from "@shared/missing-sources.js";
@@ -679,3 +688,4 @@ export {
   type ReferenceKind,
   type ReferencePool,
 } from "@shared/reference-pool.js";
+export { REQUEST_NOTIFICATION_TYPES, isRequestNotification } from "@shared/request-notifications.js";

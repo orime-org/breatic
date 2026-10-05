@@ -2,12 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Which storyboard tier a run actually uses: the stored one only while the
- * current model takes a storyboard, otherwise off (#2218).
+ * The multi-shot mode's storyboard: which models take shots in
+ * which mode, how many, and what a run sends for them.
  */
 
 import { describe, it, expect } from "vitest";
-import { asStoryboardKind, effectiveStoryboardKind, storyboardParams, storyboardSpec } from "@shared/storyboard.js";
+import { paramsForMode } from "@shared/param-modes.js";
+import {
+  MULTI_SHOT_MAX_SHOTS,
+  storyboardSend,
+  storyboardSpec,
+} from "@shared/storyboard.js";
 import type { ParamDescriptor } from "@shared/types/model-catalog.js";
 
 const kling: Record<string, ParamDescriptor> = {
@@ -17,83 +22,130 @@ const kling: Record<string, ParamDescriptor> = {
     default: null,
     type: "items",
     max_items: 6,
+    modes: ["multi_shot"],
     fill: "storyboard",
     fields: { prompt: { type: "text", max_chars: 512 }, duration: { values: [1, 2, 3] } },
   },
-  shot_type: { description: "", default: null, values: ["intelligence", "customize"], fill: "storyboard" },
+  shot_type: { description: "", default: null, values: ["customize"], modes: ["multi_shot"], fill: "storyboard" },
+  auto_shots: {
+    description: "",
+    default: false,
+    values: [true, false],
+    modes: ["t2v", "i2v"],
+    fill: "panel",
+    upstream: "shot_type",
+    upstream_values: { true: "intelligence" },
+  },
+};
+const seedance: Record<string, ParamDescriptor> = {
+  duration: { description: "", default: 5, min: 4, max: 30, fill: "panel" },
+  shots: {
+    description: "",
+    default: null,
+    type: "items",
+    modes: ["multi_shot"],
+    fill: "storyboard",
+    into_prompt: "Shot {n} [{start}-{end}s]: {prompt}",
+    fields: { prompt: { type: "text" }, duration: { values: [1, 2, 3, 4, 5, 6] } },
+  },
 };
 const other: Record<string, ParamDescriptor> = {
   duration: { description: "", default: 5, values: [5, 10], fill: "panel" },
 };
 
-describe("a stored storyboard tier", () => {
-  it("reads each of the three tiers as itself", () => {
-    expect(["off", "auto", "custom"].map(asStoryboardKind)).toEqual(["off", "auto", "custom"]);
-  });
-
-  it("reads anything else as no tier", () => {
-    expect([undefined, null, "", "Auto", 1, {}].map(asStoryboardKind)).toEqual([
-      undefined, undefined, undefined, undefined, undefined, undefined,
-    ]);
-  });
-});
-
-describe("the effective storyboard tier", () => {
-  it("is the stored tier on a model that takes a storyboard", () => {
-    expect(effectiveStoryboardKind(kling, "custom")).toBe("custom");
-    expect(effectiveStoryboardKind(kling, "auto")).toBe("auto");
-    expect(effectiveStoryboardKind(kling, "off")).toBe("off");
-  });
-
-  it("is off on a model that takes none, whatever was stored", () => {
-    expect(effectiveStoryboardKind(other, "custom")).toBe("off");
-    expect(effectiveStoryboardKind(other, "auto")).toBe("off");
-  });
-
-  it("is off when nothing was stored", () => {
-    expect(effectiveStoryboardKind(kling, undefined)).toBe("off");
-  });
-});
-
 describe("what a model says about its storyboard", () => {
-  it("reads the shot cap, the per-shot character cap and both param names", () => {
-    expect(storyboardSpec(kling)).toEqual({
+  it("gives Kling's shots, the value it always sends beside them and seconds in the multi-shot mode", () => {
+    expect(storyboardSpec(kling, "multi_shot")).toEqual({
       shotsParam: "multi_prompt",
-      tierParam: "shot_type",
+      fixed: { shot_type: "customize" },
       secondsField: "duration",
       totalParam: "duration",
       maxShots: 6,
       maxChars: 512,
+      intoPrompt: undefined,
     });
   });
 
-  it("is absent for a model with no storyboard", () => {
-    expect(storyboardSpec(other)).toBeUndefined();
+  it("gives nothing outside the multi-shot mode, even for a model that takes shots", () => {
+    expect(storyboardSpec(kling, "t2v")).toBeUndefined();
+    expect(storyboardSpec(seedance, "i2v")).toBeUndefined();
+  });
+
+  it("gives nothing for a model with no shots param", () => {
+    expect(storyboardSpec(other, "multi_shot")).toBeUndefined();
+  });
+
+  it("caps a model that declares no shot limit at the mode's six shots", () => {
+    expect(MULTI_SHOT_MAX_SHOTS).toBe(6);
+    expect(storyboardSpec(seedance, "multi_shot")?.maxShots).toBe(6);
+  });
+
+  it("keeps a model's own limit when it is below the mode's", () => {
+    const tight = { ...kling, multi_prompt: { ...kling.multi_prompt!, max_items: 4 } };
+    expect(storyboardSpec(tight, "multi_shot")?.maxShots).toBe(4);
+  });
+
+  it("carries the prompt template of a model that takes its shots in the prompt", () => {
+    expect(storyboardSpec(seedance, "multi_shot")).toMatchObject({
+      shotsParam: "shots",
+      fixed: {},
+      secondsField: "duration",
+      totalParam: "duration",
+      intoPrompt: "Shot {n} [{start}-{end}s]: {prompt}",
+    });
   });
 });
 
-describe("the params a storyboard sends", () => {
-  const spec = storyboardSpec(kling)!;
+describe("what a multi-shot run sends", () => {
   const shots = [
     { prompt: "a paper boat", duration: 2 },
     { prompt: "the pond at dusk", duration: 3 },
   ];
 
-  it("sends nothing when off", () => {
-    expect(storyboardParams(spec, "off", shots)).toEqual({});
-  });
-
-  it("names the automatic tier and sends no shots", () => {
-    expect(storyboardParams(spec, "auto", shots)).toEqual({ shot_type: "intelligence" });
-  });
-
-  it("sends each shot's words and seconds under the per-shot tier", () => {
-    expect(storyboardParams(spec, "custom", shots)).toEqual({
-      shot_type: "customize",
-      multi_prompt: [
-        { prompt: "a paper boat", duration: 2 },
-        { prompt: "the pond at dusk", duration: 3 },
-      ],
+  it("sends Kling its tier and each shot as a field, with no main prompt", () => {
+    expect(storyboardSend(storyboardSpec(kling, "multi_shot")!, shots)).toEqual({
+      params: {
+        shot_type: "customize",
+        multi_prompt: [
+          { prompt: "a paper boat", duration: 2 },
+          { prompt: "the pond at dusk", duration: 3 },
+        ],
+      },
+      prompt: undefined,
     });
+  });
+
+  it("writes the shots into one prompt with their running seconds for a prompt-only model", () => {
+    expect(storyboardSend(storyboardSpec(seedance, "multi_shot")!, shots)).toEqual({
+      params: {},
+      prompt: "Shot 1 [0-2s]: a paper boat\nShot 2 [2-5s]: the pond at dusk",
+    });
+  });
+});
+
+describe("the words a shot carries into the prompt", () => {
+  it("are written as typed, whatever dollar signs they hold", () => {
+    const spec = storyboardSpec(seedance, "multi_shot")!;
+    const sent = storyboardSend(spec, [
+      { prompt: "a sign reads $$9.99", duration: 2 },
+      { prompt: "price tag $& and $` and $'", duration: 3 },
+    ]);
+    expect(sent.prompt).toBe("Shot 1 [0-2s]: a sign reads $$9.99\nShot 2 [2-5s]: price tag $& and $` and $'");
+  });
+});
+
+describe("the params a run keeps for its mode", () => {
+  it("drops a param whose modes leave out the current mode", () => {
+    const stored = { duration: 5, auto_shots: true, multi_prompt: null };
+    expect(paramsForMode(stored, kling, "multi_shot")).toEqual({ duration: 5, multi_prompt: null });
+  });
+
+  it("keeps a param declared for the current mode and one that names no modes", () => {
+    const stored = { duration: 5, auto_shots: true };
+    expect(paramsForMode(stored, kling, "t2v")).toEqual({ duration: 5, auto_shots: true });
+  });
+
+  it("keeps a stored value the model no longer declares untouched", () => {
+    expect(paramsForMode({ seed: 7 }, kling, "t2v")).toEqual({ seed: 7 });
   });
 });

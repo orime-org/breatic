@@ -4,8 +4,9 @@
 
 ## 操作流程
 
-1. 合并计划中的 PR，确认检查通过，核对选定提交及数据库迁移。
-2. 获取 main，选择完整提交号，创建并推送新标签：
+1. 合并一个 PR，把 `docker-compose.yml` 里五个产品镜像的标签改成新版本（例如 `v0.2.0`）。要先发候选版本的，这个 PR 排在第一个 `-rc` 标签之前。
+2. 合并计划中的 PR，确认检查通过，核对选定提交及数据库迁移。
+3. 获取 main，选择完整提交号，创建并推送新标签：
 
    ```bash
    git fetch origin main
@@ -13,10 +14,10 @@
    git push origin refs/tags/v0.2.0
    ```
 
-   示例不代表已有该版本。支持 `v主版本.次版本.补丁版本` 和 `v主版本.次版本.补丁版本-rc.N`，数字不带多余前导零；所选提交必须属于 main 历史。
-3. 标签触发全部检查和 `linux/amd64` 镜像构建。验证镜像内的版本文件及媒体镜像许可文件之后，才开始发布。
-4. CI 创建草稿占用版本号，自动上传后端与前端镜像到 GHCR，附上 `release.json`，最后完成 GitHub Release。不需要手动上传镜像。PR 和分支提交只构建检查，不再更新 `main`、`latest` 或次版本镜像别名。
-5. 下载已完成的 Release 清单，用其中固定的镜像摘要测试。正式上线使用测试过的同一摘要；前后端部署顺序要结合接口兼容和数据库迁移安排。标签构建成功不代表云配置已经验证。
+   示例不代表已有该版本。支持 `v主版本.次版本.补丁版本` 和 `v主版本.次版本.补丁版本-rc.N`，数字不带多余前导零；所选提交必须属于 main 历史。正式标签所在提交的 `docker-compose.yml` 必须对五个产品镜像写同一个版本号，否则 CI 在占用版本号之前停止；候选版本标签不做这项检查。
+4. 标签触发全部检查和 `linux/amd64` 镜像构建。验证镜像内的版本文件及媒体镜像许可文件之后，才开始发布。
+5. CI 创建草稿占用版本号，自动上传后端与前端镜像到 GHCR，附上 `release.json`，最后完成 GitHub Release。不需要手动上传镜像。PR 和分支提交只构建检查，不再更新 `main`、`latest` 或次版本镜像别名。
+6. 下载已完成的 Release 清单，用其中固定的镜像摘要测试。正式上线使用测试过的同一摘要；前后端部署顺序要结合接口兼容和数据库迁移安排。标签构建成功不代表云配置已经验证。
 
 示例镜像为 `ghcr.io/orime-org/breatic:v0.2.0` 和 `ghcr.io/orime-org/breatic-web:v0.2.0`。生产使用清单中的 `@sha256:…`。保留发布清单、镜像摘要和前端历史资产；清理仓库时排除在用及回退版本。
 
@@ -28,11 +29,12 @@
 | 后端 `/app/build-info.json` | 构建写入的 `releaseVersion`、完整 `revision`，Server、Worker、Collab、迁移共用 |
 | 前端 `/app-version.json` | `releaseVersion`、完整 `revision`、更新检测用的 `version` |
 | 镜像 OCI 标签 | `org.opencontainers.image.version` 和 `.revision` |
+| `docker-compose.yml` | 五个产品镜像的标签，等于这份源码对应的正式版本 |
 | GitHub Release 附件 `release.json` | 清单格式版本、发布标签、版本、提交、仓库、架构及两个不可变镜像引用 |
 
 为兼容现有更新提示，前端 JSON 的 `version` 继续使用完整提交号，可读版本单独放在 `releaseVersion`。nginx 对版本文件返回 `Cache-Control: no-store`。
 
-版本写在构建产物里，不由生产 `.env` 修改。每次发布不需要再改 package.json、提交一次版本 PR；工作区 package.json 版本不是部署版本。普通开发构建标为 `0.0.0-dev`，提交未知时为 `unknown`。
+版本写在构建产物里，不由生产 `.env` 修改。每次发布不改 package.json；工作区 package.json 版本不是部署版本。普通开发构建标为 `0.0.0-dev`，提交未知时为 `unknown`。
 
 无需连接数据库即可检查镜像版本：
 
@@ -44,8 +46,8 @@ docker run --rm --entrypoint cat <带摘要的后端镜像> /app/build-info.json
 
 ## 发布中断与重跑
 
-草稿在首次推送前占用版本号。已有草稿或正式 Release 时重跑会停止，不会覆盖同名版本。占用后中断，保留失败草稿排查，使用新的版本标签重新发布；部分上传的镜像不能部署。不要移动、删除重建标签来重试。占用前的检查失败可以重跑。
+草稿在首次推送前占用版本号。已有草稿或正式 Release 时重跑会停止，不会覆盖同名版本。占用后中断，保留失败草稿排查，使用新的版本标签重新发布；部分上传的镜像不能部署。不要移动、删除重建标签来重试。占用前的检查失败可以重跑；`docker-compose.yml` 版本不一致除外，同一标签每次重跑都会同样失败。换新的正式版本号重发前，先合并把 `docker-compose.yml` 改成该版本的 PR；候选版本换新 rc 号不改 `docker-compose.yml`。
 
 在 GitHub 设置保护 `v*` 标签不被更新、删除，并按仓库能力启用不可变 Release；创建权限仅给可信发布人员。管理员还需保留在用的镜像摘要和附件。
 
-本地 Docker 按 [LOCAL-CN.md](LOCAL-CN.md) 将 `BREATIC_TAG` 填为实际已发布的完整标签，不再默认选择浮动版本。旧仓库标签不会被本次修改删除。Ingest 构建检查不等于发布 Worker，仍需从匹配源码单独部署。
+本地 Docker 按 [LOCAL-CN.md](LOCAL-CN.md) 取某个发布版本的源码，从 `v0.0.2` 起，其中的 `docker-compose.yml` 运行的就是该版本的镜像。Ingest 构建检查不等于发布 Worker，仍需从匹配源码单独部署。

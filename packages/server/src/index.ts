@@ -198,10 +198,10 @@ server.on("error", (err) => {
   process.exit(1);
 });
 
-// Transactional-outbox relay: forwards project delete / duplicate
-// commands from the business DB to collab via the durable lifecycle
-// Redis Stream (the yjs store is a separate DB, so these can't cascade
-// inside the business transaction any more).
+// Transactional-outbox relay: forwards project duplicate / archive /
+// restore commands from the business DB to collab via the durable
+// lifecycle Redis Stream (the yjs store is a separate DB, so their yjs
+// side cannot run inside the business transaction).
 const lifecycleRelay = startLifecycleRelay();
 
 // Health probe - separate port so probe traffic stays off the main

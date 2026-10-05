@@ -515,6 +515,8 @@ function AudioGeneratePanelBody({
         spaceId,
         model: fresh.modelEntry,
         params: fresh.params,
+        // The same mode the view model above was built for.
+        generation: { mode, declared: fresh.modelEntry.params },
         promptText: freshPrompt,
         // Read off the same fresh view model the gate judged, so the payload
         // can only ever carry the pick that passed it.

@@ -40,6 +40,7 @@ const {
   registryStub,
   registryFactorySpy,
   collabRedisStub,
+  loadProjectRoleStub,
 } = vi.hoisted(() => ({
   redisExtensionSpy: vi.fn(),
   serverSpy: vi.fn(),
@@ -55,6 +56,9 @@ const {
   },
   registryFactorySpy: vi.fn(),
   collabRedisStub: { on: vi.fn(), publish: vi.fn(async () => 1) },
+  // The `connected` hook re-reads the role; by default it reads back what
+  // the handshake granted, so nothing is closed.
+  loadProjectRoleStub: vi.fn(async (): Promise<string | undefined> => undefined),
 }));
 
 vi.mock("@hocuspocus/extension-redis", () => ({
@@ -97,6 +101,7 @@ vi.mock("@breatic/core", () => ({
   // ceiling (#88). Nothing here exercises the ceiling, but the wiring reads
   // the export at module scope, so it has to exist.
   getProjectConcurrentEditorLimit: vi.fn(async () => 100),
+  projectAuthService: { loadProjectRole: loadProjectRoleStub },
 }));
 
 vi.mock("@collab/services/persistence.js", () => ({
@@ -463,5 +468,41 @@ describe("createCollabServer — the facts a connection and its pong carry", () 
         seatExpiryMs: timings.seatExpiryMs,
       }),
     );
+  });
+});
+
+describe("createCollabServer — a connection re-reads its role once registered", () => {
+  const DOC = "project-11111111-1111-4111-8111-111111111111/canvas-22222222-2222-4222-9222-222222222222";
+
+  beforeEach(() => {
+    serverSpy.mockClear();
+    loadProjectRoleStub.mockReset();
+  });
+
+  it("closes a connection whose role changed between its handshake and its registration", async () => {
+    loadProjectRoleStub.mockResolvedValue("viewer");
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+    });
+    const config = serverSpy.mock.calls[0]?.[0] as {
+      connected?: (payload: unknown) => Promise<void>;
+    };
+    const close = vi.fn();
+    await config.connected?.({
+      documentName: DOC,
+      socketId: "sock-1",
+      context: { user: { id: "u-1", role: "editor" }, handedOverFrom: null },
+      instance: { documents: new Map() },
+      connectionConfig: { readOnly: false },
+      connection: {
+        readOnly: false,
+        close,
+        webSocket: { send: vi.fn(), on: vi.fn(), once: vi.fn(), off: vi.fn() },
+      },
+    });
+    expect(loadProjectRoleStub).toHaveBeenCalledWith("u-1", "11111111-1111-4111-8111-111111111111");
+    expect(close).toHaveBeenCalledWith({ code: 4403, reason: "Permission changed, please reconnect" });
   });
 });

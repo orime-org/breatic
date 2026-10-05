@@ -32,7 +32,7 @@ export interface VideoModeOption extends ModeOption {
   slots: readonly VideoSlot[];
 }
 
-/** The video modes offered so far (#1896 slices 1 to 6). */
+/** The video modes offered so far. */
 export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
   {
     value: 't2v',
@@ -65,6 +65,16 @@ export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
     // Every source comes from the rail: the pictures, clips and tracks the
     // model's pool takes, each named with `@` in the prompt (#2156).
     slots: [],
+  },
+  {
+    value: 'multi_shot',
+    label: 'Multi-Shot',
+    testId: 'generate-video-mode-multi-shot',
+    // Each shot gets its own prompt in place of the prompt box. An image to
+    // video model keeps its first frame; the slot is drawn only for a model
+    // declaring it (`videoSlotsForModel`), and a reference model's pool is
+    // fed from the rail as in Reference to Video.
+    slots: ['firstFrame'],
   },
   {
     value: 'talking_head',

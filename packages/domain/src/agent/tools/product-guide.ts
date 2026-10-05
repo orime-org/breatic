@@ -98,8 +98,8 @@ export function renderProductGuide(): string {
     "",
     "## The top bar",
     "Left to right: the brand mark, which opens our website in a new tab; an arrow with the word Studio, which " +
-      "goes back to the studio; the project's name, which double-clicking renames (Enter or clicking away saves, " +
-      "Esc or an empty name keeps the old one); and the reader's role, " +
+      "goes back to the studio; the project's name, which the project's owner or the studio's admin renames by " +
+      "double-clicking it (Enter or clicking away saves, Esc or an empty name keeps the old one); and the reader's role, " +
       `${quoted(t("role.owner"))} or ${quoted(t("role.editor"))}.`,
     "On the right: the members' pictures with a small arrow, which open " +
       `${quoted(t("members.popover.title"))}; for the owner that list ends with ` +
@@ -138,7 +138,9 @@ export function renderProductGuide(): string {
       "An item someone is waiting on, such as an invitation or a transfer, shows how long is left and " +
       `${quoted(t("notifications.openDecision"))}, which leaves this page for a page where it is answered; it ` +
       `goes once it is answered or runs out. Any other item shows ${quoted(t("notifications.markRead"))}, ` +
-      "which takes it off the list.",
+      "which takes it off the list. While any such item is there, the header has " +
+      `${quoted(t("notifications.markAllRead"))} beside the count, which takes all of them off at once and leaves ` +
+      "the items someone is waiting on.",
     `When a new version of the site is out, a ${quoted(t("project.update.available"))} button appears on the ` +
       `right; it opens ${quoted(t("project.update.title"))} with ${quoted(t("project.update.description"))} ` +
       `(${quoted(t("project.update.busy"))} while an upload runs) and asks whether to refresh now ` +
@@ -441,7 +443,10 @@ export function renderProductGuide(): string {
       "to 800 and press Enter. The minimap can be dragged to move the view and scrolled to zoom. The left menu " +
       "and this bar slide out of sight while nodes are being picked for a panel. Each space reopens where you " +
       "left it; one never opened before frames all its nodes.",
-    "Drag a node, a group or a note to move it; with snap to grid on, a dragged node lands on the grid. A " +
+    "Drag a node, a group or a note to move it; with snap to grid on, a dragged node lands on the grid. " +
+      "Right after clicking a node or dragging a box over several, the arrow keys move what is selected a " +
+      "little at a time and further with Shift (with snap to grid on, one grid dot at a time, or four with " +
+      "Shift); undo takes back one press, or all of a key held down. A " +
       `locked one does not move and shows ${quoted(t("canvas.gate.locked"))} Picture, video, sound and text ` +
       "nodes cannot be resized: zoom the canvas to see them larger. Only a group has resize handles.",
     "Scroll to pan, or hold Space and drag (while typing in a text node, over the task list or the history " +
@@ -476,8 +481,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.refuseExecuteNoVoice"))} or ` +
       `${quoted(t("canvas.generatePanel.errorNoSourceImage"))} The music modes may ask ` +
       `${quoted(t("canvas.generatePanel.refuseExecuteNoStyle"))}, ${quoted(t("canvas.generatePanel.lyricsMissing"))} ` +
-      `or ${quoted(t("canvas.generatePanel.refuseExecuteNoReference"))}. When a storyboard is split into shots ` +
-      "(see the video panel below), the shots take the prompt's place, and pressing it may say " +
+      `or ${quoted(t("canvas.generatePanel.refuseExecuteNoReference"))}. In the video panel's Multi-Shot mode ` +
+      "(see below), the shots take the prompt's place, and pressing it may say " +
       `${quoted(t("canvas.generatePanel.refuseStoryboardShotEmpty", { shot: 2 }))}, ` +
       `${quoted(t("canvas.generatePanel.refuseStoryboardShotTooLong", { shot: 2, limit: 512 }))}, ` +
       `${quoted(t("canvas.generatePanel.refuseStoryboardDurationMismatch", { shots: 6, total: 5 }))} or ` +
@@ -568,36 +573,30 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.duration"))}, a ${quoted(t("canvas.generatePanel.generateAudio"))} ` +
       "switch on models that can, and any settings of the model's own. A setting the model does not have is left " +
       "out.",
-    `- Storyboard, on the video models that offer it: under the prompt box is a row with a ` +
-      `${quoted(t("canvas.generatePanel.storyboard.label"))} switch reading ` +
-      `${quoted(t("canvas.generatePanel.switchOff"))} or ${quoted(t("canvas.generatePanel.switchOn"))}. On, the ` +
-      `model splits the prompt into shots itself, and the row says ` +
-      `${quoted(t("canvas.generatePanel.storyboard.autoHint"))}. ` +
-      `${quoted(t("canvas.generatePanel.storyboard.perShot"))} at the right end of that row splits it by hand: the ` +
-      "prompt box gives way to one card per shot, and the right end of the row reads " +
-      `${quoted(t("canvas.generatePanel.storyboard.addShot"))} then ` +
-      `${quoted(t("canvas.generatePanel.storyboard.back"))}. A card, such as ` +
+    `- Multi-Shot, a mode in the video panel's mode picker: the prompt box gives way to one card per shot, and ` +
+      "switching into it with no shots lays out two, splitting the video's length. A card, such as " +
       `${quoted(t("canvas.generatePanel.storyboard.shot", { n: 1 }))}, has a minus and a plus around its ` +
       `seconds, ${quoted(t("canvas.generatePanel.storyboard.removeShot"))}, and a box, ` +
       `${quoted(t("canvas.generatePanel.storyboard.shotPlaceholder"))}, that takes @ mentions like the prompt; ` +
-      "clicking a chip in the strip puts it in that shot box if the prompt box clicked into last was a shot; " +
-      "otherwise, including after clicking the main prompt box, it goes into the first shot. While split by " +
-      "hand, the shots' seconds keep adding up to the video's length: the plus takes a second from another " +
-      "shot and the minus gives one to the shot after it, or to the one before it on the last shot, so the " +
-      "minus is greyed at one second or " +
+      "clicking a chip in the strip puts it in the shot box clicked into last, or in the first shot. Under the " +
+      `cards, in the middle, is ${quoted(t("canvas.generatePanel.storyboard.addShot"))}. The shots' seconds keep ` +
+      "adding up to the video's length: the plus takes a second from another shot and the minus gives one to " +
+      "the shot after it, or to the one before it on the last shot, so the minus is greyed at one second or " +
       "when there is only one shot, and the plus is greyed when no other shot has a second to spare. In the " +
-      "settings pill a duration shorter than the number of shots is greyed, and picking another one re-splits " +
-      "the shots. A duration shortened while the shots were hidden can leave fewer seconds than shots; they " +
-      "then stay as they were and pressing generate says they do not add up: remove shots until there are no " +
-      "more shots than seconds, and the rest are re-split, or pick a duration at least as long as the number " +
-      `of shots. ${quoted(t("canvas.generatePanel.storyboard.addShot"))} is greyed with ` +
-      `${quoted(t("canvas.generatePanel.storyboard.shotCapReached", { max: 6 }))} at the model's limit, or with ` +
+      "settings pill a duration shorter than the number of shots is greyed, and picking another one, or another " +
+      "model, re-splits the shots. A duration shortened in another mode can leave fewer seconds than shots; " +
+      "they then stay as they were and pressing generate says they do not add up: remove shots until there are " +
+      "no more shots than seconds, and the rest are re-split, or pick a duration at least as long as the number " +
+      `of shots. When no shot can be added, ${quoted(t("canvas.generatePanel.storyboard.addShot"))} gives way to ` +
+      `${quoted(t("canvas.generatePanel.storyboard.shotCapReached", { max: 6 }))} at six shots, or ` +
       `${quoted(t("canvas.generatePanel.storyboard.noSecondToSpare"))} when the video has no more seconds than ` +
       "there are shots; " +
       `${quoted(t("canvas.generatePanel.storyboard.removeShot"))} is greyed while only one shot is left. ` +
-      `${quoted(t("canvas.generatePanel.storyboard.back"))}, or turning the switch off, brings the prompt box ` +
-      "back with its words, and the shots are kept for next time. Split by hand, the run sends the shots and the " +
-      "nodes mentioned in them, and the prompt box's words are not sent. Each mode keeps its own storyboard.",
+      "An image-to-video model also shows its first frame slot here, and a reference model takes the nodes the " +
+      "shots mention. The run sends the shots and the nodes mentioned in them; switching to another mode brings " +
+      "that mode's prompt box back with its words, and the shots are kept for next time. On the Kling models, " +
+      `text to video and image to video have a ${quoted(t("canvas.generatePanel.param.auto_shots"))} switch in ` +
+      "the settings pill: on, the model splits the prompt into shots itself.",
     `- Sound panel: tool ${quoted(t("canvas.generatePanel.reference"))}, then the source slots. Here only a ` +
       "connected text node can be mentioned; a connected sound shows as a faded chip, and a sound goes in through " +
       "its slot. On a model with voices the settings pill shows a speaker icon and the current voice and " +
@@ -746,7 +745,7 @@ export function renderProductGuide(): string {
       "keys work when the canvas was the last thing clicked and no box is being typed in: after pressing a " +
       "button in this chat, click empty canvas first, or use the bar. Undo takes back only the reader's own " +
       "changes: adding, deleting and moving nodes, connections and groups, a group's size and colour, names, " +
-      "locks, a node's mode, model, settings and slots, a video's storyboard and its shots, and notes and their replies. It does not take back what " +
+      "locks, a node's mode, model, settings and slots, a video's shots, and notes and their replies. It does not take back what " +
       "a generation or an upload put in a node (use the node's " +
       `${quoted(t("canvas.nodeMenu.history"))}), a focus crop (press the X on its chip), or other people's ` +
       "changes. Undoing a removed connection, or a deleted node with its connections, brings them back, but " +
@@ -774,10 +773,9 @@ export function renderProductGuide(): string {
       "With one generating node its panel opens by itself; with several, the group is selected and the reader " +
       `right-clicks each node and chooses ${quoted(t("canvas.nodeMenu.generate"))}.`,
     "Each generating node arrives empty, with its mode, model and the settings the proposal chose already set " +
-      "and, when the model has a prompt box, its prompt written. A video node on a model with a storyboard may " +
-      "instead arrive with the storyboard switched on, or split into shots with each shot's words written and " +
-      "the prompt box empty; its panel then opens on the shots. The prompt and shots go into the proposal's " +
-      "mode only, so switching mode shows that mode's own box. Where the model has no prompt box, a picture or video " +
+      "and, when the model has a prompt box, its prompt written. A video node in Multi-Shot arrives with its " +
+      "shots, each with its words and seconds written, and its panel opens on them. The prompt goes into the " +
+      "proposal's mode only, so switching mode shows that mode's own box. Where the model has no prompt box, a picture or video " +
       `panel shows ${quoted(t("canvas.generatePanel.promptNotUsed"))} in place of the box, and a sound panel ` +
       "still shows a box that holds only the proposal's bracketed spots, if any; nothing typed there is sent. " +
       "The reader generates the nodes in the order the card's arrows run, and waits for each to show its result " +
@@ -826,7 +824,9 @@ export function renderProductGuide(): string {
     "- Clicking the empty space below the last block starts a new block there, unless the last block is already " +
       "empty. Clicking a to-do's box ticks or unticks it. Clicking a link opens it in a new tab. Selected words " +
       "can be dragged elsewhere. Pasting Markdown turns it into headings, lists and so on (inside a code block it " +
-      "stays plain text); pasting a picture or file does nothing.",
+      "stays plain text); a table copied from a spreadsheet, a web page or Markdown arrives as a table, keeping " +
+      "only the words of any list in its cells and dropping pictures; pasted with the caret in a cell, it fills " +
+      "the cells from that one instead. Pasting a picture or file does nothing.",
     "- Selecting text shows a bar, left to right: an icon of the current block type with a small arrow, an " +
       "alignment icon with an arrow, bold B, italic I, strikethrough S and underline U icons, a link icon, a code " +
       "icon, the letter A with an arrow (colour), a speech-bubble icon (comment), and a sparkle with the word " +
@@ -872,7 +872,13 @@ export function renderProductGuide(): string {
       `and ${quoted(t("spaces.document.commands.color"))} open a submenu when hovered; ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} lists the block types other than ` +
       `${quoted(t("spaces.document.commands.paragraph"))}, then ${quoted(t("spaces.document.commands.divider"))} ` +
-      "on its own, and puts a new line of the one picked below; the divider comes with an empty line under it. " +
+      `and ${quoted(t("spaces.document.commands.table"))} on their own, and puts a new line of the one picked ` +
+      "below; the divider and the table each come with an empty line under them, and a new table puts the caret " +
+      "in its first cell. " +
+      `${quoted(t("spaces.document.commands.table"))} opens a grid of squares, nine across and nine down, with ` +
+      `${quoted(t("spaces.document.table.pickSize"))} under it; moving over it lights the squares up to the ` +
+      `pointer and the words under it change to the size, such as ${quoted(t("spaces.document.table.size", { rows: 3, cols: 4 }))}, and clicking ` +
+      "puts a table of that size there; the arrow keys and Enter do the same. " +
       "Typing --- at the start of a line puts a divider above that line. Clicking a divider selects it, and " +
       "Backspace or Delete removes it. On a divider's handle menu, " +
       `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.commands.color"))} and ` +
@@ -882,6 +888,44 @@ export function renderProductGuide(): string {
       "plain line below, press Enter at the end of the line (Shift+Enter in a code block); if the new line kept " +
       "the list or to-do of the one above, Cmd+Alt+0 makes it plain text, and if it kept the quote, Cmd+Shift+B " +
       "takes the quote off.",
+    "- A table shows a table icon at the left of its first row instead of the six dots. Drag it to move the " +
+      `whole table; click it for a menu with ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
+      `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
+      `${quoted(t("spaces.document.blockHandle.unindent"))}, ${quoted(t("spaces.document.commands.comment"))} and ` +
+      `${quoted(t("spaces.document.blockHandle.deleteTable"))}. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
+      `and ${quoted(t("spaces.document.blockHandle.unindent"))} are greyed when the table cannot move that way, ` +
+      `and ${quoted(t("spaces.document.commands.comment"))} when no cell has words.`,
+    "- Hovering a cell, with no text selected, shows a small handle of dots at the left of its row and one above " +
+      "its column; dragging either moves the row or column, with a line showing where it will land. Clicking the " +
+      `row's handle opens ${quoted(t("spaces.document.table.insertRowAbove"))}, ` +
+      `${quoted(t("spaces.document.table.insertRowBelow"))}, ${quoted(t("spaces.document.table.headerRow"))}, ` +
+      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +
+      `${quoted(t("spaces.document.table.deleteRow"))}; the column's has ` +
+      `${quoted(t("spaces.document.table.insertColumnLeft"))}, ${quoted(t("spaces.document.table.insertColumnRight"))}, ` +
+      `${quoted(t("spaces.document.table.headerColumn"))}, ${quoted(t("spaces.document.commands.align"))}, ` +
+      `${quoted(t("spaces.document.table.cellFill"))} and ${quoted(t("spaces.document.table.deleteColumn"))}. ` +
+      `${quoted(t("spaces.document.table.headerRow"))} can be picked only on the first row and ` +
+      `${quoted(t("spaces.document.table.headerColumn"))} only on the first column, and shows a tick when on. ` +
+      `${quoted(t("spaces.document.commands.align"))} and ${quoted(t("spaces.document.table.cellFill"))} open a ` +
+      "submenu when hovered and act on the whole row or column; the fill submenu is a row of colours, the first " +
+      `square taking the fill off, then ${quoted(t("spaces.document.commands.colorReset"))}. Deleting the last row or ` +
+      "column deletes the table. Rows and columns are added from these two menus, and Tab in the last cell adds " +
+      "a row. While one of these " +
+      "menus is open, the cells it acts on are tinted the way selected cells are. Dragging the line on a " +
+      "column's right side changes that column's width only; the other columns keep theirs and the table " +
+      "grows. A table wider than the page scrolls sideways inside its own frame.",
+    "- With the caret in a cell, a small box with a down arrow shows at that cell's top right corner; it opens " +
+      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +
+      `${quoted(t("spaces.document.table.splitCell"))} for that cell, and ` +
+      `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged. Tab moves to the next ` +
+      "cell, and in the last cell it adds a row first; Shift+Tab moves back. Enter and Shift+Enter break the line " +
+      "inside the cell. A cell holds only words: no lists, headings or other blocks. Dragging across cells " +
+      "selects them. With words selected inside one cell, or with cells selected, the text bar has its block " +
+      "type button greyed and in its colour menu the rows " +
+      `${quoted(t("spaces.document.commands.textColor"))}, ${quoted(t("spaces.document.table.textHighlight"))} and ` +
+      `${quoted(t("spaces.document.table.cellFill"))}; with cells selected it also shows a merge icon after the ` +
+      "speech bubble that merges them into one. With every cell of an empty table selected, Backspace or " +
+      "Delete removes the table.",
     `- An empty document shows ${quoted(t("spaces.document.placeholder"))}. Three dots at the top right open a ` +
       `menu: ${quoted(t("spaces.document.docMenu.comments"))}, which ends in ` +
       `${quoted(t("spaces.document.docMenu.commentsUnresolved", { count: 2 }))} or ` +
@@ -923,7 +967,7 @@ export function renderProductGuide(): string {
       `With only resolved ones, ${quoted(t("spaces.document.comment.filterOpen"))} shows ` +
       `${quoted(t("spaces.document.comment.nothingUnresolved"))}`,
     "- There is no slash menu. Not available yet: the AI commands, snapshots, images or other media, " +
-      "tables, toggle lists, and headings below level 3.",
+      "toggle lists, and headings below level 3.",
     "",
     "## When something is wrong",
     `- ${quoted(t("connection.banner.disconnected.text"))} across the top, with ` +
@@ -931,8 +975,8 @@ export function renderProductGuide(): string {
       `comes back. ${quoted(t("connection.banner.authFailed.text"))} offers ` +
       `${quoted(t("connection.banner.authFailed.action"))} and ${quoted(t("connection.banner.reload"))}, and ` +
       "covers the work area the same way. It shows when the session ran out, and also when the reader was " +
-      "removed from the project or the project was deleted: if signing in again does not let them back in, it " +
-      "is one of those, and the project's owner can say which. With a document open, " +
+      "removed from the project: if signing in again does not let them back in, they were removed, and the " +
+      "project's owner can say why. With a document open, " +
       `${quoted(t("spaces.document.refusedNotice"))} also shows for a moment; nothing typed after it is saved, ` +
       "but the keyboard still reaches the document: press Cmd/Ctrl+A twice, then Cmd/Ctrl+C, to copy it out " +
       "before signing in again or reloading.",

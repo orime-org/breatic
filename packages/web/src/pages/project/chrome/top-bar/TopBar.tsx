@@ -6,6 +6,7 @@ import type { ConnectionStatus } from '@web/data/yjs/use-socket';
 
 import { ArrowLeft, Star } from 'lucide-react';
 import type * as React from 'react';
+import { PROJECT_NAME_MAX_CHARS } from '@breatic/shared';
 import { Link } from 'react-router-dom';
 
 import { chromeBarBox } from '@web/pages/project/chrome/bar-box';
@@ -62,7 +63,14 @@ export function toCreditsReadout(query: {
 interface TopBarProps {
   projectId: string;
   projectName: string;
+  /** The role this reader acts with: `viewer` on an archived project. */
   role: ProjectRole;
+  /** The reader's real role, shown on the role tag even while archived. */
+  actualRole: ProjectRole;
+  /** The project is archived; the role tag stops taking clicks. */
+  archived: boolean;
+  /** The reader may rename the project: the studio's admin or its owner. */
+  canRename: boolean;
   credits: CreditsReadout;
   onRename: (next: string) => void;
   /**
@@ -93,7 +101,10 @@ interface TopBarProps {
  * @param root0 - Top-bar props.
  * @param root0.projectId - Id of the current project, passed to membership, share, role and bell children.
  * @param root0.projectName - Current project name shown in the editable title.
- * @param root0.role - Viewer's role in this project, surfaced via the role tag.
+ * @param root0.role - The role the reader acts with; gates share and member management.
+ * @param root0.actualRole - The reader's real role, shown on the role tag.
+ * @param root0.archived - Whether the project is archived, which freezes the role tag.
+ * @param root0.canRename - Whether the title can be edited.
  * @param root0.credits - What the credits pill reads out.
  * @param root0.onRename - Called with the new title when the user finishes editing the project name.
  * @param root0.members - The project's roster, forwarded to both member components.
@@ -105,6 +116,9 @@ export function TopBar({
   projectId,
   projectName,
   role,
+  actualRole,
+  archived,
+  canRename,
   credits,
   onRename,
   members,
@@ -127,9 +141,10 @@ export function TopBar({
         <TitleEditable
           value={projectName}
           onChange={onRename}
-          editable={role !== 'viewer'}
+          maxLength={PROJECT_NAME_MAX_CHARS}
+          editable={canRename}
         />
-        <RoleTag role={role} projectId={projectId} />
+        <RoleTag role={actualRole} projectId={projectId} frozen={archived} />
       </div>
       <div className='flex items-center' style={{ gap: 'var(--space-2)' }}>
         <ProjectUpdateNotice status={connectionStatus} />

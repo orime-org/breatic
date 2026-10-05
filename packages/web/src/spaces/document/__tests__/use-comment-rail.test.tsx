@@ -87,7 +87,7 @@ async function comment(
   body: string,
 ): Promise<void> {
   const view = editor.prosemirrorView!;
-  view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, range));
+  view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [range]));
   await postComment(editor, body);
 }
 

@@ -8,6 +8,8 @@ import { buildVideoTaskPayload, videoEstimateInput } from '@web/spaces/canvas/ge
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 
 const BASE = {
+  // A mode with no params scoped to other modes: nothing is left behind.
+  generation: { mode: 't2v', declared: {} },
   nodeId: 'node-1',
   projectId: 'proj-1',
   spaceId: 'space-1',
@@ -18,7 +20,7 @@ const BASE = {
   slotUrls: {},
   // Nothing mentioned, or a model that takes no pool: no pool params.
   poolParams: {},
-  // The storyboard off, or a model that takes none: no storyboard params.
+  // Outside the multi-shot mode: no shot params.
   storyboardParams: {},
 };
 

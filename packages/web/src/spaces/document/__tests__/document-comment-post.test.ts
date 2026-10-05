@@ -85,7 +85,7 @@ function firstRun(editor: Editor): { from: number; to: number } {
  */
 function aimAt(editor: Editor, range: { from: number; to: number }): void {
   const view = editor.prosemirrorView!;
-  view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, range));
+  view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [range]));
 }
 
 /** Every comment mark in the body, with the text it covers. */

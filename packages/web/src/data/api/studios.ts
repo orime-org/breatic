@@ -125,12 +125,15 @@ export const studiosApi = {
   /**
    * `GET /api/v1/studio/:slug/projects` — the studio's projects: a member sees
    * all of them, a non-member gets an empty list. Each row carries the viewer's
-   * `myRole` (`null` for a project they are not a member of).
+   * `myRole` (`null` for a project they are not a member of) and what the
+   * card menu may offer. `archived` lists the archived ones instead, which
+   * only a studio admin may read.
    * @param slug the studio's URL handle.
+   * @param archived list archived projects rather than live ones.
    * @returns the visible project summaries.
    */
-  listProjects(slug: string): Promise<ProjectSummary[]> {
-    return apiGet<ProjectSummary[]>(`/studio/${slug}/projects`);
+  listProjects(slug: string, archived = false): Promise<ProjectSummary[]> {
+    return apiGet<ProjectSummary[]>(`/studio/${slug}/projects?archived=${archived}`);
   },
   /**
    * `GET /api/v1/studio/:slug/members` — the Members tab view: active members
