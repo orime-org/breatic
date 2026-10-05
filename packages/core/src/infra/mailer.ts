@@ -126,6 +126,14 @@ export async function sendMail(options: SendMailOptions): Promise<SendMailResult
   return { status: "sent" };
 }
 
+/** What every log line about one mail carries. */
+export interface MailLogCtx {
+  /** Recipient user id (when known) - joins audit + mail records. */
+  userId?: string;
+  /** Short tag describing the mail (e.g. "password_reset"). */
+  subject: string;
+}
+
 /** The log line a {@link SendMailResult} calls for. */
 export interface MailLogLine {
   level: "info" | "warn";

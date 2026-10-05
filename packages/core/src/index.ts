@@ -126,7 +126,7 @@ export {
 } from "@core/infra/storage/index.js";
 export { describeMailResult, sendMail } from "@core/infra/mailer.js";
 export { getMailLayout, type MailLayout } from "@core/config/mail.js";
-export type { MailLogLine, SendMailOptions, SendMailResult } from "@core/infra/mailer.js";
+export type { MailLogCtx, MailLogLine, SendMailOptions, SendMailResult } from "@core/infra/mailer.js";
 export {
   publishNodeEvent,
   publishToStream,

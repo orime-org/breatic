@@ -9,7 +9,7 @@
  * and returns; the worker sends it and retries a failed send.
  */
 
-import { createQueue, defaultJobOpts, type SendMailOptions } from "@breatic/core";
+import { createQueue, defaultJobOpts, type MailLogCtx, type SendMailOptions } from "@breatic/core";
 
 /** The queue the mail travels on. */
 export const MAIL_QUEUE = "mail";
@@ -17,8 +17,7 @@ export const MAIL_QUEUE = "mail";
 /** One mail, as the worker receives it. */
 export interface MailJob {
   mail: SendMailOptions;
-  /** Merged into every log line about this mail. */
-  ctx: { userId?: string; subject: string };
+  ctx: MailLogCtx;
 }
 
 let queue: ReturnType<typeof createQueue> | undefined;

@@ -923,5 +923,5 @@ export async function hasActiveDesignationsTo(
   studioId: string,
   tx: DbTx,
 ): Promise<boolean> {
-  return (await creditLotRepo.countActiveDesignatedToStudio(studioId, tx)) > 0;
+  return creditLotRepo.hasActiveDesignatedToStudio(studioId, tx);
 }

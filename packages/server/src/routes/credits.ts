@@ -121,7 +121,8 @@ credits.get("/ledger", validate("query", creditLedgerQuerySchema), async (c) => 
  * to unassign.
  * @returns `200` with the purchase as it now stands; `403` when the caller
  *   does not administer the target studio, `404` when the purchase is not
- *   theirs, `409` when it is in the refund flow, `422` on a malformed body.
+ *   theirs, `409` when it is in the refund flow or a transfer of the target
+ *   studio is pending, `422` on a malformed body.
  */
 credits.patch(
   "/lots/:id/designation",

@@ -19,8 +19,7 @@
  * and surface their result to the caller instead of swallowing it.
  */
 
-import type { LogMailCtx } from "@server/utils/log-mail.js";
-import { logger, type SendMailOptions } from "@breatic/core";
+import { logger, type MailLogCtx, type SendMailOptions } from "@breatic/core";
 import { enqueueMail } from "@breatic/domain";
 
 /**
@@ -34,7 +33,7 @@ import { enqueueMail } from "@breatic/domain";
  */
 export async function sendBestEffortMail(
   buildMail: () => Promise<SendMailOptions | null>,
-  ctx: LogMailCtx,
+  ctx: MailLogCtx,
 ): Promise<void> {
   try {
     const mail = await buildMail();
