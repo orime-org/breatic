@@ -186,8 +186,13 @@ type Interaction = { pointerId: number } & (
  * a collaborator mid-crop).
  * @param overlayRoot - The overlay's root element (containment check), or
  * null when it cannot be resolved — then only `<body>` focus is rescued.
+ * @param canvasRoot - Where this canvas's banner is looked for
+ *   (`canvasRootOf`); another Space's kept canvas can hold a banner too.
  */
-export function handOffFocusToPickBanner(overlayRoot: Element | null): void {
+export function handOffFocusToPickBanner(
+  overlayRoot: Element | null,
+  canvasRoot: ParentNode,
+): void {
   const active = document.activeElement;
   if (
     active &&
@@ -196,7 +201,7 @@ export function handOffFocusToPickBanner(overlayRoot: Element | null): void {
   ) {
     return;
   }
-  document
+  canvasRoot
     .querySelector<HTMLElement>('[data-testid="reference-pick-banner"]')
     ?.focus();
 }
@@ -569,9 +574,9 @@ export function FocusCropOverlay({
   const backToPick = React.useCallback((): void => {
     interactionRef.current = null;
     clearMarquee();
-    handOffFocusToPickBanner(rootRef.current);
+    handOffFocusToPickBanner(rootRef.current, canvasRootOf(spaceId));
     onBackToPick();
-  }, [onBackToPick, clearMarquee]);
+  }, [onBackToPick, clearMarquee, spaceId]);
 
   // Esc: clear the marquee first; with nothing drawn, exit the session.
   // Bubble phase, never capture (adversarial 2026-07-16: a window CAPTURE

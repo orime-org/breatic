@@ -964,7 +964,7 @@ function CanvasSpaceInner({
       '[data-testid="focus-crop-overlay"]',
     );
     if (overlay?.contains(document.activeElement)) {
-      handOffFocusToPickBanner(overlay);
+      handOffFocusToPickBanner(overlay, canvasRootOf(spaceId));
     }
     // Who wrote it decides which column speaks: a peer's delete is news, a
     // local undo is the user's own keystroke coming back to him.
