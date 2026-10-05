@@ -123,6 +123,21 @@ describe('SpaceDrawer', () => {
     ).toBeNull();
   });
 
+  // The list scrolls inside a clipping viewport; a tooltip rendered inside it
+  // loses whatever part pokes above the viewport's top edge (inner#1261).
+  it('renders a row action tooltip outside the scrolling list', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    await user.hover(screen.getByTestId('space-drawer-view-sp-1'));
+    const tooltip = await screen.findByRole('tooltip');
+    const viewport = screen
+      .getByTestId('space-drawer-list')
+      .closest('[data-radix-scroll-area-viewport]');
+    expect(viewport).not.toBeNull();
+    expect(viewport?.contains(tooltip)).toBe(false);
+  });
+
   it('locked spaces show a disabled delete action with no AlertDialog', async () => {
     const user = userEvent.setup();
     // Two spaces so the disabled state is due to LOCK, not last-space.
