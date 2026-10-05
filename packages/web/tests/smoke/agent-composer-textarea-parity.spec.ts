@@ -263,36 +263,146 @@ test('words dragged in from a web page land as its plain text, line breaks and i
   await expect.poll(async () => (await read(page)).text).toBe(`hello ${WEB_PLAIN}`);
 });
 
+/**
+ * What the box holds with each block written as `[B]`, and what is selected.
+ * @param page - The page.
+ * @returns The text and the selected text.
+ */
+async function readMarked(page: Page): Promise<{ text: string; selected: string }> {
+  return page.evaluate((sel) => {
+    const e = (document.querySelector(sel) as unknown as { editor: { state: { doc: { content: { size: number }; textBetween: (a: number, b: number, s: string, leaf: () => string) => string }; selection: { from: number; to: number } } } }).editor;
+    const { doc, selection } = e.state;
+    return { text: doc.textBetween(0, doc.content.size, '\n', () => '[B]'), selected: doc.textBetween(selection.from, selection.to, '\n', () => '[B]') };
+  }, BOX);
+}
+
+/**
+ * Drags with the mouse the way a reader does: a press held still starts the
+ * browser's drag of what is under it.
+ * @param page - The page.
+ * @param from - Where the press is.
+ * @param to - Where it is let go.
+ */
+async function dragMouse(page: Page, from: { x: number; y: number }, to: { x: number; y: number }): Promise<void> {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  await page.mouse.move(from.x + 10, from.y + 2, { steps: 5 });
+  await page.waitForTimeout(100);
+  await page.mouse.move(to.x, to.y, { steps: 20 });
+  await page.mouse.up();
+}
+
+/**
+ * Where to press on the text at a position, and where the box's empty space
+ * below the last line and right of a line is.
+ * @param page - The page.
+ * @param pos - A document position inside what is dragged.
+ * @param line - The position of a character on the line whose right side is wanted.
+ * @returns The points.
+ */
+async function points(page: Page, pos: number, line: number): Promise<{ press: { x: number; y: number }; below: { x: number; y: number }; right: { x: number; y: number } }> {
+  return page.evaluate(([sel, p, l]) => {
+    const el = document.querySelector(sel as string) as HTMLElement;
+    const view = (el as unknown as { editor: { view: { coordsAtPos: (n: number) => { left: number; top: number; bottom: number } } } }).editor.view;
+    const at = view.coordsAtPos(p as number);
+    const row = view.coordsAtPos(l as number);
+    const box = el.getBoundingClientRect();
+    return {
+      press: { x: at.left + 2, y: (at.top + at.bottom) / 2 },
+      below: { x: box.left + 60, y: box.bottom - 2 },
+      right: { x: box.right - 8, y: (row.top + row.bottom) / 2 },
+    };
+  }, [BOX, pos, line]);
+}
+
+/**
+ * Selects a range of the box.
+ * @param page - The page.
+ * @param from - Where it starts.
+ * @param to - Where it ends.
+ */
+async function select(page: Page, from: number, to: number): Promise<void> {
+  await page.evaluate(([sel, a, b]) => {
+    (document.querySelector(sel as string) as unknown as { editor: { commands: { setTextSelection: (r: { from: number; to: number }) => void } } }).editor.commands.setTextSelection({ from: a as number, to: b as number });
+  }, [BOX, from, to]);
+}
+
+/**
+ * Starts the box with `hello [B] world` over `ab`, the block pointing at a picture pasted from the canvas.
+ * @param page - The page.
+ */
+async function startWithBlock(page: Page): Promise<void> {
+  await start(page, '');
+  await page.evaluate(([sel, t]) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', t as string);
+    document.querySelector(sel as string)?.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, [BOX, MARKER + JSON.stringify([PICTURE])]);
+  await page.keyboard.type('hello @');
+  await expect(page.locator('[data-testid^="reference-mention-option-"]').first()).toBeVisible();
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('world');
+  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.type('ab');
+  await expect.poll(async () => (await readMarked(page)).text).toBe('hello [B] world\nab');
+}
+
 for (const [where, expected] of [
   ['below the last line', ' world\nabchello'],
   ['to the right of a shorter line', ' worldhello\nabc'],
 ] as const) {
-  test(`a word dragged within the box ${where} joins that line, as in the textarea`, async ({ page }) => {
+  test(`a word dragged within the box ${where} joins that line and stays selected, as in the textarea`, async ({ page }) => {
     await start(page, '');
     await page.keyboard.type('hello world');
     await page.keyboard.press('Shift+Enter');
     await page.keyboard.type('abc');
-    const at = await page.evaluate(([sel, w]) => {
-      const el = document.querySelector(sel as string) as HTMLElement;
-      const e = (el as unknown as { editor: { commands: { setTextSelection: (r: { from: number; to: number }) => void }; view: { coordsAtPos: (p: number) => { left: number; right: number; top: number; bottom: number } } } }).editor;
-      e.commands.setTextSelection({ from: 1, to: 6 });
-      const word = e.view.coordsAtPos(3);
-      const first = e.view.coordsAtPos(12);
-      const last = e.view.coordsAtPos(16);
-      const box = el.getBoundingClientRect();
-      return w === 'below the last line'
-        ? { sx: word.left, sy: (word.top + word.bottom) / 2, tx: last.left + 30, ty: box.bottom - 2 }
-        : { sx: word.left, sy: (word.top + word.bottom) / 2, tx: box.right - 8, ty: (first.top + first.bottom) / 2 };
-    }, [BOX, where]);
-    // A press held still is what makes the browser start dragging the selection.
-    await page.mouse.move(at.sx, at.sy);
-    await page.mouse.down();
-    await page.waitForTimeout(150);
-    await page.mouse.move(at.sx + 10, at.sy + 2, { steps: 5 });
-    await page.waitForTimeout(100);
-    await page.mouse.move(at.tx, at.ty, { steps: 20 });
-    await page.mouse.up();
+    await select(page, 1, 6);
+    const at = await points(page, 3, 8);
+    await dragMouse(page, at.press, where === 'below the last line' ? at.below : at.right);
 
-    await expect.poll(async () => (await read(page)).text).toBe(expected);
+    await expect.poll(async () => (await readMarked(page)).text).toBe(expected);
+    expect((await readMarked(page)).selected).toBe('hello');
   });
 }
+
+test('everything dragged beside itself stays as it was, as in the textarea', async ({ page }) => {
+  await start(page, '');
+  await page.keyboard.type('aa bb');
+  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.type('cc');
+  await page.keyboard.press('ControlOrMeta+A');
+  const at = await points(page, 2, 2);
+  await dragMouse(page, at.press, at.below);
+  await page.waitForTimeout(300);
+
+  expect((await readMarked(page)).text).toBe('aa bb\ncc');
+});
+
+test('a block dragged without being clicked first moves below the last line, the only one there is', async ({ page }) => {
+  await startWithBlock(page);
+  const at = await points(page, 7, 16);
+  await dragMouse(page, at.press, at.below);
+
+  await expect.poll(async () => (await readMarked(page)).text).toBe('hello world\nab [B] ');
+});
+
+test('a clicked block dragged to the right of a line moves there and stays selected', async ({ page }) => {
+  await startWithBlock(page);
+  await page.locator('[data-testid="chat-reference"]').click();
+  const at = await points(page, 7, 16);
+  await dragMouse(page, at.press, at.right);
+
+  await expect.poll(async () => (await readMarked(page)).text).toBe('hello world\nab [B] ');
+  expect((await readMarked(page)).selected).toBe('[B]');
+});
+
+test('words holding a block dragged below the last line move as one, still selected', async ({ page }) => {
+  await startWithBlock(page);
+  await select(page, 1, 9);
+  const at = await points(page, 3, 16);
+  await dragMouse(page, at.press, at.below);
+
+  await expect.poll(async () => (await readMarked(page)).text).toBe('world\nabhello [B] ');
+  expect((await readMarked(page)).selected).toBe('hello [B] ');
+});
