@@ -338,12 +338,9 @@ function setChipDragImage(view: EditorView, event: Event): void {
     ghost.style.cssText =
       'position:absolute;top:-9999px;left:-9999px;pointer-events:none;';
     ghost.style.width = `${Math.ceil(rect.width)}px`;
-    // Translucency lives on a CHILD layer: Chrome ignores opacity on the
-    // drag-image ROOT when snapshotting (Safari respects it) — a descendant's
-    // opacity survives on both engines (user 2026-07-14: Chrome ghost was
-    // opaque while Safari's was translucent).
+    // At full strength: each browser shows the image the way it shows its
+    // own drag ghost, as it does for a block dragged without a selection.
     const inner = document.createElement('div');
-    inner.style.opacity = '0.6';
     inner.style.whiteSpace = 'pre-wrap';
     // Font LONGHANDS, never the shorthand: Chrome's computed `font` is often
     // the EMPTY string (unrepresentable sub-property combos), which left the
