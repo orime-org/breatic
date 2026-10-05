@@ -130,6 +130,60 @@ test('@ lists the attachment just above the @, and the pick goes out as a refere
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('what is in Neon street ?');
 });
 
+test('a long name in a sent message ends in an ellipsis inside its block', async ({ page }) => {
+  const long = { ...PICTURE, name: 'A much longer attachment name for truncation checks' };
+  await pasteText(page, MARKER + JSON.stringify([long]));
+  await expect(page.getByTestId('chat-composer-chips')).toContainText('A much longer');
+  const box = page.getByTestId('chat-composer-box');
+  await box.pressSequentially('see @');
+  await expect(page.locator('[data-testid^="reference-mention-option-"]').first()).toBeVisible();
+  await box.press('Enter');
+  await box.press('Enter');
+
+  const block = page.getByTestId('message-reference');
+  await expect(block).toHaveText(long.name, { timeout: 20_000 });
+  const look = await block.evaluate((el) => ({
+    overflow: getComputedStyle(el).textOverflow,
+    cut: el.scrollWidth > el.clientWidth,
+  }));
+  expect(look).toEqual({ overflow: 'ellipsis', cut: true });
+});
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`a block in the box and in the sent message has the colour of the attachment chip (${theme})`, async ({ page }) => {
+    await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);
+    await pasteText(page, MARKER + JSON.stringify([PICTURE]));
+    await expect(page.getByTestId('chat-composer-chips')).toContainText('Neon street');
+    const box = page.getByTestId('chat-composer-box');
+    await box.pressSequentially('see @');
+    await expect(page.locator('[data-testid^="reference-mention-option-"]').first()).toBeVisible();
+    await box.press('Enter');
+
+    const fill = (testId: string): Promise<string> =>
+      page.getByTestId(testId).first().evaluate((el) => getComputedStyle(el).backgroundColor);
+    const chip = await page
+      .locator('[data-testid^="chat-chip-"]')
+      .first()
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(await fill('chat-reference')).toBe(chip);
+
+    await box.press('Enter');
+    await expect(page.getByTestId('message-reference')).toBeVisible({ timeout: 20_000 });
+    expect(await fill('message-reference')).toBe(chip);
+  });
+}
+
+test('text pasted after an @ that names no attachment opens no list', async ({ page }) => {
+  await pasteText(page, MARKER + JSON.stringify([PICTURE]));
+  await expect(page.getByTestId('chat-composer-chips')).toContainText('Neon street');
+  await pasteText(page, '第三方的@撒发的多少是收到');
+  await page.getByTestId('chat-composer-box').pressSequentially('多少');
+
+  await expect(page.getByTestId('chat-composer-box')).toHaveText('第三方的@撒发的多少是收到多少');
+  await expect(page.getByTestId('reference-mention-empty')).toBeHidden();
+  await expect(page.locator('[data-testid^="reference-mention-option-"]')).toHaveCount(0);
+});
+
 test('the full-width at sign a CJK input method types opens the list too', async ({ page }) => {
   await pasteText(page, MARKER + JSON.stringify([PICTURE]));
   const box = page.getByTestId('chat-composer-box');

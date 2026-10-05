@@ -25,7 +25,7 @@ import { NO_ATTACHMENTS, type TrayItem } from '@web/stores/chat-attachments';
 
 /** How a reference block looks, in the box and in a sent message alike. */
 export const REFERENCE_BLOCK_CLASS =
-  'reference-mention inline-flex h-[18px] max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-content-xs border border-border bg-muted px-1.5 align-[-1.25px] text-xs text-foreground';
+  'reference-mention inline-flex h-[18px] max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-content-xs border border-border bg-chip px-1.5 align-[-1.25px] text-xs text-foreground';
 
 /** Attr key carrying the attachment's name as the block shows it. */
 export const CHAT_REFERENCE_LABEL_ATTR = 'label';

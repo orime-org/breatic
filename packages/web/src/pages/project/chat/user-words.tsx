@@ -43,7 +43,7 @@ export function UserWords({ content, attachments }: UserWordsProps): React.JSX.E
                 lines of their own in the copied text. */}
             <span
               data-testid='message-reference'
-              className={cn(REFERENCE_BLOCK_CLASS, 'inline-block select-text whitespace-nowrap align-[-4.25px] leading-4')}
+              className={cn(REFERENCE_BLOCK_CLASS, 'inline-block select-text text-ellipsis whitespace-nowrap align-[-4.25px] leading-4')}
             >
               <span className='mr-1 inline-block align-[-1.5px]'>
                 <AttachmentKindIcon type={segment.chip.type} />
