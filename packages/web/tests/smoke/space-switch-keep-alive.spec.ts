@@ -16,6 +16,7 @@ import { DOCUMENT_EDITOR, visibleSpace } from '../helpers/space';
 import {
   activeId,
   addSpaces,
+  camera,
   openFreshProject,
   projectIdOf,
   stripIds,
@@ -124,6 +125,54 @@ test('a canvas keeps its nodes, not rebuilt ones, across a switch', async ({ pag
   expect(
     await node.evaluate((el) => (el as unknown as { keptMark?: boolean }).keptMark === true),
   ).toBe(true);
+});
+
+test('a node panel is the same panel after a switch', async ({ page }) => {
+  // A submit in flight, a list scrolled down: what a panel holds lives on it.
+  const projectUrl = await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  await seedNode(page, projectIdOf(projectUrl), first, 'kept-panel-host', 'image');
+  const node = visibleSpace(page).locator('.react-flow__node[data-id="kept-panel-host"]');
+  await expect(node).toBeVisible({ timeout: 20_000 });
+  await node.click({ button: 'right' });
+  await page.getByTestId('node-menu-generate').click();
+  const panel = visibleSpace(page).getByTestId('generate-prompt-editor');
+  await expect(panel).toBeVisible({ timeout: 15_000 });
+  await panel.evaluate((el) => {
+    (el as unknown as { keptMark?: boolean }).keptMark = true;
+  });
+
+  await showSpace(page, second);
+  await showSpace(page, first);
+
+  await expect(panel).toBeVisible();
+  expect(
+    await panel.evaluate((el) => (el as unknown as { keptMark?: boolean }).keptMark === true),
+  ).toBe(true);
+});
+
+test('a canvas opened empty is not framed again once it has content', async ({ page }) => {
+  // A3: a Space with no stored camera is framed on its first open only.
+  const projectUrl = await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  await expect(visibleSpace(page).locator('.react-flow__viewport')).toBeVisible({
+    timeout: 20_000,
+  });
+  await seedNode(page, projectIdOf(projectUrl), first, 'late-a', 'image', { x: 900, y: 700 });
+  await seedNode(page, projectIdOf(projectUrl), first, 'late-b', 'image', { x: 1600, y: 1200 });
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, {
+    timeout: 20_000,
+  });
+  const before = await camera(page);
+
+  await showSpace(page, second);
+  await showSpace(page, first);
+
+  await expect.poll(() => camera(page)).toEqual(before);
 });
 
 test('a text node being written stays open with its caret and undo across a switch', async ({
