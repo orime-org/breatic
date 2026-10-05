@@ -311,6 +311,57 @@ export function runCanvasUndoBatch(
   return joinStep;
 }
 
+/** Who made a canvas document's writes, as far as the canvas needs to know. */
+interface WriteOrigins {
+  /** Whether this client made the newest write to the nodes. */
+  lastWasLocal: boolean;
+  /**
+   * Ids a peer removed from the board, named by the transactions that
+   * removed them so no later write can carry the answer away.
+   */
+  deletedByPeer: Set<string>;
+}
+
+const writeOrigins = new WeakMap<Y.Doc, WriteOrigins>();
+
+/**
+ * The record of who wrote a canvas document, kept for as long as the
+ * document is.
+ *
+ * Kept by the document rather than by the view of it: a Space switched away
+ * from keeps its canvas with its effects taken down (inner#1235), and what a
+ * peer does in that time is what the reader is told about when they come
+ * back. Observed first, before any view subscribes, so a view reading it
+ * from its own handler sees the write that handler is about.
+ * @param doc - The canvas document.
+ * @returns The record, observed from the first call on.
+ */
+function writeOriginsOf(doc: Y.Doc): WriteOrigins {
+  const known = writeOrigins.get(doc);
+  if (known) return known;
+  const origins: WriteOrigins = { lastWasLocal: true, deletedByPeer: new Set() };
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  nodesMap.observeDeep((events, tx) => {
+    origins.lastWasLocal = tx.local;
+    if (tx.local) return;
+    for (const event of events) {
+      if (event.target !== nodesMap) continue;
+      for (const [id, change] of event.changes.keys) {
+        // What this answers is whether the note on the board RIGHT NOW is
+        // gone because a peer removed it — so a note a peer puts back is no
+        // longer one of them. Undo is the way back from a delete (#1881
+        // section 8.3 asks for no confirm dialog because of it), so a note
+        // that goes and returns is ordinary; left named, the reader's own
+        // later delete of it comes back to them as somebody else's.
+        if (change.action === 'delete') origins.deletedByPeer.add(id);
+        else origins.deletedByPeer.delete(id);
+      }
+    }
+  });
+  writeOrigins.set(doc, origins);
+  return origins;
+}
+
 /**
  * Subscribe to a canvas-space document. Observes the cached Y.Doc only — the
  * document is kept attached to the shared collab socket by its open tab's
@@ -332,47 +383,18 @@ export function useCanvasSpace(
   const [edges, setEdges] = React.useState<ReadonlyArray<CanvasEdge>>(() =>
     readEdges(doc),
   );
-  // Written straight from the document handler, so it is current before React
-  // has rendered anything about this change. See `getLastWriteWasLocal`.
-  const lastWriteWasLocalRef = React.useRef(true);
-  // Ids a peer removed from the board, named by the transactions that removed
-  // them so no later write can carry the answer away.
-  const deletedByPeerRef = React.useRef<Set<string>>(new Set());
+  // Current before React has rendered anything about a change: it is written
+  // from a document observer registered ahead of this hook's own.
+  const origins = React.useMemo(() => writeOriginsOf(doc), [doc]);
 
   React.useEffect(() => {
     const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
     const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
     /**
-     * Re-read all nodes from the doc into React state, recording whether this
-     * client is the one that wrote them and which nodes a peer took away.
-     * @param events - The Yjs events; the top-level one names the removed ids.
-     * @param tx - The transaction behind them; absent on the first read.
+     * Re-read all nodes from the doc into React state.
+     * @returns Nothing.
      */
-    const updateNodes = (
-      events?: Y.YEvent<Y.AbstractType<unknown>>[],
-      tx?: Y.Transaction,
-    ): void => {
-      if (tx) {
-        lastWriteWasLocalRef.current = tx.local;
-        if (!tx.local && events) {
-          for (const event of events) {
-            if (event.target !== nodesMap) continue;
-            for (const [id, change] of event.changes.keys) {
-              // What this answers is whether the note on the board RIGHT NOW
-              // is gone because a peer removed it — so a note a peer puts
-              // back is no longer one of them. Undo is the way back from a
-              // delete (#1881 section 8.3 asks for no confirm dialog because
-              // of it), so a note that goes and returns is ordinary; left
-              // named, the reader's own later delete of it comes back to them
-              // as somebody else's.
-              if (change.action === 'delete') deletedByPeerRef.current.add(id);
-              else deletedByPeerRef.current.delete(id);
-            }
-          }
-        }
-      }
-      setNodes(readNodes(doc));
-    };
+    const updateNodes = (): void => setNodes(readNodes(doc));
     /**
      * Re-read all edges from the doc into React state.
      * @returns Nothing.
@@ -446,13 +468,13 @@ export function useCanvasSpace(
   }, [syncAvailability]);
 
   const getLastWriteWasLocal = React.useCallback(
-    (): boolean => lastWriteWasLocalRef.current,
-    [],
+    (): boolean => origins.lastWasLocal,
+    [origins],
   );
 
   const deletedByPeer = React.useCallback(
-    (nodeId: string): boolean => deletedByPeerRef.current.has(nodeId),
-    [],
+    (nodeId: string): boolean => origins.deletedByPeer.has(nodeId),
+    [origins],
   );
 
   return {
