@@ -2477,3 +2477,144 @@ describe('the multi-shot mode', () => {
     expect(data.model).toBe('kling-v3');
   });
 });
+
+describe('camera commands (inner#1241)', () => {
+  const COMMANDS = [
+    'Truck left', 'Truck right', 'Pan left', 'Pan right', 'Push in', 'Pull out',
+    'Pedestal up', 'Pedestal down', 'Tilt up', 'Tilt down', 'Zoom in', 'Zoom out',
+    'Shake', 'Tracking shot', 'Static shot',
+  ];
+  /**
+   * The clip address a command previews with.
+   * @param name - The command.
+   * @returns Its address.
+   */
+  const clip = (name: string): string =>
+    `https://samples.test/camera-previews/h3/${name.toLowerCase().replace(/ /g, '-')}.mp4`;
+  /** MiniMax H3 as the wire ships it: shots go into its prompt, and it reads camera commands. */
+  const H3: ModelEntry = {
+    ...T2V,
+    name: 'minimax-h3-text-to-video',
+    display_name: 'MiniMax H3',
+    mode: ['t2v', 'multi_shot'],
+    params: {
+      duration: { description: '', values: [5, 10], default: 10, fill: 'panel' },
+      shots: {
+        description: '',
+        default: null,
+        type: 'items',
+        modes: ['multi_shot'],
+        into_prompt: 'Shot {n} [{start}-{end}s]: {prompt}',
+        fill: 'storyboard',
+        fields: { prompt: { type: 'text' }, duration: { values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] } },
+      },
+    },
+    camera_commands: COMMANDS.map((name) => ({ name, preview_url: clip(name) })),
+  };
+  /**
+   * The test id of one command's option.
+   * @param name - The command.
+   * @returns Its test id.
+   */
+  const option = (name: string): string =>
+    `generate-video-camera-option-${name.toLowerCase().replace(/ /g, '-')}`;
+
+  /**
+   * Opens the panel on a node standing on a model.
+   * @param mode - The node's mode.
+   * @param model - The node's model.
+   * @param before - Writes to make before the panel opens.
+   */
+  async function openOn(mode: string, model: string, before: () => void = () => undefined): Promise<void> {
+    vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), video: [H3, ...catalog().video] });
+    const stored = { mode, model, modelByMode: { [mode]: model }, paramsByModel: { [model]: { duration: 5 } } };
+    seedVideoNode(stored);
+    before();
+    mountContainer('video', stored);
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'video');
+    });
+    await screen.findByTestId('generate-video-execute');
+  }
+
+  /**
+   * Opens the picker, clicks the commands in order, and inserts them.
+   * @param names - The commands to pick.
+   */
+  async function insert(...names: string[]): Promise<void> {
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    for (const name of names) fireEvent.click(await screen.findByTestId(option(name)));
+    fireEvent.click(screen.getByTestId('generate-video-camera-insert'));
+  }
+
+  beforeEach(() => {
+    _resetForTests();
+    useCanvasStore.setState({ panelHostId: null, panelKind: null, pickSession: null });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('draws the camera button for a model that reads commands', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    expect(screen.getByTestId('generate-video-camera-trigger')).toBeInTheDocument();
+  });
+
+  it('draws no camera button for a model with no commands', async () => {
+    await openOn('t2v', 'veo-3.1');
+    expect(screen.queryByTestId('generate-video-camera-trigger')).toBeNull();
+  });
+
+  it('offers all fifteen commands, and at three picks only the ones that would replace a pick', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    for (const name of COMMANDS) expect(await screen.findByTestId(option(name)), name).toBeEnabled();
+    for (const name of ['Truck left', 'Push in', 'Zoom out']) fireEvent.click(screen.getByTestId(option(name)));
+    expect(screen.getByTestId(option('Pan left'))).toBeDisabled();
+    expect(screen.getByTestId(option('Truck right'))).toBeEnabled();
+    expect(screen.getByTestId(option('Static shot'))).toBeEnabled();
+  });
+
+  it('writes the picks into the prompt as one bracket and sends them', async () => {
+    const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({ id: 't1' } as never);
+    await openOn('t2v', 'minimax-h3-text-to-video', () => typePrompt('a red car'));
+    await insert('Truck left', 'Push in', 'Zoom out', 'Truck right');
+    await waitFor(() => expect(screen.getByTestId('generate-prompt-editor').textContent).toContain('[Push in,Zoom out,Truck right]'));
+    expect(screen.queryByTestId('generate-video-camera-insert')).toBeNull();
+    await waitFor(() => expect(screen.getByTestId('generate-video-execute')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('generate-video-execute'));
+    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
+    expect(createTask.mock.calls[0]?.[0]?.params.prompt).toBe('a red car [Push in,Zoom out,Truck right]');
+  });
+
+  it('in the multi-shot mode writes into the first shot, or the shot last focused, and sends it on that line', async () => {
+    const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({ id: 't1' } as never);
+    await openOn('multi_shot', 'minimax-h3-text-to-video', () => enterStoryboardShots('p', 's', 'target', 5));
+    await screen.findByTestId('generate-storyboard-shot-2-editor');
+    await insert('Pan left');
+    await waitFor(() => expect(readShots('p', 's', 'target')?.[0]?.prompt.toString()).toContain('[Pan left]'));
+    const second = screen.getByTestId('generate-storyboard-shot-2-editor').querySelector('.ProseMirror') as HTMLElement;
+    fireEvent.focus(second);
+    await insert('Tilt up');
+    await waitFor(() => expect(readShots('p', 's', 'target')?.[1]?.prompt.toString()).toContain('[Tilt up]'));
+    fireEvent.click(screen.getByTestId('generate-video-execute'));
+    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
+    expect(createTask.mock.calls[0]?.[0]?.params.prompt).toBe('Shot 1 [0-2s]: [Pan left]\nShot 2 [2-5s]: [Tilt up]');
+  });
+
+  it('previews a command, a disabled one included, through the shared hover card', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    for (const name of ['Truck left', 'Push in', 'Zoom out']) fireEvent.click(await screen.findByTestId(option(name)));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const shake = screen.getByTestId(option('Shake'));
+    expect(shake).toBeDisabled();
+    fireEvent.pointerEnter(shake.parentElement as HTMLElement);
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+    });
+    const card = await screen.findByTestId('hover-preview-content');
+    expect(card.querySelector('video')?.getAttribute('src')).toBe(clip('Shake'));
+  });
+});
