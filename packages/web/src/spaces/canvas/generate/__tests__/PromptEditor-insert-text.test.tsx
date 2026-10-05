@@ -49,7 +49,6 @@ async function mount(text: string): Promise<{
       references={[]}
       referenceKinds={[]}
       mentionEmptyLabel='No references'
-      mentionNoMatchLabel='No matches'
     />,
     { wrapper: TooltipProvider },
   );
@@ -119,7 +118,6 @@ describe('PromptEditorHandle.insertText', () => {
         references={[]}
         referenceKinds={[]}
         mentionEmptyLabel='No references'
-        mentionNoMatchLabel='No matches'
       />
     );
     const { rerender } = render(element(new Y.Doc().getXmlFragment('prompt')), { wrapper: TooltipProvider });

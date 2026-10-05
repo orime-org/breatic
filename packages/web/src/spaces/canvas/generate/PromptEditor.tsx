@@ -222,8 +222,9 @@ export const PromptEditor = React.forwardRef<
   const onFocusRef = React.useRef(onFocus);
   onFocusRef.current = onFocus;
   // Whether the reader has put a caret in the current editor: the editor is
-  // rebuilt whenever its `useEditor` deps change (fragment, locale labels,
-  // caret provider, name resolver), so `onCreate` clears it and `onFocus` sets it.
+  // rebuilt whenever its `useEditor` deps change (fragment, the empty-list
+  // label, caret provider, name resolver), so `onCreate` clears it and
+  // `onFocus` sets it.
   const caretPlacedRef = React.useRef(false);
   // Read through a ref for the same reason the pool is: the two `onUpdate`
   // handlers are baked into the editor at creation, and rebuilding it to change
