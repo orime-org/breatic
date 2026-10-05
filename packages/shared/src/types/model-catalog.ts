@@ -268,9 +268,8 @@ export interface ModelEntry {
    */
   max_input_chars?: number;
   /**
-   * The bracketed camera commands this model reads out of its prompt
-   * (inner#1241), each with the clip that previews it. Absent on a model that
-   * reads none.
+   * The bracketed camera commands this model reads out of its prompt, each
+   * with the clip that previews it. Absent on a model that reads none.
    */
   camera_commands?: readonly CameraCommandEntry[];
   /**

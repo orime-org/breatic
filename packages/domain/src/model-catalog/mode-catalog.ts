@@ -186,7 +186,7 @@ export interface ModelInfo {
    */
   takesPrompt: boolean;
   /**
-   * The bracketed camera commands it reads out of its prompt (inner#1241),
+   * The bracketed camera commands it reads out of its prompt,
    * for a model that declares them.
    */
   cameraCommands?: string[];

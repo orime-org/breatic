@@ -84,7 +84,7 @@ function renderStoryboard(model: PricedModelInfo): string {
 
 /**
  * Which camera commands this model reads out of its prompt and how to write
- * them, as MiniMax documents the syntax (inner#1241).
+ * them, as MiniMax documents the syntax.
  * @param model - The model to describe.
  * @returns A sentence to append to its line, or the empty string when it reads none.
  */

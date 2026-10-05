@@ -59,7 +59,7 @@ export interface PromptEditorHandle {
   serializePrompt: (tokens?: MentionTokens) => string | null;
   /**
    * Inserts plain text at the caret the reader last left in this editor, or
-   * at the end when they never put one here (inner#1241). A popover opening
+   * at the end when they never put one here. A popover opening
    * takes focus away, so "has a caret" means "was focused since it mounted",
    * and the selection ProseMirror keeps through the blur is where it goes.
    * A space is added on a side that would otherwise touch a word.

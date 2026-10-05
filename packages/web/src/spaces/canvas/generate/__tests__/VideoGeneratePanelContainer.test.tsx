@@ -2478,7 +2478,7 @@ describe('the multi-shot mode', () => {
   });
 });
 
-describe('camera commands (inner#1241)', () => {
+describe('camera commands', () => {
   const COMMANDS = [
     'Truck left', 'Truck right', 'Pan left', 'Pan right', 'Push in', 'Pull out',
     'Pedestal up', 'Pedestal down', 'Tilt up', 'Tilt down', 'Zoom in', 'Zoom out',

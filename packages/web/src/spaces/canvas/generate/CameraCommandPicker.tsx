@@ -60,7 +60,7 @@ function slug(name: string): string {
 }
 
 /**
- * The video panel's camera command picker (inner#1241): a pill in the settings
+ * The video panel's camera command picker: a pill in the settings
  * row that opens the commands the model reads, up to three of which go into
  * the prompt as one bracket. Hovering an option, a disabled one included,
  * plays its clip muted and looping in a fixed pane at the top, which covers

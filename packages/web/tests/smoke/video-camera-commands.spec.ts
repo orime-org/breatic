@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Camera commands on MiniMax H3 (inner#1241): the picker sits in the settings
+ * Camera commands on MiniMax H3: the picker sits in the settings
  * row, keeps opposite directions and Static shot apart, previews each command
  * in a pane at the top, and writes the picks as one bracket at the
  * caret the reader left -- in the prompt, or in the shot box in the multi-shot

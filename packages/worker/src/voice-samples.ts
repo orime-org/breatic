@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Make every voice sample and every camera command preview clip (inner#1241)
+ * Make every voice sample and every camera command preview clip
  * the catalog names that its fixed public address (`base_url` in
  * config/voice-samples.json, #2239) does not serve yet. Run as
  * `pnpm voice-samples` by whoever adds voices or camera commands to the
@@ -73,7 +73,7 @@ async function download(url: string): Promise<Buffer> {
 }
 
 /**
- * Turn a clip into its preview with ffmpeg (inner#1241).
+ * Turn a clip into its preview with ffmpeg.
  * @param name - Names the temp directory.
  * @param writeInput - Writes the clip to the path it is given.
  * @returns The preview's bytes.

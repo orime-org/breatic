@@ -3,7 +3,7 @@
 
 /**
  * Which camera command preview clips the sample address has to serve, and how
- * each is made (inner#1241). Every clip shows the same scene with one command,
+ * each is made. Every clip shows the same scene with one command,
  * so the clips differ only in how the camera moves.
  */
 

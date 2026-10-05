@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * inner#1241 — the MiniMax H3 entries declare the camera commands a reader can
+ * The MiniMax H3 entries declare the camera commands a reader can
  * write into the prompt, and the wire carries each one's preview address.
  *
  * Read off the real config: the point is that the three H3 entries declare all

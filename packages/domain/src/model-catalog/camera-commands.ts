@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The camera commands a model reads out of its prompt (inner#1241), as the
+ * The camera commands a model reads out of its prompt, as the
  * yaml declares them and as the wire ships them.
  */
 

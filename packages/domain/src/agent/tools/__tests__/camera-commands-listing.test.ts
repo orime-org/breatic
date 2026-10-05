@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * inner#1241 — the agent learns from the model listing which camera commands
+ * The agent learns from the model listing which camera commands
  * MiniMax H3 reads and how they are written, in every mode H3 serves.
  */
 

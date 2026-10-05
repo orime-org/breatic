@@ -306,7 +306,7 @@ function VideoGeneratePanelBody({
     (item: ReferenceRailItem) => insertTarget()?.insertReference(item),
     [insertTarget],
   );
-  // The camera picker writes where the rail would, by the same order (inner#1241).
+  // The camera picker writes where the rail would, by the same order.
   const handleInsertCameraCommands = React.useCallback(
     (text: string) => insertTarget()?.insertText(text),
     [insertTarget],

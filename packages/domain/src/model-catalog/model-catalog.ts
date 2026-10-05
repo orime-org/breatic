@@ -133,7 +133,7 @@ export interface FullModelEntry {
    * absent when the upstream publishes no cap.
    */
   max_input_chars?: number;
-  /** The camera commands this model reads out of its prompt (inner#1241). */
+  /** The camera commands this model reads out of its prompt. */
   camera_commands?: DeclaredCameraCommand[];
   params?: Record<string, FullParamSpec>;
   providers?: FullProviderEndpoint[];

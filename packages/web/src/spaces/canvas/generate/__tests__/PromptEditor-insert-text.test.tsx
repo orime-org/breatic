@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * inner#1241 — text inserted from a popover lands where the reader left the
+ * Text inserted from a popover lands where the reader left the
  * caret, although opening the popover took focus away from the editor.
  */
 
