@@ -1,8 +1,11 @@
 # docker-compose.yml — deployment stack.
 #
-# Default: pulls pre-built images from GHCR. `BREATIC_TAG` in .env picks
-# which published version to pull (required, no floating default). Deployers
-# never build from source — that's CI's job.
+# Default: pulls pre-built images from GHCR. The image tags below are the
+# stable release this source belongs to: deploy the source of a stable release
+# and you run that release. They are bumped before the release (and before its
+# first -rc tag); CI refuses a stable tag that does not match
+# (scripts/release.mjs compose-tag). Candidate sources name the upcoming
+# stable version. Deployers never build from source — that's CI's job.
 #
 # Developers contributing to breatic should use `pnpm dev` instead; this
 # compose file is not in the dev path. The only shared concern is the
@@ -65,7 +68,7 @@ services:
 
   # ── Frontend + Reverse Proxy ───────────────────
   web:
-    image: ghcr.io/orime-org/breatic-web:${BREATIC_TAG:?Set BREATIC_TAG to a published release tag such as v0.2.0}
+    image: ghcr.io/orime-org/breatic-web:v0.0.2
     ports:
       - "${WEB_BIND_ADDRESS:-127.0.0.1}:80:80"
       - "${WEB_BIND_ADDRESS:-127.0.0.1}:443:443"
@@ -83,7 +86,7 @@ services:
   # Must run from packages/server so Node can resolve @breatic/core's
   # transitive deps (drizzle-orm, postgres) via server's node_modules.
   migrate:
-    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:?Set BREATIC_TAG to a published release tag such as v0.2.0}
+    image: ghcr.io/orime-org/breatic:v0.0.2
     working_dir: /app/packages/server
     command: ["node", "-e", "import('@breatic/core').then(async m => { m.initCore(process.env); try { await m.runMigrations(); await m.runYjsMigrations(); } finally { await Promise.all([m.closeDb(), m.closeYjsDb()]); } }).catch(e => { console.error(e); process.exit(1); })"]
     env_file: .env
@@ -105,7 +108,7 @@ services:
   # here in the sense that it becomes VISIBLE, not that it is auto-repaired
   # (see CLAUDE.md "server-side industrial-grade standards" mandate).
   server:
-    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:?Set BREATIC_TAG to a published release tag such as v0.2.0}
+    image: ghcr.io/orime-org/breatic:v0.0.2
     command: ["node", "packages/server/dist/index.js"]
     ports:
       - "127.0.0.1:3000:3000"
@@ -129,7 +132,7 @@ services:
     restart: unless-stopped
 
   collab:
-    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:?Set BREATIC_TAG to a published release tag such as v0.2.0}
+    image: ghcr.io/orime-org/breatic:v0.0.2
     command: ["node", "packages/collab/dist/index.js"]
     # Deliberately not published. Browsers reach collab through nginx's /ws
     # location, and nginx is what sets the X-Real-IP the connection gate needs
@@ -153,7 +156,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:?Set BREATIC_TAG to a published release tag such as v0.2.0}
+    image: ghcr.io/orime-org/breatic:v0.0.2
     command: ["node", "packages/worker/dist/index.js"]
     env_file: .env
     volumes:

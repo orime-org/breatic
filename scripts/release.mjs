@@ -1,9 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
+/** web, migrate, server, collab and worker. */
+const PRODUCT_IMAGE_COUNT = 5;
 const releasePattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-rc\.(0|[1-9]\d*))?$/;
+
+/** Version of a release tag (`v0.2.0` -> `0.2.0`); throws for anything else. */
+function parseReleaseTag(tag) {
+  if (!tag.startsWith('v') || !releasePattern.test(tag.slice(1))) throw new Error('Invalid release tag');
+  return tag.slice(1);
+}
 
 /** Validate the release identity shared by every artifact. */
 export function buildInfo(version = '0.0.0-dev', revision = 'unknown') {
@@ -18,8 +26,7 @@ export function buildInfo(version = '0.0.0-dev', revision = 'unknown') {
 
 /** Create the portable manifest only from registry-confirmed image digests. */
 export function releaseManifest(tag, revision, repository, backend, web) {
-  if (!tag.startsWith('v') || !releasePattern.test(tag.slice(1))) throw new Error('Invalid release tag');
-  const info = buildInfo(tag.slice(1), revision);
+  const info = buildInfo(parseReleaseTag(tag), revision);
   if (!/^[a-z0-9-]+\/breatic$/.test(repository)) throw new Error('Invalid product repository');
   for (const [name, ref] of [['breatic', backend], ['breatic-web', web]]) {
     const prefix = `ghcr.io/${repository.split('/')[0]}/${name}@sha256:`;
@@ -30,20 +37,38 @@ export function releaseManifest(tag, revision, repository, backend, web) {
   return { schemaVersion: 1, tag, ...info, repository, platform: 'linux/amd64', images: { backend, web } };
 }
 
+/** Tags of every product image the compose file runs, in file order. */
+export function composeImageTags(text) {
+  return [...text.matchAll(/^\s*image:\s*["']?ghcr\.io\/orime-org\/breatic(?:-web)?:([^\s"'#]+)["']?\s*(?:#.*)?$/gm)].map((match) => match[1]);
+}
+
+/** A stable release must ship a compose file that runs exactly its own images. */
+export function checkComposeTag(tag, text) {
+  if (parseReleaseTag(tag).includes('-rc.')) return;
+  const tags = composeImageTags(text);
+  if (tags.length !== PRODUCT_IMAGE_COUNT) {
+    throw new Error(`docker-compose.yml: found ${tags.length} product image lines, expected ${PRODUCT_IMAGE_COUNT}`);
+  }
+  if (tags.some((found) => found !== tag)) {
+    throw new Error(`docker-compose.yml must run ${tag} for every product image; found ${tags.join(', ')}`);
+  }
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [command, ...args] = process.argv.slice(2);
   if (command === 'build-info' && args.length === 3) {
     writeFileSync(args[2], JSON.stringify(buildInfo(args[0], args[1]), null, 2) + '\n');
   } else if (command === 'manifest' && args.length === 6) {
     writeFileSync(args[5], JSON.stringify(releaseManifest(...args.slice(0, 5)), null, 2) + '\n');
+  } else if (command === 'compose-tag' && args.length === 2) {
+    checkComposeTag(args[0], readFileSync(args[1], 'utf8'));
   } else if (command === 'ci' && args.length === 2) {
     const [ref, revision] = args;
     const release = ref.startsWith('refs/tags/');
     const tag = release ? ref.slice('refs/tags/'.length) : 'ci';
-    if (release && (!tag.startsWith('v') || !releasePattern.test(tag.slice(1)))) throw new Error('Invalid release tag');
-    const info = buildInfo(release ? tag.slice(1) : '0.0.0-dev', revision);
+    const info = buildInfo(release ? parseReleaseTag(tag) : '0.0.0-dev', revision);
     console.log(`version=${info.releaseVersion}\nimage_tag=${tag}`);
   } else {
-    throw new Error('Usage: release.mjs ci REF SHA | build-info VERSION SHA OUTPUT | manifest TAG SHA REPOSITORY BACKEND_DIGEST WEB_DIGEST OUTPUT');
+    throw new Error('Usage: release.mjs ci REF SHA | compose-tag TAG COMPOSE_FILE | build-info VERSION SHA OUTPUT | manifest TAG SHA REPOSITORY BACKEND_DIGEST WEB_DIGEST OUTPUT');
   }
 }

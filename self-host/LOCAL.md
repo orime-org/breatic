@@ -40,24 +40,23 @@ pnpm --version
 
 Docker must report a Server, Node should report `v24...` at 24.15 or later, and pnpm must report `9.15.0`. The repository does not yet provide a verified minimum hardware specification. Monitor CPU and memory with `docker stats`, and size resources for your workload and concurrency.
 
-Download the complete repository and enter its root:
+Download the source of a published release (`v0.2.0` below is only an example) and enter its root:
 
 ```bash
-git clone https://github.com/orime-org/breatic.git
+git clone --branch v0.2.0 https://github.com/orime-org/breatic.git
 cd breatic
 cp .env.docker .env
 ```
 
-Alternatively, extract the source ZIP and enter the directory containing `docker-compose.yml`, `Dockerfile` and `package.json`. Run subsequent commands from that root. Do not overwrite an existing `.env`.
+Alternatively, extract that Release's source ZIP and enter the directory containing `docker-compose.yml`, `Dockerfile` and `package.json`. Run subsequent commands from that root. Do not overwrite an existing `.env`.
 
-**Keep versions together.** Images, Ingest source and configuration must match the selected release. Set `BREATIC_TAG` to an existing published full tag (for example `v0.2.0`, only an example). There is no floating default; `main` / `latest` are no longer updated. See [Versioned releases](RELEASE.md).
+**Keep versions together.** Images, Ingest source and configuration must match the selected release. From `v0.0.2` on, a stable release's `docker-compose.yml` already names its own images (candidate `-rc` sources name the upcoming stable version), so the source you download decides the version. Releases before `v0.0.2` ship their own LOCAL.md, which asks for `BREATIC_TAG`. See [Versioned releases](RELEASE.md).
 
 ## 3. Configure the application
 
 Edit existing entries in `.env`, keeping one definition per key. For an initial HTTP installation accessible only from this computer:
 
 ```dotenv
-BREATIC_TAG=<published-release-tag>
 WEB_BIND_ADDRESS=127.0.0.1
 ENV=dev
 COOKIE_DOMAIN=
@@ -293,7 +292,7 @@ docker compose exec -T postgres pg_dump -U breatic -Fc breatic_yjs > "backups/yj
 
 Check that every command succeeds. Separately preserve `.env`, cloud configuration/secrets, certificates, the source version, both image digests and R2 object backups. Database dumps do not contain R2 files or unfinished queue jobs; do not claim a consistent snapshot while jobs are running. Do not commit `backups/`.
 
-Read the target release's upgrade notes and obtain matching source and configuration, preserving your own settings. Publish the corresponding Ingest version, update `BREATIC_TAG`, then run:
+Read the target release's upgrade notes and obtain matching source and configuration, preserving your own settings. Publish the corresponding Ingest version, then run:
 
 ```bash
 docker compose pull

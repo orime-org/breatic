@@ -40,24 +40,23 @@ pnpm --version
 
 Docker 应有 Server 信息，Node 应为 `v24...` 且不低于 24.15，pnpm 应为 `9.15.0`。当前仓库没有经过验证的硬件最低配置承诺；启动后用 `docker stats` 检查内存和 CPU，按实际并发和媒体任务增加资源。
 
-下载完整仓库并进入根目录：
+下载某个已发布版本的源码（下面的 `v0.2.0` 仅为示例）并进入根目录：
 
 ```bash
-git clone https://github.com/orime-org/breatic.git
+git clone --branch v0.2.0 https://github.com/orime-org/breatic.git
 cd breatic
 cp .env.docker .env
 ```
 
-也可以下载源码 ZIP，进入同时包含 `docker-compose.yml`、`Dockerfile` 和 `package.json` 的目录。后续命令均在仓库根目录执行。已存在 `.env` 时不要覆盖。
+也可以下载该 Release 的源码 ZIP，进入同时包含 `docker-compose.yml`、`Dockerfile` 和 `package.json` 的目录。后续命令均在仓库根目录执行。已存在 `.env` 时不要覆盖。
 
-**版本要配套**：主站镜像、Ingest 源码和配置使用同一发布版本。`BREATIC_TAG` 必须填写实际已发布的完整标签（例如 `v0.2.0`，仅为示例）；不再自动更新 `main` / `latest`，不设浮动默认值。发布与版本查询见 [版本发布](RELEASE-CN.md)。
+**版本要配套**：主站镜像、Ingest 源码和配置使用同一发布版本。从 `v0.0.2` 起，正式版本源码里的 `docker-compose.yml` 已写明该版本的镜像（候选版本 `-rc` 的源码写的是即将发布的正式版本），下载哪个版本的源码就运行哪个版本；`v0.0.2` 之前的版本按其源码自带的 LOCAL 文档填写 `BREATIC_TAG`。发布与版本查询见 [版本发布](RELEASE-CN.md)。
 
 ## 3. 配置主站
 
 打开 `.env` 编辑原有条目，每个键只定义一次。首次仅本机 HTTP 使用：
 
 ```dotenv
-BREATIC_TAG=<published-release-tag>
 WEB_BIND_ADDRESS=127.0.0.1
 ENV=dev
 COOKIE_DOMAIN=
@@ -293,7 +292,7 @@ docker compose exec -T postgres pg_dump -U breatic -Fc breatic_yjs > "backups/yj
 
 确认每个命令成功，另行保存 `.env`、云端配置/密钥、证书、源码版本、两个镜像 digest 和 R2 文件备份。数据库备份不含 R2 对象或队列中的未完成任务；不要在任务执行中声称获得一致性快照。`backups/` 不应提交到 Git。
 
-读取目标版本的升级说明，取对应源码和配置，保留自己的配置；发布配套 Ingest 后修改 `BREATIC_TAG`，再执行：
+读取目标版本的升级说明，取对应源码和配置，保留自己的配置；发布配套 Ingest 后再执行：
 
 ```bash
 docker compose pull

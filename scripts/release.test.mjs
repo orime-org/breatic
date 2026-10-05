@@ -3,11 +3,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildInfo, releaseManifest } from './release.mjs';
+import { buildInfo, checkComposeTag, composeImageTags, releaseManifest } from './release.mjs';
 const sha = 'a'.repeat(40);
 const backend = `ghcr.io/orime-org/breatic@sha256:${'b'.repeat(64)}`;
 const web = `ghcr.io/orime-org/breatic-web@sha256:${'c'.repeat(64)}`;
@@ -53,4 +53,55 @@ test('CLI emits build metadata and validates tag versus branch identities', () =
   } finally {
     rmSync(directory, { recursive: true });
   }
+});
+
+const composeWith = (backendTag, webTag = backendTag) => [
+  'services:',
+  '  web:',
+  `    image: ghcr.io/orime-org/breatic-web:${webTag}`,
+  ...['migrate', 'server', 'collab', 'worker'].flatMap((name) => [`  ${name}:`, `    image: ghcr.io/orime-org/breatic:${backendTag}`]),
+  '  postgres:',
+  '    image: postgres:16-alpine',
+].join('\n');
+
+test('compose image tags are read from every product image line', () => {
+  assert.deepEqual(composeImageTags(composeWith('v0.2.0')), ['v0.2.0', 'v0.2.0', 'v0.2.0', 'v0.2.0', 'v0.2.0']);
+  assert.deepEqual(composeImageTags(composeWith('v0.2.0', 'v0.1.0')), ['v0.1.0', 'v0.2.0', 'v0.2.0', 'v0.2.0', 'v0.2.0']);
+  const quoted = composeWith('v0.2.0')
+    .replace('image: ghcr.io/orime-org/breatic-web:v0.2.0', 'image: "ghcr.io/orime-org/breatic-web:v0.2.0"')
+    .replace('image: ghcr.io/orime-org/breatic:v0.2.0', "image: 'ghcr.io/orime-org/breatic:v0.2.0'  # pinned");
+  assert.deepEqual(composeImageTags(quoted), ['v0.2.0', 'v0.2.0', 'v0.2.0', 'v0.2.0', 'v0.2.0']);
+});
+
+test('a missing product image line is reported as a line count, not as a wrong tag', () => {
+  const missing = composeWith('v0.2.0').replace(/\n  worker:\n.*/, '');
+  assert.throws(() => checkComposeTag('v0.2.0', missing), /found 4 product image lines, expected 5/);
+});
+
+test('a stable tag must match all five compose images; candidates are not checked', () => {
+  const script = fileURLToPath(new URL('./release.mjs', import.meta.url));
+  const directory = mkdtempSync(join(tmpdir(), 'breatic-compose-'));
+  try {
+    const run = (tag, text) => {
+      const file = join(directory, 'docker-compose.yml');
+      writeFileSync(file, text);
+      return spawnSync(process.execPath, [script, 'compose-tag', tag, file], { encoding: 'utf8' });
+    };
+    assert.equal(run('v0.2.0', composeWith('v0.2.0')).status, 0);
+    const stale = run('v0.2.0', composeWith('v0.1.0'));
+    assert.notEqual(stale.status, 0);
+    assert.match(stale.stderr, /v0\.1\.0/);
+    assert.notEqual(run('v0.2.0', composeWith('v0.2.0', 'v0.1.0')).status, 0);
+    assert.notEqual(run('v0.2.0', composeWith('v0.2.0').replace(/\n  worker:\n.*/, '')).status, 0);
+    assert.equal(run('v0.2.0-rc.1', composeWith('v0.1.0')).status, 0);
+  } finally {
+    rmSync(directory, { recursive: true });
+  }
+});
+
+test('the repository compose file pins one stable release for every product image', () => {
+  const text = readFileSync(fileURLToPath(new URL('../docker-compose.yml', import.meta.url)), 'utf8');
+  const [tag] = composeImageTags(text);
+  assert.doesNotMatch(tag, /-rc\./);
+  checkComposeTag(tag, text);
 });
