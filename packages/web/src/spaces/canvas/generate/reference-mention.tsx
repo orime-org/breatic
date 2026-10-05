@@ -20,16 +20,13 @@ import { Crop } from 'lucide-react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
-import {
-  MENTION_SOURCE_ID_ATTR,
-  REFERENCE_MENTION_NODE,
-} from '@web/spaces/canvas/generate/at-reference';
+import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { FOCUS_REF_PREFIX } from '@web/spaces/canvas/generate/derive-references';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
-import { createReferenceMentionCaret } from '@web/spaces/canvas/generate/reference-mention-caret';
-import { createLocalUserInputTracker } from '@web/spaces/canvas/generate/reference-mention-local-input';
-import { createReferenceMentionRangeHighlight } from '@web/spaces/canvas/generate/reference-mention-range-decoration';
+import { createReferenceMentionCaret } from '@web/features/reference-mention/reference-mention-caret';
+import { createLocalUserInputTracker } from '@web/features/reference-mention/reference-mention-local-input';
+import { createReferenceMentionRangeHighlight } from '@web/features/reference-mention/reference-mention-range-decoration';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { NodeKind } from '@web/data/yjs/node-view';
@@ -287,7 +284,7 @@ function ReferenceMentionChip({
         // align value: measured on the real machine to put the chip's
         // centerline exactly on the TEXT centerline (numeric vertical-align;
         // `align-middle` sat it ~1.2px low under Inter 13px metrics).
-        className='reference-mention inline-flex h-[18px] max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-content-xs border border-border bg-muted pl-1 align-[-1.25px] text-xs text-foreground'
+        className='reference-mention inline-flex h-[18px] max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-content-xs border border-border bg-chip pl-1 align-[-1.25px] text-xs text-foreground'
         contentEditable={false}
       >
         {typeof thumbnail === 'string' && thumbnail.length > 0 ? (

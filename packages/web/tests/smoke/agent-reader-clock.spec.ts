@@ -82,7 +82,7 @@ async function pageIn(browser: Browser, timeZone: string): Promise<Page> {
  */
 async function askHere(p: Page, question: string): Promise<string> {
   const before = await p.getByTestId('message-bubble').count();
-  const composer = p.getByTestId('chat-composer-textarea');
+  const composer = p.getByTestId('chat-composer-box');
   await composer.fill(question);
   await composer.press('Enter');
   await expect(p.getByTestId('message-bubble')).toHaveCount(before + 2, { timeout: 200_000 });

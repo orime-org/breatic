@@ -435,12 +435,19 @@ export { extractPromptText } from "@shared/agent/extract-prompt.js";
 export { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
 export {
   ATTACHMENT_DATA_PART,
+  attachmentMarker,
   attachmentPart,
   attachmentSection,
   chipOfPart,
+  messageLength,
+  messageSegments,
+  referenceCount,
+  resolvedSegments,
+  wordsForTitle,
+  writeReferences,
   userTurnForModel,
 } from "@shared/agent/attachments.js";
-export type { AttachmentDataPart } from "@shared/agent/attachments.js";
+export type { AttachmentDataPart, MessageSegment, ResolvedSegment } from "@shared/agent/attachments.js";
 export {
   carrying,
   FAILURE_LINES,

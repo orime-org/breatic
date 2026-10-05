@@ -28,12 +28,12 @@ const render = (
   // wrapper option (not a manual wrap) so a later rerender() keeps the provider.
   baseRender(args[0], { ...args[1], wrapper: TooltipProvider });
 
-import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { yUndoPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
 import {
   dragScrollDelta,
   referenceMentionCaretKey,
-} from '@web/spaces/canvas/generate/reference-mention-caret';
+} from '@web/features/reference-mention/reference-mention-caret';
 import {
   PromptEditor,
   type PromptEditorHandle,
@@ -96,7 +96,6 @@ async function mountWithChip(): Promise<{
       references={[imgRef]}
       referenceKinds={['image']}
       mentionEmptyLabel='No references'
-      mentionNoMatchLabel='No matches'
     />,
   );
   await waitFor(() => expect(ref.current).not.toBeNull());
@@ -278,7 +277,6 @@ async function mountWithTwoChips(): Promise<{
       references={[imgRef, chipRefB]}
       referenceKinds={['image']}
       mentionEmptyLabel='No references'
-      mentionNoMatchLabel='No matches'
     />,
   );
   await waitFor(() => expect(ref.current).not.toBeNull());
@@ -623,7 +621,6 @@ describe('drop residue heal (D1)', () => {
           suggestion: makeReferenceSuggestion({
             getPool: () => [],
             emptyLabel: 'No references',
-            noMatchLabel: 'No matches',
           }),
         }),
       ],
@@ -917,7 +914,6 @@ describe('drag source restore on drop (#1776, Safari selection-follows-drop-care
           suggestion: makeReferenceSuggestion({
             getPool: () => [],
             emptyLabel: 'No references',
-            noMatchLabel: 'No matches',
           }),
         }),
       ],
@@ -1057,6 +1053,37 @@ describe('unified chip drag ghost (Safari had none — tiptap only sets one via 
     expect(setDragImage).toHaveBeenCalled();
   });
 
+  it('leaves the ghost at full strength, for the browser to show as it shows its own', async () => {
+    const { editor, chipEls } = await mountWithTwoChips();
+    const positions: number[] = [];
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === REFERENCE_MENTION_NODE) positions.push(pos);
+    });
+    act(() => {
+      editor.commands.setTextSelection({ from: positions[0], to: positions[1] + 1 });
+    });
+    act(() => {
+      chipEls[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    });
+    let ghost: HTMLElement | null = null;
+    const setDragImage = vi.fn((el: HTMLElement) => {
+      ghost = el;
+    });
+    const wrapper = chipEls[0].closest('[data-node-view-wrapper]')?.parentElement as HTMLElement;
+    const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
+    attachDataTransfer(dragstart, setDragImage as unknown as () => void);
+    act(() => {
+      wrapper.dispatchEvent(dragstart);
+    });
+    act(() => {
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+
+    expect(ghost).not.toBeNull();
+    const layers = [ghost as unknown as HTMLElement, ...(ghost as unknown as HTMLElement).querySelectorAll<HTMLElement>('*')];
+    expect(layers.filter((el) => el.style.opacity !== '')).toHaveLength(0);
+  });
+
   it('a plain-text drag keeps the native ghost (no setDragImage)', () => {
     // A chip-free editor removes any selection ambiguity: no range in this
     // doc can contain a chip, so the ghost must never be replaced.
@@ -1071,7 +1098,6 @@ describe('unified chip drag ghost (Safari had none — tiptap only sets one via 
           suggestion: makeReferenceSuggestion({
             getPool: () => [],
             emptyLabel: 'No references',
-            noMatchLabel: 'No matches',
           }),
         }),
       ],

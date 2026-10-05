@@ -43,7 +43,7 @@ import {
   getAgentConfig,
 } from "@breatic/core";
 import type { Hono } from "hono";
-import { attachmentSection } from "@breatic/shared";
+import { attachmentMarker, attachmentSection } from "@breatic/shared";
 
 try {
   initCore(process.env);
@@ -191,6 +191,65 @@ describe("what one turn may send", () => {
         project_id: projectId,
         conversation_id: conversationId,
         attached_chips: [],
+      },
+      cookie,
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it("counts each reference to an attachment as one character", async () => {
+    // The box counts a reference as the one block the reader sees, so the
+    // server has to as well: the marker it is written as is longer.
+    const { projectId, conversationId, cookie } = await seedOwner();
+    const attached = chip(1, 10);
+    const references = attachmentMarker(attached.id).repeat(5);
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: references + "y".repeat(getAgentConfig().user_message_max_chars - 5),
+        project_id: projectId,
+        conversation_id: conversationId,
+        attached_chips: [attached],
+      },
+      cookie,
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it("refuses more references than one message may carry", async () => {
+    const { projectId, conversationId, cookie } = await seedOwner();
+    const attached = chip(1, 10);
+    const limit = getAgentConfig().user_message_max_references;
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: attachmentMarker(attached.id).repeat(limit + 1),
+        project_id: projectId,
+        conversation_id: conversationId,
+        attached_chips: [attached],
+      },
+      cookie,
+    );
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
+  });
+
+  it("admits a message that lands exactly on the reference limit", async () => {
+    const { projectId, conversationId, cookie } = await seedOwner();
+    const attached = chip(1, 10);
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: attachmentMarker(attached.id).repeat(getAgentConfig().user_message_max_references),
+        project_id: projectId,
+        conversation_id: conversationId,
+        attached_chips: [attached],
       },
       cookie,
     );

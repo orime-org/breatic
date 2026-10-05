@@ -56,7 +56,7 @@ test.afterEach(async () => {
  *   a run where the model answered instead looks like.
  */
 async function aQuestionWaitingForAnswer(target: Page): Promise<void> {
-  const composer = target.getByTestId('chat-composer-textarea');
+  const composer = target.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
   await target.getByTestId('new-conversation').click();

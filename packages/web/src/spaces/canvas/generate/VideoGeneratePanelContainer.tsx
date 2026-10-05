@@ -840,7 +840,6 @@ function VideoGeneratePanelBody({
   // opens and says so. That was the silence to fix, not this sentence.
   const promptPlaceholder = t('canvas.generatePanel.videoPromptPlaceholder');
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
-  const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
   // A node made before video generation existed carries no prompt container,
   // and #1880 ratified that those are NOT repaired — creating one when the
   // panel opens is the exact race that decision removed (two people opening
@@ -882,7 +881,6 @@ function VideoGeneratePanelBody({
           // `@` still offered it at full strength.
           referenceKinds={referenceKinds}
           mentionEmptyLabel={mentionEmptyLabel}
-          mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
           mentionTokens={stableMentionTokens}
         />
@@ -891,7 +889,6 @@ function VideoGeneratePanelBody({
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
-      mentionNoMatchLabel,
       stableReferences,
       onPromptChange,
       handleAtMentionsChange,
@@ -927,7 +924,6 @@ function VideoGeneratePanelBody({
         references={stableReferences}
         referenceKinds={referenceKinds}
         mentionEmptyLabel={mentionEmptyLabel}
-        mentionNoMatchLabel={mentionNoMatchLabel}
         caretProvider={caretProvider}
         mentionTokens={stableMentionTokens}
       />
@@ -937,7 +933,6 @@ function VideoGeneratePanelBody({
       stableReferences,
       referenceKinds,
       mentionEmptyLabel,
-      mentionNoMatchLabel,
       caretProvider,
       stableMentionTokens,
     ],

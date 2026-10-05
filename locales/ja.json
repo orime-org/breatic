@@ -57,7 +57,9 @@
       "cannot_change_admin_role": "Admin ロールは譲渡によってのみ変更できます。",
       "member_limit_reached": "{limit, plural, =0 {この Studio のプランではメンバーを追加できません。アップグレードすると追加できます。} other {この Studio のプランのメンバーは最大 # 人です。アップグレードするとさらに追加できます。}}",
       "member_limit_reached_for_invitee": "この Studio のメンバー枠は満員です。Admin に空きを作ってもらってください。",
-      "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。"
+      "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。",
+      "transfer_credits_designated": "この Studio にまだクレジットパックが割り当てられています。アバターメニュー →「クレジット」→「割り当て」で解除してから譲渡してください。",
+      "designation_during_transfer": "この Studio には承認待ちの譲渡があります。譲渡を取り消すか終了した後に、再びパックを割り当てられます。"
     },
     "project": {
       "join_already_member": "すでにこの Project のメンバーです。",
@@ -169,7 +171,8 @@
     "chat": {
       "message_too_long": "このメッセージは長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "attachments_too_long": "添付した内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
-      "attachments_too_many": "添付が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。"
+      "attachments_too_many": "添付が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
+      "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。"
     },
     "mail": {
       "studio_invite": {
@@ -254,7 +257,8 @@
       "attachTooLong": "添付した内容が多すぎます。件数を減らすか、短いファイルにしてください。",
       "attachUnsupported": "{filename} は添付できません",
       "attachTooLarge": "{filename} は大きすぎて添付できません",
-      "attachUnavailable": "今は添付できません。もう一度お試しください。"
+      "attachUnavailable": "今は添付できません。もう一度お試しください。",
+      "atEmpty": "参照できる添付はありません"
     },
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
@@ -458,7 +462,6 @@
       "exit": "終了",
       "promptPlaceholder": "生成したい画像を説明してください。@ で参照を追加",
       "mentionEmpty": "参照できるものがありません",
-      "mentionNoMatch": "一致するものがありません",
       "voicePlaceholder": "音声が未選択",
       "voiceSearchPlaceholder": "音声を検索…",
       "voiceLoading": "音声を読み込み中…",
@@ -1516,7 +1519,7 @@
         "description": "説明",
         "dangerTitle": "危険な操作",
         "transfer": "Studio を譲渡",
-        "dangerHint": "譲渡すると Studio 全体（Projects・Collections・ウォレット）が別のメンバーに移ります。Slug を変更すると既存のリンクはすべて無効になります。Admin のみ可能です。",
+        "dangerHint": "譲渡すると Studio（Projects・Collections）が別のメンバーに移ります。先にこの Studio に割り当てたクレジットパックを解除してください。Slug を変更すると既存のリンクはすべて無効になります。Admin のみ可能です。",
         "dangerHintPersonal": "Slug はあなたの @handle であり、この Studio のアドレスでもあります。変更は元に戻せません。",
         "transferTitle": "Studio の所有権を委譲",
         "transferBody": "新しい Admin になる Maintainer を選びます。相手が承認すると委譲が有効になり、あなたは Maintainer になります。",

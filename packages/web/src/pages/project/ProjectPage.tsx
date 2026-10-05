@@ -892,7 +892,10 @@ function ProjectWorkspace({
                     groupResizeBehavior='preserve-pixel-size'
                     style={PANEL_STYLE}
                   >
-                    <AgentColumn projectId={projectId} />
+                    <AgentColumn
+                      projectId={projectId}
+                      {...(activeSpace?.type === 'canvas' ? { canvasSpaceId: activeSpace.id } : {})}
+                    />
                   </Panel>
                   {/* The line between the two columns. What answers a pointer
                   around it is wider than the line twice over: the transparent

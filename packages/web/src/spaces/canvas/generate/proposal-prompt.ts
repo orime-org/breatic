@@ -27,10 +27,7 @@ import * as Y from 'yjs';
 
 import { markText, type ProposalNodeType, type PromptSegment } from '@breatic/shared';
 
-import {
-  MENTION_SOURCE_ID_ATTR,
-  REFERENCE_MENTION_NODE,
-} from '@web/spaces/canvas/generate/at-reference';
+import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { MENTION_KIND_ATTR } from '@web/spaces/canvas/generate/reference-mention';
 
 /** The block element a line of the prompt becomes. */

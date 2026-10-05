@@ -57,7 +57,9 @@
       "cannot_change_admin_role": "The admin role can only be changed by transferring it.",
       "member_limit_reached": "{limit, plural, =0 {This studio's plan does not allow adding members. Upgrade to add some.} one {This studio's plan allows 1 member. Upgrade to add more.} other {This studio's plan allows up to # members. Upgrade to add more.}}",
       "member_limit_reached_for_invitee": "This studio is full. Ask its Admin to make room.",
-      "leave_last_admin": "Transfer the admin role before leaving this Studio."
+      "leave_last_admin": "Transfer the admin role before leaving this Studio.",
+      "transfer_credits_designated": "A credit pack is still assigned to this Studio. Unassign it under avatar menu → Credits → Assign, then start the transfer.",
+      "designation_during_transfer": "This Studio has a pending transfer. Credit packs can be assigned to it again once the transfer is withdrawn or ends."
     },
     "project": {
       "join_already_member": "You're already a member of this project.",
@@ -169,7 +171,8 @@
     "chat": {
       "message_too_long": "This message is too long. It may hold at most {limit, number} characters; this one holds {actual, number}.",
       "attachments_too_long": "The attached content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
-      "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}."
+      "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}.",
+      "references_too_many": "Too many references to attachments. A message may carry at most {limit, number}; this one carries {actual, number}."
     },
     "mail": {
       "studio_invite": {
@@ -254,7 +257,8 @@
       "attachTooLong": "Too much content attached. Attach fewer items or shorter files.",
       "attachUnsupported": "{filename} can’t be attached",
       "attachTooLarge": "{filename} is too large to attach",
-      "attachUnavailable": "Couldn’t attach right now. Try again."
+      "attachUnavailable": "Couldn’t attach right now. Try again.",
+      "atEmpty": "No attachments to mention"
     },
     "empty": {
       "greetingWithName": "Hi, {name}!",
@@ -470,7 +474,6 @@
       "exit": "Exit",
       "promptPlaceholder": "Describe the image you want to generate, @ to add a reference",
       "mentionEmpty": "No references available",
-      "mentionNoMatch": "No matches",
       "voicePlaceholder": "No voice chosen",
       "voiceSearchPlaceholder": "Search voices…",
       "voiceLoading": "Loading voices…",
@@ -1516,7 +1519,7 @@
         "description": "Description",
         "dangerTitle": "Danger zone",
         "transfer": "Transfer Studio",
-        "dangerHint": "Transferring hands the whole Studio — its Projects, Collections and wallet — to another member. Changing the Slug breaks every existing link. Admin only.",
+        "dangerHint": "Transferring hands the Studio — its Projects and Collections — to another member; unassign its credit packs first. Changing the Slug breaks every existing link. Admin only.",
         "dangerHintPersonal": "Your Slug is your @handle and the address of this Studio. Changing it cannot be undone.",
         "transferTitle": "Transfer Studio ownership",
         "transferBody": "Choose a Maintainer to become the new Admin. They must accept before the transfer takes effect; you become a Maintainer.",

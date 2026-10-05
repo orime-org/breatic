@@ -57,7 +57,9 @@
       "cannot_change_admin_role": "Admin 角色只能透過轉讓變更。",
       "member_limit_reached": "{limit, plural, =0 {這個 Studio 的會員等級不支援新增成員，升級後即可新增。} other {這個 Studio 的會員等級最多可有 # 位成員，升級可新增更多。}}",
       "member_limit_reached_for_invitee": "這個 Studio 的成員名額已滿，請聯絡它的 Admin 騰出名額。",
-      "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。"
+      "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。",
+      "transfer_credits_designated": "還有點數包指定給這個 Studio。請先在頭像選單 →「點數」→「指定」裡取消指定，再發起轉讓。",
+      "designation_during_transfer": "這個 Studio 有待接受的轉讓，撤回或轉讓結束後才能再為它指定點數包。"
     },
     "project": {
       "join_already_member": "你已經是這個 Project 的成員。",
@@ -169,7 +171,8 @@
     "chat": {
       "message_too_long": "這則訊息太長了。最多 {limit, number} 個字元，這則有 {actual, number} 個。",
       "attachments_too_long": "附帶的內容太長了。最多 {limit, number} 個字元，現在有 {actual, number} 個。",
-      "attachments_too_many": "附帶的內容太多了。最多 {limit, number} 項，這則有 {actual, number} 項。"
+      "attachments_too_many": "附帶的內容太多了。最多 {limit, number} 項，這則有 {actual, number} 項。",
+      "references_too_many": "引用附件的次數太多。一則訊息最多 {limit, number} 次，這則有 {actual, number} 次。"
     },
     "mail": {
       "studio_invite": {
@@ -254,7 +257,8 @@
       "attachTooLong": "附帶的內容太多了，請少掛幾項或換短一點的檔案。",
       "attachUnsupported": "{filename} 不能附帶",
       "attachTooLarge": "{filename} 太大，不能附帶",
-      "attachUnavailable": "暫時無法新增，請重試。"
+      "attachUnavailable": "暫時無法新增，請重試。",
+      "atEmpty": "沒有可引用的附件"
     },
     "empty": {
       "greetingWithName": "嗨,{name}!",
@@ -458,7 +462,6 @@
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的畫面內容，@ 引用參考",
       "mentionEmpty": "沒有可引用的內容",
-      "mentionNoMatch": "沒有匹配的內容",
       "voicePlaceholder": "未選音色",
       "voiceSearchPlaceholder": "搜尋音色…",
       "voiceLoading": "正在載入音色…",
@@ -1516,7 +1519,7 @@
         "description": "簡介",
         "dangerTitle": "危險操作",
         "transfer": "轉讓 Studio",
-        "dangerHint": "轉讓會把整個 Studio（含 Projects、Collections 與錢包）交給另一位成員；修改 Slug 會讓所有現有連結失效。僅 Admin 可操作。",
+        "dangerHint": "轉讓會把 Studio（含 Projects、Collections）交給另一位成員，發起前需先取消指定給它的點數包。修改 Slug 會讓所有現有連結失效。僅 Admin 可操作。",
         "dangerHintPersonal": "你的 Slug 就是你的 @handle，也是這個 Studio 的網址。修改無法復原。",
         "transferTitle": "轉讓 Studio 所有權",
         "transferBody": "選擇一位 Maintainer 成為新的 Admin。對方接受後轉讓才生效,你會變成 Maintainer。",

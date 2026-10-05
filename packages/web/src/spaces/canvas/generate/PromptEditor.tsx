@@ -21,11 +21,10 @@ import {
   extractAtMentionedSourceIds,
   planMentionDeletions,
   planChipDisplayUpdates,
-  MENTION_SOURCE_ID_ATTR,
-  REFERENCE_MENTION_NODE,
   type MentionOccurrence,
   type ChipDisplaySnapshot,
 } from '@web/spaces/canvas/generate/at-reference';
+import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import {
   MENTION_LABEL_ATTR,
@@ -34,10 +33,10 @@ import {
   referenceMentionContent,
   serializePromptText,
 } from '@web/spaces/canvas/generate/reference-mention';
-import { dispatchMachineEdit } from '@web/spaces/canvas/generate/reference-mention-local-input';
+import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
 import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
-import { planCascadeDeletion } from '@web/spaces/canvas/generate/reference-mention-whitespace';
+import { planCascadeDeletion } from '@web/features/reference-mention/reference-mention-whitespace';
 
 /** Imperative handle exposed to the container to insert a reference at the cursor. */
 export interface PromptEditorHandle {
@@ -153,13 +152,6 @@ interface PromptEditorProps {
   /** Localized empty-state text for the `@` picker popup. */
   mentionEmptyLabel: string;
   /**
-   * Localized text for "there IS something, your query filtered it out".
-   * Separate from {@link PromptEditorProps.mentionEmptyLabel}: telling a user
-   * whose typing narrowed a non-empty list that there is nothing would be a
-   * lie (user 2026-08-19).
-   */
-  mentionNoMatchLabel: string;
-  /**
    * The canvas-space doc's provider (its awareness carries collaborator
    * carets — batch-2 item 14). Null until the socket connects; the caret
    * extension mounts only when present (it throws on a null provider).
@@ -182,7 +174,6 @@ interface PromptEditorProps {
  * @param root0.references - The current reference pool (the `@` picker options).
  * @param root0.referenceKinds - The kinds of `@` chip the pool takes; the rest are inert (greyed).
  * @param root0.mentionEmptyLabel - Localized text for "this mode has nothing to offer".
- * @param root0.mentionNoMatchLabel - Localized text for "your query matched none of them".
  * @param root0.caretProvider - Canvas-space doc provider whose awareness carries collaborator carets (null until connected).
  * @param root0.testId - What tests reach for this editor by.
  * @param root0.startingHeight - How tall the box opens before anything is typed.
@@ -204,7 +195,6 @@ export const PromptEditor = React.forwardRef<
     references,
     referenceKinds,
     mentionEmptyLabel,
-    mentionNoMatchLabel,
     caretProvider = null,
     testId = 'generate-prompt-editor',
     startingHeight = 'full',
@@ -285,7 +275,6 @@ export const PromptEditor = React.forwardRef<
           suggestion: makeReferenceSuggestion({
             getPool: () => poolRef.current,
             emptyLabel: mentionEmptyLabel,
-            noMatchLabel: mentionNoMatchLabel,
             // Same verdict as the rail's insert button, from the same call:
             // a row the picker offers is a row the rail would insert.
             getUsabilityContext: () => ({
@@ -343,7 +332,6 @@ export const PromptEditor = React.forwardRef<
     [
       fragment,
       mentionEmptyLabel,
-      mentionNoMatchLabel,
       caretProvider,
       collaboratorNames?.resolve,
     ],

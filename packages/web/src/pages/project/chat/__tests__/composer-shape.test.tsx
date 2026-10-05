@@ -82,34 +82,31 @@ describe('the box the reader types in', () => {
   it('starts one line tall', () => {
     render(<ChatComposer {...BASICS} />);
 
-    const box = screen.getByTestId('chat-composer-textarea');
-    expect(box).toHaveAttribute('rows', '1');
+    const box = screen.getByTestId('chat-composer-box');
+    expect(box.querySelectorAll('p')).toHaveLength(1);
     expect(box.className).not.toMatch(/min-h-/);
   });
 
   it('grows with what is typed, and scrolls in the panel rather than in itself', () => {
     render(<ChatComposer {...BASICS} />);
 
-    const box = screen.getByTestId('chat-composer-textarea');
+    const box = screen.getByTestId('chat-composer-box');
     // The box takes the height of its content; the ceiling belongs to the
     // wrapper, whose scrollbar is the panel's own rather than the browser's.
-    expect(box.className).toContain('overflow-hidden');
+    expect(box.className).not.toMatch(/overflow-(y-)?(auto|scroll)|max-h-/);
     // Radix marks its own viewport, which only exists inside a ScrollArea.
     expect(box.closest('[data-radix-scroll-area-viewport]')).not.toBeNull();
   });
 
-  it('puts the scroll position back after measuring what is written', () => {
+  it('leaves the scroll position alone when what is written changes', () => {
     const { rerender } = render(<ChatComposer {...BASICS} draft='one line' />);
 
-    const box = screen.getByTestId('chat-composer-textarea');
+    const box = screen.getByTestId('chat-composer-box');
     const viewport = box.closest('[data-radix-scroll-area-viewport]');
     if (viewport === null) throw new Error('the composer has no scrolling viewport');
 
-    // Stand in for a scroller that has been scrolled down. Measuring means
-    // letting the box shrink to its `rows` height first, and in a browser
-    // that shrink clamps this to 0 -- the caret the browser had just
-    // scrolled to goes off screen and stays there. Nothing here clamps
-    // anything, so what is asserted is the write that puts it back.
+    // Stand in for a scroller that has been scrolled down: nothing about
+    // writing more may move the reader off the line they were on.
     const written: number[] = [];
     let held = 120;
     Object.defineProperty(viewport, 'scrollTop', {
@@ -123,7 +120,8 @@ describe('the box the reader types in', () => {
 
     rerender(<ChatComposer {...BASICS} draft={'one line\ntwo lines\nthree'} />);
 
-    expect(written).toContain(120);
+    expect(written.every((top) => top === 120)).toBe(true);
+    expect(box.querySelectorAll('p')).toHaveLength(3);
   });
 });
 

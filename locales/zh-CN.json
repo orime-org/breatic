@@ -60,7 +60,9 @@
       "cannot_change_admin_role": "Admin 角色只能通过转让变更。",
       "member_limit_reached": "{limit, plural, =0 {这个 Studio 的会员等级不支持添加成员，升级后即可添加。} other {这个 Studio 的会员等级最多可有 # 位成员，升级可添加更多。}}",
       "member_limit_reached_for_invitee": "这个 Studio 的成员名额已满，请联系它的 Admin 腾出名额。",
-      "leave_last_admin": "离开这个 Studio 前请先转让 Admin。"
+      "leave_last_admin": "离开这个 Studio 前请先转让 Admin。",
+      "transfer_credits_designated": "还有积分包指定给这个 Studio。请先在头像菜单 →「积分」→「指定」里取消指定，再发起转让。",
+      "designation_during_transfer": "这个 Studio 有待接受的转让，撤回或转让结束后才能再给它指定积分包。"
     },
     "project": {
       "join_already_member": "你已经是这个 Project 的成员。",
@@ -169,7 +171,8 @@
     "chat": {
       "message_too_long": "这条消息太长了。最多 {limit, number} 个字符，这条有 {actual, number} 个。",
       "attachments_too_long": "附带的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
-      "attachments_too_many": "附带的内容太多了。最多 {limit, number} 项，这条有 {actual, number} 项。"
+      "attachments_too_many": "附带的内容太多了。最多 {limit, number} 项，这条有 {actual, number} 项。",
+      "references_too_many": "引用附件的次数太多。一条消息最多 {limit, number} 次，这条有 {actual, number} 次。"
     },
     "mail": {
       "studio_invite": {
@@ -254,7 +257,8 @@
       "attachTooLong": "附带的内容太多了，请少挂几项或换短一点的文件。",
       "attachUnsupported": "{filename} 不能附带",
       "attachTooLarge": "{filename} 太大，不能附带",
-      "attachUnavailable": "暂时无法添加，请重试。"
+      "attachUnavailable": "暂时无法添加，请重试。",
+      "atEmpty": "没有可引用的附件"
     },
     "empty": {
       "greetingWithName": "嗨, {name}!",
@@ -458,7 +462,6 @@
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的画面内容，@ 引用参考",
       "mentionEmpty": "没有可引用的内容",
-      "mentionNoMatch": "没有匹配的内容",
       "voicePlaceholder": "未选音色",
       "voiceSearchPlaceholder": "搜索音色…",
       "voiceLoading": "正在加载音色…",
@@ -1516,7 +1519,7 @@
         "description": "简介",
         "dangerTitle": "危险操作",
         "transfer": "转让 Studio",
-        "dangerHint": "转让会把整个 Studio（含 Projects、Collections 与钱包）交给另一位成员；修改 Slug 会让所有现有链接失效。仅 Admin 可操作。",
+        "dangerHint": "转让会把 Studio（含 Projects、Collections）交给另一位成员，发起前需先取消指定给它的积分包。修改 Slug 会让所有现有链接失效。仅 Admin 可操作。",
         "dangerHintPersonal": "你的 Slug 就是你的 @handle，也是这个 Studio 的网址。修改不可撤销。",
         "transferTitle": "转让 Studio 所有权",
         "transferBody": "选择一位 Maintainer 成为新的 Admin。对方接受后转让才生效,你会变成 Maintainer。",

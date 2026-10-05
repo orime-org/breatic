@@ -22,11 +22,8 @@ import * as Y from 'yjs';
 
 import type { PromptSegment } from '@breatic/shared';
 
-import {
-  MENTION_SOURCE_ID_ATTR,
-  REFERENCE_MENTION_NODE,
-  extractAtMentionedSourceIds,
-} from '@web/spaces/canvas/generate/at-reference';
+import { extractAtMentionedSourceIds } from '@web/spaces/canvas/generate/at-reference';
+import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import {
   MENTION_KIND_ATTR,
   ReferenceMention,
@@ -65,7 +62,6 @@ function roundTrip(
         suggestion: makeReferenceSuggestion({
           getPool: () => [],
           emptyLabel: '',
-          noMatchLabel: '',
         }),
       }),
       Collaboration.configure({ fragment }),

@@ -300,6 +300,7 @@ jobs:
           node scripts/release.mjs ci "$REF" "$REVISION" >> "$GITHUB_OUTPUT"
           if [[ "$REF" == refs/tags/* ]]; then
             git merge-base --is-ancestor "$REVISION" origin/main
+            node scripts/release.mjs compose-tag "${REF#refs/tags/}" docker-compose.yml
           fi
 
       - uses: docker/setup-buildx-action@v4

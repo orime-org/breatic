@@ -13,6 +13,7 @@ import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
+import { usePasteCanvas } from '@web/pages/project/chat/use-paste-canvas';
 import { ChatNotice } from '@web/pages/project/chat/ChatNotice';
 import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHistorySheet';
 import { MessageList } from '@web/pages/project/chat/MessageList';
@@ -46,6 +47,8 @@ interface ChatPanelProps {
    * before sending; default behaviour just sets the draft.
    */
   onQuickAction?: (label: string) => void;
+  /** The canvas on screen, when the open Space is one: pasted nodes it has are handed over from it. */
+  canvasSpaceId?: string;
 }
 
 /**
@@ -59,6 +62,7 @@ interface ChatPanelProps {
  * @param root0.historyOpen - Whether the conversation list is showing.
  * @param root0.onHistoryOpenChange - Called with the next open state for that list.
  * @param root0.onQuickAction - Called with a quick-action label from the empty state.
+ * @param root0.canvasSpaceId - The canvas on screen, when the open Space is one.
  * @returns The per-user private chat column with message list, composer, and history sheet.
  */
 export function ChatPanel({
@@ -66,6 +70,7 @@ export function ChatPanel({
   historyOpen,
   onHistoryOpenChange,
   onQuickAction,
+  canvasSpaceId,
 }: ChatPanelProps): React.JSX.Element {
   const {
     messages,
@@ -244,6 +249,8 @@ export function ChatPanel({
     if (historyOpen) reloadList();
   }, [historyOpen, reloadList]);
 
+  const pasteCanvas = usePasteCanvas(projectId, canvasSpaceId);
+
   /** Load a quick-action label into the composer. Stable for the same reason. */
   const quickAction = React.useCallback(
     (label: string): void => {
@@ -291,6 +298,7 @@ export function ChatPanel({
           the second failure is invisible and unspoken. */}
       <ChatNotice key={mishap?.at ?? 'none'} message={notice} />
       <ChatComposer
+        conversationId={currentId ?? null}
         draft={draft}
         turnPhase={turnPhase}
         navigating={navigating}
@@ -301,6 +309,7 @@ export function ChatPanel({
         attachAccept={attachFiles.accept}
         attachNotice={attachFiles.notice}
         onAttachFiles={attachFiles.attach}
+        onPasteCanvas={pasteCanvas}
         onRemoveAttachment={removeAttachment}
       />
       <ConversationHistorySheet

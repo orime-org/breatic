@@ -22,6 +22,9 @@ vi.mock("@breatic/core", () => ({
   getUserMembershipTier: vi.fn(),
 }));
 
+// The mail goes on the worker's queue; this suite reads the tier and the bell.
+vi.mock("@breatic/domain", () => ({ enqueueMail: vi.fn() }));
+
 vi.mock("@server/modules/notification/notification.service.js", () => ({
   createMembershipEnded: vi.fn(),
 }));

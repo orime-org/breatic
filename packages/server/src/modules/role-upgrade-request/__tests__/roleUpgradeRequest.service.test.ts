@@ -48,10 +48,10 @@ vi.mock("@breatic/core", async (importOriginal) => {
   class ForbiddenError extends Error {}
   class ConflictError extends Error {}
   return {
-    // The mailer lives in core again (#40). This factory replaces the module
-    // wholesale rather than spreading the real exports, so anything the file
-    // imports has to be listed here or it arrives as undefined.
-    sendMail: vi.fn(async () => ({ ok: true })),
+    // This factory replaces the module wholesale rather than spreading the
+    // real exports, so anything the file imports has to be listed here or it
+    // arrives as undefined.
+    //
     // The email templates render inside the recipient's locale, in the
     // configured layout, and log a failed send; all three are the real ones.
     runWithLocale: actual.runWithLocale,
@@ -72,6 +72,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
     ConflictError,
   };
 });
+// The email is queued for the worker; the job carries the built mail.
+vi.mock("@breatic/domain", () => ({ enqueueMail: vi.fn(async () => {}) }));
 vi.mock("../roleUpgradeRequests.repo.js", () => ({
   createPending: vi.fn(),
   attachNotification: vi.fn(),
@@ -130,7 +132,8 @@ import * as studioService from "../../studio/studio.service.js";
 import * as projectRepo from "../../project/project.repo.js";
 import * as requestsRepo from "../roleUpgradeRequests.repo.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
-import { projectMembersRepo, sendMail } from "@breatic/core";
+import { projectMembersRepo } from "@breatic/core";
+import { enqueueMail } from "@breatic/domain";
 import * as roleUpgradeRequestService from "../roleUpgradeRequest.service.js";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 
@@ -291,8 +294,8 @@ describe("request", () => {
       origin: "https://app.test",
     });
 
-    expect(sendMail).toHaveBeenCalledTimes(1);
-    const mail = vi.mocked(sendMail).mock.calls[0]?.[0];
+    expect(enqueueMail).toHaveBeenCalledTimes(1);
+    const mail = vi.mocked(enqueueMail).mock.calls[0]?.[0].mail;
     expect(mail?.to).toBe("olivia@example.com");
     // The same token the bell row carries — one request, one link.
     expect(mail?.html).toContain(
@@ -322,7 +325,7 @@ describe("request", () => {
     });
 
     // A link to nowhere is worse than no email; the bell entry still landed.
-    expect(sendMail).not.toHaveBeenCalled();
+    expect(enqueueMail).not.toHaveBeenCalled();
   });
 
   it("links the bell entry back to the request", async () => {
