@@ -59,7 +59,7 @@
       "member_limit_reached_for_invitee": "この Studio のメンバー枠は満員です。Admin に空きを作ってもらってください。",
       "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。",
       "transfer_credits_designated": "この Studio にまだクレジットパックが割り当てられています。アバターメニュー →「クレジット」→「割り当て」で解除してから譲渡してください。",
-      "designation_during_transfer": "この Studio には承認待ちの譲渡があります。譲渡を取り消すか完了した後に、再びパックを割り当てられます。"
+      "designation_during_transfer": "この Studio には承認待ちの譲渡があります。譲渡を取り消すか終了した後に、再びパックを割り当てられます。"
     },
     "project": {
       "join_already_member": "すでにこの Project のメンバーです。",

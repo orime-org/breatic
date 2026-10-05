@@ -142,8 +142,8 @@ export interface MailLogLine {
 }
 
 /**
- * Map a send result to the log line the caller should write, so every place
- * that sends mail logs by one rule. A sent mail is left to the caller's own
+ * Map a send result to the log line the caller should write, so sign-up
+ * codes, password resets and the worker's notification mail log by one rule. A sent mail is left to the caller's own
  * line, and a disabled backend writes nothing.
  * @param result - What {@link sendMail} returned.
  * @returns The line to write, or null for none.
