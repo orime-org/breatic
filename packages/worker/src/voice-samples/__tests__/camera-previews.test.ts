@@ -25,7 +25,7 @@ const PARAMS = {
  * @returns The entry.
  */
 const entry = (name: string, mode: string[], commands?: typeof COMMANDS): FullModelEntry =>
-  ({ name, mode, takes_prompt: true, params: PARAMS, camera_commands: commands }) as unknown as FullModelEntry;
+  ({ name, mode, takes_prompt: true, params: PARAMS, camera_commands: commands });
 
 describe("planCameraPreviews", () => {
   it("makes one clip per key with the text-to-video entry, at its own defaults", () => {

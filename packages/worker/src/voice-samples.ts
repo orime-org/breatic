@@ -84,6 +84,13 @@ async function syncKind(
 async function main(): Promise<void> {
   const storage = await getStorageAdapter();
   assertUploadsReachSampleAddress((key) => storage.publicUrl(key), voiceSampleUrl);
+  /**
+   * Store bytes under a key at the sample address.
+   * @param key - The sample key.
+   * @param bytes - The bytes.
+   * @param contentType - What they are stored as.
+   * @returns Nothing once stored.
+   */
   const upload = async (key: string, bytes: Buffer, contentType: string): Promise<void> => {
     await storage.upload(key, bytes, contentType);
   };
