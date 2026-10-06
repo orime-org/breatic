@@ -19,7 +19,7 @@ import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
 
 test.use({ viewport: { width: 1900, height: 1300 } });
 test.setTimeout(90_000);
@@ -40,12 +40,12 @@ let spaceId = '';
  * @returns The node's id.
  */
 async function seedImageNode(p: Page, x: number, y: number, content?: string): Promise<string> {
-  await expect(p.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(p).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   const nodeId = crypto.randomUUID();
   const at = await liveModuleUrl(p, CANVAS_SPACE);
   await p.evaluate(
-    async ([pid, sid, id, left, top, url, asset]: [string, string, string, number, number, string, string]) => {
-      const vp = document.querySelector('.react-flow__viewport');
+    async ([pid, sid, id, left, top, url, asset, shown]: [string, string, string, number, number, string, string, string]) => {
+      const vp = document.querySelector(`${shown} .react-flow__viewport`);
       if (!(vp instanceof HTMLElement)) throw new Error('canvas not mounted');
       const m = new DOMMatrixReadOnly(getComputedStyle(vp).transform);
       const canvas = (await import(/* @vite-ignore */ url)) as { addNode: (p: string, s: string, n: unknown) => void };
@@ -64,7 +64,7 @@ async function seedImageNode(p: Page, x: number, y: number, content?: string): P
         },
       });
     },
-    [projectId, spaceId, nodeId, x, y, at, content ?? ''] as [string, string, string, number, number, string, string],
+    [projectId, spaceId, nodeId, x, y, at, content ?? '', VISIBLE_SPACE] as [string, string, string, number, number, string, string, string],
   );
   return nodeId;
 }
@@ -137,7 +137,7 @@ async function openOnQwen(p: Page): Promise<{ target: string; requested: string[
     },
     [projectId, spaceId, source, target, at] as [string, string, string, string, string],
   );
-  const node = p.locator(`.react-flow__node[data-id="${target}"]`);
+  const node = visibleSpace(p).locator(`.react-flow__node[data-id="${target}"]`);
   await expect(node).toBeVisible({ timeout: 15_000 });
   await node.click({ button: 'right' });
   await p.getByTestId('node-menu-generate').click();
