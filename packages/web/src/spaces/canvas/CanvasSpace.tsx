@@ -435,7 +435,6 @@ const UPLOAD_ACCEPT: Partial<Record<Modality, string>> = {
 const STAGGER_STEP_PX = 24;
 const STAGGER_WRAP = 8;
 
-
 /**
  * Operation id for the drop/upload batch prefix in the per-space operation
  * registry (#1617). Registered synchronously when a multi-file drop starts so
@@ -2504,7 +2503,7 @@ function CanvasSpaceInner({
     (
       files: File[],
       origin: { x: number; y: number },
-      how: 'drop' | 'paste' = 'drop',
+      stepPastTaken = false,
     ): void => {
       if (readOnly || files.length === 0) return;
       // Register the batch SYNCHRONOUSLY (before the config-fetch await) so the
@@ -2558,11 +2557,10 @@ function CanvasSpaceInner({
             tops.length >= 2
               ? groupRectForMembers(tops.map((top) => ({ ...top, ...EMPTY_NODE_SIZE })))
               : null;
-          // A paste steps the whole batch, its Group included, past nodes
-          // already on its spot, so it shows (inner#1235 A20). A drop lands
-          // where the pointer let go.
+          // Only a paste steps the whole batch, its Group included, past nodes
+          // already on its spot, so it shows (inner#1235 A20).
           const step =
-            how === 'paste'
+            stepPastTaken
               ? stepPaste(frame === null ? tops : [...tops, frame])
               : { dx: 0, dy: 0 };
           const centres = laid.map((centre) => ({
@@ -2679,24 +2677,31 @@ function CanvasSpaceInner({
   // synchronously inside the button click to keep user-activation, so it
   // lives in chrome and posts here). Drop them at the viewport centre; the
   // canvas owns the viewport. Always clear the mailbox afterward.
+  /**
+   * The middle of the view, in flow coordinates.
+   * @param rect - The canvas container's box on screen.
+   * @returns That point.
+   */
+  const viewCentre = React.useCallback(
+    (rect: DOMRect): { x: number; y: number } =>
+      screenToFlowPosition({
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      }),
+    [screenToFlowPosition],
+  );
   const pendingUploadFiles = useCanvasStore((s) => s.pendingUploadFiles);
   const consumePendingUpload = useCanvasStore((s) => s.consumePendingUpload);
   React.useEffect(() => {
     if (!pendingUploadFiles) return;
     const files = pendingUploadFiles;
     const rect = containerRef.current?.getBoundingClientRect();
-    if (rect && !readOnly) {
-      const center = screenToFlowPosition({
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
-      });
-      processFiles(files, center);
-    }
+    if (rect && !readOnly) processFiles(files, viewCentre(rect));
     consumePendingUpload();
   }, [
     pendingUploadFiles,
     readOnly,
-    screenToFlowPosition,
+    viewCentre,
     processFiles,
     consumePendingUpload,
   ]);
@@ -2927,17 +2932,6 @@ function CanvasSpaceInner({
       if (isEditableTarget(event.target as Element | null)) return;
       claimRegion('space');
 
-      /**
-       * The middle of the view, where a paste with no source of its own lands.
-       * @param rect - The canvas container's box on screen.
-       * @returns That point, in flow coordinates.
-       */
-      const viewCentre = (rect: DOMRect): { x: number; y: number } =>
-        screenToFlowPosition({
-          x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2,
-        });
-
       // File paste (screenshot / copied file) carries binary in
       // `clipboardData.files` — route it through the upload flow, laid out
       // around the viewport centre like a text paste and stepped past nodes
@@ -2947,7 +2941,7 @@ function CanvasSpaceInner({
       if (files && files.length > 0) {
         event.preventDefault();
         const rect = containerRef.current?.getBoundingClientRect();
-        if (rect) processFiles([...files], viewCentre(rect), 'paste');
+        if (rect) processFiles([...files], viewCentre(rect), true);
         return;
       }
 
@@ -2982,7 +2976,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
-  }, [readOnly, pasteNodesAt, pasteTextAt, screenToFlowPosition, processFiles, spaceId]);
+  }, [readOnly, pasteNodesAt, pasteTextAt, screenToFlowPosition, viewCentre, processFiles, spaceId]);
 
   React.useEffect(() => {
     /**

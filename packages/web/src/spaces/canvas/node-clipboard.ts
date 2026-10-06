@@ -438,7 +438,10 @@ export function clipboardBoundingBox(
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
-/** Pixels a paste steps: beside an in-view source, and past a taken spot. */
+/**
+ * Pixels a copy moves: a paste beside its in-view source and past a taken
+ * spot, and a Cmd/Ctrl+D duplicate down-right of its source.
+ */
 export const PASTE_OFFSET_PX = 24;
 
 /**
