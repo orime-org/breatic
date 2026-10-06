@@ -39,6 +39,9 @@ catalogs:
     '@openrouter/ai-sdk-provider':
       specifier: ^3.0.0
       version: 3.0.0
+    '@sentry/cloudflare':
+      specifier: ^11.4.0
+      version: 11.4.0
     '@sentry/node':
       specifier: ^11.4.0
       version: 11.4.0
@@ -498,6 +501,9 @@ importers:
       '@cloudflare/containers':
         specifier: 0.3.7
         version: 0.3.7
+      '@sentry/cloudflare':
+        specifier: 'catalog:'
+        version: 11.4.0(@cloudflare/workers-types@5.20260830.1)(wrangler@4.127.1(@cloudflare/workers-types@5.20260830.1))
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.12.21
@@ -4927,6 +4933,18 @@ packages:
     resolution: {integrity: sha512-baBcNPLLfUi9WuL+Tpri9BFaAdvugZIKelC5X0tt0Zdy+K0K+PCVSrnNmwMWU/HyaF/SEv6b6UHnXIdqanBlcg==}
     engines: {node: '>= 10'}
     hasBin: true
+
+  '@sentry/cloudflare@11.4.0':
+    resolution: {integrity: sha512-TzbZ+ARAmrKUquCoD2eRZHW8YlLECOZVoGRnMyj/D9kP5yCiy9mjEivipZya/nxqYzRctnrn2LSgwiCKlbmLMg==}
+    engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+    peerDependencies:
+      '@cloudflare/workers-types': ^4.x || ^5.x
+      wrangler: ^4.x
+    peerDependenciesMeta:
+      '@cloudflare/workers-types':
+        optional: true
+      wrangler:
+        optional: true
 
   '@sentry/conventions@0.16.0':
     resolution: {integrity: sha512-fO9PLmHdVURcSPUpWCItWAtgKiMwGdJHbovoSEyLplX5sxs2ugvI4CBPTrkkgqhObnZOD0CnWBKDzSVQYBKEyQ==}
@@ -15069,6 +15087,18 @@ snapshots:
     transitivePeerDependencies:
       - encoding
       - supports-color
+
+  '@sentry/cloudflare@11.4.0(@cloudflare/workers-types@5.20260830.1)(wrangler@4.127.1(@cloudflare/workers-types@5.20260830.1))':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@sentry/conventions': 0.25.0
+      '@sentry/core': 11.4.0
+      '@sentry/opentelemetry': 11.4.0(@opentelemetry/api@1.9.1)
+      '@sentry/server-utils': 11.4.0
+      magic-string: 0.30.21
+    optionalDependencies:
+      '@cloudflare/workers-types': 5.20260830.1
+      wrangler: 4.127.1(@cloudflare/workers-types@5.20260830.1)
 
   '@sentry/conventions@0.16.0': {}
 

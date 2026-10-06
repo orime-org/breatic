@@ -20,7 +20,7 @@ suffix, and replace the values with your own.
 
 | Copy this | To this | Put in it |
 |---|---|---|
-| `wrangler.toml.template` | `wrangler.toml` | Bucket name, the port it listens on, and the origins allowed to send it parts |
+| `wrangler.toml.template` | `wrangler.toml` | Bucket name, the port it listens on, the origins allowed to send it parts, and where errors are reported |
 | `.dev.vars.template` | `.dev.vars` | The shared secret |
 
 Nothing appears in both files, so nothing overrides anything: what a name means
@@ -42,6 +42,13 @@ top-level one `wrangler dev` uses, and `[[env.production.containers]]` that
 add both lines. `containers` does not inherit into an environment, so the
 production block needs its own; with only the top-level one, `wrangler dev`
 works and the deploy fails on the first `COPY`.
+
+**A `wrangler.toml` copied before error reporting was added needs
+`compatibility_flags = ["nodejs_compat"]`** at the top level, next to
+`compatibility_date`; it inherits into `[env.production]`. The Sentry SDK is
+imported whether or not a DSN is set, and without the flag bundling only warns
+while the runtime refuses to load the Worker: `wrangler dev` stops with
+`No such module "node:async_hooks"`.
 
 ### The server side of the same pipeline
 
@@ -72,6 +79,9 @@ environments differ only in what the values are.
 | `bucket_name` | The bucket your local server writes to — the same as `R2_BUCKET` in the repo-root `.env` | The live bucket |
 | `ALLOWED_ORIGINS` | `http://localhost:<VITE_DEV_PORT>`, from the same `.env` | The live site host |
 | `remote` on the R2 binding | `true` | Absent — a deployed Worker is already next to the bucket |
+| `compatibility_flags` | `["nodejs_compat"]`, at the top level only | Inherited |
+| `SENTRY_DSN` | Empty — nothing is reported | The ingest project's DSN, or empty to report nothing |
+| `SENTRY_ENVIRONMENT` | `development` | `production` (or `staging`) |
 
 `ALLOWED_ORIGINS` is what the browser is checked against. The browser sends its
 parts to this Worker rather than to the bucket, so this Worker answers the
@@ -80,6 +90,16 @@ the bucket public endpoint needs GET CORS for the web origin so canvas image
 cropping works; see the deployment guide. A part carries
 `x-upload-token`, which makes it a non-simple request, so a browser whose origin
 is not listed here never sends the bytes at all.
+
+`SENTRY_RELEASE` is in neither file. It is the full commit the deployed code was
+built from, so it is passed when deploying (`--var SENTRY_RELEASE:<commit>`). A
+value that is not a full 40-character lowercase commit is ignored, and an
+`SENTRY_ENVIRONMENT` that is not `production`, `staging` or `development` is
+reported as `development`.
+
+Every failure this Worker writes to its log also goes to Sentry, except the ones
+the reader caused: a link they handed us that cannot be fetched or is not a
+kind we take, and stored bytes of a kind we do not take. Those are only logged.
 
 ### .dev.vars
 

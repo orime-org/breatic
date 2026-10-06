@@ -30,7 +30,14 @@ import {
   type MediaLimits,
   type UploadTicketPayload,
 } from "@breatic/shared";
+import * as Sentry from "@sentry/cloudflare";
 import { downloadTarget, serveDownload } from "@ingest/download.js";
+import {
+  monitoringOptions,
+  noted,
+  noteFailure,
+  type MonitoringEnv,
+} from "@ingest/error-monitoring.js";
 import { readMediaAtEdge, type MediaEnv } from "@ingest/media-read.js";
 import {
   mediaNumbersFor,
@@ -72,7 +79,7 @@ const ALLOWED_METHODS = "POST, PUT, OPTIONS";
 const COMPLETE_PATH = /^\/uploads\/([^/]+)\/complete$/;
 
 /** What wrangler binds into the Worker. */
-export interface Env extends MediaEnv {
+export interface Env extends MediaEnv, MonitoringEnv {
   BUCKET: R2Bucket;
   /** Signs the ticket we verify, and authenticates what we send back. */
   INGEST_SHARED_SECRET: string;
@@ -321,39 +328,6 @@ function refused(
 }
 
 /**
- * Write down a failure this Worker turns into an answer of its own.
- *
- * The answer says what the browser can do about it; the reason it happened
- * exists nowhere else. Without this an operator cannot tell a wrong URL from a
- * refused claim from R2 turning an assembly down — every one of them reads as
- * the same 502 in Cloudflare's logs.
- * @param label - What failed, as one searchable token.
- * @param ctx - The key, ids and status that name this attempt.
- */
-function noteFailure(label: string, ctx: Record<string, unknown>): void {
-  console.error(label, ctx);
-}
-
-/**
- * Turn a rejected promise into null, writing down what it was.
- * @param label - What failed, as one searchable token.
- * @param ctx - The key and ids that name this attempt.
- * @returns A catch handler answering null.
- */
-function noted(
-  label: string,
-  ctx: Record<string, unknown>,
-): (err: unknown) => null {
-  return (err: unknown): null => {
-    noteFailure(label, {
-      ...ctx,
-      err: err instanceof Error ? err.stack : String(err),
-    });
-    return null;
-  };
-}
-
-/**
  * Finish the upload: check the list, take the permission, assemble, hash and
  * report.
  *
@@ -510,7 +484,9 @@ async function finishUpload(
     !isUploadableMediaType(storedType) &&
     storedType !== canonicalMediaType(contentType)
   ) {
-    noteFailure("ingest_stored_type_refused", { storageKey, storedType });
+    noteFailure("ingest_stored_type_refused", { storageKey, storedType }, undefined, {
+      userInput: true,
+    });
     return refused(
       "unsupported_type",
       "The stored bytes are not a kind we take",
@@ -642,7 +618,7 @@ async function measureMedia(
   // No deadline named, no run: the request that starts one carries the figures
   // it is held to, so a body without them is a caller that cannot be waited on.
   if (about.limits === null) {
-    console.error("ingest_media_limits_missing", { storageKey: about.storageKey });
+    noteFailure("ingest_media_limits_missing", { storageKey: about.storageKey });
     return { media: NO_MEASUREMENT, cover: null, contentType: about.contentType };
   }
   const read = await readMediaAtEdge(env, {
@@ -891,6 +867,9 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
   );
   if (!verified.ok) return new Response("Unauthorized", { status: 401 });
   const { storageKey, partSize, totalParts } = verified.payload;
+  // A link the reader handed us rather than one a provider answered with. Its
+  // failures are the reader's to act on and are logged without being reported.
+  const fromReader = { userInput: verified.payload.typeFromSource === true };
 
   const body = await request.json<FetchBody>().catch(() => null);
   const source = body?.url;
@@ -899,14 +878,16 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
   }
 
   const upstream = await fetch(source).catch(
-    noted("ingest_source_unreachable", { storageKey }),
+    noted("ingest_source_unreachable", { storageKey }, fromReader),
   );
   if (upstream === null || !upstream.ok || upstream.body === null) {
     if (upstream !== null && !upstream.ok) {
-      noteFailure("ingest_source_refused", {
-        storageKey,
-        status: upstream.status,
-      });
+      noteFailure(
+        "ingest_source_refused",
+        { storageKey, status: upstream.status },
+        undefined,
+        fromReader,
+      );
     }
     // Nothing was written. The caller drove this transfer, so it is the caller
     // that voids the grant and settles the task on this answer.
@@ -915,10 +896,12 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
 
   const storedType = storedTypeFor(verified.payload, upstream);
   if (storedType === null) {
-    noteFailure("ingest_source_type_refused", {
-      storageKey,
-      declared: upstream.headers.get("content-type"),
-    });
+    noteFailure(
+      "ingest_source_type_refused",
+      { storageKey, declared: upstream.headers.get("content-type") },
+      undefined,
+      fromReader,
+    );
     return refused("unsupported_type", "The source is not an uploadable kind", 415);
   }
 
@@ -1054,7 +1037,7 @@ function withCors(response: Response, origin: string | null): Response {
   });
 }
 
-export default {
+export default Sentry.withSentry((env: Env) => monitoringOptions(env), {
   /**
    * Route one request.
    * @param request - The incoming request.
@@ -1099,7 +1082,7 @@ export default {
 
     return withCors(await answer(request, env), origin);
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<Env>);
 
 /**
  * Run the route and turn anything it throws into an answer.
@@ -1119,11 +1102,7 @@ async function answer(request: Request, env: Env): Promise<Response> {
     // Written here because catching it is what takes it off Cloudflare's own
     // error reporting: what that shows is the exceptions nobody handled. A 500
     // with nothing behind it is all anyone would have to go on otherwise.
-    console.error("ingest_request_failed", {
-      url: request.url,
-      method: request.method,
-      err: err instanceof Error ? err.stack : String(err),
-    });
+    noteFailure("ingest_request_failed", { url: request.url, method: request.method }, err);
     return new Response("Internal error", { status: 500 });
   }
 }

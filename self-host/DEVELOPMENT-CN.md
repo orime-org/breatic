@@ -152,7 +152,7 @@ pnpm --filter @breatic/ingest exec wrangler whoami
 | `[[env.production.r2_buckets]]` 的 `bucket_name` | 此次可先填同一本地试用 bucket 名 |
 | `[[env.production.containers]]` 的 `max_instances` | 整数 `5` |
 
-保留两个 `image_build_context = "../.."`，以及模板原有的 `compatibility_date`、Durable Object 绑定和 `exports` 设置。production 部分仅补齐模板，**本文不执行 `deploy:worker`**；正式部署上传服务时，按 [Cloudflare 部署步骤](LOCAL-CN.md#cloudflare) 单独配置云端资源。
+保留两个 `image_build_context = "../.."`，以及模板原有的 `compatibility_date`、`compatibility_flags`、Durable Object 绑定和 `exports` 设置。production 部分仅补齐模板，**本文不执行 `deploy:worker`**；正式部署上传服务时，按 [Cloudflare 部署步骤](LOCAL-CN.md#cloudflare) 单独配置云端资源。
 
 编辑 `packages/ingest/.dev.vars`：
 
