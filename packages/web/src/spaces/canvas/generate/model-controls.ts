@@ -27,6 +27,7 @@ import {
 } from '@breatic/shared';
 
 import type { ParamOption } from '@web/spaces/canvas/generate/ParamOptionGroup';
+import type { SliderStop } from '@web/spaces/canvas/generate/ParamSliderRow';
 
 /** One field of a list editor's row. */
 export type ItemFieldControl =
@@ -37,7 +38,7 @@ export type ItemFieldControl =
 export type ModelControl =
   | { kind: 'toggle'; name: string }
   | { kind: 'choice'; name: string; options: ParamOption[] }
-  | { kind: 'range'; name: string; min: number; max: number; step: number }
+  | { kind: 'range'; name: string; min: number; max: number; step: number; stops?: SliderStop[] }
   | { kind: 'text'; name: string }
   | { kind: 'items'; name: string; max: number | undefined; fields: ItemFieldControl[] }
   | { kind: 'cameraAngle'; name: 'camera_angle'; params: CameraAngleParams };
@@ -68,7 +69,7 @@ export function cameraAngleNames(
  * @param control - One of a model's own controls.
  * @returns Its param names: three for a camera pose, one otherwise.
  */
-export function controlParams(control: ModelControl): string[] {
+function controlParams(control: ModelControl): string[] {
   return control.kind === 'cameraAngle'
     ? CAMERA_ANGLE_AXES.map((axis) => control.params[axis])
     : [control.name];
@@ -83,6 +84,17 @@ export function controlParams(control: ModelControl): string[] {
 export function optionLabel(spec: Pick<ParamDescriptor, 'value_labels'>, value: string | number): string {
   const raw = String(value);
   return spec.value_labels?.[raw] ?? raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+/**
+ * The steps of a range its `value_labels` name, in order along the track.
+ * @param spec - The range's declaration.
+ * @returns One stop per named step; empty when none is named.
+ */
+export function rangeStops(spec: Pick<ParamDescriptor, 'value_labels'>): SliderStop[] {
+  return Object.entries(spec.value_labels ?? {})
+    .map(([at, label]) => ({ value: Number(at), label }))
+    .sort((a, b) => a.value - b.value);
 }
 
 /**
@@ -106,7 +118,15 @@ function controlFor(name: string, spec: ParamDescriptor): ModelControl | undefin
     return { kind: 'choice', name, options };
   }
   if (typeof spec.min === 'number' && typeof spec.max === 'number') {
-    return { kind: 'range', name, min: spec.min, max: spec.max, step: spec.step ?? 1 };
+    const stops = rangeStops(spec);
+    return {
+      kind: 'range',
+      name,
+      min: spec.min,
+      max: spec.max,
+      step: spec.step ?? 1,
+      ...(stops.length > 0 ? { stops } : {}),
+    };
   }
   return undefined;
 }
@@ -182,7 +202,7 @@ export function ownControlValues(
  * @param model - The active model.
  * @param mode - The mode the panel is in.
  * @param params - What the node holds for it, with the model's defaults resolved in.
- * @param t - The translator; a param is named by `canvas.generatePanel.param.<name>`.
+ * @param nameOf - A param's name on screen.
  * @param include - Which controls to summarise; all of them when absent.
  * @returns One part per control that has something to show, in declared order.
  */
@@ -190,16 +210,10 @@ export function ownControlSummary(
   model: ModelEntry,
   mode: string,
   params: Readonly<Record<string, unknown>>,
-  t: (key: string) => string,
+  nameOf: (name: string) => string,
   include?: (control: ModelControl) => boolean,
 ): string[] {
   const parts: string[] = [];
-  /**
-   * A param's name on screen.
-   * @param name - The param name.
-   * @returns Its locale word.
-   */
-  const nameOf = (name: string): string => t(`canvas.generatePanel.param.${name}`);
   for (const control of modelControls(model, mode)) {
     if (include && !include(control)) continue;
     if (control.kind === 'cameraAngle') {
@@ -214,7 +228,7 @@ export function ownControlSummary(
     if (control.kind === 'choice' && (typeof shown === 'string' || typeof shown === 'number')) {
       parts.push(optionLabel(model.params[control.name] ?? {}, shown));
     } else if (control.kind === 'range' && typeof shown === 'number') {
-      parts.push(String(shown));
+      parts.push(optionLabel(model.params[control.name] ?? {}, shown));
     } else if (control.kind === 'toggle' && shown === true) {
       parts.push(nameOf(control.name));
     } else if (control.kind === 'text' && typeof shown === 'string' && shown.trim() !== '') {

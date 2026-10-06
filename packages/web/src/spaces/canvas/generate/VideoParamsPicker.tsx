@@ -225,7 +225,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
     resolutions.length > 0 ? value.resolution : undefined,
     durations.length > 0 ? durationLabel : undefined,
     audioSupported && value.generate_audio === true ? t('canvas.generatePanel.generateAudio') : undefined,
-    ...ownControlSummary(model, mode, params, t),
+    ...ownControlSummary(model, mode, params, (name) => t(`canvas.generatePanel.param.${name}`)),
   ]
     .filter(Boolean)
     .join(' · ') || t('canvas.generatePanel.videoParams');

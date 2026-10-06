@@ -4,7 +4,7 @@
 /**
  * The image settings popover of a model whose three params set one camera
  * pose (inner#830): the pill names the pose, and the sphere's card carries the
- * first image the model is sent.
+ * picture the panel hands it (chosen in GeneratePanelContainer).
  */
 
 import type { ModelEntry } from '@breatic/shared';
@@ -50,7 +50,7 @@ describe('RatioResolutionPicker on a camera-angle model', () => {
     expect(screen.getByTestId('generate-ratio-trigger')).toHaveTextContent('Right · Elevated · Wide shot');
   });
 
-  it('puts the first image the model is sent on the sphere\'s card', async () => {
+  it('hands the sphere the picture it is given for the card', async () => {
     render(
       <RatioResolutionPicker
         mode='i2i'

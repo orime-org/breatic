@@ -21,7 +21,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { corsUrl } from '@web/lib/cors-url';
 import { cn } from '@web/lib/utils';
 import type { CameraAngleSphereProps } from '@web/spaces/canvas/generate/camera-angle-sphere-props';
-import { cameraAngleNames, optionLabel } from '@web/spaces/canvas/generate/model-controls';
+import { cameraAngleNames, optionLabel, rangeStops } from '@web/spaces/canvas/generate/model-controls';
 import { ParamSliderRow, type SliderStop } from '@web/spaces/canvas/generate/ParamSliderRow';
 import { useSphereColors } from '@web/spaces/canvas/generate/use-sphere-colors';
 
@@ -32,7 +32,7 @@ const WHEEL_STEP_DELTA = 40;
 const WHEEL_SETTLE_MS = 150;
 
 /** The azimuths named under the slider; the other four are named in the title. */
-const NAMED_AZIMUTHS = [0, 90, 180, 270] as const;
+const NAMED_AZIMUTHS: readonly number[] = [0, 90, 180, 270];
 
 /** The keys that move the camera, and the axis and direction each steps. */
 const KEY_STEPS: Readonly<Record<string, readonly [CameraAngleAxis, 1 | -1]>> = {
@@ -251,7 +251,9 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
       // nothing more until the wheel has been still for a moment. Only this
       // listener and its timer touch this record.
       steps.timer = setTimeout(() => {
-        wheel.current = { sum: 0, moved: false, timer: undefined };
+        steps.sum = 0;
+        steps.moved = false;
+        steps.timer = undefined;
       }, WHEEL_SETTLE_MS);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
@@ -337,16 +339,16 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
   // inside ParamSliderRow.
   const shownOnSliders = gesture ? named : undefined;
 
-  /**
-   * One axis's named steps under its slider.
-   * @param axis - The axis.
-   * @returns The stops: four sides for the azimuth, every step otherwise.
-   */
-  const stopsOf = (axis: CameraAngleAxis): SliderStop[] =>
-    (axis === 'azimuth' ? NAMED_AZIMUTHS : CAMERA_ANGLE_GRID[axis]).map((v) => ({
-      value: v,
-      label: optionLabel(specs[params[axis]] ?? {}, v),
-    }));
+  // The named steps under each slider: four sides for the azimuth, every step otherwise.
+  const stops = React.useMemo(
+    (): Record<CameraAngleAxis, SliderStop[]> => ({
+      azimuth: rangeStops(specs[params.azimuth] ?? {}).filter((s) => NAMED_AZIMUTHS.includes(s.value)),
+      elevation: rangeStops(specs[params.elevation] ?? {}),
+      distance: rangeStops(specs[params.distance] ?? {}),
+    }),
+    [specs, params],
+  );
+  const onReset = React.useCallback((): void => commit(DEFAULT_CAMERA_ANGLE), [commit]);
   const degrees = React.useCallback((v: number): string => `${v}°`, []);
   const distanceSpec = specs[params.distance];
   const distanceWord = React.useCallback((v: number): string => optionLabel(distanceSpec ?? {}, v), [distanceSpec]);
@@ -408,7 +410,7 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
             variant='outline'
             size='sm'
             data-testid='generate-camera-angle-reset'
-            onClick={() => commit(DEFAULT_CAMERA_ANGLE)}
+            onClick={onReset}
             className='absolute right-1.5 top-1.5 h-6 gap-1 px-2 text-2xs'
           >
             <RotateCcw className='h-3 w-3' aria-hidden='true' />
@@ -427,7 +429,7 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
             min={grid[0]}
             max={grid[grid.length - 1]}
             step={grid[1] - grid[0]}
-            stops={stopsOf(axis)}
+            stops={stops[axis]}
             value={stored[axis]}
             draft={shownOnSliders?.[axis]}
             onDraft={drafts[axis]}

@@ -134,6 +134,7 @@ function ModelControlRow({ control, label, shown, onChange }: ModelControlRowPro
           min={control.min}
           max={control.max}
           step={control.step}
+          stops={control.stops}
           value={typeof shown === 'number' ? shown : undefined}
           format={String}
           onChange={onChange}

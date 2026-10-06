@@ -144,11 +144,12 @@ describe('CameraAngleControl', () => {
   });
 
   it('moves one distance step per wheel gesture however many events it sends, writing it as the step is taken', async () => {
-    const { onChange } = await draw();
+    // From the close-up there are two steps to go, so a gesture that took more than one would show.
+    const { onChange } = await draw({ horizontal_angle: 0, vertical_angle: 0, distance: 0 });
     vi.useFakeTimers();
     for (let i = 0; i < 20; i += 1) fireEvent.wheel(group(), { deltaY: 8 });
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenCalledWith({ horizontal_angle: 0, vertical_angle: 0, distance: 2 });
+    expect(onChange).toHaveBeenCalledWith({ horizontal_angle: 0, vertical_angle: 0, distance: 1 });
     act(() => vi.advanceTimersByTime(300));
     expect(onChange).toHaveBeenCalledTimes(1);
   });
@@ -164,6 +165,16 @@ describe('CameraAngleControl', () => {
     fireEvent.wheel(group(), { deltaY: 60 });
     expect(onChange).toHaveBeenCalledTimes(2);
     expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 0, vertical_angle: 0, distance: 1 });
+  });
+
+  it('leaves no wheel timer running once it is gone, however many gestures came before', async () => {
+    const { unmount } = await draw();
+    vi.useFakeTimers();
+    fireEvent.wheel(group(), { deltaY: 60 });
+    act(() => vi.advanceTimersByTime(150));
+    fireEvent.wheel(group(), { deltaY: -60 });
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('keeps the page from zooming when a pinch lands on the sphere', async () => {

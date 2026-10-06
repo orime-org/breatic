@@ -18,7 +18,7 @@
 import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
+import { CANVAS_SPACE, YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace } from '../helpers/space';
 
 test.use({ viewport: { width: 1900, height: 1300 } });
@@ -92,6 +92,35 @@ async function storedPose(p: Page, nodeId: string): Promise<Record<string, unkno
 }
 
 /**
+ * Count the transactions that change the node's params from now on, so a
+ * gesture can be held to one write.
+ * @param p - A page with the Space open.
+ * @param nodeId - The node.
+ * @returns Reads the count so far.
+ */
+async function countParamWrites(p: Page, nodeId: string): Promise<() => Promise<number>> {
+  const at = await liveModuleUrl(p, YJS_MANAGER);
+  await p.evaluate(
+    async ([pid, sid, id, url]: [string, string, string, string]) => {
+      const manager = (await import(/* @vite-ignore */ url)) as {
+        getDoc: (name: string) => { getMap: (k: string) => { observeDeep: (f: (events: { path: unknown[]; keysChanged?: Set<string> }[]) => void) => void } };
+        docName: { canvasSpace: (p: string, s: string) => string };
+      };
+      const w = window as unknown as { __paramWrites: number };
+      w.__paramWrites = 0;
+      manager.getDoc(manager.docName.canvasSpace(pid, sid)).getMap('nodesMap').observeDeep((events) => {
+        const touched = events.some(
+          (e) => e.path.includes(id) && (e.path.includes('paramsByModel') || e.keysChanged?.has('paramsByModel') === true),
+        );
+        if (touched) w.__paramWrites += 1;
+      });
+    },
+    [projectId, spaceId, nodeId, at] as [string, string, string, string],
+  );
+  return () => p.evaluate(() => (window as unknown as { __paramWrites: number }).__paramWrites);
+}
+
+/**
  * Seed a portrait and a target wired to it, open the target's panel on Qwen
  * with the portrait mentioned, and open the settings popover.
  * @param p - A page with the Space open.
@@ -151,12 +180,14 @@ test('loads the sphere when the settings open, with the mentioned picture on its
   expect(requested.some((u) => /CameraAngleSphere/.test(u))).toBe(true);
   // The card fetches the portrait fresh in CORS mode; a tainted fetch would fail the texture.
   await expect.poll(() => requested.some((u) => u.startsWith(PORTRAIT.split('?')[0]!) && u.includes('cors=1'))).toBe(true);
+  await expect(page.getByTestId('generate-camera-angle-sphere')).toHaveAttribute('data-card', 'picture', { timeout: 15_000 });
   await expect(page.getByTestId('generate-camera-angle-pose')).toHaveText('Front · Eye level · Medium shot');
   await expect(page.getByTestId('generate-ratio-trigger')).toContainText('Front · Eye level · Medium shot');
 });
 
 test('drags the camera, moves the sliders with it, and writes one pose on the grid on release @needs-internet', async () => {
   const { target } = await openOnQwen(page);
+  const writes = await countParamWrites(page, target);
   const sphere = page.getByTestId('generate-camera-angle-sphere');
   const box = await sphere.boundingBox();
   if (!box) throw new Error('sphere not drawn');
@@ -172,23 +203,32 @@ test('drags the camera, moves the sliders with it, and writes one pose on the gr
   expect([-30, 0, 30, 60]).toContain(after.vertical_angle);
   expect(after.distance).toBe(1);
   expect(midDrag).toBe(`${String(after.horizontal_angle)}°`);
+  expect(await writes()).toBe(1);
 });
 
 test('moves one distance step per wheel gesture and steps the pose by key, then resets @needs-internet', async () => {
   const { target } = await openOnQwen(page);
   const sphere = page.getByTestId('generate-camera-angle-sphere');
-  const box = await sphere.boundingBox();
-  if (!box) throw new Error('sphere not drawn');
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  for (let i = 0; i < 20; i += 1) await page.mouse.wheel(0, 8);
-  await expect.poll(() => storedPose(page, target)).toEqual({ horizontal_angle: 0, vertical_angle: 0, distance: 2 });
+  // From the close-up there are two steps to go, so a gesture that took more than one would show.
+  await page.getByTestId('generate-param-distance-stop-0').click();
+  await expect.poll(() => storedPose(page, target)).toEqual({ horizontal_angle: 0, vertical_angle: 0, distance: 0 });
+  const writes = await countParamWrites(page, target);
+  // Twenty events in one burst: `page.mouse.wheel` waits for each to be handled, and a pause past
+  // the 150ms settle between two of them is, by the rule under test, a second gesture.
+  await sphere.evaluate((el) => {
+    for (let i = 0; i < 20; i += 1) el.dispatchEvent(new WheelEvent('wheel', { deltaY: 8, bubbles: true, cancelable: true }));
+  });
+  await expect.poll(() => storedPose(page, target)).toEqual({ horizontal_angle: 0, vertical_angle: 0, distance: 1 });
+  await page.waitForTimeout(300);
+  expect(await storedPose(page, target)).toEqual({ horizontal_angle: 0, vertical_angle: 0, distance: 1 });
+  expect(await writes()).toBe(1);
 
   await page.getByTestId('generate-camera-angle').focus();
   await page.keyboard.press('ArrowRight');
-  await expect.poll(() => storedPose(page, target)).toEqual({ horizontal_angle: 45, vertical_angle: 0, distance: 2 });
+  await expect.poll(() => storedPose(page, target)).toEqual({ horizontal_angle: 45, vertical_angle: 0, distance: 1 });
   await page.keyboard.press('ArrowUp');
-  await expect.poll(() => storedPose(page, target)).toEqual({ horizontal_angle: 45, vertical_angle: 30, distance: 2 });
-  await expect(page.getByTestId('generate-camera-angle-pose')).toHaveText('Front right · Elevated · Wide shot');
+  await expect.poll(() => storedPose(page, target)).toEqual({ horizontal_angle: 45, vertical_angle: 30, distance: 1 });
+  await expect(page.getByTestId('generate-camera-angle-pose')).toHaveText('Front right · Elevated · Medium shot');
 
   await page.getByTestId('generate-camera-angle-reset').click();
   await expect.poll(() => storedPose(page, target)).toEqual({ horizontal_angle: 0, vertical_angle: 0, distance: 1 });
@@ -233,6 +273,18 @@ test('lays every slider name out apart and inside the popover, in every interfac
     await page.getByTestId('lang-trigger').click();
     await page.getByTestId('lang-option-en').click();
   }
+});
+
+test('stands the camera on the subject\'s own right at 90° and on its left at 270° @needs-internet', async () => {
+  const { target } = await openOnQwen(page);
+  const sphere = page.getByTestId('generate-camera-angle-sphere');
+  await page.getByTestId('generate-param-horizontal_angle-stop-90').click();
+  await expect.poll(() => storedPose(page, target)).toMatchObject({ horizontal_angle: 90 });
+  // The card faces +z, so the subject's own right is -x.
+  await expect.poll(async () => Number(await sphere.getAttribute('data-camera-x'))).toBeLessThan(0);
+  await page.getByTestId('generate-param-horizontal_angle-stop-270').click();
+  await expect.poll(() => storedPose(page, target)).toMatchObject({ horizontal_angle: 270 });
+  await expect.poll(async () => Number(await sphere.getAttribute('data-camera-x'))).toBeGreaterThan(0);
 });
 
 test('sends the pose the node holds @needs-internet', async () => {

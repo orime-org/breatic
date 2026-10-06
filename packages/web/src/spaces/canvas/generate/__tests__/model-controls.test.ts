@@ -178,7 +178,7 @@ describe('modelControls', () => {
     };
     expect(modelControls(model({ auto_shots: auto }), 't2v')).toEqual([{ kind: 'toggle', name: 'auto_shots' }]);
     expect(modelControls(model({ auto_shots: auto }), 'multi_shot')).toEqual([]);
-    expect(ownControlSummary(model({ auto_shots: auto }), 'multi_shot', { auto_shots: true }, (k) => k)).toEqual([]);
+    expect(ownControlSummary(model({ auto_shots: auto }), 'multi_shot', { auto_shots: true }, (n) => n)).toEqual([]);
   });
 
   it('keeps the order the model declares its params in', () => {
@@ -200,26 +200,37 @@ describe('ownControlSummary', () => {
     transparency: { description: '', label: 'Transparent', values: [false, true], default: false, fill: 'panel' },
     negative_prompt: { description: '', label: 'Negative', type: 'text', default: null, fill: 'panel' },
   });
-  const t = (key: string): string => `t:${key}`;
+  const nameOf = (name: string): string => `name:${name}`;
 
   it('says what each choice and range stands on in a freshly resolved record', () => {
-    expect(ownControlSummary(OWN, 't2i', resolveParamsForModel(OWN, {}), t)).toEqual(['Low', '20']);
+    expect(ownControlSummary(OWN, 't2i', resolveParamsForModel(OWN, {}), nameOf)).toEqual(['Low', '20']);
   });
 
   it('names a text param only while it holds something', () => {
-    expect(ownControlSummary(OWN, 't2i', { quality: 'low', chaos: 5, negative_prompt: 'blur' }, t)).toEqual([
+    expect(ownControlSummary(OWN, 't2i', { quality: 'low', chaos: 5, negative_prompt: 'blur' }, nameOf)).toEqual([
       'Low',
       '5',
-      't:canvas.generatePanel.param.negative_prompt',
+      'name:negative_prompt',
     ]);
-    expect(ownControlSummary(OWN, 't2i', { quality: 'low', chaos: 5, negative_prompt: '' }, t)).toEqual(['Low', '5']);
+    expect(ownControlSummary(OWN, 't2i', { quality: 'low', chaos: 5, negative_prompt: '' }, nameOf)).toEqual(['Low', '5']);
+  });
+
+  it('names a range by its value_labels where one names the step it stands on', () => {
+    const named = model({
+      strength: { description: '', label: 'Strength', min: 0, max: 1, step: 0.5, value_labels: { '1': 'Full', '0': 'Off' }, default: 0, fill: 'panel' },
+    });
+    expect(modelControls(named, 't2i')).toEqual([
+      { kind: 'range', name: 'strength', min: 0, max: 1, step: 0.5, stops: [{ value: 0, label: 'Off' }, { value: 1, label: 'Full' }] },
+    ]);
+    expect(ownControlSummary(named, 't2i', { strength: 1 }, nameOf)).toEqual(['Full']);
+    expect(ownControlSummary(named, 't2i', { strength: 0.5 }, nameOf)).toEqual(['0.5']);
   });
 
   it('reads what the node holds, and names a switch only while it is on', () => {
-    expect(ownControlSummary(OWN, 't2i', { quality: 'xhigh', chaos: 5, transparency: true }, t)).toEqual([
+    expect(ownControlSummary(OWN, 't2i', { quality: 'xhigh', chaos: 5, transparency: true }, nameOf)).toEqual([
       'XHigh',
       '5',
-      't:canvas.generatePanel.param.transparency',
+      'name:transparency',
     ]);
   });
 });
@@ -232,7 +243,7 @@ describe('a model whose three params set one camera pose', () => {
     }),
     camera_angle: { azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' },
   };
-  const t = (key: string): string => `t:${key}`;
+  const nameOf = (name: string): string => `name:${name}`;
 
   it('draws the three as one camera-angle control where the first of them is declared', () => {
     expect(modelControls(ANGLES, 't2i')).toEqual([
@@ -253,7 +264,7 @@ describe('a model whose three params set one camera pose', () => {
 
   it('names the pose in the pill by its azimuth, elevation and distance', () => {
     expect(
-      ownControlSummary(ANGLES, 't2i', { quality: 'low', horizontal_angle: 45, vertical_angle: -30, distance: 2 }, t),
+      ownControlSummary(ANGLES, 't2i', { quality: 'low', horizontal_angle: 45, vertical_angle: -30, distance: 2 }, nameOf),
     ).toEqual([
       'Low',
       'Front right',

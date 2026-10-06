@@ -128,7 +128,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
     [
       value.resolution,
       value.aspect_ratio === undefined ? undefined : optionLabel({}, value.aspect_ratio),
-      ...ownControlSummary(model, mode, value, t),
+      ...ownControlSummary(model, mode, value, (name) => t(`canvas.generatePanel.param.${name}`)),
       cameraSupported && cameraOn ? t('canvas.generatePanel.camera') : undefined,
     ]
       .filter(Boolean)

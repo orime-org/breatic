@@ -6,7 +6,7 @@
  * camera on a sphere round it, drawn with three.js.
  *
  * Its own lazy chunk. It imports three.js, React and the geometry beside it,
- * and takes every word, colour and address as a prop (see
+ * and takes its colours and the picture's address as props (see
  * `camera-angle-sphere-props.ts` for why).
  */
 
@@ -245,6 +245,8 @@ export default function CameraAngleSphere(props: CameraAngleSphereProps): React.
     const s = sceneRef.current;
     if (!s) return;
     place(s, viewRef.current);
+    // Which side of the card the camera stands on, readable outside WebGL: -x is the subject's right.
+    canvasRef.current?.setAttribute('data-camera-x', (s.camera.position.x - CENTER.x).toFixed(2));
     s.renderer.render(s.scene, s.eye);
   }, []);
 
@@ -287,8 +289,10 @@ export default function CameraAngleSphere(props: CameraAngleSphereProps): React.
     const s = sceneRef.current;
     if (!s) return;
     const material = s.card.material;
+    // `data-card` says which face the card shows; the texture itself lives in WebGL, out of the DOM's sight.
     /** The card without a picture: no image is sent, or the one sent cannot be read. */
     const plain = (): void => {
+      canvasRef.current?.setAttribute('data-card', 'plain');
       material.map?.dispose();
       material.map = null;
       s.card.scale.set(1, 1, 1);
@@ -321,6 +325,7 @@ export default function CameraAngleSphere(props: CameraAngleSphereProps): React.
         const aspect = image?.width && image.height ? image.width / image.height : 0.75;
         // The plane is 0.75 wide by 1 tall; fit the picture's own shape inside a 1 x 1 box.
         s.card.scale.set(Math.min(1, aspect) / 0.75, Math.min(1, 1 / aspect), 1);
+        canvasRef.current?.setAttribute('data-card', 'picture');
         draw();
       },
       undefined,

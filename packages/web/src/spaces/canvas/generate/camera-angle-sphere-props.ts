@@ -4,10 +4,10 @@
 /**
  * What the camera-angle sphere is handed (inner#830).
  *
- * The sphere is its own lazy chunk, so it imports three.js, React and nothing
- * else of ours: every word, colour and address arrives here as a prop. A chunk
- * that imported a module of the project page would make that page's chunk
- * named by a second file, which `verify-chunks` refuses.
+ * The sphere is its own lazy chunk, so it imports three.js, React, `@breatic/shared`
+ * and the geometry only it uses; colours and the picture's address arrive here
+ * as props. A chunk that imported a module of the project page would make that
+ * page's chunk named by a second file, which `verify-chunks` refuses.
  */
 
 import type { CameraAngle } from '@breatic/shared';

@@ -18,6 +18,8 @@
 
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 
+import { rangeStops } from '@web/spaces/canvas/generate/model-controls';
+
 /** The control a parameter's declaration calls for. */
 export type AudioParamControl =
   | {
@@ -134,9 +136,7 @@ function controlFor(
   // stop, and an empty range leaves it with exactly one.
   if (step <= 0 || max <= min) return null;
   // The positions the model names in its value_labels, in English.
-  const stops = Object.entries(descriptor.value_labels ?? {})
-    .map(([at, label]) => ({ value: Number(at), label }))
-    .sort((a, b) => a.value - b.value);
+  const stops = rangeStops(descriptor);
   return {
     name,
     labelKey: spec.labelKey,
