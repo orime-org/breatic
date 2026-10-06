@@ -16,12 +16,15 @@ vi.mock('@web/spaces/canvas/generate/CameraAngleSphere', () => {
 
 import { CameraAngleControl } from '@web/spaces/canvas/generate/CameraAngleControl';
 
+import { CAMERA_SPECS } from './camera-angle-specs';
+
 describe('CameraAngleControl without its sphere', () => {
   it('says the 3D view could not load, and the sliders still write', async () => {
     const onChange = vi.fn();
     render(
       <CameraAngleControl
         params={{ azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' }}
+        specs={CAMERA_SPECS}
         value={{ horizontal_angle: 0, vertical_angle: 0, distance: 1 }}
         onChange={onChange}
         subjectUrl={undefined}

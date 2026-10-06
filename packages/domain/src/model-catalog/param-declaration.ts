@@ -67,6 +67,7 @@ const declarationSchema = z.object({
   default: z.unknown().optional(),
   min: z.number().optional(),
   max: z.number().optional(),
+  step: z.number().optional(),
   // The value that is sent as nothing: choosing it leaves the param out of the
   // request, for the upstream's own behaviour when it is absent ("auto").
   absent_value: z.union([z.string(), z.number(), z.boolean()]).optional(),
@@ -77,7 +78,8 @@ const declarationSchema = z.object({
   // prompt with this template.
   into_prompt: z.string().optional(),
   // How a value reads on screen, when its own spelling is not that sentence
-  // (`left_right` reads "Left first"). English, like `label`.
+  // (`left_right` reads "Left first"): a value of a choice or a step of a
+  // range. English and never localized, like the model's own description.
   value_labels: z.record(z.string(), z.string()).optional(),
   // The BCP-47 tag each value is, in the order `values` lists them, so the
   // panel can show a language in the reader's own words (#2156, design §16).
@@ -210,6 +212,20 @@ export function assertParamDeclarations(
 }
 
 /**
+ * The values a control lets the reader pick.
+ * @param declared - The declaration.
+ * @returns Its `values`, else every step of its `min`/`max`/`step` range, else nothing.
+ */
+function offeredValues(declared: ParamDeclaration): readonly (string | number | boolean)[] {
+  if (declared.values !== undefined) return declared.values;
+  const { min, max, step } = declared;
+  if (min === undefined || max === undefined || step === undefined || step <= 0) return [];
+  const steps: number[] = [];
+  for (let at = min; at <= max; at += step) steps.push(at);
+  return steps;
+}
+
+/**
  * Everything one declaration says that the model around it denies.
  * @param declared - The declaration to check.
  * @param around - The model around it.
@@ -261,12 +277,12 @@ function faultsOn(
     faults.push(`when names "${gate}", which this model does not declare`);
   }
 
-  // A label for a value the choice does not offer is a label for nothing, and
+  // A label for a value the control does not offer is a label for nothing, and
   // usually a value renamed in one place and not the other.
-  const offered = new Set((declared.values ?? []).map(String));
+  const offered = new Set(offeredValues(declared).map(String));
   for (const value of Object.keys(declared.value_labels ?? {})) {
     if (!offered.has(value)) {
-      faults.push(`value_labels names "${value}", which values does not offer`);
+      faults.push(`value_labels names "${value}", which the control does not offer`);
     }
   }
 

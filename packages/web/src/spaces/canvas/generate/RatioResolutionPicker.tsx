@@ -13,6 +13,7 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import {
   CameraPicker,
   cameraSummary,
@@ -169,7 +170,9 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
         // the screen edge like the generate panel instead of jumping near a border.
         avoidCollisions={false}
         aria-label={t('canvas.generatePanel.ratio')}
-        className='relative w-64 p-3 shadow-md'
+        // A camera-angle control names four heights and three distances under
+        // its sliders; at w-64 those words overlap in English and Japanese.
+        className={cn('relative p-3 shadow-md', model.camera_angle ? 'w-80' : 'w-64')}
       >
         <ParamOptionGroup
           label={t('canvas.generatePanel.resolution')}

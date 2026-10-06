@@ -14,8 +14,15 @@ import { GENERATION_NODE_BUCKETS, type ModelEntry, type ParamDescriptor } from '
 import { describe, it, expect } from 'vitest';
 import { parse } from 'yaml';
 
-import { modelControls, ownControlSummary, ownControlValues } from '@web/spaces/canvas/generate/model-controls';
+import {
+  cameraAngleNames,
+  modelControls,
+  ownControlSummary,
+  ownControlValues,
+} from '@web/spaces/canvas/generate/model-controls';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+
+import { CAMERA_PARAMS, CAMERA_SPECS } from './camera-angle-specs';
 
 /**
  * A model declaring the given params.
@@ -221,9 +228,7 @@ describe('a model whose three params set one camera pose', () => {
   const ANGLES = {
     ...model({
       quality: { description: '', label: 'Quality', values: ['low', 'high'], default: 'low', fill: 'panel' },
-      distance: { description: '', label: 'Distance', min: 0, max: 2, step: 1, default: 1, fill: 'panel' },
-      horizontal_angle: { description: '', label: 'Horizontal angle', min: 0, max: 315, step: 45, default: 0, fill: 'panel' },
-      vertical_angle: { description: '', label: 'Vertical angle', min: -30, max: 60, step: 30, default: 0, fill: 'panel' },
+      ...CAMERA_SPECS,
     }),
     camera_angle: { azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' },
   };
@@ -251,9 +256,17 @@ describe('a model whose three params set one camera pose', () => {
       ownControlSummary(ANGLES, 't2i', { quality: 'low', horizontal_angle: 45, vertical_angle: -30, distance: 2 }, t),
     ).toEqual([
       'Low',
-      't:canvas.generatePanel.cameraAngle.azimuth.45',
-      't:canvas.generatePanel.cameraAngle.elevation.low',
-      't:canvas.generatePanel.cameraAngle.distance.2',
+      'Front right',
+      'Low angle',
+      'Wide shot',
+    ]);
+  });
+
+  it('names a pose off the grid by its nearest step', () => {
+    expect(cameraAngleNames(CAMERA_SPECS, CAMERA_PARAMS, { azimuth: 100, elevation: 50, distance: 0 })).toEqual([
+      'Right',
+      'High angle',
+      'Close-up',
     ]);
   });
 
@@ -263,29 +276,14 @@ describe('a model whose three params set one camera pose', () => {
   });
 });
 
-describe('every camera-angle word has words in every locale', () => {
-  const keys = [
-    'title',
-    'reset',
-    'loadFailed',
-    ...[0, 45, 90, 135, 180, 225, 270, 315].map((v) => `azimuth.${v}`),
-    ...['low', 'eye', 'elevated', 'high'].map((v) => `elevation.${v}`),
-    ...[0, 1, 2].map((v) => `distance.${v}`),
-  ];
-
-  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'])('%s names every pose word', (lang) => {
+describe('the camera-angle control\'s own words in every locale', () => {
+  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'])('%s has the title, reset and load failure, and no pose names', (lang) => {
     const json = JSON.parse(readFileSync(resolve(process.cwd(), `../../locales/${lang}.json`), 'utf8')) as {
       canvas: { generatePanel: { cameraAngle?: Record<string, unknown> } };
     };
     const words = json.canvas.generatePanel.cameraAngle ?? {};
-    /**
-     * The word under a dotted key, or undefined.
-     * @param key - The key below cameraAngle.
-     * @returns The word.
-     */
-    const at = (key: string): unknown =>
-      key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], words);
-    expect(keys.filter((key) => typeof at(key) !== 'string' || at(key) === '')).toEqual([]);
+    expect(Object.keys(words).sort()).toEqual(['loadFailed', 'reset', 'title']);
+    expect(Object.values(words).every((w) => typeof w === 'string' && w !== '')).toBe(true);
   });
 });
 

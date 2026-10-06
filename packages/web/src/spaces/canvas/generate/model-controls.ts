@@ -18,6 +18,7 @@
 import {
   appliesInMode,
   nearestCameraAngle,
+  type CameraAngle,
   type CameraAngleParams,
   type ItemField,
   type ModelEntry,
@@ -40,22 +41,24 @@ export type ModelControl =
   | { kind: 'items'; name: string; max: number | undefined; fields: ItemFieldControl[] }
   | { kind: 'cameraAngle'; name: 'camera_angle'; params: CameraAngleParams };
 
-/** The words each elevation reads as, by its value (inner#830). */
-const ELEVATION_WORD: Readonly<Record<number, string>> = { [-30]: 'low', 0: 'eye', 30: 'elevated', 60: 'high' };
-
 /**
- * The locale keys naming a camera pose, azimuth then elevation then distance.
- * @param azimuth - Degrees round the subject, on the grid.
- * @param elevation - Degrees above or below, on the grid.
- * @param distance - The distance step.
- * @returns The three keys.
+ * How a camera pose reads, azimuth then elevation then distance, each step
+ * named by its param's `value_labels` (inner#830).
+ * @param specs - The model's params.
+ * @param params - The three param names.
+ * @param pose - The pose; read at the nearest step of the grid.
+ * @returns The three names.
  */
-export function cameraAngleNameKeys(azimuth: number, elevation: number, distance: number): [string, string, string] {
-  const pose = nearestCameraAngle({ azimuth, elevation, distance });
+export function cameraAngleNames(
+  specs: Readonly<Record<string, Pick<ParamDescriptor, 'value_labels'>>>,
+  params: CameraAngleParams,
+  pose: CameraAngle,
+): [string, string, string] {
+  const at = nearestCameraAngle(pose);
   return [
-    `canvas.generatePanel.cameraAngle.azimuth.${pose.azimuth}`,
-    `canvas.generatePanel.cameraAngle.elevation.${ELEVATION_WORD[pose.elevation] ?? 'eye'}`,
-    `canvas.generatePanel.cameraAngle.distance.${pose.distance}`,
+    optionLabel(specs[params.azimuth] ?? {}, at.azimuth),
+    optionLabel(specs[params.elevation] ?? {}, at.elevation),
+    optionLabel(specs[params.distance] ?? {}, at.distance),
   ];
 }
 
@@ -202,7 +205,7 @@ export function ownControlSummary(
       const { azimuth, elevation, distance } = control.params;
       const [a, e, d] = [params[azimuth], params[elevation], params[distance]];
       if (typeof a === 'number' && typeof e === 'number' && typeof d === 'number') {
-        parts.push(...cameraAngleNameKeys(a, e, d).map(t));
+        parts.push(...cameraAngleNames(model.params, control.params, { azimuth: a, elevation: e, distance: d }));
       }
       continue;
     }

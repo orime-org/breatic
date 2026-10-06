@@ -19,9 +19,33 @@ const QWEN = "qwen-image-edit-multiple-angles";
 
 /** The three params a valid declaration names, laid out on the grid. */
 const ON_GRID = {
-  horizontal_angle: { label: "Horizontal angle", default: 0, min: 0, max: 315, step: 45, fill: "panel" },
-  vertical_angle: { label: "Vertical angle", default: 0, min: -30, max: 60, step: 30, fill: "panel" },
-  distance: { label: "Distance", default: 1, min: 0, max: 2, step: 1, fill: "panel" },
+  horizontal_angle: {
+    label: "Horizontal angle",
+    default: 0,
+    min: 0,
+    max: 315,
+    step: 45,
+    fill: "panel",
+    value_labels: { 0: "F", 45: "FR", 90: "R", 135: "BR", 180: "B", 225: "BL", 270: "L", 315: "FL" },
+  },
+  vertical_angle: {
+    label: "Vertical angle",
+    default: 0,
+    min: -30,
+    max: 60,
+    step: 30,
+    fill: "panel",
+    value_labels: { "-30": "Low", 0: "Eye", 30: "Elevated", 60: "High" },
+  },
+  distance: {
+    label: "Distance",
+    default: 1,
+    min: 0,
+    max: 2,
+    step: 1,
+    fill: "panel",
+    value_labels: { 0: "Close", 1: "Medium", 2: "Wide" },
+  },
 };
 
 const DECLARED = { azimuth: "horizontal_angle", elevation: "vertical_angle", distance: "distance" };
@@ -46,6 +70,27 @@ describe("what the Qwen multiple-angles entry declares", () => {
     expect(params.vertical_angle?.description).toMatch(/-30 low angle/);
     expect(params.vertical_angle?.description).toMatch(/60 high angle/);
     expect(params.distance?.description).toMatch(/0 close-up, 1 medium shot, 2 wide shot/);
+  });
+
+  it("names every pose in English on the params themselves", () => {
+    const params = getFullModelConfig("image").models.find((m) => m.name === QWEN)?.params ?? {};
+    expect(params.horizontal_angle?.value_labels).toEqual({
+      0: "Front",
+      45: "Front right",
+      90: "Right",
+      135: "Back right",
+      180: "Back",
+      225: "Back left",
+      270: "Left",
+      315: "Front left",
+    });
+    expect(params.vertical_angle?.value_labels).toEqual({
+      "-30": "Low angle",
+      0: "Eye level",
+      30: "Elevated",
+      60: "High angle",
+    });
+    expect(params.distance?.value_labels).toEqual({ 0: "Close-up", 1: "Medium shot", 2: "Wide shot" });
   });
 });
 
@@ -83,6 +128,13 @@ describe("the loader's check", () => {
     expect(() =>
       check(DECLARED, { ...ON_GRID, horizontal_angle: { ...ON_GRID.horizontal_angle, max: 359, step: 1 } }),
     ).toThrow(/horizontal_angle.*0, 45, 90, 135, 180, 225, 270, 315/);
+  });
+
+  it("refuses an axis that leaves a step of the grid without a name", () => {
+    const { 60: _high, ...unnamedHigh } = ON_GRID.vertical_angle.value_labels;
+    expect(() =>
+      check(DECLARED, { ...ON_GRID, vertical_angle: { ...ON_GRID.vertical_angle, value_labels: unnamedHigh } }),
+    ).toThrow(/vertical_angle.*value_labels name for 60/);
   });
 
   it("refuses a default off the grid", () => {

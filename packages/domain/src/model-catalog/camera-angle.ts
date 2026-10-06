@@ -56,13 +56,19 @@ function wrongAxis(axis: CameraAngleAxis, paramName: string, spec: unknown): str
   if (typeof declared.default !== "number" || !grid.includes(declared.default)) {
     return `declares camera_angle ${axis} '${paramName}' with a default off the grid`;
   }
+  const labels = declared.value_labels;
+  const named = labels !== null && typeof labels === "object" ? (labels as Record<string, unknown>) : {};
+  const unnamed = grid.filter((step) => typeof named[String(step)] !== "string");
+  if (unnamed.length > 0) {
+    return `declares camera_angle ${axis} '${paramName}' without a value_labels name for ${unnamed.join(", ")}`;
+  }
   return null;
 }
 
 /**
  * Assert that every model in one modality that declares a camera pose names
  * three of its own labelled panel ranges, each walking exactly its axis's
- * grid and defaulting onto it.
+ * grid, defaulting onto it and naming every step of it in `value_labels`.
  * @param modality - The modality being loaded, named in the error.
  * @param models - The models parsed out of that modality's yaml files.
  * @throws {Error} when a model declares a pose the panel could not draw on the grid.

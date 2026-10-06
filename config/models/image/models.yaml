@@ -32,9 +32,10 @@
 #   param.label          — marks a control only this model has; on screen it
 #                          is named by canvas.generatePanel.param.<name> in
 #                          locales/*.json, like the shared controls.
-#   param.value_labels   — how a value of `values` reads on screen, when its
-#                          own spelling is not that (English); the rest read
-#                          as themselves with a capital first letter.
+#   param.value_labels   — how a value reads on screen, in English and never
+#                          localized: a value of `values`, or a step of a
+#                          `min`/`max`/`step` range; unlabelled values read as
+#                          themselves with a capital first letter.
 #   param.type           — list (reference pool), items (a list editor, with
 #                          `fields` and `max_items`), text (a free text field).
 #                          `values: [true, false]` draws a switch; `min`, `max`
@@ -546,6 +547,7 @@ models:
         min: 0
         max: 2
         step: 1
+        value_labels: {"0": "Close-up", "1": "Medium shot", "2": "Wide shot"}
         fill: "panel"
       horizontal_angle:
         description: "Camera angle around the subject, degrees: 0 front, 90 the subject's own right side, 180 back, 270 the subject's own left side; 45 between front and right, and so on"
@@ -554,6 +556,7 @@ models:
         min: 0
         max: 315
         step: 45
+        value_labels: {"0": "Front", "45": "Front right", "90": "Right", "135": "Back right", "180": "Back", "225": "Back left", "270": "Left", "315": "Front left"}
         fill: "panel"
       images:
         description: "Images to edit"
@@ -576,6 +579,7 @@ models:
         min: -30
         max: 60
         step: 30
+        value_labels: {"-30": "Low angle", "0": "Eye level", "30": "Elevated", "60": "High angle"}
         fill: "panel"
     providers:
       - name: "wavespeed"

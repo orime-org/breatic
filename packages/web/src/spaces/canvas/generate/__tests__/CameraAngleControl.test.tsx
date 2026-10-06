@@ -25,7 +25,8 @@ vi.mock('@web/spaces/canvas/generate/CameraAngleSphere', () => ({
 
 import { CameraAngleControl } from '@web/spaces/canvas/generate/CameraAngleControl';
 
-const PARAMS = { azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' };
+import { CAMERA_PARAMS as PARAMS, CAMERA_SPECS } from './camera-angle-specs';
+
 
 /**
  * Draws the control on a stored pose and waits for the sphere to load.
@@ -38,12 +39,12 @@ async function draw(
   subjectUrl?: string,
 ): Promise<{ onChange: ReturnType<typeof vi.fn>; rerender: (next: Record<string, number>) => void; unmount: () => void }> {
   const onChange = vi.fn();
-  const view = render(<CameraAngleControl params={PARAMS} value={stored} onChange={onChange} subjectUrl={subjectUrl} />);
+  const view = render(<CameraAngleControl params={PARAMS} specs={CAMERA_SPECS} value={stored} onChange={onChange} subjectUrl={subjectUrl} />);
   await screen.findByTestId('fake-sphere');
   return {
     onChange,
     rerender: (next) =>
-      view.rerender(<CameraAngleControl params={PARAMS} value={next} onChange={onChange} subjectUrl={subjectUrl} />),
+      view.rerender(<CameraAngleControl params={PARAMS} specs={CAMERA_SPECS} value={next} onChange={onChange} subjectUrl={subjectUrl} />),
     unmount: view.unmount,
   };
 }

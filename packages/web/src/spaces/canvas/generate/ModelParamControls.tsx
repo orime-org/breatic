@@ -68,6 +68,7 @@ export const ModelParamControls = React.memo(function ModelParamControls({
           <CameraAngleControl
             key={control.name}
             params={control.params}
+            specs={model.params}
             value={value}
             onChange={onChange}
             subjectUrl={subjectUrl}

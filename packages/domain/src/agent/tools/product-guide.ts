@@ -570,7 +570,8 @@ export function renderProductGuide(): string {
       "step it round and up or down, and + and - step it nearer and further. On release it settles on the nearest of " +
       "the poses the model makes: eight sides (front, the subject's own right, back, the subject's own left and the " +
       "four between) at four heights from a low angle to a high angle, and three distances from a close-up to a wide " +
-      "shot. The pose's name shows above the view and on the settings pill, three sliders under the view follow it, " +
+      "shot. The pose's name (in English in every interface language: Front, Eye level, Medium shot and so on) shows " +
+      "above the view and on the settings pill, three sliders under the view follow it, " +
       `and ${quoted(t("canvas.generatePanel.cameraAngle.reset"))} puts it back to the front, at eye level, at a ` +
       "medium shot. The sliders still work when the view cannot load, which it then says in place of the view: " +
       `${quoted(t("canvas.generatePanel.cameraAngle.loadFailed"))}`,

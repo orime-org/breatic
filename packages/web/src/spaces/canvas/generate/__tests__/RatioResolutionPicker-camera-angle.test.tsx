@@ -7,7 +7,7 @@
  * first image the model is sent.
  */
 
-import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
+import type { ModelEntry } from '@breatic/shared';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -19,15 +19,7 @@ vi.mock('@web/spaces/canvas/generate/CameraAngleSphere', () => ({
 
 import { RatioResolutionPicker } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 
-const range = (min: number, max: number, step: number, label: string, fallback: number): ParamDescriptor => ({
-  description: '',
-  label,
-  min,
-  max,
-  step,
-  default: fallback,
-  fill: 'panel',
-});
+import { CAMERA_SPECS } from './camera-angle-specs';
 
 const QWEN: ModelEntry = {
   name: 'qwen-image-edit-multiple-angles',
@@ -39,11 +31,7 @@ const QWEN: ModelEntry = {
   tier: 'optional',
   generation_time: 120,
   takes_prompt: true,
-  params: {
-    distance: range(0, 2, 1, 'Distance', 1),
-    horizontal_angle: range(0, 315, 45, 'Horizontal angle', 0),
-    vertical_angle: range(-30, 60, 30, 'Vertical angle', 0),
-  },
+  params: CAMERA_SPECS,
   providers: [],
   camera_angle: { azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' },
 };

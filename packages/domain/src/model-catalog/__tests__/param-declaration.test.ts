@@ -407,6 +407,42 @@ describe("a parameter declaration", () => {
     ).toThrow(/a-model.*order.*value_labels.*right_left/s);
   });
 
+  it("names the steps of a range", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "image",
+        modelWith({
+          tilt: {
+            fill: "panel",
+            min: -30,
+            max: 60,
+            step: 30,
+            default: 0,
+            value_labels: { "-30": "Low angle", "0": "Eye level", "30": "Elevated", "60": "High angle" },
+          },
+        }),
+      ),
+    ).not.toThrow();
+  });
+
+  it("is refused when it names a number the range never steps on", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "image",
+        modelWith({
+          tilt: {
+            fill: "panel",
+            min: -30,
+            max: 60,
+            step: 30,
+            default: 0,
+            value_labels: { "15": "Slightly elevated" },
+          },
+        }),
+      ),
+    ).toThrow(/a-model.*tilt.*value_labels.*15/s);
+  });
+
   it("lets the reference pool carry as many as the model says", () => {
     expect(() =>
       assertParamDeclarations(

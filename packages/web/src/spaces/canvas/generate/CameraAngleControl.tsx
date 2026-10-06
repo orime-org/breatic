@@ -5,12 +5,14 @@ import { RotateCcw } from 'lucide-react';
 import * as React from 'react';
 
 import {
+  CAMERA_ANGLE_GRID,
   DEFAULT_CAMERA_ANGLE,
   nearestCameraAngle,
   stepCameraAngle,
   type CameraAngle,
   type CameraAngleAxis,
   type CameraAngleParams,
+  type ParamDescriptor,
 } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -18,7 +20,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { corsUrl } from '@web/lib/cors-url';
 import { cn } from '@web/lib/utils';
 import type { CameraAngleSphereProps } from '@web/spaces/canvas/generate/camera-angle-sphere-props';
-import { cameraAngleNameKeys } from '@web/spaces/canvas/generate/model-controls';
+import { cameraAngleNames, optionLabel } from '@web/spaces/canvas/generate/model-controls';
 import { ParamSliderRow, type SliderStop } from '@web/spaces/canvas/generate/ParamSliderRow';
 import { useSphereColors } from '@web/spaces/canvas/generate/use-sphere-colors';
 
@@ -31,13 +33,6 @@ const WHEEL_SETTLE_MS = 150;
 /** The azimuths named under the slider; the other four are named in the title. */
 const NAMED_AZIMUTHS = [0, 90, 180, 270] as const;
 
-/** The elevation words, by value, as the locale keys spell them. */
-const ELEVATIONS = [
-  [-30, 'low'],
-  [0, 'eye'],
-  [30, 'elevated'],
-  [60, 'high'],
-] as const;
 
 /**
  * Says the 3D view could not load, in the sphere's place.
@@ -66,6 +61,8 @@ const LazySphere = React.lazy(
 interface CameraAngleControlProps {
   /** The three params the pose is written to. */
   params: CameraAngleParams;
+  /** The model's params, whose `value_labels` name each step. */
+  specs: Readonly<Record<string, ParamDescriptor>>;
   /** What the node holds, by param name. */
   value: Readonly<Record<string, unknown>>;
   /** Called with all three params at once, once per gesture. */
@@ -126,12 +123,13 @@ function prefersReducedMotion(): boolean {
  * settle; any other write in the meantime carries it along.
  * @param root0 - Props.
  * @param root0.params - The three param names.
+ * @param root0.specs - The model's params.
  * @param root0.value - What the node holds.
  * @param root0.onChange - Called with the three params.
  * @param root0.subjectUrl - The picture on the card.
  * @returns The control.
  */
-export function CameraAngleControl({ params, value, onChange, subjectUrl }: CameraAngleControlProps): React.JSX.Element {
+export function CameraAngleControl({ params, specs, value, onChange, subjectUrl }: CameraAngleControlProps): React.JSX.Element {
   const t = useTranslation();
   const colors = useSphereColors();
   const stored = storedPose(params, value);
@@ -271,30 +269,30 @@ export function CameraAngleControl({ params, value, onChange, subjectUrl }: Came
   const resting: CameraAngle = { ...stored, distance: pendingDistance ?? stored.distance, ...sliderDraft };
   const spherePose = drag ? { ...drag, distance: pendingDistance ?? stored.distance } : resting;
   const named = drag ? nearestCameraAngle(spherePose) : resting;
-  const poseWords = cameraAngleNameKeys(named.azimuth, named.elevation, named.distance).map((key) => t(key));
+  const poseWords = cameraAngleNames(specs, params, named);
   // The sliders show a draft only while the sphere or the wheel moves the pose.
   const shownOnSliders = drag !== null || pendingDistance !== null ? named : undefined;
 
-  const azimuthStops: SliderStop[] = NAMED_AZIMUTHS.map((v) => ({
-    value: v,
-    label: t(`canvas.generatePanel.cameraAngle.azimuth.${v}`),
-  }));
-  const elevationStops: SliderStop[] = ELEVATIONS.map(([v, word]) => ({
-    value: v,
-    label: t(`canvas.generatePanel.cameraAngle.elevation.${word}`),
-  }));
-  const distanceStops: SliderStop[] = [0, 1, 2].map((v) => ({
-    value: v,
-    label: t(`canvas.generatePanel.cameraAngle.distance.${v}`),
-  }));
+  /**
+   * One axis's named steps under its slider.
+   * @param name - The axis's param.
+   * @param steps - The values to name.
+   * @returns The stops.
+   */
+  const stopsOf = (name: string, steps: readonly number[]): SliderStop[] =>
+    steps.map((v) => ({ value: v, label: optionLabel(specs[name] ?? {}, v) }));
+  const azimuthStops = stopsOf(params.azimuth, NAMED_AZIMUTHS);
+  const elevationStops = stopsOf(params.elevation, CAMERA_ANGLE_GRID.elevation);
+  const distanceStops = stopsOf(params.distance, CAMERA_ANGLE_GRID.distance);
   const degrees = React.useCallback((v: number): string => `${v}°`, []);
-  const distanceWord = React.useCallback((v: number): string => t(`canvas.generatePanel.cameraAngle.distance.${v}`), [t]);
+  const distanceSpec = specs[params.distance];
+  const distanceWord = React.useCallback((v: number): string => optionLabel(distanceSpec ?? {}, v), [distanceSpec]);
 
   return (
     <div className='flex flex-col gap-3'>
       <div>
         <div className='mb-1.5 flex items-center justify-between gap-2 text-xs font-medium'>
-          <span className='text-muted-foreground'>{t('canvas.generatePanel.cameraAngle.title')}</span>
+          <span className='shrink-0 whitespace-nowrap text-muted-foreground'>{t('canvas.generatePanel.cameraAngle.title')}</span>
           <span data-testid='generate-camera-angle-pose' className='truncate text-foreground'>
             {poseWords.join(' · ')}
           </span>
