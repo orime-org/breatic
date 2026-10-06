@@ -134,16 +134,39 @@ export function stripOffsetFromRowTop(
  * centring the strip on it put the strip between the two lines. A range's
  * rects are one per line box whatever the element is.
  *
- * A table answers with its first row's box.
+ * A table answers with the first line of its first row (`firstLineOfTableRow`).
  * @param row - The row's content element.
  * @returns The box, or undefined when the row shows no line.
  */
 export function firstLineOf(row: Element): DOMRect | undefined {
-  // A table's first line is its first row: the strip stands beside the top of
-  // the table, the way it stands beside a paragraph's first line.
   const firstRow = row.querySelector('tr');
-  if (firstRow !== null) return firstRow.getBoundingClientRect();
-  const words = row.firstElementChild ?? row;
+  if (firstRow !== null) return firstLineOfTableRow(firstRow);
+  return lineOf(row.firstElementChild ?? row);
+}
+
+/**
+ * The first line of a table row: the first line of words in its first cell
+ * (inner#1278).
+ *
+ * A cell's words start at its top, after the cell's padding, so this line is
+ * the same distance below the table's top line however tall the first row
+ * grows; centring the strip on the row's own box put it halfway down a tall
+ * row (measured 2026-10-06: 142px down a 283px first row).
+ * @param tableRow - The `tr`.
+ * @returns The box, or undefined when the row has no cell.
+ */
+function firstLineOfTableRow(tableRow: Element): DOMRect | undefined {
+  const cell = tableRow.querySelector('td, th');
+  if (cell === null) return undefined;
+  return lineOf(cell.firstElementChild ?? cell);
+}
+
+/**
+ * The first line box of the words in one element.
+ * @param words - The element the words sit in.
+ * @returns The box, or undefined when it draws nothing.
+ */
+function lineOf(words: Element): DOMRect | undefined {
   const range = document.createRange();
   range.selectNodeContents(words);
   const lines = range.getClientRects();

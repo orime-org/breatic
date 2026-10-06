@@ -15,6 +15,7 @@
  */
 
 import type { MiddlewareHandler } from "hono";
+import * as Sentry from "@sentry/node";
 import { authService } from "@server/modules";
 import { logger } from "@breatic/core";
 import { t, type MembershipTier } from "@breatic/shared";
@@ -70,5 +71,8 @@ export const requireAuth: MiddlewareHandler<{
     membershipTier: user.membershipTier,
     locale: user.locale,
   });
+  // Errors raised while serving this request carry the account id, and
+  // nothing else about the person (the Sentry request isolation scopes it).
+  Sentry.setUser({ id: user.id });
   await next();
 };

@@ -212,14 +212,14 @@ describe("the two memory lines", () => {
     // now refuses would otherwise be found by whoever spoke first: a 500 for
     // them, a process that started fine and a healthz still green behind it.
     // What is asserted is only that the call is still in the entry — whether
-    // it exits is the entry's own `process.exit(1)`, three lines below it.
+    // it exits is the entry's own `await exitProcess(1)`, three lines below it.
     const entry = readFileSync(resolve(import.meta.dirname, path), "utf8");
     // The call, and the exit that makes it a preflight rather than a read.
     // Matching the call alone passes on one sitting in a comment, or on one
     // whose failure is swallowed — either of which starts the process on a
     // config the schema refuses.
     expect(entry).toMatch(
-      /\n\s*getAgentConfig\(\);\n\} catch \(err\) \{[\s\S]{0,300}?process\.exit\(1\);/,
+      /\n\s*getAgentConfig\(\);\n\} catch \(err\) \{[\s\S]{0,300}?await exitProcess\(1\);/,
     );
   });
 });

@@ -314,6 +314,22 @@ describe("agent config — a title longer than the column can hold", () => {
 // endpoint, the browser, the Worker's router, the node's failure text — each
 // see something that looks ordinary. The base is normalised where it is read
 // so no consumer has to strip anything.
+describe("parseConfig — SENTRY_DSN", () => {
+  it("leaves monitoring off when it is absent or blank", () => {
+    expect(parseConfig(baseEnv()).SENTRY_DSN).toBe("");
+    expect(parseConfig(baseEnv({ SENTRY_DSN: "  " })).SENTRY_DSN).toBe("");
+  });
+
+  it("takes a DSN, without the whitespace a secret store may add", () => {
+    const config = parseConfig(baseEnv({ SENTRY_DSN: " https://publickey@o1.ingest.sentry.io/2\n" }));
+    expect(config.SENTRY_DSN).toBe("https://publickey@o1.ingest.sentry.io/2");
+  });
+
+  it("starts with a value that is not a DSN, which the services report and leave off", () => {
+    expect(parseConfig(baseEnv({ SENTRY_DSN: "<backend DSN>" })).SENTRY_DSN).toBe("<backend DSN>");
+  });
+});
+
 describe("parseConfig — INGEST_BASE_URL", () => {
   it("drops trailing slashes so appending a path cannot double one", () => {
     const config = parseConfig(

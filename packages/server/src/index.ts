@@ -10,6 +10,7 @@
 
 // MUST be first: reads process.env + initCore before any env.* read.
 import "@server/bootstrap-config.js";
+import { exitProcess, initSentry } from "@server/sentry.js";
 import { serve } from "@hono/node-server";
 import { createApp } from "@server/app.js";
 import { env,
@@ -37,7 +38,12 @@ import { textToolModels } from "@server/config/text-tools.js";
 // Tag this process's logs as "server" (file dir logs/server/, `name:"server"`).
 // Runs after initCore (bootstrap-config) and before the first log below;
 // the HTTP routes stay mounted under /api/v1 — only the log identity changes.
+// Error monitoring starts before the first log line, so error logs from the
+// config checks below are already reported.
+const monitoring = initSentry();
+
 initLogger("server");
+if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
 
 // Route the AI SDK's warnings into our logger. Without this the SDK writes
 // them to console, and our logs are JSON on disk — console output lands
@@ -57,7 +63,7 @@ try {
   getSkillRouting();
 } catch (err) {
   logger.error({ err }, "skill_routing_config_invalid");
-  process.exit(1);
+  await exitProcess(1);
 }
 
 // Health probe port from the validated config (default 3001).
@@ -74,7 +80,7 @@ try {
   getStorageConfig();
 } catch (err) {
   logger.error({ err }, "storage_config_invalid");
-  process.exit(1);
+  await exitProcess(1);
 }
 
 // Same preflight for config/models/*.yaml (#1966). Every model must declare
@@ -87,7 +93,7 @@ try {
   modelCatalog.getModelCatalog();
 } catch (err) {
   logger.error({ err }, "model_catalog_invalid");
-  process.exit(1);
+  await exitProcess(1);
 }
 
 // And config/agent.yaml, which now rejects a keep line that sits at or above
@@ -99,7 +105,7 @@ try {
   getAgentConfig();
 } catch (err) {
   logger.error({ err }, "agent_config_invalid");
-  process.exit(1);
+  await exitProcess(1);
 }
 
 // Every model the agent runs on has to be priceable (#296). One reached
@@ -110,7 +116,7 @@ try {
   assertModelsPriced([...agentModelIds(), ...textToolModels()]);
 } catch (err) {
   logger.error({ err }, "usage_pricing_incomplete");
-  process.exit(1);
+  await exitProcess(1);
 }
 
 // The two files that say what this deployment charges: membership plans and
@@ -134,7 +140,7 @@ if (env.PAYMENT_ENABLED) {
     getPricingTiers();
   } catch (err) {
     logger.error({ err }, "payment_config_invalid");
-    process.exit(1);
+    await exitProcess(1);
   }
 }
 
@@ -157,7 +163,7 @@ try {
   } else {
     logger.error({ err }, "infra_check_unexpected_error");
   }
-  process.exit(1);
+  await exitProcess(1);
 }
 
 // Production error logging for shared Redis singletons. The core
@@ -195,7 +201,7 @@ const SHUTDOWN_DEADLINE_MS = 4000;
 // exits (the library layer never logs / exits itself).
 server.on("error", (err) => {
   logger.fatal({ err, port: env.PORT }, "http_listen_error");
-  process.exit(1);
+  void exitProcess(1);
 });
 
 // Transactional-outbox relay: forwards project duplicate / archive /
@@ -236,7 +242,7 @@ const health = startHealthServer({
         { service: event.serviceName, port: event.port, err: event.err },
         "healthz_listen_error",
       );
-      process.exit(1);
+      void exitProcess(1);
     }
   },
   checks: [
@@ -292,7 +298,7 @@ async function shutdown(signal: string): Promise<void> {
   }
 
   logger.info("Shutdown complete");
-  process.exit(0);
+  await exitProcess(0);
 }
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));

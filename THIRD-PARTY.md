@@ -106,6 +106,7 @@ front-end bundle covered by the next section.
 | `minipass` | `7.1.3` | `packages/server` → `mjml` → `mjml-cli` → `glob` | **BlueOak-1.0.0**, per the tarball's `LICENSE.md` | https://github.com/isaacs/minipass |
 | `path-scurry` | `2.0.2` | `packages/server` → `mjml` → `mjml-cli` → `glob` | **BlueOak-1.0.0**, per the tarball's `LICENSE.md` | https://github.com/isaacs/path-scurry |
 | `sax` | `1.6.1` | `packages/server` → `mjml` → `mjml-core` → `htmlnano` → `svgo` | **BlueOak-1.0.0**, per the tarball's `LICENSE.md` | https://github.com/isaacs/sax-js |
+| `sentry` | `0.45.0` | `packages/server`, `packages/worker`, `packages/collab` → `@sentry/node` → `@sentry/bundler-plugins` | **FSL-1.1-Apache-2.0** (Functional Source License 1.1), per the tarball's `LICENSE.md`: use and redistribution for any purpose other than a product competing with Sentry, becoming Apache-2.0 two years after each release. It is Sentry's command-line tool; `@sentry/node` imports it only from its bundler-plugin entry points (`/vite`, `/rollup`, `/webpack`, `/esbuild`), which none of our services load, so it sits in the image without running | https://github.com/getsentry/cli |
 | `slick` | `1.12.2` | `packages/server` → `mjml` → `mjml-core` → `juice` | Reported as `MIT (http://mootools.net/license.txt)`, which is what its `package.json` declares. Neither the published tarball nor the upstream repository carries a licence file, and that address no longer serves the licence text. We use it under the author's MIT declaration | https://github.com/kamicane/slick |
 
 ## Packages reachable from the front-end bundle
@@ -194,6 +195,28 @@ it.
 | `khroma` | `2.1.0` | `@excalidraw/excalidraw` → `@excalidraw/mermaid-to-excalidraw` → `mermaid` | Reported as **Unknown**, because its `package.json` carries no `license` field at all. The published tarball carries a `license` file, and that file is the MIT licence | https://github.com/fabiospampinato/khroma |
 | `pako` | `2.0.3`, `1.0.11` | `@excalidraw/excalidraw` (2.0.3); `mammoth` → `jszip` (1.0.11) | **MIT AND Zlib** — its own code under MIT, the parts ported from zlib under Zlib. Both ask only that the notice travel along | https://github.com/nodeca/pako |
 | `robust-predicates` | `3.0.3` | `@excalidraw/excalidraw` → `@excalidraw/mermaid-to-excalidraw` → `mermaid` → `d3` → `d3-delaunay` → `delaunator` | **Unlicense**, a dedication to the public domain | https://github.com/mourner/robust-predicates |
+
+## Reported as production, not distributed
+
+`@sentry/cloudflare`, a dependency of `packages/ingest`, names `wrangler` as an
+optional peer, and the workspace resolves that peer to the `wrangler` the
+package already has as a devDependency. `pnpm licenses list --prod` follows the
+peer, so `wrangler`'s own tree is reported as production. None of it reaches the
+deployed Worker: wrangler bundles only what `packages/ingest/src` imports.
+
+| Package | Version | Reached through | Licence | Source |
+|---|---|---|---|---|
+| `@img/sharp-libvips-darwin-arm64` | `1.3.1` | `packages/ingest` → `@sentry/cloudflare` → `wrangler` (peer) → `miniflare` → `sharp`; one per platform, and each machine installs its own | **LGPL-3.0-or-later**; the libvips binary sharp loads during local Worker emulation | https://github.com/lovell/sharp-libvips |
+| `@img/sharp-libvips-darwin-x64` | `1.3.1` | `packages/ingest` → `@sentry/cloudflare` → `wrangler` (peer) → `miniflare` → `sharp`; one per platform, and each machine installs its own | **LGPL-3.0-or-later**; the libvips binary sharp loads during local Worker emulation | https://github.com/lovell/sharp-libvips |
+| `@img/sharp-libvips-linux-arm` | `1.3.1` | `packages/ingest` → `@sentry/cloudflare` → `wrangler` (peer) → `miniflare` → `sharp`; one per platform, and each machine installs its own | **LGPL-3.0-or-later**; the libvips binary sharp loads during local Worker emulation | https://github.com/lovell/sharp-libvips |
+| `@img/sharp-libvips-linux-arm64` | `1.3.1` | `packages/ingest` → `@sentry/cloudflare` → `wrangler` (peer) → `miniflare` → `sharp`; one per platform, and each machine installs its own | **LGPL-3.0-or-later**; the libvips binary sharp loads during local Worker emulation | https://github.com/lovell/sharp-libvips |
+| `@img/sharp-libvips-linux-ppc64` | `1.3.1` | `packages/ingest` → `@sentry/cloudflare` → `wrangler` (peer) → `miniflare` → `sharp`; one per platform, and each machine installs its own | **LGPL-3.0-or-later**; the libvips binary sharp loads during local Worker emulation | https://github.com/lovell/sharp-libvips |
+| `@img/sharp-libvips-linux-riscv64` | `1.3.1` | `packages/ingest` → `@sentry/cloudflare` → `wrangler` (peer) → `miniflare` → `sharp`; one per platform, and each machine installs its own | **LGPL-3.0-or-later**; the libvips binary sharp loads during local Worker emulation | https://github.com/lovell/sharp-libvips |
+| `@img/sharp-libvips-linux-s390x` | `1.3.1` | `packages/ingest` → `@sentry/cloudflare` → `wrangler` (peer) → `miniflare` → `sharp`; one per platform, and each machine installs its own | **LGPL-3.0-or-later**; the libvips binary sharp loads during local Worker emulation | https://github.com/lovell/sharp-libvips |
+| `@img/sharp-libvips-linux-x64` | `1.3.1` | `packages/ingest` → `@sentry/cloudflare` → `wrangler` (peer) → `miniflare` → `sharp`; one per platform, and each machine installs its own | **LGPL-3.0-or-later**; the libvips binary sharp loads during local Worker emulation | https://github.com/lovell/sharp-libvips |
+| `@img/sharp-libvips-linuxmusl-arm64` | `1.3.1` | `packages/ingest` → `@sentry/cloudflare` → `wrangler` (peer) → `miniflare` → `sharp`; one per platform, and each machine installs its own | **LGPL-3.0-or-later**; the libvips binary sharp loads during local Worker emulation | https://github.com/lovell/sharp-libvips |
+| `@img/sharp-libvips-linuxmusl-x64` | `1.3.1` | `packages/ingest` → `@sentry/cloudflare` → `wrangler` (peer) → `miniflare` → `sharp`; one per platform, and each machine installs its own | **LGPL-3.0-or-later**; the libvips binary sharp loads during local Worker emulation | https://github.com/lovell/sharp-libvips |
+| `@speed-highlight/core` | `1.2.24` | `packages/ingest` → `@sentry/cloudflare` → `wrangler` (peer) → `miniflare` → `youch` | **CC0-1.0**, a dedication to the public domain, which asks nothing of us | https://github.com/speed-highlight/core |
 
 ## Build and development tools
 

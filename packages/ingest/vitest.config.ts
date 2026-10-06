@@ -55,6 +55,9 @@ const workers = defineWorkersProject({
         // immediately.
         miniflare: {
           compatibilityDate: "2026-03-10",
+          // The Sentry SDK needs `AsyncLocalStorage`; wrangler.toml.template
+          // carries the same flag for `wrangler dev` and deploys.
+          compatibilityFlags: ["nodejs_compat"],
           r2Buckets: ["BUCKET"],
           // Bound, and deliberately with no image behind it. Declaring one
           // would make every run of this suite need Docker and a built image
