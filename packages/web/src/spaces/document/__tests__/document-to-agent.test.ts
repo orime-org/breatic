@@ -7,7 +7,9 @@
  * first line.
  */
 
-import { TextSelection } from '@tiptap/pm/state';
+import { AllSelection, TextSelection } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
+import { selectedFragmentToHTML } from '@blocknote/core';
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
 
@@ -184,6 +186,53 @@ describe('selectionItem', () => {
     selectWords(editor, 'bravo');
 
     expect(selectionItem(editor).id).not.toBe(first);
+  });
+});
+
+describe('selectionItem over table cells', () => {
+  /**
+   * Opens a two-by-two table holding a, b, c and d, with the cells' positions.
+   * @returns The editor and its cells, in document order.
+   */
+  function openGrid(): { editor: Editor; cells: number[] } {
+    const editor = open([
+      {
+        type: 'table',
+        content: { type: 'tableContent', rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] },
+      },
+    ]);
+    const cells: number[] = [];
+    editor.prosemirrorView!.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'tableCell' || node.type.name === 'tableHeader') cells.push(pos);
+      return true;
+    });
+    return { editor, cells };
+  }
+
+  it('names the item after the first cell whichever way the cells were dragged', () => {
+    const { editor, cells } = openGrid();
+    const view = editor.prosemirrorView!;
+
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[3]!)));
+    expect(selectionItem(editor).name).toBe('a');
+
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[3]!, cells[0]!)));
+    expect(selectionItem(editor).name).toBe('a');
+  });
+});
+
+describe('selectionItem over the whole document', () => {
+  it('gives what copy gives', () => {
+    const editor = open([
+      { type: 'heading', props: { level: 2 }, content: 'Title' },
+      { type: 'paragraph', content: [{ type: 'text', text: 'body', styles: { bold: true } }] },
+    ]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+
+    expect(selectionItem(editor).chip?.data_snapshot).toEqual({
+      text: selectedFragmentToHTML(view, editor).markdown.trimEnd(),
+    });
   });
 });
 
