@@ -295,15 +295,21 @@ function VideoGeneratePanelBody({
   // only routes the insert: the shot box the caret was last in, else the
   // first shot box, else the main prompt. Shot boxes are mounted only in the
   // multi-shot mode and leave the map when they unmount.
-  const handleInsertReference = React.useCallback(
-    (item: ReferenceRailItem) => {
-      (
-        shotEditors.current.get(lastFocusedBox.current) ??
-        shotEditors.current.values().next().value ??
-        promptEditorRef.current
-      )?.insertReference(item);
-    },
+  const insertTarget = React.useCallback(
+    (): PromptEditorHandle | null =>
+      shotEditors.current.get(lastFocusedBox.current) ??
+      shotEditors.current.values().next().value ??
+      promptEditorRef.current,
     [promptEditorRef],
+  );
+  const handleInsertReference = React.useCallback(
+    (item: ReferenceRailItem) => insertTarget()?.insertReference(item),
+    [insertTarget],
+  );
+  // The camera picker writes where the rail would, by the same order.
+  const handleInsertCameraCommands = React.useCallback(
+    (text: string) => insertTarget()?.insertText(text),
+    [insertTarget],
   );
   const references = vm.references;
 
@@ -976,6 +982,7 @@ function VideoGeneratePanelBody({
       referencePicking={referencePicking}
       onRemoveReference={onRemoveReference}
       onInsertReference={handleInsertReference}
+      onInsertCameraCommands={handleInsertCameraCommands}
       // The mode states which slots it collects, so a mode that takes no
       // source shows none rather than offering a pick the submit ignores.
       slots={vm.slots}

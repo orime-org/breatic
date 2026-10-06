@@ -674,7 +674,19 @@
       "styleTip": "从画布选最多 3 张图作为风格参考",
       "selectStyleFromCanvas": "从画布选择风格参考",
       "removeStyle": "移除风格参考",
-      "errorNoStyleImage": "先挑一张风格图"
+      "errorNoStyleImage": "先挑一张风格图",
+      "cameraCommands": "运镜",
+      "cameraCommandsInsert": "插入",
+      "cameraCommandGroup": {
+        "truck": "横移",
+        "pan": "摇",
+        "dolly": "推拉",
+        "pedestal": "升降",
+        "tilt": "俯仰",
+        "zoom": "变焦",
+        "other": "其他"
+      },
+      "cameraCommandsPreviewHint": "悬停指令即可预览"
     },
     "nodeMenu": {
       "generate": "生成",

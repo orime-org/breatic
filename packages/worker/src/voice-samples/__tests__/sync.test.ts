@@ -5,7 +5,12 @@ import { describe, it, expect, vi } from "vitest";
 import { getFullModelConfig, getVoiceSampleConfig } from "@breatic/domain";
 
 import { planVoiceSamples } from "@worker/voice-samples/plan.js";
-import { assertUploadsReachSampleAddress, servedFromHead, syncVoiceSamples } from "@worker/voice-samples/sync.js";
+import {
+  assertUploadsReachSampleAddress,
+  resumablePredict,
+  servedFromHead,
+  syncVoiceSamples,
+} from "@worker/voice-samples/sync.js";
 
 const JOBS = [
   { model: "m", key: "voice-samples/m/a.mp3", body: {} },
@@ -18,7 +23,8 @@ describe("syncVoiceSamples", () => {
     const upload = vi.fn().mockResolvedValue(undefined);
     const report = await syncVoiceSamples(JOBS, {
       exists: async (key) => key.endsWith("a.mp3"),
-      generate: async () => Buffer.from("mp3"),
+      predict: async (job) => `https://out.test/${job.key}`,
+      download: async () => Buffer.from("mp3"),
       upload,
       attempts: 1,
     });
@@ -30,17 +36,91 @@ describe("syncVoiceSamples", () => {
     let calls = 0;
     const report = await syncVoiceSamples(JOBS, {
       exists: async () => false,
-      generate: async (job) => {
+      predict: async (job) => {
         calls += 1;
         if (job.key.endsWith("b.mp3") && calls < 4) throw new Error("rate limit exceeded");
         if (job.key.endsWith("c.mp3")) throw new Error("voice not found");
-        return Buffer.from("mp3");
+        return `https://out.test/${job.key}`;
       },
+      download: async () => Buffer.from("mp3"),
       upload: async () => undefined,
       attempts: 3,
     });
     expect(report.made).toBe(2);
     expect(report.failed).toEqual([{ key: "voice-samples/m/c.mp3", error: "voice not found" }]);
+  });
+
+  it("runs every step after the prediction again when one of them fails", async () => {
+    const predict = vi.fn().mockResolvedValue("https://out.test/a.mp3");
+    const download = vi.fn()
+      .mockRejectedValueOnce(new Error("connection reset"))
+      .mockResolvedValue(Buffer.from("raw"));
+    const finish = vi.fn()
+      .mockRejectedValueOnce(new Error("ffmpeg exited 1"))
+      .mockResolvedValue(Buffer.from("small"));
+    const upload = vi.fn()
+      .mockRejectedValueOnce(new Error("upload timed out"))
+      .mockResolvedValue(undefined);
+    const report = await syncVoiceSamples([JOBS[0]!], {
+      exists: async () => false, predict, download, finish, upload, attempts: 4,
+    });
+    expect(report).toEqual({ present: 0, made: 1, failed: [] });
+    expect(download).toHaveBeenCalledTimes(4);
+    expect(finish).toHaveBeenCalledTimes(3);
+    expect(upload.mock.calls.map(([, bytes]) => String(bytes))).toEqual(["small", "small"]);
+  });
+
+  it("checks it can make a sample once, before the first prediction, and only when one is missing", async () => {
+    const order: string[] = [];
+    const deps = {
+      predict: async (job: { key: string }) => { order.push(`predict ${job.key}`); return "https://out.test/x"; },
+      download: async () => Buffer.from("mp3"),
+      upload: async () => undefined,
+      beforeMaking: async () => { order.push("check"); },
+      attempts: 1,
+      concurrency: 1,
+    };
+    await syncVoiceSamples(JOBS, { ...deps, exists: async (key) => key.endsWith("a.mp3") });
+    expect(order).toEqual(["check", "predict voice-samples/m/b.mp3", "predict voice-samples/m/c.mp3"]);
+    order.length = 0;
+    await syncVoiceSamples(JOBS, { ...deps, exists: async () => true });
+    expect(order).toEqual([]);
+  });
+
+  it("stops before any prediction when the check fails", async () => {
+    const predict = vi.fn();
+    await expect(syncVoiceSamples(JOBS, {
+      exists: async () => false,
+      predict,
+      download: async () => Buffer.from("mp3"),
+      upload: async () => undefined,
+      beforeMaking: async () => { throw new Error("ffmpeg cannot encode h264"); },
+      attempts: 3,
+    })).rejects.toThrow("ffmpeg cannot encode h264");
+    expect(predict).not.toHaveBeenCalled();
+  });
+});
+
+describe("resumablePredict", () => {
+  it("polls the task it already submitted on a retry, and submits again after the upstream failed it", async () => {
+    const seen: Array<string | null> = [];
+    let call = 0;
+    const predict = resumablePredict(
+      async (_job, resume) => {
+        call += 1;
+        seen.push(resume.storedTaskId);
+        if (resume.storedTaskId === null) await resume.persistTaskId(`task-${call}`);
+        if (call === 1) throw new Error("poll ran out of time");
+        if (call === 2) throw new Error("upstream failed the task");
+        return "https://out.test/a.mp3";
+      },
+      (err) => err instanceof Error && err.message === "upstream failed the task",
+    );
+    const job = JOBS[0]!;
+    await expect(predict(job)).rejects.toThrow("poll ran out of time");
+    await expect(predict(job)).rejects.toThrow("upstream failed the task");
+    await expect(predict(job)).resolves.toBe("https://out.test/a.mp3");
+    expect(seen).toEqual([null, "task-1", null]);
   });
 });
 

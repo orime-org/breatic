@@ -78,6 +78,7 @@ export type {
   RemoteParamSource,
   ModelProvider,
   ModelEntry,
+  CameraCommandEntry,
   PricingContract,
   ExtraStep,
   SourceGroup,

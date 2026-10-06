@@ -259,6 +259,40 @@ models:
     variant: "Text-to-Video"
     mode: ["t2v", "multi_shot"]
     takes_prompt: true
+    # The bracketed commands H3 reads out of its prompt, each with
+    # the clip the picker previews it with. One list for all three entries:
+    # the same model reads them, so the clips are the same.
+    camera_commands: &minimax_h3_camera_commands
+      - name: "Truck left"
+        sample_key: "camera-previews/minimax-h3/truck-left-640.mp4"
+      - name: "Truck right"
+        sample_key: "camera-previews/minimax-h3/truck-right-640.mp4"
+      - name: "Pan left"
+        sample_key: "camera-previews/minimax-h3/pan-left-640.mp4"
+      - name: "Pan right"
+        sample_key: "camera-previews/minimax-h3/pan-right-640.mp4"
+      - name: "Push in"
+        sample_key: "camera-previews/minimax-h3/push-in-640.mp4"
+      - name: "Pull out"
+        sample_key: "camera-previews/minimax-h3/pull-out-640.mp4"
+      - name: "Pedestal up"
+        sample_key: "camera-previews/minimax-h3/pedestal-up-640.mp4"
+      - name: "Pedestal down"
+        sample_key: "camera-previews/minimax-h3/pedestal-down-640.mp4"
+      - name: "Tilt up"
+        sample_key: "camera-previews/minimax-h3/tilt-up-640.mp4"
+      - name: "Tilt down"
+        sample_key: "camera-previews/minimax-h3/tilt-down-640.mp4"
+      - name: "Zoom in"
+        sample_key: "camera-previews/minimax-h3/zoom-in-640.mp4"
+      - name: "Zoom out"
+        sample_key: "camera-previews/minimax-h3/zoom-out-640.mp4"
+      - name: "Shake"
+        sample_key: "camera-previews/minimax-h3/shake-640.mp4"
+      - name: "Tracking shot"
+        sample_key: "camera-previews/minimax-h3/tracking-shot-640.mp4"
+      - name: "Static shot"
+        sample_key: "camera-previews/minimax-h3/static-shot-640.mp4"
     tier: "optional"
     description: "Silent 2K, 21:9 through 9:16"
     guide: "A silent 2K clip in the widest range of framings, for a creator who will cut and score it themselves rather than accept generated audio."
@@ -439,6 +473,7 @@ models:
     variant: "Image-to-Video"
     mode: ["i2v", "first_last", "multi_shot"]
     takes_prompt: true
+    camera_commands: *minimax_h3_camera_commands
     tier: "recommended"
     description: "Most-voted #1; native 2K, 15s"
     guide: "The most-voted #1 on blind preference, at native 2K and up to 15 seconds."
@@ -771,6 +806,7 @@ models:
     variant: "Reference"
     mode: ["ref", "multi_shot"]
     takes_prompt: true
+    camera_commands: *minimax_h3_camera_commands
     tier: "recommended"
     description: "Top-rated, 2K from mixed refs"
     guide: "The default reference shot: the highest-rated model in the catalog, at the sharpest single-clip resolution any reference endpoint offers."

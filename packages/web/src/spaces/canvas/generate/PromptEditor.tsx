@@ -6,6 +6,7 @@ import { Document } from '@tiptap/extension-document';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { Text } from '@tiptap/extension-text';
+import { Selection } from '@tiptap/pm/state';
 import { EditorContent, useEditor } from '@tiptap/react';
 import * as React from 'react';
 import type * as Y from 'yjs';
@@ -55,6 +56,16 @@ export interface PromptEditorHandle {
    * @returns The backend prompt string, or null when the editor is not ready.
    */
   serializePrompt: (tokens?: MentionTokens) => string | null;
+  /**
+   * Inserts plain text at the caret the reader last left in this editor, or
+   * at the end when they never put one here. A popover opening
+   * takes focus away, so "has a caret" means "was focused since this editor
+   * was last created",
+   * and the selection ProseMirror keeps through the blur is where it goes.
+   * A space is added on a side that would otherwise touch a word.
+   * @param text - The text to insert.
+   */
+  insertText: (text: string) => void;
 }
 
 
@@ -210,6 +221,11 @@ export const PromptEditor = React.forwardRef<
   // baked in at creation would keep calling the caller's first render.
   const onFocusRef = React.useRef(onFocus);
   onFocusRef.current = onFocus;
+  // Whether the reader has put a caret in the current editor: the editor is
+  // rebuilt whenever its `useEditor` deps change (fragment, the empty-list
+  // label, caret provider, name resolver), so `onCreate` clears it and
+  // `onFocus` sets it.
+  const caretPlacedRef = React.useRef(false);
   // Read through a ref for the same reason the pool is: the two `onUpdate`
   // handlers are baked into the editor at creation, and rebuilding it to change
   // a separator would tear down the collaborative binding.
@@ -284,6 +300,7 @@ export const PromptEditor = React.forwardRef<
       // also fire onUpdate via y-prosemirror, so the container's mirrors stay
       // current for both local and remote changes.
       onCreate: ({ editor: e }) => {
+        caretPlacedRef.current = false;
         onTextChange(
           serializePromptText(e, poolRef.current, blockSeparatorRef.current, mentionTokensRef.current),
         );
@@ -295,7 +312,10 @@ export const PromptEditor = React.forwardRef<
         );
         onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
       },
-      onFocus: () => onFocusRef.current?.(),
+      onFocus: () => {
+        caretPlacedRef.current = true;
+        onFocusRef.current?.();
+      },
     },
     // Recreate the editor when the fragment OR a captured translated string
     // changes. The two mention labels are baked into the extensions at creation
@@ -339,6 +359,27 @@ export const PromptEditor = React.forwardRef<
         } else {
           editor.chain().focus('end').insertContent(content).run();
         }
+      },
+      insertText: (text: string): void => {
+        if (!editor || editor.isDestroyed) return;
+        const { state } = editor;
+        const { from, to } = caretPlacedRef.current
+          ? state.selection
+          : Selection.atEnd(state.doc);
+        /**
+         * Whether the text between two positions is a non-space character.
+         * @param a - Start position.
+         * @param b - End position.
+         * @returns True when the insert would touch a word there.
+         */
+        const touches = (a: number, b: number): boolean => /\S/.test(state.doc.textBetween(a, b));
+        const before = from > 1 && touches(from - 1, from) ? ' ' : '';
+        const after = to < state.doc.content.size - 1 && touches(to, to + 1) ? ' ' : '';
+        editor
+          .chain()
+          .focus()
+          .insertContentAt({ from, to }, { type: 'text', text: `${before}${text}${after}` })
+          .run();
       },
       serializePrompt: (tokens?: MentionTokens): string | null =>
         editor

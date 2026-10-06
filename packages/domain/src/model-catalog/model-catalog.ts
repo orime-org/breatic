@@ -25,6 +25,11 @@ import {
 import { assertNamesTellApart } from "@domain/model-catalog/model-names.js";
 import { assertParamDeclarations } from "@domain/model-catalog/param-declaration.js";
 import { assertTakesPromptDeclared } from "@domain/model-catalog/takes-prompt.js";
+import {
+  assertCameraCommands,
+  shipCameraCommands,
+  type DeclaredCameraCommand,
+} from "@domain/model-catalog/camera-commands.js";
 import type {
   ExtraStep,
   ModelCatalog,
@@ -128,6 +133,8 @@ export interface FullModelEntry {
    * absent when the upstream publishes no cap.
    */
   max_input_chars?: number;
+  /** The camera commands this model reads out of its prompt. */
+  camera_commands?: DeclaredCameraCommand[];
   params?: Record<string, FullParamSpec>;
   providers?: FullProviderEndpoint[];
   /**
@@ -223,6 +230,7 @@ export function getFullModelConfig(modality: string): FullModalityConfig {
   assertModesDeclared(modality, models, getModeConfig());
   assertParamDeclarations(modality, models);
   assertNamesTellApart(modality, models);
+  assertCameraCommands(modality, models);
 
   let providers: Record<string, ProviderConnectionConfig> = {};
   const providersPath = resolve(dir, "providers.yaml");
@@ -326,6 +334,7 @@ function projectModelEntry(
     // sending text the upstream will reject. Absent on models whose upstream
     // publishes no cap.
     max_input_chars: m.max_input_chars,
+    camera_commands: shipCameraCommands(m.camera_commands),
     icon: m.icon,
   };
 }

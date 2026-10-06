@@ -2477,3 +2477,195 @@ describe('the multi-shot mode', () => {
     expect(data.model).toBe('kling-v3');
   });
 });
+
+describe('camera commands', () => {
+  const COMMANDS = [
+    'Truck left', 'Truck right', 'Pan left', 'Pan right', 'Push in', 'Pull out',
+    'Pedestal up', 'Pedestal down', 'Tilt up', 'Tilt down', 'Zoom in', 'Zoom out',
+    'Shake', 'Tracking shot', 'Static shot',
+  ];
+  /**
+   * The clip address a command previews with.
+   * @param name - The command.
+   * @returns Its address.
+   */
+  const clip = (name: string): string =>
+    `https://samples.test/camera-previews/h3/${name.toLowerCase().replace(/ /g, '-')}.mp4`;
+  /** MiniMax H3 as the wire ships it: shots go into its prompt, and it reads camera commands. */
+  const H3: ModelEntry = {
+    ...T2V,
+    name: 'minimax-h3-text-to-video',
+    display_name: 'MiniMax H3',
+    mode: ['t2v', 'multi_shot'],
+    params: {
+      duration: { description: '', values: [5, 10], default: 10, fill: 'panel' },
+      shots: {
+        description: '',
+        default: null,
+        type: 'items',
+        modes: ['multi_shot'],
+        into_prompt: 'Shot {n} [{start}-{end}s]: {prompt}',
+        fill: 'storyboard',
+        fields: { prompt: { type: 'text' }, duration: { values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] } },
+      },
+    },
+    camera_commands: COMMANDS.map((name) => ({ name, preview_url: clip(name) })),
+  };
+  /**
+   * The test id of one command's option.
+   * @param name - The command.
+   * @returns Its test id.
+   */
+  const option = (name: string): string =>
+    `generate-video-camera-option-${name.toLowerCase().replace(/ /g, '-')}`;
+
+  /**
+   * Opens the panel on a node standing on a model.
+   * @param mode - The node's mode.
+   * @param model - The node's model.
+   * @param before - Writes to make before the panel opens.
+   */
+  async function openOn(mode: string, model: string, before: () => void = () => undefined): Promise<void> {
+    vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), video: [H3, ...catalog().video] });
+    const stored = { mode, model, modelByMode: { [mode]: model }, paramsByModel: { [model]: { duration: 5 } } };
+    seedVideoNode(stored);
+    before();
+    mountContainer('video', stored);
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'video');
+    });
+    await screen.findByTestId('generate-video-execute');
+  }
+
+  /**
+   * Opens the picker, clicks the commands in order, and inserts them.
+   * @param names - The commands to pick.
+   */
+  async function insert(...names: string[]): Promise<void> {
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    for (const name of names) fireEvent.click(await screen.findByTestId(option(name)));
+    fireEvent.click(await screen.findByTestId('generate-video-camera-insert'));
+    // The popover is closed before the next open, as a reader's next click would find it.
+    await waitFor(() => expect(screen.queryByTestId('generate-video-camera-insert')).toBeNull());
+  }
+
+  beforeEach(() => {
+    _resetForTests();
+    useCanvasStore.setState({ panelHostId: null, panelKind: null, pickSession: null });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('draws the camera button for a model that reads commands', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    expect(screen.getByTestId('generate-video-camera-trigger')).toBeInTheDocument();
+  });
+
+  it('draws no camera button for a model with no commands', async () => {
+    await openOn('t2v', 'veo-3.1');
+    expect(screen.queryByTestId('generate-video-camera-trigger')).toBeNull();
+  });
+
+  it('offers all fifteen commands, and at three picks only the ones that would replace a pick', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    for (const name of COMMANDS) expect(await screen.findByTestId(option(name)), name).toBeEnabled();
+    for (const name of ['Truck left', 'Push in', 'Zoom out']) fireEvent.click(screen.getByTestId(option(name)));
+    expect(screen.getByTestId(option('Pan left'))).toBeDisabled();
+    expect(screen.getByTestId(option('Truck right'))).toBeEnabled();
+    expect(screen.getByTestId(option('Static shot'))).toBeEnabled();
+  });
+
+  it('writes the picks into the prompt as one bracket and sends them', async () => {
+    const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({ id: 't1' } as never);
+    await openOn('t2v', 'minimax-h3-text-to-video', () => typePrompt('a red car'));
+    await insert('Truck left', 'Push in', 'Zoom out', 'Truck right');
+    await waitFor(() => expect(screen.getByTestId('generate-prompt-editor').textContent).toContain('[Push in,Zoom out,Truck right]'));
+    expect(screen.queryByTestId('generate-video-camera-insert')).toBeNull();
+    await waitFor(() => expect(screen.getByTestId('generate-video-execute')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('generate-video-execute'));
+    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
+    expect(createTask.mock.calls[0]?.[0]?.params.prompt).toBe('a red car [Push in,Zoom out,Truck right]');
+  });
+
+  it('in the multi-shot mode writes into the first shot, or the shot last focused, and sends it on that line', async () => {
+    const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({ id: 't1' } as never);
+    await openOn('multi_shot', 'minimax-h3-text-to-video', () => enterStoryboardShots('p', 's', 'target', 5));
+    await screen.findByTestId('generate-storyboard-shot-2-editor');
+    await insert('Pan left');
+    await waitFor(() => expect(readShots('p', 's', 'target')?.[0]?.prompt.toString()).toContain('[Pan left]'));
+    // The insert hands focus back to the first shot on the next frame; the reader clicks the second one after that.
+    await act(async () => {
+      await new Promise<void>((done) => requestAnimationFrame(() => done()));
+    });
+    const second = screen.getByTestId('generate-storyboard-shot-2-editor').querySelector('.ProseMirror') as HTMLElement;
+    fireEvent.focus(second);
+    await insert('Tilt up');
+    await waitFor(() => expect(readShots('p', 's', 'target')?.[1]?.prompt.toString()).toContain('[Tilt up]'));
+    fireEvent.click(screen.getByTestId('generate-video-execute'));
+    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
+    expect(createTask.mock.calls[0]?.[0]?.params.prompt).toBe('Shot 1 [0-2s]: [Pan left]\nShot 2 [2-5s]: [Tilt up]');
+  });
+
+  it('previews the hovered command, a disabled one included, in the pane at the top, and keeps the last one', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    const pane = await screen.findByTestId('generate-video-camera-preview');
+    expect(pane.querySelector('video')).toBeNull();
+    expect(pane.textContent).toBe(en.canvas.generatePanel.cameraCommandsPreviewHint);
+    for (const name of ['Truck left', 'Push in', 'Zoom out']) fireEvent.click(screen.getByTestId(option(name)));
+    const shake = screen.getByTestId(option('Shake'));
+    expect(shake).toBeDisabled();
+    fireEvent.pointerEnter(shake.parentElement as HTMLElement);
+    const video = pane.querySelector('video');
+    expect(video?.getAttribute('src')).toBe(clip('Shake'));
+    expect(video?.muted).toBe(true);
+    expect(video?.loop).toBe(true);
+    expect(video?.autoplay).toBe(true);
+    fireEvent.pointerLeave(shake.parentElement as HTMLElement);
+    expect(pane.querySelector('video')?.getAttribute('src')).toBe(clip('Shake'));
+    expect(screen.queryByTestId('hover-preview-content')).toBeNull();
+  });
+
+  it('opens with focus on the popover itself, so the hint stays until the reader moves to a command', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    const pane = await screen.findByTestId('generate-video-camera-preview');
+    await waitFor(() => expect(document.activeElement).toBe(pane.closest('[role="dialog"]')));
+    expect(pane.querySelector('video')).toBeNull();
+    fireEvent.focus(screen.getByTestId(option('Tilt up')));
+    expect(pane.querySelector('video')?.getAttribute('src')).toBe(clip('Tilt up'));
+  });
+
+  it('goes back to the hint when a clip cannot load', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    const pane = await screen.findByTestId('generate-video-camera-preview');
+    fireEvent.pointerEnter(screen.getByTestId(option('Shake')).parentElement as HTMLElement);
+    fireEvent.error(pane.querySelector('video') as HTMLVideoElement);
+    expect(pane.querySelector('video')).toBeNull();
+    expect(pane.textContent).toBe(en.canvas.generatePanel.cameraCommandsPreviewHint);
+  });
+
+  it('shows the pick order only on picked commands', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    for (const name of ['Push in', 'Zoom out']) fireEvent.click(await screen.findByTestId(option(name)));
+    const order = (name: string): HTMLElement =>
+      screen.getByTestId(`generate-video-camera-order-${name.toLowerCase().replace(/ /g, '-')}`);
+    expect(order('Zoom out').textContent).toBe('2');
+    expect(order('Zoom out')).not.toHaveClass('invisible');
+    expect(order('Pan left')).toHaveClass('invisible');
+  });
+
+  it('shows the picks as their bracket beside the count', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    const count = await screen.findByTestId('generate-video-camera-count');
+    expect(count.textContent).toBe('0/3');
+    for (const name of ['Push in', 'Zoom out']) fireEvent.click(screen.getByTestId(option(name)));
+    expect(count.textContent).toBe('2/3 · [Push in,Zoom out]');
+  });
+});
