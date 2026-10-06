@@ -240,6 +240,10 @@ export const coreConfigSchema = z.object({
   DEEPSEEK_API_KEY: z.string().default(""),
   WAVESPEED_API_KEY: z.string().default(""),
 
+  // ── Error monitoring ─────────────────────────────
+  // Blank keeps Sentry off, which is what a self-hosted instance gets.
+  SENTRY_DSN: z.string().default(""),
+
   // ── Agent Tools ───────────────────────────────────
   BRAVE_SEARCH_API_KEY: z.string().default(""),
 

@@ -55,6 +55,10 @@ export { env, MONOREPO_ROOT } from "@core/config/env.js";
 // validated config. Library code reads it via the `env` Proxy above.
 export { initCore, getConfig, getRawEnvVar } from "@core/config/runtime.js";
 export type { CoreConfig } from "@core/config/schema.js";
+export {
+  errorMonitoringEnvironment,
+  readBuildRelease,
+} from "@core/config/error-monitoring.js";
 export { getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
