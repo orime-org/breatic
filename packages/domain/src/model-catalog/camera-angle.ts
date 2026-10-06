@@ -22,10 +22,10 @@ const AXES: readonly CameraAngleAxis[] = ["azimuth", "elevation", "distance"];
 
 /**
  * The values a declared range walks, or null when it is not a stepped range.
- * @param spec - One param's declaration.
+ * @param spec - One param's declaration, read for its min, max and step.
  * @returns min, min + step, … up to max.
  */
-function walk(spec: { min?: unknown; max?: unknown; step?: unknown }): number[] | null {
+function walk(spec: Readonly<Record<string, unknown>>): number[] | null {
   const { min, max, step } = spec;
   if (typeof min !== "number" || typeof max !== "number" || typeof step !== "number" || step <= 0) return null;
   const out: number[] = [];
@@ -70,15 +70,14 @@ function wrongAxis(axis: CameraAngleAxis, paramName: string, spec: unknown): str
 export function assertCameraAngle(modality: string, models: readonly CameraAngleCandidate[]): void {
   for (const model of models) {
     if (model.camera_angle === undefined) continue;
-    const declared = model.camera_angle as Partial<Record<CameraAngleAxis, unknown>> | null;
-    const names = AXES.map((axis) => declared?.[axis]);
-    if (names.some((n) => typeof n !== "string")) {
-      throw new Error(
-        `config/models/${modality}: ${model.name} declares camera_angle without a param name for each of ${AXES.join(", ")}`,
-      );
-    }
-    for (const [i, axis] of AXES.entries()) {
-      const paramName = names[i] as string;
+    const declared: unknown = model.camera_angle;
+    for (const axis of AXES) {
+      const paramName = declared !== null && typeof declared === "object" ? (declared as Record<string, unknown>)[axis] : undefined;
+      if (typeof paramName !== "string") {
+        throw new Error(
+          `config/models/${modality}: ${model.name} declares camera_angle without a param name for each of ${AXES.join(", ")}`,
+        );
+      }
       const reason = wrongAxis(axis, paramName, model.params?.[paramName]);
       if (reason !== null) throw new Error(`config/models/${modality}: ${model.name} ${reason}`);
     }
