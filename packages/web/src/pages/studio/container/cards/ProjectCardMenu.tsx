@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { Archive, ArchiveRestore, Copy, ImageUp, MoreHorizontal, Pencil } from 'lucide-react';
+import { Archive, ArchiveRestore, Copy, ImageUp, LogOut, MoreHorizontal, Pencil } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -12,6 +12,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
+import { LeaveProjectDialog } from '@web/features/project-manage/LeaveProjectDialog';
+import { useLeaveProject } from '@web/features/project-manage/use-leave-project';
 import { useProjectActions } from '@web/features/project-manage/use-project-actions';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
@@ -33,15 +35,21 @@ interface ProjectCardMenuProps {
  * @returns True when at least one entry would show.
  */
 export function hasCardMenu(project: ContainerProject): boolean {
-  return project.canManageMeta || project.canDuplicate || project.canArchive || project.canRestore;
+  return (
+    project.canManageMeta ||
+    project.canDuplicate ||
+    project.canArchive ||
+    project.canRestore ||
+    project.canLeave
+  );
 }
 
 /**
  * The `⋯` menu on a project card. Which entries show is the server's answer,
  * one flag per entry: rename and upload cover (`canManageMeta`), duplicate
  * (`canDuplicate`), archive (`canArchive`, after a separator) and restore
- * (`canRestore`). The server sends restore alone on an archived card and the
- * other three only on a live one.
+ * (`canRestore`), and leave (`canLeave`, last, after a separator). The server
+ * sends restore alone on an archived card and the others only on a live one.
  *
  * Render it only when {@link hasCardMenu} says there is something to show.
  *
@@ -59,9 +67,11 @@ export function ProjectCardMenu({ project }: ProjectCardMenuProps): React.JSX.El
   const [picked, setPicked] = React.useState<File | null>(null);
   const [renaming, setRenaming] = React.useState(false);
   const [confirmingArchive, setConfirmingArchive] = React.useState(false);
+  const [confirmingLeave, setConfirmingLeave] = React.useState(false);
   const cover = useProjectCover(project.id);
   const rename = useRenameProject(project.id);
   const actions = useProjectActions(project.id);
+  const leaving = useLeaveProject(project.id, project.name);
   const { reset, done } = cover;
 
   const handlePick = React.useCallback(
@@ -84,6 +94,7 @@ export function ProjectCardMenu({ project }: ProjectCardMenuProps): React.JSX.El
   const openPicker = React.useCallback((): void => inputRef.current?.click(), []);
   const openRename = React.useCallback((): void => setRenaming(true), []);
   const openArchive = React.useCallback((): void => setConfirmingArchive(true), []);
+  const openLeave = React.useCallback((): void => setConfirmingLeave(true), []);
   const { mutate: renameTo } = rename;
   const { duplicate, archive, restore } = actions;
   // Wrapped so the menu's event never reaches `mutate` as its variables.
@@ -150,6 +161,21 @@ export function ProjectCardMenu({ project }: ProjectCardMenuProps): React.JSX.El
               {t('studio.container.card.restore')}
             </DropdownMenuItem>
           ) : null}
+          {project.canLeave ? (
+            <>
+              {project.canManageMeta || project.canDuplicate || project.canArchive ? (
+                <DropdownMenuSeparator />
+              ) : null}
+              <DropdownMenuItem
+                onSelect={openLeave}
+                disabled={leaving.pending}
+                className='text-status-error-foreground'
+              >
+                <LogOut className='h-4 w-4' />
+                {t('project.leave.action')}
+              </DropdownMenuItem>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
       {project.canManageMeta ? (
@@ -184,6 +210,15 @@ export function ProjectCardMenu({ project }: ProjectCardMenuProps): React.JSX.El
           onOpenChange={setConfirmingArchive}
           name={project.name}
           onConfirm={runArchive}
+        />
+      ) : null}
+      {project.canLeave ? (
+        <LeaveProjectDialog
+          open={confirmingLeave}
+          onOpenChange={setConfirmingLeave}
+          name={project.name}
+          onConfirm={leaving.leave}
+          pending={leaving.pending}
         />
       ) : null}
     </>

@@ -37,6 +37,7 @@ import type * as React from 'react';
 
 import type { SpaceRpcRequest, SpaceRpcResponse } from '@breatic/shared';
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { writeAgentPanelOpen } from '@web/lib/project-tabs-storage';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
 
 /**
@@ -267,7 +268,8 @@ describe('ProjectPage — only the machine that asked claims the new Space', () 
       { id: SPACE_A, name: 'Space A', type: 'document' },
       { id: SPACE_B, name: 'Space B', type: 'document' },
     ];
-    useUIStore.setState({ chatPanelCollapsed: true, spaceOpInProgress: null });
+    useUIStore.setState({ spaceOpInProgress: null });
+    writeAgentPanelOpen('u-me', PID, false);
     useCurrentUserStore.setState({
       user: {
         id: 'u-me',

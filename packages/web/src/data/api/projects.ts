@@ -33,6 +33,8 @@ export interface ProjectDetail extends ProjectSummary {
   canManageMeta: boolean;
   /** Whether the caller may restore it: a studio admin, on an archived project. */
   canRestore: boolean;
+  /** Whether the caller may leave it: an editor or a viewer, on a live project. */
+  canLeave: boolean;
 }
 
 /**
@@ -104,6 +106,15 @@ export const projectsApi = {
    */
   archive(id: string) {
     return apiPost<{ ok: true }>(`/projects/${id}/archive`, {});
+  },
+  /**
+   * `DELETE /api/v1/projects/:id/membership` — leave the project. Any member
+   * but the owner, on a live project.
+   * @param id the bare project uuid.
+   * @returns once the caller is no longer a member.
+   */
+  leave(id: string) {
+    return apiDelete<{ ok: true }>(`/projects/${id}/membership`);
   },
   /**
    * `POST /api/v1/projects/:id/restore` — bring an archived project back.

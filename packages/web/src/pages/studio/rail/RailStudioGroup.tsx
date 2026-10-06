@@ -15,6 +15,7 @@ import {
   RAIL_ROW_IDLE,
   RAIL_ROW_NESTED,
 } from '@web/pages/studio/rail/rail-row';
+import type { RailSection } from '@web/lib/user-preferences-storage';
 import { useRailCollapse } from '@web/pages/studio/rail/use-rail-collapse';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
@@ -28,8 +29,8 @@ interface RailStudioGroupProps {
   activeSlug: string | null;
   /** Text shown when the group is empty — rendered, never hidden (spec §0.1). */
   emptyText: string;
-  /** Stable key for persisting this section's collapse state across sessions. */
-  collapseKey: string;
+  /** Which rail section this is; its collapse state is remembered per account. */
+  section: RailSection;
 }
 
 /**
@@ -60,7 +61,7 @@ const CHEVRON_SLOT = 'flex h-6 w-6 shrink-0 items-center justify-center';
  * `/studio/{slug}` (the active one highlighted). When the group is empty it
  * renders `emptyText` rather than hiding it (spec §0.1 — data-driven, so a
  * future join fills it in with zero display-logic change). The collapse state
- * persists across sessions via `useRailCollapse`.
+ * is remembered per account via `useRailCollapse`.
  *
  * The whole heading is one disclosure button: clicking the title or the
  * chevron opens and closes the group, and the button's own text names it.
@@ -69,7 +70,7 @@ const CHEVRON_SLOT = 'flex h-6 w-6 shrink-0 items-center justify-center';
  * @param props.studios the studios in this group.
  * @param props.activeSlug the active studio slug (highlighted), or null.
  * @param props.emptyText the text shown when the group is empty.
- * @param props.collapseKey the persistence key for the collapse state.
+ * @param props.section which rail section this is; its collapse state is remembered per account.
  * @returns the collapsible studio group.
  */
 export function RailStudioGroup({
@@ -77,9 +78,9 @@ export function RailStudioGroup({
   studios,
   activeSlug,
   emptyText,
-  collapseKey,
+  section,
 }: RailStudioGroupProps): React.JSX.Element {
-  const { collapsed, toggle } = useRailCollapse(collapseKey);
+  const { collapsed, toggle } = useRailCollapse(section);
   const Chevron = collapsed ? ChevronRight : ChevronDown;
   const listId = React.useId();
   return (

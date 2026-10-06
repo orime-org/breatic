@@ -14,9 +14,11 @@ import '@fontsource/inter/700.css';
 import '@fontsource/inter/800.css';
 import '@web/index.css';
 import { bootstrapLocale } from '@web/i18n/locale-bootstrap';
+import { removeRetiredStorageKeys } from '@web/lib/storage-keys';
 
 // i18n must initialize before any component renders useTranslation().
 bootstrapLocale();
+removeRetiredStorageKeys();
 
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,

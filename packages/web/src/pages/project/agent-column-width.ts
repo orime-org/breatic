@@ -101,21 +101,3 @@ export function resolveWidth(setWidth: number | null, panelsWidth: number): numb
 export function shouldRestore(current: number, target: number): boolean {
   return Math.abs(current - target) > RESTORE_TOLERANCE;
 }
-
-/**
- * Reads a persisted width back, rejecting anything that is not a positive
- * finite number. `Number` is used rather than `parseFloat` so that trailing
- * junk ("640abc") is rejected instead of silently truncated.
- *
- * The 320..640 range is NOT applied here — a stored width is handed to the
- * Panel as its `defaultSize`, where the library's own `minSize` / `maxSize`
- * (both read from the constants above) clamp it, and `resolveWidth` clamps it
- * again from then on, which is where the container width comes in.
- * @param raw - The raw string from storage, or null when the key is absent.
- * @returns The stored width, or null when nothing usable is stored.
- */
-export function parseStoredWidth(raw: string | null): number | null {
-  if (raw === null) return null;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}

@@ -5,7 +5,7 @@ import { ProjectUpdateNotice } from '@web/pages/project/chrome/ProjectUpdateNoti
 import type { ConnectionStatus } from '@web/data/yjs/use-socket';
 
 import { ArrowLeft, Star } from 'lucide-react';
-import type * as React from 'react';
+import * as React from 'react';
 import { PROJECT_NAME_MAX_CHARS } from '@breatic/shared';
 import { Link } from 'react-router-dom';
 
@@ -15,6 +15,7 @@ import { Logo28 } from '@web/pages/project/chrome/top-bar/Logo28';
 import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 import { MembersModal } from '@web/pages/project/chrome/top-bar/MembersModal';
 import { MembersStack } from '@web/pages/project/chrome/top-bar/MembersStack';
+import { LeaveProjectFromPage } from '@web/pages/project/chrome/top-bar/LeaveProjectFromPage';
 import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
 import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
@@ -71,6 +72,8 @@ interface TopBarProps {
   archived: boolean;
   /** The reader may rename the project: the studio's admin or its owner. */
   canRename: boolean;
+  /** The reader may leave the project: a live project's editor or viewer. */
+  canLeave: boolean;
   credits: CreditsReadout;
   onRename: (next: string) => void;
   /**
@@ -105,6 +108,7 @@ interface TopBarProps {
  * @param root0.actualRole - The reader's real role, shown on the role tag.
  * @param root0.archived - Whether the project is archived, which freezes the role tag.
  * @param root0.canRename - Whether the title can be edited.
+ * @param root0.canLeave - Whether the members list ends with "Leave project".
  * @param root0.credits - What the credits pill reads out.
  * @param root0.onRename - Called with the new title when the user finishes editing the project name.
  * @param root0.members - The project's roster, forwarded to both member components.
@@ -119,12 +123,15 @@ export function TopBar({
   actualRole,
   archived,
   canRename,
+  canLeave,
   credits,
   onRename,
   members,
   currentUserId,
   connectionStatus = 'connected',
 }: TopBarProps): React.JSX.Element {
+  const [leaving, setLeaving] = React.useState(false);
+  const openLeave = React.useCallback((): void => setLeaving(true), []);
   return (
     <header
       data-testid='top-bar'
@@ -157,6 +164,7 @@ export function TopBar({
             members={members}
             currentUserId={currentUserId}
             currentUserRole={role}
+            onLeave={canLeave ? openLeave : undefined}
           />
           <LangSwitcher />
           <ThemeToggle />
@@ -180,6 +188,14 @@ export function TopBar({
         currentUserId={currentUserId}
         currentUserRole={role}
       />
+      {canLeave ? (
+        <LeaveProjectFromPage
+          projectId={projectId}
+          projectName={projectName}
+          open={leaving}
+          onOpenChange={setLeaving}
+        />
+      ) : null}
     </header>
   );
 }

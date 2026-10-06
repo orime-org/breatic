@@ -246,7 +246,7 @@ export async function get(projectId: string, userId: string): Promise<ProjectEnt
  *      `NotFoundError`, so existence is never leaked outside the studio.
  * @param projectId - Project UUID being opened
  * @param userId - Authenticated user UUID
- * @returns The project entity, the caller's stored role, and whether they may rename and restore it
+ * @returns The project entity, the caller's stored role, and whether they may rename, restore and leave it
  * @throws {ForbiddenError} when the caller is in the studio but not on the project
  * @throws {NotFoundError} when the caller is outside the studio, or the project
  *   is missing / soft-deleted
@@ -254,7 +254,13 @@ export async function get(projectId: string, userId: string): Promise<ProjectEnt
 export async function loadForViewer(
   projectId: string,
   userId: string,
-): Promise<{ project: ProjectEntity; myRole: ProjectRole; canManageMeta: boolean; canRestore: boolean }> {
+): Promise<{
+  project: ProjectEntity;
+  myRole: ProjectRole;
+  canManageMeta: boolean;
+  canRestore: boolean;
+  canLeave: boolean;
+}> {
   // The real role, not the write-capped one: an archived project still shows
   // its owner as owner; `project.archivedAt` tells the page it is read-only.
   const access = await projectAuthService.loadProjectAccess(userId, projectId);
@@ -262,12 +268,12 @@ export async function loadForViewer(
     const project = await projectRepo.getProjectById(projectId);
     if (!project) throw new NotFoundError(t("server.error.not_found"));
     const studioRole = await studioAuthService.loadStudioRole(userId, project.studioId);
-    const { canManageMeta, canRestore } = projectPermissions({
+    const { canManageMeta, canRestore, canLeave } = projectPermissions({
       studioRole,
       projectRole: access.role,
       archived: access.archived,
     });
-    return { project, myRole: access.role, canManageMeta, canRestore };
+    return { project, myRole: access.role, canManageMeta, canRestore, canLeave };
   }
 
   const project = await projectRepo.getProjectById(projectId);

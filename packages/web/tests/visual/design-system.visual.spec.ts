@@ -28,13 +28,10 @@ const THEMES = ['light', 'dark'] as const;
 for (const theme of THEMES) {
   for (const pg of PAGES) {
     test(`${pg.name} — ${theme}`, async ({ page }) => {
-      // Pin the theme before the app boots — it reads `breatic.preferences`
+      // Pin the theme before the app boots — it reads `breatic.theme`
       // from localStorage and applies `html[data-theme]` on mount.
       await page.addInitScript((t) => {
-        window.localStorage.setItem(
-          'breatic.preferences',
-          JSON.stringify({ state: { theme: t }, version: 1 }),
-        );
+        window.localStorage.setItem('breatic.theme', t);
       }, theme);
 
       await page.goto(pg.path);

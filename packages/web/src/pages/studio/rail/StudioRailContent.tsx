@@ -4,7 +4,6 @@
 import type * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
-import { STORAGE_KEYS } from '@web/lib/storage-keys';
 import { RAIL_SEGMENT } from '@web/pages/studio/rail/rail-row';
 import { RailCreateActions } from '@web/pages/studio/rail/RailCreateActions';
 import { RailRecentLink } from '@web/pages/studio/rail/RailRecentLink';
@@ -88,21 +87,21 @@ export function StudioRailContent({
           studios={personal}
           activeSlug={activeSlug}
           emptyText={t('studio.rail.personalStudioEmpty')}
-          collapseKey={STORAGE_KEYS.railPersonalStudios}
+          section='personal'
         />
         <RailStudioGroup
           title={t('studio.rail.myStudios')}
           studios={myTeam}
           activeSlug={activeSlug}
           emptyText={t('studio.rail.myStudiosEmpty')}
-          collapseKey={STORAGE_KEYS.railMyStudios}
+          section='mine'
         />
         <RailStudioGroup
           title={t('studio.rail.joinedStudios')}
           studios={joined}
           activeSlug={activeSlug}
           emptyText={t('studio.rail.joinedEmpty')}
-          collapseKey={STORAGE_KEYS.railJoinedStudios}
+          section='joined'
         />
       </div>
     </>

@@ -21,6 +21,7 @@ import type * as React from 'react';
 import type { ProjectActivityEntry } from '@breatic/shared';
 import {
   ProjectActivityButton,
+  entryDotClass,
   entryMessage,
   entryMedia,
 } from '@web/pages/project/chrome/tab-bar/ProjectActivityButton';
@@ -217,6 +218,28 @@ describe('ProjectActivityButton (activity feed)', () => {
     });
     await new Promise((r) => setTimeout(r, 50));
     expect(listMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('entryMessage for a member who left', () => {
+  it('reads as leaving when the member removed themselves, and as removal otherwise', () => {
+    const left = entryMessage(
+      entry({ type: 'member:removed', actorUserId: 'u-1', payload: { previousRole: 'editor', targetUserId: 'u-1' } }),
+    );
+    expect(left.key).toBe('activity.type.memberLeft');
+    expect(left.params).toHaveProperty('actor');
+    const removed = entryMessage(
+      entry({ type: 'member:removed', actorUserId: 'u-owner', payload: { previousRole: 'editor', targetUserId: 'u-1' } }),
+    );
+    expect(removed.key).toBe('activity.type.memberRemoved');
+  });
+
+  it('draws a leave with a neutral dot and a removal with the error dot', () => {
+    const payload = { previousRole: 'editor', targetUserId: 'u-1' };
+    expect(entryDotClass(entry({ type: 'member:removed', actorUserId: 'u-1', payload }))).toBe('bg-muted-foreground');
+    expect(entryDotClass(entry({ type: 'member:removed', actorUserId: 'u-owner', payload }))).toBe(
+      'bg-status-error-border',
+    );
   });
 });
 

@@ -64,6 +64,7 @@ function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
         actualRole={overrides.role ?? 'owner'}
         archived={false}
         canRename
+        canLeave={false}
         credits={{ status: 'ready', value: 42 }}
         onRename={onRename}
         members={MEMBERS}
@@ -102,6 +103,7 @@ describe('TopBar', () => {
         actualRole='owner'
         archived={false}
         canRename
+        canLeave={false}
         credits={{ status: 'ready', value: 42 }}
         onRename={onRename}
       />
