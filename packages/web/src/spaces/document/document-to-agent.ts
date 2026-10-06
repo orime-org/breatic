@@ -51,14 +51,16 @@ function textItem(id: string, name: string, text: string): TrayItem {
 }
 
 /**
- * The words the selection covers, one stretch per range: over table cells
- * that is the selected cells only.
+ * The words the selection covers, one stretch per range in document order:
+ * over table cells that is the selected cells only. A cell selection lists the
+ * cell the drag ended on first, so the ranges are sorted.
  * @param view - The editor's view.
  * @returns The words, a line per stretch.
  */
 function selectedWords(view: EditorView): string {
   const { doc, selection } = view.state;
-  return selection.ranges
+  return [...selection.ranges]
+    .sort((a, b) => a.$from.pos - b.$from.pos)
     .map((range) => doc.textBetween(range.$from.pos, range.$to.pos, '\n', '\n'))
     .join('\n');
 }
@@ -76,7 +78,8 @@ function selectedWords(view: EditorView): string {
 function selectionMarkdown(editor: ToolEditor, view: EditorView): string {
   const { externalHTML, markdown } = selectedFragmentToHTML(view, editor);
   const { $from, $to } = view.state.selection;
-  const insideOneBlock = $from.sameParent($to) && $from.parent.type.spec.code !== true;
+  const insideOneBlock =
+    $from.parent.isTextblock && $from.sameParent($to) && $from.parent.type.spec.code !== true;
   return (insideOneBlock ? cleanHTMLToMarkdown(`<p>${externalHTML}</p>`) : markdown).trimEnd();
 }
 
