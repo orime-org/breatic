@@ -67,6 +67,7 @@ import {
   type ModelInfo,
   type ParamInfo,
 } from "@domain/model-catalog/mode-catalog.js";
+import { onStep } from "@domain/model-catalog/param-declaration.js";
 
 const NODE_TYPES = Object.keys(GENERATION_NODE_MODES) as [
   GenerationNodeType,
@@ -290,9 +291,7 @@ const LISTED_STEPS = 12;
  * Why a number sits between two steps of its slider, or null when it is on one.
  *
  * The slider only stops on steps, so a value between two is one the panel
- * cannot show and, for a model that rounds, not the one it runs with. The
- * step count is compared with a tolerance: `(1.15 - 0.5) / 0.05` comes out
- * 12.999999999999998 in binary.
+ * cannot show and, for a model that rounds, not the one it runs with.
  * @param key - The param name, quoted in the reason.
  * @param value - The number the proposal filled in, already within range.
  * @param info - The param as the catalog projects it.
@@ -301,8 +300,7 @@ const LISTED_STEPS = 12;
 function offStepReason(key: string, value: number, info: ParamInfo): string | null {
   const { min, max, step } = info;
   if (min === undefined || max === undefined || step === undefined || step <= 0) return null;
-  const steps = (value - min) / step;
-  if (Math.abs(steps - Math.round(steps)) < 1e-9) return null;
+  if (onStep(value, min, step)) return null;
   const count = Math.floor((max - min) / step + 1e-9) + 1;
   const takes =
     count <= LISTED_STEPS

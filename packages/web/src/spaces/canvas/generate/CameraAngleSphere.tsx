@@ -16,6 +16,8 @@ import * as THREE from 'three';
 import type { CameraAngle } from '@breatic/shared';
 
 import {
+  AZIMUTH_STEPS,
+  ELEVATION_RANGE,
   angleFromOffset,
   cameraOffset,
   pickOnSphere,
@@ -76,7 +78,9 @@ interface Scene {
   card: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   ring: THREE.LineLoop<THREE.BufferGeometry, THREE.LineBasicMaterial>;
   arc: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
-  ticks: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>[];
+  /** One tick on the ring for each azimuth the grid holds. */
+  ticks: { azimuth: number; mesh: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial> }[];
+  tickMaterial: THREE.MeshBasicMaterial;
   camera: THREE.Group;
   cameraMaterial: THREE.MeshBasicMaterial;
   ray: THREE.Line<THREE.BufferGeometry, THREE.LineDashedMaterial>;
@@ -130,16 +134,16 @@ function buildScene(canvas: HTMLCanvasElement): Scene {
   ring.position.copy(CENTER);
   scene.add(ring);
 
-  const arc = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPoints(-30, 60)), new THREE.LineBasicMaterial());
+  const arc = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPoints(...ELEVATION_RANGE)), new THREE.LineBasicMaterial());
   arc.position.copy(CENTER);
   scene.add(arc);
 
   const tickMaterial = new THREE.MeshBasicMaterial();
   const tickGeometry = new THREE.SphereGeometry(0.035, 12, 8);
-  const ticks = Array.from({ length: 8 }, () => {
-    const tick = new THREE.Mesh(tickGeometry, tickMaterial);
-    scene.add(tick);
-    return tick;
+  const ticks = AZIMUTH_STEPS.map((azimuth) => {
+    const mesh = new THREE.Mesh(tickGeometry, tickMaterial);
+    scene.add(mesh);
+    return { azimuth, mesh };
   });
 
   const cameraMaterial = new THREE.MeshBasicMaterial();
@@ -154,7 +158,7 @@ function buildScene(canvas: HTMLCanvasElement): Scene {
   const ray = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ dashSize: 0.06, gapSize: 0.05 }));
   scene.add(ray);
 
-  return { renderer, scene, eye, card, ring, arc, ticks, camera, cameraMaterial, ray };
+  return { renderer, scene, eye, card, ring, arc, ticks, tickMaterial, camera, cameraMaterial, ray };
 }
 
 /**
@@ -164,7 +168,7 @@ function buildScene(canvas: HTMLCanvasElement): Scene {
  */
 function applyColors(s: Scene, colors: SphereColors): void {
   paint(s.ring.material, colors.line);
-  paint(s.ticks[0]?.material ?? s.cameraMaterial, colors.line);
+  paint(s.tickMaterial, colors.line);
   paint(s.arc.material, colors.accent);
   paint(s.cameraMaterial, colors.accent);
   paint(s.ray.material, colors.accent);
@@ -185,9 +189,9 @@ function place(s: Scene, pose: CameraAngle): void {
   s.ring.scale.setScalar(r);
   s.arc.scale.setScalar(r);
   s.arc.rotation.y = (-pose.azimuth * Math.PI) / 180;
-  s.ticks.forEach((tick, i) => {
-    const o = cameraOffset(i * 45, 0, r);
-    tick.position.set(o.x, o.y, o.z).add(CENTER);
+  s.ticks.forEach(({ azimuth, mesh }) => {
+    const o = cameraOffset(azimuth, 0, r);
+    mesh.position.set(o.x, o.y, o.z).add(CENTER);
   });
   s.ray.geometry.setFromPoints([at, CENTER]);
   s.ray.computeLineDistances();

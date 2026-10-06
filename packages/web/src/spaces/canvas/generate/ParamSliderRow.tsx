@@ -42,6 +42,8 @@ interface ParamSliderRowProps {
   draft?: number;
   /** Called with the value the thumb is moved to, before it is written. */
   onDraft?: (value: number) => void;
+  /** Called when a pointer drag ends, whether or not it wrote anything. */
+  onDraftEnd?: () => void;
   /** How a value reads beside the label, in its own unit. */
   format: (value: number) => string;
   onChange: (partial: Record<string, number>) => void;
@@ -69,6 +71,7 @@ interface ParamSliderRowProps {
  * @param root0.value - The stored value.
  * @param root0.draft - A value to show without writing it.
  * @param root0.onDraft - Called with the value the thumb is moved to.
+ * @param root0.onDraftEnd - Called when a pointer drag ends.
  * @param root0.format - How a value reads beside the label.
  * @param root0.onChange - Called with the committed param.
  * @param root0.testIdPrefix - Prefix of every test id.
@@ -85,6 +88,7 @@ export function ParamSliderRow({
   value,
   draft,
   onDraft,
+  onDraftEnd,
   format,
   onChange,
   testIdPrefix,
@@ -134,6 +138,13 @@ export function ParamSliderRow({
     if (reached !== null) onChange({ [name]: reached });
   }, [onChange, name]);
 
+  // A drag released where it began writes nothing (Radix commits only a
+  // changed value), so the release itself is what ends the draft.
+  const endPointerGesture = React.useCallback((): void => {
+    setDragged(null);
+    onDraftEnd?.();
+  }, [onDraftEnd]);
+
   // Four ways a key gesture ends, and every one of them has to write. Keyup
   // alone leaves the flag set when the release lands on another window, and
   // a set flag holds back every commit after it — the pointer's included, so
@@ -178,6 +189,7 @@ export function ParamSliderRow({
         onKeyUp={endKeyGesture}
         onBlur={endKeyGesture}
         onPointerDown={endKeyGesture}
+        onPointerUp={endPointerGesture}
       />
       {stops && (
         // Under the track, each word centred on the value it names. A word at

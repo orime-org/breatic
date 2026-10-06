@@ -50,6 +50,31 @@ async function draw(
 }
 
 /**
+ * Lets a pointer drag a Radix slider in jsdom: every element is 200px wide
+ * from the left edge, and pointer capture always holds.
+ * @returns Undoes the stubs.
+ */
+function stubPointerSliders(): () => void {
+  const proto = HTMLElement.prototype;
+  const saved = {
+    rect: proto.getBoundingClientRect,
+    set: proto.setPointerCapture,
+    has: proto.hasPointerCapture,
+    release: proto.releasePointerCapture,
+  };
+  proto.getBoundingClientRect = () => ({ left: 0, top: 0, right: 200, bottom: 24, width: 200, height: 24, x: 0, y: 0, toJSON: () => ({}) });
+  proto.setPointerCapture = () => {};
+  proto.hasPointerCapture = () => true;
+  proto.releasePointerCapture = () => {};
+  return () => {
+    proto.getBoundingClientRect = saved.rect;
+    proto.setPointerCapture = saved.set;
+    proto.hasPointerCapture = saved.has;
+    proto.releasePointerCapture = saved.release;
+  };
+}
+
+/**
  * The control's keyboard surface.
  * @returns The focusable group around the sphere.
  */
@@ -115,15 +140,27 @@ describe('CameraAngleControl', () => {
     expect(onChange).toHaveBeenCalledTimes(5);
   });
 
-  it('moves one distance step per wheel gesture however many events it sends, and writes once it settles', async () => {
+  it('moves one distance step per wheel gesture however many events it sends, writing it as the step is taken', async () => {
     const { onChange } = await draw();
     vi.useFakeTimers();
     for (let i = 0; i < 20; i += 1) fireEvent.wheel(group(), { deltaY: 8 });
-    expect(sphere.last?.pose.distance).toBe(2);
-    expect(onChange).not.toHaveBeenCalled();
-    act(() => vi.advanceTimersByTime(150));
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith({ horizontal_angle: 0, vertical_angle: 0, distance: 2 });
+    act(() => vi.advanceTimersByTime(300));
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes the next step only once the wheel has settled', async () => {
+    const { onChange, rerender } = await draw();
+    vi.useFakeTimers();
+    fireEvent.wheel(group(), { deltaY: -60 });
+    rerender({ horizontal_angle: 0, vertical_angle: 0, distance: 0 });
+    fireEvent.wheel(group(), { deltaY: 60 });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    act(() => vi.advanceTimersByTime(150));
+    fireEvent.wheel(group(), { deltaY: 60 });
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 0, vertical_angle: 0, distance: 1 });
   });
 
   it('keeps the page from zooming when a pinch lands on the sphere', async () => {
@@ -133,24 +170,58 @@ describe('CameraAngleControl', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it('folds a pending wheel step into the next key press, as one write', async () => {
-    const { onChange } = await draw();
-    vi.useFakeTimers();
-    fireEvent.wheel(group(), { deltaY: 60 });
-    fireEvent.keyDown(group(), { key: 'ArrowRight' });
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenCalledWith({ horizontal_angle: 45, vertical_angle: 0, distance: 2 });
-    act(() => vi.advanceTimersByTime(300));
-    expect(onChange).toHaveBeenCalledTimes(1);
-  });
-
-  it('drops a pending wheel step when the control goes away', async () => {
+  it('keeps a wheel step it showed when the control goes away right after', async () => {
     const { onChange, unmount } = await draw();
     vi.useFakeTimers();
     fireEvent.wheel(group(), { deltaY: 60 });
     unmount();
     act(() => vi.advanceTimersByTime(300));
-    expect(onChange).not.toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith({ horizontal_angle: 0, vertical_angle: 0, distance: 2 });
+  });
+
+  it('writes a held arrow key once when pressed and once when let go, following each repeat on screen', async () => {
+    const { onChange, rerender } = await draw();
+    fireEvent.keyDown(group(), { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 45, vertical_angle: 0, distance: 1 });
+    rerender({ horizontal_angle: 45, vertical_angle: 0, distance: 1 });
+    for (let i = 0; i < 3; i += 1) fireEvent.keyDown(group(), { key: 'ArrowRight', repeat: true });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('generate-camera-angle-pose')).toHaveTextContent('Back · Eye level');
+    expect(sphere.last?.pose.azimuth).toBe(180);
+    fireEvent.keyUp(group(), { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 180, vertical_angle: 0, distance: 1 });
+  });
+
+  it('writes a held key where it reached when focus leaves before the key is let go', async () => {
+    const { onChange, rerender } = await draw();
+    fireEvent.keyDown(group(), { key: 'ArrowRight' });
+    rerender({ horizontal_angle: 45, vertical_angle: 0, distance: 1 });
+    fireEvent.keyDown(group(), { key: 'ArrowRight', repeat: true });
+    fireEvent.keyDown(group(), { key: 'ArrowRight', repeat: true });
+    fireEvent.blur(group());
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 135, vertical_angle: 0, distance: 1 });
+  });
+
+  it('follows a collaborator after a slider is dragged away and back to where it was', async () => {
+    const restore = stubPointerSliders();
+    try {
+      const { onChange, rerender } = await draw();
+      const slider = screen.getByTestId('generate-param-distance-slider');
+      fireEvent.pointerDown(slider, { pointerId: 1, button: 0, clientX: 200 });
+      fireEvent.pointerMove(slider, { pointerId: 1, clientX: 100 });
+      fireEvent.pointerUp(slider, { pointerId: 1, clientX: 100 });
+      expect(onChange).not.toHaveBeenCalled();
+      rerender({ horizontal_angle: 0, vertical_angle: 0, distance: 0 });
+      expect(screen.getByTestId('generate-camera-angle-pose')).toHaveTextContent('Close-up');
+      expect(sphere.last?.pose.distance).toBe(0);
+      expect(screen.getByTestId('generate-param-distance-value')).toHaveTextContent('Close-up');
+    } finally {
+      restore();
+    }
   });
 
   it('drops a drag that is still going when the control goes away', async () => {

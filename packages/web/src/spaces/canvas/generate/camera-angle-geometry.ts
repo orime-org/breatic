@@ -12,6 +12,8 @@
  * Imported only by the sphere, so it travels in the sphere's own chunk.
  */
 
+import { CAMERA_ANGLE_GRID } from '@breatic/shared';
+
 /** A point or direction in the scene. */
 export interface Vec3 {
   x: number;
@@ -20,7 +22,13 @@ export interface Vec3 {
 }
 
 /** The lowest and highest elevation the grid holds, in degrees. */
-const ELEVATION_RANGE = [-30, 60] as const;
+export const ELEVATION_RANGE = [
+  CAMERA_ANGLE_GRID.elevation[0],
+  CAMERA_ANGLE_GRID.elevation[CAMERA_ANGLE_GRID.elevation.length - 1],
+] as const;
+
+/** The azimuths the grid holds, in degrees, one tick each on the ring. */
+export const AZIMUTH_STEPS: readonly number[] = CAMERA_ANGLE_GRID.azimuth;
 
 /** How far the camera sits from the card at each distance step. */
 const RADII = [1.0, 1.35, 1.75] as const;

@@ -212,6 +212,21 @@ export function assertParamDeclarations(
 }
 
 /**
+ * Whether a number sits on a step of a range counted from `min`.
+ *
+ * Compared with a tolerance: `(1.15 - 0.5) / 0.05` comes out
+ * 12.999999999999998 in binary.
+ * @param value - The number.
+ * @param min - The range's floor.
+ * @param step - The range's increment, above zero.
+ * @returns True on a step.
+ */
+export function onStep(value: number, min: number, step: number): boolean {
+  const steps = (value - min) / step;
+  return Math.abs(steps - Math.round(steps)) < 1e-9;
+}
+
+/**
  * Whether a control lets the reader pick the value a key spells.
  * @param declared - The declaration.
  * @param key - A value in its string form, as a yaml map key holds it.
@@ -223,9 +238,7 @@ function offers(declared: ParamDeclaration, key: string): boolean {
   const { min, max, step } = declared;
   const at = Number(key);
   if (min === undefined || max === undefined || step === undefined || step <= 0 || key.trim() === "") return false;
-  if (!Number.isFinite(at) || at < min || at > max) return false;
-  const steps = (at - min) / step;
-  return Math.abs(steps - Math.round(steps)) < 1e-9;
+  return Number.isFinite(at) && at >= min && at <= max && onStep(at, min, step);
 }
 
 /**

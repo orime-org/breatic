@@ -30,6 +30,9 @@ const WHEEL_STEP_DELTA = 40;
 /** How long the wheel has to stay still before a gesture counts as over, in ms. */
 const WHEEL_SETTLE_MS = 150;
 
+/** The three axes, in the order their sliders sit under the sphere. */
+const CAMERA_ANGLE_AXES: readonly CameraAngleAxis[] = ['azimuth', 'elevation', 'distance'];
+
 /** The azimuths named under the slider; the other four are named in the title. */
 const NAMED_AZIMUTHS = [0, 90, 180, 270] as const;
 
@@ -154,7 +157,7 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
     state.mounted = true;
     return () => {
       // A control that goes away writes nothing it had not written: a drag in
-      // progress and a wheel step still settling are both dropped.
+      // progress is dropped, and a wheel step taken during it with it.
       state.mounted = false;
       clearTimeout(wheel.current.timer);
     };
@@ -169,6 +172,8 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
       wheel.current = { sum: 0, moved: false, timer: undefined };
       setPendingDistance(null);
       setSliderDraft({});
+      heldKey.current = null;
+      setKeyDraft(null);
       const next = nearestCameraAngle({ ...base, distance: pending ?? base.distance, ...change });
       if (samePose(next, base)) return;
       onChange({ [params.azimuth]: next.azimuth, [params.elevation]: next.elevation, [params.distance]: next.distance });
@@ -215,20 +220,31 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
           gesture.moved = true;
           const from = live.current.pending ?? live.current.stored.distance;
           const next = stepCameraAngle({ ...live.current.stored, distance: from }, 'distance', gesture.sum > 0 ? 1 : -1);
-          setPendingDistance(next.distance);
-          live.current.pending = next.distance;
+          if (dragRef.current === null) {
+            commit({ distance: next.distance });
+          } else {
+            // Written with the angle when the drag is released.
+            setPendingDistance(next.distance);
+            live.current.pending = next.distance;
+          }
         }
       }
+      // The rest of this gesture, a trackpad's momentum included, moves
+      // nothing more until the wheel has been still for a moment.
+      wheel.current = gesture;
       gesture.timer = setTimeout(() => {
-        const settled = wheel.current;
         wheel.current = { sum: 0, moved: false, timer: undefined };
-        // A step taken during a drag is written with the angle on release.
-        if (settled.moved && dragRef.current === null) commit({});
       }, WHEEL_SETTLE_MS);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, [commit]);
+
+  // Where a held key has stepped the pose since its press was written. Each
+  // repeat moves the picture; the release writes once, as a held slider key
+  // does, so a held key is two undo entries however long it is held.
+  const heldKey = React.useRef<CameraAngle | null>(null);
+  const [keyDraft, setKeyDraft] = React.useState<CameraAngle | null>(null);
 
   const onKeyDown = React.useCallback(
     (event: React.KeyboardEvent): void => {
@@ -245,11 +261,24 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
       const hit = step[event.key];
       if (!hit) return;
       event.preventDefault();
-      const base = { ...live.current.stored, distance: live.current.pending ?? live.current.stored.distance };
-      commit(stepCameraAngle(base, hit[0], hit[1]));
+      const base = heldKey.current ?? {
+        ...live.current.stored,
+        distance: live.current.pending ?? live.current.stored.distance,
+      };
+      const next = stepCameraAngle(base, hit[0], hit[1]);
+      if (event.repeat) {
+        heldKey.current = next;
+        setKeyDraft(next);
+        return;
+      }
+      commit(next);
     },
     [commit],
   );
+  const endHeldKey = React.useCallback((): void => {
+    const reached = heldKey.current;
+    if (reached !== null) commit(reached);
+  }, [commit]);
 
   const onSlider = React.useCallback(
     (partial: Record<string, number>): void => {
@@ -263,30 +292,41 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
   const onAzimuthDraft = React.useCallback((v: number) => setSliderDraft({ azimuth: v }), []);
   const onElevationDraft = React.useCallback((v: number) => setSliderDraft({ elevation: v }), []);
   const onDistanceDraft = React.useCallback((v: number) => setSliderDraft({ distance: v }), []);
+  const onSliderDraftEnd = React.useCallback(() => setSliderDraft({}), []);
 
-  // What the sphere draws: the pointer while dragging, otherwise the stored
-  // pose with a settling wheel step and a dragged slider laid over it.
-  const resting: CameraAngle = { ...stored, distance: pendingDistance ?? stored.distance, ...sliderDraft };
-  const spherePose = drag ? { ...drag, distance: pendingDistance ?? stored.distance } : resting;
-  const named = drag ? nearestCameraAngle(spherePose) : resting;
+  // What the sphere draws: the pointer while dragging, a held key's reach,
+  // otherwise the stored pose with a dragged slider laid over it.
+  const shown: CameraAngle = drag
+    ? { ...drag, distance: pendingDistance ?? stored.distance }
+    : (keyDraft ?? { ...stored, ...sliderDraft });
+  const { azimuth: shownAzimuth, elevation: shownElevation, distance: shownDistance } = shown;
+  const spherePose = React.useMemo(
+    () => ({ azimuth: shownAzimuth, elevation: shownElevation, distance: shownDistance }),
+    [shownAzimuth, shownElevation, shownDistance],
+  );
+  const named = nearestCameraAngle(spherePose);
   const poseWords = cameraAngleNames(specs, params, named);
-  // The sliders show a draft only while the sphere or the wheel moves the pose.
-  const shownOnSliders = drag !== null || pendingDistance !== null ? named : undefined;
+  // The sliders show a draft only while the sphere or a held key moves the pose.
+  const shownOnSliders = drag !== null || keyDraft !== null ? named : undefined;
 
   /**
    * One axis's named steps under its slider.
-   * @param name - The axis's param.
-   * @param steps - The values to name.
-   * @returns The stops.
+   * @param axis - The axis.
+   * @returns The stops: four sides for the azimuth, every step otherwise.
    */
-  const stopsOf = (name: string, steps: readonly number[]): SliderStop[] =>
-    steps.map((v) => ({ value: v, label: optionLabel(specs[name] ?? {}, v) }));
-  const azimuthStops = stopsOf(params.azimuth, NAMED_AZIMUTHS);
-  const elevationStops = stopsOf(params.elevation, CAMERA_ANGLE_GRID.elevation);
-  const distanceStops = stopsOf(params.distance, CAMERA_ANGLE_GRID.distance);
+  const stopsOf = (axis: CameraAngleAxis): SliderStop[] =>
+    (axis === 'azimuth' ? NAMED_AZIMUTHS : CAMERA_ANGLE_GRID[axis]).map((v) => ({
+      value: v,
+      label: optionLabel(specs[params[axis]] ?? {}, v),
+    }));
   const degrees = React.useCallback((v: number): string => `${v}°`, []);
   const distanceSpec = specs[params.distance];
   const distanceWord = React.useCallback((v: number): string => optionLabel(distanceSpec ?? {}, v), [distanceSpec]);
+  const drafts: Record<CameraAngleAxis, (v: number) => void> = {
+    azimuth: onAzimuthDraft,
+    elevation: onElevationDraft,
+    distance: onDistanceDraft,
+  };
 
   return (
     <div className='flex flex-col gap-3'>
@@ -312,6 +352,8 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
           aria-label={t('canvas.generatePanel.cameraAngle.title')}
           data-testid='generate-camera-angle'
           onKeyDown={onKeyDown}
+          onKeyUp={endHeldKey}
+          onBlur={endHeldKey}
           className={cn(
             'relative aspect-[4/3] w-full touch-none overflow-hidden rounded-chrome border border-border bg-muted outline-none',
             'focus-visible:ring-1 focus-visible:ring-ring',
@@ -347,51 +389,28 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
         </div>
         {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
       </div>
-      <ParamSliderRow
-        name={params.azimuth}
-        label={t(`canvas.generatePanel.param.${params.azimuth}`)}
-        min={0}
-        max={315}
-        step={45}
-        stops={azimuthStops}
-        value={stored.azimuth}
-        draft={shownOnSliders?.azimuth}
-        onDraft={onAzimuthDraft}
-        format={degrees}
-        onChange={onSlider}
-        testIdPrefix='generate-param'
-        className={undefined}
-      />
-      <ParamSliderRow
-        name={params.elevation}
-        label={t(`canvas.generatePanel.param.${params.elevation}`)}
-        min={-30}
-        max={60}
-        step={30}
-        stops={elevationStops}
-        value={stored.elevation}
-        draft={shownOnSliders?.elevation}
-        onDraft={onElevationDraft}
-        format={degrees}
-        onChange={onSlider}
-        testIdPrefix='generate-param'
-        className={undefined}
-      />
-      <ParamSliderRow
-        name={params.distance}
-        label={t(`canvas.generatePanel.param.${params.distance}`)}
-        min={0}
-        max={2}
-        step={1}
-        stops={distanceStops}
-        value={stored.distance}
-        draft={shownOnSliders?.distance}
-        onDraft={onDistanceDraft}
-        format={distanceWord}
-        onChange={onSlider}
-        testIdPrefix='generate-param'
-        className={undefined}
-      />
+      {CAMERA_ANGLE_AXES.map((axis) => {
+        const grid = CAMERA_ANGLE_GRID[axis];
+        return (
+          <ParamSliderRow
+            key={axis}
+            name={params[axis]}
+            label={t(`canvas.generatePanel.param.${params[axis]}`)}
+            min={grid[0]}
+            max={grid[grid.length - 1]}
+            step={grid[1] - grid[0]}
+            stops={stopsOf(axis)}
+            value={stored[axis]}
+            draft={shownOnSliders?.[axis]}
+            onDraft={drafts[axis]}
+            onDraftEnd={onSliderDraftEnd}
+            format={axis === 'distance' ? distanceWord : degrees}
+            onChange={onSlider}
+            testIdPrefix='generate-param'
+            className={undefined}
+          />
+        );
+      })}
     </div>
   );
 }

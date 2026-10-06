@@ -94,6 +94,43 @@ describe('ParamSliderRow', () => {
     expect(onDraft).toHaveBeenCalledWith(45);
   });
 
+  it('ends a pointer drag that comes back to where it began: the stored value shows again and the draft is over', () => {
+    const proto = HTMLElement.prototype;
+    const saved = [proto.getBoundingClientRect, proto.setPointerCapture, proto.hasPointerCapture, proto.releasePointerCapture] as const;
+    proto.getBoundingClientRect = () => ({ left: 0, top: 0, right: 315, bottom: 24, width: 315, height: 24, x: 0, y: 0, toJSON: () => ({}) });
+    proto.setPointerCapture = () => {};
+    proto.hasPointerCapture = () => true;
+    proto.releasePointerCapture = () => {};
+    try {
+      const onChange = vi.fn();
+      const onDraftEnd = vi.fn();
+      const props = {
+        name: 'horizontal_angle',
+        label: 'Horizontal angle',
+        min: 0,
+        max: 315,
+        step: 45,
+        stops: AZIMUTH_STOPS,
+        format: String,
+        onChange,
+        onDraftEnd,
+        testIdPrefix: 'generate-param',
+        className: undefined,
+      };
+      const { rerender } = render(<ParamSliderRow {...props} value={0} />);
+      const slider = screen.getByTestId('generate-param-horizontal_angle-slider');
+      fireEvent.pointerDown(slider, { pointerId: 1, button: 0, clientX: 90 });
+      fireEvent.pointerMove(slider, { pointerId: 1, clientX: 0 });
+      fireEvent.pointerUp(slider, { pointerId: 1, clientX: 0 });
+      expect(onChange).not.toHaveBeenCalled();
+      expect(onDraftEnd).toHaveBeenCalled();
+      rerender(<ParamSliderRow {...props} value={180} />);
+      expect(screen.getByTestId('generate-param-horizontal_angle-value')).toHaveTextContent('180');
+    } finally {
+      [proto.getBoundingClientRect, proto.setPointerCapture, proto.hasPointerCapture, proto.releasePointerCapture] = saved;
+    }
+  });
+
   it('places each stop word at the value it names, pinning only the ends of the range', () => {
     row({});
     const at = (value: number): HTMLElement => screen.getByTestId(`generate-param-horizontal_angle-stop-${value}`);
