@@ -18,6 +18,7 @@ vi.mock("@breatic/core", async (importOriginal) => ({
 }));
 
 import type * as CoreModule from "@breatic/core";
+import { errorMonitoringDataCollection } from "@breatic/shared";
 import { exitProcess, initSentry } from "@worker/sentry.js";
 
 beforeEach(() => {
@@ -38,18 +39,23 @@ describe("initSentry", () => {
   it("starts the SDK tagged as the worker, forwarding error logs and exiting on unhandled rejections", () => {
     config.SENTRY_DSN = "https://key@o1.ingest.sentry.io/2";
     initSentry();
-    expect(sentry.init).toHaveBeenCalledTimes(1);
-    const options = sentry.init.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(options).toMatchObject({
-      dsn: "https://key@o1.ingest.sentry.io/2",
-      environment: "production",
-      initialScope: { tags: { service: "worker" } },
-    });
     expect(sentry.pinoIntegration).toHaveBeenCalledWith({
       log: { levels: [] },
       error: { levels: ["error", "fatal"] },
     });
     expect(sentry.onUnhandledRejectionIntegration).toHaveBeenCalledWith({ mode: "strict" });
+    expect(sentry.init).toHaveBeenCalledTimes(1);
+    expect(sentry.init).toHaveBeenCalledWith({
+      dsn: "https://key@o1.ingest.sentry.io/2",
+      environment: "production",
+      release: undefined,
+      initialScope: { tags: { service: "worker" } },
+      dataCollection: errorMonitoringDataCollection(),
+      integrations: [
+        sentry.pinoIntegration.mock.results[0]?.value,
+        sentry.onUnhandledRejectionIntegration.mock.results[0]?.value,
+      ],
+    });
   });
 });
 
