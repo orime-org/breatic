@@ -156,6 +156,7 @@ import {
 import {
   EMPTY_NODE_SIZE,
   GROUP_MIN_SIZE,
+  groupRectForMembers,
   GROUP_PADDING,
   groupResizeBounds,
   planGroupGrowth,
@@ -2550,11 +2551,19 @@ function CanvasSpaceInner({
         let selectAfter: string[] = [];
         runCanvasUndoBatch(projectId, spaceId, () => {
           const laid = batchCentresAt(origin, admitted.length);
-          // A paste steps the whole batch past nodes already on its spot, so
-          // it shows (inner#1235 A20). A drop lands where the pointer let go.
+          const tops = laid.map((centre) => centerToTopLeft(centre, EMPTY_NODE_SIZE));
+          // Two or more files arrive inside a Group, framed the way
+          // `planGroupCreation` frames them below.
+          const frame =
+            tops.length >= 2
+              ? groupRectForMembers(tops.map((top) => ({ ...top, ...EMPTY_NODE_SIZE })))
+              : null;
+          // A paste steps the whole batch, its Group included, past nodes
+          // already on its spot, so it shows (inner#1235 A20). A drop lands
+          // where the pointer let go.
           const step =
             how === 'paste'
-              ? stepPaste(laid.map((centre) => centerToTopLeft(centre, EMPTY_NODE_SIZE)))
+              ? stepPaste(frame === null ? tops : [...tops, frame])
               : { dx: 0, dy: 0 };
           const centres = laid.map((centre) => ({
             x: centre.x + step.dx,
