@@ -160,6 +160,7 @@ import {
   groupResizeBounds,
   planGroupGrowth,
   planGroupResize,
+  toAbsolutePosition,
   type GroupGrowth,
   type GroupGrowthInput,
   type Rect,
@@ -2931,11 +2932,18 @@ function CanvasSpaceInner({
         if (rect) {
           const tl = screenToFlowPosition({ x: rect.left, y: rect.top });
           const br = screenToFlowPosition({ x: rect.right, y: rect.bottom });
+          const here = buffer.settled();
+          const byId = new Map(here.map((node) => [node.id, node]));
+          const occupied = here.map((node) => {
+            const parent = node.parentId !== undefined ? byId.get(node.parentId) : undefined;
+            return parent ? toAbsolutePosition(node.position, parent.position) : node.position;
+          });
           offset = pasteOffsetFor(
             clipboardNodes,
             { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y },
             PASTE_OFFSET_PX,
             spaceId,
+            occupied,
           );
         }
         setSelectAfterCreate(pasteNodesAt(clipboardNodes, offset));
@@ -2954,7 +2962,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
-  }, [readOnly, pasteNodesAt, pasteTextAt, screenToFlowPosition, processFiles, spaceId]);
+  }, [readOnly, pasteNodesAt, pasteTextAt, screenToFlowPosition, processFiles, spaceId, buffer]);
 
   React.useEffect(() => {
     /**

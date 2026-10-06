@@ -417,6 +417,28 @@ describe('pasteOffsetFor — where a paste lands on the Space it is pasted into 
   it('pastes a node that names no Space at the centre of this view', () => {
     expect(pasteOffsetFor([at()], viewport, 24, 'here')).toEqual({ dx: -50, dy: 350 });
   });
+
+  it('steps a centred paste down and right past a node already sitting there', () => {
+    // The centre lands the copy's top-left at (450, 350), where a node already is.
+    expect(
+      pasteOffsetFor([at('there')], viewport, 24, 'here', [{ x: 450, y: 350 }]),
+    ).toEqual({ dx: -26, dy: 374 });
+  });
+
+  it('keeps stepping past nodes stacked a step apart', () => {
+    expect(
+      pasteOffsetFor([at('there')], viewport, 24, 'here', [
+        { x: 450, y: 350 },
+        { x: 474, y: 374 },
+      ]),
+    ).toEqual({ dx: -2, dy: 398 });
+  });
+
+  it('leaves a centred paste where it is when nothing sits near its spot', () => {
+    expect(
+      pasteOffsetFor([at('there')], viewport, 24, 'here', [{ x: 0, y: 0 }]),
+    ).toEqual({ dx: -50, dy: 350 });
+  });
 });
 
 describe('captureClipboard — the Space a copy comes from (inner#1235 A20)', () => {

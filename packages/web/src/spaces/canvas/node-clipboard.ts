@@ -505,8 +505,14 @@ export function pasteAnchorOffset(
  * @param viewport.y - Its top edge.
  * @param viewport.width - Its width.
  * @param viewport.height - Its height.
- * @param offsetPx - The nudge beside an in-view source.
+ * A paste that lands in the middle steps down and right by `offsetPx` while a
+ * node already sits on its spot, so the copy shows beside it rather than
+ * hidden on top of it.
+ * @param offsetPx - The nudge beside an in-view source, and the step past an
+ *   occupied spot.
  * @param space - The Space pasted into.
+ * @param occupied - Top-left corners of the nodes already on this Space, in
+ *   flow coordinates.
  * @returns The shift to apply to every node's position.
  */
 export function pasteOffsetFor(
@@ -514,15 +520,27 @@ export function pasteOffsetFor(
   viewport: { x: number; y: number; width: number; height: number },
   offsetPx: number,
   space: string,
+  occupied: ReadonlyArray<{ x: number; y: number }> = [],
 ): { dx: number; dy: number } {
   const box = clipboardBoundingBox(nodes);
   if (nodes.every((node) => node.space === space)) {
     return pasteAnchorOffset(box, viewport, offsetPx);
   }
-  return {
-    dx: viewport.x + viewport.width / 2 - (box.x + box.width / 2),
-    dy: viewport.y + viewport.height / 2 - (box.y + box.height / 2),
-  };
+  let dx = viewport.x + viewport.width / 2 - (box.x + box.width / 2);
+  let dy = viewport.y + viewport.height / 2 - (box.y + box.height / 2);
+  /**
+   * Whether a node already sits within a step of where the paste would land.
+   * @returns True while the spot is taken.
+   */
+  const taken = (): boolean =>
+    occupied.some(
+      (at) => Math.abs(at.x - (box.x + dx)) < offsetPx && Math.abs(at.y - (box.y + dy)) < offsetPx,
+    );
+  for (let step = 0; step < occupied.length && taken(); step += 1) {
+    dx += offsetPx;
+    dy += offsetPx;
+  }
+  return { dx, dy };
 }
 
 /**

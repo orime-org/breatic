@@ -1075,7 +1075,7 @@ test('a node copied on one canvas lands where another canvas is looking', async 
 }) => {
   // A20: the old place of the copy is in view on the second canvas too, and
   // the copy still lands in the middle of that canvas, not beside a source
-  // that is not on it.
+  // that is not on it — stepped aside when a node already sits there.
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const projectUrl = await openFreshProject(page);
   await addSpaces(page, 1);
@@ -1101,11 +1101,15 @@ test('a node copied on one canvas lands where another canvas is looking', async 
   );
   await expect(pastedNode).toHaveClass(/react-flow__node-image/);
 
-  const pane = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
+  // The middle of the view is where the second canvas framed its own node,
+  // so the copy steps one paste offset down and right of it and both show.
+  const existing = await visibleSpace(page)
+    .locator('.react-flow__node[data-id="already-here"]')
+    .boundingBox();
   const pasted = await pastedNode.boundingBox();
-  if (pane === null || pasted === null) throw new Error('the pane or the pasted node has no box');
-  expect(Math.abs(pasted.x + pasted.width / 2 - (pane.x + pane.width / 2))).toBeLessThan(2);
-  expect(Math.abs(pasted.y + pasted.height / 2 - (pane.y + pane.height / 2))).toBeLessThan(2);
+  if (existing === null || pasted === null) throw new Error('a node has no box');
+  expect(Math.abs(pasted.x - existing.x - 24)).toBeLessThan(2);
+  expect(Math.abs(pasted.y - existing.y - 24)).toBeLessThan(2);
 });
 
 test('words selected in a read-only document are still selected after a switch', async ({
