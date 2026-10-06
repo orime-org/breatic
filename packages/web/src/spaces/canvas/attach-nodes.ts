@@ -6,6 +6,7 @@ import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import * as Y from 'yjs';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
+import { ATTACHMENT_NAME_CHARS, hashOf } from '@web/lib/attachment-naming';
 import type { ContentNodeView } from '@web/data/yjs/node-view';
 import { toAbsolutePosition } from '@web/spaces/canvas/group-geometry';
 import { currentGeneration } from '@web/spaces/canvas/generate/current-generation';
@@ -18,9 +19,6 @@ import type { TrayItem } from '@web/stores/chat-attachments';
 
 /** The node kinds the chat can be handed; a group comes with its members. */
 const ATTACHABLE = new Set<string>(['text', 'image', 'audio', 'video', 'annotation', 'group']);
-
-/** How long a note's own words may run when they stand in for its name. */
-const NOTE_NAME_CHARS = 40;
 
 /** What the pick reads beyond the canvas view (#2218). */
 export interface NodeReaders {
@@ -99,7 +97,7 @@ export function nodeNameOf(data: { kind?: unknown; name?: unknown; content?: unk
   if (named) return named;
   const kind = typeof data.kind === 'string' ? data.kind : '';
   if (kind === 'annotation' && typeof data.content === 'string') {
-    return data.content.trim().slice(0, NOTE_NAME_CHARS);
+    return data.content.trim().slice(0, ATTACHMENT_NAME_CHARS);
   }
   return kind;
 }
@@ -111,19 +109,6 @@ export function nodeNameOf(data: { kind?: unknown; name?: unknown; content?: unk
  */
 export function pickId(ids: readonly string[]): string {
   return `canvas-${ids.length}-${hashOf(ids)}`;
-}
-
-/**
- * A short stable hash of some strings, whatever their order.
- * @param parts - The strings.
- * @returns The hash, base 36.
- */
-export function hashOf(parts: readonly string[]): string {
-  let hash = 0x811c9dc5;
-  for (const ch of [...parts].sort().join('\u0000')) {
-    hash = Math.imul(hash ^ ch.charCodeAt(0), 0x01000193) >>> 0;
-  }
-  return hash.toString(36);
 }
 
 /**

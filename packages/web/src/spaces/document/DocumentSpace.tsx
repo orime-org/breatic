@@ -24,6 +24,7 @@ import { DocumentSchemaOutdated } from '@web/spaces/document/DocumentSchemaOutda
 import { useDocumentSchemaIntercept } from '@web/spaces/document/use-document-schema-intercept';
 import { clearDocument } from '@web/spaces/document/document-select-all-guard';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
+import { DocumentProjectProvider } from '@web/spaces/document/document-project-context';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 /**
@@ -220,7 +221,9 @@ export function DocumentSpace({
           </Button>
         </div>
       ) : shown ? (
-        <DocumentEditor handle={shown} readOnly={readOnly} myRole={myRole} />
+        <DocumentProjectProvider projectId={projectId}>
+          <DocumentEditor handle={shown} readOnly={readOnly} myRole={myRole} />
+        </DocumentProjectProvider>
       ) : (
         <div
           data-testid='document-space-loading'

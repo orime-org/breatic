@@ -15,7 +15,7 @@ import { BLOCK_MENU_ROWS } from '@web/spaces/document/document-block-menu-rows';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
 
 describe('the block handle menu', () => {
-  it('holds seven rows in the order the demo has them', () => {
+  it('holds the demo\'s seven rows in its order, with Add to Agent after Comment', () => {
     expect(BLOCK_MENU_ROWS.map((row) => row.id)).toEqual([
       'blockType',
       'duplicate',
@@ -23,6 +23,7 @@ describe('the block handle menu', () => {
       'align',
       'color',
       'comment',
+      'addToAgent',
       'delete',
     ]);
   });

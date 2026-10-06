@@ -81,6 +81,7 @@ import {
 
 
 import { commentTool } from '@web/spaces/document/document-comment-entries';
+import { addToAgentTool } from '@web/spaces/document/document-to-agent';
 import { mergeCellsTool } from '@web/spaces/document/document-table-tools';
 import {
   ToolButton,
@@ -170,7 +171,7 @@ const BUBBLE_GROUPS: BubbleGroup[] = [
     tools: INLINE_TOOLS,
     panels: [DocumentLinkPopover],
     slot: ColorSlot,
-    after: [commentTool, mergeCellsTool],
+    after: [commentTool, addToAgentTool, mergeCellsTool],
   },
   { key: 'ai', tools: [], panels: [], slot: AiSlot },
 ];

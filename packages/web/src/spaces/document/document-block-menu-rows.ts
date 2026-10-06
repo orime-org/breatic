@@ -9,14 +9,16 @@
  * `document-insert-row.ts`); this file is the menu's shape alone, the way
  * `document-block-type.ts` is the block type menu's.
  *
- * The demo's list has eight entries and this has seven: "drag to move" is not
- * a menu row — it is the other gesture on the same handle (A4).
+ * Seven of the rows are the demo's; its eighth entry, "drag to move", is not a
+ * menu row — it is the other gesture on the same handle (A4). Add to Agent
+ * (inner#936) is the eighth row here.
  */
 
 import {
   Copy,
   IndentDecrease,
   IndentIncrease,
+  MessageSquarePlus,
   MessageSquareText,
   Palette,
   Plus,
@@ -38,6 +40,7 @@ export interface BlockMenuRow {
     | 'indent'
     | 'unindent'
     | 'comment'
+    | 'addToAgent'
     | 'delete';
   /** i18n key for the row's name. */
   readonly labelKey: string;
@@ -46,7 +49,8 @@ export interface BlockMenuRow {
 }
 
 /**
- * The seven rows, in the demo's order.
+ * The eight rows: the demo's seven in its order, with Add to Agent after
+ * Comment (inner#936).
  *
  * Comment opens a draft over the hovered row (A2), and reads unavailable on
  * a row with no words in it (A3) — the same two answers the bubble bar's own
@@ -58,7 +62,7 @@ export interface BlockMenuRow {
  * The alignment row's icon here is the row's STARTING face only: the menu
  * draws it off the hovered block's own alignment (`DocumentBlockMenu.tsx`),
  * the way the bubble bar draws its alignment opener off the selection's. The
- * other six rows keep the icon this table gives them, because none of them
+ * other rows keep the icon this table gives them, because none of them
  * has a reading to show — "duplicate" and "delete" look the same whatever
  * block is under the pointer, and the type row's face would have to repeat
  * what the reader can already see in the body.
@@ -95,6 +99,11 @@ export const BLOCK_MENU_ROWS: readonly BlockMenuRow[] = [
     Icon: MessageSquareText,
   },
   {
+    id: 'addToAgent',
+    labelKey: 'canvas.contextMenu.addToAgent',
+    Icon: MessageSquarePlus,
+  },
+  {
     id: 'delete',
     labelKey: 'spaces.document.blockHandle.delete',
     Icon: Trash2,
@@ -121,5 +130,6 @@ export const TABLE_MENU_ROWS: readonly BlockMenuRow[] = [
   { id: 'indent', labelKey: 'spaces.document.blockHandle.indent', Icon: IndentIncrease },
   { id: 'unindent', labelKey: 'spaces.document.blockHandle.unindent', Icon: IndentDecrease },
   rowOf('comment'),
+  rowOf('addToAgent'),
   { ...rowOf('delete'), labelKey: 'spaces.document.blockHandle.deleteTable' },
 ];

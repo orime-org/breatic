@@ -72,19 +72,35 @@ function selectWords(editor: Editor, needle: string): void {
 }
 
 describe('selectionItem', () => {
-  it('holds the selected words as Markdown in a ready text item', () => {
+  it('holds the selected blocks as Markdown in a ready text item', () => {
     const editor = open([
       { type: 'paragraph', content: [{ type: 'text', text: 'bold words', styles: { bold: true } }] },
+      { type: 'paragraph', content: 'plain' },
     ]);
-    selectWords(editor, 'bold words');
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, view.state.doc.content.size - 1)),
+    );
 
     const item = selectionItem(editor);
 
     expect(item.type).toBe('text');
     expect(item.status).toBe('ready');
     expect(item.chip?.type).toBe('text');
-    expect(item.chip?.data_snapshot).toEqual({ text: '**bold words**' });
+    expect(item.chip?.data_snapshot).toEqual({ text: '**bold words**\n\nplain' });
     expect(item.name).toBe('bold words');
+  });
+
+  it('gives what copy gives for words inside one block, styles dropped', () => {
+    // BlockNote exports a selection inside one block as bare inline HTML, and
+    // its Markdown conversion keeps no styles from that; text/plain on copy is
+    // the same string.
+    const editor = open([
+      { type: 'paragraph', content: [{ type: 'text', text: 'bold words', styles: { bold: true } }] },
+    ]);
+    selectWords(editor, 'bold words');
+
+    expect(selectionItem(editor).chip?.data_snapshot).toEqual({ text: 'bold words' });
   });
 
   it('names the item after the first line and cuts it at 40 characters', () => {

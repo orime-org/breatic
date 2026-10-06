@@ -549,7 +549,7 @@ describe("what the guide says", () => {
     const handle = section("Document spaces").split("Hovering any other line")[1]?.split("\n")[0] ?? "";
     // The rows in the order the menu's own table lists them.
     const [rows = ""] = webSource("spaces/document/document-block-menu-rows.ts").split(TABLE_ROWS);
-    const ids = [...rows.matchAll(/labelKey: '(spaces\.document\.[\w.]+)'/g)].map((m) => m[1] ?? "");
+    const ids = [...rows.matchAll(/labelKey: '([\w.]+)'/g)].map((m) => m[1] ?? "");
     expect(ids).toEqual(namedIds(rows));
     expectRowsInOrder(handle, ids.map((id) => [id]));
   });

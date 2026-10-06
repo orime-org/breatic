@@ -36,7 +36,9 @@ import {
   waitForBar,
 } from '@web/spaces/document/__tests__/bubble-bar-harness';
 
-const attachToChat = vi.hoisted(() => vi.fn(async () => undefined));
+const attachToChat = vi.hoisted(() =>
+  vi.fn(async (_projectId: string, _items: readonly unknown[]): Promise<void> => undefined),
+);
 vi.mock('@web/stores/attach-to-chat', () => ({ attachToChat }));
 
 type Editor = ReturnType<typeof buildDocumentEditor>;

@@ -221,7 +221,10 @@ export function renderProductGuide(): string {
       "plain text files to the next message; pasting such files into the box (a screenshot, a copied file) " +
       "attaches them the same way. Canvas nodes are handed over with " +
       `${quoted(t("canvas.contextMenu.addToAgent"))} on their right-click menu; if the model list cannot be read at that moment, nothing is attached and ` +
-      `${quoted(t("canvas.generatePanel.catalogUnavailable"))} shows. Each attachment shows as a small ` +
+      `${quoted(t("canvas.generatePanel.catalogUnavailable"))} shows. In a document, the selected text or a whole ` +
+      "line goes in as one text attachment named after its first line, from the selection bar or the six-dot " +
+      "handle's menu (see the document section); the same line or the same words handed over again leave one " +
+      "chip, holding what they read now. Each attachment shows as a small " +
       "chip in the box above the text, with a type and a name and a spinner while it uploads; hovering it " +
       "previews it and its X removes it. A " +
       "chip that could not be uploaded or read shows a red mark and says why; it has to be removed with its X before " +
@@ -849,7 +852,8 @@ export function renderProductGuide(): string {
       "the cells from that one instead. Pasting a picture or file does nothing.",
     "- Selecting text shows a bar, left to right: an icon of the current block type with a small arrow, an " +
       "alignment icon with an arrow, bold B, italic I, strikethrough S and underline U icons, a link icon, a code " +
-      "icon, the letter A with an arrow (colour), a speech-bubble icon (comment), and a sparkle with the word " +
+      "icon, the letter A with an arrow (colour), a speech-bubble icon (comment), a speech bubble with a plus (add " +
+      "to Agent), and a sparkle with the word " +
       `${quoted(t("spaces.document.commands.ai"))} and an arrow. The other buttons show no name on hover. Hovering ` +
       "the block type, alignment, colour or AI button opens its menu. The block type menu lists " +
       `${quoted(t("spaces.document.commands.paragraph"))}, ${quoted(t("spaces.document.commands.heading1"))}, ` +
@@ -859,7 +863,9 @@ export function renderProductGuide(): string {
       `and ${quoted(t("spaces.document.commands.quote"))}; the alignment menu lists ` +
       `${quoted(t("spaces.document.commands.alignLeft"))}, ${quoted(t("spaces.document.commands.alignCenter"))} ` +
       `and ${quoted(t("spaces.document.commands.alignRight"))}. The speech bubble starts a comment (see ` +
-      "Comments below). The AI menu's commands look " +
+      "Comments below). The speech bubble with a plus puts the selected text, with its formatting where the " +
+      "selection spans more than one line, into the Agent's box as an attachment, opening the Agent panel if it " +
+      "is hidden. The AI menu's commands look " +
       "available but do nothing yet. With the whole document selected there is no link icon. Inside a code " +
       "block the bold, italic, strikethrough, underline, code, link and colour buttons are greyed, and a code " +
       "block cannot be aligned. On inline code the same buttons are greyed except code, which shows as on; " +
@@ -885,8 +891,11 @@ export function renderProductGuide(): string {
       `block; click it for a menu with ${quoted(t("spaces.document.commands.blockType"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))}, ${quoted(t("spaces.document.commands.align"))}, ` +
-      `${quoted(t("spaces.document.commands.color"))}, ${quoted(t("spaces.document.commands.comment"))} and ` +
+      `${quoted(t("spaces.document.commands.color"))}, ${quoted(t("spaces.document.commands.comment"))}, ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
       `${quoted(t("spaces.document.blockHandle.delete"))}; it acts on that line. ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} puts that line, with the lines nested under it, into the ` +
+      "Agent's box as an attachment, opening the Agent panel if it is hidden. " +
       `${quoted(t("spaces.document.commands.blockType"))}, ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))}, ${quoted(t("spaces.document.commands.align"))} ` +
       `and ${quoted(t("spaces.document.commands.color"))} open a submenu when hovered; ` +
@@ -901,8 +910,9 @@ export function renderProductGuide(): string {
       "puts a table of that size there; the arrow keys and Enter do the same. " +
       "Typing --- at the start of a line puts a divider above that line. Clicking a divider selects it, and " +
       "Backspace or Delete removes it. On a divider's handle menu, " +
-      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.commands.color"))} and ` +
-      `${quoted(t("spaces.document.commands.comment"))} are greyed, and in ` +
+      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.commands.color"))}, ` +
+      `${quoted(t("spaces.document.commands.comment"))} and ${quoted(t("canvas.contextMenu.addToAgent"))} are ` +
+      "greyed, and in " +
       `${quoted(t("spaces.document.commands.blockType"))} only ` +
       `${quoted(t("spaces.document.commands.quote"))} can be picked. For a ` +
       "plain line below, press Enter at the end of the line (Shift+Enter in a code block); if the new line kept " +
@@ -911,10 +921,12 @@ export function renderProductGuide(): string {
     "- A table shows a table icon at the left of its first row instead of the six dots. Drag it to move the " +
       `whole table; click it for a menu with ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
-      `${quoted(t("spaces.document.blockHandle.unindent"))}, ${quoted(t("spaces.document.commands.comment"))} and ` +
+      `${quoted(t("spaces.document.blockHandle.unindent"))}, ${quoted(t("spaces.document.commands.comment"))}, ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
       `${quoted(t("spaces.document.blockHandle.deleteTable"))}. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
       `and ${quoted(t("spaces.document.blockHandle.unindent"))} are greyed when the table cannot move that way, ` +
-      `and ${quoted(t("spaces.document.commands.comment"))} when no cell has words.`,
+      `and ${quoted(t("spaces.document.commands.comment"))} and ${quoted(t("canvas.contextMenu.addToAgent"))} ` +
+      "when no cell has words.",
     "- Hovering a cell, with no text selected, shows a small handle of dots at the left of its row and one above " +
       "its column; dragging either moves the row or column, with a line showing where it will land. Clicking the " +
       `row's handle opens ${quoted(t("spaces.document.table.insertRowAbove"))}, ` +

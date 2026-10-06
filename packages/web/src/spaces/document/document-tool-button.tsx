@@ -26,6 +26,7 @@ import type { BlockNoteEditor } from '@blocknote/core';
 import type { Bold } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
+import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -59,12 +60,23 @@ export interface ToolDef {
    * pressed.
    */
   canRun: (e: ToolEditor) => boolean;
-  run: (e: ToolEditor) => void;
+  /**
+   * What pressing it does.
+   * @param e - The editor.
+   * @param projectId - The project the document is in, for a command that
+   *   reaches outside the document; null or left out outside a project.
+   */
+  run: (e: ToolEditor, projectId?: string | null) => void;
   /**
    * Whether the button is on the bar at all, for a command that belongs to
    * one kind of selection only. Left out, it always is.
    */
   shownWhen?: (e: ToolEditor) => boolean;
+  /**
+   * True for a command that hands something to the project, which is not on
+   * the bar where there is no project to hand it to.
+   */
+  needsProject?: boolean;
 }
 
 /**
@@ -95,9 +107,10 @@ export const ToolButton = React.memo(function ToolButton({
   const active = useEditorSnapshot(editor, tool.isActive);
   const available = useEditorSnapshot(editor, tool.canRun);
   const shown = useEditorSnapshot(editor, tool.shownWhen ?? alwaysShown);
+  const projectId = useDocumentProjectId();
   const state = { active, available };
   const Icon = tool.Icon;
-  if (!shown) return null;
+  if (!shown || (tool.needsProject === true && projectId === null)) return null;
   return (
     <Button
       variant={state.active ? 'secondary' : 'ghost'}
@@ -105,7 +118,7 @@ export const ToolButton = React.memo(function ToolButton({
       aria-label={t(tool.labelKey)}
       aria-pressed={state.active}
       disabled={!state.available}
-      onClick={() => tool.run(editor)}
+      onClick={() => tool.run(editor, projectId)}
       data-testid={`doc-bubble-tool-${tool.id}`}
       // The bar stays out of the tab order entirely (ruling §5.2): it floats
       // over the body, and anything floating over the body that takes focus

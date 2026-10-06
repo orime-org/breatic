@@ -76,6 +76,9 @@ import {
 } from '@web/spaces/document/document-handle-commands';
 import { openCommentDraft } from '@web/spaces/document/document-comment-entries';
 import { canCommentOver } from '@web/spaces/document/document-comment-target';
+import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
+import { blockItem } from '@web/spaces/document/document-to-agent';
+import { attachToChat } from '@web/stores/attach-to-chat';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import {
   insertBelow,
@@ -228,6 +231,7 @@ export function DocumentBlockMenu({
   const faces = useFacesOf(editor, block.id);
 
   const rowNow = useRowNow(editor, block.id);
+  const projectId = useDocumentProjectId();
 
   /**
    * The range standing for this row, read off the document as it is now.
@@ -510,8 +514,32 @@ export function DocumentBlockMenu({
           );
         }
 
+        if (row.id === 'addToAgent') {
+          // Hands the row, children included, to the project's Agent as the
+          // Markdown it reads as now. Greyed where Comment is, off the same
+          // reading: a row with no words has nothing to hand over. Outside a
+          // project there is nowhere to hand it, and the row is not drawn.
+          if (projectId === null) return null;
+          return (
+            <DropdownMenuItem
+              key={row.id}
+              data-testid={`doc-block-row-${row.id}`}
+              {...itemWithin(faces.canComment, () => {
+                const live = rowNow();
+                if (live !== undefined) {
+                  void attachToChat(projectId, [blockItem(editor as never, live.id)]);
+                }
+                close();
+              })}
+            >
+              <Icon />
+              {label}
+            </DropdownMenuItem>
+          );
+        }
+
         if (row.id === 'delete') {
-          // Six things and one that takes a row away. The rule is where the
+          // The commands above, then one that takes a row away. The rule is where the
           // canvas node menu puts its own (`NodeContextMenu.tsx`'s delete):
           // the pointer running down the list meets something before the last
           // row, and the row above this one is a greyed one it slides past.
