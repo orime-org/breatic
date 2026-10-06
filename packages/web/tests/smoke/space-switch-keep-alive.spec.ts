@@ -1112,6 +1112,40 @@ test('a node copied on one canvas lands where another canvas is looking', async 
   expect(Math.abs(pasted.y - existing.y - 24)).toBeLessThan(2);
 });
 
+test('pasting again on the same canvas steps each copy past the last one', async ({
+  page,
+  context,
+}) => {
+  // A20: every paste steps past a node already on its spot — a copied node
+  // pasted twice, and words pasted twice, all show.
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const projectUrl = await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  await seedNode(page, projectIdOf(projectUrl), first, 'pasted-again', 'image', { x: 200, y: 100 });
+  const source = visibleSpace(page).locator('.react-flow__node[data-id="pasted-again"]');
+  await source.click();
+  await page.keyboard.press('ControlOrMeta+c');
+  const nodes = visibleSpace(page).locator('.react-flow__node');
+  await page.keyboard.press('ControlOrMeta+v');
+  await expect(nodes).toHaveCount(2);
+  await page.keyboard.press('ControlOrMeta+v');
+  await expect(nodes).toHaveCount(3);
+
+  await page.evaluate(() => navigator.clipboard.writeText('words pasted twice'));
+  await visibleSpace(page).locator('.react-flow__pane').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('ControlOrMeta+v');
+  await expect(nodes).toHaveCount(4);
+  await page.keyboard.press('ControlOrMeta+v');
+  await expect(nodes).toHaveCount(5);
+
+  const corners = await nodes.evaluateAll((els) =>
+    els.map((el) => (el as HTMLElement).style.transform),
+  );
+  expect(new Set(corners).size).toBe(5);
+});
+
 test('words selected in a read-only document are still selected after a switch', async ({
   page,
 }) => {

@@ -13,6 +13,7 @@ import {
   externalParentAbs,
   pasteAnchorOffset,
   pasteOffsetFor,
+  stepPastOccupied,
   textToNode,
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
@@ -434,6 +435,13 @@ describe('pasteOffsetFor — where a paste lands on the Space it is pasted into 
     ).toEqual({ dx: -2, dy: 398 });
   });
 
+  it('steps a paste beside its source past an earlier copy already there', () => {
+    // Same Space, source in view: the first copy took (524, 24); the next steps on.
+    expect(
+      pasteOffsetFor([at('here')], viewport, 24, 'here', [{ x: 524, y: 24 }]),
+    ).toEqual({ dx: 48, dy: 48 });
+  });
+
   it('leaves a centred paste where it is when nothing sits near its spot', () => {
     expect(
       pasteOffsetFor([at('there')], viewport, 24, 'here', [{ x: 0, y: 0 }]),
@@ -453,5 +461,21 @@ describe('captureClipboard — the Space a copy comes from (inner#1235 A20)', ()
       'here',
     );
     expect(out.map((node) => node.space)).toEqual(['here', 'here']);
+  });
+});
+
+describe('stepPastOccupied — one rule for every paste (inner#1235 A20)', () => {
+  it('stays put on a free spot', () => {
+    expect(stepPastOccupied({ x: 0, y: 0 }, [{ x: 100, y: 100 }], 24)).toEqual({ dx: 0, dy: 0 });
+  });
+
+  it('steps down and right until the spot is free', () => {
+    expect(
+      stepPastOccupied({ x: 0, y: 0 }, [{ x: 0, y: 0 }, { x: 24, y: 24 }, { x: 60, y: 0 }], 24),
+    ).toEqual({ dx: 48, dy: 48 });
+  });
+
+  it('counts a node less than a step away as on the spot', () => {
+    expect(stepPastOccupied({ x: 0, y: 0 }, [{ x: 10, y: -10 }], 24)).toEqual({ dx: 24, dy: 24 });
   });
 });

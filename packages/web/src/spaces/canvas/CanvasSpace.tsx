@@ -261,11 +261,13 @@ import {
   externalParentAbs,
   canvasTakesPaste,
   pasteOffsetFor,
+  stepPastOccupied,
   parseClipboardNodes,
   serializeNodes,
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
 import {
+  centerToTopLeft,
   createAnnotationNode,
   createGroupNode,
   isCreatableNodeType,
@@ -2903,6 +2905,32 @@ function CanvasSpaceInner({
       if (isEditableTarget(event.target as Element | null)) return;
       claimRegion('space');
 
+      // Every paste steps past the nodes already on its spot, so it shows
+      // (inner#1235 A20).
+      const here = buffer.settled();
+      const byId = new Map(here.map((node) => [node.id, node]));
+      const occupied = here.map((node) => {
+        const parent = node.parentId !== undefined ? byId.get(node.parentId) : undefined;
+        return parent ? toAbsolutePosition(node.position, parent.position) : node.position;
+      });
+      /**
+       * The middle of the view, stepped past an empty-node-sized paste already there.
+       * @param rect - The canvas container's box on screen.
+       * @returns The point to paste around, in flow coordinates.
+       */
+      const freeCentre = (rect: DOMRect): { x: number; y: number } => {
+        const centre = screenToFlowPosition({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        });
+        const step = stepPastOccupied(
+          centerToTopLeft(centre, EMPTY_NODE_SIZE),
+          occupied,
+          PASTE_OFFSET_PX,
+        );
+        return { x: centre.x + step.dx, y: centre.y + step.dy };
+      };
+
       // File paste (screenshot / copied file) carries binary in
       // `clipboardData.files` — route it through the upload flow, dropped at
       // the viewport centre like a text paste. Checked first: a real file
@@ -2911,13 +2939,7 @@ function CanvasSpaceInner({
       if (files && files.length > 0) {
         event.preventDefault();
         const rect = containerRef.current?.getBoundingClientRect();
-        if (rect) {
-          const center = screenToFlowPosition({
-            x: rect.left + rect.width / 2,
-            y: rect.top + rect.height / 2,
-          });
-          processFiles([...files], center);
-        }
+        if (rect) processFiles([...files], freeCentre(rect));
         return;
       }
 
@@ -2932,12 +2954,6 @@ function CanvasSpaceInner({
         if (rect) {
           const tl = screenToFlowPosition({ x: rect.left, y: rect.top });
           const br = screenToFlowPosition({ x: rect.right, y: rect.bottom });
-          const here = buffer.settled();
-          const byId = new Map(here.map((node) => [node.id, node]));
-          const occupied = here.map((node) => {
-            const parent = node.parentId !== undefined ? byId.get(node.parentId) : undefined;
-            return parent ? toAbsolutePosition(node.position, parent.position) : node.position;
-          });
           offset = pasteOffsetFor(
             clipboardNodes,
             { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y },
@@ -2954,11 +2970,7 @@ function CanvasSpaceInner({
       event.preventDefault();
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const center = screenToFlowPosition({
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
-      });
-      setSelectAfterCreate([pasteTextAt(text, center)]);
+      setSelectAfterCreate([pasteTextAt(text, freeCentre(rect))]);
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
