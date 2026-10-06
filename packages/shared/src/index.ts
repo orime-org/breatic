@@ -341,6 +341,7 @@ export {
   errorMonitoringDataCollection,
   errorMonitoringEnvironmentName,
   errorMonitoringRelease,
+  isSentryDsn,
   type ErrorMonitoringDataCollection,
   type ErrorMonitoringEnvironment,
 } from "@shared/error-monitoring.js";

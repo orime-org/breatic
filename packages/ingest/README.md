@@ -115,7 +115,8 @@ Cloudflare rather than in any file.
 ### If a setting is missing
 
 Non-preflight requests answer 500 with the names of missing settings before
-anything reads a binding. OPTIONS preflight is answered first, so successful
+anything reads a binding. A `SENTRY_DSN` that is set but is not a Sentry DSN
+(the template's placeholder left in, for instance) is answered the same way. OPTIONS preflight is answered first, so successful
 preflight alone does not validate the secret or storage bindings.
 
 ## Running it

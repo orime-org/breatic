@@ -32,6 +32,26 @@ export function errorMonitoringRelease(value: unknown): string | undefined {
 }
 
 /**
+ * The DSN shape the Sentry SDKs accept: `http(s)://<key>@<host>[:port]/[path/]<project>`,
+ * the key a run of word characters and the project starting with a digit.
+ * The SDKs' own parser (`@sentry/core` `utils/dsn.ts`) uses the same rules.
+ */
+const SENTRY_DSN = /^https?:\/\/\w+(?::\w*)?@(?:\[[:.%\w]+\]|[\w.-]+)(?::\d+)?\/(?:[^/]+\/)*\d[^/]*$/;
+
+/**
+ * Whether a value is a DSN the Sentry SDKs will send to.
+ *
+ * The SDKs answer anything else by printing one console line and sending
+ * nothing, so a mistyped DSN would turn monitoring off without anyone being
+ * told; configuration checks this to refuse it instead.
+ * @param value - The configured DSN.
+ * @returns `true` when the SDKs would accept it.
+ */
+export function isSentryDsn(value: string): boolean {
+  return SENTRY_DSN.test(value);
+}
+
+/**
  * Narrow a configured environment name to one of the shared names.
  * @param value - The configured name.
  * @returns The name, or `undefined` when it is not one of the shared ones.

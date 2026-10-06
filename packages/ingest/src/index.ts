@@ -25,6 +25,7 @@ import {
   isUploadableMediaType,
   hasCoverFrame,
   INGEST_FAILURE_HEADER,
+  isSentryDsn,
   type IngestFailureCode,
   type SessionTokenPayload,
   type MediaLimits,
@@ -1090,6 +1091,19 @@ export default Sentry.withSentry((env: Env) => monitoringOptions(env), {
       return withCors(
         new Response(
           `This Worker is missing configuration: ${missing.join(", ")}. ` +
+            "See packages/ingest/README.md.",
+          { status: 500 },
+        ),
+        origin,
+      );
+    }
+    // The SDK answers a DSN it cannot parse by printing one line and sending
+    // nothing, so a mistyped one would turn reporting off unseen.
+    const sentryDsn = env.SENTRY_DSN?.trim() ?? "";
+    if (sentryDsn !== "" && !isSentryDsn(sentryDsn)) {
+      return withCors(
+        new Response(
+          "This Worker's SENTRY_DSN is set but is not a Sentry DSN. " +
             "See packages/ingest/README.md.",
           { status: 500 },
         ),

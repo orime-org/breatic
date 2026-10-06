@@ -6,6 +6,7 @@ import {
   errorMonitoringDataCollection,
   errorMonitoringEnvironmentName,
   errorMonitoringRelease,
+  isSentryDsn,
 } from "@shared/error-monitoring.js";
 
 const SHA = "4ca3e774ad2bb6b8f9406579ddc4bb611e5037a0";
@@ -68,5 +69,23 @@ describe("errorMonitoringDataCollection", () => {
     const first = errorMonitoringDataCollection();
     first.httpHeaders.request.deny.push("x-test");
     expect(errorMonitoringDataCollection().httpHeaders.request.deny).not.toContain("x-test");
+  });
+});
+
+describe("isSentryDsn", () => {
+  it("takes a DSN with a public key and a numeric project", () => {
+    expect(isSentryDsn("https://publickey@o1.ingest.sentry.io/2")).toBe(true);
+    expect(isSentryDsn("http://publickey@127.0.0.1:9411/3")).toBe(true);
+    expect(isSentryDsn("https://publickey@sentry.example.com/path/42")).toBe(true);
+  });
+
+  it("refuses anything the SDK would refuse", () => {
+    expect(isSentryDsn("<the ingest Sentry project's DSN, or empty>")).toBe(false);
+    expect(isSentryDsn("https://o1.ingest.sentry.io/2")).toBe(false);
+    expect(isSentryDsn("https://public-key@o1.ingest.sentry.io/2")).toBe(false);
+    expect(isSentryDsn("https://publickey@o1.ingest.sentry.io/project")).toBe(false);
+    expect(isSentryDsn("ftp://publickey@o1.ingest.sentry.io/2")).toBe(false);
+    expect(isSentryDsn(" https://publickey@o1.ingest.sentry.io/2")).toBe(false);
+    expect(isSentryDsn("")).toBe(false);
   });
 });

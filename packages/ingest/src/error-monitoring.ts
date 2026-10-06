@@ -52,7 +52,7 @@ export interface MonitoringOptions {
  */
 export function monitoringOptions(env: MonitoringEnv): MonitoringOptions {
   return {
-    dsn: env.SENTRY_DSN ?? "",
+    dsn: env.SENTRY_DSN?.trim() ?? "",
     release: errorMonitoringRelease(env.SENTRY_RELEASE),
     environment: errorMonitoringEnvironmentName(env.SENTRY_ENVIRONMENT) ?? "development",
     dataCollection: errorMonitoringDataCollection(),

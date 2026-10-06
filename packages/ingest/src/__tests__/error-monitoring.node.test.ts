@@ -17,6 +17,7 @@ describe("monitoringOptions", () => {
   it("hands the SDK an empty DSN, which sends nothing, when none is configured", () => {
     expect(monitoringOptions({}).dsn).toBe("");
     expect(monitoringOptions({ SENTRY_DSN: "" }).dsn).toBe("");
+    expect(monitoringOptions({ SENTRY_DSN: ` ${DSN}\n` }).dsn).toBe(DSN);
   });
 
   it("always names a release key, leaving it unset when it is not a full commit", () => {

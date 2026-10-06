@@ -324,7 +324,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 ### Error monitoring
 
-Sentry 分三个项目:web · 后端(server / worker / collab 共用一个,事件带 `service` 标签区分)· ingest Worker。**DSN 留空就不启动**,自托管实例默认什么都不发。
+Sentry 分三个项目:web · 后端(server / worker / collab 共用一个,事件带 `service` 标签区分)· ingest Worker。**DSN 留空就不启动**,自托管实例默认什么都不发。**非空但不是合法 DSN 的拒绝启动**(后端由 core schema 判,ingest 答 500 点名;判据是 shared 的 `isSentryDsn`)—— SDK 遇到它只打一行 console、什么都不发,监控会悄悄关掉。
 
 | 端 | DSN | release 从哪来 | 报什么 |
 |---|---|---|---|

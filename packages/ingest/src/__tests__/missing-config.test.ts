@@ -138,4 +138,17 @@ describe("a Worker whose configuration is incomplete", () => {
       await expect(response.text()).resolves.toContain(binding);
     },
   );
+
+  it("names a SENTRY_DSN that is set but is not a DSN", async () => {
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(
+      new Request("https://ingest.example.com/uploads", { method: "POST" }),
+      { ...env, SENTRY_DSN: "<the ingest Sentry project's DSN, or empty>" },
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toBe(500);
+    await expect(response.text()).resolves.toContain("SENTRY_DSN");
+  });
 });
