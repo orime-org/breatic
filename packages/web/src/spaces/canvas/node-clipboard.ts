@@ -83,6 +83,11 @@ export interface ClipboardNode {
   /** Source parent Group id (members only). */
   parentId?: string;
   /**
+   * The Space the node was copied on. A paste lands beside its source only on
+   * that Space; anywhere else the source is not on screen to land beside.
+   */
+  space?: string;
+  /**
    * `content` is an address outside our storage. A paste never pins it on the
    * node: it creates an empty node and has the server fetch the address into
    * storage, which then writes the stored address onto the node.
@@ -128,12 +133,14 @@ export interface CaptureNode {
  *   exactly that blank-card regression a silent one — a caller that forgot to
  *   thread the text compiled clean and copied nothing. A caller that genuinely
  *   has no text passes an empty map and says so at the call site.
+ * @param space - The Space the nodes are copied on.
  * @returns The clipboard payload (Groups first, then their members, then loose nodes).
  */
 export function captureClipboard(
   targetIds: ReadonlyArray<string>,
   allNodes: ReadonlyArray<CaptureNode>,
   textById: ReadonlyMap<string, string>,
+  space: string,
 ): ClipboardNode[] {
   const byId = new Map(allNodes.map((node) => [node.id, node]));
   /**
@@ -208,7 +215,7 @@ export function captureClipboard(
     if (node.type === 'group') continue;
     emitContent(node);
   }
-  return result;
+  return result.map((node) => ({ ...node, space }));
 }
 
 /**
@@ -488,9 +495,10 @@ export function pasteAnchorOffset(
 /**
  * Where a paste goes, relative to where the payload was copied from.
  *
- * Nodes copied on the canvas land beside their source while it is in view.
- * Pictures from outside have no source on the canvas, so they land in the
- * middle of the view, the way a pasted file does.
+ * Nodes copied on this Space land beside their source while it is in view.
+ * Anything else has no source on this Space — nodes copied on another Space,
+ * pictures from outside — so it lands in the middle of the view, the way a
+ * pasted file does (inner#1235 A20).
  * @param nodes - The clipboard payload.
  * @param viewport - The visible canvas rect, in flow coordinates.
  * @param viewport.x - Its left edge.
@@ -498,15 +506,17 @@ export function pasteAnchorOffset(
  * @param viewport.width - Its width.
  * @param viewport.height - Its height.
  * @param offsetPx - The nudge beside an in-view source.
+ * @param space - The Space pasted into.
  * @returns The shift to apply to every node's position.
  */
 export function pasteOffsetFor(
   nodes: ReadonlyArray<ClipboardNode>,
   viewport: { x: number; y: number; width: number; height: number },
   offsetPx: number,
+  space: string,
 ): { dx: number; dy: number } {
   const box = clipboardBoundingBox(nodes);
-  if (!nodes.every((node) => node.external === true)) {
+  if (nodes.every((node) => node.space === space)) {
     return pasteAnchorOffset(box, viewport, offsetPx);
   }
   return {

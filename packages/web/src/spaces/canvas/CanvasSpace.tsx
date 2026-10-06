@@ -1463,6 +1463,7 @@ function CanvasSpaceInner({
           spaceId,
           allNodes.filter((n) => n.type === 'text').map((n) => n.id),
         ),
+        spaceId,
       ),
     [projectId, spaceId],
   );
@@ -2934,6 +2935,7 @@ function CanvasSpaceInner({
             clipboardNodes,
             { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y },
             PASTE_OFFSET_PX,
+            spaceId,
           );
         }
         setSelectAfterCreate(pasteNodesAt(clipboardNodes, offset));
@@ -2952,7 +2954,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
-  }, [readOnly, pasteNodesAt, pasteTextAt, screenToFlowPosition, processFiles]);
+  }, [readOnly, pasteNodesAt, pasteTextAt, screenToFlowPosition, processFiles, spaceId]);
 
   React.useEffect(() => {
     /**

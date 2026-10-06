@@ -1069,6 +1069,45 @@ test('words left selected in a hidden document do not take the canvas copy', asy
   await expect(nodes).toHaveCount(before + 1);
 });
 
+test('a node copied on one canvas lands where another canvas is looking', async ({
+  page,
+  context,
+}) => {
+  // A20: the old place of the copy is in view on the second canvas too, and
+  // the copy still lands in the middle of that canvas, not beside a source
+  // that is not on it.
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const projectUrl = await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, first);
+  await seedNode(page, projectIdOf(projectUrl), first, 'copied-across', 'image', { x: 500, y: 0 });
+  const source = visibleSpace(page).locator('.react-flow__node[data-id="copied-across"]');
+  await source.click();
+  await page.keyboard.press('ControlOrMeta+c');
+
+  // The second canvas has content of its own, framed when it first shows: an
+  // empty canvas frames its first content (A3), which would move the camera
+  // onto the pasted node wherever it landed. Framed at zoom 1 around (0, 0),
+  // its view takes in (500, 0) too.
+  await showSpace(page, second);
+  await seedNode(page, projectIdOf(projectUrl), second, 'already-here', 'image');
+  const nodes = visibleSpace(page).locator('.react-flow__node');
+  await expect(nodes).toHaveCount(1);
+  await page.keyboard.press('ControlOrMeta+v');
+  await expect(nodes).toHaveCount(2);
+  const pastedNode = visibleSpace(page).locator(
+    '.react-flow__node:not([data-id="already-here"])',
+  );
+  await expect(pastedNode).toHaveClass(/react-flow__node-image/);
+
+  const pane = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
+  const pasted = await pastedNode.boundingBox();
+  if (pane === null || pasted === null) throw new Error('the pane or the pasted node has no box');
+  expect(Math.abs(pasted.x + pasted.width / 2 - (pane.x + pane.width / 2))).toBeLessThan(2);
+  expect(Math.abs(pasted.y + pasted.height / 2 - (pane.y + pane.height / 2))).toBeLessThan(2);
+});
+
 test('words selected in a read-only document are still selected after a switch', async ({
   page,
 }) => {

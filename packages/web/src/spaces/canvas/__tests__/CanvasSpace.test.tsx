@@ -2401,7 +2401,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
     dispatchPaste(
       serializeNodes([
-        { type: 'image', position: { x: 10, y: 20 }, name: 'Hero', content: 'a.png' },
+        { type: 'image', position: { x: 10, y: 20 }, name: 'Hero', content: 'a.png', space: 's' },
       ]),
     );
 

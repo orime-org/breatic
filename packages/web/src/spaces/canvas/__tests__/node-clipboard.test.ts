@@ -12,12 +12,16 @@ import {
   clipboardBoundingBox,
   externalParentAbs,
   pasteAnchorOffset,
+  pasteOffsetFor,
   textToNode,
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
 
 /** No body text for this case — the parameter is required so omitting it cannot be an accident. */
 const NO_TEXT: ReadonlyMap<string, string> = new Map();
+
+/** The Space the captured nodes are copied on. */
+const SPACE = 'space-a';
 
 describe('node-clipboard', () => {
   it('serializeNodes + parseClipboardNodes round-trip through the marker', () => {
@@ -62,9 +66,10 @@ describe('node-clipboard', () => {
       ['n'],
       [{ id: 'n', type: 'image', position: { x: 5, y: 6 }, data: { name: 'Hero', content: 'a.png' } }],
       NO_TEXT,
+      SPACE,
     );
     expect(out).toEqual([
-      { type: 'image', position: { x: 5, y: 6 }, name: 'Hero', content: 'a.png', id: 'n' },
+      { type: 'image', position: { x: 5, y: 6 }, name: 'Hero', content: 'a.png', id: 'n', space: SPACE },
     ]);
   });
 
@@ -82,6 +87,7 @@ describe('node-clipboard', () => {
         },
       ],
       NO_TEXT,
+      SPACE,
     );
     expect(out).toEqual([
       {
@@ -91,6 +97,7 @@ describe('node-clipboard', () => {
         content: 'clip.mp4',
         coverUrl: 'clip-cover.jpg',
         id: 'v',
+        space: SPACE,
       },
     ]);
   });
@@ -123,6 +130,7 @@ describe('node-clipboard', () => {
         },
       ],
       NO_TEXT,
+      SPACE,
     );
     expect(out[0].width).toBe(300);
     expect(out[0].height).toBe(200);
@@ -136,8 +144,8 @@ describe('node-clipboard', () => {
     // member is captured alone (group not selected) → abs = group(100,100)+rel(20,30).
     // A text node's words live in a shared body now, so they reach the
     // clipboard through this map rather than off the node's data (#1774).
-    expect(captureClipboard(['m'], nodes, new Map([['m', 'hi']]))).toEqual([
-      { type: 'text', position: { x: 120, y: 130 }, content: 'hi', id: 'm', parentId: 'g' },
+    expect(captureClipboard(['m'], nodes, new Map([['m', 'hi']]), SPACE)).toEqual([
+      { type: 'text', position: { x: 120, y: 130 }, content: 'hi', id: 'm', parentId: 'g', space: SPACE },
     ]);
   });
 
@@ -154,7 +162,7 @@ describe('node-clipboard', () => {
     ];
     // Selecting the group AND a member must not emit the member twice; the
     // group's name is carried (R2-B — a duplicated group keeps its name).
-    const out = captureClipboard(['g', 'm1'], nodes, new Map([['m1', 'a']]));
+    const out = captureClipboard(['g', 'm1'], nodes, new Map([['m1', 'a']]), SPACE);
     expect(out).toEqual([
       {
         type: 'group',
@@ -164,9 +172,10 @@ describe('node-clipboard', () => {
         height: 200,
         backgroundColor: 'status-info',
         id: 'g',
+        space: SPACE,
       },
-      { type: 'text', position: { x: 120, y: 130 }, content: 'a', id: 'm1', parentId: 'g' },
-      { type: 'image', position: { x: 160, y: 140 }, id: 'm2', parentId: 'g' },
+      { type: 'text', position: { x: 120, y: 130 }, content: 'a', id: 'm1', parentId: 'g', space: SPACE },
+      { type: 'image', position: { x: 160, y: 140 }, id: 'm2', parentId: 'g', space: SPACE },
     ]);
   });
 
@@ -175,6 +184,7 @@ describe('node-clipboard', () => {
       ['a'],
       [{ id: 'a', type: 'annotation', position: { x: 0, y: 0 }, data: {} }],
       NO_TEXT,
+      SPACE,
     );
     expect(out).toEqual([]);
   });
@@ -377,5 +387,49 @@ describe('clipboardBoundingBox — the payload bounding box for viewport-center 
     expect(
       clipboardBoundingBox([{ type: 'group', position: { x: 5, y: 6 }, width: 300, height: 200 }]),
     ).toEqual({ x: 5, y: 6, width: 300, height: 200 });
+  });
+});
+
+describe('pasteOffsetFor — where a paste lands on the Space it is pasted into (inner#1235 A20)', () => {
+  const viewport = { x: 0, y: 0, width: 1000, height: 800 };
+  const at = (space?: string): ClipboardNode => ({
+    type: 'image',
+    position: { x: 500, y: 0 },
+    width: 100,
+    height: 100,
+    ...(space === undefined ? {} : { space }),
+  });
+
+  it('pastes a node copied on this Space beside its source when the source is in view', () => {
+    expect(pasteOffsetFor([at('here')], viewport, 24, 'here')).toEqual({ dx: 24, dy: 24 });
+  });
+
+  it('pastes a node copied on another Space at the centre of this view, even where its old place is in view', () => {
+    expect(pasteOffsetFor([at('there')], viewport, 24, 'here')).toEqual({ dx: -50, dy: 350 });
+  });
+
+  it('pastes nodes from a mix of Spaces at the centre of this view', () => {
+    expect(
+      pasteOffsetFor([at('here'), at('there')], viewport, 24, 'here'),
+    ).toEqual({ dx: -50, dy: 350 });
+  });
+
+  it('pastes a node that names no Space at the centre of this view', () => {
+    expect(pasteOffsetFor([at()], viewport, 24, 'here')).toEqual({ dx: -50, dy: 350 });
+  });
+});
+
+describe('captureClipboard — the Space a copy comes from (inner#1235 A20)', () => {
+  it('records the Space on every node it captures', () => {
+    const out = captureClipboard(
+      ['a', 'g'],
+      [
+        { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: {} },
+        { id: 'g', type: 'group', position: { x: 10, y: 10 }, data: {} },
+      ],
+      NO_TEXT,
+      'here',
+    );
+    expect(out.map((node) => node.space)).toEqual(['here', 'here']);
   });
 });
