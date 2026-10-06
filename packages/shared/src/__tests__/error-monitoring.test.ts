@@ -114,7 +114,7 @@ describe("requestWithoutQuery", () => {
   });
 
   it("leaves an event without a request as it is", () => {
-    const event = { level: "error" };
+    const event: { level: string; request?: { url?: string } } = { level: "error" };
     expect(requestWithoutQuery(event)).toBe(event);
   });
 });
