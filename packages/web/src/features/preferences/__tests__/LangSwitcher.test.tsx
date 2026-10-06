@@ -10,6 +10,7 @@ import { usersApi } from '@web/data/api/users';
 import { toast } from '@web/lib/toast';
 import { getLocale, t } from '@breatic/shared';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
+import { useCurrentUserStore } from '@web/stores/current-user';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 import {
   expectChosenFill,
@@ -25,15 +26,31 @@ vi.mock('@web/lib/toast', () => ({ toast: { error: vi.fn() } }));
 // Shared language switcher (features/preferences) — rendered identically by
 // the project AND studio top bars. The i18n engine is the single source of
 // truth (no Zustand mirror — see `feedback_double_source_state_mirror_trap`).
+/** Put a signed-in account in the store, as `ProtectedRoute` guarantees on app pages. */
+function signIn(): void {
+  useCurrentUserStore.setState({
+    user: {
+      id: 'user-1',
+      name: 'Tester',
+      email: 't@t.com',
+      personalStudio: { name: 'Tester', slug: 'tester', avatarUrl: null },
+      membershipTier: 'base',
+    },
+  });
+}
+
 describe('LangSwitcher', () => {
   beforeEach(() => {
     changeLocale('en');
+    vi.mocked(usersApi.setLocale).mockClear();
+    vi.mocked(toast.error).mockClear();
   });
 
   afterEach(() => {
     // Reset both engine + persisted choice so a switched locale doesn't
     // leak into other suites via localStorage.
     changeLocale('en');
+    useCurrentUserStore.setState({ user: null });
   });
 
   it('shows the active locale glyph on the trigger', () => {
@@ -77,7 +94,19 @@ describe('LangSwitcher', () => {
     const { container } = render(<LangSwitcher />);
     await expectNoA11yViolations(container);
   });
+  it('keeps a signed-out visitor\'s choice on this device without writing to the account', async () => {
+    const user = userEvent.setup();
+    render(<LangSwitcher />);
+    await user.click(screen.getByTestId('lang-trigger'));
+    await user.click(await screen.findByTestId('lang-option-ja'));
+    expect(getLocale()).toBe('ja');
+    expect(localStorage.getItem('breatic.locale')).toBe('ja');
+    expect(usersApi.setLocale).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it('records the chosen language on the account', async () => {
+    signIn();
     const user = userEvent.setup();
     render(<LangSwitcher />);
     await user.click(screen.getByTestId('lang-trigger'));
@@ -87,6 +116,7 @@ describe('LangSwitcher', () => {
   });
 
   it('keeps the new language on screen and says so when the account write fails', async () => {
+    signIn();
     vi.mocked(usersApi.setLocale).mockRejectedValueOnce(new Error('offline'));
     const user = userEvent.setup();
     render(<LangSwitcher />);
