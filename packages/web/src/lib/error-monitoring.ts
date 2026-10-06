@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { BrowserOptions, ErrorEvent } from '@sentry/react';
+import type { Breadcrumb, BrowserOptions, ErrorEvent } from '@sentry/react';
 import {
   errorMonitoringDataCollection,
   errorMonitoringEnvironmentName,
@@ -25,14 +25,67 @@ const IGNORED_ERRORS: readonly string[] = [
   'NetworkError when attempting to fetch resource',
 ];
 
+/** Breadcrumb fields that hold an address. */
+const ADDRESS_FIELDS: readonly string[] = ['url', 'from', 'to'];
+
 /**
- * Drop an event whose message is browser noise.
- * @param event - The event about to be sent.
- * @returns The event, or `null` to drop it.
+ * An address without its query or fragment.
+ *
+ * Some of our links carry a credential in the query (`/reset-password?token=`,
+ * `/decision?token=`), and the browser SDK reports page and request addresses
+ * as they are: `dataCollection.urlQueryParams` does not reach them.
+ * @param address - A full or relative address.
+ * @returns The address up to its path.
  */
-function dropBrowserNoise(event: ErrorEvent): ErrorEvent | null {
+function withoutQuery(address: string): string {
+  return address.split(/[?#]/, 1)[0] ?? address;
+}
+
+/**
+ * Drop an event whose message is browser noise, and strip the query from the
+ * page address and the referring page it carries.
+ * @param event - The event about to be sent.
+ * @returns The event to send, or `null` to drop it.
+ */
+function prepareEvent(event: ErrorEvent): ErrorEvent | null {
   const message = event.exception?.values?.[0]?.value ?? '';
-  return IGNORED_ERRORS.some((ignored) => message.includes(ignored)) ? null : event;
+  if (IGNORED_ERRORS.some((ignored) => message.includes(ignored))) return null;
+  if (event.request === undefined) return event;
+  const { url, headers } = event.request;
+  return {
+    ...event,
+    request: {
+      ...event.request,
+      ...(url !== undefined && { url: withoutQuery(url) }),
+      ...(headers !== undefined && {
+        headers: Object.fromEntries(
+          Object.entries(headers).map(([name, value]) => [
+            name,
+            name.toLowerCase() === 'referer' ? withoutQuery(value) : value,
+          ]),
+        ),
+      }),
+    },
+  };
+}
+
+/**
+ * Strip the query from the addresses a navigation, fetch or xhr breadcrumb
+ * records.
+ * @param breadcrumb - The breadcrumb about to be kept.
+ * @returns The breadcrumb to keep.
+ */
+function prepareBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
+  if (breadcrumb.data === undefined) return breadcrumb;
+  return {
+    ...breadcrumb,
+    data: Object.fromEntries(
+      Object.entries(breadcrumb.data).map(([field, value]) => [
+        field,
+        ADDRESS_FIELDS.includes(field) && typeof value === 'string' ? withoutQuery(value) : value,
+      ]),
+    ),
+  };
 }
 
 /**
@@ -52,6 +105,7 @@ export function errorMonitoringInit(build: ErrorMonitoringBuild): BrowserOptions
     environment: errorMonitoringEnvironmentName(build.mode) ?? 'development',
     release: errorMonitoringRelease(build.version),
     dataCollection: errorMonitoringDataCollection(),
-    beforeSend: dropBrowserNoise,
+    beforeSend: prepareEvent,
+    beforeBreadcrumb: prepareBreadcrumb,
   };
 }

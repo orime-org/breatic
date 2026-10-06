@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { ErrorEvent } from '@sentry/react';
+import type { Breadcrumb, ErrorEvent } from '@sentry/react';
 import { describe, expect, it } from 'vitest';
 
 import { errorMonitoringInit } from '@web/lib/error-monitoring';
@@ -58,5 +58,37 @@ describe('errorMonitoringInit', () => {
     expect(beforeSend?.(event('NetworkError when attempting to fetch resource.'), {})).toBeNull();
     const ours = event('Cannot read properties of undefined');
     expect(beforeSend?.(ours, {})).toBe(ours);
+  });
+
+  it('reports the page and the previous page without their query or fragment', () => {
+    const beforeSend = errorMonitoringInit({ dsn: DSN, mode: 'production', version: SHA })?.beforeSend;
+    const event: ErrorEvent = {
+      type: undefined,
+      request: {
+        url: 'https://app.test/reset-password?token=secret#step',
+        headers: { Referer: 'https://app.test/decision?token=other', 'User-Agent': 'ua' },
+      },
+    };
+    const sent = beforeSend?.(event, {}) as ErrorEvent;
+    expect(sent.request?.url).toBe('https://app.test/reset-password');
+    expect(sent.request?.headers).toEqual({ Referer: 'https://app.test/decision', 'User-Agent': 'ua' });
+  });
+
+  it('keeps no query or fragment in navigation, fetch or xhr breadcrumbs', () => {
+    const beforeBreadcrumb = errorMonitoringInit({ dsn: DSN, mode: 'production', version: SHA })?.beforeBreadcrumb;
+    const navigation: Breadcrumb = {
+      category: 'navigation',
+      data: { from: '/reset-password?token=secret', to: '/studio#top' },
+    };
+    const fetched: Breadcrumb = {
+      category: 'fetch',
+      data: { method: 'GET', url: '/api/v1/decisions?token=secret', status_code: 200 },
+    };
+    expect(beforeBreadcrumb?.(navigation, {})?.data).toEqual({ from: '/reset-password', to: '/studio' });
+    expect(beforeBreadcrumb?.(fetched, {})?.data).toEqual({
+      method: 'GET',
+      url: '/api/v1/decisions',
+      status_code: 200,
+    });
   });
 });
