@@ -5,6 +5,7 @@ import { RotateCcw } from 'lucide-react';
 import * as React from 'react';
 
 import {
+  CAMERA_ANGLE_AXES,
   CAMERA_ANGLE_GRID,
   DEFAULT_CAMERA_ANGLE,
   nearestCameraAngle,
@@ -30,9 +31,6 @@ const WHEEL_STEP_DELTA = 40;
 /** How long the wheel has to stay still before a gesture counts as over, in ms. */
 const WHEEL_SETTLE_MS = 150;
 
-/** The three axes, in the order their sliders sit under the sphere. */
-const CAMERA_ANGLE_AXES: readonly CameraAngleAxis[] = ['azimuth', 'elevation', 'distance'];
-
 /** The azimuths named under the slider; the other four are named in the title. */
 const NAMED_AZIMUTHS = [0, 90, 180, 270] as const;
 
@@ -52,11 +50,7 @@ const KEY_STEPS: Readonly<Record<string, readonly [CameraAngleAxis, 1 | -1]>> = 
  * gestures. One value, so two gestures cannot be in progress at once; a new
  * input takes over from whichever is (design §6).
  */
-type Gesture =
-  | { kind: 'drag'; pose: CameraAngle }
-  | { kind: 'key'; pose: CameraAngle }
-  | { kind: 'slider'; pose: CameraAngle }
-  | null;
+type Gesture = { kind: 'drag' | 'key' | 'slider'; pose: CameraAngle } | null;
 
 
 /**
@@ -210,7 +204,7 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
       const next = nearestCameraAngle({ ...onScreen(), ...change });
       track(null);
       if (samePose(next, live.current.stored)) return;
-      onChange({ [params.azimuth]: next.azimuth, [params.elevation]: next.elevation, [params.distance]: next.distance });
+      onChange(Object.fromEntries(CAMERA_ANGLE_AXES.map((axis) => [params[axis], next[axis]])));
     },
     [onChange, params, onScreen, track],
   );
@@ -222,7 +216,7 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
     (pose: CameraAngle): void => {
       const current = live.current.gesture;
       if (current?.kind !== 'drag') return;
-      track({ kind: 'drag', pose: { ...current.pose, azimuth: pose.azimuth, elevation: pose.elevation } });
+      track({ ...current, pose: { ...current.pose, azimuth: pose.azimuth, elevation: pose.elevation } });
     },
     [track],
   );
@@ -249,8 +243,8 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
           steps.moved = true;
           const next = stepCameraAngle(onScreen(), 'distance', steps.sum > 0 ? 1 : -1);
           const current = live.current.gesture;
-          // A drag carries the step and writes it with the angle on release.
-          if (current?.kind === 'drag') track({ kind: 'drag', pose: next });
+          // A gesture in progress carries the step and writes it when it ends.
+          if (current) track({ ...current, pose: next });
           else commit({ distance: next.distance });
         }
       }
@@ -296,7 +290,11 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
       const [[name, v] = []] = Object.entries(partial);
       if (name === undefined || v === undefined) return;
       const axis = CAMERA_ANGLE_AXES.find((a) => params[a] === name);
-      if (axis) commit({ [axis]: v });
+      if (!axis) return;
+      // A slider's late write (a held key flushed on blur) belongs to a
+      // gesture the sphere drag has already taken over from.
+      if (live.current.gesture?.kind === 'drag') return;
+      commit({ [axis]: v });
     },
     [commit, params],
   );
@@ -315,9 +313,11 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
   const onAzimuthDraft = React.useCallback((v: number) => onSliderDraft('azimuth', v), [onSliderDraft]);
   const onElevationDraft = React.useCallback((v: number) => onSliderDraft('elevation', v), [onSliderDraft]);
   const onDistanceDraft = React.useCallback((v: number) => onSliderDraft('distance', v), [onSliderDraft]);
+  // A slider gesture that wrote nothing of its own (dragged back to where it
+  // began) still writes what was folded into it, such as a wheel step.
   const onSliderDraftEnd = React.useCallback((): void => {
-    if (live.current.gesture?.kind === 'slider') track(null);
-  }, [track]);
+    if (live.current.gesture?.kind === 'slider') commit({});
+  }, [commit]);
 
   const shown: CameraAngle = gesture?.pose ?? stored;
   const { azimuth: shownAzimuth, elevation: shownElevation, distance: shownDistance } = shown;

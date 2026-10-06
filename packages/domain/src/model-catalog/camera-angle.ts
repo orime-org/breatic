@@ -6,7 +6,7 @@
  * against the grid the upstream rounds every angle to.
  */
 
-import { CAMERA_ANGLE_GRID, DEFAULT_CAMERA_ANGLE, type CameraAngleAxis, type CameraAngleParams } from "@breatic/shared";
+import { CAMERA_ANGLE_AXES, CAMERA_ANGLE_GRID, DEFAULT_CAMERA_ANGLE, type CameraAngleAxis, type CameraAngleParams } from "@breatic/shared";
 
 /** The part of a catalog entry this check reads. */
 interface CameraAngleCandidate {
@@ -18,7 +18,6 @@ interface CameraAngleCandidate {
   params?: Record<string, unknown>;
 }
 
-const AXES: readonly CameraAngleAxis[] = ["azimuth", "elevation", "distance"];
 
 /**
  * Why one axis's param is wrong for the grid, or null when it is right.
@@ -69,11 +68,11 @@ export function assertCameraAngle(modality: string, models: readonly CameraAngle
   for (const model of models) {
     if (model.camera_angle === undefined) continue;
     const declared: unknown = model.camera_angle;
-    for (const axis of AXES) {
+    for (const axis of CAMERA_ANGLE_AXES) {
       const paramName = declared !== null && typeof declared === "object" ? (declared as Record<string, unknown>)[axis] : undefined;
       if (typeof paramName !== "string") {
         throw new Error(
-          `config/models/${modality}: ${model.name} declares camera_angle without a param name for each of ${AXES.join(", ")}`,
+          `config/models/${modality}: ${model.name} declares camera_angle without a param name for each of ${CAMERA_ANGLE_AXES.join(", ")}`,
         );
       }
       const reason = wrongAxis(axis, paramName, model.params?.[paramName]);

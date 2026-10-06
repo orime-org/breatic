@@ -170,16 +170,6 @@ describe('CameraAngleControl', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it('keeps a wheel step it showed when the control goes away right after', async () => {
-    const { onChange, unmount } = await draw();
-    vi.useFakeTimers();
-    fireEvent.wheel(group(), { deltaY: 60 });
-    unmount();
-    act(() => vi.advanceTimersByTime(300));
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenCalledWith({ horizontal_angle: 0, vertical_angle: 0, distance: 2 });
-  });
-
   it('writes a held arrow key once when pressed and once when let go, following each repeat on screen', async () => {
     const { onChange, rerender } = await draw();
     fireEvent.keyDown(group(), { key: 'ArrowRight' });
@@ -235,17 +225,67 @@ describe('CameraAngleControl', () => {
     expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 135, vertical_angle: 0, distance: 1 });
   });
 
-  it('takes a wheel step from where a held key has reached, as one write', async () => {
+  it('folds a wheel step into a held key, written when the key is let go', async () => {
     const { onChange, rerender } = await draw();
     vi.useFakeTimers();
     fireEvent.keyDown(group(), { key: 'ArrowRight' });
     rerender({ horizontal_angle: 45, vertical_angle: 0, distance: 1 });
     fireEvent.keyDown(group(), { key: 'ArrowRight', repeat: true });
     fireEvent.wheel(group(), { deltaY: 60 });
-    expect(onChange).toHaveBeenCalledTimes(2);
-    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 90, vertical_angle: 0, distance: 2 });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(sphere.last?.pose).toEqual({ azimuth: 90, elevation: 0, distance: 2 });
     fireEvent.keyUp(group(), { key: 'ArrowRight' });
     expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 90, vertical_angle: 0, distance: 2 });
+  });
+
+  it('folds a wheel step into a slider drag that ends where it began, written once when the drag ends', async () => {
+    const restore = stubPointerSliders();
+    try {
+      const { onChange } = await draw();
+      const slider = screen.getByTestId('generate-param-horizontal_angle-slider');
+      fireEvent.pointerDown(slider, { pointerId: 1, button: 0, clientX: 57 });
+      fireEvent.wheel(group(), { deltaY: 60 });
+      expect(onChange).not.toHaveBeenCalled();
+      fireEvent.pointerMove(slider, { pointerId: 1, clientX: 0 });
+      fireEvent.pointerUp(slider, { pointerId: 1, clientX: 0 });
+      fireEvent.lostPointerCapture(slider, { pointerId: 1 });
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith({ horizontal_angle: 0, vertical_angle: 0, distance: 2 });
+    } finally {
+      restore();
+    }
+  });
+
+  it('folds a wheel step into a slider drag that moves, written once with the slider', async () => {
+    const restore = stubPointerSliders();
+    try {
+      const { onChange } = await draw();
+      const slider = screen.getByTestId('generate-param-horizontal_angle-slider');
+      fireEvent.pointerDown(slider, { pointerId: 1, button: 0, clientX: 57 });
+      fireEvent.wheel(group(), { deltaY: 60 });
+      fireEvent.pointerUp(slider, { pointerId: 1, clientX: 57 });
+      fireEvent.lostPointerCapture(slider, { pointerId: 1 });
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith({ horizontal_angle: 90, vertical_angle: 0, distance: 2 });
+    } finally {
+      restore();
+    }
+  });
+
+  it('keeps a sphere drag going when a held slider key it took over is flushed late', async () => {
+    const { onChange, rerender } = await draw();
+    const thumb = screen.getAllByRole('slider')[0]!;
+    fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+    rerender({ horizontal_angle: 45, vertical_angle: 0, distance: 1 });
+    fireEvent.keyDown(thumb, { key: 'ArrowRight', repeat: true });
+    act(() => sphere.last?.onDragStart());
+    fireEvent.blur(thumb);
+    act(() => sphere.last?.onDrag({ azimuth: 180, elevation: 30, distance: 1 }));
+    expect(sphere.last?.pose.azimuth).toBe(180);
+    act(() => sphere.last?.onDragEnd());
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 180, vertical_angle: 30, distance: 1 });
   });
 
   it('follows a collaborator after a single arrow key on a slider', async () => {
@@ -294,6 +334,7 @@ describe('CameraAngleControl', () => {
       fireEvent.pointerDown(slider, { pointerId: 1, button: 0, clientX: 200 });
       fireEvent.pointerMove(slider, { pointerId: 1, clientX: 100 });
       fireEvent.pointerUp(slider, { pointerId: 1, clientX: 100 });
+      fireEvent.lostPointerCapture(slider, { pointerId: 1 });
       expect(onChange).not.toHaveBeenCalled();
       rerender({ horizontal_angle: 0, vertical_angle: 0, distance: 0 });
       expect(screen.getByTestId('generate-camera-angle-pose')).toHaveTextContent('Close-up');

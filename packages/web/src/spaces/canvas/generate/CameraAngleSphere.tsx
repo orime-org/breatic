@@ -287,12 +287,16 @@ export default function CameraAngleSphere(props: CameraAngleSphereProps): React.
     const s = sceneRef.current;
     if (!s) return;
     const material = s.card.material;
-    if (subjectUrl === undefined) {
+    /** The card without a picture: no image is sent, or the one sent cannot be read. */
+    const plain = (): void => {
       material.map?.dispose();
       material.map = null;
       s.card.scale.set(1, 1, 1);
       applyColors(s, latest.current.colors);
       draw();
+    };
+    if (subjectUrl === undefined) {
+      plain();
       return;
     }
     let cancelled = false;
@@ -321,7 +325,7 @@ export default function CameraAngleSphere(props: CameraAngleSphereProps): React.
       },
       undefined,
       () => {
-        // A picture that cannot be read leaves the plain card.
+        if (!cancelled) plain();
       },
     );
     return () => {

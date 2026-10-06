@@ -409,6 +409,7 @@ export {
   type CameraCommandAxis,
 } from "@shared/camera-commands.js";
 export {
+  CAMERA_ANGLE_AXES,
   CAMERA_ANGLE_GRID,
   DEFAULT_CAMERA_ANGLE,
   nearestCameraAngle,

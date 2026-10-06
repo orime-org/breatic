@@ -20,6 +20,9 @@ export const CAMERA_ANGLE_GRID = {
 /** One of the three axes a pose is set along. */
 export type CameraAngleAxis = keyof typeof CAMERA_ANGLE_GRID;
 
+/** The three axes, in the order they are named and drawn. */
+export const CAMERA_ANGLE_AXES: readonly CameraAngleAxis[] = ['azimuth', 'elevation', 'distance'];
+
 /** A camera pose, one value per axis. */
 export interface CameraAngle {
   azimuth: number;

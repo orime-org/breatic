@@ -16,6 +16,7 @@
  */
 
 import {
+  CAMERA_ANGLE_AXES,
   appliesInMode,
   nearestCameraAngle,
   type CameraAngle,
@@ -69,7 +70,7 @@ export function cameraAngleNames(
  */
 export function controlParams(control: ModelControl): string[] {
   return control.kind === 'cameraAngle'
-    ? [control.params.azimuth, control.params.elevation, control.params.distance]
+    ? CAMERA_ANGLE_AXES.map((axis) => control.params[axis])
     : [control.name];
 }
 
@@ -132,7 +133,7 @@ function fieldControl(name: string, field: ItemField): ItemFieldControl {
 export function modelControls(model: ModelEntry, mode: string): ModelControl[] {
   const controls: ModelControl[] = [];
   const pose = model.camera_angle;
-  const inPose = new Set(pose ? [pose.azimuth, pose.elevation, pose.distance] : []);
+  const inPose = new Set(pose ? CAMERA_ANGLE_AXES.map((axis) => pose[axis]) : []);
   for (const [name, spec] of Object.entries(model.params)) {
     if (spec.fill !== 'panel' || typeof spec.label !== 'string') continue;
     if (!appliesInMode(spec, mode)) continue;

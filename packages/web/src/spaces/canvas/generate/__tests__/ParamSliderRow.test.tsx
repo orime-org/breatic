@@ -94,7 +94,7 @@ describe('ParamSliderRow', () => {
     expect(onDraft).toHaveBeenCalledWith(45);
   });
 
-  it('ends a pointer drag that comes back to where it began: the stored value shows again and the draft is over', () => {
+  it('ends a pointer drag that comes back to where it began once the slider lets the pointer go: the stored value shows again and the draft is over', () => {
     const proto = HTMLElement.prototype;
     const saved = [proto.getBoundingClientRect, proto.setPointerCapture, proto.hasPointerCapture, proto.releasePointerCapture] as const;
     proto.getBoundingClientRect = () => ({ left: 0, top: 0, right: 315, bottom: 24, width: 315, height: 24, x: 0, y: 0, toJSON: () => ({}) });
@@ -123,6 +123,8 @@ describe('ParamSliderRow', () => {
       fireEvent.pointerMove(slider, { pointerId: 1, clientX: 0 });
       onDraftEnd.mockClear();
       fireEvent.pointerUp(slider, { pointerId: 1, clientX: 0 });
+      expect(onDraftEnd).not.toHaveBeenCalled();
+      fireEvent.lostPointerCapture(slider, { pointerId: 1 });
       expect(onChange).not.toHaveBeenCalled();
       expect(onDraftEnd).toHaveBeenCalledTimes(1);
       rerender(<ParamSliderRow {...props} value={180} />);

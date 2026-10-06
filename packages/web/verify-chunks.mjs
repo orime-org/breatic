@@ -169,6 +169,9 @@ function closure(roots, followDynamic, skip = new Set()) {
   return seen;
 }
 
+/** three.js, which only the camera-angle sphere's own chunk may carry. */
+const THREE_JS = { label: 'three.js', holds: (src) => /node_modules\/three\//.test(src) };
+
 /**
  * What no entry may download, and the page that is allowed to.
  *
@@ -178,9 +181,6 @@ function closure(roots, followDynamic, skip = new Set()) {
  * sourcemap beside every chunk (`vite.config.mts` sets `sourcemap: true`), and
  * its `sources` name every module that got in, so the set is readable here.
  */
-/** three.js, which only the camera-angle sphere's own chunk may carry. */
-const THREE_JS = { label: 'three.js', holds: (src) => /node_modules\/three\//.test(src) };
-
 const HEAVY = [
   // The canvas's state belongs to the canvas as much as its body does, and it
   // travels separately: importing the `@web/stores` barrel from anywhere drags

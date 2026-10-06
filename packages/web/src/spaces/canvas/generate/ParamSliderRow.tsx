@@ -140,8 +140,10 @@ export function ParamSliderRow({
     repeatingRef.current = false;
     const reached = repeatedToRef.current;
     repeatedToRef.current = null;
-    endDraft();
+    // The held key's value is written before the draft ends, so whoever
+    // shows the draft ends it on a value that is already the node's.
     if (reached !== null) onChange({ [name]: reached });
+    endDraft();
   }, [onChange, name, endDraft]);
 
   // Four ways a key gesture ends, and every one of them has to write. Keyup
@@ -188,7 +190,9 @@ export function ParamSliderRow({
         onKeyUp={endKeyGesture}
         onBlur={endKeyGesture}
         onPointerDown={endKeyGesture}
-        onPointerUp={endDraft}
+        // Radix commits a moved value in its own pointerup; capture is let go
+        // after that, so the draft ends once the commit (if any) is in.
+        onLostPointerCapture={endDraft}
       />
       {stops && (
         // Under the track, each word centred on the value it names. A word at
