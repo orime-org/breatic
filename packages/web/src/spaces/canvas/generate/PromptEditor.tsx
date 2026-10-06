@@ -97,7 +97,6 @@ const keptOf = new WeakMap<
     caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
     mentionEmptyLabel: string;
     mentionNoMatchLabel: string;
-    resolveName: unknown;
     hadFocus: boolean;
     returning: boolean;
   }
@@ -339,7 +338,6 @@ export const PromptEditor = React.forwardRef<
         caretProvider,
         mentionEmptyLabel,
         mentionNoMatchLabel,
-        resolveName,
         hadFocus: false,
         returning: false,
       });
@@ -355,17 +353,13 @@ export const PromptEditor = React.forwardRef<
     // A kept editor is reused while it is bound to the same caret connection
     // with the same captured strings. The two mention labels are baked into
     // the extensions and change only on a locale switch; the caret connection
-    // arrives once, on the socket's first connect; the name RESOLVER keeps one
-    // identity for the editor's whole life and reads the current roster
-    // itself, so it is compared rather than the roster bundle, which is
-    // rebuilt on every project-page render.
+    // arrives once, on the socket's first connect.
     return keptEditor(spaceId, fragment, build, (kept) => {
       const bound = keptOf.get(kept);
       return (
         bound?.caretProvider === caretProvider &&
         bound.mentionEmptyLabel === mentionEmptyLabel &&
-        bound.mentionNoMatchLabel === mentionNoMatchLabel &&
-        bound.resolveName === resolveName
+        bound.mentionNoMatchLabel === mentionNoMatchLabel
       );
     });
     // Everything else reaches a kept editor through its wiring below, not by
@@ -391,7 +385,7 @@ export const PromptEditor = React.forwardRef<
   // here when the Space was hidden. Kept with the editor, so a return still
   // waiting when Strict Mode undoes a mount is carried to the next mount.
   useFocusReturn(
-    keptOf.get(editor),
+    kept,
     () => !editor.isDestroyed && editor.view.hasFocus(),
     () => {
       if (!editor.isDestroyed) editor.view.focus();
