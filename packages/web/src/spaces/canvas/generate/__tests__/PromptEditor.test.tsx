@@ -60,7 +60,6 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
         references={[]}
         referenceKinds={[]}
         mentionEmptyLabel='No references'
-        mentionNoMatchLabel='No matches'
       />,
     );
 
@@ -83,7 +82,6 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
       references: [],
       referenceKinds: [],
       mentionEmptyLabel: 'No references',
-      mentionNoMatchLabel: 'No matches',
     };
 
     const { rerender } = render(
@@ -117,7 +115,6 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
         references={[]}
         referenceKinds={[]}
         mentionEmptyLabel='No references'
-        mentionNoMatchLabel='No matches'
       />,
     );
     // The dim classes live on the ScrollArea VIEWPORT (#1773) — the element
@@ -157,7 +154,6 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
       onAtMentionsChange: vi.fn(),
       referenceKinds: ['image'] as const,
       mentionEmptyLabel: 'No references',
-      mentionNoMatchLabel: 'No matches',
     };
     const { rerender } = render(
       <PromptEditor {...props} ref={ref} references={[textRef('')]} />,
@@ -204,7 +200,6 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
       onAtMentionsChange: vi.fn(),
       referenceKinds: ['image'] as const,
       mentionEmptyLabel: 'No references',
-      mentionNoMatchLabel: 'No matches',
       references: [imgRef],
     };
     const { rerender } = render(<PromptEditor {...props} ref={ref} mentionTokens={{ e: 'image 1' }} />);
@@ -238,7 +233,6 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
       onAtMentionsChange: vi.fn(),
       referenceKinds: ['image'] as const,
       mentionEmptyLabel: 'No references',
-      mentionNoMatchLabel: 'No matches',
     };
     const { rerender } = render(
       <PromptEditor {...props} ref={ref} references={[imgRef()]} />,
@@ -300,7 +294,6 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
           references={[]}
           referenceKinds={[]}
           mentionEmptyLabel='none'
-          mentionNoMatchLabel='No matches'
           caretProvider={withProvider ? { awareness } : null}
         />
       </CollaboratorNamesProvider>,
@@ -615,7 +608,6 @@ describe('PromptEditor — effects after the editor is rebuilt', () => {
         references={[]}
         referenceKinds={[]}
         mentionEmptyLabel={mentionEmptyLabel}
-        mentionNoMatchLabel='No matches'
       />
     );
 
@@ -644,9 +636,8 @@ describe('PromptEditor — effects after the editor is rebuilt', () => {
   });
 });
 
-describe('PromptEditor — `@` 弹层的两句空态真的到达屏幕（#1952）', () => {
+describe('PromptEditor — what the `@` list shows when it has nothing to list', () => {
   const EMPTY = 'NOTHING-TO-OFFER';
-  const NO_MATCH = 'NOTHING-MATCHED';
 
   const picture = (name: string): ReferenceRailItem => ({
     refId: `${name}->me`,
@@ -682,7 +673,6 @@ describe('PromptEditor — `@` 弹层的两句空态真的到达屏幕（#1952�
         references={opts.references}
         referenceKinds={opts.referenceKinds}
         mentionEmptyLabel={EMPTY}
-        mentionNoMatchLabel={NO_MATCH}
       />,
     );
     await waitFor(() =>
@@ -703,7 +693,6 @@ describe('PromptEditor — `@` 弹层的两句空态真的到达屏幕（#1952�
   it('池子空：屏幕上看得见「没有可引用的内容」那句', async () => {
     await typeMention({ references: [], referenceKinds: ['image'] });
     expect(screen.getByText(EMPTY)).toBeVisible();
-    expect(screen.queryByText(NO_MATCH)).toBeNull();
   });
 
   it('池子非空但被模式滤光：说的还是同一句，而且它可见', async () => {
@@ -712,27 +701,26 @@ describe('PromptEditor — `@` 弹层的两句空态真的到达屏幕（#1952�
       referenceKinds: [],
     });
     expect(screen.getByText(EMPTY)).toBeVisible();
-    expect(screen.queryByText(NO_MATCH)).toBeNull();
   });
 
-  it('这一档有货、只是打的字没匹配上：说的是另一句，而且它可见', async () => {
+  it('shows nothing when the pool has rows and the typed query matches none of them', async () => {
     await typeMention({
       references: [picture('Alpha')],
       referenceKinds: ['image'],
       query: 'zzz',
     });
-    expect(screen.getByText(NO_MATCH)).toBeVisible();
-    expect(screen.queryByText(EMPTY)).toBeNull();
+    expect(document.querySelector('[data-testid^="reference-mention-option-"]')).toBeNull();
+    const empty = screen.queryByTestId('reference-mention-empty');
+    if (empty !== null) expect(empty).not.toBeVisible();
   });
 
-  it('有匹配时两句都不出场', async () => {
+  it('有匹配时那句话不出场', async () => {
     await typeMention({
       references: [picture('Alpha')],
       referenceKinds: ['image'],
       query: 'alp',
     });
     expect(screen.queryByText(EMPTY)).toBeNull();
-    expect(screen.queryByText(NO_MATCH)).toBeNull();
   });
 });
 
@@ -757,7 +745,6 @@ describe('PromptEditor — kept across a hidden Space (inner#1235 A13)', () => {
           references={[]}
           referenceKinds={[]}
           mentionEmptyLabel='No references'
-          mentionNoMatchLabel='No matches'
         />
       </CanvasContext.Provider>
     );

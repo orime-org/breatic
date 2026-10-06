@@ -288,7 +288,7 @@ function GeneratePanelBody({
   const aperture = asStr(vm.params.aperture);
   const enableCamera = vm.params.enable_camera === true;
   // The model's own controls (#2156), keyed on their values like the rest.
-  const ownKey = JSON.stringify(ownControlValues(vm.modelEntry, vm.params));
+  const ownKey = JSON.stringify(ownControlValues(vm.modelEntry, vm.mode, vm.params));
   const stableParams = React.useMemo(
     () => ({
       ...(JSON.parse(ownKey) as Record<string, unknown>),
@@ -637,6 +637,7 @@ function GeneratePanelBody({
         spaceId,
         model: fresh.model,
         params: fresh.params,
+        generation: { mode: fresh.mode, declared: fresh.modelEntry?.params ?? {} },
         promptText: freshPrompt,
         poolParams: poolParams(fresh.pool, fresh.referenceUrls),
       });
@@ -689,7 +690,6 @@ function GeneratePanelBody({
   // a ref and republished in place.
   const promptPlaceholder = t('canvas.generatePanel.promptPlaceholder');
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
-  const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
   // The model's pool says which `@` chips it uses; text-to-image models take
   // none, so there every media chip contributes nothing and greys (§2.4 C).
   const referenceKinds = useReferenceKinds(vm.pool);
@@ -711,7 +711,6 @@ function GeneratePanelBody({
           references={stableReferences}
           referenceKinds={referenceKinds}
           mentionEmptyLabel={mentionEmptyLabel}
-          mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
           mentionTokens={stableMentionTokens}
         />
@@ -721,7 +720,6 @@ function GeneratePanelBody({
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
-      mentionNoMatchLabel,
       onPromptChange,
       handleAtMentionsChange,
       stableReferences,

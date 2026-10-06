@@ -8,7 +8,6 @@ import {
   PAGE_MIN_WIDTH,
   RESIZE_HANDLE_WIDTH,
   SPACE_MIN_WIDTH,
-  parseStoredWidth,
   resolveWidth,
   shouldRestore,
 } from '@web/pages/project/agent-column-width';
@@ -88,29 +87,5 @@ describe('shouldRestore', () => {
   it('is true beyond the tolerance, in both directions', () => {
     expect(shouldRestore(502, 500)).toBe(true);
     expect(shouldRestore(498, 500)).toBe(true);
-  });
-});
-
-describe('parseStoredWidth', () => {
-  it('reads back a stored width', () => {
-    expect(parseStoredWidth('500')).toBe(500);
-    expect(parseStoredWidth('500.5')).toBe(500.5);
-  });
-
-  it('reports nothing stored when the key is absent', () => {
-    expect(parseStoredWidth(null)).toBeNull();
-  });
-
-  it.each(['abc', '', '   ', '-5', '0', 'Infinity', '-Infinity', 'NaN', '640abc', 'null'])(
-    'rejects %o',
-    (raw) => {
-      expect(parseStoredWidth(raw)).toBeNull();
-    },
-  );
-
-  it('passes an out-of-range number through for resolveWidth to clamp', () => {
-    // The 320..640 range is decided in one place only.
-    expect(parseStoredWidth('9999')).toBe(9999);
-    expect(resolveWidth(parseStoredWidth('9999'), 1400)).toBe(AGENT_COLUMN_MAX_WIDTH);
   });
 });

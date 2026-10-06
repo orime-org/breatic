@@ -78,6 +78,7 @@ export type {
   RemoteParamSource,
   ModelProvider,
   ModelEntry,
+  CameraCommandEntry,
   PricingContract,
   ExtraStep,
   SourceGroup,
@@ -249,7 +250,8 @@ export {
 export type {
   MembersChangedEvent,
   ActivityNewControlEvent,
-  ProjectDeletedLifecycleEvent,
   ProjectDuplicatedLifecycleEvent,
+  ProjectArchivedLifecycleEvent,
+  ProjectRestoredLifecycleEvent,
   ProjectLifecycleEvent,
 } from "@shared/types/redis-events.js";

@@ -57,7 +57,9 @@
       "cannot_change_admin_role": "The admin role can only be changed by transferring it.",
       "member_limit_reached": "{limit, plural, =0 {This studio's plan does not allow adding members. Upgrade to add some.} one {This studio's plan allows 1 member. Upgrade to add more.} other {This studio's plan allows up to # members. Upgrade to add more.}}",
       "member_limit_reached_for_invitee": "This studio is full. Ask its Admin to make room.",
-      "leave_last_admin": "Transfer the admin role before leaving this Studio."
+      "leave_last_admin": "Transfer the admin role before leaving this Studio.",
+      "transfer_credits_designated": "A credit pack is still assigned to this Studio. Unassign it under avatar menu → Credits → Assign, then start the transfer.",
+      "designation_during_transfer": "This Studio has a pending transfer. Credit packs can be assigned to it again once the transfer is withdrawn or ends."
     },
     "project": {
       "join_already_member": "You're already a member of this project.",
@@ -66,11 +68,17 @@
       "already_member": "That user already has access.",
       "already_invited": "That user already has a pending invitation.",
       "limit_reached": "{limit, plural, =0 {This studio's plan does not allow creating projects. Upgrade to create one.} one {This studio's plan allows 1 project. Upgrade to create more.} other {This studio's plan allows up to # projects. Upgrade to create more.}}",
+      "already_archived": "This project is already archived.",
+      "not_archived": "This project is not archived.",
+      "restore_limit_reached": "{limit, plural, one {This studio's plan allows 1 project. Archive another project or upgrade to restore this one.} other {This studio's plan allows up to # projects. Archive another project or upgrade to restore this one.}}",
       "collaborator_limit_reached": "{limit, plural, =0 {This project does not allow collaborators. Upgrade to add some.} one {This project allows 1 collaborator. Upgrade to add more.} other {This project allows up to # collaborators. Upgrade to add more.}}",
       "collaborator_limit_reached_for_invitee": "This project is full. Ask its Owner to make room.",
       "only_viewer_can_request_upgrade": "Only a Viewer can request a role upgrade",
       "no_active_owner": "This project has no active Owner",
-      "not_found": "Project not found"
+      "not_found": "Project not found",
+      "archived": "This project is archived and can only be viewed.",
+      "copy_name": "Copy of {name}",
+      "leave_owner": "The owner has to transfer ownership before leaving."
     },
     "text_tool": {
       "already_running": "Another text tool is already running. Please wait."
@@ -164,7 +172,8 @@
     "chat": {
       "message_too_long": "This message is too long. It may hold at most {limit, number} characters; this one holds {actual, number}.",
       "attachments_too_long": "The attached content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
-      "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}."
+      "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}.",
+      "references_too_many": "Too many references to attachments. A message may carry at most {limit, number}; this one carries {actual, number}."
     },
     "mail": {
       "studio_invite": {
@@ -249,7 +258,8 @@
       "attachTooLong": "Too much content attached. Attach fewer items or shorter files.",
       "attachUnsupported": "{filename} can’t be attached",
       "attachTooLarge": "{filename} is too large to attach",
-      "attachUnavailable": "Couldn’t attach right now. Try again."
+      "attachUnavailable": "Couldn’t attach right now. Try again.",
+      "atEmpty": "No attachments to mention"
     },
     "empty": {
       "greetingWithName": "Hi, {name}!",
@@ -465,7 +475,6 @@
       "exit": "Exit",
       "promptPlaceholder": "Describe the image you want to generate, @ to add a reference",
       "mentionEmpty": "No references available",
-      "mentionNoMatch": "No matches",
       "voicePlaceholder": "No voice chosen",
       "voiceSearchPlaceholder": "Search voices…",
       "voiceLoading": "Loading voices…",
@@ -648,6 +657,7 @@
         "horizontal_angle": "Horizontal angle",
         "vertical_angle": "Vertical angle",
         "negative_prompt": "Negative prompt",
+        "auto_shots": "Auto multi-shot",
         "motion": "Motion",
         "order": "Order",
         "model_mode": "Region",
@@ -662,10 +672,6 @@
         "pronunciation": "Read as"
       },
       "storyboard": {
-        "label": "Storyboard",
-        "perShot": "Edit per shot",
-        "autoHint": "The model splits the shots",
-        "back": "Back to auto storyboard",
         "shot": "Shot {n, number}",
         "removeShot": "Remove",
         "addShot": "Add shot",
@@ -681,7 +687,19 @@
       "styleTip": "Pick up to 3 images as style references",
       "selectStyleFromCanvas": "Select style references from the canvas",
       "removeStyle": "Remove style reference",
-      "errorNoStyleImage": "Pick a style image first"
+      "errorNoStyleImage": "Pick a style image first",
+      "cameraCommands": "Camera",
+      "cameraCommandsInsert": "Insert",
+      "cameraCommandGroup": {
+        "truck": "Truck",
+        "pan": "Pan",
+        "dolly": "Dolly",
+        "pedestal": "Pedestal",
+        "tilt": "Tilt",
+        "zoom": "Zoom",
+        "other": "Other"
+      },
+      "cameraCommandsPreviewHint": "Hover a command to preview it"
     },
     "edge": {
       "delete": "Delete connection"
@@ -956,6 +974,18 @@
       "busy": "An upload or another operation is in progress. Refreshing will interrupt it. We recommend waiting until it finishes.",
       "later": "Later",
       "refresh": "Update"
+    },
+    "archived": {
+      "banner": "This project is archived and can only be viewed",
+      "restore": "Restore"
+    },
+    "leave": {
+      "action": "Leave project",
+      "title": "Leave “{name}”?",
+      "body": "You won't be able to open this project after leaving.",
+      "confirm": "Leave",
+      "done": "You left “{name}”",
+      "failed": "Couldn't leave"
     }
   },
   "common": {
@@ -1275,6 +1305,7 @@
     "empty": "No pending notifications",
     "loading": "Loading…",
     "markRead": "Mark read",
+    "markAllRead": "Mark all read",
     "headline": {
       "roleUpgradeRequest": "{actor} requested editor access on {project}",
       "roleUpgradeApproved": "{actor} approved your editor access on {project}",
@@ -1370,7 +1401,8 @@
         "members": "Members",
         "credits": "Credits",
         "settings": "Settings",
-        "navLabel": "Studio sections"
+        "navLabel": "Studio sections",
+        "archived": "Archived"
       },
       "works": {
         "emptyHint": "Works are the finished products a project publishes (a complete video, a mini-game…) — your Studio's public face. Once publishing ships, your published works will appear here.",
@@ -1400,7 +1432,24 @@
       "card": {
         "assetCount": "{count} assets",
         "more": "More actions",
-        "createdAt": "Created {time}"
+        "createdAt": "Created {time}",
+        "rename": "Rename",
+        "duplicate": "Duplicate",
+        "archive": "Archive",
+        "restore": "Restore",
+        "archivedBadge": "Archived",
+        "renameTitle": "Rename project",
+        "renameLabel": "Name",
+        "save": "Save",
+        "cancel": "Cancel",
+        "archiveTitle": "Archive “{name}”?",
+        "archiveBody": "Once archived, everyone can only view it, and anyone editing is disconnected. A studio admin can restore it.",
+        "duplicated": "Duplicated as “{name}”",
+        "duplicateFailed": "Couldn't duplicate",
+        "archived": "Archived",
+        "archiveFailed": "Couldn't archive",
+        "restored": "Restored",
+        "restoreFailed": "Couldn't restore"
       },
       "projects": {
         "new": "New project",
@@ -1482,7 +1531,7 @@
         "description": "Description",
         "dangerTitle": "Danger zone",
         "transfer": "Transfer Studio",
-        "dangerHint": "Transferring hands the whole Studio — its Projects, Collections and wallet — to another member. Changing the Slug breaks every existing link. Admin only.",
+        "dangerHint": "Transferring hands the Studio — its Projects and Collections — to another member; unassign its credit packs first. Changing the Slug breaks every existing link. Admin only.",
         "dangerHintPersonal": "Your Slug is your @handle and the address of this Studio. Changing it cannot be undone.",
         "transferTitle": "Transfer Studio ownership",
         "transferBody": "Choose a Maintainer to become the new Admin. They must accept before the transfer takes effect; you become a Maintainer.",
@@ -1582,6 +1631,10 @@
           "storage": "Storage is full. The cover was not uploaded.",
           "upload": "The cover was not changed. Try again."
         }
+      },
+      "archived": {
+        "emptyTitle": "No archived projects",
+        "emptyHint": "Archived projects show up here, and can be restored at any time."
       }
     },
     "rail": {
@@ -1640,7 +1693,8 @@
     "withdraw": "Withdraw request",
     "requestFailed": "Couldn't send the request. Try again.",
     "withdrawFailed": "Couldn't withdraw the request. Try again.",
-    "loadFailed": "Couldn't open this project. Try again."
+    "loadFailed": "Couldn't open this project. Try again.",
+    "archived": "This project is archived"
   },
   "activity": {
     "description": "Uploads, generations, and Space / member changes",
@@ -1659,6 +1713,7 @@
       "generationFailed": "{actor}'s generation failed",
       "memberJoined": "{actor} joined the project",
       "memberRemoved": "{actor} removed a member",
+      "memberLeft": "{actor} left the project",
       "memberRoleChanged": "{actor} changed a member's role to {role}",
       "ownershipTransferred": "{actor} transferred project ownership",
       "spaceCreated": "{actor} created space {spaceName}",

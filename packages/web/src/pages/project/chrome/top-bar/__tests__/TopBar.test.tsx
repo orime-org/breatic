@@ -61,6 +61,10 @@ function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
         projectName='Demo'
         // eslint-disable-next-line jsx-a11y/aria-role -- component prop, not a DOM ARIA role
         role='owner'
+        actualRole={overrides.role ?? 'owner'}
+        archived={false}
+        canRename
+        canLeave={false}
         credits={{ status: 'ready', value: 42 }}
         onRename={onRename}
         members={MEMBERS}
@@ -75,7 +79,7 @@ describe('TopBar', () => {
   it('balances the rule along its bottom, as every 40px bar does', () => {
     setup();
     const bar = screen.getByTestId('top-bar');
-    // 整个盒子，不只那一像素：高度和左右内边距同样是这条栏答应的东西。
+    // The whole box, not just that one pixel: height and side padding are part of what this bar promises too.
     expect(bar.style.height).toBe('40px');
     expect(bar.style.paddingTop).toBe('1px');
     expect(bar.style.paddingInline).toBe('var(--space-6)');
@@ -96,6 +100,10 @@ describe('TopBar', () => {
         projectName='Demo'
         // eslint-disable-next-line jsx-a11y/aria-role -- component prop, not a DOM ARIA role
         role='owner'
+        actualRole='owner'
+        archived={false}
+        canRename
+        canLeave={false}
         credits={{ status: 'ready', value: 42 }}
         onRename={onRename}
       />
@@ -217,23 +225,27 @@ describe('TopBar', () => {
       expect(screen.queryByRole('button', { name: 'Invite' })).toBeNull();
     });
 
-    it('owner can double-click the title into edit mode', async () => {
+    it('a reader who may rename can double-click the title into edit mode', async () => {
       const user = userEvent.setup();
-      setup({ role: 'owner', projectName: 'Old' });
+      setup({ role: 'editor', canRename: true, projectName: 'Old' });
       await user.dblClick(screen.getByTestId('title-display'));
       expect(await screen.findByTestId('title-input')).toBeInTheDocument();
     });
 
-    it('editor can double-click the title into edit mode', async () => {
+    it('opening and leaving a long title without typing keeps the whole name', async () => {
       const user = userEvent.setup();
-      setup({ role: 'editor', projectName: 'Old' });
+      const long = 'n'.repeat(200);
+      const { onRename } = setup({ projectName: long });
       await user.dblClick(screen.getByTestId('title-display'));
-      expect(await screen.findByTestId('title-input')).toBeInTheDocument();
+      const input = await screen.findByTestId('title-input');
+      expect((input as HTMLInputElement).value).toBe(long);
+      await user.keyboard('{Enter}');
+      expect(onRename).not.toHaveBeenCalled();
     });
 
-    it('viewer double-clicking the title does NOT enter edit mode (read-only)', async () => {
+    it('a reader who may not rename stays on the plain title, an editor included', async () => {
       const user = userEvent.setup();
-      setup({ role: 'viewer', projectName: 'Old' });
+      setup({ role: 'editor', canRename: false, projectName: 'Old' });
       await user.dblClick(screen.getByTestId('title-display'));
       expect(screen.queryByTestId('title-input')).toBeNull();
     });
@@ -288,5 +300,15 @@ describe('toCreditsReadout', () => {
       status: 'ready',
       value: 4910,
     });
+  });
+});
+
+describe('TopBar on an archived project', () => {
+  it('shows the real role on a tag that takes no clicks, and hides owner actions', () => {
+    setup({ role: 'viewer', actualRole: 'owner', archived: true });
+    const tag = screen.getByTestId('role-tag');
+    expect(tag).toHaveTextContent('Owner');
+    expect(tag.tagName).toBe('SPAN');
+    expect(screen.queryByRole('button', { name: /invite/i })).toBeNull();
   });
 });

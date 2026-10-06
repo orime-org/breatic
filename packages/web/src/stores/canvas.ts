@@ -5,6 +5,8 @@ import type { CanvasNodeFields, CanvasProposal } from '@breatic/shared';
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
+import { readUserPreferences, writeUserPreference } from '@web/lib/user-preferences-storage';
+
 /**
  * A create intent posted by chrome for the canvas to fulfil.
  *
@@ -67,13 +69,16 @@ interface CanvasState {
   selectedNodeIds: string[];
   hoverNodeId: string | null;
   zoom: number;
+  /** Remembered per account; see `restoreViewPreferences`. */
   minimapVisible: boolean;
   /**
    * Snap-to-grid toggle: when on, ReactFlow rounds dragged node positions to the
-   * grid (aligned to the visible background dots). Per-user viewport state kept
-   * here so CanvasSpace can subscribe and feed ReactFlow's `snapToGrid` prop.
+   * grid (aligned to the visible background dots). Remembered per account; see
+   * `restoreViewPreferences`.
    */
   snapToGrid: boolean;
+  /** The account minimap and snap changes are stored under; unset before a project opens. */
+  viewPreferencesOwner: string | undefined;
   showLockedOverlay: boolean;
   /** Chrome → canvas mailbox: what to create at the viewport centre. */
   pendingNodeCreate: CreateIntent | null;
@@ -119,6 +124,11 @@ interface CanvasState {
   clearSelection: () => void;
   setHoverNodeId: (id: string | null) => void;
   setZoom: (zoom: number) => void;
+  /**
+   * Load this account's minimap and snap, defaults when nothing is stored, and
+   * store later changes under the same account.
+   */
+  restoreViewPreferences: (userId: string | undefined) => void;
   setMinimapVisible: (visible: boolean) => void;
   toggleMinimap: () => void;
   setSnapToGrid: (enabled: boolean) => void;
@@ -157,14 +167,15 @@ interface CanvasState {
    * not carry its selection or a pending request into the next entry, #1771;
    * each canvas's panel and pick go with `canvasSessions.clear()`).
    * Viewport PREFERENCES (`minimapVisible`, `snapToGrid`, `zoom`) are kept — they
-   * are "how I like my canvas", not "what I was doing in this project"; `zoom`
-   * re-syncs from the mounting canvas anyway.
+   * are "how I like my canvas", not "what I was doing in this project";
+   * `restoreViewPreferences` loads the first two for the next project's
+   * account, and `zoom` re-syncs from the mounting canvas.
    */
   reset: () => void;
 }
 
 export const useCanvasStore = create<CanvasState>()(
-  immer((set) => ({
+  immer((set, get) => ({
     selectedNodeIds: [],
     hoverNodeId: null,
     zoom: 1,
@@ -172,6 +183,7 @@ export const useCanvasStore = create<CanvasState>()(
     minimapVisible: true,
     // Snap-to-grid ships OFF — free placement is the default, snapping is opt-in.
     snapToGrid: false,
+    viewPreferencesOwner: undefined,
     showLockedOverlay: false,
     pendingNodeCreate: null,
     canvasListening: false,
@@ -202,22 +214,28 @@ export const useCanvasStore = create<CanvasState>()(
       set((s) => {
         s.zoom = zoom;
       }),
-    setMinimapVisible: (visible) =>
+    restoreViewPreferences: (userId) => {
+      const { minimapVisible, snapToGrid } = readUserPreferences(userId);
+      set((s) => {
+        s.minimapVisible = minimapVisible;
+        s.snapToGrid = snapToGrid;
+        s.viewPreferencesOwner = userId;
+      });
+    },
+    setMinimapVisible: (visible) => {
       set((s) => {
         s.minimapVisible = visible;
-      }),
-    toggleMinimap: () =>
-      set((s) => {
-        s.minimapVisible = !s.minimapVisible;
-      }),
-    setSnapToGrid: (enabled) =>
+      });
+      writeUserPreference(get().viewPreferencesOwner, { minimapVisible: visible });
+    },
+    toggleMinimap: () => get().setMinimapVisible(!get().minimapVisible),
+    setSnapToGrid: (enabled) => {
       set((s) => {
         s.snapToGrid = enabled;
-      }),
-    toggleSnapToGrid: () =>
-      set((s) => {
-        s.snapToGrid = !s.snapToGrid;
-      }),
+      });
+      writeUserPreference(get().viewPreferencesOwner, { snapToGrid: enabled });
+    },
+    toggleSnapToGrid: () => get().setSnapToGrid(!get().snapToGrid),
     setShowLockedOverlay: (show) =>
       set((s) => {
         s.showLockedOverlay = show;

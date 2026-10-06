@@ -61,7 +61,7 @@ describe('Project release detection', () => {
     expect(second.result.current.version).toBe('new-after-defer');
   });
   it('restores session choices after a page reload', async () => {
-    sessionStorage.setItem('breatic:deferred-app-versions', '["from-session"]');
+    sessionStorage.setItem('breatic.deferredAppVersions', '["from-session"]');
     fetchMock.mockResolvedValue(manifest('from-session'));
     const { result } = renderHook(useAppUpdate); await settle();
     expect(result.current.version).toBeNull();

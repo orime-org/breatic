@@ -5,15 +5,15 @@ import { useCallback, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import type { Layout, LayoutChangedMeta, PanelImperativeHandle } from 'react-resizable-panels';
 
-import { STORAGE_KEYS } from '@web/lib/storage-keys';
+import { readUserPreferences, writeUserPreference } from '@web/lib/user-preferences-storage';
 import {
   AGENT_COLUMN_MIN_WIDTH,
   AGENT_PANEL_ID,
   RESIZE_HANDLE_WIDTH,
-  parseStoredWidth,
   resolveWidth,
   shouldRestore,
 } from '@web/pages/project/agent-column-width';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 /** What the Group and the Agent column's Panel need from this hook. */
 export interface AgentColumnWidthControls {
@@ -43,22 +43,15 @@ export interface AgentColumnWidthControls {
  * width from the previous keypress. Only the container width comes from the
  * DOM, read off the Group, whose size is an input to the layout rather than a
  * result of it.
+ *
+ * The width is remembered per account. The project page sits behind
+ * `ProtectedRoute`, so the account is known on the first render, and signing
+ * in as someone else goes through `/login` and mounts the page afresh.
  * @returns The four props the Group and the Agent Panel need.
  */
 export function useAgentColumnWidth(): AgentColumnWidthControls {
-  const [initialWidth] = useState(() => {
-    try {
-      return parseStoredWidth(
-        window.localStorage.getItem(STORAGE_KEYS.agentColumnWidth),
-      );
-    } catch {
-      // Reading throws outright where site data is switched off: reaching
-      // `window.localStorage` at all is a SecurityError there. This runs
-      // during render, so letting it out takes the whole project page down
-      // for a width.
-      return null;
-    }
-  });
+  const userId = useCurrentUserStore((s) => s.user?.id);
+  const [initialWidth] = useState(() => readUserPreferences(userId).agentColumnWidth);
   const setWidthRef = useRef<number | null>(initialWidth);
   const panelRef = useRef<PanelImperativeHandle | null>(null);
   const groupRef = useRef<HTMLDivElement | null>(null);
@@ -84,21 +77,13 @@ export function useAgentColumnWidth(): AgentColumnWidthControls {
       // The user moved the handle to here, so this is the width they want —
       // including when a narrow window is what stopped them.
       setWidthRef.current = width;
-      try {
-        window.localStorage.setItem(
-          STORAGE_KEYS.agentColumnWidth,
-          String(Math.round(width)),
-        );
-      } catch {
-        // A full quota or a browser told to store nothing costs the width its
-        // place in the next session; it is already held for this one above.
-      }
+      writeUserPreference(userId, { agentColumnWidth: Math.round(width) });
       return;
     }
 
     const target = resolveWidth(setWidthRef.current, panelsWidth);
     if (shouldRestore(width, target)) panel.resize(target);
-  }, []);
+  }, [userId]);
 
   return {
     defaultSize: `${initialWidth ?? AGENT_COLUMN_MIN_WIDTH}px`,

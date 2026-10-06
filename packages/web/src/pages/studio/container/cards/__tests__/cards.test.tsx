@@ -20,6 +20,12 @@ const OWNED: ContainerProject = {
   thumbnailUrl: null,
   myRole: 'owner',
   createdAt: '2026-06-01T00:00:00.000Z',
+  archivedAt: null,
+  canManageMeta: true,
+  canDuplicate: true,
+  canArchive: false,
+  canRestore: false,
+  canLeave: false,
 };
 
 const SHARED_STUDIO: ContainerProject = {
@@ -29,13 +35,19 @@ const SHARED_STUDIO: ContainerProject = {
   thumbnailUrl: null,
   myRole: 'editor',
   createdAt: '2026-06-01T00:00:00.000Z',
+  archivedAt: null,
+  canManageMeta: false,
+  canDuplicate: false,
+  canArchive: false,
+  canRestore: false,
+  canLeave: false,
 };
 
 function renderProject(project: ContainerProject) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <MemoryRouter>
-        <ProjectCard project={project} studioSlug='acme' />
+        <ProjectCard project={project} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -66,10 +78,10 @@ describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
     expect(screen.getByRole('button', MORE)).toBeInTheDocument();
   });
 
-  // The menu holds the cover upload only, which is the owner's (#21) — a
-  // studio admin who does not own the project does not get it either.
-  it('hides the governance menu from a non-owner member', () => {
-    renderProject(SHARED_STUDIO);
+  // Which entries the menu holds is the server's answer; a viewer it grants
+  // nothing to gets no ⋯ at all.
+  it('hides the menu when the server grants the viewer nothing', () => {
+    renderProject({ ...SHARED_STUDIO, myRole: 'viewer' });
     expect(screen.queryByRole('button', MORE)).toBeNull();
   });
 

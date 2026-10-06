@@ -21,7 +21,7 @@ import type { EstimateInput } from '@breatic/shared/pricing';
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import type { AudioSlot, AudioSlotUrls } from '@web/spaces/canvas/generate/audio-slots';
-import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
+import { buildOverwriteTaskPayload, type OverwriteTaskInput } from '@web/spaces/canvas/generate/overwrite-task-payload';
 import { slotSourceDurations } from '@web/spaces/canvas/generate/slots';
 import { wireParams } from '@web/spaces/canvas/generate/stand-in';
 
@@ -58,6 +58,8 @@ function sourceParams(
 
 /** Inputs for {@link buildAudioTaskPayload}. */
 export interface AudioTaskInput {
+  /** The mode the run is in and the model's declared params (`buildOverwriteTaskPayload`). */
+  generation: OverwriteTaskInput['generation'];
   /** Node being generated (the overwrite target). */
   nodeId: string;
   projectId: string;
@@ -91,6 +93,7 @@ export interface AudioTaskInput {
  */
 export function buildAudioTaskPayload(input: AudioTaskInput): TaskCreateInput {
   return buildOverwriteTaskPayload({
+    generation: input.generation,
     taskType: input.model.modality,
     nodeId: input.nodeId,
     projectId: input.projectId,

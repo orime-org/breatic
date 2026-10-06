@@ -54,16 +54,18 @@ function opensSecondPanel(control: ModelControl): boolean {
 /**
  * How the first panel lays out for this model.
  * @param model - The active model.
+ * @param mode - The mode the panel is in.
  * @param params - Its param record, which says which side of a stand-in is in use.
  * @returns The layout.
  */
 export function settingsLayout(
   model: ModelEntry,
+  mode: string,
   params: Readonly<Record<string, unknown>>,
 ): SettingsLayout {
   const standIn = standInOf(model);
   const on = standIn !== null && isStandInOn(params);
-  const own = modelControls(model);
+  const own = modelControls(model, mode);
   const rows: SettingsRow[] = own
     .filter(opensSecondPanel)
     .filter((control) => control.name !== standIn?.name)
@@ -85,10 +87,11 @@ export function settingsLayout(
 /**
  * Whether the pill has anything to open onto.
  * @param model - The active model.
+ * @param mode - The mode the panel is in.
  * @returns False for a model with no voice and no control at all.
  */
-export function hasSettings(model: ModelEntry): boolean {
-  return voiceParamName(model) !== null || modelControls(model).length > 0 || audioParamControls(model).length > 0;
+export function hasSettings(model: ModelEntry, mode: string): boolean {
+  return voiceParamName(model) !== null || modelControls(model, mode).length > 0 || audioParamControls(model).length > 0;
 }
 
 /**

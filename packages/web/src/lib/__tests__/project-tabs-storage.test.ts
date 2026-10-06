@@ -5,8 +5,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
 import {
+  readAgentPanelOpen,
   readProjectTabs,
   readSpaceViewport,
+  writeAgentPanelOpen,
   writeOpenTabs,
   writeSpaceViewport,
 } from '@web/lib/project-tabs-storage';
@@ -299,5 +301,90 @@ describe('project tab storage — a browser that refuses to store', () => {
     expect(() =>
       writeSpaceViewport(ALICE, P1, 's1', { x: 0, y: 0, zoom: 1 }),
     ).not.toThrow();
+  });
+});
+
+describe('project tab storage — whether the Agent panel is open', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('answers with nothing for a project where the panel was never toggled', () => {
+    writeOpenTabs(ALICE, P1, ['s1'], 's1');
+    expect(readAgentPanelOpen(ALICE, P1)).toBeUndefined();
+  });
+
+  it('keeps the value per account and per project', () => {
+    writeAgentPanelOpen(ALICE, P1, false);
+    writeAgentPanelOpen(ALICE, P2, true);
+    writeAgentPanelOpen(BOB, P1, true);
+
+    expect(readAgentPanelOpen(ALICE, P1)).toBe(false);
+    expect(readAgentPanelOpen(ALICE, P2)).toBe(true);
+    expect(readAgentPanelOpen(BOB, P1)).toBe(true);
+  });
+
+  it('survives the strip being written after it', () => {
+    writeOpenTabs(ALICE, P1, ['s1'], 's1');
+    writeAgentPanelOpen(ALICE, P1, false);
+    writeOpenTabs(ALICE, P1, ['s1', 's2'], 's2');
+
+    expect(readAgentPanelOpen(ALICE, P1)).toBe(false);
+    expect(readProjectTabs(ALICE, P1)).toEqual({ openIds: ['s1', 's2'], activeId: 's2' });
+  });
+
+  it('survives a camera being written after it', () => {
+    writeOpenTabs(ALICE, P1, ['s1'], 's1');
+    writeAgentPanelOpen(ALICE, P1, false);
+    writeSpaceViewport(ALICE, P1, 's1', { x: 1, y: 2, zoom: 1 });
+
+    expect(readAgentPanelOpen(ALICE, P1)).toBe(false);
+    expect(readSpaceViewport(ALICE, P1, 's1')).toEqual({ x: 1, y: 2, zoom: 1 });
+  });
+
+  it('does not leave a strip behind when only the panel was stored', () => {
+    writeAgentPanelOpen(ALICE, P1, false);
+
+    expect(readProjectTabs(ALICE, P1)).toBeNull();
+    expect(raw()).toEqual({ [ALICE]: { [P1]: { agentPanelOpen: false } } });
+  });
+
+  it('keeps the strip and cameras when only the panel is written', () => {
+    writeOpenTabs(ALICE, P1, ['s1'], 's1');
+    writeSpaceViewport(ALICE, P1, 's1', { x: 1, y: 2, zoom: 1 });
+    writeAgentPanelOpen(ALICE, P1, false);
+
+    expect(readProjectTabs(ALICE, P1)).toEqual({ openIds: ['s1'], activeId: 's1' });
+    expect(readSpaceViewport(ALICE, P1, 's1')).toEqual({ x: 1, y: 2, zoom: 1 });
+  });
+
+  it('a strip written onto a panel-only slot starts the strip there', () => {
+    writeAgentPanelOpen(ALICE, P1, false);
+    writeOpenTabs(ALICE, P1, ['s1'], 's1');
+
+    expect(readProjectTabs(ALICE, P1)).toEqual({ openIds: ['s1'], activeId: 's1' });
+    expect(readAgentPanelOpen(ALICE, P1)).toBe(false);
+  });
+
+  it('a camera written onto a panel-only slot is not stored', () => {
+    writeAgentPanelOpen(ALICE, P1, false);
+    writeSpaceViewport(ALICE, P1, 's1', { x: 1, y: 2, zoom: 1 });
+
+    expect(readSpaceViewport(ALICE, P1, 's1')).toBeNull();
+    expect(readProjectTabs(ALICE, P1)).toBeNull();
+  });
+
+  it('drops only the panel value when it is unusable', () => {
+    seed({ [ALICE]: { [P1]: { ...(slot([{ spaceId: 's1', viewport: null }], 's1') as object), agentPanelOpen: 'no' } } });
+
+    expect(readAgentPanelOpen(ALICE, P1)).toBeUndefined();
+    expect(readProjectTabs(ALICE, P1)).toEqual({ openIds: ['s1'], activeId: 's1' });
+  });
+
+  it('writes nothing without an account', () => {
+    writeAgentPanelOpen('', P1, false);
+    writeAgentPanelOpen(undefined, P1, false);
+    expect(raw()).toBeNull();
+    expect(readAgentPanelOpen(undefined, P1)).toBeUndefined();
   });
 });

@@ -9,7 +9,7 @@ import type { CanvasProposal } from '@breatic/shared';
 import type { ContentNodeView, NodeView } from '@web/data/yjs/node-view';
 
 import * as canvasSpace from '@web/data/yjs/canvas-space';
-import { readStoryboard } from '@web/data/yjs/node-storyboard';
+import { readShots } from '@web/data/yjs/node-storyboard';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -466,13 +466,13 @@ describe('useNodeCreation', () => {
       expect(canvasSpace.getPromptFragment('p-mode', 's-mode', ids[1]!, 't2i')!.toJSON()).not.toContain('a red boat');
     });
 
-    it('lands proposed shots in the per-shot tier, mentions counted across shots (#2218)', () => {
+    it('lands proposed shots on the node, mentions counted across shots', () => {
       const shots: CanvasProposal = {
         nodes: [
           { role: 'source', type: 'image', name: 'Hero' },
           { role: 'source', type: 'image', name: 'Extra' },
           {
-            role: 'generate', type: 'video', name: 'Clip', mode: 'i2v', model: 'some-model',
+            role: 'generate', type: 'video', name: 'Clip', mode: 'multi_shot', model: 'some-model',
             poolKinds: ['image'], takesPrompt: true,
             shots: [
               { prompt: [{ text: 'first ' }, { slot: { kind: 'asset', label: 'hero', note: '' } }], duration: 2 },
@@ -488,27 +488,10 @@ describe('useNodeCreation', () => {
 
       const { nodeIds: ids } = result.current.placeProposalAt(shots, { x: 0, y: 0 });
 
-      const board = readStoryboard('p-shot', 's-shot', ids[2]!, 'i2v');
-      expect(board?.kind).toBe('custom');
-      expect(board?.shots.map((shot) => shot.duration)).toEqual([2, 3]);
-      expect(board?.shots[0]?.prompt.toJSON()).toContain(`sourceNodeId="${ids[0]}"`);
-      expect(board?.shots[1]?.prompt.toJSON()).toContain(`sourceNodeId="${ids[1]}"`);
-    });
-
-    it('sets the automatic tier when the proposal asks for it (#2218)', () => {
-      const auto: CanvasProposal = {
-        ...PAIR,
-        nodes: [
-          { role: 'generate', type: 'video', name: 'Clip', mode: 't2v', model: 'some-model', takesPrompt: true, prompt: [{ text: 'boat then pond' }], storyboard: 'auto' },
-        ],
-        edges: [],
-      };
-      const { result } = renderHook(() => useNodeCreation('p-auto', 's-auto'));
-
-      const { nodeIds: ids } = result.current.placeProposalAt(auto, { x: 0, y: 0 });
-
-      expect(readStoryboard('p-auto', 's-auto', ids[0]!, 't2v')?.kind).toBe('auto');
-      expect(canvasSpace.getPromptFragment('p-auto', 's-auto', ids[0]!, 't2v')!.toJSON()).toContain('boat then pond');
+      const landed = readShots('p-shot', 's-shot', ids[2]!);
+      expect(landed?.map((shot) => shot.duration)).toEqual([2, 3]);
+      expect(landed?.[0]?.prompt.toJSON()).toContain(`sourceNodeId="${ids[0]}"`);
+      expect(landed?.[1]?.prompt.toJSON()).toContain(`sourceNodeId="${ids[1]}"`);
     });
 
     it('leaves the source node without a mode or a model', () => {

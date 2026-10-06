@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 
+import { openAccountRecord, type AccountRecord } from '@web/lib/account-record';
 import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
 
@@ -14,9 +15,10 @@ import { STORAGE_KEYS } from '@web/lib/storage-keys';
  * often enough to matter, and without the account on the outside the second
  * one opens a project onto the first one's tabs and camera.
  *
- * This module is the only place that key is read or written. Both callers
- * touch one slot each: `ProjectPage` owns the list, `CanvasSpace` owns one
- * tab's camera. Every write re-reads first, so a call naming one account and
+ * This module is the only place that key is read or written. Each caller
+ * touches one part of a slot: `ProjectPage` owns the list, `CanvasSpace` owns
+ * one tab's camera, `useUIStore` owns whether the Agent panel is open, and
+ * every writer carries the other parts over. Every write re-reads first, so a call naming one account and
  * project can only replace that slot — what another browser tab of the same
  * account wrote for the SAME project is overwritten, and that is the one
  * collision the design accepts (user 2026-09-16).
@@ -26,8 +28,8 @@ import { STORAGE_KEYS } from '@web/lib/storage-keys';
  * account entry leaves every other account's alone, and a broken slot leaves
  * its neighbouring projects alone. The whole key is the exception — a string
  * that is not JSON is already absent for everybody, and the next write from
- * any account replaces it with that account's record alone. A camera is finer-grained still — a value the canvas would
- * refuse costs that Space its camera and leaves the strip standing — and the
+ * any account replaces it with that account's record alone. A camera is
+ * finer-grained still — a value the canvas would refuse costs that Space its camera and leaves the strip standing — and the
  * next write puts that `null` on disk, which is the value the reader now has:
  * the Space opens framed, the way one with no stored camera does.
  */
@@ -64,126 +66,48 @@ const viewportSchema = z
   .nullable()
   .catch(null);
 
+/**
+ * One account's slot for one project. `tabs` is absent while the only thing
+ * stored here is whether the Agent panel is open; the strip is first stored
+ * by `writeOpenTabs`. A panel value that does not parse costs that value and
+ * nothing else, so it can never take the reader's tabs with it.
+ */
 const slotSchema = z.object({
-  tabs: z.array(
-    z.object({
-      spaceId: z.string().min(1),
-      open: z.boolean(),
-      viewport: viewportSchema,
-    }),
-  ),
-  activeId: z.string().min(1).nullable(),
+  tabs: z
+    .array(
+      z.object({
+        spaceId: z.string().min(1),
+        open: z.boolean(),
+        viewport: viewportSchema,
+      }),
+    )
+    .optional(),
+  activeId: z.string().min(1).nullable().optional(),
+  agentPanelOpen: z.boolean().optional().catch(undefined),
 });
 
 type Slot = z.infer<typeof slotSchema>;
 
 /**
- * The whole key: account id to whatever was stored under it. Only the top
- * level is known to be an object — `projectsFor` is what decides whether an
- * account's entry is the shape this module writes.
- */
-type Record_ = Record<string, unknown>;
-
-/**
- * Read the whole key, with anything unreadable reported as an empty record.
- * @returns The parsed record; nothing inside it is validated here.
- */
-function readRecord(): Record_ {
-  let value: string | null = null;
-  try {
-    value = window.localStorage.getItem(STORAGE_KEYS.projectTabs);
-  } catch {
-    // Private mode and blocked site data both throw on access.
-    return {};
-  }
-  if (value === null) return {};
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return {};
-    }
-    return parsed as Record_;
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Put the whole key back, silently giving up when the browser refuses.
- * @param record - The record to store.
- */
-function writeRecord(record: Record_): void {
-  try {
-    window.localStorage.setItem(
-      STORAGE_KEYS.projectTabs,
-      JSON.stringify(record),
-    );
-  } catch {
-    // Quota and blocked site data both throw; the strip just stops persisting.
-  }
-}
-
-/**
- * One account's projects, or null when that entry is absent or is not the
- * shape this module writes.
- *
- * The reader and the writer both come through here so they cannot answer
- * differently about the same entry: this is read during the project page's
- * first render, where anything thrown replaces the page with an error screen
- * that a reload cannot clear, since the reload meets the same record.
- * @param record - The whole record.
- * @param userId - The signed-in account.
- * @returns That account's projects, or null.
- */
-function projectsFor(
-  record: Record_,
-  userId: string,
-): Record<string, unknown> | null {
-  const forUser: unknown = record[userId];
-  if (forUser === null || typeof forUser !== 'object' || Array.isArray(forUser)) {
-    return null;
-  }
-  return forUser as Record<string, unknown>;
-}
-
-/**
  * One account's slot for one project, or null when it is absent or unreadable.
- * @param record - The whole record.
- * @param userId - The signed-in account.
+ * @param account - That account's view of the key.
  * @param projectId - The project being read.
  * @returns The validated slot, or null.
  */
-function readSlot(
-  record: Record_,
-  userId: string,
-  projectId: string,
-): Slot | null {
-  const projects = projectsFor(record, userId);
-  if (projects === null) return null;
-  const parsed = slotSchema.safeParse(projects[projectId]);
+function readSlot(account: AccountRecord, projectId: string): Slot | null {
+  const parsed = slotSchema.safeParse(account.entry?.[projectId]);
   return parsed.success ? parsed.data : null;
 }
 
 /**
  * Replace one account's slot for one project, leaving every other slot as it
  * was found.
- *
- * Takes the record its caller already read, so one call to a writer parses the
- * key once and builds its answer from a single view of it.
- * @param record - The record the caller read.
- * @param userId - The signed-in account.
+ * @param account - That account's view of the key, read once by the caller.
  * @param projectId - The project being written.
  * @param next - The slot to store.
  */
-function writeSlot(
-  record: Record_,
-  userId: string,
-  projectId: string,
-  next: Slot,
-): void {
-  const merged = { ...(projectsFor(record, userId) ?? {}) };
-  merged[projectId] = next;
-  writeRecord({ ...record, [userId]: merged });
+function writeSlot(account: AccountRecord, projectId: string, next: Slot): void {
+  account.write({ ...account.entry, [projectId]: next });
 }
 
 /**
@@ -198,12 +122,12 @@ export function readProjectTabs(
   userId: string | undefined,
   projectId: string,
 ): RestoredTabs | null {
-  if (userId === undefined || userId === '') return null;
-  const slot = readSlot(readRecord(), userId, projectId);
-  if (slot === null) return null;
+  const account = openAccountRecord(STORAGE_KEYS.projectTabs, userId);
+  const slot = account === null ? null : readSlot(account, projectId);
+  if (slot?.tabs === undefined) return null;
   return {
     openIds: slot.tabs.filter((t) => t.open).map((t) => t.spaceId),
-    activeId: slot.activeId,
+    activeId: slot.activeId ?? null,
   };
 }
 
@@ -222,21 +146,21 @@ export function writeOpenTabs(
   openIds: ReadonlyArray<string>,
   activeId: string | null,
 ): void {
-  if (userId === undefined || userId === '') return;
-  const record = readRecord();
-  const previous = readSlot(record, userId, projectId)?.tabs ?? [];
-  const cameras = new Map(previous.map((t) => [t.spaceId, t.viewport] as const));
+  const account = openAccountRecord(STORAGE_KEYS.projectTabs, userId);
+  if (account === null) return;
+  const previous = readSlot(account, projectId);
+  const known = previous?.tabs ?? [];
+  const cameras = new Map(known.map((t) => [t.spaceId, t.viewport] as const));
   const open = new Set(openIds);
-  writeSlot(record, userId, projectId, {
+  writeSlot(account, projectId, {
+    ...previous,
     tabs: [
       ...openIds.map((spaceId) => ({
         spaceId,
         open: true,
         viewport: cameras.get(spaceId) ?? null,
       })),
-      ...previous
-        .filter((t) => !open.has(t.spaceId))
-        .map((t) => ({ ...t, open: false })),
+      ...known.filter((t) => !open.has(t.spaceId)).map((t) => ({ ...t, open: false })),
     ],
     activeId,
   });
@@ -256,9 +180,9 @@ export function readSpaceViewport(
   projectId: string,
   spaceId: string,
 ): StoredViewport | null {
-  if (userId === undefined || userId === '') return null;
-  const slot = readSlot(readRecord(), userId, projectId);
-  return slot?.tabs.find((t) => t.spaceId === spaceId)?.viewport ?? null;
+  const account = openAccountRecord(STORAGE_KEYS.projectTabs, userId);
+  const slot = account === null ? null : readSlot(account, projectId);
+  return slot?.tabs?.find((t) => t.spaceId === spaceId)?.viewport ?? null;
 }
 
 /**
@@ -277,13 +201,44 @@ export function writeSpaceViewport(
   spaceId: string,
   viewport: StoredViewport,
 ): void {
-  if (userId === undefined || userId === '') return;
-  const record = readRecord();
-  const slot = readSlot(record, userId, projectId);
-  if (slot === null) return;
-  if (!slot.tabs.some((t) => t.spaceId === spaceId)) return;
-  writeSlot(record, userId, projectId, {
+  const account = openAccountRecord(STORAGE_KEYS.projectTabs, userId);
+  if (account === null) return;
+  const slot = readSlot(account, projectId);
+  if (slot?.tabs?.some((t) => t.spaceId === spaceId) !== true) return;
+  writeSlot(account, projectId, {
     ...slot,
     tabs: slot.tabs.map((t) => (t.spaceId === spaceId ? { ...t, viewport } : t)),
   });
+}
+
+/**
+ * Whether this account left the Agent panel open in this project.
+ * @param userId - The signed-in account; nothing is read without one.
+ * @param projectId - The project being opened.
+ * @returns The stored value, or undefined when the panel was never toggled
+ *   here or the stored value is unusable.
+ */
+export function readAgentPanelOpen(
+  userId: string | undefined,
+  projectId: string,
+): boolean | undefined {
+  const account = openAccountRecord(STORAGE_KEYS.projectTabs, userId);
+  return account === null ? undefined : readSlot(account, projectId)?.agentPanelOpen;
+}
+
+/**
+ * Store whether the Agent panel is open, keeping the strip and cameras as they
+ * were.
+ * @param userId - The signed-in account; nothing is written without one.
+ * @param projectId - The project the panel belongs to.
+ * @param open - Whether the panel is open.
+ */
+export function writeAgentPanelOpen(
+  userId: string | undefined,
+  projectId: string,
+  open: boolean,
+): void {
+  const account = openAccountRecord(STORAGE_KEYS.projectTabs, userId);
+  if (account === null) return;
+  writeSlot(account, projectId, { ...readSlot(account, projectId), agentPanelOpen: open });
 }

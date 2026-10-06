@@ -159,7 +159,7 @@ describe('ChatPanel', () => {
     const user = userEvent.setup();
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
-    await user.type(screen.getByTestId('chat-composer-textarea'), 'Hi!');
+    await user.type(screen.getByTestId('chat-composer-box'), 'Hi!');
     expect(conversationRuntime.draftOf(CONV)).toBe('Hi!');
   });
 
@@ -265,8 +265,9 @@ describe('ChatPanel', () => {
 
     // The box shows what was sent and accepts nothing more, so there is never
     // a moment where it holds one sentence of ours and another of theirs.
-    const box = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement;
-    expect(box.readOnly).toBe(true);
+    const box = screen.getByTestId('chat-composer-box');
+    expect(box).toHaveAttribute('contenteditable', 'false');
+    expect(box).toHaveAttribute('aria-readonly', 'true');
     await user.type(box, ' and one more thing');
     expect(conversationRuntime.draftOf(CONV)).toBe('first question');
 
@@ -277,7 +278,7 @@ describe('ChatPanel', () => {
     // And then it is emptied, with no rule applied to the text: only one
     // thing could have been in it.
     await waitFor(() => expect(conversationRuntime.draftOf(CONV)).toBe(''));
-    expect(screen.getByTestId('chat-composer-textarea')).toHaveProperty('readOnly', false);
+    expect(screen.getByTestId('chat-composer-box')).toHaveAttribute('contenteditable', 'true');
   });
 
   it('says so on the composer when the message never went out', async () => {
@@ -363,6 +364,36 @@ describe('ChatPanel', () => {
     expect(screen.queryByTestId('chat-notice-action')).not.toBeInTheDocument();
   });
 
+  it('keeps the keyboard on the box when the chat it waited for opens', async () => {
+    let land: (() => void) | undefined;
+    vi.mocked(chatApi.openChat).mockImplementation(
+      () =>
+        new Promise((res) => {
+          land = (): void =>
+            res({
+              conversations: [{ id: CONV }],
+              hasMoreConversations: false,
+              current: { conversation: { id: CONV }, messages: [], hasMore: false },
+            } as never);
+        }),
+    );
+    renderPanel();
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+    const waiting = screen.getByTestId('chat-composer-box');
+    act(() => waiting.focus());
+
+    await act(async () => {
+      land?.();
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-composer-box')).toHaveAttribute('contenteditable', 'true'),
+    );
+
+    expect(screen.getByTestId('chat-composer-box')).toBe(waiting);
+    expect(document.activeElement).toBe(waiting);
+  });
+
   it('holds the box still until the chat has opened', async () => {
     // 打开期间不能打字(user 2026-08-16 拍定)——屏幕上还没有会话,这一刻打进去
     // 的话没有地方可去。这条测试此前断言的是反过来那条(已被推翻的规则),而且
@@ -382,7 +413,7 @@ describe('ChatPanel', () => {
     renderPanel();
 
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
-    expect(screen.getByTestId('chat-composer-textarea')).toHaveAttribute('readonly');
+    expect(screen.getByTestId('chat-composer-box')).toHaveAttribute('aria-readonly', 'true');
 
     await act(async () => {
       land?.();
@@ -390,7 +421,7 @@ describe('ChatPanel', () => {
     });
 
     await waitFor(() =>
-      expect(screen.getByTestId('chat-composer-textarea')).not.toHaveAttribute('readonly'),
+      expect(screen.getByTestId('chat-composer-box')).toHaveAttribute('contenteditable', 'true'),
     );
   });
 
@@ -406,7 +437,7 @@ describe('ChatPanel', () => {
       expect(screen.getByTestId('chat-notice')).toHaveTextContent('Network error'),
     );
 
-    expect(screen.getByTestId('chat-composer-textarea')).not.toBeDisabled();
+    expect(screen.getByTestId('chat-composer-box')).not.toBeDisabled();
   });
 
   it('keeps what the user typed when the chat could not be opened', async () => {
@@ -430,7 +461,7 @@ describe('ChatPanel', () => {
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
     await waitFor(() =>
-      expect(screen.getByTestId('chat-composer-textarea')).not.toBeDisabled(),
+      expect(screen.getByTestId('chat-composer-box')).not.toBeDisabled(),
     );
 
     conversationRuntime.setDraft(CONV, 'is anyone there');

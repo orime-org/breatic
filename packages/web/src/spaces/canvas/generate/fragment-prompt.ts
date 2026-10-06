@@ -5,7 +5,7 @@
  * A prompt read straight off its fragment, with no editor mounted (#2218,
  * design §5.4).
  *
- * The per-shot storyboard sends every shot's words and the union of what the
+ * The multi-shot mode sends every shot's words and the union of what the
  * shots mention. Both are read at submit from the shots the node holds right
  * then, so a shot a collaborator removed a moment ago cannot linger in either
  * the way it would in a list the editors report into.
@@ -13,7 +13,7 @@
 
 import * as Y from 'yjs';
 
-import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { chipWordsReader, MENTION_KIND_ATTR } from '@web/spaces/canvas/generate/reference-mention';
 import type { MentionTokens } from '@web/spaces/canvas/generate/reference-urls';

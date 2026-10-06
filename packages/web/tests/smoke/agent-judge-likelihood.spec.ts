@@ -88,7 +88,7 @@ const ATTEMPTS = 3;
  * @returns Every tool call that turn made.
  */
 async function runOneTurn(p: Page): Promise<StoredCall[]> {
-  const composer = p.getByTestId('chat-composer-textarea');
+  const composer = p.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
   await p.getByTestId('new-conversation').click();
   await expect(p.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });

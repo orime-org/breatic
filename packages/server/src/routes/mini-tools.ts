@@ -22,7 +22,7 @@ import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { taskService, MIN_TASK_CREDIT_COST } from "@breatic/domain";
 import { createQueue, defaultJobOpts } from "@breatic/core";
-import { precheckCredits } from "@server/modules";
+import { precheckCredits, projectService } from "@server/modules";
 import { openGenerationTasks } from "@server/modules/task/generation-task.js";
 
 const miniTools = new Hono<{ Variables: AuthVariables }>();
@@ -125,6 +125,9 @@ async function enqueueMiniTool(
 miniTools.post("/image", validate("json", imageToolSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
+  // A run writes its result into the project: editor or above, as on the
+  // canvas (an archived project reads every member as viewer).
+  await projectService.assertAccess(body.project_id, user.id, "editor");
   // The pool belongs to the studio owning the project, so the body has to be
   // read before the check can name one.
   await precheckCredits(body.project_id, user.id, MIN_TASK_CREDIT_COST);
@@ -154,6 +157,9 @@ miniTools.post("/image", validate("json", imageToolSchema), async (c) => {
 miniTools.post("/video", validate("json", videoToolSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
+  // A run writes its result into the project: editor or above, as on the
+  // canvas (an archived project reads every member as viewer).
+  await projectService.assertAccess(body.project_id, user.id, "editor");
   // The pool belongs to the studio owning the project, so the body has to be
   // read before the check can name one.
   await precheckCredits(body.project_id, user.id, MIN_TASK_CREDIT_COST);
@@ -184,6 +190,9 @@ miniTools.post("/video", validate("json", videoToolSchema), async (c) => {
 miniTools.post("/audio", validate("json", audioToolSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
+  // A run writes its result into the project: editor or above, as on the
+  // canvas (an archived project reads every member as viewer).
+  await projectService.assertAccess(body.project_id, user.id, "editor");
   // The pool belongs to the studio owning the project, so the body has to be
   // read before the check can name one.
   await precheckCredits(body.project_id, user.id, MIN_TASK_CREDIT_COST);

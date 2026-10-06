@@ -20,10 +20,12 @@ import { cn } from '@web/lib/utils';
  *
  * `TooltipContent` renders INLINE by default (Radix Tooltip does not portal on
  * its own); default side offset is 4px. Pass `portal` to render it through
- * `Tooltip.Portal` (to `document.body`) — needed only when the trigger sits
- * inside a CSS-transformed ancestor (e.g. the ReactFlow canvas), where inline
- * positioning is computed against the wrong offset parent. Left off elsewhere so
- * ordinary tooltips are unaffected.
+ * `Tooltip.Portal` (to `document.body`) — needed when the trigger sits inside a
+ * CSS-transformed ancestor (e.g. the ReactFlow canvas), where inline
+ * positioning is computed against the wrong offset parent, or inside a
+ * clipping scroll container (e.g. a `ScrollArea` list), where the part of the
+ * tooltip outside the container is cut off. Left off elsewhere so ordinary
+ * tooltips are unaffected.
  */
 const TooltipProvider = TooltipPrimitive.Provider;
 

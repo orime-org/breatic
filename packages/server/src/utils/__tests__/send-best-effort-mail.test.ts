@@ -3,15 +3,14 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import { logMailResult } from "@server/utils/log-mail.js";
-import { logger, sendMail } from "@breatic/core";
+import { logger } from "@breatic/core";
+import { enqueueMail } from "@breatic/domain";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 
-vi.mock("@server/utils/log-mail.js", () => ({ logMailResult: vi.fn() }));
 vi.mock("@breatic/core", () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
-  sendMail: vi.fn(),
 }));
+vi.mock("@breatic/domain", () => ({ enqueueMail: vi.fn() }));
 
 const MAIL = { to: "x@example.com", subject: "s", html: "<p>h</p>" };
 const CTX = { userId: "u1", subject: "studio_invite" };
@@ -19,48 +18,29 @@ const CTX = { userId: "u1", subject: "studio_invite" };
 beforeEach(() => vi.clearAllMocks());
 
 describe("sendBestEffortMail", () => {
-  it("builds + sends the mail and routes the result through the shared log policy", async () => {
-    vi.mocked(sendMail).mockResolvedValueOnce({ status: "sent" });
-
+  // The request no longer waits on SMTP: the mail is handed to the worker.
+  it("builds the mail and queues it with its log context", async () => {
     await sendBestEffortMail(async () => MAIL, CTX);
 
-    expect(sendMail).toHaveBeenCalledWith(MAIL);
-    expect(logMailResult).toHaveBeenCalledWith({ status: "sent" }, CTX);
-    expect(logger.info).toHaveBeenCalledWith(CTX, "email_sent");
+    expect(enqueueMail).toHaveBeenCalledWith({ mail: MAIL, ctx: CTX });
     expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it("records nothing as sent when the mail was not handed to SMTP", async () => {
-    vi.mocked(sendMail).mockResolvedValueOnce({ status: "skipped", reason: "backend_disabled" });
+  it("swallows a queueing failure and logs it at the boundary", async () => {
+    const boom = new Error("redis down");
+    vi.mocked(enqueueMail).mockRejectedValueOnce(boom);
 
-    await sendBestEffortMail(async () => MAIL, CTX);
-
-    expect(logger.info).not.toHaveBeenCalled();
-  });
-
-  it("swallows a send failure — never rethrows, logs the error at the boundary", async () => {
-    const boom = new Error("smtp exploded");
-    vi.mocked(sendMail).mockRejectedValueOnce(boom);
-
-    // Must resolve (not reject) — a failed best-effort mail must not fail the
-    // caller's request (the bell notification already landed).
+    // The bell notification already landed; the request must not fail.
     await expect(sendBestEffortMail(async () => MAIL, CTX)).resolves.toBeUndefined();
 
-    expect(logger.error).toHaveBeenCalledTimes(1);
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ err: boom, subject: "studio_invite", userId: "u1" }),
-      "mail_send_failed",
+      "mail_enqueue_failed",
     );
-    // On the throwing path we never reach the status-based log policy.
-    expect(logMailResult).not.toHaveBeenCalled();
   });
 
-  it("swallows a PREPARE failure too — a throwing factory (token mint / recipient read blip) must not fail the request", async () => {
-    // Regression guard: the factory does the pre-send fetch (recipient read /
-    // getUserById). Its failure must be swallowed just like a send failure —
-    // the invite/transfer + bell already committed. (This is the exact hole the
-    // adversarial pass caught: the fetch used to sit OUTSIDE the swallow.)
-    const boom = new Error("redis blip");
+  it("swallows a prepare failure too", async () => {
+    const boom = new Error("token mint failed");
 
     await expect(
       sendBestEffortMail(async () => {
@@ -68,18 +48,17 @@ describe("sendBestEffortMail", () => {
       }, CTX),
     ).resolves.toBeUndefined();
 
-    expect(sendMail).not.toHaveBeenCalled();
+    expect(enqueueMail).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ err: boom, subject: "studio_invite", userId: "u1" }),
-      "mail_send_failed",
+      "mail_enqueue_failed",
     );
   });
 
-  it("skips sending when the factory returns null (e.g. recipient gone)", async () => {
+  it("queues nothing when the factory returns null", async () => {
     await sendBestEffortMail(async () => null, CTX);
 
-    expect(sendMail).not.toHaveBeenCalled();
-    expect(logMailResult).not.toHaveBeenCalled();
+    expect(enqueueMail).not.toHaveBeenCalled();
     expect(logger.error).not.toHaveBeenCalled();
   });
 });

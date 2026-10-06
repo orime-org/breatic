@@ -114,11 +114,11 @@ export interface ExecuteGateInput {
    */
   speakersShort?: boolean;
   /**
-   * The shots of a run in the per-shot storyboard tier (#2218), present only
-   * when that tier is in effect. The main prompt is not sent then, so the
-   * prompt checks give way to these: every shot written, no more shots than
-   * the model takes, none longer than it takes, and shot seconds adding up to
-   * the total — Kling fails a run whose shots do not (probed 2026-09-30).
+   * The shots of a run in the multi-shot mode, present only there. The main
+   * prompt is not sent then, so the empty-prompt check gives way to these:
+   * every shot written, no more shots than the model takes, none longer than
+   * it takes, and shot seconds adding up to the total — Kling fails a run
+   * whose shots do not (probed 2026-09-30).
    */
   storyboard?: {
     shots: ReadonlyArray<{ text: string; duration: number }>;
@@ -236,8 +236,11 @@ export function evaluateExecute(
   // than `.length` because the latter counts UTF-16 units — two per emoji and
   // per rarer CJK glyph — and would refuse a message half the length of the
   // one the vendor would take.
+  //
+  // In the multi-shot mode `promptText` is what goes out in place of the main
+  // prompt: the shots written into one prompt, or nothing for a model that
+  // takes its shots in a field of their own.
   if (
-    input.storyboard === undefined &&
     input.promptRequired &&
     input.maxInputChars !== undefined &&
     [...extractPromptText(input.promptText)].length > input.maxInputChars
@@ -283,7 +286,7 @@ export function evaluateExecute(
 }
 
 /**
- * What is wrong with a per-shot storyboard, the first thing found, judged on
+ * What is wrong with the shots of a multi-shot run, the first thing found, judged on
  * the text the worker will send.
  * @param storyboard - The shots, the total and the model's caps.
  * @returns The refusal, or null when the shots can go.

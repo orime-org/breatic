@@ -22,16 +22,16 @@ import { projectCreateSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { requireRoleOnParam } from "@server/middleware/role.js";
-import type { AuthRoleVariables } from "@server/middleware/role.js";
 import {
   creditViewService,
+  projectMembersService,
   projectService,
   recentService,
 } from "@server/modules";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import { projectAuthService } from "@breatic/core";
 import { NotFoundError } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { PROJECT_NAME_MAX_CHARS, t } from "@breatic/shared";
 import type { ProjectDetail } from "@breatic/shared";
 
 const projects = new Hono<{ Variables: AuthVariables }>();
@@ -149,6 +149,22 @@ projects.delete(
 );
 
 /**
+ * `DELETE /projects/:id/membership` — leave a project of one's own accord.
+ * Any member may call it; the owner is refused until they hand the project
+ * over, and an archived project keeps its members.
+ *
+ * The path is `/membership` because `/members/:userId` is the owner's
+ * removal route, and its owner gate would turn away exactly the members this
+ * route is for.
+ * @returns `200` with `{ data: { ok: true } }`; `403` not a member, `409` the
+ *   owner or an archived project
+ */
+projects.delete("/:id/membership", requireRoleOnParam("id", "viewer"), async (c) => {
+  await projectMembersService.leave(c.req.param("id"), c.get("user").id);
+  return c.json({ data: { ok: true } });
+});
+
+/**
  * `GET /projects/:id` — read a project plus the caller's role (the
  * project-open path).
  *
@@ -163,7 +179,7 @@ projects.get("/:id", async (c) => {
   const id = c.req.param("id");
   // A malformed resource key cannot identify a project; never send it to a UUID column.
   if (!z.string().uuid().safeParse(id).success) throw new NotFoundError(t("server.error.not_found"));
-  const { project, myRole } = await projectService.loadForViewer(id, user.id);
+  const { project, myRole, canManageMeta, canRestore, canLeave } = await projectService.loadForViewer(id, user.id);
   const detail: ProjectDetail = {
     id: project.id,
     studioId: project.studioId,
@@ -175,6 +191,10 @@ projects.get("/:id", async (c) => {
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
     deletedAt: project.deletedAt,
+    archivedAt: project.archivedAt,
+    canManageMeta,
+    canRestore,
+    canLeave,
   };
   return c.json({ data: detail });
 });
@@ -221,21 +241,41 @@ projects.post("/:id/opened", async (c) => {
   return c.json({ data: { ok: true } });
 });
 
-// ── Membership-gated writes ────────────────────────────────────────
-//
-// Every route below this point sits behind `requireRoleOnParam('id',
-// minRole)`. The middleware resolves the caller's role on `:id`, rejects
-// non-members / insufficient roles with 403, and stamps the role on
-// `c.var.role`. (The read path `GET /:id` above is intentionally NOT here —
-// it answers a studio member who is not on the project with 403 and anyone
-// else without access with 404, which the middleware cannot tell apart.)
+/**
+ * `POST /projects/:id/archive` — archive a project.
+ *
+ * Studio admin only, whether or not they are on the project, so the gate is in
+ * the service (it reads the studio role), not `requireRoleOnParam`.
+ * @returns `200` with `{ data: { ok: true } }`
+ */
+projects.post(
+  "/:id/archive",
+  validate("param", z.object({ id: z.string().uuid() })),
+  async (c) => {
+    await projectService.archive(c.req.valid("param").id, c.get("user").id);
+    return c.json({ data: { ok: true } });
+  },
+);
 
-const membershipScoped = new Hono<{ Variables: AuthRoleVariables }>();
+/**
+ * `POST /projects/:id/restore` — restore an archived project.
+ *
+ * Studio admin only; see `/archive`.
+ * @returns `200` with `{ data: { ok: true } }`
+ */
+projects.post(
+  "/:id/restore",
+  validate("param", z.object({ id: z.string().uuid() })),
+  async (c) => {
+    await projectService.restore(c.req.valid("param").id, c.get("user").id);
+    return c.json({ data: { ok: true } });
+  },
+);
 
 /** Body schema for `PATCH /projects/:id` — any subset of the mutable fields. */
 const projectUpdateSchema = z
   .object({
-    name: z.string().min(1).max(255).optional(),
+    name: z.string().min(1).max(PROJECT_NAME_MAX_CHARS).optional(),
     description: z.string().max(2000).nullable().optional(),
   })
   .refine(
@@ -248,17 +288,17 @@ const projectUpdateSchema = z
  *
  * PATCH semantic = client sends only fields to change (per the
  * access-permission design D1; aligns with `members.patch` precedent).
- * Requires `editor` (renaming etc. is content editing, not an admin-only
- * operation). v10 §7.2.1.
+ * Gated in the service by `assertMayManage`: the studio's admin or the
+ * project's owner; refused on an archived project.
  * @returns `200` with `{ data: ProjectEntity }`
  */
-membershipScoped.patch(
+projects.patch(
   "/:id",
-  requireRoleOnParam("id", "editor"),
+  validate("param", z.object({ id: z.string().uuid() })),
   validate("json", projectUpdateSchema),
   async (c) => {
     const user = c.get("user");
-    const id = c.req.param("id");
+    const { id } = c.req.valid("param");
     const body = c.req.valid("json");
     const updated = await projectService.update(id, user.id, {
       name: body.name,
@@ -273,18 +313,18 @@ const projectCoverSchema = z.object({ asset_id: z.string().uuid() });
 
 /**
  * `PUT /projects/:id/cover` — point the project's cover at an uploaded
- * picture. Owner-only.
+ * picture. Same gate as a rename, decided in the service.
  * @returns `200` with `{ data: ProjectEntity }`; `404` when the project's
  *   studio holds no live image row with that id
  */
-membershipScoped.put(
+projects.put(
   "/:id/cover",
-  requireRoleOnParam("id", "owner"),
+  validate("param", z.object({ id: z.string().uuid() })),
   validate("json", projectCoverSchema),
   async (c) => {
-    const id = c.req.param("id");
+    const { id } = c.req.valid("param");
     const { asset_id } = c.req.valid("json");
-    const updated = await projectService.setCover(id, asset_id);
+    const updated = await projectService.setCover(id, c.get("user").id, asset_id);
     return c.json({ data: updated });
   },
 );
@@ -292,40 +332,22 @@ membershipScoped.put(
 /**
  * `POST /projects/:id/duplicate` — fork a project into a new one.
  *
- * Requires `viewer`: anyone who can read the source can fork it. The
- * duplicate is owned by the caller (new owner row in
- * `project_members`).
+ * Gated in the service by `assertMayManage`: the studio's admin or the
+ * project's owner, and the project must be live. The duplicate's only member is the caller, as
+ * its owner; the source's members are not copied.
  * @returns `201` with `{ data: ProjectEntity }` — the NEW project
  */
-membershipScoped.post(
+projects.post(
   "/:id/duplicate",
-  requireRoleOnParam("id", "viewer"),
+  validate("param", z.object({ id: z.string().uuid() })),
   async (c) => {
     const user = c.get("user");
-    const id = c.req.param("id");
+    const { id } = c.req.valid("param");
     const copy = await projectService.duplicate(id, user.id);
     return c.json({ data: copy }, 201);
   },
 );
 
-/**
- * `DELETE /projects/:id` — soft-delete a project.
- *
- * Requires `owner` (cascades to all the project's children).
- * @returns `200` with `{ data: { success: true } }`
- */
-membershipScoped.delete(
-  "/:id",
-  requireRoleOnParam("id", "owner"),
-  async (c) => {
-    const user = c.get("user");
-    const id = c.req.param("id");
-    await projectService.deleteProject(id, user.id);
-    return c.json({ data: { success: true } });
-  },
-);
-
-projects.route("/", membershipScoped);
 
 // `projectAuthService` and `NotFoundError` / `t` are imported above
 // because future route additions on this surface will use them; if

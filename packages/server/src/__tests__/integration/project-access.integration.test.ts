@@ -241,14 +241,14 @@ describe("listByStudioForViewer — every studio member sees every project (A1)"
     const pAdmin = await insertProject(studioId, admin);
     const pMember = await insertProject(studioId, member);
 
-    const asMember = await projectService.listByStudioForViewer(studioId, member);
+    const asMember = await projectService.listByStudioForViewer(studioId, member, { archived: false });
     expect(asMember.find((p) => p.id === pAdmin)!.myRole).toBeNull();
     expect(asMember.find((p) => p.id === pMember)!.myRole).toBe("owner");
 
-    const asAdmin = await projectService.listByStudioForViewer(studioId, admin);
+    const asAdmin = await projectService.listByStudioForViewer(studioId, admin, { archived: false });
     expect(asAdmin.find((p) => p.id === pMember)!.myRole).toBeNull();
 
-    expect(await projectService.listByStudioForViewer(studioId, stranger)).toEqual([]);
+    expect(await projectService.listByStudioForViewer(studioId, stranger, { archived: false })).toEqual([]);
   });
 
   it("carries slug and studio on each summary row", async () => {
@@ -257,7 +257,7 @@ describe("listByStudioForViewer — every studio member sees every project (A1)"
     await insertStudioMember(studioId, owner, "admin");
     const pid = await insertProject(studioId, owner);
 
-    const list = await projectService.listByStudioForViewer(studioId, owner);
+    const list = await projectService.listByStudioForViewer(studioId, owner, { archived: false });
     const row = list.find((p) => p.id === pid)!;
     expect(row.slug).toMatch(/^pv-project-/);
     expect(row.studioId).toBe(studioId);
@@ -276,7 +276,7 @@ describe("listByStudioForViewer — every studio member sees every project (A1)"
     await sql`UPDATE projects SET created_at = '2026-02-01T00:00:00Z' WHERE id = ${pMid}`;
     await sql`UPDATE projects SET created_at = '2026-03-01T00:00:00Z' WHERE id = ${pNew}`;
 
-    const ids = (await projectService.listByStudioForViewer(studioId, owner)).map(
+    const ids = (await projectService.listByStudioForViewer(studioId, owner, { archived: false })).map(
       (p) => p.id,
     );
     expect(ids.indexOf(pNew)).toBeLessThan(ids.indexOf(pMid));

@@ -57,7 +57,9 @@
       "cannot_change_admin_role": "Admin 角色只能透過轉讓變更。",
       "member_limit_reached": "{limit, plural, =0 {這個 Studio 的會員等級不支援新增成員，升級後即可新增。} other {這個 Studio 的會員等級最多可有 # 位成員，升級可新增更多。}}",
       "member_limit_reached_for_invitee": "這個 Studio 的成員名額已滿，請聯絡它的 Admin 騰出名額。",
-      "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。"
+      "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。",
+      "transfer_credits_designated": "還有點數包指定給這個 Studio。請先在頭像選單 →「點數」→「指定」裡取消指定，再發起轉讓。",
+      "designation_during_transfer": "這個 Studio 有待接受的轉讓，撤回或轉讓結束後才能再為它指定點數包。"
     },
     "project": {
       "join_already_member": "你已經是這個 Project 的成員。",
@@ -66,11 +68,17 @@
       "already_member": "該使用者已有存取權限。",
       "already_invited": "該使用者已有一個待確認的邀請。",
       "limit_reached": "{limit, plural, =0 {這個 Studio 的會員等級不支援建立 Project，升級後即可建立。} other {這個 Studio 的會員等級最多可建立 # 個 Project，升級可建立更多。}}",
+      "already_archived": "這個 Project 已封存。",
+      "not_archived": "這個 Project 未封存。",
+      "restore_limit_reached": "{limit, plural, other {這個 Studio 的會員等級最多可有 # 個 Project，封存其他 Project 或升級後才能還原。}}",
       "collaborator_limit_reached": "{limit, plural, =0 {這個 Project 不支援新增協作者，升級後即可新增。} other {這個 Project 最多可有 # 位協作者，升級可新增更多。}}",
       "collaborator_limit_reached_for_invitee": "這個 Project 的協作者名額已滿，請聯絡它的 Owner 騰出名額。",
       "only_viewer_can_request_upgrade": "只有 Viewer 可以申請角色升級",
       "no_active_owner": "這個 Project 沒有在任的 Owner",
-      "not_found": "找不到這個 Project"
+      "not_found": "找不到這個 Project",
+      "archived": "這個 Project 已封存，只能檢視。",
+      "copy_name": "副本 - {name}",
+      "leave_owner": "Owner 需要先轉讓所有權才能退出。"
     },
     "payment": {
       "tier_not_found": "未知的方案：{tier}。可選：{available}",
@@ -164,7 +172,8 @@
     "chat": {
       "message_too_long": "這則訊息太長了。最多 {limit, number} 個字元，這則有 {actual, number} 個。",
       "attachments_too_long": "附帶的內容太長了。最多 {limit, number} 個字元，現在有 {actual, number} 個。",
-      "attachments_too_many": "附帶的內容太多了。最多 {limit, number} 項，這則有 {actual, number} 項。"
+      "attachments_too_many": "附帶的內容太多了。最多 {limit, number} 項，這則有 {actual, number} 項。",
+      "references_too_many": "引用附件的次數太多。一則訊息最多 {limit, number} 次，這則有 {actual, number} 次。"
     },
     "mail": {
       "studio_invite": {
@@ -249,7 +258,8 @@
       "attachTooLong": "附帶的內容太多了，請少掛幾項或換短一點的檔案。",
       "attachUnsupported": "{filename} 不能附帶",
       "attachTooLarge": "{filename} 太大，不能附帶",
-      "attachUnavailable": "暫時無法新增，請重試。"
+      "attachUnavailable": "暫時無法新增，請重試。",
+      "atEmpty": "沒有可引用的附件"
     },
     "empty": {
       "greetingWithName": "嗨,{name}!",
@@ -453,7 +463,6 @@
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的畫面內容，@ 引用參考",
       "mentionEmpty": "沒有可引用的內容",
-      "mentionNoMatch": "沒有匹配的內容",
       "voicePlaceholder": "未選音色",
       "voiceSearchPlaceholder": "搜尋音色…",
       "voiceLoading": "正在載入音色…",
@@ -636,6 +645,7 @@
         "horizontal_angle": "水平角度",
         "vertical_angle": "垂直角度",
         "negative_prompt": "反向提示詞",
+        "auto_shots": "自動分鏡",
         "motion": "運動幅度",
         "order": "順序",
         "model_mode": "區域",
@@ -650,10 +660,6 @@
         "pronunciation": "讀作"
       },
       "storyboard": {
-        "label": "分鏡",
-        "perShot": "逐鏡頭編輯",
-        "autoHint": "由模型拆分鏡頭",
-        "back": "返回自動分鏡",
         "shot": "鏡頭 {n, number}",
         "removeShot": "刪除",
         "addShot": "新增鏡頭",
@@ -669,7 +675,19 @@
       "styleTip": "從畫布選最多 3 張圖作為風格參考",
       "selectStyleFromCanvas": "從畫布選擇風格參考",
       "removeStyle": "移除風格參考",
-      "errorNoStyleImage": "先挑一張風格圖"
+      "errorNoStyleImage": "先挑一張風格圖",
+      "cameraCommands": "運鏡",
+      "cameraCommandsInsert": "插入",
+      "cameraCommandGroup": {
+        "truck": "橫移",
+        "pan": "搖",
+        "dolly": "推拉",
+        "pedestal": "升降",
+        "tilt": "俯仰",
+        "zoom": "變焦",
+        "other": "其他"
+      },
+      "cameraCommandsPreviewHint": "懸停指令即可預覽"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -956,6 +974,18 @@
       "busy": "有上傳或其他操作正在進行，重新整理會中斷操作。建議完成後再重新整理。",
       "later": "稍後",
       "refresh": "更新"
+    },
+    "archived": {
+      "banner": "這個 Project 已封存，只能檢視",
+      "restore": "還原"
+    },
+    "leave": {
+      "action": "退出 Project",
+      "title": "要退出「{name}」嗎？",
+      "body": "退出後你將無法再開啟這個 Project。",
+      "confirm": "退出",
+      "done": "已退出「{name}」",
+      "failed": "退出失敗"
     }
   },
   "common": {
@@ -1275,6 +1305,7 @@
     "empty": "沒有待處理通知",
     "loading": "載入中…",
     "markRead": "標為已讀",
+    "markAllRead": "全部已讀",
     "headline": {
       "roleUpgradeRequest": "{actor} 申請 {project} 的 Editor 權限",
       "roleUpgradeApproved": "{actor} 通過了你在 {project} 的 Editor 權限",
@@ -1370,7 +1401,8 @@
         "members": "成員",
         "credits": "點數",
         "settings": "設定",
-        "navLabel": "Studio 分區"
+        "navLabel": "Studio 分區",
+        "archived": "已封存"
       },
       "works": {
         "emptyHint": "Works 是從 Project 發布出來的獨立成品(完整影片 / 小遊戲…),是 Studio 對外的門面。功能上線後,已發布的成品會在這裡展示。",
@@ -1400,7 +1432,24 @@
       "card": {
         "assetCount": "{count} 個素材",
         "more": "更多操作",
-        "createdAt": "建立於 {time}"
+        "createdAt": "建立於 {time}",
+        "rename": "重新命名",
+        "duplicate": "複製",
+        "archive": "封存",
+        "restore": "還原",
+        "archivedBadge": "已封存",
+        "renameTitle": "重新命名 Project",
+        "renameLabel": "名稱",
+        "save": "儲存",
+        "cancel": "取消",
+        "archiveTitle": "封存「{name}」？",
+        "archiveBody": "封存後所有人只能檢視，正在編輯的人會被中斷連線。Studio Admin 可以還原。",
+        "duplicated": "已複製為「{name}」",
+        "duplicateFailed": "複製失敗",
+        "archived": "已封存",
+        "archiveFailed": "封存失敗",
+        "restored": "已還原",
+        "restoreFailed": "還原失敗"
       },
       "projects": {
         "new": "新增 Project",
@@ -1482,7 +1531,7 @@
         "description": "簡介",
         "dangerTitle": "危險操作",
         "transfer": "轉讓 Studio",
-        "dangerHint": "轉讓會把整個 Studio（含 Projects、Collections 與錢包）交給另一位成員；修改 Slug 會讓所有現有連結失效。僅 Admin 可操作。",
+        "dangerHint": "轉讓會把 Studio（含 Projects、Collections）交給另一位成員，發起前需先取消指定給它的點數包。修改 Slug 會讓所有現有連結失效。僅 Admin 可操作。",
         "dangerHintPersonal": "你的 Slug 就是你的 @handle，也是這個 Studio 的網址。修改無法復原。",
         "transferTitle": "轉讓 Studio 所有權",
         "transferBody": "選擇一位 Maintainer 成為新的 Admin。對方接受後轉讓才生效,你會變成 Maintainer。",
@@ -1582,6 +1631,10 @@
           "storage": "儲存空間已滿，封面沒有上傳。",
           "upload": "封面沒有更新，請再試一次。"
         }
+      },
+      "archived": {
+        "emptyTitle": "沒有已封存的 Project",
+        "emptyHint": "封存的 Project 會出現在這裡，可以隨時還原。"
       }
     },
     "rail": {
@@ -1640,7 +1693,8 @@
     "withdraw": "撤回申請",
     "requestFailed": "申請沒有送出，請重試。",
     "withdrawFailed": "撤回沒有成功，請重試。",
-    "loadFailed": "沒能打開這個 Project，請重試。"
+    "loadFailed": "沒能打開這個 Project，請重試。",
+    "archived": "這個 Project 已封存"
   },
   "activity": {
     "description": "上傳、生成、Space 與成員變更",
@@ -1659,6 +1713,7 @@
       "generationFailed": "{actor} 的生成失敗了",
       "memberJoined": "{actor} 加入了 Project",
       "memberRemoved": "{actor} 移除了一名成員",
+      "memberLeft": "{actor} 退出了 Project",
       "memberRoleChanged": "{actor} 將一名成員的角色改為 {role}",
       "ownershipTransferred": "{actor} 轉移了 Project 擁有權",
       "spaceCreated": "{actor} 建立了 Space {spaceName}",

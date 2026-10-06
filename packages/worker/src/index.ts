@@ -37,6 +37,8 @@ import {
   modelCatalog,
   USAGE_LOOKUP_QUEUE,
   MEDIA_READ_QUEUE,
+  MAIL_QUEUE,
+  type MailJob,
   type MediaReadJob,
   type UsageLookupJob,
 } from "@breatic/domain";
@@ -119,6 +121,7 @@ import {
 } from "@worker/handlers/url-ingest.js";
 import { runUsageLookup } from "@worker/handlers/usage-lookup.js";
 import { runMediaRead } from "@worker/handlers/media-read.js";
+import { runMail } from "@worker/handlers/mail.js";
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
@@ -203,6 +206,25 @@ export function startWorker(): void {
     );
   });
 
+  // Notification mail a request queued instead of waiting on SMTP (#1232).
+  // A send that throws retries on the shared options, except one the server
+  // refused for good; what is left after that is a mail never sent, and the
+  // bell already told the user.
+  const mail = createWorker<MailJob>(MAIL_QUEUE, (job) => runMail(job));
+
+  mail.on("failed", (job, err) => {
+    logger.error(
+      {
+        err,
+        subject: job?.data.ctx.subject,
+        userId: job?.data.ctx.userId,
+        attemptsMade: job?.attemptsMade,
+        attemptsAllowed: job?.opts?.attempts,
+      },
+      "mail_send_failed",
+    );
+  });
+
   worker.on("completed", (job) => {
     logger.info({ jobId: job.id, taskId: job.data.taskId }, "job_completed");
   });
@@ -254,7 +276,7 @@ export function startWorker(): void {
 
 
   logger.info(
-    { queues: ["tasks", "url-ingest", USAGE_LOOKUP_QUEUE, MEDIA_READ_QUEUE] },
+    { queues: ["tasks", "url-ingest", USAGE_LOOKUP_QUEUE, MEDIA_READ_QUEUE, MAIL_QUEUE] },
     "BullMQ workers started",
   );
 
@@ -338,6 +360,7 @@ export function startWorker(): void {
         () => urlIngest.close(),
         () => usageLookup.close(),
         () => mediaRead.close(),
+        () => mail.close(),
       ],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });

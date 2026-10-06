@@ -7,7 +7,14 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-import { formatCredits, GENERATION_NODE_MODES, type GenerationNodeType } from "@breatic/shared";
+import {
+  CAMERA_COMMANDS_PER_BRACKET,
+  cameraCommandBracket,
+  formatCredits,
+  GENERATION_NODE_MODES,
+  STATIC_SHOT,
+  type GenerationNodeType,
+} from "@breatic/shared";
 import type { CreditEstimate } from "@breatic/shared/pricing";
 
 import {
@@ -63,17 +70,33 @@ function renderPrice(price: CreditEstimate): string {
 }
 
 /**
- * What a model's storyboard lets a proposal do, for a model that has one.
+ * What the multi-shot mode asks of a proposal on this model, in that mode.
  * @param model - The model to describe.
- * @returns A sentence to append to its line, or the empty string.
+ * @returns A sentence to append to its line, or the empty string outside the multi-shot mode.
  */
 function renderStoryboard(model: PricedModelInfo): string {
   const board = model.storyboard;
   if (!board) return "";
-  const shots = board.maxShots !== undefined ? `at most ${board.maxShots} shots` : "shots";
   const chars = board.maxChars !== undefined ? `, each at most ${board.maxChars} characters` : "";
   const total = board.totalParam !== undefined ? `, whole seconds adding up to ${board.totalParam}` : "";
-  return ` Takes a storyboard: set storyboard "auto" to let it split the prompt into shots, or give shots (${shots}${chars}${total}) to write each one, leaving prompt out.`;
+  return ` Give shots (at most ${board.maxShots} shots${chars}${total}), each written out, and leave prompt out.`;
+}
+
+/**
+ * Which camera commands this model reads out of its prompt and how to write
+ * them, as MiniMax documents the syntax.
+ * @param model - The model to describe.
+ * @returns A sentence to append to its line, or the empty string when it reads none.
+ */
+function renderCameraCommands(model: PricedModelInfo): string {
+  const commands = model.cameraCommands;
+  if (!commands || commands.length === 0) return "";
+  const where = model.storyboard ? " into the shot it belongs to" : " into the prompt";
+  return (
+    ` Reads camera commands written${where}: ${commands.map((c) => cameraCommandBracket([c])).join(" ")}.` +
+    ` Commands inside one bracket, comma-separated with no space, as in ${cameraCommandBracket(["Truck left", "Push in"])}, run at the same time, at most ${CAMERA_COMMANDS_PER_BRACKET} in one bracket;` +
+    ` separate brackets run in the order they appear; never put the opposite directions of one axis, or ${cameraCommandBracket([STATIC_SHOT])} with a movement, in one bracket.`
+  );
 }
 
 /**
@@ -115,7 +138,7 @@ function renderModel(model: PricedModelInfo): string {
   const routing = shared
     .map((kind) => ` Of the ${String(kind)} nodes wired in, the first in the order the proposal lists its nodes is the one the reader picks into its ${String(kind)} slot; later ones go to its pool.`)
     .join("");
-  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderStoryboard(model)}`;
+  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderStoryboard(model)}${renderCameraCommands(model)}`;
   const params = Object.entries(model.params).filter(([, spec]) => !spec.fromStoryboard).map(([name, spec]) => {
     // Shape and cap belong to the parameter, so they are stated whatever else
     // it says about itself -- including for a slot, where together they are

@@ -46,6 +46,15 @@ const canvasChip = (count: number): ChatAttachedChip => ({
   },
 });
 
+describe('AttachmentChip kind', () => {
+  it('shows the kind as an icon before the name, with no word for it', () => {
+    render(<AttachmentChip id='f' type='image' name='a.png' testId='card' />);
+
+    expect(label().querySelector('svg')).not.toBeNull();
+    expect(label().textContent).toBe('a.png');
+  });
+});
+
 describe('AttachmentChip hover preview', () => {
   it('shows an uploaded image when the card is hovered', () => {
     vi.useFakeTimers();

@@ -641,6 +641,8 @@ export interface ProjectEntity {
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
+  /** When the project was archived, or null while it is live. An archived project is read-only. */
+  archivedAt: Date | null;
 }
 
 /**
@@ -667,6 +669,17 @@ export interface ProjectDetail {
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
+  /**
+   * When it was archived, or null while live. An archived project opens
+   * read-only for every member; `myRole` stays the stored role.
+   */
+  archivedAt: Date | null;
+  /** Whether the reader may rename it — live, and they are the studio's admin or its owner. */
+  canManageMeta: boolean;
+  /** Whether the reader may restore it — archived and they are the studio's admin. */
+  canRestore: boolean;
+  /** Whether the reader may leave it — live, and they are an editor or a viewer. */
+  canLeave: boolean;
 }
 
 /**
@@ -692,6 +705,18 @@ export interface ProjectSummary {
   myRole: ProjectRole | null;
   createdAt: Date;
   updatedAt: Date;
+  /** When it was archived, or null while live. */
+  archivedAt: Date | null;
+  /** The card menu: rename and change the cover. */
+  canManageMeta: boolean;
+  /** The card menu: duplicate. */
+  canDuplicate: boolean;
+  /** The card menu: archive. */
+  canArchive: boolean;
+  /** The archived card menu: restore. */
+  canRestore: boolean;
+  /** The card menu: leave the project. */
+  canLeave: boolean;
 }
 
 /**

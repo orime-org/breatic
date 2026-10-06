@@ -3,6 +3,8 @@
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import * as React from 'react';
+
+import { isReauthCloseReason } from '@breatic/shared';
 import type * as Y from 'yjs';
 import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import {
@@ -240,14 +242,21 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
     };
     /**
      * Socket closed for a non-auth reason → soft disconnect (auto-reconnects).
-     * @param data - Close payload carrying the WebSocket close code.
+     * @param data - Close payload carrying the WebSocket close code and reason.
      */
-    const onClose = (data: { event?: { code?: number } } | undefined): void => {
+    const onClose = (
+      data: { event?: { code?: number; reason?: string } } | undefined,
+    ): void => {
       // 4401 / 4403 means auth was rejected — `authenticationFailed` has
       // already moved us to `authFailed`; don't downgrade to `disconnected`
       // here or the banner would mask the real cause.
       const code = data?.event?.code;
       if (code === 4401 || code === 4403) return;
+      // Collab closed this document to re-check it, and the registry has
+      // already re-sent the token on the same socket. The answer arrives as
+      // `authenticated` (or `authenticationFailed`); in between nothing is
+      // wrong with the connection, so there is nothing to tell the reader.
+      if (isReauthCloseReason(data?.event?.reason)) return;
       // Keep an existing authFailed sticky across the close that follows it.
       // For everything else, surface a soft disconnect (the shared socket
       // auto-reconnects and re-syncs every attached doc).

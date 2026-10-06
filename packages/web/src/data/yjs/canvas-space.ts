@@ -14,7 +14,6 @@ import {
   AUDIO_GENERATION_MODES,
   CANVAS_NODES_KEY,
   GENERATION_NODE_MODES,
-  VIDEO_GENERATION_MODES,
   canGenerate,
 } from '@breatic/shared';
 
@@ -520,12 +519,12 @@ export function useCanvasSpace(
  * style brief (#1960, #2218). Seeded empty; {@link getLyricsFragment} only
  * reads.
  *
- * `storyboards` — one storyboard per video mode, off with no shots (#2218);
- * `node-storyboard.ts` reads and edits it.
+ * `shots` — the video node's shots, empty, which only the multi-shot mode
+ * uses; `node-storyboard.ts` reads and edits it.
  * @param data - The plain wire data fields to write.
  * @param type - The node's modality, which decides which containers are
  *   seeded: `body` for text, `prompts` for generate-capable modalities,
- *   `lyrics` for audio, `storyboards` for video, and `replies` for an
+ *   `lyrics` for audio, `shots` for video, and `replies` for an
  *   annotation.
  * @returns A Y.Map populated with the defined data fields.
  */
@@ -589,18 +588,9 @@ function buildDataMap(
   // Every audio mode gets lyrics: which modes' models take them is a catalog
   // fact this birth does not know, and a container born later would race.
   if (type === 'audio') map.set('lyrics', fragmentsFor(AUDIO_GENERATION_MODES));
-  // One storyboard per video mode, off with no shots (#2218). Each shot is
-  // inserted whole with its own fragment, so concurrent adds both survive.
-  if (type === 'video') {
-    const boards = new Y.Map<Y.Map<unknown>>();
-    for (const mode of VIDEO_GENERATION_MODES) {
-      const board = new Y.Map<unknown>();
-      board.set('kind', 'off');
-      board.set('shots', new Y.Array<Y.Map<unknown>>());
-      boards.set(mode, board);
-    }
-    map.set('storyboards', boards);
-  }
+  // The multi-shot mode's shots. Each shot is inserted whole with its own
+  // fragment, so concurrent adds both survive.
+  if (type === 'video') map.set('shots', new Y.Array<Y.Map<unknown>>());
   // Same reasoning as the crops container, and the same race #1880 recorded:
   // two people replying to an annotation that has none would each create a
   // Y.Array under this key and the merge would keep one, taking a reply with

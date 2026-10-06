@@ -99,7 +99,15 @@ for (const [side, offset] of [
     await expect(visibleSpace(page).locator('.react-flow__selection')).toHaveCount(0);
 
     // Put the column back for the next case.
-    await page.evaluate(() => window.localStorage.removeItem('breatic.agentColumnWidth'));
+    await page.evaluate(() => {
+      const key = 'breatic.userPreferences';
+      const record = JSON.parse(window.localStorage.getItem(key) ?? '{}') as Record<
+        string,
+        Record<string, unknown>
+      >;
+      for (const entry of Object.values(record)) delete entry.agentColumnWidth;
+      window.localStorage.setItem(key, JSON.stringify(record));
+    });
     await page.reload();
     await expect(page.locator('[data-separator]').first()).toBeVisible({ timeout: 20_000 });
     await expect(visibleSpace(page).locator('.react-flow__pane').first()).toBeVisible({ timeout: 20_000 });

@@ -112,6 +112,12 @@ const PROJECTS: readonly ProjectSummary[] = [
     myRole: 'owner',
     createdAt: new Date('2026-06-07T00:00:00.000Z'),
     updatedAt: new Date('2026-06-07T00:00:00.000Z'),
+    archivedAt: null,
+    canManageMeta: true,
+    canDuplicate: true,
+    canArchive: true,
+    canRestore: false,
+    canLeave: false,
   },
 ];
 
@@ -135,7 +141,7 @@ beforeEach(() => {
     myRole: 'owner',
     createdAt: '2026-06-07T00:00:00.000Z',
     updatedAt: '2026-06-07T00:00:00.000Z',
-    deletedAt: null,
+    deletedAt: null, archivedAt: null, canManageMeta: true, canRestore: false, canLeave: false,
   });
 });
 
@@ -189,7 +195,7 @@ describe('StudioContainerPage', () => {
     expect(screen.queryByText('404')).toBeNull();
   });
 
-  it('renders the studio header and all 6 section links (shell from the real query)', async () => {
+  it('renders the studio header and all 7 section links an admin gets (shell from the real query)', async () => {
     setup('acme-studio');
     // The top bar moved to the layout route, so the container renders the
     // studio header (name + type badge) + the section strip, not a banner.
@@ -200,7 +206,7 @@ describe('StudioContainerPage', () => {
     // Scoped to the section nav: the project cards below are links too, and
     // counting every link on the page would count them.
     const nav = screen.getByRole('navigation', { name: 'Studio sections' });
-    expect(within(nav).getAllByRole('link')).toHaveLength(6);
+    expect(within(nav).getAllByRole('link')).toHaveLength(7);
   });
 
   it('defaults to the Projects section', async () => {
@@ -217,14 +223,14 @@ describe('StudioContainerPage', () => {
     expect(screen.getByRole('link', { name: 'Credits' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('renders all 6 sections for a personal studio (Members read-only, A 方案)', async () => {
+  it('renders all 7 sections for a personal studio admin (Members read-only there)', async () => {
     setup('alex');
     // Personal studios show the same 6 sections; their Members section is
     // read-only rather than absent (A 方案 2026-06-08): projects / collections
     // / works / members / credits / settings.
     await screen.findByRole('navigation', { name: 'Studio sections' });
     const nav = screen.getByRole('navigation', { name: 'Studio sections' });
-    expect(within(nav).getAllByRole('link')).toHaveLength(6);
+    expect(within(nav).getAllByRole('link')).toHaveLength(7);
     expect(screen.getByRole('link', { name: /Members/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Works' })).toBeInTheDocument();
   });
@@ -404,6 +410,33 @@ describe('StudioContainerPage', () => {
     // what is rendered" rather than as one special case for Settings.
     setup('acme-studio', false, 'credits');
     expect(await screen.findByTestId('studio-spendable')).toBeInTheDocument();
+  });
+
+  it('lists the archived projects on the admin\'s Archived tab', async () => {
+    vi.mocked(studiosApi.listProjects).mockImplementation(async (_slug, archived) =>
+      archived
+        ? [{ ...PROJECTS[0]!, id: 'p-old', name: 'Old Logo', archivedAt: new Date('2026-09-01T00:00:00.000Z'), canManageMeta: false, canDuplicate: false, canArchive: false, canRestore: true }]
+        : [...PROJECTS],
+    );
+    setup('acme-studio', false, 'archived');
+    expect(await screen.findByText('Old Logo')).toBeInTheDocument();
+    expect(within(screen.getByTestId('project-card-p-old')).getByText('Archived')).toBeInTheDocument();
+    expect(screen.queryByText('Real Studio Project')).toBeNull();
+    expect(studiosApi.listProjects).toHaveBeenCalledWith('acme-studio', true);
+  });
+
+  it('does not ask for the archived list on behalf of a member who is not the admin', async () => {
+    setup('maintained-studio');
+    await screen.findByRole('navigation', { name: 'Studio sections' });
+    await waitFor(() => expect(studiosApi.listProjects).toHaveBeenCalled());
+    expect(studiosApi.listProjects).not.toHaveBeenCalledWith('maintained-studio', true);
+  });
+
+  it('sends a member who is not the admin away from Archived', async () => {
+    setup('maintained-studio', false, 'archived');
+    await waitFor(() =>
+      expect(screen.getByTestId('location').textContent).toBe('/studio/maintained-studio'),
+    );
   });
 
   it('keeps the address in step when the user switches tab by clicking', async () => {

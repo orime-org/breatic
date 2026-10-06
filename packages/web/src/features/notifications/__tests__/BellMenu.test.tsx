@@ -336,3 +336,59 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
     expect(screen.queryByTestId('bell-open-decision-n-10')).toBeNull();
   });
 });
+
+describe('BellMenu — mark all read', () => {
+  const NEWS = '33333333-3333-4333-8333-333333333333';
+  const WAITING = '44444444-4444-4444-8444-444444444444';
+
+  it('offers mark-all-read left of the count while a news row is unread', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [
+        fakeNotification(NEWS, 'studio.invite_accepted'),
+        fakeNotification(WAITING, 'project.join_request', { shareToken: 'tok' }),
+      ],
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    const button = await screen.findByTestId('bell-mark-all-read');
+    expect(button).toHaveTextContent('Mark all read');
+    const count = screen.getByTestId('bell-count');
+    expect(button.compareDocumentPosition(count) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('hides mark-all-read when only waiting requests are unread', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification(WAITING, 'project.join_request', { shareToken: 'tok' })],
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await screen.findByTestId(`bell-notification-${WAITING}`);
+    expect(screen.queryByTestId('bell-mark-all-read')).toBeNull();
+  });
+
+  it('hides mark-all-read when nothing is unread', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await screen.findByText(/No pending notifications/i);
+    expect(screen.queryByTestId('bell-mark-all-read')).toBeNull();
+  });
+
+  it('marks all read and refetches the inbox', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification(NEWS, 'studio.invite_accepted')],
+      resolved: EMPTY_RESOLVED,
+    });
+    vi.mocked(notificationsApi.markAllRead).mockResolvedValue({ count: 1 });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await user.click(await screen.findByTestId('bell-mark-all-read'));
+    await waitFor(() => expect(notificationsApi.markAllRead).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(notificationsApi.list).toHaveBeenCalledTimes(2));
+  });
+});

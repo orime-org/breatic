@@ -85,7 +85,7 @@ test.afterEach(async ({ page }) => {
 test('a copied picture pastes onto the canvas and lands as a stored picture @needs-model @needs-search @needs-internet @needs-storage', async ({ page }) => {
   // A real turn (up to 150s) and a real fetch into storage (up to 120s).
   test.setTimeout(360_000);
-  const composer = page.getByTestId('chat-composer-textarea');
+  const composer = page.getByTestId('chat-composer-box');
   await page.getByTestId('new-conversation').click();
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
   await composer.fill('Find me a few cyberpunk reference images -- neon, rainy night, street.');

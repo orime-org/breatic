@@ -109,9 +109,8 @@ export async function request(
       | { noOwner: true }
     >(async (tx) => {
       // Locks the project for the length of this transaction and refuses if it
-      // is already gone. Without it the row commits after the delete cascade
-      // has swept this table — a live pending request on a dead project, which
-      // nobody can decide and nothing can reap.
+      // is gone or archived. Without it the row commits after the archive sweep
+      // has passed this table — a live pending request on an archived project.
       if (!(await projectRepo.lockLiveProject(input.projectId, tx))) {
         return { refusal: "not_found" as const };
       }

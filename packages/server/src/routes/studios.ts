@@ -241,15 +241,21 @@ studio.delete("/:slug/avatar", requireStudioRole("admin"), async (c) => {
  * `projectService.listByStudioSlug`: a studio member sees every project, each
  * tagged with their own role on it; a non-member gets `[]` (the non-member
  * shell shows no projects). A slug with no
- * active studio surfaces as `404`.
+ * active studio surfaces as `404`. `?archived=true` lists the archived
+ * projects instead, which only the studio's admin may read (`403` otherwise).
  * @returns `200` with `{ data: ProjectSummary[] }`
  */
-studio.get("/:slug/projects", async (c) => {
-  const user = c.get("user");
-  const slug = c.req.param("slug");
-  const data = await projectService.listByStudioSlug(slug, user.id);
-  return c.json({ data });
-});
+studio.get(
+  "/:slug/projects",
+  validate("query", z.object({ archived: z.enum(["true", "false"]).optional() })),
+  async (c) => {
+    const user = c.get("user");
+    const slug = c.req.param("slug");
+    const archived = c.req.valid("query").archived === "true";
+    const data = await projectService.listByStudioSlug(slug, user.id, { archived });
+    return c.json({ data });
+  },
+);
 
 /**
  * `GET /api/v1/studio/:slug/members` — the studio's active members for the

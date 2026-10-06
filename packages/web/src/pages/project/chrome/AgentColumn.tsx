@@ -14,6 +14,8 @@ import { AgentColHeader } from '@web/pages/project/chrome/agent-header/AgentColH
 interface AgentColumnProps {
   /** Project whose chat this column shows. */
   projectId: string;
+  /** The canvas on screen, when the open Space is one. */
+  canvasSpaceId?: string;
 }
 
 /**
@@ -26,9 +28,10 @@ interface AgentColumnProps {
  * and the sheet it opens is down here.
  * @param root0 - The component props.
  * @param root0.projectId - Project whose chat this column shows.
+ * @param root0.canvasSpaceId - The canvas on screen, when the open Space is one.
  * @returns The column.
  */
-export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element {
+export function AgentColumn({ projectId, canvasSpaceId }: AgentColumnProps): React.JSX.Element {
   const t = useTranslation();
   const [historyOpen, setHistoryOpen] = useExclusiveOverlay('conversation-history');
 
@@ -131,6 +134,7 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
         <ChatPanel
           projectId={projectId}
           historyOpen={historyOpen}
+          {...(canvasSpaceId === undefined ? {} : { canvasSpaceId })}
           onHistoryOpenChange={setHistoryOpen}
         />
       </div>

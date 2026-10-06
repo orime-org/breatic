@@ -18,6 +18,8 @@ import { useDraftBox } from '@web/spaces/canvas/generate/use-draft-box';
 interface ModelParamControlsProps {
   /** The active model, whose own labelled params are drawn. */
   model: ModelEntry;
+  /** The mode the panel is in; a control declared only for other modes is not drawn. */
+  mode: string;
   /** What the node holds for this model, by param name. */
   value: Readonly<Record<string, unknown>>;
   /** Called with the changed param only. */
@@ -34,6 +36,7 @@ interface ModelParamControlsProps {
  * param name; which shape each takes comes from its declaration.
  * @param root0 - Component props.
  * @param root0.model - The active model.
+ * @param root0.mode - The mode the panel is in.
  * @param root0.value - What the node holds for it.
  * @param root0.onChange - Called with the changed param.
  * @param root0.className - Spacing above the block.
@@ -42,6 +45,7 @@ interface ModelParamControlsProps {
  */
 export const ModelParamControls = React.memo(function ModelParamControls({
   model,
+  mode,
   value,
   onChange,
   className,
@@ -49,8 +53,8 @@ export const ModelParamControls = React.memo(function ModelParamControls({
 }: ModelParamControlsProps): React.JSX.Element | null {
   const t = useTranslation();
   const controls = React.useMemo(
-    () => modelControls(model).filter((control) => include?.(control) ?? true),
-    [model, include],
+    () => modelControls(model, mode).filter((control) => include?.(control) ?? true),
+    [model, mode, include],
   );
   if (controls.length === 0) return null;
   return (

@@ -12,9 +12,6 @@
  *
  *   - repo round-trip on the yjs DB (fetch / upsert / soft-delete /
  *     restore / seed) — recreated from the old core-repo test;
- *   - the delete cascade (softDeleteByProjectPrefix) makes meta + every
- *     space doc unloadable (invariant 2's yjs side; the auth-gate side
- *     is covered by collab/auth tests);
  *   - duplicate integrity: prefix-rewrite (with the load-bearing ::int
  *     cast), meta `DO UPDATE` winning over a racing lazy-seed, canvas
  *     `DO NOTHING` idempotency on redelivery, originals untouched;
@@ -135,26 +132,6 @@ describe("yjs repo against the separate yjs DB", () => {
     // Second seed (lazy-seed race loser) does NOT overwrite + reports false.
     expect(await yjsRepo.seedInitialState(META, new Uint8Array([0]))).toBe(false);
     expect(Array.from((await yjsRepo.fetchDocData(META))!)).toEqual(Array.from(bytes));
-  });
-});
-
-describe("delete cascade (invariant 2 — yjs side)", () => {
-  it("softDeleteByProjectPrefix makes meta + every space doc unloadable", async () => {
-    await yjsRepo.upsertDocData(META, new Uint8Array([1]));
-    await yjsRepo.upsertDocData(CANVAS, new Uint8Array([2]));
-
-    await yjsRepo.softDeleteByProjectPrefix(TEST_PID);
-
-    expect(await yjsRepo.fetchDocData(META)).toBeNull();
-    expect(await yjsRepo.fetchDocData(CANVAS)).toBeNull();
-  });
-
-  it("is idempotent on redelivery (deleted_at IS NULL guard)", async () => {
-    await yjsRepo.upsertDocData(META, new Uint8Array([1]));
-    await yjsRepo.softDeleteByProjectPrefix(TEST_PID);
-    // Redelivery: a safe no-op (does not throw, stays deleted).
-    await yjsRepo.softDeleteByProjectPrefix(TEST_PID);
-    expect(await yjsRepo.fetchDocData(META)).toBeNull();
   });
 });
 

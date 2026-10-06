@@ -31,7 +31,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Transaction } from '@tiptap/pm/state';
 import { ReplaceStep } from '@tiptap/pm/transform';
 
-import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 
 /** An inclusive-from / exclusive-to document range. */
 export interface DocRange {

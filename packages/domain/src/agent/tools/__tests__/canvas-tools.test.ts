@@ -213,7 +213,7 @@ describe("what the rendered answer tells the model", () => {
     );
   });
 
-  // GPT Image 2.5 Sunburst Edit: $0.039 for one image to edit at its defaults,
+  // GPT Image 2.5 Sunburst in edit: $0.039 for one image to edit at its defaults,
   // and the run cannot go without one. Part-credits are charged, so they show.
   it("prices a required source not picked yet at one item, part-credits kept", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
@@ -425,7 +425,7 @@ describe("what the rendered answer tells the model", () => {
   });
 
   it("marks an optional source slot the same as a required one", async () => {
-    // LTX 2.3 Lipsync can invent its speaker, so its image slot is optional.
+    // LTX 2.3 can invent its speaker, so its image slot is optional.
     const answer = await run<PricedModelsForMode>(generationModels, {
       nodeType: "video",
       mode: "talking_head",

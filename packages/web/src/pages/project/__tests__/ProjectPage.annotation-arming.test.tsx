@@ -124,6 +124,8 @@ function setup(): void {
     createdByUserId: 'u-me',
     myRole: 'editor',
     deletedAt: null,
+    archivedAt: null,
+    canRestore: false,
   });
   membersListMock.mockResolvedValue({ members: [] });
   render(

@@ -15,7 +15,7 @@ for (const [locale, heading] of Object.entries(headings)) {
     test(`404 renders ${locale} in ${theme}`, async ({ page }, testInfo) => {
       await page.addInitScript(({ locale, theme }) => {
         localStorage.setItem('breatic.locale', locale);
-        localStorage.setItem('breatic.preferences', JSON.stringify({ state: { theme }, version: 1 }));
+        localStorage.setItem('breatic.theme', theme);
       }, { locale, theme });
       await page.goto('/missing-top-level');
       await expect(page.getByRole('heading', { name: heading })).toBeVisible();

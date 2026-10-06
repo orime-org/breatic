@@ -5,14 +5,43 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import type { Layout, PanelImperativeHandle } from 'react-resizable-panels';
 
-import { STORAGE_KEYS } from '@web/lib/storage-keys';
+import { readUserPreferences, writeUserPreference } from '@web/lib/user-preferences-storage';
+import { useCurrentUserStore } from '@web/stores/current-user';
 import {
   AGENT_PANEL_ID,
   RESIZE_HANDLE_WIDTH,
 } from '@web/pages/project/agent-column-width';
 import { useAgentColumnWidth } from '@web/pages/project/use-agent-column-width';
 
-const KEY = STORAGE_KEYS.agentColumnWidth;
+const ALICE = 'user-alice';
+const BOB = 'user-bob';
+
+/**
+ * Sign an account in, the way `ProtectedRoute` guarantees one before the
+ * project page renders.
+ * @param id - The account id.
+ */
+function signIn(id: string): void {
+  useCurrentUserStore.setState({
+    user: { id, name: id, email: `${id}@example.com`, personalStudio: null, membershipTier: 'base' },
+  });
+}
+
+/**
+ * The width stored for the signed-in account.
+ * @returns The stored width, or null.
+ */
+function storedWidth(): number | null {
+  return readUserPreferences(ALICE).agentColumnWidth;
+}
+
+/**
+ * Store a width for the signed-in account without going through the hook.
+ * @param width - The width in pixels.
+ */
+function storeWidth(width: number): void {
+  writeUserPreference(ALICE, { agentColumnWidth: width });
+}
 
 /**
  * The imperative handle is only used to resize; the hook reads widths out of
@@ -50,22 +79,42 @@ const PANELS = GROUP - RESIZE_HANDLE_WIDTH;
 describe('useAgentColumnWidth', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    signIn(ALICE);
   });
 
   describe('the width the column starts at', () => {
+    it('is the width this account stored, not another account\'s', () => {
+      storeWidth(500);
+      signIn(BOB);
+      const { result } = renderHook(() => useAgentColumnWidth());
+      expect(result.current.defaultSize).toBe('320px');
+    });
+
+    it('stores a dragged width under the signed-in account only', () => {
+      signIn(BOB);
+      const { result } = renderHook(() => useAgentColumnWidth());
+      result.current.panelRef.current = fakeHandle();
+      result.current.groupRef.current = fakeGroup(GROUP);
+
+      act(() => result.current.onLayoutChanged(layoutWithAgentAt(500, PANELS), BY_USER));
+
+      expect(readUserPreferences(BOB).agentColumnWidth).toBe(500);
+      expect(storedWidth()).toBeNull();
+    });
+
     it('is the minimum when nothing is stored', () => {
       const { result } = renderHook(() => useAgentColumnWidth());
       expect(result.current.defaultSize).toBe('320px');
     });
 
     it('is the stored width', () => {
-      window.localStorage.setItem(KEY, '500');
+      storeWidth(500);
       const { result } = renderHook(() => useAgentColumnWidth());
       expect(result.current.defaultSize).toBe('500px');
     });
 
     it('is the minimum when the stored value is unusable', () => {
-      window.localStorage.setItem(KEY, '640abc');
+      window.localStorage.setItem('breatic.userPreferences', JSON.stringify({ [ALICE]: { agentColumnWidth: '640abc' } }));
       const { result } = renderHook(() => useAgentColumnWidth());
       expect(result.current.defaultSize).toBe('320px');
     });
@@ -79,7 +128,7 @@ describe('useAgentColumnWidth', () => {
 
       act(() => result.current.onLayoutChanged(layoutWithAgentAt(500, PANELS), BY_USER));
 
-      expect(window.localStorage.getItem(KEY)).toBe('500');
+      expect(storedWidth()).toBe(500);
     });
 
     it('reads the width out of the layout, not out of the panel', () => {
@@ -94,11 +143,11 @@ describe('useAgentColumnWidth', () => {
 
       act(() => result.current.onLayoutChanged(layoutWithAgentAt(570, PANELS), BY_USER));
 
-      expect(window.localStorage.getItem(KEY)).toBe('570');
+      expect(storedWidth()).toBe(570);
     });
 
     it('replaces an earlier width, so a drag inside a squeezed window wins', () => {
-      window.localStorage.setItem(KEY, '600');
+      storeWidth(600);
       const { result } = renderHook(() => useAgentColumnWidth());
       const handle = fakeHandle();
       result.current.panelRef.current = handle;
@@ -111,7 +160,7 @@ describe('useAgentColumnWidth', () => {
           BY_USER,
         ),
       );
-      expect(window.localStorage.getItem(KEY)).toBe('400');
+      expect(storedWidth()).toBe(400);
 
       // Window widens again. The column goes back to 400, not to the old 600.
       result.current.groupRef.current = fakeGroup(GROUP);
@@ -122,7 +171,7 @@ describe('useAgentColumnWidth', () => {
 
   describe('what the library does on its own', () => {
     it('puts the column back on the width the user set', () => {
-      window.localStorage.setItem(KEY, '500');
+      storeWidth(500);
       const { result } = renderHook(() => useAgentColumnWidth());
       const handle = fakeHandle();
       result.current.panelRef.current = handle;
@@ -134,7 +183,7 @@ describe('useAgentColumnWidth', () => {
     });
 
     it('leaves a column that is already where it belongs alone', () => {
-      window.localStorage.setItem(KEY, '500');
+      storeWidth(500);
       const { result } = renderHook(() => useAgentColumnWidth());
       const handle = fakeHandle();
       result.current.panelRef.current = handle;
@@ -146,7 +195,7 @@ describe('useAgentColumnWidth', () => {
     });
 
     it('leaves a sub-pixel difference alone, so restoring does not loop', () => {
-      window.localStorage.setItem(KEY, '500');
+      storeWidth(500);
       const { result } = renderHook(() => useAgentColumnWidth());
       const handle = fakeHandle();
       result.current.panelRef.current = handle;
@@ -158,7 +207,7 @@ describe('useAgentColumnWidth', () => {
     });
 
     it('squeezes the column when the window cannot hold the set width', () => {
-      window.localStorage.setItem(KEY, '640');
+      storeWidth(640);
       const { result } = renderHook(() => useAgentColumnWidth());
       const handle = fakeHandle();
       result.current.panelRef.current = handle;
@@ -176,14 +225,14 @@ describe('useAgentColumnWidth', () => {
     });
 
     it('never writes the width the library arrived at', () => {
-      window.localStorage.setItem(KEY, '500');
+      storeWidth(500);
       const { result } = renderHook(() => useAgentColumnWidth());
       result.current.panelRef.current = fakeHandle();
       result.current.groupRef.current = fakeGroup(GROUP);
 
       act(() => result.current.onLayoutChanged(layoutWithAgentAt(579, PANELS), BY_LIBRARY));
 
-      expect(window.localStorage.getItem(KEY)).toBe('500');
+      expect(storedWidth()).toBe(500);
     });
   });
 
@@ -195,7 +244,7 @@ describe('useAgentColumnWidth', () => {
 
       act(() => result.current.onLayoutChanged(layoutWithAgentAt(500, PANELS), BY_USER));
 
-      expect(window.localStorage.getItem(KEY)).toBeNull();
+      expect(storedWidth()).toBeNull();
     });
 
     it('does nothing without a group element to measure', () => {
@@ -205,11 +254,11 @@ describe('useAgentColumnWidth', () => {
 
       act(() => result.current.onLayoutChanged(layoutWithAgentAt(500, PANELS), BY_USER));
 
-      expect(window.localStorage.getItem(KEY)).toBeNull();
+      expect(storedWidth()).toBeNull();
     });
 
     it('does nothing when the collapsed column is absent from the layout', () => {
-      window.localStorage.setItem(KEY, '500');
+      storeWidth(500);
       const { result } = renderHook(() => useAgentColumnWidth());
       const handle = fakeHandle();
       result.current.panelRef.current = handle;
@@ -218,11 +267,11 @@ describe('useAgentColumnWidth', () => {
       act(() => result.current.onLayoutChanged({ space: 100 }, BY_LIBRARY));
 
       expect(handle.resize).not.toHaveBeenCalled();
-      expect(window.localStorage.getItem(KEY)).toBe('500');
+      expect(storedWidth()).toBe(500);
     });
 
     it('does nothing while the group has not been measured', () => {
-      window.localStorage.setItem(KEY, '500');
+      storeWidth(500);
       const { result } = renderHook(() => useAgentColumnWidth());
       const handle = fakeHandle();
       result.current.panelRef.current = handle;

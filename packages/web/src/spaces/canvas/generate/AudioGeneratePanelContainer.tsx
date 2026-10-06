@@ -519,6 +519,8 @@ function AudioGeneratePanelBody({
         spaceId,
         model: fresh.modelEntry,
         params: fresh.params,
+        // The same mode the view model above was built for.
+        generation: { mode, declared: fresh.modelEntry.params },
         promptText: freshPrompt,
         // Read off the same fresh view model the gate judged, so the payload
         // can only ever carry the pick that passed it.
@@ -572,7 +574,6 @@ function AudioGeneratePanelBody({
   const promptLabel =
     modeOption.promptLabelKey === undefined ? undefined : t(modeOption.promptLabelKey);
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
-  const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
   const promptSlot = React.useMemo(
     () =>
       fragment ? (
@@ -593,7 +594,6 @@ function AudioGeneratePanelBody({
           // no audio model declares a pool for one to travel in.
           referenceKinds={NO_REFERENCE_KINDS}
           mentionEmptyLabel={mentionEmptyLabel}
-          mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
         />
       ) : null,
@@ -604,7 +604,6 @@ function AudioGeneratePanelBody({
       onPromptFocus,
       references,
       mentionEmptyLabel,
-      mentionNoMatchLabel,
       caretProvider,
       lyrics,
       promptEditorRef,
@@ -636,7 +635,6 @@ function AudioGeneratePanelBody({
           references={references}
           referenceKinds={NO_REFERENCE_KINDS}
           mentionEmptyLabel={mentionEmptyLabel}
-          mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
         />
       ) : null,
@@ -648,7 +646,6 @@ function AudioGeneratePanelBody({
       onLyricsFocus,
       references,
       mentionEmptyLabel,
-      mentionNoMatchLabel,
       caretProvider,
       lyricsEditorRef,
     ],

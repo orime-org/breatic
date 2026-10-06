@@ -98,12 +98,18 @@ export function renderProductGuide(): string {
     "",
     "## The top bar",
     "Left to right: the brand mark, which opens our website in a new tab; an arrow with the word Studio, which " +
-      "goes back to the studio; the project's name, which double-clicking renames (Enter or clicking away saves, " +
-      "Esc or an empty name keeps the old one); and the reader's role, " +
+      "goes back to the studio; the project's name, which the project's owner or the studio's admin renames by " +
+      "double-clicking it (Enter or clicking away saves, Esc or an empty name keeps the old one); and the reader's role, " +
       `${quoted(t("role.owner"))} or ${quoted(t("role.editor"))}.`,
     "On the right: the members' pictures with a small arrow, which open " +
-      `${quoted(t("members.popover.title"))}; for the owner that list ends with ` +
-      `${quoted(t("members.popover.manage"))}, which opens ${quoted(t("members.modal.title"))}. There each ` +
+      `${quoted(t("members.popover.title"))}. For an editor or a viewer that list ends with ` +
+      `${quoted(t("project.leave.action"))}, which asks to confirm first, with ` +
+      `${quoted(t("project.leave.confirm"))}; once they leave they are taken back to their recent projects and can ` +
+      "no longer open the project. A member of the project's studio also finds it on the project's card in " +
+      "the studio. The owner has to " +
+      "transfer the project to someone else before leaving, and nobody can leave an archived project. " +
+      `For the owner the list ends with ${quoted(t("members.popover.manage"))}, which opens ` +
+      `${quoted(t("members.modal.title"))}. There each ` +
       "member's row has a list to change their role to " +
       `${quoted(t("role.editor"))} or ${quoted(t("role.viewer"))}, and ` +
       `${quoted(t("members.modal.remove"))}, which asks ${quoted(t("members.modal.removeConfirmTitle"))} first; ` +
@@ -138,7 +144,9 @@ export function renderProductGuide(): string {
       "An item someone is waiting on, such as an invitation or a transfer, shows how long is left and " +
       `${quoted(t("notifications.openDecision"))}, which leaves this page for a page where it is answered; it ` +
       `goes once it is answered or runs out. Any other item shows ${quoted(t("notifications.markRead"))}, ` +
-      "which takes it off the list.",
+      "which takes it off the list. While any such item is there, the header has " +
+      `${quoted(t("notifications.markAllRead"))} beside the count, which takes all of them off at once and leaves ` +
+      "the items someone is waiting on.",
     `When a new version of the site is out, a ${quoted(t("project.update.available"))} button appears on the ` +
       `right; it opens ${quoted(t("project.update.title"))} with ${quoted(t("project.update.description"))} ` +
       `(${quoted(t("project.update.busy"))} while an upload runs) and asks whether to refresh now ` +
@@ -221,8 +229,15 @@ export function renderProductGuide(): string {
       "chip that could not be uploaded or read shows a red mark and says why; it has to be removed with its X before " +
       "the message can go. Something that cannot be attached at all -- too many items, a file too large or of a " +
       `kind that is not taken, or ${quoted(t("chat.composer.attachTooLong"))} -- is said on a line beside the ` +
-      "plus sign. Dropping or pasting a file into the box attaches nothing. A sent message cannot be edited and a " +
+      "plus sign. Pasting canvas nodes copied on the canvas, or a picture copied in this chat, into the box " +
+      "attaches them too. A sent message cannot be edited and a " +
       "reply cannot be regenerated: to ask again, send another message.",
+    "Typing @ in the box opens a list, just above the @, of the attachments that have finished uploading; it " +
+      `reads ${quoted(t("chat.composer.atEmpty"))} when there are none. Typing narrows it and the list goes away ` +
+      "while what is typed after the @ matches none, so the @ stays ordinary text; the arrow keys move through it, Enter or " +
+      "Tab puts the highlighted one into the text as a small block with its name, and Escape closes it. One " +
+      "Backspace removes a block, and removing an attachment removes its blocks. The message is sent with " +
+      "those references, so it is clear which attachment each one means.",
     "While a reply is being written a small dot pulses at its end. Hovering a message the reader sent shows " +
       "when it was sent and a copy icon. A reply may start with a fold " +
       `that opens to show the thinking; it reads ${quoted(t("chat.thinkingNow"))} while the thinking runs, and ` +
@@ -477,8 +492,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.refuseExecuteNoVoice"))} or ` +
       `${quoted(t("canvas.generatePanel.errorNoSourceImage"))} The music modes may ask ` +
       `${quoted(t("canvas.generatePanel.refuseExecuteNoStyle"))}, ${quoted(t("canvas.generatePanel.lyricsMissing"))} ` +
-      `or ${quoted(t("canvas.generatePanel.refuseExecuteNoReference"))}. When a storyboard is split into shots ` +
-      "(see the video panel below), the shots take the prompt's place, and pressing it may say " +
+      `or ${quoted(t("canvas.generatePanel.refuseExecuteNoReference"))}. In the video panel's Multi-Shot mode ` +
+      "(see below), the shots take the prompt's place, and pressing it may say " +
       `${quoted(t("canvas.generatePanel.refuseStoryboardShotEmpty", { shot: 2 }))}, ` +
       `${quoted(t("canvas.generatePanel.refuseStoryboardShotTooLong", { shot: 2, limit: 512 }))}, ` +
       `${quoted(t("canvas.generatePanel.refuseStoryboardDurationMismatch", { shots: 6, total: 5 }))} or ` +
@@ -569,36 +584,44 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.duration"))}, a ${quoted(t("canvas.generatePanel.generateAudio"))} ` +
       "switch on models that can, and any settings of the model's own. A setting the model does not have is left " +
       "out.",
-    `- Storyboard, on the video models that offer it: under the prompt box is a row with a ` +
-      `${quoted(t("canvas.generatePanel.storyboard.label"))} switch reading ` +
-      `${quoted(t("canvas.generatePanel.switchOff"))} or ${quoted(t("canvas.generatePanel.switchOn"))}. On, the ` +
-      `model splits the prompt into shots itself, and the row says ` +
-      `${quoted(t("canvas.generatePanel.storyboard.autoHint"))}. ` +
-      `${quoted(t("canvas.generatePanel.storyboard.perShot"))} at the right end of that row splits it by hand: the ` +
-      "prompt box gives way to one card per shot, and the right end of the row reads " +
-      `${quoted(t("canvas.generatePanel.storyboard.addShot"))} then ` +
-      `${quoted(t("canvas.generatePanel.storyboard.back"))}. A card, such as ` +
+    `- On a video model that reads camera commands (MiniMax H3), a ${quoted(t("canvas.generatePanel.cameraCommands"))} ` +
+      "pill with a four-arrow icon follows the settings pill. Clicking it opens the commands laid out in rows by " +
+      "axis, named in English as the model reads them (for example Truck left, Pan right, Push in, Static shot); " +
+      `a pane at the top reads ${quoted(t("canvas.generatePanel.cameraCommandsPreviewHint"))} until a command is ` +
+      "hovered or reached with Tab, then plays that command's clip and keeps the last one. Clicking a command picks it and shows its pick order after its " +
+      "name, clicking it again drops it. Picking the other direction of the same row replaces the one picked, and " +
+      "Static shot and any movement replace each other. Up to three can be picked; at three, the picked commands stay clickable to drop them, and every other " +
+      "command that would not replace a pick greys out. " +
+      "The picks show as their bracket beside the count at the bottom. " +
+      `${quoted(t("canvas.generatePanel.cameraCommandsInsert"))} writes the picks into the prompt as one bracket, ` +
+      "such as [Push in,Zoom out], at the caret last left in the prompt box, or at its end if none was; in " +
+      "Multi-Shot it goes into the shot box clicked into last, or the first shot. The bracket is ordinary text " +
+      "that can be edited or deleted. Inserting again adds another bracket, and separate brackets run in the order " +
+      "they appear in the prompt.",
+    `- Multi-Shot, a mode in the video panel's mode picker: the prompt box gives way to one card per shot, and ` +
+      "switching into it with no shots lays out two, splitting the video's length. A card, such as " +
       `${quoted(t("canvas.generatePanel.storyboard.shot", { n: 1 }))}, has a minus and a plus around its ` +
       `seconds, ${quoted(t("canvas.generatePanel.storyboard.removeShot"))}, and a box, ` +
       `${quoted(t("canvas.generatePanel.storyboard.shotPlaceholder"))}, that takes @ mentions like the prompt; ` +
-      "clicking a chip in the strip puts it in that shot box if the prompt box clicked into last was a shot; " +
-      "otherwise, including after clicking the main prompt box, it goes into the first shot. While split by " +
-      "hand, the shots' seconds keep adding up to the video's length: the plus takes a second from another " +
-      "shot and the minus gives one to the shot after it, or to the one before it on the last shot, so the " +
-      "minus is greyed at one second or " +
+      "clicking a chip in the strip puts it in the shot box clicked into last, or in the first shot. Under the " +
+      `cards, in the middle, is ${quoted(t("canvas.generatePanel.storyboard.addShot"))}. The shots' seconds keep ` +
+      "adding up to the video's length: the plus takes a second from another shot and the minus gives one to " +
+      "the shot after it, or to the one before it on the last shot, so the minus is greyed at one second or " +
       "when there is only one shot, and the plus is greyed when no other shot has a second to spare. In the " +
-      "settings pill a duration shorter than the number of shots is greyed, and picking another one re-splits " +
-      "the shots. A duration shortened while the shots were hidden can leave fewer seconds than shots; they " +
-      "then stay as they were and pressing generate says they do not add up: remove shots until there are no " +
-      "more shots than seconds, and the rest are re-split, or pick a duration at least as long as the number " +
-      `of shots. ${quoted(t("canvas.generatePanel.storyboard.addShot"))} is greyed with ` +
-      `${quoted(t("canvas.generatePanel.storyboard.shotCapReached", { max: 6 }))} at the model's limit, or with ` +
+      "settings pill a duration shorter than the number of shots is greyed, and picking another one, or another " +
+      "model, re-splits the shots. A duration shortened in another mode can leave fewer seconds than shots; " +
+      "they then stay as they were and pressing generate says they do not add up: remove shots until there are " +
+      "no more shots than seconds, and the rest are re-split, or pick a duration at least as long as the number " +
+      `of shots. When no shot can be added, ${quoted(t("canvas.generatePanel.storyboard.addShot"))} gives way to ` +
+      `${quoted(t("canvas.generatePanel.storyboard.shotCapReached", { max: 6 }))} at six shots, or ` +
       `${quoted(t("canvas.generatePanel.storyboard.noSecondToSpare"))} when the video has no more seconds than ` +
       "there are shots; " +
       `${quoted(t("canvas.generatePanel.storyboard.removeShot"))} is greyed while only one shot is left. ` +
-      `${quoted(t("canvas.generatePanel.storyboard.back"))}, or turning the switch off, brings the prompt box ` +
-      "back with its words, and the shots are kept for next time. Split by hand, the run sends the shots and the " +
-      "nodes mentioned in them, and the prompt box's words are not sent. Each mode keeps its own storyboard.",
+      "An image-to-video model also shows its first frame slot here, and a reference model takes the nodes the " +
+      "shots mention. The run sends the shots and the nodes mentioned in them; switching to another mode brings " +
+      "that mode's prompt box back with its words, and the shots are kept for next time. On the Kling models, " +
+      `text to video and image to video have a ${quoted(t("canvas.generatePanel.param.auto_shots"))} switch in ` +
+      "the settings pill: on, the model splits the prompt into shots itself.",
     `- Sound panel: tool ${quoted(t("canvas.generatePanel.reference"))}, then the source slots. Here only a ` +
       "connected text node can be mentioned; a connected sound shows as a faded chip, and a sound goes in through " +
       "its slot. On a model with voices the settings pill shows a speaker icon and the current voice and " +
@@ -710,7 +733,7 @@ export function renderProductGuide(): string {
     "Connected nodes and focus crops are offered but not sent until the prompt mentions them. In the prompt, type " +
       "@ and choose from the list that opens: it holds the nodes connected into this one and this node's focus " +
       "crops, less any the current mode and model cannot take. Letters typed after @ narrow the list, which shows " +
-      "up to eight rows; the arrow keys move through it, Enter picks and Esc closes it. Only choosing a row makes " +
+      "up to eight rows and goes away while they match none; the arrow keys move through it, Enter picks and Esc closes it. Only choosing a row makes " +
       "a mention, and typing the name alone does not. With nothing to offer the list shows " +
       `${quoted(t("canvas.generatePanel.mentionEmpty"))}. Clicking a chip in the strip above the prompt inserts ` +
       "it too; a faded chip shows a message saying why instead, such as " +
@@ -747,7 +770,7 @@ export function renderProductGuide(): string {
       "keys work when the canvas was the last thing clicked and no box is being typed in: after pressing a " +
       "button in this chat, click empty canvas first, or use the bar. Undo takes back only the reader's own " +
       "changes: adding, deleting and moving nodes, connections and groups, a group's size and colour, names, " +
-      "locks, a node's mode, model, settings and slots, a video's storyboard and its shots, and notes and their replies. It does not take back what " +
+      "locks, a node's mode, model, settings and slots, a video's shots, and notes and their replies. It does not take back what " +
       "a generation or an upload put in a node (use the node's " +
       `${quoted(t("canvas.nodeMenu.history"))}), a focus crop (press the X on its chip), or other people's ` +
       "changes. Undoing a removed connection, or a deleted node with its connections, brings them back, but " +
@@ -775,10 +798,9 @@ export function renderProductGuide(): string {
       "With one generating node its panel opens by itself; with several, the group is selected and the reader " +
       `right-clicks each node and chooses ${quoted(t("canvas.nodeMenu.generate"))}.`,
     "Each generating node arrives empty, with its mode, model and the settings the proposal chose already set " +
-      "and, when the model has a prompt box, its prompt written. A video node on a model with a storyboard may " +
-      "instead arrive with the storyboard switched on, or split into shots with each shot's words written and " +
-      "the prompt box empty; its panel then opens on the shots. The prompt and shots go into the proposal's " +
-      "mode only, so switching mode shows that mode's own box. Where the model has no prompt box, a picture or video " +
+      "and, when the model has a prompt box, its prompt written. A video node in Multi-Shot arrives with its " +
+      "shots, each with its words and seconds written, and its panel opens on them. The prompt goes into the " +
+      "proposal's mode only, so switching mode shows that mode's own box. Where the model has no prompt box, a picture or video " +
       `panel shows ${quoted(t("canvas.generatePanel.promptNotUsed"))} in place of the box, and a sound panel ` +
       "still shows a box that holds only the proposal's bracketed spots, if any; nothing typed there is sent. " +
       "The reader generates the nodes in the order the card's arrows run, and waits for each to show its result " +
@@ -978,8 +1000,8 @@ export function renderProductGuide(): string {
       `comes back. ${quoted(t("connection.banner.authFailed.text"))} offers ` +
       `${quoted(t("connection.banner.authFailed.action"))} and ${quoted(t("connection.banner.reload"))}, and ` +
       "covers the work area the same way. It shows when the session ran out, and also when the reader was " +
-      "removed from the project or the project was deleted: if signing in again does not let them back in, it " +
-      "is one of those, and the project's owner can say which. With a document open, " +
+      "removed from the project: if signing in again does not let them back in, they were removed, and the " +
+      "project's owner can say why. With a document open, " +
       `${quoted(t("spaces.document.refusedNotice"))} also shows for a moment; nothing typed after it is saved, ` +
       "but the keyboard still reaches the document: press Cmd/Ctrl+A twice, then Cmd/Ctrl+C, to copy it out " +
       "before signing in again or reloading.",

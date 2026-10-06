@@ -59,7 +59,7 @@ async function askInFreshConversation(
   p: Page,
   prompt: string,
 ): Promise<{ reply: string; toolLines: string }> {
-  const composer = p.getByTestId('chat-composer-textarea');
+  const composer = p.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
   await p.getByTestId('new-conversation').click();
@@ -178,7 +178,7 @@ test('says what an audio clip sounds like @needs-internet @needs-model', async (
 test('says what it is doing while the call is in flight @needs-internet @needs-model', async () => {
   test.setTimeout(240_000);
 
-  const composer = page.getByTestId('chat-composer-textarea');
+  const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
   await page.getByTestId('new-conversation').click();
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });

@@ -69,6 +69,9 @@ catalogs:
     '@tiptap/extension-text':
       specifier: 3.29.2
       version: 3.29.2
+    '@tiptap/extensions':
+      specifier: 3.29.2
+      version: 3.29.2
     '@tiptap/pm':
       specifier: 3.29.2
       version: 3.29.2
@@ -846,6 +849,9 @@ importers:
       '@tiptap/extension-text':
         specifier: 'catalog:'
         version: 3.29.2(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))
+      '@tiptap/extensions':
+        specifier: 'catalog:'
+        version: 3.29.2(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)
       '@tiptap/pm':
         specifier: 'catalog:'
         version: 3.29.2

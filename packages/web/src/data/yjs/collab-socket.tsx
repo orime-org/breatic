@@ -8,6 +8,7 @@ import {
 import * as React from 'react';
 import type * as Y from 'yjs';
 
+import { isReauthCloseReason } from '@breatic/shared';
 import { destroyDoc } from '@web/data/yjs/manager';
 
 /**
@@ -237,6 +238,20 @@ export function acquireDocProvider(
   // server has started accepting this document again.
   provider.on('authenticated', () => {
     entry.facts.authFailure = null;
+  });
+  // Collab closed this one document so the server can answer again with a
+  // changed scope (archived, restored, role changed, content replaced). Only
+  // the document closed; the shared socket is still open, so nothing would
+  // ever re-send the token and the document would sit disconnected. Re-run
+  // the provider's own open step on the same socket: token, then sync.
+  // Not `detach()` + `attach()`: detaching sends a CLOSE of its own, which the
+  // server queues and then applies to the fresh connection right behind it.
+  // When the socket itself is down there is no open payload, and the socket's
+  // reconnect re-opens every attached document anyway.
+  provider.on('close', (data: { event?: { reason?: string } } | undefined) => {
+    const opened = websocketProvider.receivedOnOpenPayload;
+    if (!isReauthCloseReason(data?.event?.reason) || opened === undefined) return;
+    void provider.onOpen(opened);
   });
   // A shared-websocketProvider provider does NOT auto-attach (its constructor
   // only auto-attaches when it manages its own socket). Attach explicitly or it

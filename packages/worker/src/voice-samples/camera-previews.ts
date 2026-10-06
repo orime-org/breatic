@@ -1,0 +1,84 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * Which camera command preview clips the sample address has to serve, and how
+ * each is made. Every clip is generated from the same scene description with
+ * one command, so the camera movement is the intended difference between them.
+ */
+
+import type { FullModelEntry } from "@breatic/domain";
+import { cameraCommandBracket } from "@breatic/shared";
+
+import type { VoiceSampleJob } from "@worker/voice-samples/plan.js";
+
+/** The scene every preview films: a subject in the middle, depth behind it. */
+export const CAMERA_PREVIEW_SCENE =
+  "A red vintage car parked on a quiet street of white townhouses, the car in the middle of the frame, late afternoon light, realistic.";
+
+/**
+ * What a run sends besides the prompt: each of the entry's panel params at its
+ * own default, so a clip costs what a run at the model's defaults costs.
+ * @param model - The text-to-video entry making the clips.
+ * @returns The params, in the upstream's field names.
+ */
+function defaultsOf(model: FullModelEntry): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(model.params ?? {})
+      .filter(([, spec]) => spec.fill === "panel" && spec.default !== undefined && spec.default !== null)
+      .map(([name, spec]) => [spec.upstream ?? name, spec.default]),
+  );
+}
+
+/**
+ * Whether an entry serves text-to-video, which a clip needs: the scene is all
+ * it is given.
+ * @param model - The entry.
+ * @returns True when it does.
+ */
+function servesTextToVideo(model: FullModelEntry): boolean {
+  return (Array.isArray(model.mode) ? model.mode : [model.mode]).includes("t2v");
+}
+
+/**
+ * One job per preview key the video catalog names, made by a text-to-video
+ * entry that declares that key.
+ * @param models - The video catalog's entries.
+ * @returns The jobs, in catalog order.
+ * @throws {Error} When a key is declared only by entries that cannot make it from text.
+ */
+export function planCameraPreviews(models: readonly FullModelEntry[]): VoiceSampleJob[] {
+  const keys = [...new Set(models.flatMap((m) => (m.camera_commands ?? []).map((c) => c.sample_key)))];
+  const declared = models.flatMap((maker) =>
+    servesTextToVideo(maker) ? (maker.camera_commands ?? []).map((command) => ({ maker, command })) : [],
+  );
+  return keys.map((key) => {
+    const found = declared.find(({ command }) => command.sample_key === key);
+    if (!found) throw new Error(`${key}: no text-to-video entry declares it, so nothing can make the clip`);
+    const { maker, command } = found;
+    return {
+      model: maker.name,
+      key,
+      body: { [maker.prompt_upstream ?? "prompt"]: `${CAMERA_PREVIEW_SCENE} ${cameraCommandBracket([command.name])}`, ...defaultsOf(maker) },
+    };
+  });
+}
+
+/**
+ * The ffmpeg arguments that turn a generated clip into its preview: 640 wide,
+ * no sound, and the index (`moov`) moved to the front so a browser can start
+ * playing before the whole file has arrived.
+ * @param input - The generated clip's path.
+ * @param output - Where the preview is written.
+ * @returns The arguments, input first and output last.
+ */
+export function previewTranscodeArgs(input: string, output: string): string[] {
+  return [
+    "-y", "-i", input,
+    "-an",
+    "-vf", "scale=640:-2",
+    "-c:v", "libx264", "-preset", "slow", "-crf", "30", "-pix_fmt", "yuv420p",
+    "-movflags", "+faststart",
+    output,
+  ];
+}

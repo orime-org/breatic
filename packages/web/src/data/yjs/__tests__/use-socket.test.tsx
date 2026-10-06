@@ -209,6 +209,29 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
     expect(result.current.hasEverSynced).toBe(true);
   });
 
+  it('does not call it a disconnect when collab closes the document to re-check it', () => {
+    // The registry re-sends the token right away; showing the reader a
+    // disconnect in the meantime would flash the banner on every archive,
+    // restore and role change.
+    const doc = new Y.Doc();
+    const name = 'project-p1/document-s3';
+    const { result } = renderHook(() => useSocket({ name, doc }), {
+      wrapper: wrapper('u1'),
+    });
+
+    act(() => {
+      providerInstances[0]!.synced = true;
+      providerInstances[0]!.emit('synced');
+    });
+    act(() => {
+      providerInstances[0]!.synced = false;
+      providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Project archived' } });
+    });
+
+    expect(result.current.status).toBe('connected');
+    expect(result.current.hasEverSynced).toBe(true);
+  });
+
   it('forgets once the document itself is torn down', () => {
     // Closing the Space tab releases the last reference; the provider and the
     // Y.Doc are both destroyed. What comes back on a reopen is a fresh

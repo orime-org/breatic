@@ -49,13 +49,15 @@ import type { SpaceType } from '@breatic/shared';
 import { AgentColumn } from '@web/pages/project/chrome/AgentColumn';
 import { LoadingOverlay } from '@web/pages/project/chrome/LoadingOverlay';
 import { LoadingScreen } from '@web/components/loading-screen';
+import { ArchivedBanner } from '@web/pages/project/chrome/ArchivedBanner';
 import { ConnectionBanner } from '@web/pages/project/chrome/ConnectionBanner';
 import {
   LeftFloatingMenu,
 } from '@web/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
 import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
-import { useRenameProject } from '@web/pages/project/use-rename-project';
+import { useRefreshOnReauth } from '@web/pages/project/use-refresh-on-reauth';
+import { useRenameProject } from '@web/features/project-manage/use-rename-project';
 import {
   initialTabState,
   reduceTabState,
@@ -165,12 +167,13 @@ export default function ProjectPage(): React.JSX.Element {
 
   const { refetch } = projectQuery;
   const retry = React.useCallback(() => { void refetch(); }, [refetch]);
+  const preferencesRestored = useRestoredPreferences(userId, projectId);
   if (projectQuery.error instanceof ApiException && projectQuery.error.status === 404) return <main><NotFoundScreen /></main>;
   if (projectQuery.error instanceof ApiException && projectQuery.error.status === 403) {
     return <ProjectJoinGate projectId={projectId} />;
   }
   if (projectQuery.isError && !projectQuery.data) return <main><ResourceLoadError onRetry={retry} /></main>;
-  if (!projectQuery.data) return <LoadingScreen />;
+  if (!projectQuery.data || !preferencesRestored) return <LoadingScreen />;
   return (
     <CollabSocketProvider userId={userId}>
       {/*
@@ -184,6 +187,30 @@ export default function ProjectPage(): React.JSX.Element {
       <ProjectWorkspace key={projectId} projectId={projectId} project={projectQuery.data} />
     </CollabSocketProvider>
   );
+}
+
+/**
+ * Load this account's stored interface preferences into the stores before the
+ * workspace renders: whether the Agent panel is open in this project, and the
+ * canvas minimap and snap. Both stores outlive a project page and start from
+ * fixed defaults, so without this the first frame shows whatever the previous
+ * page or the defaults left, and the Agent column mounts before being hidden.
+ *
+ * The layout effect runs before paint, and the workspace is held back until
+ * it has run for this account and project.
+ * @param userId - The signed-in account.
+ * @param projectId - The project being opened.
+ * @returns Whether the stores now hold this account's values for this project.
+ */
+function useRestoredPreferences(userId: string | undefined, projectId: string): boolean {
+  const key = `${userId ?? ''}/${projectId}`;
+  const [restoredFor, setRestoredFor] = React.useState<string | null>(null);
+  React.useLayoutEffect(() => {
+    useUIStore.getState().restoreAgentPanel(userId, projectId);
+    useCanvasStore.getState().restoreViewPreferences(userId);
+    setRestoredFor(key);
+  }, [key, userId, projectId]);
+  return restoredFor === key;
 }
 
 /**
@@ -238,7 +265,12 @@ function ProjectWorkspace({
   // Fail-safe default: if `myRole` is missing (glitch / pre-load race),
   // treat the caller as the most-restrictive 'viewer' so chrome affordances
   // stay hidden rather than leaking owner/editor actions (user 2026-06-18).
-  const role = project.myRole ?? 'viewer';
+  const actualRole = project.myRole ?? 'viewer';
+  // An archived project is read-only for every member, whatever their role, so
+  // everything below that gates on the role reads this one value. The real
+  // role only reaches the role tag, which shows it.
+  const archived = project.archivedAt !== null;
+  const role = archived ? 'viewer' : actualRole;
   // Viewer affordance model (access-permission § 6.2, option B): the canvas
   // left creation menu stays visible + disabled (LeftFloatingMenu) and the
   // canvas body is read-only (SpaceOutlet); everything else a viewer cannot
@@ -293,6 +325,10 @@ function ProjectWorkspace({
   // Unconditional on purpose: no filtering on whether we already know the id,
   // which would have quietly kept showing the old name for everyone listed.
   useRosterRefreshOnJoin(projectId, users);
+  // Archived, restored, a role changed: collab closes the documents and the
+  // connection re-authenticates by itself, but the banner and the role gates
+  // read the project query, so that is refetched too.
+  useRefreshOnReauth(provider, projectId);
   // The whole tab bar, held here and nowhere else. Every cell of the
   // transition table is one action on this reducer, so the strip and the
   // active tab have a single writer.
@@ -878,11 +914,18 @@ function ProjectWorkspace({
             data-workspace=''
             data-workspace-disabled={workspaceDisabled || undefined}
           >
+            {archived ? (
+              <ArchivedBanner projectId={projectId} canRestore={project.canRestore} />
+            ) : null}
             <TopBar
               connectionStatus={connectionStatus}
               projectId={projectId}
               projectName={projectName}
               role={role}
+              actualRole={actualRole}
+              archived={archived}
+              canRename={project.canManageMeta}
+              canLeave={project.canLeave}
               credits={credits}
               onRename={(next) => renameMutation.mutate(next)}
               members={members}
@@ -914,7 +957,10 @@ function ProjectWorkspace({
                     groupResizeBehavior='preserve-pixel-size'
                     style={PANEL_STYLE}
                   >
-                    <AgentColumn projectId={projectId} />
+                    <AgentColumn
+                      projectId={projectId}
+                      {...(activeSpace?.type === 'canvas' ? { canvasSpaceId: activeSpace.id } : {})}
+                    />
                   </Panel>
                   {/* The line between the two columns. What answers a pointer
                   around it is wider than the line twice over: the transparent

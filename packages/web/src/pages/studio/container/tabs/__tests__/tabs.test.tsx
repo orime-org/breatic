@@ -28,6 +28,12 @@ const STUDIO_VISIBLE: ContainerProject = {
   thumbnailUrl: null,
   myRole: 'viewer',
   createdAt: '2026-06-01T00:00:00.000Z',
+  archivedAt: null,
+  canManageMeta: false,
+  canDuplicate: false,
+  canArchive: false,
+  canRestore: false,
+  canLeave: false,
 };
 const NOT_JOINED: ContainerProject = {
   id: 'b',
@@ -36,12 +42,18 @@ const NOT_JOINED: ContainerProject = {
   thumbnailUrl: null,
   myRole: null,
   createdAt: '2026-06-01T00:00:00.000Z',
+  archivedAt: null,
+  canManageMeta: false,
+  canDuplicate: false,
+  canArchive: false,
+  canRestore: false,
+  canLeave: false,
 };
 
 describe('ProjectsTab', () => {
   it('shows a guest every project the server listed, including ones they are not on', () => {
     withQuery(
-      <ProjectsTab projects={[STUDIO_VISIBLE, NOT_JOINED]} studioRole='guest' studioSlug='acme' />,
+      <ProjectsTab projects={[STUDIO_VISIBLE, NOT_JOINED]} studioRole='guest' />,
     );
     expect(screen.getByText('Open Project')).toBeInTheDocument();
     expect(screen.getByText('Other Project')).toBeInTheDocument();
@@ -49,7 +61,7 @@ describe('ProjectsTab', () => {
 
   it('offers create to an admin/maintainer, never to a guest or non-member (spec §7.1)', () => {
     const admin = withRouter(
-      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='admin' studioSlug='acme' />,
+      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='admin' />,
     );
     expect(
       screen.getByRole('button', { name: 'New project' }),
@@ -57,7 +69,7 @@ describe('ProjectsTab', () => {
     admin.unmount();
 
     const maintainer = withRouter(
-      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='maintainer' studioSlug='acme' />,
+      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='maintainer' />,
     );
     expect(
       screen.getByRole('button', { name: 'New project' }),
@@ -67,13 +79,13 @@ describe('ProjectsTab', () => {
     // A plain guest cannot create — creating is limited to admin/maintainer
     // (spec §0.2 / §8.2).
     const guest = withRouter(
-      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='guest' studioSlug='acme' />,
+      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='guest' />,
     );
     expect(screen.queryByRole('button', { name: 'New project' })).toBeNull();
     guest.unmount();
 
     // A non-member viewing the public shell never sees the create entry.
-    withRouter(<ProjectsTab projects={[STUDIO_VISIBLE]} studioRole={null} studioSlug='acme' />);
+    withRouter(<ProjectsTab projects={[STUDIO_VISIBLE]} studioRole={null} />);
     expect(screen.queryByRole('button', { name: 'New project' })).toBeNull();
   });
 });

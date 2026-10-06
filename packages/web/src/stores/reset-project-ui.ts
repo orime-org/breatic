@@ -20,6 +20,9 @@ import { useUIStore } from '@web/stores/ui';
  * Each store resets only its per-project SESSION state. Deliberately preserved:
  *   - layout preferences (`useUIStore` sidebar / chat-panel collapse),
  *   - canvas viewport preferences (`useCanvasStore` minimap / snap / zoom),
+ *   the chat-panel collapse, minimap and snap being loaded for the next
+ *   project's account by `ProjectPage` (`restoreAgentPanel`,
+ *   `restoreViewPreferences`) before its workspace mounts;
  *   - brush preferences (`useInpaintStore` size / color / opacity / tool).
  * Deliberately UNTOUCHED: `useSpaceOperationsStore` — it refcounts real in-flight
  * upload work, not UI panel state; clearing it could mask a lost local write-back.

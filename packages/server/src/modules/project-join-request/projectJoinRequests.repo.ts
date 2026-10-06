@@ -342,7 +342,7 @@ export async function listLivePendingForProject(
  *
  * The decision path locks the requester's studio membership, then the project,
  * then the request (the order every path touching join requests shares with
- * the delete cascade), so it needs both ids first. Neither column ever
+ * the archive sweep), so it needs both ids first. Neither column ever
  * changes, so an unlocked read is safe; whether the request may still be
  * answered is decided under the locks.
  * @param id - Request id.

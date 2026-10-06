@@ -258,7 +258,7 @@ async function scene(): Promise<{
 describe("seeing and opening (A1 A4 A11)", () => {
   it("a studio member sees every project in the studio, including ones they are not on", async () => {
     const { fx, requester, project } = await scene();
-    const listed = await projectService.listByStudioForViewer(fx.studioId, requester.id);
+    const listed = await projectService.listByStudioForViewer(fx.studioId, requester.id, { archived: false });
     expect(listed.map((p) => p.id)).toContain(project.id);
   });
 
@@ -291,7 +291,7 @@ describe("seeing and opening (A1 A4 A11)", () => {
   it("the join-request read names the project and its studio, with no pending request yet", async () => {
     const { fx, requester, project } = await scene();
     const mine = await joinService.getMine(project.id, requester.id);
-    expect(mine.project).toEqual({ id: project.id, name: project.name, studioSlug: fx.studioSlug });
+    expect(mine.project).toEqual({ id: project.id, name: project.name, studioSlug: fx.studioSlug, archivedAt: null });
     expect(mine.pendingRequest).toBeNull();
   });
 });

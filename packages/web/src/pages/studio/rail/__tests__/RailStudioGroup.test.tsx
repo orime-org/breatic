@@ -43,7 +43,7 @@ function renderGroup(over: Partial<React.ComponentProps<typeof RailStudioGroup>>
         studios={STUDIOS}
         activeSlug={null}
         emptyText='none yet'
-        collapseKey='rail.test.group'
+        section='mine'
         {...over}
       />
     </MemoryRouter>,

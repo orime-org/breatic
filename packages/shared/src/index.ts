@@ -65,6 +65,7 @@ export type {
   RemoteParamSource,
   ModelProvider,
   ModelEntry,
+  CameraCommandEntry,
   PricingContract,
   ExtraStep,
   SourceGroup,
@@ -109,8 +110,9 @@ export type {
   Space,
   MembersChangedEvent,
   ActivityNewControlEvent,
-  ProjectDeletedLifecycleEvent,
   ProjectDuplicatedLifecycleEvent,
+  ProjectArchivedLifecycleEvent,
+  ProjectRestoredLifecycleEvent,
   ProjectLifecycleEvent,
   Voice,
   VoicePage,
@@ -283,6 +285,7 @@ export {
   chatRenameConversationSchema,
   CHAT_MESSAGE_MAX_CHARS,
   CONVERSATION_TITLE_MAX_CHARS,
+  PROJECT_NAME_MAX_CHARS,
 } from "@shared/schemas/index.js";
 
 export type {
@@ -331,6 +334,8 @@ export {
   isProjectScopedDocName,
 } from "@shared/yjs-doc-names.js";
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
+
+export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
 
 export {
   documentBodyFragment,
@@ -391,8 +396,23 @@ export {
   retotal,
   stepShot,
 } from "@shared/storyboard-durations.js";
-export { asStoryboardKind, effectiveStoryboardKind, storyboardParams, storyboardSpec } from "@shared/storyboard.js";
-export type { StoryboardKind, StoryboardShotInput, StoryboardSpec } from "@shared/storyboard.js";
+export { modelLabel, type NamedModel } from "@shared/model-label.js";
+export {
+  CAMERA_COMMANDS,
+  CAMERA_COMMAND_AXES,
+  CAMERA_COMMANDS_PER_BRACKET,
+  STATIC_SHOT,
+  cameraCommandBracket,
+  isCameraCommand,
+  type CameraCommand,
+  type CameraCommandAxis,
+} from "@shared/camera-commands.js";
+export { appliesInMode, paramsForMode } from "@shared/param-modes.js";
+export {
+  storyboardSend,
+  storyboardSpec,
+} from "@shared/storyboard.js";
+export type { StoryboardSend, StoryboardShotInput, StoryboardSpec } from "@shared/storyboard.js";
 export { missingSources, fitsSomeMode } from "@shared/missing-sources.js";
 export { formatCredits } from "@shared/format-credits.js";
 export type { MissingSource, SourceSlot, SourcedModel } from "@shared/missing-sources.js";
@@ -415,12 +435,19 @@ export { extractPromptText } from "@shared/agent/extract-prompt.js";
 export { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
 export {
   ATTACHMENT_DATA_PART,
+  attachmentMarker,
   attachmentPart,
   attachmentSection,
   chipOfPart,
+  messageLength,
+  messageSegments,
+  referenceCount,
+  resolvedSegments,
+  wordsForTitle,
+  writeReferences,
   userTurnForModel,
 } from "@shared/agent/attachments.js";
-export type { AttachmentDataPart } from "@shared/agent/attachments.js";
+export type { AttachmentDataPart, MessageSegment, ResolvedSegment } from "@shared/agent/attachments.js";
 export {
   carrying,
   FAILURE_LINES,
@@ -672,3 +699,4 @@ export {
   type ReferenceKind,
   type ReferencePool,
 } from "@shared/reference-pool.js";
+export { REQUEST_NOTIFICATION_TYPES, isRequestNotification } from "@shared/request-notifications.js";

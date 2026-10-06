@@ -4,8 +4,8 @@
 /**
  * Transactional-outbox repository for project-lifecycle commands.
  *
- * The Yjs document store lives in a SEPARATE Postgres database, so a
- * project delete / duplicate can no longer cascade to `yjs_documents`
+ * The Yjs document store lives in a SEPARATE Postgres database, so what a
+ * project duplicate / archive / restore needs on the collab side cannot run
  * inside the business transaction. Instead the business write and an
  * outbox row are committed together here (atomic "command exists ⇔
  * business write happened"); the relay ({@link ./lifecycle-relay.ts})

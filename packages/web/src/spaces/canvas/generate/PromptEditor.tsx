@@ -6,6 +6,7 @@ import { Document } from '@tiptap/extension-document';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { Text } from '@tiptap/extension-text';
+import { Selection } from '@tiptap/pm/state';
 import { Editor, EditorContent } from '@tiptap/react';
 import * as React from 'react';
 import type * as Y from 'yjs';
@@ -22,11 +23,10 @@ import {
   extractAtMentionedSourceIds,
   planMentionDeletions,
   planChipDisplayUpdates,
-  MENTION_SOURCE_ID_ATTR,
-  REFERENCE_MENTION_NODE,
   type MentionOccurrence,
   type ChipDisplaySnapshot,
 } from '@web/spaces/canvas/generate/at-reference';
+import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import {
   MENTION_LABEL_ATTR,
@@ -35,10 +35,10 @@ import {
   referenceMentionContent,
   serializePromptText,
 } from '@web/spaces/canvas/generate/reference-mention';
-import { dispatchMachineEdit } from '@web/spaces/canvas/generate/reference-mention-local-input';
+import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
 import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
-import { planCascadeDeletion } from '@web/spaces/canvas/generate/reference-mention-whitespace';
+import { planCascadeDeletion } from '@web/features/reference-mention/reference-mention-whitespace';
 import { useFocusReturn } from '@web/lib/use-focus-return';
 
 /** Imperative handle exposed to the container to insert a reference at the cursor. */
@@ -59,6 +59,15 @@ export interface PromptEditorHandle {
    * @returns The backend prompt string, or null when the editor is not ready.
    */
   serializePrompt: (tokens?: MentionTokens) => string | null;
+  /**
+   * Inserts plain text at the caret the reader last left in this editor, or
+   * at the end when they never put one here. A popover opening takes focus
+   * away, so "has a caret" means "was focused since this editor was built",
+   * and the selection ProseMirror keeps through the blur is where it goes.
+   * A space is added on a side that would otherwise touch a word.
+   * @param text - The text to insert.
+   */
+  insertText: (text: string) => void;
 }
 
 /**
@@ -96,7 +105,8 @@ const keptOf = new WeakMap<
     wiring: PromptWiring;
     caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
     mentionEmptyLabel: string;
-    mentionNoMatchLabel: string;
+    /** Whether the reader has put a caret in this editor since it was built. */
+    caretPlaced: boolean;
     hadFocus: boolean;
     returning: boolean;
   }
@@ -176,13 +186,6 @@ interface PromptEditorProps {
   /** Localized empty-state text for the `@` picker popup. */
   mentionEmptyLabel: string;
   /**
-   * Localized text for "there IS something, your query filtered it out".
-   * Separate from {@link PromptEditorProps.mentionEmptyLabel}: telling a user
-   * whose typing narrowed a non-empty list that there is nothing would be a
-   * lie (user 2026-08-19).
-   */
-  mentionNoMatchLabel: string;
-  /**
    * The canvas-space doc's provider (its awareness carries collaborator
    * carets — batch-2 item 14). Null until the socket connects; the caret
    * extension mounts only when present (it throws on a null provider).
@@ -208,7 +211,6 @@ interface PromptEditorProps {
  * @param root0.references - The current reference pool (the `@` picker options).
  * @param root0.referenceKinds - The kinds of `@` chip the pool takes; the rest are inert (greyed).
  * @param root0.mentionEmptyLabel - Localized text for "this mode has nothing to offer".
- * @param root0.mentionNoMatchLabel - Localized text for "your query matched none of them".
  * @param root0.caretProvider - Canvas-space doc provider whose awareness carries collaborator carets (null until connected).
  * @param root0.testId - What tests reach for this editor by.
  * @param root0.startingHeight - How tall the box opens before anything is typed.
@@ -230,7 +232,6 @@ export const PromptEditor = React.forwardRef<
     references,
     referenceKinds,
     mentionEmptyLabel,
-    mentionNoMatchLabel,
     caretProvider = null,
     testId = 'generate-prompt-editor',
     startingHeight = 'full',
@@ -312,7 +313,6 @@ export const PromptEditor = React.forwardRef<
             suggestion: makeReferenceSuggestion({
               getPool: () => wiring.references,
               emptyLabel: mentionEmptyLabel,
-              noMatchLabel: mentionNoMatchLabel,
               // Same verdict as the rail's insert button, from the same call:
               // a row the picker offers is a row the rail would insert.
               getUsabilityContext: () => ({
@@ -331,13 +331,17 @@ export const PromptEditor = React.forwardRef<
         ],
         onCreate: ({ editor: e }) => report(e),
         onUpdate: ({ editor: e }) => report(e),
-        onFocus: () => wiring.onFocus?.(),
+        onFocus: ({ editor: e }) => {
+          const placed = keptOf.get(e);
+          if (placed !== undefined) placed.caretPlaced = true;
+          wiring.onFocus?.();
+        },
       });
       keptOf.set(built, {
         wiring,
         caretProvider,
         mentionEmptyLabel,
-        mentionNoMatchLabel,
+        caretPlaced: false,
         hadFocus: false,
         returning: false,
       });
@@ -351,22 +355,21 @@ export const PromptEditor = React.forwardRef<
       return built;
     };
     // A kept editor is reused while it is bound to the same caret connection
-    // with the same captured strings. The two mention labels are baked into
-    // the extensions and change only on a locale switch; the caret connection
+    // with the same captured string. The empty-list label is baked into the
+    // extensions and changes only on a locale switch; the caret connection
     // arrives once, on the socket's first connect.
     return keptEditor(spaceId, fragment, build, (kept) => {
       const bound = keptOf.get(kept);
       return (
         bound?.caretProvider === caretProvider &&
-        bound.mentionEmptyLabel === mentionEmptyLabel &&
-        bound.mentionNoMatchLabel === mentionNoMatchLabel
+        bound.mentionEmptyLabel === mentionEmptyLabel
       );
     });
     // Everything else reaches a kept editor through its wiring below, not by
     // rebuilding it. The panel's session is listed so that a panel ending
     // under a mounted editor builds this one a new editor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spaceId, fragment, caretProvider, mentionEmptyLabel, mentionNoMatchLabel, resolveName, panelSession]);
+  }, [spaceId, fragment, caretProvider, mentionEmptyLabel, resolveName, panelSession]);
 
   const kept = keptOf.get(editor);
   if (kept !== undefined) {
@@ -419,6 +422,27 @@ export const PromptEditor = React.forwardRef<
         } else {
           editor.chain().focus('end').insertContent(content).run();
         }
+      },
+      insertText: (text: string): void => {
+        if (editor.isDestroyed) return;
+        const { state } = editor;
+        const { from, to } = keptOf.get(editor)?.caretPlaced === true
+          ? state.selection
+          : Selection.atEnd(state.doc);
+        /**
+         * Whether the text between two positions is a non-space character.
+         * @param a - Start position.
+         * @param b - End position.
+         * @returns True when the insert would touch a word there.
+         */
+        const touches = (a: number, b: number): boolean => /\S/.test(state.doc.textBetween(a, b));
+        const before = from > 1 && touches(from - 1, from) ? ' ' : '';
+        const after = to < state.doc.content.size - 1 && touches(to, to + 1) ? ' ' : '';
+        editor
+          .chain()
+          .focus()
+          .insertContentAt({ from, to }, { type: 'text', text: `${before}${text}${after}` })
+          .run();
       },
       serializePrompt: (tokens?: MentionTokens): string | null =>
         editor.isDestroyed

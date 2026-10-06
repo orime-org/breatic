@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { Users } from 'lucide-react';
+import { LogOut, Users } from 'lucide-react';
 import * as React from 'react';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
@@ -34,6 +34,12 @@ interface MembersStackProps {
    * editor / viewer). Backend `requireRole` is the real enforcement.
    */
   currentUserRole?: MemberRole;
+  /**
+   * Leave the project. Given only when the reader may leave (a live
+   * project's editor or viewer); the list then ends with "Leave project"
+   * where the owner's ends with "Manage collaborators".
+   */
+  onLeave?: () => void;
 }
 
 const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'> = {
@@ -47,8 +53,9 @@ const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'>
  *
  * Stack uses the backend `Member` shape ({id, userId, name, email, role})
  * per 2026-05-28 spec § 5; the subtitle below each member name shows the
- * email. The popover is read-only — every row shows the member's role
- * badge. Removing / changing a member lives solely in the "Manage
+ * email. Every row is read-only and shows the member's role badge; the
+ * footer holds at most one action — "Manage collaborators" for the owner,
+ * "Leave project" for a member who may leave. Removing / changing a member lives solely in the "Manage
  * collaborators" modal (owner-only); the popover never offers a remove
  * control (2026-06-18 — the per-row hover-remove was dropped so remove
  * has a single home).
@@ -62,7 +69,7 @@ const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'>
 export const MembersStack = React.forwardRef<
   HTMLButtonElement,
   MembersStackProps
->(({ members, currentUserId, currentUserRole }, ref) => {
+>(({ members, currentUserId, currentUserRole, onLeave }, ref) => {
   const t = useTranslation();
   // Owner-only affordance (B model — hidden, not disabled): the manage
   // button only renders when the current user is owner.
@@ -72,13 +79,35 @@ export const MembersStack = React.forwardRef<
   const [open, setOpen] = React.useState(false);
   const setActiveOverlayId = useUIStore((s) => s.setActiveOverlayId);
 
-  /**
-   * Closes the popover and opens the members-management modal.
-   */
-  const openManage = (): void => {
+  const openManage = React.useCallback((): void => {
     setOpen(false);
     setActiveOverlayId('members-modal');
-  };
+  }, [setActiveOverlayId]);
+
+  const startLeave = React.useCallback((): void => {
+    setOpen(false);
+    onLeave?.();
+  }, [onLeave]);
+
+  // The footer holds one action: "Manage collaborators" for the owner,
+  // "Leave project" for a reader the page lets leave, nothing for anyone else.
+  const footer = isOwner
+    ? {
+      onClick: openManage,
+      icon: Users,
+      label: t('members.popover.manage'),
+      testId: 'members-manage-trigger',
+      variant: 'outline' as const,
+    }
+    : onLeave
+      ? {
+        onClick: startLeave,
+        icon: LogOut,
+        label: t('project.leave.action'),
+        testId: 'members-leave-trigger',
+        variant: 'destructive' as const,
+      }
+      : null;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -159,24 +188,22 @@ export const MembersStack = React.forwardRef<
             </li>
           ))}
         </ul>
-        {/* Manage collaborators is an owner-only affordance (B model —
-            hidden, not disabled, for editor / viewer). The whole footer
-            (separator + button) collapses when the user isn't owner so
-            there's no empty padded gap. Removing / role-changing members
-            happens inside this modal — never inline in the popover. */}
-        {isOwner ? (
+        {/* No footer at all for a reader without an action: no separator,
+            no padded gap. Removing / role-changing members happens inside
+            the manage modal — never inline in the popover. */}
+        {footer ? (
           <>
             <Separator className='my-1' />
             <div className='flex flex-col gap-2 p-2'>
               <Button
-                variant='outline'
+                variant={footer.variant}
                 size='form'
                 className='w-full justify-center gap-2 text-sm'
-                onClick={openManage}
-                data-testid='members-manage-trigger'
+                onClick={footer.onClick}
+                data-testid={footer.testId}
               >
-                <Users className='h-4 w-4' />
-                {t('members.popover.manage')}
+                <footer.icon className='h-4 w-4' />
+                {footer.label}
               </Button>
             </div>
           </>

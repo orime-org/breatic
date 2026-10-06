@@ -27,11 +27,14 @@ import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 import { ROLE_RANK } from "@breatic/shared";
+import { copyName } from "@server/modules/project/copy-name.js";
+import { mayArchive, mayManage, projectPermissions } from "@server/modules/project/projectGovernance.js";
 import type {
   ProjectEntity,
   ProjectRole,
   ProjectSummary,
   SpaceType,
+  StudioRole,
 } from "@breatic/shared";
 
 /**
@@ -137,9 +140,11 @@ export async function create(
  * The row taken is the one the counted set belongs to, so two studios never
  * wait on each other while every path that adds to ONE studio queues up.
  *
- * Both entry points must call this. `duplicateProject` puts the copy in the
- * source's studio, so a gate on `create` alone leaves the ceiling false while
- * looking enforced.
+ * Create and duplicate must both call this. `duplicateProject` puts the copy
+ * in the source's studio, so a gate on `create` alone leaves the ceiling false
+ * while looking enforced. Restore takes the same lock and ceiling through
+ * {@link studioProjectRoom}, asking for room only once it knows the project is
+ * archived.
  * @param studioId - The studio the new project would land in
  * @param tx - The enclosing transaction; the lock is meaningless without one
  * @throws {NotFoundError} if no studio row has that id. Neither caller can
@@ -154,14 +159,34 @@ async function assertStudioHasProjectRoom(
   studioId: string,
   tx: DbTx,
 ): Promise<void> {
-  if (!(await studioRepo.lockStudio(studioId, tx))) {
-    throw new NotFoundError(t("server.error.not_found"));
+  const room = await studioProjectRoom(studioId, tx);
+  if (room === null) throw new NotFoundError(t("server.error.not_found"));
+  if (!(await room.hasRoom())) {
+    throw new ConflictError(t("server.project.limit_reached", { limit: room.limit }));
   }
+}
+
+/** A locked studio's project ceiling, and whether it still has room under it. */
+interface ProjectRoom {
+  limit: number;
+  hasRoom: () => Promise<boolean>;
+}
+
+/**
+ * Lock the studio's row and read its project ceiling — the one place every
+ * path that adds a live project (create, duplicate, restore) takes both.
+ * `hasRoom` counts when called, so a caller can ask it after its own checks.
+ * @param studioId - The studio
+ * @param tx - The enclosing transaction; the lock is meaningless without one
+ * @returns The ceiling and the room check, or null when no studio row has that id
+ */
+async function studioProjectRoom(studioId: string, tx: DbTx): Promise<ProjectRoom | null> {
+  if (!(await studioRepo.lockStudio(studioId, tx))) return null;
   const { projects_per_studio: limit } = await getLimitsForStudio(studioId, tx);
-  const used = await projectRepo.countLiveProjectsInStudio(studioId, tx);
-  if (used >= limit) {
-    throw new ConflictError(t("server.project.limit_reached", { limit }));
-  }
+  return {
+    limit,
+    hasRoom: async () => (await projectRepo.countLiveProjectsInStudio(studioId, tx)) < limit,
+  };
 }
 
 /**
@@ -176,14 +201,6 @@ async function assertStudioHasProjectRoom(
  * Today only personal studios exist (single admin), so only `admin` is
  * exercised against real data; the `maintainer` branch activates with team
  * studios.
- *
- * **Creating is the only one of the four project-lifecycle actions that asks a
- * STUDIO role.** Copying, deleting and transferring ownership all ask a
- * PROJECT role (`viewer`, `owner`, `owner`), which is why a studio guest with
- * `viewer` on one project can fork a new project into that studio today.
- * user 2026-08-13 settled the direction: all four belong on the studio role.
- * Tracked as its own task; not changed here, since it is a permission model
- * decision rather than part of the per-studio project ceiling.
  * @param userId - Authenticated user UUID
  * @param studioId - The studio the project would be created in
  * @throws {ForbiddenError} if the caller is not an admin/maintainer of the studio
@@ -229,7 +246,7 @@ export async function get(projectId: string, userId: string): Promise<ProjectEnt
  *      `NotFoundError`, so existence is never leaked outside the studio.
  * @param projectId - Project UUID being opened
  * @param userId - Authenticated user UUID
- * @returns The project entity plus the caller's role
+ * @returns The project entity, the caller's stored role, and whether they may rename, restore and leave it
  * @throws {ForbiddenError} when the caller is in the studio but not on the project
  * @throws {NotFoundError} when the caller is outside the studio, or the project
  *   is missing / soft-deleted
@@ -237,12 +254,26 @@ export async function get(projectId: string, userId: string): Promise<ProjectEnt
 export async function loadForViewer(
   projectId: string,
   userId: string,
-): Promise<{ project: ProjectEntity; myRole: ProjectRole }> {
-  const role = await projectAuthService.loadProjectRole(userId, projectId);
-  if (role !== null) {
+): Promise<{
+  project: ProjectEntity;
+  myRole: ProjectRole;
+  canManageMeta: boolean;
+  canRestore: boolean;
+  canLeave: boolean;
+}> {
+  // The real role, not the write-capped one: an archived project still shows
+  // its owner as owner; `project.archivedAt` tells the page it is read-only.
+  const access = await projectAuthService.loadProjectAccess(userId, projectId);
+  if (access !== null) {
     const project = await projectRepo.getProjectById(projectId);
     if (!project) throw new NotFoundError(t("server.error.not_found"));
-    return { project, myRole: role };
+    const studioRole = await studioAuthService.loadStudioRole(userId, project.studioId);
+    const { canManageMeta, canRestore, canLeave } = projectPermissions({
+      studioRole,
+      projectRole: access.role,
+      archived: access.archived,
+    });
+    return { project, myRole: access.role, canManageMeta, canRestore, canLeave };
   }
 
   const project = await projectRepo.getProjectById(projectId);
@@ -255,22 +286,41 @@ export async function loadForViewer(
 
 /**
  * List the projects of a studio a viewer may see, for the studio container's
- * "projects" tab (slice 2 — replaces the old personal-Studio project list).
+ * "projects" and "archived" tabs, each with the permissions its card menu shows.
  *
  * A non-member of the studio gets `[]` (the non-member shell shows no
- * projects, IA #267); every studio member gets every project, tagged with
- * their own role on it.
+ * projects, IA #267); every studio member gets every live project, tagged with
+ * their own role on it. The archived list is the studio admin's alone.
  * @param studioId - Studio UUID whose projects to list
  * @param viewerUserId - Authenticated user UUID
+ * @param options - Which list
+ * @param options.archived - The archived list instead of the live one
  * @returns The visible project summaries (empty for non-members)
+ * @throws {ForbiddenError} when anyone but the studio's admin asks for the archived list
  */
 export async function listByStudioForViewer(
   studioId: string,
   viewerUserId: string,
+  options: { archived: boolean },
 ): Promise<ProjectSummary[]> {
   const studioRole = await studioAuthService.loadStudioRole(viewerUserId, studioId);
+  if (options.archived && !mayArchive({ studioRole, projectRole: null })) {
+    throw new ForbiddenError(t("server.error.forbidden"));
+  }
   if (studioRole === null) return [];
-  return projectRepo.listProjectsByStudioForViewer(studioId, viewerUserId);
+  const rows = await projectRepo.listProjectsByStudioForViewer(
+    studioId,
+    viewerUserId,
+    options.archived,
+  );
+  return rows.map((row) => ({
+    ...row,
+    ...projectPermissions({
+      studioRole,
+      projectRole: row.myRole,
+      archived: row.archivedAt !== null,
+    }),
+  }));
 }
 
 /**
@@ -280,35 +330,37 @@ export async function listByStudioForViewer(
  * {@link listByStudioForViewer}. Backs `GET /studio/:slug/projects`.
  * @param slug - The studio's URL handle
  * @param viewerUserId - Authenticated user UUID
+ * @param options - Which list
+ * @param options.archived - The archived list instead of the live one
  * @returns The visible project summaries (empty for non-members)
  * @throws {NotFoundError} when no active studio has that slug
+ * @throws {ForbiddenError} when anyone but the studio's admin asks for the archived list
  */
 export async function listByStudioSlug(
   slug: string,
   viewerUserId: string,
+  options: { archived: boolean },
 ): Promise<ProjectSummary[]> {
   const studio = await studioService.getStudioBySlug(slug);
   if (!studio) throw new NotFoundError(t("server.error.not_found"));
-  return listByStudioForViewer(studio.id, viewerUserId);
+  return listByStudioForViewer(studio.id, viewerUserId, options);
 }
 
 /**
  * Update mutable project metadata.
  *
- * Requires at least `editor` on the project — name / description are content
- * edits, not just admin operations. The
- * `requireRole('editor')` middleware on the PUT route enforces the
- * same; this service-side check is defense in depth for non-route
- * callers.
+ * Gated by {@link assertMayManage}: the studio's admin or the project's
+ * owner, on a live project.
  * @param projectId - Project UUID to update
- * @param userId - Authenticated user UUID; must have at least `editor` access
+ * @param userId - Authenticated user UUID
  * @param patch - Fields to update
  * @param patch.name - New project name
  * @param patch.description - New description; `null` clears it
  * @returns The updated project entity
- * @throws {NotFoundError} if the project doesn't exist or the
- *   caller has no membership
- * @throws {ForbiddenError} if the caller is below `editor`
+ * @throws {NotFoundError} if the project doesn't exist or the caller is not
+ *   in its studio
+ * @throws {ForbiddenError} if the caller is neither the studio's admin nor the project's owner
+ * @throws {ConflictError} if the project is archived
  */
 export async function update(
   projectId: string,
@@ -318,9 +370,76 @@ export async function update(
     description?: string | null;
   },
 ): Promise<ProjectEntity> {
-  await assertAccess(projectId, userId, "editor");
+  await assertMayManage(projectId, userId);
+  return writeMeta(projectId, patch);
+}
+
+/** A project, live or archived, and the caller's two roles on it. */
+interface ManagementFacts {
+  project: ProjectEntity;
+  studioRole: StudioRole;
+  projectRole: ProjectRole | null;
+}
+
+/**
+ * Read, once, what `projectPermissions` decides on: the caller's role in the
+ * project's studio and their stored role on the project. The stored role is
+ * the real one, not the archive-capped one; the rule reads the archive state
+ * itself. Plain reads, taken before any row lock.
+ * @param projectId - Project UUID
+ * @param userId - Authenticated user UUID
+ * @returns The project and the caller's two roles
+ * @throws {NotFoundError} when the project is missing / deleted, or the caller
+ *   is not in its studio (existence is hidden from outsiders)
+ */
+async function managementFacts(projectId: string, userId: string): Promise<ManagementFacts> {
+  const project = await projectRepo.getProjectById(projectId);
+  if (!project) throw new NotFoundError(t("server.error.not_found"));
+  const [studioRole, access] = await Promise.all([
+    studioAuthService.loadStudioRole(userId, project.studioId),
+    projectAuthService.loadProjectAccess(userId, projectId),
+  ]);
+  if (studioRole === null) throw new NotFoundError(t("server.error.not_found"));
+  return { project, studioRole, projectRole: access?.role ?? null };
+}
+
+/**
+ * Require the caller may manage the project as an object: rename it, change
+ * its cover (the cover upload ticket checks this before it signs anything)
+ * and duplicate it.
+ *
+ * Asked as of a live project, so someone who may manage it hears that it is
+ * archived (409) and someone who may not hears that they may not (403).
+ * @param projectId - Project UUID
+ * @param userId - Authenticated user UUID
+ * @returns The project
+ * @throws {NotFoundError} when the project is missing / deleted, or the caller
+ *   is not in its studio
+ * @throws {ForbiddenError} when the caller is in the studio but may not manage it
+ * @throws {ConflictError} when the project is archived
+ */
+export async function assertMayManage(projectId: string, userId: string): Promise<ProjectEntity> {
+  const { project, ...roles } = await managementFacts(projectId, userId);
+  if (!mayManage(roles)) throw new ForbiddenError(t("server.error.forbidden"));
+  if (project.archivedAt !== null) throw new ConflictError(t("server.project.archived"));
+  return project;
+}
+
+/**
+ * Write name / description / cover, unless the project was archived in the
+ * meantime — the write itself carries the `archived_at IS NULL` condition, so
+ * it serialises with the archive on the project row.
+ * @param projectId - Project UUID
+ * @param patch - Fields to write
+ * @returns The updated project
+ * @throws {ConflictError} when the project is no longer live to write to
+ */
+async function writeMeta(
+  projectId: string,
+  patch: Parameters<typeof projectRepo.updateProjectMeta>[1],
+): Promise<ProjectEntity> {
   const updated = await projectRepo.updateProjectMeta(projectId, patch);
-  if (!updated) throw new NotFoundError(t("server.error.not_found"));
+  if (!updated) throw new ConflictError(t("server.project.archived"));
   return updated;
 }
 
@@ -329,57 +448,57 @@ export async function update(
  *
  * The URL is read off the ledger row, so the cover can only name an image the
  * project's own studio stores. The picture it replaces stays in the ledger.
- * The route gates this on `owner`; this is the only place `thumbnail_url` is
- * written besides duplicating a project.
+ * Gated like a rename (see {@link assertMayManage}); this is the only
+ * place `thumbnail_url` is written besides duplicating a project.
  * @param projectId - Project UUID
+ * @param userId - Authenticated user UUID
  * @param assetId - The uploaded picture's ledger row
  * @returns The updated project entity
- * @throws {NotFoundError} if the project is gone, or its studio holds no live
- *   image row with that id
+ * @throws {NotFoundError} if the project is gone or hidden from the caller, or
+ *   its studio holds no live image row with that id
+ * @throws {ForbiddenError} when the caller may not manage the project
+ * @throws {ConflictError} when the project is archived
  */
 export async function setCover(
   projectId: string,
+  userId: string,
   assetId: string,
 ): Promise<ProjectEntity> {
-  const project = await projectRepo.getProjectById(projectId);
-  if (!project) throw new NotFoundError(t("server.error.not_found"));
+  const project = await assertMayManage(projectId, userId);
   const url = await pictureUrl(project.studioId, assetId);
-  const updated = await projectRepo.updateProjectMeta(projectId, { thumbnailUrl: url });
-  if (!updated) throw new NotFoundError(t("server.error.not_found"));
-  return updated;
+  return writeMeta(projectId, { thumbnailUrl: url });
 }
 
 /**
  * Duplicate a project — the duplicate is owned by the caller.
  *
- * The caller becomes the owner of the new project (same studio as
- * the source). Source must be visible to the caller (any active
- * membership counts; you can fork something you can read) — which is a
- * PROJECT role, while creating a project asks a STUDIO role. That mismatch is
- * a known open question, not a settled design; see `requireStudioCreateAccess`.
+ * The caller becomes the only member of the new project, as its owner (same
+ * studio as the source); the source's members are not copied. The caller must
+ * be the studio's admin or the source's owner, and an archived source is
+ * refused at the check.
  *
  * Reads the source WITHOUT locking it, then waits for the studio row. If the
- * source is deleted during that wait, the copy is still made from what was
- * read — snapshot semantics, and deliberately so. The four other places that
- * add something to a project (`projectInvite`, `roleUpgradeRequest`,
- * `conversation`, `projectTransfer`) do take `lockLiveProject` first, but for a
- * reason that does not apply here: what they insert HANGS OFF the project, so
- * without the lock a live row commits against a dead project — undecidable and
- * unreapable. A duplicate is a free-standing new project; deleting the source
- * leaves it perfectly consistent. No invariant is broken, so no lock is taken.
+ * source is archived during that wait, the copy is still made from what was
+ * read — snapshot semantics. The other places that add something to a
+ * project (`projectInvite`, `projectJoinRequest`, `roleUpgradeRequest`,
+ * `conversation`, `projectTransfer`) do take `lockLiveProject` first, because what they insert
+ * hangs off the project. A duplicate is a free-standing new project, so no
+ * lock is taken.
  * @param sourceId - UUID of the project to duplicate
  * @param userId - Authenticated user UUID (becomes new project owner)
  * @returns The newly created duplicate project entity
- * @throws {NotFoundError} if the source project does not exist
- *   or the caller has no membership
- * @throws {ConflictError} if the source's studio already holds as many
- *   projects as its tier allows
+ * @throws {NotFoundError} if the source project does not exist, or the caller
+ *   is not in its studio
+ * @throws {ForbiddenError} if the caller is neither the studio's admin nor the
+ *   source's owner
+ * @throws {ConflictError} if the source is archived, or its studio already
+ *   holds as many projects as its tier allows
  */
 export async function duplicate(
   sourceId: string,
   userId: string,
 ): Promise<ProjectEntity> {
-  await assertAccess(sourceId, userId, "viewer");
+  await assertMayManage(sourceId, userId);
 
   return db.transaction(async (tx) => {
     // Read first, because the studio to lock is the SOURCE's — a copy lands
@@ -387,22 +506,62 @@ export async function duplicate(
     const source = await projectRepo.getProjectById(sourceId, tx);
     if (!source) throw new NotFoundError(t("server.error.not_found"));
     await assertStudioHasProjectRoom(source.studioId, tx);
-    return projectRepo.duplicateProject(tx, userId, source);
+    return projectRepo.duplicateProject(tx, userId, source, copyName(source.name));
   });
 }
 
 /**
- * Soft-delete a project after verifying the caller is `owner`.
+ * Refuse a write to something that belongs to an archived project.
  *
- * Cascades soft delete to conversations, tasks, node history, member
- * rows, project memories and yjs documents (all in one tx).
- * @param projectId - Project UUID to delete
- * @param userId - Authenticated user UUID; must be the project `owner`
+ * For the writes gated on who owns a row (a conversation, an attachment)
+ * rather than on the caller's project role — those never pass through
+ * `loadProjectRole`, so its archive cap does not reach them.
+ * @param projectId - The project the written row belongs to, or null when it belongs to none
+ * @throws {ConflictError} when that project is archived
  */
-export async function deleteProject(
-  projectId: string,
-  userId: string,
-): Promise<void> {
-  await assertAccess(projectId, userId, "owner");
-  await projectRepo.deleteProject(projectId);
+export async function assertNotArchived(projectId: string | null): Promise<void> {
+  if (projectId === null) return;
+  const project = await projectRepo.getProjectById(projectId);
+  if (project?.archivedAt != null) throw new ConflictError(t("server.project.archived"));
+}
+
+/**
+ * Archive a project. Studio admin only; the project's own owner does not get
+ * to. It becomes read-only for every member until restored.
+ * @param projectId - Project UUID
+ * @param userId - Authenticated user UUID; must be the studio's admin
+ * @throws {NotFoundError} when the project is missing / deleted or hidden from the caller
+ * @throws {ForbiddenError} when the caller is not the studio's admin
+ * @throws {ConflictError} when the project is already archived
+ */
+export async function archive(projectId: string, userId: string): Promise<void> {
+  if (!mayArchive(await managementFacts(projectId, userId))) throw new ForbiddenError(t("server.error.forbidden"));
+  const outcome = await db.transaction((tx) => projectRepo.archiveProject(projectId, userId, tx));
+  if (outcome === "missing") throw new NotFoundError(t("server.error.not_found"));
+  if (outcome === "unchanged") throw new ConflictError(t("server.project.already_archived"));
+}
+
+/**
+ * Restore an archived project. Studio admin only, and only while the studio
+ * has room for one more live project — an archived project does not take a
+ * slot, so restoring one takes it back.
+ * @param projectId - Project UUID
+ * @param userId - Authenticated user UUID; must be the studio's admin
+ * @throws {NotFoundError} when the project is missing / deleted or hidden from the caller
+ * @throws {ForbiddenError} when the caller is not the studio's admin
+ * @throws {ConflictError} when the project is not archived, or the studio is
+ *   at its project limit
+ */
+export async function restore(projectId: string, userId: string): Promise<void> {
+  const { project, ...roles } = await managementFacts(projectId, userId);
+  if (!mayArchive(roles)) throw new ForbiddenError(t("server.error.forbidden"));
+  const result = await db.transaction(async (tx) => {
+    const room = await studioProjectRoom(project.studioId, tx);
+    if (room === null) return { outcome: "missing" as const, limit: 0 };
+    return { outcome: await projectRepo.restoreProject(projectId, tx, room.hasRoom), limit: room.limit };
+  });
+  const { outcome, limit } = result;
+  if (outcome === "missing") throw new NotFoundError(t("server.error.not_found"));
+  if (outcome === "unchanged") throw new ConflictError(t("server.project.not_archived"));
+  if (outcome === "full") throw new ConflictError(t("server.project.restore_limit_reached", { limit }));
 }

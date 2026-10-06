@@ -67,6 +67,7 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         referencePicking={false}
         onRemoveReference={() => {}}
         onInsertReference={() => {}}
+        onInsertCameraCommands={() => {}}
         slots={[]}
         slotUrls={{}}
         slotThumbnails={{}}

@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * One prompt per mode, and one storyboard per video mode (#2218).
+ * One prompt per mode (#2218), and one list of shots per video node.
  *
  * Every mode's prompt is born with the node for the reason the single prompt
  * was (#1880): two clients creating a container on demand each mint their own
- * and one disappears with its words. The same goes for each shot of a
- * storyboard, which is inserted whole with its own fragment.
+ * and one disappears with its words. The same goes for each shot of the
+ * multi-shot mode, which is inserted whole with its own fragment.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -15,7 +15,6 @@ import * as Y from 'yjs';
 import {
   AUDIO_GENERATION_MODES,
   GENERATION_NODE_MODES,
-  VIDEO_GENERATION_MODES,
   type CanvasNodeFields,
   type NodeType,
 } from '@breatic/shared';
@@ -25,10 +24,9 @@ import { addNode, getLyricsFragment, getPromptFragment } from '@web/data/yjs/can
 import {
   addStoryboardShot,
   enterStoryboardShots,
-  readStoryboard,
+  readShots,
   removeStoryboardShot,
   retotalStoryboard,
-  setStoryboardKind,
   setStoryboardShots,
   stepStoryboardShot,
 } from '@web/data/yjs/node-storyboard';
@@ -103,79 +101,79 @@ describe('one prompt per mode', () => {
   });
 });
 
-describe('one storyboard per video mode', () => {
-  it('is born off, with no shots, for every video mode', () => {
+describe('one list of shots per video node', () => {
+  it('is born empty', () => {
     addNode(PID, SID, nodeOf('video'));
-    for (const mode of VIDEO_GENERATION_MODES) {
-      expect(readStoryboard(PID, SID, 'gen', mode)).toEqual({ kind: 'off', shots: [] });
-    }
+    expect(readShots(PID, SID, 'gen')).toEqual([]);
   });
 
-  it('switches tier and keeps its shots when switched off', () => {
-    addNode(PID, SID, nodeOf('video'));
-    enterStoryboardShots(PID, SID, 'gen', 't2v', 5);
-    setStoryboardKind(PID, SID, 'gen', 't2v', 'off');
-    const board = readStoryboard(PID, SID, 'gen', 't2v');
-    expect(board?.kind).toBe('off');
-    expect(board?.shots.map((shot) => shot.duration)).toEqual([2, 3]);
+  it('is not born on a node of another modality', () => {
+    addNode(PID, SID, nodeOf('image'));
+    expect(readShots(PID, SID, 'gen')).toBeNull();
   });
 
-  it('enters the per-shot tier with two shots, each with its own fragment', () => {
+  it('enters with two shots, each with its own fragment', () => {
     addNode(PID, SID, nodeOf('video'));
-    enterStoryboardShots(PID, SID, 'gen', 't2v', 5);
-    const board = readStoryboard(PID, SID, 'gen', 't2v');
-    expect(board?.kind).toBe('custom');
-    expect(board?.shots.map((shot) => shot.duration)).toEqual([2, 3]);
-    expect(board?.shots[0]?.prompt).toBeInstanceOf(Y.XmlFragment);
-    expect(board?.shots[0]?.prompt).not.toBe(board?.shots[1]?.prompt);
+    enterStoryboardShots(PID, SID, 'gen', 5);
+    const shots = readShots(PID, SID, 'gen');
+    expect(shots?.map((shot) => shot.duration)).toEqual([2, 3]);
+    expect(shots?.[0]?.prompt).toBeInstanceOf(Y.XmlFragment);
+    expect(shots?.[0]?.prompt).not.toBe(shots?.[1]?.prompt);
+  });
+
+  it('keeps the shots it has on entering again, re-split only when they drifted from the total', () => {
+    addNode(PID, SID, nodeOf('video'));
+    enterStoryboardShots(PID, SID, 'gen', 5);
+    const before = readShots(PID, SID, 'gen')?.map((shot) => shot.id);
+    enterStoryboardShots(PID, SID, 'gen', 5);
+    expect(readShots(PID, SID, 'gen')?.map((shot) => shot.id)).toEqual(before);
+    enterStoryboardShots(PID, SID, 'gen', 10);
+    expect(readShots(PID, SID, 'gen')?.map((shot) => shot.duration)).toEqual([4, 6]);
   });
 
   it('adds, steps, removes and re-totals through the shared rules', () => {
     addNode(PID, SID, nodeOf('video'));
-    enterStoryboardShots(PID, SID, 'gen', 't2v', 5);
-    addStoryboardShot(PID, SID, 'gen', 't2v', 5, 6);
-    const durations = (): number[] =>
-      readStoryboard(PID, SID, 'gen', 't2v')?.shots.map((shot) => shot.duration) ?? [];
+    enterStoryboardShots(PID, SID, 'gen', 5);
+    addStoryboardShot(PID, SID, 'gen', 5, 6);
+    const durations = (): number[] => readShots(PID, SID, 'gen')?.map((shot) => shot.duration) ?? [];
     expect(durations()).toEqual([2, 2, 1]);
-    retotalStoryboard(PID, SID, 'gen', 't2v', 10);
+    retotalStoryboard(PID, SID, 'gen', 10);
     expect(durations()).toEqual([4, 4, 2]);
-    const first = readStoryboard(PID, SID, 'gen', 't2v')?.shots[0]?.id ?? '';
-    stepStoryboardShot(PID, SID, 'gen', 't2v', first, -1);
+    const first = readShots(PID, SID, 'gen')?.[0]?.id ?? '';
+    stepStoryboardShot(PID, SID, 'gen', first, -1);
     expect(durations()).toEqual([3, 5, 2]);
-    const last = readStoryboard(PID, SID, 'gen', 't2v')?.shots[2]?.id ?? '';
-    removeStoryboardShot(PID, SID, 'gen', 't2v', last, 10);
+    const last = readShots(PID, SID, 'gen')?.[2]?.id ?? '';
+    removeStoryboardShot(PID, SID, 'gen', last, 10);
     expect(durations()).toEqual([3, 7]);
   });
 
-  it('re-totals the shots only in the per-shot tier', () => {
+  it('lands proposed shots in place of the old ones', () => {
     addNode(PID, SID, nodeOf('video'));
-    enterStoryboardShots(PID, SID, 'gen', 't2v', 5);
-    setStoryboardKind(PID, SID, 'gen', 't2v', 'auto');
-    retotalStoryboard(PID, SID, 'gen', 't2v', 10);
-    expect(readStoryboard(PID, SID, 'gen', 't2v')?.shots.map((shot) => shot.duration)).toEqual([2, 3]);
+    enterStoryboardShots(PID, SID, 'gen', 5);
+    const fragments = setStoryboardShots(PID, SID, 'gen', [1, 2, 3]);
+    const shots = readShots(PID, SID, 'gen');
+    expect(shots?.map((shot) => shot.duration)).toEqual([1, 2, 3]);
+    expect(fragments).toEqual(shots?.map((shot) => shot.prompt));
   });
 
-  it('lands proposed shots in place of the old ones, in the per-shot tier', () => {
-    addNode(PID, SID, nodeOf('video'));
-    enterStoryboardShots(PID, SID, 'gen', 't2v', 5);
-    const fragments = setStoryboardShots(PID, SID, 'gen', 't2v', [1, 2, 3]);
-    const board = readStoryboard(PID, SID, 'gen', 't2v');
-    expect(board?.kind).toBe('custom');
-    expect(board?.shots.map((shot) => shot.duration)).toEqual([1, 2, 3]);
-    expect(fragments).toEqual(board?.shots.map((shot) => shot.prompt));
+  it('does nothing on a node born without the list', () => {
+    addNode(PID, SID, nodeOf('image'));
+    enterStoryboardShots(PID, SID, 'gen', 5);
+    expect(setStoryboardShots(PID, SID, 'gen', [1, 2])).toEqual([]);
+    expect(readShots(PID, SID, 'gen')).toBeNull();
   });
 
   it('keeps both shots when two people add one at the same time', () => {
     addNode(PID, SID, nodeOf('video'));
-    enterStoryboardShots(PID, SID, 'gen', 't2v', 10);
+    enterStoryboardShots(PID, SID, 'gen', 10);
     const doc = (): Y.Doc => getDoc(docName.canvasSpace(PID, SID));
     const baseline = Y.encodeStateAsUpdate(doc());
-    addStoryboardShot(PID, SID, 'gen', 't2v', 10, 6);
+    addStoryboardShot(PID, SID, 'gen', 10, 6);
     const afterA = Y.encodeStateAsUpdate(doc());
     _resetForTests();
     Y.applyUpdate(doc(), baseline);
-    addStoryboardShot(PID, SID, 'gen', 't2v', 10, 6);
+    addStoryboardShot(PID, SID, 'gen', 10, 6);
     Y.applyUpdate(doc(), afterA);
-    expect(readStoryboard(PID, SID, 'gen', 't2v')?.shots).toHaveLength(4);
+    expect(readShots(PID, SID, 'gen')).toHaveLength(4);
   });
 });

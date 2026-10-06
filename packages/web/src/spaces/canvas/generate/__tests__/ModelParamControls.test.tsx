@@ -65,7 +65,7 @@ const MIXED = model({
 
 describe('ModelParamControls', () => {
   it('names each control from the locales and shows the defaults a fresh node resolves to', () => {
-    render(<ModelParamControls model={MIXED} value={resolveParamsForModel(MIXED, {})} onChange={() => {}} />);
+    render(<ModelParamControls mode='t2i' model={MIXED} value={resolveParamsForModel(MIXED, {})} onChange={() => {}} />);
 
     expect(screen.getByText('Transparent background')).toBeInTheDocument();
     expect(screen.getByTestId('generate-param-transparency-toggle')).toHaveAttribute(
@@ -83,7 +83,7 @@ describe('ModelParamControls', () => {
 
   it('reports a flipped switch and a picked option under the param name', () => {
     const onChange = vi.fn();
-    render(<ModelParamControls model={MIXED} value={{}} onChange={onChange} />);
+    render(<ModelParamControls mode='t2i' model={MIXED} value={{}} onChange={onChange} />);
 
     fireEvent.click(screen.getByTestId('generate-param-transparency-toggle'));
     fireEvent.click(screen.getByTestId('generate-param-quality-option-xhigh'));
@@ -95,7 +95,7 @@ describe('ModelParamControls', () => {
   it('writes the text once the reader leaves the box, not on every key', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const onChange = vi.fn();
-    render(<ModelParamControls model={MIXED} value={{}} onChange={onChange} />);
+    render(<ModelParamControls mode='t2i' model={MIXED} value={{}} onChange={onChange} />);
     const box = screen.getByLabelText('Negative prompt');
 
     fireEvent.change(box, { target: { value: 'blur, text' } });
@@ -120,7 +120,7 @@ describe('ModelParamControls', () => {
     const ONE = { speakers: [{ speaker: 'Ana', voice: 'Kore' }] };
 
     it('draws each entry, and how many of the most it holds', () => {
-      render(<ModelParamControls model={SPEAKERS} value={ONE} onChange={() => {}} />);
+      render(<ModelParamControls mode='t2i' model={SPEAKERS} value={ONE} onChange={() => {}} />);
 
       expect(screen.getByText('Speakers')).toBeInTheDocument();
       expect(screen.getByTestId('generate-param-speakers-count')).toHaveTextContent('1 / 2');
@@ -131,7 +131,7 @@ describe('ModelParamControls', () => {
     it('adds an entry starting at each field\'s first value, and stops at the most', () => {
       const onChange = vi.fn();
       const { rerender } = render(
-        <ModelParamControls model={SPEAKERS} value={ONE} onChange={onChange} />,
+        <ModelParamControls mode='t2i' model={SPEAKERS} value={ONE} onChange={onChange} />,
       );
 
       fireEvent.click(screen.getByTestId('generate-param-speakers-add'));
@@ -143,7 +143,7 @@ describe('ModelParamControls', () => {
       });
 
       rerender(
-        <ModelParamControls
+        <ModelParamControls mode='t2i'
           model={SPEAKERS}
           value={{ speakers: [ONE.speakers[0], { speaker: 'Ben', voice: 'Puck' }] }}
           onChange={onChange}
@@ -155,7 +155,7 @@ describe('ModelParamControls', () => {
     it('writes an edited field when the reader leaves the box, and removes an entry', async () => {
       vi.spyOn(document, 'hasFocus').mockReturnValue(true);
       const onChange = vi.fn();
-      render(<ModelParamControls model={SPEAKERS} value={ONE} onChange={onChange} />);
+      render(<ModelParamControls mode='t2i' model={SPEAKERS} value={ONE} onChange={onChange} />);
       const box = screen.getByTestId('generate-param-speakers-0-speaker');
 
       fireEvent.change(box, { target: { value: 'Ann' } });
@@ -172,7 +172,7 @@ describe('ModelParamControls', () => {
 
   it('draws nothing for a model with no controls of its own', () => {
     const { container } = render(
-      <ModelParamControls model={model({})} value={{}} onChange={() => {}} />,
+      <ModelParamControls mode='t2i' model={model({})} value={{}} onChange={() => {}} />,
     );
     expect(container).toBeEmptyDOMElement();
   });

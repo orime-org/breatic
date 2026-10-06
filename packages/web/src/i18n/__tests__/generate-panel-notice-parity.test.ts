@@ -13,7 +13,7 @@ import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 // `refuseExecuteNoPrompt`；#1951 添了目录里一个可用档都没有那句
 // `catalogNoModels`。#1966 当时还加过一句 ✕ 的 `refuseRemoveNoPrompt`，
 // #1952 把 ✕ 变成任何状态下都可用之后它没有读者了，连同另外两句移除拒绝语
-// 一起删掉；同一片给 `@` 弹层加了 `mentionEmpty` 和 `mentionNoMatch` 两句，
+// 一起删掉；同一片给 `@` 弹层加了 `mentionEmpty`（同时加的 `mentionNoMatch` 已删），
 // 并把两句既有的插入拒绝语补进来。数字跟着下面那个数组走，别在这儿写死。
 //
 // 仓里的 i18n 守卫盯不住这件事：`i18n-no-missing-keys` 只拿英文那份当
@@ -36,10 +36,9 @@ const NOTICE_KEYS = [
   'canvas.generatePanel.catalogUnavailable',
   'canvas.generatePanel.catalogOffline',
   'canvas.generatePanel.catalogNoModels',
-  // `@` 弹层没得提供时的两句（#1952）：一句说这一档一项都用不了，一句说
-  // 你打的字把它们筛光了。缺哪句，那个语种的用户打完 `@` 只看得到裸 key。
+  // What a bare `@` shows when this mode can use none of the references
+  // (#1952). Missing in a locale, readers of it see the raw key.
   'canvas.generatePanel.mentionEmpty',
-  'canvas.generatePanel.mentionNoMatch',
 ] as const;
 
 describe.each(NOTICE_KEYS)('%s 五个语种都有', (key) => {

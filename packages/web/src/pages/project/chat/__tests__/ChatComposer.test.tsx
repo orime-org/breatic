@@ -27,7 +27,7 @@ function setup(props: Partial<Parameters<typeof ChatComposer>[0]> = {}) {
 describe('ChatComposer', () => {
   it('renders textarea + send button when not streaming', () => {
     setup();
-    expect(screen.getByTestId('chat-composer-textarea')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-composer-box')).toBeInTheDocument();
     expect(screen.getByTestId('chat-composer-send')).toBeInTheDocument();
   });
 
@@ -76,7 +76,7 @@ describe('ChatComposer', () => {
     fireEvent.click(send);
     rerender(<ChatComposer {...props} turnPhase='sending' />);
 
-    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-textarea'));
+    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-box'));
   });
 
   it('does not leave the keyboard on the button that becomes stop', () => {
@@ -108,7 +108,7 @@ describe('ChatComposer', () => {
     rerender(<ChatComposer {...props} draft='' turnPhase='running' />);
     rerender(<ChatComposer {...props} draft='' turnPhase='idle' />);
 
-    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-textarea'));
+    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-box'));
     expect(document.activeElement).not.toBe(document.body);
   });
 
@@ -128,9 +128,10 @@ describe('ChatComposer', () => {
         onAbort={vi.fn()}
       />,
     );
-    const box = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement;
+    const box = screen.getByTestId('chat-composer-box');
 
-    expect(box.readOnly).toBe(true);
+    expect(box).toHaveAttribute('contenteditable', 'false');
+    expect(box).toHaveAttribute('aria-readonly', 'true');
   });
 
   it('does not send on Enter while the last press is still unanswered', () => {
@@ -145,7 +146,7 @@ describe('ChatComposer', () => {
       />,
     );
 
-    fireEvent.keyDown(screen.getByTestId('chat-composer-textarea'), { key: 'Enter' });
+    fireEvent.keyDown(screen.getByTestId('chat-composer-box'), { key: 'Enter' });
 
     expect(onSubmit).not.toHaveBeenCalled();
   });
@@ -160,8 +161,8 @@ describe('ChatComposer', () => {
         onAbort={vi.fn()}
       />,
     );
-    const box = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement;
-    expect(box.readOnly).toBe(false);
+    const box = screen.getByTestId('chat-composer-box');
+    expect(box).toHaveAttribute('contenteditable', 'true');
   });
 
   it('hands the keyboard to the box when stop is pressed, too', () => {
@@ -176,7 +177,7 @@ describe('ChatComposer', () => {
 
     fireEvent.click(stop);
 
-    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-textarea'));
+    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-box'));
   });
 
   it('keeps the wait out of the tab order, because there is nothing to do with it', () => {
@@ -230,7 +231,7 @@ describe('ChatComposer', () => {
   it('Enter without Shift submits', async () => {
     const user = userEvent.setup();
     const { onSubmit } = setup({ draft: 'hello' });
-    const ta = screen.getByTestId('chat-composer-textarea');
+    const ta = screen.getByTestId('chat-composer-box');
     ta.focus();
     await user.keyboard('{Enter}');
     expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -238,7 +239,7 @@ describe('ChatComposer', () => {
 
   it('the Enter that picks an IME candidate does NOT submit', () => {
     const { onSubmit } = setup({ draft: 'nihao' });
-    const ta = screen.getByTestId('chat-composer-textarea');
+    const ta = screen.getByTestId('chat-composer-box');
     // Typing Chinese, Japanese or Korean means pressing Enter to accept what
     // the IME is offering — several times per sentence. The browser marks
     // that keystroke as part of the composition, and it is the only thing
@@ -251,7 +252,7 @@ describe('ChatComposer', () => {
   it('Shift+Enter does NOT submit', async () => {
     const user = userEvent.setup();
     const { onSubmit } = setup({ draft: 'hello' });
-    const ta = screen.getByTestId('chat-composer-textarea');
+    const ta = screen.getByTestId('chat-composer-box');
     ta.focus();
     await user.keyboard('{Shift>}{Enter}{/Shift}');
     expect(onSubmit).not.toHaveBeenCalled();
@@ -272,14 +273,14 @@ describe('while the panel is on its way to another conversation', () => {
     // 能用、按下去没反应。
     setup({ draft: 'half a sentence', navigating: true });
 
-    expect(screen.getByTestId('chat-composer-textarea')).toHaveAttribute('readonly');
+    expect(screen.getByTestId('chat-composer-box')).toHaveAttribute('aria-readonly', 'true');
     expect(screen.getByTestId('chat-composer-send')).toBeDisabled();
   });
 
   it('gives it back once the conversation has arrived', () => {
     setup({ draft: 'half a sentence', navigating: false });
 
-    expect(screen.getByTestId('chat-composer-textarea')).not.toHaveAttribute('readonly');
+    expect(screen.getByTestId('chat-composer-box')).toHaveAttribute('contenteditable', 'true');
     expect(screen.getByTestId('chat-composer-send')).not.toBeDisabled();
   });
 });

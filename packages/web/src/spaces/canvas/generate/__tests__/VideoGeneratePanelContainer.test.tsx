@@ -66,7 +66,7 @@ import {
   nodeDataMap,
 } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
-import { enterStoryboardShots, readStoryboard, setStoryboardKind, storyboardMapOf } from '@web/data/yjs/node-storyboard';
+import { enterStoryboardShots, readShots, shotListOf } from '@web/data/yjs/node-storyboard';
 import { canvasApi } from '@web/data/api/canvas';
 
 import {
@@ -138,7 +138,7 @@ const I2V: ModelEntry = {
   display_name: 'Kling I2V',
   // Both modes, as config/models/video/kling.yaml declares them since #1904:
   // the same model runs image-to-video and first-last frame.
-  mode: ['i2v', 'first_last'],
+  mode: ['i2v', 'first_last', 'multi_shot'],
   params: {
     ...T2V.params,
     image: PICTURE,
@@ -1910,13 +1910,13 @@ describe('这个部署服务不了的档 (#1951)', () => {
   });
 });
 
-describe('VideoGeneratePanelContainer — 两句空态各自取自己那个 key (#1952)', () => {
+describe('VideoGeneratePanelContainer — what the @ list says when it has nothing to list', () => {
   /**
    * 那句话在 en 里的原文。
    * @param key - `canvas.generatePanel` 下的键名。
    * @returns 该键在英文目录里的值。
    */
-  function sentence(key: 'mentionEmpty' | 'mentionNoMatch'): string {
+  function sentence(key: 'mentionEmpty'): string {
     return readPath(
       LOCALE_CATALOGS[0][1],
       `canvas.generatePanel.${key}`,
@@ -1965,24 +1965,24 @@ describe('VideoGeneratePanelContainer — 两句空态各自取自己那个 key 
     const box = document.querySelector(
       '[data-testid="reference-mention-empty"]',
     );
-    return { text: box?.textContent ?? null, unmount: view.unmount };
+    const shown = box?.closest<HTMLElement>('body > div')?.style.display !== 'none';
+    return { text: shown ? (box?.textContent ?? null) : null, unmount: view.unmount };
   }
 
-  // 跟图片面板那条同一个理由，见那边的注释：断言「两句不一样」挡不住把两个
-  // key 对调，而对调是同样两行、同样 typecheck 绿的第二种错。
-  it('每一句各自取自己那个 key，不是「两句不一样」就算数', async () => {
-    // t2v 不吃参考素材，那条图片边一项都用不了。
+  it('says there is nothing usable for a bare @, and shows nothing for a query that matches no row', async () => {
+    // t2v takes no reference material, so the image edge offers nothing.
     const nothingUsable = await emptyStateText('t2v', 'veo-3.1', '');
     expect(nothingUsable.text).toBe(sentence('mentionEmpty'));
     nothingUsable.unmount();
 
-    // ref 档吃图片参考，池子非空，只是打的字没匹配上。
+    // ref takes image references, so the pool is not empty; the typed query
+    // matches none of it and the list stays hidden.
     const nothingMatched = await emptyStateText(
       'ref',
       'kling-o3-pro-ref',
       'zzz',
     );
-    expect(nothingMatched.text).toBe(sentence('mentionNoMatch'));
+    expect(nothingMatched.text).toBeNull();
     nothingMatched.unmount();
   });
 });
@@ -2096,6 +2096,7 @@ describe('视频面板的聚焦按钮（#1978）', () => {
     first_last: 'kling-o3-pro-first-last',
     animate: 'wan-2.2-animate',
     ref: 'kling-o3-pro-ref',
+    multi_shot: 'kling-i2v',
     talking_head: 'omnihuman-1.5',
   };
 
@@ -2202,12 +2203,13 @@ describe('a model that states how much text it takes', () => {
   });
 });
 
-describe('the storyboard (#2218)', () => {
-  /** A text-to-video model that takes a storyboard, the way the Kling entries declare one. */
+describe('the multi-shot mode', () => {
+  /** A Kling model that takes its shots in a field of its own, the way the catalog declares it. */
   const KLING: ModelEntry = {
     ...T2V,
     name: 'kling-v3',
     display_name: 'Kling v3',
+    mode: ['t2v', 'multi_shot'],
     params: {
       duration: { description: '', values: [3, 5, 10], default: 5, fill: 'panel' },
       multi_prompt: {
@@ -2215,21 +2217,58 @@ describe('the storyboard (#2218)', () => {
         default: null,
         type: 'items',
         max_items: 6,
+        modes: ['multi_shot'],
         fill: 'storyboard',
         fields: { prompt: { type: 'text', max_chars: 512 }, duration: { values: [1, 2, 3, 4, 5] } },
       },
-      shot_type: { description: '', default: null, values: ['intelligence', 'customize'], fill: 'storyboard' },
+      shot_type: { description: '', default: null, values: ['customize'], modes: ['multi_shot'], fill: 'storyboard' },
+      auto_shots: {
+        description: '',
+        label: 'Auto multi-shot',
+        default: false,
+        values: [true, false],
+        upstream: 'shot_type',
+        upstream_values: { true: 'intelligence' },
+        modes: ['t2v'],
+        fill: 'panel',
+      },
+    },
+  };
+  /** A model with no field for shots: they are written into its prompt. */
+  const WAN: ModelEntry = {
+    ...T2V,
+    name: 'wan-3',
+    display_name: 'Wan 3',
+    mode: ['t2v', 'multi_shot'],
+    params: {
+      duration: { description: '', values: [5, 10], default: 10, fill: 'panel' },
+      shots: {
+        description: '',
+        default: null,
+        type: 'items',
+        modes: ['multi_shot'],
+        into_prompt: 'Shot {n} [{start}-{end}s]: {prompt}',
+        fill: 'storyboard',
+        fields: { prompt: { type: 'text' }, duration: { values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] } },
+      },
     },
   };
 
   /**
-   * Opens the panel on a Kling node.
+   * Opens the panel on a node standing on one of the two models.
+   * @param mode - The mode the node stores.
    * @param before - Writes to make on the node before the panel opens.
    * @param model - The model the node stores.
+   * @param params - What the node holds for that model.
    */
-  async function openKling(before: () => void = () => undefined, model = 'kling-v3'): Promise<void> {
-    vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), video: [KLING, ...catalog().video] });
-    const stored = { mode: 't2v', model };
+  async function openOn(
+    mode: string,
+    before: () => void = () => undefined,
+    model = 'kling-v3',
+    params: Record<string, unknown> = {},
+  ): Promise<void> {
+    vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), video: [KLING, WAN, ...catalog().video] });
+    const stored = { mode, model, modelByMode: { [mode]: model }, paramsByModel: { [model]: params } };
     seedVideoNode(stored);
     before();
     mountContainer('video', stored);
@@ -2245,7 +2284,7 @@ describe('the storyboard (#2218)', () => {
    * @param text - Its words.
    */
   function typeShot(index: number, text: string): void {
-    const shot = readStoryboard('p', 's', 'target', 't2v')?.shots[index];
+    const shot = readShots('p', 's', 'target')?.[index];
     if (!shot) throw new Error(`no shot ${index}`);
     const paragraph = new Y.XmlElement('paragraph');
     paragraph.insert(0, [new Y.XmlText(text)]);
@@ -2261,33 +2300,49 @@ describe('the storyboard (#2218)', () => {
     vi.restoreAllMocks();
   });
 
-  it('offers the switch on a model that takes a storyboard', async () => {
-    await openKling();
-    expect(screen.getByTestId('generate-storyboard-switch')).toBeInTheDocument();
+  it('lays out two shots splitting the total in the same step as the switch into the mode', async () => {
+    await openOn('t2v');
+    const name = docName.canvasSpace('p', 's');
+    const undo = getCanvasUndoManager(getDoc(name), name);
+    undo.clear();
+    fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
+    await userEvent.click(await screen.findByTestId('generate-video-mode-multi-shot'));
+    await waitFor(() => expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([2, 3]));
+    act(() => {
+      undo.undo();
+    });
+    expect(readShots('p', 's', 'target')).toEqual([]);
+    const data = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')?.data as { mode?: string };
+    expect(data.mode).toBe('t2v');
   });
 
-  it('draws no switch for a model that takes no storyboard', async () => {
-    await openKling(() => undefined, 'veo-3.1');
-    expect(screen.queryByTestId('generate-storyboard-switch')).toBeNull();
-  });
-
-  it('enters the per-shot tier with two shots splitting the total', async () => {
-    await openKling();
-    fireEvent.click(screen.getByTestId('generate-storyboard-per-shot'));
+  it('draws the shots in place of the prompt box, with the add-shot row under them', async () => {
+    await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
     await screen.findByTestId('generate-storyboard-shot-2-editor');
     expect(screen.getByTestId('generate-storyboard-shot-1-seconds').textContent).toBe('2s');
     expect(screen.getByTestId('generate-storyboard-shot-2-seconds').textContent).toBe('3s');
     expect(screen.queryByTestId('generate-prompt-editor')).toBeNull();
+    expect(screen.getByTestId('generate-storyboard-add')).toBeEnabled();
   });
 
-  it('sends every shot and no main prompt under the per-shot tier', async () => {
+  it('draws no shots outside the multi-shot mode, even when the node holds some', async () => {
+    await openOn('t2v', () => enterStoryboardShots('p', 's', 'target', 5));
+    expect(screen.queryByTestId('generate-storyboard-shots')).toBeNull();
+    expect(screen.getByTestId('generate-prompt-editor')).toBeInTheDocument();
+  });
+
+  it('sends Kling every shot in its own field and no main prompt, leaving auto multi-shot behind', async () => {
     const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
-    await openKling(() => {
-      typePrompt('the main prompt');
-      enterStoryboardShots('p', 's', 'target', 't2v', 5);
-      typeShot(0, 'a paper boat');
-      typeShot(1, 'the pond at dusk');
-    });
+    await openOn(
+      'multi_shot',
+      () => {
+        enterStoryboardShots('p', 's', 'target', 5);
+        typeShot(0, 'a paper boat');
+        typeShot(1, 'the pond at dusk');
+      },
+      'kling-v3',
+      { auto_shots: true },
+    );
     fireEvent.click(screen.getByTestId('generate-video-execute'));
     await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
     const params = createTask.mock.calls[0]?.[0]?.params;
@@ -2299,12 +2354,40 @@ describe('the storyboard (#2218)', () => {
       ],
     });
     expect(params).not.toHaveProperty('prompt');
+    expect(params).not.toHaveProperty('auto_shots');
+  });
+
+  it('writes the shots into the prompt for a model with no field for them', async () => {
+    const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openOn(
+      'multi_shot',
+      () => {
+        enterStoryboardShots('p', 's', 'target', 5);
+        typeShot(0, 'a paper boat');
+        typeShot(1, 'the pond at dusk');
+      },
+      'wan-3',
+      { duration: 5 },
+    );
+    fireEvent.click(screen.getByTestId('generate-video-execute'));
+    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
+    const params = createTask.mock.calls[0]?.[0]?.params;
+    expect(params?.prompt).toBe('Shot 1 [0-2s]: a paper boat\nShot 2 [2-5s]: the pond at dusk');
+    expect(params).not.toHaveProperty('shots');
+  });
+
+  it('sends auto multi-shot beside the main prompt in text-to-video', async () => {
+    const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openOn('t2v', () => typePrompt('a boat, then the pond'), 'kling-v3', { auto_shots: true });
+    fireEvent.click(screen.getByTestId('generate-video-execute'));
+    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
+    expect(createTask.mock.calls[0]?.[0]?.params).toMatchObject({ prompt: 'a boat, then the pond', auto_shots: true });
   });
 
   it('refuses an empty shot, naming it', async () => {
     const createTask = vi.spyOn(canvasApi, 'createTask');
-    await openKling(() => {
-      enterStoryboardShots('p', 's', 'target', 't2v', 5);
+    await openOn('multi_shot', () => {
+      enterStoryboardShots('p', 's', 'target', 5);
       typeShot(0, 'a paper boat');
     });
     fireEvent.click(screen.getByTestId('generate-video-execute'));
@@ -2313,15 +2396,15 @@ describe('the storyboard (#2218)', () => {
   });
 
   it('binds a shot box to the words a restore brings back under the same id and seconds', async () => {
-    await openKling(() => {
-      enterStoryboardShots('p', 's', 'target', 't2v', 5);
+    await openOn('multi_shot', () => {
+      enterStoryboardShots('p', 's', 'target', 5);
       typeShot(1, 'the words before');
     });
     await screen.findByText('the words before');
     // A collaborator's remove and undo, arriving as one update: the shot
     // comes back as a new map with the same id and seconds and a new prompt.
-    const board = storyboardMapOf('p', 's', 'target', 't2v');
-    const shots = board?.get('shots') as Y.Array<Y.Map<unknown>>;
+    const shots = shotListOf('p', 's', 'target');
+    if (!shots) throw new Error('no shots');
     act(() => {
       getDoc(docName.canvasSpace('p', 's')).transact(() => {
         const old = shots.get(1);
@@ -2343,50 +2426,246 @@ describe('the storyboard (#2218)', () => {
   });
 
   it('takes back a new total and the shots it re-split in one undo', async () => {
-    await openKling(() => enterStoryboardShots('p', 's', 'target', 't2v', 5));
+    await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
     const name = docName.canvasSpace('p', 's');
     const undo = getCanvasUndoManager(getDoc(name), name);
     undo.clear();
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(await screen.findByTestId('generate-video-duration-option-10'));
-    await waitFor(() =>
-      expect(readStoryboard('p', 's', 'target', 't2v')?.shots.map((s) => s.duration)).toEqual([4, 6]),
-    );
+    await waitFor(() => expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([4, 6]));
     act(() => {
       undo.undo();
     });
-    expect(readStoryboard('p', 's', 'target', 't2v')?.shots.map((s) => s.duration)).toEqual([2, 3]);
+    expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([2, 3]);
     const data = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')?.data as {
       paramsByModel?: Record<string, Record<string, unknown>>;
     };
     expect(data.paramsByModel?.['kling-v3']?.duration ?? 5).toBe(5);
   });
 
-  it('sends the main prompt beside the automatic tier', async () => {
-    const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
-    await openKling(() => {
-      typePrompt('a boat, then the pond');
-      setStoryboardKind('p', 's', 'target', 't2v', 'auto');
+  it('leaves the shots alone when the total changes outside the multi-shot mode', async () => {
+    await openOn('t2v', () => enterStoryboardShots('p', 's', 'target', 5));
+    fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-video-duration-option-10'));
+    await waitFor(() => {
+      const data = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')?.data as {
+        paramsByModel?: Record<string, Record<string, unknown>>;
+      };
+      expect(data.paramsByModel?.['kling-v3']?.duration).toBe(10);
     });
-    fireEvent.click(screen.getByTestId('generate-video-execute'));
-    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
-    expect(createTask.mock.calls[0]?.[0]?.params).toMatchObject({
-      prompt: 'a boat, then the pond',
-      shot_type: 'intelligence',
-    });
+    expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([2, 3]);
+    // Back in the multi-shot mode, the shots are re-split to the longer video.
+    fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
+    await userEvent.click(await screen.findByTestId('generate-video-mode-multi-shot'));
+    await waitFor(() => expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([4, 6]));
   });
 
-  it('sends the main prompt on a model with no storyboard, whatever tier is stored', async () => {
-    const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
-    await openKling(() => {
-      typePrompt('a drone shot');
-      enterStoryboardShots('p', 's', 'target', 't2v', 8);
-    }, 'veo-3.1');
+  it('re-splits the shots to the new model\'s total on a model switch in the multi-shot mode', async () => {
+    await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+    const name = docName.canvasSpace('p', 's');
+    const undo = getCanvasUndoManager(getDoc(name), name);
+    undo.clear();
+    fireEvent.click(screen.getByTestId('generate-model-trigger'));
+    await userEvent.click(await screen.findByTestId('generate-model-option-wan-3'));
+    await waitFor(() => expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([4, 6]));
+    // One undo takes back the switch and the re-split together.
+    act(() => {
+      undo.undo();
+    });
+    expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([2, 3]);
+    const data = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')?.data as { model?: string };
+    expect(data.model).toBe('kling-v3');
+  });
+});
+
+describe('camera commands', () => {
+  const COMMANDS = [
+    'Truck left', 'Truck right', 'Pan left', 'Pan right', 'Push in', 'Pull out',
+    'Pedestal up', 'Pedestal down', 'Tilt up', 'Tilt down', 'Zoom in', 'Zoom out',
+    'Shake', 'Tracking shot', 'Static shot',
+  ];
+  /**
+   * The clip address a command previews with.
+   * @param name - The command.
+   * @returns Its address.
+   */
+  const clip = (name: string): string =>
+    `https://samples.test/camera-previews/h3/${name.toLowerCase().replace(/ /g, '-')}.mp4`;
+  /** MiniMax H3 as the wire ships it: shots go into its prompt, and it reads camera commands. */
+  const H3: ModelEntry = {
+    ...T2V,
+    name: 'minimax-h3-text-to-video',
+    display_name: 'MiniMax H3',
+    mode: ['t2v', 'multi_shot'],
+    params: {
+      duration: { description: '', values: [5, 10], default: 10, fill: 'panel' },
+      shots: {
+        description: '',
+        default: null,
+        type: 'items',
+        modes: ['multi_shot'],
+        into_prompt: 'Shot {n} [{start}-{end}s]: {prompt}',
+        fill: 'storyboard',
+        fields: { prompt: { type: 'text' }, duration: { values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] } },
+      },
+    },
+    camera_commands: COMMANDS.map((name) => ({ name, preview_url: clip(name) })),
+  };
+  /**
+   * The test id of one command's option.
+   * @param name - The command.
+   * @returns Its test id.
+   */
+  const option = (name: string): string =>
+    `generate-video-camera-option-${name.toLowerCase().replace(/ /g, '-')}`;
+
+  /**
+   * Opens the panel on a node standing on a model.
+   * @param mode - The node's mode.
+   * @param model - The node's model.
+   * @param before - Writes to make before the panel opens.
+   */
+  async function openOn(mode: string, model: string, before: () => void = () => undefined): Promise<void> {
+    vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), video: [H3, ...catalog().video] });
+    const stored = { mode, model, modelByMode: { [mode]: model }, paramsByModel: { [model]: { duration: 5 } } };
+    seedVideoNode(stored);
+    before();
+    mountContainer('video', stored);
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
+    });
+    await screen.findByTestId('generate-video-execute');
+  }
+
+  /**
+   * Opens the picker, clicks the commands in order, and inserts them.
+   * @param names - The commands to pick.
+   */
+  async function insert(...names: string[]): Promise<void> {
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    for (const name of names) fireEvent.click(await screen.findByTestId(option(name)));
+    fireEvent.click(await screen.findByTestId('generate-video-camera-insert'));
+    // The popover is closed before the next open, as a reader's next click would find it.
+    await waitFor(() => expect(screen.queryByTestId('generate-video-camera-insert')).toBeNull());
+  }
+
+  beforeEach(() => {
+    _resetForTests();
+    canvasSessions.of('s').setState({ panelHostId: null, panelKind: null, pickSession: null });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('draws the camera button for a model that reads commands', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    expect(screen.getByTestId('generate-video-camera-trigger')).toBeInTheDocument();
+  });
+
+  it('draws no camera button for a model with no commands', async () => {
+    await openOn('t2v', 'veo-3.1');
+    expect(screen.queryByTestId('generate-video-camera-trigger')).toBeNull();
+  });
+
+  it('offers all fifteen commands, and at three picks only the ones that would replace a pick', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    for (const name of COMMANDS) expect(await screen.findByTestId(option(name)), name).toBeEnabled();
+    for (const name of ['Truck left', 'Push in', 'Zoom out']) fireEvent.click(screen.getByTestId(option(name)));
+    expect(screen.getByTestId(option('Pan left'))).toBeDisabled();
+    expect(screen.getByTestId(option('Truck right'))).toBeEnabled();
+    expect(screen.getByTestId(option('Static shot'))).toBeEnabled();
+  });
+
+  it('writes the picks into the prompt as one bracket and sends them', async () => {
+    const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({ id: 't1' } as never);
+    await openOn('t2v', 'minimax-h3-text-to-video', () => typePrompt('a red car'));
+    await insert('Truck left', 'Push in', 'Zoom out', 'Truck right');
+    await waitFor(() => expect(screen.getByTestId('generate-prompt-editor').textContent).toContain('[Push in,Zoom out,Truck right]'));
+    expect(screen.queryByTestId('generate-video-camera-insert')).toBeNull();
+    await waitFor(() => expect(screen.getByTestId('generate-video-execute')).not.toBeDisabled());
     fireEvent.click(screen.getByTestId('generate-video-execute'));
     await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
-    const params = createTask.mock.calls[0]?.[0]?.params;
-    expect(params).toMatchObject({ prompt: 'a drone shot' });
-    expect(params).not.toHaveProperty('shot_type');
-    expect(params).not.toHaveProperty('multi_prompt');
+    expect(createTask.mock.calls[0]?.[0]?.params.prompt).toBe('a red car [Push in,Zoom out,Truck right]');
+  });
+
+  it('in the multi-shot mode writes into the first shot, or the shot last focused, and sends it on that line', async () => {
+    const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({ id: 't1' } as never);
+    await openOn('multi_shot', 'minimax-h3-text-to-video', () => enterStoryboardShots('p', 's', 'target', 5));
+    await screen.findByTestId('generate-storyboard-shot-2-editor');
+    await insert('Pan left');
+    await waitFor(() => expect(readShots('p', 's', 'target')?.[0]?.prompt.toString()).toContain('[Pan left]'));
+    // The insert hands focus back to the first shot on the next frame; the reader clicks the second one after that.
+    await act(async () => {
+      await new Promise<void>((done) => requestAnimationFrame(() => done()));
+    });
+    const second = screen.getByTestId('generate-storyboard-shot-2-editor').querySelector('.ProseMirror') as HTMLElement;
+    fireEvent.focus(second);
+    await insert('Tilt up');
+    await waitFor(() => expect(readShots('p', 's', 'target')?.[1]?.prompt.toString()).toContain('[Tilt up]'));
+    fireEvent.click(screen.getByTestId('generate-video-execute'));
+    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
+    expect(createTask.mock.calls[0]?.[0]?.params.prompt).toBe('Shot 1 [0-2s]: [Pan left]\nShot 2 [2-5s]: [Tilt up]');
+  });
+
+  it('previews the hovered command, a disabled one included, in the pane at the top, and keeps the last one', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    const pane = await screen.findByTestId('generate-video-camera-preview');
+    expect(pane.querySelector('video')).toBeNull();
+    expect(pane.textContent).toBe(en.canvas.generatePanel.cameraCommandsPreviewHint);
+    for (const name of ['Truck left', 'Push in', 'Zoom out']) fireEvent.click(screen.getByTestId(option(name)));
+    const shake = screen.getByTestId(option('Shake'));
+    expect(shake).toBeDisabled();
+    fireEvent.pointerEnter(shake.parentElement as HTMLElement);
+    const video = pane.querySelector('video');
+    expect(video?.getAttribute('src')).toBe(clip('Shake'));
+    expect(video?.muted).toBe(true);
+    expect(video?.loop).toBe(true);
+    expect(video?.autoplay).toBe(true);
+    fireEvent.pointerLeave(shake.parentElement as HTMLElement);
+    expect(pane.querySelector('video')?.getAttribute('src')).toBe(clip('Shake'));
+    expect(screen.queryByTestId('hover-preview-content')).toBeNull();
+  });
+
+  it('opens with focus on the popover itself, so the hint stays until the reader moves to a command', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    const pane = await screen.findByTestId('generate-video-camera-preview');
+    await waitFor(() => expect(document.activeElement).toBe(pane.closest('[role="dialog"]')));
+    expect(pane.querySelector('video')).toBeNull();
+    fireEvent.focus(screen.getByTestId(option('Tilt up')));
+    expect(pane.querySelector('video')?.getAttribute('src')).toBe(clip('Tilt up'));
+  });
+
+  it('goes back to the hint when a clip cannot load', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    const pane = await screen.findByTestId('generate-video-camera-preview');
+    fireEvent.pointerEnter(screen.getByTestId(option('Shake')).parentElement as HTMLElement);
+    fireEvent.error(pane.querySelector('video') as HTMLVideoElement);
+    expect(pane.querySelector('video')).toBeNull();
+    expect(pane.textContent).toBe(en.canvas.generatePanel.cameraCommandsPreviewHint);
+  });
+
+  it('shows the pick order only on picked commands', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    for (const name of ['Push in', 'Zoom out']) fireEvent.click(await screen.findByTestId(option(name)));
+    const order = (name: string): HTMLElement =>
+      screen.getByTestId(`generate-video-camera-order-${name.toLowerCase().replace(/ /g, '-')}`);
+    expect(order('Zoom out').textContent).toBe('2');
+    expect(order('Zoom out')).not.toHaveClass('invisible');
+    expect(order('Pan left')).toHaveClass('invisible');
+  });
+
+  it('shows the picks as their bracket beside the count', async () => {
+    await openOn('t2v', 'minimax-h3-text-to-video');
+    fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
+    const count = await screen.findByTestId('generate-video-camera-count');
+    expect(count.textContent).toBe('0/3');
+    for (const name of ['Push in', 'Zoom out']) fireEvent.click(screen.getByTestId(option(name)));
+    expect(count.textContent).toBe('2/3 · [Push in,Zoom out]');
   });
 });

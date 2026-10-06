@@ -1377,13 +1377,13 @@ describe('这个部署服务不了的档 (#1951)', () => {
   });
 });
 
-describe('GeneratePanelContainer — 两句空态各自取自己那个 key (#1952)', () => {
+describe('GeneratePanelContainer — what the @ list says when it has nothing to list', () => {
   /**
    * 那句话在 en 里的原文。
    * @param key - `canvas.generatePanel` 下的键名。
    * @returns 该键在英文目录里的值。
    */
-  function sentence(key: 'mentionEmpty' | 'mentionNoMatch'): string {
+  function sentence(key: 'mentionEmpty'): string {
     return readPath(
       LOCALE_CATALOGS[0][1],
       `canvas.generatePanel.${key}`,
@@ -1421,22 +1421,18 @@ describe('GeneratePanelContainer — 两句空态各自取自己那个 key (#195
     const box = document.querySelector(
       '[data-testid="reference-mention-empty"]',
     );
-    return { text: box?.textContent ?? null, unmount: view.unmount };
+    const shown = box?.closest<HTMLElement>('body > div')?.style.display !== 'none';
+    return { text: shown ? (box?.textContent ?? null) : null, unmount: view.unmount };
   }
 
-  // 断言每句各自等于它那个 key 在 en 里的值。断言「两句不一样」不够：把两个
-  // key **对调**是同样两行、同样 typecheck 绿的第二种错，而对调之后两句依然
-  // 不同，`generate/` 和 `i18n/` 两个目录的 1252 条断言一条都不红（实测）。
-  // 用户端的后果正是这一片要消灭的那句谎——t2i 下连着一张图、`@` 后一个字都
-  // 没打，弹层说「没有匹配的内容」。
-  //
-  // 取值而不是写死英文措辞，所以 locale 润色不会假红。
-  it('每一句各自取自己那个 key，不是「两句不一样」就算数', async () => {
+  // The sentence is read from the en catalog, so locale wording changes do not
+  // turn this red.
+  it('says there is nothing usable for a bare @, and shows nothing for a query that matches no row', async () => {
     const listSpy = vi
       .spyOn(modelsApi, 'list')
       .mockResolvedValue(imageCatalog([T2I_MODEL]));
 
-    // t2i 不吃参考素材，所以这条图片边一项都用不了 → 第一句。
+    // t2i takes no reference material, so this image edge offers nothing.
     const nothingUsable = await emptyStateText(
       {
         nodes: [
@@ -1450,8 +1446,8 @@ describe('GeneratePanelContainer — 两句空态各自取自己那个 key (#195
     expect(nothingUsable.text).toBe(sentence('mentionEmpty'));
     nothingUsable.unmount();
 
-    // 文本行是提示词素材，t2i 下照样能用 → 池子非空，只是打的字没匹配上 →
-    // 第二句。
+    // A text row is prompt material, usable under t2i, so the pool is not
+    // empty; the typed query matches none of it and the list stays hidden.
     const nothingMatched = await emptyStateText(
       {
         nodes: [
@@ -1462,7 +1458,7 @@ describe('GeneratePanelContainer — 两句空态各自取自己那个 key (#195
       },
       'zzz',
     );
-    expect(nothingMatched.text).toBe(sentence('mentionNoMatch'));
+    expect(nothingMatched.text).toBeNull();
     nothingMatched.unmount();
     listSpy.mockRestore();
   });

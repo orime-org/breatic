@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import type { QueryClient } from '@tanstack/react-query';
 import type { ProjectRole, SpaceType } from '@breatic/shared';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@web/data/api/request';
 
@@ -26,6 +27,14 @@ export interface ProjectDetail extends ProjectSummary {
   myRole?: ProjectRole;
   /** Soft-delete marker; null for live projects. */
   deletedAt: string | null;
+  /** When the project was archived (read-only for everyone), or null while live. */
+  archivedAt: string | null;
+  /** Whether the caller may rename it: the studio admin or its owner, on a live project. */
+  canManageMeta: boolean;
+  /** Whether the caller may restore it: a studio admin, on an archived project. */
+  canRestore: boolean;
+  /** Whether the caller may leave it: an editor or a viewer, on a live project. */
+  canLeave: boolean;
 }
 
 /**
@@ -42,6 +51,31 @@ export interface LiveTransfer {
   toUserId: string;
   /** ISO instant; the offer stops being answerable after it. */
   expiresAt: string;
+}
+
+/**
+ * Whether a React Query key is a studio container projects-list key, i.e.
+ * `['studio', <slug>, 'projects']` (spec §6 / slice 2), so every studio's
+ * lists can be refreshed from a caller that knows only the project id.
+ * @param key the React Query key to test.
+ * @returns whether the key is a studio projects-list key.
+ */
+export function isStudioProjectsListKey(key: readonly unknown[]): boolean {
+  return key[0] === 'studio' && key[2] === 'projects';
+}
+
+/**
+ * Refetch everything that shows a project's name or which list it is in:
+ * every studio's projects lists, the recent page and the project itself.
+ * @param queryClient - The app's query client.
+ * @param projectId - The project that changed.
+ */
+export function invalidateProjectListings(queryClient: QueryClient, projectId: string): void {
+  void queryClient.invalidateQueries({
+    predicate: (query) => isStudioProjectsListKey(query.queryKey),
+  });
+  void queryClient.invalidateQueries({ queryKey: ['studios', 'recent'] });
+  void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
 }
 
 export const projectsApi = {
@@ -65,12 +99,39 @@ export const projectsApi = {
   duplicate(id: string) {
     return apiPost<ProjectDetail>(`/projects/${id}/duplicate`, {});
   },
+  /**
+   * `POST /api/v1/projects/:id/archive` — archive the project. Studio admin only.
+   * @param id the bare project uuid.
+   * @returns once the project is archived.
+   */
+  archive(id: string) {
+    return apiPost<{ ok: true }>(`/projects/${id}/archive`, {});
+  },
+  /**
+   * `DELETE /api/v1/projects/:id/membership` — leave the project. Any member
+   * but the owner, on a live project.
+   * @param id the bare project uuid.
+   * @returns once the caller is no longer a member.
+   */
+  leave(id: string) {
+    return apiDelete<{ ok: true }>(`/projects/${id}/membership`);
+  },
+  /**
+   * `POST /api/v1/projects/:id/restore` — bring an archived project back.
+   * Studio admin only; refused when the studio has no room for one more.
+   * @param id the bare project uuid.
+   * @returns once the project is live again.
+   */
+  restore(id: string) {
+    return apiPost<{ ok: true }>(`/projects/${id}/restore`, {});
+  },
   rename(id: string, name: string) {
     return apiPatch<ProjectDetail>(`/projects/${id}`, { name });
   },
   /**
    * `PUT /api/v1/projects/:id/cover` — point the project's cover at an
-   * uploaded picture. Owner-only.
+   * uploaded picture. Same gate as a rename: the studio's admin or the
+   * project's owner.
    * @param id the bare project uuid.
    * @param assetId the uploaded picture's ledger row.
    * @returns the updated project.
@@ -89,9 +150,6 @@ export const projectsApi = {
    */
   recordOpen(id: string) {
     return apiPost<{ ok: boolean }>(`/projects/${id}/opened`, {});
-  },
-  delete(id: string) {
-    return apiDelete(`/projects/${id}`);
   },
   /**
    * `POST /api/v1/projects/:id/transfer-owner` — the current owner asks a

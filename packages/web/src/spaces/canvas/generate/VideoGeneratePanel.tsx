@@ -13,6 +13,7 @@ import {
   type ExecuteRefusal,
 } from '@breatic/shared';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { CameraCommandPicker } from '@web/spaces/canvas/generate/CameraCommandPicker';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
@@ -90,6 +91,8 @@ interface VideoGeneratePanelProps {
   onRemoveReference: (item: ReferenceRailItem) => void;
   /** Insert one reference as an `@` chip in the prompt. */
   onInsertReference: (item: ReferenceRailItem) => void;
+  /** Writes bracketed camera commands into the prompt box the caret was last in (Multi-Shot: the shot last focused, else the first). */
+  onInsertCameraCommands: (text: string) => void;
   /** The source slots the active mode collects, in display order. */
   slots: readonly VideoSlot[];
   /** What is picked, by slot. */
@@ -125,8 +128,8 @@ interface VideoGeneratePanelProps {
   /** The collaborative prompt editor, injected by the container (TipTap + Yjs). */
   promptSlot: React.ReactNode;
   /**
-   * The fewest seconds the total may be set to, under the per-shot storyboard:
-   * one per shot (#2218, design §5.3). Undefined outside that tier.
+   * The fewest seconds the total may be set to in the multi-shot mode: one
+   * per shot. Undefined outside that mode.
    */
   durationFloor?: number;
   /** Close the panel without generating. */
@@ -175,6 +178,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   referencePicking,
   onRemoveReference,
   onInsertReference,
+  onInsertCameraCommands,
   slots,
   slotUrls,
   slotThumbnails,
@@ -257,13 +261,17 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
           triggerTestId='generate-video-mode-trigger'
         />
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
-        {currentModel && videoParamsPickerHasOptions(currentModel) ? (
+        {currentModel && videoParamsPickerHasOptions(currentModel, mode) ? (
           <VideoParamsPicker
             model={currentModel}
+            mode={mode}
             params={params}
             onChange={onChangeParams}
             durationFloor={durationFloor}
           />
+        ) : null}
+        {currentModel?.camera_commands && currentModel.camera_commands.length > 0 ? (
+          <CameraCommandPicker commands={currentModel.camera_commands} onInsert={onInsertCameraCommands} />
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>

@@ -34,6 +34,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { writeAgentPanelOpen } from '@web/lib/project-tabs-storage';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
 import { toast } from '@web/lib/toast';
 
@@ -176,6 +177,8 @@ function setup(): void {
     createdByUserId: 'u-me',
     myRole: 'owner',
     deletedAt: null,
+    archivedAt: null,
+    canRestore: false,
   });
   membersListMock.mockResolvedValue({ members: [] });
   render(
@@ -194,7 +197,8 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
       { id: SPACE_A, name: 'Space A', type: 'document' },
       { id: SPACE_B, name: 'Space B', type: 'document' },
     ];
-    useUIStore.setState({ chatPanelCollapsed: true, spaceOpInProgress: null });
+    useUIStore.setState({ spaceOpInProgress: null });
+    writeAgentPanelOpen('u-me', PID, false);
     useCurrentUserStore.setState({
       user: {
         id: 'u-me',

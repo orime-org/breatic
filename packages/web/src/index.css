@@ -110,28 +110,15 @@ body {
   display: block !important;
 }
 
-/* Sonner top-center fit-content centering override.
-   sonner v2 ships:
-     [data-sonner-toaster] { width: var(--width); }
-     [data-sonner-toaster][data-x-position="center"] { left: 50%; transform: translateX(-50%); }
-     [data-sonner-toast] { position: absolute; }
-   With `--width: max-content` (set by Toaster wrapper) the ol collapses
-   to width: 0 because absolute children don't contribute to the
-   shrink-wrap intrinsic size — translateX(-50% of 0) = 0, so the toast
-   visually appears starting at viewport center (right-of-center).
-   Switching ol to `inline-flex` + `width: auto` makes it shrink-wrap
-   around its now-relative children; transform: translateX(-50%) then
-   recenters the actual toast width. Chrome MCP smoke 2026-05-26
-   confirmed this is the only configuration that gives both centered
-   AND fit-content toast for sonner top-center. */
-[data-sonner-toaster][data-x-position='center'] {
-  width: auto !important;
-  display: inline-flex !important;
-  flex-direction: column;
-  align-items: center;
-}
-[data-sonner-toast] {
-  position: relative !important;
+/* Centring a toast that is as wide as its own text (`--width: max-content`,
+   set by the Toaster wrapper). Sonner places the list at 50% and every toast
+   absolutely inside it; absolute children give the list no width, so each
+   toast starts at the centre line. The `translate` property pulls it back by
+   half its own width. It is a separate property from `transform`, which sonner
+   uses to move each toast to its own row and for swiping, so the two do not
+   overwrite each other. */
+[data-sonner-toaster][data-x-position='center'] [data-sonner-toast] {
+  translate: -50% 0;
 }
 
 /* Toast type accent (2026-07-15, design B). The toast surface stays the neutral
@@ -142,8 +129,8 @@ body {
    tokens (the five defined status hues), so error/warning/success/info read
    consistently with the rest of the app. `!important` is required: it beats
    sonner's inline `borderColor` (non-important, so !important wins) and its
-   `[data-sonner-toast][data-styled]` vendor selector — same override discipline
-   as the centering rules above. richColors is off (App.tsx); this is the single
+   `[data-sonner-toast][data-styled]` vendor selector. richColors is off
+   (App.tsx); this is the single
    source of toast coloring. */
 [data-sonner-toast][data-type='error'] {
   border-left: 3px solid var(--color-status-error) !important;

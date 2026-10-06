@@ -60,7 +60,9 @@
       "cannot_change_admin_role": "Admin 角色只能通过转让变更。",
       "member_limit_reached": "{limit, plural, =0 {这个 Studio 的会员等级不支持添加成员，升级后即可添加。} other {这个 Studio 的会员等级最多可有 # 位成员，升级可添加更多。}}",
       "member_limit_reached_for_invitee": "这个 Studio 的成员名额已满，请联系它的 Admin 腾出名额。",
-      "leave_last_admin": "离开这个 Studio 前请先转让 Admin。"
+      "leave_last_admin": "离开这个 Studio 前请先转让 Admin。",
+      "transfer_credits_designated": "还有积分包指定给这个 Studio。请先在头像菜单 →「积分」→「指定」里取消指定，再发起转让。",
+      "designation_during_transfer": "这个 Studio 有待接受的转让，撤回或转让结束后才能再给它指定积分包。"
     },
     "project": {
       "join_already_member": "你已经是这个 Project 的成员。",
@@ -69,11 +71,17 @@
       "already_member": "该用户已有访问权限。",
       "already_invited": "该用户已有一个待确认的邀请。",
       "limit_reached": "{limit, plural, =0 {这个 Studio 的会员等级不支持创建 Project，升级后即可创建。} other {这个 Studio 的会员等级最多可创建 # 个 Project，升级可创建更多。}}",
+      "already_archived": "这个 Project 已归档。",
+      "not_archived": "这个 Project 未归档。",
+      "restore_limit_reached": "{limit, plural, other {这个 Studio 的会员等级最多可有 # 个 Project，归档其他 Project 或升级后才能恢复。}}",
       "collaborator_limit_reached": "{limit, plural, =0 {这个 Project 不支持添加协作者，升级后即可添加。} other {这个 Project 最多可有 # 位协作者，升级可添加更多。}}",
       "collaborator_limit_reached_for_invitee": "这个 Project 的协作者名额已满，请联系它的 Owner 腾出名额。",
       "only_viewer_can_request_upgrade": "只有 Viewer 可以申请角色升级",
       "no_active_owner": "这个 Project 没有在任的 Owner",
-      "not_found": "找不到这个 Project"
+      "not_found": "找不到这个 Project",
+      "archived": "这个 Project 已归档，只能查看。",
+      "copy_name": "副本 - {name}",
+      "leave_owner": "Owner 需要先转让所有权才能退出。"
     },
     "payment": {
       "tier_not_found": "未知的套餐：{tier}。可选：{available}",
@@ -164,7 +172,8 @@
     "chat": {
       "message_too_long": "这条消息太长了。最多 {limit, number} 个字符，这条有 {actual, number} 个。",
       "attachments_too_long": "附带的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
-      "attachments_too_many": "附带的内容太多了。最多 {limit, number} 项，这条有 {actual, number} 项。"
+      "attachments_too_many": "附带的内容太多了。最多 {limit, number} 项，这条有 {actual, number} 项。",
+      "references_too_many": "引用附件的次数太多。一条消息最多 {limit, number} 次，这条有 {actual, number} 次。"
     },
     "mail": {
       "studio_invite": {
@@ -249,7 +258,8 @@
       "attachTooLong": "附带的内容太多了，请少挂几项或换短一点的文件。",
       "attachUnsupported": "{filename} 不能附带",
       "attachTooLarge": "{filename} 太大，不能附带",
-      "attachUnavailable": "暂时无法添加，请重试。"
+      "attachUnavailable": "暂时无法添加，请重试。",
+      "atEmpty": "没有可引用的附件"
     },
     "empty": {
       "greetingWithName": "嗨, {name}!",
@@ -453,7 +463,6 @@
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的画面内容，@ 引用参考",
       "mentionEmpty": "没有可引用的内容",
-      "mentionNoMatch": "没有匹配的内容",
       "voicePlaceholder": "未选音色",
       "voiceSearchPlaceholder": "搜索音色…",
       "voiceLoading": "正在加载音色…",
@@ -636,6 +645,7 @@
         "horizontal_angle": "水平角度",
         "vertical_angle": "垂直角度",
         "negative_prompt": "反向提示词",
+        "auto_shots": "自动分镜",
         "motion": "运动幅度",
         "order": "顺序",
         "model_mode": "区域",
@@ -650,10 +660,6 @@
         "pronunciation": "读作"
       },
       "storyboard": {
-        "label": "分镜",
-        "perShot": "逐镜头编辑",
-        "autoHint": "由模型拆分镜头",
-        "back": "返回自动分镜",
         "shot": "镜头 {n, number}",
         "removeShot": "删除",
         "addShot": "添加镜头",
@@ -669,7 +675,19 @@
       "styleTip": "从画布选最多 3 张图作为风格参考",
       "selectStyleFromCanvas": "从画布选择风格参考",
       "removeStyle": "移除风格参考",
-      "errorNoStyleImage": "先挑一张风格图"
+      "errorNoStyleImage": "先挑一张风格图",
+      "cameraCommands": "运镜",
+      "cameraCommandsInsert": "插入",
+      "cameraCommandGroup": {
+        "truck": "横移",
+        "pan": "摇",
+        "dolly": "推拉",
+        "pedestal": "升降",
+        "tilt": "俯仰",
+        "zoom": "变焦",
+        "other": "其他"
+      },
+      "cameraCommandsPreviewHint": "悬停指令即可预览"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -956,6 +974,18 @@
       "busy": "有上传或其他操作正在进行，刷新会中断操作。建议完成后再刷新。",
       "later": "稍后",
       "refresh": "更新"
+    },
+    "archived": {
+      "banner": "该 Project 已归档，只能查看",
+      "restore": "恢复"
+    },
+    "leave": {
+      "action": "退出 Project",
+      "title": "要退出「{name}」吗？",
+      "body": "退出后你将不能再打开这个 Project。",
+      "confirm": "退出",
+      "done": "已退出「{name}」",
+      "failed": "退出失败"
     }
   },
   "common": {
@@ -1275,6 +1305,7 @@
     "empty": "没有待处理通知",
     "loading": "加载中…",
     "markRead": "标为已读",
+    "markAllRead": "全部已读",
     "headline": {
       "roleUpgradeRequest": "{actor} 申请 {project} 的 Editor 权限",
       "roleUpgradeApproved": "{actor} 通过了你在 {project} 的 Editor 权限",
@@ -1370,7 +1401,8 @@
         "members": "成员",
         "credits": "积分",
         "settings": "设置",
-        "navLabel": "Studio 分区"
+        "navLabel": "Studio 分区",
+        "archived": "已归档"
       },
       "works": {
         "emptyHint": "Works 是从 Project 发布出来的独立成品(完整视频 / 小游戏…),是 Studio 对外的门面。功能上线后,已发布的成品会在这里展示。",
@@ -1400,7 +1432,24 @@
       "card": {
         "assetCount": "{count} 个素材",
         "more": "更多操作",
-        "createdAt": "创建于 {time}"
+        "createdAt": "创建于 {time}",
+        "rename": "改名",
+        "duplicate": "复制",
+        "archive": "归档",
+        "restore": "恢复",
+        "archivedBadge": "已归档",
+        "renameTitle": "重命名 Project",
+        "renameLabel": "名称",
+        "save": "保存",
+        "cancel": "取消",
+        "archiveTitle": "归档「{name}」？",
+        "archiveBody": "归档后所有人只能查看，正在编辑的人会被断开。Studio Admin 可以恢复。",
+        "duplicated": "已复制为「{name}」",
+        "duplicateFailed": "复制失败",
+        "archived": "已归档",
+        "archiveFailed": "归档失败",
+        "restored": "已恢复",
+        "restoreFailed": "恢复失败"
       },
       "projects": {
         "new": "新建 Project",
@@ -1482,7 +1531,7 @@
         "description": "简介",
         "dangerTitle": "危险操作",
         "transfer": "转让 Studio",
-        "dangerHint": "转让会把整个 Studio（含 Projects、Collections 与钱包）交给另一位成员；修改 Slug 会让所有现有链接失效。仅 Admin 可操作。",
+        "dangerHint": "转让会把 Studio（含 Projects、Collections）交给另一位成员，发起前需先取消指定给它的积分包。修改 Slug 会让所有现有链接失效。仅 Admin 可操作。",
         "dangerHintPersonal": "你的 Slug 就是你的 @handle，也是这个 Studio 的网址。修改不可撤销。",
         "transferTitle": "转让 Studio 所有权",
         "transferBody": "选择一位 Maintainer 成为新的 Admin。对方接受后转让才生效,你会变成 Maintainer。",
@@ -1582,6 +1631,10 @@
           "storage": "存储空间已满，封面没有上传。",
           "upload": "封面没有更新，请重试。"
         }
+      },
+      "archived": {
+        "emptyTitle": "没有已归档的 Project",
+        "emptyHint": "归档的 Project 会出现在这里，可以随时恢复。"
       }
     },
     "rail": {
@@ -1640,7 +1693,8 @@
     "withdraw": "撤回申请",
     "requestFailed": "申请没有发出去，请重试。",
     "withdrawFailed": "撤回没有成功，请重试。",
-    "loadFailed": "没能打开这个 Project，请重试。"
+    "loadFailed": "没能打开这个 Project，请重试。",
+    "archived": "该 Project 已归档"
   },
   "activity": {
     "description": "上传、生成、Space 与成员变更",
@@ -1659,6 +1713,7 @@
       "generationFailed": "{actor} 的生成失败了",
       "memberJoined": "{actor} 加入了 Project",
       "memberRemoved": "{actor} 移除了一名成员",
+      "memberLeft": "{actor} 退出了 Project",
       "memberRoleChanged": "{actor} 将一名成员的角色改为 {role}",
       "ownershipTransferred": "{actor} 转移了 Project 所有权",
       "spaceCreated": "{actor} 创建了 Space {spaceName}",

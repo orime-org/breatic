@@ -24,7 +24,7 @@ export const FILL_KINDS = [
   "editor",
   "panel",
   "remote",
-  // Filled from the node's per-mode storyboard: its shots and its tier (#2218).
+  // Filled from the node's shots in the multi-shot mode (node-storyboard.ts).
   "storyboard",
   "none",
 ] as const;
@@ -69,7 +69,13 @@ const declarationSchema = z.object({
   max: z.number().optional(),
   // The value that is sent as nothing: choosing it leaves the param out of the
   // request, for the upstream's own behaviour when it is absent ("auto").
-  absent_value: z.string().optional(),
+  absent_value: z.union([z.string(), z.number(), z.boolean()]).optional(),
+  // What a value is sent as upstream, keyed by its string form, when the
+  // endpoint spells it differently (Kling's switch sends "intelligence").
+  upstream_values: z.record(z.string(), z.string()).optional(),
+  // A list the endpoint has no field for: each entry is written into the
+  // prompt with this template.
+  into_prompt: z.string().optional(),
   // How a value reads on screen, when its own spelling is not that sentence
   // (`left_right` reads "Left first"). English, like `label`.
   value_labels: z.record(z.string(), z.string()).optional(),
@@ -137,6 +143,8 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "remote_source",
   "upstream",
   "absent_value",
+  "upstream_values",
+  "into_prompt",
   "label",
   "value_labels",
   "value_locales",
@@ -280,8 +288,26 @@ function faultsOn(
 
   // The payload leaves the param out when it holds this value, so a value the
   // choice does not offer is never held and the param is always sent.
-  if (declared.absent_value !== undefined && !offered.has(declared.absent_value)) {
+  if (declared.absent_value !== undefined && !offered.has(String(declared.absent_value))) {
     faults.push(`absent_value "${declared.absent_value}" is not one of the values offered`);
+  }
+
+  // A spelling for a value the choice does not offer is never used, so a
+  // misspelled key would leave the endpoint receiving our own spelling.
+  for (const value of Object.keys(declared.upstream_values ?? {})) {
+    if (!offered.has(value)) {
+      faults.push(`upstream_values names "${value}", which values does not offer`);
+    }
+  }
+
+  // Only a list of entries is written into the prompt, and a template with no
+  // place for an entry's text would send every shot as the same words.
+  if (declared.into_prompt !== undefined) {
+    if (declared.type !== "items") {
+      faults.push("into_prompt writes the entries of a list, so it needs type: items");
+    } else if (!declared.into_prompt.includes("{prompt}")) {
+      faults.push("into_prompt has no {prompt}, so no entry's text would reach the prompt");
+    }
   }
 
   // One tag per value: the panel pairs them by position, so a short list
