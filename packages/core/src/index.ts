@@ -59,6 +59,7 @@ export {
   errorMonitoringEnvironment,
   errorMonitoringOptions,
   readBuildRelease,
+  type ErrorMonitoringDataCollection,
   type ErrorMonitoringInput,
   type ErrorMonitoringOptions,
   type MonitoredService,
