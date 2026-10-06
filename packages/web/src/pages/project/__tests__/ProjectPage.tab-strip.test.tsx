@@ -29,6 +29,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { writeAgentPanelOpen } from '@web/lib/project-tabs-storage';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
 
 const PID = '11111111-1111-4111-8111-111111111111';
@@ -240,7 +241,8 @@ describe('ProjectPage — the strip on a browser that has not been here', () => 
       { id: SPACE_C, name: 'Space C', type: 'document', createdAt: 3 },
     ];
     sendSpaceRpcMock.mockResolvedValue({ id: 'r1', ok: true });
-    useUIStore.setState({ chatPanelCollapsed: true, spaceOpInProgress: null });
+    useUIStore.setState({ spaceOpInProgress: null });
+    writeAgentPanelOpen('u-me', PID, false);
     useCurrentUserStore.setState({
       user: {
         id: 'u-me',
@@ -369,7 +371,8 @@ describe('ProjectPage — the strip the browser was holding', () => {
       { id: SPACE_C, name: 'Space C', type: 'document', createdAt: 3 },
     ];
     sendSpaceRpcMock.mockResolvedValue({ id: 'r1', ok: true });
-    useUIStore.setState({ chatPanelCollapsed: true, spaceOpInProgress: null });
+    useUIStore.setState({ spaceOpInProgress: null });
+    writeAgentPanelOpen('u-me', PID, false);
     useCurrentUserStore.setState({
       user: {
         id: VIEWER,
@@ -432,6 +435,7 @@ describe('ProjectPage — the strip the browser was holding', () => {
       expect(record()).toEqual({
         tabs: [{ spaceId: SPACE_A, viewport: null }],
         activeId: SPACE_A,
+        agentPanelOpen: false,
       }),
     );
   });

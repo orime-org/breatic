@@ -3,53 +3,37 @@
 
 import * as React from 'react';
 
-/**
- * Read a rail section's persisted collapsed flag from localStorage.
- * @param key the storage key for the section.
- * @returns `true` when the section was last left collapsed, else `false`.
- */
-function readCollapsed(key: string): boolean {
-  try {
-    return window.localStorage.getItem(key) === '1';
-  } catch {
-    // Storage unavailable (private mode / SSR) — default to expanded.
-    return false;
-  }
-}
+import {
+  readUserPreferences,
+  writeUserPreference,
+  type RailSection,
+} from '@web/lib/user-preferences-storage';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 /**
- * Persist a rail section's collapsed flag to localStorage.
- * @param key the storage key for the section.
- * @param collapsed whether the section is now collapsed.
+ * Whether one Studio rail section is folded, remembered per account. Default
+ * is expanded; when storage is unavailable the choice holds for the session.
+ *
+ * The Studio page sits behind `ProtectedRoute`, so the account is known on
+ * the first render, and signing in as someone else goes through `/login` and
+ * mounts the rail afresh.
+ * @param section - The rail section.
+ * @returns The current `collapsed` flag and a `toggle` to flip it.
  */
-function writeCollapsed(key: string, collapsed: boolean): void {
-  try {
-    window.localStorage.setItem(key, collapsed ? '1' : '0');
-  } catch {
-    // Storage unavailable — degrade to in-memory only (no persistence).
-  }
-}
-
-/**
- * Rail section collapse state (④⑤ Discord-style expand / collapse), persisted
- * in localStorage so the choice survives across sessions (spec §4.4). Default
- * is expanded (`collapsed === false`); storage failures degrade to in-memory.
- * @param storageKey a stable key identifying the section (e.g. `rail.myStudios`).
- * @returns the current `collapsed` flag and a `toggle` to flip it.
- */
-export function useRailCollapse(storageKey: string): {
+export function useRailCollapse(section: RailSection): {
   collapsed: boolean;
   toggle: () => void;
 } {
-  const [collapsed, setCollapsed] = React.useState<boolean>(() =>
-    readCollapsed(storageKey),
+  const userId = useCurrentUserStore((s) => s.user?.id);
+  const [collapsed, setCollapsed] = React.useState<boolean>(
+    () => readUserPreferences(userId).railCollapsed[section],
   );
   const toggle = React.useCallback((): void => {
-    setCollapsed((prev) => {
-      const next = !prev;
-      writeCollapsed(storageKey, next);
-      return next;
-    });
-  }, [storageKey]);
+    const next = !collapsed;
+    setCollapsed(next);
+    // Read at write time so a section toggled in another tab keeps its value.
+    const stored = readUserPreferences(userId).railCollapsed;
+    writeUserPreference(userId, { railCollapsed: { ...stored, [section]: next } });
+  }, [collapsed, section, userId]);
   return { collapsed, toggle };
 }

@@ -47,10 +47,7 @@ for (const theme of ['light', 'dark'] as const) {
     // that. The inline script in `index.html` reads this key before React
     // mounts, so every page in the run starts in the theme under test.
     await page.addInitScript((t) => {
-      window.localStorage.setItem(
-        'breatic.preferences',
-        JSON.stringify({ state: { theme: t }, version: 1 }),
-      );
+      window.localStorage.setItem('breatic.theme', t);
     }, theme);
     await openCredits(page, 'buy');
     await page

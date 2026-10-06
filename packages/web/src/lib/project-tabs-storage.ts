@@ -64,14 +64,23 @@ const viewportSchema = z
   .nullable()
   .catch(null);
 
+/**
+ * One account's slot for one project. `tabs` is absent while the only thing
+ * stored here is whether the Agent panel is open; the strip is first stored
+ * by `writeOpenTabs`. A panel value that does not parse costs that value and
+ * nothing else, so it can never take the reader's tabs with it.
+ */
 const slotSchema = z.object({
-  tabs: z.array(
-    z.object({
-      spaceId: z.string().min(1),
-      viewport: viewportSchema,
-    }),
-  ),
-  activeId: z.string().min(1).nullable(),
+  tabs: z
+    .array(
+      z.object({
+        spaceId: z.string().min(1),
+        viewport: viewportSchema,
+      }),
+    )
+    .optional(),
+  activeId: z.string().min(1).nullable().optional(),
+  agentPanelOpen: z.boolean().optional().catch(undefined),
 });
 
 type Slot = z.infer<typeof slotSchema>;
@@ -199,8 +208,8 @@ export function readProjectTabs(
 ): RestoredTabs | null {
   if (userId === undefined || userId === '') return null;
   const slot = readSlot(readRecord(), userId, projectId);
-  if (slot === null) return null;
-  return { openIds: slot.tabs.map((t) => t.spaceId), activeId: slot.activeId };
+  if (slot?.tabs === undefined) return null;
+  return { openIds: slot.tabs.map((t) => t.spaceId), activeId: slot.activeId ?? null };
 }
 
 /**
@@ -224,6 +233,7 @@ export function writeOpenTabs(
     (previous?.tabs ?? []).map((t) => [t.spaceId, t.viewport] as const),
   );
   writeSlot(record, userId, projectId, {
+    ...previous,
     tabs: openIds.map((spaceId) => ({
       spaceId,
       viewport: cameras.get(spaceId) ?? null,
@@ -249,7 +259,7 @@ export function readSpaceViewport(
 ): StoredViewport | null {
   if (userId === undefined || userId === '') return null;
   const slot = readSlot(readRecord(), userId, projectId);
-  return slot?.tabs.find((t) => t.spaceId === spaceId)?.viewport ?? null;
+  return slot?.tabs?.find((t) => t.spaceId === spaceId)?.viewport ?? null;
 }
 
 /**
@@ -271,10 +281,42 @@ export function writeSpaceViewport(
   if (userId === undefined || userId === '') return;
   const record = readRecord();
   const slot = readSlot(record, userId, projectId);
-  if (slot === null) return;
-  if (!slot.tabs.some((t) => t.spaceId === spaceId)) return;
+  if (slot?.tabs?.some((t) => t.spaceId === spaceId) !== true) return;
   writeSlot(record, userId, projectId, {
     ...slot,
     tabs: slot.tabs.map((t) => (t.spaceId === spaceId ? { ...t, viewport } : t)),
   });
+}
+
+/**
+ * Whether this account left the Agent panel open in this project.
+ * @param userId - The signed-in account; nothing is read without one.
+ * @param projectId - The project being opened.
+ * @returns The stored value, or undefined when the panel was never toggled
+ *   here or the stored value is unusable.
+ */
+export function readAgentPanelOpen(
+  userId: string | undefined,
+  projectId: string,
+): boolean | undefined {
+  if (userId === undefined || userId === '') return undefined;
+  return readSlot(readRecord(), userId, projectId)?.agentPanelOpen;
+}
+
+/**
+ * Store whether the Agent panel is open, keeping the strip and cameras as they
+ * were.
+ * @param userId - The signed-in account; nothing is written without one.
+ * @param projectId - The project the panel belongs to.
+ * @param open - Whether the panel is open.
+ */
+export function writeAgentPanelOpen(
+  userId: string | undefined,
+  projectId: string,
+  open: boolean,
+): void {
+  if (userId === undefined || userId === '') return;
+  const record = readRecord();
+  const slot = readSlot(record, userId, projectId);
+  writeSlot(record, userId, projectId, { ...slot, agentPanelOpen: open });
 }

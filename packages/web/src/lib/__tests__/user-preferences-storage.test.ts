@@ -105,6 +105,13 @@ describe('user preferences storage', () => {
     },
   );
 
+  it('reads an out-of-range width back as stored, for the column to clamp', () => {
+    // The 320..640 range is decided in one place only: `resolveWidth` and the
+    // Panel's own min and max.
+    seed({ [ALICE]: { agentColumnWidth: 9999 } });
+    expect(readUserPreferences(ALICE).agentColumnWidth).toBe(9999);
+  });
+
   it('leaves other accounts alone when one account entry is broken', () => {
     seed({ [ALICE]: 'broken', [BOB]: { snapToGrid: true } });
 

@@ -13,6 +13,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { writeAgentPanelOpen } from '@web/lib/project-tabs-storage';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
 import type { ProjectRole } from '@breatic/shared';
 import { PAGE_MIN_WIDTH } from '@web/pages/project/agent-column-width';
@@ -129,7 +130,7 @@ describe('ProjectPage — the two columns and the handle between them', () => {
   });
 
   it('takes the handle away with the column when it is collapsed', async () => {
-    useUIStore.setState({ chatPanelCollapsed: true });
+    writeAgentPanelOpen('u-me', PID, false);
     setup('owner');
     await screen.findByTestId('top-bar');
 
@@ -157,7 +158,7 @@ describe('ProjectPage — the two columns and the handle between them', () => {
   });
 
   it('keeps that floor when the column is collapsed', async () => {
-    useUIStore.setState({ chatPanelCollapsed: true });
+    writeAgentPanelOpen('u-me', PID, false);
     setup('owner');
     const page = await screen.findByTestId('project-page');
     expect(page.style.minWidth).toBe(`${PAGE_MIN_WIDTH}px`);

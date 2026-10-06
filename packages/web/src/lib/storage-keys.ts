@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Central registry of every browser-persisted (localStorage) key.
+ * Central registry of every browser-persisted (localStorage and
+ * sessionStorage) key.
  *
  * One project-wide rule, enforced by the `breatic/storage-key-prefix` ESLint
  * rule and, for the inline script in index.html that cannot import this file,
@@ -12,11 +13,14 @@
  * future sibling app. Add new keys HERE and reference `STORAGE_KEYS.*` at the
  * callsite — never hardcode a bare key string in a component or store.
  *
+ * Values are stored plain: a string as itself, a boolean or number as JSON.
+ * What belongs to one account lives in one key keyed by account id.
+ *
  * One known exception lives outside this module by necessity: the pre-React
- * inline script in `src/index.html` reads `breatic.preferences` directly to
- * set the theme before the module graph loads (it runs before `index.tsx`
- * and so cannot `import` this file). If you ever change the `preferences`
- * key value, update that inline `<script>` too.
+ * inline script in `src/index.html` reads `breatic.theme` directly to set the
+ * theme before the module graph loads (it runs before `index.tsx` and so
+ * cannot `import` this file). If you ever change the `theme` key value,
+ * update that inline `<script>` too.
  */
 
 /** The prefix every persisted key must carry. */
@@ -31,18 +35,18 @@ export const STORAGE_PREFIX = 'breatic.';
 export const STORAGE_KEYS = {
   /** Explicit locale choice — i18n bootstrap resolution chain step 1. */
   locale: 'breatic.locale',
-  /** Zustand-persisted user preferences (theme). Mirrored in `src/index.html`. */
-  preferences: 'breatic.preferences',
-  /** Rail "Personal Studio" section collapsed flag (Discord-style expand / collapse). */
-  railPersonalStudios: 'breatic.personalStudios',
-  /** Rail "My Team Studios" section collapsed flag (Discord-style expand / collapse). */
-  railMyStudios: 'breatic.myStudios',
-  /** Rail "Joined studios" section collapsed flag. */
-  railJoinedStudios: 'breatic.joinedStudios',
-  /** Width in pixels the user dragged the Agent column to. One value for every project. */
-  agentColumnWidth: 'breatic.agentColumnWidth',
-  /** Space tab strips, addressed account then project then Space. See `project-tabs-storage`. */
+  /** `dark` / `light` / `system`. Read by the inline script in `src/index.html`. */
+  theme: 'breatic.theme',
+  /**
+   * Per account, then per project: the Space tab strip, each tab's camera, and
+   * whether the Agent panel is open. See `project-tabs-storage`.
+   */
   projectTabs: 'breatic.projectTabs',
+  /**
+   * Per account: the Agent column width, the Studio rail sections, the canvas
+   * minimap and snap. See `user-preferences-storage`.
+   */
+  userPreferences: 'breatic.userPreferences',
   /**
    * Whether this browser has ever held a session. Read before `/auth/me`
    * answers, to decide whether a page behind the auth gate is worth fetching
@@ -50,6 +54,8 @@ export const STORAGE_KEYS = {
    * one chunk.
    */
   sessionSeen: 'breatic.sessionSeen',
+  /** sessionStorage: app versions this tab chose to defer. See `use-app-update`. */
+  deferredAppVersions: 'breatic.deferredAppVersions',
 } as const;
 
 /** Union of every valid persisted key value. */

@@ -4,11 +4,13 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
+import { readAgentPanelOpen, writeAgentPanelOpen } from '@web/lib/project-tabs-storage';
+
 /**
  * Global UI store - chrome-level state shared across pages.
  *
  * Scope:
- *   - chatPanelCollapsed: chat panel collapse state
+ *   - chatPanelCollapsed: Agent panel hidden, remembered per account and project
  *   - drawerOpen: side drawer state (Space drawer, conversation history)
  *   - sidebarOpen: studio nav sidebar
  *   - modalStack: ordered list of open modal ids (top of stack is active)
@@ -21,8 +23,21 @@ import { immer } from 'zustand/middleware/immer';
  */
 export type ActiveRegion = 'space' | 'agent';
 
+/** The account and project the Agent panel state is stored under. */
+interface AgentPanelOwner {
+  userId: string;
+  projectId: string;
+}
+
 interface UIState {
+  /**
+   * Whether the Agent panel is hidden. Remembered per account and project:
+   * `restoreAgentPanel` loads it when a project page opens, and every change
+   * after that is stored under the same account and project.
+   */
   chatPanelCollapsed: boolean;
+  /** Where changes to `chatPanelCollapsed` are stored; null before a project opens. */
+  agentPanelOwner: AgentPanelOwner | null;
   drawerOpen: boolean;
   sidebarOpen: boolean;
   modalStack: string[];
@@ -67,6 +82,11 @@ interface UIState {
    * apart.
    */
   activeRegion: ActiveRegion;
+  /**
+   * Load what this account left in this project, open when nothing is stored,
+   * and store later changes there.
+   */
+  restoreAgentPanel: (userId: string | undefined, projectId: string) => void;
   setChatPanelCollapsed: (collapsed: boolean) => void;
   toggleChatPanel: () => void;
   setDrawerOpen: (open: boolean) => void;
@@ -83,9 +103,19 @@ interface UIState {
   reset: () => void;
 }
 
+/**
+ * Store the panel state under whoever the panel was last restored for.
+ * @param owner - The account and project, or null before a project opens.
+ * @param collapsed - Whether the panel is now hidden.
+ */
+function storeAgentPanel(owner: AgentPanelOwner | null, collapsed: boolean): void {
+  if (owner !== null) writeAgentPanelOpen(owner.userId, owner.projectId, !collapsed);
+}
+
 export const useUIStore = create<UIState>()(
-  immer((set) => ({
+  immer((set, get) => ({
     chatPanelCollapsed: false,
+    agentPanelOwner: null,
     drawerOpen: false,
     sidebarOpen: true,
     modalStack: [],
@@ -95,14 +125,24 @@ export const useUIStore = create<UIState>()(
     readOnlyViewSpaceId: null,
     activeOverlayId: null,
     activeRegion: 'space',
-    setChatPanelCollapsed: (collapsed) =>
+    restoreAgentPanel: (userId, projectId) =>
+      set((s) => {
+        s.chatPanelCollapsed = readAgentPanelOpen(userId, projectId) === false;
+        s.agentPanelOwner = userId === undefined || userId === '' ? null : { userId, projectId };
+      }),
+    setChatPanelCollapsed: (collapsed) => {
       set((s) => {
         s.chatPanelCollapsed = collapsed;
-      }),
-    toggleChatPanel: () =>
+      });
+      storeAgentPanel(get().agentPanelOwner, collapsed);
+    },
+    toggleChatPanel: () => {
       set((s) => {
         s.chatPanelCollapsed = !s.chatPanelCollapsed;
-      }),
+      });
+      const { agentPanelOwner, chatPanelCollapsed } = get();
+      storeAgentPanel(agentPanelOwner, chatPanelCollapsed);
+    },
     setDrawerOpen: (open) =>
       set((s) => {
         s.drawerOpen = open;
@@ -150,8 +190,8 @@ export const useUIStore = create<UIState>()(
         s.activeOverlayId = null;
         // A fresh project opens with the space region in charge (2026-08-26).
         s.activeRegion = 'space';
-        // `sidebarOpen` / `chatPanelCollapsed` are layout preferences, not
-        // per-project session state — deliberately kept across a project change.
+        // `sidebarOpen` is kept across a project change; `chatPanelCollapsed`
+        // is loaded for the next project by `restoreAgentPanel`.
       }),
   })),
 );
