@@ -198,24 +198,24 @@ describe('useNodeCreation', () => {
       expect(placed([pasted as string])).toEqual([{ x: 1064, y: 1064 }]);
     });
 
-    it('lets a pasted Group speak for its members, whose stored spots are relative to it', () => {
+    it('steps a pasted Group when only one of its members would land on a taken spot', () => {
       const { result } = renderHook(() => useNodeCreation('p1', 's1'));
       canvasSpace.addNode('p1', 's1', {
         id: 'there',
         type: 'image',
-        position: { x: 64, y: 64 },
+        position: { x: 564, y: 564 },
         data: { name: 'T', createdAt: 0, createdBy: 'u-9', locked: false, attachments: [] },
       });
-      // The member's stored (40, 40) plus the shift is (64, 64), where a node
-      // sits; the member itself is painted at (564, 564), clear of it.
+      // Clipboard positions are absolute, members included: shifted by 24 the
+      // Group's corner (524, 524) is free, its member lands on (564, 564).
       const [group] = result.current.pasteNodesAt(
         [
           { id: 'g', type: 'group', position: { x: 500, y: 500 }, width: 600, height: 400 },
-          { id: 'm', type: 'image', parentId: 'g', position: { x: 40, y: 40 } },
+          { id: 'm', type: 'image', parentId: 'g', position: { x: 540, y: 540 } },
         ],
         { dx: 24, dy: 24 },
       );
-      expect(placed([group as string])).toEqual([{ x: 524, y: 524 }]);
+      expect(placed([group as string])).toEqual([{ x: 548, y: 548 }]);
     });
 
     it('leaves a paste on a free spot where it was asked to go', () => {
