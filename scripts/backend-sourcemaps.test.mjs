@@ -42,7 +42,7 @@ test('installed workspace chunks must match the injected originals', () => {
       for (const dependency of name === 'collab' ? ['shared', 'core'] : ['shared', 'core', 'domain']) {
         const dir = join(root, 'packages', name, 'node_modules', '@breatic', dependency);
         mkdirSync(dir, { recursive: true });
-        writeFileSync(join(dir, 'package.json'), JSON.stringify({ main: 'dist/index.js' }));
+        writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module', exports: { '.': { import: './dist/index.js' } } }));
         cpSync(join(root, 'packages', dependency, 'dist'), join(dir, 'dist'), { recursive: true });
       }
     }

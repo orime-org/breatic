@@ -1,9 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
-import { resolve, join, dirname } from 'node:path';
-import { createRequire } from 'node:module';
+import { readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const packages = ['server', 'worker', 'collab', 'core', 'domain', 'shared'];
@@ -26,12 +25,13 @@ export function verify(root, installed = false) {
   }
   if (installed) {
     for (const name of ['server', 'worker', 'collab']) {
-      const require = createRequire(join(root, 'packages', name, 'package.json'));
       for (const dependency of name === 'collab' ? ['shared', 'core'] : ['shared', 'core', 'domain']) {
-        const entry = require.resolve(`@breatic/${dependency}`);
+        // Follow pnpm's installed package link without using CommonJS resolution
+        // for workspace packages whose exports only support ESM imports.
+        const installedDist = realpathSync(join(root, 'packages', name, 'node_modules', '@breatic', dependency, 'dist'));
         const original = join(root, 'packages', dependency, 'dist');
         for (const file of readdirSync(original, { recursive: true }).filter(file => /\.js(?:\.map)?$/.test(file))) {
-          assert.deepEqual(readFileSync(join(dirname(entry), file)), readFileSync(join(original, file)), `${name}/${dependency}/${file}`);
+          assert.deepEqual(readFileSync(join(installedDist, file)), readFileSync(join(original, file)), `${name}/${dependency}/${file}`);
         }
       }
     }
