@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   errorMonitoringEnvironment,
+  errorMonitoringOptions,
   readBuildRelease,
 } from "@core/config/error-monitoring.js";
 
@@ -53,5 +54,57 @@ describe("readBuildRelease", () => {
   it("returns nothing when the file is absent or unreadable", () => {
     expect(readBuildRelease(join(tmpdir(), "no-such-dir", "build-info.json"))).toBeUndefined();
     expect(readBuildRelease(buildInfo("{not json"))).toBeUndefined();
+  });
+});
+
+describe("errorMonitoringOptions", () => {
+  const releasePath = (): string => buildInfo(JSON.stringify({ revision: SHA }));
+
+  it("turns monitoring off when no DSN is configured", () => {
+    expect(
+      errorMonitoringOptions({ dsn: "", deployment: "prod", service: "server", buildInfoPath: releasePath() }),
+    ).toBeNull();
+  });
+
+  it("tags the service and carries the release and environment", () => {
+    const options = errorMonitoringOptions({
+      dsn: "https://key@o1.ingest.sentry.io/2",
+      deployment: "prod",
+      service: "worker",
+      buildInfoPath: releasePath(),
+    });
+    expect(options).toMatchObject({
+      dsn: "https://key@o1.ingest.sentry.io/2",
+      environment: "production",
+      release: SHA,
+      initialScope: { tags: { service: "worker" } },
+    });
+  });
+
+  it("collects no user details, cookies, bodies or query strings", () => {
+    const options = errorMonitoringOptions({
+      dsn: "https://key@o1.ingest.sentry.io/2",
+      deployment: "dev",
+      service: "collab",
+      buildInfoPath: releasePath(),
+    });
+    expect(options?.dataCollection).toMatchObject({
+      userInfo: false,
+      cookies: false,
+      httpBodies: [],
+      urlQueryParams: false,
+      genAI: { inputs: false, outputs: false },
+      databaseQueryData: false,
+    });
+  });
+
+  it("leaves the release unset for an image built outside the release pipeline", () => {
+    const options = errorMonitoringOptions({
+      dsn: "https://key@o1.ingest.sentry.io/2",
+      deployment: "staging",
+      service: "server",
+      buildInfoPath: buildInfo(JSON.stringify({ revision: "unknown" })),
+    });
+    expect(options).toHaveProperty("release", undefined);
   });
 });
