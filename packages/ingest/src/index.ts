@@ -52,6 +52,7 @@ import {
   assembleObject,
   hashStoredObject,
   sniffStoredObject,
+  SourceReadError,
   storeWholeObject,
   writeStreamAsParts,
   type RecordedPart,
@@ -251,7 +252,13 @@ async function uploadPart(
   const session = await authorizedSession(request, env, uploadId);
   if (session === null) return new Response("Unauthorized", { status: 401 });
 
-  const body = await request.arrayBuffer();
+  // The browser is where these bytes come from, so a body that fails to arrive
+  // is the browser leaving: a closed tab, a dropped connection.
+  const body = await request.arrayBuffer().catch((err: unknown) => {
+    noteFailure("ingest_part_read_failed", { uploadId, partNumber }, err, { userInput: true });
+    return null;
+  });
+  if (body === null) return new Response("Could not read this part", { status: 400 });
 
   // Judged before the write, because this is the last moment it can stop one.
   // R2 takes part numbers far past the layout and any length its own floor
@@ -918,7 +925,17 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
     upstream.body,
     partSize,
     totalParts,
-  ).catch(noted("ingest_source_write_failed", { storageKey }));
+  ).catch((err: unknown) => {
+    if (err instanceof SourceReadError) {
+      noteFailure("ingest_source_read_failed", { storageKey }, err.cause, fromReader);
+      return "source_failed" as const;
+    }
+    noteFailure("ingest_source_write_failed", { storageKey }, err);
+    return null;
+  });
+  if (written === "source_failed") {
+    return refused("source_unreachable", "Could not read the source", 502);
+  }
   if (written === null || written === "over_cap") {
     return written === "over_cap"
       ? refused("over_cap", "The source is larger than this ticket allows", 413)

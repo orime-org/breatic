@@ -10,40 +10,24 @@
  * failure the reader caused by handing us a link we cannot take is written to
  * the log only.
  *
- * The SDK keeps one client per isolate, made from the settings of the first
- * request it sees, so every case here runs under the same settings. What the
- * settings turn into is `error-monitoring.node.test.ts`'s subject.
+ * Every case here runs under the same settings (see `helpers/reported-events`);
+ * what the settings turn into is `error-monitoring.node.test.ts`'s subject.
  */
 
-import {
-  env,
-  createExecutionContext,
-  waitOnExecutionContext,
-  fetchMock,
-} from "cloudflare:test";
+import { fetchMock } from "cloudflare:test";
 import { describe, it, expect, beforeAll, beforeEach, vi, type MockInstance } from "vitest";
-import { signUploadTicket, type UploadTicketPayload } from "@breatic/shared";
-import worker, { type Env } from "@ingest/index.js";
+import {
+  catchEnvelopes,
+  openUpload,
+  pull,
+  sendPart,
+  sentEvents,
+  SHA,
+  SOURCE_ORIGIN,
+  SOURCE_PATH,
+} from "./helpers/reported-events.js";
 
-const SENTRY_ORIGIN = "https://sentry.test.example";
-const DSN = "https://publickey@sentry.test.example/1";
-const SOURCE_ORIGIN = "https://provider.test.example";
-const SOURCE_PATH = "/results/out.png";
-const SHA = "4ca3e774ad2bb6b8f9406579ddc4bb611e5037a0";
-
-let seq = 0;
-let envelopes: string[] = [];
 let logged: MockInstance<typeof console.error>;
-
-/** One event out of a Sentry envelope. */
-interface SentEvent {
-  release?: string;
-  environment?: string;
-  message?: string;
-  tags?: Record<string, string>;
-  exception?: { values: { value?: string }[] };
-  request?: { headers?: Record<string, string> };
-}
 
 beforeAll(() => {
   fetchMock.activate();
@@ -51,77 +35,9 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  envelopes = [];
   logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
-  fetchMock
-    .get(SENTRY_ORIGIN)
-    .intercept({ path: (path) => path.startsWith("/api/1/envelope/"), method: "POST" })
-    .reply((request) => {
-      envelopes.push(String(request.body));
-      return { statusCode: 200, data: "{}" };
-    })
-    .persist();
+  catchEnvelopes();
 });
-
-/**
- * The events the SDK sent, read out of the envelopes it posted.
- * @returns Every event item, in the order sent.
- */
-function sentEvents(): SentEvent[] {
-  return envelopes.flatMap((envelope) => {
-    const lines = envelope.split("\n").filter((line) => line.length > 0);
-    const events: SentEvent[] = [];
-    for (let i = 1; i + 1 < lines.length; i += 2) {
-      const header = JSON.parse(lines[i] ?? "{}") as { type?: string };
-      if (header.type === "event") events.push(JSON.parse(lines[i + 1] ?? "{}") as SentEvent);
-    }
-    return events;
-  });
-}
-
-/** The monitoring settings every case here runs under. */
-const MONITORED: Pick<Env, "SENTRY_DSN" | "SENTRY_RELEASE" | "SENTRY_ENVIRONMENT"> = {
-  SENTRY_DSN: DSN,
-  SENTRY_RELEASE: SHA,
-  SENTRY_ENVIRONMENT: "production",
-};
-
-/**
- * Ask the Worker to pull the source into a fresh key.
- * @param over - Ticket fields to override.
- * @returns The Worker's answer.
- */
-async function pull(over: Partial<UploadTicketPayload> = {}): Promise<Response> {
-  const ticket = await signUploadTicket(
-    {
-      storageKey: `image/2026-10-06/${seq++}_reported.png`,
-      studioId: "studio-1",
-      userId: "user-1",
-      totalParts: 4,
-      partSize: 5 * 1024 * 1024,
-      contentType: "image/png",
-      expiresAt: Date.now() + 300_000,
-      sessionTokenTtlSeconds: 900,
-      ...over,
-    },
-    env.INGEST_SHARED_SECRET,
-  );
-  const ctx = createExecutionContext();
-  const response = await worker.fetch(
-    new Request("https://ingest.example.com/fetch", {
-      method: "POST",
-      headers: { "x-ingest-secret": env.INGEST_SHARED_SECRET, "x-upload-ticket": ticket },
-      body: JSON.stringify({ url: `${SOURCE_ORIGIN}${SOURCE_PATH}` }),
-    }),
-    { ...env, ...MONITORED },
-    ctx,
-  );
-  // Read as every caller reads it: the SDK holds a plain-text answer as a
-  // stream and sends its events once the body has been read.
-  await response.text();
-  await waitOnExecutionContext(ctx);
-  return response;
-}
 
 /** The provider cannot be reached at all. */
 function sourceUnreachable(): void {
@@ -221,6 +137,26 @@ describe("stored bytes of a kind we do not take", () => {
     expect(logged).toHaveBeenCalledWith(
       "ingest_stored_type_refused",
       expect.objectContaining({ storedType: expect.any(String) }),
+    );
+  });
+});
+
+describe("a browser that drops its connection while sending a part", () => {
+  it("is only logged, under its own label", async () => {
+    const upload = await openUpload();
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error("browser went away"));
+      },
+    });
+
+    const response = await sendPart(upload, body);
+
+    expect(response.status).toBe(400);
+    expect(sentEvents()).toHaveLength(0);
+    expect(logged).toHaveBeenCalledWith(
+      "ingest_part_read_failed",
+      expect.objectContaining({ err: expect.stringContaining("browser went away") }),
     );
   });
 });

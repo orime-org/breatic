@@ -54,6 +54,22 @@ export async function assembleObject(
 export type StreamRefusal = "over_cap";
 
 /**
+ * The source's body failed while it was being read.
+ *
+ * Kept apart from a store failure because the two belong to different parties:
+ * this one is whoever serves the link, and a part R2 refuses is ours.
+ */
+export class SourceReadError extends Error {
+  /**
+   * @param cause - What the source's body failed with.
+   */
+  constructor(cause: unknown) {
+    super("The source's body failed while it was being read", { cause });
+    this.name = "SourceReadError";
+  }
+}
+
+/**
  * Write a stream into an open multipart upload, one part at a time.
  *
  * This is how bytes we fetched ourselves reach R2 (#181, lane ③). A single
@@ -130,7 +146,9 @@ export async function writeStreamAsParts(
 
   try {
     for (;;) {
-      const { done, value } = await reader.read();
+      const { done, value } = await reader.read().catch((err: unknown) => {
+        throw new SourceReadError(err);
+      });
       if (done) break;
       pending.push(value);
       pendingBytes += value.length;
