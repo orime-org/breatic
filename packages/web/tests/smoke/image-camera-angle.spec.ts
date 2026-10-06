@@ -194,6 +194,47 @@ test('moves one distance step per wheel gesture and steps the pose by key, then 
   await expect.poll(() => storedPose(page, target)).toEqual({ horizontal_angle: 0, vertical_angle: 0, distance: 1 });
 });
 
+test('lays every slider name out apart and inside the popover, in every interface language @needs-internet', async () => {
+  await openOnQwen(page);
+  await page.keyboard.press('Escape');
+  try {
+    for (const lang of ['en', 'zh-CN', 'zh-TW', 'ja', 'ko']) {
+      await page.getByTestId('lang-trigger').click();
+      await page.getByTestId(`lang-option-${lang}`).click();
+      await expect(page.getByTestId('lang-popover')).toHaveCount(0);
+      await page.getByTestId('generate-ratio-trigger').click();
+      await expect(page.getByTestId('generate-camera-angle')).toBeVisible();
+      // Values read in English whatever the interface language.
+      await expect(page.getByTestId('generate-camera-angle-pose')).toHaveText('Front · Eye level · Medium shot');
+      const layout = await page.evaluate(() => {
+        const box = (el: Element): DOMRect => el.getBoundingClientRect();
+        const pose = document.querySelector('[data-testid="generate-camera-angle-pose"]');
+        const card = document.querySelector('[data-testid="generate-camera-angle"]');
+        const frame = card?.closest('[data-radix-popper-content-wrapper] > *');
+        const rows = ['horizontal_angle', 'vertical_angle', 'distance'].map((name) =>
+          [...document.querySelectorAll(`[data-testid^="generate-param-${name}-stop-"]`)].map((el) => ({
+            name: el.textContent ?? '',
+            ...box(el).toJSON(),
+          })),
+        );
+        const outer = frame ? box(frame) : null;
+        return {
+          poseCut: pose ? pose.scrollWidth > pose.clientWidth : true,
+          overlaps: rows.flatMap((stops) =>
+            stops.slice(1).flatMap((s, i) => (s.left < stops[i]!.right ? [`${stops[i]!.name} | ${s.name}`] : [])),
+          ),
+          outside: outer ? rows.flat().filter((s) => s.left < outer.left || s.right > outer.right).map((s) => s.name) : ['no popover'],
+        };
+      });
+      expect({ lang, ...layout }).toEqual({ lang, poseCut: false, overlaps: [], outside: [] });
+      await page.keyboard.press('Escape');
+    }
+  } finally {
+    await page.getByTestId('lang-trigger').click();
+    await page.getByTestId('lang-option-en').click();
+  }
+});
+
 test('sends the pose the node holds @needs-internet', async () => {
   const { target } = await openOnQwen(page);
   await page.getByTestId('generate-param-horizontal_angle-stop-270').click();
