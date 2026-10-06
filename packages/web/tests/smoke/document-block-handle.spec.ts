@@ -1564,8 +1564,8 @@ test('keeps the handle menu’s rows 4px apart', async () => {
     };
   });
 
-  // Seven rows and one rule: seven gaps, every one of them 4.
-  expect(laid.gaps.length).toBe(7);
+  // Eight rows and one rule: eight gaps, every one of them 4.
+  expect(laid.gaps.length).toBe(8);
   expect(new Set(laid.gaps)).toEqual(new Set([4]));
   expect(laid.ruleHeights).toEqual([1]);
 
