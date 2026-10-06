@@ -188,21 +188,48 @@ const render = (ui: React.ReactElement, options?: RenderOptions) =>
  * Render the project page.
  * @returns Nothing.
  */
-function setup(): void {
-  getMock.mockResolvedValue({
-    id: PID,
-    name: 'Demo project',
-    description: null,
-    thumbnailUrl: null,
-    createdAt: '',
-    updatedAt: '',
-    studioId: 's1',
-    createdByUserId: 'u-me',
-    myRole: 'owner',
-    deletedAt: null,
-    archivedAt: null,
-    canRestore: false,
+const PROJECT = {
+  id: PID,
+  name: 'Demo project',
+  description: null,
+  thumbnailUrl: null,
+  createdAt: '',
+  updatedAt: '',
+  studioId: 's1',
+  createdByUserId: 'u-me',
+  myRole: 'owner',
+  deletedAt: null,
+  archivedAt: null,
+  canRestore: false,
+};
+
+/**
+ * Render the project page with the project already in the query cache, the
+ * way it is when the reader comes back to a project opened earlier in the
+ * session: the page has the data on its very first render.
+ */
+function setupCached(): void {
+  getMock.mockResolvedValue(PROJECT);
+  membersListMock.mockResolvedValue({ members: [] });
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: Infinity } },
   });
+  qc.setQueryData(['project', PID], PROJECT);
+  rtlRender(
+    <QueryClientProvider client={qc}>
+      <TooltipProvider>
+        <MemoryRouter initialEntries={[`/project/demo-${PID}`]}>
+          <Routes>
+            <Route path='/project/:projectId' element={<ProjectPage />} />
+          </Routes>
+        </MemoryRouter>
+      </TooltipProvider>
+    </QueryClientProvider>,
+  );
+}
+
+function setup(): void {
+  getMock.mockResolvedValue(PROJECT);
   membersListMock.mockResolvedValue({ members: [] });
   render(
     <MemoryRouter initialEntries={[`/project/demo-${PID}`]}>
@@ -244,6 +271,15 @@ describe('ProjectPage — preferences restored before the first frame', () => {
   it('never mounts the Agent column when this account hid it in this project', async () => {
     writeAgentPanelOpen('u-me', PID, false);
     setup();
+    await waitFor(() => expect(barProps.current).not.toBeNull());
+
+    expect(useUIStore.getState().chatPanelCollapsed).toBe(true);
+    expect(agentMounts.count).toBe(0);
+  });
+
+  it('never mounts the Agent column it hid when the project data is already cached', async () => {
+    writeAgentPanelOpen('u-me', PID, false);
+    setupCached();
     await waitFor(() => expect(barProps.current).not.toBeNull());
 
     expect(useUIStore.getState().chatPanelCollapsed).toBe(true);
