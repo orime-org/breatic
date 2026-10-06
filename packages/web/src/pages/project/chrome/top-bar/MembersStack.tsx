@@ -91,9 +91,21 @@ export const MembersStack = React.forwardRef<
   // The footer holds one action: "Manage collaborators" for the owner,
   // "Leave project" for a reader the page lets leave, nothing for anyone else.
   const footer = isOwner
-    ? { onClick: openManage, icon: Users, label: t('members.popover.manage'), testId: 'members-manage-trigger' }
+    ? {
+      onClick: openManage,
+      icon: Users,
+      label: t('members.popover.manage'),
+      testId: 'members-manage-trigger',
+      variant: 'outline' as const,
+    }
     : onLeave
-      ? { onClick: startLeave, icon: LogOut, label: t('project.leave.action'), testId: 'members-leave-trigger' }
+      ? {
+        onClick: startLeave,
+        icon: LogOut,
+        label: t('project.leave.action'),
+        testId: 'members-leave-trigger',
+        variant: 'destructive' as const,
+      }
       : null;
 
   return (
@@ -183,7 +195,7 @@ export const MembersStack = React.forwardRef<
             <Separator className='my-1' />
             <div className='flex flex-col gap-2 p-2'>
               <Button
-                variant='outline'
+                variant={footer.variant}
                 size='form'
                 className='w-full justify-center gap-2 text-sm'
                 onClick={footer.onClick}

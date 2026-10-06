@@ -21,6 +21,7 @@ import type * as React from 'react';
 import type { ProjectActivityEntry } from '@breatic/shared';
 import {
   ProjectActivityButton,
+  entryDotClass,
   entryMessage,
   entryMedia,
 } from '@web/pages/project/chrome/tab-bar/ProjectActivityButton';
@@ -231,6 +232,14 @@ describe('entryMessage for a member who left', () => {
       entry({ type: 'member:removed', actorUserId: 'u-owner', payload: { previousRole: 'editor', targetUserId: 'u-1' } }),
     );
     expect(removed.key).toBe('activity.type.memberRemoved');
+  });
+
+  it('draws a leave with a neutral dot and a removal with the error dot', () => {
+    const payload = { previousRole: 'editor', targetUserId: 'u-1' };
+    expect(entryDotClass(entry({ type: 'member:removed', actorUserId: 'u-1', payload }))).toBe('bg-muted-foreground');
+    expect(entryDotClass(entry({ type: 'member:removed', actorUserId: 'u-owner', payload }))).toBe(
+      'bg-status-error-border',
+    );
   });
 });
 

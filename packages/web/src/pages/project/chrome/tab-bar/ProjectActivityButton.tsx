@@ -79,6 +79,30 @@ const TYPE_DOT_CLASS: Record<ProjectActivityType, string> = {
 };
 
 /**
+ * Whether a feed entry is a member leaving of their own accord: a removal
+ * whose actor removed themselves.
+ * @param entry - The feed entry.
+ * @returns True for a leave.
+ */
+function isLeave(entry: ProjectActivityEntry): boolean {
+  return (
+    entry.type === 'member:removed' &&
+    entry.actorUserId !== null &&
+    entry.payload['targetUserId'] === entry.actorUserId
+  );
+}
+
+/**
+ * The colour of a feed entry's dot: by event family, except that a member
+ * leaving reads as neutral, not as an error like an owner's removal.
+ * @param entry - The feed entry.
+ * @returns The dot's background class.
+ */
+export function entryDotClass(entry: ProjectActivityEntry): string {
+  return isLeave(entry) ? 'bg-muted-foreground' : TYPE_DOT_CLASS[entry.type];
+}
+
+/**
  * Resolve the ICU message key + params for one feed entry. Every family
  * (space / asset / generation / member) uses the unified `activity.type.*`
  * keys (snapshot names travel in the payload now).
@@ -154,12 +178,8 @@ function entryMessage(entry: ProjectActivityEntry): {
     case 'member:joined':
       return { key: 'activity.type.memberJoined', params: { actor } };
     case 'member:removed':
-      // Leaving is a removal whose actor removed themselves.
       return {
-        key:
-          entry.actorUserId !== null && p['targetUserId'] === entry.actorUserId
-            ? 'activity.type.memberLeft'
-            : 'activity.type.memberRemoved',
+        key: isLeave(entry) ? 'activity.type.memberLeft' : 'activity.type.memberRemoved',
         params: { actor },
       };
     case 'member:role-changed':
@@ -432,7 +452,7 @@ export function ProjectActivityButton({
                     <span
                       className={cn(
                         'mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full',
-                        TYPE_DOT_CLASS[m.type],
+                        entryDotClass(m),
                       )}
                       aria-hidden
                       data-testid={`project-activity-dot-${m.id}`}

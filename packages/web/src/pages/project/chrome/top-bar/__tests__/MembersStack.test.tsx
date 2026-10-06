@@ -156,6 +156,7 @@ describe('MembersStack', () => {
     render(<MembersStack members={MEMBERS} currentUserRole='editor' onLeave={onLeave} />);
     await user.click(screen.getByTestId('members-trigger'));
     expect(screen.queryByTestId('members-manage-trigger')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Leave project' })).toHaveClass('text-status-error-foreground');
     await user.click(screen.getByRole('button', { name: 'Leave project' }));
     expect(onLeave).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('members-popover')).toBeNull();

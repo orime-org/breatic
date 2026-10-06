@@ -137,6 +137,7 @@ describe('ProjectCard', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'More actions' }));
     const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent);
     expect(items).toEqual(['Leave project']);
+    expect(screen.getByRole('menuitem', { name: 'Leave project' })).toHaveClass('text-status-error-foreground');
   });
 
   it('puts Leave project last, after a separator, for a studio admin who is also an editor', async () => {
@@ -162,7 +163,9 @@ describe('ProjectCard', () => {
 
     await user.click(screen.getByRole('button', { name: 'More actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Leave project' }));
-    await user.click(await screen.findByRole('button', { name: 'Leave' }));
+    const confirm = await screen.findByRole('button', { name: 'Leave' });
+    expect(confirm).toHaveClass('text-status-error-foreground');
+    await user.click(confirm);
     expect(projectsApi.leave).toHaveBeenCalledWith('id-1');
   });
 

@@ -166,7 +166,11 @@ export function ProjectCardMenu({ project }: ProjectCardMenuProps): React.JSX.El
               {project.canManageMeta || project.canDuplicate || project.canArchive ? (
                 <DropdownMenuSeparator />
               ) : null}
-              <DropdownMenuItem onSelect={openLeave} disabled={leaving.pending}>
+              <DropdownMenuItem
+                onSelect={openLeave}
+                disabled={leaving.pending}
+                className='text-status-error-foreground'
+              >
                 <LogOut className='h-4 w-4' />
                 {t('project.leave.action')}
               </DropdownMenuItem>

@@ -53,7 +53,7 @@ export function LeaveProjectDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} disabled={pending}>
+          <AlertDialogAction variant='destructive' onClick={onConfirm} disabled={pending}>
             {t('project.leave.confirm')}
           </AlertDialogAction>
         </AlertDialogFooter>
