@@ -127,17 +127,20 @@ describe('CameraAngleControl', () => {
 
   it('steps one pose per arrow or plus/minus key, writing all three values each time', async () => {
     const { onChange } = await draw();
+    // Each press steps from the pose the one before it wrote, before any re-render.
     fireEvent.keyDown(group(), { key: 'ArrowRight' });
     expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 45, vertical_angle: 0, distance: 1 });
     fireEvent.keyDown(group(), { key: 'ArrowLeft' });
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 0, vertical_angle: 0, distance: 1 });
+    fireEvent.keyDown(group(), { key: 'ArrowLeft' });
     expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 315, vertical_angle: 0, distance: 1 });
     fireEvent.keyDown(group(), { key: 'ArrowUp' });
-    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 0, vertical_angle: 30, distance: 1 });
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 315, vertical_angle: 30, distance: 1 });
     fireEvent.keyDown(group(), { key: '-' });
-    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 0, vertical_angle: 0, distance: 2 });
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 315, vertical_angle: 30, distance: 2 });
     fireEvent.keyDown(group(), { key: '+' });
-    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 0, vertical_angle: 0, distance: 0 });
-    expect(onChange).toHaveBeenCalledTimes(5);
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 315, vertical_angle: 30, distance: 1 });
+    expect(onChange).toHaveBeenCalledTimes(6);
   });
 
   it('moves one distance step per wheel gesture however many events it sends, writing it as the step is taken', async () => {
@@ -211,6 +214,39 @@ describe('CameraAngleControl', () => {
     act(() => sphere.last?.onDragEnd());
     expect(onChange).toHaveBeenCalledTimes(2);
     expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 180, vertical_angle: 30, distance: 2 });
+  });
+
+  it('starts a slider press from the pose a held key just wrote in the same event', async () => {
+    const restore = stubPointerSliders();
+    try {
+      const { onChange, rerender } = await draw();
+      act(() => group().focus());
+      fireEvent.keyDown(group(), { key: 'ArrowUp' });
+      rerender({ horizontal_angle: 0, vertical_angle: 30, distance: 1 });
+      fireEvent.keyDown(group(), { key: 'ArrowUp', repeat: true });
+      const slider = screen.getByTestId('generate-param-horizontal_angle-slider');
+      fireEvent.pointerDown(slider, { pointerId: 1, button: 0, clientX: 57 });
+      expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 0, vertical_angle: 60, distance: 1 });
+      expect(sphere.last?.pose).toEqual({ azimuth: 90, elevation: 60, distance: 1 });
+      fireEvent.pointerUp(slider, { pointerId: 1, clientX: 57 });
+      fireEvent.lostPointerCapture(slider, { pointerId: 1 });
+      expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 90, vertical_angle: 60, distance: 1 });
+      expect(onChange).toHaveBeenCalledTimes(3);
+    } finally {
+      restore();
+    }
+  });
+
+  it.each([
+    ['Control+=', { key: '=', ctrlKey: true }],
+    ['Meta+=', { key: '=', metaKey: true }],
+    ['Control+-', { key: '-', ctrlKey: true }],
+    ['Alt+ArrowLeft', { key: 'ArrowLeft', altKey: true }],
+  ])('leaves %s to the browser', async (_name, key) => {
+    const { onChange } = await draw();
+    const allowed = fireEvent.keyDown(group(), key);
+    expect(allowed).toBe(true);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('keeps holding a key when another key such as Shift is let go', async () => {
@@ -343,14 +379,6 @@ describe('CameraAngleControl', () => {
     } finally {
       restore();
     }
-  });
-
-  it('drops a drag that is still going when the control goes away', async () => {
-    const { onChange, unmount } = await draw();
-    act(() => sphere.last?.onDragStart());
-    act(() => sphere.last?.onDrag({ azimuth: 180, elevation: 0, distance: 1 }));
-    unmount();
-    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('writes a wheel step taken during a drag together with the angle on release', async () => {

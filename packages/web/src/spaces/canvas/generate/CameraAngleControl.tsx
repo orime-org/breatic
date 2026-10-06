@@ -136,12 +136,14 @@ function prefersReducedMotion(): boolean {
  * One camera pose — azimuth, elevation and distance — set on a 3D sphere or
  * on three sliders under it (inner#830, design §5.2).
  *
- * Every way of changing the pose ends in one `commit`, which writes all three
- * params together from what the node holds plus the change, once per gesture,
- * and not at all when nothing changes. A wheel step is written as it is
- * taken (during a sphere drag it is held and written with the angle on
- * release); the rest of that wheel gesture moves nothing until the wheel has
- * been still for a moment.
+ * One gesture is in progress at a time (a sphere drag, a held key or a
+ * dragged slider) and the pose it shows is the pose on screen; otherwise the
+ * stored pose is. Every change ends in one `commit`, which writes all three
+ * params from the pose on screen plus the change, and nothing when that is
+ * what the node already holds. A new gesture starts from the pose on screen.
+ * A wheel step is written as it is taken, or, during a gesture, folded into
+ * it and written when it ends; the rest of that wheel gesture moves nothing
+ * until the wheel has been still for a moment (design §6).
  * @param root0 - Props.
  * @param root0.params - The three param names.
  * @param root0.specs - The model's params.
@@ -161,7 +163,7 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
   // Read inside callbacks that outlive the render they were made in. The
   // gesture is kept here as it changes, so an event that lands before the last
   // one has rendered still starts from the pose on screen.
-  const live = React.useRef({ stored, gesture: null as Gesture, mounted: true });
+  const live = React.useRef({ stored, gesture: null as Gesture });
   live.current.stored = stored;
   const wheel = React.useRef<{ sum: number; moved: boolean; timer: ReturnType<typeof setTimeout> | undefined }>({
     sum: 0,
@@ -170,14 +172,8 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
   });
 
   React.useEffect(() => {
-    const state = live.current;
-    state.mounted = true;
-    return () => {
-      // A control that goes away writes nothing it had not written: the
-      // gesture in progress is dropped.
-      state.mounted = false;
-      clearTimeout(wheel.current.timer);
-    };
+    const steps = wheel.current;
+    return () => clearTimeout(steps.timer);
   }, []);
 
   /**
@@ -200,10 +196,13 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
 
   const commit = React.useCallback(
     (change: Partial<CameraAngle>): void => {
-      if (!live.current.mounted) return;
       const next = nearestCameraAngle({ ...onScreen(), ...change });
       track(null);
       if (samePose(next, live.current.stored)) return;
+      // The written pose is the one on screen from here on; the next render
+      // replaces it with what the node holds. Another input handled in this
+      // same event (a blur flush, then a slider press) starts from it.
+      live.current.stored = next;
       onChange(Object.fromEntries(CAMERA_ANGLE_AXES.map((axis) => [params[axis], next[axis]])));
     },
     [onChange, params, onScreen, track],
@@ -265,6 +264,9 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
   const onKeyDown = React.useCallback(
     (event: React.KeyboardEvent): void => {
       if (event.target !== event.currentTarget) return;
+      // A chord with Cmd, Ctrl or Alt is the browser's or the system's (zoom,
+      // history); Shift stays, since '+' needs it.
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
       const hit = KEY_STEPS[event.key];
       if (!hit) return;
       event.preventDefault();
@@ -327,8 +329,9 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
   );
   const named = nearestCameraAngle(spherePose);
   const poseWords = cameraAngleNames(specs, params, named);
-  // The sliders follow the sphere and a held key; a dragged slider shows its own.
-  const shownOnSliders = gesture?.kind === 'drag' || gesture?.kind === 'key' ? named : undefined;
+  // The sliders show the pose on screen; a dragged slider's own thumb wins
+  // inside ParamSliderRow.
+  const shownOnSliders = gesture ? named : undefined;
 
   /**
    * One axis's named steps under its slider.

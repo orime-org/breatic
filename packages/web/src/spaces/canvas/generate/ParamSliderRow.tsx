@@ -38,11 +38,11 @@ interface ParamSliderRowProps {
   /** Positions on the range with a name, ascending; absent when none have one. */
   stops?: readonly SliderStop[];
   value: number | undefined;
-  /** A value to show in place of `value` without writing it, while another control is dragged. */
+  /** A value to show in place of `value` without writing it: the pose another input has on screen. */
   draft?: number;
   /** Called with the value the thumb is moved to, before it is written. */
   onDraft?: (value: number) => void;
-  /** Called when a pointer drag ends, whether or not it wrote anything. */
+  /** Called when a gesture on this slider ends (pointer released, key let go, focus left), after its own write. */
   onDraftEnd?: () => void;
   /** How a value reads beside the label, in its own unit. */
   format: (value: number) => string;
@@ -71,7 +71,7 @@ interface ParamSliderRowProps {
  * @param root0.value - The stored value.
  * @param root0.draft - A value to show without writing it.
  * @param root0.onDraft - Called with the value the thumb is moved to.
- * @param root0.onDraftEnd - Called when a pointer drag ends.
+ * @param root0.onDraftEnd - Called when a gesture on this slider ends, after its own write.
  * @param root0.format - How a value reads beside the label.
  * @param root0.onChange - Called with the committed param.
  * @param root0.testIdPrefix - Prefix of every test id.
