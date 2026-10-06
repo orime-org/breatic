@@ -1,0 +1,176 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * What the document hands the agent's attachment tray (inner#936): a text
+ * item holding the Markdown copy would put on the clipboard, named after its
+ * first line.
+ */
+
+import { TextSelection } from '@tiptap/pm/state';
+import { describe, it, expect, afterEach } from 'vitest';
+import * as Y from 'yjs';
+
+import { documentBodyFragment } from '@breatic/shared';
+
+import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { blockItem, selectionItem } from '@web/spaces/document/document-to-agent';
+
+type Editor = ReturnType<typeof buildDocumentEditor>;
+
+const mounted: Editor[] = [];
+
+afterEach(() => {
+  mounted.splice(0).forEach((editor) => {
+    editor.unmount();
+  });
+});
+
+/**
+ * Opens a mounted editor holding the blocks given.
+ * @param blocks - The document.
+ * @returns The editor.
+ */
+function open(blocks: unknown[]): Editor {
+  const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  editor.mount(root);
+  mounted.push(editor);
+  editor.replaceBlocks(editor.document, blocks as never);
+  return editor;
+}
+
+/**
+ * The id of the block at an index.
+ * @param editor - The editor.
+ * @param index - Which block.
+ * @returns Its id.
+ */
+function idAt(editor: Editor, index: number): string {
+  return (editor.document as unknown as Array<{ id: string }>)[index]!.id;
+}
+
+/**
+ * Selects the words between two characters of the whole document's text.
+ * @param editor - The editor.
+ * @param needle - The words to select; the first occurrence is used.
+ */
+function selectWords(editor: Editor, needle: string): void {
+  const view = editor.prosemirrorView!;
+  let from = -1;
+  view.state.doc.descendants((node, pos) => {
+    if (from < 0 && node.isText) {
+      const at = (node.text ?? '').indexOf(needle);
+      if (at >= 0) from = pos + at;
+    }
+    return true;
+  });
+  view.dispatch(
+    view.state.tr.setSelection(TextSelection.create(view.state.doc, from, from + needle.length)),
+  );
+}
+
+describe('selectionItem', () => {
+  it('holds the selected words as Markdown in a ready text item', () => {
+    const editor = open([
+      { type: 'paragraph', content: [{ type: 'text', text: 'bold words', styles: { bold: true } }] },
+    ]);
+    selectWords(editor, 'bold words');
+
+    const item = selectionItem(editor);
+
+    expect(item.type).toBe('text');
+    expect(item.status).toBe('ready');
+    expect(item.chip?.type).toBe('text');
+    expect(item.chip?.data_snapshot).toEqual({ text: '**bold words**' });
+    expect(item.name).toBe('bold words');
+  });
+
+  it('names the item after the first line and cuts it at 40 characters', () => {
+    const long = 'a'.repeat(60);
+    const editor = open([
+      { type: 'paragraph', content: long },
+      { type: 'paragraph', content: 'second line' },
+    ]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, view.state.doc.content.size - 1)),
+    );
+
+    expect(selectionItem(editor).name).toBe('a'.repeat(40));
+  });
+
+  it('gives the same id to the same words selected twice', () => {
+    const editor = open([{ type: 'paragraph', content: 'alpha bravo' }]);
+    selectWords(editor, 'alpha');
+    const first = selectionItem(editor).id;
+    selectWords(editor, 'alpha');
+
+    expect(selectionItem(editor).id).toBe(first);
+    expect(first.startsWith('document-selection-')).toBe(true);
+  });
+
+  it('gives different words a different id', () => {
+    const editor = open([{ type: 'paragraph', content: 'alpha bravo' }]);
+    selectWords(editor, 'alpha');
+    const first = selectionItem(editor).id;
+    selectWords(editor, 'bravo');
+
+    expect(selectionItem(editor).id).not.toBe(first);
+  });
+});
+
+describe('blockItem', () => {
+  it('holds the block and its children as Markdown', () => {
+    const editor = open([
+      {
+        type: 'bulletListItem',
+        content: 'parent',
+        children: [{ type: 'bulletListItem', content: 'child' }],
+      },
+    ]);
+
+    const text = (blockItem(editor, idAt(editor, 0)).chip?.data_snapshot as { text: string }).text;
+
+    expect(text).toContain('parent');
+    expect(text).toContain('child');
+  });
+
+  it('is named after the first line of the block and keyed by the block id', () => {
+    const editor = open([{ type: 'heading', props: { level: 2 }, content: 'Section title' }]);
+    const id = idAt(editor, 0);
+
+    const item = blockItem(editor, id);
+
+    expect(item.id).toBe(`document-block-${id}`);
+    expect(item.name).toBe('Section title');
+    expect((item.chip?.data_snapshot as { text: string }).text).toBe('## Section title');
+  });
+
+  it('keeps the same id after the block is edited, so adding it again replaces the item', () => {
+    const editor = open([{ type: 'paragraph', content: 'before' }]);
+    const id = idAt(editor, 0);
+    const first = blockItem(editor, id);
+    editor.updateBlock(id, { content: 'after' } as never);
+
+    const second = blockItem(editor, id);
+
+    expect(second.id).toBe(first.id);
+    expect((second.chip?.data_snapshot as { text: string }).text).toBe('after');
+  });
+
+  it('takes the name of a table from its cells', () => {
+    const editor = open([
+      {
+        type: 'table',
+        content: {
+          type: 'tableContent',
+          rows: [{ cells: ['', 'cell text'] }],
+        },
+      },
+    ]);
+
+    expect(blockItem(editor, idAt(editor, 0)).name).toBe('cell text');
+  });
+});
