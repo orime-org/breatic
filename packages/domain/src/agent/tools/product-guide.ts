@@ -223,8 +223,9 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.contextMenu.addToAgent"))} on their right-click menu; if the model list cannot be read at that moment, nothing is attached and ` +
       `${quoted(t("canvas.generatePanel.catalogUnavailable"))} shows. In a document, the selected text or a whole ` +
       "line goes in as one text attachment named after its first line, from the selection bar or the six-dot " +
-      "handle's menu (see the document section); the same line or the same words handed over again leave one " +
-      "chip, holding what they read now. Each attachment shows as a small " +
+      "handle's menu (see the document section); the same line handed over again leaves one chip holding what " +
+      "it reads now, and the same selection handed over again unchanged leaves one chip. Each attachment shows " +
+      "as a small " +
       "chip in the box above the text, with a type and a name and a spinner while it uploads; hovering it " +
       "previews it and its X removes it. A " +
       "chip that could not be uploaded or read shows a red mark and says why; it has to be removed with its X before " +
@@ -863,8 +864,9 @@ export function renderProductGuide(): string {
       `and ${quoted(t("spaces.document.commands.quote"))}; the alignment menu lists ` +
       `${quoted(t("spaces.document.commands.alignLeft"))}, ${quoted(t("spaces.document.commands.alignCenter"))} ` +
       `and ${quoted(t("spaces.document.commands.alignRight"))}. The speech bubble starts a comment (see ` +
-      "Comments below). The speech bubble with a plus puts the selected text, with its formatting, into the " +
-      "Agent's box as an attachment, opening the Agent panel if it is hidden. The AI menu's commands look " +
+      "Comments below). The speech bubble with a plus puts the selected text into the Agent's box as an " +
+      "attachment written as Markdown (bold, italic, strikethrough, code and links are kept; underline, colour " +
+      "and alignment are not), opening the Agent panel if it is hidden. The AI menu's commands look " +
       "available but do nothing yet. With the whole document selected there is no link icon. Inside a code " +
       "block the bold, italic, strikethrough, underline, code, link and colour buttons are greyed, and a code " +
       "block cannot be aligned. On inline code the same buttons are greyed except code, which shows as on; " +
@@ -955,7 +957,7 @@ export function renderProductGuide(): string {
       "type button greyed and in its colour menu the rows " +
       `${quoted(t("spaces.document.commands.textColor"))}, ${quoted(t("spaces.document.table.textHighlight"))} and ` +
       `${quoted(t("spaces.document.table.cellFill"))}; with cells selected it also shows a merge icon after the ` +
-      "speech bubble that merges them into one. With every cell of an empty table selected, Backspace or " +
+      "speech bubble with a plus that merges them into one. With every cell of an empty table selected, Backspace or " +
       "Delete removes the table.",
     `- An empty document shows ${quoted(t("spaces.document.placeholder"))}. Three dots at the top right open a ` +
       `menu: ${quoted(t("spaces.document.docMenu.comments"))}, which ends in ` +

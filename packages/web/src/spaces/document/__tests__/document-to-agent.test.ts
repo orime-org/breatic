@@ -3,8 +3,8 @@
 
 /**
  * What the document hands the agent's attachment tray (inner#936): a text
- * item holding the Markdown copy would put on the clipboard, named after its
- * first line.
+ * item holding the selection or the block as Markdown, named after its first
+ * line.
  */
 
 import { AllSelection, TextSelection } from '@tiptap/pm/state';
