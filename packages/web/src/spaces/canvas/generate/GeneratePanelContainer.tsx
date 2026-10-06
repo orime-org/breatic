@@ -742,6 +742,7 @@ function GeneratePanelBody({
       promptRequired={vm.promptRequired}
       params={stableParams}
       references={stableReferences}
+      subjectImageUrl={vm.referenceUrls.image[0]}
       referenceKinds={referenceKinds}
       creditText={creditText}
       executeRefusal={executeRefusal}

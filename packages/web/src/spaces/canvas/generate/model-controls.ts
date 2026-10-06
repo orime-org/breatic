@@ -15,7 +15,14 @@
  * modes only is drawn in those modes only, so every reader names the mode.
  */
 
-import { appliesInMode, type ItemField, type ModelEntry, type ParamDescriptor } from '@breatic/shared';
+import {
+  appliesInMode,
+  nearestCameraAngle,
+  type CameraAngleParams,
+  type ItemField,
+  type ModelEntry,
+  type ParamDescriptor,
+} from '@breatic/shared';
 
 import type { ParamOption } from '@web/spaces/canvas/generate/ParamOptionGroup';
 
@@ -30,7 +37,38 @@ export type ModelControl =
   | { kind: 'choice'; name: string; options: ParamOption[] }
   | { kind: 'range'; name: string; min: number; max: number; step: number }
   | { kind: 'text'; name: string }
-  | { kind: 'items'; name: string; max: number | undefined; fields: ItemFieldControl[] };
+  | { kind: 'items'; name: string; max: number | undefined; fields: ItemFieldControl[] }
+  | { kind: 'cameraAngle'; name: 'camera_angle'; params: CameraAngleParams };
+
+/** The words each elevation reads as, by its value (inner#830). */
+const ELEVATION_WORD: Readonly<Record<number, string>> = { [-30]: 'low', 0: 'eye', 30: 'elevated', 60: 'high' };
+
+/**
+ * The locale keys naming a camera pose, azimuth then elevation then distance.
+ * @param azimuth - Degrees round the subject, on the grid.
+ * @param elevation - Degrees above or below, on the grid.
+ * @param distance - The distance step.
+ * @returns The three keys.
+ */
+export function cameraAngleNameKeys(azimuth: number, elevation: number, distance: number): [string, string, string] {
+  const pose = nearestCameraAngle({ azimuth, elevation, distance });
+  return [
+    `canvas.generatePanel.cameraAngle.azimuth.${pose.azimuth}`,
+    `canvas.generatePanel.cameraAngle.elevation.${ELEVATION_WORD[pose.elevation] ?? 'eye'}`,
+    `canvas.generatePanel.cameraAngle.distance.${pose.distance}`,
+  ];
+}
+
+/**
+ * The params a control writes, by name.
+ * @param control - One of a model's own controls.
+ * @returns Its param names: three for a camera pose, one otherwise.
+ */
+export function controlParams(control: ModelControl): string[] {
+  return control.kind === 'cameraAngle'
+    ? [control.params.azimuth, control.params.elevation, control.params.distance]
+    : [control.name];
+}
 
 /**
  * How one value of a choice reads on screen.
@@ -90,9 +128,16 @@ function fieldControl(name: string, field: ItemField): ItemFieldControl {
  */
 export function modelControls(model: ModelEntry, mode: string): ModelControl[] {
   const controls: ModelControl[] = [];
+  const pose = model.camera_angle;
+  const inPose = new Set(pose ? [pose.azimuth, pose.elevation, pose.distance] : []);
   for (const [name, spec] of Object.entries(model.params)) {
     if (spec.fill !== 'panel' || typeof spec.label !== 'string') continue;
     if (!appliesInMode(spec, mode)) continue;
+    // The three params of one pose are one control, drawn where the first of them is declared.
+    if (pose && inPose.has(name)) {
+      if (!controls.some((c) => c.kind === 'cameraAngle')) controls.push({ kind: 'cameraAngle', name: 'camera_angle', params: pose });
+      continue;
+    }
     const control = controlFor(name, spec);
     if (control) controls.push(control);
   }
@@ -118,7 +163,9 @@ export function ownControlValues(
   if (!model) return {};
   const out: Record<string, unknown> = {};
   for (const control of modelControls(model, mode)) {
-    if (params[control.name] !== undefined) out[control.name] = params[control.name];
+    for (const name of controlParams(control)) {
+      if (params[name] !== undefined) out[name] = params[name];
+    }
   }
   return out;
 }
@@ -126,11 +173,12 @@ export function ownControlValues(
 /**
  * What the model's own controls stand on, as the settings pill shows it: a
  * choice by its option's name, a range by its number, a switch by its name
- * while it is on, a text box or a list by its name while it holds something.
+ * while it is on, a text box or a list by its name while it holds something,
+ * a camera pose by the names of its azimuth, elevation and distance.
  * @param model - The active model.
  * @param mode - The mode the panel is in.
  * @param params - What the node holds for it, with the model's defaults resolved in.
- * @param nameOf - A param's name on screen.
+ * @param t - The translator; a param is named by `canvas.generatePanel.param.<name>`.
  * @param include - Which controls to summarise; all of them when absent.
  * @returns One part per control that has something to show, in declared order.
  */
@@ -138,12 +186,26 @@ export function ownControlSummary(
   model: ModelEntry,
   mode: string,
   params: Readonly<Record<string, unknown>>,
-  nameOf: (name: string) => string,
+  t: (key: string) => string,
   include?: (control: ModelControl) => boolean,
 ): string[] {
   const parts: string[] = [];
+  /**
+   * A param's name on screen.
+   * @param name - The param name.
+   * @returns Its locale word.
+   */
+  const nameOf = (name: string): string => t(`canvas.generatePanel.param.${name}`);
   for (const control of modelControls(model, mode)) {
     if (include && !include(control)) continue;
+    if (control.kind === 'cameraAngle') {
+      const { azimuth, elevation, distance } = control.params;
+      const [a, e, d] = [params[azimuth], params[elevation], params[distance]];
+      if (typeof a === 'number' && typeof e === 'number' && typeof d === 'number') {
+        parts.push(...cameraAngleNameKeys(a, e, d).map(t));
+      }
+      continue;
+    }
     const shown = params[control.name];
     if (control.kind === 'choice' && (typeof shown === 'string' || typeof shown === 'number')) {
       parts.push(optionLabel(model.params[control.name] ?? {}, shown));

@@ -54,6 +54,8 @@ interface RatioResolutionPickerProps {
   value: RatioResolutionValue & Readonly<Record<string, unknown>>;
   /** Called with the changed field only. */
   onChange: (partial: object) => void;
+  /** The first image the model is sent, which a camera-angle control puts on its card. */
+  subjectImageUrl?: string;
 }
 
 /**
@@ -79,6 +81,7 @@ export const RATIO_RESOLUTION_PARAMS = ['aspect_ratio', 'resolution'] as const;
  * @param root0.mode - The mode the panel is in.
  * @param root0.value - The current ratio + resolution.
  * @param root0.onChange - Called with the changed field.
+ * @param root0.subjectImageUrl - The first image the model is sent.
  * @returns The ratio + resolution picker.
  */
 export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
@@ -86,6 +89,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   mode,
   value,
   onChange,
+  subjectImageUrl,
 }: RatioResolutionPickerProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
@@ -123,7 +127,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
     [
       value.resolution,
       value.aspect_ratio === undefined ? undefined : optionLabel({}, value.aspect_ratio),
-      ...ownControlSummary(model, mode, value, (name) => t(`canvas.generatePanel.param.${name}`)),
+      ...ownControlSummary(model, mode, value, t),
       cameraSupported && cameraOn ? t('canvas.generatePanel.camera') : undefined,
     ]
       .filter(Boolean)
@@ -188,6 +192,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
           value={value}
           onChange={onChange}
           className={hasShared ? SECTION_BREAK : undefined}
+          subjectUrl={subjectImageUrl}
         />
         {cameraSupported ? (
           // The camera sits in the model's own section, under its switches.

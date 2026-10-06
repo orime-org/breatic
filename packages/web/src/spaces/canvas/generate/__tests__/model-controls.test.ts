@@ -14,7 +14,7 @@ import { GENERATION_NODE_BUCKETS, type ModelEntry, type ParamDescriptor } from '
 import { describe, it, expect } from 'vitest';
 import { parse } from 'yaml';
 
-import { modelControls, ownControlSummary } from '@web/spaces/canvas/generate/model-controls';
+import { modelControls, ownControlSummary, ownControlValues } from '@web/spaces/canvas/generate/model-controls';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 
 /**
@@ -171,7 +171,7 @@ describe('modelControls', () => {
     };
     expect(modelControls(model({ auto_shots: auto }), 't2v')).toEqual([{ kind: 'toggle', name: 'auto_shots' }]);
     expect(modelControls(model({ auto_shots: auto }), 'multi_shot')).toEqual([]);
-    expect(ownControlSummary(model({ auto_shots: auto }), 'multi_shot', { auto_shots: true }, (n) => n)).toEqual([]);
+    expect(ownControlSummary(model({ auto_shots: auto }), 'multi_shot', { auto_shots: true }, (k) => k)).toEqual([]);
   });
 
   it('keeps the order the model declares its params in', () => {
@@ -193,27 +193,99 @@ describe('ownControlSummary', () => {
     transparency: { description: '', label: 'Transparent', values: [false, true], default: false, fill: 'panel' },
     negative_prompt: { description: '', label: 'Negative', type: 'text', default: null, fill: 'panel' },
   });
-  const nameOf = (name: string): string => `name:${name}`;
+  const t = (key: string): string => `t:${key}`;
 
   it('says what each choice and range stands on in a freshly resolved record', () => {
-    expect(ownControlSummary(OWN, 't2i', resolveParamsForModel(OWN, {}), nameOf)).toEqual(['Low', '20']);
+    expect(ownControlSummary(OWN, 't2i', resolveParamsForModel(OWN, {}), t)).toEqual(['Low', '20']);
   });
 
   it('names a text param only while it holds something', () => {
-    expect(ownControlSummary(OWN, 't2i', { quality: 'low', chaos: 5, negative_prompt: 'blur' }, nameOf)).toEqual([
+    expect(ownControlSummary(OWN, 't2i', { quality: 'low', chaos: 5, negative_prompt: 'blur' }, t)).toEqual([
       'Low',
       '5',
-      'name:negative_prompt',
+      't:canvas.generatePanel.param.negative_prompt',
     ]);
-    expect(ownControlSummary(OWN, 't2i', { quality: 'low', chaos: 5, negative_prompt: '' }, nameOf)).toEqual(['Low', '5']);
+    expect(ownControlSummary(OWN, 't2i', { quality: 'low', chaos: 5, negative_prompt: '' }, t)).toEqual(['Low', '5']);
   });
 
   it('reads what the node holds, and names a switch only while it is on', () => {
-    expect(ownControlSummary(OWN, 't2i', { quality: 'xhigh', chaos: 5, transparency: true }, nameOf)).toEqual([
+    expect(ownControlSummary(OWN, 't2i', { quality: 'xhigh', chaos: 5, transparency: true }, t)).toEqual([
       'XHigh',
       '5',
-      'name:transparency',
+      't:canvas.generatePanel.param.transparency',
     ]);
+  });
+});
+
+describe('a model whose three params set one camera pose', () => {
+  const ANGLES = {
+    ...model({
+      quality: { description: '', label: 'Quality', values: ['low', 'high'], default: 'low', fill: 'panel' },
+      distance: { description: '', label: 'Distance', min: 0, max: 2, step: 1, default: 1, fill: 'panel' },
+      horizontal_angle: { description: '', label: 'Horizontal angle', min: 0, max: 315, step: 45, default: 0, fill: 'panel' },
+      vertical_angle: { description: '', label: 'Vertical angle', min: -30, max: 60, step: 30, default: 0, fill: 'panel' },
+    }),
+    camera_angle: { azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' },
+  };
+  const t = (key: string): string => `t:${key}`;
+
+  it('draws the three as one camera-angle control where the first of them is declared', () => {
+    expect(modelControls(ANGLES, 't2i')).toEqual([
+      { kind: 'choice', name: 'quality', options: [{ value: 'low', label: 'Low' }, { value: 'high', label: 'High' }] },
+      {
+        kind: 'cameraAngle',
+        name: 'camera_angle',
+        params: { azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' },
+      },
+    ]);
+  });
+
+  it('hands the picker all three values, so a committed pose redraws it', () => {
+    expect(
+      ownControlValues(ANGLES, 't2i', { quality: 'low', horizontal_angle: 90, vertical_angle: 30, distance: 2 }),
+    ).toEqual({ quality: 'low', horizontal_angle: 90, vertical_angle: 30, distance: 2 });
+  });
+
+  it('names the pose in the pill by its azimuth, elevation and distance', () => {
+    expect(
+      ownControlSummary(ANGLES, 't2i', { quality: 'low', horizontal_angle: 45, vertical_angle: -30, distance: 2 }, t),
+    ).toEqual([
+      'Low',
+      't:canvas.generatePanel.cameraAngle.azimuth.45',
+      't:canvas.generatePanel.cameraAngle.elevation.low',
+      't:canvas.generatePanel.cameraAngle.distance.2',
+    ]);
+  });
+
+  it('leaves the three as plain sliders on a model that does not declare them a pose', () => {
+    const plain = { ...ANGLES, camera_angle: undefined };
+    expect(modelControls(plain, 't2i').map((c) => c.kind)).toEqual(['choice', 'range', 'range', 'range']);
+  });
+});
+
+describe('every camera-angle word has words in every locale', () => {
+  const keys = [
+    'title',
+    'reset',
+    'loadFailed',
+    ...[0, 45, 90, 135, 180, 225, 270, 315].map((v) => `azimuth.${v}`),
+    ...['low', 'eye', 'elevated', 'high'].map((v) => `elevation.${v}`),
+    ...[0, 1, 2].map((v) => `distance.${v}`),
+  ];
+
+  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'])('%s names every pose word', (lang) => {
+    const json = JSON.parse(readFileSync(resolve(process.cwd(), `../../locales/${lang}.json`), 'utf8')) as {
+      canvas: { generatePanel: { cameraAngle?: Record<string, unknown> } };
+    };
+    const words = json.canvas.generatePanel.cameraAngle ?? {};
+    /**
+     * The word under a dotted key, or undefined.
+     * @param key - The key below cameraAngle.
+     * @returns The word.
+     */
+    const at = (key: string): unknown =>
+      key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], words);
+    expect(keys.filter((key) => typeof at(key) !== 'string' || at(key) === '')).toEqual([]);
   });
 });
 

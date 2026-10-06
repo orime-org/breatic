@@ -275,7 +275,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
       const shown = asNumber(value[control.name]);
       return shown === undefined ? undefined : formatAudioParam(control.name, shown, t);
     }),
-    ...ownControlSummary(model, mode, value, (name) => t(`canvas.generatePanel.param.${name}`), inlineOnly),
+    ...ownControlSummary(model, mode, value, t, inlineOnly),
   ]
     .filter((part): part is string => part !== undefined && part !== '')
     .join(' · ') || t('canvas.generatePanel.audioSettings');

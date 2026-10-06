@@ -686,7 +686,33 @@
         "zoom": "變焦",
         "other": "其他"
       },
-      "cameraCommandsPreviewHint": "懸停指令即可預覽"
+      "cameraCommandsPreviewHint": "懸停指令即可預覽",
+      "cameraAngle": {
+        "title": "機位",
+        "reset": "重設",
+        "loadFailed": "3D 視圖載入失敗，重新整理頁面後可用",
+        "azimuth": {
+          "0": "正面",
+          "45": "右前",
+          "90": "右側",
+          "135": "右後",
+          "180": "背面",
+          "225": "左後",
+          "270": "左側",
+          "315": "左前"
+        },
+        "elevation": {
+          "low": "仰拍",
+          "eye": "平視",
+          "elevated": "俯視",
+          "high": "高位"
+        },
+        "distance": {
+          "0": "特寫",
+          "1": "中景",
+          "2": "遠景"
+        }
+      }
     },
     "nodeMenu": {
       "generate": "生成",

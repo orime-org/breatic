@@ -6,6 +6,7 @@ import * as React from 'react';
 import type { ModelEntry } from '@breatic/shared';
 
 import { Input } from '@web/components/ui/input';
+import { CameraAngleControl } from '@web/spaces/canvas/generate/CameraAngleControl';
 import { ItemsEditor } from '@web/spaces/canvas/generate/ItemsEditor';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
@@ -27,6 +28,8 @@ interface ModelParamControlsProps {
   className?: string;
   /** Which of the model's own controls to draw; all of them when absent. */
   include?: (control: ModelControl) => boolean;
+  /** The first image the model is sent, which a camera-angle control puts on its card. */
+  subjectUrl?: string;
 }
 
 /**
@@ -40,6 +43,7 @@ interface ModelParamControlsProps {
  * @param root0.onChange - Called with the changed param.
  * @param root0.className - Spacing above the block.
  * @param root0.include - Which controls to draw.
+ * @param root0.subjectUrl - The first image the model is sent.
  * @returns The controls, or null when the model has none of its own.
  */
 export const ModelParamControls = React.memo(function ModelParamControls({
@@ -49,6 +53,7 @@ export const ModelParamControls = React.memo(function ModelParamControls({
   onChange,
   className,
   include,
+  subjectUrl,
 }: ModelParamControlsProps): React.JSX.Element | null {
   const t = useTranslation();
   const controls = React.useMemo(
@@ -58,21 +63,31 @@ export const ModelParamControls = React.memo(function ModelParamControls({
   if (controls.length === 0) return null;
   return (
     <div className={cn('flex flex-col gap-3', className)}>
-      {controls.map((control) => (
-        <ModelControlRow
-          key={control.name}
-          control={control}
-          label={t(`canvas.generatePanel.param.${control.name}`)}
-          shown={value[control.name]}
-          onChange={onChange}
-        />
-      ))}
+      {controls.map((control) =>
+        control.kind === 'cameraAngle' ? (
+          <CameraAngleControl
+            key={control.name}
+            params={control.params}
+            value={value}
+            onChange={onChange}
+            subjectUrl={subjectUrl}
+          />
+        ) : (
+          <ModelControlRow
+            key={control.name}
+            control={control}
+            label={t(`canvas.generatePanel.param.${control.name}`)}
+            shown={value[control.name]}
+            onChange={onChange}
+          />
+        ),
+      )}
     </div>
   );
 });
 
 interface ModelControlRowProps {
-  control: ModelControl;
+  control: Exclude<ModelControl, { kind: 'cameraAngle' }>;
   label: string;
   shown: unknown;
   onChange: (partial: Record<string, unknown>) => void;

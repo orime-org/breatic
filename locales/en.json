@@ -698,7 +698,33 @@
         "zoom": "Zoom",
         "other": "Other"
       },
-      "cameraCommandsPreviewHint": "Hover a command to preview it"
+      "cameraCommandsPreviewHint": "Hover a command to preview it",
+      "cameraAngle": {
+        "title": "Camera angle",
+        "reset": "Reset",
+        "loadFailed": "The 3D view could not load. Refresh the page to use it.",
+        "azimuth": {
+          "0": "Front",
+          "45": "Front right",
+          "90": "Right",
+          "135": "Back right",
+          "180": "Back",
+          "225": "Back left",
+          "270": "Left",
+          "315": "Front left"
+        },
+        "elevation": {
+          "low": "Low angle",
+          "eye": "Eye level",
+          "elevated": "Elevated",
+          "high": "High angle"
+        },
+        "distance": {
+          "0": "Close-up",
+          "1": "Medium shot",
+          "2": "Wide shot"
+        }
+      }
     },
     "edge": {
       "delete": "Delete connection"
