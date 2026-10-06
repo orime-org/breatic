@@ -3,7 +3,7 @@
 
 /**
  * Interface preferences a reader adjusts come back after a reload and belong
- * to the account that set them (inner task #969), measured in a browser.
+ * to the account that set them, measured in a browser.
  *
  * The questions need a real reload: whether the Agent column ever mounts
  * before it is hidden again, whether the theme on the first frame is the one
