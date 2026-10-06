@@ -35,7 +35,7 @@ import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { corsUrl } from '@web/lib/cors-url';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
-import { useCanvasStore } from '@web/stores';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 import { CAMERA_SPECS } from './camera-angle-specs';
 
@@ -129,7 +129,7 @@ async function openSphere(mentioned: string[]): Promise<HTMLElement> {
     </QueryClientProvider>,
   );
   act(() => {
-    useCanvasStore.getState().openGeneratePanel('target', 'image');
+    canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
   });
   const trigger = await screen.findByTestId('generate-ratio-trigger');
   await waitFor(() => expect(trigger).not.toBeDisabled());
@@ -140,7 +140,7 @@ async function openSphere(mentioned: string[]): Promise<HTMLElement> {
 describe('the camera-angle sphere\'s card', () => {
   beforeEach(() => {
     _resetForTests();
-    useCanvasStore.setState({ panelHostId: null, panelKind: null, pickSession: null });
+    canvasSessions.of('s').setState({ panelHostId: null, panelKind: null, pickSession: null });
   });
   afterEach(() => {
     vi.restoreAllMocks();
