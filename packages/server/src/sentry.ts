@@ -22,7 +22,9 @@ const FLUSH_TIMEOUT_MS = 2000;
  *
  * Called right after config bootstrap and before the first log line.
  * Unhandled rejections are reported and then end the process, which keeps
- * the crash-and-restart behaviour the server had before monitoring.
+ * the crash-and-restart behaviour the server had before monitoring. The SDK
+ * ignores two by name, `AbortError` and `AI_NoOutputGeneratedError`: those
+ * are neither reported nor fatal while monitoring is on.
  */
 export function initSentry(): void {
   const options = errorMonitoringOptions({
