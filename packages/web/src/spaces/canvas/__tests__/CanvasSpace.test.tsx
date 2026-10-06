@@ -2413,6 +2413,61 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     addNode.mockRestore();
   });
 
+  it('steps a pasted batch of files past a node sitting where any one of them would land (inner#1235 A20)', async () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    const addNode = vi
+      .spyOn(canvasSpace, 'addNode')
+      .mockImplementation(() => undefined);
+    const corners = vi.spyOn(canvasSpace, 'readNodeCorners').mockReturnValue([]);
+    const config = vi
+      .spyOn(assetsApi, 'fetchUploadConfig')
+      .mockResolvedValue({ maxUploadBytes: 1_000_000 } as Awaited<
+        ReturnType<typeof assetsApi.fetchUploadConfig>
+      >);
+    renderSpace();
+    /** Paste two pictures the way a copied pair of files arrives. */
+    const pasteTwo = (): void => {
+      const event = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'clipboardData', {
+        configurable: true,
+        value: {
+          getData: (): string => '',
+          files: [
+            new File(['x'], 'a.png', { type: 'image/png' }),
+            new File(['y'], 'b.png', { type: 'image/png' }),
+          ],
+        },
+      });
+      act(() => {
+        keyTarget().dispatchEvent(event);
+      });
+    };
+    /**
+     * The top-lefts the upload nodes were written at, from one call onward.
+     * @param from - The first `addNode` call to read.
+     * @returns Each upload node's position, in order.
+     */
+    const uploads = (from: number): { x: number; y: number }[] =>
+      addNode.mock.calls
+        .slice(from)
+        .filter(([, , node]) => node.type === 'image')
+        .map(([, , node]) => node.position);
+
+    pasteTwo();
+    await waitFor(() => expect(uploads(0)).toHaveLength(2));
+    const first = uploads(0);
+    const before = addNode.mock.calls.length;
+    // Only the second picture's spot is taken now.
+    corners.mockReturnValue([first[1] as { x: number; y: number }]);
+    pasteTwo();
+    await waitFor(() => expect(uploads(before)).toHaveLength(2));
+
+    expect(uploads(before)).toEqual(first.map((at) => ({ x: at.x + 24, y: at.y + 24 })));
+    addNode.mockRestore();
+    corners.mockRestore();
+    config.mockRestore();
+  });
+
   it('readOnly canvas ignores paste (no Yjs write)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi

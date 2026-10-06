@@ -418,35 +418,6 @@ describe('pasteOffsetFor — where a paste lands on the Space it is pasted into 
   it('pastes a node that names no Space at the centre of this view', () => {
     expect(pasteOffsetFor([at()], viewport, 24, 'here')).toEqual({ dx: -50, dy: 350 });
   });
-
-  it('steps a centred paste down and right past a node already sitting there', () => {
-    // The centre lands the copy's top-left at (450, 350), where a node already is.
-    expect(
-      pasteOffsetFor([at('there')], viewport, 24, 'here', [{ x: 450, y: 350 }]),
-    ).toEqual({ dx: -26, dy: 374 });
-  });
-
-  it('keeps stepping past nodes stacked a step apart', () => {
-    expect(
-      pasteOffsetFor([at('there')], viewport, 24, 'here', [
-        { x: 450, y: 350 },
-        { x: 474, y: 374 },
-      ]),
-    ).toEqual({ dx: -2, dy: 398 });
-  });
-
-  it('steps a paste beside its source past an earlier copy already there', () => {
-    // Same Space, source in view: the first copy took (524, 24); the next steps on.
-    expect(
-      pasteOffsetFor([at('here')], viewport, 24, 'here', [{ x: 524, y: 24 }]),
-    ).toEqual({ dx: 48, dy: 48 });
-  });
-
-  it('leaves a centred paste where it is when nothing sits near its spot', () => {
-    expect(
-      pasteOffsetFor([at('there')], viewport, 24, 'here', [{ x: 0, y: 0 }]),
-    ).toEqual({ dx: -50, dy: 350 });
-  });
 });
 
 describe('captureClipboard — the Space a copy comes from (inner#1235 A20)', () => {
@@ -466,16 +437,22 @@ describe('captureClipboard — the Space a copy comes from (inner#1235 A20)', ()
 
 describe('stepPastOccupied — one rule for every paste (inner#1235 A20)', () => {
   it('stays put on a free spot', () => {
-    expect(stepPastOccupied({ x: 0, y: 0 }, [{ x: 100, y: 100 }], 24)).toEqual({ dx: 0, dy: 0 });
+    expect(stepPastOccupied([{ x: 0, y: 0 }], [{ x: 100, y: 100 }], 24)).toEqual({ dx: 0, dy: 0 });
   });
 
   it('steps down and right until the spot is free', () => {
     expect(
-      stepPastOccupied({ x: 0, y: 0 }, [{ x: 0, y: 0 }, { x: 24, y: 24 }, { x: 60, y: 0 }], 24),
+      stepPastOccupied([{ x: 0, y: 0 }], [{ x: 0, y: 0 }, { x: 24, y: 24 }, { x: 60, y: 0 }], 24),
     ).toEqual({ dx: 48, dy: 48 });
   });
 
   it('counts a node less than a step away as on the spot', () => {
-    expect(stepPastOccupied({ x: 0, y: 0 }, [{ x: 10, y: -10 }], 24)).toEqual({ dx: 24, dy: 24 });
+    expect(stepPastOccupied([{ x: 0, y: 0 }], [{ x: 10, y: -10 }], 24)).toEqual({ dx: 24, dy: 24 });
+  });
+
+  it('steps the whole batch when any one of its nodes would land on a taken spot', () => {
+    expect(
+      stepPastOccupied([{ x: 0, y: 0 }, { x: 400, y: 300 }], [{ x: 400, y: 300 }], 24),
+    ).toEqual({ dx: 24, dy: 24 });
   });
 });
