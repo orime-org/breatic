@@ -992,6 +992,52 @@ test('a reply not sent yet and the comment panel are where they were after a swi
   await expect(reply).toHaveValue('half a reply!');
 });
 
+test('a hidden document does not take a drop made outside the shown one', async ({ page }) => {
+  // A5: the hidden document's editor is still in the page; BlockNote must not
+  // pick it as the place a drag lands, or a drag let go over the tab strip is
+  // taken (and a dragged selection deleted from the shown document).
+  await openFreshProject(page);
+  const [a, b] = await addSpaces(page, 2, 'document');
+  await showSpace(page, a!);
+  await showSpace(page, b!);
+  const editor = page.locator(DOCUMENT_EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await editor.click();
+  await page.keyboard.type('alpha');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('beta');
+  await page.evaluate(() => {
+    const w = window as unknown as { dropTaken?: boolean; dragEnded?: boolean };
+    w.dropTaken = false;
+    document.addEventListener('drop', (e) => {
+      queueMicrotask(() => {
+        if (e.defaultPrevented) w.dropTaken = true;
+      });
+    });
+    document.addEventListener('dragend', () => {
+      w.dragEnded = true;
+    });
+  });
+  const row = await editor.locator('.bn-block-content').nth(1).boundingBox();
+  if (row === null) throw new Error('no row');
+  await page.mouse.move(row.x + 40, row.y + 11);
+  const handle = await page.getByTestId('doc-block-handle').boundingBox();
+  if (handle === null) throw new Error('no handle');
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + 8, handle.y + 12, { steps: 4 });
+  await page.mouse.move(60, 60, { steps: 12 });
+  await page.mouse.up();
+
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { dragEnded?: boolean }).dragEnded))
+    .toBe(true);
+  expect(
+    await page.evaluate(() => (window as unknown as { dropTaken: boolean }).dropTaken),
+  ).toBe(false);
+  await expect(editor.locator('.bn-block-content')).toHaveCount(2);
+});
+
 test('the caret goes back into a reply without moving what the reader scrolled to', async ({
   page,
 }) => {
