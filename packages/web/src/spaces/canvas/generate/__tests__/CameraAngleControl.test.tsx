@@ -206,6 +206,48 @@ describe('CameraAngleControl', () => {
     expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 135, vertical_angle: 0, distance: 1 });
   });
 
+  it('hands a held key over to a drag, writing once on release with the wheel step taken during it', async () => {
+    const { onChange, rerender } = await draw();
+    fireEvent.keyDown(group(), { key: 'ArrowRight' });
+    rerender({ horizontal_angle: 45, vertical_angle: 0, distance: 1 });
+    fireEvent.keyDown(group(), { key: 'ArrowRight', repeat: true });
+    fireEvent.keyDown(group(), { key: 'ArrowRight', repeat: true });
+    act(() => sphere.last?.onDragStart());
+    expect(sphere.last?.pose.azimuth).toBe(135);
+    act(() => sphere.last?.onDrag({ azimuth: 180, elevation: 30, distance: 1 }));
+    fireEvent.wheel(group(), { deltaY: 60 });
+    fireEvent.keyUp(group(), { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    act(() => sphere.last?.onDragEnd());
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 180, vertical_angle: 30, distance: 2 });
+  });
+
+  it('keeps holding a key when another key such as Shift is let go', async () => {
+    const { onChange, rerender } = await draw();
+    fireEvent.keyDown(group(), { key: 'ArrowRight' });
+    rerender({ horizontal_angle: 45, vertical_angle: 0, distance: 1 });
+    fireEvent.keyDown(group(), { key: 'ArrowRight', repeat: true });
+    fireEvent.keyUp(group(), { key: 'Shift' });
+    fireEvent.keyDown(group(), { key: 'ArrowRight', repeat: true });
+    fireEvent.keyUp(group(), { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 135, vertical_angle: 0, distance: 1 });
+  });
+
+  it('takes a wheel step from where a held key has reached, as one write', async () => {
+    const { onChange, rerender } = await draw();
+    vi.useFakeTimers();
+    fireEvent.keyDown(group(), { key: 'ArrowRight' });
+    rerender({ horizontal_angle: 45, vertical_angle: 0, distance: 1 });
+    fireEvent.keyDown(group(), { key: 'ArrowRight', repeat: true });
+    fireEvent.wheel(group(), { deltaY: 60 });
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 90, vertical_angle: 0, distance: 2 });
+    fireEvent.keyUp(group(), { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
   it('follows a collaborator after a single arrow key on a slider', async () => {
     const { onChange, rerender } = await draw();
     const thumb = screen.getAllByRole('slider')[0]!;

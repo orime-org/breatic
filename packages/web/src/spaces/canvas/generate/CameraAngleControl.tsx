@@ -36,6 +36,28 @@ const CAMERA_ANGLE_AXES: readonly CameraAngleAxis[] = ['azimuth', 'elevation', '
 /** The azimuths named under the slider; the other four are named in the title. */
 const NAMED_AZIMUTHS = [0, 90, 180, 270] as const;
 
+/** The keys that move the camera, and the axis and direction each steps. */
+const KEY_STEPS: Readonly<Record<string, readonly [CameraAngleAxis, 1 | -1]>> = {
+  ArrowRight: ['azimuth', 1],
+  ArrowLeft: ['azimuth', -1],
+  ArrowUp: ['elevation', 1],
+  ArrowDown: ['elevation', -1],
+  '+': ['distance', -1],
+  '=': ['distance', -1],
+  '-': ['distance', 1],
+};
+
+/**
+ * The one gesture in progress and the pose it shows, or null between
+ * gestures. One value, so two gestures cannot be in progress at once; a new
+ * input takes over from whichever is (design §6).
+ */
+type Gesture =
+  | { kind: 'drag'; pose: CameraAngle }
+  | { kind: 'key'; pose: CameraAngle }
+  | { kind: 'slider'; pose: CameraAngle }
+  | null;
+
 
 /**
  * Says the 3D view could not load, in the sphere's place.
@@ -138,16 +160,15 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
   const t = useTranslation();
   const colors = useSphereColors();
   const stored = storedPose(params, value);
-  const [drag, setDrag] = React.useState<CameraAngle | null>(null);
-  const [sliderDraft, setSliderDraft] = React.useState<Partial<CameraAngle>>({});
-  const [pendingDistance, setPendingDistance] = React.useState<number | null>(null);
+  const [gesture, setGesture] = React.useState<Gesture>(null);
   const [unavailable, setUnavailable] = React.useState(false);
   const groupRef = React.useRef<HTMLDivElement>(null);
 
-  // Read inside callbacks that outlive the render they were made in.
-  const live = React.useRef({ stored, pending: pendingDistance, mounted: true });
+  // Read inside callbacks that outlive the render they were made in. The
+  // gesture is kept here as it changes, so an event that lands before the last
+  // one has rendered still starts from the pose on screen.
+  const live = React.useRef({ stored, gesture: null as Gesture, mounted: true });
   live.current.stored = stored;
-  live.current.pending = pendingDistance;
   const wheel = React.useRef<{ sum: number; moved: boolean; timer: ReturnType<typeof setTimeout> | undefined }>({
     sum: 0,
     moved: false,
@@ -158,46 +179,55 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
     const state = live.current;
     state.mounted = true;
     return () => {
-      // A control that goes away writes nothing it had not written: a drag in
-      // progress is dropped, and a wheel step taken during it with it.
+      // A control that goes away writes nothing it had not written: the
+      // gesture in progress is dropped.
       state.mounted = false;
       clearTimeout(wheel.current.timer);
     };
   }, []);
 
+  /**
+   * Begin, move or end the gesture in progress.
+   * @param next - The gesture now in progress, or null for none.
+   */
+  const track = React.useCallback((next: Gesture): void => {
+    live.current.gesture = next;
+    setGesture(next);
+  }, []);
+
+  /**
+   * The pose on screen: the gesture's, else the stored one.
+   * @returns The pose.
+   */
+  const onScreen = React.useCallback(
+    (): CameraAngle => live.current.gesture?.pose ?? live.current.stored,
+    [],
+  );
+
   const commit = React.useCallback(
     (change: Partial<CameraAngle>): void => {
       if (!live.current.mounted) return;
-      const base = live.current.stored;
-      const pending = live.current.pending;
-      setPendingDistance(null);
-      setSliderDraft({});
-      heldKey.current = null;
-      setKeyDraft(null);
-      const next = nearestCameraAngle({ ...base, distance: pending ?? base.distance, ...change });
-      if (samePose(next, base)) return;
+      const next = nearestCameraAngle({ ...onScreen(), ...change });
+      track(null);
+      if (samePose(next, live.current.stored)) return;
       onChange({ [params.azimuth]: next.azimuth, [params.elevation]: next.elevation, [params.distance]: next.distance });
     },
-    [onChange, params],
+    [onChange, params, onScreen, track],
   );
 
-  // The pose under the pointer, kept beside the state so a release that lands
-  // before the last move has rendered still writes where the pointer was.
-  const dragRef = React.useRef<CameraAngle | null>(null);
   const onDragStart = React.useCallback((): void => {
-    dragRef.current = live.current.stored;
-    setDrag(live.current.stored);
-  }, []);
-  const onDrag = React.useCallback((pose: CameraAngle): void => {
-    dragRef.current = pose;
-    setDrag(pose);
-  }, []);
+    track({ kind: 'drag', pose: onScreen() });
+  }, [onScreen, track]);
+  const onDrag = React.useCallback(
+    (pose: CameraAngle): void => {
+      const current = live.current.gesture;
+      if (current?.kind !== 'drag') return;
+      track({ kind: 'drag', pose: { ...current.pose, azimuth: pose.azimuth, elevation: pose.elevation } });
+    },
+    [track],
+  );
   const onDragEnd = React.useCallback((): void => {
-    const pose = dragRef.current;
-    dragRef.current = null;
-    setDrag(null);
-    if (pose === null) return;
-    commit({ azimuth: pose.azimuth, elevation: pose.elevation });
+    if (live.current.gesture?.kind === 'drag') commit({});
   }, [commit]);
   const onUnavailable = React.useCallback((): void => setUnavailable(true), []);
 
@@ -211,93 +241,85 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
      */
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault();
-      const gesture = wheel.current;
-      clearTimeout(gesture.timer);
-      if (!gesture.moved) {
-        gesture.sum += event.deltaY;
-        if (Math.abs(gesture.sum) >= WHEEL_STEP_DELTA) {
-          gesture.moved = true;
-          const from = live.current.pending ?? live.current.stored.distance;
-          const next = stepCameraAngle({ ...live.current.stored, distance: from }, 'distance', gesture.sum > 0 ? 1 : -1);
-          if (dragRef.current === null) {
-            commit({ distance: next.distance });
-          } else {
-            // Written with the angle when the drag is released.
-            setPendingDistance(next.distance);
-            live.current.pending = next.distance;
-          }
+      const steps = wheel.current;
+      clearTimeout(steps.timer);
+      if (!steps.moved) {
+        steps.sum += event.deltaY;
+        if (Math.abs(steps.sum) >= WHEEL_STEP_DELTA) {
+          steps.moved = true;
+          const next = stepCameraAngle(onScreen(), 'distance', steps.sum > 0 ? 1 : -1);
+          const current = live.current.gesture;
+          // A drag carries the step and writes it with the angle on release.
+          if (current?.kind === 'drag') track({ kind: 'drag', pose: next });
+          else commit({ distance: next.distance });
         }
       }
-      // The rest of this gesture, a trackpad's momentum included, moves
+      // The rest of this wheel gesture, a trackpad's momentum included, moves
       // nothing more until the wheel has been still for a moment. Only this
-      // listener and its timer touch the gesture.
-      gesture.timer = setTimeout(() => {
+      // listener and its timer touch this record.
+      steps.timer = setTimeout(() => {
         wheel.current = { sum: 0, moved: false, timer: undefined };
       }, WHEEL_SETTLE_MS);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [commit]);
+  }, [commit, onScreen, track]);
 
-  // Where a held key has stepped the pose since its press was written. Each
-  // repeat moves the picture; the release writes once, as a held slider key
-  // does, so a held key is two undo entries however long it is held.
-  const heldKey = React.useRef<CameraAngle | null>(null);
-  const [keyDraft, setKeyDraft] = React.useState<CameraAngle | null>(null);
-
+  // A press writes one step; each repeat of a held key moves the picture, and
+  // letting go of a camera key (or the sphere losing focus) writes where the
+  // repeats reached, as a held slider key does.
   const onKeyDown = React.useCallback(
     (event: React.KeyboardEvent): void => {
-      if (dragRef.current !== null || event.target !== event.currentTarget) return;
-      const step: Record<string, [CameraAngleAxis, 1 | -1]> = {
-        ArrowRight: ['azimuth', 1],
-        ArrowLeft: ['azimuth', -1],
-        ArrowUp: ['elevation', 1],
-        ArrowDown: ['elevation', -1],
-        '+': ['distance', -1],
-        '=': ['distance', -1],
-        '-': ['distance', 1],
-      };
-      const hit = step[event.key];
+      if (event.target !== event.currentTarget) return;
+      const hit = KEY_STEPS[event.key];
       if (!hit) return;
       event.preventDefault();
-      const base = heldKey.current ?? {
-        ...live.current.stored,
-        distance: live.current.pending ?? live.current.stored.distance,
-      };
-      const next = stepCameraAngle(base, hit[0], hit[1]);
-      if (event.repeat) {
-        heldKey.current = next;
-        setKeyDraft(next);
-        return;
-      }
-      commit(next);
+      if (live.current.gesture?.kind === 'drag') return;
+      const next = stepCameraAngle(onScreen(), hit[0], hit[1]);
+      if (event.repeat) track({ kind: 'key', pose: next });
+      else commit(next);
     },
-    [commit],
+    [commit, onScreen, track],
   );
   const endHeldKey = React.useCallback((): void => {
-    const reached = heldKey.current;
-    if (reached !== null) commit(reached);
+    if (live.current.gesture?.kind === 'key') commit({});
   }, [commit]);
+  const onKeyUp = React.useCallback(
+    (event: React.KeyboardEvent): void => {
+      if (KEY_STEPS[event.key]) endHeldKey();
+    },
+    [endHeldKey],
+  );
 
   const onSlider = React.useCallback(
     (partial: Record<string, number>): void => {
       const [[name, v] = []] = Object.entries(partial);
       if (name === undefined || v === undefined) return;
-      const axis = (Object.keys(params) as CameraAngleAxis[]).find((a) => params[a] === name);
+      const axis = CAMERA_ANGLE_AXES.find((a) => params[a] === name);
       if (axis) commit({ [axis]: v });
     },
     [commit, params],
   );
-  const onAzimuthDraft = React.useCallback((v: number) => setSliderDraft({ azimuth: v }), []);
-  const onElevationDraft = React.useCallback((v: number) => setSliderDraft({ elevation: v }), []);
-  const onDistanceDraft = React.useCallback((v: number) => setSliderDraft({ distance: v }), []);
-  const onSliderDraftEnd = React.useCallback(() => setSliderDraft({}), []);
+  /**
+   * A slider moved without writing: the picture follows that axis.
+   * @param axis - The slider's axis.
+   * @param v - Where its thumb is.
+   */
+  const onSliderDraft = React.useCallback(
+    (axis: CameraAngleAxis, v: number): void => {
+      if (live.current.gesture?.kind === 'drag') return;
+      track({ kind: 'slider', pose: { ...onScreen(), [axis]: v } });
+    },
+    [onScreen, track],
+  );
+  const onAzimuthDraft = React.useCallback((v: number) => onSliderDraft('azimuth', v), [onSliderDraft]);
+  const onElevationDraft = React.useCallback((v: number) => onSliderDraft('elevation', v), [onSliderDraft]);
+  const onDistanceDraft = React.useCallback((v: number) => onSliderDraft('distance', v), [onSliderDraft]);
+  const onSliderDraftEnd = React.useCallback((): void => {
+    if (live.current.gesture?.kind === 'slider') track(null);
+  }, [track]);
 
-  // What the sphere draws: the pointer while dragging, a held key's reach,
-  // otherwise the stored pose with a dragged slider laid over it.
-  const shown: CameraAngle = drag
-    ? { ...drag, distance: pendingDistance ?? stored.distance }
-    : (keyDraft ?? { ...stored, ...sliderDraft });
+  const shown: CameraAngle = gesture?.pose ?? stored;
   const { azimuth: shownAzimuth, elevation: shownElevation, distance: shownDistance } = shown;
   const spherePose = React.useMemo(
     () => ({ azimuth: shownAzimuth, elevation: shownElevation, distance: shownDistance }),
@@ -305,8 +327,8 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
   );
   const named = nearestCameraAngle(spherePose);
   const poseWords = cameraAngleNames(specs, params, named);
-  // The sliders show a draft only while the sphere or a held key moves the pose.
-  const shownOnSliders = drag !== null || keyDraft !== null ? named : undefined;
+  // The sliders follow the sphere and a held key; a dragged slider shows its own.
+  const shownOnSliders = gesture?.kind === 'drag' || gesture?.kind === 'key' ? named : undefined;
 
   /**
    * One axis's named steps under its slider.
@@ -351,7 +373,7 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
           aria-label={t('canvas.generatePanel.cameraAngle.title')}
           data-testid='generate-camera-angle'
           onKeyDown={onKeyDown}
-          onKeyUp={endHeldKey}
+          onKeyUp={onKeyUp}
           onBlur={endHeldKey}
           className={cn(
             'relative aspect-[4/3] w-full touch-none overflow-hidden rounded-chrome border border-border bg-muted outline-none',

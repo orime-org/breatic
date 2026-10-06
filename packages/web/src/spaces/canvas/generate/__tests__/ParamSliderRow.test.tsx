@@ -121,9 +121,10 @@ describe('ParamSliderRow', () => {
       const slider = screen.getByTestId('generate-param-horizontal_angle-slider');
       fireEvent.pointerDown(slider, { pointerId: 1, button: 0, clientX: 90 });
       fireEvent.pointerMove(slider, { pointerId: 1, clientX: 0 });
+      onDraftEnd.mockClear();
       fireEvent.pointerUp(slider, { pointerId: 1, clientX: 0 });
       expect(onChange).not.toHaveBeenCalled();
-      expect(onDraftEnd).toHaveBeenCalled();
+      expect(onDraftEnd).toHaveBeenCalledTimes(1);
       rerender(<ParamSliderRow {...props} value={180} />);
       expect(screen.getByTestId('generate-param-horizontal_angle-value')).toHaveTextContent('180');
     } finally {
