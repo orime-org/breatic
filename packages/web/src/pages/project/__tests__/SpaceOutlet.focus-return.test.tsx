@@ -65,6 +65,18 @@ describe('SpaceOutlet — the caret goes back where the Space was left', () => {
     expect(document.activeElement).toBe(screen.getByTestId(box));
   });
 
+  it('puts the caret back without scrolling to it', async () => {
+    const { rerender } = render(<Tab active />);
+    const box = screen.getByTestId('inline-box');
+    act(() => box.focus());
+    rerender(<Tab active={false} />);
+    act(() => box.blur());
+    const focus = vi.spyOn(box, 'focus');
+    rerender(<Tab active />);
+    await flush();
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
   it('leaves the caret alone when it was outside the Space on hide', async () => {
     const outside = document.createElement('input');
     document.body.appendChild(outside);

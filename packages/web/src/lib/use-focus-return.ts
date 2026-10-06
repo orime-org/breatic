@@ -55,7 +55,9 @@ export function useFocusReturn(
 }
 
 /**
- * {@link useFocusReturn} for a plain element held by a ref.
+ * {@link useFocusReturn} for a plain element held by a ref. The focus does not
+ * scroll: the reader may have scrolled the box out of view before leaving, and
+ * coming back finds the page where it was left.
  * @param box - The element the caret goes back into.
  */
 export function useBoxFocusReturn(box: React.RefObject<HTMLElement | null>): void {
@@ -63,6 +65,6 @@ export function useBoxFocusReturn(box: React.RefObject<HTMLElement | null>): voi
   useFocusReturn(
     memo,
     () => box.current !== null && document.activeElement === box.current,
-    () => box.current?.focus(),
+    () => box.current?.focus({ preventScroll: true }),
   );
 }

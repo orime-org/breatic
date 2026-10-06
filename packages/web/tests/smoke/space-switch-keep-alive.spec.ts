@@ -992,6 +992,42 @@ test('a reply not sent yet and the comment panel are where they were after a swi
   await expect(reply).toHaveValue('half a reply!');
 });
 
+test('the caret goes back into a reply without moving what the reader scrolled to', async ({
+  page,
+}) => {
+  // A1 and A19: with the reply scrolled out of view, coming back keeps the
+  // body where it was and still puts the caret in the reply.
+  const { canvas, doc } = await canvasAndDocument(page);
+  await page.keyboard.type('a line worth answering');
+  for (let i = 0; i < 60; i += 1) await page.keyboard.press('Enter');
+  await page.keyboard.type('the end');
+  await selectFirstParagraph(page);
+  await page.getByTestId('doc-bubble-tool-comment').click();
+  await page.getByTestId('doc-comment-draft-input').fill('worth answering');
+  await page.getByTestId('doc-comment-draft-save').click();
+  await page.getByTestId('doc-comment-card').click();
+  const reply = page.getByTestId('doc-comment-reply-input');
+  await reply.click();
+  await page.keyboard.type('half a reply');
+
+  const scroller = visibleSpace(page)
+    .getByTestId('document-editor-content')
+    .locator('xpath=ancestor::*[@data-radix-scroll-area-viewport][1]');
+  const box = await scroller.boundingBox();
+  if (box === null) throw new Error('the scroller has no box');
+  await page.mouse.move(box.x + box.width / 3, box.y + box.height / 2);
+  await page.mouse.wheel(0, 900);
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(300);
+  const scrolled = await scroller.evaluate((el) => el.scrollTop);
+  await expect(reply).toBeFocused();
+
+  await showSpace(page, canvas);
+  await showSpace(page, doc);
+
+  await expect(reply).toBeFocused();
+  expect(await scroller.evaluate((el) => el.scrollTop)).toBe(scrolled);
+});
+
 test('the button on a table cell is on that cell after a switch', async ({ page }) => {
   // A1: the cell button comes back on the cell the caret is in.
   const { canvas, doc } = await canvasAndDocument(page);
