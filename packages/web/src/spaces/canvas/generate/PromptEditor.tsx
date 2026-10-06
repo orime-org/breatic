@@ -197,8 +197,9 @@ interface PromptEditorProps {
  * prompt Y.XmlFragment via the Collaboration extension, so every collaborator
  * sees keystrokes live (rich text + @-mentions arrive in slice 2). The editor
  * lives as long as the opening of the panel it was built in, not as long as
- * this component: a hidden Space takes the panel down and puts it back, and
- * the caret and the undo history are on the editor (inner#1235 A13). The
+ * this component: hiding the Space cleans up its effects, a cleanup cannot
+ * tell hiding from unmounting, and the caret and the undo history are on the
+ * editor (inner#1235 A13). The
  * fragment is external Yjs data and is never destroyed here.
  * @param root0 - Component props.
  * @param root0.fragment - The prompt Y.XmlFragment to bind to.
@@ -352,13 +353,12 @@ export const PromptEditor = React.forwardRef<
       return built;
     };
     // A kept editor is reused while it is bound to the same caret connection
-    // with the same captured strings. The two
-    // mention labels are baked into the extensions and change only on a
-    // locale switch; the caret
-    // connection arrives once, on the socket's first connect; the name
-    // RESOLVER keeps one identity for the editor's whole life and reads the
-    // current roster itself, so it is compared rather than the roster bundle,
-    // which is rebuilt on every project-page render.
+    // with the same captured strings. The two mention labels are baked into
+    // the extensions and change only on a locale switch; the caret connection
+    // arrives once, on the socket's first connect; the name RESOLVER keeps one
+    // identity for the editor's whole life and reads the current roster
+    // itself, so it is compared rather than the roster bundle, which is
+    // rebuilt on every project-page render.
     return keptEditor(spaceId, fragment, build, (kept) => {
       const bound = keptOf.get(kept);
       return (
