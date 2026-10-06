@@ -97,6 +97,7 @@ describe("failures on a provider's result link", () => {
     expect(events).toHaveLength(1);
     expect(events[0]?.message).toBe("ingest_source_refused");
     expect(events[0]?.tags?.label).toBe("ingest_source_refused");
+    expect(events[0]?.contexts?.ingest).toMatchObject({ status: 404 });
   });
 });
 

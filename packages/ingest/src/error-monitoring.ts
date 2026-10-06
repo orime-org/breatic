@@ -88,10 +88,11 @@ export function noteFailure(
     err === undefined ? ctx : { ...ctx, err: err instanceof Error ? err.stack : String(err) },
   );
   if (kind.userInput === true) return;
+  const hint = { tags: { label }, contexts: { ingest: ctx } };
   if (err === undefined) {
-    Sentry.captureMessage(label, { level: "error", tags: { label } });
+    Sentry.captureMessage(label, { level: "error", ...hint });
   } else {
-    Sentry.captureException(err, { tags: { label } });
+    Sentry.captureException(err, hint);
   }
 }
 

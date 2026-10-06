@@ -1119,7 +1119,11 @@ async function answer(request: Request, env: Env): Promise<Response> {
     // Written here because catching it is what takes it off Cloudflare's own
     // error reporting: what that shows is the exceptions nobody handled. A 500
     // with nothing behind it is all anyone would have to go on otherwise.
-    noteFailure("ingest_request_failed", { url: request.url, method: request.method }, err);
+    noteFailure(
+      "ingest_request_failed",
+      { path: new URL(request.url).pathname, method: request.method },
+      err,
+    );
     return new Response("Internal error", { status: 500 });
   }
 }

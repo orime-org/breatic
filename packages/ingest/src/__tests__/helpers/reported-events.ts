@@ -39,6 +39,7 @@ export interface SentEvent {
   tags?: Record<string, string>;
   exception?: { values: { value?: string }[] };
   request?: { headers?: Record<string, string> };
+  contexts?: Record<string, Record<string, unknown>>;
 }
 
 /** The monitoring settings every request runs under. */
