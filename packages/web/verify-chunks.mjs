@@ -231,6 +231,8 @@ const HEAVY = [
   // The transitive dependencies are matched beside `file-type` because a
   // build can reach them without it: `strtok3` and `token-types` are ordinary
   // packages any other reader could pull in on its own.
+  // The camera-angle sphere's renderer (inner#830), about 185 kB gzipped.
+  { label: 'three.js', holds: (src) => /node_modules\/three\//.test(src) },
   {
     label: 'mime sniffing',
     holds: (src) =>
@@ -336,6 +338,32 @@ for (const [owner, downloads] of owners) {
         `${owner} downloads the ${heavy.label}: ${got.length} modules, e.g. ${got[0]}`,
       );
     }
+  }
+}
+
+// What the project page may only fetch once it is asked for. The page's own
+// walk above follows every lazy edge, since a `React.lazy` usually fires on
+// the same screen; these do not. The camera-angle sphere carries three.js and
+// draws only when the Qwen multiple-angles settings open, so the page's
+// static closure must not reach it: a static import of the sphere, or of
+// three.js anywhere under the canvas, puts it on every project open.
+const LAZY_ON_PROJECT_PAGE = [
+  { label: 'three.js', holds: (src) => /node_modules\/three\//.test(src) },
+];
+const projectChunk = chunkOf(RENDERS_A_SPACE);
+if (projectChunk !== undefined) {
+  try {
+    const opened = modulesIn([...closure([projectChunk], () => false, entryDownloads)]);
+    for (const lazy of LAZY_ON_PROJECT_PAGE) {
+      const got = [...opened].filter((src) => lazy.holds(src));
+      if (got.length > 0) {
+        problems.push(
+          `${RENDERS_A_SPACE} loads ${lazy.label} when it opens rather than when it is asked for: ${got.length} modules, e.g. ${got[0]}`,
+        );
+      }
+    }
+  } catch (e) {
+    problems.push(`${RENDERS_A_SPACE}: ${e.message} — this guard needs \`sourcemap: true\``);
   }
 }
 
