@@ -15,7 +15,7 @@
  * studios cannot be removed, and creating one is rate limited — and every
  * case makes its own project in it.
  *
- *   pnpm --filter @breatic/web test:smoke -- project-leave
+ *   pnpm --filter @breatic/web test:smoke project-leave
  */
 import { expect, test, type APIRequestContext, type Browser, type BrowserContext, type Page } from 'playwright/test';
 
@@ -144,69 +144,93 @@ async function openMembers(page: Page): Promise<void> {
   await expect(page.getByTestId('members-popover')).toBeVisible();
 }
 
-let scene: TeamScene;
+test.describe('in a team studio', () => {
+  let scene: TeamScene;
 
-test.beforeAll(async ({ browser }) => {
-  scene = await buildTeamScene(browser);
-});
+  test.beforeAll(async ({ browser }) => {
+    scene = await buildTeamScene(browser);
+  });
 
-test.afterAll(async () => {
-  await scene?.a.close();
-  await scene?.b.close();
-});
+  test.afterAll(async () => {
+    await scene?.a.close();
+    await scene?.b.close();
+  });
 
-test('B leaves from the studio card: asks first, Cancel changes nothing, then the card turns into a join card', async () => {
-  const { a, b, studioSlug } = scene;
-  const target = await teamProject(scene, 'Leave card');
-  const page = await b.newPage();
-  await page.goto(`/studio/${studioSlug}/projects`);
-  const card = page.getByTestId(`project-card-${target.id}`);
-  await expect(card).toBeVisible({ timeout: 20_000 });
-  await expect(card.getByText('Editor')).toBeVisible();
+  test('B leaves from the studio card: asks first, Cancel changes nothing, then the card turns into a join card', async () => {
+    const { a, b, studioSlug } = scene;
+    const target = await teamProject(scene, 'Leave card');
+    const page = await b.newPage();
+    await page.goto(`/studio/${studioSlug}/projects`);
+    const card = page.getByTestId(`project-card-${target.id}`);
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expect(card.getByText('Editor')).toBeVisible();
 
-  await card.hover();
-  await card.getByRole('button', { name: 'More actions' }).click();
-  await page.getByRole('menuitem', { name: 'Leave project' }).click();
-  const dialog = page.getByTestId('leave-project-dialog');
-  await expect(dialog).toContainText(`Leave “${target.name}”?`);
-  await dialog.getByRole('button', { name: 'Cancel' }).click();
-  await expect(dialog).toBeHidden();
-  expect((await dataOf<{ myRole: string }>(await b.request.get(`/api/v1/projects/${target.id}`), 'still in')).myRole).toBe(
-    'editor',
-  );
+    await card.hover();
+    await card.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Leave project' }).click();
+    const dialog = page.getByTestId('leave-project-dialog');
+    await expect(dialog).toContainText(`Leave “${target.name}”?`);
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+    expect((await dataOf<{ myRole: string }>(await b.request.get(`/api/v1/projects/${target.id}`), 'still in')).myRole).toBe(
+      'editor',
+    );
 
-  await card.hover();
-  await card.getByRole('button', { name: 'More actions' }).click();
-  await page.getByRole('menuitem', { name: 'Leave project' }).click();
-  await page.getByTestId('leave-project-dialog').getByRole('button', { name: 'Leave' }).click();
-  await expect(page.getByText(`You left “${target.name}”`)).toBeVisible({ timeout: 10_000 });
-  await expect(card.getByText('Editor')).toBeHidden();
-  await expect(card.getByRole('button', { name: new RegExp(target.name) })).toBeVisible();
-  await expect(card.getByRole('button', { name: 'More actions' })).toHaveCount(0);
-  expect((await b.request.get(`/api/v1/projects/${target.id}`)).status()).toBe(403);
+    await card.hover();
+    await card.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Leave project' }).click();
+    await page.getByTestId('leave-project-dialog').getByRole('button', { name: 'Leave' }).click();
+    await expect(page.getByText(`You left “${target.name}”`)).toBeVisible({ timeout: 10_000 });
+    await expect(card.getByText('Editor')).toBeHidden();
+    await expect(card.getByRole('button', { name: new RegExp(target.name) })).toBeVisible();
+    await expect(card.getByRole('button', { name: 'More actions' })).toHaveCount(0);
+    expect((await b.request.get(`/api/v1/projects/${target.id}`)).status()).toBe(403);
 
-  // The owner sees it in the feed as B's own act.
-  const feed = await dataOf<{ items: { type: string; actorUserId: string | null; payload: { targetUserId?: string } }[] }>(
-    await a.request.get(`/api/v1/projects/${target.id}/activities`),
-    'A feed',
-  );
-  const row = feed.items.find((i) => i.type === 'member:removed');
-  expect(row?.payload.targetUserId).toBe(row?.actorUserId);
-});
+    // The owner sees it in the feed as B's own act.
+    const feed = await dataOf<{ items: { type: string; actorUserId: string | null; payload: { targetUserId?: string } }[] }>(
+      await a.request.get(`/api/v1/projects/${target.id}/activities`),
+      'A feed',
+    );
+    const me = await dataOf<{ id: string }>(await b.request.get('/api/v1/auth/me'), 'B me');
+    const row = feed.items.find((i) => i.type === 'member:removed');
+    expect(row, 'no member:removed row in the feed').toBeDefined();
+    expect(row!.actorUserId).toBe(me.id);
+    expect(row!.payload.targetUserId).toBe(me.id);
+  });
 
-test('B leaves from inside the project and lands on Recent without it', async () => {
-  const { b } = scene;
-  const target = await teamProject(scene, 'Leave page');
-  const page = await b.newPage();
-  await page.goto(`/project/${target.slug}-${target.id}`);
-  await openMembers(page);
-  await page.getByRole('button', { name: 'Leave project' }).click();
-  await page.getByTestId('leave-project-dialog').getByRole('button', { name: 'Leave' }).click();
+  test('B leaves from inside the project and lands on Recent without it', async () => {
+    const { b } = scene;
+    const target = await teamProject(scene, 'Leave page');
+    const page = await b.newPage();
+    await page.goto(`/project/${target.slug}-${target.id}`);
+    await openMembers(page);
+    await page.getByRole('button', { name: 'Leave project' }).click();
+    await page.getByTestId('leave-project-dialog').getByRole('button', { name: 'Leave' }).click();
 
-  await page.waitForURL(/\/studio$/, { timeout: 20_000 });
-  await expect(page.getByText(`You left “${target.name}”`)).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText(target.name, { exact: true })).toHaveCount(0);
-  expect((await b.request.get(`/api/v1/projects/${target.id}`)).status()).toBe(403);
+    await page.waitForURL(/\/studio$/, { timeout: 20_000 });
+    await expect(page.getByText(`You left “${target.name}”`)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(target.name, { exact: true })).toHaveCount(0);
+    expect((await b.request.get(`/api/v1/projects/${target.id}`)).status()).toBe(403);
+  });
+
+  test('the owner is offered neither entry', async () => {
+    const { a, studioSlug } = scene;
+    const target = await teamProject(scene, 'Leave owner');
+    const page = await a.newPage();
+    await page.goto(`/project/${target.slug}-${target.id}`);
+    await openMembers(page);
+    await expect(page.getByTestId('members-manage-trigger')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Leave project' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    await page.goto(`/studio/${studioSlug}/projects`);
+    const card = page.getByTestId(`project-card-${target.id}`);
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await card.hover();
+    await card.getByRole('button', { name: 'More actions' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Leave project' })).toHaveCount(0);
+  });
 });
 
 test('an outside collaborator on a personal-studio project leaves from inside it', async ({ browser }) => {
@@ -235,23 +259,4 @@ test('an outside collaborator on a personal-studio project leaves from inside it
     await a.close();
     await b.close();
   }
-});
-
-test('the owner is offered neither entry', async () => {
-  const { a, studioSlug } = scene;
-  const target = await teamProject(scene, 'Leave owner');
-  const page = await a.newPage();
-  await page.goto(`/project/${target.slug}-${target.id}`);
-  await openMembers(page);
-  await expect(page.getByTestId('members-manage-trigger')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Leave project' })).toHaveCount(0);
-  await page.keyboard.press('Escape');
-
-  await page.goto(`/studio/${studioSlug}/projects`);
-  const card = page.getByTestId(`project-card-${target.id}`);
-  await expect(card).toBeVisible({ timeout: 20_000 });
-  await card.hover();
-  await card.getByRole('button', { name: 'More actions' }).click();
-  await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: 'Leave project' })).toHaveCount(0);
 });

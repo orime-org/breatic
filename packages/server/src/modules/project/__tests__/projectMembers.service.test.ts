@@ -159,6 +159,7 @@ describe("changeRole after the commit", () => {
     vi.mocked(publishMembersChanged).mockRejectedValueOnce(new Error("redis down"));
     await expect(changeRole(PID, "u-target", "viewer", "u-owner")).resolves.toBeUndefined();
     expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(recordProjectActivity).toHaveBeenCalledTimes(1);
   });
 });
 
