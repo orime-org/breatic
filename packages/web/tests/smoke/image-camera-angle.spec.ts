@@ -234,7 +234,7 @@ test('moves one distance step per wheel gesture and steps the pose by key, then 
   await expect.poll(() => storedPose(page, target)).toEqual({ horizontal_angle: 0, vertical_angle: 0, distance: 1 });
 });
 
-test('lays every slider name out apart and inside the popover, in every interface language @needs-internet', async () => {
+test('lays every step name under the sliders out apart and inside the popover, and keeps the pose line whole, in every interface language @needs-internet', async () => {
   await openOnQwen(page);
   await page.keyboard.press('Escape');
   try {

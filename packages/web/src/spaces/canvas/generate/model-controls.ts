@@ -76,7 +76,7 @@ function controlParams(control: ModelControl): string[] {
 }
 
 /**
- * How one value of a choice reads on screen.
+ * How one value of a choice, or one step of a range, reads on screen.
  * @param spec - The param's declaration.
  * @param value - One of its values.
  * @returns The declared label, else the value with a capital first letter.
@@ -196,7 +196,8 @@ export function ownControlValues(
 
 /**
  * What the model's own controls stand on, as the settings pill shows it: a
- * choice by its option's name, a range by its number, a switch by its name
+ * choice by its option's name, a range by its step's `value_labels` name or
+ * else its number, a switch by its name
  * while it is on, a text box or a list by its name while it holds something,
  * a camera pose by the names of its azimuth, elevation and distance.
  * @param model - The active model.

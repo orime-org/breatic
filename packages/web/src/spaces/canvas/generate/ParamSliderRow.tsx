@@ -24,7 +24,7 @@ function atStop(shown: number | undefined, stop: number): boolean {
 /** A named position on a slider's range. */
 export interface SliderStop {
   value: number;
-  /** What the position is called, already in the reader's language. */
+  /** What the position is called, as the model's `value_labels` name it (English in every language). */
   label: string;
 }
 

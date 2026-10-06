@@ -39,7 +39,7 @@ const CARD_SIZE = 1.0;
 
 /**
  * A CSS colour and its alpha, read the way three.js cannot: `THREE.Color`
- * drops the alpha of an `rgba()`, and `--color-border` is one.
+ * drops the alpha of an `rgba()`, so a theme token that resolves to one keeps it here.
  * @param css - The colour as the token resolves.
  * @param current - The colour the part has now.
  * @returns The colour and its opacity.

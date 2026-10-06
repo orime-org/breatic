@@ -199,11 +199,11 @@ demo 里那些动画参数是随手写的示意,不是定稿 —— 完全实现
 |---|---|---|---|
 | 面板本身的字 | 重置 · 已开启 · 报错 · 占位提示 · 单人 / 对话 | `locales/*.json` | 五种语言 |
 | 控件名（在设什么） | 质量 · 水平角度 · 机位 | `canvas.generatePanel.param.<参数名>` 等 locale 键 | 五种语言 |
-| 取值名（选了什么） | XHigh · Pan left · Front · Low angle · Close-up | 模型 yaml 参数的 `value_labels`（枚举的值或范围的每一档） | **只用英文，不进 locale** |
+| 取值名（选了什么） | XHigh · Front · Low angle · Close-up · Pan left | 模型 yaml 参数的 `value_labels`（枚举的值或范围的某一档）；运镜指令是 `camera_commands` 每项的 `name`（Pan left） | **只用英文，不进 locale** |
 
 取值名多是行业术语，跟模型名一样本来就在英文场景里；它跟着模型走，进 locale 等于每接一个模型补五份翻译。**唯一例外是语言名**：由 `value_locales` 交给 `Intl` 按读者的语言念出来，不手写。
 
-判定题：**我正要显示的这个词，是「这个控件在设什么」还是「读者选了哪一个」？后者 → 写进那个参数的 `value_labels`，英文。**一组取值的名字（镜头运动的「横移 / 摇 / 推拉」）答的是前者，算控件名，走多语言；组里的每一项（Pan left）才是取值。
+判定题：**我正要显示的这个词，是「这个控件在设什么」还是「读者选了哪一个」？后者 → 写进那个参数的 `value_labels`，英文。**一组取值的名字（镜头运动的「横移 / 摇 / 推拉」）答的是前者，算控件名，走多语言；组里的每一项（Pan left，写在 `camera_commands` 的 `name` 里）才是取值。
 
 ## 键盘快捷键(MANDATORY)
 **所有键盘操作必须同时支持 mac 和 windows 两套快捷键** —— mac 用 `Cmd`(⌘)、windows 用 `Ctrl`;实现用 `event.metaKey || event.ctrlKey` **同认**两个修饰键,别只判一个;测试两路都覆盖。**两平台习惯不同,别照搬一套**:撤销 `Cmd+Z` / `Ctrl+Z`;重做 `Cmd+Shift+Z`(mac)/ `Ctrl+Y` + `Ctrl+Shift+Z`(win,mac 无 `Cmd+Y` redo 习惯)。
