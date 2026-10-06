@@ -771,9 +771,9 @@ describe('PromptEditor — kept across a hidden Space (inner#1235 A13)', () => {
     return document.querySelector('.ProseMirror');
   }
 
-  it('shows the same editor, caret in it, when the panel is put back', async () => {
-    // The canvas library takes a hidden Space's panels down and puts them back
-    // when it is shown; the caret and the undo history live on the editor.
+  it('shows the same editor, caret in it, when the panel mounts again in the same opening', async () => {
+    // The editor lives as long as the opening of the panel, not as long as the
+    // component; the caret and the undo history live on the editor.
     canvasSessions.of(SPACE).getState().openGeneratePanel('n', 'image');
     const fragment = new Y.Doc().getXmlFragment('prompt');
     const first = render(onCanvas(fragment));
@@ -788,10 +788,10 @@ describe('PromptEditor — kept across a hidden Space (inner#1235 A13)', () => {
     await waitFor(() => expect(document.activeElement).toBe(before));
   });
 
-  it('still puts the caret back when the panel is taken down again right after showing', async () => {
-    // Showing a hidden canvas puts its panels back and then takes them down
-    // once more before the caret could go back in; that second take-down
-    // must not read as the reader having left the prompt.
+  it('still puts the caret back when the panel unmounts again right after mounting', async () => {
+    // A mount undone straight away (Strict Mode) takes the panel down before
+    // the caret could go back in; that second take-down must not read as the
+    // reader having left the prompt.
     canvasSessions.of(SPACE).getState().openGeneratePanel('n', 'image');
     const fragment = new Y.Doc().getXmlFragment('prompt');
     const first = render(onCanvas(fragment));

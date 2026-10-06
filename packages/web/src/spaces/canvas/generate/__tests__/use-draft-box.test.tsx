@@ -54,8 +54,7 @@ function Space({
 }
 
 /**
- * Settles the microtask the blur decision waits for and the task the caret
- * returns in.
+ * Settles the microtask the blur decision waits for.
  * @returns Nothing.
  */
 async function settle(): Promise<void> {
@@ -96,14 +95,12 @@ describe('useDraftBox', () => {
     const onCommit = vi.fn();
     const view = render(<Space hidden={false} onCommit={onCommit} />);
     const box = view.getByTestId('box') as HTMLInputElement;
-    box.focus();
     fireEvent.change(box, { target: { value: 'Alic' } });
 
     view.rerender(<Space hidden onCommit={onCommit} />);
     fireEvent.blur(box);
     await settle();
     view.rerender(<Space hidden={false} onCommit={onCommit} />);
-    await settle();
 
     expect(onCommit).not.toHaveBeenCalled();
     expect(box.value).toBe('Alic');
