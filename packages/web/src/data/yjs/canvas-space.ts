@@ -2046,6 +2046,41 @@ export function readNodes(doc: Y.Doc): ReadonlyArray<CanvasNodeView> {
 }
 
 /**
+ * Where every node of a canvas space sits on the canvas, as absolute top-lefts.
+ *
+ * Read from the document, so a paste made a moment ago counts before it has
+ * rendered. A Group member's stored position is relative to its Group, so its
+ * Group's position is added.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space to read.
+ * @returns One top-left per node, in no particular order.
+ */
+export function readNodeCorners(
+  projectId: string,
+  spaceId: string,
+): Array<{ x: number; y: number }> {
+  const nodesMap = getDoc(docName.canvasSpace(projectId, spaceId)).getMap<Y.Map<unknown>>(
+    NODES_KEY,
+  );
+  /**
+   * A node's stored position.
+   * @param node - The node's map, if any.
+   * @returns Its position, or undefined when it has none.
+   */
+  const positionOf = (node: unknown): { x: number; y: number } | undefined =>
+    node instanceof Y.Map ? (node.get('position') as { x: number; y: number } | undefined) : undefined;
+  const out: Array<{ x: number; y: number }> = [];
+  nodesMap.forEach((node) => {
+    const at = positionOf(node);
+    if (at === undefined) return;
+    const parentId = node.get('parentId');
+    const parent = typeof parentId === 'string' ? positionOf(nodesMap.get(parentId)) : undefined;
+    out.push(parent === undefined ? at : { x: at.x + parent.x, y: at.y + parent.y });
+  });
+  return out;
+}
+
+/**
  * Read all edges from `edgesMap` into a ReactFlow-ready array.
  * @param doc - The canvas-space Y.Doc to read from.
  * @returns The current canvas edges, with defaults applied for missing fields.

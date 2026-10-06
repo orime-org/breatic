@@ -158,19 +158,21 @@ describe('useNodeCreation', () => {
       ]);
     });
 
-    it('steps a staggered pair off the first copy even where only its second node collides', () => {
+    it('steps a staggered pair whose box corner is free but one of whose nodes lands on a taken spot', () => {
       const { result } = renderHook(() => useNodeCreation('p1', 's1'));
+      // The pair's bounding box starts at (0, 0), where neither node sits.
       const pair = [
-        { type: 'image' as const, position: { x: 0, y: 0 } },
-        { type: 'image' as const, position: { x: 400, y: 300 } },
+        { type: 'image' as const, position: { x: 0, y: 300 } },
+        { type: 'image' as const, position: { x: 400, y: 0 } },
       ];
       result.current.pasteNodesAt(pair, { dx: 0, dy: 0 });
-      // Shifted by (400, 300), the first node lands on a free spot while the
-      // second sits right on the first copy's second node.
-      const again = result.current.pasteNodesAt(pair, { dx: 400, dy: 300 });
+      // Moved by (400, -300) the box corner (400, -300) is free and so is the
+      // second node's spot, but the first node lands on the first copy's
+      // second node at (400, 0).
+      const again = result.current.pasteNodesAt(pair, { dx: 400, dy: -300 });
       expect(placed(again)).toEqual([
-        { x: 424, y: 324 },
-        { x: 824, y: 624 },
+        { x: 424, y: 24 },
+        { x: 824, y: -276 },
       ]);
     });
 
@@ -180,7 +182,7 @@ describe('useNodeCreation', () => {
         id: 'g',
         type: 'group',
         position: { x: 1000, y: 1000 },
-        data: { name: 'G', createdAt: 0, createdBy: 'u-9', locked: false, width: 600, height: 400 },
+        data: { name: 'G', createdAt: 0, createdBy: 'u-9', locked: false, attachments: [], width: 600, height: 400 },
       });
       canvasSpace.addNode('p1', 's1', {
         id: 'm',
@@ -194,6 +196,26 @@ describe('useNodeCreation', () => {
         { dx: 1040, dy: 1040 },
       );
       expect(placed([pasted as string])).toEqual([{ x: 1064, y: 1064 }]);
+    });
+
+    it('lets a pasted Group speak for its members, whose stored spots are relative to it', () => {
+      const { result } = renderHook(() => useNodeCreation('p1', 's1'));
+      canvasSpace.addNode('p1', 's1', {
+        id: 'there',
+        type: 'image',
+        position: { x: 64, y: 64 },
+        data: { name: 'T', createdAt: 0, createdBy: 'u-9', locked: false, attachments: [] },
+      });
+      // The member's stored (40, 40) plus the shift is (64, 64), where a node
+      // sits; the member itself is painted at (564, 564), clear of it.
+      const [group] = result.current.pasteNodesAt(
+        [
+          { id: 'g', type: 'group', position: { x: 500, y: 500 }, width: 600, height: 400 },
+          { id: 'm', type: 'image', parentId: 'g', position: { x: 40, y: 40 } },
+        ],
+        { dx: 24, dy: 24 },
+      );
+      expect(placed([group as string])).toEqual([{ x: 524, y: 524 }]);
     });
 
     it('leaves a paste on a free spot where it was asked to go', () => {

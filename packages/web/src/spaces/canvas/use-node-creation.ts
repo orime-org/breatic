@@ -11,6 +11,7 @@ import {
   createGroup,
   getPromptFragment,
   getTextBody,
+  readNodeCorners,
   runCanvasUndoBatch,
   setGroupBackground,
   setNodeMode,
@@ -27,6 +28,8 @@ import {
 import { planFlowLayout, type Spot } from '@web/spaces/canvas/lib/place-flow';
 import {
   cloneForPaste,
+  PASTE_OFFSET_PX,
+  stepPastOccupied,
   textToNode,
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
@@ -79,13 +82,16 @@ export interface NodeCreation {
     position: { x: number; y: number },
   ) => CreatedUploadNode;
   /**
-   * Paste plain text as a new text node CENTRED on a point; returns its id.
-   * The pasted text becomes the node's content.
+   * Paste plain text as a new text node CENTRED on a point, stepped past any
+   * node already on that spot; returns its id. The pasted text becomes the
+   * node's content.
    */
   pasteTextAt: (text: string, position: { x: number; y: number }) => string;
   /**
    * Paste cloned clipboard nodes (fresh ids, positions shifted by `offset`
-   * so relative layout is preserved); returns the new node ids in order.
+   * so relative layout is preserved, then the whole batch stepped past any
+   * node already where one of them would land); returns the new node ids in
+   * order.
    * The duplicate path (which can re-home a clone into an existing Group +
    * grow it) is orchestrated by the canvas, not here.
    */
@@ -195,11 +201,20 @@ export function useNodeCreation(
     },
     [projectId, spaceId, userId],
   );
+  // Every paste steps past the nodes already on its spot, so it shows
+  // (inner#1235 A20). The spot is read from the document, so a paste made a
+  // moment ago counts before it has rendered.
   const pasteTextAt = React.useCallback(
     (text: string, position: { x: number; y: number }): string => {
+      const topLeft = centerToTopLeft(position, EMPTY_NODE_SIZE);
+      const step = stepPastOccupied(
+        [topLeft],
+        readNodeCorners(projectId, spaceId),
+        PASTE_OFFSET_PX,
+      );
       const node = textToNode(
         text,
-        centerToTopLeft(position, EMPTY_NODE_SIZE),
+        { x: topLeft.x + step.dx, y: topLeft.y + step.dy },
         userId,
       );
       addNode(projectId, spaceId, node);
@@ -212,7 +227,19 @@ export function useNodeCreation(
       nodes: ReadonlyArray<ClipboardNode>,
       offset: { dx: number; dy: number },
     ): string[] => {
-      const cloned = cloneForPaste(nodes, userId, offset);
+      // A member travels with its Group, so the Group's corner speaks for it.
+      const carried = new Set(nodes.map((node) => node.id));
+      const step = stepPastOccupied(
+        nodes
+          .filter((node) => node.parentId === undefined || !carried.has(node.parentId))
+          .map((node) => ({ x: node.position.x + offset.dx, y: node.position.y + offset.dy })),
+        readNodeCorners(projectId, spaceId),
+        PASTE_OFFSET_PX,
+      );
+      const cloned = cloneForPaste(nodes, userId, {
+        dx: offset.dx + step.dx,
+        dy: offset.dy + step.dy,
+      });
       // One paste is ONE undo entry — a group + its members (or a multi-node
       // selection) must undo as a unit, not node-by-node (mirrors the duplicate
       // path's batch).

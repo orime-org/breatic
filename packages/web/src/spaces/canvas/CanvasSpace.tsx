@@ -79,6 +79,7 @@ import {
   removeElements,
   removeNode,
   resizeGroup,
+  readNodeCorners,
   runCanvasUndoBatch,
   setGroupBackground,
   isNodeLocked,
@@ -160,7 +161,6 @@ import {
   groupResizeBounds,
   planGroupGrowth,
   planGroupResize,
-  toAbsolutePosition,
   type GroupGrowth,
   type GroupGrowthInput,
   type Rect,
@@ -260,6 +260,7 @@ import {
   cloneForPaste,
   externalParentAbs,
   canvasTakesPaste,
+  PASTE_OFFSET_PX,
   pasteOffsetFor,
   stepPastOccupied,
   parseClipboardNodes,
@@ -435,8 +436,6 @@ const UPLOAD_ACCEPT: Partial<Record<Modality, string>> = {
 const STAGGER_STEP_PX = 24;
 const STAGGER_WRAP = 8;
 
-/** Pixels a pasted node is shifted from its source so it doesn't fully cover it. */
-const PASTE_OFFSET_PX = 24;
 
 /**
  * Operation id for the drop/upload batch prefix in the per-space operation
@@ -2502,7 +2501,11 @@ function CanvasSpaceInner({
   );
 
   const processFiles = React.useCallback(
-    (files: File[], origin: { x: number; y: number }): void => {
+    (
+      files: File[],
+      origin: { x: number; y: number },
+      how: 'drop' | 'paste' = 'drop',
+    ): void => {
       if (readOnly || files.length === 0) return;
       // Register the batch SYNCHRONOUSLY (before the config-fetch await) so the
       // tab-close guard sees the space busy from the drop onward — not only once
@@ -2547,7 +2550,21 @@ function CanvasSpaceInner({
         // Group around them go down as a single undo step.
         let selectAfter: string[] = [];
         runCanvasUndoBatch(projectId, spaceId, () => {
-          const centres = batchCentresAt(origin, admitted.length);
+          const laid = batchCentresAt(origin, admitted.length);
+          // A paste steps the whole batch past nodes already on its spot, so
+          // it shows (inner#1235 A20). A drop lands where the pointer let go.
+          const step =
+            how === 'paste'
+              ? stepPastOccupied(
+                laid.map((centre) => centerToTopLeft(centre, EMPTY_NODE_SIZE)),
+                readNodeCorners(projectId, spaceId),
+                PASTE_OFFSET_PX,
+              )
+              : { dx: 0, dy: 0 };
+          const centres = laid.map((centre) => ({
+            x: centre.x + step.dx,
+            y: centre.y + step.dy,
+          }));
           admitted.forEach(({ file, spec }, i) => {
             const { id, position } = createUploadNodeAt(
               spec.nodeType,
@@ -2905,50 +2922,38 @@ function CanvasSpaceInner({
       if (isEditableTarget(event.target as Element | null)) return;
       claimRegion('space');
 
-      // Every paste steps past the nodes already on its spot, so it shows
-      // (inner#1235 A20).
-      const here = buffer.settled();
-      const byId = new Map(here.map((node) => [node.id, node]));
-      const occupied = here.map((node) => {
-        const parent = node.parentId !== undefined ? byId.get(node.parentId) : undefined;
-        return parent ? toAbsolutePosition(node.position, parent.position) : node.position;
-      });
       /**
-       * The middle of the view, stepped past an empty-node-sized paste already there.
+       * The middle of the view, where a paste with no source of its own lands.
        * @param rect - The canvas container's box on screen.
-       * @returns The point to paste around, in flow coordinates.
+       * @returns That point, in flow coordinates.
        */
-      const freeCentre = (rect: DOMRect): { x: number; y: number } => {
-        const centre = screenToFlowPosition({
+      const viewCentre = (rect: DOMRect): { x: number; y: number } =>
+        screenToFlowPosition({
           x: rect.left + rect.width / 2,
           y: rect.top + rect.height / 2,
         });
-        const step = stepPastOccupied(
-          centerToTopLeft(centre, EMPTY_NODE_SIZE),
-          occupied,
-          PASTE_OFFSET_PX,
-        );
-        return { x: centre.x + step.dx, y: centre.y + step.dy };
-      };
 
       // File paste (screenshot / copied file) carries binary in
-      // `clipboardData.files` — route it through the upload flow, dropped at
-      // the viewport centre like a text paste. Checked first: a real file
-      // paste also has these files (a plain-text paste does not).
+      // `clipboardData.files` — route it through the upload flow, laid out
+      // around the viewport centre like a text paste and stepped past nodes
+      // already there. Checked first: a real file paste also has these files
+      // (a plain-text paste does not).
       const files = event.clipboardData?.files;
       if (files && files.length > 0) {
         event.preventDefault();
         const rect = containerRef.current?.getBoundingClientRect();
-        if (rect) processFiles([...files], freeCentre(rect));
+        if (rect) processFiles([...files], viewCentre(rect), 'paste');
         return;
       }
 
       const clipboardNodes = parseClipboardNodes(text);
       if (clipboardNodes && clipboardNodes.length > 0) {
         event.preventDefault();
-        // Viewport-aware placement (R2-H, Figma-style): paste beside the source
-        // when it's in view, else recenter on the current viewport so the paste
-        // is never dropped off-screen after the canvas was scrolled away.
+        // Viewport-aware placement (R2-H, Figma-style): nodes copied on this
+        // Space paste beside their source while it is in view; anything else
+        // lands in the middle of the view, so a paste is never dropped
+        // off-screen (inner#1235 A20). `pasteNodesAt` then steps the batch past
+        // nodes already on its spot.
         const rect = containerRef.current?.getBoundingClientRect();
         let offset = { dx: PASTE_OFFSET_PX, dy: PASTE_OFFSET_PX };
         if (rect) {
@@ -2959,7 +2964,6 @@ function CanvasSpaceInner({
             { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y },
             PASTE_OFFSET_PX,
             spaceId,
-            occupied,
           );
         }
         setSelectAfterCreate(pasteNodesAt(clipboardNodes, offset));
@@ -2970,11 +2974,11 @@ function CanvasSpaceInner({
       event.preventDefault();
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
-      setSelectAfterCreate([pasteTextAt(text, freeCentre(rect))]);
+      setSelectAfterCreate([pasteTextAt(text, viewCentre(rect))]);
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
-  }, [readOnly, pasteNodesAt, pasteTextAt, screenToFlowPosition, processFiles, spaceId, buffer]);
+  }, [readOnly, pasteNodesAt, pasteTextAt, screenToFlowPosition, processFiles, spaceId]);
 
   React.useEffect(() => {
     /**

@@ -492,27 +492,25 @@ export function pasteAnchorOffset(
   return { dx: viewCenterX - boxCenterX, dy: viewCenterY - boxCenterY };
 }
 
+/** Pixels a paste steps: beside an in-view source, and past a taken spot. */
+export const PASTE_OFFSET_PX = 24;
+
 /**
- * Where a paste goes, relative to where the payload was copied from.
+ * How far a paste moves the payload, relative to where it was copied from.
  *
  * Nodes copied on this Space land beside their source while it is in view.
  * Anything else has no source on this Space — nodes copied on another Space,
  * pictures from outside — so it lands in the middle of the view, the way a
- * pasted file does (inner#1235 A20).
- *
- * Wherever it lands, a paste steps past nodes already on its spot (see
- * {@link stepPastOccupied}), so the copy shows beside them.
+ * pasted file does (inner#1235 A20). Stepping past nodes already on that spot
+ * is the paste's own job (see {@link stepPastOccupied}).
  * @param nodes - The clipboard payload.
  * @param viewport - The visible canvas rect, in flow coordinates.
  * @param viewport.x - Its left edge.
  * @param viewport.y - Its top edge.
  * @param viewport.width - Its width.
  * @param viewport.height - Its height.
- * @param offsetPx - The nudge beside an in-view source, and the step past an
- *   occupied spot.
+ * @param offsetPx - The nudge beside an in-view source.
  * @param space - The Space pasted into.
- * @param occupied - Top-left corners of the nodes already on this Space, in
- *   flow coordinates.
  * @returns The shift to apply to every node's position.
  */
 export function pasteOffsetFor(
@@ -520,48 +518,50 @@ export function pasteOffsetFor(
   viewport: { x: number; y: number; width: number; height: number },
   offsetPx: number,
   space: string,
-  occupied: ReadonlyArray<{ x: number; y: number }> = [],
 ): { dx: number; dy: number } {
   const box = clipboardBoundingBox(nodes);
-  const base = nodes.every((node) => node.space === space)
-    ? pasteAnchorOffset(box, viewport, offsetPx)
-    : {
-      dx: viewport.x + viewport.width / 2 - (box.x + box.width / 2),
-      dy: viewport.y + viewport.height / 2 - (box.y + box.height / 2),
-    };
-  const step = stepPastOccupied({ x: box.x + base.dx, y: box.y + base.dy }, occupied, offsetPx);
-  return { dx: base.dx + step.dx, dy: base.dy + step.dy };
+  if (nodes.every((node) => node.space === space)) {
+    return pasteAnchorOffset(box, viewport, offsetPx);
+  }
+  return {
+    dx: viewport.x + viewport.width / 2 - (box.x + box.width / 2),
+    dy: viewport.y + viewport.height / 2 - (box.y + box.height / 2),
+  };
 }
 
 /**
- * How far a paste steps down and right so it does not land on top of a node
- * already there: a node whose top-left is less than a step away on both axes
- * is on the spot, and the paste moves one step at a time until none is.
- * Every paste goes through it — nodes, text, files — so a copy always shows
- * (inner#1235 A20).
- * @param topLeft - Where the paste's top-left would land, in flow coordinates.
- * @param topLeft.x - Its x.
- * @param topLeft.y - Its y.
+ * How far a paste steps down and right so none of what it makes lands on top
+ * of a node already there: a node whose top-left is less than a step away from
+ * a pasted node's top-left on both axes is on its spot, and the whole batch
+ * moves one step at a time until no pasted node has one. Every paste goes
+ * through it — nodes, text, files — so a copy always shows (inner#1235 A20).
+ * @param corners - Where each pasted node's top-left would land, in flow
+ *   coordinates.
  * @param occupied - Top-left corners of the nodes already on the Space.
  * @param step - The step, also the distance that counts as on the spot.
- * @returns The extra shift.
+ * @returns The extra shift for the whole batch.
  */
 export function stepPastOccupied(
-  topLeft: { x: number; y: number },
+  corners: ReadonlyArray<{ x: number; y: number }>,
   occupied: ReadonlyArray<{ x: number; y: number }>,
   step: number,
 ): { dx: number; dy: number } {
   let shift = 0;
   /**
-   * Whether a node sits within a step of the shifted spot.
-   * @returns True while the spot is taken.
+   * Whether any pasted node, shifted, sits within a step of a node already there.
+   * @returns True while the batch's spot is taken.
    */
   const taken = (): boolean =>
-    occupied.some(
-      (at) =>
-        Math.abs(at.x - (topLeft.x + shift)) < step && Math.abs(at.y - (topLeft.y + shift)) < step,
+    corners.some((corner) =>
+      occupied.some(
+        (at) =>
+          Math.abs(at.x - (corner.x + shift)) < step && Math.abs(at.y - (corner.y + shift)) < step,
+      ),
     );
-  for (let tries = 0; tries < occupied.length && taken(); tries += 1) shift += step;
+  // A pair of corners can be within a step for at most two steps of the walk,
+  // so this many steps always reaches a free spot.
+  const most = 2 * corners.length * occupied.length;
+  for (let tries = 0; tries < most && taken(); tries += 1) shift += step;
   return { dx: shift, dy: shift };
 }
 
