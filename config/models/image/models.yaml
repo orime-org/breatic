@@ -534,9 +534,13 @@ models:
     guide: "Repeatable turnarounds and character sheets — the camera moves by numbers, not by adjectives."
     generation_time: 120
     icon: "qwen"
+    camera_angle:
+      azimuth: "horizontal_angle"
+      elevation: "vertical_angle"
+      distance: "distance"
     params:
       distance:
-        description: "Camera distance from the subject"
+        description: "Camera distance from the subject: 0 close-up, 1 medium shot, 2 wide shot"
         label: "Distance"
         default: 1
         min: 0
@@ -544,12 +548,12 @@ models:
         step: 1
         fill: "panel"
       horizontal_angle:
-        description: "Camera angle around the subject, degrees"
+        description: "Camera angle around the subject, degrees: 0 front, 90 the subject's own right side, 180 back, 270 the subject's own left side; 45 between front and right, and so on"
         label: "Horizontal angle"
         default: 0
         min: 0
-        max: 359
-        step: 1
+        max: 315
+        step: 45
         fill: "panel"
       images:
         description: "Images to edit"
@@ -566,12 +570,12 @@ models:
         fill: "none"
         note: "our default: png (lossless, keeps alpha)"
       vertical_angle:
-        description: "Camera angle above or below, degrees"
+        description: "Camera angle above or below, degrees: -30 low angle looking up, 0 eye level, 30 elevated, 60 high angle looking down"
         label: "Vertical angle"
         default: 0
         min: -30
         max: 60
-        step: 1
+        step: 30
         fill: "panel"
     providers:
       - name: "wavespeed"
