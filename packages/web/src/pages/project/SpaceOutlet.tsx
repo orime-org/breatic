@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 
 import { SpaceReadOnlyNotice } from '@web/pages/project/SpaceReadOnlyNotice';
 import type { ProjectRole, SpaceType } from '@breatic/shared';
 
+import { useFocusReturn, type FocusReturn } from '@web/lib/use-focus-return';
 import { SPACE_TYPES } from '@web/spaces';
 
 interface SpaceOutletProps {
@@ -28,12 +29,9 @@ interface SpaceOutletProps {
  * Renders one Space: its registered body, plus the read-only notice that
  * belongs to every Space type alike.
  *
- * The body comes from the `SPACE_TYPES` registry, so **for the body**, a new
- * Space type only has to register itself. The notice is a second registration:
- * it resolves a document name through `DOC_NAME_BUILDERS`, and a type absent
- * from that table renders no notice at all — silently, because a type with no
- * document has no connection to report on and that is also how timeline
- * legitimately behaves. A new type that does have a document needs both tables.
+ * The body comes from the `SPACE_TYPES` registry; the notice reads the
+ * connection `OpenSpace` holds, which a type needs a `DOC_NAME_BUILDERS`
+ * entry to have.
  * @param root0 - The component props.
  * @param root0.projectId - The id of the project the Space belongs to.
  * @param root0.spaceId - The id of the Space to render.
@@ -49,6 +47,22 @@ export function SpaceOutlet({
   readOnly,
   myRole,
 }: SpaceOutletProps): React.JSX.Element {
+  // Hidden by a switch of Space and shown again, the caret goes back into the
+  // last element focused in this Space if it was still there on hide
+  // (inner#1235 A19). React's focus events pass through portals, so a box in
+  // a popover is recorded too.
+  // The focus does not scroll: the reader may have scrolled the element out of
+  // view before leaving, and comes back to the page where it was left.
+  const lastFocused = React.useRef<HTMLElement | null>(null);
+  const [focusReturn] = React.useState<FocusReturn>(() => ({
+    hadFocus: false,
+    returning: false,
+  }));
+  useFocusReturn(
+    focusReturn,
+    () => lastFocused.current !== null && document.activeElement === lastFocused.current,
+    () => lastFocused.current?.focus({ preventScroll: true }),
+  );
   const def = SPACE_TYPES[type];
   if (!def) {
     return (
@@ -69,18 +83,15 @@ export function SpaceOutlet({
   // `readOnly` goes to BOTH: the body uses it to gate editing, and the notice
   // uses it to stay quiet for a viewer, whose read-only is their role rather
   // than something the server took away.
-  //
-  // A newly registered Space type is NOT covered by this alone — the notice
-  // resolves a document name through `DOC_NAME_BUILDERS`, and a type missing
-  // from that table renders nothing. Adding a type means both tables.
   return (
-    <div className='relative h-full w-full'>
-      <SpaceReadOnlyNotice
-        projectId={projectId}
-        spaceId={spaceId}
-        type={type}
-        readOnly={readOnly}
-      />
+    <div
+      className='relative h-full w-full'
+      data-space-outlet={spaceId}
+      onFocusCapture={(event) => {
+        if (event.target instanceof HTMLElement) lastFocused.current = event.target;
+      }}
+    >
+      <SpaceReadOnlyNotice readOnly={readOnly} />
       <Body
         projectId={projectId}
         spaceId={spaceId}

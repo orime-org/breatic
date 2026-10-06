@@ -75,7 +75,7 @@ import {
 import { buildGenerateTaskPayload, imageEstimateInput } from '@web/spaces/canvas/generate/task-payload';
 import { poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
 import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
-import { useCanvasStore } from '@web/stores';
+import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
@@ -153,8 +153,8 @@ function GeneratePanelBody({
   getLastWriteWasLocal,
 }: GeneratePanelContainerProps & { nodeId: string }): React.JSX.Element {
   const t = useTranslation();
-  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
-  const startReferencePick = useCanvasStore((s) => s.startReferencePick);
+  const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
+  const startReferencePick = useCanvasSession((s) => s.startReferencePick);
 
   // Collaborator carets (batch-2 item 14): the prompt fragment lives in the
   // canvas-space doc, so its provider's AWARENESS is the caret channel. The
@@ -182,7 +182,6 @@ function GeneratePanelBody({
     isSubmitting,
     setIsSubmitting,
     submittingRef,
-    isMountedRef,
   } = useGenerateSubmitState();
 
   // The `@`-picked source ids, mirrored to a ref for the same reason as the
@@ -438,16 +437,16 @@ function GeneratePanelBody({
   // read reactively so the button highlights while active and un-highlights when
   // a collaborator / mode-switch / Exit ends the pick — not just on local click.
   // A pick is a single session, so starting one purpose replaces the other.
-  const endPick = useCanvasStore((s) => s.endPick);
-  const referencePicking = useCanvasStore(
+  const endPick = useCanvasSession((s) => s.endPick);
+  const referencePicking = useCanvasSession(
     (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'reference',
   );
-  const focusPicking = useCanvasStore(
+  const focusPicking = useCanvasSession(
     (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'focus',
   );
   // In-flight focus uploads for THIS node → rail placeholders (#1782). The
   // memo keys on the store array identity (immer replaces it on change).
-  const pendingFocusAll = useCanvasStore((s) => s.pendingFocusUploads);
+  const pendingFocusAll = useCanvasSession((s) => s.pendingFocusUploads);
   const pendingFocus = React.useMemo(
     () =>
       pendingFocusAll
@@ -455,14 +454,15 @@ function GeneratePanelBody({
         .map((p) => ({ id: p.id, name: p.name })),
     [pendingFocusAll, nodeId],
   );
+  const sessionStore = useCanvasSessionStore();
   const onAddReference = React.useCallback(() => {
-    const session = useCanvasStore.getState().pickSession;
+    const session = sessionStore.getState().pickSession;
     if (session?.nodeId === nodeId && session.purpose === 'reference') {
       endPick();
     } else {
       startReferencePick(nodeId);
     }
-  }, [startReferencePick, endPick, nodeId]);
+  }, [sessionStore, startReferencePick, endPick, nodeId]);
   const { stylePicking, onStylePick, onRemoveStyle } = useStyleSlot(
     projectId,
     spaceId,
@@ -471,15 +471,15 @@ function GeneratePanelBody({
     vm.styleImages.length,
   );
   useEndPickWhenSlotGone(nodeId, vm.slots, getLastWriteWasLocal);
-  const startFocusPick = useCanvasStore((s) => s.startFocusPick);
+  const startFocusPick = useCanvasSession((s) => s.startFocusPick);
   const onFocus = React.useCallback(() => {
-    const session = useCanvasStore.getState().pickSession;
+    const session = sessionStore.getState().pickSession;
     if (session?.nodeId === nodeId && session.purpose === 'focus') {
       endPick();
     } else {
       startFocusPick(nodeId);
     }
-  }, [startFocusPick, endPick, nodeId]);
+  }, [sessionStore, startFocusPick, endPick, nodeId]);
 
   // End a running FOCUS pick the moment the mode becomes t2i (adversarial
   // round-2, narrowed #1788 batch-3 #1): a focus crop IS an image source, so the
@@ -491,8 +491,14 @@ function GeneratePanelBody({
   // t2i flip — killing it would strand the user mid-pick. The mode can flip
   // locally or via a collaborator writing setNodeMode, so react to vm.mode,
   // not just the toggle.
+  //
+  // Only to a change of it: effects run again when a hidden Space is shown
+  // (inner#1235), and a mode that did not change ends nothing.
+  const modeSeen = React.useRef(vm.mode);
   React.useEffect(() => {
-    const session = useCanvasStore.getState().pickSession;
+    if (modeSeen.current === vm.mode) return;
+    modeSeen.current = vm.mode;
+    const session = sessionStore.getState().pickSession;
     if (
       !imageModeTakesReferences(vm.mode) &&
       session?.nodeId === nodeId &&
@@ -507,7 +513,7 @@ function GeneratePanelBody({
         ),
       );
     }
-  }, [vm.mode, nodeId, endPick, t, getLastWriteWasLocal]);
+  }, [sessionStore, vm.mode, nodeId, endPick, t, getLastWriteWasLocal]);
 
   const onRemoveReference = React.useCallback(
     (item: ReferenceRailItem) => {
@@ -616,6 +622,10 @@ function GeneratePanelBody({
       return;
     }
     submittingRef.current = true;
+    // Which opening of the panel this submit came from: the answer may land
+    // after the reader closed or replaced this panel, and then it closes
+    // nothing they opened since.
+    const session = sessionStore.getState().panelSession;
     setIsSubmitting(true);
     try {
       // Payload build is INSIDE the try: if it (or the lease read) throws, the
@@ -632,42 +642,29 @@ function GeneratePanelBody({
         poolParams: poolParams(fresh.pool, fresh.referenceUrls),
       });
       await canvasApi.createTask(payload);
-      // Close only if THIS mount is still alive AND the panel is still on this
-      // node — a stale submit from a since-unmounted instance (close+reopen on
-      // the same node) must not close the freshly-reopened panel.
-      if (
-        isMountedRef.current &&
-        useCanvasStore.getState().panelHostId === nodeId &&
-        useCanvasStore.getState().panelKind === 'generate'
-      ) {
-        closeActivePanel();
-      }
+      sessionStore.getState().closePanelOfSession(session);
     } catch (err) {
       // The failure toast is UNCONDITIONAL (silent-fail mandate): sonner is a
       // global outlet, so a submit that failed AFTER the user closed the panel
-      // (fire-and-move-on, then 402/409/503) still explains itself — the old
-      // stale-mount early-return silently swallowed exactly those failures
-      // (round-2 adversarial). Only the React state writes stay gated.
+      // (fire-and-move-on, then 402/409/503) still explains itself. The state
+      // writes below do nothing once this body has been unmounted.
       toast.error(
         executeErrorMessage(
           err instanceof ApiException ? err.status : undefined,
           t,
         ),
       );
-      if (!isMountedRef.current) return; // stale mount — skip setState only
       submittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [
+  }, [sessionStore,
     nodeId,
     projectId,
     spaceId,
     freshVm,
-    closeActivePanel,
     t,
     // Stable for this mount's lifetime; listed because they come from a hook,
     // where the linter cannot see that for itself.
-    isMountedRef,
     promptEditorRef,
     promptTextRef,
     setIsSubmitting,

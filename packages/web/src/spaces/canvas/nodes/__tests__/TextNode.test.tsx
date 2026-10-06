@@ -44,7 +44,6 @@ import {
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { TextNode } from '@web/spaces/canvas/nodes/TextNode';
 import { TEXT_BODY_BOX } from '@web/spaces/canvas/nodes/TextNodeEditor';
-import { useCanvasStore } from '@web/stores';
 import type { TextNodeView } from '@web/data/yjs/node-view';
 
 vi.mock('sonner', () => ({
@@ -56,6 +55,7 @@ vi.mock('sonner', () => ({
   },
 }));
 import { toast } from 'sonner';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 const PID = 'p1';
 const SID = 's1';
@@ -313,13 +313,13 @@ describe('TextNode', () => {
       seedNode();
       renderNode();
       act(() => {
-        useCanvasStore.getState().startReferencePick('other-node');
+        canvasSessions.of(SID).getState().startReferencePick('other-node');
       });
       fireEvent.click(screen.getByTestId('node-placeholder'), { detail: 0 });
       expect(editor()).toBeNull();
       // And nothing was written: a bodyless node stays bodyless.
       act(() => {
-        useCanvasStore.setState({ pickSession: null });
+        canvasSessions.of(SID).setState({ pickSession: null });
       });
       fireEvent.click(screen.getByTestId('node-placeholder'), { detail: 0 });
       expect(editor()).not.toBeNull();
@@ -470,7 +470,7 @@ describe('TextNode', () => {
       expect(editor()).toBeNull();
     });
 
-    it('closes when focus goes somewhere else on the page', () => {
+    it('closes when focus goes somewhere else on the page', async () => {
       // Clicking away is how most people leave an inline editor, and an editor
       // that never closes leaves a contenteditable on the node — which is what
       // makes ReactFlow swallow Delete, so the node cannot be removed either.
@@ -483,8 +483,28 @@ describe('TextNode', () => {
       document.body.appendChild(elsewhere);
       fireEvent.blur(editor() as HTMLElement, { relatedTarget: elsewhere });
 
-      expect(editor()).toBeNull();
+      await waitFor(() => expect(editor()).toBeNull());
       elsewhere.remove();
+    });
+
+    it('stays open when the blur comes from its Space being hidden', async () => {
+      // Hiding the Space unmounts the editor's host, which moves the editor
+      // into a detached element; Chrome fires the blur while the Space is
+      // still on screen, so only what happens next says it was not the reader
+      // leaving (inner#1235 A13).
+      seedNode('x');
+      const outlet = document.body.appendChild(document.createElement('div'));
+      outlet.setAttribute('data-space-outlet', SID);
+      render(tree(), { container: outlet.appendChild(document.createElement('div')) });
+      enterByDoubleClick();
+      const el = editor() as HTMLElement;
+
+      fireEvent.blur(el, { relatedTarget: null });
+      document.createElement('div').append(el);
+      outlet.style.setProperty('display', 'none', 'important');
+      await Promise.resolve();
+
+      expect(canvasSessions.of(SID).getState().editingTextNode).toBe(NODE);
     });
 
     it('stays open when focus moves inside the editor itself', () => {

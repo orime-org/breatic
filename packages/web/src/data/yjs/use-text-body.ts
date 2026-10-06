@@ -167,59 +167,52 @@ export function useTextBody(
   return text;
 }
 
-/** The body an open editor is bound to, and the two ways it changes. */
-export interface EditedTextBody {
-  /** The fragment to bind, or null when no editor is open. */
-  body: Y.XmlFragment | null;
-  /** Open an editor on this fragment. */
-  open: (body: Y.XmlFragment) => void;
-  /** Close the editor. */
-  close: () => void;
-}
-
 /**
- * Hold the body an open editor is bound to, following it if it is replaced.
+ * Follow the body of the text node being written in.
  *
- * The open editor IS the fragment it is bound to — there is no separate
- * "editing" flag, because the two could disagree and the disagreeing state is
- * an editor bound to nothing.
+ * Whether the node is being written in is decided above this, by the canvas
+ * session; this answers only "which fragment is that writing bound to".
  *
  * Binding the fragment read at the moment editing started is not enough. A
  * concurrent repair replaces the `body` key, and the client that loses is left
  * holding a fragment that is no longer in the document: the caret still
  * blinks, the words still appear, and not one of them reaches anybody else or
- * survives a reload. So while an editor is open this follows the key and hands
- * back whatever the node holds now; a replacement rebinds the editor, and a
- * body that disappears entirely closes it rather than leaving it bound to a
- * ghost.
+ * survives a reload. So while the node is being written in this follows the
+ * key and hands back whatever the node holds now; a replacement rebinds the
+ * editor, and a body that disappears entirely ends the writing rather than
+ * leaving it bound to a ghost.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space holding the node.
- * @param nodeId - Id of the text node being edited.
- * @returns The bound body plus the two transitions.
+ * @param nodeId - Id of the text node.
+ * @param editing - Whether the node is being written in.
+ * @param onGone - Called when the node being written in has no body any more.
+ * @returns The bound body, or null when the node is not being written in.
  */
 export function useEditedTextBody(
   projectId: string,
   spaceId: string,
   nodeId: string,
-): EditedTextBody {
+  editing: boolean,
+  onGone: () => void,
+): Y.XmlFragment | null {
   const name = docName.canvasSpace(projectId, spaceId);
   const doc = React.useMemo(() => getDoc(name), [name]);
   const [body, setBody] = React.useState<Y.XmlFragment | null>(null);
-  const editing = body !== null;
+  const onGoneRef = React.useRef(onGone);
+  onGoneRef.current = onGone;
 
   React.useEffect(() => {
     if (!editing) return undefined;
     // Publishes the current fragment synchronously on subscribe, so the
-    // fragment editing just opened on is confirmed against the document rather
-    // than trusted — an id that no longer has a body closes the editor here.
-    return observeBodyFragment(doc, nodeId, setBody);
+    // fragment editing opened on is confirmed against the document rather
+    // than trusted — an id that no longer has a body ends the writing here.
+    return observeBodyFragment(doc, nodeId, (next) => {
+      setBody(next);
+      if (next === null) onGoneRef.current();
+    });
   }, [editing, doc, nodeId]);
 
-  return {
-    body,
-    open: setBody,
-    close: React.useCallback(() => setBody(null), []),
-  };
+  return editing ? body : null;
 }
 
 /**

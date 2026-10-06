@@ -17,7 +17,7 @@ import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 let context: BrowserContext;
 let mover: Page;
@@ -110,7 +110,7 @@ async function stored(
  * @returns Its top-left, or null when not rendered.
  */
 async function drawnAt(page: Page, id: string): Promise<Point | null> {
-  const box = await page.locator(`.react-flow__node[data-id="${id}"]`).boundingBox();
+  const box = await visibleSpace(page).locator(`.react-flow__node[data-id="${id}"]`).boundingBox();
   return box === null ? null : { x: box.x, y: box.y };
 }
 
@@ -123,7 +123,7 @@ async function openTheSpace(page: Page): Promise<void> {
   const tab = page.getByTestId(`space-tab-name-${spaceId}`);
   await expect(tab).toBeVisible({ timeout: 20_000 });
   await tab.click();
-  await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
 }
 
 /**
@@ -147,7 +147,7 @@ test.beforeEach(async ({ browser }) => {
   await openSmokeProject(mover);
   projectId = (/([0-9a-f-]{36})$/.exec(mover.url()) ?? [])[1] as string;
   spaceId = await createSpace(mover, 'canvas', `nudge-e2e-${Date.now()}`);
-  await expect(mover.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(mover).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   watcher = await context.newPage();
   await openTheSpace(watcher);
 });
@@ -235,12 +235,12 @@ test('a marquee selection moves together', async () => {
   await seed(mover, 'image', b, { x: 260, y: 200 });
   await expect.poll(() => drawnAt(mover, b)).not.toBeNull();
   const first = (await drawnAt(mover, a)) as Point;
-  const second = (await mover.locator(`.react-flow__node[data-id="${b}"]`).boundingBox())!;
+  const second = (await visibleSpace(mover).locator(`.react-flow__node[data-id="${b}"]`).boundingBox())!;
   await mover.mouse.move(first.x - 30, first.y - 30);
   await mover.mouse.down();
   await mover.mouse.move(second.x + second.width + 30, second.y + second.height + 30, { steps: 10 });
   await mover.mouse.up();
-  await expect(mover.locator('.react-flow__nodesselection-rect')).toBeVisible();
+  await expect(visibleSpace(mover).locator('.react-flow__nodesselection-rect')).toBeVisible();
   await mover.keyboard.press('ArrowDown');
   await expect.poll(() => stored(mover, a)).toMatchObject({ x: 200, y: 205 });
   await expect.poll(() => stored(mover, b)).toMatchObject({ x: 260, y: 205 });

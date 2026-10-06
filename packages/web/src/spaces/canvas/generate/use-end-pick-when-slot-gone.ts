@@ -7,7 +7,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import { slotForPurpose } from '@web/spaces/canvas/generate/slots';
-import { useCanvasStore } from '@web/stores';
+import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 
 /**
  * Ends a running slot pick on this node once its slot is no longer drawn.
@@ -26,14 +26,15 @@ export function useEndPickWhenSlotGone(
   getLastWriteWasLocal: () => boolean,
 ): void {
   const t = useTranslation();
-  const endPick = useCanvasStore((s) => s.endPick);
+  const endPick = useCanvasSession((s) => s.endPick);
   const slotsKey = slots.join(',');
+  const sessionStore = useCanvasSessionStore();
   React.useEffect(() => {
-    const session = useCanvasStore.getState().pickSession;
+    const session = sessionStore.getState().pickSession;
     if (session?.nodeId !== nodeId) return;
     const running = slotForPurpose(session.purpose);
     if (running === undefined || slotsKey.split(',').includes(running)) return;
     endPick();
     toast.warning(t(pickEndToastKey(getLastWriteWasLocal())));
-  }, [slotsKey, nodeId, endPick, t, getLastWriteWasLocal]);
+  }, [sessionStore, slotsKey, nodeId, endPick, t, getLastWriteWasLocal]);
 }

@@ -20,6 +20,7 @@
 import { test, expect } from 'playwright/test';
 
 import { openGenerate, seedNode, registerCanvasStage, voiceRowCount } from '../helpers/audio-panel';
+import { visibleSpace } from '../helpers/space';
 
 registerCanvasStage();
 
@@ -164,7 +165,7 @@ test('an audio node with a produced asset can be picked into the talking-head dr
   await page.getByTestId('generate-video-mode-talking-head').click();
 
   await page.getByTestId('generate-video-tool-driving-audio').click();
-  await page.locator(`.react-flow__node[data-id="${audioId}"]`).click();
+  await visibleSpace(page).locator(`.react-flow__node[data-id="${audioId}"]`).click();
 
   // The clear button, not the thumbnail: a filled slot draws a thumbnail from
   // the pick's cover, and an audio node carries no poster — the toolbar covers
@@ -224,7 +225,7 @@ test('voice cloning swaps the voice picker for a slot, and refuses a submit with
   // no poster, so the button shows the slot's icon (#1946) — the badge is what
   // says it holds something whatever the kind.
   await page.getByTestId('generate-audio-tool-ref-audio').click();
-  await page.locator(`.react-flow__node[data-id="${sourceId}"]`).click();
+  await visibleSpace(page).locator(`.react-flow__node[data-id="${sourceId}"]`).click();
   await expect(page.getByTestId('generate-audio-ref-audio-clear')).toBeVisible({
     timeout: 10_000,
   });
@@ -289,7 +290,7 @@ test('reference to music: three slots, and any one of them satisfies the gate', 
   // a gate demanding a particular one would grey the button out for a user who
   // filled another.
   await page.getByTestId('generate-audio-tool-music-melody').click();
-  await page.locator(`.react-flow__node[data-id="${sourceId}"]`).click();
+  await visibleSpace(page).locator(`.react-flow__node[data-id="${sourceId}"]`).click();
   await expect(page.getByTestId('generate-audio-music-melody-clear')).toBeVisible({ timeout: 10_000 });
 
   // Stopping here rather than clicking submit again: with the gate satisfied

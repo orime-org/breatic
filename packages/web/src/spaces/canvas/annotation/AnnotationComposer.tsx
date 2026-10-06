@@ -19,6 +19,7 @@ import * as React from 'react';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
+import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
 import {
   pressLandedOnTheBox,
   usePressKeepsFocus,
@@ -30,6 +31,7 @@ import {
 } from '@web/spaces/canvas/annotation/caps';
 import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
 import { NoteScroller } from '@web/spaces/canvas/annotation/NoteScroller';
+import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import {
   CLOSED_DRAFT,
   reduceDraft,
@@ -56,6 +58,7 @@ export function AnnotationComposer({
   onClose,
 }: AnnotationComposerProps): React.JSX.Element {
   const t = useTranslation();
+  const { spaceId } = useCanvasContext();
   const boxRef = React.useRef<HTMLTextAreaElement>(null);
   // A press anywhere in the shell but the box leaves the caret where it is:
   // losing focus is how this box is told the person is done, and for a note
@@ -117,16 +120,10 @@ export function AnnotationComposer({
           onChange={(e) => apply({ type: 'type', text: e.target.value })}
           {...placingBoxKeys.box}
           onBlur={() => {
-            // Leaving the browser is not leaving the box: the whole document
-            // loses focus, and coming back should find the words still here.
-            // `relatedTarget` cannot tell that apart from a press on
-            // something unfocusable, so the question is whether the document
-            // has focus at all — the same criterion the text node's editor
-            // asks (`TextNodeEditor.tsx`). This box is the one whose content
-            // exists nowhere else, so nothing brings it back.
-            if (!document.hasFocus()) return;
+            // This box is the one whose content exists nowhere else, so a
+            // blur that is not the reader leaving must not end it.
             if (placingBoxKeys.composing()) return;
-            apply({ type: 'blur' });
+            whenBlurLeaves(spaceId, () => apply({ type: 'blur' }));
           }}
         />
       </NoteScroller>

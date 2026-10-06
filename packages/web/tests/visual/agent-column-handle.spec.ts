@@ -14,6 +14,7 @@
 import { expect, test, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { visibleSpace } from '../helpers/space';
 
 let page: Page;
 
@@ -26,7 +27,7 @@ let page: Page;
 async function openProjectWithCanvas(p: Page): Promise<void> {
   await openSmokeProject(p);
   await expect(p.locator('[data-separator]').first()).toBeVisible({ timeout: 20_000 });
-  await expect(p.locator('.react-flow__pane').first()).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(p).locator('.react-flow__pane').first()).toBeVisible({ timeout: 20_000 });
 }
 
 test.beforeEach(async ({ browser }) => {
@@ -58,7 +59,7 @@ async function dragHandleThenHoverCanvas(offset: number): Promise<void> {
   for (let step = 1; step <= 6; step += 1) await page.mouse.move(x + step * 20, y);
   await page.mouse.up();
 
-  const pane = await page.locator('.react-flow__pane').first().boundingBox();
+  const pane = await visibleSpace(page).locator('.react-flow__pane').first().boundingBox();
   if (!pane) throw new Error('the canvas pane has no box');
   await page.mouse.move(pane.x + 200, pane.y + 200);
   await page.mouse.move(pane.x + 320, pane.y + 300);
@@ -95,7 +96,7 @@ for (const [side, offset] of [
     // the pane from the moment the canvas mounts (measured on a page nobody
     // has touched), because the canvas is configured to select on drag. Only
     // the box element says a selection is being drawn right now.
-    await expect(page.locator('.react-flow__selection')).toHaveCount(0);
+    await expect(visibleSpace(page).locator('.react-flow__selection')).toHaveCount(0);
 
     // Put the column back for the next case.
     await page.evaluate(() => {
@@ -109,6 +110,6 @@ for (const [side, offset] of [
     });
     await page.reload();
     await expect(page.locator('[data-separator]').first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.react-flow__pane').first()).toBeVisible({ timeout: 20_000 });
+    await expect(visibleSpace(page).locator('.react-flow__pane').first()).toBeVisible({ timeout: 20_000 });
   });
 }

@@ -87,7 +87,7 @@ import {
   type CanvasContextValue,
 } from '@web/spaces/canvas/canvas-context';
 import { modelsApi } from '@web/data/api';
-import { useCanvasStore } from '@web/stores';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 const CANVAS: CanvasContextValue = {
   projectId: 'p',
@@ -190,7 +190,7 @@ describe('the container keeps its memoized children bail-able', () => {
     seenSlotThumbnails.length = 0;
     seenModeOptions.length = 0;
     _resetForTests();
-    useCanvasStore.setState({
+    canvasSessions.of('s').setState({
       panelHostId: null,
       panelKind: null,
       pickSession: null,
@@ -219,7 +219,7 @@ describe('the container keeps its memoized children bail-able', () => {
     vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
     const { rerender } = mount();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'video');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
     });
     await waitFor(() => {
       expect(seenSlotUrls.length).toBeGreaterThan(0);
@@ -275,7 +275,7 @@ describe('the container keeps its memoized children bail-able', () => {
     vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
     const { rerender } = mount();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'video');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
     });
     await waitFor(() => {
       expect(seenSlotUrls.length).toBeGreaterThan(0);

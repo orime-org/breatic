@@ -19,6 +19,7 @@
 import { test, expect, type Page } from 'playwright/test';
 
 import { openGenerate, seedNode, registerCanvasStage } from '../helpers/audio-panel';
+import { visibleSpace } from '../helpers/space';
 
 registerCanvasStage();
 
@@ -81,7 +82,7 @@ async function chooseModel(page: Page, name: string): Promise<void> {
  * @param nodeId - The node to click.
  */
 async function clickNode(page: Page, nodeId: string): Promise<void> {
-  await page.locator(`.react-flow__node[data-id="${nodeId}"]`).click();
+  await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).click();
 }
 
 /**
@@ -140,7 +141,7 @@ test('picks up to three style pictures off the canvas and sends them', async ({ 
   await expect(page.getByTestId('generate-style-thumbnail-0')).toBeVisible();
   await expect(add).toContainText('1/3');
   // A picture already in the slot is no candidate.
-  await expect(page.locator(`.react-flow__node[data-id="${styles[0]}"]`)).toHaveClass(/canvas-pick-dimmed/);
+  await expect(visibleSpace(page).locator(`.react-flow__node[data-id="${styles[0]}"]`)).toHaveClass(/canvas-pick-dimmed/);
   await clickNode(page, styles[1]);
   await expect(add).toContainText('2/3');
   await expect(page.getByTestId('reference-pick-banner')).toBeVisible();

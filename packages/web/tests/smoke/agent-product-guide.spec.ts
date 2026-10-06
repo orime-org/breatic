@@ -17,7 +17,7 @@
 import { expect, test, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace, DOCUMENT_EDITOR } from '../helpers/space';
 
 let page: Page;
 const spaces: string[] = [];
@@ -80,12 +80,12 @@ test('asked how to generate, names the menu item the screen shows @needs-model',
   spaces.push(await createSpace(page, 'canvas', `guide-${String(Date.now())}`));
 
   // The label as this reader's screen shows it, read off a real node's menu.
-  const pane = page.locator('.react-flow__pane');
+  const pane = visibleSpace(page).locator('.react-flow__pane');
   const box = await pane.boundingBox();
   if (box === null) throw new Error('the canvas pane has no box');
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: 'right' });
   await page.getByTestId('create-node-image').click();
-  const node = page.locator('.react-flow__node').first();
+  const node = visibleSpace(page).locator('.react-flow__node').first();
   await expect(node).toBeVisible({ timeout: 20_000 });
   await node.click({ button: 'right' });
   const label = (await page.getByTestId('node-menu-generate').innerText()).trim();
@@ -117,7 +117,7 @@ test('asked about a document, reads the guide @needs-model', async () => {
 test('asked how to insert a table and add a row, names the controls the screen shows @needs-model', async () => {
   test.setTimeout(300_000);
   spaces.push(await createSpace(page, 'document', `guide-table-${String(Date.now())}`));
-  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  const editor = page.locator(`${DOCUMENT_EDITOR}`);
   await editor.click();
   await page.keyboard.type('lead');
 

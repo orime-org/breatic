@@ -72,6 +72,7 @@ export const GroupNode = React.memo(function GroupNode({
     startEdit,
     setDraft,
     commit,
+    blur,
     cancel,
   } = useInlineRename({
     current: display,
@@ -134,7 +135,7 @@ export const GroupNode = React.memo(function GroupNode({
             value={draft}
             maxLength={MAX_NODE_NAME_LEN}
             onChange={(e) => setDraft(e.target.value)}
-            onBlur={commit}
+            onBlur={blur}
             onKeyDown={(e) => {
               if (e.key === 'Enter') commit();
               else if (e.key === 'Escape') {

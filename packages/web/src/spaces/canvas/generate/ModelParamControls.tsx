@@ -13,6 +13,7 @@ import { modelControls, type ModelControl } from '@web/spaces/canvas/generate/mo
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
 import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
+import { useDraftBox } from '@web/spaces/canvas/generate/use-draft-box';
 
 interface ModelParamControlsProps {
   /** The active model, whose own labelled params are drawn. */
@@ -170,12 +171,11 @@ interface TextControlProps {
  */
 function TextControl({ name, label, held, onChange }: TextControlProps): React.JSX.Element {
   const id = React.useId();
-  const [draft, setDraft] = React.useState<string | null>(null);
-  /** Writes the draft, when it differs from what the node holds, and drops it. */
-  const commit = (): void => {
-    if (draft !== null && draft !== held) onChange({ [name]: draft });
-    setDraft(null);
-  };
+  const commitText = React.useCallback(
+    (next: string): void => onChange({ [name]: next }),
+    [onChange, name],
+  );
+  const box = useDraftBox(held, commitText);
   return (
     <div>
       <label htmlFor={id} className='mb-1.5 block text-xs font-medium text-muted-foreground'>
@@ -185,12 +185,7 @@ function TextControl({ name, label, held, onChange }: TextControlProps): React.J
         autoComplete='off'
         id={id}
         data-testid={`generate-param-${name}-input`}
-        value={draft ?? held}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && !event.nativeEvent.isComposing) commit();
-        }}
+        {...box}
         className='h-8 text-xs'
       />
     </div>

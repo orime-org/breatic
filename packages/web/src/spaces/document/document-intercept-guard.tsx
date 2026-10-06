@@ -20,8 +20,8 @@ interface DocumentInterceptGuardProps {
  *
  * ## Why this is not inside `DocumentSpace`
  *
- * `DocumentSpace` is rendered for the ACTIVE Space only, while an editor is
- * cached per document and deliberately outlives a tab switch — it keeps the
+ * `DocumentSpace`'s effects run only while its Space is shown, while an editor
+ * is cached per document and deliberately outlives a tab switch — it keeps the
  * undo stack, the selection and any in-flight composition, and it keeps
  * receiving remote updates the whole time. Those two scopes do not match: once
  * the user looks at something else, the editor for the Space they left is still
@@ -32,7 +32,7 @@ interface DocumentInterceptGuardProps {
  * represent what arrives. A background tab does that just as readily as the
  * visible one — the rewriting is driven by remote updates, not by typing.
  *
- * So this is mounted once per OPEN tab (from `SpaceDocSync`), which is the
+ * So this is mounted once per OPEN tab (from `OpenSpace`), which is the
  * scope the verdict needs. `DocumentSpace` keeps deciding whether to BUILD an
  * editor; destroying one that exists lives here, and only here.
  * @param root0 - Which document to watch.

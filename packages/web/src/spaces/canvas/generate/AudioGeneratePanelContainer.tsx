@@ -87,7 +87,7 @@ import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { asContentView } from '@web/data/yjs/node-view';
-import { useCanvasStore } from '@web/stores';
+import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 
 /** Empty text map, for the pass that only needs to know WHICH rows exist. */
 const EMPTY_TEXT: ReadonlyMap<string, string> = new Map();
@@ -126,16 +126,16 @@ function AudioGeneratePanelBody({
   getLastWriteWasLocal,
 }: AudioGeneratePanelContainerProps & { nodeId: string }): React.JSX.Element {
   const t = useTranslation();
-  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
-  const endPick = useCanvasStore((s) => s.endPick);
-  const startReferencePick = useCanvasStore((s) => s.startReferencePick);
-  const startRefAudioPick = useCanvasStore((s) => s.startRefAudioPick);
-  const startMusicSongPick = useCanvasStore((s) => s.startMusicSongPick);
-  const startCoverSongPick = useCanvasStore((s) => s.startCoverSongPick);
-  const startMusicMelodyPick = useCanvasStore((s) => s.startMusicMelodyPick);
-  const startMusicVocalPick = useCanvasStore((s) => s.startMusicVocalPick);
-  const startSoundVideoPick = useCanvasStore((s) => s.startSoundVideoPick);
-  const startMoodImagePick = useCanvasStore((s) => s.startMoodImagePick);
+  const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
+  const endPick = useCanvasSession((s) => s.endPick);
+  const startReferencePick = useCanvasSession((s) => s.startReferencePick);
+  const startRefAudioPick = useCanvasSession((s) => s.startRefAudioPick);
+  const startMusicSongPick = useCanvasSession((s) => s.startMusicSongPick);
+  const startCoverSongPick = useCanvasSession((s) => s.startCoverSongPick);
+  const startMusicMelodyPick = useCanvasSession((s) => s.startMusicMelodyPick);
+  const startMusicVocalPick = useCanvasSession((s) => s.startMusicVocalPick);
+  const startSoundVideoPick = useCanvasSession((s) => s.startSoundVideoPick);
+  const startMoodImagePick = useCanvasSession((s) => s.startMoodImagePick);
   /** Which store action starts each slot's pick. */
   const startPick = React.useMemo(
     (): Record<AudioSlot, (id: string) => void> => ({
@@ -157,7 +157,7 @@ function AudioGeneratePanelBody({
       startMusicVocalPick,
     ],
   );
-  const referencePicking = useCanvasStore(
+  const referencePicking = useCanvasSession(
     (s) => s.pickSession?.nodeId === nodeId && s.pickSession.purpose === 'reference',
   );
   const { caretProvider } = useCanvasContext();
@@ -199,7 +199,6 @@ function AudioGeneratePanelBody({
     isSubmitting,
     setIsSubmitting,
     submittingRef,
-    isMountedRef,
   } = useGenerateSubmitState();
 
   // Read during render: `getPromptFragment` is a synchronous document read with
@@ -266,7 +265,7 @@ function AudioGeneratePanelBody({
   /** Whether this run shows a lyrics box, and so insists on what goes in it. */
   const lyrics = modelTakesLyrics(vm.modelEntry, mode);
   /** The slot whose pick is running on this node, if any. */
-  const activeSlot = useCanvasStore((s) => {
+  const activeSlot = useCanvasSession((s) => {
     const session = s.pickSession;
     if (session?.nodeId !== nodeId) return undefined;
     const name = slotForPurpose(session.purpose);
@@ -274,9 +273,10 @@ function AudioGeneratePanelBody({
       ? (name as AudioSlot)
       : undefined;
   });
+  const sessionStore = useCanvasSessionStore();
   const onPickSlot = React.useCallback(
     (slot: AudioSlot) => {
-      const session = useCanvasStore.getState().pickSession;
+      const session = sessionStore.getState().pickSession;
       const purpose = AUDIO_SLOTS[slot].purpose;
       // Clicking the slot whose pick is already running ends it; clicking
       // another one moves the pick to that slot.
@@ -286,7 +286,7 @@ function AudioGeneratePanelBody({
       }
       startPick[slot](nodeId);
     },
-    [startPick, endPick, nodeId],
+    [sessionStore, startPick, endPick, nodeId],
   );
   // A slot's ✕: clears the node's pick-time copy, and deliberately leaves a
   // running pick running — the ✕ renders whenever the slot holds something,
@@ -415,13 +415,13 @@ function AudioGeneratePanelBody({
   );
 
   const onAddReference = React.useCallback(() => {
-    const session = useCanvasStore.getState().pickSession;
+    const session = sessionStore.getState().pickSession;
     if (session?.nodeId === nodeId && session.purpose === 'reference') {
       endPick();
     } else {
       startReferencePick(nodeId);
     }
-  }, [startReferencePick, endPick, nodeId]);
+  }, [sessionStore, startReferencePick, endPick, nodeId]);
 
   const onRemoveReference = React.useCallback(
     (item: ReferenceRailItem) => {
@@ -507,6 +507,10 @@ function AudioGeneratePanelBody({
     if (!fresh.modelEntry) return;
 
     submittingRef.current = true;
+    // Which opening of the panel this submit came from: the answer may land
+    // after the reader closed or replaced this panel, and then it closes
+    // nothing they opened since.
+    const session = sessionStore.getState().panelSession;
     setIsSubmitting(true);
     try {
       const payload = buildAudioTaskPayload({
@@ -529,37 +533,27 @@ function AudioGeneratePanelBody({
         ...(freshLyrics !== undefined ? { lyricsText: freshLyrics } : {}),
       });
       await canvasApi.createTask(payload);
-      // Close only if THIS mount is alive AND the panel is still on this node.
-      if (
-        isMountedRef.current &&
-        useCanvasStore.getState().panelHostId === nodeId &&
-        useCanvasStore.getState().panelKind === 'generateAudio'
-      ) {
-        closeActivePanel();
-      }
+      sessionStore.getState().closePanelOfSession(session);
     } catch (err) {
       // Unconditional: a submit that failed after the user closed the panel
-      // still explains itself. Only the state writes are gated on the mount.
+      // still explains itself.
       toast.error(
         executeErrorMessage(err instanceof ApiException ? err.status : undefined, t),
       );
-      if (!isMountedRef.current) return;
       submittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [
+  }, [sessionStore,
     nodeId,
     projectId,
     spaceId,
     freshVm,
-    closeActivePanel,
     t,
     lyrics,
     mode,
     slots,
     // Stable for this mount's lifetime; listed because they come from a hook,
     // where the linter cannot see that for itself.
-    isMountedRef,
     lyricsEditorRef,
     lyricsTextRef,
     promptEditorRef,

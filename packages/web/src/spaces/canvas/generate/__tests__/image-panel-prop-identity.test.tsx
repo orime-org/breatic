@@ -65,7 +65,7 @@ import {
   type CanvasContextValue,
 } from '@web/spaces/canvas/canvas-context';
 import { modelsApi } from '@web/data/api';
-import { useCanvasStore } from '@web/stores';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 const CANVAS: CanvasContextValue = {
   projectId: 'p',
@@ -154,7 +154,7 @@ describe('图片容器让它的 memo 子组件还能 bail', () => {
   beforeEach(() => {
     seenModeOptions.length = 0;
     _resetForTests();
-    useCanvasStore.setState({
+    canvasSessions.of('s').setState({
       panelHostId: null,
       panelKind: null,
       pickSession: null,
@@ -181,7 +181,7 @@ describe('图片容器让它的 memo 子组件还能 bail', () => {
     vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
     const { rerender } = mount();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     await waitFor(() => {
       expect(seenModeOptions.length).toBeGreaterThan(0);

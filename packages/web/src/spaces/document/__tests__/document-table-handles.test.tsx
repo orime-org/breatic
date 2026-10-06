@@ -198,6 +198,27 @@ describe('the row handle (A6)', () => {
     expect(side.unfrozen).toBe(1);
   });
 
+  // A Space switched away from is hidden, and hiding runs the cleanup that
+  // lets the handles go (inner#1235 C5). The menu goes with them, the way a
+  // menu closes when focus leaves it.
+  it('closes its menu when its Space is hidden', () => {
+    const editor = openOver(1, 1);
+    const inSpace = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+      <React.Activity mode={mode}>
+        <DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />
+      </React.Activity>
+    );
+    const view = render(inSpace('visible'));
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+    expect(rows('doc-table-row-')).not.toEqual([]);
+
+    act(() => view.rerender(inSpace('hidden')));
+    act(() => view.rerender(inSpace('visible')));
+
+    expect(rows('doc-table-row-')).toEqual([]);
+    expect(tableTargetOf(editor.prosemirrorState)).toBeNull();
+  });
+
   it('closes its menu when the row it was opened on is deleted', () => {
     const editor = openOver(1, 0);
     render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);

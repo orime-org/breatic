@@ -16,7 +16,7 @@ import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 // The panel hangs below its node; the picker opens below the panel.
 test.use({ viewport: { width: 1440, height: 1080 } });
@@ -33,7 +33,7 @@ let spaceId = '';
  * @returns Nothing.
  */
 async function seedNode(p: Page, nodeId: string, kind: 'image' | 'video' | 'audio'): Promise<void> {
-  await expect(p.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(p).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
   const seen = await p.evaluate(
     async ([pid, sid, id, type, at]: [string, string, string, string, string]) => {
@@ -75,7 +75,7 @@ for (const [kind, execute] of [
   test(`draws a mark on every model the ${kind} picker offers`, async () => {
     const nodeId = crypto.randomUUID();
     await seedNode(page, nodeId, kind);
-    const node = page.locator(`.react-flow__node[data-id="${nodeId}"]`);
+    const node = visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`);
     await expect(node).toBeVisible({ timeout: 15_000 });
     await node.click({ button: 'right' });
     await page.getByTestId('node-menu-generate').click();

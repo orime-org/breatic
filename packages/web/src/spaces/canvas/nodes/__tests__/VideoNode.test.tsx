@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 import { VideoNode } from '@web/spaces/canvas/nodes/VideoNode';
-import { useCanvasStore } from '@web/stores/canvas';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 beforeAll(() => {
   HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
@@ -15,7 +15,7 @@ beforeAll(() => {
 afterEach(() => {
   // The canvas store is a module singleton: a session left open here reaches
   // every later test in this file.
-  useCanvasStore.setState({ pickSession: null });
+  canvasSessions.of('').setState({ pickSession: null });
 });
 
 describe('VideoNode', () => {
@@ -112,7 +112,7 @@ describe('VideoNode', () => {
     // A focus session opens on SOME node — every video hides its bar, not just
     // the one being picked for.
     act(() => {
-      useCanvasStore.setState({
+      canvasSessions.of('').setState({
         pickSession: { nodeId: 'other-node', purpose: 'focus' },
       });
     });
@@ -120,13 +120,13 @@ describe('VideoNode', () => {
     // A reference pick is a different session: nothing about it makes a video's
     // own controls a problem.
     act(() => {
-      useCanvasStore.setState({
+      canvasSessions.of('').setState({
         pickSession: { nodeId: 'other-node', purpose: 'reference' },
       });
     });
     expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(false);
     act(() => {
-      useCanvasStore.setState({ pickSession: null });
+      canvasSessions.of('').setState({ pickSession: null });
     });
     expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(false);
   });

@@ -20,7 +20,7 @@ import { test, expect, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, TEXT_BODY, liveModuleUrl } from '../helpers/live-module';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 const TINY_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -38,7 +38,7 @@ test.beforeEach(async ({ browser }) => {
   await openSmokeProject(page);
   projectId = smokeProjectId();
   spaceId = await createSpace(page, 'canvas', `history-unique-${Date.now()}`);
-  await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
 });
 
 test.afterEach(async () => {
@@ -77,7 +77,7 @@ async function writeWords(nodeId: string, words: string, create: boolean): Promi
     },
     [projectId, spaceId, nodeId, words, create, canvasAt, bodyAt] as const,
   );
-  await expect(page.locator(`.react-flow__node[data-id="${nodeId}"]`)).toContainText(words, {
+  await expect(visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`)).toContainText(words, {
     timeout: 10_000,
   });
 }
@@ -89,7 +89,7 @@ async function writeWords(nodeId: string, words: string, create: boolean): Promi
  * @returns Nothing; resolves once the item was clicked.
  */
 async function pickFromMenu(nodeId: string, item: string): Promise<void> {
-  await page.locator(`.react-flow__node[data-id="${nodeId}"]`).click({ button: 'right' });
+  await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).click({ button: 'right' });
   await page.getByTestId(item).click();
 }
 
@@ -148,7 +148,7 @@ test('keeping the same words twice leaves one row, and Restore moves Current @ne
   await expect(second.getByTestId('node-history-restore')).toHaveCount(0);
 
   await first.getByTestId('node-history-restore').click();
-  await expect(page.locator(`.react-flow__node[data-id="${nodeId}"]`)).toContainText('First words.');
+  await expect(visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`)).toContainText('First words.');
   await expect(first).toContainText('Current');
   await expect(first.getByTestId('node-history-restore')).toHaveCount(0);
   await expect(second.getByTestId('node-history-restore')).toBeVisible();
@@ -176,7 +176,7 @@ test('uploading the same bytes twice leaves one row, and Restore moves Current @
     },
     [projectId, spaceId, nodeId, canvasAt] as const,
   );
-  await expect(page.locator(`.react-flow__node[data-id="${nodeId}"]`)).toBeVisible();
+  await expect(visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`)).toBeVisible();
 
   await uploadOnto(nodeId, same);
   await expect.poll(() => imageSrc(nodeId), { timeout: 30_000 }).toMatch(/^https?:\/\//);

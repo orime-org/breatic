@@ -9,7 +9,6 @@ import { screen, act } from '@testing-library/react';
 import { toast } from 'sonner';
 
 import * as canvasSpace from '@web/data/yjs/canvas-space';
-import { useCanvasStore } from '@web/stores/canvas';
 import {
   clickNode,
   group,
@@ -19,6 +18,7 @@ import {
   zOf,
   type Nodes,
 } from '@web/spaces/canvas/__tests__/focus-harness';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 vi.mock('@web/data/yjs/canvas-space', async (importOriginal) => {
   const actual =
@@ -53,7 +53,7 @@ const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 function enterFocus(nodes: Nodes): () => void {
   mockUseCanvasSpace.mockReturnValue(mockSpace(nodes));
   const rerender = renderSpace();
-  act(() => useCanvasStore.getState().startFocusPick('host'));
+  act(() => canvasSessions.of('s').getState().startFocusPick('host'));
   clickNode('src');
   expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
   return rerender;
@@ -64,7 +64,7 @@ const START: Nodes = [image('host', 0), image('src', 300)];
 describe('聚焦目标被改动之后（#2000）', () => {
   beforeEach(() => {
     mockUseCanvasSpace.mockReset();
-    useCanvasStore.setState({ pickSession: null });
+    canvasSessions.of('s').setState({ pickSession: null });
     vi.restoreAllMocks();
   });
 
@@ -180,7 +180,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
       mockSpace([image('host', 0), image('src', 300), image('other', 600)]),
     );
     const rerender = renderSpace();
-    act(() => useCanvasStore.getState().startFocusPick('host'));
+    act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
     clickNode('other');
     rerender();
@@ -264,7 +264,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     const src = image('src', 300);
     mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 0), src]));
     const rerender = renderSpace();
-    act(() => useCanvasStore.getState().startFocusPick('host'));
+    act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
     expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
 

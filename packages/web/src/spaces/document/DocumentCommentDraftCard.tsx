@@ -13,9 +13,9 @@
  * IT KEEPS NOTHING OF ITS OWN. The draft is the editor's: where it is aimed
  * and why it was dropped live in the draft range plugin, the words in
  * `document-comment-unsent.ts`, and whether it is the card being read in the
- * selection plugin. A Space tab switch mounts this card again over the same
- * draft, so what the reader wrote, and any notice they were owed, are still
- * there (design §9.4.1).
+ * selection plugin. The card can be mounted again over the same draft
+ * (StrictMode mounts it twice), and what the reader wrote, and any notice they
+ * were owed, are still there (design §9.4.1).
  *
  * A dropped draft says why until the reader dismisses it: the text it was
  * aimed at is gone (A21), or their right to write here was taken away (A22).
@@ -239,8 +239,8 @@ export function DocumentCommentDraftCard({
         key={draft.entry}
         name='draft'
         // The focus goes to a draft the reader just asked for, which is the
-        // card being read the moment it opens. A Space tab switch mounting the
-        // card again while another card is being read leaves that one alone.
+        // card being read the moment it opens. The card mounting again while
+        // another card is being read leaves that one alone.
         // eslint-disable-next-line jsx-a11y/no-autofocus -- a card the reader just asked for by pressing the comment entry; they expect to type immediately
         autoFocus={reading}
         value={words}

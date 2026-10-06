@@ -21,7 +21,7 @@
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
 
 let context: BrowserContext;
 let page: Page;
@@ -48,15 +48,15 @@ const TINY_PNG =
  * @returns The id of the node the drop made.
  */
 async function dropANode(target: Page): Promise<string> {
-  const before = await target.locator('.react-flow__node').count();
-  await target.evaluate(async (encoded: string) => {
+  const before = await visibleSpace(target).locator('.react-flow__node').count();
+  await target.evaluate(async ([encoded, space]: [string, string]) => {
     const binary = atob(encoded);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
     const file = new File([bytes], 'dot.png', { type: 'image/png' });
     const transfer = new DataTransfer();
     transfer.items.add(file);
-    const pane = document.querySelector('.react-flow__pane');
+    const pane = document.querySelector(`${space} .react-flow__pane`);
     if (pane === null) throw new Error('no canvas pane to drop onto');
     const rect = pane.getBoundingClientRect();
     const at = {
@@ -67,18 +67,17 @@ async function dropANode(target: Page): Promise<string> {
     };
     pane.dispatchEvent(new DragEvent('dragover', { ...at, dataTransfer: transfer }));
     pane.dispatchEvent(new DragEvent('drop', { ...at, dataTransfer: transfer }));
-  }, TINY_PNG);
+  }, [TINY_PNG, VISIBLE_SPACE] as [string, string]);
 
   await expect
-    .poll(async () => target.locator('.react-flow__node').count(), {
+    .poll(async () => visibleSpace(target).locator('.react-flow__node').count(), {
       timeout: 30_000,
     })
     .toBeGreaterThan(before);
-  const ids = await target.evaluate(() =>
-    [...document.querySelectorAll('.react-flow__node')].map((n) =>
+  const ids = await target.evaluate((space: string) =>
+    [...document.querySelectorAll(`${space} .react-flow__node`)].map((n) =>
       n.getAttribute('data-id'),
-    ),
-  );
+    ), VISIBLE_SPACE);
   const id = ids.at(-1);
   if (id === null || id === undefined) throw new Error('the new node has no id');
   return id;
@@ -162,7 +161,7 @@ test.beforeEach(async ({ browser }) => {
   // canvases: dropping without this would put the node on whichever tab was
   // selected, while the submission names the Space that was just made.
   await page.getByTestId(`space-tab-name-${spaceId}`).click();
-  await expect(page.locator('.react-flow__pane')).toBeVisible({
+  await expect(visibleSpace(page).locator('.react-flow__pane')).toBeVisible({
     timeout: 15_000,
   });
 });

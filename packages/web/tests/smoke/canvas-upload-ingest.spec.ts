@@ -30,7 +30,7 @@ import { join } from 'node:path';
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
 
 let context: BrowserContext;
 let page: Page;
@@ -74,14 +74,14 @@ async function dropFile(
   bytes: Buffer,
 ): Promise<void> {
   await target.evaluate(
-    async ([fileName, mime, encoded]: [string, string, string]) => {
+    async ([fileName, mime, encoded, space]: [string, string, string, string]) => {
       const binary = atob(encoded);
       const buffer = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i += 1) buffer[i] = binary.charCodeAt(i);
       const file = new File([buffer], fileName, { type: mime });
       const transfer = new DataTransfer();
       transfer.items.add(file);
-      const pane = document.querySelector('.react-flow__pane');
+      const pane = document.querySelector(`${space} .react-flow__pane`);
       if (pane === null) throw new Error('no canvas pane to drop onto');
       const rect = pane.getBoundingClientRect();
       const at = {
@@ -93,17 +93,16 @@ async function dropFile(
       pane.dispatchEvent(new DragEvent('dragover', { ...at, dataTransfer: transfer }));
       pane.dispatchEvent(new DragEvent('drop', { ...at, dataTransfer: transfer }));
     },
-    [name, type, bytes.toString('base64')] as [string, string, string],
+    [name, type, bytes.toString('base64'), VISIBLE_SPACE] as [string, string, string, string],
   );
 }
 
 /** Every image node's `src` currently on the canvas. */
 async function imageSources(target: Page): Promise<string[]> {
-  return target.evaluate(() =>
-    [...document.querySelectorAll('.react-flow__node img')].map(
+  return target.evaluate((space: string) =>
+    [...document.querySelectorAll(`${space} .react-flow__node img`)].map(
       (img) => (img as HTMLImageElement).src,
-    ),
-  );
+    ), VISIBLE_SPACE);
 }
 
 /**
@@ -157,11 +156,10 @@ async function noToastLeft(target: Page): Promise<void> {
 
 /** Every video node's `src` currently on the canvas. */
 async function videoSources(target: Page): Promise<string[]> {
-  return target.evaluate(() =>
-    [...document.querySelectorAll('.react-flow__node video')].map(
+  return target.evaluate((space: string) =>
+    [...document.querySelectorAll(`${space} .react-flow__node video`)].map(
       (v) => (v as HTMLVideoElement).src,
-    ),
-  );
+    ), VISIBLE_SPACE);
 }
 
 test.beforeEach(async ({ browser }) => {
@@ -269,10 +267,9 @@ test('a multi-part video lands with the cover our worker pulled out of it @needs
 
   // The cover rides in on the same event, as the node's poster.
   const poster = await page.evaluate(
-    () =>
-      (document.querySelector('.react-flow__node video') as HTMLVideoElement)
-        ?.poster ?? '',
-  );
+    (space: string) =>
+      (document.querySelector(`${space} .react-flow__node video`) as HTMLVideoElement)
+        ?.poster ?? '', VISIBLE_SPACE);
   expect(poster).toMatch(/^https?:\/\//);
   expect(poster).not.toBe(videoUrl);
 });
@@ -342,10 +339,10 @@ test('a video whose frame cannot be cut still lands, without a cover @needs-ffmp
   // Held for a while: a poster that arrives late would make this pass on
   // timing rather than on the outcome.
   await page.waitForTimeout(5_000);
-  const poster = await page.evaluate(() => {
-    const videos = [...document.querySelectorAll('.react-flow__node video')];
+  const poster = await page.evaluate((space: string) => {
+    const videos = [...document.querySelectorAll(`${space} .react-flow__node video`)];
     return (videos[videos.length - 1] as HTMLVideoElement | undefined)?.poster ?? '';
-  });
+  }, VISIBLE_SPACE);
   expect(poster).toBe('');
 });
 
@@ -373,7 +370,7 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
 
   await noToastLeft(page);
   const before = (await imageSources(page)).length;
-  const nodesBefore = await page.locator('.react-flow__node').count();
+  const nodesBefore = await visibleSpace(page).locator('.react-flow__node').count();
 
   // Armed before the drop: the report goes out while the upload is failing.
   const reported = page.waitForResponse(
@@ -402,7 +399,7 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
   // looking away — a toast does not, and a node runs several uploads at once.
   // Scoped to the node this drop made: a page-wide match would drift onto
   // another node the moment any earlier case leaves a failed row behind.
-  const node = page.locator('.react-flow__node').last();
+  const node = visibleSpace(page).locator('.react-flow__node').last();
   const failedCount = node.locator('[data-testid="task-count-failed"]');
   await expect(failedCount).toBeVisible({ timeout: 30_000 });
   expect(await page.locator('[data-sonner-toast]').count()).toBe(0);
@@ -423,7 +420,7 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
   await expect(row.locator('[data-testid="task-action-retry"]')).toBeVisible();
 
   // The node the drop created is still there, and still has no content.
-  expect(await page.locator('.react-flow__node').count()).toBe(nodesBefore + 1);
+  expect(await visibleSpace(page).locator('.react-flow__node').count()).toBe(nodesBefore + 1);
   expect((await imageSources(page)).length).toBe(before);
   // The fixed English sentence this used to write into the shared document is
   // gone (§3.7.2) — every collaborator read it, in the uploader's words.
@@ -444,7 +441,7 @@ test('a drop that never gets a ticket keeps its node and says so', async () => {
   });
 
   await noToastLeft(page);
-  const nodesBefore = await page.locator('.react-flow__node').count();
+  const nodesBefore = await visibleSpace(page).locator('.react-flow__node').count();
 
   await dropFile(
     page,
@@ -461,7 +458,7 @@ test('a drop that never gets a ticket keeps its node and says so', async () => {
 
   // The node the drop made is still there. It holds nothing and never will,
   // and taking it away is the reader's call to make, not ours.
-  expect(await page.locator('.react-flow__node').count()).toBe(nodesBefore + 1);
+  expect(await visibleSpace(page).locator('.react-flow__node').count()).toBe(nodesBefore + 1);
 
   await page.unroute('**/assets/upload-ticket*');
 });
@@ -473,7 +470,7 @@ test('a drop that never gets a ticket keeps its node and says so', async () => {
 // sentence in the reader's language.
 test('a file whose bytes are not what it claims is refused at the edge @needs-ingest @needs-storage', async () => {
 
-  const before = await page.locator('.react-flow__node').count();
+  const before = await visibleSpace(page).locator('.react-flow__node').count();
   const imagesBefore = (await imageSources(page)).length;
   // A zip's signature, named and announced as a picture. Random bytes behind it
   // so no earlier run stored this content — an identical file would hit dedup
@@ -487,7 +484,7 @@ test('a file whose bytes are not what it claims is refused at the edge @needs-in
 
   // The node the drop created stays: it has a task, and that task has an owner.
   await expect
-    .poll(async () => page.locator('.react-flow__node').count(), { timeout: 30_000 })
+    .poll(async () => visibleSpace(page).locator('.react-flow__node').count(), { timeout: 30_000 })
     .toBe(before + 1);
   const nodeId = await page
     .locator('.react-flow__node')
@@ -533,7 +530,7 @@ test('a format we do not take is refused at the drop, with no node and no ticket
   });
 
   await noToastLeft(page);
-  const nodesBefore = await page.locator('.react-flow__node').count();
+  const nodesBefore = await visibleSpace(page).locator('.react-flow__node').count();
 
   await dropFile(
     page,
@@ -551,7 +548,7 @@ test('a format we do not take is refused at the drop, with no node and no ticket
 
   // Nothing was created and nothing was asked for: the refusal is the whole
   // outcome, so there is no failed node to clean up and no grant to void.
-  expect(await page.locator('.react-flow__node').count()).toBe(nodesBefore);
+  expect(await visibleSpace(page).locator('.react-flow__node').count()).toBe(nodesBefore);
   expect(ticketsAsked).toBe(0);
 
   await page.unroute('**/assets/upload-ticket*');

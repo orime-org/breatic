@@ -25,7 +25,7 @@ import {
   hasRetryFile,
 } from '@web/spaces/canvas/upload-retry-files';
 import { countsColumnOffset } from '@web/spaces/canvas/overlay-scale';
-import { useCanvasStore } from '@web/stores/canvas';
+import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 
 /** The media a refusal can name formats for. */
 const LISTED_MEDIA = ['image', 'video', 'audio'] as const;
@@ -70,7 +70,7 @@ interface OpenNodeTaskPanelProps extends NodeTaskPanelContainerProps {
  * @param props.readOnly - Whether this reader may write.
  * @param props.onReplace - Write one task's result onto the node.
  * @param props.onRetry - Send one task's stashed File again.
- * @returns The anchored panel.
+ * @returns The anchored panel, or null once its host node is gone.
  */
 function OpenNodeTaskPanel({
   nodeId,
@@ -81,23 +81,17 @@ function OpenNodeTaskPanel({
   readOnly,
   onReplace,
   onRetry,
-}: OpenNodeTaskPanelProps): React.JSX.Element {
+}: OpenNodeTaskPanelProps): React.JSX.Element | null {
   const t = useTranslation();
   const zoom = useStore((s) => s.transform[2]);
-  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
+  const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
   const queryClient = useQueryClient();
-  // Close when the host disappears (a collaborator deletes it) — mirrors the
-  // Generate / reset / history panels' node-gone guard, which
-  // `resolvePanelSelectionAction` leaves this case to.
+  // A deleted host draws nothing here; `CanvasSpaceInner` closes the panel.
   const hostNode = nodes.find((n) => n.id === nodeId);
-  const nodeGone = hostNode === undefined;
   // What the node holds, for the refusal sentence that names the formats we
   // would have taken. Only the three media have a list; every other kind
   // leaves the sentence its short form.
   const hostMedium = LISTED_MEDIA.find((name) => hostNode?.data.kind === name);
-  React.useEffect(() => {
-    if (nodeGone) closeActivePanel();
-  }, [nodeGone, closeActivePanel]);
 
   // The counts come off the document and move live; these rows are one fetch.
   // Keying on them is what keeps the two from contradicting each other on
@@ -184,6 +178,7 @@ function OpenNodeTaskPanel({
     [projectId, spaceId, nodeId, queryClient, queryKey, t, closeActivePanel, status],
   );
 
+  if (hostNode === undefined) return null;
   return (
     // Offset past the counts column. xyflow adds this after the zoom multiply,
     // so it is screen pixels — and the column is not one measurement but two,
@@ -233,9 +228,9 @@ function OpenNodeTaskPanel({
 export function NodeTaskPanelContainer(
   props: NodeTaskPanelContainerProps,
 ): React.JSX.Element | null {
-  const host = useCanvasStore((s) => s.panelHostId);
-  const kind = useCanvasStore((s) => s.panelKind);
-  const status = useCanvasStore((s) => s.taskPanelStatus);
+  const host = useCanvasSession((s) => s.panelHostId);
+  const kind = useCanvasSession((s) => s.panelKind);
+  const status = useCanvasSession((s) => s.taskPanelStatus);
   if (kind !== 'tasks' || host == null || status == null) return null;
   // key={host} remounts the panel when it switches nodes, so a second node
   // never renders the first one's rows while its own fetch is in flight.

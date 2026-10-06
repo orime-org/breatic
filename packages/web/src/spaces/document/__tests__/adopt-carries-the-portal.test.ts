@@ -86,4 +86,22 @@ describe('handing the editor to another container', () => {
       handle.editor.portalElement,
     ]);
   });
+
+  it('does not take the surface off the page when it is already in place', async () => {
+    // A Space shown again adopts into the container that already holds the
+    // editor. Taking the surface out and putting it back resets every scroll
+    // position inside it — a wide table's frame among them (inner#1235 A1).
+    const handle = showable();
+    const first = container();
+    adoptDocumentEditor(handle, first);
+    const moves: MutationRecord[] = [];
+    const watcher = new MutationObserver((records) => moves.push(...records));
+    watcher.observe(first, { childList: true });
+
+    adoptDocumentEditor(handle, first);
+    await Promise.resolve();
+    watcher.disconnect();
+
+    expect(moves).toEqual([]);
+  });
 });
