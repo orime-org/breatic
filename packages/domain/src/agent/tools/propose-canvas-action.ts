@@ -67,6 +67,7 @@ import {
   type ModelInfo,
   type ParamInfo,
 } from "@domain/model-catalog/mode-catalog.js";
+import { onStep } from "@domain/model-catalog/param-declaration.js";
 
 const NODE_TYPES = Object.keys(GENERATION_NODE_MODES) as [
   GenerationNodeType,
@@ -283,6 +284,31 @@ function isDrawn(
   return typeof held === "boolean" ? held : chosen.params[gate.param]?.default === true;
 }
 
+/** How many values a refusal lists before it falls back to the range and step. */
+const LISTED_STEPS = 12;
+
+/**
+ * Why a number sits between two steps of its slider, or null when it is on one.
+ *
+ * The slider only stops on steps, so a value between two is one the panel
+ * cannot show and, for a model that rounds, not the one it runs with.
+ * @param key - The param name, quoted in the reason.
+ * @param value - The number the proposal filled in, already within range.
+ * @param info - The param as the catalog projects it.
+ * @returns The reason, or null.
+ */
+function offStepReason(key: string, value: number, info: ParamInfo): string | null {
+  const { min, max, step } = info;
+  if (min === undefined || max === undefined || step === undefined || step <= 0) return null;
+  if (onStep(value, min, step)) return null;
+  const count = Math.floor((max - min) / step + 1e-9) + 1;
+  const takes =
+    count <= LISTED_STEPS
+      ? Array.from({ length: count }, (_, i) => Number((min + i * step).toFixed(6))).join(", ")
+      : `values from ${String(min)} to ${String(max)}`;
+  return `"${key}" moves in steps of ${String(step)} from ${String(min)}, so it takes ${takes}, not ${String(value)}.`;
+}
+
 /**
  * Judge the values a proposal filled in against what the model declares.
  *
@@ -360,6 +386,8 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
         reason: `"${key}" runs from ${String(info.min ?? "?")} to ${String(info.max ?? "?")}, and this one is ${String(value)}.`,
       };
     }
+    const offStep = offStepReason(key, value, info);
+    if (offStep !== null) return { ok: false, reason: offStep };
   }
   return { ok: true };
 }

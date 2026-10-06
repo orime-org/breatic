@@ -11,7 +11,7 @@
  * `engineering/demo/2026-09-17-strip-box.probe.spec.ts`.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 import type { MiddlewareState } from '@floating-ui/react';
 
@@ -123,16 +123,25 @@ describe('the strip stands 12px out from the body\'s left edge (#1097 A13, inner
   });
 });
 
-describe('the first line of a table (inner#1126 A5)', () => {
-  it('is the table\'s first row, not the whole table', () => {
+describe('the first line of a table (inner#1278)', () => {
+  it('is the first line of the first cell, so a tall first row keeps the strip at the table\'s top', () => {
+    // Measured 2026-10-06 (`engineering/demo/2026-10-06-1278-table-handle-probe.spec.ts`):
+    // a first row 283px tall, its cells' words starting 8px below the table's
+    // top line. Centring on the row put the strip 142px down.
     const block = document.createElement('div');
     block.setAttribute('data-content-type', 'table');
     block.innerHTML =
-      '<div class="doc-table-scroller"><table><tbody><tr><td><p>a</p></td></tr><tr><td><p>b</p></td></tr></tbody></table></div>';
-    const first = block.querySelector('tr')!;
-    const box = new DOMRect(0, 176, 240, 35);
-    first.getBoundingClientRect = (): DOMRect => box;
+      '<div class="doc-table-scroller"><table><tbody><tr><td><p>a</p></td><td><p>b</p></td></tr></tbody></table></div>';
+    block.querySelector('tr')!.getBoundingClientRect = (): DOMRect => new DOMRect(0, 100, 240, 283);
+    const line = new DOMRect(8, 108, 40, 19);
+    const ranged: Node[] = [];
+    const spy = vi.spyOn(document, 'createRange').mockReturnValue({
+      selectNodeContents: (node: Node) => ranged.push(node),
+      getClientRects: () => [line],
+    } as unknown as Range);
 
-    expect(firstLineOf(block)).toBe(box);
+    expect(firstLineOf(block)).toBe(line);
+    expect(ranged).toEqual([block.querySelector('td p')]);
+    spy.mockRestore();
   });
 });

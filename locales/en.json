@@ -488,9 +488,6 @@
       "audioLegacyNoPrompt": "This node is too old. Create a new audio node.",
       "audioParams": "Parameters",
       "voiceStability": "Stability",
-      "voiceStabilityCreative": "Creative",
-      "voiceStabilityNatural": "Natural",
-      "voiceStabilityRobust": "Robust",
       "voiceSimilarity": "Similarity",
       "voiceSpeed": "Speed",
       "voiceVolume": "Volume",
@@ -699,7 +696,12 @@
         "zoom": "Zoom",
         "other": "Other"
       },
-      "cameraCommandsPreviewHint": "Hover a command to preview it"
+      "cameraCommandsPreviewHint": "Hover a command to preview it",
+      "cameraAngle": {
+        "title": "Camera angle",
+        "reset": "Reset",
+        "loadFailed": "The 3D view could not load. Refresh the page to use it."
+      }
     },
     "edge": {
       "delete": "Delete connection"

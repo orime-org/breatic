@@ -26,6 +26,7 @@ import {
   type ProbeRequest,
 } from "@ingest/probe-answer.js";
 import { NOTHING_FOUND } from "@ingest/media-metadata.js";
+import { noted, noteFailure } from "@ingest/error-monitoring.js";
 import type { MediaContainer } from "@ingest/media-container.js";
 import type { MediaLimits } from "@breatic/shared";
 
@@ -121,13 +122,7 @@ export async function readMediaAtEdge(
     new Promise<typeof UNFINISHED>((resolve) => {
       setTimeout(() => resolve(UNFINISHED), about.limits.runDeadlineMs);
     }),
-  ]).catch((err: unknown) => {
-    console.error("ingest_media_read_failed", {
-      storageKey: about.storageKey,
-      err: err instanceof Error ? err.stack : String(err),
-    });
-    return null;
-  });
+  ]).catch(noted("ingest_media_read_failed", { storageKey: about.storageKey }));
 
   if (answered === UNFINISHED) {
     // Written down because from the caller's side a run still going is
@@ -135,7 +130,7 @@ export async function readMediaAtEdge(
     // tail is the commonest way this step fails. The timer that resolved this
     // is the only thing that could say so, and it says it here rather than
     // where it fires, so a run that answered first never reaches this line.
-    console.error("ingest_media_read_unfinished", {
+    noteFailure("ingest_media_read_unfinished", {
       storageKey: about.storageKey,
       runDeadlineMs: about.limits.runDeadlineMs,
     });
@@ -143,7 +138,7 @@ export async function readMediaAtEdge(
   }
   if (answered === null) return NOTHING_READ;
   if (!answered.ok) {
-    console.error("ingest_media_read_refused", {
+    noteFailure("ingest_media_read_refused", {
       storageKey: about.storageKey,
       status: answered.status,
     });

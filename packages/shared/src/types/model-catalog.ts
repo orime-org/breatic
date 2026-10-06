@@ -214,6 +214,16 @@ export interface CameraCommandEntry {
   preview_url: string;
 }
 
+/** Which of a model's params make up one camera pose (inner#830). */
+export interface CameraAngleParams {
+  /** The param holding the angle round the subject, in degrees. */
+  azimuth: string;
+  /** The param holding the angle above or below the subject, in degrees. */
+  elevation: string;
+  /** The param holding the distance step. */
+  distance: string;
+}
+
 /** Single model definition — one entry in the catalog response. */
 export interface ModelEntry {
   name: string;
@@ -272,6 +282,11 @@ export interface ModelEntry {
    * with the clip that previews it. Absent on a model that reads none.
    */
   camera_commands?: readonly CameraCommandEntry[];
+  /**
+   * The three params that together set one camera pose, which the panel draws
+   * as one camera-angle control. Absent on a model without one.
+   */
+  camera_angle?: CameraAngleParams;
   /**
    * Brand icon name for the Generate picker (mapped to an inline SVG on the
    * frontend, e.g. `nano-banana` / `openai` / `seedream`). Optional only so
@@ -581,6 +596,12 @@ const modelEntrySchema = z.object({
   // where a half-parsed one would offer commands with no clip.
   camera_commands: z
     .array(z.object({ name: z.string(), preview_url: z.string() }))
+    .optional()
+    .catch(undefined),
+  // A partial declaration degrades to absent: the panel then draws the three
+  // params as plain sliders, where half a sphere would set half a pose.
+  camera_angle: z
+    .object({ azimuth: z.string(), elevation: z.string(), distance: z.string() })
     .optional()
     .catch(undefined),
 });

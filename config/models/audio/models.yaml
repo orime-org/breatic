@@ -32,9 +32,10 @@
 #   param.label          — marks a control only this model has; on screen it
 #                          is named by canvas.generatePanel.param.<name> in
 #                          locales/*.json, like the shared controls.
-#   param.value_labels   — how a value of `values` reads on screen, when its
-#                          own spelling is not that (English); the rest read
-#                          as themselves with a capital first letter.
+#   param.value_labels   — how a value reads on screen, in English and never
+#                          localized: a value of `values`, or a step of a
+#                          `min`/`max`/`step` range; unlabelled values read as
+#                          themselves with a capital first letter.
 #   param.type           — list (reference pool), items (a list editor, with
 #                          `fields` and `max_items`), text (a free text field).
 #                          `values: [true, false]` draws a switch; `min`, `max`

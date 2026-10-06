@@ -66,6 +66,7 @@ export type {
   ModelProvider,
   ModelEntry,
   CameraCommandEntry,
+  CameraAngleParams,
   PricingContract,
   ExtraStep,
   SourceGroup,
@@ -338,6 +339,17 @@ export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
 
 export {
+  addressWithoutQuery,
+  errorMonitoringDataCollection,
+  errorMonitoringEnvironmentName,
+  errorMonitoringRelease,
+  isSentryDsn,
+  requestWithoutQuery,
+  type ErrorMonitoringDataCollection,
+  type ErrorMonitoringEnvironment,
+} from "@shared/error-monitoring.js";
+
+export {
   documentBodyFragment,
   documentCommentThreads,
   encodeInitialSpaceContent,
@@ -407,6 +419,15 @@ export {
   type CameraCommand,
   type CameraCommandAxis,
 } from "@shared/camera-commands.js";
+export {
+  CAMERA_ANGLE_AXES,
+  CAMERA_ANGLE_GRID,
+  DEFAULT_CAMERA_ANGLE,
+  nearestCameraAngle,
+  stepCameraAngle,
+  type CameraAngle,
+  type CameraAngleAxis,
+} from "@shared/camera-angle.js";
 export { appliesInMode, paramsForMode } from "@shared/param-modes.js";
 export {
   storyboardSend,

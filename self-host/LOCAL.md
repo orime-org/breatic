@@ -126,6 +126,7 @@ Confirm that you logged into the account owning the bucket. Create `packages/ing
 name = "creator-ingest-config"
 main = "src/index.ts"
 compatibility_date = "2026-03-10"
+compatibility_flags = ["nodejs_compat"]
 account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
 
 [env.production]
@@ -153,6 +154,8 @@ class_name = "MediaContainer"
 type = "durable-object"
 storage = "sqlite"
 ```
+
+`compatibility_flags` is required: without it the Worker fails to load (`No such module "node:async_hooks"`). A configuration created before this line was added needs it before the next deploy. No error-reporting settings are needed; with no `SENTRY_DSN` the Worker reports nothing.
 
 For multiple instances in one Cloudflare account, give each a distinct production `name`, bucket and shared secret. Do not overwrite an existing Worker. This deployment configuration has no `[dev].port`, `remote=true` or `.dev.vars`.
 

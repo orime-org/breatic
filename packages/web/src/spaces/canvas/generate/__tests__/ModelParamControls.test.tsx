@@ -170,6 +170,15 @@ describe('ModelParamControls', () => {
     });
   });
 
+  it('names the steps of a range under its slider, as its value_labels read', () => {
+    const named = model({
+      strength: { description: '', label: 'yaml label', min: 0, max: 1, step: 0.5, value_labels: { '0': 'Off', '1': 'Full' }, default: 0, fill: 'panel' },
+    });
+    render(<ModelParamControls mode='t2i' model={named} value={{ strength: 0 }} onChange={() => {}} />);
+    expect(screen.getByTestId('generate-param-strength-stop-0')).toHaveTextContent('Off');
+    expect(screen.getByTestId('generate-param-strength-stop-1')).toHaveTextContent('Full');
+  });
+
   it('draws nothing for a model with no controls of its own', () => {
     const { container } = render(
       <ModelParamControls mode='t2i' model={model({})} value={{}} onChange={() => {}} />,

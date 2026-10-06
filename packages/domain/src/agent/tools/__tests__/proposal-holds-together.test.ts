@@ -819,6 +819,66 @@ describe("what the model is allowed to fill in", () => {
 
     expect(checkProposal(wrong)).toEqual({ ok: false, reason: expect.stringContaining(`"${found.name}" runs from`) });
   });
+
+  /**
+   * Every slider parameter some reachable mode offers, with the mode it sits in.
+   * @returns One entry per stepped range.
+   */
+  const steppedRanges = (): {
+    at: ReturnType<typeof reachableModes>[number];
+    name: string;
+    min: number;
+    max: number;
+    step: number;
+  }[] =>
+    reachableModes().flatMap((at) =>
+      Object.entries(at.params)
+        .filter(([, p]) => p.min !== undefined && p.max !== undefined && p.step !== undefined)
+        .filter(([, p]) => (p.options ?? []).length === 0)
+        .map(([name, p]) => ({ at, name, min: p.min as number, max: p.max as number, step: p.step as number })),
+    );
+
+  it("refuses a number between two steps of a stepped range, and names the values it takes", () => {
+    const found = steppedRanges().find((r) => r.step >= 2 && Number.isInteger(r.step));
+    if (!found) throw new Error("the catalog offers no range stepped by more than one");
+
+    const wrong = propose(found.at, { params: { [found.name]: found.min + found.step / 2 } });
+    const right = propose(found.at, { params: { [found.name]: found.min + found.step } });
+
+    const takes = Array.from({ length: (found.max - found.min) / found.step + 1 }, (_, i) => found.min + i * found.step);
+    expect(checkProposal(wrong)).toEqual({
+      ok: false,
+      reason: `"${found.name}" moves in steps of ${found.step} from ${found.min}, so it takes ${takes.join(", ")}, not ${found.min + found.step / 2}.`,
+    });
+    expect(checkProposal(right)).toEqual({ ok: true });
+  });
+
+  it("names the span and step, not every value, when a stepped range takes more than a dozen", () => {
+    const found = steppedRanges().find((r) => (r.max - r.min) / r.step + 1 > 12);
+    if (!found) throw new Error("the catalog offers no stepped range with more than a dozen values");
+
+    const wrong = propose(found.at, { params: { [found.name]: found.min + found.step / 2 } });
+
+    expect(checkProposal(wrong)).toEqual({
+      ok: false,
+      reason: `"${found.name}" moves in steps of ${found.step} from ${found.min}, so it takes values from ${found.min} to ${found.max}, not ${found.min + found.step / 2}.`,
+    });
+  });
+
+  it("takes a value on a fractional step that floating-point division would put off it", () => {
+    // A value on a step whose distance from the floor, divided by the step,
+    // does not come out a whole number in binary: (1.15 - 0.5) / 0.05 is one.
+    const found = steppedRanges()
+      .filter((r) => !Number.isInteger(r.step))
+      .flatMap((r) => {
+        const count = Math.floor((r.max - r.min) / r.step + 1e-9);
+        return Array.from({ length: count + 1 }, (_, k) => ({ ...r, value: Number((r.min + k * r.step).toFixed(6)) }));
+      })
+      .find((r) => !Number.isInteger((r.value - r.min) / r.step));
+    if (!found) throw new Error("the catalog offers no fractional step that floating point divides inexactly");
+
+    expect(checkProposal(propose(found.at, { params: { [found.name]: found.value } }))).toEqual({ ok: true });
+  });
 });
 
 describe("wiring that could not be placed", () => {

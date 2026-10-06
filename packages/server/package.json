@@ -20,6 +20,7 @@
     "@breatic/shared": "workspace:*",
     "@hono/node-server": "^2.1.0",
     "@hono/zod-validator": "^0.7.6",
+    "@sentry/node": "catalog:",
     "ai": "catalog:",
     "bcryptjs": "catalog:",
     "dotenv": "catalog:",

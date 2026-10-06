@@ -30,7 +30,9 @@ import {
   shipCameraCommands,
   type DeclaredCameraCommand,
 } from "@domain/model-catalog/camera-commands.js";
+import { assertCameraAngle, shipCameraAngle } from "@domain/model-catalog/camera-angle.js";
 import type {
+  CameraAngleParams,
   ExtraStep,
   ModelCatalog,
   ModelEntry,
@@ -135,6 +137,8 @@ export interface FullModelEntry {
   max_input_chars?: number;
   /** The camera commands this model reads out of its prompt. */
   camera_commands?: DeclaredCameraCommand[];
+  /** The three params that together set one camera pose (inner#830). */
+  camera_angle?: CameraAngleParams;
   params?: Record<string, FullParamSpec>;
   providers?: FullProviderEndpoint[];
   /**
@@ -231,6 +235,7 @@ export function getFullModelConfig(modality: string): FullModalityConfig {
   assertParamDeclarations(modality, models);
   assertNamesTellApart(modality, models);
   assertCameraCommands(modality, models);
+  assertCameraAngle(modality, models);
 
   let providers: Record<string, ProviderConnectionConfig> = {};
   const providersPath = resolve(dir, "providers.yaml");
@@ -335,6 +340,7 @@ function projectModelEntry(
     // publishes no cap.
     max_input_chars: m.max_input_chars,
     camera_commands: shipCameraCommands(m.camera_commands),
+    camera_angle: shipCameraAngle(m.camera_angle),
     icon: m.icon,
   };
 }

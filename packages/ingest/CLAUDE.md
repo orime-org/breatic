@@ -28,16 +28,20 @@
 
 **手上已经有一份 `wrangler.toml` 的，要补两行**（2026-09-13 起）：容器镜像改成从仓库根构建，`Dockerfile` 里每一条 COPY 的源都按仓库根写。构建上下文由 `image_build_context` 定，wrangler 相对这个配置文件所在目录解析它、不填时取 Dockerfile 自己那个目录（`wrangler-dist/cli.js:36584-36586`）。所以**两个 `[[containers]]` 块各补一行 `image_build_context = "../.."`** —— `[[containers]]`（`wrangler dev` 用）和 `[[env.production.containers]]`（`deploy:worker` 用）。**`containers` 不继承进 environment**（`cli.js:35941` 注册成 `notInheritable`），只补顶层那个，`wrangler dev` 正常而部署会在第一条 COPY 上失败。模板里两个块都已经有了，照抄即可；漏了当场报错、补上就好。
 
-**一个变量只在一个文件里定义，没有覆盖**：`wrangler.toml` 装非密钥（桶名、允许的来源），`.dev.vars` 只装 `INGEST_SHARED_SECRET`，两边没有同名的东西。**`.dev.vars` 只管本机那个 `wrangler dev`；部署上的那份密钥走 `npx wrangler secret put INGEST_SHARED_SECRET --env production`**，它存在 Cloudflare 上、不落任何文件，设过之后 `wrangler secret list --env production` 只列得出名字。部署输出的绑定表里看不到它是正常的，那张表只列 vars 和 bindings —— 而缺了它每个请求都答 500，所以「表里没有」和「没设」得靠 `secret list` 分辨。**这里不配我们任何一个端点的地址**——Worker 不请求它们。环境的差别只是同一组变量的不同取值——顶层给 `wrangler dev`，`[env.production]` 给部署。
+**接入错误上报之后，顶层还要补一行 `compatibility_flags = ["nodejs_compat"]`**，放在 `compatibility_date` 旁边，它会继承进 `[env.production]`。Sentry SDK 不管填没填 DSN 都会被 import，缺这个 flag 时打包只出警告，运行时 workerd 拒绝加载 Worker：`wrangler dev` 实测报 `No such module "node:async_hooks"` 起不来。
 
-**缺配置要说出缺的是哪一个**：`fetch` 入口第一件事查三个必填项（`INGEST_SHARED_SECRET` · `ALLOWED_ORIGINS` · `BUCKET` 绑定），缺了答 500 并列出名字，空字符串也算缺。
+**一个变量只在一个文件里定义，没有覆盖**：`wrangler.toml` 装非密钥（桶名、允许的来源、错误上报的 `SENTRY_DSN` 与 `SENTRY_ENVIRONMENT`——DSN 是公开值），`.dev.vars` 只装 `INGEST_SHARED_SECRET`，两边没有同名的东西。**`.dev.vars` 只管本机那个 `wrangler dev`；部署上的那份密钥走 `npx wrangler secret put INGEST_SHARED_SECRET --env production`**，它存在 Cloudflare 上、不落任何文件，设过之后 `wrangler secret list --env production` 只列得出名字。部署输出的绑定表里看不到它是正常的，那张表只列 vars 和 bindings —— 而缺了它每个请求都答 500，所以「表里没有」和「没设」得靠 `secret list` 分辨。**这里不配我们任何一个端点的地址**——Worker 不请求它们。环境的差别只是同一组变量的不同取值——顶层给 `wrangler dev`，`[env.production]` 给部署。
+
+**错误上报**：`SENTRY_DSN` 为空就什么都不发；`SENTRY_RELEASE` 不写进任何文件，由部署命令 `--var SENTRY_RELEASE:<commit>` 传入，不是 40 位小写 commit 就不设 release；`SENTRY_ENVIRONMENT` 不是 `production` / `staging` / `development` 之一就记成 `development`。**所有失败都走 `src/error-monitoring.ts` 的 `noteFailure` 一个出口**：一律写日志，并且默认上报；只有调用处声明是读者自己的输入造成的才只写日志——`/fetch` 拉读者外链失败（票据 `typeFromSource === true`，含响应体传到一半断掉的 `ingest_source_read_failed`）、浏览器发分片时断开（`ingest_part_read_failed`）和 `ingest_stored_type_refused`。读字节来源失败和写 R2 失败要分开：前者是给字节的那一方，后者是我们，`writeStreamAsParts` 用 `SourceReadError` 区分。判定题：**这次失败要我们修吗？读者自己的输入造成的 → `userInput: true`；其余一律上报。** 新写一处失败不许直接 `console.error`。
+
+**缺配置要说出缺的是哪一个**：`fetch` 入口第一件事查三个必填项（`INGEST_SHARED_SECRET` · `ALLOWED_ORIGINS` · `BUCKET` 绑定），缺了答 500 并列出名字，空字符串也算缺。`SENTRY_DSN` 非空但不是合法 DSN（比如模板占位符没替换）时照常服务、不上报，每个 isolate 记一次 `ingest_sentry_dsn_invalid`。
 
 部署走 `pnpm --filter @breatic/ingest deploy:worker`（带 `--env production`）。**这个 script 只在本包，仓库根没有** —— 在根目录跑 `pnpm deploy:worker` 报 `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command "deploy:worker" not found`。顶层的 `name` 跟生产那个不同名，漏掉这个 flag 不会盖到线上 Worker。名字带后缀是因为 `deploy` 是 pnpm 自己的子命令（本仓的 `Dockerfile` 正在用它打三个服务的产物），同名的 script 会被它遮住、一行都不执行。
 
 细节见 [README.md](./README.md)。
 
 ## 关键路径
-它站在上传链路上，而上传是**用户看得见的**。上传那四个端点的每一次拒绝都要有明确状态码：ticket 或令牌验不过 401，分片长度不合 400，交回的清单还差片数 409，写 R2 或算 hash 没成 502。**收尾、`POST /fetch` 和 `POST /media` 都要共享密钥**（不符 401）——浏览器拿不到它，所以这三步只可能由我们自己的服务发起；`POST /fetch` 另有一条：源地址不是 https 400；`POST /media` 请求体不合 400，key 没有对应对象 404。**「这个 key 有没有人在收尾」不在这儿判**——那道许可在我们的账本上，由发起收尾的 server 在调它之前取（#206）。
+它站在上传链路上，而上传是**用户看得见的**。上传那四个端点的每一次拒绝都要有明确状态码：ticket 或令牌验不过 401，分片长度不合或分片没读完 400，交回的清单还差片数 409，写 R2 或算 hash 没成 502。**收尾、`POST /fetch` 和 `POST /media` 都要共享密钥**（不符 401）——浏览器拿不到它，所以这三步只可能由我们自己的服务发起；`POST /fetch` 另有一条：源地址不是 https 400；`POST /media` 请求体不合 400，key 没有对应对象 404。**「这个 key 有没有人在收尾」不在这儿判**——那道许可在我们的账本上，由发起收尾的 server 在调它之前取（#206）。
 
 **`/download/{key}` 是读，拒绝的形状跟上传那四条不同**：key 没有对应对象 404，方法不是 `GET`/`HEAD` 405 并带 `Allow`。R2 自己评四个条件头，它扣下 body 时这里按 RFC 9110 §13.2.2 判这是 412 还是 304 —— 判据要跟 R2 用的那一套一致（它只在存储时刻**早于**命名时刻时才服务），否则一个被它拒绝的请求会被答成「你手上那份是新的」。**不需要共享密钥**：同一个桶本来就在公开域名上答这些对象，这条路径只是给它们加一个头。
 

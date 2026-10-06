@@ -578,6 +578,18 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.focalLength"))} and ${quoted(t("canvas.generatePanel.aperture"))} as ` +
       "well as the camera itself; the wheels only apply while the switch reads " +
       `${quoted(t("canvas.generatePanel.switchOn"))}.`,
+    "- On Qwen Image Multiple Angles (picture panel, Image to Image), the settings popover holds a " +
+      `${quoted(t("canvas.generatePanel.cameraAngle.title"))} control: a small 3D view with the first picture the ` +
+      "model is sent on a card in the middle and a camera on a sphere round it. Dragging moves the camera under the " +
+      "pointer, round and over the card; the wheel moves it nearer or further; with the view focused, the arrow keys " +
+      "step it round and up or down, and + and - step it nearer and further. On release it settles on the nearest of " +
+      "the poses the model makes: eight sides (front, the subject's own right, back, the subject's own left and the " +
+      "four between) at four heights from a low angle to a high angle, and three distances from a close-up to a wide " +
+      "shot. The pose's name (in English in every interface language: Front, Eye level, Medium shot and so on) shows " +
+      "above the view and on the settings pill, three sliders under the view follow it, " +
+      `and ${quoted(t("canvas.generatePanel.cameraAngle.reset"))} puts it back to the front, at eye level, at a ` +
+      "medium shot. The sliders still work when the view cannot load, which it then says in place of the view: " +
+      `${quoted(t("canvas.generatePanel.cameraAngle.loadFailed"))}`,
     `- Video panel: tools ${quoted(t("canvas.generatePanel.reference"))} and ` +
       `${quoted(t("canvas.generatePanel.focus"))}, then after a thin divider one button for each source slot. ` +
       "A model that takes style images adds the same style area at the end, after its own thin divider, and it " +
@@ -637,9 +649,8 @@ export function renderProductGuide(): string {
       `sliders such as ${quoted(t("canvas.generatePanel.voiceSpeed"))}, ` +
       `${quoted(t("canvas.generatePanel.voiceVolume"))}, ${quoted(t("canvas.generatePanel.voiceSimilarity"))} ` +
       `and ${quoted(t("canvas.generatePanel.voiceStability"))} (marked ` +
-      `${quoted(t("canvas.generatePanel.voiceStabilityCreative"))}, ` +
-      `${quoted(t("canvas.generatePanel.voiceStabilityNatural"))} and ` +
-      `${quoted(t("canvas.generatePanel.voiceStabilityRobust"))} along it) when the model has them; a sound ` +
+      "Creative, Natural and Robust along it, in English in every interface language) when the model has " +
+      "them; a sound " +
       `effect's ${quoted(t("canvas.generatePanel.sfxDuration"))}; and any settings of the model's own, where a ` +
       `setting that is a list opens beside it with ${quoted(t("canvas.generatePanel.itemsAdd"))} for another ` +
       "entry and an X on each to remove it. When " +

@@ -476,9 +476,6 @@
       "audioLegacyNoPrompt": "此節點過舊。請新建音訊節點。",
       "audioParams": "參數",
       "voiceStability": "穩定性",
-      "voiceStabilityCreative": "創意",
-      "voiceStabilityNatural": "自然",
-      "voiceStabilityRobust": "穩健",
       "voiceSimilarity": "相似度",
       "voiceSpeed": "語速",
       "voiceVolume": "音量",
@@ -687,7 +684,12 @@
         "zoom": "變焦",
         "other": "其他"
       },
-      "cameraCommandsPreviewHint": "懸停指令即可預覽"
+      "cameraCommandsPreviewHint": "懸停指令即可預覽",
+      "cameraAngle": {
+        "title": "機位",
+        "reset": "重設",
+        "loadFailed": "3D 視圖載入失敗，重新整理頁面後可用"
+      }
     },
     "nodeMenu": {
       "generate": "生成",
