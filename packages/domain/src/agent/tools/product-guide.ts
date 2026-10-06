@@ -150,7 +150,9 @@ export function renderProductGuide(): string {
       "open, even none. A space someone else makes, or one brought back, does not become a tab by itself: open " +
       `it from ${quoted(t("spaces.drawer.title"))} (below), which lists every space. Each tab shows a ` +
       "type icon and the " +
-      "space's name, and hovering a tab shows its full name. Click a tab to switch to it. Double-click the name " +
+      "space's name, and hovering a tab shows its full name. Click a tab to switch to it; switching back finds " +
+      "the space as it was left: the same view, selection, open panels, unfinished text and caret. A canvas " +
+      "tab closed and opened again starts at the view it was closed on. Double-click the name " +
       "to rename it: Enter or clicking away saves, Esc or an empty name keeps the old one. A locked space shows a " +
       `small padlock after its name, and trying to rename it shows ${quoted(t("spaces.rename.locked"))} ` +
       "Locking a space only stops it being renamed or deleted; what is in it stays editable. Hovering a tab " +
@@ -269,8 +271,8 @@ export function renderProductGuide(): string {
     "- Right-click an empty spot on the canvas (inside a group's box you get the group's menu instead) and pick " +
       `${typeLabel("text")}, ${typeLabel("image")}, ${typeLabel("audio")} or ${typeLabel("video")}; the node ` +
       `appears centred where you clicked. The same menu has ${quoted(t("canvas.contextMenu.paste"))}, which puts ` +
-      "copied nodes or copied text at the spot you clicked; a copied picture, screenshot or file does nothing " +
-      "there, so paste those with Cmd/Ctrl+V.",
+      "copied nodes or copied text at the spot you clicked, a step down and to the right of anything already " +
+      "there; a copied picture, screenshot or file does nothing there, so paste those with Cmd/Ctrl+V.",
     "- On a canvas space a floating menu of icons runs along the left edge; each names itself when hovered. " +
       `${quoted(t("menu.item.nodes"))} (a sparkle) opens a list of the same types; the node appears in the ` +
       "middle of the view.",
@@ -289,6 +291,9 @@ export function renderProductGuide(): string {
     "- Drag from the dot on a node's right edge and let go on empty canvas: a menu lists the types that can take " +
       "that connection, and the one you pick appears there, already connected.",
     "- Paste with Cmd/Ctrl+V: a copied node, a file or screenshot, or plain text, which becomes a text node. " +
+      "Nodes copied on this canvas land just beside the originals while those are in view; anything else, nodes " +
+      "copied on another canvas included, lands in the middle of the view. Where something already sits on " +
+      "that spot the paste moves a step down and to the right, so pasting again shows every copy. " +
       "The canvas's keys, this one included, act once the space was the last thing clicked and nothing is being " +
       "typed in. A copied node or a picture copied in this chat pastes onto the canvas even after a click in " +
       "this chat, as long as nothing is being typed in and no menu or large view is open. After typing in this " +
