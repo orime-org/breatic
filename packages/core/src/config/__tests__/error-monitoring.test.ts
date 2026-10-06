@@ -107,4 +107,23 @@ describe("errorMonitoringOptions", () => {
     });
     expect(options).toHaveProperty("release", undefined);
   });
+
+  it("strips the query from the referring page each event carries", () => {
+    const options = errorMonitoringOptions({
+      dsn: "https://key@o1.ingest.sentry.io/2",
+      deployment: "prod",
+      service: "server",
+      buildInfoPath: releasePath(),
+    });
+    const sent = options?.beforeSend({
+      request: { headers: { referer: "https://app.test/reset-password?token=R" } },
+    });
+    expect(sent?.request?.headers).toEqual({ referer: "https://app.test/reset-password" });
+  });
+
+  it("turns monitoring off for a DSN the SDK would not send to", () => {
+    expect(
+      errorMonitoringOptions({ dsn: "<backend DSN>", deployment: "prod", service: "server", buildInfoPath: releasePath() }),
+    ).toBeNull();
+  });
 });

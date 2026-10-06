@@ -78,6 +78,14 @@ describe("failures on a provider's result link", () => {
     expect(events[0]?.environment).toBe("production");
   });
 
+  it("reports the referring page without its query", async () => {
+    sourceUnreachable();
+
+    await pull({}, { referer: "https://app.test/reset-password?token=R" });
+
+    expect(sentEvents()[0]?.request?.headers?.referer).toBe("https://app.test/reset-password");
+  });
+
   it("filters the signed upload ticket out of the request it reports", async () => {
     sourceUnreachable();
 

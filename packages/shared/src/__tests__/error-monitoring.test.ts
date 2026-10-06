@@ -7,6 +7,7 @@ import {
   errorMonitoringEnvironmentName,
   errorMonitoringRelease,
   isSentryDsn,
+  requestWithoutQuery,
 } from "@shared/error-monitoring.js";
 
 const SHA = "4ca3e774ad2bb6b8f9406579ddc4bb611e5037a0";
@@ -44,6 +45,8 @@ describe("errorMonitoringEnvironmentName", () => {
 
 describe("errorMonitoringDataCollection", () => {
   it("collects no user details, cookies, bodies, query strings or identifying headers", () => {
+    // "ticket" and "signature" cover x-upload-ticket (ingest) and
+    // stripe-signature (server webhooks), which the SDKs' own list misses.
     expect(errorMonitoringDataCollection()).toEqual({
       userInfo: false,
       cookies: false,
@@ -57,12 +60,6 @@ describe("errorMonitoringDataCollection", () => {
       databaseQueryData: false,
       graphQL: { document: false, variables: false },
     });
-  });
-
-  it("filters the credential headers the SDKs' own list does not name", () => {
-    const deny = errorMonitoringDataCollection().httpHeaders.request.deny;
-    // x-upload-ticket (ingest) and stripe-signature (server webhooks).
-    expect(deny).toEqual(expect.arrayContaining(["ticket", "signature"]));
   });
 
   it("hands every caller its own object", () => {
@@ -87,5 +84,37 @@ describe("isSentryDsn", () => {
     expect(isSentryDsn("ftp://publickey@o1.ingest.sentry.io/2")).toBe(false);
     expect(isSentryDsn(" https://publickey@o1.ingest.sentry.io/2")).toBe(false);
     expect(isSentryDsn("")).toBe(false);
+  });
+});
+
+describe("requestWithoutQuery", () => {
+  it("drops the query and fragment from the request address and the referring page", () => {
+    const event = {
+      level: "error",
+      request: {
+        url: "https://app.test/api/v1/auth/reset-password?x=1#y",
+        method: "POST",
+        headers: { referer: "https://app.test/reset-password?token=R", "user-agent": "ua" },
+      },
+    };
+
+    expect(requestWithoutQuery(event)).toEqual({
+      level: "error",
+      request: {
+        url: "https://app.test/api/v1/auth/reset-password",
+        method: "POST",
+        headers: { referer: "https://app.test/reset-password", "user-agent": "ua" },
+      },
+    });
+  });
+
+  it("matches the Referer header whatever its case", () => {
+    const sent = requestWithoutQuery({ request: { headers: { Referer: "/decision?token=t" } } });
+    expect(sent.request?.headers).toEqual({ Referer: "/decision" });
+  });
+
+  it("leaves an event without a request as it is", () => {
+    const event = { level: "error" };
+    expect(requestWithoutQuery(event)).toBe(event);
   });
 });

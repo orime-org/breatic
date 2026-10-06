@@ -87,9 +87,13 @@ export function sentEvents(): SentEvent[] {
 /**
  * Ask the Worker to pull the source into a fresh key.
  * @param over - Ticket fields to override.
+ * @param headers - Request headers to add.
  * @returns The Worker's answer, its body already read.
  */
-export async function pull(over: Partial<UploadTicketPayload> = {}): Promise<Response> {
+export async function pull(
+  over: Partial<UploadTicketPayload> = {},
+  headers: Record<string, string> = {},
+): Promise<Response> {
   const ticket = await signUploadTicket(
     {
       storageKey: `image/2026-10-06/${seq++}_reported.png`,
@@ -108,7 +112,7 @@ export async function pull(over: Partial<UploadTicketPayload> = {}): Promise<Res
   const response = await worker.fetch(
     new Request("https://ingest.example.com/fetch", {
       method: "POST",
-      headers: { "x-ingest-secret": env.INGEST_SHARED_SECRET, "x-upload-ticket": ticket },
+      headers: { "x-ingest-secret": env.INGEST_SHARED_SECRET, "x-upload-ticket": ticket, ...headers },
       body: JSON.stringify({ url: `${SOURCE_ORIGIN}${SOURCE_PATH}` }),
     }),
     { ...env, ...MONITORED },

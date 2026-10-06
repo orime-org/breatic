@@ -111,3 +111,50 @@ export function errorMonitoringDataCollection(): ErrorMonitoringDataCollection {
     graphQL: { document: false, variables: false },
   };
 }
+
+/**
+ * An address without its query or fragment.
+ *
+ * What is reported keeps the path, which names the record an error happened
+ * on, and drops the query, where some of our links carry a credential
+ * (`/reset-password?token=`).
+ * @param address - A full or relative address.
+ * @returns The address up to its path.
+ */
+export function addressWithoutQuery(address: string): string {
+  return address.split(/[?#]/, 1)[0] ?? address;
+}
+
+/** The part of an error event that carries addresses. */
+interface WithRequest {
+  request?: { url?: string; headers?: Record<string, string> };
+}
+
+/**
+ * An event whose request address and referring page carry no query.
+ *
+ * The SDKs strip the query from the request address only; the Referer header
+ * holds the full address of the page the request came from, and the header
+ * filter judges names, not values.
+ * @param event - The event about to be sent.
+ * @returns A new event, or the same one when it carries no request.
+ */
+export function requestWithoutQuery<T extends WithRequest>(event: T): T {
+  if (event.request === undefined) return event;
+  const { url, headers } = event.request;
+  return {
+    ...event,
+    request: {
+      ...event.request,
+      ...(url !== undefined && { url: addressWithoutQuery(url) }),
+      ...(headers !== undefined && {
+        headers: Object.fromEntries(
+          Object.entries(headers).map(([name, value]) => [
+            name,
+            name.toLowerCase() === "referer" ? addressWithoutQuery(value) : value,
+          ]),
+        ),
+      }),
+    },
+  };
+}

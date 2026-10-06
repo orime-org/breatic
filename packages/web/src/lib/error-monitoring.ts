@@ -3,9 +3,11 @@
 
 import type { Breadcrumb, BrowserOptions, ErrorEvent } from '@sentry/react';
 import {
+  addressWithoutQuery,
   errorMonitoringDataCollection,
   errorMonitoringEnvironmentName,
   errorMonitoringRelease,
+  requestWithoutQuery,
 } from '@breatic/shared';
 
 /** What the build hands error monitoring. */
@@ -29,19 +31,6 @@ const IGNORED_ERRORS: readonly string[] = [
 const ADDRESS_FIELDS: readonly string[] = ['url', 'from', 'to'];
 
 /**
- * An address without its query or fragment.
- *
- * Some of our links carry a credential in the query (`/reset-password?token=`,
- * `/decision?token=`), and the browser SDK reports page and request addresses
- * as they are: `dataCollection.urlQueryParams` does not reach them.
- * @param address - A full or relative address.
- * @returns The address up to its path.
- */
-function withoutQuery(address: string): string {
-  return address.split(/[?#]/, 1)[0] ?? address;
-}
-
-/**
  * Drop an event whose message is browser noise, and strip the query from the
  * page address and the referring page it carries.
  * @param event - The event about to be sent.
@@ -50,23 +39,7 @@ function withoutQuery(address: string): string {
 function prepareEvent(event: ErrorEvent): ErrorEvent | null {
   const message = event.exception?.values?.[0]?.value ?? '';
   if (IGNORED_ERRORS.some((ignored) => message.includes(ignored))) return null;
-  if (event.request === undefined) return event;
-  const { url, headers } = event.request;
-  return {
-    ...event,
-    request: {
-      ...event.request,
-      ...(url !== undefined && { url: withoutQuery(url) }),
-      ...(headers !== undefined && {
-        headers: Object.fromEntries(
-          Object.entries(headers).map(([name, value]) => [
-            name,
-            name.toLowerCase() === 'referer' ? withoutQuery(value) : value,
-          ]),
-        ),
-      }),
-    },
-  };
+  return requestWithoutQuery(event);
 }
 
 /**
@@ -82,7 +55,7 @@ function prepareBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
     data: Object.fromEntries(
       Object.entries(breadcrumb.data).map(([field, value]) => [
         field,
-        ADDRESS_FIELDS.includes(field) && typeof value === 'string' ? withoutQuery(value) : value,
+        ADDRESS_FIELDS.includes(field) && typeof value === 'string' ? addressWithoutQuery(value) : value,
       ]),
     ),
   };
