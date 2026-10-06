@@ -62,7 +62,7 @@ import {
   CanvasContext,
   type CanvasContextValue,
 } from '@web/spaces/canvas/canvas-context';
-import { useCanvasStore } from '@web/stores';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 /**
  * The mode the panel binds its editors to: the node's stored mode, else the
@@ -417,7 +417,7 @@ async function openPanel(
   seedAudioNode(nodeData);
   const view = render(panelTree(nodeData, undefined, lastWriteWasLocal, board));
   act(() => {
-    useCanvasStore.getState().openGeneratePanel('target', 'audio');
+    canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
   });
   await screen.findByTestId('generate-audio-execute');
   return view;
@@ -431,7 +431,7 @@ beforeEach(() => {
   getVoice.mockReset();
   getVoice.mockResolvedValue({ id: 'Aria', name: 'Aria' });
   _resetForTests();
-  useCanvasStore.setState({ panelHostId: null, panelKind: null, pickSession: null });
+  canvasSessions.of('s').setState({ panelHostId: null, panelKind: null, pickSession: null });
 });
 
 describe('AudioGeneratePanelContainer — what it offers', () => {
@@ -462,7 +462,7 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
     nodeDataMap(getDoc(docName.canvasSpace('p', 's')), 'target')?.delete('prompts');
     render(panelTree({ model: 'elevenlabs-v3' }));
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'audio');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
     });
 
     await screen.findByTestId('generate-audio-legacy');
@@ -594,7 +594,7 @@ describe('AudioGeneratePanelContainer — picking writes to the node', () => {
     seedAudioNode({ model: 'elevenlabs-v3' });
     render(panelTree({ model: 'elevenlabs-v3' }, client));
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'audio');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
     });
     await screen.findByTestId('generate-audio-execute');
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
@@ -760,14 +760,14 @@ describe('AudioGeneratePanelContainer — a mode switch that takes the slot away
     // mid-pick and nothing says why.
     const view = await openPanel({ mode: 'voice_clone', model: 'qwen3-tts-voice-clone' });
     fireEvent.click(await screen.findByTestId('generate-audio-tool-ref-audio'));
-    expect(useCanvasStore.getState().pickSession?.purpose).toBe('refAudio');
+    expect(canvasSessions.of('s').getState().pickSession?.purpose).toBe('refAudio');
     vi.mocked(toast.warning).mockClear();
 
     const moved = { mode: 'tts', model: 'elevenlabs-v3' };
     seedAudioNode(moved);
     view.rerender(panelTree(moved));
 
-    await waitFor(() => expect(useCanvasStore.getState().pickSession).toBeNull());
+    await waitFor(() => expect(canvasSessions.of('s').getState().pickSession).toBeNull());
     expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
       en.canvas.generatePanel.pickEnded,
     );
@@ -783,14 +783,14 @@ describe('AudioGeneratePanelContainer — a mode switch that takes the slot away
       byPeer,
     );
     fireEvent.click(await screen.findByTestId('generate-audio-tool-ref-audio'));
-    expect(useCanvasStore.getState().pickSession?.purpose).toBe('refAudio');
+    expect(canvasSessions.of('s').getState().pickSession?.purpose).toBe('refAudio');
     vi.mocked(toast.warning).mockClear();
 
     const moved = { mode: 'tts', model: 'elevenlabs-v3' };
     seedAudioNode(moved);
     view.rerender(panelTree(moved, undefined, byPeer));
 
-    await waitFor(() => expect(useCanvasStore.getState().pickSession).toBeNull());
+    await waitFor(() => expect(canvasSessions.of('s').getState().pickSession).toBeNull());
     expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
       en.canvas.generatePanel.pickEndedByPeer,
     );

@@ -6,6 +6,9 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { SpaceReadOnlyNotice } from '@web/pages/project/SpaceReadOnlyNotice';
+import { SpaceConnection } from '@web/pages/project/OpenSpace';
+import { DOC_NAME_BUILDERS } from '@web/data/yjs/space-connection';
+import type { SpaceType } from '@breatic/shared';
 import { setLocale } from '@breatic/shared';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
@@ -46,6 +49,37 @@ vi.mock('@web/data/yjs/use-socket', () => ({
   },
 }));
 
+/**
+ * The notice inside its tab's connection, the way `OpenSpace` puts it there: a
+ * Space type with a document gets that document's connection, and one without
+ * gets none.
+ * @param root0 - The Space and who is looking.
+ * @param root0.projectId - Project the Space belongs to.
+ * @param root0.spaceId - The Space.
+ * @param root0.type - Space type, which decides the document.
+ * @param root0.readOnly - True when this person's role is view-only.
+ * @returns The notice in its connection.
+ */
+function Notice({
+  projectId,
+  spaceId,
+  type,
+  readOnly,
+}: {
+  projectId: string;
+  spaceId: string;
+  type: SpaceType;
+  readOnly?: boolean;
+}): React.JSX.Element {
+  const build = DOC_NAME_BUILDERS[type];
+  const notice = <SpaceReadOnlyNotice readOnly={readOnly} />;
+  return build ? (
+    <SpaceConnection name={build(projectId, spaceId)}>{notice}</SpaceConnection>
+  ) : (
+    notice
+  );
+}
+
 /** The server denied writes to this document and the socket is healthy. */
 function degrade(name: string): void {
   socketByDoc.set(name, { writeAccess: 'denied', status: 'connected' });
@@ -59,7 +93,7 @@ describe('SpaceReadOnlyNotice', () => {
 
   it('says so when the server degraded this connection to read-only', () => {
     degrade('project-p1/canvas-s1');
-    render(<SpaceReadOnlyNotice projectId='p1' spaceId='s1' type='canvas' />);
+    render(<Notice projectId='p1' spaceId='s1' type='canvas' />);
     const notice = screen.getByTestId('space-read-only-notice');
     expect(notice).toBeInTheDocument();
     // Announced without stealing focus: this arrives while the user is working,
@@ -69,7 +103,7 @@ describe('SpaceReadOnlyNotice', () => {
   });
 
   it('stays out of the way while this connection may write', () => {
-    render(<SpaceReadOnlyNotice projectId='p1' spaceId='s1' type='canvas' />);
+    render(<Notice projectId='p1' spaceId='s1' type='canvas' />);
     expect(
       screen.queryByTestId('space-read-only-notice'),
     ).not.toBeInTheDocument();
@@ -84,7 +118,7 @@ describe('SpaceReadOnlyNotice', () => {
     // carry it.
     degrade('project-p1/canvas-s1');
     render(
-      <SpaceReadOnlyNotice projectId='p1' spaceId='s1' type='canvas' readOnly />,
+      <Notice projectId='p1' spaceId='s1' type='canvas' readOnly />,
     );
     expect(
       screen.queryByTestId('space-read-only-notice'),
@@ -107,7 +141,7 @@ describe('SpaceReadOnlyNotice', () => {
       writeAccess: 'denied',
       status: 'disconnected',
     });
-    render(<SpaceReadOnlyNotice projectId='p1' spaceId='s1' type='canvas' />);
+    render(<Notice projectId='p1' spaceId='s1' type='canvas' />);
     expect(screen.getByTestId('space-read-only-notice')).toBeInTheDocument();
   });
 
@@ -121,7 +155,7 @@ describe('SpaceReadOnlyNotice', () => {
       writeAccess: 'unknown',
       status: 'disconnected',
     });
-    render(<SpaceReadOnlyNotice projectId='p1' spaceId='s1' type='canvas' />);
+    render(<Notice projectId='p1' spaceId='s1' type='canvas' />);
     expect(
       screen.queryByTestId('space-read-only-notice'),
     ).not.toBeInTheDocument();
@@ -137,7 +171,7 @@ describe('SpaceReadOnlyNotice', () => {
       writeAccess: 'unknown',
       status: 'connecting',
     });
-    render(<SpaceReadOnlyNotice projectId='p1' spaceId='s1' type='canvas' />);
+    render(<Notice projectId='p1' spaceId='s1' type='canvas' />);
     expect(
       screen.queryByTestId('space-read-only-notice'),
     ).not.toBeInTheDocument();
@@ -151,7 +185,7 @@ describe('SpaceReadOnlyNotice', () => {
       writeAccess: 'denied',
       status: 'authFailed',
     });
-    render(<SpaceReadOnlyNotice projectId='p1' spaceId='s1' type='canvas' />);
+    render(<Notice projectId='p1' spaceId='s1' type='canvas' />);
     expect(
       screen.queryByTestId('space-read-only-notice'),
     ).not.toBeInTheDocument();
@@ -162,12 +196,12 @@ describe('SpaceReadOnlyNotice', () => {
     // are two separate documents with two separate ceilings.
     degrade('project-p1/canvas-s1');
     const { unmount } = render(
-      <SpaceReadOnlyNotice projectId='p1' spaceId='s1' type='canvas' />,
+      <Notice projectId='p1' spaceId='s1' type='canvas' />,
     );
     expect(screen.getByTestId('space-read-only-notice')).toBeInTheDocument();
     unmount();
 
-    render(<SpaceReadOnlyNotice projectId='p1' spaceId='s1' type='document' />);
+    render(<Notice projectId='p1' spaceId='s1' type='document' />);
     expect(
       screen.queryByTestId('space-read-only-notice'),
     ).not.toBeInTheDocument();
@@ -191,7 +225,7 @@ describe('SpaceReadOnlyNotice', () => {
     // catches it at author time rather than here.
     expect(() =>
       render(
-        <SpaceReadOnlyNotice projectId='p1' spaceId='s1' type='timeline' />,
+        <Notice projectId='p1' spaceId='s1' type='timeline' />,
       ),
     ).not.toThrow();
     expect(
@@ -216,7 +250,7 @@ describe('SpaceReadOnlyNotice', () => {
     try {
       degrade('project-p1/document-s2');
       render(
-        <SpaceReadOnlyNotice projectId='p1' spaceId='s2' type='document' />,
+        <Notice projectId='p1' spaceId='s2' type='document' />,
       );
       const button = screen.getByTestId('space-read-only-notice-reconnect');
       expect(button).toBeInstanceOf(HTMLButtonElement);
@@ -242,7 +276,7 @@ describe('SpaceReadOnlyNotice', () => {
         setLocale(tag);
         degrade('project-p1/canvas-locale');
         const { unmount } = render(
-          <SpaceReadOnlyNotice
+          <Notice
             projectId='p1'
             spaceId='locale'
             type='canvas'

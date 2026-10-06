@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { canvasRootOf, useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { observeViewportTransform } from '@web/spaces/canvas/viewport-observer';
 
 /**
@@ -27,10 +28,11 @@ import { observeViewportTransform } from '@web/spaces/canvas/viewport-observer';
  * @param open - Whether the popover is open (the follow is inert when closed).
  */
 export function useFollowCanvasViewport(open: boolean): void {
+  const { spaceId } = useCanvasContext();
   React.useEffect(() => {
     if (!open) return undefined;
     let raf = 0;
-    const stop = observeViewportTransform(() => {
+    const stop = observeViewportTransform(canvasRootOf(spaceId), () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         window.dispatchEvent(new Event('resize'));
@@ -40,5 +42,5 @@ export function useFollowCanvasViewport(open: boolean): void {
       stop();
       cancelAnimationFrame(raf);
     };
-  }, [open]);
+  }, [open, spaceId]);
 }

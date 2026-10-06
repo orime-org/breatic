@@ -21,7 +21,7 @@ import { expect, test, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, liveModuleUrl } from './live-module';
 import { openSmokeProject } from './project';
-import { createSpace, deleteSpace } from './space';
+import { createSpace, deleteSpace, visibleSpace } from './space';
 
 /** What the current case is working in. */
 interface Stage {
@@ -128,7 +128,7 @@ export async function seedNode(
   atY = 0,
 ): Promise<void> {
   const { page, projectId, spaceId } = current();
-  await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   const x = atX ?? seededSoFar * SEED_STEP;
   seededSoFar += 1;
   const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
@@ -184,7 +184,7 @@ export async function seedNode(
  */
 export async function panCanvasDown(by: number): Promise<void> {
   const { page } = current();
-  const pane = page.locator('.react-flow__pane');
+  const pane = visibleSpace(page).locator('.react-flow__pane');
   const box = await pane.boundingBox();
   if (box === null) throw new Error('the canvas pane is not on the page');
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -199,7 +199,7 @@ export async function panCanvasDown(by: number): Promise<void> {
  */
 export async function openGenerate(nodeId: string, settled = 'generate-audio-execute'): Promise<void> {
   const { page } = current();
-  const node = page.locator(`.react-flow__node[data-id="${nodeId}"]`);
+  const node = visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`);
   await expect(node).toBeVisible({ timeout: 15_000 });
   await node.click({ button: 'right' });
   await page.getByTestId('node-menu-generate').click();

@@ -59,6 +59,8 @@ const EDITORS = [
     name: 'text node',
     render: (fragment: Y.XmlFragment): React.JSX.Element => (
       <TextNodeEditor
+        spaceId='s'
+        nodeId='n'
         fragment={fragment}
         caretProvider={null}
         placeholder='p'

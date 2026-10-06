@@ -21,7 +21,7 @@ import { Paragraph } from '@tiptap/extension-paragraph';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { Text } from '@tiptap/extension-text';
 import type { Extensions } from '@tiptap/core';
-import { EditorContent, useEditor } from '@tiptap/react';
+import { Editor, EditorContent } from '@tiptap/react';
 import * as React from 'react';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type * as Y from 'yjs';
@@ -29,7 +29,10 @@ import type * as Y from 'yjs';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
+import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
+import { keptEditor } from '@web/spaces/canvas/kept-editors';
 import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
+import { type FocusReturn, useFocusReturn } from '@web/lib/use-focus-return';
 
 /**
  * The box metrics the two states of a text node's body MUST share.
@@ -88,14 +91,15 @@ const EDITOR_CLASS = `${TEXT_BODY_BOX} cursor-text focus:bg-accent/30`;
  * @param options.fragment - The node's shared body.
  * @param options.caretProvider - Provider carrying collaborator carets, or null before first connect.
  * @param options.collaboratorNames - Resolves collaborators' names from the roster.
- * @param options.placeholder - Text shown while the body is empty.
+ * @param options.placeholder - Text shown while the body is empty, or what
+ *   reads it when it can change for an editor that is kept.
  * @returns The complete extension list.
  */
 export function buildTextNodeExtensions(options: {
   fragment: Y.XmlFragment;
   caretProvider?: Pick<HocuspocusProvider, 'awareness'> | null;
   collaboratorNames?: CollaboratorNames | null;
-  placeholder: string;
+  placeholder: string | (() => string);
 }): Extensions {
   const { fragment, caretProvider, collaboratorNames, placeholder } = options;
   return [
@@ -117,6 +121,10 @@ export function buildTextNodeExtensions(options: {
 }
 
 interface TextNodeEditorProps {
+  /** The Space the node is on. */
+  spaceId: string;
+  /** The node. */
+  nodeId: string;
   /** The node's shared body. */
   fragment: Y.XmlFragment;
   /** Provider carrying collaborator carets, or null before the first connect. */
@@ -148,8 +156,35 @@ interface TextNodeEditorProps {
 }
 
 /**
- * The mounted editor for a text node's body.
+ * What a kept editor reads from whichever component is showing it now. The
+ * component that built it may have unmounted since (StrictMode mounts it
+ * twice), so its handlers read through this rather than through that
+ * component's closure.
+ */
+interface EditorWiring {
+  onLeave: (focus: 'return-focus' | 'keep-focus') => void;
+  placeholder: string;
+}
+
+/** Each kept editor's wiring, and the body and caret connection it was built on. */
+const wiringOf = new WeakMap<
+  Editor,
+  {
+    wiring: EditorWiring;
+    fragment: Y.XmlFragment;
+    caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
+    /** The reader is writing here, so the caret goes in on every show. */
+    focusReturn: FocusReturn;
+  }
+>();
+
+/**
+ * The editor for a text node's body, kept for as long as the node is being
+ * written in (inner#1235 A13), so a hidden canvas comes back with the caret
+ * and the undo history where they were.
  * @param props - The editor's inputs.
+ * @param props.spaceId - The Space the node is on.
+ * @param props.nodeId - The node.
  * @param props.fragment - The node's shared body.
  * @param props.caretProvider - Provider carrying collaborator carets.
  * @param props.placeholder - Text shown while the body is empty.
@@ -158,93 +193,108 @@ interface TextNodeEditorProps {
  * @returns The editor element.
  */
 export function TextNodeEditor({
+  spaceId,
+  nodeId,
   fragment,
   caretProvider,
   placeholder,
   editable,
   onLeave,
 }: TextNodeEditorProps): React.JSX.Element {
-  // Read through a ref so the callback's IDENTITY never matters (round-5).
-  // The handlers below live inside useEditor, whose dependency list rebuilds
-  // the whole editor — and while somebody is typing, the parent re-renders on
-  // every keystroke, so an inline-arrow `onLeave` in that list would tear the
-  // editor down per key, yanking the caret and dropping IME composition. A
-  // ref makes that impossible instead of documenting it as a rule callers
-  // have to know.
   // From context, not from a prop: the roster is a project-level fact and
   // every layer between here and the project page used to have to forward it.
+  // The RESOLVER keeps one identity for the editor's whole life and reads the
+  // current roster through a ref, so later names reach the carets.
   const collaboratorNames = useCollaboratorNames();
-  const onLeaveRef = React.useRef(onLeave);
-  onLeaveRef.current = onLeave;
-  const editor = useEditor(
-    {
-      extensions: buildTextNodeExtensions({
+  const resolveName = collaboratorNames?.resolve;
+  const editor = React.useMemo((): Editor => {
+    /**
+     * Builds the editor, with its handlers reading the wiring box.
+     * @returns The editor.
+     */
+    const build = (): Editor => {
+      const wiring: EditorWiring = { onLeave, placeholder };
+      const built = new Editor({
+        extensions: buildTextNodeExtensions({
+          fragment,
+          caretProvider,
+          collaboratorNames,
+          placeholder: () => wiring.placeholder,
+        }),
+        editable,
+        // Take the caret on creation. Nothing else will: this editor is not
+        // the page's initial focus, and it appears in place of the element the
+        // opening double-click was dispatched to — so without this, opening a
+        // node hands back an editor nobody is typing into, and the next
+        // keystroke goes to the canvas instead (Backspace there deletes the
+        // node). At the end rather than the start, because a node is reopened
+        // to keep writing far more often than to correct its first word.
+        autofocus: 'end',
+        // The editable element carries the body's test id, so display and
+        // edit states are addressed the same way.
+        //
+        // The two ARIA attributes are not decoration and not new: the element
+        // this replaced declared them, and a `contenteditable` div has no
+        // implicit role to fall back on.
+        editorProps: {
+          attributes: {
+            class: EDITOR_CLASS,
+            'data-testid': 'text-node-body',
+            role: 'textbox',
+            'aria-multiline': 'true',
+          },
+          handleKeyDown: (_view, event): boolean => {
+            if (event.key !== 'Escape') return false;
+            wiring.onLeave('return-focus');
+            // Claimed, so nothing further up treats the same press as its own.
+            return true;
+          },
+        },
+        onBlur: ({ editor: instance, event }): void => {
+          // Focus moving to something inside the editor is not leaving.
+          const next = event.relatedTarget;
+          if (next instanceof Node && instance.view.dom.contains(next)) return;
+          whenBlurLeaves(spaceId, () => {
+            if (!instance.isDestroyed) wiring.onLeave('keep-focus');
+          });
+        },
+      });
+      wiringOf.set(built, {
+        wiring,
         fragment,
         caretProvider,
-        collaboratorNames,
-        placeholder,
-      }),
-      editable,
-      // Take the caret on mount. Nothing else will: this editor is not the
-      // page's initial focus, and it appears in place of the element the
-      // opening double-click was dispatched to — so without this, opening a
-      // node hands back an editor nobody is typing into, and the next
-      // keystroke goes to the canvas instead (Backspace there deletes the
-      // node). At the end rather than the start, because a node is reopened to
-      // keep writing far more often than to correct its first word.
-      autofocus: 'end',
-      // The editable element carries the body's test id, so display and edit
-      // states are addressed the same way.
-      //
-      // The two ARIA attributes are not decoration and not new: the element
-      // this replaced declared them, and a `contenteditable` div has no
-      // implicit role to fall back on. Without them a screen reader announces
-      // a group of text rather than a multi-line text box somebody is expected
-      // to type into.
-      editorProps: {
-        attributes: {
-          class: EDITOR_CLASS,
-          'data-testid': 'text-node-body',
-          role: 'textbox',
-          'aria-multiline': 'true',
-        },
-        handleKeyDown: (_view, event): boolean => {
-          if (event.key !== 'Escape') return false;
-          onLeaveRef.current('return-focus');
-          // Claimed, so nothing further up treats the same press as its own.
-          return true;
-        },
-      },
-      onBlur: ({ editor: instance, event }): void => {
-        // Switching windows or tabs is not leaving the node: the whole
-        // document loses focus, and coming back should find the caret where it
-        // was rather than a node that closed itself while nobody was looking.
-        if (!document.hasFocus()) return;
-        // Focus moving to something inside the editor is not leaving either.
-        const next = event.relatedTarget;
-        if (next instanceof Node && instance.view.dom.contains(next)) return;
-        onLeaveRef.current('keep-focus');
-      },
-      immediatelyRender: false,
+        focusReturn: { hadFocus: true, returning: false },
+      });
+      return built;
+    };
+    // A kept editor is reused while it is bound to the same body and the same
+    // caret connection; a body replaced by a repair, or the connection's
+    // first arrival, builds a new one.
+    return keptEditor(spaceId, nodeId, build, (kept) => {
+      const bound = wiringOf.get(kept);
+      return bound?.fragment === fragment && bound.caretProvider === caretProvider;
+    });
+    // `onLeave`, `placeholder` and `editable` reach a kept editor below, not by
+    // rebuilding it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spaceId, nodeId, fragment, caretProvider, resolveName]);
+
+  const bound = wiringOf.get(editor);
+  if (bound !== undefined) {
+    bound.wiring.onLeave = onLeave;
+    bound.wiring.placeholder = placeholder;
+  }
+  React.useEffect(() => {
+    if (editor.isEditable !== editable) editor.setEditable(editable);
+  }, [editor, editable]);
+  // Back on screen after a switch of Space, the caret goes back in: the reader
+  // was writing here when they left.
+  useFocusReturn(
+    bound?.focusReturn,
+    () => !editor.isDestroyed && editor.view.hasFocus(),
+    () => {
+      if (!editor.isDestroyed) editor.view.focus();
     },
-    // The placeholder is baked into the extensions at creation and never
-    // re-synced, so a locale switch while a node is open would otherwise leave
-    // the old language behind until it was reopened. `caretProvider` flips
-    // from null to a provider once, on the socket's first connect.
-    //
-    // The RESOLVER, not the roster bundle around it: the bundle is a new object
-    // on every project-page render, and listing it here rebuilt this editor
-    // whenever anyone joined the project — the exact tear-down the ref above
-    // exists to prevent. The resolver keeps one identity for the editor's whole
-    // life and reads the current roster through a ref, so later names reach the
-    // carets without the editor being recreated.
-    [
-      fragment,
-      placeholder,
-      caretProvider,
-      collaboratorNames?.resolve,
-      editable,
-    ],
   );
   // Publish this window's focus and dim collaborators who have left theirs.
   // The other half of the caret story: without it this client publishes into a

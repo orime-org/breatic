@@ -37,7 +37,7 @@ vi.mock('@web/i18n/use-translation', () => ({
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { canvasApi } from '@web/data/api/canvas';
 import { NodeTaskPanelContainer } from '@web/spaces/canvas/tasks/NodeTaskPanelContainer';
-import { useCanvasStore } from '@web/stores/canvas';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 type Nodes = React.ComponentProps<typeof NodeTaskPanelContainer>['nodes'];
 
@@ -97,23 +97,20 @@ function mount(hostNodes: Nodes = nodes()): ReturnType<typeof render> {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(canvasApi.listNodeTasks).mockResolvedValue([]);
-  useCanvasStore.getState().openTaskPanel('target', 'failed');
+  canvasSessions.of('').getState().openTaskPanel('target', 'failed');
 });
 
 describe('NodeTaskPanelContainer', () => {
-  it('closes when its host node disappears', async () => {
+  it('draws nothing once its host node is gone', async () => {
     const view = mount();
-    await waitFor(() =>
-      expect(useCanvasStore.getState().panelHostId).toBe('target'),
-    );
+    await screen.findByTestId('node-task-panel-title');
 
-    // A collaborator deleted the node this panel hangs on. Its three sibling
-    // panels all close themselves here, and `resolvePanelSelectionAction`
-    // leaves the case to them rather than acting on a host that is gone.
+    // A collaborator deleted the node this panel hangs on. Closing the panel
+    // is the canvas's job (`panel-host-deleted.test.tsx`).
     view.rerender(panel([]));
 
     await waitFor(() =>
-      expect(useCanvasStore.getState().panelHostId).toBeNull(),
+      expect(screen.queryByTestId('node-task-panel-title')).toBeNull(),
     );
   });
 
@@ -160,7 +157,7 @@ describe('NodeTaskPanelContainer', () => {
     fireEvent.click(row);
 
     await waitFor(() =>
-      expect(useCanvasStore.getState().panelHostId).toBeNull(),
+      expect(canvasSessions.of('').getState().panelHostId).toBeNull(),
     );
   });
 

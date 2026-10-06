@@ -30,9 +30,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { CatalogGatedFrame } from '@web/spaces/canvas/generate/generate-panel-frame';
 import { modelsApi } from '@web/data/api';
-import { useCanvasStore } from '@web/stores/canvas';
 import { toast } from '@web/lib/toast';
 import type { ModelCatalog } from '@breatic/shared';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 vi.mock('@xyflow/react', () => ({
   NodeToolbar: ({ children }: { children: React.ReactNode }) => (
@@ -105,7 +105,7 @@ function mountGate(modality: 'image' | 'video' = 'image'): ReturnType<typeof ren
 }
 
 beforeEach(() => {
-  useCanvasStore.setState({ panelHostId: 'n1', panelKind: 'generate' });
+  canvasSessions.of('').setState({ panelHostId: 'n1', panelKind: 'generate' });
 });
 
 afterEach(() => {
@@ -151,7 +151,7 @@ describe('CatalogGatedFrame — 目录到齐才展开 (#1964)', () => {
       expect.anything(),
     );
     expect(screen.queryByTestId('panel-body')).toBeNull();
-    expect(useCanvasStore.getState().panelHostId).toBeNull();
+    expect(canvasSessions.of('').getState().panelHostId).toBeNull();
     // 不是失败，所以不能弹 error。
     expect(errorSpy).not.toHaveBeenCalled();
   });
@@ -199,7 +199,7 @@ describe('CatalogGatedFrame — 目录到齐才展开 (#1964)', () => {
         expect.anything(),
       );
       expect(screen.queryByTestId('panel-body')).toBeNull();
-      expect(useCanvasStore.getState().panelHostId).toBeNull();
+      expect(canvasSessions.of('').getState().panelHostId).toBeNull();
       // 对照：这不是「请求失败了」，而是根本没发出去。
       expect(listSpy).not.toHaveBeenCalled();
     } finally {
@@ -219,6 +219,6 @@ describe('CatalogGatedFrame — 目录到齐才展开 (#1964)', () => {
       expect.anything(),
     );
     expect(screen.queryByTestId('panel-body')).toBeNull();
-    expect(useCanvasStore.getState().panelHostId).toBeNull();
+    expect(canvasSessions.of('').getState().panelHostId).toBeNull();
   });
 });

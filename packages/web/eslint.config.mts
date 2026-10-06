@@ -405,6 +405,31 @@ export default [
     },
   },
   {
+    // A Space switched away from keeps its canvas on the page, hidden, so a
+    // lookup across the whole document can land on another Space's viewport,
+    // pane, node or banner. Canvas code starts every lookup from its own
+    // Space (`canvasRootOf`); that function is the one place that reads the
+    // document.
+    files: ['src/spaces/canvas/**/*.{ts,tsx}'],
+    ignores: [
+      'src/spaces/canvas/canvas-context.tsx',
+      '**/__tests__/**',
+      '**/*.test.{ts,tsx}',
+    ],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        ...['querySelector', 'querySelectorAll', 'getElementById', 'getElementsByClassName'].map(
+          (property) => ({
+            object: 'document',
+            property,
+            message: 'Look this up from the canvas\'s own Space: canvasRootOf(spaceId).',
+          }),
+        ),
+      ],
+    },
+  },
+  {
     // Exempt by provenance, not by directory. `components/ui/` is where the
     // shadcn primitives live, but it is not purely vendor — `password-input`
     // is ours, and exempting the whole path left the one first-party control

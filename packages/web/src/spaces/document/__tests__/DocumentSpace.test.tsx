@@ -3,6 +3,7 @@
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
+import { Activity } from 'react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
@@ -45,6 +46,18 @@ vi.mock('@web/data/yjs/use-socket', () => ({
     authFailedReason: socketState.authFailedReason,
   }),
 }));
+vi.mock('@web/data/yjs/space-connection', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@web/data/yjs/space-connection')>();
+  const { useSocket } = await import('@web/data/yjs/use-socket');
+  return {
+    ...actual,
+    // The body reads the connection its tab holds; here that is whatever the
+    // `useSocket` stub above answers.
+    useSpaceConnection: () => useSocket({ name: '', doc: undefined as never }),
+  };
+});
+
 
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
@@ -129,6 +142,31 @@ describe('DocumentSpace', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
   });
 
+  // A Space switched away from is hidden and shown again, which runs its
+  // effects once more (inner#1235 C11). The refusal did not happen again.
+  it('tells a refusal once, not again each time its Space is shown', async () => {
+    socketState.hasEverSynced = true;
+    socketState.status = 'authFailed';
+    socketState.authFailedReason = 'Forbidden';
+    socketState.writeAccess = 'denied';
+    const inSpace = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+      <Activity mode={mode}>
+        <DocumentSpace projectId='p1' spaceId='doc-revoked-shown' />
+      </Activity>
+    );
+    const { rerender } = render(inSpace('visible'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      rerender(inSpace('hidden'));
+    });
+    await act(async () => {
+      rerender(inSpace('visible'));
+    });
+
+    expect(toast.error).toHaveBeenCalledTimes(1);
+  });
+
   it('leaves the degrade notice to the outlet, and still takes typing', async () => {
     // Changed 2026-08-14 (#88). This used to raise a toast here. A degrade is a
     // STATE — it holds for as long as this connection does — and a toast is
@@ -160,10 +198,11 @@ describe('DocumentSpace', () => {
   // now lives (`SpaceReadOnlyNotice.test.tsx`, "says nothing to a viewer"),
   // where deleting the role term does turn it red.
 
-  it('shows the content again immediately after a Space-tab switch', async () => {
-    // Switching Space tabs unmounts and remounts this body — `SpaceOutlet` is
-    // keyed on the Space id. The content is plainly still there across one: the
-    // Y.Doc, the editor and its undo stack are all held elsewhere. So the gate
+  it('shows the content again immediately when its body is mounted again', async () => {
+    // The body can unmount and mount again while its tab keeps the document
+    // open (a notice taking its place, StrictMode). The content is plainly
+    // still there across that: the Y.Doc, the editor and its undo stack are
+    // all held elsewhere. So the gate
     // that withholds the editor must not restart from zero here, or the user
     // gets a loading placeholder in front of a document already in memory.
     //

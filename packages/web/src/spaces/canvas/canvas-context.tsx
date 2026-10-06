@@ -22,6 +22,13 @@ import * as React from 'react';
 
 import type { ProjectRole } from '@breatic/shared';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
+import { useStore } from 'zustand';
+
+import {
+  canvasSessions,
+  type CanvasSessionState,
+  type CanvasSessionStore,
+} from '@web/stores/canvas-session';
 
 /** The canvas subtree's document coordinates, permissions, and caret wiring. */
 export interface CanvasContextValue {
@@ -75,10 +82,45 @@ const NO_CANVAS: CanvasContextValue = {
 export const CanvasContext = React.createContext<CanvasContextValue>(NO_CANVAS);
 
 /**
+ * Where to look for anything the canvas library renders once per canvas.
+ *
+ * A Space switched away from keeps its canvas on the page, hidden, so a
+ * lookup across the whole document can land on another Space's viewport,
+ * pane or node. Every such lookup starts from the Space's own outlet. A
+ * canvas rendered outside a Space (component tests) is the only one on the
+ * page, and the page is its root.
+ * @param spaceId - The Space the canvas belongs to.
+ * @returns The Space's outlet, or the document outside one.
+ */
+export function canvasRootOf(spaceId: string): ParentNode {
+  return (
+    document.querySelector(`[data-space-outlet="${CSS.escape(spaceId)}"]`) ?? document
+  );
+}
+
+/**
  * Read the surrounding canvas subtree's context.
  * @returns The project and space ids, this person's write access and role, and
  *   caret identity.
  */
 export function useCanvasContext(): CanvasContextValue {
   return React.useContext(CanvasContext);
+}
+
+/**
+ * The session store of the canvas this component renders inside, found by
+ * its Space id.
+ * @returns The store.
+ */
+export function useCanvasSessionStore(): CanvasSessionStore {
+  return canvasSessions.of(useCanvasContext().spaceId);
+}
+
+/**
+ * Read a slice of the session of the canvas this component renders inside.
+ * @param selector - What to read.
+ * @returns The slice.
+ */
+export function useCanvasSession<T>(selector: (s: CanvasSessionState) => T): T {
+  return useStore(useCanvasSessionStore(), selector);
 }

@@ -31,6 +31,7 @@ import {
   seedWiredPair,
   setZoom,
 } from '../helpers/annotation-board';
+import { visibleSpace } from '../helpers/space';
 
 test('the armed tool says so on the button and under the pointer', async ({ page }) => {
   const comment = page.getByTestId('tool-comment');
@@ -48,7 +49,7 @@ test('the armed tool says so on the button and under the pointer', async ({ page
   // element: while the tool is armed that is the drop layer, and the pointer
   // has to agree with the thing the click will land on or one of them is
   // lying about where a note may go.
-  const pane = page.locator('.react-flow__pane');
+  const pane = visibleSpace(page).locator('.react-flow__pane');
   const box = await pane.boundingBox();
   if (box === null) throw new Error('the board is not on screen');
   const spot: [number, number] = [box.x + 300, box.y + box.height - 140];
@@ -171,7 +172,7 @@ test('a wire is board too: the armed tool lands a note on an edge', async ({ pag
 
   // The wire is an SVG group with no layout box of its own, so aim at the
   // middle of the path it draws.
-  const wire = page.locator('.react-flow__edge-path').first();
+  const wire = visibleSpace(page).locator('.react-flow__edge-path').first();
   await expect.poll(() => wire.count(), { timeout: SETTLE_MS }).toBeGreaterThan(0);
   const box = await wire.boundingBox();
   if (box === null) throw new Error('the wire draws nothing');
@@ -240,7 +241,7 @@ test('a note stops accepting characters at the cap', async ({ page }) => {
   await closeTheNote(page);
   const had = await noteIds(page);
   await page.getByTestId('tool-comment').click();
-  const pane = await page.locator('.react-flow__pane').boundingBox();
+  const pane = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
   if (pane === null) throw new Error('no pane');
   await page.mouse.click(pane.x + pane.width * 0.3, pane.y + pane.height * 0.6);
   const box = page.getByTestId('annotation-composer-input');
@@ -311,7 +312,7 @@ test('a marquee selection is board too, not a dead rectangle', async ({ page }) 
     steps: 12,
   });
   await page.mouse.up();
-  const rect = page.locator('.react-flow__nodesselection-rect');
+  const rect = visibleSpace(page).locator('.react-flow__nodesselection-rect');
   await expect(rect).toHaveCount(1, { timeout: SETTLE_MS });
   const box = await rect.boundingBox();
   if (box === null) throw new Error('the selection draws nothing');
@@ -394,12 +395,12 @@ test('a floating panel over the board keeps its own clicks', async ({ page }) =>
   const group = page.getByTestId('group-toolbar-group');
   await expect(group).toBeVisible({ timeout: SETTLE_MS });
   const notes = await page.getByTestId('annotation-pin').count();
-  const groups = await page.locator('.react-flow__node-group').count();
+  const groups = await visibleSpace(page).locator('.react-flow__node-group').count();
 
   await page.getByTestId('tool-comment').click();
   await group.click();
 
-  await expect(page.locator('.react-flow__node-group')).toHaveCount(groups + 1, { timeout: SETTLE_MS });
+  await expect(visibleSpace(page).locator('.react-flow__node-group')).toHaveCount(groups + 1, { timeout: SETTLE_MS });
   await expect(page.getByTestId('annotation-composer')).toHaveCount(0);
   await expect(page.getByTestId('annotation-pin')).toHaveCount(notes);
   // The tool is still up: it was never spent.
@@ -456,7 +457,7 @@ test('an armed press that drifts lands the note instead of moving the board', as
   // The group to press is put there first: the board a case starts on is
   // empty.
   await makeAGroup(page);
-  const group = page.locator('.react-flow__node-group');
+  const group = visibleSpace(page).locator('.react-flow__node-group');
   await expect(group).toHaveCount(1, { timeout: SETTLE_MS });
   const box = await group.boundingBox();
   if (box === null) throw new Error('the group draws nothing');

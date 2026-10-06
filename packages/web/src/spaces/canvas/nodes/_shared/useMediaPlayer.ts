@@ -56,6 +56,15 @@ export function useMediaPlayer(
   const [volume, setVolume] = React.useState(1);
   const [muted, setMuted] = React.useState(false);
 
+  // A hidden Space keeps its media element, and an element left playing goes
+  // on sounding from a Space nobody is looking at. Empty deps: this runs when
+  // the Space is hidden or closed, not when the caller hands in a new ref.
+  React.useEffect(() => {
+    const el = ref.current;
+    return () => el?.pause();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   React.useEffect(() => {
     const el = ref.current;
     if (!el) return;

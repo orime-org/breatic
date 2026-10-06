@@ -27,9 +27,8 @@
 import { test, expect, type Page } from 'playwright/test';
 
 import { openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
-const EDITOR = '[data-testid="document-space"] .ProseMirror';
 const BLOCK = `${EDITOR} .bn-block-content`;
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 

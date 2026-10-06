@@ -4,7 +4,7 @@
 /** The canvas hands the panels a getter; these trees answer 'this client'. */
 const LAST_WRITE_LOCAL = (): boolean => true;
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   act,
   fireEvent,
@@ -15,7 +15,7 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
 import type { ModelCatalog, ModelEntry } from '@breatic/shared';
-import type { ReactNode } from 'react';
+import { Activity, type ReactNode } from 'react';
 
 vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
@@ -83,11 +83,11 @@ import {
   nodeDataMap,
 } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
-import { useCanvasStore } from '@web/stores';
 import {
   LOCALE_CATALOGS,
   readPath,
 } from '@web/test-utils/locale-catalogs';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 /**
  * The mode the panel binds its editors to: the node's stored mode, else the
@@ -103,15 +103,21 @@ function storedMode(): string {
 type ContainerProps = Parameters<typeof GeneratePanelContainer>[0];
 
 /**
- * Mounts the container under a fresh QueryClient (no retries — the failure
- * path resolves in one round trip).
+ * The container under a QueryClient, inside the Activity a Space body sits in.
+ * @param client - The query client; the same one across re-renders keeps the
+ *   tree mounted.
  * @param graph - Optional canvas graph override; defaults to a lone target.
- * @returns The render result.
+ * @param mode - Whether the Space is shown.
+ * @returns The tree.
  */
-function mountContainer(graph?: {
-  nodes?: ContainerProps['nodes'];
-  edges?: ContainerProps['edges'];
-}): ReturnType<typeof render> {
+function containerTree(
+  client: QueryClient,
+  graph?: {
+    nodes?: ContainerProps['nodes'];
+    edges?: ContainerProps['edges'];
+  },
+  mode: 'visible' | 'hidden' = 'visible',
+): React.JSX.Element {
   const canvas: CanvasContextValue = {
     projectId: 'p',
     spaceId: 's',
@@ -119,13 +125,10 @@ function mountContainer(graph?: {
     myRole: 'editor',
     caretProvider: null,
   };
-  return render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
-      {/* A REAL ReactFlow with the target node: GeneratePanelBody mounts
+  return (
+    <QueryClientProvider client={client}>
+      <Activity mode={mode}>
+        {/* A REAL ReactFlow with the target node: GeneratePanelBody mounts
           inside a NodeToolbar, which renders its children only when the node
           exists in ReactFlow's store — a bare provider never mounts the
           body (caught wiring the caret-awareness test). The canvas here
@@ -137,30 +140,49 @@ function mountContainer(graph?: {
           popovers open under a bare click; what does need waiting for is the
           trigger becoming enabled once the catalog resolves (measured — that,
           not the event kind, is what makes an early click miss). */}
-      <ReactFlow
-        nodes={[
-          { id: 'target', position: { x: 0, y: 0 }, data: {} },
-        ]}
-        edges={[]}
-      >
-        <CanvasContext.Provider value={canvas}>
-          <GeneratePanelContainer
-            projectId='p'
-            spaceId='s'
-            nodes={
-              graph?.nodes ?? [
-                {
-                  id: 'target',
-                  data: { kind: 'image', status: 'idle' },
-                },
-              ]
-            }
-            edges={graph?.edges ?? []}
-            getLastWriteWasLocal={LAST_WRITE_LOCAL}
-          />
-        </CanvasContext.Provider>
-      </ReactFlow>
-    </QueryClientProvider>,
+        <ReactFlow
+          nodes={[
+            { id: 'target', position: { x: 0, y: 0 }, data: {} },
+          ]}
+          edges={[]}
+        >
+          <CanvasContext.Provider value={canvas}>
+            <GeneratePanelContainer
+              projectId='p'
+              spaceId='s'
+              nodes={
+                graph?.nodes ?? [
+                  {
+                    id: 'target',
+                    data: { kind: 'image', status: 'idle' },
+                  },
+                ]
+              }
+              edges={graph?.edges ?? []}
+              getLastWriteWasLocal={LAST_WRITE_LOCAL}
+            />
+          </CanvasContext.Provider>
+        </ReactFlow>
+      </Activity>
+    </QueryClientProvider>
+  );
+}
+
+/**
+ * Mounts the container under a fresh QueryClient (no retries — the failure
+ * path resolves in one round trip).
+ * @param graph - Optional canvas graph override; defaults to a lone target.
+ * @returns The render result.
+ */
+function mountContainer(graph?: {
+  nodes?: ContainerProps['nodes'];
+  edges?: ContainerProps['edges'];
+}): ReturnType<typeof render> {
+  return render(
+    containerTree(
+      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+      graph,
+    ),
   );
 }
 
@@ -171,7 +193,7 @@ function mountContainer(graph?: {
 describe('GeneratePanelContainer — catalog failure gate', () => {
   beforeEach(() => {
     vi.mocked(toast.error).mockClear();
-    useCanvasStore.setState({
+    canvasSessions.of('s').setState({
       panelHostId: null, panelKind: null,
       pickSession: null,
     });
@@ -183,12 +205,12 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
       .mockRejectedValue(new Error('boom'));
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledTimes(1);
     });
-    expect(useCanvasStore.getState().panelHostId).toBeNull();
+    expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
     expect(
       screen.queryByTestId('generate-prompt-editor'),
     ).not.toBeInTheDocument();
@@ -218,10 +240,10 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     });
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     await waitFor(() => {
-      expect(useCanvasStore.getState().panelHostId).toBe('target');
+      expect(canvasSessions.of('s').getState().panelHostId).toBe('target');
     });
     expect(vi.mocked(useSocket)).not.toHaveBeenCalled();
     listSpy.mockRestore();
@@ -241,24 +263,33 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
    * defaults to "this client did".
    * @returns The render tree.
    */
+  const MODE_TREE_CANVAS: CanvasContextValue = {
+    projectId: 'p',
+    spaceId: 's',
+    readOnly: false,
+    myRole: 'editor',
+    caretProvider: null,
+  };
   const modeTree = (
     client: QueryClient,
     mode: 'i2i' | 't2i',
     author: () => boolean = LAST_WRITE_LOCAL,
   ): React.JSX.Element => (
     <QueryClientProvider client={client}>
-      <ReactFlow
-        nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
-        edges={[]}
-      >
-        <GeneratePanelContainer
-          projectId='p'
-          spaceId='s'
-          nodes={[{ id: 'target', data: { kind: 'image', status: 'idle', mode } }]}
+      <CanvasContext.Provider value={MODE_TREE_CANVAS}>
+        <ReactFlow
+          nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
           edges={[]}
-          getLastWriteWasLocal={author}
-        />
-      </ReactFlow>
+        >
+          <GeneratePanelContainer
+            projectId='p'
+            spaceId='s'
+            nodes={[{ id: 'target', data: { kind: 'image', status: 'idle', mode } }]}
+            edges={[]}
+            getLastWriteWasLocal={author}
+          />
+        </ReactFlow>
+      </CanvasContext.Provider>
     </QueryClientProvider>
   );
 
@@ -279,20 +310,20 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     });
     const { rerender } = render(modeTree(client, 'i2i'));
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
-      useCanvasStore.getState().startReferencePick('target');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().startReferencePick('target');
     });
     await waitFor(() =>
-      expect(useCanvasStore.getState().pickSession?.nodeId).toBe('target'),
+      expect(canvasSessions.of('s').getState().pickSession?.nodeId).toBe('target'),
     );
     // Mode flips to t2i (local toggle or a collaborator's setNodeMode) — the
     // reference pick must NOT be terminated.
     rerender(modeTree(client, 't2i'));
     // Give the mode effect a chance to (wrongly) fire, then assert it did not.
     await waitFor(() =>
-      expect(useCanvasStore.getState().pickSession?.nodeId).toBe('target'),
+      expect(canvasSessions.of('s').getState().pickSession?.nodeId).toBe('target'),
     );
-    expect(useCanvasStore.getState().pickSession?.purpose).toBe('reference');
+    expect(canvasSessions.of('s').getState().pickSession?.purpose).toBe('reference');
     listSpy.mockRestore();
   });
 
@@ -311,15 +342,20 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     });
     const { rerender } = render(modeTree(client, 'i2i'));
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
-      useCanvasStore.getState().startFocusPick('target');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+    });
+    // The panel has to be up in i2i before the pick starts, or the change to
+    // t2i below is the panel's first render rather than a change of mode.
+    await screen.findByTestId('generate-tool-focus');
+    act(() => {
+      canvasSessions.of('s').getState().startFocusPick('target');
     });
     await waitFor(() =>
-      expect(useCanvasStore.getState().pickSession?.purpose).toBe('focus'),
+      expect(canvasSessions.of('s').getState().pickSession?.purpose).toBe('focus'),
     );
     rerender(modeTree(client, 't2i'));
     await waitFor(() =>
-      expect(useCanvasStore.getState().pickSession).toBeNull(),
+      expect(canvasSessions.of('s').getState().pickSession).toBeNull(),
     );
     // Ending it silently leaves the canvas dimming candidates for a pick the
     // user never cancelled, with no word about what happened — the whole
@@ -329,6 +365,42 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
       en.canvas.generatePanel.pickEnded,
     );
+    listSpy.mockRestore();
+  });
+
+  // A Space switched away from is hidden, and showing it again runs every
+  // effect once more (inner#1235). The mode did not change across that, so a
+  // focus pick the reader left running in t2i is still theirs when they come
+  // back, the way a reference or style pick is.
+  it('keeps a focus pick running in t2i across a hide and a show', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([T2I_MODEL, I2I_MODEL]));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const inSpace = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+      <Activity mode={mode}>{modeTree(client, 't2i')}</Activity>
+    );
+    const { rerender } = render(inSpace('visible'));
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().startFocusPick('target');
+    });
+    await waitFor(() =>
+      expect(canvasSessions.of('s').getState().pickSession?.purpose).toBe('focus'),
+    );
+    vi.mocked(toast.warning).mockClear();
+
+    await act(async () => {
+      rerender(inSpace('hidden'));
+    });
+    await act(async () => {
+      rerender(inSpace('visible'));
+    });
+
+    expect(canvasSessions.of('s').getState().pickSession?.purpose).toBe('focus');
+    expect(toast.warning).not.toHaveBeenCalled();
     listSpy.mockRestore();
   });
 
@@ -347,15 +419,20 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     const byPeer = (): boolean => false;
     const { rerender } = render(modeTree(client, 'i2i', byPeer));
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
-      useCanvasStore.getState().startFocusPick('target');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+    });
+    // The panel has to be up in i2i before the pick starts, or the change to
+    // t2i below is the panel's first render rather than a change of mode.
+    await screen.findByTestId('generate-tool-focus');
+    act(() => {
+      canvasSessions.of('s').getState().startFocusPick('target');
     });
     await waitFor(() =>
-      expect(useCanvasStore.getState().pickSession?.purpose).toBe('focus'),
+      expect(canvasSessions.of('s').getState().pickSession?.purpose).toBe('focus'),
     );
     rerender(modeTree(client, 't2i', byPeer));
     await waitFor(() =>
-      expect(useCanvasStore.getState().pickSession).toBeNull(),
+      expect(canvasSessions.of('s').getState().pickSession).toBeNull(),
     );
 
     expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
@@ -388,27 +465,29 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const tree = (model: string): React.JSX.Element => (
       <QueryClientProvider client={client}>
-        <ReactFlow nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]} edges={[]}>
-          <GeneratePanelContainer
-            projectId='p'
-            spaceId='s'
-            nodes={[{ id: 'target', data: { kind: 'image', status: 'idle', mode: 't2i', model } }]}
-            edges={[]}
-            getLastWriteWasLocal={LAST_WRITE_LOCAL}
-          />
-        </ReactFlow>
+        <CanvasContext.Provider value={MODE_TREE_CANVAS}>
+          <ReactFlow nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]} edges={[]}>
+            <GeneratePanelContainer
+              projectId='p'
+              spaceId='s'
+              nodes={[{ id: 'target', data: { kind: 'image', status: 'idle', mode: 't2i', model } }]}
+              edges={[]}
+              getLastWriteWasLocal={LAST_WRITE_LOCAL}
+            />
+          </ReactFlow>
+        </CanvasContext.Provider>
       </QueryClientProvider>
     );
     const { rerender } = render(tree('styled'));
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     fireEvent.click(await screen.findByTestId('generate-tool-style'));
-    expect(useCanvasStore.getState().pickSession?.purpose).toBe('style');
+    expect(canvasSessions.of('s').getState().pickSession?.purpose).toBe('style');
     vi.mocked(toast.warning).mockClear();
 
     rerender(tree('nano-banana'));
-    await waitFor(() => expect(useCanvasStore.getState().pickSession).toBeNull());
+    await waitFor(() => expect(canvasSessions.of('s').getState().pickSession).toBeNull());
     expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(en.canvas.generatePanel.pickEnded);
     listSpy.mockRestore();
   });
@@ -436,27 +515,29 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReactFlow nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]} edges={[]}>
-          <GeneratePanelContainer
-            projectId='p'
-            spaceId='s'
-            nodes={[
-              {
-                id: 'target',
-                data: { kind: 'image', status: 'idle', mode: 't2i', model: 'styled', styleImageUrls: ['a', 'b', 'c'] },
-              },
-            ]}
-            edges={[]}
-            getLastWriteWasLocal={LAST_WRITE_LOCAL}
-          />
-        </ReactFlow>
+        <CanvasContext.Provider value={MODE_TREE_CANVAS}>
+          <ReactFlow nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]} edges={[]}>
+            <GeneratePanelContainer
+              projectId='p'
+              spaceId='s'
+              nodes={[
+                {
+                  id: 'target',
+                  data: { kind: 'image', status: 'idle', mode: 't2i', model: 'styled', styleImageUrls: ['a', 'b', 'c'] },
+                },
+              ]}
+              edges={[]}
+              getLastWriteWasLocal={LAST_WRITE_LOCAL}
+            />
+          </ReactFlow>
+        </CanvasContext.Provider>
       </QueryClientProvider>,
     );
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     fireEvent.click(await screen.findByTestId('generate-tool-style-item-0'));
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
     listSpy.mockRestore();
   });
 });
@@ -467,7 +548,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
 // means a keystroke in an unrelated note rebuilds this panel's view model.
 describe('GeneratePanelContainer — body subscription set', () => {
   beforeEach(() => {
-    useCanvasStore.setState({
+    canvasSessions.of('s').setState({
       panelHostId: null,
       panelKind: null,
       pickSession: null,
@@ -502,7 +583,7 @@ describe('GeneratePanelContainer — body subscription set', () => {
       ],
     });
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     // 等到订阅集真的成形，不是等「这个 hook 被调用过」。这个 hook 住在
     // `GeneratePanelBody` 里，而那是 `CatalogGatedFrame` 的子节点、容器又在
@@ -604,7 +685,7 @@ function seedImageNode(over: Record<string, unknown> = {}): void {
 describe('GeneratePanelContainer — 参数编辑记在哪个模型名下 (#1948)', () => {
   beforeEach(() => {
     _resetForTests();
-    useCanvasStore.setState({
+    canvasSessions.of('s').setState({
       panelHostId: null,
       panelKind: null,
       pickSession: null,
@@ -625,7 +706,7 @@ describe('GeneratePanelContainer — 参数编辑记在哪个模型名下 (#1948
     seedImageNode();
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     fireEvent.click(await screen.findByTestId('generate-ratio-trigger'));
     fireEvent.click(await screen.findByTestId('generate-ratio-option-16:9'));
@@ -651,7 +732,7 @@ describe('GeneratePanelContainer — 参数编辑记在哪个模型名下 (#1948
     seedImageNode();
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     fireEvent.click(await screen.findByTestId('generate-ratio-trigger'));
     fireEvent.click(await screen.findByTestId('generate-ratio-option-16:9'));
@@ -686,7 +767,7 @@ describe('GeneratePanelContainer — 参数编辑记在哪个模型名下 (#1948
 describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1966)', () => {
   beforeEach(() => {
     _resetForTests();
-    useCanvasStore.setState({
+    canvasSessions.of('s').setState({
       panelHostId: null,
       panelKind: null,
       pickSession: null,
@@ -703,7 +784,7 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     seedImageNode();
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     expect(await screen.findByTestId('generate-prompt-not-used')).toBeInTheDocument();
     expect(screen.queryByTestId('generate-prompt-editor')).not.toBeInTheDocument();
@@ -719,7 +800,7 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     seedImageNode();
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     expect(await screen.findByTestId('generate-prompt-editor')).toBeInTheDocument();
     expect(screen.queryByTestId('generate-prompt-not-used')).not.toBeInTheDocument();
@@ -742,7 +823,7 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
       edges: [{ id: 'e1', source: 'src', target: 'target' }],
     });
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     const insert = await screen.findByTestId('generate-ref-insert-e1');
     expect(insert.getAttribute('aria-disabled')).toBe('true');
@@ -768,7 +849,7 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
       edges: [{ id: 'e1', source: 'src', target: 'target' }],
     });
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     const insert = await screen.findByTestId('generate-ref-insert-e1');
     expect(insert.getAttribute('aria-disabled')).toBe('false');
@@ -799,7 +880,7 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     seedImageNode();
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     // 面板要等目录到齐才出现（#1964），所以 findByTestId 已经隔了一个往返；
     // 但按钮从渲染到解出模型还差几帧，不等它就点的是一个禁用按钮。
@@ -829,7 +910,7 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     seedImageNode();
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     // 这一档模型吃提示词而提示词是空的。#1949 之后按钮不再变灰 —— 它可点，
     // 点下去说缺什么（那句话由 #1949 那组钉）；这里钉的是另一半：可点不等于
@@ -844,6 +925,87 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     expect(createSpy).not.toHaveBeenCalled();
     listSpy.mockRestore();
     createSpy.mockRestore();
+  });
+
+  // A Space hidden while its panel is submitting is the same mount, shown
+  // again (inner#1235 A7): the answer that arrives meanwhile still belongs to
+  // the opening it was sent from.
+  describe('an answer that arrives while the Space is hidden', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    /**
+     * Submits from the panel with the answer held back, then hides the Space.
+     * @param settle - How the held-back answer ends.
+     * @returns Shows the Space again.
+     */
+    const submitThenHide = async (
+      settle: (answer: {
+        resolve: (v: Awaited<ReturnType<typeof canvasApi.createTask>>) => void;
+        reject: (e: unknown) => void;
+      }) => void,
+    ): Promise<() => Promise<void>> => {
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(
+        imageCatalog([{ ...T2I_MODEL, takes_prompt: false }]),
+      );
+      let answer:
+        | {
+            resolve: (v: Awaited<ReturnType<typeof canvasApi.createTask>>) => void;
+            reject: (e: unknown) => void;
+          }
+        | undefined;
+      vi.spyOn(canvasApi, 'createTask').mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            answer = { resolve, reject };
+          }),
+      );
+      seedImageNode();
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const { rerender } = render(containerTree(client));
+      act(() => {
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+      });
+      const btn = await screen.findByTestId('generate-execute');
+      await waitFor(() => {
+        expect((btn as HTMLButtonElement).disabled).toBe(false);
+      });
+      fireEvent.click(btn);
+      await waitFor(() => expect(answer).toBeDefined());
+      await act(async () => {
+        rerender(containerTree(client, undefined, 'hidden'));
+      });
+      await act(async () => {
+        settle(answer!);
+      });
+      return async () => {
+        await act(async () => {
+          rerender(containerTree(client, undefined, 'visible'));
+        });
+      };
+    };
+
+    it('closes the panel it was sent from', async () => {
+      const show = await submitThenHide((a) =>
+        a.resolve({ id: 'task-1' } as Awaited<
+          ReturnType<typeof canvasApi.createTask>
+        >),
+      );
+      await show();
+      expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
+    });
+
+    it('takes the next press after a refusal', async () => {
+      const show = await submitThenHide((a) => a.reject(new Error('refused')));
+      await show();
+      fireEvent.click(screen.getByTestId('generate-execute'));
+      await waitFor(() => {
+        expect(canvasApi.createTask).toHaveBeenCalledTimes(2);
+      });
+    });
   });
 });
 
@@ -860,7 +1022,7 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
 describe('GeneratePanelContainer — 不吃提示词的模型不发提示词 (#1966)', () => {
   beforeEach(() => {
     _resetForTests();
-    useCanvasStore.setState({
+    canvasSessions.of('s').setState({
       panelHostId: null,
       panelKind: null,
       pickSession: null,
@@ -883,7 +1045,7 @@ describe('GeneratePanelContainer — 不吃提示词的模型不发提示词 (#1
     seedPromptText('上一个模型下打的字');
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
 
     // 第一个模型吃提示词：编辑器挂上、把那句话灌进镜像，执行按钮因此可点。
@@ -927,7 +1089,7 @@ describe('GeneratePanelContainer — 不吃提示词的模型不发提示词 (#1
     seedPromptText('要发出去的那句话');
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     const btn = await screen.findByTestId('generate-execute');
     await waitFor(() => {
@@ -957,7 +1119,7 @@ describe('GeneratePanelContainer — 点不动的时候说清缺什么 (#1949)',
   beforeEach(() => {
     _resetForTests();
     vi.mocked(toast.warning).mockClear();
-    useCanvasStore.setState({
+    canvasSessions.of('s').setState({
       panelHostId: null,
       panelKind: null,
       pickSession: null,
@@ -971,7 +1133,7 @@ describe('GeneratePanelContainer — 点不动的时候说清缺什么 (#1949)',
     seedImageNode();
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     const btn = await screen.findByTestId('generate-execute');
     // 目录到齐之后才判 —— 目录在飞的那一瞬间按钮本来就该是禁用的（无模型）。
@@ -994,7 +1156,7 @@ describe('GeneratePanelContainer — 点不动的时候说清缺什么 (#1949)',
     seedImageNode();
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     const btn = await screen.findByTestId('generate-execute');
     await waitFor(() => {
@@ -1028,7 +1190,7 @@ describe('GeneratePanelContainer — 点不动的时候说清缺什么 (#1949)',
     seedPromptText('一句话');
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     const btn = await screen.findByTestId('generate-execute');
     await waitFor(() => {
@@ -1062,7 +1224,7 @@ describe('GeneratePanelContainer — 点不动的时候说清缺什么 (#1949)',
     seedPromptText('一句话');
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     const btn = await screen.findByTestId('generate-execute');
     await waitFor(() => {
@@ -1091,7 +1253,7 @@ describe('GeneratePanelContainer — 删掉的守卫由谁接替 (#1949)', () =>
   beforeEach(() => {
     _resetForTests();
     vi.mocked(toast.warning).mockClear();
-    useCanvasStore.setState({
+    canvasSessions.of('s').setState({
       panelHostId: null,
       panelKind: null,
       pickSession: null,
@@ -1110,7 +1272,7 @@ describe('GeneratePanelContainer — 删掉的守卫由谁接替 (#1949)', () =>
     seedPromptText('一句能提交的话');
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     const btn = await screen.findByTestId('generate-execute');
     await waitFor(() => {
@@ -1139,7 +1301,7 @@ describe('GeneratePanelContainer — 删掉的守卫由谁接替 (#1949)', () =>
     seedPromptText('把它改成夜景');
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     // 从模式选择器切到 i2i —— 跟这个文件里换档的既有用例同一条路径。
     fireEvent.click(await screen.findByTestId('generate-mode-trigger'));
@@ -1166,7 +1328,7 @@ describe('GeneratePanelContainer — 删掉的守卫由谁接替 (#1949)', () =>
 describe('这个部署服务不了的档 (#1951)', () => {
   beforeEach(() => {
     _resetForTests();
-    useCanvasStore.setState({
+    canvasSessions.of('s').setState({
       panelHostId: null,
       panelKind: null,
       pickSession: null,
@@ -1181,7 +1343,7 @@ describe('这个部署服务不了的档 (#1951)', () => {
     seedImageNode();
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     fireEvent.click(await screen.findByTestId('generate-mode-trigger'));
     expect(screen.getByTestId('generate-mode-t2i')).toBeInTheDocument();
@@ -1203,7 +1365,7 @@ describe('这个部署服务不了的档 (#1951)', () => {
       nodes: [{ id: 'target', data: { kind: 'image', status: 'idle', mode: 'i2i' } }],
     });
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     const trigger = await screen.findByTestId('generate-mode-trigger');
     await waitFor(() => expect(trigger.textContent).not.toBe(''));
@@ -1241,7 +1403,7 @@ describe('GeneratePanelContainer — what the @ list says when it has nothing to
     seedImageNode();
     const view = mountContainer(graph);
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     await screen.findByTestId('generate-prompt-editor');
     await waitFor(() =>
@@ -1317,7 +1479,7 @@ describe('a model that states how much text it takes', () => {
     seedPromptText('a prompt that runs well past the twenty characters this model takes');
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     const btn = await screen.findByTestId('generate-execute');
     await waitFor(() => {

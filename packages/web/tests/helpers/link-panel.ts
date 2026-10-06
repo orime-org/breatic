@@ -11,6 +11,7 @@
 import { expect, type Page } from 'playwright/test';
 
 import { openFreshDocument, selectParagraph } from './bubble-bar';
+import { VISIBLE_SPACE, DOCUMENT_EDITOR } from './space';
 
 /**
  * The two hover delays, the same numbers the toolbar counts with
@@ -48,7 +49,7 @@ export async function linkTheSelection(page: Page, url: string): Promise<void> {
 export async function collapseAfterLinking(page: Page): Promise<void> {
   await expect(page.getByTestId('doc-link-popover')).toBeHidden({ timeout: 5_000 });
   await expect(
-    page.locator('[data-testid="document-space"] .ProseMirror'),
+    page.locator(`${DOCUMENT_EDITOR}`),
   ).toBeFocused();
   await page.keyboard.press('ArrowRight');
   await expect(page.getByTestId('doc-selection-bubble-bar')).not.toBeAttached({
@@ -71,14 +72,14 @@ export async function openViewOverFirstLink(page: Page): Promise<void> {
     await collapseAfterLinking(page);
   }
 
-  const line = await page.evaluate(() => {
-    const first = document.querySelector('.ProseMirror a')!.getClientRects()[0]!;
+  const line = await page.evaluate((space: string) => {
+    const first = document.querySelector(`${space} .ProseMirror a`)!.getClientRects()[0]!;
     return {
       left: Math.round(first.left) + 2,
       right: Math.round(first.right) - 2,
       y: Math.round(first.top + first.height / 2),
     };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.move(line.left, line.y);
   await page.mouse.down();
   await page.mouse.move(line.right, line.y, { steps: 4 });
@@ -188,13 +189,13 @@ export async function panelBox(
 export async function bodyView(
   page: Page,
 ): Promise<{ left: number; right: number; top: number; bottom: number }> {
-  return page.evaluate(() => {
+  return page.evaluate((space: string) => {
     const r = document
-      .querySelector('[data-testid="document-space"] .ProseMirror')!
+      .querySelector(`${space} [data-testid="document-space"] .ProseMirror`)!
       .closest('[data-radix-scroll-area-viewport]')!
       .getBoundingClientRect();
     return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
-  });
+  }, VISIBLE_SPACE);
 }
 
 /**
@@ -212,7 +213,7 @@ export async function restOnLink(page: Page, index: number): Promise<void> {
   // delivers one event for the whole journey — measured both ways in
   // `engineering/demo/2026-09-14-hover-open-without-motion.probe.spec.ts`.
   const box = (await page
-    .locator('[data-testid="document-space"] .ProseMirror a')
+    .locator(`${DOCUMENT_EDITOR} a`)
     .nth(index)
     .boundingBox())!;
   const x = box.x + box.width / 2;
@@ -235,10 +236,10 @@ export async function restOnLink(page: Page, index: number): Promise<void> {
  */
 export async function firstLinkHref(p: Page): Promise<string> {
   return p.evaluate(
-    () =>
+    (space: string) =>
       document
-        .querySelector('[data-testid="document-space"] .ProseMirror a')
-        ?.getAttribute('href') ?? '',
+        .querySelector(`${space} [data-testid="document-space"] .ProseMirror a`)
+        ?.getAttribute('href') ?? '', VISIBLE_SPACE
   );
 }
 
@@ -259,7 +260,7 @@ export async function firstLinkHref(p: Page): Promise<string> {
 export async function parkPointer(page: Page): Promise<void> {
   await page.keyboard.press('Escape');
   await page
-    .locator('[data-testid="document-space"] .ProseMirror p')
+    .locator(`${DOCUMENT_EDITOR} p`)
     .nth(2)
     .click();
   // Collapse whatever that click produced. Two parks in a row press the same

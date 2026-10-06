@@ -70,6 +70,8 @@ interface Scene {
   point: (at: number) => void;
   writes: () => void;
   leaveBody: () => void;
+  /** Shows or hides the Space the toolbar sits in. */
+  show: (shown: boolean) => void;
   view: NonNullable<ReturnType<typeof buildDocumentEditor>['prosemirrorView']>;
 }
 
@@ -130,10 +132,15 @@ function openBody(): Scene {
 
   const viewport = document.createElement('div');
   document.body.appendChild(viewport);
-  render(
-    <DocumentLinkToolbar editor={editor} viewport={viewport} yielding={false} />,
-    { container: viewport },
+  const tree = (shown: boolean): React.JSX.Element => (
+    <React.Activity mode={shown ? 'visible' : 'hidden'}>
+      <DocumentLinkToolbar editor={editor} viewport={viewport} yielding={false} />
+    </React.Activity>
   );
+  const rendered = render(tree(true), { container: viewport });
+  const show = (shown: boolean): void => {
+    act(() => rendered.rerender(tree(shown)));
+  };
 
   const point = (at: number): void => {
     act(() => {
@@ -155,7 +162,7 @@ function openBody(): Scene {
       view.dom.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
     });
   };
-  return { editor, doc, first, second, point, writes, leaveBody, view };
+  return { editor, doc, first, second, point, writes, leaveBody, show, view };
 }
 
 /** Put the caret one character into the given link. */
@@ -216,6 +223,26 @@ async function confirmAnAddress(): Promise<void> {
 }
 
 describe('the link the pointer is resting on', () => {
+  it('opens again on a link the hand comes back to after its Space was hidden', async () => {
+    // inner#1235 C6. Hiding the Space runs the toolbar's cleanups while the
+    // hand is on a link; nothing about that should stop the next visit to
+    // the same link from bringing the toolbar up.
+    const { first, point, show } = openBody();
+    point(first.from + 2);
+    await screen.findByTestId('doc-link-toolbar');
+
+    show(false);
+    show(true);
+    point(0);
+    await settle();
+    expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+    point(first.from + 2);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    });
+  });
+
   it('keeps it while the reader writes inside the link the caret is in', async () => {
     // A1 and A5. A caret that has not left its link has entered nothing, and
     // the character typed into it moves the link's own extent — which is why

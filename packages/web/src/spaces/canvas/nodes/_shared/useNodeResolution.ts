@@ -31,12 +31,23 @@ export function useNodeResolution(
   resolution: NodeResolution | undefined;
   setResolution: (resolution: NodeResolution) => void;
 } {
-  const [measured, setMeasured] = React.useState<NodeResolution | undefined>(
-    undefined,
+  // Kept with the content it was taken from, so a new picture drops it while
+  // the same picture keeps it across a hidden Space shown again: the image's
+  // load event does not fire a second time to measure it anew.
+  const [measuredFor, setMeasuredFor] = React.useState<{
+    content: string | undefined;
+    resolution: NodeResolution;
+  } | null>(null);
+  const measured =
+    measuredFor !== null && measuredFor.content === content
+      ? measuredFor.resolution
+      : undefined;
+  const setMeasured = React.useCallback(
+    (resolution: NodeResolution): void => {
+      setMeasuredFor({ content, resolution });
+    },
+    [content],
   );
-  React.useEffect(() => {
-    setMeasured(undefined);
-  }, [content]);
   // Both or neither: half a pair describes no frame, and the badge takes two.
   //
   // Measured by type rather than by absence: they come out of a Yjs map that a

@@ -22,9 +22,7 @@
  * 26ms after the focus).
  */
 import { expect, type Locator, type Page } from 'playwright/test';
-
-/** The body's editable element. */
-const EDITOR = '[data-testid="document-space"] .ProseMirror';
+import { DOCUMENT_EDITOR as EDITOR } from './space';
 
 /**
  * The editor's own selection, as text.

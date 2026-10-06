@@ -16,6 +16,7 @@ import { test, expect } from 'playwright/test';
 
 import { openFreshDocument, selectFirstParagraph } from '../helpers/bubble-bar';
 import { collapseAfterLinking, linkTheSelection } from '../helpers/link-panel';
+import { DOCUMENT_EDITOR, VISIBLE_SPACE } from '../helpers/space';
 
 test('在真浏览器里按浮出条上的按钮，文档真的变了', async ({ page }) => {
   await openFreshDocument(page);
@@ -25,9 +26,9 @@ test('在真浏览器里按浮出条上的按钮，文档真的变了', async ({
 
   const html = () =>
     page.evaluate(
-      () =>
-        document.querySelector('[data-testid="document-space"] .ProseMirror')
-          ?.innerHTML ?? '',
+      (space: string) =>
+        document.querySelector(`${space} [data-testid="document-space"] .ProseMirror`)
+          ?.innerHTML ?? '', VISIBLE_SPACE
     );
 
   // 单测里的点击走的是 jsdom 的 `.click()`，它不移动焦点；真机点击会先把焦点
@@ -53,9 +54,9 @@ test('link: pressing a link in the body opens it in a new tab', async ({ page })
 
   const before = page.url();
   const bodyBefore = await page.evaluate(
-    () =>
-      document.querySelector('[data-testid="document-space"] .ProseMirror')
-        ?.textContent ?? '',
+    (space: string) =>
+      document.querySelector(`${space} [data-testid="document-space"] .ProseMirror`)
+        ?.textContent ?? '', VISIBLE_SPACE
   );
 
   // The address is read from what the browser was asked to open, not from the
@@ -82,7 +83,7 @@ test('link: pressing a link in the body opens it in a new tab', async ({ page })
   const [opened] = await Promise.all([
     page.context().waitForEvent('page', { timeout: 10_000 }),
     page
-      .locator('[data-testid="document-space"] .ProseMirror a')
+      .locator(`${DOCUMENT_EDITOR} a`)
       .first()
       .click({ position: { x: 6, y: 8 } }),
   ]);
@@ -95,9 +96,9 @@ test('link: pressing a link in the body opens it in a new tab', async ({ page })
   expect(page.url()).toBe(before);
   await expect(
     page.evaluate(
-      () =>
-        document.querySelector('[data-testid="document-space"] .ProseMirror')
-          ?.textContent ?? '',
+      (space: string) =>
+        document.querySelector(`${space} [data-testid="document-space"] .ProseMirror`)
+          ?.textContent ?? '', VISIBLE_SPACE
     ),
   ).resolves.toBe(bodyBefore);
   await opened.close();

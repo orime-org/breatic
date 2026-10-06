@@ -98,7 +98,7 @@ describe('useCanvasSpace undo lifecycle — switch preserves, close clears', () 
     _resetForTests();
   });
 
-  it('switching away and back (remount of the same space) preserves the undo stack', () => {
+  it('a remount of the same space while its tab is open preserves the undo stack', () => {
     const p = 'proj-switch';
     const s = 'space-switch';
 
@@ -109,11 +109,11 @@ describe('useCanvasSpace undo lifecycle — switch preserves, close clears', () 
     });
     expect(first.result.current.canUndo).toBe(true);
 
-    // Switch to another tab: the active SpaceOutlet unmounts (key change), so
-    // this hook unmounts. The cached manager must NOT be destroyed.
+    // The hook unmounts while its tab stays open (Strict Mode's remount, for
+    // one). The cached manager must NOT be destroyed.
     first.unmount();
 
-    // Switch back: a fresh hook mounts for the SAME space. The undo button
+    // A fresh hook mounts for the SAME space. The undo button
     // must still be available — the old bug reset it to false here.
     const second = renderHook(() => useCanvasSpace(p, s));
     expect(second.result.current.canUndo).toBe(true);

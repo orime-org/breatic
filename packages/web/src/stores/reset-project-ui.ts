@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { useCanvasStore } from '@web/stores/canvas';
+import { canvasGraphs } from '@web/stores/canvas-graph';
+import { canvasSessions } from '@web/stores/canvas-session';
 import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { useInpaintStore } from '@web/stores/inpaint';
 import { useMiniToolStore } from '@web/stores/mini-tool';
@@ -36,6 +38,8 @@ export function resetProjectUiStores(projectId: string): void {
   // going on the user's account with the switch out of reach.
   conversationRuntime.leaveProject(projectId);
   useCanvasStore.getState().reset();
+  canvasSessions.clear();
+  canvasGraphs.clear();
   useUIStore.getState().reset();
   useInpaintStore.getState().reset();
   // The brush-stroke undo history (zundo `temporal`) lives outside store state,

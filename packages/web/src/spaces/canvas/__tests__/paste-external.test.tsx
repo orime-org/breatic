@@ -175,7 +175,7 @@ describe('where pasted nodes land', () => {
     const offset = pasteOffsetFor(
       [{ ...outside, position: { x: 0, y: 0 } }],
       { x: -100, y: -100, width: 800, height: 600 },
-      24,
+      'here',
     );
     const box = { width: 288, height: 192 };
     // The node's centre lands on the view's centre.
@@ -185,9 +185,9 @@ describe('where pasted nodes land', () => {
 
   it('keeps nodes copied on the canvas beside their source', () => {
     const offset = pasteOffsetFor(
-      [{ type: 'text' as const, position: { x: 1100, y: 1100 } }],
+      [{ type: 'text' as const, position: { x: 1100, y: 1100 }, space: 'here' }],
       viewport,
-      24,
+      'here',
     );
     expect(offset).toEqual({ dx: 24, dy: 24 });
   });

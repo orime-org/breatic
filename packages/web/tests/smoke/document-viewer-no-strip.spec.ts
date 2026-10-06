@@ -37,12 +37,11 @@ import { test, expect, type Page, type BrowserContext } from 'playwright/test';
 
 import { credentialsFor } from '../helpers/credentials';
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
 /** The second account's address, which is who the invite names. */
 const emailB = credentialsFor('B').email;
 
-const EDITOR = '[data-testid="document-space"] .ProseMirror';
 const ROW = 'a row a viewer may read but not touch';
 const CELL = 'a cell a viewer may read';
 

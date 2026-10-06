@@ -6,11 +6,15 @@
  */
 
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 /**
  * A model declaring the given params.
@@ -88,7 +92,8 @@ describe('ModelParamControls', () => {
     expect(onChange).toHaveBeenCalledWith({ quality: 'xhigh' });
   });
 
-  it('writes the text once the reader leaves the box, not on every key', () => {
+  it('writes the text once the reader leaves the box, not on every key', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const onChange = vi.fn();
     render(<ModelParamControls mode='t2i' model={MIXED} value={{}} onChange={onChange} />);
     const box = screen.getByLabelText('Negative prompt');
@@ -97,7 +102,7 @@ describe('ModelParamControls', () => {
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.blur(box);
 
-    expect(onChange).toHaveBeenCalledWith({ negative_prompt: 'blur, text' });
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith({ negative_prompt: 'blur, text' }));
   });
 
   describe('a list of entries', () => {
@@ -147,7 +152,8 @@ describe('ModelParamControls', () => {
       expect(screen.getByTestId('generate-param-speakers-add')).toBeDisabled();
     });
 
-    it('writes an edited field when the reader leaves the box, and removes an entry', () => {
+    it('writes an edited field when the reader leaves the box, and removes an entry', async () => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
       const onChange = vi.fn();
       render(<ModelParamControls mode='t2i' model={SPEAKERS} value={ONE} onChange={onChange} />);
       const box = screen.getByTestId('generate-param-speakers-0-speaker');
@@ -155,7 +161,9 @@ describe('ModelParamControls', () => {
       fireEvent.change(box, { target: { value: 'Ann' } });
       expect(onChange).not.toHaveBeenCalled();
       fireEvent.blur(box);
-      expect(onChange).toHaveBeenCalledWith({ speakers: [{ speaker: 'Ann', voice: 'Kore' }] });
+      await waitFor(() =>
+        expect(onChange).toHaveBeenCalledWith({ speakers: [{ speaker: 'Ann', voice: 'Kore' }] }),
+      );
 
       fireEvent.click(screen.getByTestId('generate-param-speakers-0-remove'));
       expect(onChange).toHaveBeenCalledWith({ speakers: [] });

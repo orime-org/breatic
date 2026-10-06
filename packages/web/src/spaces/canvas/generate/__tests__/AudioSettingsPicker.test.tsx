@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 import type * as React from 'react';
@@ -20,6 +20,10 @@ vi.mock('@web/components/ui/tooltip', () => ({
 import { AudioSettingsPicker } from '@web/spaces/canvas/generate/AudioSettingsPicker';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import { initialVoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 /** A voice source nobody reads; these cases are about the params. */
 const NO_VOICE = {
@@ -547,7 +551,8 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
     expect(screen.getByTestId('generate-voice-option-Kore')).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('writes the name on Enter and on leaving the box, but not on the Enter that confirms an IME word (#2256)', () => {
+  it('writes the name on Enter and on leaving the box, but not on the Enter that confirms an IME word (#2256)', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const onChange = vi.fn();
     render(<AudioSettingsPicker mode='tts' voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={onChange} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
@@ -561,7 +566,9 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
     onChange.mockClear();
     fireEvent.change(box, { target: { value: 'Cy' } });
     fireEvent.blur(box);
-    expect(onChange).toHaveBeenCalledWith({ speakers: [{ speaker: 'Ana', voice: 'Kore' }, { speaker: 'Cy', voice: 'Puck' }] });
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith({ speakers: [{ speaker: 'Ana', voice: 'Kore' }, { speaker: 'Cy', voice: 'Puck' }] }),
+    );
   });
 
   it('picks a speaker\'s voice from the list and folds the panel (#2256)', () => {

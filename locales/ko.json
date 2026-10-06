@@ -825,6 +825,9 @@
         "declined": "모델이 이 요청을 거부했습니다.",
         "media_refused": "모델이 이 파일을 받지 않았습니다."
       }
+    },
+    "panel": {
+      "hostDeletedByPeer": "공동 작업자가 노드를 삭제했습니다."
     }
   },
   "auth": {

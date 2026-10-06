@@ -3,6 +3,8 @@
 
 import * as React from 'react';
 
+import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
+import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { useCanvasStore } from '@web/stores';
 
@@ -27,6 +29,11 @@ export interface InlineRename {
   setDraft: (value: string) => void;
   /** Commit the trimmed/clipped draft (Enter / blur); blank leaves it unchanged. */
   commit: () => void;
+  /**
+   * The editor input's blur handler: commits when the reader leaves the input,
+   * and not when its Space is hidden or the browser loses focus.
+   */
+  blur: () => void;
   /** Discard the draft and close the editor (Escape). */
   cancel: () => void;
 }
@@ -88,12 +95,18 @@ export function useInlineRename({
   }, [current]);
 
   // On entering edit, focus AND select the whole name so a keystroke
-  // replaces it immediately (matches the project-title editor).
+  // replaces it immediately (matches the project-title editor). Once only: a
+  // Space shown again runs this effect again, and the reader is mid-word.
+  const selectedOnEntry = React.useRef(false);
   React.useEffect(() => {
-    if (editing) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+    if (!editing) {
+      selectedOnEntry.current = false;
+      return;
     }
+    if (selectedOnEntry.current) return;
+    selectedOnEntry.current = true;
+    inputRef.current?.focus();
+    inputRef.current?.select();
   }, [editing]);
 
   const startEdit = React.useCallback((): void => {
@@ -115,6 +128,11 @@ export function useInlineRename({
     }
     setEditing(false);
   }, [draft, maxLength, onRename]);
+
+  const { spaceId } = useCanvasContext();
+  const blur = React.useCallback((): void => {
+    whenBlurLeaves(spaceId, commit);
+  }, [spaceId, commit]);
 
   const cancel = React.useCallback((): void => {
     editingRef.current = false;
@@ -146,6 +164,7 @@ export function useInlineRename({
     startEdit,
     setDraft,
     commit,
+    blur,
     cancel,
   };
 }

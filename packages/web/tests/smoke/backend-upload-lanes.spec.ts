@@ -25,7 +25,7 @@
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, VISIBLE_SPACE } from '../helpers/space';
 
 let context: BrowserContext;
 let page: Page;
@@ -55,14 +55,14 @@ async function dropFile(
   bytes: Buffer,
 ): Promise<void> {
   await target.evaluate(
-    async ([fileName, mime, encoded]: [string, string, string]) => {
+    async ([fileName, mime, encoded, space]: [string, string, string, string]) => {
       const binary = atob(encoded);
       const buffer = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i += 1) buffer[i] = binary.charCodeAt(i);
       const file = new File([buffer], fileName, { type: mime });
       const transfer = new DataTransfer();
       transfer.items.add(file);
-      const pane = document.querySelector('.react-flow__pane');
+      const pane = document.querySelector(`${space} .react-flow__pane`);
       if (pane === null) throw new Error('no canvas pane to drop onto');
       const rect = pane.getBoundingClientRect();
       const at = {
@@ -74,25 +74,24 @@ async function dropFile(
       pane.dispatchEvent(new DragEvent('dragover', { ...at, dataTransfer: transfer }));
       pane.dispatchEvent(new DragEvent('drop', { ...at, dataTransfer: transfer }));
     },
-    [name, type, bytes.toString('base64')] as [string, string, string],
+    [name, type, bytes.toString('base64'), VISIBLE_SPACE] as [string, string, string, string],
   );
 }
 
 /** Every image node's `src` currently on the canvas. */
 async function imageSources(target: Page): Promise<string[]> {
-  return target.evaluate(() =>
-    [...document.querySelectorAll('.react-flow__node img')].map(
+  return target.evaluate((space: string) =>
+    [...document.querySelectorAll(`${space} .react-flow__node img`)].map(
       (img) => (img as HTMLImageElement).src,
-    ),
-  );
+    ), VISIBLE_SPACE);
 }
 
 /** The id of the one image node on the canvas. */
 async function soleImageNodeId(target: Page): Promise<string> {
-  const id = await target.evaluate(() => {
-    const node = document.querySelector('.react-flow__node');
+  const id = await target.evaluate((space: string) => {
+    const node = document.querySelector(`${space} .react-flow__node`);
     return node?.getAttribute('data-id') ?? null;
-  });
+  }, VISIBLE_SPACE);
   if (id === null) throw new Error('no node on the canvas to generate onto');
   return id;
 }

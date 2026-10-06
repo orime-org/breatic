@@ -42,6 +42,43 @@ beforeEach(() => {
 });
 
 /**
+ * The fake node DOM (what the overlay queries) + the overlay, inside the
+ * Activity a Space body sits in.
+ * @param onConfirm - Confirm spy.
+ * @param onBackToPick - Back-to-pick spy (the overlay's only way out).
+ * @param mode - Whether the Space is shown.
+ * @returns The tree.
+ */
+function overlayTree(
+  onConfirm: () => boolean,
+  onBackToPick: () => void,
+  mode: 'visible' | 'hidden' = 'visible',
+): React.JSX.Element {
+  return (
+    <ReactFlowProvider>
+      <React.Activity mode={mode}>
+        {/* The space column marks the region root; the overlay renders inside
+          it on the page, which is what makes its keys the space's. */}
+        <div data-region='space'>
+          <div className='react-flow__node' data-id='n1'>
+            <img data-testid='image-node-img' src='https://cdn/original.png' alt='' />
+          </div>
+          {/* The pick banner CanvasSpace renders during a session — the overlay
+            hands keyboard focus to it on back-to-pick. */}
+          <div data-testid='reference-pick-banner' tabIndex={-1} />
+          <FocusCropOverlay
+            nodeId='n1'
+            nodePosition={{ x: 0, y: 0 }}
+            onConfirm={onConfirm}
+            onBackToPick={onBackToPick}
+          />
+        </div>
+      </React.Activity>
+    </ReactFlowProvider>
+  );
+}
+
+/**
  * Renders the fake node DOM (what the overlay queries) + the overlay.
  * @param onConfirm - Confirm spy.
  * @param onBackToPick - Back-to-pick spy (the overlay's only way out).
@@ -51,27 +88,7 @@ function renderOverlay(
   onConfirm = vi.fn(() => true),
   onBackToPick = vi.fn(),
 ): ReturnType<typeof render> {
-  const result = render(
-    <ReactFlowProvider>
-      {/* The space column marks the region root; the overlay renders inside
-          it on the page, which is what makes its keys the space's. */}
-      <div data-region='space'>
-        <div className='react-flow__node' data-id='n1'>
-          <img data-testid='image-node-img' src='https://cdn/original.png' alt='' />
-        </div>
-        {/* The pick banner CanvasSpace renders during a session — the overlay
-            hands keyboard focus to it on back-to-pick. */}
-        <div data-testid='reference-pick-banner' tabIndex={-1} />
-        <FocusCropOverlay
-          nodeId='n1'
-          nodePosition={{ x: 0, y: 0 }}
-          onConfirm={onConfirm}
-          onBackToPick={onBackToPick}
-        />
-      </div>
-    </ReactFlowProvider>,
-  );
-  return result;
+  return render(overlayTree(onConfirm, onBackToPick));
 }
 
 beforeEach(() => {
@@ -120,6 +137,23 @@ describe('FocusCropOverlay', () => {
     expect(layer.style.top).toBe('50px');
     expect(layer.style.width).toBe('400px');
     expect(layer.style.height).toBe('300px');
+  });
+
+  // A Space switched away from is hidden and shown again, which runs the
+  // overlay's effects once more (inner#1235 C8). The target did not change,
+  // so the marquee the reader drew is still theirs.
+  it('keeps a drawn marquee across a hide and a show', () => {
+    const confirm = vi.fn(() => true);
+    const back = vi.fn();
+    const view = render(overlayTree(confirm, back));
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+
+    act(() => view.rerender(overlayTree(confirm, back, 'hidden')));
+    act(() => view.rerender(overlayTree(confirm, back, 'visible')));
+
+    const rect = screen.getByTestId('focus-crop-rect');
+    expect(rect.style.left).toBe('50px');
+    expect(rect.style.width).toBe('100px');
   });
 
   it('draws a marquee in img-local coordinates', () => {

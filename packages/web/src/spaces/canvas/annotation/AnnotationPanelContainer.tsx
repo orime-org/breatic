@@ -10,7 +10,7 @@ import { toast } from '@web/lib/toast';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AnnotationSticky } from '@web/spaces/canvas/annotation/AnnotationSticky';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
-import { useCanvasStore } from '@web/stores/canvas';
+import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 
 /** The gap between the pin and the sticky it opens, in screen pixels. */
 const STICKY_GAP = 8;
@@ -45,11 +45,11 @@ export function AnnotationPanelContainer({
   deletedByPeer,
 }: AnnotationPanelContainerProps): React.JSX.Element | null {
   const t = useTranslation();
-  const host = useCanvasStore((s) => s.panelHostId);
-  const kind = useCanvasStore((s) => s.panelKind);
-  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
-  const draftsHeld = useCanvasStore((s) => s.annotationDrafts);
-  const placing = useCanvasStore((s) => s.placingAnnotation);
+  const host = useCanvasSession((s) => s.panelHostId);
+  const kind = useCanvasSession((s) => s.panelKind);
+  const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
+  const draftsHeld = useCanvasSession((s) => s.annotationDrafts);
+  const placing = useCanvasSession((s) => s.placingAnnotation);
   const nodeId = kind === 'annotation' ? host : null;
   const view =
     nodeId === null ? undefined : nodes.find((n) => n.id === nodeId)?.data;
@@ -89,28 +89,26 @@ export function AnnotationPanelContainer({
   // from the entry's own menu — that one reads what the entry says now, so a
   // collaborator's newer body is what it starts from.
   //
-  // Keyed on the host id, so the canvas culling the pin's DOM — which takes
-  // the sticky and leaves the node — is not a close. The two shapes a close
-  // has both run through here: the slot moving to another note (or to
-  // nothing), and this canvas going away — §8.7.3's row for leaving the Space
-  // or unmounting. The slot closes with it either way.
+  // The note the slot leaves gives up the box it had open, unless that box is
+  // a reply (user 2026-09-15). Keyed on the host id, so the canvas culling the
+  // pin's DOM — which takes the sticky and leaves the node — is not a leave.
+  // Read as a change of host rather than in a cleanup: a Space switched away
+  // from is hidden, which runs cleanups, and the note it shows is still open
+  // there (inner#1235 A14). Closing the tab drops this canvas's whole session.
+  const sessionStore = useCanvasSessionStore();
+  const noteSeen = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (nodeId === null) return undefined;
-    return () => {
-      const canvas = useCanvasStore.getState();
-      const held = canvas.annotationDrafts[nodeId];
-      const isAReply =
-        held !== undefined &&
-        held.draft.mode !== 'closed' &&
-        held.draft.use === 'reply';
-      if (!isAReply) canvas.setAnnotationDraft(nodeId, null);
-      // Only when the slot is still this note's. React runs this cleanup AFTER
-      // the render that already wrote the next note into the slot, so opening
-      // another note through the same click would close what that click just
-      // opened and the reader would have to press its pin twice.
-      if (canvas.panelHostId === nodeId) closeActivePanel();
-    };
-  }, [nodeId, closeActivePanel]);
+    const left = noteSeen.current;
+    noteSeen.current = nodeId;
+    if (left === null || left === nodeId) return;
+    const canvas = sessionStore.getState();
+    const held = canvas.annotationDrafts[left];
+    const isAReply =
+      held !== undefined &&
+      held.draft.mode !== 'closed' &&
+      held.draft.use === 'reply';
+    if (!isAReply) canvas.setAnnotationDraft(left, null);
+  }, [sessionStore, nodeId]);
   // Escape collapses the note (§8.7.3), heard here rather than left to follow
   // from the selection: a pin is not a focus stop of xyflow's, so the library's
   // own "Escape unselects the focused node" never runs for one — measured on a

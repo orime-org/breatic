@@ -29,7 +29,7 @@ import { test, expect, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, TEXT_BODY, liveModuleUrl } from '../helpers/live-module';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 /** A public JPEG, the same host the agent's own understand run is measured against. */
 const IMAGE = 'https://picsum.photos/id/237/400/300.jpg';
@@ -129,7 +129,7 @@ async function seedNode(opts: {
  * @returns Nothing; resolves once the menu is on screen.
  */
 async function openNodeMenu(nodeId: string): Promise<void> {
-  const node = page.locator(`.react-flow__node[data-id="${nodeId}"]`);
+  const node = visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`);
   await expect(node).toBeVisible({ timeout: 15_000 });
   await node.click({ button: 'right' });
 }
@@ -147,7 +147,7 @@ test.beforeEach(async ({ browser }) => {
   projectId = smokeProjectId();
 
   spaceId = await createSpace(page, 'canvas', `understand-e2e-${Date.now()}`);
-  await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
 
   imageNode = randomUUID();
   wordsNode = randomUUID();
@@ -161,7 +161,7 @@ test.beforeEach(async ({ browser }) => {
   // Snapshot reads the body, so a node that never got one would fail for a
   // reason that has nothing to do with Snapshot.
   await expect(
-    page.locator(`.react-flow__node[data-id="${wordsNode}"]`),
+    visibleSpace(page).locator(`.react-flow__node[data-id="${wordsNode}"]`),
   ).toContainText('Seeded words.', { timeout: 10_000 });
 });
 
@@ -212,7 +212,7 @@ test('Understand puts a text node downstream with a row counting the run @needs-
   // The browser builds the node and its edge before the request goes out, so
   // a third node is on the canvas either way; what the run decides is what
   // lands in it.
-  const nodes = page.locator('.react-flow__node');
+  const nodes = visibleSpace(page).locator('.react-flow__node');
   await expect(nodes).toHaveCount(3, { timeout: 15_000 });
 
   // xyflow puts the node's id on the element, not its type — the new node is

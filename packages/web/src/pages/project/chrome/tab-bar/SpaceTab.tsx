@@ -74,6 +74,17 @@ const TYPE_ICON: Record<SpaceType, typeof FileText> = {
   timeline: Clock,
 };
 
+/**
+ * Keeps a press on a tab from moving focus onto it while the reader is working
+ * inside a Space, so the caret is still there when that Space is shown again.
+ * Focus anywhere else leaves with the press as usual: a tab or project name
+ * being renamed is saved when it loses focus.
+ * @param event - The mousedown on the tab.
+ */
+function preventFocusOnPress(event: React.MouseEvent): void {
+  if (document.activeElement?.closest('[data-space-outlet]')) event.preventDefault();
+}
+
 const NODE_KIND_ICON: Partial<Record<string, typeof FileText>> = {
   text: Type,
   image: ImageIcon,
@@ -212,6 +223,12 @@ export function SpaceTab({
       role='tab'
       aria-selected={active}
       onClick={editing ? undefined : onActivate}
+      // Pressing a tab switches Space without taking focus from a Space, as a
+      // browser's or an editor's tab strip does: whatever the reader was
+      // writing in keeps the caret until its Space is hidden, so switching
+      // back finds them still writing. Not while renaming this tab, where the
+      // press places the caret in the name.
+      onMouseDown={editing ? undefined : preventFocusOnPress}
       data-testid={`space-tab-${id}`}
       className={cn(
         'group inline-flex shrink-0 cursor-pointer items-center whitespace-nowrap border-0 text-sm',

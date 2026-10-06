@@ -39,7 +39,7 @@ vi.mock('@hocuspocus/provider', () => ({
 }));
 
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
-import { SpaceDocSync } from '@web/pages/project/SpaceDocSync';
+import { OpenSpace } from '@web/pages/project/OpenSpace';
 import {
   _resetCollabSocketForTests,
 } from '@web/data/yjs/collab-socket';
@@ -55,13 +55,13 @@ function tree(tabs: ReadonlyArray<Tab>): React.JSX.Element {
   return (
     <CollabSocketProvider userId='u1'>
       {tabs.map((t) => (
-        <SpaceDocSync key={t.id} projectId='p1' spaceId={t.id} type={t.type} />
+        <OpenSpace key={t.id} projectId='p1' spaceId={t.id} type={t.type} active={false} visited={false} />
       ))}
     </CollabSocketProvider>
   );
 }
 
-describe('SpaceDocSync — attach lifecycle follows OPEN tabs, not the active tab', () => {
+describe('OpenSpace — attach lifecycle follows OPEN tabs, not the active tab', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     _resetCollabSocketForTests();

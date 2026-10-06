@@ -24,7 +24,7 @@ import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { AnnotationPin } from '@web/spaces/canvas/annotation/AnnotationPin';
 import { useAnnotationNames } from '@web/spaces/canvas/annotation/names';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
-import { useCanvasStore } from '@web/stores/canvas';
+import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 
 interface AnnotationNodeProps {
   data: AnnotationNodeView;
@@ -52,9 +52,9 @@ export const AnnotationNode = React.memo(function AnnotationNode({
   // holds a copy of it written by an effect, which is a frame behind during a
   // continuous pinch or wheel zoom.
   const zoom = useStore((s) => s.transform[2]);
-  const openAnnotationPanel = useCanvasStore((s) => s.openAnnotationPanel);
-  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
-  const expanded = useCanvasStore(
+  const openAnnotationPanel = useCanvasSession((s) => s.openAnnotationPanel);
+  const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
+  const expanded = useCanvasSession(
     (s) => s.panelKind === 'annotation' && s.panelHostId === nodeId,
   );
 

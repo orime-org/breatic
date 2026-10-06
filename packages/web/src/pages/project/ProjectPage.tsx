@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { fetchProjectCredits } from '@web/data/api/credits';
 import * as React from 'react';
+import { useStore } from 'zustand';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
 
@@ -36,6 +37,10 @@ import {
 } from '@web/data/yjs/project-meta';
 import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
+import {
+  endAllKeptEditors,
+  endSpaceKeptEditors,
+} from '@web/spaces/canvas/kept-editors';
 import { LeaveProjectGuard } from '@web/pages/project/LeaveProjectGuard';
 import { ProjectJoinGate } from '@web/pages/project/ProjectJoinGate';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
@@ -64,8 +69,12 @@ import {
 import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open';
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
-import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
-import { SpaceDocSync } from '@web/pages/project/SpaceDocSync';
+import { canvasGraphs } from '@web/stores/canvas-graph';
+import {
+  canvasSessions,
+  createCanvasSessionStore,
+} from '@web/stores/canvas-session';
+import { OpenSpace } from '@web/pages/project/OpenSpace';
 import {
   Group,
   Panel,
@@ -81,6 +90,9 @@ import {
   SPACE_MIN_WIDTH,
 } from '@web/pages/project/agent-column-width';
 import { useAgentColumnWidth } from '@web/pages/project/use-agent-column-width';
+
+/** The session the left menu reads while no canvas is on screen. */
+const NO_CANVAS_SESSION = createCanvasSessionStore();
 
 /**
  * Undoes the library's inner wrapper, which is a block box with
@@ -241,7 +253,13 @@ function ProjectWorkspace({
   // a full unmount and a project-id change; runs on leave only (a fresh entry
   // stays untouched). The workspace's own `key` does not cover these: a
   // singleton does not reset with component-local state.
-  React.useEffect(() => () => resetProjectUiStores(projectId), [projectId]);
+  React.useEffect(
+    () => () => {
+      resetProjectUiStores(projectId);
+      endAllKeptEditors();
+    },
+    [projectId],
+  );
 
   const projectName = project.name;
   // Fail-safe default: if `myRole` is missing (glitch / pre-load race),
@@ -290,26 +308,10 @@ function ProjectWorkspace({
   // Chrome → canvas mailbox: the node-library dropdown posts the picked type
   // here; the canvas resolves the viewport-centre drop point (see CanvasSpace).
   const requestNodeCreate = useCanvasStore((s) => s.requestNodeCreate);
-  const startAnnotationPlacement = useCanvasStore(
-    (s) => s.startAnnotationPlacement,
-  );
-  const endAnnotationPlacement = useCanvasStore(
-    (s) => s.endAnnotationPlacement,
-  );
   // Upload-button path: chrome owns the hidden file picker (it must open
   // synchronously inside the button click to keep the browser's user-
   // activation) and posts the picked files to the canvas via this mailbox.
-  // The chrome half of the placing mode: the canvas owns the flag, the menu
-  // has to show which button it belongs to (design §6.4.1).
-  const placingAnnotation = useCanvasStore((s) => s.placingAnnotation);
   const requestUpload = useCanvasStore((s) => s.requestUpload);
-  // A running reference pick slides the floating chrome out of the way
-  // (batch-2 item 13): the canvas is a selection surface for that session and
-  // the menus would only distract / steal clicks. Boolean selector so chrome
-  // re-renders on pick enter/exit only, not on every picked-node change.
-  // Any canvas pick (reference or style) turns the canvas into a selection
-  // surface, so chrome menus are concealed for the duration of either.
-  const picking = useCanvasStore((s) => s.pickSession !== null);
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const {
     spaces,
@@ -421,9 +423,52 @@ function ProjectWorkspace({
     [tabs.openIds, spaces],
   );
 
+  // The bodies in an order the strip cannot change: a body React moves is
+  // taken off the page and put back, which resets every scroll position in it.
+  // Opening or closing a tab only adds or removes one.
+  const openBodies: ReadonlyArray<ProjectSpace> = React.useMemo(
+    () => [...openTabs].sort((a, b) => (a.id < b.id ? -1 : 1)),
+    [openTabs],
+  );
+
   const activeSpace: ProjectSpace | undefined = openTabs.find(
     (s) => s.id === tabs.activeId,
   );
+
+  // The tabs that have been on screen since they opened. A tab's body mounts
+  // the first time it is on screen, so restoring a strip of many tabs mounts
+  // one body, not all of them.
+  const [visited, setVisited] = React.useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  if (activeSpace !== undefined && !visited.has(activeSpace.id)) {
+    setVisited(new Set(visited).add(activeSpace.id));
+  }
+
+  // The left menu acts on the canvas on screen, so it reads that canvas's own
+  // session; with no canvas on screen it reads one that never changes.
+  const activeCanvasSession =
+    activeSpace?.type === 'canvas'
+      ? canvasSessions.of(activeSpace.id)
+      : NO_CANVAS_SESSION;
+  const startAnnotationPlacement = useStore(
+    activeCanvasSession,
+    (s) => s.startAnnotationPlacement,
+  );
+  const endAnnotationPlacement = useStore(
+    activeCanvasSession,
+    (s) => s.endAnnotationPlacement,
+  );
+  // The chrome half of the placing mode: the canvas owns the flag, the menu
+  // has to show which button it belongs to (design §6.4.1).
+  const placingAnnotation = useStore(activeCanvasSession, (s) => s.placingAnnotation);
+  // A running reference pick slides the floating chrome out of the way
+  // (batch-2 item 13): the canvas is a selection surface for that session and
+  // the menus would only distract / steal clicks. Boolean selector so chrome
+  // re-renders on pick enter/exit only, not on every picked-node change.
+  // Any canvas pick (reference or style) turns the canvas into a selection
+  // surface, so chrome menus are concealed for the duration of either.
+  const picking = useStore(activeCanvasSession, (s) => s.pickSession !== null);
 
   // Discard the in-memory state of a tab once it has left the strip —
   // whether the user closed it or the Space was deleted out from under it.
@@ -442,6 +487,12 @@ function ProjectWorkspace({
     for (const id of departed) {
       evictCanvasUndoManager(docName.canvasSpace(projectId, id));
       evictDocumentEditor(docName.documentSpace(projectId, id));
+      canvasSessions.drop(id);
+      canvasGraphs.drop(id);
+      endSpaceKeptEditors(id);
+    }
+    if (departed.length > 0) {
+      setVisited((prev) => new Set([...prev].filter((id) => !departed.includes(id))));
     }
   }, [projectId, tabs.openIds]);
 
@@ -821,18 +872,6 @@ function ProjectWorkspace({
           a front-end operation is still syncing (#1787) — the in-app companion
           to the beforeunload guard. Renders nothing while not blocked. */}
           <LeaveProjectGuard />
-          {/* Keep every OPEN Space tab's Yjs doc attached to the shared collab
-          socket. Attach follows tab open / close — NOT the active tab — so
-          background tabs stay live and re-activating one is instant (user
-          requirement 2026-06-18). Renders nothing. */}
-          {openTabs.map((tab) => (
-            <SpaceDocSync
-              key={tab.id}
-              projectId={projectId}
-              spaceId={tab.id}
-              type={tab.type}
-            />
-          ))}
           <ConnectionBanner
             status={connectionStatus}
             onReload={() => window.location.reload()}
@@ -993,22 +1032,22 @@ function ProjectWorkspace({
                 UI that must escape the box (menus / tooltips) portals to
                 document.body and is unaffected. */}
                   <div className='relative flex-1 overflow-hidden'>
-                    {activeSpace ? (
-                    // key on the Space id so switching tabs REMOUNTS the body,
-                    // which is what gives each Space its own camera: the mount
-                    // aims at what this browser stored for that Space, and
-                    // frames its nodes when there is nothing stored (#1378,
-                    // #2165). Cheap: a remount only re-binds the already-
-                    // attached doc, it does not rebuild a WebSocket.
-                      <SpaceOutlet
-                        key={activeSpace.id}
+                    {/* Every open tab holds its document's connection; the
+                    one on screen shows its body, and a tab switched away from
+                    keeps its body mounted and hidden (inner#1235). */}
+                    {openBodies.map((tab) => (
+                      <OpenSpace
+                        key={tab.id}
                         projectId={projectId}
-                        spaceId={activeSpace.id}
-                        type={activeSpace.type}
+                        spaceId={tab.id}
+                        type={tab.type}
+                        active={tab.id === activeSpace?.id}
+                        visited={visited.has(tab.id)}
                         readOnly={isViewer}
                         myRole={role}
                       />
-                    ) : (
+                    ))}
+                    {activeSpace ? null : (
                       <div
                         data-testid='no-active-space'
                         className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
