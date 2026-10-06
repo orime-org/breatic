@@ -26,6 +26,26 @@ import { t } from "@breatic/shared";
 import type { ProjectMember, ProjectRole } from "@breatic/shared";
 
 /**
+ * Tell collab a member's standing changed, once the change has committed.
+ *
+ * The write is already in the database when this runs; a failed announcement
+ * is logged and the request still succeeds, or the caller would be told the
+ * change did not happen when it did.
+ * @param projectId - Project UUID
+ * @param detail - Which member changed and how
+ */
+async function announceMembersChanged(
+  projectId: string,
+  detail: Parameters<typeof publishMembersChanged>[1],
+): Promise<void> {
+  try {
+    await publishMembersChanged(projectId, detail);
+  } catch (err) {
+    logger.error({ err, projectId, detail }, "project_members_changed_publish_failed");
+  }
+}
+
+/**
  * List active members of a project (caller has already checked access).
  * @param projectId - Project UUID
  * @returns The project's active member records
@@ -104,7 +124,7 @@ export async function changeRole(
     }
     return role;
   });
-  await publishMembersChanged(projectId, {
+  await announceMembersChanged(projectId, {
     affectedUserId: targetUserId,
     action: "update",
     newRole,
@@ -162,16 +182,10 @@ export async function remove(
     }
     return role;
   });
-  try {
-    await publishMembersChanged(projectId, {
-      affectedUserId: targetUserId,
-      action: "remove",
-    });
-  } catch (err) {
-    // The row is already gone. Failing the request here would tell the
-    // caller the removal did not happen when it did.
-    logger.error({ err, projectId, targetUserId }, "project_member_removed_publish_failed");
-  }
+  await announceMembersChanged(projectId, {
+    affectedUserId: targetUserId,
+    action: "remove",
+  });
   await recordProjectActivity({
     projectId,
     actorUserId: actorUserId ?? null,
@@ -195,13 +209,10 @@ export async function remove(
  */
 export async function leave(projectId: string, userId: string): Promise<void> {
   const access = await projectMembersRepo.getAccess(projectId, userId);
-  if (access === null) {
-    throw new NotFoundError(t("server.error.not_found"));
-  }
-  if (access.archived) {
+  if (access?.archived) {
     throw new ConflictError(t("server.project.archived"));
   }
-  if (access.role === "owner") {
+  if (access?.role === "owner") {
     throw new ConflictError(t("server.project.leave_owner"));
   }
   await remove(projectId, userId, userId);

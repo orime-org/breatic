@@ -78,21 +78,23 @@ export const MembersStack = React.forwardRef<
   const [open, setOpen] = React.useState(false);
   const setActiveOverlayId = useUIStore((s) => s.setActiveOverlayId);
 
-  /**
-   * Closes the popover and opens the members-management modal.
-   */
-  const openManage = (): void => {
+  const openManage = React.useCallback((): void => {
     setOpen(false);
     setActiveOverlayId('members-modal');
-  };
+  }, [setActiveOverlayId]);
 
-  /**
-   * Closes the popover and hands the leave over to the page.
-   */
-  const startLeave = (): void => {
+  const startLeave = React.useCallback((): void => {
     setOpen(false);
     onLeave?.();
-  };
+  }, [onLeave]);
+
+  // The footer holds one action: "Manage collaborators" for the owner,
+  // "Leave project" for a reader the page lets leave, nothing for anyone else.
+  const footer = isOwner
+    ? { onClick: openManage, icon: Users, label: t('members.popover.manage'), testId: 'members-manage-trigger' }
+    : onLeave
+      ? { onClick: startLeave, icon: LogOut, label: t('project.leave.action'), testId: 'members-leave-trigger' }
+      : null;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -173,12 +175,10 @@ export const MembersStack = React.forwardRef<
             </li>
           ))}
         </ul>
-        {/* The footer holds one action: "Manage collaborators" for the
-            owner, "Leave project" for a reader the page lets leave, and
-            nothing at all (no separator, no padded gap) for anyone else.
-            Removing / role-changing members happens inside the manage
-            modal — never inline in the popover. */}
-        {isOwner ? (
+        {/* No footer at all for a reader without an action: no separator,
+            no padded gap. Removing / role-changing members happens inside
+            the manage modal — never inline in the popover. */}
+        {footer ? (
           <>
             <Separator className='my-1' />
             <div className='flex flex-col gap-2 p-2'>
@@ -186,27 +186,11 @@ export const MembersStack = React.forwardRef<
                 variant='outline'
                 size='form'
                 className='w-full justify-center gap-2 text-sm'
-                onClick={openManage}
-                data-testid='members-manage-trigger'
+                onClick={footer.onClick}
+                data-testid={footer.testId}
               >
-                <Users className='h-4 w-4' />
-                {t('members.popover.manage')}
-              </Button>
-            </div>
-          </>
-        ) : onLeave ? (
-          <>
-            <Separator className='my-1' />
-            <div className='flex flex-col gap-2 p-2'>
-              <Button
-                variant='outline'
-                size='form'
-                className='w-full justify-center gap-2 text-sm'
-                onClick={startLeave}
-                data-testid='members-leave-trigger'
-              >
-                <LogOut className='h-4 w-4' />
-                {t('project.leave.action')}
+                <footer.icon className='h-4 w-4' />
+                {footer.label}
               </Button>
             </div>
           </>

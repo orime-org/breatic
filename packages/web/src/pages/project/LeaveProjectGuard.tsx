@@ -37,10 +37,18 @@ export function shouldBlockLeave(
   return hasFrontEndOps && currentPath !== nextPath;
 }
 
+/** Navigation state that marks the landing after leaving the project. */
+export interface LeftProjectState {
+  leftProject: true;
+}
+
+/** The state `LeaveProjectFromPage` navigates with once the caller has left. */
+export const LEFT_PROJECT_STATE: LeftProjectState = { leftProject: true };
+
 /**
- * Whether a navigation is the landing that follows leaving the project (see
- * `LeaveProjectFromPage`). The marker stays on that history entry, so Back or
- * Forward onto it later (`POP`) is an ordinary navigation and does not count.
+ * Whether a navigation is the landing that follows leaving the project. The
+ * marker stays on that history entry, so Back or Forward onto it later
+ * (`POP`) is an ordinary navigation and does not count.
  * @param nextLocation - Where the navigation goes.
  * @param historyAction - How it gets there.
  * @returns True for the landing itself.
@@ -50,8 +58,8 @@ export function isLandingAfterLeave(
   historyAction: NavigationType,
 ): boolean {
   if (historyAction === NavigationType.Pop) return false;
-  const state: unknown = nextLocation.state;
-  return typeof state === 'object' && state !== null && (state as { leftProject?: unknown }).leftProject === true;
+  const state = nextLocation.state as Partial<LeftProjectState> | null | undefined;
+  return state?.leftProject === LEFT_PROJECT_STATE.leftProject;
 }
 
 /**

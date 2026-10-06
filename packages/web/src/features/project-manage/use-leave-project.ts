@@ -19,9 +19,9 @@ export interface LeaveProject {
  * Leave a project — from its studio card, or from inside the project.
  *
  * The follow-up lives on the mutation, not on the call: inside the project
- * the server's collab kick swaps the page out before the response arrives,
- * and only the mutation's own callbacks still run once the component that
- * started it has unmounted. On success the project's cached detail is
+ * the server's collab kick can swap the page out before the response arrives
+ * as well as after it, and only the mutation's own callbacks still run once
+ * the component that started it has unmounted. On success the project's cached detail is
  * dropped (refetching it now only answers that the caller is not a member),
  * every list that showed it is refreshed, and `onLeft` takes over.
  * @param projectId - The project.

@@ -152,6 +152,16 @@ describe("remove", () => {
   });
 });
 
+describe("changeRole after the commit", () => {
+  it("still succeeds and logs when announcing the change fails", async () => {
+    vi.mocked(projectMembersRepo.lockMemberRole).mockResolvedValueOnce("editor");
+    vi.mocked(projectMembersRepo.updateRole).mockResolvedValueOnce(true);
+    vi.mocked(publishMembersChanged).mockRejectedValueOnce(new Error("redis down"));
+    await expect(changeRole(PID, "u-target", "viewer", "u-owner")).resolves.toBeUndefined();
+    expect(logger.error).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("remove after the commit", () => {
   it("still succeeds and logs when announcing the change fails", async () => {
     // The row is already soft-deleted when the announcement runs; the answer
@@ -185,6 +195,7 @@ describe("leave", () => {
 
   it("answers NotFound when the caller is no longer a member", async () => {
     vi.mocked(projectMembersRepo.getAccess).mockResolvedValueOnce(null);
+    vi.mocked(projectMembersRepo.lockMemberRole).mockResolvedValueOnce(null);
     await expect(leave(PID, "u-me")).rejects.toBeInstanceOf(NotFoundError);
     expect(projectMembersRepo.softDelete).not.toHaveBeenCalled();
   });

@@ -11,7 +11,9 @@
  * owner is offered neither entry. A sees the leave in the activity feed.
  *
  * Projects are built and B is let in through the API — the part under test is
- * what B does in the browser.
+ * what B does in the browser. The team studio is built once for the file —
+ * studios cannot be removed, and creating one is rate limited — and every
+ * case makes its own project in it.
  *
  *   pnpm --filter @breatic/web test:smoke -- project-leave
  */
@@ -77,18 +79,18 @@ async function letBIn(a: BrowserContext, b: BrowserContext, projectId: string): 
   await dataOf(await b.request.post('/api/v1/decisions/respond', { data: { token, action: 'confirm' } }), 'B joins');
 }
 
-/** A team studio run by A with B in it, and two projects B edits. */
+/** A team studio run by A with B in it. */
 interface TeamScene {
   a: BrowserContext;
   b: BrowserContext;
+  studioId: string;
   studioSlug: string;
-  projects: Made[];
 }
 
 /**
- * Build the team-studio scene through the API.
+ * Build the team studio through the API.
  * @param browser - The test's browser.
- * @returns The two signed-in contexts, the studio and the projects.
+ * @returns The two signed-in contexts and the studio.
  */
 async function buildTeamScene(browser: Browser): Promise<TeamScene> {
   const a = await browser.newContext({ storageState: STATE_FILE.A });
@@ -115,13 +117,20 @@ async function buildTeamScene(browser: Browser): Promise<TeamScene> {
   expect(token, 'B got no studio invite').toBeDefined();
   await dataOf(await b.request.post('/api/v1/decisions/respond', { data: { token, action: 'confirm' } }), 'B joins studio');
 
-  const projects: Made[] = [];
-  for (let n = 1; n <= 2; n++) {
-    const project = await createProject(a, studio.id, `leave-target-${stamp}-${n}`, `Leave target ${n}`);
-    await letBIn(a, b, project.id);
-    projects.push(project);
-  }
-  return { a, b, studioSlug, projects };
+  return { a, b, studioId: studio.id, studioSlug };
+}
+
+/**
+ * A fresh project in the team studio that B edits.
+ * @param scene - The team studio.
+ * @param name - Its name.
+ * @returns The project.
+ */
+async function teamProject(scene: TeamScene, name: string): Promise<Made> {
+  const stamp = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
+  const project = await createProject(scene.a, scene.studioId, `leave-target-${stamp}`, `${name} ${stamp}`);
+  await letBIn(scene.a, scene.b, project.id);
+  return project;
 }
 
 /**
@@ -135,11 +144,20 @@ async function openMembers(page: Page): Promise<void> {
   await expect(page.getByTestId('members-popover')).toBeVisible();
 }
 
-test('B leaves from the studio card: asks first, Cancel changes nothing, then the card turns into a join card', async ({
-  browser,
-}) => {
-  const { a, b, studioSlug, projects } = await buildTeamScene(browser);
-  const target = projects[0]!;
+let scene: TeamScene;
+
+test.beforeAll(async ({ browser }) => {
+  scene = await buildTeamScene(browser);
+});
+
+test.afterAll(async () => {
+  await scene?.a.close();
+  await scene?.b.close();
+});
+
+test('B leaves from the studio card: asks first, Cancel changes nothing, then the card turns into a join card', async () => {
+  const { a, b, studioSlug } = scene;
+  const target = await teamProject(scene, 'Leave card');
   const page = await b.newPage();
   await page.goto(`/studio/${studioSlug}/projects`);
   const card = page.getByTestId(`project-card-${target.id}`);
@@ -174,14 +192,11 @@ test('B leaves from the studio card: asks first, Cancel changes nothing, then th
   );
   const row = feed.items.find((i) => i.type === 'member:removed');
   expect(row?.payload.targetUserId).toBe(row?.actorUserId);
-
-  await a.close();
-  await b.close();
 });
 
-test('B leaves from inside the project and lands on Recent without it', async ({ browser }) => {
-  const { a, b, projects } = await buildTeamScene(browser);
-  const target = projects[1]!;
+test('B leaves from inside the project and lands on Recent without it', async () => {
+  const { b } = scene;
+  const target = await teamProject(scene, 'Leave page');
   const page = await b.newPage();
   await page.goto(`/project/${target.slug}-${target.id}`);
   await openMembers(page);
@@ -192,9 +207,6 @@ test('B leaves from inside the project and lands on Recent without it', async ({
   await expect(page.getByText(`You left “${target.name}”`)).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText(target.name, { exact: true })).toHaveCount(0);
   expect((await b.request.get(`/api/v1/projects/${target.id}`)).status()).toBe(403);
-
-  await a.close();
-  await b.close();
 });
 
 test('an outside collaborator on a personal-studio project leaves from inside it', async ({ browser }) => {
@@ -205,7 +217,6 @@ test('an outside collaborator on a personal-studio project leaves from inside it
     'A personal project',
   );
   const stamp = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
-  // `smoke-run` prefix: setup sweeps whatever an interrupted run leaves behind.
   const target = await createProject(a, anchor.studioId, `smoke-run-leave-${stamp}`, `Leave outside ${stamp}`);
   try {
     await letBIn(a, b, target.id);
@@ -219,15 +230,16 @@ test('an outside collaborator on a personal-studio project leaves from inside it
     await expect(page.getByText(`You left “${target.name}”`)).toBeVisible({ timeout: 10_000 });
     expect((await b.request.get(`/api/v1/projects/${target.id}`)).status()).toBe(404);
   } finally {
-    await a.request.delete(`/api/v1/projects/${target.id}`);
+    // Archived, it leaves A's live project count, which the tier caps.
+    await a.request.post(`/api/v1/projects/${target.id}/archive`);
     await a.close();
     await b.close();
   }
 });
 
-test('the owner is offered neither entry', async ({ browser }) => {
-  const { a, b, studioSlug, projects } = await buildTeamScene(browser);
-  const target = projects[0]!;
+test('the owner is offered neither entry', async () => {
+  const { a, studioSlug } = scene;
+  const target = await teamProject(scene, 'Leave owner');
   const page = await a.newPage();
   await page.goto(`/project/${target.slug}-${target.id}`);
   await openMembers(page);
@@ -242,7 +254,4 @@ test('the owner is offered neither entry', async ({ browser }) => {
   await card.getByRole('button', { name: 'More actions' }).click();
   await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Leave project' })).toHaveCount(0);
-
-  await a.close();
-  await b.close();
 });

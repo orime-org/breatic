@@ -6,11 +6,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { LeaveProjectDialog } from '@web/features/project-manage/LeaveProjectDialog';
 import { useLeaveProject } from '@web/features/project-manage/use-leave-project';
-
-/** Navigation state that marks the landing after leaving a project. */
-export interface LeftProjectState {
-  leftProject: true;
-}
+import { LEFT_PROJECT_STATE } from '@web/pages/project/LeaveProjectGuard';
 
 interface LeaveProjectFromPageProps {
   projectId: string;
@@ -23,7 +19,7 @@ interface LeaveProjectFromPageProps {
  * Leaving the project from inside it: the confirmation, then the recent
  * page — where the top bar's back link goes — in place of the project.
  *
- * The landing carries {@link LeftProjectState} so `LeaveProjectGuard` lets it
+ * The landing carries `LEFT_PROJECT_STATE` so `LeaveProjectGuard` lets it
  * through: whatever front-end work is still running belongs to a project the
  * caller can no longer open.
  * @param props - The project and the dialog's open state.
@@ -41,8 +37,7 @@ export function LeaveProjectFromPage({
 }: LeaveProjectFromPageProps): React.JSX.Element {
   const navigate = useNavigate();
   const goToRecent = React.useCallback((): void => {
-    const state: LeftProjectState = { leftProject: true };
-    void navigate('/studio', { replace: true, state });
+    void navigate('/studio', { replace: true, state: LEFT_PROJECT_STATE });
   }, [navigate]);
   const { leave, pending } = useLeaveProject(projectId, projectName, goToRecent);
   return (

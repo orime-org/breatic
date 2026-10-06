@@ -102,10 +102,11 @@ export function renderProductGuide(): string {
       "double-clicking it (Enter or clicking away saves, Esc or an empty name keeps the old one); and the reader's role, " +
       `${quoted(t("role.owner"))} or ${quoted(t("role.editor"))}.`,
     "On the right: the members' pictures with a small arrow, which open " +
-      `${quoted(t("members.popover.title"))}. For an editor that list ends with ` +
+      `${quoted(t("members.popover.title"))}. For an editor or a viewer that list ends with ` +
       `${quoted(t("project.leave.action"))}, which asks to confirm first, with ` +
       `${quoted(t("project.leave.confirm"))}; once they leave they are taken back to their recent projects and can ` +
-      "no longer open the project. The same choice is on the project's card in the studio. The owner has to " +
+      "no longer open the project. A member of the project's studio also finds it on the project's card in " +
+      "the studio. The owner has to " +
       "transfer the project to someone else before leaving, and nobody can leave an archived project. " +
       `For the owner the list ends with ${quoted(t("members.popover.manage"))}, which opens ` +
       `${quoted(t("members.modal.title"))}. There each ` +
