@@ -10,16 +10,20 @@
  */
 
 import { readFileSync } from "node:fs";
+import {
+  errorMonitoringDataCollection,
+  errorMonitoringRelease,
+  type ErrorMonitoringDataCollection,
+  type ErrorMonitoringEnvironment,
+} from "@breatic/shared";
 import type { CoreConfig } from "@core/config/schema.js";
-
-const FULL_COMMIT = /^[0-9a-f]{40}$/;
 
 /**
  * The environment name error events carry for a deployment.
  * @param deployment - The `ENV` value the service was started with.
  * @returns `production`, `staging` or `development`.
  */
-export function errorMonitoringEnvironment(deployment: CoreConfig["ENV"]): string {
+export function errorMonitoringEnvironment(deployment: CoreConfig["ENV"]): ErrorMonitoringEnvironment {
   if (deployment === "prod") return "production";
   if (deployment === "dev") return "development";
   return "staging";
@@ -44,46 +48,7 @@ export function readBuildRelease(path: string): string | undefined {
     return undefined;
   }
   if (typeof parsed !== "object" || parsed === null) return undefined;
-  const revision = (parsed as { revision?: unknown }).revision;
-  return typeof revision === "string" && FULL_COMMIT.test(revision) ? revision : undefined;
-}
-
-/** Header names whose values identify a person or a network path. */
-const IDENTIFYING_HEADERS: readonly string[] = ["forwarded", "-ip", "remote-", "via", "-user"];
-
-/**
- * What the SDK may collect on its own, built fresh for each caller. Version 11 collects everything when
- * this is left unset; this is the restrictive baseline from Sentry's v10→v11
- * migration guide with query strings switched off as well, because some of
- * our links carry tokens in the query.
- * @returns A new settings object.
- */
-function dataCollection(): ErrorMonitoringDataCollection {
-  return {
-    userInfo: false,
-    cookies: false,
-    httpHeaders: {
-      request: { deny: [...IDENTIFYING_HEADERS] },
-      response: { deny: [...IDENTIFYING_HEADERS] },
-    },
-    httpBodies: [],
-    urlQueryParams: false,
-    genAI: { inputs: false, outputs: false },
-    databaseQueryData: false,
-    graphQL: { document: false, variables: false },
-  };
-}
-
-/** The data-collection settings, in the shape the Sentry SDK accepts. */
-export interface ErrorMonitoringDataCollection {
-  userInfo: boolean;
-  cookies: boolean;
-  httpHeaders: { request: { deny: string[] }; response: { deny: string[] } };
-  httpBodies: never[];
-  urlQueryParams: boolean;
-  genAI: { inputs: boolean; outputs: boolean };
-  databaseQueryData: boolean;
-  graphQL: { document: boolean; variables: boolean };
+  return errorMonitoringRelease((parsed as { revision?: unknown }).revision);
 }
 
 /** The backend services that report to the shared backend project. */
@@ -104,7 +69,7 @@ export interface ErrorMonitoringInput {
 /** SDK options every backend service shares. */
 export interface ErrorMonitoringOptions {
   dsn: string;
-  environment: string;
+  environment: ErrorMonitoringEnvironment;
   release: string | undefined;
   initialScope: { tags: { service: MonitoredService } };
   dataCollection: ErrorMonitoringDataCollection;
@@ -122,6 +87,6 @@ export function errorMonitoringOptions(input: ErrorMonitoringInput): ErrorMonito
     environment: errorMonitoringEnvironment(input.deployment),
     release: readBuildRelease(input.buildInfoPath),
     initialScope: { tags: { service: input.service } },
-    dataCollection: dataCollection(),
+    dataCollection: errorMonitoringDataCollection(),
   };
 }
