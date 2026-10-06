@@ -178,6 +178,9 @@ function closure(roots, followDynamic, skip = new Set()) {
  * sourcemap beside every chunk (`vite.config.mts` sets `sourcemap: true`), and
  * its `sources` name every module that got in, so the set is readable here.
  */
+/** three.js, which only the camera-angle sphere's own chunk may carry. */
+const THREE_JS = { label: 'three.js', holds: (src) => /node_modules\/three\//.test(src) };
+
 const HEAVY = [
   // The canvas's state belongs to the canvas as much as its body does, and it
   // travels separately: importing the `@web/stores` barrel from anywhere drags
@@ -232,7 +235,7 @@ const HEAVY = [
   // build can reach them without it: `strtok3` and `token-types` are ordinary
   // packages any other reader could pull in on its own.
   // The camera-angle sphere's renderer (inner#830), about 185 kB gzipped.
-  { label: 'three.js', holds: (src) => /node_modules\/three\//.test(src) },
+  THREE_JS,
   {
     label: 'mime sniffing',
     holds: (src) =>
@@ -347,9 +350,7 @@ for (const [owner, downloads] of owners) {
 // draws only when the Qwen multiple-angles settings open, so the page's
 // static closure must not reach it: a static import of the sphere, or of
 // three.js anywhere under the canvas, puts it on every project open.
-const LAZY_ON_PROJECT_PAGE = [
-  { label: 'three.js', holds: (src) => /node_modules\/three\//.test(src) },
-];
+const LAZY_ON_PROJECT_PAGE = [THREE_JS];
 const projectChunk = chunkOf(RENDERS_A_SPACE);
 if (projectChunk !== undefined) {
   try {

@@ -6,7 +6,7 @@
  * against the grid the upstream rounds every angle to.
  */
 
-import { CAMERA_ANGLE_GRID, type CameraAngleAxis, type CameraAngleParams } from "@breatic/shared";
+import { CAMERA_ANGLE_GRID, DEFAULT_CAMERA_ANGLE, type CameraAngleAxis, type CameraAngleParams } from "@breatic/shared";
 
 /** The part of a catalog entry this check reads. */
 interface CameraAngleCandidate {
@@ -42,8 +42,10 @@ function wrongAxis(axis: CameraAngleAxis, paramName: string, spec: unknown): str
   if (!onGrid) {
     return `declares camera_angle ${axis} '${paramName}' whose range does not walk exactly ${grid.join(", ")}`;
   }
-  if (typeof declared.default !== "number" || !grid.includes(declared.default)) {
-    return `declares camera_angle ${axis} '${paramName}' with a default off the grid`;
+  // The control's reset and its fallback for an unset value are the shared
+  // default; a different yaml default would send one pose and show another.
+  if (declared.default !== DEFAULT_CAMERA_ANGLE[axis]) {
+    return `declares camera_angle ${axis} '${paramName}' with default ${String(declared.default)}, not the reset pose ${DEFAULT_CAMERA_ANGLE[axis]}`;
   }
   const labels = declared.value_labels;
   const named = labels !== null && typeof labels === "object" ? (labels as Record<string, unknown>) : {};
@@ -57,7 +59,8 @@ function wrongAxis(axis: CameraAngleAxis, paramName: string, spec: unknown): str
 /**
  * Assert that every model in one modality that declares a camera pose names
  * three of its own labelled panel ranges, each walking exactly its axis's
- * grid, defaulting onto it and naming every step of it in `value_labels`.
+ * grid, defaulting to the shared reset pose and naming every step of it in
+ * `value_labels`.
  * @param modality - The modality being loaded, named in the error.
  * @param models - The models parsed out of that modality's yaml files.
  * @throws {Error} when a model declares a pose the panel could not draw on the grid.

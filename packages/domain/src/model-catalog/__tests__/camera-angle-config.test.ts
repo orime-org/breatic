@@ -137,6 +137,12 @@ describe("the loader's check", () => {
     ).toThrow(/vertical_angle.*value_labels name for 60/);
   });
 
+  it("refuses a default that is on the grid but is not the control's reset pose", () => {
+    expect(() =>
+      check(DECLARED, { ...ON_GRID, distance: { ...ON_GRID.distance, default: 2 } }),
+    ).toThrow(/distance.*default.*1/);
+  });
+
   it("refuses a default off the grid", () => {
     expect(() =>
       check(DECLARED, { ...ON_GRID, vertical_angle: { ...ON_GRID.vertical_angle, default: 10 } }),
