@@ -122,9 +122,13 @@ front-end bundle covered by the next section.
 
 MPL-2.0's copyleft is per file: the condition attaches to the files the licence
 covers and to modifications of those files, and a larger work that merely
-includes them is licensed on its own terms. These files reach the bundle as
-published, so what is left is to say what is in there, under which licence,
-and where the source is — which this entry does, and this file travels with
+includes them is licensed on its own terms. `@blocknote/react` reaches the
+bundle as published. `@blocknote/core` reaches it with two of its files
+modified, `dist/extensions-CSB9ZvuL.cjs` and `dist/extensions-DGuhtOgB.js`;
+the modification is `patches/@blocknote__core@0.54.0.patch` in this
+repository, offered under MPL-2.0 like the files it changes. What is left is
+to say what is in there, under which licence, and where the source is — which
+this entry does, and this file travels with
 every image we publish. The `breatic` image and the media container carry it at
 `/usr/share/doc/breatic/THIRD-PARTY.md`; the front end serves it, so a browser
 fetches it at `/THIRD-PARTY.md`, beside the generated `/third-party-licences.txt`
