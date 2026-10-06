@@ -975,6 +975,14 @@
     "archived": {
       "banner": "This project is archived and can only be viewed",
       "restore": "Restore"
+    },
+    "leave": {
+      "action": "Leave project",
+      "title": "Leave “{name}”?",
+      "body": "You won't be able to open this project after leaving.",
+      "confirm": "Leave",
+      "done": "You left “{name}”",
+      "failed": "Couldn't leave"
     }
   },
   "common": {
@@ -1702,6 +1710,7 @@
       "generationFailed": "{actor}'s generation failed",
       "memberJoined": "{actor} joined the project",
       "memberRemoved": "{actor} removed a member",
+      "memberLeft": "{actor} left the project",
       "memberRoleChanged": "{actor} changed a member's role to {role}",
       "ownershipTransferred": "{actor} transferred project ownership",
       "spaceCreated": "{actor} created space {spaceName}",

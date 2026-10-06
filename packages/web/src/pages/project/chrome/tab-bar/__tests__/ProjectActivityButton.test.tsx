@@ -220,6 +220,20 @@ describe('ProjectActivityButton (activity feed)', () => {
   });
 });
 
+describe('entryMessage for a member who left', () => {
+  it('reads as leaving when the member removed themselves, and as removal otherwise', () => {
+    const left = entryMessage(
+      entry({ type: 'member:removed', actorUserId: 'u-1', payload: { previousRole: 'editor', targetUserId: 'u-1' } }),
+    );
+    expect(left.key).toBe('activity.type.memberLeft');
+    expect(left.params).toHaveProperty('actor');
+    const removed = entryMessage(
+      entry({ type: 'member:removed', actorUserId: 'u-owner', payload: { previousRole: 'editor', targetUserId: 'u-1' } }),
+    );
+    expect(removed.key).toBe('activity.type.memberRemoved');
+  });
+});
+
 describe('entryMessage specificity (#1622)', () => {
   it('asset:uploaded → kind-specific key, generic fallback for file / none', () => {
     const key = (kind: string): string =>

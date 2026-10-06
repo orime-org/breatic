@@ -18,6 +18,7 @@ vi.mock('@web/data/api/projects', () => ({
     duplicate: vi.fn(() => Promise.resolve({ name: 'Copy of Cyberpunk Alley' })),
     archive: vi.fn(() => Promise.resolve({ ok: true })),
     restore: vi.fn(() => Promise.resolve({ ok: true })),
+    leave: vi.fn(() => Promise.resolve({ ok: true })),
   },
 }));
 
@@ -46,12 +47,14 @@ const project: ContainerProject = {
   canDuplicate: true,
   canArchive: false,
   canRestore: false,
+  canLeave: false,
 };
 
 // The flags the server sends for each caller on a live project
 // (projectGovernance: the studio admin and the owner manage, only the admin archives).
-const AS_STUDIO_ADMIN = { canManageMeta: true, canDuplicate: true, canArchive: true, canRestore: false };
-const AS_NOBODY = { canManageMeta: false, canDuplicate: false, canArchive: false, canRestore: false };
+const AS_STUDIO_ADMIN = { canManageMeta: true, canDuplicate: true, canArchive: true, canRestore: false, canLeave: false };
+const AS_NOBODY = { canManageMeta: false, canDuplicate: false, canArchive: false, canRestore: false, canLeave: false };
+const AS_EDITOR = { ...AS_NOBODY, canLeave: true };
 
 function setup(p: ContainerProject = project) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -127,6 +130,40 @@ describe('ProjectCard', () => {
   it('shows no ⋯ menu when the viewer may do none of it', () => {
     setup({ ...project, myRole: 'viewer', ...AS_NOBODY });
     expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
+  });
+
+  it('offers an editor only Leave project', async () => {
+    setup({ ...project, myRole: 'editor', ...AS_EDITOR });
+    await userEvent.setup().click(screen.getByRole('button', { name: 'More actions' }));
+    const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent);
+    expect(items).toEqual(['Leave project']);
+  });
+
+  it('puts Leave project last, after a separator, for a studio admin who is also an editor', async () => {
+    setup({ ...project, myRole: 'editor', ...AS_STUDIO_ADMIN, canLeave: true });
+    await userEvent.setup().click(screen.getByRole('button', { name: 'More actions' }));
+    const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent);
+    expect(items).toEqual(['Rename', 'Upload cover', 'Duplicate', 'Archive', 'Leave project']);
+    const leave = screen.getByRole('menuitem', { name: 'Leave project' });
+    expect(leave.previousElementSibling?.getAttribute('role')).toBe('separator');
+  });
+
+  it('leaves only after the confirmation, and cancelling changes nothing', async () => {
+    const user = userEvent.setup();
+    setup({ ...project, myRole: 'viewer', ...AS_EDITOR });
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Leave project' }));
+    const dialog = await screen.findByTestId('leave-project-dialog');
+    expect(dialog).toHaveTextContent('Leave “Cyberpunk Alley”?');
+    expect(dialog).toHaveTextContent('You won\'t be able to open this project after leaving.');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(projectsApi.leave).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('leave-project-dialog')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Leave project' }));
+    await user.click(await screen.findByRole('button', { name: 'Leave' }));
+    expect(projectsApi.leave).toHaveBeenCalledWith('id-1');
   });
 
   it('renames through the dialog', async () => {

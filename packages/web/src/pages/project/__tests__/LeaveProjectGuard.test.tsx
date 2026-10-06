@@ -19,11 +19,13 @@ const blocker = vi.hoisted(() => ({
 let capturedCondition:
   | ((args: {
       currentLocation: { pathname: string };
-      nextLocation: { pathname: string };
+      nextLocation: { pathname: string; state?: unknown };
+      historyAction?: string;
     }) => boolean)
   | null = null;
 
 vi.mock('react-router-dom', () => ({
+  NavigationType: { Pop: 'POP', Push: 'PUSH', Replace: 'REPLACE' },
   useBlocker: (fn: typeof capturedCondition) => {
     capturedCondition = fn;
     return blocker;
@@ -71,6 +73,31 @@ describe('LeaveProjectGuard (#1787)', () => {
     // Register a front-end op → block the leave.
     useSpaceOperationsStore.getState().register('space-1', 'op-1');
     expect(capturedCondition!(args)).toBe(true);
+  });
+
+  it('lets the landing after leaving the project through, even with front-end ops in flight', () => {
+    render(<LeaveProjectGuard />);
+    useSpaceOperationsStore.getState().register('space-1', 'op-1');
+    const landing = {
+      currentLocation: { pathname: '/project/p' },
+      nextLocation: { pathname: '/studio', state: { leftProject: true } },
+    };
+    expect(capturedCondition!({ ...landing, historyAction: 'REPLACE' })).toBe(false);
+    expect(capturedCondition!({ ...landing, historyAction: 'PUSH' })).toBe(false);
+  });
+
+  it('still asks when Back lands on the entry the leave left behind', () => {
+    // The state stays on that history entry; going Back to it later from
+    // another project is an ordinary leave and must be confirmed.
+    render(<LeaveProjectGuard />);
+    useSpaceOperationsStore.getState().register('space-1', 'op-1');
+    expect(
+      capturedCondition!({
+        currentLocation: { pathname: '/project/other' },
+        nextLocation: { pathname: '/studio', state: { leftProject: true } },
+        historyAction: 'POP',
+      }),
+    ).toBe(true);
   });
 
   it('shows the confirm dialog while blocked; Leave proceeds, Stay resets', () => {

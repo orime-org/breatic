@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { Users } from 'lucide-react';
+import { LogOut, Users } from 'lucide-react';
 import * as React from 'react';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
@@ -34,6 +34,12 @@ interface MembersStackProps {
    * editor / viewer). Backend `requireRole` is the real enforcement.
    */
   currentUserRole?: MemberRole;
+  /**
+   * Leave the project. Given only when the reader may leave (a live
+   * project's editor or viewer); the list then ends with "Leave project"
+   * where the owner's ends with "Manage collaborators".
+   */
+  onLeave?: () => void;
 }
 
 const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'> = {
@@ -62,7 +68,7 @@ const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'>
 export const MembersStack = React.forwardRef<
   HTMLButtonElement,
   MembersStackProps
->(({ members, currentUserId, currentUserRole }, ref) => {
+>(({ members, currentUserId, currentUserRole, onLeave }, ref) => {
   const t = useTranslation();
   // Owner-only affordance (B model — hidden, not disabled): the manage
   // button only renders when the current user is owner.
@@ -78,6 +84,14 @@ export const MembersStack = React.forwardRef<
   const openManage = (): void => {
     setOpen(false);
     setActiveOverlayId('members-modal');
+  };
+
+  /**
+   * Closes the popover and hands the leave over to the page.
+   */
+  const startLeave = (): void => {
+    setOpen(false);
+    onLeave?.();
   };
 
   return (
@@ -159,11 +173,11 @@ export const MembersStack = React.forwardRef<
             </li>
           ))}
         </ul>
-        {/* Manage collaborators is an owner-only affordance (B model —
-            hidden, not disabled, for editor / viewer). The whole footer
-            (separator + button) collapses when the user isn't owner so
-            there's no empty padded gap. Removing / role-changing members
-            happens inside this modal — never inline in the popover. */}
+        {/* The footer holds one action: "Manage collaborators" for the
+            owner, "Leave project" for a reader the page lets leave, and
+            nothing at all (no separator, no padded gap) for anyone else.
+            Removing / role-changing members happens inside the manage
+            modal — never inline in the popover. */}
         {isOwner ? (
           <>
             <Separator className='my-1' />
@@ -177,6 +191,22 @@ export const MembersStack = React.forwardRef<
               >
                 <Users className='h-4 w-4' />
                 {t('members.popover.manage')}
+              </Button>
+            </div>
+          </>
+        ) : onLeave ? (
+          <>
+            <Separator className='my-1' />
+            <div className='flex flex-col gap-2 p-2'>
+              <Button
+                variant='outline'
+                size='form'
+                className='w-full justify-center gap-2 text-sm'
+                onClick={startLeave}
+                data-testid='members-leave-trigger'
+              >
+                <LogOut className='h-4 w-4' />
+                {t('project.leave.action')}
               </Button>
             </div>
           </>

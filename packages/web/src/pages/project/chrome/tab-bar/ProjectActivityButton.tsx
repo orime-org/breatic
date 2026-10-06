@@ -154,7 +154,14 @@ function entryMessage(entry: ProjectActivityEntry): {
     case 'member:joined':
       return { key: 'activity.type.memberJoined', params: { actor } };
     case 'member:removed':
-      return { key: 'activity.type.memberRemoved', params: { actor } };
+      // Leaving is a removal whose actor removed themselves.
+      return {
+        key:
+          entry.actorUserId !== null && p['targetUserId'] === entry.actorUserId
+            ? 'activity.type.memberLeft'
+            : 'activity.type.memberRemoved',
+        params: { actor },
+      };
     case 'member:role-changed':
       return {
         key: 'activity.type.memberRoleChanged',

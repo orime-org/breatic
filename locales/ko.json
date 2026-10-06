@@ -975,6 +975,14 @@
     "archived": {
       "banner": "이 Project는 보관되어 보기만 할 수 있습니다",
       "restore": "복원"
+    },
+    "leave": {
+      "action": "Project 나가기",
+      "title": "‘{name}’에서 나갈까요?",
+      "body": "나가면 이 Project를 더 이상 열 수 없습니다.",
+      "confirm": "나가기",
+      "done": "‘{name}’에서 나갔습니다",
+      "failed": "나가지 못했습니다"
     }
   },
   "common": {
@@ -1702,6 +1710,7 @@
       "generationFailed": "{actor} 님의 생성이 실패했습니다",
       "memberJoined": "{actor} 님이 Project에 참여했습니다",
       "memberRemoved": "{actor} 님이 멤버를 제거했습니다",
+      "memberLeft": "{actor} 님이 Project에서 나갔습니다",
       "memberRoleChanged": "{actor} 님이 멤버 역할을 {role}(으)로 변경했습니다",
       "ownershipTransferred": "{actor} 님이 Project 소유권을 이전했습니다",
       "spaceCreated": "{actor}님이 Space {spaceName}을(를) 만들었습니다",

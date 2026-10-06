@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -148,5 +148,23 @@ describe('MembersStack', () => {
       expect(screen.getByText('Editor')).toBeInTheDocument();
       expect(screen.getByText('Viewer')).toBeInTheDocument();
     });
+  });
+
+  it('ends the list with Leave project for a member who may leave, and hands the click over', async () => {
+    const user = userEvent.setup();
+    const onLeave = vi.fn();
+    render(<MembersStack members={MEMBERS} currentUserRole='editor' onLeave={onLeave} />);
+    await user.click(screen.getByTestId('members-trigger'));
+    expect(screen.queryByTestId('members-manage-trigger')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Leave project' }));
+    expect(onLeave).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('members-popover')).toBeNull();
+  });
+
+  it('offers no leave when the page does not hand one over', async () => {
+    const user = userEvent.setup();
+    render(<MembersStack members={MEMBERS} currentUserRole='viewer' />);
+    await user.click(screen.getByTestId('members-trigger'));
+    expect(screen.queryByRole('button', { name: 'Leave project' })).toBeNull();
   });
 });

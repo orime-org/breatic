@@ -61,6 +61,7 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
     canDuplicate: p.canDuplicate,
     canArchive: p.canArchive,
     canRestore: p.canRestore,
+    canLeave: p.canLeave,
   };
 }
 

@@ -65,7 +65,7 @@ describe('useCreateProject — navigates INTO the new project (decision B)', () 
       createdByUserId: 'u-1',
       createdAt: '2026-06-16T00:00:00.000Z',
       updatedAt: '2026-06-16T00:00:00.000Z',
-      deletedAt: null, archivedAt: null, canManageMeta: true, canRestore: false,
+      deletedAt: null, archivedAt: null, canManageMeta: true, canRestore: false, canLeave: false,
     });
     setup();
     expect(screen.getByTestId('loc')).toHaveTextContent('/studio/acme');

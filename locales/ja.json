@@ -975,6 +975,14 @@
     "archived": {
       "banner": "この Project はアーカイブ済みのため閲覧のみです",
       "restore": "復元"
+    },
+    "leave": {
+      "action": "Project から退出",
+      "title": "「{name}」から退出しますか？",
+      "body": "退出すると、この Project を開けなくなります。",
+      "confirm": "退出",
+      "done": "「{name}」から退出しました",
+      "failed": "退出できませんでした"
     }
   },
   "common": {
@@ -1702,6 +1710,7 @@
       "generationFailed": "{actor} の生成が失敗しました",
       "memberJoined": "{actor} が Project に参加しました",
       "memberRemoved": "{actor} がメンバーを削除しました",
+      "memberLeft": "{actor} が Project から退出しました",
       "memberRoleChanged": "{actor} がメンバーのロールを {role} に変更しました",
       "ownershipTransferred": "{actor} が Project の所有権を移譲しました",
       "spaceCreated": "{actor} が Space {spaceName} を作成しました",

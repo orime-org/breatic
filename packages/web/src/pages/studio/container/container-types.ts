@@ -47,6 +47,8 @@ export interface ContainerProject {
   canArchive: boolean;
   /** The archived card's menu may offer restore. */
   canRestore: boolean;
+  /** The card menu may offer leaving the project. */
+  canLeave: boolean;
 }
 
 /** The dominant media kind of a collection, shown as a tag (spec §3.4). */

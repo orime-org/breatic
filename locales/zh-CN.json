@@ -975,6 +975,14 @@
     "archived": {
       "banner": "该 Project 已归档，只能查看",
       "restore": "恢复"
+    },
+    "leave": {
+      "action": "退出 Project",
+      "title": "要退出「{name}」吗？",
+      "body": "退出后你将不能再打开这个 Project。",
+      "confirm": "退出",
+      "done": "已退出「{name}」",
+      "failed": "退出失败"
     }
   },
   "common": {
@@ -1702,6 +1710,7 @@
       "generationFailed": "{actor} 的生成失败了",
       "memberJoined": "{actor} 加入了 Project",
       "memberRemoved": "{actor} 移除了一名成员",
+      "memberLeft": "{actor} 退出了 Project",
       "memberRoleChanged": "{actor} 将一名成员的角色改为 {role}",
       "ownershipTransferred": "{actor} 转移了 Project 所有权",
       "spaceCreated": "{actor} 创建了 Space {spaceName}",

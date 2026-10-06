@@ -25,6 +25,7 @@ const OWNED: ContainerProject = {
   canDuplicate: true,
   canArchive: false,
   canRestore: false,
+  canLeave: false,
 };
 
 const SHARED_STUDIO: ContainerProject = {
@@ -39,6 +40,7 @@ const SHARED_STUDIO: ContainerProject = {
   canDuplicate: false,
   canArchive: false,
   canRestore: false,
+  canLeave: false,
 };
 
 function renderProject(project: ContainerProject) {
