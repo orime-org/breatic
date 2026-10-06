@@ -2963,9 +2963,15 @@ function CanvasSpaceInner({
     const onCopy = (event: ClipboardEvent): void => {
       if (readOnly) return;
       // Words the reader dragged across are the ones they asked for, wherever
-      // they sit, so the browser copies those and the nodes stay put.
+      // they sit, so the browser copies those and the nodes stay put. Words
+      // left selected in a hidden Space are not on screen to be asked for
+      // (inner#1235 A5): a hidden Space keeps its page and its selection.
       const selection = window.getSelection();
-      if (selection !== null && !selection.isCollapsed) return;
+      const anchor = selection?.anchorNode ?? null;
+      const at = anchor instanceof Element ? anchor : (anchor?.parentElement ?? null);
+      if (selection !== null && !selection.isCollapsed && (at?.checkVisibility?.() ?? true)) {
+        return;
+      }
       // With nothing highlighted, the event's target is wherever the caret was
       // last left and says nothing about this copy, so focus answers the
       // question the other outlets put to `event.target`: an overlay or the

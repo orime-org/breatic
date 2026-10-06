@@ -1069,6 +1069,34 @@ test('words left selected in a hidden document do not take the canvas copy', asy
   await expect(nodes).toHaveCount(before + 1);
 });
 
+test('words selected in a read-only document are still selected after a switch', async ({
+  page,
+}) => {
+  // A1: a viewer's selection lives only in the page, with no editor focus to
+  // put it back, so the switch must leave it where it was.
+  const { canvas, doc } = await canvasAndDocument(page);
+  await page.keyboard.type('words a viewer selects');
+  await page.evaluate(() => {
+    const body = document.querySelector('.ProseMirror') as unknown as {
+      editor: { setEditable: (editable: boolean) => void };
+    };
+    body.editor.setEditable(false);
+  });
+  const row = await page.locator(DOCUMENT_EDITOR).locator('p').first().boundingBox();
+  if (row === null) throw new Error('the first row has no box');
+  await page.mouse.move(row.x + 2, row.y + row.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(row.x + row.width - 2, row.y + row.height / 2, { steps: 8 });
+  await page.mouse.up();
+  const selected = () => page.evaluate(() => document.getSelection()?.toString());
+  expect(await selected()).toBe('words a viewer selects');
+
+  await showSpace(page, canvas);
+  await showSpace(page, doc);
+
+  expect(await selected()).toBe('words a viewer selects');
+});
+
 test('the caret goes back into a reply without moving what the reader scrolled to', async ({
   page,
 }) => {
