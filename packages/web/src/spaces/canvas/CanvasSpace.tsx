@@ -79,7 +79,6 @@ import {
   removeElements,
   removeNode,
   resizeGroup,
-  readNodeCorners,
   runCanvasUndoBatch,
   setGroupBackground,
   isNodeLocked,
@@ -262,7 +261,6 @@ import {
   canvasTakesPaste,
   PASTE_OFFSET_PX,
   pasteOffsetFor,
-  stepPastOccupied,
   parseClipboardNodes,
   serializeNodes,
   type ClipboardNode,
@@ -1475,6 +1473,7 @@ function CanvasSpaceInner({
     createUploadNodeAt,
     pasteTextAt,
     pasteNodesAt,
+    stepPaste,
     placeProposalAt,
   } = useNodeCreation(projectId, spaceId);
 
@@ -2555,11 +2554,7 @@ function CanvasSpaceInner({
           // it shows (inner#1235 A20). A drop lands where the pointer let go.
           const step =
             how === 'paste'
-              ? stepPastOccupied(
-                laid.map((centre) => centerToTopLeft(centre, EMPTY_NODE_SIZE)),
-                readNodeCorners(projectId, spaceId),
-                PASTE_OFFSET_PX,
-              )
+              ? stepPaste(laid.map((centre) => centerToTopLeft(centre, EMPTY_NODE_SIZE)))
               : { dx: 0, dy: 0 };
           const centres = laid.map((centre) => ({
             x: centre.x + step.dx,
@@ -2665,6 +2660,7 @@ function CanvasSpaceInner({
       userId,
       failUploadNode,
       createUploadNodeAt,
+      stepPaste,
       t,
       trackOperation,
     ],
@@ -2962,7 +2958,6 @@ function CanvasSpaceInner({
           offset = pasteOffsetFor(
             clipboardNodes,
             { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y },
-            PASTE_OFFSET_PX,
             spaceId,
           );
         }

@@ -28,7 +28,6 @@ import {
 import { planFlowLayout, type Spot } from '@web/spaces/canvas/lib/place-flow';
 import {
   cloneForPaste,
-  PASTE_OFFSET_PX,
   stepPastOccupied,
   textToNode,
   type ClipboardNode,
@@ -99,6 +98,12 @@ export interface NodeCreation {
     nodes: ReadonlyArray<ClipboardNode>,
     offset: { dx: number; dy: number },
   ) => string[];
+  /**
+   * How far a paste whose nodes would land at `corners` (their top-lefts, in
+   * flow coordinates) steps down and right past the nodes already on this
+   * Space. Every paste goes through it (inner#1235 A20).
+   */
+  stepPaste: (corners: ReadonlyArray<{ x: number; y: number }>) => { dx: number; dy: number };
   /**
    * Place a whole proposed flow around a point, wired and configured.
    * One press is ONE undo entry: a half-placed flow -- nodes without their
@@ -204,14 +209,15 @@ export function useNodeCreation(
   // Every paste steps past the nodes already on its spot, so it shows
   // (inner#1235 A20). The spot is read from the document, so a paste made a
   // moment ago counts before it has rendered.
+  const stepPaste = React.useCallback(
+    (corners: ReadonlyArray<{ x: number; y: number }>): { dx: number; dy: number } =>
+      stepPastOccupied(corners, readNodeCorners(projectId, spaceId)),
+    [projectId, spaceId],
+  );
   const pasteTextAt = React.useCallback(
     (text: string, position: { x: number; y: number }): string => {
       const topLeft = centerToTopLeft(position, EMPTY_NODE_SIZE);
-      const step = stepPastOccupied(
-        [topLeft],
-        readNodeCorners(projectId, spaceId),
-        PASTE_OFFSET_PX,
-      );
+      const step = stepPaste([topLeft]);
       const node = textToNode(
         text,
         { x: topLeft.x + step.dx, y: topLeft.y + step.dy },
@@ -220,21 +226,17 @@ export function useNodeCreation(
       addNode(projectId, spaceId, node);
       return node.id;
     },
-    [projectId, spaceId, userId],
+    [projectId, spaceId, userId, stepPaste],
   );
   const pasteNodesAt = React.useCallback(
     (
       nodes: ReadonlyArray<ClipboardNode>,
       offset: { dx: number; dy: number },
     ): string[] => {
-      // A member travels with its Group, so the Group's corner speaks for it.
-      const carried = new Set(nodes.map((node) => node.id));
-      const step = stepPastOccupied(
-        nodes
-          .filter((node) => node.parentId === undefined || !carried.has(node.parentId))
-          .map((node) => ({ x: node.position.x + offset.dx, y: node.position.y + offset.dy })),
-        readNodeCorners(projectId, spaceId),
-        PASTE_OFFSET_PX,
+      // Clipboard positions are absolute, Group members included, so each one
+      // plus the offset is where that node will be painted.
+      const step = stepPaste(
+        nodes.map((node) => ({ x: node.position.x + offset.dx, y: node.position.y + offset.dy })),
       );
       const cloned = cloneForPaste(nodes, userId, {
         dx: offset.dx + step.dx,
@@ -266,7 +268,7 @@ export function useNodeCreation(
       });
       return cloned.map((node) => node.id);
     },
-    [projectId, spaceId, userId, t],
+    [projectId, spaceId, userId, t, stepPaste],
   );
   const placeProposalAt = React.useCallback(
     (proposal: CanvasProposal, start: Spot): PlacedProposal => {
@@ -379,6 +381,7 @@ export function useNodeCreation(
     createUploadNodeAt,
     pasteTextAt,
     pasteNodesAt,
+    stepPaste,
     placeProposalAt,
   };
 }

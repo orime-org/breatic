@@ -402,21 +402,21 @@ describe('pasteOffsetFor — where a paste lands on the Space it is pasted into 
   });
 
   it('pastes a node copied on this Space beside its source when the source is in view', () => {
-    expect(pasteOffsetFor([at('here')], viewport, 24, 'here')).toEqual({ dx: 24, dy: 24 });
+    expect(pasteOffsetFor([at('here')], viewport, 'here')).toEqual({ dx: 24, dy: 24 });
   });
 
   it('pastes a node copied on another Space at the centre of this view, even where its old place is in view', () => {
-    expect(pasteOffsetFor([at('there')], viewport, 24, 'here')).toEqual({ dx: -50, dy: 350 });
+    expect(pasteOffsetFor([at('there')], viewport, 'here')).toEqual({ dx: -50, dy: 350 });
   });
 
   it('pastes nodes from a mix of Spaces at the centre of this view', () => {
     expect(
-      pasteOffsetFor([at('here'), at('there')], viewport, 24, 'here'),
+      pasteOffsetFor([at('here'), at('there')], viewport, 'here'),
     ).toEqual({ dx: -50, dy: 350 });
   });
 
   it('pastes a node that names no Space at the centre of this view', () => {
-    expect(pasteOffsetFor([at()], viewport, 24, 'here')).toEqual({ dx: -50, dy: 350 });
+    expect(pasteOffsetFor([at()], viewport, 'here')).toEqual({ dx: -50, dy: 350 });
   });
 });
 
@@ -437,22 +437,22 @@ describe('captureClipboard — the Space a copy comes from (inner#1235 A20)', ()
 
 describe('stepPastOccupied — one rule for every paste (inner#1235 A20)', () => {
   it('stays put on a free spot', () => {
-    expect(stepPastOccupied([{ x: 0, y: 0 }], [{ x: 100, y: 100 }], 24)).toEqual({ dx: 0, dy: 0 });
+    expect(stepPastOccupied([{ x: 0, y: 0 }], [{ x: 100, y: 100 }])).toEqual({ dx: 0, dy: 0 });
   });
 
   it('steps down and right until the spot is free', () => {
     expect(
-      stepPastOccupied([{ x: 0, y: 0 }], [{ x: 0, y: 0 }, { x: 24, y: 24 }, { x: 60, y: 0 }], 24),
+      stepPastOccupied([{ x: 0, y: 0 }], [{ x: 0, y: 0 }, { x: 24, y: 24 }, { x: 60, y: 0 }]),
     ).toEqual({ dx: 48, dy: 48 });
   });
 
   it('counts a node less than a step away as on the spot', () => {
-    expect(stepPastOccupied([{ x: 0, y: 0 }], [{ x: 10, y: -10 }], 24)).toEqual({ dx: 24, dy: 24 });
+    expect(stepPastOccupied([{ x: 0, y: 0 }], [{ x: 10, y: -10 }])).toEqual({ dx: 24, dy: 24 });
   });
 
   it('steps the whole batch when any one of its nodes would land on a taken spot', () => {
     expect(
-      stepPastOccupied([{ x: 0, y: 0 }, { x: 400, y: 300 }], [{ x: 400, y: 300 }], 24),
+      stepPastOccupied([{ x: 0, y: 0 }, { x: 400, y: 300 }], [{ x: 400, y: 300 }]),
     ).toEqual({ dx: 24, dy: 24 });
   });
 });

@@ -203,15 +203,15 @@ describe('useNodeCreation', () => {
       canvasSpace.addNode('p1', 's1', {
         id: 'there',
         type: 'image',
-        position: { x: 564, y: 564 },
+        position: { x: 624, y: 624 },
         data: { name: 'T', createdAt: 0, createdBy: 'u-9', locked: false, attachments: [] },
       });
       // Clipboard positions are absolute, members included: shifted by 24 the
-      // Group's corner (524, 524) is free, its member lands on (564, 564).
+      // Group's corner (524, 524) is free, its member lands on (624, 624).
       const [group] = result.current.pasteNodesAt(
         [
           { id: 'g', type: 'group', position: { x: 500, y: 500 }, width: 600, height: 400 },
-          { id: 'm', type: 'image', parentId: 'g', position: { x: 540, y: 540 } },
+          { id: 'm', type: 'image', parentId: 'g', position: { x: 600, y: 600 } },
         ],
         { dx: 24, dy: 24 },
       );
