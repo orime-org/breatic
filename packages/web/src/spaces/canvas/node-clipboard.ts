@@ -438,71 +438,18 @@ export function clipboardBoundingBox(
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
-/**
- * The offset a keyboard Cmd/Ctrl+V paste should apply so the pasted nodes land
- * where the user can see them — viewport-aware (R2-H). When the payload's
- * bounding box still overlaps the current viewport (any part visible), paste
- * just beside it (`+offsetPx`, the in-place feel). When the canvas has been
- * scrolled so the box is fully off-screen, recenter so the box's CENTER lands at
- * the viewport center (not its top-left), so the content appears centred rather
- * than offset to the bottom-right.
- * @param box - The payload's bounding box (top-left + size); a bare point is `{x,y}` with zero size.
- * @param box.x - The box left.
- * @param box.y - The box top.
- * @param box.width - The box width (0 for a bare point).
- * @param box.height - The box height (0 for a bare point).
- * @param viewport - The current viewport rect in flow coordinates.
- * @param viewport.x - The viewport left.
- * @param viewport.y - The viewport top.
- * @param viewport.width - The viewport width.
- * @param viewport.height - The viewport height.
- * @param offsetPx - The in-place nudge applied when the box is in view.
- * @returns The per-axis offset to apply to every pasted node.
- */
-export function pasteAnchorOffset(
-  box: { x: number; y: number; width?: number; height?: number },
-  viewport: { x: number; y: number; width: number; height: number },
-  offsetPx: number,
-): { dx: number; dy: number } {
-  // A degenerate viewport (zero area — no layout measured yet) can't drive a
-  // meaningful recenter, so fall back to the in-place nudge.
-  if (viewport.width <= 0 || viewport.height <= 0) {
-    return { dx: offsetPx, dy: offsetPx };
-  }
-  // In view = the payload's bounding box overlaps the CURRENT viewport at all.
-  // Zoom-independent: it tests the WHOLE box against the REAL viewport, not the
-  // box's top-left against a 50%-inflated rect (which flipped with zoom — at low
-  // zoom the inflated rect was so large that an off-screen source still counted
-  // as in-view, so the paste was nudged off-screen). Any sliver visible → paste
-  // beside it; fully off-screen → recenter so it is brought into view.
-  const boxRight = box.x + (box.width ?? 0);
-  const boxBottom = box.y + (box.height ?? 0);
-  const viewRight = viewport.x + viewport.width;
-  const viewBottom = viewport.y + viewport.height;
-  const intersects =
-    box.x < viewRight &&
-    boxRight > viewport.x &&
-    box.y < viewBottom &&
-    boxBottom > viewport.y;
-  if (intersects) return { dx: offsetPx, dy: offsetPx };
-  const boxCenterX = box.x + (box.width ?? 0) / 2;
-  const boxCenterY = box.y + (box.height ?? 0) / 2;
-  const viewCenterX = viewport.x + viewport.width / 2;
-  const viewCenterY = viewport.y + viewport.height / 2;
-  return { dx: viewCenterX - boxCenterX, dy: viewCenterY - boxCenterY };
-}
-
 /** Pixels a paste steps: beside an in-view source, and past a taken spot. */
 export const PASTE_OFFSET_PX = 24;
 
 /**
  * How far a paste moves the payload, relative to where it was copied from.
  *
- * Nodes copied on this Space land beside their source while it is in view.
- * Anything else has no source on this Space — nodes copied on another Space,
- * pictures from outside — so it lands in the middle of the view, the way a
- * pasted file does (inner#1235 A20). Stepping past nodes already on that spot
- * is the paste's own job (see {@link stepPastOccupied}).
+ * Nodes copied on this Space land beside their source (+{@link PASTE_OFFSET_PX})
+ * while any part of it is in view. Anything else — a source scrolled fully out
+ * of view, nodes copied on another Space, pictures from outside — has its
+ * bounding box centred on the view, so the paste is never dropped off-screen
+ * (R2-H, inner#1235 A20). Stepping past nodes already on that spot is the
+ * paste's own job (see {@link stepPastOccupied}).
  * @param nodes - The clipboard payload.
  * @param viewport - The visible canvas rect, in flow coordinates.
  * @param viewport.x - Its left edge.
@@ -517,10 +464,20 @@ export function pasteOffsetFor(
   viewport: { x: number; y: number; width: number; height: number },
   space: string,
 ): { dx: number; dy: number } {
+  const beside = { dx: PASTE_OFFSET_PX, dy: PASTE_OFFSET_PX };
+  // A degenerate viewport (zero area — no layout measured yet) can't drive a
+  // meaningful recenter, so fall back to the in-place nudge.
+  if (viewport.width <= 0 || viewport.height <= 0) return beside;
   const box = clipboardBoundingBox(nodes);
-  if (nodes.every((node) => node.space === space)) {
-    return pasteAnchorOffset(box, viewport, PASTE_OFFSET_PX);
-  }
+  // In view = the payload's bounding box overlaps the CURRENT viewport at all.
+  // Zoom-independent: it tests the WHOLE box against the REAL viewport, so an
+  // off-screen source never counts as in view at low zoom.
+  const intersects =
+    box.x < viewport.x + viewport.width &&
+    box.x + box.width > viewport.x &&
+    box.y < viewport.y + viewport.height &&
+    box.y + box.height > viewport.y;
+  if (intersects && nodes.every((node) => node.space === space)) return beside;
   return {
     dx: viewport.x + viewport.width / 2 - (box.x + box.width / 2),
     dy: viewport.y + viewport.height / 2 - (box.y + box.height / 2),
@@ -556,10 +513,7 @@ export function stepPastOccupied(
           Math.abs(at.x - (corner.x + shift)) < step && Math.abs(at.y - (corner.y + shift)) < step,
       ),
     );
-  // A pair of corners can be within a step for at most two steps of the walk,
-  // so this many steps always reaches a free spot.
-  const most = 2 * corners.length * occupied.length;
-  for (let tries = 0; tries < most && taken(); tries += 1) shift += step;
+  while (taken()) shift += step;
   return { dx: shift, dy: shift };
 }
 

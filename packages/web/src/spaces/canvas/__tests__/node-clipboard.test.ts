@@ -11,7 +11,6 @@ import {
   captureClipboard,
   clipboardBoundingBox,
   externalParentAbs,
-  pasteAnchorOffset,
   pasteOffsetFor,
   stepPastOccupied,
   textToNode,
@@ -308,12 +307,30 @@ describe('node-clipboard', () => {
   });
 });
 
-describe('pasteAnchorOffset — viewport-aware Cmd+V placement (R2-H, Figma-style)', () => {
+describe('pasteOffsetFor — viewport-aware Cmd+V placement (R2-H, Figma-style)', () => {
   // A 1000x800 viewport at flow origin.
   const viewport = { x: 0, y: 0, width: 1000, height: 800 };
+  /**
+   * A payload of one node copied on this Space, covering `box`.
+   * @param box - Its top-left and, optionally, size (a bare point is zero-sized).
+   * @param box.x - Its left.
+   * @param box.y - Its top.
+   * @param box.width - Its width.
+   * @param box.height - Its height.
+   * @returns The payload.
+   */
+  const copied = (box: { x: number; y: number; width?: number; height?: number }): ClipboardNode[] => [
+    {
+      type: 'image',
+      position: { x: box.x, y: box.y },
+      width: box.width ?? 0,
+      height: box.height ?? 0,
+      space: 'here',
+    },
+  ];
 
   it('anchor inside the viewport → paste next to it (+offset)', () => {
-    expect(pasteAnchorOffset({ x: 500, y: 400 }, viewport, 24)).toEqual({
+    expect(pasteOffsetFor(copied({ x: 500, y: 400 }), viewport, 'here')).toEqual({
       dx: 24,
       dy: 24,
     });
@@ -323,7 +340,7 @@ describe('pasteAnchorOffset — viewport-aware Cmd+V placement (R2-H, Figma-styl
     // top-left (1200,400) is past the right edge (1000) and the box has no size,
     // so it does not overlap the viewport → recenter (the old 50%-inflated rule
     // wrongly nudged it +24 and left it off-screen).
-    expect(pasteAnchorOffset({ x: 1200, y: 400 }, viewport, 24)).toEqual({
+    expect(pasteOffsetFor(copied({ x: 1200, y: 400 }), viewport, 'here')).toEqual({
       dx: 500 - 1200,
       dy: 400 - 400,
     });
@@ -332,14 +349,14 @@ describe('pasteAnchorOffset — viewport-aware Cmd+V placement (R2-H, Figma-styl
   it('a box that still partly overlaps the viewport pastes beside it (+offset)', () => {
     // box spans x 900..1100 — its left half is inside the 0..1000 viewport → in view.
     expect(
-      pasteAnchorOffset({ x: 900, y: 400, width: 200, height: 100 }, viewport, 24),
+      pasteOffsetFor(copied({ x: 900, y: 400, width: 200, height: 100 }), viewport, 'here'),
     ).toEqual({ dx: 24, dy: 24 });
   });
 
   it('anchor far outside (scrolled away) → paste at the viewport center', () => {
     // anchor at (5000,5000) is well past the 50%-larger area → recenter.
     // viewport center = (500,400); offset = center − anchor.
-    expect(pasteAnchorOffset({ x: 5000, y: 5000 }, viewport, 24)).toEqual({
+    expect(pasteOffsetFor(copied({ x: 5000, y: 5000 }), viewport, 'here')).toEqual({
       dx: 500 - 5000,
       dy: 400 - 5000,
     });
@@ -349,13 +366,13 @@ describe('pasteAnchorOffset — viewport-aware Cmd+V placement (R2-H, Figma-styl
     // bbox 5000..5300 × 5000..5200 → center (5150, 5100); viewport center
     // (500, 400) → offset moves the bbox center to the viewport center.
     expect(
-      pasteAnchorOffset({ x: 5000, y: 5000, width: 300, height: 200 }, viewport, 24),
+      pasteOffsetFor(copied({ x: 5000, y: 5000, width: 300, height: 200 }), viewport, 'here'),
     ).toEqual({ dx: 500 - 5150, dy: 400 - 5100 });
   });
 
   it('a degenerate (zero-area) viewport falls back to the in-place nudge', () => {
     // No layout measured yet (jsdom / pre-mount) → can't recenter, so nudge.
-    expect(pasteAnchorOffset({ x: 999, y: 999 }, { x: 0, y: 0, width: 0, height: 0 }, 24)).toEqual({
+    expect(pasteOffsetFor(copied({ x: 999, y: 999 }), { x: 0, y: 0, width: 0, height: 0 }, 'here')).toEqual({
       dx: 24,
       dy: 24,
     });
@@ -364,7 +381,7 @@ describe('pasteAnchorOffset — viewport-aware Cmd+V placement (R2-H, Figma-styl
   it('recenter works with a non-origin viewport', () => {
     const vp = { x: 2000, y: 1000, width: 1000, height: 800 };
     // center = (2500,1400); anchor (0,0) far outside → offset = center − anchor.
-    expect(pasteAnchorOffset({ x: 0, y: 0 }, vp, 24)).toEqual({ dx: 2500, dy: 1400 });
+    expect(pasteOffsetFor(copied({ x: 0, y: 0 }), vp, 'here')).toEqual({ dx: 2500, dy: 1400 });
   });
 });
 

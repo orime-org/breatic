@@ -3535,8 +3535,9 @@ function CanvasSpaceInner({
 
   // Pane-menu Paste: reads the SYSTEM clipboard (async, needs the menu click's
   // user-activation), then mirrors the Cmd+V handler but anchored at the right-
-  // click point — a marked node payload clones nodes with the first one landing
-  // at the cursor, plain text makes a text node there.
+  // click point — a marked node payload clones nodes with their bounding box
+  // centred on the cursor, plain text makes a text node there; either way the
+  // batch then steps past nodes already on that spot (inner#1235 A20).
   const pasteAtCursor = React.useCallback((): void => {
     if (readOnly) return;
     const point = screenToFlowPosition({ x: contextMenu.x, y: contextMenu.y });
