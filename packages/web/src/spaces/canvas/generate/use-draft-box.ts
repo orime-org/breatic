@@ -8,7 +8,6 @@ import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 
 /** The props a text box takes from {@link useDraftBox}. */
 export interface DraftBoxProps {
-  ref: React.RefObject<HTMLInputElement | null>;
   value: string;
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onBlur: () => void;
@@ -29,7 +28,6 @@ export interface DraftBoxProps {
 export function useDraftBox(held: string, onCommit: (next: string) => void): DraftBoxProps {
   const { spaceId } = useCanvasContext();
   const [draft, setDraft] = React.useState<string | null>(null);
-  const ref = React.useRef<HTMLInputElement>(null);
   const commit = React.useCallback((): void => {
     if (draft !== null && draft !== held) onCommit(draft);
     setDraft(null);
@@ -46,5 +44,5 @@ export function useDraftBox(held: string, onCommit: (next: string) => void): Dra
     },
     [commit],
   );
-  return { ref, value: draft ?? held, onChange, onBlur, onKeyDown };
+  return { value: draft ?? held, onChange, onBlur, onKeyDown };
 }

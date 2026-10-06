@@ -15,8 +15,11 @@
 
 import type { Editor } from '@tiptap/core';
 
+/** What an editor is kept under within its Space: a node id, or the prompt fragment itself. */
+export type KeptEditorKey = string | object;
+
 /** Every kept editor, by Space id and then key. */
-const editors = new Map<string, Map<string, Editor>>();
+const editors = new Map<string, Map<KeptEditorKey, Editor>>();
 
 /**
  * The kept editor under a key, built on first use.
@@ -29,7 +32,7 @@ const editors = new Map<string, Map<string, Editor>>();
  */
 export function keptEditor(
   spaceId: string,
-  key: string,
+  key: KeptEditorKey,
   build: () => Editor,
   fits: (kept: Editor) => boolean = () => true,
 ): Editor {
@@ -51,7 +54,7 @@ export function keptEditor(
  * @param spaceId - The Space the editor is on.
  * @param key - What the editor is for.
  */
-export function endKeptEditor(spaceId: string, key: string): void {
+export function endKeptEditor(spaceId: string, key: KeptEditorKey): void {
   const space = editors.get(spaceId);
   space?.get(key)?.destroy();
   space?.delete(key);

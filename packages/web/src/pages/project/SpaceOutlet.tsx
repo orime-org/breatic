@@ -6,7 +6,7 @@ import * as React from 'react';
 import { SpaceReadOnlyNotice } from '@web/pages/project/SpaceReadOnlyNotice';
 import type { ProjectRole, SpaceType } from '@breatic/shared';
 
-import { useBoxFocusReturn } from '@web/lib/use-focus-return';
+import { useFocusReturn, type FocusReturn } from '@web/lib/use-focus-return';
 import { SPACE_TYPES } from '@web/spaces';
 
 interface SpaceOutletProps {
@@ -29,12 +29,9 @@ interface SpaceOutletProps {
  * Renders one Space: its registered body, plus the read-only notice that
  * belongs to every Space type alike.
  *
- * The body comes from the `SPACE_TYPES` registry, so **for the body**, a new
- * Space type only has to register itself. The notice is a second registration:
- * it resolves a document name through `DOC_NAME_BUILDERS`, and a type absent
- * from that table renders no notice at all — silently, because a type with no
- * document has no connection to report on and that is also how timeline
- * legitimately behaves. A new type that does have a document needs both tables.
+ * The body comes from the `SPACE_TYPES` registry; the notice reads the
+ * connection `OpenSpace` holds, which a type needs a `DOC_NAME_BUILDERS`
+ * entry to have.
  * @param root0 - The component props.
  * @param root0.projectId - The id of the project the Space belongs to.
  * @param root0.spaceId - The id of the Space to render.
@@ -54,8 +51,18 @@ export function SpaceOutlet({
   // last element focused in this Space if it was still there on hide
   // (inner#1235 A19). React's focus events pass through portals, so a box in
   // a popover is recorded too.
+  // The focus does not scroll: the reader may have scrolled the element out of
+  // view before leaving, and comes back to the page where it was left.
   const lastFocused = React.useRef<HTMLElement | null>(null);
-  useBoxFocusReturn(lastFocused);
+  const [focusReturn] = React.useState<FocusReturn>(() => ({
+    hadFocus: false,
+    returning: false,
+  }));
+  useFocusReturn(
+    focusReturn,
+    () => lastFocused.current !== null && document.activeElement === lastFocused.current,
+    () => lastFocused.current?.focus({ preventScroll: true }),
+  );
   const def = SPACE_TYPES[type];
   if (!def) {
     return (

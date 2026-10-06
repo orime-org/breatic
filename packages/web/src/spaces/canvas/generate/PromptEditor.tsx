@@ -61,7 +61,6 @@ export interface PromptEditorHandle {
   serializePrompt: (tokens?: MentionTokens) => string | null;
 }
 
-
 /**
  * The classes greying one kind of `@` chip. Written out whole per kind so the
  * stylesheet builder finds each class in the source.
@@ -103,25 +102,6 @@ const keptOf = new WeakMap<
     returning: boolean;
   }
 >();
-
-/** The key each prompt's editor is kept under, one per prompt fragment. */
-const promptKeys = new WeakMap<Y.XmlFragment, string>();
-let promptCount = 0;
-
-/**
- * The key a prompt's editor is kept under.
- * @param fragment - The prompt.
- * @returns Its key, the same one every time.
- */
-function promptKey(fragment: Y.XmlFragment): string {
-  let key = promptKeys.get(fragment);
-  if (key === undefined) {
-    promptCount += 1;
-    key = `prompt:${promptCount}`;
-    promptKeys.set(fragment, key);
-  }
-  return key;
-}
 
 interface PromptEditorProps {
   /** The node's prompt Y.XmlFragment — the collaborative binding target. */
@@ -270,7 +250,7 @@ export const PromptEditor = React.forwardRef<
   const panelSession = useCanvasSession((st) => st.panelSession);
   const resolveName = collaboratorNames?.resolve;
   const editor = React.useMemo((): Editor => {
-    const key = promptKey(fragment);
+    const key = fragment;
     /**
      * Builds the editor, with its handlers reading the wiring box.
      * @returns The editor.
