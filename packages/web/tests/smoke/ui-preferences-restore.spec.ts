@@ -205,9 +205,10 @@ test('the browser holds only the registered keys, with plain values', async ({ p
 });
 
 test('another account in the same browser gets its own preferences', async ({ page }) => {
-  // The page opens signed in as A (setup hands every case A's cookies), so
-  // the case signs in twice rather than three times: logging in is rate
-  // limited to five a minute across the whole suite.
+  // The page opens with A's session from setup, which every other case
+  // shares, so it is left alone: dropping the cookie reaches the login form
+  // without revoking it. The way back from B to A goes through the real sign
+  // out, where the page is not reloaded and the stores still hold B's values.
   const first = credentialsFor('A');
   const second = credentialsFor('B');
   await openProject(page);
@@ -217,7 +218,7 @@ test('another account in the same browser gets its own preferences', async ({ pa
   await page.goto('/studio');
   await page.getByRole('button', { name: 'Personal Studio' }).click();
 
-  await signOut(page);
+  await page.context().clearCookies();
   await signIn(page, second.email, second.password);
   await expect(page.getByRole('button', { name: 'Personal Studio' })).toHaveAttribute(
     'aria-expanded',
