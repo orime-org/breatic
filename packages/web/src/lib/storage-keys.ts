@@ -60,3 +60,28 @@ export const STORAGE_KEYS = {
 
 /** Union of every valid persisted key value. */
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];
+
+/**
+ * Keys earlier versions wrote that nothing reads any more. Their values are
+ * not carried over; `removeRetiredStorageKeys` deletes them so the browser
+ * holds only the keys above.
+ */
+export const RETIRED_STORAGE_KEYS: readonly string[] = [
+  'breatic.preferences',
+  'breatic.agentColumnWidth',
+  'breatic.personalStudios',
+  'breatic.myStudios',
+  'breatic.joinedStudios',
+];
+
+/**
+ * Delete every retired key from localStorage. Runs once at startup; a browser
+ * that refuses storage access has nothing to delete.
+ */
+export function removeRetiredStorageKeys(): void {
+  try {
+    for (const key of RETIRED_STORAGE_KEYS) window.localStorage.removeItem(key);
+  } catch {
+    // Private mode and blocked site data throw on access.
+  }
+}

@@ -172,6 +172,14 @@ test('the picked theme is on the first frame after a reload, stored as the plain
 });
 
 test('the browser holds only the registered keys, with plain values', async ({ page }) => {
+  // What an earlier version left behind; the app deletes it at startup.
+  await page.addInitScript(() => {
+    if (window.sessionStorage.getItem('seeded') !== null) return;
+    window.sessionStorage.setItem('seeded', '1');
+    window.localStorage.setItem('breatic.preferences', '{"state":{"theme":"dark"},"version":1}');
+    window.localStorage.setItem('breatic.agentColumnWidth', '500');
+    window.localStorage.setItem('breatic.myStudios', '1');
+  });
   await openProject(page);
   await page.getByTestId('agent-toggle').click();
   await toggle(page, /snap to grid/i).click();
