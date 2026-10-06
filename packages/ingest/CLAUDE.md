@@ -34,7 +34,7 @@
 
 **错误上报**：`SENTRY_DSN` 为空就什么都不发；`SENTRY_RELEASE` 不写进任何文件，由部署命令 `--var SENTRY_RELEASE:<commit>` 传入，不是 40 位小写 commit 就不设 release；`SENTRY_ENVIRONMENT` 不是 `production` / `staging` / `development` 之一就记成 `development`。**所有失败都走 `src/error-monitoring.ts` 的 `noteFailure` 一个出口**：一律写日志，并且默认上报；只有调用处声明是读者自己的输入造成的才只写日志——`/fetch` 拉读者外链失败（票据 `typeFromSource === true`，含响应体传到一半断掉的 `ingest_source_read_failed`）、浏览器发分片时断开（`ingest_part_read_failed`）和 `ingest_stored_type_refused`。读字节来源失败和写 R2 失败要分开：前者是给字节的那一方，后者是我们，`writeStreamAsParts` 用 `SourceReadError` 区分。判定题：**这次失败要我们修吗？读者自己的输入造成的 → `userInput: true`；其余一律上报。** 新写一处失败不许直接 `console.error`。
 
-**缺配置要说出缺的是哪一个**：`fetch` 入口第一件事查三个必填项（`INGEST_SHARED_SECRET` · `ALLOWED_ORIGINS` · `BUCKET` 绑定），缺了答 500 并列出名字，空字符串也算缺。`SENTRY_DSN` 非空但不是合法 DSN（比如模板占位符没替换）同样答 500 并点名——SDK 遇到它只打一行 console、什么都不发。
+**缺配置要说出缺的是哪一个**：`fetch` 入口第一件事查三个必填项（`INGEST_SHARED_SECRET` · `ALLOWED_ORIGINS` · `BUCKET` 绑定），缺了答 500 并列出名字，空字符串也算缺。`SENTRY_DSN` 非空但不是合法 DSN（比如模板占位符没替换）时照常服务、不上报，每个 isolate 记一次 `ingest_sentry_dsn_invalid`。
 
 部署走 `pnpm --filter @breatic/ingest deploy:worker`（带 `--env production`）。**这个 script 只在本包，仓库根没有** —— 在根目录跑 `pnpm deploy:worker` 报 `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command "deploy:worker" not found`。顶层的 `name` 跟生产那个不同名，漏掉这个 flag 不会盖到线上 Worker。名字带后缀是因为 `deploy` 是 pnpm 自己的子命令（本仓的 `Dockerfile` 正在用它打三个服务的产物），同名的 script 会被它遮住、一行都不执行。
 

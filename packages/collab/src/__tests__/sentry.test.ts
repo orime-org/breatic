@@ -18,7 +18,7 @@ vi.mock("@breatic/core", async (importOriginal) => ({
 }));
 
 import type * as CoreModule from "@breatic/core";
-import { errorMonitoringDataCollection } from "@breatic/shared";
+import { errorMonitoringDataCollection, requestWithoutQuery } from "@breatic/shared";
 import { exitProcess, initSentry } from "@collab/sentry.js";
 
 beforeEach(() => {
@@ -32,13 +32,19 @@ afterEach(() => {
 
 describe("initSentry", () => {
   it("does not start the SDK when no DSN is configured", () => {
-    initSentry();
+    expect(initSentry()).toBe("off");
+    expect(sentry.init).not.toHaveBeenCalled();
+  });
+
+  it("does not start the SDK, and says why, when the DSN is not a DSN", () => {
+    config.SENTRY_DSN = "<backend DSN>";
+    expect(initSentry()).toBe("invalid_dsn");
     expect(sentry.init).not.toHaveBeenCalled();
   });
 
   it("starts the SDK tagged as collab, forwarding error logs and leaving the exit on unhandled rejections to collab's own handler", () => {
     config.SENTRY_DSN = "https://key@o1.ingest.sentry.io/2";
-    initSentry();
+    expect(initSentry()).toBe("started");
     expect(sentry.pinoIntegration).toHaveBeenCalledWith({
       log: { levels: [] },
       error: { levels: ["error", "fatal"] },
@@ -51,6 +57,7 @@ describe("initSentry", () => {
       release: undefined,
       initialScope: { tags: { service: "collab" } },
       dataCollection: errorMonitoringDataCollection(),
+      beforeSend: requestWithoutQuery,
       integrations: [
         sentry.pinoIntegration.mock.results[0]?.value,
         sentry.onUnhandledRejectionIntegration.mock.results[0]?.value,

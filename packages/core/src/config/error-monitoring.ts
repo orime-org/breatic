@@ -13,6 +13,8 @@ import { readFileSync } from "node:fs";
 import {
   errorMonitoringDataCollection,
   errorMonitoringRelease,
+  isSentryDsn,
+  requestWithoutQuery,
   type ErrorMonitoringDataCollection,
   type ErrorMonitoringEnvironment,
 } from "@breatic/shared";
@@ -51,6 +53,9 @@ export function readBuildRelease(path: string): string | undefined {
   return errorMonitoringRelease((parsed as { revision?: unknown }).revision);
 }
 
+/** How starting error monitoring went: running, not configured, or a DSN the SDK would not send to. */
+export type ErrorMonitoringStart = "started" | "off" | "invalid_dsn";
+
 /** The backend services that report to the shared backend project. */
 export type MonitoredService = "server" | "worker" | "collab";
 
@@ -73,20 +78,22 @@ export interface ErrorMonitoringOptions {
   release: string | undefined;
   initialScope: { tags: { service: MonitoredService } };
   dataCollection: ErrorMonitoringDataCollection;
+  beforeSend: typeof requestWithoutQuery;
 }
 
 /**
  * The SDK options a backend service starts error monitoring with.
  * @param input - DSN, deployment, service name and build-info location.
- * @returns The options, or `null` when no DSN is configured.
+ * @returns The options, or `null` when no DSN is configured or it is not a DSN.
  */
 export function errorMonitoringOptions(input: ErrorMonitoringInput): ErrorMonitoringOptions | null {
-  if (input.dsn === "") return null;
+  if (input.dsn === "" || !isSentryDsn(input.dsn)) return null;
   return {
     dsn: input.dsn,
     environment: errorMonitoringEnvironment(input.deployment),
     release: readBuildRelease(input.buildInfoPath),
     initialScope: { tags: { service: input.service } },
     dataCollection: errorMonitoringDataCollection(),
+    beforeSend: requestWithoutQuery,
   };
 }

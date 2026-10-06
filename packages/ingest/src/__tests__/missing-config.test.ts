@@ -139,7 +139,7 @@ describe("a Worker whose configuration is incomplete", () => {
     },
   );
 
-  it("names a SENTRY_DSN that is set but is not a DSN", async () => {
+  it("keeps serving when SENTRY_DSN is set but is not a DSN", async () => {
     const ctx = createExecutionContext();
     const response = await worker.fetch(
       new Request("https://ingest.example.com/uploads", { method: "POST" }),
@@ -148,7 +148,7 @@ describe("a Worker whose configuration is incomplete", () => {
     );
     await waitOnExecutionContext(ctx);
 
-    expect(response.status).toBe(500);
-    await expect(response.text()).resolves.toContain("SENTRY_DSN");
+    // A request with no ticket gets the answer every such request gets.
+    expect(response.status).toBe(401);
   });
 });

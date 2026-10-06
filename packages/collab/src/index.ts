@@ -41,11 +41,12 @@ import { startMembersSync } from "@collab/services/members-sync.js";
 // to the lazy default ("api") logger instead of the collab one.
 // Error monitoring starts before the first log line, so error logs from
 // startup are already reported.
-initSentry();
+const monitoring = initSentry();
 
 initLogger("collab");
 
 const logger = createLogger("main");
+if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
 
 /**
  * Deadline (ms) for the teardown drains that follow the store settle.

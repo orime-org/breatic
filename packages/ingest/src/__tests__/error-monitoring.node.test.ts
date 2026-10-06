@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { monitoringOptions } from "@ingest/error-monitoring.js";
 
 const DSN = "https://publickey@sentry.test.example/1";
@@ -38,5 +38,23 @@ describe("monitoringOptions", () => {
       httpBodies: [],
       urlQueryParams: false,
     });
+  });
+
+  it("turns reporting off and says so once when the DSN is not a DSN", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    expect(monitoringOptions({ SENTRY_DSN: "<the ingest DSN>" }).dsn).toBe("");
+    expect(monitoringOptions({ SENTRY_DSN: "<the ingest DSN>" }).dsn).toBe("");
+
+    expect(logged).toHaveBeenCalledTimes(1);
+    expect(logged).toHaveBeenCalledWith("ingest_sentry_dsn_invalid", {});
+    logged.mockRestore();
+  });
+
+  it("strips the query from the referring page each event carries", () => {
+    const sent = monitoringOptions({ SENTRY_DSN: DSN }).beforeSend({
+      request: { headers: { referer: "https://app.test/reset-password?token=R" } },
+    });
+    expect(sent.request?.headers).toEqual({ referer: "https://app.test/reset-password" });
   });
 });

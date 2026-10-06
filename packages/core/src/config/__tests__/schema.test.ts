@@ -325,9 +325,8 @@ describe("parseConfig — SENTRY_DSN", () => {
     expect(config.SENTRY_DSN).toBe("https://publickey@o1.ingest.sentry.io/2");
   });
 
-  it("refuses to start with a value that is not a DSN", () => {
-    expect(() => parseConfig(baseEnv({ SENTRY_DSN: "<backend DSN>" }))).toThrow(/SENTRY_DSN/);
-    expect(() => parseConfig(baseEnv({ SENTRY_DSN: "https://o1.ingest.sentry.io/2" }))).toThrow(/SENTRY_DSN/);
+  it("starts with a value that is not a DSN, which the services report and leave off", () => {
+    expect(parseConfig(baseEnv({ SENTRY_DSN: "<backend DSN>" })).SENTRY_DSN).toBe("<backend DSN>");
   });
 });
 

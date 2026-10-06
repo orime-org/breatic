@@ -21,6 +21,14 @@ describe("collab entry exits", () => {
     expect(init).toBeLessThan(firstLog);
   });
 
+  it("logs a SENTRY_DSN that is not a DSN once the logger is up", () => {
+    const firstLog = code.indexOf('initLogger("collab")');
+    const complaint = code.indexOf('"sentry_dsn_invalid"');
+    expect(complaint).toBeGreaterThan(firstLog);
+    expect(code).toMatch(/const monitoring = initSentry\(\);/);
+    expect(code).toMatch(/if \(monitoring === "invalid_dsn"\) logger\.error\(\{\}, "sentry_dsn_invalid"\);/);
+  });
+
   it("never ends the process without sending pending error events", () => {
     expect(code).not.toMatch(/process\.exit\(/);
   });

@@ -324,12 +324,12 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 ### Error monitoring
 
-Sentry 分三个项目:web · 后端(server / worker / collab 共用一个,事件带 `service` 标签区分)· ingest Worker。**DSN 留空就不启动**,自托管实例默认什么都不发。**非空但不是合法 DSN 的拒绝启动**(后端由 core schema 判,ingest 答 500 点名;判据是 shared 的 `isSentryDsn`)—— SDK 遇到它只打一行 console、什么都不发,监控会悄悄关掉。
+Sentry 分三个项目:web · 后端(server / worker / collab 共用一个,事件带 `service` 标签区分)· ingest Worker。**DSN 留空就不启动**,自托管实例默认什么都不发。**非空但不是合法 DSN 的同样不上报,服务照常运行**,并记一条 error 日志点名 `SENTRY_DSN`(后端 `sentry_dsn_invalid`,ingest `ingest_sentry_dsn_invalid`;判据是 shared 的 `isSentryDsn`)。**上报的地址只保留到路径**:请求地址和 `Referer` 的 query 与 fragment 一律去掉(shared 的 `requestWithoutQuery`,web 另外处理面包屑),路径里的 id 保留、用来定位出错的那条数据;能单独当凭据用的值不放进路径。
 
 | 端 | DSN | release 从哪来 | 报什么 |
 |---|---|---|---|
 | web | `VITE_SENTRY_DSN` | `VITE_APP_VERSION` | 未捕获异常 + `ErrorBoundary` + 主动 `captureMessage` |
-| 后端三服务 | `SENTRY_DSN`(core env schema) | 镜像里 `/app/build-info.json` 的 `revision` | pino `error` / `fatal` 日志(`pinoIntegration`)+ 未捕获异常;server / worker 遇未处理的 Promise 拒绝按 Node 默认退出(`strict`),collab 有自己的处理器(`none`) |
+| 后端三服务 | `SENTRY_DSN`(core env schema) | 镜像里 `/app/build-info.json` 的 `revision` | pino `error` / `fatal` 日志(`pinoIntegration`)+ 未捕获异常;server / worker 遇未处理的 Promise 拒绝先上报再退出(`strict`;SDK 写死忽略 `AbortError` / `AI_NoOutputGeneratedError`,这两类既不上报也不退出),collab 有自己的处理器(`none`) |
 | ingest | `wrangler.toml` 的 `SENTRY_DSN` | 部署时 `--var SENTRY_RELEASE:<commit>` | `src/error-monitoring.ts` 的 `noteFailure` 一个出口,读者自己的输入造成的失败只写日志 |
 
 三端共用 `@breatic/shared` 的 `error-monitoring.ts`:release **只认 40 位小写 commit**,别的值(含 `unknown`)不设 release;environment 只用 `production` / `staging` / `development`(后端由 `ENV` 映射:`prod` → `production`,`dev` → `development`);`dataCollection` 是同一个收紧基线(不收用户信息、cookie、请求体、URL query、标识性请求头)。**用户只附 `id`**(server 的 `requireAuth`、web 的 current-user store)。不开 tracing / replay / profiling。

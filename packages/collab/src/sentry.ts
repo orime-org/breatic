@@ -12,7 +12,7 @@
 
 import { resolve } from "node:path";
 import * as Sentry from "@sentry/node";
-import { env, errorMonitoringOptions, MONOREPO_ROOT } from "@breatic/core";
+import { env, errorMonitoringOptions, MONOREPO_ROOT, type ErrorMonitoringStart } from "@breatic/core";
 
 /** How long an exit waits for pending events, in milliseconds. */
 const FLUSH_TIMEOUT_MS = 2000;
@@ -24,15 +24,17 @@ const FLUSH_TIMEOUT_MS = 2000;
  * Unhandled rejections are only reported: collab's own handler logs them,
  * flushes its log and exits through {@link exitProcess}, and an SDK exit
  * would cut that flush short.
+ * @returns `started`, `off` when no DSN is set, or `invalid_dsn` when the
+ *   DSN is not one; the entry logs the last once its logger is up.
  */
-export function initSentry(): void {
+export function initSentry(): ErrorMonitoringStart {
   const options = errorMonitoringOptions({
     dsn: env.SENTRY_DSN,
     deployment: env.ENV,
     service: "collab",
     buildInfoPath: resolve(MONOREPO_ROOT, "build-info.json"),
   });
-  if (options === null) return;
+  if (options === null) return env.SENTRY_DSN === "" ? "off" : "invalid_dsn";
   Sentry.init({
     ...options,
     integrations: [
@@ -40,6 +42,7 @@ export function initSentry(): void {
       Sentry.onUnhandledRejectionIntegration({ mode: "none" }),
     ],
   });
+  return "started";
 }
 
 /**

@@ -23,7 +23,7 @@
  */
 
 import { z } from "zod";
-import { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT, isSentryDsn } from "@breatic/shared";
+import { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT } from "@breatic/shared";
 
 /**
  * Normalise a blank env value to undefined so `.default()` / `.optional()` fire.
@@ -241,14 +241,9 @@ export const coreConfigSchema = z.object({
   WAVESPEED_API_KEY: z.string().default(""),
 
   // ── Error monitoring ─────────────────────────────
-  // Blank keeps Sentry off, which is what a self-hosted instance gets. Any
-  // other value has to be a DSN: the SDK answers one it cannot parse with a
-  // console line and sends nothing, so a mistyped one fails startup here.
-  SENTRY_DSN: z
-    .string()
-    .trim()
-    .refine((dsn) => dsn === "" || isSentryDsn(dsn), "SENTRY_DSN is set but is not a Sentry DSN")
-    .default(""),
+  // Blank keeps Sentry off, which is what a self-hosted instance gets. A
+  // value that is not a DSN also leaves it off; each service logs that once.
+  SENTRY_DSN: z.string().trim().default(""),
 
   // ── Agent Tools ───────────────────────────────────
   BRAVE_SEARCH_API_KEY: z.string().default(""),

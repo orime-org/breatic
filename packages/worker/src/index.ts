@@ -46,9 +46,10 @@ import {
 
 // Error monitoring starts before the first log line, so error logs from the
 // config checks below are already reported.
-initSentry();
+const monitoring = initSentry();
 
 initLogger("worker");
+if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
 // i18n: register the catalogs before anything can throw. `t()` echoes the key
 // back when no catalog is loaded, so without this a failed node reads
 // `server.skill.not_available_on_deployment` where a sentence belongs —

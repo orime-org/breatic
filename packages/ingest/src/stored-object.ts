@@ -89,7 +89,8 @@ export class SourceReadError extends Error {
  * @param partSize - How large each part but the last should be.
  * @param maxParts - The most parts this upload may take.
  * @returns The parts R2 accepted, or why the write was refused.
- * @throws {Error} When reading the source or writing a part fails.
+ * @throws {SourceReadError} When the source's body fails while it is being read.
+ * @throws {Error} When R2 refuses a part.
  */
 export async function writeStreamAsParts(
   bucket: R2Bucket,

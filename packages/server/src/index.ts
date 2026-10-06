@@ -40,9 +40,10 @@ import { textToolModels } from "@server/config/text-tools.js";
 // the HTTP routes stay mounted under /api/v1 — only the log identity changes.
 // Error monitoring starts before the first log line, so error logs from the
 // config checks below are already reported.
-initSentry();
+const monitoring = initSentry();
 
 initLogger("server");
+if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
 
 // Route the AI SDK's warnings into our logger. Without this the SDK writes
 // them to console, and our logs are JSON on disk — console output lands

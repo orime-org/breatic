@@ -116,7 +116,8 @@ Cloudflare rather than in any file.
 
 Non-preflight requests answer 500 with the names of missing settings before
 anything reads a binding. A `SENTRY_DSN` that is set but is not a Sentry DSN
-(the template's placeholder left in, for instance) is answered the same way. OPTIONS preflight is answered first, so successful
+(the template's placeholder left in, for instance) leaves reporting off; the
+Worker keeps serving and logs `ingest_sentry_dsn_invalid` once per isolate. OPTIONS preflight is answered first, so successful
 preflight alone does not validate the secret or storage bindings.
 
 ## Running it

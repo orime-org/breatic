@@ -17,6 +17,8 @@ import {
   errorMonitoringDataCollection,
   errorMonitoringEnvironmentName,
   errorMonitoringRelease,
+  isSentryDsn,
+  requestWithoutQuery,
   type ErrorMonitoringDataCollection,
   type ErrorMonitoringEnvironment,
 } from "@breatic/shared";
@@ -37,6 +39,29 @@ export interface MonitoringOptions {
   release: string | undefined;
   environment: ErrorMonitoringEnvironment;
   dataCollection: ErrorMonitoringDataCollection;
+  beforeSend: typeof requestWithoutQuery;
+}
+
+/** Whether this isolate has already said its DSN is not one. */
+let invalidDsnNoted = false;
+
+/**
+ * The configured DSN, or nothing when it is not a DSN.
+ *
+ * The SDK would answer a DSN it cannot parse with a console line and send
+ * nothing; this keeps that outcome and names the setting once per isolate, so
+ * a mistyped DSN turns reporting off without stopping uploads.
+ * @param env - The Worker's bindings.
+ * @returns The DSN to start the SDK with, empty to report nothing.
+ */
+function configuredDsn(env: MonitoringEnv): string {
+  const dsn = env.SENTRY_DSN?.trim() ?? "";
+  if (dsn === "" || isSentryDsn(dsn)) return dsn;
+  if (!invalidDsnNoted) {
+    invalidDsnNoted = true;
+    noteFailure("ingest_sentry_dsn_invalid", {});
+  }
+  return "";
 }
 
 /**
@@ -52,10 +77,11 @@ export interface MonitoringOptions {
  */
 export function monitoringOptions(env: MonitoringEnv): MonitoringOptions {
   return {
-    dsn: env.SENTRY_DSN?.trim() ?? "",
+    dsn: configuredDsn(env),
     release: errorMonitoringRelease(env.SENTRY_RELEASE),
     environment: errorMonitoringEnvironmentName(env.SENTRY_ENVIRONMENT) ?? "development",
     dataCollection: errorMonitoringDataCollection(),
+    beforeSend: requestWithoutQuery,
   };
 }
 

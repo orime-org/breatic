@@ -12,7 +12,7 @@
 
 import { resolve } from "node:path";
 import * as Sentry from "@sentry/node";
-import { env, errorMonitoringOptions, MONOREPO_ROOT } from "@breatic/core";
+import { env, errorMonitoringOptions, MONOREPO_ROOT, type ErrorMonitoringStart } from "@breatic/core";
 
 /** How long an exit waits for pending events, in milliseconds. */
 const FLUSH_TIMEOUT_MS = 2000;
@@ -25,15 +25,17 @@ const FLUSH_TIMEOUT_MS = 2000;
  * the crash-and-restart behaviour the worker had before monitoring. The SDK
  * ignores two by name, `AbortError` and `AI_NoOutputGeneratedError`: those
  * are neither reported nor fatal while monitoring is on.
+ * @returns `started`, `off` when no DSN is set, or `invalid_dsn` when the
+ *   DSN is not one; the entry logs the last once its logger is up.
  */
-export function initSentry(): void {
+export function initSentry(): ErrorMonitoringStart {
   const options = errorMonitoringOptions({
     dsn: env.SENTRY_DSN,
     deployment: env.ENV,
     service: "worker",
     buildInfoPath: resolve(MONOREPO_ROOT, "build-info.json"),
   });
-  if (options === null) return;
+  if (options === null) return env.SENTRY_DSN === "" ? "off" : "invalid_dsn";
   Sentry.init({
     ...options,
     integrations: [
@@ -41,6 +43,7 @@ export function initSentry(): void {
       Sentry.onUnhandledRejectionIntegration({ mode: "strict" }),
     ],
   });
+  return "started";
 }
 
 /**

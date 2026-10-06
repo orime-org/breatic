@@ -25,7 +25,6 @@ import {
   isUploadableMediaType,
   hasCoverFrame,
   INGEST_FAILURE_HEADER,
-  isSentryDsn,
   type IngestFailureCode,
   type SessionTokenPayload,
   type MediaLimits,
@@ -253,12 +252,12 @@ async function uploadPart(
   const session = await authorizedSession(request, env, uploadId);
   if (session === null) return new Response("Unauthorized", { status: 401 });
 
-  // The browser is where these bytes come from, so a body that fails to arrive
-  // is the browser leaving: a closed tab, a dropped connection.
-  const body = await request.arrayBuffer().catch((err: unknown) => {
-    noteFailure("ingest_part_read_failed", { uploadId, partNumber }, err, { userInput: true });
-    return null;
-  });
+  // The sender is where these bytes come from (a browser, or our own backend
+  // through sendBytesToIngest), so a body that fails to arrive is the sender's
+  // connection dropping, and the sender sees that failure itself.
+  const body = await request
+    .arrayBuffer()
+    .catch(noted("ingest_part_read_failed", { uploadId, partNumber }, { userInput: true }));
   if (body === null) return new Response("Could not read this part", { status: 400 });
 
   // Judged before the write, because this is the last moment it can stop one.
@@ -1091,19 +1090,6 @@ export default Sentry.withSentry((env: Env) => monitoringOptions(env), {
       return withCors(
         new Response(
           `This Worker is missing configuration: ${missing.join(", ")}. ` +
-            "See packages/ingest/README.md.",
-          { status: 500 },
-        ),
-        origin,
-      );
-    }
-    // The SDK answers a DSN it cannot parse by printing one line and sending
-    // nothing, so a mistyped one would turn reporting off unseen.
-    const sentryDsn = env.SENTRY_DSN?.trim() ?? "";
-    if (sentryDsn !== "" && !isSentryDsn(sentryDsn)) {
-      return withCors(
-        new Response(
-          "This Worker's SENTRY_DSN is set but is not a Sentry DSN. " +
             "See packages/ingest/README.md.",
           { status: 500 },
         ),
