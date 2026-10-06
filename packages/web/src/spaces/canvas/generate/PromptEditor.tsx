@@ -250,7 +250,6 @@ export const PromptEditor = React.forwardRef<
   const panelSession = useCanvasSession((st) => st.panelSession);
   const resolveName = collaboratorNames?.resolve;
   const editor = React.useMemo((): Editor => {
-    const key = fragment;
     /**
      * Builds the editor, with its handlers reading the wiring box.
      * @returns The editor.
@@ -348,19 +347,19 @@ export const PromptEditor = React.forwardRef<
       const stop = sessionStore.subscribe((st) => {
         if (st.panelSession === session) return;
         stop();
-        if (!built.isDestroyed) endKeptEditor(spaceId, key);
+        if (!built.isDestroyed) endKeptEditor(spaceId, fragment);
       });
       return built;
     };
     // A kept editor is reused while it is bound to the same caret connection
-    // with the same captured strings (the key is the prompt's own). The two
+    // with the same captured strings. The two
     // mention labels are baked into the extensions and change only on a
     // locale switch; the caret
     // connection arrives once, on the socket's first connect; the name
     // RESOLVER keeps one identity for the editor's whole life and reads the
     // current roster itself, so it is compared rather than the roster bundle,
     // which is rebuilt on every project-page render.
-    return keptEditor(spaceId, key, build, (kept) => {
+    return keptEditor(spaceId, fragment, build, (kept) => {
       const bound = keptOf.get(kept);
       return (
         bound?.caretProvider === caretProvider &&

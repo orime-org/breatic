@@ -1038,6 +1038,37 @@ test('a hidden document does not take a drop made outside the shown one', async 
   await expect(editor.locator('.bn-block-content')).toHaveCount(2);
 });
 
+test('words left selected in a hidden document do not take the canvas copy', async ({
+  page,
+  context,
+}) => {
+  // A3, A5: a selection the reader can no longer see is not theirs; Cmd+C on
+  // the shown canvas copies its selected node.
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const projectUrl = await openFreshProject(page);
+  const [doc] = await addSpaces(page, 1, 'document');
+  const [canvas] = (await stripIds(page)) as [string, string];
+  await showSpace(page, canvas);
+  await seedNode(page, projectIdOf(projectUrl), canvas, 'copied-node', 'image', { x: 500, y: 0 });
+  const node = visibleSpace(page).locator('.react-flow__node[data-id="copied-node"]');
+  await node.click();
+  await expect(node).toHaveClass(/selected/);
+
+  await showSpace(page, doc!);
+  const editor = page.locator(DOCUMENT_EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await editor.click();
+  await page.keyboard.type('words in the document');
+  await page.keyboard.press('Shift+Home');
+  await showSpace(page, canvas);
+
+  const nodes = visibleSpace(page).locator('.react-flow__node');
+  const before = await nodes.count();
+  await page.keyboard.press('ControlOrMeta+c');
+  await page.keyboard.press('ControlOrMeta+v');
+  await expect(nodes).toHaveCount(before + 1);
+});
+
 test('the caret goes back into a reply without moving what the reader scrolled to', async ({
   page,
 }) => {

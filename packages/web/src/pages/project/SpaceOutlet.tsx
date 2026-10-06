@@ -63,6 +63,20 @@ export function SpaceOutlet({
     () => lastFocused.current !== null && document.activeElement === lastFocused.current,
     () => lastFocused.current?.focus({ preventScroll: true }),
   );
+  // Hidden, the Space lets go of words left selected in it: the page has one
+  // selection, and its copy and paste would keep reading words the reader can
+  // no longer see (inner#1235 A5). A passive cleanup runs once the Space is
+  // display:none, after the layout cleanups above have read the caret; an
+  // editor shown again puts its own selection back when it takes focus.
+  React.useEffect(
+    () => () => {
+      const selection = document.getSelection();
+      const anchor = selection?.anchorNode ?? null;
+      const at = anchor instanceof Element ? anchor : (anchor?.parentElement ?? null);
+      if (at !== null && !(at.checkVisibility?.() ?? true)) selection?.removeAllRanges();
+    },
+    [],
+  );
   const def = SPACE_TYPES[type];
   if (!def) {
     return (

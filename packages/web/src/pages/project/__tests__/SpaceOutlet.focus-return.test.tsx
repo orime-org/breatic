@@ -22,7 +22,6 @@ vi.mock('@web/spaces', () => ({
       bodyComponent: (): React.JSX.Element => (
         <div>
           <input data-testid='inline-box' />
-          <input data-testid='other-box' />
           {createPortal(<input data-testid='portal-box' />, document.body)}
         </div>
       ),
