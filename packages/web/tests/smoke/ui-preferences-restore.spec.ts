@@ -197,9 +197,11 @@ test('the browser holds only the registered keys, with plain values', async ({ p
 });
 
 test('another account in the same browser gets its own preferences', async ({ page }) => {
+  // The page opens signed in as A (setup hands every case A's cookies), so
+  // the case signs in twice rather than three times: logging in is rate
+  // limited to five a minute across the whole suite.
   const first = credentialsFor('A');
   const second = credentialsFor('B');
-  await signIn(page, first.email, first.password);
   await openProject(page);
   await page.getByTestId('agent-toggle').click();
   await toggle(page, /minimap/i).click();
