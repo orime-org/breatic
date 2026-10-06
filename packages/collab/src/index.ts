@@ -12,6 +12,7 @@
 
 // MUST be first: reads process.env + initCore before any env.* read.
 import "@collab/bootstrap-config.js";
+import { exitProcess, initSentry } from "@collab/sentry.js";
 import {
   env,
   createLogger,
@@ -38,6 +39,10 @@ import { startMembersSync } from "@collab/services/members-sync.js";
 // Initialize the root logger with the collab service name before any child
 // (`createLogger("main")` below) is created — otherwise children would bind
 // to the lazy default ("api") logger instead of the collab one.
+// Error monitoring starts before the first log line, so error logs from
+// startup are already reported.
+initSentry();
+
 initLogger("collab");
 
 const logger = createLogger("main");
@@ -101,11 +106,11 @@ function flushLogger(): Promise<void> {
 // it limp on silently. Registered at module load so they cover startup too.
 process.on("uncaughtException", (err) => {
   logger.fatal({ err }, "uncaught_exception");
-  void flushLogger().then(() => process.exit(1));
+  void flushLogger().then(() => exitProcess(1));
 });
 process.on("unhandledRejection", (reason) => {
   logger.fatal({ err: reason }, "unhandled_rejection");
-  void flushLogger().then(() => process.exit(1));
+  void flushLogger().then(() => exitProcess(1));
 });
 
 // All from the validated config (injected by bootstrap-config's
@@ -158,7 +163,8 @@ async function main(): Promise<void> {
     } else {
       logger.error({ err }, "infra_check_unexpected_error");
     }
-    process.exit(1);
+    await flushLogger();
+    await exitProcess(1);
   }
 
   // Create and start Hocuspocus server
@@ -212,7 +218,7 @@ async function main(): Promise<void> {
   // + exits (the library layer never logs / exits itself).
   server.httpServer.on("error", (err) => {
     logger.fatal({ err, port: env.COLLAB_PORT }, "ws_listen_error");
-    void flushLogger().then(() => process.exit(1));
+    void flushLogger().then(() => exitProcess(1));
   });
 
   await server.listen();
@@ -293,7 +299,7 @@ async function main(): Promise<void> {
           { service: event.serviceName, port: event.port, err: event.err },
           "healthz_listen_error",
         );
-        void flushLogger().then(() => process.exit(1));
+        void flushLogger().then(() => exitProcess(1));
       }
     },
     // Wiring lives in `health-checks.ts` (`buildCollabHealthChecks`)
@@ -388,7 +394,7 @@ async function main(): Promise<void> {
     });
     logger.info("Shutdown complete");
     await flushLogger();
-    process.exit(0);
+    await exitProcess(0);
   };
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
@@ -398,5 +404,5 @@ async function main(): Promise<void> {
 main().catch(async (err) => {
   logger.fatal({ err }, "Failed to start collaboration server");
   await flushLogger();
-  process.exit(1);
+  await exitProcess(1);
 });
