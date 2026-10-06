@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -238,6 +238,55 @@ function dispatchPaste(text: string): void {
   act(() => {
     keyTarget().dispatchEvent(event);
   });
+}
+
+/**
+ * Hand the canvas two picture files, the way a copied pair or a dropped pair
+ * arrives.
+ * @param how - Pasted from the clipboard or dropped onto the canvas.
+ */
+function handTwoFiles(how: 'paste' | 'drop'): void {
+  const files = [
+    new File(['x'], 'a.png', { type: 'image/png' }),
+    new File(['y'], 'b.png', { type: 'image/png' }),
+  ];
+  if (how === 'paste') {
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', {
+      configurable: true,
+      value: { getData: (): string => '', files },
+    });
+    act(() => {
+      keyTarget().dispatchEvent(event);
+    });
+    return;
+  }
+  const event = new Event('drop', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'dataTransfer', {
+    configurable: true,
+    value: { files, types: ['Files'] },
+  });
+  Object.defineProperty(event, 'clientX', { configurable: true, value: 10 });
+  Object.defineProperty(event, 'clientY', { configurable: true, value: 10 });
+  act(() => {
+    screen.getByTestId('canvas-space').dispatchEvent(event);
+  });
+}
+
+/**
+ * The top-lefts a spied `addNode` wrote picture nodes at, from one call on.
+ * @param calls - The spy's recorded calls.
+ * @param from - The first call to read.
+ * @returns Each picture node's position, in order.
+ */
+function picturesFrom(
+  calls: ReadonlyArray<Parameters<typeof canvasSpace.addNode>>,
+  from: number,
+): { x: number; y: number }[] {
+  return calls
+    .slice(from)
+    .filter(([, , node]) => node.type === 'image')
+    .map(([, , node]) => node.position);
 }
 
 /**
@@ -2413,59 +2462,78 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     addNode.mockRestore();
   });
 
-  it('steps a pasted batch of files past a node sitting where any one of them would land (inner#1235 A20)', async () => {
-    mockUseCanvasSpace.mockReturnValue(mockSpace());
-    const addNode = vi
-      .spyOn(canvasSpace, 'addNode')
-      .mockImplementation(() => undefined);
-    const corners = vi.spyOn(canvasSpace, 'readNodeCorners').mockReturnValue([]);
-    const config = vi
-      .spyOn(assetsApi, 'fetchUploadConfig')
-      .mockResolvedValue({ maxUploadBytes: 1_000_000 } as Awaited<
-        ReturnType<typeof assetsApi.fetchUploadConfig>
-      >);
-    renderSpace();
-    /** Paste two pictures the way a copied pair of files arrives. */
-    const pasteTwo = (): void => {
-      const event = new Event('paste', { bubbles: true, cancelable: true });
-      Object.defineProperty(event, 'clipboardData', {
-        configurable: true,
-        value: {
-          getData: (): string => '',
-          files: [
-            new File(['x'], 'a.png', { type: 'image/png' }),
-            new File(['y'], 'b.png', { type: 'image/png' }),
-          ],
-        },
-      });
-      act(() => {
-        keyTarget().dispatchEvent(event);
-      });
-    };
+  describe('files handed over twice at the same spot (inner#1235 A20)', () => {
     /**
-     * The top-lefts the upload nodes were written at, from one call onward.
-     * @param from - The first `addNode` call to read.
-     * @returns Each upload node's position, in order.
+     * Mount the canvas with writes and the upload size check stubbed.
+     * @returns The `addNode` and `readNodeCorners` spies.
      */
-    const uploads = (from: number): { x: number; y: number }[] =>
-      addNode.mock.calls
-        .slice(from)
-        .filter(([, , node]) => node.type === 'image')
-        .map(([, , node]) => node.position);
+    const mount = (): {
+      addNode: MockInstance<typeof canvasSpace.addNode>;
+      corners: MockInstance<typeof canvasSpace.readNodeCorners>;
+    } => {
+      mockUseCanvasSpace.mockReturnValue(mockSpace());
+      const addNode = vi.spyOn(canvasSpace, 'addNode').mockImplementation(() => undefined);
+      const corners = vi.spyOn(canvasSpace, 'readNodeCorners').mockReturnValue([]);
+      vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue({
+        maxUploadBytes: 1_000_000,
+      } as Awaited<ReturnType<typeof assetsApi.fetchUploadConfig>>);
+      renderSpace();
+      return { addNode, corners };
+    };
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
 
-    pasteTwo();
-    await waitFor(() => expect(uploads(0)).toHaveLength(2));
-    const first = uploads(0);
-    const before = addNode.mock.calls.length;
-    // Only the second picture's spot is taken now.
-    corners.mockReturnValue([first[1] as { x: number; y: number }]);
-    pasteTwo();
-    await waitFor(() => expect(uploads(before)).toHaveLength(2));
+    it('steps a pasted batch past a node sitting where any one of its files would land', async () => {
+      const { addNode, corners } = mount();
+      handTwoFiles('paste');
+      await waitFor(() => expect(picturesFrom(addNode.mock.calls, 0)).toHaveLength(2));
+      const first = picturesFrom(addNode.mock.calls, 0);
+      const before = addNode.mock.calls.length;
+      // Only the second picture's spot is taken now.
+      corners.mockReturnValue([first[1] as { x: number; y: number }]);
+      handTwoFiles('paste');
+      await waitFor(() => expect(picturesFrom(addNode.mock.calls, before)).toHaveLength(2));
 
-    expect(uploads(before)).toEqual(first.map((at) => ({ x: at.x + 24, y: at.y + 24 })));
-    addNode.mockRestore();
-    corners.mockRestore();
-    config.mockRestore();
+      expect(picturesFrom(addNode.mock.calls, before)).toEqual(
+        first.map((at) => ({ x: at.x + 24, y: at.y + 24 })),
+      );
+    });
+
+    it('steps a pasted batch past a node sitting where only the Group around it would start', async () => {
+      const { addNode, corners } = mount();
+      handTwoFiles('paste');
+      await waitFor(() => expect(picturesFrom(addNode.mock.calls, 0)).toHaveLength(2));
+      const first = picturesFrom(addNode.mock.calls, 0);
+      const before = addNode.mock.calls.length;
+      // The Group around two pictures starts 24 up and left of the first one;
+      // only that spot is taken.
+      corners.mockReturnValue([
+        {
+          x: Math.min(...first.map((at) => at.x)) - 24,
+          y: Math.min(...first.map((at) => at.y)) - 24,
+        },
+      ]);
+      handTwoFiles('paste');
+      await waitFor(() => expect(picturesFrom(addNode.mock.calls, before)).toHaveLength(2));
+
+      expect(picturesFrom(addNode.mock.calls, before)).toEqual(
+        first.map((at) => ({ x: at.x + 24, y: at.y + 24 })),
+      );
+    });
+
+    it('lands a dropped batch where the pointer let go, even on nodes already there', async () => {
+      const { addNode, corners } = mount();
+      handTwoFiles('drop');
+      await waitFor(() => expect(picturesFrom(addNode.mock.calls, 0)).toHaveLength(2));
+      const first = picturesFrom(addNode.mock.calls, 0);
+      const before = addNode.mock.calls.length;
+      corners.mockReturnValue(first);
+      handTwoFiles('drop');
+      await waitFor(() => expect(picturesFrom(addNode.mock.calls, before)).toHaveLength(2));
+
+      expect(picturesFrom(addNode.mock.calls, before)).toEqual(first);
+    });
   });
 
   it('readOnly canvas ignores paste (no Yjs write)', () => {
