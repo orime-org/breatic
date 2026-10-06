@@ -48,6 +48,25 @@ const LIBRARY_COLUMN_INSET = 12;
 export const ROW_HANDLE_NUDGE = ROW_HANDLE_WIDTH / 2 - LIBRARY_ROW_INSET;
 export const COLUMN_HANDLE_NUDGE = COLUMN_HANDLE_HEIGHT / 2 - LIBRARY_COLUMN_INSET;
 
+/**
+ * How far down the row handle moves from where the library puts it, to stand
+ * beside its row's first line (inner#1278). The library centres it on the
+ * hovered cell, which is as tall as the row; a block's strip stands beside its
+ * first line, and so does this.
+ * @param line - The row's first line (`firstLineOfTableRow`), if it shows one.
+ * @param cell - The hovered cell's box, which the library centred the handle on.
+ * @param cell.top - Its top edge.
+ * @param cell.height - Its height.
+ * @returns The move, negative for up; zero when the row shows no line.
+ */
+export function rowHandleDrop(
+  line: { readonly top: number; readonly height: number } | undefined,
+  cell: { readonly top: number; readonly height: number },
+): number {
+  if (line === undefined || line.height <= 0) return 0;
+  return line.top + line.height / 2 - (cell.top + cell.height / 2);
+}
+
 /** The diameter SC 2.5.8 keeps clear around a target under 24px. */
 const CLEARANCE = 24;
 
