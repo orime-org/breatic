@@ -27,10 +27,11 @@
 export const STORAGE_PREFIX = 'breatic.';
 
 /**
- * Every localStorage key the web app uses, in one place. Values are written
- * out in full (rather than composed from STORAGE_PREFIX) so they read
- * identically to what appears in the browser's storage inspector; the prefix
- * invariant is verified by the unit test, not the type system.
+ * Every browser-persisted (localStorage and sessionStorage) key the web app
+ * uses, in one place. Values are written out in full (rather than composed
+ * from STORAGE_PREFIX) so they read identically to what appears in the
+ * browser's storage inspector; the prefix invariant is verified by the unit
+ * test, not the type system.
  */
 export const STORAGE_KEYS = {
   /** Explicit locale choice — i18n bootstrap resolution chain step 1. */
