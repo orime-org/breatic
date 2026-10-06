@@ -9,6 +9,7 @@
  * half by unit tests through the injectable factories.
  */
 
+import { corsUrl } from '@web/lib/cors-url';
 import type { CropRect } from '@web/lib/crop-math';
 
 /**
@@ -57,24 +58,6 @@ export interface CropSourceFactories {
  * large; calibrate if that ever stops being true.
  */
 export const CROP_SOURCE_TIMEOUT_MS = 20_000;
-
-/**
- * Re-request `url` in CORS mode with a cache-busting param.
- *
- * The node's own element loaded WITHOUT `crossOrigin`, and serving that cached
- * no-cors response to a CORS request is the classic canvas-taint trap — the
- * extra param guarantees a fresh CORS-mode fetch (the 2026-07-16 probe
- * verified the bucket serves ACAO). URL-API construction rather than string
- * append (round-3): appending lands the param AFTER a `#fragment`, where it
- * never reaches the wire.
- * @param url - The source URL.
- * @returns The URL to request.
- */
-function corsUrl(url: string): string {
-  const busted = new URL(url, window.location.href);
-  busted.searchParams.set('focus-crop', '1');
-  return busted.href;
-}
 
 /**
  * Wait for `event` on `el`, rejecting on `error` or after the timeout.

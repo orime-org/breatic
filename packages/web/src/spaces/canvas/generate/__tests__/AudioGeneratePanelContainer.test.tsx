@@ -102,7 +102,14 @@ const ELEVEN: ModelEntry = {
     voice_id: { description: '', default: 'Alice', remote_source: 'voices' },
     // The shape elevenlabs.yaml declares: a continuous range, rendered as a
     // slider with the vendor's three named stops beneath it.
-    stability: { description: '', min: 0, max: 1, step: 0.05, default: 0.5 },
+    stability: {
+      description: '',
+      min: 0,
+      max: 1,
+      step: 0.05,
+      default: 0.5,
+      value_labels: { 0: 'Creative', 0.5: 'Natural', 1: 'Robust' },
+    },
   },
   providers: [],
   prompt_upstream: 'text',

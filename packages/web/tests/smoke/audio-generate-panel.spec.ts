@@ -52,9 +52,10 @@ test('the panel opens, offers what the model declares, and stands the first voic
   await expect(page.getByRole('slider', { name: /speed/i })).toHaveCount(0);
   await expect(page.getByRole('slider', { name: /stability/i })).toBeVisible();
   await expect(page.getByRole('slider', { name: /similarity/i })).toBeVisible();
-  await expect(page.getByTestId('generate-audio-stability-stop-0')).toBeVisible();
-  await expect(page.getByTestId('generate-audio-stability-stop-0.5')).toBeVisible();
-  await expect(page.getByTestId('generate-audio-stability-stop-1')).toBeVisible();
+  // Their names are the model's own, in English (value_labels).
+  await expect(page.getByTestId('generate-audio-stability-stop-0')).toHaveText('Creative');
+  await expect(page.getByTestId('generate-audio-stability-stop-0.5')).toHaveText('Natural');
+  await expect(page.getByTestId('generate-audio-stability-stop-1')).toHaveText('Robust');
   // Escape closes the top layer first, and a slider's tooltip can be it.
   const voiceRow = page.getByTestId('generate-audio-row-voice_id');
   await expect(async () => {
