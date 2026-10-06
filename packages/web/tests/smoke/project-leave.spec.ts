@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Leaving a project of one's own accord, end to end (inner#1021).
+ * Leaving a project of one's own accord, end to end.
  *
  * Account A owns the projects; B is an editor on them. B leaves one from its
  * card in the studio, and another from inside the project — once as a studio
