@@ -26,6 +26,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { writeAgentPanelOpen } from '@web/lib/project-tabs-storage';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
 
 const PID = '11111111-1111-4111-8111-111111111111';
@@ -213,7 +214,8 @@ describe('ProjectPage — closing a tab discards what that tab was holding', () 
       { id: SPACE_A, name: 'Space A', type: 'document', createdAt: 1 },
       { id: SPACE_B, name: 'Space B', type: 'document', createdAt: 2 },
     ];
-    useUIStore.setState({ chatPanelCollapsed: true, spaceOpInProgress: null });
+    useUIStore.setState({ spaceOpInProgress: null });
+    writeAgentPanelOpen('u-me', PID, false);
     useCurrentUserStore.setState({
       user: {
         id: 'u-me',

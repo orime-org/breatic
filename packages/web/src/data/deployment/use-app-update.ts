@@ -4,7 +4,9 @@
 import { httpRequest } from '@breatic/shared';
 import { useCallback, useEffect, useState } from 'react';
 
-const STORAGE_KEY = 'breatic:deferred-app-versions';
+import { STORAGE_KEYS } from '@web/lib/storage-keys';
+
+const STORAGE_KEY = STORAGE_KEYS.deferredAppVersions;
 const deferred = new Set<string>();
 const INTERVAL = 180_000;
 const RESUME_DELAY = 30_000;

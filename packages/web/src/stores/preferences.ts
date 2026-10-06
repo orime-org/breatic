@@ -3,36 +3,52 @@
 
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { persist, createJSONStorage } from 'zustand/middleware';
 
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
 
 /**
- * User preferences store — theme only, persisted to localStorage.
+ * User preferences store — theme only.
  *
- * `language` lived here briefly but moved to `@breatic/shared` as
- * the single source of truth (2026-05-22, PR follow-up to #117). The
- * LangSwitcher now calls `changeLocale()` from `@web/i18n/locale-bootstrap`
- * directly, which persists to `localStorage["breatic.locale"]` and
- * notifies the i18n engine in one shot. Keeping a Zustand mirror caused
- * silent drift (store changed but engine didn't, so `useTranslation`
- * never re-rendered).
+ * The language lives in `@breatic/shared` and is persisted by `changeLocale()`
+ * from `@web/i18n/locale-bootstrap`, which also notifies the i18n engine.
  *
- * Direction B runtime Tweaks (text scale / saturation / hue / radius /
- * neutrals) were removed 2026-05-19 per user decision: the defaults
- * (text 14 / radius round / neutrals warm-zinc) are fixed in
- * `theme/tokens.css` and not user-tunable at runtime.
- *
- * Theme persistence (2026-05-22): wrapped in `persist` middleware so
- * the user's choice survives reload. The localStorage key is
- * `breatic.preferences` (JSON `{ state: { theme }, version }`). A
- * mirror inline script in `index.html` reads the same key before
- * React mounts and sets `document.documentElement.dataset.theme`
- * up-front to avoid a flash of the wrong theme on cold load. The two
- * must stay in sync — if you rename the storage key or change the
- * persisted shape, update the inline script too.
+ * The theme is stored in `breatic.theme` as the plain value (`dark` /
+ * `light` / `system`). An inline script in `index.html` reads the same key
+ * before React mounts and sets `document.documentElement.dataset.theme`, so a
+ * cold load does not flash the wrong theme. If the key or the stored value
+ * changes, update that script too.
  */
 export type ThemeMode = 'light' | 'dark' | 'system';
+
+const THEME_MODES: ReadonlySet<string> = new Set<ThemeMode>(['light', 'dark', 'system']);
+
+/**
+ * The theme this browser stored, or `system` when none is stored, the value
+ * is not one of the three, or storage cannot be read.
+ * @returns The stored theme.
+ */
+export function readStoredTheme(): ThemeMode {
+  try {
+    const value = window.localStorage.getItem(STORAGE_KEYS.theme);
+    return value !== null && THEME_MODES.has(value) ? (value as ThemeMode) : 'system';
+  } catch {
+    // Private mode and blocked site data throw on access.
+    return 'system';
+  }
+}
+
+/**
+ * Store the theme, giving up silently when the browser refuses; the choice
+ * still holds for this session.
+ * @param theme - The theme the user picked.
+ */
+function storeTheme(theme: ThemeMode): void {
+  try {
+    window.localStorage.setItem(STORAGE_KEYS.theme, theme);
+  } catch {
+    // Quota and blocked site data both throw.
+  }
+}
 
 interface PreferencesState {
   theme: ThemeMode;
@@ -40,19 +56,13 @@ interface PreferencesState {
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
-  persist(
-    immer((set) => ({
-      theme: 'system',
-      setTheme: (theme) =>
-        set((s) => {
-          s.theme = theme;
-        }),
-    })),
-    {
-      name: STORAGE_KEYS.preferences,
-      storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ theme: s.theme }),
-      version: 1,
+  immer((set) => ({
+    theme: readStoredTheme(),
+    setTheme: (theme) => {
+      set((s) => {
+        s.theme = theme;
+      });
+      storeTheme(theme);
     },
-  ),
+  })),
 );

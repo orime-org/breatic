@@ -155,12 +155,13 @@ export default function ProjectPage(): React.JSX.Element {
 
   const { refetch } = projectQuery;
   const retry = React.useCallback(() => { void refetch(); }, [refetch]);
+  const preferencesRestored = useRestoredPreferences(userId, projectId);
   if (projectQuery.error instanceof ApiException && projectQuery.error.status === 404) return <main><NotFoundScreen /></main>;
   if (projectQuery.error instanceof ApiException && projectQuery.error.status === 403) {
     return <ProjectJoinGate projectId={projectId} />;
   }
   if (projectQuery.isError && !projectQuery.data) return <main><ResourceLoadError onRetry={retry} /></main>;
-  if (!projectQuery.data) return <LoadingScreen />;
+  if (!projectQuery.data || !preferencesRestored) return <LoadingScreen />;
   return (
     <CollabSocketProvider userId={userId}>
       {/*
@@ -174,6 +175,30 @@ export default function ProjectPage(): React.JSX.Element {
       <ProjectWorkspace key={projectId} projectId={projectId} project={projectQuery.data} />
     </CollabSocketProvider>
   );
+}
+
+/**
+ * Load this account's stored interface preferences into the stores before the
+ * workspace renders: whether the Agent panel is open in this project, and the
+ * canvas minimap and snap. Both stores outlive a project page and start from
+ * fixed defaults, so without this the first frame shows whatever the previous
+ * page or the defaults left, and the Agent column mounts before being hidden.
+ *
+ * The layout effect runs before paint, and the workspace is held back until
+ * it has run for this account and project.
+ * @param userId - The signed-in account.
+ * @param projectId - The project being opened.
+ * @returns Whether the stores now hold this account's values for this project.
+ */
+function useRestoredPreferences(userId: string | undefined, projectId: string): boolean {
+  const key = `${userId ?? ''}/${projectId}`;
+  const [restoredFor, setRestoredFor] = React.useState<string | null>(null);
+  React.useLayoutEffect(() => {
+    useUIStore.getState().restoreAgentPanel(userId, projectId);
+    useCanvasStore.getState().restoreViewPreferences(userId);
+    setRestoredFor(key);
+  }, [key, userId, projectId]);
+  return restoredFor === key;
 }
 
 /**
