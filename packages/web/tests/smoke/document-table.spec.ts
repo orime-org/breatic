@@ -18,7 +18,7 @@ import { test, expect, type Page } from 'playwright/test';
 
 import { openSmokeProject } from '../helpers/project';
 import { clickAndSettle, pressAndSettle } from '../helpers/editor-keys';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
 let page: Page;
 let errors: string[];
@@ -39,7 +39,6 @@ test.afterEach(async () => {
   expect(errors).toEqual([]);
 });
 
-const EDITOR = '[data-testid="document-space"] .ProseMirror';
 const TOP = `${EDITOR} > .bn-block-group > .bn-block-outer > .bn-block > .bn-block-content`;
 
 /**

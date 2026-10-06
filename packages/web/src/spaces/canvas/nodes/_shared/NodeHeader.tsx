@@ -83,6 +83,7 @@ export function NodeHeader({
     startEdit,
     setDraft,
     commit,
+    blur,
     cancel,
   } = useInlineRename({
     current: display,
@@ -114,7 +115,7 @@ export function NodeHeader({
           value={draft}
           maxLength={MAX_NODE_NAME_LEN}
           onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
+          onBlur={blur}
           onKeyDown={(e) => {
             if (e.key === 'Enter') commit();
             else if (e.key === 'Escape') {

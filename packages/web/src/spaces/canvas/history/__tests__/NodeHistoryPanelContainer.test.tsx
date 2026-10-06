@@ -30,7 +30,7 @@ import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { toast } from '@web/lib/toast';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
-import { useCanvasStore } from '@web/stores/canvas';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 const PID = 'p';
 const SID = 's';
@@ -102,7 +102,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
       nodeHistoryPageSize: 20,
     } as never);
     vi.mocked(toast.error).mockReturnValue('t');
-    useCanvasStore.setState({
+    canvasSessions.of('').setState({
       panelHostId: null,
       panelKind: null,
       pickSession: null,
@@ -116,7 +116,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
     );
     mount();
     act(() => {
-      useCanvasStore.getState().openHistoryPanel('target');
+      canvasSessions.of('').getState().openHistoryPanel('target');
     });
     // Grace window: synchronously after opening (t≈0, well under
     // SKELETON_DELAY_MS) nothing renders — no panel, no skeleton — so a fast
@@ -149,7 +149,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
     });
     mount();
     act(() => {
-      useCanvasStore.getState().openHistoryPanel('target');
+      canvasSessions.of('').getState().openHistoryPanel('target');
     });
     // Past the delay: a paused first fetch shows a skeleton, never the empty.
     await waitFor(() => {
@@ -171,7 +171,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
     vi.mocked(canvasApi.listNodeHistory).mockRejectedValue(new Error('boom'));
     mount();
     act(() => {
-      useCanvasStore.getState().openHistoryPanel('target');
+      canvasSessions.of('').getState().openHistoryPanel('target');
     });
     // The panel opens and shows the error in-panel with a retry button.
     await waitFor(() => {
@@ -186,7 +186,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
     // Reverted from the toast+close behaviour: no toast, panel stays open.
     expect(toast.error).not.toHaveBeenCalled();
     expect(screen.getByTestId('node-history-close')).toBeInTheDocument();
-    expect(useCanvasStore.getState().panelKind).toBe('history');
+    expect(canvasSessions.of('').getState().panelKind).toBe('history');
   });
 
   it('refetches when the in-panel retry button is clicked', async () => {
@@ -197,7 +197,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
       .mockResolvedValue({ entries: [entry('a')], total: 1 });
     mount();
     act(() => {
-      useCanvasStore.getState().openHistoryPanel('target');
+      canvasSessions.of('').getState().openHistoryPanel('target');
     });
     await waitFor(() => {
       expect(screen.getByTestId('node-history-retry')).toBeInTheDocument();
@@ -220,7 +220,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
     });
     mount();
     act(() => {
-      useCanvasStore.getState().openHistoryPanel('target');
+      canvasSessions.of('').getState().openHistoryPanel('target');
     });
     await waitFor(() => {
       expect(screen.getByTestId('node-history-close')).toBeInTheDocument();
@@ -239,7 +239,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
     });
     mount();
     act(() => {
-      useCanvasStore.getState().openHistoryPanel('target');
+      canvasSessions.of('').getState().openHistoryPanel('target');
     });
     await waitFor(() => {
       expect(screen.getByTestId('node-history-empty')).toBeInTheDocument();
@@ -258,7 +258,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
       .mockReturnValue(new Promise<never>(() => {}));
     mount();
     act(() => {
-      useCanvasStore.getState().openHistoryPanel('target');
+      canvasSessions.of('').getState().openHistoryPanel('target');
     });
     await waitFor(() => {
       expect(screen.getByTestId('node-history-retry')).toBeInTheDocument();
@@ -314,7 +314,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
     );
     // Open node A → still loading past the delay → skeleton shows (elapsed=true).
     act(() => {
-      useCanvasStore.getState().openHistoryPanel('A');
+      canvasSessions.of('').getState().openHistoryPanel('A');
     });
     await waitFor(() => {
       expect(screen.getByTestId('node-history-loading')).toBeInTheDocument();
@@ -323,7 +323,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
     // open panel → a FRESH grace window → the skeleton must NOT persist
     // immediately (B does not inherit A's elapsed skeleton).
     act(() => {
-      useCanvasStore.getState().openHistoryPanel('B');
+      canvasSessions.of('').getState().openHistoryPanel('B');
     });
     expect(screen.queryByTestId('node-history-loading')).not.toBeInTheDocument();
     // ...and once B's own grace elapses, its skeleton appears.
@@ -374,7 +374,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
     );
     const { rerender } = render(tree(0));
     act(() => {
-      useCanvasStore.getState().openHistoryPanel('target');
+      canvasSessions.of('').getState().openHistoryPanel('target');
     });
     await waitFor(() =>
       expect(screen.getByTestId('node-history-close')).toBeInTheDocument(),
@@ -389,7 +389,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
     expect(screen.getByTestId('node-history-close')).toBeInTheDocument();
     expect(screen.queryByTestId('node-history-error')).not.toBeInTheDocument();
     expect(toast.error).not.toHaveBeenCalled();
-    expect(useCanvasStore.getState().panelKind).toBe('history');
+    expect(canvasSessions.of('').getState().panelKind).toBe('history');
   });
 });
 
@@ -401,7 +401,7 @@ describe('what makes the panel ask the server again (#2175)', () => {
       nodeHistoryPageSize: 20,
     } as never);
     _resetForTests();
-    useCanvasStore.setState({
+    canvasSessions.of('').setState({
       panelHostId: null,
       panelKind: null,
       pickSession: null,
@@ -456,7 +456,7 @@ describe('what makes the panel ask the server again (#2175)', () => {
     );
     const { rerender } = render(tree(0));
     act(() => {
-      useCanvasStore.getState().openHistoryPanel('target');
+      canvasSessions.of('').getState().openHistoryPanel('target');
     });
     await waitFor(() =>
       expect(screen.getByTestId('node-history-close')).toBeInTheDocument(),
@@ -518,7 +518,7 @@ describe('what makes the panel ask the server again (#2175)', () => {
       </QueryClientProvider>,
     );
     act(() => {
-      useCanvasStore.getState().openHistoryPanel('target');
+      canvasSessions.of('').getState().openHistoryPanel('target');
     });
     await waitFor(() =>
       expect(screen.getByTestId('node-history-close')).toBeInTheDocument(),

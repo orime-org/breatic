@@ -83,6 +83,11 @@ export interface ClipboardNode {
   /** Source parent Group id (members only). */
   parentId?: string;
   /**
+   * The Space the node was copied on. A paste lands beside its source only on
+   * that Space; anywhere else the source is not on screen to land beside.
+   */
+  space?: string;
+  /**
    * `content` is an address outside our storage. A paste never pins it on the
    * node: it creates an empty node and has the server fetch the address into
    * storage, which then writes the stored address onto the node.
@@ -128,12 +133,14 @@ export interface CaptureNode {
  *   exactly that blank-card regression a silent one — a caller that forgot to
  *   thread the text compiled clean and copied nothing. A caller that genuinely
  *   has no text passes an empty map and says so at the call site.
+ * @param space - The Space the nodes are copied on.
  * @returns The clipboard payload (Groups first, then their members, then loose nodes).
  */
 export function captureClipboard(
   targetIds: ReadonlyArray<string>,
   allNodes: ReadonlyArray<CaptureNode>,
   textById: ReadonlyMap<string, string>,
+  space: string,
 ): ClipboardNode[] {
   const byId = new Map(allNodes.map((node) => [node.id, node]));
   /**
@@ -208,7 +215,7 @@ export function captureClipboard(
     if (node.type === 'group') continue;
     emitContent(node);
   }
-  return result;
+  return result.map((node) => ({ ...node, space }));
 }
 
 /**
@@ -432,87 +439,85 @@ export function clipboardBoundingBox(
 }
 
 /**
- * The offset a keyboard Cmd/Ctrl+V paste should apply so the pasted nodes land
- * where the user can see them — viewport-aware (R2-H). When the payload's
- * bounding box still overlaps the current viewport (any part visible), paste
- * just beside it (`+offsetPx`, the in-place feel). When the canvas has been
- * scrolled so the box is fully off-screen, recenter so the box's CENTER lands at
- * the viewport center (not its top-left), so the content appears centred rather
- * than offset to the bottom-right.
- * @param box - The payload's bounding box (top-left + size); a bare point is `{x,y}` with zero size.
- * @param box.x - The box left.
- * @param box.y - The box top.
- * @param box.width - The box width (0 for a bare point).
- * @param box.height - The box height (0 for a bare point).
- * @param viewport - The current viewport rect in flow coordinates.
- * @param viewport.x - The viewport left.
- * @param viewport.y - The viewport top.
- * @param viewport.width - The viewport width.
- * @param viewport.height - The viewport height.
- * @param offsetPx - The in-place nudge applied when the box is in view.
- * @returns The per-axis offset to apply to every pasted node.
+ * Pixels a copy moves: a paste beside its in-view source and past a taken
+ * spot, and a Cmd/Ctrl+D duplicate down-right of its source.
  */
-export function pasteAnchorOffset(
-  box: { x: number; y: number; width?: number; height?: number },
-  viewport: { x: number; y: number; width: number; height: number },
-  offsetPx: number,
-): { dx: number; dy: number } {
-  // A degenerate viewport (zero area — no layout measured yet) can't drive a
-  // meaningful recenter, so fall back to the in-place nudge.
-  if (viewport.width <= 0 || viewport.height <= 0) {
-    return { dx: offsetPx, dy: offsetPx };
-  }
-  // In view = the payload's bounding box overlaps the CURRENT viewport at all.
-  // Zoom-independent: it tests the WHOLE box against the REAL viewport, not the
-  // box's top-left against a 50%-inflated rect (which flipped with zoom — at low
-  // zoom the inflated rect was so large that an off-screen source still counted
-  // as in-view, so the paste was nudged off-screen). Any sliver visible → paste
-  // beside it; fully off-screen → recenter so it is brought into view.
-  const boxRight = box.x + (box.width ?? 0);
-  const boxBottom = box.y + (box.height ?? 0);
-  const viewRight = viewport.x + viewport.width;
-  const viewBottom = viewport.y + viewport.height;
-  const intersects =
-    box.x < viewRight &&
-    boxRight > viewport.x &&
-    box.y < viewBottom &&
-    boxBottom > viewport.y;
-  if (intersects) return { dx: offsetPx, dy: offsetPx };
-  const boxCenterX = box.x + (box.width ?? 0) / 2;
-  const boxCenterY = box.y + (box.height ?? 0) / 2;
-  const viewCenterX = viewport.x + viewport.width / 2;
-  const viewCenterY = viewport.y + viewport.height / 2;
-  return { dx: viewCenterX - boxCenterX, dy: viewCenterY - boxCenterY };
-}
+export const PASTE_OFFSET_PX = 24;
 
 /**
- * Where a paste goes, relative to where the payload was copied from.
+ * How far a paste moves the payload, relative to where it was copied from.
  *
- * Nodes copied on the canvas land beside their source while it is in view.
- * Pictures from outside have no source on the canvas, so they land in the
- * middle of the view, the way a pasted file does.
+ * Nodes copied on this Space land beside their source (+{@link PASTE_OFFSET_PX})
+ * while any part of it is in view. Anything else — a source scrolled fully out
+ * of view, nodes copied on another Space, pictures from outside — has its
+ * bounding box centred on the view, so the paste is never dropped off-screen
+ * (R2-H, inner#1235 A20). Stepping past nodes already on that spot is the
+ * paste's own job (see {@link stepPastOccupied}).
  * @param nodes - The clipboard payload.
  * @param viewport - The visible canvas rect, in flow coordinates.
  * @param viewport.x - Its left edge.
  * @param viewport.y - Its top edge.
  * @param viewport.width - Its width.
  * @param viewport.height - Its height.
- * @param offsetPx - The nudge beside an in-view source.
+ * @param space - The Space pasted into.
  * @returns The shift to apply to every node's position.
  */
 export function pasteOffsetFor(
   nodes: ReadonlyArray<ClipboardNode>,
   viewport: { x: number; y: number; width: number; height: number },
-  offsetPx: number,
+  space: string,
 ): { dx: number; dy: number } {
+  const beside = { dx: PASTE_OFFSET_PX, dy: PASTE_OFFSET_PX };
+  // A degenerate viewport (zero area — no layout measured yet) can't drive a
+  // meaningful recenter, so fall back to the in-place nudge.
+  if (viewport.width <= 0 || viewport.height <= 0) return beside;
   const box = clipboardBoundingBox(nodes);
-  if (!nodes.every((node) => node.external === true)) {
-    return pasteAnchorOffset(box, viewport, offsetPx);
-  }
+  // In view = the payload's bounding box overlaps the CURRENT viewport at all.
+  // Zoom-independent: it tests the WHOLE box against the REAL viewport, so an
+  // off-screen source never counts as in view at low zoom.
+  const intersects =
+    box.x < viewport.x + viewport.width &&
+    box.x + box.width > viewport.x &&
+    box.y < viewport.y + viewport.height &&
+    box.y + box.height > viewport.y;
+  if (intersects && nodes.every((node) => node.space === space)) return beside;
   return {
     dx: viewport.x + viewport.width / 2 - (box.x + box.width / 2),
     dy: viewport.y + viewport.height / 2 - (box.y + box.height / 2),
   };
+}
+
+/**
+ * How far a paste steps down and right so none of what it makes lands on top
+ * of a node already there: a node whose top-left is less than
+ * {@link PASTE_OFFSET_PX} away from a pasted node's top-left on both axes is on
+ * its spot, and the whole batch moves one such step at a time until no pasted
+ * node has one. Every paste goes through it — nodes, text, files — so a copy
+ * always shows (inner#1235 A20).
+ * @param corners - Where each pasted node's top-left would land, in flow
+ *   coordinates.
+ * @param occupied - Top-left corners of the nodes already on the Space.
+ * @returns The extra shift for the whole batch.
+ */
+export function stepPastOccupied(
+  corners: ReadonlyArray<{ x: number; y: number }>,
+  occupied: ReadonlyArray<{ x: number; y: number }>,
+): { dx: number; dy: number } {
+  const step = PASTE_OFFSET_PX;
+  let shift = 0;
+  /**
+   * Whether any pasted node, shifted, sits within a step of a node already there.
+   * @returns True while the batch's spot is taken.
+   */
+  const taken = (): boolean =>
+    corners.some((corner) =>
+      occupied.some(
+        (at) =>
+          Math.abs(at.x - (corner.x + shift)) < step && Math.abs(at.y - (corner.y + shift)) < step,
+      ),
+    );
+  while (taken()) shift += step;
+  return { dx: shift, dy: shift };
 }
 
 /**

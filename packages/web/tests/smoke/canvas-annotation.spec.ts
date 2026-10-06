@@ -34,12 +34,13 @@ import {
   openPeer,
   openTheNote,
 } from '../helpers/annotation-board';
+import { visibleSpace } from '../helpers/space';
 
 test('a note dropped on one canvas turns up on the other', async ({ page }) => {
   const peer = await openPeer(page);
   await page.getByTestId('tool-comment').click();
 
-  const pane = page.locator('.react-flow__pane');
+  const pane = visibleSpace(page).locator('.react-flow__pane');
   const box = await pane.boundingBox();
   if (box === null) throw new Error('the canvas pane has no box');
   const at = {
@@ -266,7 +267,7 @@ test('a note a collaborator deletes hands the keyboard back to the page', async 
   // Its own note, so the delete takes nothing the cases above still stand on.
   const had = await noteIds(page);
   await page.getByTestId('tool-comment').click();
-  const pane = page.locator('.react-flow__pane');
+  const pane = visibleSpace(page).locator('.react-flow__pane');
   const box = await pane.boundingBox();
   if (box === null) throw new Error('the board is not on screen');
   await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.25);

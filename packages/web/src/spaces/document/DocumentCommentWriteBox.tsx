@@ -92,6 +92,9 @@ export function DocumentCommentWriteBox({
   React.useLayoutEffect(() => {
     const node = box.current;
     if (!focusedOnArrival.current || node === null) return;
+    // Spent here: a Space shown again runs this effect again, and that is not
+    // the box arriving (inner#1235 A19).
+    focusedOnArrival.current = false;
     node.focus({ preventScroll: true });
     node.setSelectionRange(node.value.length, node.value.length);
   }, []);

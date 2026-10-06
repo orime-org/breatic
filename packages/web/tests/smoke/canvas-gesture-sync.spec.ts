@@ -21,7 +21,7 @@ import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 // `mover` drags and `watcher` reads what it sees.
 let context: BrowserContext;
@@ -253,7 +253,7 @@ async function openTheSpace(page: Page): Promise<void> {
   const tab = page.getByTestId(`space-tab-name-${spaceId}`);
   await expect(tab).toBeVisible({ timeout: 20_000 });
   await tab.click();
-  await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
 }
 
 /**
@@ -311,7 +311,7 @@ test.beforeEach(async ({ browser }) => {
   projectId = (/([0-9a-f-]{36})$/.exec(mover.url()) ?? [])[1] as string;
 
   spaceId = await createSpace(mover, 'canvas', `gesture-e2e-${Date.now()}`);
-  await expect(mover.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(mover).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
 
   watcher = await context.newPage();
   await openTheSpace(watcher);
@@ -330,7 +330,7 @@ test('a drag in progress moves the node on the other connection', async () => {
   const nodeId = `drag-one-${Date.now()}`;
   await seedImageNode(mover, nodeId, SEED_AT);
   await expect(
-    watcher.locator(`.react-flow__node[data-id="${nodeId}"]`),
+    visibleSpace(watcher).locator(`.react-flow__node[data-id="${nodeId}"]`),
   ).toBeVisible({ timeout: SETTLE_MS });
 
   const before = await drawnAt(watcher, nodeId);
@@ -353,7 +353,7 @@ test('both sides agree once the drag ends, with no second jump', async () => {
   const nodeId = `drag-settle-${Date.now()}`;
   await seedImageNode(mover, nodeId, SEED_AT);
   await expect(
-    watcher.locator(`.react-flow__node[data-id="${nodeId}"]`),
+    visibleSpace(watcher).locator(`.react-flow__node[data-id="${nodeId}"]`),
   ).toBeVisible({ timeout: SETTLE_MS });
 
   await dragAndSample(nodeId, { dx: 200, dy: 0 });
@@ -385,7 +385,7 @@ test('the document takes one write for the whole gesture', async () => {
   const nodeId = `drag-writes-${Date.now()}`;
   await seedImageNode(mover, nodeId, SEED_AT);
   await expect(
-    watcher.locator(`.react-flow__node[data-id="${nodeId}"]`),
+    visibleSpace(watcher).locator(`.react-flow__node[data-id="${nodeId}"]`),
   ).toBeVisible({ timeout: SETTLE_MS });
 
   // Acceptance 9: count the document's own position events for this node
@@ -419,7 +419,7 @@ test('a remote write during a drag leaves both sides where they are', async () =
   await seedImageNode(mover, dragged, SEED_AT);
   await seedImageNode(mover, other, { x: SEED_AT.x + 360, y: SEED_AT.y });
   await expect(
-    watcher.locator(`.react-flow__node[data-id="${dragged}"]`),
+    visibleSpace(watcher).locator(`.react-flow__node[data-id="${dragged}"]`),
   ).toBeVisible({ timeout: SETTLE_MS });
 
   const from = await drawnAt(mover, dragged);
@@ -457,7 +457,7 @@ test('a marquee drag moves the whole batch on the other connection', async () =>
   await seedImageNode(mover, right, { x: SEED_AT.x + 360, y: SEED_AT.y });
   for (const id of [left, right]) {
     await expect(
-      watcher.locator(`.react-flow__node[data-id="${id}"]`),
+      visibleSpace(watcher).locator(`.react-flow__node[data-id="${id}"]`),
     ).toBeVisible({ timeout: SETTLE_MS });
   }
 
@@ -470,10 +470,10 @@ test('a marquee drag moves the whole batch on the other connection', async () =>
   await mover.mouse.move(rightBox.x + 360, rightBox.y + 300, { steps: 10 });
   await mover.mouse.up();
   await expect(
-    mover.locator(`.react-flow__node[data-id="${left}"]`),
+    visibleSpace(mover).locator(`.react-flow__node[data-id="${left}"]`),
   ).toHaveClass(/selected/, { timeout: SETTLE_MS });
   await expect(
-    mover.locator(`.react-flow__node[data-id="${right}"]`),
+    visibleSpace(mover).locator(`.react-flow__node[data-id="${right}"]`),
   ).toHaveClass(/selected/, { timeout: SETTLE_MS });
 
   const beforeLeft = await drawnAt(watcher, left);
@@ -523,7 +523,7 @@ test('dragging a Group carries its member on the other connection', async () => 
   const memberId = `group-member-${Date.now()}`;
   await seedGroupWithMember(mover, groupId, memberId);
   await expect(
-    watcher.locator(`.react-flow__node[data-id="${memberId}"]`),
+    visibleSpace(watcher).locator(`.react-flow__node[data-id="${memberId}"]`),
   ).toBeVisible({ timeout: SETTLE_MS });
 
   const groupBox = await drawnAt(mover, groupId);
@@ -554,11 +554,11 @@ test('resizing a Group moves its frame while its member stays put', async () => 
   const memberId = `resize-member-${Date.now()}`;
   await seedGroupWithMember(mover, groupId, memberId);
   await expect(
-    watcher.locator(`.react-flow__node[data-id="${memberId}"]`),
+    visibleSpace(watcher).locator(`.react-flow__node[data-id="${memberId}"]`),
   ).toBeVisible({ timeout: SETTLE_MS });
 
   // The resize chrome only renders on a selected, unlocked Group.
-  await mover.locator(`.react-flow__node[data-id="${groupId}"]`).click({
+  await visibleSpace(mover).locator(`.react-flow__node[data-id="${groupId}"]`).click({
     position: { x: 200, y: 8 },
   });
   // The left edge is the one that moves the Group's origin as it widens, so
@@ -599,7 +599,7 @@ test('resizing a Group moves its frame while its member stays put', async () => 
     );
     await mover.waitForTimeout(90);
     const [box, member] = await Promise.all([
-      watcher.locator(`.react-flow__node[data-id="${groupId}"]`).boundingBox(),
+      visibleSpace(watcher).locator(`.react-flow__node[data-id="${groupId}"]`).boundingBox(),
       drawnAt(watcher, memberId),
     ]);
     if (box !== null) {
@@ -642,14 +642,14 @@ test('a Group resize that moves the origin leaves its members where they are', a
   const memberId = `left-member-${Date.now()}`;
   await seedGroupWithMember(mover, groupId, memberId);
   await expect(
-    watcher.locator(`.react-flow__node[data-id="${memberId}"]`),
+    visibleSpace(watcher).locator(`.react-flow__node[data-id="${memberId}"]`),
   ).toBeVisible({ timeout: SETTLE_MS });
   const storedGroup = await documentPosition(mover, groupId);
   const storedMember = await documentPosition(mover, memberId);
   if (storedGroup === null || storedMember === null) throw new Error('seed missing');
 
   // Below the member, whose name header sits above its own box.
-  await mover.locator(`.react-flow__node[data-id="${groupId}"]`).click({
+  await visibleSpace(mover).locator(`.react-flow__node[data-id="${groupId}"]`).click({
     position: { x: 200, y: 280 },
   });
   // The left edge is the one that moves the origin, which is what makes each
@@ -690,7 +690,7 @@ test('a member somebody else is dragging does not bound this end resize', async 
   const memberId = `bound-member-${Date.now()}`;
   await seedGroupWithMember(mover, groupId, memberId);
   await expect(
-    watcher.locator(`.react-flow__node[data-id="${memberId}"]`),
+    visibleSpace(watcher).locator(`.react-flow__node[data-id="${memberId}"]`),
   ).toBeVisible({ timeout: SETTLE_MS });
   const before = await groupWidth(mover, groupId);
   if (before === null) throw new Error('seed missing');
@@ -700,7 +700,7 @@ test('a member somebody else is dragging does not bound this end resize', async 
   // across: measured with the drag in flight, the member is drawn from 204 to
   // 422 below the Group's top and this point is 280 down, so a click left until
   // then never reaches the Group at all.
-  await mover.locator(`.react-flow__node[data-id="${groupId}"]`).click({
+  await visibleSpace(mover).locator(`.react-flow__node[data-id="${groupId}"]`).click({
     position: { x: 200, y: 280 },
   });
 
@@ -754,13 +754,13 @@ test('a Group somebody else is dragging cannot be resized from this end', async 
   const memberId = `blocked-member-${Date.now()}`;
   await seedGroupWithMember(mover, groupId, memberId);
   await expect(
-    mover.locator(`.react-flow__node[data-id="${groupId}"]`),
+    visibleSpace(mover).locator(`.react-flow__node[data-id="${groupId}"]`),
   ).toBeVisible({ timeout: SETTLE_MS });
   const storedGroup = await documentPosition(mover, groupId);
   if (storedGroup === null) throw new Error('seed missing');
 
   // Select first, so the resize chrome is up before the other end takes hold.
-  await mover.locator(`.react-flow__node[data-id="${groupId}"]`).click({
+  await visibleSpace(mover).locator(`.react-flow__node[data-id="${groupId}"]`).click({
     position: { x: 200, y: 280 },
   });
   const control = mover
@@ -828,7 +828,7 @@ test('a press that resized nothing leaves no permission for the next one', async
   const memberId = `stale-member-${Date.now()}`;
   await seedGroupWithMember(mover, groupId, memberId);
   await expect(
-    mover.locator(`.react-flow__node[data-id="${groupId}"]`),
+    visibleSpace(mover).locator(`.react-flow__node[data-id="${groupId}"]`),
   ).toBeVisible({ timeout: SETTLE_MS });
   const storedGroup = await documentPosition(mover, groupId);
   const storedMember = await documentPosition(mover, memberId);
@@ -837,7 +837,7 @@ test('a press that resized nothing leaves no permission for the next one', async
     throw new Error('seed missing');
   }
 
-  await mover.locator(`.react-flow__node[data-id="${groupId}"]`).click({
+  await visibleSpace(mover).locator(`.react-flow__node[data-id="${groupId}"]`).click({
     position: { x: 200, y: 280 },
   });
   const control = mover
@@ -902,7 +902,7 @@ test('asking for a Group says why when the other end holds one of the two', asyn
   await seedImageNode(mover, right, { x: SEED_AT.x + 360, y: SEED_AT.y });
   for (const id of [left, right]) {
     await expect(
-      watcher.locator(`.react-flow__node[data-id="${id}"]`),
+      visibleSpace(watcher).locator(`.react-flow__node[data-id="${id}"]`),
     ).toBeVisible({ timeout: SETTLE_MS });
   }
 
@@ -916,7 +916,7 @@ test('asking for a Group says why when the other end holds one of the two', asyn
   await mover.mouse.up();
   for (const id of [left, right]) {
     await expect(
-      mover.locator(`.react-flow__node[data-id="${id}"]`),
+      visibleSpace(mover).locator(`.react-flow__node[data-id="${id}"]`),
     ).toHaveClass(/selected/, { timeout: SETTLE_MS });
   }
 
@@ -939,7 +939,7 @@ test('asking for a Group says why when the other end holds one of the two', asyn
     { timeout: SETTLE_MS },
   );
   // And no Group came out of it.
-  await expect(mover.locator('.react-flow__node-group')).toHaveCount(0);
+  await expect(visibleSpace(mover).locator('.react-flow__node-group')).toHaveCount(0);
 
   await watcher.mouse.up();
   await watcher.waitForTimeout(SETTLE_MS / 2);
@@ -951,7 +951,7 @@ test('one undo puts the whole gesture back', async () => {
   const nodeId = `undo-${Date.now()}`;
   await seedImageNode(mover, nodeId, SEED_AT);
   await expect(
-    watcher.locator(`.react-flow__node[data-id="${nodeId}"]`),
+    visibleSpace(watcher).locator(`.react-flow__node[data-id="${nodeId}"]`),
   ).toBeVisible({ timeout: SETTLE_MS });
   const started = await documentPosition(mover, nodeId);
 
@@ -962,7 +962,7 @@ test('one undo puts the whole gesture back', async () => {
 
   // Acceptance 8: the intermediate geometry never entered the document, so the
   // gesture is one entry in the undo stack.
-  await mover.locator('.react-flow').click({ position: { x: 700, y: 60 } });
+  await visibleSpace(mover).locator('.react-flow').click({ position: { x: 700, y: 60 } });
   await mover.keyboard.press('ControlOrMeta+z');
   await expect
     .poll(async () => documentPosition(mover, nodeId), { timeout: SETTLE_MS })
@@ -978,7 +978,7 @@ test('a Group grows once, at the end of the drag that fills it', async () => {
   await seedGroupWithMember(mover, groupId, memberId);
   await seedImageNode(mover, incomingId, { x: SEED_AT.x + 620, y: SEED_AT.y });
   await expect(
-    watcher.locator(`.react-flow__node[data-id="${incomingId}"]`),
+    visibleSpace(watcher).locator(`.react-flow__node[data-id="${incomingId}"]`),
   ).toBeVisible({ timeout: SETTLE_MS });
 
   const widthBefore = await groupWidth(watcher, groupId);
@@ -1050,7 +1050,7 @@ test('a member dragged out of a Group a remote holds lands where it was released
   const memberId = `leaver-${Date.now()}`;
   await seedGroupWithMember(mover, groupId, memberId);
   await expect(
-    mover.locator(`.react-flow__node[data-id="${memberId}"]`),
+    visibleSpace(mover).locator(`.react-flow__node[data-id="${memberId}"]`),
   ).toBeVisible({ timeout: SETTLE_MS });
   const groupBeforeHold = await drawnAt(mover, groupId);
   const held = await drawnAt(watcher, groupId);

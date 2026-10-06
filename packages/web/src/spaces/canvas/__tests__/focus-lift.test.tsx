@@ -5,7 +5,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, screen } from '@testing-library/react';
 
 import * as canvasSpace from '@web/data/yjs/canvas-space';
-import { useCanvasStore } from '@web/stores/canvas';
 import {
   clickNode,
   group,
@@ -15,6 +14,7 @@ import {
   zOf,
   type Nodes,
 } from '@web/spaces/canvas/__tests__/focus-harness';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 vi.mock('@web/data/yjs/canvas-space', async (importOriginal) => {
   const actual =
@@ -44,7 +44,7 @@ const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 describe('聚焦目标的抬升（#2000）', () => {
   beforeEach(() => {
     mockUseCanvasSpace.mockReset();
-    useCanvasStore.setState({ pickSession: null });
+    canvasSessions.of('s').setState({ pickSession: null });
   });
 
   it('A1：点中聚焦源之后，它带 zIndex 1002', () => {
@@ -54,7 +54,7 @@ describe('聚焦目标的抬升（#2000）', () => {
     renderSpace();
     expect(zOf('src')).toBe('0');
 
-    act(() => useCanvasStore.getState().startFocusPick('host'));
+    act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
 
     expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
@@ -71,7 +71,7 @@ describe('聚焦目标的抬升（#2000）', () => {
     clickNode('other');
     expect(zOf('other')).toBe('1000');
 
-    act(() => useCanvasStore.getState().startFocusPick('host'));
+    act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
 
     expect(Number(zOf('src'))).toBeGreaterThan(Number(zOf('other')));
@@ -88,7 +88,7 @@ describe('聚焦目标的抬升（#2000）', () => {
     );
     renderSpace();
 
-    act(() => useCanvasStore.getState().startFocusPick('host'));
+    act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
 
     expect(Number(zOf('src'))).toBeGreaterThan(Number(zOf('member')));
@@ -111,7 +111,7 @@ describe('聚焦目标的抬升（#2000）', () => {
     expect(zOf('g')).toBe('1000');
     expect(zOf('member')).toBe('1001');
 
-    act(() => useCanvasStore.getState().startFocusPick('host'));
+    act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
 
     expect(Number(zOf('src'))).toBeGreaterThan(Number(zOf('member')));
@@ -123,7 +123,7 @@ describe('聚焦目标的抬升（#2000）', () => {
     );
     renderSpace();
 
-    act(() => useCanvasStore.getState().startFocusPick('host'));
+    act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
     expect(zOf('src')).toBe('1002');
 
@@ -144,11 +144,11 @@ describe('聚焦目标的抬升（#2000）', () => {
     );
     renderSpace();
 
-    act(() => useCanvasStore.getState().startFocusPick('host'));
+    act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
     expect(zOf('src')).toBe('1002');
 
-    act(() => useCanvasStore.getState().startReferencePick('host'));
+    act(() => canvasSessions.of('s').getState().startReferencePick('host'));
     expect(zOf('src')).toBe('0');
   });
 
@@ -158,7 +158,7 @@ describe('聚焦目标的抬升（#2000）', () => {
     );
     renderSpace();
 
-    act(() => useCanvasStore.getState().startFocusPick('host'));
+    act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('a');
     expect(zOf('a')).toBe('1002');
 
@@ -173,11 +173,11 @@ describe('聚焦目标的抬升（#2000）', () => {
     );
     renderSpace();
 
-    act(() => useCanvasStore.getState().startFocusPick('host'));
+    act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
     expect(zOf('src')).toBe('1002');
 
-    act(() => useCanvasStore.getState().endPick());
+    act(() => canvasSessions.of('s').getState().endPick());
     expect(zOf('src')).toBe('0');
   });
 
@@ -189,11 +189,11 @@ describe('聚焦目标的抬升（#2000）', () => {
     );
     renderSpace();
 
-    act(() => useCanvasStore.getState().startFocusPick('host'));
+    act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
     expect(zOf('src')).toBe('1002');
 
-    act(() => useCanvasStore.getState().endPick());
+    act(() => canvasSessions.of('s').getState().endPick());
 
     expect(zOf('src')).toBe('0');
     const el = document.querySelector('.react-flow__node[data-id="src"]')!;
@@ -206,7 +206,7 @@ describe('聚焦目标的抬升（#2000）', () => {
     );
     renderSpace();
 
-    act(() => useCanvasStore.getState().startFocusPick('host'));
+    act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
 
     const el = document.querySelector('.react-flow__node[data-id="src"]')!;
@@ -219,7 +219,7 @@ describe('聚焦目标的抬升（#2000）', () => {
     );
     renderSpace();
 
-    act(() => useCanvasStore.getState().startFocusPick('host'));
+    act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
 
     expect(zOf('src')).toBe('1002');

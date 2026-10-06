@@ -212,7 +212,8 @@ export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
 
 /**
  * Process-wide cache of canvas undo managers, keyed by canvas-space document
- * name — so a stack survives the tab switch that remounts `useCanvasSpace`.
+ * name — so a stack outlives any remount of `useCanvasSpace` while its tab is
+ * open.
  * The caching itself (stale-binding heal, eviction on doc destroy) is shared
  * with the other Space types; see {@link createDocScopedCache}.
  */
@@ -310,10 +311,61 @@ export function runCanvasUndoBatch(
   return joinStep;
 }
 
+/** Who made a canvas document's writes, as far as the canvas needs to know. */
+interface WriteOrigins {
+  /** Whether this client made the newest write to the nodes. */
+  lastWasLocal: boolean;
+  /**
+   * Ids a peer removed from the board, named by the transactions that
+   * removed them so no later write can carry the answer away.
+   */
+  deletedByPeer: Set<string>;
+}
+
+const writeOrigins = new WeakMap<Y.Doc, WriteOrigins>();
+
+/**
+ * The record of who wrote a canvas document, kept for as long as the
+ * document is.
+ *
+ * Kept by the document rather than by the view of it: a Space switched away
+ * from keeps its canvas with its effects taken down (inner#1235), and what a
+ * peer does in that time is what the reader is told about when they come
+ * back. Observed first, before any view subscribes, so a view reading it
+ * from its own handler sees the write that handler is about.
+ * @param doc - The canvas document.
+ * @returns The record, observed from the first call on.
+ */
+function writeOriginsOf(doc: Y.Doc): WriteOrigins {
+  const known = writeOrigins.get(doc);
+  if (known) return known;
+  const origins: WriteOrigins = { lastWasLocal: true, deletedByPeer: new Set() };
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  nodesMap.observeDeep((events, tx) => {
+    origins.lastWasLocal = tx.local;
+    if (tx.local) return;
+    for (const event of events) {
+      if (event.target !== nodesMap) continue;
+      for (const [id, change] of event.changes.keys) {
+        // What this answers is whether the note on the board RIGHT NOW is
+        // gone because a peer removed it — so a note a peer puts back is no
+        // longer one of them. Undo is the way back from a delete (#1881
+        // section 8.3 asks for no confirm dialog because of it), so a note
+        // that goes and returns is ordinary; left named, the reader's own
+        // later delete of it comes back to them as somebody else's.
+        if (change.action === 'delete') origins.deletedByPeer.add(id);
+        else origins.deletedByPeer.delete(id);
+      }
+    }
+  });
+  writeOrigins.set(doc, origins);
+  return origins;
+}
+
 /**
  * Subscribe to a canvas-space document. Observes the cached Y.Doc only — the
  * document is kept attached to the shared collab socket by its open tab's
- * `SpaceDocSync`, so this hook never opens its own connection (attach follows
+ * `OpenSpace`, so this hook never opens its own connection (attach follows
  * tab open / close, not the active render).
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space whose nodes and edges to observe.
@@ -331,47 +383,18 @@ export function useCanvasSpace(
   const [edges, setEdges] = React.useState<ReadonlyArray<CanvasEdge>>(() =>
     readEdges(doc),
   );
-  // Written straight from the document handler, so it is current before React
-  // has rendered anything about this change. See `getLastWriteWasLocal`.
-  const lastWriteWasLocalRef = React.useRef(true);
-  // Ids a peer removed from the board, named by the transactions that removed
-  // them so no later write can carry the answer away.
-  const deletedByPeerRef = React.useRef<Set<string>>(new Set());
+  // Current before React has rendered anything about a change: it is written
+  // from a document observer registered ahead of this hook's own.
+  const origins = React.useMemo(() => writeOriginsOf(doc), [doc]);
 
   React.useEffect(() => {
     const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
     const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
     /**
-     * Re-read all nodes from the doc into React state, recording whether this
-     * client is the one that wrote them and which nodes a peer took away.
-     * @param events - The Yjs events; the top-level one names the removed ids.
-     * @param tx - The transaction behind them; absent on the first read.
+     * Re-read all nodes from the doc into React state.
+     * @returns Nothing.
      */
-    const updateNodes = (
-      events?: Y.YEvent<Y.AbstractType<unknown>>[],
-      tx?: Y.Transaction,
-    ): void => {
-      if (tx) {
-        lastWriteWasLocalRef.current = tx.local;
-        if (!tx.local && events) {
-          for (const event of events) {
-            if (event.target !== nodesMap) continue;
-            for (const [id, change] of event.changes.keys) {
-              // What this answers is whether the note on the board RIGHT NOW
-              // is gone because a peer removed it — so a note a peer puts
-              // back is no longer one of them. Undo is the way back from a
-              // delete (#1881 section 8.3 asks for no confirm dialog because
-              // of it), so a note that goes and returns is ordinary; left
-              // named, the reader's own later delete of it comes back to them
-              // as somebody else's.
-              if (change.action === 'delete') deletedByPeerRef.current.add(id);
-              else deletedByPeerRef.current.delete(id);
-            }
-          }
-        }
-      }
-      setNodes(readNodes(doc));
-    };
+    const updateNodes = (): void => setNodes(readNodes(doc));
     /**
      * Re-read all edges from the doc into React state.
      * @returns Nothing.
@@ -389,11 +412,11 @@ export function useCanvasSpace(
 
   // Per-space undo manager, fetched from the doc-keyed cache (NOT created +
   // destroyed with this component). The cache binds the manager's lifetime to
-  // the space DOC, so a tab switch — which remounts this hook via
-  // `key={activeSpace.id}` — re-fetches the SAME manager with its undo stack
-  // intact (the cross-space-preservation fix). Closing the tab evicts it
-  // (`ProjectPage.onCloseTab` → `evictCanvasUndoManager`) so a reopened space
-  // starts empty; a page refresh is a new JS context so the cache is empty by
+  // the space DOC, so a remount of this hook while the tab is open re-fetches
+  // the SAME manager with its undo stack intact. A tab leaving the strip
+  // evicts it (`ProjectPage`'s effect over the open tabs →
+  // `evictCanvasUndoManager`) so a reopened space starts empty; a page
+  // refresh is a new JS context so the cache is empty by
   // construction. This effect only attaches / detaches the availability
   // listeners — it must NOT destroy the manager on unmount. `canUndo` /
   // `canRedo` are mirrored into React state both from the manager's stack
@@ -426,8 +449,8 @@ export function useCanvasSpace(
     syncAvailability();
     return () => {
       // Detach this component's listeners but DO NOT destroy the manager — it
-      // is owned by the doc-keyed cache and must outlive this remount so the
-      // undo stack survives a tab switch. Eviction happens on tab close.
+      // is owned by the doc-keyed cache and must outlive this component.
+      // Eviction happens when the tab leaves the strip.
       undoManager.off('stack-item-added', syncAvailability);
       undoManager.off('stack-item-popped', syncAvailability);
       undoManager.off('stack-cleared', syncAvailability);
@@ -445,13 +468,13 @@ export function useCanvasSpace(
   }, [syncAvailability]);
 
   const getLastWriteWasLocal = React.useCallback(
-    (): boolean => lastWriteWasLocalRef.current,
-    [],
+    (): boolean => origins.lastWasLocal,
+    [origins],
   );
 
   const deletedByPeer = React.useCallback(
-    (nodeId: string): boolean => deletedByPeerRef.current.has(nodeId),
-    [],
+    (nodeId: string): boolean => origins.deletedByPeer.has(nodeId),
+    [origins],
   );
 
   return {
@@ -2008,6 +2031,41 @@ export function readNodes(doc: Y.Doc): ReadonlyArray<CanvasNodeView> {
       ...(typeof parentId === 'string' ? { parentId } : {}),
       data: view,
     });
+  });
+  return out;
+}
+
+/**
+ * Where every node of a canvas space sits on the canvas, as absolute top-lefts.
+ *
+ * Read from the document, so a paste made a moment ago counts before it has
+ * rendered. A Group member's stored position is relative to its Group, so its
+ * Group's position is added.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space to read.
+ * @returns One top-left per node, in no particular order.
+ */
+export function readNodeCorners(
+  projectId: string,
+  spaceId: string,
+): Array<{ x: number; y: number }> {
+  const nodesMap = getDoc(docName.canvasSpace(projectId, spaceId)).getMap<Y.Map<unknown>>(
+    NODES_KEY,
+  );
+  /**
+   * A node's stored position.
+   * @param node - The node's map, if any.
+   * @returns Its position, or undefined when it has none.
+   */
+  const positionOf = (node: unknown): { x: number; y: number } | undefined =>
+    node instanceof Y.Map ? (node.get('position') as { x: number; y: number } | undefined) : undefined;
+  const out: Array<{ x: number; y: number }> = [];
+  nodesMap.forEach((node) => {
+    const at = positionOf(node);
+    if (at === undefined) return;
+    const parentId = node.get('parentId');
+    const parent = typeof parentId === 'string' ? positionOf(nodesMap.get(parentId)) : undefined;
+    out.push(parent === undefined ? at : { x: at.x + parent.x, y: at.y + parent.y });
   });
   return out;
 }

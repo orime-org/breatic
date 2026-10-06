@@ -38,12 +38,12 @@ function seed(value: unknown): void {
   window.localStorage.setItem(KEY, JSON.stringify(value));
 }
 
-/** One account's slot for one project, as the writers build it. */
+/** One account's slot for one project, as the writers build it: every tab open. */
 function slot(
   tabs: Array<{ spaceId: string; viewport: unknown }>,
   activeId: string | null,
 ): unknown {
-  return { tabs, activeId };
+  return { tabs: tabs.map((t) => ({ ...t, open: true })), activeId };
 }
 
 describe('project tab storage — the account boundary', () => {
@@ -130,12 +130,10 @@ describe('project tab storage — a tab carries its camera', () => {
     expect(readSpaceViewport(ALICE, P1, 's1')).toEqual({ x: 9, y: 9, zoom: 4 });
   });
 
-  it('does not reach storage at all for a Space that is not an open tab', () => {
-    // A canvas can offer a camera for a Space the strip no longer carries —
-    // one deleted by a collaborator, or one whose `pagehide` flush lands after
-    // the list was rewritten. Asserting on the stored value alone would pass
-    // either way, since rewriting the same tabs is a no-op, so this watches
-    // the write itself.
+  it('does not reach storage at all for a Space never opened as a tab', () => {
+    // A Space the record has never held has no entry to carry a camera.
+    // Asserting on the stored value alone would pass either way, since
+    // rewriting the same tabs is a no-op, so this watches the write itself.
     const before = raw();
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
     writeSpaceViewport(ALICE, P1, 'not-open', { x: 1, y: 1, zoom: 1 });
@@ -151,11 +149,32 @@ describe('project tab storage — a tab carries its camera', () => {
     expect(readSpaceViewport(ALICE, P1, 's2')).toEqual({ x: 7, y: 7, zoom: 2 });
   });
 
-  it('drops the camera of a tab that left the list', () => {
+  it('keeps the camera of a closed tab for when it opens again', () => {
     writeSpaceViewport(ALICE, P1, 's1', { x: 7, y: 7, zoom: 2 });
     writeOpenTabs(ALICE, P1, ['s2'], 's2');
+    expect(readSpaceViewport(ALICE, P1, 's1')).toEqual({ x: 7, y: 7, zoom: 2 });
     writeOpenTabs(ALICE, P1, ['s2', 's1'], 's1');
-    expect(readSpaceViewport(ALICE, P1, 's1')).toBeNull();
+    expect(readSpaceViewport(ALICE, P1, 's1')).toEqual({ x: 7, y: 7, zoom: 2 });
+  });
+
+  it('takes a camera that lands after its tab closed without opening the tab again', () => {
+    writeOpenTabs(ALICE, P1, ['s2'], 's2');
+    writeSpaceViewport(ALICE, P1, 's1', { x: 3, y: 3, zoom: 2 });
+    expect(readProjectTabs(ALICE, P1)).toEqual({ openIds: ['s2'], activeId: 's2' });
+    expect(readSpaceViewport(ALICE, P1, 's1')).toEqual({ x: 3, y: 3, zoom: 2 });
+  });
+
+  it('leaves a closed tab off the strip it gives back', () => {
+    writeSpaceViewport(ALICE, P1, 's1', { x: 7, y: 7, zoom: 2 });
+    writeOpenTabs(ALICE, P1, ['s2'], 's2');
+    expect(readProjectTabs(ALICE, P1)).toEqual({ openIds: ['s2'], activeId: 's2' });
+  });
+
+  it('keeps every camera when the last tab is closed', () => {
+    writeSpaceViewport(ALICE, P1, 's1', { x: 7, y: 7, zoom: 2 });
+    writeOpenTabs(ALICE, P1, [], null);
+    expect(readProjectTabs(ALICE, P1)).toEqual({ openIds: [], activeId: null });
+    expect(readSpaceViewport(ALICE, P1, 's1')).toEqual({ x: 7, y: 7, zoom: 2 });
   });
 });
 

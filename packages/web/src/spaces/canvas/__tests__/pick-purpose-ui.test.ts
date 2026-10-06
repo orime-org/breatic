@@ -20,7 +20,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
-import type { PickPurpose } from '@web/stores/canvas';
+import type { PickPurpose } from '@web/stores/canvas-session';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 describe('every pick says what IT is asking for (#1918)', () => {

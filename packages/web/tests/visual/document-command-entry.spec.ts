@@ -19,7 +19,7 @@
 import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, VISIBLE_SPACE, DOCUMENT_EDITOR } from '../helpers/space';
 
 let page: Page;
 
@@ -49,7 +49,7 @@ async function openFreshDocument(p: Page): Promise<void> {
 
   createdSpaceIds.push(await createSpace(p, 'document', `doc-menu-${Date.now()}`));
 
-  const editor = p.locator('[data-testid="document-space"] .ProseMirror');
+  const editor = p.locator(`${DOCUMENT_EDITOR}`);
   await expect(editor).toBeVisible({ timeout: 15_000 });
   await waitForSettledEntry(p);
 }
@@ -90,8 +90,8 @@ test('the entry sticks inside the scroller, not beside it', async () => {
   // the bubble bar, which the editor appends to this same shell but only while
   // a selection exists — there is none here.
   await openFreshDocument(page);
-  const layout = await page.evaluate(() => {
-    const scroller = document.querySelector('.doc-body-scroller')!;
+  const layout = await page.evaluate((space: string) => {
+    const scroller = document.querySelector(`${space} .doc-body-scroller`)!;
     const viewport = scroller.querySelector('[data-radix-scroll-area-viewport]')!;
     const trigger = document.querySelector(
       '[data-testid="doc-doc-menu-trigger"]',
@@ -110,7 +110,7 @@ test('the entry sticks inside the scroller, not beside it', async () => {
         ),
       position: getComputedStyle(layer).position,
     };
-  });
+  }, VISIBLE_SPACE);
 
   expect(layout.shellChildren).toBe(1);
   expect(layout.insideViewport).toBe(true);
@@ -121,7 +121,7 @@ test('the entry sticks inside the scroller, not beside it', async () => {
   // ancestor turns it off while `getComputedStyle` still reports `sticky`
   // (verified 2026-08-22 by adding one — the button scrolled away and the
   // string never changed). So scroll and measure again.
-  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  const editor = page.locator(`${DOCUMENT_EDITOR}`);
   await editor.click();
   for (let i = 0; i < 40; i += 1) {
     await page.keyboard.type(`line ${i} — long enough to scroll`);
@@ -235,7 +235,7 @@ test('clicking a not-open-yet item leaves menu and document alone', async () => 
   const item = page.getByTestId('doc-doc-menu-save-snapshot');
   await expect(item).toBeVisible({ timeout: 5_000 });
 
-  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  const editor = page.locator(`${DOCUMENT_EDITOR}`);
   const before = await editor.innerHTML();
   // `force` skips playwright's own actionability check, which treats
   // `aria-disabled` as unclickable. Browsers do not read that attribute: a real
@@ -256,7 +256,7 @@ test('clicking the body both dismisses the menu and lands the caret', async () =
   // only dismisses and focus returns to the trigger — two clicks to write again
   // (measured).
   await openFreshDocument(page);
-  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  const editor = page.locator(`${DOCUMENT_EDITOR}`);
   await editor.click();
   await page.keyboard.type('first sentence.');
 
@@ -306,7 +306,7 @@ test('keeps a fixed gap between the page and the entry', async () => {
   // rectangles miss each other whatever the gutter is — including a gutter
   // narrow enough for the page to run underneath the button.
   await openFreshDocument(page);
-  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  const editor = page.locator(`${DOCUMENT_EDITOR}`);
   await editor.click();
   await page.keyboard.type(
     'A deliberately long paragraph, long enough that it wraps several times ' +
@@ -361,13 +361,13 @@ test('the bubble bar paints above the entry where they overlap', async () => {
   // entry here rather than scrolled into place: what this pins is which one
   // paints on top, not how they came to overlap.
   await openFreshDocument(page);
-  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  const editor = page.locator(`${DOCUMENT_EDITOR}`);
   await editor.click();
   await page.keyboard.type('some text to select');
 
-  await page.evaluate(() => {
+  await page.evaluate((space: string) => {
     const pm = document.querySelector(
-      '[data-testid="document-space"] .ProseMirror',
+      `${space} [data-testid="document-space"] .ProseMirror`,
     )!;
     const text = pm.querySelector('p')!.firstChild as Text;
     const sel = window.getSelection()!;
@@ -377,7 +377,7 @@ test('the bubble bar paints above the entry where they overlap', async () => {
     sel.removeAllRanges();
     sel.addRange(r);
     pm.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-  });
+  }, VISIBLE_SPACE);
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible({
     timeout: 5_000,
   });
@@ -418,7 +418,7 @@ test('a wheel over the entry scrolls the body', async () => {
   // dispatching the event at the element would skip hit-testing, which is the
   // half that decides whether a wheel there reaches the body at all.
   await openFreshDocument(page);
-  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  const editor = page.locator(`${DOCUMENT_EDITOR}`);
   await editor.click();
   for (let i = 0; i < 40; i += 1) {
     await page.keyboard.type(`line ${i} — long enough to scroll`);

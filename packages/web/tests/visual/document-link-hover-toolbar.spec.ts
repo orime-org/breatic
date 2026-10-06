@@ -27,6 +27,7 @@ import {
   parkPointer,
   restOnLink,
 } from '../helpers/link-panel';
+import { DOCUMENT_EDITOR, VISIBLE_SPACE } from '../helpers/space';
 
 test.beforeEach(async ({ page }) => {
   test.setTimeout(240_000);
@@ -58,7 +59,7 @@ test('waits before it shows', async ({ page }) => {
   // shown, not the element: the popover leaves a closing snapshot on screen
   // for the length of its own fade.
   const box = (await page
-    .locator('[data-testid="document-space"] .ProseMirror a')
+    .locator(`${DOCUMENT_EDITOR} a`)
     .first()
     .boundingBox())!;
   const x = box.x + box.width / 2;
@@ -173,21 +174,21 @@ test('stays away while the pointer rests where no link is drawn', async ({ page 
   // back a link for a pointer that is only beside one — and the toolbar
   // would come up over a link the reader is not pointing at.
   const body = (await page
-    .locator('[data-testid="document-space"] .ProseMirror')
+    .locator(`${DOCUMENT_EDITOR}`)
     .boundingBox())!;
   const first = (await page
-    .locator('[data-testid="document-space"] .ProseMirror a')
+    .locator(`${DOCUMENT_EDITOR} a`)
     .nth(0)
     .boundingBox())!;
   const second = (await page
-    .locator('[data-testid="document-space"] .ProseMirror a')
+    .locator(`${DOCUMENT_EDITOR} a`)
     .nth(1)
     .boundingBox())!;
   // The wrapping link is drawn as one box per line; the leading is between
   // them. Read rather than assumed: a build that stopped wrapping it would
   // leave this case measuring nothing.
   const lines = await page
-    .locator('[data-testid="document-space"] .ProseMirror a')
+    .locator(`${DOCUMENT_EDITOR} a`)
     .last()
     .evaluate((el) =>
       [...el.getClientRects()].map((r) => ({ top: r.top, bottom: r.bottom, left: r.left })));
@@ -372,7 +373,7 @@ test('keeps its target while the pointer sweeps another link', async ({ page }) 
   // element something else is covering, so a toolbar drawn over the link
   // this case sweeps says so instead of passing for the wrong reason.
   await page
-    .locator('[data-testid="document-space"] .ProseMirror a')
+    .locator(`${DOCUMENT_EDITOR} a`)
     .nth(2)
     .hover();
   await page.waitForTimeout(800);
@@ -398,7 +399,7 @@ test('opens the address and goes when its link is pressed', async ({ page }) => 
   const [opened] = await Promise.all([
     page.context().waitForEvent('page', { timeout: 10_000 }),
     page
-      .locator('[data-testid="document-space"] .ProseMirror a')
+      .locator(`${DOCUMENT_EDITOR} a`)
       .first()
       .click({ position: { x: 6, y: 8 } }),
   ]);
@@ -425,7 +426,7 @@ test('comes back when the pointer leaves the link and returns to it', async ({ p
   const [opened] = await Promise.all([
     page.context().waitForEvent('page', { timeout: 10_000 }),
     page
-      .locator('[data-testid="document-space"] .ProseMirror a')
+      .locator(`${DOCUMENT_EDITOR} a`)
       .first()
       .click({ position: { x: 6, y: 8 } }),
   ]);
@@ -454,7 +455,7 @@ test('takes the field away when its link is pressed', async ({ page }) => {
   const [opened] = await Promise.all([
     page.context().waitForEvent('page', { timeout: 10_000 }),
     page
-      .locator('[data-testid="document-space"] .ProseMirror a')
+      .locator(`${DOCUMENT_EDITOR} a`)
       .first()
       .click({ position: { x: 6, y: 8 } }),
   ]);
@@ -480,7 +481,7 @@ test('goes on Escape when the pointer left while the field was up', async ({ pag
     timeout: 5_000,
   });
   const plain = (await page
-    .locator('[data-testid="document-space"] .ProseMirror p')
+    .locator(`${DOCUMENT_EDITOR} p`)
     .nth(2)
     .boundingBox())!;
   await page.mouse.move(plain.x + plain.width / 2, plain.y + plain.height / 2);
@@ -571,7 +572,7 @@ test('keeps the open field when the pointer crosses the link on its way out', as
   await page.getByTestId('doc-link-input').fill('https://typed.example');
 
   const link = (await page
-    .locator('[data-testid="document-space"] .ProseMirror a')
+    .locator(`${DOCUMENT_EDITOR} a`)
     .first()
     .boundingBox())!;
   await page.mouse.move(link.x + link.width / 2, link.y + link.height / 2);
@@ -622,10 +623,10 @@ test('goes on a confirm, having written the address', async ({ page }) => {
   });
   await expect(
     page.evaluate(
-      () =>
+      (space: string) =>
         document
-          .querySelector('[data-testid="document-space"] .ProseMirror a')
-          ?.getAttribute('href') ?? '',
+          .querySelector(`${space} [data-testid="document-space"] .ProseMirror a`)
+          ?.getAttribute('href') ?? '', VISIBLE_SPACE
     ),
   ).resolves.toBe('https://a.example/after');
 });
@@ -637,12 +638,12 @@ test('comes up with the pointer on the trailing edge of a link', async ({ page }
   // answer is the character that follows the link. Measured before the fix:
   // one pixel inside the right edge raised nothing, and a glyph further in
   // raised it — every link's trailing edge flickered.
-  const edge = await page.evaluate(() => {
+  const edge = await page.evaluate((space: string) => {
     const rect = document
-      .querySelectorAll('[data-testid="document-space"] .ProseMirror a')[0]!
+      .querySelectorAll(`${space} [data-testid="document-space"] .ProseMirror a`)[0]!
       .getClientRects()[0]!;
     return { x: rect.right - 1, y: rect.top + rect.height / 2 };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.move(20, 20);
   await page.waitForTimeout(400);
   await page.mouse.move(edge.x, edge.y, { steps: 25 });
@@ -663,12 +664,12 @@ test('stays while the pointer slides to the trailing edge of its link', async ({
   await expect(page.getByTestId('doc-link-url')).toBeVisible({
     timeout: 5_000,
   });
-  const edge = await page.evaluate(() => {
+  const edge = await page.evaluate((space: string) => {
     const rect = document
-      .querySelectorAll('[data-testid="document-space"] .ProseMirror a')[0]!
+      .querySelectorAll(`${space} [data-testid="document-space"] .ProseMirror a`)[0]!
       .getClientRects()[0]!;
     return { x: rect.right - 1, y: rect.top + rect.height / 2 };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.move(edge.x, edge.y, { steps: 8 });
   await page.waitForTimeout(HOVER_CLOSE_DELAY_MS + 400);
 
@@ -685,7 +686,7 @@ test('stays away when the pointer twitches after Escape', async ({ page }) => {
     timeout: 5_000,
   });
   const box = (await page
-    .locator('[data-testid="document-space"] .ProseMirror a')
+    .locator(`${DOCUMENT_EDITOR} a`)
     .first()
     .boundingBox())!;
   await page.keyboard.press('Escape');
@@ -705,11 +706,11 @@ test('gives a second link a delay of its own', async ({ page }) => {
   // this one: measured before the fix, 85ms on the first link and 40ms on
   // the second was enough to raise the second one's toolbar.
   const first = (await page
-    .locator('[data-testid="document-space"] .ProseMirror a')
+    .locator(`${DOCUMENT_EDITOR} a`)
     .nth(0)
     .boundingBox())!;
   const second = (await page
-    .locator('[data-testid="document-space"] .ProseMirror a')
+    .locator(`${DOCUMENT_EDITOR} a`)
     .nth(2)
     .boundingBox())!;
   await page.mouse.move(20, 20);
@@ -743,11 +744,11 @@ test('keeps the link under the pointer after a flick across another', async ({ p
     timeout: 5_000,
   });
   const here = (await page
-    .locator('[data-testid="document-space"] .ProseMirror a')
+    .locator(`${DOCUMENT_EDITOR} a`)
     .nth(0)
     .boundingBox())!;
   const other = (await page
-    .locator('[data-testid="document-space"] .ProseMirror a')
+    .locator(`${DOCUMENT_EDITOR} a`)
     .nth(2)
     .boundingBox())!;
   await page.mouse.move(other.x + other.width / 2, other.y + other.height / 2);
@@ -764,7 +765,7 @@ test('keeps the caret its link when the pointer lets go of another', async ({ pa
   // when it leaves, while the caret is still sitting in the first one and
   // nothing asks again until the reader types.
   await page
-    .locator('[data-testid="document-space"] .ProseMirror p')
+    .locator(`${DOCUMENT_EDITOR} p`)
     .nth(0)
     .click({ clickCount: 3 });
   await page.keyboard.press('ArrowLeft');

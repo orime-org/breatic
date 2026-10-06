@@ -5,7 +5,7 @@ import * as React from 'react';
 
 import { removeNodeSlotItem } from '@web/data/yjs/canvas-space';
 import { STYLE_SLOT } from '@web/spaces/canvas/generate/style-slot';
-import { useCanvasStore } from '@web/stores';
+import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 
 /** The style area's live state and handlers, as a Generate panel wires them. */
 export interface StyleSlotWiring {
@@ -38,19 +38,20 @@ export function useStyleSlot(
   styleCap: number | undefined,
   styleHeld: number,
 ): StyleSlotWiring {
-  const endPick = useCanvasStore((s) => s.endPick);
-  const startStylePick = useCanvasStore((s) => s.startStylePick);
-  const stylePicking = useCanvasStore(
+  const endPick = useCanvasSession((s) => s.endPick);
+  const startStylePick = useCanvasSession((s) => s.startStylePick);
+  const stylePicking = useCanvasSession(
     (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === STYLE_SLOT.purpose,
   );
+  const sessionStore = useCanvasSessionStore();
   const onStylePick = React.useCallback(() => {
-    const session = useCanvasStore.getState().pickSession;
+    const session = sessionStore.getState().pickSession;
     if (session?.nodeId === nodeId && session.purpose === STYLE_SLOT.purpose) {
       endPick();
     } else if (styleCap !== undefined && styleHeld < styleCap) {
       startStylePick(nodeId, styleCap);
     }
-  }, [startStylePick, endPick, nodeId, styleCap, styleHeld]);
+  }, [sessionStore, startStylePick, endPick, nodeId, styleCap, styleHeld]);
   const onRemoveStyle = React.useCallback(
     (url: string) => {
       removeNodeSlotItem(projectId, spaceId, nodeId, STYLE_SLOT.field, url);

@@ -59,8 +59,9 @@ function toAbsoluteWsUrl(url: string): string {
  *
  * The provider announces these once per event and never repeats them. A
  * component that mounts afterwards cannot learn them by listening, and one
- * mounts constantly: a Space tab holds a document open while the body that
- * renders it is remounted on every tab switch. Kept in component state they
+ * can mount at any time: a Space tab holds a document open, not the body that
+ * renders it, and that body can unmount and mount again while the document
+ * stays open. Kept in component state they
  * are silently forgotten there — which is how a loading placeholder came to be
  * shown in front of content already in memory, and how a refused document came
  * to revert to that same placeholder with no explanation.

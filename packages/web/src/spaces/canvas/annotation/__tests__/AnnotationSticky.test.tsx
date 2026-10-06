@@ -20,6 +20,7 @@ import { CanvasActionsContext } from '@web/spaces/canvas/canvas-actions';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useCanvasStore } from '@web/stores/canvas';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 const addReply = vi.fn();
 const editAnnotationBody = vi.fn();
@@ -129,6 +130,7 @@ function mount(
 // a canvas with no box open.
 beforeEach(() => {
   useCanvasStore.getState().reset();
+  canvasSessions.clear();
   // The real writers answer whether the words landed, so the doubles have to
   // answer too — a double that returns `undefined` reads as "written nowhere"
   // and would put every save behind the notice. `clearAllMocks` in the suites
@@ -878,7 +880,7 @@ describe('one box at a time on a sticky', () => {
     await user.type(box, 'a');
     await user.clear(box);
 
-    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
+    expect(canvasSessions.of('s1').getState().annotationDrafts['n1']).toBeUndefined();
     await user.click(screen.getByTestId('annotation-sticky-body-menu'));
     expect(screen.getByTestId('annotation-sticky-body-edit')).toBeInTheDocument();
   });
@@ -895,7 +897,7 @@ describe('one box at a time on a sticky', () => {
     const box = screen.getByTestId('annotation-sticky-reply-input');
     await user.type(box, ' ');
 
-    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
+    expect(canvasSessions.of('s1').getState().annotationDrafts['n1']).toBeUndefined();
     expect(screen.queryByTestId('annotation-sticky-reply-post')).toBeNull();
     await user.click(screen.getByTestId('annotation-sticky-body-menu'));
     expect(screen.getByTestId('annotation-sticky-body-edit')).toBeInTheDocument();
@@ -943,7 +945,7 @@ describe('one box at a time on a sticky', () => {
     fireEvent.compositionStart(box);
     fireEvent.change(box, { target: { value: 'nihao' } });
     await user.click(screen.getByTestId('annotation-sticky-reply-cancel'));
-    expect(useCanvasStore.getState().annotationDrafts['n1']?.draft.text).toBe(
+    expect(canvasSessions.of('s1').getState().annotationDrafts['n1']?.draft.text).toBe(
       'nihao',
     );
   });

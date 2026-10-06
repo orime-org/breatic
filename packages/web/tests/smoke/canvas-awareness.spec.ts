@@ -25,7 +25,7 @@ import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { STATE_FILE, smokeProjectId } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 // `watcher` publishes and `viewer` reads it back. Both are the same account,
 // so whatever `viewer` draws carries the account's own name and hue.
@@ -103,7 +103,7 @@ async function openTheSpace(page: Page): Promise<void> {
   const tab = page.getByTestId(`space-tab-name-${spaceId}`);
   await expect(tab).toBeVisible({ timeout: 20_000 });
   await tab.click();
-  await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
 }
 
 test.beforeEach(async ({ browser }) => {
@@ -120,9 +120,9 @@ test.beforeEach(async ({ browser }) => {
   await watcher.goto(`/project/${projectId}`);
 
   spaceId = await createSpace(watcher, 'canvas', `presence-e2e-${Date.now()}`);
-  await expect(watcher.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(watcher).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   await seedImageNode(watcher, `presence-e2e-node-${Date.now()}`, { x: 120, y: 120 });
-  await expect(watcher.locator('.react-flow__node').first()).toBeVisible({
+  await expect(visibleSpace(watcher).locator('.react-flow__node').first()).toBeVisible({
     timeout: 20_000,
   });
 
@@ -149,7 +149,7 @@ test.afterEach(async () => {
  * @throws {Error} When no tag reaches the viewer.
  */
 async function aPeerHoldingTheNode(): Promise<void> {
-  const node = watcher.locator('.react-flow__node').first();
+  const node = visibleSpace(watcher).locator('.react-flow__node').first();
   await node.locator('[data-testid=image-node]').click();
   await expect(node).toHaveClass(/selected/, { timeout: SETTLE_MS });
   await expect(viewer.getByTestId('node-occupant-tags')).toBeVisible({
@@ -158,7 +158,7 @@ async function aPeerHoldingTheNode(): Promise<void> {
 }
 
 test('a selection on one connection tags the node on the other', async () => {
-  const node = watcher.locator('.react-flow__node').first();
+  const node = visibleSpace(watcher).locator('.react-flow__node').first();
   await node.locator('[data-testid=image-node]').click();
   await expect(node).toHaveClass(/selected/, { timeout: SETTLE_MS });
 
@@ -171,7 +171,7 @@ test('a selection on one connection tags the node on the other', async () => {
   // The node's own border is untouched by the tag: presence must not paint
   // over state. Selection is the watcher's local flag, so the viewer's copy of
   // the node is the unselected one it has always been.
-  await expect(viewer.locator('.react-flow__node').first()).not.toHaveClass(
+  await expect(visibleSpace(viewer).locator('.react-flow__node').first()).not.toHaveClass(
     /selected/,
   );
 });
@@ -219,8 +219,8 @@ test('dropping the selection takes the tag away', async () => {
   await aPeerHoldingTheNode();
 
   // Click the empty pane, which is how a person drops a selection.
-  await watcher.locator('.react-flow__pane').click({ position: { x: 900, y: 700 } });
-  await expect(watcher.locator('.react-flow__node').first()).not.toHaveClass(
+  await visibleSpace(watcher).locator('.react-flow__pane').click({ position: { x: 900, y: 700 } });
+  await expect(visibleSpace(watcher).locator('.react-flow__node').first()).not.toHaveClass(
     /selected/,
     { timeout: SETTLE_MS },
   );
@@ -231,7 +231,7 @@ test('dropping the selection takes the tag away', async () => {
 });
 
 test('a pointer moving on one connection draws an arrow on the other', async () => {
-  const pane = watcher.locator('.react-flow__pane');
+  const pane = visibleSpace(watcher).locator('.react-flow__pane');
   const box = await pane.boundingBox();
   if (box === null) throw new Error('the canvas pane has no box');
 
@@ -322,7 +322,7 @@ test('a pointer leaving the canvas takes the arrow away', async () => {
   // on the canvas container, and only a real move produces it — a synthetic
   // event would have to name that container itself, and naming the wrong
   // element leaves a case that passes while testing nothing.
-  const box = await watcher.getByTestId('canvas-space').boundingBox();
+  const box = await visibleSpace(watcher).getByTestId('canvas-space').boundingBox();
   if (box === null) throw new Error('the canvas has no box');
   await watcher.mouse.move(box.x + 200, box.y + 200);
   await watcher.mouse.move(box.x - 40, box.y + 200, { steps: 6 });
@@ -342,7 +342,7 @@ test('a peer selection arriving mid-drag leaves the dragged node where it is', a
     timeout: SETTLE_MS,
   });
 
-  const node = viewer.locator('.react-flow__node').first();
+  const node = visibleSpace(viewer).locator('.react-flow__node').first();
   const box = await node.boundingBox();
   if (box === null) throw new Error('the node has no box');
   const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
@@ -382,7 +382,7 @@ test('the tag row floats above the name without growing the node', async () => {
   // held measurement is read on a node this case put a peer on itself.
   const fresh = `presence-e2e-geometry-${Date.now()}`;
   await seedImageNode(watcher, fresh, { x: 900, y: 120 });
-  const own = viewer.locator(`.react-flow__node[data-id="${fresh}"]`);
+  const own = visibleSpace(viewer).locator(`.react-flow__node[data-id="${fresh}"]`);
   await expect(own).toBeVisible({ timeout: SETTLE_MS });
 
   const anchor = own.getByTestId('node-header-anchor');
@@ -425,7 +425,7 @@ test('a node somebody else holds still moves and deletes', async () => {
   // here, on a node the peer is holding at the time.
   await aPeerHoldingTheNode();
 
-  const node = viewer.locator('.react-flow__node').first();
+  const node = visibleSpace(viewer).locator('.react-flow__node').first();
   const before = await node.evaluate((el) => (el as HTMLElement).style.transform);
   const box = await node.boundingBox();
   if (box === null) throw new Error('the node has no box');
@@ -449,12 +449,12 @@ test('a node somebody else holds still moves and deletes', async () => {
   // And the destructive one, on the same held node: the drag left it selected,
   // so the canvas delete key applies to it. This is the last case in the file
   // and the hook drops the whole Space, so removing the node costs nothing.
-  const standing = await viewer.locator('.react-flow__node').count();
+  const standing = await visibleSpace(viewer).locator('.react-flow__node').count();
   await viewer.keyboard.press('Delete');
-  await expect(viewer.locator('.react-flow__node')).toHaveCount(standing - 1, {
+  await expect(visibleSpace(viewer).locator('.react-flow__node')).toHaveCount(standing - 1, {
     timeout: SETTLE_MS,
   });
-  await expect(watcher.locator('.react-flow__node')).toHaveCount(standing - 1, {
+  await expect(visibleSpace(watcher).locator('.react-flow__node')).toHaveCount(standing - 1, {
     timeout: SETTLE_MS,
   });
 });

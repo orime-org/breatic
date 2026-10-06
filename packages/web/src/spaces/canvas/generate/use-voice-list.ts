@@ -90,12 +90,22 @@ export function useVoiceList(model: string | undefined): VoiceListHandle {
 
   const loadingMore = state.loadingMore;
   const cursor = state.cursor;
+  // The page asked for, so the effect re-running when a hidden Space is shown
+  // again does not ask for it a second time while the first answer is out.
+  const sentMore = React.useRef<string | null>(null);
   React.useEffect(() => {
     if (!loadingMore || !model) return;
+    const ask = `${requestId}:${model}:${query}:${cursor ?? ''}`;
+    if (sentMore.current === ask) return;
+    sentMore.current = ask;
     voicesApi
       .list(model, { query, cursor })
       .then((page) => dispatch({ type: 'moreArrived', requestId, page }))
-      .catch(() => dispatch({ type: 'moreFailed', requestId }));
+      .catch(() => {
+        // The same page is what a retry asks for.
+        sentMore.current = null;
+        dispatch({ type: 'moreFailed', requestId });
+      });
   }, [loadingMore, model, query, cursor, requestId]);
 
   const onOpenChange = React.useCallback((open: boolean) => {

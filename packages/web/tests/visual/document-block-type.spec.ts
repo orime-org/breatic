@@ -19,7 +19,7 @@
 import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
 let page: Page;
 
@@ -41,7 +41,6 @@ test.afterEach(async () => {
 });
 
 const SLOT = 'doc-bubble-block-type';
-const EDITOR = '[data-testid="document-space"] .ProseMirror';
 
 /** The Cmd key on macOS, Ctrl everywhere else. */
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';

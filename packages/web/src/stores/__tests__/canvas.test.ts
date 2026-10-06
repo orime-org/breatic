@@ -6,9 +6,8 @@ import type { CanvasProposal } from '@breatic/shared';
 import {
   useCanvasStore,
   isProposalIntent,
-  taskPanelStatusFor,
-  taskPanelOpenFor,
 } from '@web/stores/canvas';
+import { canvasSessions, createCanvasSessionStore, taskPanelStatusFor, taskPanelOpenFor } from '@web/stores/canvas-session';
 
 /** A proposal of two wired nodes, as a card posts it. */
 const PAIR: CanvasProposal = {
@@ -44,10 +43,8 @@ describe('useCanvasStore', () => {
       pendingHistoryCommand: null,
       canUndo: false,
       canRedo: false,
-      panelHostId: null,
-      panelKind: null,
-      pickSession: null,
     });
+    canvasSessions.clear();
   });
 
   it('initial state has empty selection and zoom=1', () => {
@@ -98,22 +95,22 @@ describe('useCanvasStore', () => {
   // collaborator opening a node's panel must NOT open it for everyone. Only
   // one panel is open at a time, keyed by node id.
   it('generate panel starts closed (no node)', () => {
-    expect(useCanvasStore.getInitialState().panelHostId).toBeNull();
+    expect(createCanvasSessionStore().getState().panelHostId).toBeNull();
   });
 
   it('openGeneratePanel opens the panel for a node; closeActivePanel clears it', () => {
-    useCanvasStore.getState().openGeneratePanel('n-9', 'image');
-    expect(useCanvasStore.getState().panelHostId).toBe('n-9');
-    expect(useCanvasStore.getState().panelKind).toBe('generate');
-    useCanvasStore.getState().closeActivePanel();
-    expect(useCanvasStore.getState().panelHostId).toBeNull();
-    expect(useCanvasStore.getState().panelKind).toBeNull();
+    canvasSessions.of('s').getState().openGeneratePanel('n-9', 'image');
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('n-9');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('generate');
+    canvasSessions.of('s').getState().closeActivePanel();
+    expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
+    expect(canvasSessions.of('s').getState().panelKind).toBeNull();
   });
 
   it('opening a second node’s panel replaces the first (one panel open at a time)', () => {
-    useCanvasStore.getState().openGeneratePanel('a', 'image');
-    useCanvasStore.getState().openGeneratePanel('b', 'image');
-    expect(useCanvasStore.getState().panelHostId).toBe('b');
+    canvasSessions.of('s').getState().openGeneratePanel('a', 'image');
+    canvasSessions.of('s').getState().openGeneratePanel('b', 'image');
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('b');
   });
 
   it('openGeneratePanel routes to the panel matching the node modality (#1896)', () => {
@@ -121,40 +118,40 @@ describe('useCanvasStore', () => {
     // opener decides which one, so callers never have to know how many panels
     // exist — adding text generation (#1778) means one more case here, not a
     // branch at every call site.
-    useCanvasStore.getState().openGeneratePanel('img-1', 'image');
-    expect(useCanvasStore.getState().panelKind).toBe('generate');
+    canvasSessions.of('s').getState().openGeneratePanel('img-1', 'image');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('generate');
 
-    useCanvasStore.getState().openGeneratePanel('vid-1', 'video');
-    expect(useCanvasStore.getState().panelHostId).toBe('vid-1');
-    expect(useCanvasStore.getState().panelKind).toBe('generateVideo');
+    canvasSessions.of('s').getState().openGeneratePanel('vid-1', 'video');
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('vid-1');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('generateVideo');
   });
 
   it('the video panel takes the single host slot, replacing an open image panel', () => {
     // Same mutually-exclusive slot as every other node-anchored panel: opening
     // one closes whatever was open, with no manual bookkeeping.
-    useCanvasStore.getState().openGeneratePanel('img-1', 'image');
-    useCanvasStore.getState().openGeneratePanel('vid-1', 'video');
-    expect(useCanvasStore.getState().panelKind).toBe('generateVideo');
-    expect(useCanvasStore.getState().panelHostId).toBe('vid-1');
+    canvasSessions.of('s').getState().openGeneratePanel('img-1', 'image');
+    canvasSessions.of('s').getState().openGeneratePanel('vid-1', 'video');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('generateVideo');
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('vid-1');
 
-    useCanvasStore.getState().openGeneratePanel('img-2', 'image');
-    expect(useCanvasStore.getState().panelKind).toBe('generate');
-    expect(useCanvasStore.getState().panelHostId).toBe('img-2');
+    canvasSessions.of('s').getState().openGeneratePanel('img-2', 'image');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('generate');
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('img-2');
   });
 
   it('opening the video panel clears a stale pick, like every other opener', () => {
     // A pick left over from a prior session would otherwise wire the next
     // canvas click to the PREVIOUS node.
-    useCanvasStore.getState().startReferencePick('gen-1');
-    useCanvasStore.getState().openGeneratePanel('vid-1', 'video');
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    canvasSessions.of('s').getState().startReferencePick('gen-1');
+    canvasSessions.of('s').getState().openGeneratePanel('vid-1', 'video');
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
   });
 
   it('closeActivePanel clears the video panel too', () => {
-    useCanvasStore.getState().openGeneratePanel('vid-1', 'video');
-    useCanvasStore.getState().closeActivePanel();
-    expect(useCanvasStore.getState().panelHostId).toBeNull();
-    expect(useCanvasStore.getState().panelKind).toBeNull();
+    canvasSessions.of('s').getState().openGeneratePanel('vid-1', 'video');
+    canvasSessions.of('s').getState().closeActivePanel();
+    expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
+    expect(canvasSessions.of('s').getState().panelKind).toBeNull();
   });
 
   it('a modality with no generate panel opens nothing, rather than the image one', () => {
@@ -163,102 +160,102 @@ describe('useCanvasStore', () => {
     // node's id under an image panel body, which reads as a working feature
     // until someone notices the wrong controls. Opening nothing shows up
     // immediately as a click that did nothing.
-    useCanvasStore.getState().openGeneratePanel('txt-1', 'text');
-    expect(useCanvasStore.getState().panelKind).toBeNull();
-    expect(useCanvasStore.getState().panelHostId).toBeNull();
+    canvasSessions.of('s').getState().openGeneratePanel('txt-1', 'text');
+    expect(canvasSessions.of('s').getState().panelKind).toBeNull();
+    expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
   });
 
   it('opens the audio panel for an audio node', () => {
-    useCanvasStore.getState().openGeneratePanel('aud-1', 'audio');
-    expect(useCanvasStore.getState().panelKind).toBe('generateAudio');
-    expect(useCanvasStore.getState().panelHostId).toBe('aud-1');
+    canvasSessions.of('s').getState().openGeneratePanel('aud-1', 'audio');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('generateAudio');
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('aud-1');
   });
 
   it('a modality with no panel leaves an already-open panel alone', () => {
     // The guard returns before touching state, so a bad call cannot close the
     // panel the user is working in either.
-    useCanvasStore.getState().openGeneratePanel('img-1', 'image');
-    useCanvasStore.getState().openGeneratePanel('txt-1', 'text');
-    expect(useCanvasStore.getState().panelKind).toBe('generate');
-    expect(useCanvasStore.getState().panelHostId).toBe('img-1');
+    canvasSessions.of('s').getState().openGeneratePanel('img-1', 'image');
+    canvasSessions.of('s').getState().openGeneratePanel('txt-1', 'text');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('generate');
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('img-1');
   });
 
   it('openHistoryPanel opens the history panel (mutually exclusive) and clears any stale pick (#1619)', () => {
     // A pick left over from a prior Generate session must not survive into
     // history — mirrors openGeneratePanel / openEmptyImagePanel clearing it.
-    useCanvasStore.getState().startReferencePick('gen-1');
-    useCanvasStore.getState().openHistoryPanel('n-7');
-    expect(useCanvasStore.getState().panelHostId).toBe('n-7');
-    expect(useCanvasStore.getState().panelKind).toBe('history');
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    canvasSessions.of('s').getState().startReferencePick('gen-1');
+    canvasSessions.of('s').getState().openHistoryPanel('n-7');
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('n-7');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('history');
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
     // Opening history replaces an open Generate panel (single host + kind).
-    useCanvasStore.getState().openGeneratePanel('g-1', 'image');
-    useCanvasStore.getState().openHistoryPanel('n-7');
-    expect(useCanvasStore.getState().panelKind).toBe('history');
+    canvasSessions.of('s').getState().openGeneratePanel('g-1', 'image');
+    canvasSessions.of('s').getState().openHistoryPanel('n-7');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('history');
   });
 
   it('openTaskPanel opens one state’s task list on a node (#186 §7.1)', () => {
     // A pick left over from a prior Generate session must not survive into
     // the task list, the same way it does not survive into history.
-    useCanvasStore.getState().startReferencePick('gen-1');
-    useCanvasStore.getState().openTaskPanel('n-9', 'failed');
-    expect(useCanvasStore.getState().panelHostId).toBe('n-9');
-    expect(useCanvasStore.getState().panelKind).toBe('tasks');
-    expect(useCanvasStore.getState().taskPanelStatus).toBe('failed');
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    canvasSessions.of('s').getState().startReferencePick('gen-1');
+    canvasSessions.of('s').getState().openTaskPanel('n-9', 'failed');
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('n-9');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('tasks');
+    expect(canvasSessions.of('s').getState().taskPanelStatus).toBe('failed');
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
   });
 
   it('openTaskPanel swaps which state is listed without closing the panel', () => {
     // Clicking a second count is a different question about the same node,
     // so the panel stays open and answers the new one.
-    useCanvasStore.getState().openTaskPanel('n-9', 'failed');
-    useCanvasStore.getState().openTaskPanel('n-9', 'running');
-    expect(useCanvasStore.getState().panelKind).toBe('tasks');
-    expect(useCanvasStore.getState().taskPanelStatus).toBe('running');
+    canvasSessions.of('s').getState().openTaskPanel('n-9', 'failed');
+    canvasSessions.of('s').getState().openTaskPanel('n-9', 'running');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('tasks');
+    expect(canvasSessions.of('s').getState().taskPanelStatus).toBe('running');
   });
 
   it('takes the same mutually exclusive slot as the other node panels', () => {
-    useCanvasStore.getState().openTaskPanel('n-9', 'done');
-    useCanvasStore.getState().openHistoryPanel('n-9');
-    expect(useCanvasStore.getState().panelKind).toBe('history');
+    canvasSessions.of('s').getState().openTaskPanel('n-9', 'done');
+    canvasSessions.of('s').getState().openHistoryPanel('n-9');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('history');
 
-    useCanvasStore.getState().openTaskPanel('n-9', 'done');
-    expect(useCanvasStore.getState().panelKind).toBe('tasks');
+    canvasSessions.of('s').getState().openTaskPanel('n-9', 'done');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('tasks');
   });
 
   it('forgets which state was listed once the panel closes', () => {
     // Reopening the counts column should not light one up from last time.
-    useCanvasStore.getState().openTaskPanel('n-9', 'expired');
-    useCanvasStore.getState().closeActivePanel();
-    expect(useCanvasStore.getState().taskPanelStatus).toBeNull();
+    canvasSessions.of('s').getState().openTaskPanel('n-9', 'expired');
+    canvasSessions.of('s').getState().closeActivePanel();
+    expect(canvasSessions.of('s').getState().taskPanelStatus).toBeNull();
   });
 
   // Taking the slot leaves the status behind — only the close paths clear it —
   // so the selector has to read the kind before the status, or a panel that is
   // no longer the task list answers as though it were.
   it('answers no task state once another panel has taken the slot', () => {
-    useCanvasStore.getState().openTaskPanel('n-9', 'failed');
-    useCanvasStore.getState().openHistoryPanel('n-9');
+    canvasSessions.of('s').getState().openTaskPanel('n-9', 'failed');
+    canvasSessions.of('s').getState().openHistoryPanel('n-9');
 
-    expect(useCanvasStore.getState().taskPanelStatus).toBe('failed');
-    expect(taskPanelStatusFor('n-9')(useCanvasStore.getState())).toBeNull();
+    expect(canvasSessions.of('s').getState().taskPanelStatus).toBe('failed');
+    expect(taskPanelStatusFor('n-9')(canvasSessions.of('s').getState())).toBeNull();
   });
 
   // One host at a time, so a list open on another node is not this node's.
   it('answers no task state for a node whose list is not the open one', () => {
-    useCanvasStore.getState().openTaskPanel('other', 'failed');
+    canvasSessions.of('s').getState().openTaskPanel('other', 'failed');
 
-    expect(taskPanelStatusFor('n-9')(useCanvasStore.getState())).toBeNull();
+    expect(taskPanelStatusFor('n-9')(canvasSessions.of('s').getState())).toBeNull();
   });
 
   // What a subscriber gets is compared by identity to decide whether to render
   // again, so answering the status itself would re-render everyone reading
   // this on every switch between one node's own tabs.
   it('answers the same value while the list stays open on another tab', () => {
-    useCanvasStore.getState().openTaskPanel('n-9', 'failed');
-    const whileFailed = taskPanelOpenFor('n-9')(useCanvasStore.getState());
-    useCanvasStore.getState().openTaskPanel('n-9', 'running');
-    const whileRunning = taskPanelOpenFor('n-9')(useCanvasStore.getState());
+    canvasSessions.of('s').getState().openTaskPanel('n-9', 'failed');
+    const whileFailed = taskPanelOpenFor('n-9')(canvasSessions.of('s').getState());
+    canvasSessions.of('s').getState().openTaskPanel('n-9', 'running');
+    const whileRunning = taskPanelOpenFor('n-9')(canvasSessions.of('s').getState());
 
     expect(whileFailed).toBe(true);
     expect(Object.is(whileFailed, whileRunning)).toBe(true);
@@ -270,13 +267,13 @@ describe('useCanvasStore', () => {
   // replace-on-repick, no source relationship). Same interaction, several
   // completion targets — one `pickSession` source of truth, never two fields.
   it('startReferencePick enters a reference pick; endPick exits', () => {
-    useCanvasStore.getState().startReferencePick('gen-1');
-    expect(useCanvasStore.getState().pickSession).toEqual({
+    canvasSessions.of('s').getState().startReferencePick('gen-1');
+    expect(canvasSessions.of('s').getState().pickSession).toEqual({
       nodeId: 'gen-1',
       purpose: 'reference',
     });
-    useCanvasStore.getState().endPick();
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    canvasSessions.of('s').getState().endPick();
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
   });
 
   it('startFocusPick enters a focus pick (#1782); endPick exits', () => {
@@ -284,80 +281,78 @@ describe('useCanvasStore', () => {
     // (manual exit — the user may crop several regions across several
     // nodes), each confirmed crop APPENDS a standalone copy to the panel
     // node's focusImages (no edge, no source relationship).
-    useCanvasStore.getState().startFocusPick('gen-1');
-    expect(useCanvasStore.getState().pickSession).toEqual({
+    canvasSessions.of('s').getState().startFocusPick('gen-1');
+    expect(canvasSessions.of('s').getState().pickSession).toEqual({
       nodeId: 'gen-1',
       purpose: 'focus',
     });
-    useCanvasStore.getState().endPick();
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    canvasSessions.of('s').getState().endPick();
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
   });
 
   it('starting a pick replaces any in-progress pick (one session at a time)', () => {
-    useCanvasStore.getState().startReferencePick('gen-1');
-    useCanvasStore.getState().startFocusPick('gen-1');
-    expect(useCanvasStore.getState().pickSession).toEqual({
+    canvasSessions.of('s').getState().startReferencePick('gen-1');
+    canvasSessions.of('s').getState().startFocusPick('gen-1');
+    expect(canvasSessions.of('s').getState().pickSession).toEqual({
       nodeId: 'gen-1',
       purpose: 'focus',
     });
   });
 
   it('opening the panel for another node exits any in-progress pick', () => {
-    useCanvasStore.getState().openGeneratePanel('a', 'image');
-    useCanvasStore.getState().startReferencePick('a');
+    canvasSessions.of('s').getState().openGeneratePanel('a', 'image');
+    canvasSessions.of('s').getState().startReferencePick('a');
     // Switch the panel to a different node — the stale pick must not survive.
-    useCanvasStore.getState().openGeneratePanel('b', 'image');
-    expect(useCanvasStore.getState().panelHostId).toBe('b');
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    canvasSessions.of('s').getState().openGeneratePanel('b', 'image');
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('b');
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
   });
 
   it('closeActivePanel also exits any in-progress pick', () => {
-    useCanvasStore.getState().openGeneratePanel('gen-1', 'image');
-    useCanvasStore.getState().startFocusPick('gen-1');
-    useCanvasStore.getState().closeActivePanel();
-    expect(useCanvasStore.getState().panelHostId).toBeNull();
-    expect(useCanvasStore.getState().panelKind).toBeNull();
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    canvasSessions.of('s').getState().openGeneratePanel('gen-1', 'image');
+    canvasSessions.of('s').getState().startFocusPick('gen-1');
+    canvasSessions.of('s').getState().closeActivePanel();
+    expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
+    expect(canvasSessions.of('s').getState().panelKind).toBeNull();
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
   });
 
   // The Generate and reset-empty panels share one host + kind and are mutually
   // exclusive (#1623): opening one always replaces the other, so two node
   // panels can never be open at once.
   it('openEmptyImagePanel opens the reset panel with kind=resetEmpty', () => {
-    useCanvasStore.getState().openEmptyImagePanel('img-1');
-    expect(useCanvasStore.getState().panelHostId).toBe('img-1');
-    expect(useCanvasStore.getState().panelKind).toBe('resetEmpty');
+    canvasSessions.of('s').getState().openEmptyImagePanel('img-1');
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('img-1');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('resetEmpty');
   });
 
   it('opening reset replaces an open Generate panel (mutually exclusive)', () => {
-    useCanvasStore.getState().openGeneratePanel('img-1', 'image');
-    useCanvasStore.getState().openEmptyImagePanel('img-1');
-    expect(useCanvasStore.getState().panelKind).toBe('resetEmpty');
+    canvasSessions.of('s').getState().openGeneratePanel('img-1', 'image');
+    canvasSessions.of('s').getState().openEmptyImagePanel('img-1');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('resetEmpty');
     // ...and opening Generate replaces the reset panel back.
-    useCanvasStore.getState().openGeneratePanel('img-1', 'image');
-    expect(useCanvasStore.getState().panelKind).toBe('generate');
+    canvasSessions.of('s').getState().openGeneratePanel('img-1', 'image');
+    expect(canvasSessions.of('s').getState().panelKind).toBe('generate');
   });
 
   it('openEmptyImagePanel exits any in-progress pick', () => {
-    useCanvasStore.getState().openGeneratePanel('img-1', 'image');
-    useCanvasStore.getState().startReferencePick('img-1');
-    useCanvasStore.getState().openEmptyImagePanel('img-2');
-    expect(useCanvasStore.getState().panelHostId).toBe('img-2');
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    canvasSessions.of('s').getState().openGeneratePanel('img-1', 'image');
+    canvasSessions.of('s').getState().startReferencePick('img-1');
+    canvasSessions.of('s').getState().openEmptyImagePanel('img-2');
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('img-2');
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
   });
 
   it('pending focus uploads: add renders a rail placeholder, remove clears it (#1782)', () => {
     // A confirmed crop uploads asynchronously; the rail shows a local
     // pending entry (never Yjs) until the URL lands or the upload fails.
-    useCanvasStore
-      .getState()
+    canvasSessions.of('s').getState()
       .addPendingFocusUpload({ id: 'tmp1', nodeId: 'gen-1', name: 'Img 26' });
-    useCanvasStore
-      .getState()
+    canvasSessions.of('s').getState()
       .addPendingFocusUpload({ id: 'tmp2', nodeId: 'gen-1', name: 'Img 27' });
-    expect(useCanvasStore.getState().pendingFocusUploads).toHaveLength(2);
-    useCanvasStore.getState().removePendingFocusUpload('tmp1');
-    expect(useCanvasStore.getState().pendingFocusUploads).toEqual([
+    expect(canvasSessions.of('s').getState().pendingFocusUploads).toHaveLength(2);
+    canvasSessions.of('s').getState().removePendingFocusUpload('tmp1');
+    expect(canvasSessions.of('s').getState().pendingFocusUploads).toEqual([
       { id: 'tmp2', nodeId: 'gen-1', name: 'Img 27' },
     ]);
   });

@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { test, expect } from 'playwright/test';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 
 // Real decoded media; both tracks are present so audio and video exercise the
@@ -22,7 +22,7 @@ for (const kind of ['audio', 'video'] as const) {
     const initialUrl = page.url();
     const spaceId = await createSpace(page, 'canvas', `media-history-${kind}-${Date.now()}`);
     try {
-      await expect(page.locator('.react-flow')).toBeVisible();
+      await expect(visibleSpace(page).locator('.react-flow')).toBeVisible();
       const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
       const nodeId = crypto.randomUUID();
       const origin = new URL(page.url()).origin;
@@ -49,7 +49,7 @@ for (const kind of ['audio', 'video'] as const) {
             locked: false, state: 'idle', attachments: [], content: src },
         });
       }, { at: canvasAt, pid: projectId, sid: spaceId, id: nodeId, type: kind, src: urls[0] });
-      const node = page.locator(`.react-flow__node[data-id="${nodeId}"]`);
+      const node = visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`);
       const media = node.getByTestId('media-element');
       const toggle = node.getByTestId('play-toggle');
       await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.readyState)).toBeGreaterThanOrEqual(2);

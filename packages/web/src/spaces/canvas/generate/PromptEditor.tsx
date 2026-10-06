@@ -7,12 +7,14 @@ import { Paragraph } from '@tiptap/extension-paragraph';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { Text } from '@tiptap/extension-text';
 import { Selection } from '@tiptap/pm/state';
-import { EditorContent, useEditor } from '@tiptap/react';
+import { Editor, EditorContent } from '@tiptap/react';
 import * as React from 'react';
 import type * as Y from 'yjs';
 import { REFERENCE_KINDS, type ReferenceKind } from '@breatic/shared';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
+import { endKeptEditor, keptEditor } from '@web/spaces/canvas/kept-editors';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
@@ -37,6 +39,7 @@ import { dispatchMachineEdit } from '@web/features/reference-mention/reference-m
 import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { planCascadeDeletion } from '@web/features/reference-mention/reference-mention-whitespace';
+import { useFocusReturn } from '@web/lib/use-focus-return';
 
 /** Imperative handle exposed to the container to insert a reference at the cursor. */
 export interface PromptEditorHandle {
@@ -58,16 +61,14 @@ export interface PromptEditorHandle {
   serializePrompt: (tokens?: MentionTokens) => string | null;
   /**
    * Inserts plain text at the caret the reader last left in this editor, or
-   * at the end when they never put one here. A popover opening
-   * takes focus away, so "has a caret" means "was focused since this editor
-   * was last created",
+   * at the end when they never put one here. A popover opening takes focus
+   * away, so "has a caret" means "was focused since this editor was built",
    * and the selection ProseMirror keeps through the blur is where it goes.
    * A space is added on a side that would otherwise touch a word.
    * @param text - The text to insert.
    */
   insertText: (text: string) => void;
 }
-
 
 /**
  * The classes greying one kind of `@` chip. Written out whole per kind so the
@@ -78,6 +79,39 @@ const DIM_CHIP: Readonly<Record<ReferenceKind, string>> = {
   video: ' [&_.reference-mention[data-kind=video]]:opacity-40 [&_.reference-mention[data-kind=video]]:grayscale',
   audio: ' [&_.reference-mention[data-kind=audio]]:opacity-40 [&_.reference-mention[data-kind=audio]]:grayscale',
 };
+/**
+ * What a kept editor reads from whichever component is showing it now. The
+ * component that built it may have unmounted since (StrictMode mounts it
+ * twice), so its handlers and extensions read through this rather than that
+ * component's closure.
+ */
+interface PromptWiring {
+  references: ReferenceRailItem[];
+  referenceKinds: readonly ReferenceKind[];
+  onFocus?: () => void;
+  blockSeparator?: string;
+  mentionTokens: MentionTokens;
+  placeholder: string;
+  onTextChange: (text: string) => void;
+  onAtMentionsChange: (sourceIds: string[]) => void;
+  /** Where the open `@` popup registers its refresh. */
+  suggestionRefresh: { current: (() => void) | null };
+}
+
+/** Each kept editor's wiring, what it was built on, and whether the caret goes back into it when it is shown. */
+const keptOf = new WeakMap<
+  Editor,
+  {
+    wiring: PromptWiring;
+    caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
+    mentionEmptyLabel: string;
+    /** Whether the reader has put a caret in this editor since it was built. */
+    caretPlaced: boolean;
+    hadFocus: boolean;
+    returning: boolean;
+  }
+>();
+
 interface PromptEditorProps {
   /** The node's prompt Y.XmlFragment — the collaborative binding target. */
   fragment: Y.XmlFragment;
@@ -163,9 +197,12 @@ interface PromptEditorProps {
  * The Generate panel's collaborative prompt editor. Slice 1 is plain text: a
  * minimal TipTap schema (Document / Paragraph / Text) bound to the node's
  * prompt Y.XmlFragment via the Collaboration extension, so every collaborator
- * sees keystrokes live (rich text + @-mentions arrive in slice 2). `useEditor`
- * owns the editor lifecycle (create on mount, destroy on unmount — StrictMode
- * safe); the fragment is external Yjs data and is never destroyed here.
+ * sees keystrokes live (rich text + @-mentions arrive in slice 2). The editor
+ * lives as long as the opening of the panel it was built in, not as long as
+ * this component: hiding the Space cleans up its effects, a cleanup cannot
+ * tell hiding from unmounting, and the caret and the undo history are on the
+ * editor (inner#1235 A13). The
+ * fragment is external Yjs data and is never destroyed here.
  * @param root0 - Component props.
  * @param root0.fragment - The prompt Y.XmlFragment to bind to.
  * @param root0.placeholder - Empty-state placeholder text.
@@ -207,136 +244,162 @@ export const PromptEditor = React.forwardRef<
   // From context, not from a prop: the roster is a project-level fact and every
   // layer between here and the project page used to have to forward it.
   const collaboratorNames = useCollaboratorNames();
-  // The reference pool changes as edges are added / removed, but the editor is
-  // rebuilt only on `fragment` change. A ref keeps the `@` suggestion reading
-  // the CURRENT pool without recreating the editor.
-  const poolRef = React.useRef(references);
-  poolRef.current = references;
-  // Live flag ref (same pattern as poolRef): the `@` suggestion reads it to
-  // exclude image references when they are inert, without rebuilding the
-  // editor on a mode toggle.
-  const referenceKindsRef = React.useRef(referenceKinds);
-  referenceKindsRef.current = referenceKinds;
-  // Same pattern again: the editor is built once per fragment, and a callback
-  // baked in at creation would keep calling the caller's first render.
-  const onFocusRef = React.useRef(onFocus);
-  onFocusRef.current = onFocus;
-  // Whether the reader has put a caret in the current editor: the editor is
-  // rebuilt whenever its `useEditor` deps change (fragment, the empty-list
-  // label, caret provider, name resolver), so `onCreate` clears it and
-  // `onFocus` sets it.
-  const caretPlacedRef = React.useRef(false);
-  // Read through a ref for the same reason the pool is: the two `onUpdate`
-  // handlers are baked into the editor at creation, and rebuilding it to change
-  // a separator would tear down the collaborative binding.
-  const blockSeparatorRef = React.useRef(blockSeparator);
-  blockSeparatorRef.current = blockSeparator;
-  const mentionTokensRef = React.useRef(mentionTokens);
-  mentionTokensRef.current = mentionTokens;
-  // Live for the same reason: what this box asks for is a property of the
-  // state it is in, not of the box, and a string baked in at creation would go
-  // on asking for what the panel no longer wants.
-  const placeholderRef = React.useRef(placeholder);
-  placeholderRef.current = placeholder;
-  // The open `@` popup registers a refresh() here (collaboration residual 2): a
-  // REMOTE mode / pool change fires no editor transaction, so the visible popup's
-  // list would stay stale. The effect below calls it when `referenceKinds` /
-  // `references` change, refreshing a visible popup's content from the live pool.
-  const suggestionRefreshRef = React.useRef<(() => void) | null>(null);
-  const editor = useEditor(
-    {
-      extensions: [
-        Document,
-        Paragraph,
-        Text,
-        // The caret between two adjacent chips (no auto space — user
-        // 2026-07-10 item 5) is handled by the chip-boundary caret plugin
-        // that ReferenceMention installs (reference-mention-caret.ts).
-        // Gapcursor was the wrong tool: its valid() rejects textblock
-        // parents, so it never fired inside the paragraph (batch-2 item 5).
-        // Collaboration provides history (yUndo); do NOT add UndoRedo alongside.
-        // The whole collaboration half — history binding, undo selection
-        // hand-off, caret refresh, and safely-rendered collaborator carets —
-        // comes from one place, shared with the document editor. Carets within
-        // it mount only when awareness is available: the extension THROWS in
-        // onCreate on a null provider, and before the socket's first connect
-        // there is genuinely nothing to publish carets through.
-        ...buildCollabExtensions({
-          fragment,
-          caretProvider,
-          resolveCollaboratorName: collaboratorNames?.resolve,
-        }),
-        // A function rather than a string: the sentence changes with the mode
-        // and the extension is baked in at creation, so it reads the ref every
-        // time the view republishes (see the setEditable effect below).
-        Placeholder.configure({
-          placeholder: () => placeholderRef.current,
-        }),
-        ReferenceMention.configure({
-          suggestion: makeReferenceSuggestion({
-            getPool: () => poolRef.current,
-            emptyLabel: mentionEmptyLabel,
-            // Same verdict as the rail's insert button, from the same call:
-            // a row the picker offers is a row the rail would insert.
-            getUsabilityContext: () => ({
-              referenceKinds: referenceKindsRef.current,
-              // Always true here: BOTH containers render a line of copy in
-              // place of this editor when the model consumes no prompt
-              // (#1966), so there is no `@` picker to open in that state.
-              takesPrompt: true,
-            }),
-            refreshRef: suggestionRefreshRef,
+  const { spaceId } = useCanvasContext();
+  const sessionStore = useCanvasSessionStore();
+  // Which opening of the panel this editor belongs to: a panel closed, or
+  // replaced by another, ends it; hiding the Space does not (inner#1235 A13).
+  const panelSession = useCanvasSession((st) => st.panelSession);
+  const resolveName = collaboratorNames?.resolve;
+  const editor = React.useMemo((): Editor => {
+    /**
+     * Builds the editor, with its handlers reading the wiring box.
+     * @returns The editor.
+     */
+    const build = (): Editor => {
+      const wiring: PromptWiring = {
+        references,
+        referenceKinds,
+        onFocus,
+        blockSeparator,
+        mentionTokens,
+        placeholder,
+        onTextChange,
+        onAtMentionsChange,
+        suggestionRefresh: { current: null },
+      };
+      /**
+       * Reports both derived values: the backend-bound prompt text (execute
+       * gate — text chips substitute their source content, so "@ a non-empty
+       * text node" alone is a valid prompt) and the `@`-picked source ids (i2i
+       * subset). Remote collaborator edits also arrive as updates through
+       * y-prosemirror, so the container's mirrors follow both.
+       * @param e - The editor.
+       */
+      const report = (e: Editor): void => {
+        wiring.onTextChange(
+          serializePromptText(e, wiring.references, wiring.blockSeparator, wiring.mentionTokens),
+        );
+        wiring.onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
+      };
+      const built = new Editor({
+        extensions: [
+          Document,
+          Paragraph,
+          Text,
+          // The caret between two adjacent chips (no auto space — user
+          // 2026-07-10 item 5) is handled by the chip-boundary caret plugin
+          // that ReferenceMention installs (reference-mention-caret.ts).
+          // Gapcursor was the wrong tool: its valid() rejects textblock
+          // parents, so it never fired inside the paragraph (batch-2 item 5).
+          // Collaboration provides history (yUndo); do NOT add UndoRedo alongside.
+          // The whole collaboration half — history binding, undo selection
+          // hand-off, caret refresh, and safely-rendered collaborator carets —
+          // comes from one place, shared with the document editor. Carets within
+          // it mount only when awareness is available: the extension THROWS in
+          // onCreate on a null provider, and before the socket's first connect
+          // there is genuinely nothing to publish carets through.
+          ...buildCollabExtensions({
+            fragment,
+            caretProvider,
+            resolveCollaboratorName: resolveName,
           }),
-          // The chip's text-reference hover resolves live content through the
-          // same pool ref (spec §9.1).
-          getPool: () => poolRef.current,
-        }),
-      ],
-      immediatelyRender: false,
-      // Report BOTH derived values on every editor change (create + update): the
-      // backend-bound prompt text (execute gate — text chips substitute their
-      // source content, so "@ a non-empty text node" alone is a valid prompt)
-      // and the `@`-picked source ids (i2i subset). Remote collaborator edits
-      // also fire onUpdate via y-prosemirror, so the container's mirrors stay
-      // current for both local and remote changes.
-      onCreate: ({ editor: e }) => {
-        caretPlacedRef.current = false;
-        onTextChange(
-          serializePromptText(e, poolRef.current, blockSeparatorRef.current, mentionTokensRef.current),
-        );
-        onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
-      },
-      onUpdate: ({ editor: e }) => {
-        onTextChange(
-          serializePromptText(e, poolRef.current, blockSeparatorRef.current, mentionTokensRef.current),
-        );
-        onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
-      },
-      onFocus: () => {
-        caretPlacedRef.current = true;
-        onFocusRef.current?.();
-      },
+          // A function rather than a string: the sentence changes with the mode
+          // and the extension is baked in at creation, so it reads the wiring
+          // every time the view republishes (see the setEditable effect below).
+          Placeholder.configure({
+            placeholder: () => wiring.placeholder,
+          }),
+          ReferenceMention.configure({
+            suggestion: makeReferenceSuggestion({
+              getPool: () => wiring.references,
+              emptyLabel: mentionEmptyLabel,
+              // Same verdict as the rail's insert button, from the same call:
+              // a row the picker offers is a row the rail would insert.
+              getUsabilityContext: () => ({
+                referenceKinds: wiring.referenceKinds,
+                // Always true here: BOTH containers render a line of copy in
+                // place of this editor when the model consumes no prompt
+                // (#1966), so there is no `@` picker to open in that state.
+                takesPrompt: true,
+              }),
+              refreshRef: wiring.suggestionRefresh,
+            }),
+            // The chip's text-reference hover resolves live content through the
+            // same pool (spec §9.1).
+            getPool: () => wiring.references,
+          }),
+        ],
+        onCreate: ({ editor: e }) => report(e),
+        onUpdate: ({ editor: e }) => report(e),
+        onFocus: ({ editor: e }) => {
+          const placed = keptOf.get(e);
+          if (placed !== undefined) placed.caretPlaced = true;
+          wiring.onFocus?.();
+        },
+      });
+      keptOf.set(built, {
+        wiring,
+        caretProvider,
+        mentionEmptyLabel,
+        caretPlaced: false,
+        hadFocus: false,
+        returning: false,
+      });
+      // Ends with the opening of the panel it was built in.
+      const session = sessionStore.getState().panelSession;
+      const stop = sessionStore.subscribe((st) => {
+        if (st.panelSession === session) return;
+        stop();
+        if (!built.isDestroyed) endKeptEditor(spaceId, fragment);
+      });
+      return built;
+    };
+    // A kept editor is reused while it is bound to the same caret connection
+    // with the same captured string. The empty-list label is baked into the
+    // extensions and changes only on a locale switch; the caret connection
+    // arrives once, on the socket's first connect.
+    return keptEditor(spaceId, fragment, build, (kept) => {
+      const bound = keptOf.get(kept);
+      return (
+        bound?.caretProvider === caretProvider &&
+        bound.mentionEmptyLabel === mentionEmptyLabel
+      );
+    });
+    // Everything else reaches a kept editor through its wiring below, not by
+    // rebuilding it. The panel's session is listed so that a panel ending
+    // under a mounted editor builds this one a new editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spaceId, fragment, caretProvider, mentionEmptyLabel, resolveName, panelSession]);
+
+  const kept = keptOf.get(editor);
+  if (kept !== undefined) {
+    Object.assign(kept.wiring, {
+      references,
+      referenceKinds,
+      onFocus,
+      blockSeparator,
+      mentionTokens,
+      placeholder,
+      onTextChange,
+      onAtMentionsChange,
+    });
+  }
+  // Back on screen after a switch of Space, the caret goes back in if it was
+  // here when the Space was hidden. Kept with the editor, so a return still
+  // waiting when Strict Mode undoes a mount is carried to the next mount.
+  useFocusReturn(
+    kept,
+    () => !editor.isDestroyed && editor.view.hasFocus(),
+    () => {
+      if (!editor.isDestroyed) editor.view.focus();
     },
-    // Recreate the editor when the fragment OR a captured translated string
-    // changes. The two mention labels are baked into the extensions at creation
-    // and never re-synced by useEditor (deps-gated), so an in-session locale
-    // switch would otherwise leave them in the old language until the panel
-    // reopened (adversarial round-2). Both change only on a locale switch
-    // (rare); the reference POOL stays a live ref (poolRef) so frequent edge
-    // add/remove never triggers a recreate. caretProvider flips null→provider
-    // once on first socket connect (mounting the caret extension). The name
-    // RESOLVER is listed rather than the roster bundle holding it — the bundle
-    // is rebuilt on every project-page render and would tear this editor down
-    // mid-keystroke, while the resolver keeps one identity for the editor's
-    // whole life and reads the current roster through a ref. Listed at all so
-    // that a resolver arriving after mount still reaches the extensions.
-    [
-      fragment,
-      mentionEmptyLabel,
-      caretProvider,
-      collaboratorNames?.resolve,
-    ],
   );
+  // A kept editor shown again reported its values when it was built, to
+  // whichever container showed it then; this one has to hear them too.
+  React.useEffect(() => {
+    if (editor.isDestroyed) return;
+    onAtMentionsChange(extractAtMentionedSourceIds(editor.getJSON()));
+  }, [editor, onAtMentionsChange]);
   // Publish this window's focus and dim collaborators who have left theirs.
   // Shared with the document editor — both halves have to travel together,
   // or one side publishes into a void and the other renders a flag nobody
@@ -350,7 +413,7 @@ export const PromptEditor = React.forwardRef<
     ref,
     () => ({
       insertReference: (item: ReferenceRailItem): void => {
-        if (!editor || editor.isDestroyed) return;
+        if (editor.isDestroyed) return;
         const content = referenceMentionContent(item);
         // Focused → insert at the caret; unfocused (no live cursor) → append to
         // the end. The rail button preventDefaults mousedown so it never blurs.
@@ -361,9 +424,9 @@ export const PromptEditor = React.forwardRef<
         }
       },
       insertText: (text: string): void => {
-        if (!editor || editor.isDestroyed) return;
+        if (editor.isDestroyed) return;
         const { state } = editor;
-        const { from, to } = caretPlacedRef.current
+        const { from, to } = keptOf.get(editor)?.caretPlaced === true
           ? state.selection
           : Selection.atEnd(state.doc);
         /**
@@ -382,16 +445,16 @@ export const PromptEditor = React.forwardRef<
           .run();
       },
       serializePrompt: (tokens?: MentionTokens): string | null =>
-        editor
-          ? serializePromptText(
+        editor.isDestroyed
+          ? null
+          : serializePromptText(
             editor,
-            poolRef.current,
-            blockSeparatorRef.current,
-            tokens ?? mentionTokensRef.current,
-          )
-          : null,
+            references,
+            blockSeparator,
+            tokens ?? mentionTokens,
+          ),
     }),
-    [editor],
+    [editor, references, blockSeparator, mentionTokens],
   );
   // Re-report the substituted prompt text when the POOL changes (round-2
   // adversarial): a text chip resolves its source node's content at
@@ -403,11 +466,11 @@ export const PromptEditor = React.forwardRef<
   // chip's words move the same way: mentioning a second picture or switching
   // model renumbers them with no edit to this chip.
   React.useEffect(() => {
-    if (!editor || editor.isDestroyed) return;
+    if (editor.isDestroyed) return;
     onTextChange(
-      serializePromptText(editor, references, blockSeparatorRef.current, mentionTokens),
+      serializePromptText(editor, references, blockSeparator, mentionTokens),
     );
-  }, [editor, references, mentionTokens, onTextChange]);
+  }, [editor, references, blockSeparator, mentionTokens, onTextChange]);
 
   // Refresh an OPEN `@` popup's list when the mode or pool changes (collaboration
   // residual 2): a REMOTE peer toggling this node's mode or editing its
@@ -418,8 +481,8 @@ export const PromptEditor = React.forwardRef<
   // change hides the popup first (clicking the picker), so this only bites the
   // remote case.
   React.useEffect(() => {
-    suggestionRefreshRef.current?.();
-  }, [referenceKinds, references]);
+    keptOf.get(editor)?.wiring.suggestionRefresh.current?.();
+  }, [editor, referenceKinds, references]);
 
   // Cascade-clear stale @-mention chips: when a reference edge is removed the
   // pool shrinks, so any @-mention pointing at a now-disconnected source must
@@ -427,7 +490,7 @@ export const PromptEditor = React.forwardRef<
   // pool). Collect the mention occurrences, plan the deletions purely, then
   // apply them in one transaction (synced to collaborators via Collaboration).
   React.useEffect(() => {
-    if (!editor || editor.isDestroyed) return;
+    if (editor.isDestroyed) return;
     const poolIds = new Set(references.map((r) => r.sourceNodeId));
     const occurrences: MentionOccurrence[] = [];
     editor.state.doc.descendants((n, pos) => {
@@ -471,7 +534,7 @@ export const PromptEditor = React.forwardRef<
   // HoverPreview's resolveOnOpen), keeping the source node the single truth
   // (freezing the body into an attr would duplicate it into the Yjs prompt doc).
   React.useEffect(() => {
-    if (!editor || editor.isDestroyed) return;
+    if (editor.isDestroyed) return;
     const chips: ChipDisplaySnapshot[] = [];
     editor.state.doc.descendants((n, pos) => {
       if (n.type.name !== REFERENCE_MENTION_NODE) return;
@@ -502,9 +565,9 @@ export const PromptEditor = React.forwardRef<
     // counts it as a keystroke (#1802 round-4; batch-4).
     dispatchMachineEdit(editor.view, tr);
   }, [editor, references]);
-  // Kept in step with the prop rather than passed to `useEditor`: its options
-  // are read once at creation, so flipping this through the deps would rebuild
-  // the editor and take the collaborative binding and the caret down with it.
+  // Kept in step here rather than passed at creation: the editor's options are
+  // read once when it is built, and rebuilding it for this would take the
+  // collaborative binding and the caret down with it.
   //
   // `emitUpdate` off: it defaults to true, and the handler it would fire
   // re-serializes the prompt and re-walks the document for `@` mentions — work
@@ -516,7 +579,7 @@ export const PromptEditor = React.forwardRef<
   // placeholder. Without it the box would keep the sentence it was created
   // with until the next keystroke.
   React.useEffect(() => {
-    editor?.setEditable(true, false);
+    if (!editor.isDestroyed) editor.setEditable(true, false);
   }, [editor, placeholder]);
   // A chip of a kind the pool does not take is greyed (design §2.4 C): a mode
   // or model switch visually pre-announces it will not take effect, since the

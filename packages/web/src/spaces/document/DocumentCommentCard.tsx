@@ -125,9 +125,9 @@ interface DocumentCommentCardProps {
    *
    * Held by the editor (`document-comment-unsent.ts`) and handed down by the
    * panel: a thread settled by a peer takes its card out of the open filter,
-   * and a Space tab switch mounts the panel again, so a reply living in the
-   * card's state or the panel's would go with either — words the reader typed
-   * and never agreed to throw away.
+   * and the panel can be mounted again (StrictMode mounts it twice), so a
+   * reply living in the card's state or the panel's would go with either —
+   * words the reader typed and never agreed to throw away.
    */
   draft: string;
   /** Remembers what has been written into the reply box. */

@@ -130,6 +130,104 @@ describe('useNodeCreation', () => {
     addNode.mockRestore();
   });
 
+  // Every paste steps past nodes already on its spot (inner#1235 A20). Read
+  // through the real document: the step comes from what the document holds,
+  // so a mocked `addNode` would leave nothing for the next paste to step past.
+  describe('a paste onto a taken spot', () => {
+    /**
+     * Where each node in the canvas document sits, by id.
+     * @param ids - The nodes to look up.
+     * @returns Their stored positions, in order.
+     */
+    const placed = (ids: readonly string[]): { x: number; y: number }[] => {
+      const nodes = canvasSpace.readNodes(getDoc(docName.canvasSpace('p1', 's1')));
+      return ids.map((id) => {
+        const found = nodes.find((node) => node.id === id);
+        if (found === undefined) throw new Error(`no node ${id}`);
+        return found.position;
+      });
+    };
+
+    it('steps a second paste of the same text down and right by one step', () => {
+      const { result } = renderHook(() => useNodeCreation('p1', 's1'));
+      const first = result.current.pasteTextAt('a', { x: 500, y: 500 });
+      const second = result.current.pasteTextAt('a', { x: 500, y: 500 });
+      expect(placed([first, second])).toEqual([
+        { x: 356, y: 404 },
+        { x: 380, y: 428 },
+      ]);
+    });
+
+    it('steps a staggered pair whose box corner is free but one of whose nodes lands on a taken spot', () => {
+      const { result } = renderHook(() => useNodeCreation('p1', 's1'));
+      // The pair's bounding box starts at (0, 0), where neither node sits.
+      const pair = [
+        { type: 'image' as const, position: { x: 0, y: 300 } },
+        { type: 'image' as const, position: { x: 400, y: 0 } },
+      ];
+      result.current.pasteNodesAt(pair, { dx: 0, dy: 0 });
+      // Moved by (400, -300) the box corner (400, -300) is free and so is the
+      // second node's spot, but the first node lands on the first copy's
+      // second node at (400, 0).
+      const again = result.current.pasteNodesAt(pair, { dx: 400, dy: -300 });
+      expect(placed(again)).toEqual([
+        { x: 424, y: 24 },
+        { x: 824, y: -276 },
+      ]);
+    });
+
+    it('measures a Group member where it is painted, not where it is stored', () => {
+      const { result } = renderHook(() => useNodeCreation('p1', 's1'));
+      canvasSpace.addNode('p1', 's1', {
+        id: 'g',
+        type: 'group',
+        position: { x: 1000, y: 1000 },
+        data: { name: 'G', createdAt: 0, createdBy: 'u-9', locked: false, attachments: [], width: 600, height: 400 },
+      });
+      canvasSpace.addNode('p1', 's1', {
+        id: 'm',
+        type: 'image',
+        parentId: 'g',
+        position: { x: 40, y: 40 },
+        data: { name: 'M', createdAt: 0, createdBy: 'u-9', locked: false, attachments: [] },
+      });
+      const [pasted] = result.current.pasteNodesAt(
+        [{ type: 'image', position: { x: 0, y: 0 } }],
+        { dx: 1040, dy: 1040 },
+      );
+      expect(placed([pasted as string])).toEqual([{ x: 1064, y: 1064 }]);
+    });
+
+    it('steps a pasted Group when only one of its members would land on a taken spot', () => {
+      const { result } = renderHook(() => useNodeCreation('p1', 's1'));
+      canvasSpace.addNode('p1', 's1', {
+        id: 'there',
+        type: 'image',
+        position: { x: 624, y: 624 },
+        data: { name: 'T', createdAt: 0, createdBy: 'u-9', locked: false, attachments: [] },
+      });
+      // Clipboard positions are absolute, members included: shifted by 24 the
+      // Group's corner (524, 524) is free, its member lands on (624, 624).
+      const [group] = result.current.pasteNodesAt(
+        [
+          { id: 'g', type: 'group', position: { x: 500, y: 500 }, width: 600, height: 400 },
+          { id: 'm', type: 'image', parentId: 'g', position: { x: 600, y: 600 } },
+        ],
+        { dx: 24, dy: 24 },
+      );
+      expect(placed([group as string])).toEqual([{ x: 548, y: 548 }]);
+    });
+
+    it('leaves a paste on a free spot where it was asked to go', () => {
+      const { result } = renderHook(() => useNodeCreation('p1', 's1'));
+      const [pasted] = result.current.pasteNodesAt(
+        [{ type: 'image', position: { x: 0, y: 0 } }],
+        { dx: 24, dy: 24 },
+      );
+      expect(placed([pasted as string])).toEqual([{ x: 24, y: 24 }]);
+    });
+  });
+
   // Read back through the real document rather than a mocked `addNode`: the
   // mode, the model and the wiring are written by later calls, so a test that
   // only watched the create call would see none of them and stay green with

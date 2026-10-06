@@ -4,13 +4,14 @@
 /**
  * The document editor, cached per document instead of per component.
  *
- * **Why the editor and not just its history.** Switching Space tabs remounts
- * the body — `SpaceOutlet` is keyed on the Space id — and an editor owned by
+ * **Why the editor and not just its history.** The body that renders the
+ * editor can unmount while its tab keeps the document open — StrictMode mounts
+ * it twice. (The notices `DocumentSpace` shows in its place are not such a
+ * case: the refused one shows only before any content, when no editor has been
+ * built, and the schema one evicts the editor.) An editor owned by
  * that component dies with it. The text survives, because it is in the Y.Doc;
  * the undo stack, the selection and any in-flight input-method composition do
- * not. (The scroll position is NOT among them: the scroller is the `ScrollArea`
- * around the editor, which belongs to the component and is rebuilt with it.
- * Carrying that across would be a separate change.)
+ * not. A switch of Space tab is not among these: it hides the body and keeps it.
  *
  * The narrower response is to rescue the undo stack alone, by handing the
  * collaboration a manager built to outlive the editor. That was tried and it is
@@ -22,7 +23,7 @@
  * document attachment. Three shapes, three failures, one cause: the assumption
  * being fought is upstream's, and it is a reasonable one.
  *
- * Letting the editor outlive the switch drops the fight. The manager then
+ * Letting the editor outlive the body drops the fight. The manager then
  * belongs to its editor exactly as upstream expects.
  *
  * **What makes the hand-off work here.** `unmount()` is a teardown rather than
@@ -84,7 +85,7 @@ export interface DocumentEditorHandle {
    * The element the editor's DOM lives in, for a body to adopt.
    *
    * Owned here rather than by the body, because it is what carries the editor
-   * across a Space-tab switch — see the module comment for what mounting a
+   * across a remount of the body — see the module comment for what mounting a
    * second time does instead. Bodies reach it through
    * {@link adoptDocumentEditor}.
    */
@@ -217,9 +218,10 @@ export type ShowableEditor = Pick<DocumentEditorHandle, 'editor' | 'surface'>;
  * wrong is in the module comment — a rebuilt view, a mismatched transaction,
  * and the old view's plugin views left running.
  *
- * Adopting into a container that already holds the surface is what StrictMode's
- * double-invoked effect does, and `appendChild` of a node already in place is a
- * no-op move.
+ * Adopting into a container that already holds the surface — StrictMode's
+ * double-invoked effect, and a Space shown again — leaves it where it is.
+ * `appendChild` always takes a node out and puts it back, and that resets
+ * every scroll position inside it, a wide table's frame among them.
  * @param handle - The handle {@link getDocumentEditor} returned.
  * @param container - The element that should hold the editor's DOM.
  */
@@ -227,6 +229,7 @@ export function adoptDocumentEditor(
   handle: ShowableEditor,
   container: HTMLElement,
 ): void {
+  if (handle.surface.parentElement === container) return;
   container.appendChild(handle.surface);
   // `mount()` is what builds the view, so its absence is what "not yet
   // mounted" means. Asking the editor is more direct than a flag here that

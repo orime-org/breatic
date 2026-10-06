@@ -8,10 +8,9 @@
  * every part of it is here for a reason a click makes: a text box contributes
  * a state value, a ref mirroring it, the setter that writes both, and the
  * editor handle that serializes it at that instant — because React state lags
- * a frame and the handler reads it synchronously. Beside the boxes sit the
- * in-flight flag (mirrored for the same reason) and the mount flag, which is
- * how a submit already on its way tells that the panel it started from has
- * gone.
+ * a frame and the handler reads it synchronously. Beside the boxes sits the
+ * in-flight flag, mirrored for the same reason. Which opening of the panel a
+ * submit closes is the canvas session's `panelSession`, not this hook's.
  *
  * Held together rather than declared per panel because they are one mechanism:
  * a fourth panel that copied all but one part would look right and drop a
@@ -59,14 +58,11 @@ export interface GenerateSubmitState {
   setIsSubmitting: React.Dispatch<React.SetStateAction<boolean>>;
   /** The synchronous re-entry latch: state cannot answer soon enough. */
   submittingRef: React.RefObject<boolean>;
-  /** False once this mount is gone, for a submit still on its way back. */
-  isMountedRef: React.RefObject<boolean>;
 }
 
 /**
  * Builds the submit-time state for one Generate panel.
- * @returns The prompt mirrors, the editor handle, the in-flight mirrors, and
- *   this mount's liveness flag.
+ * @returns The prompt mirrors, the editor handles and the in-flight mirrors.
  */
 export function useGenerateSubmitState(): GenerateSubmitState {
   const [promptText, setPromptText] = React.useState('');
@@ -88,19 +84,6 @@ export function useGenerateSubmitState(): GenerateSubmitState {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
 
-  // Marks THIS mount stale on unmount. The panel body is keyed by node id, so
-  // closing and reopening on the same node remounts a fresh instance, and an
-  // in-flight submit from the old one must not close the new panel. Set to
-  // true on mount as well, because Strict Mode runs the cleanup once before
-  // the effect that matters.
-  const isMountedRef = React.useRef(true);
-  React.useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
   return {
     lyricsText,
     lyricsTextRef,
@@ -113,6 +96,5 @@ export function useGenerateSubmitState(): GenerateSubmitState {
     isSubmitting,
     setIsSubmitting,
     submittingRef,
-    isMountedRef,
   };
 }

@@ -5,7 +5,18 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import { AnnotationComposer } from '@web/spaces/canvas/annotation/AnnotationComposer';
+import { CanvasContext, type CanvasContextValue } from '@web/spaces/canvas/canvas-context';
+
 import { NOTE_BOX_MAX_HEIGHT } from '@web/spaces/canvas/annotation/caps';
+
+/** A canvas on Space `s1`, the outlet these cases put on the page. */
+const CANVAS: CanvasContextValue = {
+  projectId: 'p',
+  spaceId: 's1',
+  readOnly: false,
+  myRole: 'owner',
+  caretProvider: null,
+};
 
 const onCommit = vi.fn();
 const onClose = vi.fn();
@@ -86,12 +97,35 @@ describe('the box that opens at the drop point', () => {
     expect(box).toHaveValue('镜头');
   });
 
-  it('throws them away on blur too — nothing here existed yet', () => {
+  it('throws them away on blur too — nothing here existed yet', async () => {
     const box = open();
     fireEvent.change(box, { target: { value: 'half a thought' } });
     fireEvent.blur(box);
+    await Promise.resolve();
     expect(onCommit).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('keeps them when the blur comes from its Space being hidden', async () => {
+    // Switching Space hides this one, which takes focus out of the box; the
+    // words are waiting for the reader when they come back (inner#1235 A14).
+    const outlet = document.body.appendChild(document.createElement('div'));
+    outlet.setAttribute('data-space-outlet', 's1');
+    render(
+      <CanvasContext.Provider value={CANVAS}>
+        <AnnotationComposer onCommit={onCommit} onClose={onClose} />
+      </CanvasContext.Provider>,
+      { container: outlet.appendChild(document.createElement('div')) },
+    );
+    const box = screen.getByTestId('annotation-composer-input');
+    fireEvent.change(box, { target: { value: 'half a thought' } });
+
+    fireEvent.blur(box);
+    outlet.style.setProperty('display', 'none', 'important');
+    await Promise.resolve();
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(box).toHaveValue('half a thought');
   });
 
   it('keeps them when the whole window loses focus', () => {
@@ -114,7 +148,7 @@ describe('the box that opens at the drop point', () => {
     hasFocus.mockRestore();
   });
 
-  it('keeps them when the blur is an IME candidate window opening', () => {
+  it('keeps them when the blur is an IME candidate window opening', async () => {
     // §6.2's one criterion covers every way out of this box, and a blur is
     // the way out that carries no answer of its own — a keystroke says
     // `isComposing`, a focus loss says nothing. Some engines take focus to
@@ -129,6 +163,7 @@ describe('the box that opens at the drop point', () => {
     // And once the IME hands the words back, the box is ordinary again.
     fireEvent.compositionEnd(box);
     fireEvent.blur(box);
+    await Promise.resolve();
     expect(onClose).toHaveBeenCalled();
     expect(onCommit).not.toHaveBeenCalled();
   });

@@ -17,7 +17,7 @@ import { expect, test, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, liveModuleUrl } from './live-module';
 import { openSmokeProject } from './project';
-import { createSpace, deleteSpace } from './space';
+import { createSpace, deleteSpace, visibleSpace, type SpaceKind } from './space';
 
 /** Wide enough for a strip of several tabs and a minimap beside the canvas. */
 export const VIEWPORT = { width: 1400, height: 900 };
@@ -60,13 +60,17 @@ export async function activeId(p: Page): Promise<string | null> {
 }
 
 /**
- * The canvas camera as the library holds it.
+ * The camera of the canvas on screen, as the library holds it. Every open
+ * canvas stays in the page, hidden, so this reads the one that is shown.
  * @param p - The page to read.
  * @returns The offset and the zoom.
  */
 export async function camera(p: Page): Promise<{ x: number; y: number; zoom: number }> {
   return p.evaluate(() => {
-    const el = document.querySelector('.react-flow__viewport') as HTMLElement | null;
+    const el =
+      [...document.querySelectorAll<HTMLElement>('.react-flow__viewport')].find((v) =>
+        v.checkVisibility(),
+      ) ?? null;
     const m = new DOMMatrixReadOnly(el ? getComputedStyle(el).transform : '');
     return { x: Math.round(m.e), y: Math.round(m.f), zoom: Number(m.a.toFixed(3)) };
   });
@@ -167,20 +171,26 @@ export async function openFreshProject(p: Page): Promise<string> {
   await openSmokeProject(p);
   await p.evaluate(() => window.localStorage.removeItem('breatic.projectTabs'));
   await p.reload();
-  await expect(p.locator('.react-flow__pane').first()).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(p).locator('.react-flow__pane:visible')).toBeVisible({ timeout: 20_000 });
   return p.url();
 }
 
 /**
- * Add canvas Spaces to the open project, removed when the case ends.
+ * Add Spaces (canvas unless `kind` says otherwise) to the open project,
+ * removed when the case ends.
  * @param p - A page with the project open.
  * @param count - How many to make.
+ * @param kind - Which kind of Space to make.
  * @returns Their ids, in the order they were made.
  */
-export async function addSpaces(p: Page, count: number): Promise<string[]> {
+export async function addSpaces(
+  p: Page,
+  count: number,
+  kind: SpaceKind = 'canvas',
+): Promise<string[]> {
   const made: string[] = [];
   for (let i = 0; i < count; i += 1) {
-    const id = await createSpace(p, 'canvas', `restore-${Date.now()}-${i}`);
+    const id = await createSpace(p, kind, `restore-${Date.now()}-${i}`);
     mine.push(id);
     made.push(id);
   }

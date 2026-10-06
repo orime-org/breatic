@@ -391,8 +391,8 @@ describe('ProjectPage — the strip the browser was holding', () => {
         [VIEWER]: {
           [PID]: {
             tabs: [
-              { spaceId: SPACE_B, viewport: null },
-              { spaceId: SPACE_A, viewport: null },
+              { spaceId: SPACE_B, open: true, viewport: null },
+              { spaceId: SPACE_A, open: true, viewport: null },
             ],
             activeId: SPACE_A,
           },
@@ -410,7 +410,7 @@ describe('ProjectPage — the strip the browser was holding', () => {
       JSON.stringify({
         'u-somebody-else': {
           [PID]: {
-            tabs: [{ spaceId: SPACE_A, viewport: null }],
+            tabs: [{ spaceId: SPACE_A, open: true, viewport: null }],
             activeId: SPACE_A,
           },
         },
@@ -433,7 +433,10 @@ describe('ProjectPage — the strip the browser was holding', () => {
     });
     await waitFor(() =>
       expect(record()).toEqual({
-        tabs: [{ spaceId: SPACE_A, viewport: null }],
+        tabs: [
+          { spaceId: SPACE_A, open: true, viewport: null },
+          { spaceId: SPACE_C, open: false, viewport: null },
+        ],
         activeId: SPACE_A,
         agentPanelOpen: false,
       }),

@@ -71,7 +71,7 @@ function readWriteAccess(provider: HocuspocusProvider): WriteAccess {
   return provider.authorizedScope === 'readonly' ? 'denied' : 'granted';
 }
 
-interface SocketState {
+export interface SocketState {
   /** The active provider (null until first connect). */
   provider: HocuspocusProvider | null;
   /**
@@ -89,8 +89,9 @@ interface SocketState {
    * reconnect, so a dropped socket is no reason to take it off screen.
    *
    * Survives this component being unmounted and remounted, because it is kept
-   * with the document in the provider registry rather than here. That is what a
-   * Space-tab switch does, and the content is plainly still there across one.
+   * with the document in the provider registry rather than here: the tab holds
+   * the document open, not this component, and the content is plainly still
+   * there across a remount.
    */
   hasEverSynced: boolean;
   /** High-level connection lifecycle for banner UI. */
@@ -138,13 +139,11 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
   // neither a sync nor a refusal is ever announced twice and a component that
   // mounts afterwards can only be told.
   //
-  // So the first render after a remount does briefly compute "not yet synced",
-  // and a caller that gates its content on this flag renders a placeholder for
-  // it. Measured in a browser, sampling every frame across three tab-switch
-  // round trips: 235 frames, zero showing the placeholder, and a synchronous
-  // read right after the click found none either. Discrete events run the
-  // remount, the effect and the follow-up render inside one task, so the
-  // browser never gets to paint that first pass.
+  // So the first render after a remount (Strict Mode's, for one) does briefly
+  // compute "not yet synced", and a caller that gates its content on
+  // this flag renders a placeholder for it. Discrete events run the remount,
+  // the effect and the follow-up render inside one task, so the browser never
+  // gets to paint that first pass.
   const [hasEverSynced, setHasEverSynced] = React.useState(false);
   const [status, setStatus] = React.useState<ConnectionStatus>('connecting');
   const [writeAccess, setWriteAccess] =
@@ -192,9 +191,9 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
     }
     // Everything already settled comes from the registry, which has been
     // watching this document since it was first acquired — including while this
-    // component did not exist. These are the lines that survive a Space-tab
-    // switch: neither a sync nor a refusal is ever announced twice, so a
-    // component that mounts afterwards can only be told, never hear it.
+    // component did not exist. These are the lines that survive a remount:
+    // neither a sync nor a refusal is ever announced twice, so a component that
+    // mounts afterwards can only be told, never hear it.
     const facts = readDocFacts(name);
     setHasEverSynced(facts.hasEverSynced);
     if (facts.authFailure !== null) {

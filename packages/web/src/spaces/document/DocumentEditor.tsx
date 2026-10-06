@@ -30,6 +30,7 @@ import { useCommentRail } from '@web/spaces/document/use-comment-rail';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 import { DocumentTableCellButton } from '@web/spaces/document/DocumentTableCellButton';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
+import { type FocusReturn, useFocusReturn } from '@web/lib/use-focus-return';
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -156,6 +157,23 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       container.closest<HTMLElement>('[data-radix-scroll-area-viewport]'),
     );
   }, [handle]);
+
+  // Back on screen after a switch of Space, the caret goes back in if it was
+  // here when the Space was hidden (inner#1235 A1): hiding takes focus out of
+  // the editor, and the editor still holds the selection to put it back at.
+  // Read off the DOM the editor is mounted in: an editor with no view throws
+  // on any read of it.
+  const focusReturn = React.useMemo<FocusReturn>(
+    () => ({ hadFocus: false, returning: false }),
+    // One per editor this body shows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [handle],
+  );
+  useFocusReturn(
+    focusReturn,
+    () => handle.surface.contains(document.activeElement),
+    () => handle.editor.prosemirrorView?.focus(),
+  );
 
   return (
     // `isolate` keeps the z-values below local: the entry has to paint over

@@ -15,10 +15,10 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { CanvasActionsContext } from '@web/spaces/canvas/canvas-actions';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
-import { useCanvasStore } from '@web/stores/canvas';
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { NODE_KIND_LIST } from '@web/spaces/canvas/nodes/registry';
 import type { TextNodeView } from '@web/data/yjs/node-view';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 const PID = 'p1';
 const SID = 's1';
@@ -94,7 +94,7 @@ describe('FLOW_NODE_TYPES', () => {
 
     fireEvent.click(screen.getByTestId('node-content-view-tasks'));
 
-    expect(useCanvasStore.getState().taskPanelStatus).toBe('expired');
+    expect(canvasSessions.of('').getState().taskPanelStatus).toBe('expired');
   });
 
   // Text this browser could not extract writes `errorMessage` and opens no
