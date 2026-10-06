@@ -42,6 +42,7 @@ interface SentEvent {
   message?: string;
   tags?: Record<string, string>;
   exception?: { values: { value?: string }[] };
+  request?: { headers?: Record<string, string> };
 }
 
 beforeAll(() => {
@@ -159,6 +160,16 @@ describe("failures on a provider's result link", () => {
     expect(events[0]?.exception?.values[0]?.value).toContain("connection reset");
     expect(events[0]?.release).toBe(SHA);
     expect(events[0]?.environment).toBe("production");
+  });
+
+  it("filters the signed upload ticket out of the request it reports", async () => {
+    sourceUnreachable();
+
+    await pull();
+
+    const headers = sentEvents()[0]?.request?.headers ?? {};
+    expect(headers["x-upload-ticket"]).toBe("[Filtered]");
+    expect(headers["x-ingest-secret"]).toBe("[Filtered]");
   });
 
   it("reports a source that answered with a failure, under its label", async () => {

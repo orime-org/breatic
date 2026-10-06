@@ -40,8 +40,20 @@ export function errorMonitoringEnvironmentName(value: unknown): ErrorMonitoringE
   return ERROR_MONITORING_ENVIRONMENTS.find((name) => name === value);
 }
 
-/** Header names whose values identify a person or a network path. */
-const IDENTIFYING_HEADERS: readonly string[] = ["forwarded", "-ip", "remote-", "via", "-user"];
+/**
+ * Header names whose values identify a person or a network path, or carry a
+ * credential the SDKs' own list does not name: the ingest Worker's signed
+ * `x-upload-ticket` and Stripe's `stripe-signature`.
+ */
+const IDENTIFYING_HEADERS: readonly string[] = [
+  "forwarded",
+  "-ip",
+  "remote-",
+  "via",
+  "-user",
+  "ticket",
+  "signature",
+];
 
 /** The data-collection settings, in the shape the Sentry SDKs accept. */
 export interface ErrorMonitoringDataCollection {

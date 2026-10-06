@@ -47,8 +47,8 @@ describe("errorMonitoringDataCollection", () => {
       userInfo: false,
       cookies: false,
       httpHeaders: {
-        request: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
-        response: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+        request: { deny: ["forwarded", "-ip", "remote-", "via", "-user", "ticket", "signature"] },
+        response: { deny: ["forwarded", "-ip", "remote-", "via", "-user", "ticket", "signature"] },
       },
       httpBodies: [],
       urlQueryParams: false,
@@ -56,6 +56,12 @@ describe("errorMonitoringDataCollection", () => {
       databaseQueryData: false,
       graphQL: { document: false, variables: false },
     });
+  });
+
+  it("filters the credential headers the SDKs' own list does not name", () => {
+    const deny = errorMonitoringDataCollection().httpHeaders.request.deny;
+    // x-upload-ticket (ingest) and stripe-signature (server webhooks).
+    expect(deny).toEqual(expect.arrayContaining(["ticket", "signature"]));
   });
 
   it("hands every caller its own object", () => {
