@@ -1176,6 +1176,71 @@ test('pasting again on the same canvas steps each copy past the last one', async
   oneStepOn(words, await pasteOnce());
 });
 
+test('a pasted Group steps past a node sitting where one of its members would land', async ({
+  page,
+  context,
+}) => {
+  // A20: every node a paste makes is checked, Group members included. The
+  // Group's own corner stays clear here; only member `a` would land on the copy
+  // of `a` pasted on its own a moment before.
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const projectUrl = await openFreshProject(page);
+  const [space] = (await stripIds(page)) as [string];
+  await showSpace(page, space);
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  await page.evaluate(
+    async ([pid, sid, canvasUrl]: string[]) => {
+      const canvas = (await import(/* @vite-ignore */ canvasUrl!)) as {
+        addNode: (p: string, s: string, n: unknown) => void;
+      };
+      const data = { createdAt: Date.now(), createdBy: 'keep-alive', locked: false, attachments: [] };
+      canvas.addNode(pid!, sid!, {
+        id: 'pair',
+        type: 'group',
+        position: { x: -24, y: -24 },
+        data: { ...data, name: 'pair', width: 736, height: 442 },
+      });
+      // Leftmost and topmost come from different members, so the Group's
+      // corner is not on either of them.
+      canvas.addNode(pid!, sid!, {
+        id: 'member-a',
+        type: 'image',
+        parentId: 'pair',
+        position: { x: 24, y: 224 },
+        data: { ...data, name: 'a' },
+      });
+      canvas.addNode(pid!, sid!, {
+        id: 'member-b',
+        type: 'image',
+        parentId: 'pair',
+        position: { x: 424, y: 24 },
+        data: { ...data, name: 'b' },
+      });
+    },
+    [projectIdOf(projectUrl), space, canvasAt],
+  );
+  const nodes = visibleSpace(page).locator('.react-flow__node');
+  const groups = visibleSpace(page).locator('.react-flow__node-group');
+  await expect(nodes).toHaveCount(3);
+
+  await visibleSpace(page).locator('.react-flow__node[data-id="member-a"]').click();
+  await page.keyboard.press('ControlOrMeta+c');
+  await page.keyboard.press('ControlOrMeta+v');
+  await expect(nodes).toHaveCount(4);
+
+  // A spot on the Group's frame left of `a`, where no member sits.
+  await visibleSpace(page).locator('.react-flow__node[data-id="pair"]').click({ position: { x: 10, y: 300 } });
+  await page.keyboard.press('ControlOrMeta+c');
+  await page.keyboard.press('ControlOrMeta+v');
+  await expect(groups).toHaveCount(2);
+
+  const corners = await visibleSpace(page)
+    .locator('.react-flow__node:not(.react-flow__node-group)')
+    .evaluateAll((els) => els.map((el) => (el as HTMLElement).style.transform));
+  expect(corners).toHaveLength(5);
+  expect(new Set(corners).size).toBe(5);
+});
+
 test('words selected in a read-only document are still selected after a switch', async ({
   page,
 }) => {
