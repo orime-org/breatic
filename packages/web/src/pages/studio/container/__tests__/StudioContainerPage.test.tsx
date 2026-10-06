@@ -117,6 +117,7 @@ const PROJECTS: readonly ProjectSummary[] = [
     canDuplicate: true,
     canArchive: true,
     canRestore: false,
+    canLeave: false,
   },
 ];
 

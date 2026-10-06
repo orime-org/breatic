@@ -678,6 +678,8 @@ export interface ProjectDetail {
   canManageMeta: boolean;
   /** Whether the reader may restore it — archived and they are the studio's admin. */
   canRestore: boolean;
+  /** Whether the reader may leave it — live, and they are an editor or a viewer. */
+  canLeave: boolean;
 }
 
 /**
@@ -713,6 +715,8 @@ export interface ProjectSummary {
   canArchive: boolean;
   /** The archived card menu: restore. */
   canRestore: boolean;
+  /** The card menu: leave the project. */
+  canLeave: boolean;
 }
 
 /**

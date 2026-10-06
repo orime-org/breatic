@@ -24,6 +24,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { requireRoleOnParam } from "@server/middleware/role.js";
 import {
   creditViewService,
+  projectMembersService,
   projectService,
   recentService,
 } from "@server/modules";
@@ -148,6 +149,22 @@ projects.delete(
 );
 
 /**
+ * `DELETE /projects/:id/membership` — leave a project of one's own accord.
+ * Any member may call it; the owner is refused until they hand the project
+ * over, and an archived project keeps its members.
+ *
+ * The path is `/membership` because `/members/:userId` is the owner's
+ * removal route, and its owner gate would turn away exactly the members this
+ * route is for.
+ * @returns `200` with `{ data: { ok: true } }`; `403` not a member, `409` the
+ *   owner or an archived project
+ */
+projects.delete("/:id/membership", requireRoleOnParam("id", "viewer"), async (c) => {
+  await projectMembersService.leave(c.req.param("id"), c.get("user").id);
+  return c.json({ data: { ok: true } });
+});
+
+/**
  * `GET /projects/:id` — read a project plus the caller's role (the
  * project-open path).
  *
@@ -162,7 +179,7 @@ projects.get("/:id", async (c) => {
   const id = c.req.param("id");
   // A malformed resource key cannot identify a project; never send it to a UUID column.
   if (!z.string().uuid().safeParse(id).success) throw new NotFoundError(t("server.error.not_found"));
-  const { project, myRole, canManageMeta, canRestore } = await projectService.loadForViewer(id, user.id);
+  const { project, myRole, canManageMeta, canRestore, canLeave } = await projectService.loadForViewer(id, user.id);
   const detail: ProjectDetail = {
     id: project.id,
     studioId: project.studioId,
@@ -177,6 +194,7 @@ projects.get("/:id", async (c) => {
     archivedAt: project.archivedAt,
     canManageMeta,
     canRestore,
+    canLeave,
   };
   return c.json({ data: detail });
 });

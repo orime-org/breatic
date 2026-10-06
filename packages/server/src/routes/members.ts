@@ -62,7 +62,8 @@ const patchBodySchema = z.object({
 /**
  * `PATCH /api/v1/projects/:pid/members/:userId` — change role.
  *
- * Owner only. Owner role itself is immutable (transfer-owner deferred).
+ * Owner only. The owner's own role is not changed here; ownership changes
+ * hands through `POST /projects/:id/transfer-owner`.
  * @returns `200` with `{ data: { ok: true } }`
  */
 members.patch(
@@ -81,7 +82,9 @@ members.patch(
 /**
  * `DELETE /api/v1/projects/:pid/members/:userId` — soft-remove a member.
  *
- * Owner only. Owner cannot be removed (transfer-owner is V2).
+ * Owner only. The owner cannot be removed; ownership changes hands through
+ * `POST /projects/:id/transfer-owner`, and a member leaves on their own through
+ * `DELETE /projects/:id/membership`.
  * @returns `200` with `{ data: { ok: true } }`
  */
 members.delete(
