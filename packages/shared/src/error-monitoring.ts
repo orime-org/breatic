@@ -41,9 +41,10 @@ const SENTRY_DSN = /^https?:\/\/\w+(?::\w*)?@(?:\[[:.%\w]+\]|[\w.-]+)(?::\d+)?\/
 /**
  * Whether a value is a DSN the Sentry SDKs will send to.
  *
- * The SDKs answer anything else by printing one console line and sending
- * nothing, so a mistyped DSN would turn monitoring off without anyone being
- * told; configuration checks this to refuse it instead.
+ * The SDKs answer a value their DSN pattern rejects by printing one console
+ * line and sending nothing, so a mistyped DSN would turn monitoring off
+ * without anyone being told; the backend and the ingest Worker check this to
+ * leave monitoring off and log an error that names the setting.
  * @param value - The configured DSN.
  * @returns `true` when the SDKs would accept it.
  */
@@ -133,7 +134,8 @@ interface WithRequest {
 /**
  * An event whose request address and referring page carry no query.
  *
- * The SDKs strip the query from the request address only; the Referer header
+ * The server SDKs strip the query from the request address only, and the
+ * browser SDK strips neither; the Referer header
  * holds the full address of the page the request came from, and the header
  * filter judges names, not values.
  * @param event - The event about to be sent.

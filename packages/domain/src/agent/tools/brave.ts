@@ -106,7 +106,8 @@ export async function braveJson(request: BraveRequest): Promise<unknown> {
     // transport handing this response back and this line: cancelling a body
     // that has already errored rejects, and server and worker treat an
     // unhandled rejection as fatal: Node's default, or Sentry's strict mode
-    // when monitoring is on (which ignores one named `AbortError`). Measured
+    // when monitoring is on (which ignores ones named `AbortError` or
+    // `AI_NoOutputGeneratedError`). Measured
     // against a real server, a socket broken 0 to 50ms after the headers is
     // always still healthy here, and an await of 30ms is what makes it reject.
     void res.body?.cancel();

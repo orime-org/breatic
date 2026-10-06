@@ -99,7 +99,8 @@ reported as `development`.
 
 Every failure this Worker writes to its log also goes to Sentry, except the ones
 the reader caused: a link they handed us that cannot be fetched or is not a
-kind we take, and stored bytes of a kind we do not take. Those are only logged.
+kind we take, a part whose sender stopped mid-body, and stored bytes of a kind
+we do not take. Those are only logged.
 
 ### .dev.vars
 

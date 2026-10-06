@@ -324,7 +324,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 ### Error monitoring
 
-Sentry 分三个项目:web · 后端(server / worker / collab 共用一个,事件带 `service` 标签区分)· ingest Worker。**DSN 留空就不启动**,自托管实例默认什么都不发。**非空但不是合法 DSN 的同样不上报,服务照常运行**,并记一条 error 日志点名 `SENTRY_DSN`(后端 `sentry_dsn_invalid`,ingest `ingest_sentry_dsn_invalid`;判据是 shared 的 `isSentryDsn`)。**上报的地址只保留到路径**:请求地址和 `Referer` 的 query 与 fragment 一律去掉(shared 的 `requestWithoutQuery`,web 另外处理面包屑),路径里的 id 保留、用来定位出错的那条数据;能单独当凭据用的值不放进路径。
+Sentry 分三个项目:web · 后端(server / worker / collab 共用一个,事件带 `service` 标签区分)· ingest Worker。**DSN 留空就不启动**,自托管实例默认什么都不发。**后端和 ingest 的 DSN 非空但不合法时同样不上报,服务照常运行**,并记一条 error 日志点名 `SENTRY_DSN`(后端 `sentry_dsn_invalid`,ingest `ingest_sentry_dsn_invalid`;判据是 shared 的 `isSentryDsn`)。web 不做这道判断,`VITE_SENTRY_DSN` 填错时只有 SDK 自己在浏览器控制台打一行。**上报的地址只保留到路径**:请求地址和 `Referer` 的 query 与 fragment 一律去掉(shared 的 `requestWithoutQuery`,web 另外处理面包屑),路径里的 id 保留、用来定位出错的那条数据;能单独当凭据用的值不放进路径。
 
 | 端 | DSN | release 从哪来 | 报什么 |
 |---|---|---|---|
