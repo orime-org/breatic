@@ -182,18 +182,18 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(geo.radius).toBe(geo.tokenRadius);
     expect(geo.hasShadow).toBe(true);
     // demo 的 `.bubble-btn`（`2026-08-21-editor-command-surface.html`）是 28 高、
-    // 28 宽。六个：粗体 斜体 删除线 下划线 行内代码 链接。三个块命令 2026-08-26
-    // 起住在块类型菜单里。
-    expect(geo.buttons).toHaveLength(6);
+    // 28 宽。八个：粗体 斜体 删除线 下划线 行内代码 链接 评论 添加到 Agent。三个
+    // 块命令 2026-08-26 起住在块类型菜单里。
+    expect(geo.buttons).toHaveLength(8);
     for (const b of geo.buttons) {
       expect(b).toEqual({ width: 28, height: 28 });
     }
     // #912 的另外三个数。整条外高是按钮 28 加上下内距各 4 加边框各 1。
     expect(geo.barHeight).toBe(38);
     expect(geo.controlGap).toBe('2px');
-    // 16px 的图标十个：六个命令、块类型、对齐、AI、评论。颜色那格画的是字母
-    // A，没有图标。
-    expect(geo.icons).toHaveLength(10);
+    // 16px 的图标十一个：六个命令、块类型、对齐、AI、评论、添加到 Agent。颜色
+    // 那格画的是字母 A，没有图标。
+    expect(geo.icons).toHaveLength(11);
     // 13px 的箭头四个，四个下拉各一个。
     expect(geo.chevrons).toHaveLength(4);
     expect(geo.aiChevron).toBe('13×13');
