@@ -122,8 +122,10 @@ function prefersReducedMotion(): boolean {
  *
  * Every way of changing the pose ends in one `commit`, which writes all three
  * params together from what the node holds plus the change, once per gesture,
- * and not at all when nothing changes. A wheel step waits for the wheel to
- * settle; any other write in the meantime carries it along.
+ * and not at all when nothing changes. A wheel step is written as it is
+ * taken (during a sphere drag it is held and written with the angle on
+ * release); the rest of that wheel gesture moves nothing until the wheel has
+ * been still for a moment.
  * @param root0 - Props.
  * @param root0.params - The three param names.
  * @param root0.specs - The model's params.
@@ -168,8 +170,6 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
       if (!live.current.mounted) return;
       const base = live.current.stored;
       const pending = live.current.pending;
-      clearTimeout(wheel.current.timer);
-      wheel.current = { sum: 0, moved: false, timer: undefined };
       setPendingDistance(null);
       setSliderDraft({});
       heldKey.current = null;
@@ -185,7 +185,6 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
   // before the last move has rendered still writes where the pointer was.
   const dragRef = React.useRef<CameraAngle | null>(null);
   const onDragStart = React.useCallback((): void => {
-    clearTimeout(wheel.current.timer);
     dragRef.current = live.current.stored;
     setDrag(live.current.stored);
   }, []);
@@ -230,8 +229,8 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
         }
       }
       // The rest of this gesture, a trackpad's momentum included, moves
-      // nothing more until the wheel has been still for a moment.
-      wheel.current = gesture;
+      // nothing more until the wheel has been still for a moment. Only this
+      // listener and its timer touch the gesture.
       gesture.timer = setTimeout(() => {
         wheel.current = { sum: 0, moved: false, timer: undefined };
       }, WHEEL_SETTLE_MS);

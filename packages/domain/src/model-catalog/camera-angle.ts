@@ -21,19 +21,6 @@ interface CameraAngleCandidate {
 const AXES: readonly CameraAngleAxis[] = ["azimuth", "elevation", "distance"];
 
 /**
- * The values a declared range walks, or null when it is not a stepped range.
- * @param spec - One param's declaration, read for its min, max and step.
- * @returns min, min + step, … up to max.
- */
-function walk(spec: Readonly<Record<string, unknown>>): number[] | null {
-  const { min, max, step } = spec;
-  if (typeof min !== "number" || typeof max !== "number" || typeof step !== "number" || step <= 0) return null;
-  const out: number[] = [];
-  for (let v = min; v <= max; v += step) out.push(v);
-  return out;
-}
-
-/**
  * Why one axis's param is wrong for the grid, or null when it is right.
  * @param axis - The axis the param stands for.
  * @param paramName - The param the model names for it.
@@ -48,9 +35,11 @@ function wrongAxis(axis: CameraAngleAxis, paramName: string, spec: unknown): str
   if (declared.fill !== "panel" || typeof declared.label !== "string") {
     return `declares camera_angle ${axis} '${paramName}', which is not a labelled panel param`;
   }
-  const grid: readonly number[] = CAMERA_ANGLE_GRID[axis];
-  const walked = walk(declared);
-  if (walked === null || walked.join() !== grid.join()) {
+  const steps = CAMERA_ANGLE_GRID[axis];
+  const grid: readonly number[] = steps;
+  // Every axis's grid is evenly spaced, so its ends and its spacing say it all.
+  const onGrid = declared.min === steps[0] && declared.max === grid.at(-1) && declared.step === steps[1] - steps[0];
+  if (!onGrid) {
     return `declares camera_angle ${axis} '${paramName}' whose range does not walk exactly ${grid.join(", ")}`;
   }
   if (typeof declared.default !== "number" || !grid.includes(declared.default)) {

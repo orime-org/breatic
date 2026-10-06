@@ -206,6 +206,44 @@ describe('CameraAngleControl', () => {
     expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 135, vertical_angle: 0, distance: 1 });
   });
 
+  it('follows a collaborator after a single arrow key on a slider', async () => {
+    const { onChange, rerender } = await draw();
+    const thumb = screen.getAllByRole('slider')[0]!;
+    fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+    fireEvent.keyUp(thumb, { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 45, vertical_angle: 0, distance: 1 });
+    rerender({ horizontal_angle: 180, vertical_angle: 0, distance: 1 });
+    expect(screen.getByTestId('generate-camera-angle-pose')).toHaveTextContent('Back · Eye level');
+    expect(sphere.last?.pose.azimuth).toBe(180);
+  });
+
+  it('keeps one step per wheel gesture when a key is pressed during its momentum', async () => {
+    const { onChange, rerender } = await draw();
+    vi.useFakeTimers();
+    fireEvent.wheel(group(), { deltaY: 60 });
+    rerender({ horizontal_angle: 0, vertical_angle: 0, distance: 2 });
+    fireEvent.keyDown(group(), { key: 'ArrowRight' });
+    rerender({ horizontal_angle: 45, vertical_angle: 0, distance: 2 });
+    fireEvent.wheel(group(), { deltaY: -60 });
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 45, vertical_angle: 0, distance: 2 });
+  });
+
+  it('takes a wheel step during a drag once the wheel has settled since the last step', async () => {
+    const { onChange, rerender } = await draw();
+    vi.useFakeTimers();
+    fireEvent.wheel(group(), { deltaY: 60 });
+    rerender({ horizontal_angle: 0, vertical_angle: 0, distance: 2 });
+    act(() => vi.advanceTimersByTime(50));
+    act(() => sphere.last?.onDragStart());
+    act(() => sphere.last?.onDrag({ azimuth: 90, elevation: 0, distance: 2 }));
+    act(() => vi.advanceTimersByTime(150));
+    fireEvent.wheel(group(), { deltaY: -60 });
+    act(() => sphere.last?.onDragEnd());
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 90, vertical_angle: 0, distance: 1 });
+  });
+
   it('follows a collaborator after a slider is dragged away and back to where it was', async () => {
     const restore = stubPointerSliders();
     try {

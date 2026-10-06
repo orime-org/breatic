@@ -126,24 +126,23 @@ export function ParamSliderRow({
     [onChange, name],
   );
 
+  // Every gesture, by key or by pointer, ends here: the row's draft and the
+  // one it handed out go together. Radix reports a keyboard commit BEFORE it
+  // reports the change, so a draft cleared inside the commit is written
+  // straight back, and a drag released where it began commits nothing; a
+  // draft left set shows this client's number over whatever is stored.
+  const endDraft = React.useCallback((): void => {
+    setDragged(null);
+    onDraftEnd?.();
+  }, [onDraftEnd]);
+
   const endKeyGesture = React.useCallback((): void => {
     repeatingRef.current = false;
     const reached = repeatedToRef.current;
     repeatedToRef.current = null;
-    // Also where the draft is released: Radix reports a keyboard commit
-    // BEFORE it reports the change, so clearing it inside the commit is
-    // written straight back, and a draft left set shows this client's number
-    // over whatever a collaborator stores.
-    setDragged(null);
+    endDraft();
     if (reached !== null) onChange({ [name]: reached });
-  }, [onChange, name]);
-
-  // A drag released where it began writes nothing (Radix commits only a
-  // changed value), so the release itself is what ends the draft.
-  const endPointerGesture = React.useCallback((): void => {
-    setDragged(null);
-    onDraftEnd?.();
-  }, [onDraftEnd]);
+  }, [onChange, name, endDraft]);
 
   // Four ways a key gesture ends, and every one of them has to write. Keyup
   // alone leaves the flag set when the release lands on another window, and
@@ -189,7 +188,7 @@ export function ParamSliderRow({
         onKeyUp={endKeyGesture}
         onBlur={endKeyGesture}
         onPointerDown={endKeyGesture}
-        onPointerUp={endPointerGesture}
+        onPointerUp={endDraft}
       />
       {stops && (
         // Under the track, each word centred on the value it names. A word at
