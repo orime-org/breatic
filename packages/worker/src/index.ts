@@ -10,6 +10,7 @@
 
 // MUST be first: reads process.env + initCore before any env.* read.
 import "@worker/bootstrap-config.js";
+import { exitProcess, initSentry } from "@worker/sentry.js";
 import {
   env,
   initLogger,
@@ -42,6 +43,10 @@ import {
   type MediaReadJob,
   type UsageLookupJob,
 } from "@breatic/domain";
+
+// Error monitoring starts before the first log line, so error logs from the
+// config checks below are already reported.
+initSentry();
 
 initLogger("worker");
 // i18n: register the catalogs before anything can throw. `t()` echoes the key
@@ -77,7 +82,7 @@ try {
   getSkillRouting();
 } catch (err) {
   logger.error({ err }, "skill_routing_config_invalid");
-  process.exit(1);
+  await exitProcess(1);
 }
 
 // And config/agent.yaml, read here for the same reason: this process takes
@@ -88,7 +93,7 @@ try {
   getAgentConfig();
 } catch (err) {
   logger.error({ err }, "agent_config_invalid");
-  process.exit(1);
+  await exitProcess(1);
 }
 
 // Every model the agent runs on has to be priceable (#296). One reached
@@ -99,7 +104,7 @@ try {
   assertModelsPriced(agentModelIds());
 } catch (err) {
   logger.error({ err }, "usage_pricing_incomplete");
-  process.exit(1);
+  await exitProcess(1);
 }
 
 // Same preflight for config/models/*.yaml (#1966). Every model must declare
@@ -111,7 +116,7 @@ try {
   modelCatalog.getModelCatalog();
 } catch (err) {
   logger.error({ err }, "model_catalog_invalid");
-  process.exit(1);
+  await exitProcess(1);
 }
 import { runTask } from "@worker/handlers/dispatch.js";
 import { reclaimFailedJobById } from "@worker/handlers/failed-job-cleanup.js";
@@ -238,8 +243,8 @@ export function startWorker(): void {
     // distinguishing a retry-in-progress from a terminal failure in logs.
     logger.error(
       {
+        err,
         jobId: job?.id,
-        error: err.message,
         attemptsMade: job?.attemptsMade,
         attemptsAllowed: job?.opts?.attempts,
       },
@@ -311,7 +316,7 @@ export function startWorker(): void {
           { service: event.serviceName, port: event.port, err: event.err },
           "healthz_listen_error",
         );
-        process.exit(1);
+        void exitProcess(1);
       }
     },
     checks: [
@@ -365,7 +370,7 @@ export function startWorker(): void {
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });
     logger.info("worker_shutdown_complete");
-    process.exit(0);
+    await exitProcess(0);
   };
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
@@ -388,6 +393,6 @@ try {
   } else {
     logger.error({ err }, "infra_check_unexpected_error");
   }
-  process.exit(1);
+  await exitProcess(1);
 }
 startWorker();
