@@ -86,6 +86,7 @@ catalog:
   "postgres": ^3.4.9
   "@sentry/cloudflare": ^11.4.0
   "@sentry/node": ^11.4.0
+  "@sentry/react": ^11.4.0
   "zod": ^4.4.3
 
   # Toolchain: linting and type-checking must agree across packages or the
