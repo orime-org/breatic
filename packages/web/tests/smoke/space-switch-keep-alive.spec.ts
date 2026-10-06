@@ -1128,22 +1128,52 @@ test('pasting again on the same canvas steps each copy past the last one', async
   await source.click();
   await page.keyboard.press('ControlOrMeta+c');
   const nodes = visibleSpace(page).locator('.react-flow__node');
-  await page.keyboard.press('ControlOrMeta+v');
-  await expect(nodes).toHaveCount(2);
-  await page.keyboard.press('ControlOrMeta+v');
-  await expect(nodes).toHaveCount(3);
+  /**
+   * Where every node on the canvas sits, by id, read off ReactFlow's transform.
+   * @returns Each node's top-left in flow coordinates.
+   */
+  const corners = async (): Promise<Map<string, { x: number; y: number }>> =>
+    new Map(
+      await nodes.evaluateAll((els) =>
+        els.map((el) => {
+          const [x, y] = ((el as HTMLElement).style.transform.match(/-?[\d.]+/g) ?? []).map(Number);
+          return [el.getAttribute('data-id') ?? '', { x: x ?? NaN, y: y ?? NaN }] as const;
+        }),
+      ),
+    );
+  /**
+   * Paste once and report where the one new node landed.
+   * @returns The new node's top-left.
+   */
+  const pasteOnce = async (): Promise<{ x: number; y: number }> => {
+    const before = await corners();
+    await page.keyboard.press('ControlOrMeta+v');
+    await expect(nodes).toHaveCount(before.size + 1);
+    const after = await corners();
+    const added = [...after].find(([id]) => !before.has(id));
+    if (added === undefined) throw new Error('the paste made no node');
+    return added[1];
+  };
+  /**
+   * Check that one copy sits one step down and right of the one before it.
+   * @param earlier - The copy before.
+   * @param later - The copy after.
+   */
+  const oneStepOn = (earlier: { x: number; y: number }, later: { x: number; y: number }): void => {
+    expect(Math.abs(later.x - earlier.x - 24)).toBeLessThan(2);
+    expect(Math.abs(later.y - earlier.y - 24)).toBeLessThan(2);
+  };
+
+  const original = (await corners()).get('pasted-again');
+  if (original === undefined) throw new Error('the source node is not on the canvas');
+  const copy = await pasteOnce();
+  oneStepOn(original, copy);
+  oneStepOn(copy, await pasteOnce());
 
   await page.evaluate(() => navigator.clipboard.writeText('words pasted twice'));
   await visibleSpace(page).locator('.react-flow__pane').click({ position: { x: 5, y: 5 } });
-  await page.keyboard.press('ControlOrMeta+v');
-  await expect(nodes).toHaveCount(4);
-  await page.keyboard.press('ControlOrMeta+v');
-  await expect(nodes).toHaveCount(5);
-
-  const corners = await nodes.evaluateAll((els) =>
-    els.map((el) => (el as HTMLElement).style.transform),
-  );
-  expect(new Set(corners).size).toBe(5);
+  const words = await pasteOnce();
+  oneStepOn(words, await pasteOnce());
 });
 
 test('words selected in a read-only document are still selected after a switch', async ({
