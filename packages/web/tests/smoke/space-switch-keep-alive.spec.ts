@@ -160,7 +160,8 @@ test('a node panel is the same panel after a switch', async ({ page }) => {
 });
 
 test('a canvas opened empty is not framed again once it has content', async ({ page }) => {
-  // A3: a Space with no stored camera is framed on its first open only.
+  // A3: a Space with no stored camera is framed once, on the first content it
+  // has; after that it is not framed again.
   const projectUrl = await openFreshProject(page);
   await addSpaces(page, 1);
   const [first, second] = (await stripIds(page)) as [string, string];

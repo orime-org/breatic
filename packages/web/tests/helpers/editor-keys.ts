@@ -24,8 +24,6 @@
 import { expect, type Locator, type Page } from 'playwright/test';
 import { DOCUMENT_EDITOR as EDITOR } from './space';
 
-/** The body's editable element. */
-
 /**
  * The editor's own selection, as text.
  * @param p - The page.

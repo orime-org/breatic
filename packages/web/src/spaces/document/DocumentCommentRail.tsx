@@ -197,9 +197,9 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // What has been written into each thread's reply box and not sent yet. Kept
   // by the editor rather than by the card or this panel: a card is taken off
   // the panel by things the reader did not do — a peer settling the thread, a
-  // peer deleting it — and this panel unmounts when the document body gives
-  // way to a notice, while unsent words are the reader's until they send or
-  // clear them.
+  // peer deleting it — and this panel can be mounted again (StrictMode mounts
+  // it twice), while unsent words are the reader's until they send or clear
+  // them.
   const drafts = React.useSyncExternalStore(onUnsentChange, () =>
     repliesOf(editor),
   );

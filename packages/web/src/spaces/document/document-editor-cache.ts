@@ -5,9 +5,10 @@
  * The document editor, cached per document instead of per component.
  *
  * **Why the editor and not just its history.** The body that renders the
- * editor can unmount while its tab keeps the document open: `DocumentSpace`
- * shows a notice in its place while the document is refused or its schema is
- * newer than this build, and StrictMode mounts it twice. An editor owned by
+ * editor can unmount while its tab keeps the document open — StrictMode mounts
+ * it twice. (The notices `DocumentSpace` shows in its place are not such a
+ * case: the refused one shows only before any content, when no editor has been
+ * built, and the schema one evicts the editor.) An editor owned by
  * that component dies with it. The text survives, because it is in the Y.Doc;
  * the undo stack, the selection and any in-flight input-method composition do
  * not. A switch of Space tab is not among these: it hides the body and keeps it.

@@ -8,8 +8,8 @@ import { createSpaceRegistry } from '@web/stores/space-registry';
 
 /**
  * Canvas graph store (#1647 step 4) — owns one canvas's ReactFlow render
- * buffer. Every open Space keeps its canvas mounted (inner#1235), so each Space
- * has its own buffer, kept while its tab is open. Yjs remains the source of
+ * buffer. Every open Space that has been on screen keeps its canvas mounted
+ * (inner#1235), so each Space has its own buffer, kept while its tab is open. Yjs remains the source of
  * truth; this holds the local ReactFlow mirror (`flowNodes` / `flowEdges`) so
  * drag stays smooth and selection is per-user.
  *

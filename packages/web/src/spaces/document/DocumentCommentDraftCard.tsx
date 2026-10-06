@@ -13,9 +13,9 @@
  * IT KEEPS NOTHING OF ITS OWN. The draft is the editor's: where it is aimed
  * and why it was dropped live in the draft range plugin, the words in
  * `document-comment-unsent.ts`, and whether it is the card being read in the
- * selection plugin. The card can be mounted again over the same draft — the
- * document body gives way to a notice and comes back — and what the reader
- * wrote, and any notice they were owed, are still there (design §9.4.1).
+ * selection plugin. The card can be mounted again over the same draft
+ * (StrictMode mounts it twice), and what the reader wrote, and any notice they
+ * were owed, are still there (design §9.4.1).
  *
  * A dropped draft says why until the reader dismisses it: the text it was
  * aimed at is gone (A21), or their right to write here was taken away (A22).

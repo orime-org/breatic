@@ -271,8 +271,8 @@ export function renderProductGuide(): string {
     "- Right-click an empty spot on the canvas (inside a group's box you get the group's menu instead) and pick " +
       `${typeLabel("text")}, ${typeLabel("image")}, ${typeLabel("audio")} or ${typeLabel("video")}; the node ` +
       `appears centred where you clicked. The same menu has ${quoted(t("canvas.contextMenu.paste"))}, which puts ` +
-      "copied nodes or copied text at the spot you clicked, a step down and to the right of anything already " +
-      "there; a copied picture, screenshot or file does nothing there, so paste those with Cmd/Ctrl+V.",
+      "copied nodes or copied text at the spot you clicked, a step down and to the right while another node " +
+      "already starts at that spot; a copied picture, screenshot or file does nothing there, so paste those with Cmd/Ctrl+V.",
     "- On a canvas space a floating menu of icons runs along the left edge; each names itself when hovered. " +
       `${quoted(t("menu.item.nodes"))} (a sparkle) opens a list of the same types; the node appears in the ` +
       "middle of the view.",
@@ -292,8 +292,8 @@ export function renderProductGuide(): string {
       "that connection, and the one you pick appears there, already connected.",
     "- Paste with Cmd/Ctrl+V: a copied node, a file or screenshot, or plain text, which becomes a text node. " +
       "Nodes copied on this canvas land just beside the originals while those are in view; anything else, nodes " +
-      "copied on another canvas included, lands in the middle of the view. Where something already sits on " +
-      "that spot the paste moves a step down and to the right, so pasting again shows every copy. " +
+      "copied on another canvas included, lands in the middle of the view. While another node already starts " +
+      "at that spot the paste moves a step down and to the right, so pasting again shows every copy. " +
       "The canvas's keys, this one included, act once the space was the last thing clicked and nothing is being " +
       "typed in. A copied node or a picture copied in this chat pastes onto the canvas even after a click in " +
       "this chat, as long as nothing is being typed in and no menu or large view is open. After typing in this " +

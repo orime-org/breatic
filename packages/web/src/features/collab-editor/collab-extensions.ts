@@ -75,8 +75,8 @@ export interface CollabExtensionOptions {
    * that is varies by caller — the document editor is cached per document and
    * outlives tab switches, while the canvas editors are kept per Space in
    * `kept-editors.ts` and rebuilt when their fragment or caret connection
-   * changes (the prompt's also when its mention labels or this resolver
-   * change). Either way, changing
+   * changes (the prompt's also when its mention labels change). Either way,
+   * changing
    * the resolver is not how a later roster reaches the carets; it reads the
    * current one through a ref.
    */

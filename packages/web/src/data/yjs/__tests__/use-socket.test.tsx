@@ -151,16 +151,17 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
   it('remembers that the content arrived, across a consumer unmounting', () => {
     // "Has the real content ever arrived" is a fact about the DOCUMENT, and the
     // document outlives any one component: a project page holds a Space's doc
-    // open for as long as its tab is open, while the body component that
-    // renders it is remounted on every tab switch. Kept as component state the
-    // latch resets on that remount, and the user is shown a loading placeholder
+    // open for as long as its tab is open, while a component reading it can
+    // unmount and mount again (Strict Mode's remount, for one). Kept as
+    // component state the latch resets on that remount, and the user is shown a loading placeholder
     // in front of content the local Y.Doc already holds.
     const doc = new Y.Doc();
     const name = 'project-p1/document-s1';
     // The tab-scoped keeper (OpenSpace's role) — holds a reference for as
     // long as the Space tab is open.
     renderHook(() => useSocket({ name, doc }), { wrapper: wrapper('u1') });
-    // The body component (DocumentSpace's role) — remounted on a tab switch.
+    // A second consumer of the same document, one that can unmount while the
+    // tab keeps the document open.
     const body = renderHook(() => useSocket({ name, doc }), {
       wrapper: wrapper('u1'),
     });
@@ -171,7 +172,7 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
     });
     expect(body.result.current.hasEverSynced).toBe(true);
 
-    // Switch to another Space tab and back. Only the body unmounts.
+    // That consumer unmounts; the tab's keeper stays.
     act(() => body.unmount());
     act(() => vi.runAllTimers());
     const reopened = renderHook(() => useSocket({ name, doc }), {

@@ -6,8 +6,8 @@
  * tool that owns its next click, its open note boxes and its in-flight focus
  * uploads (inner#1235 §5.2). Local UI only, never Yjs.
  *
- * Every open Space tab keeps its canvas mounted and hidden, so several
- * canvases live at once and each keeps its own session: a panel open on one
+ * Every open Space tab that has been on screen keeps its canvas mounted,
+ * hidden while another tab is shown, so several canvases live at once and each keeps its own session: a panel open on one
  * canvas is still open when the reader comes back to it, and nothing one
  * canvas does reaches another. Everything inside a canvas reaches its store
  * by the canvas's Space id (`useCanvasSession` in `canvas-context.tsx`), and so

@@ -176,7 +176,8 @@ export async function openFreshProject(p: Page): Promise<string> {
 }
 
 /**
- * Add canvas Spaces to the open project, removed when the case ends.
+ * Add Spaces (canvas unless `kind` says otherwise) to the open project,
+ * removed when the case ends.
  * @param p - A page with the project open.
  * @param count - How many to make.
  * @param kind - Which kind of Space to make.
