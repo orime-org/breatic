@@ -261,12 +261,19 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
   // A press writes one step; each repeat of a held key moves the picture, and
   // letting go of a camera key (or the sphere losing focus) writes where the
   // repeats reached, as a held slider key does.
+  const endHeldKey = React.useCallback((): void => {
+    if (live.current.gesture?.kind === 'key') commit({});
+  }, [commit]);
   const onKeyDown = React.useCallback(
     (event: React.KeyboardEvent): void => {
       if (event.target !== event.currentTarget) return;
       // A chord with Cmd, Ctrl or Alt is the browser's or the system's (zoom,
-      // history); Shift stays, since '+' needs it.
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      // history); Shift stays, since '+' needs it. A hold ends here first:
+      // macOS sends no keyup for a key let go while Cmd is down.
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        endHeldKey();
+        return;
+      }
       const hit = KEY_STEPS[event.key];
       if (!hit) return;
       event.preventDefault();
@@ -275,11 +282,8 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
       if (event.repeat) track({ kind: 'key', pose: next });
       else commit(next);
     },
-    [commit, onScreen, track],
+    [commit, endHeldKey, onScreen, track],
   );
-  const endHeldKey = React.useCallback((): void => {
-    if (live.current.gesture?.kind === 'key') commit({});
-  }, [commit]);
   const onKeyUp = React.useCallback(
     (event: React.KeyboardEvent): void => {
       if (KEY_STEPS[event.key]) endHeldKey();

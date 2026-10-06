@@ -42,7 +42,7 @@ interface ParamSliderRowProps {
   draft?: number;
   /** Called with the value the thumb is moved to, before it is written. */
   onDraft?: (value: number) => void;
-  /** Called when a gesture on this slider ends (pointer released, key let go, focus left), after its own write. */
+  /** Called whenever the row drops its draft: a gesture ends (capture let go, key let go, focus left) or a new key or pointer press starts. */
   onDraftEnd?: () => void;
   /** How a value reads beside the label, in its own unit. */
   format: (value: number) => string;
@@ -71,7 +71,7 @@ interface ParamSliderRowProps {
  * @param root0.value - The stored value.
  * @param root0.draft - A value to show without writing it.
  * @param root0.onDraft - Called with the value the thumb is moved to.
- * @param root0.onDraftEnd - Called when a gesture on this slider ends, after its own write.
+ * @param root0.onDraftEnd - Called whenever the row drops its draft.
  * @param root0.format - How a value reads beside the label.
  * @param root0.onChange - Called with the committed param.
  * @param root0.testIdPrefix - Prefix of every test id.

@@ -249,6 +249,17 @@ describe('CameraAngleControl', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it('ends a held key at a Cmd, Ctrl or Alt press, writing where the repeats reached', async () => {
+    const { onChange, rerender } = await draw();
+    fireEvent.keyDown(group(), { key: 'ArrowRight' });
+    rerender({ horizontal_angle: 45, vertical_angle: 0, distance: 1 });
+    fireEvent.keyDown(group(), { key: 'ArrowRight', repeat: true });
+    fireEvent.keyDown(group(), { key: 'ArrowRight', repeat: true });
+    fireEvent.keyDown(group(), { key: 'Meta', metaKey: true });
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 135, vertical_angle: 0, distance: 1 });
+  });
+
   it('keeps holding a key when another key such as Shift is let go', async () => {
     const { onChange, rerender } = await draw();
     fireEvent.keyDown(group(), { key: 'ArrowRight' });
