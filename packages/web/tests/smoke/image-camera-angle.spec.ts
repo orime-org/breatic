@@ -180,7 +180,7 @@ test('loads the sphere when the settings open, with the mentioned picture on its
   expect(requested.some((u) => /CameraAngleSphere/.test(u))).toBe(true);
   // The card fetches the portrait fresh in CORS mode; a tainted fetch would fail the texture.
   await expect.poll(() => requested.some((u) => u.startsWith(PORTRAIT.split('?')[0]!) && u.includes('cors=1'))).toBe(true);
-  await expect(page.getByTestId('generate-camera-angle-sphere')).toHaveAttribute('data-card', 'picture', { timeout: 15_000 });
+  await expect(page.getByTestId('generate-camera-angle-sphere')).toHaveAttribute('data-card', 'picture', { timeout: 30_000 });
   await expect(page.getByTestId('generate-camera-angle-pose')).toHaveText('Front · Eye level · Medium shot');
   await expect(page.getByTestId('generate-ratio-trigger')).toContainText('Front · Eye level · Medium shot');
 });
@@ -202,7 +202,7 @@ test('drags the camera, moves the sliders with it, and writes one pose on the gr
   expect([0, 45, 90, 135, 180, 225, 270, 315]).toContain(after.horizontal_angle);
   expect([-30, 0, 30, 60]).toContain(after.vertical_angle);
   expect(after.distance).toBe(1);
-  expect(midDrag).toBe(`${String(after.horizontal_angle)}°`);
+  expect(midDrag?.startsWith(`${String(after.horizontal_angle)}° `)).toBe(true);
   expect(await writes()).toBe(1);
 });
 

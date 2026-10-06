@@ -7,7 +7,7 @@ import type { SphereColors } from '@web/spaces/canvas/generate/camera-angle-sphe
 
 /** The theme tokens each part of the scene is drawn in. */
 const TOKENS: Readonly<Record<keyof SphereColors, string>> = {
-  line: '--color-border',
+  line: '--color-muted-foreground',
   accent: '--color-foreground',
   card: '--color-card',
 };

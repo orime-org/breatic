@@ -167,6 +167,13 @@ describe('CameraAngleControl', () => {
     expect(onChange).toHaveBeenLastCalledWith({ horizontal_angle: 0, vertical_angle: 0, distance: 1 });
   });
 
+  it('reads each angle beside its slider as degrees and the name of the step', async () => {
+    await draw({ horizontal_angle: 45, vertical_angle: 30, distance: 2 });
+    expect(screen.getByTestId('generate-param-horizontal_angle-value')).toHaveTextContent('45° Front right');
+    expect(screen.getByTestId('generate-param-vertical_angle-value')).toHaveTextContent('30° Elevated');
+    expect(screen.getByTestId('generate-param-distance-value')).toHaveTextContent('Wide shot');
+  });
+
   it('leaves no wheel timer running once it is gone, however many gestures came before', async () => {
     const { unmount } = await draw();
     vi.useFakeTimers();

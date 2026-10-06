@@ -14,7 +14,7 @@ import type { CameraAngle } from '@breatic/shared';
 
 /** The colours the scene is drawn in, as CSS colour strings off the theme tokens. */
 export interface SphereColors {
-  /** The ring, arc and ticks. */
+  /** The ring and its ticks. */
   line: string;
   /** The camera, its ray and the arc of the current azimuth. */
   accent: string;

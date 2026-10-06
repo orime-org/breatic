@@ -349,9 +349,15 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
     [specs, params],
   );
   const onReset = React.useCallback((): void => commit(DEFAULT_CAMERA_ANGLE), [commit]);
-  const degrees = React.useCallback((v: number): string => `${v}°`, []);
-  const distanceSpec = specs[params.distance];
-  const distanceWord = React.useCallback((v: number): string => optionLabel(distanceSpec ?? {}, v), [distanceSpec]);
+  // How each slider's value reads beside its name: an angle by degrees and the step's name, the distance by name.
+  const formats = React.useMemo(
+    (): Record<CameraAngleAxis, (v: number) => string> => ({
+      azimuth: (v) => `${v}° ${optionLabel(specs[params.azimuth] ?? {}, v)}`,
+      elevation: (v) => `${v}° ${optionLabel(specs[params.elevation] ?? {}, v)}`,
+      distance: (v) => optionLabel(specs[params.distance] ?? {}, v),
+    }),
+    [specs, params],
+  );
   const drafts: Record<CameraAngleAxis, (v: number) => void> = {
     azimuth: onAzimuthDraft,
     elevation: onElevationDraft,
@@ -408,10 +414,10 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
           <Button
             type='button'
             variant='outline'
-            size='sm'
+            size='compact'
             data-testid='generate-camera-angle-reset'
             onClick={onReset}
-            className='absolute right-1.5 top-1.5 h-6 gap-1 px-2 text-2xs'
+            className='absolute right-1.5 top-1.5 gap-1 text-2xs'
           >
             <RotateCcw className='h-3 w-3' aria-hidden='true' />
             {t('canvas.generatePanel.cameraAngle.reset')}
@@ -434,7 +440,7 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
             draft={shownOnSliders?.[axis]}
             onDraft={drafts[axis]}
             onDraftEnd={onSliderDraftEnd}
-            format={axis === 'distance' ? distanceWord : degrees}
+            format={formats[axis]}
             onChange={onSlider}
             testIdPrefix='generate-param'
             className={undefined}

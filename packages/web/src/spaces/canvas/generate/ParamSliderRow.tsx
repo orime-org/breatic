@@ -199,7 +199,8 @@ export function ParamSliderRow({
         // either end of the range is pinned to that end instead, so it lines
         // up with the track's edge rather than hanging half past it; the
         // negative margin pulls a pinned word's own padding back off the edge.
-        <div className='relative -mx-1 mt-1.5 h-6'>
+        // The space below keeps the words nearer their own track than the next row's name.
+        <div className='relative -mx-1 mb-2 mt-1.5 h-6'>
           {stops.map((stop) => {
             const edge = stop.value === min ? 'start' : stop.value === max ? 'end' : undefined;
             const left = ((stop.value - min) / (max - min)) * 100;
