@@ -39,6 +39,28 @@ import {
   INGEST_TYPE_NOT_REPORTED,
 } from "@breatic/shared";
 
+/**
+ * Refusals that come from the link the reader handed us: it would not answer,
+ * it held a kind we do not take, or it was larger than the ticket allows.
+ */
+const READER_SOURCE_REFUSALS: ReadonlySet<string> = new Set([
+  "source_unreachable",
+  "unsupported_type",
+  "over_cap",
+]);
+
+/**
+ * The log level a failed transfer is recorded at.
+ *
+ * Error logs become error-monitoring events, so a link the reader got wrong
+ * is a warning; a failure on our side stays an error.
+ * @param reason - The failure reason recorded on the task.
+ * @returns `warn` for the reader's own link, `error` otherwise.
+ */
+export function urlIngestFailureLevel(reason: string): "warn" | "error" {
+  return READER_SOURCE_REFUSALS.has(reason) ? "warn" : "error";
+}
+
 /** What the route queued for one submitted address. */
 export interface UrlIngestJobData {
   /** The key the grant was opened on, which the task row carries too. */
@@ -163,7 +185,10 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
       err instanceof UploadHttpError
         ? (err.code ?? INGEST_REFUSED_UNNAMED)
         : INGEST_NO_ANSWER;
-    logger.error({ err, key: storageKey, projectId, nodeId, reason }, "url_ingest_failed");
+    logger[urlIngestFailureLevel(reason)](
+      { err, key: storageKey, projectId, nodeId, reason },
+      "url_ingest_failed",
+    );
     await fail(storageKey, reason);
     return;
   }

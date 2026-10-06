@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import * as Sentry from '@sentry/react';
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
@@ -159,6 +160,8 @@ export const useCurrentUserStore = create<CurrentUserState>()(
         // The persisted mirror of this fact, read on the next cold load before
         // `/auth/me` can answer (design §6.2, the preload gate).
         rememberSession(user !== null);
+        // Errors raised from here on carry the account id and nothing else.
+        Sentry.setUser(user === null ? null : { id: user.id });
       }),
     setRole: (role) =>
       set((s) => {
@@ -178,6 +181,7 @@ export const useCurrentUserStore = create<CurrentUserState>()(
         s.role = null;
         s.loading = false;
         rememberSession(false);
+        Sentry.setUser(null);
         // bootstrapped intentionally preserved — see store docstring.
       }),
   })),

@@ -104,10 +104,12 @@ export async function braveJson(request: BraveRequest): Promise<unknown> {
     //
     // Discarding the promise is safe only while nothing awaits between the
     // transport handing this response back and this line: cancelling a body
-    // that has already errored rejects, and neither server nor worker installs
-    // an `unhandledRejection` handler. Measured against a real server, a socket
-    // broken 0 to 50ms after the headers is always still healthy here, and an
-    // await of 30ms is what makes it reject.
+    // that has already errored rejects, and server and worker treat an
+    // unhandled rejection as fatal: Node's default, or Sentry's strict mode
+    // when monitoring is on (which ignores ones named `AbortError` or
+    // `AI_NoOutputGeneratedError`). Measured
+    // against a real server, a socket broken 0 to 50ms after the headers is
+    // always still healthy here, and an await of 30ms is what makes it reject.
     void res.body?.cancel();
     throw toolFailed(refusalReason(voice, query, res.status), FAILURE_LINES.upstream);
   }

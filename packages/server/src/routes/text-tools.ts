@@ -115,6 +115,10 @@ textTools.post(
           );
         }
       }
+    }, async (err) => {
+      // A throw from the run itself bypasses the app's error handler: without
+      // this callback hono only prints it to the console.
+      logger.error({ err, userId: user.id, tool }, "text_tool_stream_failed");
     });
   },
 );

@@ -14,32 +14,19 @@ import '@fontsource/inter/700.css';
 import '@fontsource/inter/800.css';
 import '@web/index.css';
 import { bootstrapLocale } from '@web/i18n/locale-bootstrap';
+import { errorMonitoringInit } from '@web/lib/error-monitoring';
 import { removeRetiredStorageKeys } from '@web/lib/storage-keys';
 
 // i18n must initialize before any component renders useTranslation().
 bootstrapLocale();
 removeRetiredStorageKeys();
 
-Sentry.init({
+const errorMonitoring = errorMonitoringInit({
   dsn: import.meta.env.VITE_SENTRY_DSN,
-  enabled: import.meta.env.PROD,
-  environment: import.meta.env.MODE,
-  release: import.meta.env.VITE_APP_VERSION,
-  tracesSampleRate: 0.2,
-  sendDefaultPii: false,
-  beforeSend(event) {
-    const ignoredErrors = [
-      'ResizeObserver loop limit exceeded',
-      'Script error.',
-      'NetworkError when attempting to fetch resource',
-    ];
-    const message = event.exception?.values?.[0]?.value || '';
-    if (ignoredErrors.some((err) => message.includes(err))) {
-      return null;
-    }
-    return event;
-  },
+  mode: import.meta.env.MODE,
+  version: import.meta.env.VITE_APP_VERSION,
 });
+if (errorMonitoring !== null) Sentry.init(errorMonitoring);
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement,

@@ -17,6 +17,7 @@
     "@breatic/core": "workspace:*",
     "@breatic/domain": "workspace:*",
     "@breatic/shared": "workspace:*",
+    "@sentry/node": "catalog:",
     "ai": "catalog:",
     "bullmq": "catalog:",
     "dotenv": "catalog:",

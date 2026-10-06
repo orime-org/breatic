@@ -20,6 +20,7 @@
     "@hocuspocus/extension-redis": "catalog:",
     "@hocuspocus/extension-throttle": "^4.6.0",
     "@hocuspocus/server": "catalog:",
+    "@sentry/node": "catalog:",
     "dotenv": "catalog:",
     "drizzle-orm": "catalog:",
     "lib0": "catalog:",
