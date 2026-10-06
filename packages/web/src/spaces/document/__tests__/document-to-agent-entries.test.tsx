@@ -94,6 +94,9 @@ describe('the bubble bar entry', () => {
     focusBody(editor);
     selectBlockText(editor, 'alpha bravo');
 
+    // The wait an editor's bar always comes up within (the cases above) runs
+    // out with no bar at all.
+    await expect(waitForBar()).rejects.toThrow();
     expect(screen.queryByTestId('doc-bubble-tool-addToAgent')).toBeNull();
   });
 });

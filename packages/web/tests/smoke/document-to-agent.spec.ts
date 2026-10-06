@@ -60,16 +60,16 @@ test('the selection and a line go into the tray and out with the next message', 
   // Into the tray, not the box (A4).
   await expect(page.getByTestId('chat-composer-box')).toHaveText('');
 
-  // The same words again leave one item (A5).
+  // The same words again, then a line from its handle's menu (A2). Both
+  // calls read the tray's limits from the one cached request, so the second
+  // add of the selection has landed by the time the line's chip shows, and
+  // the same words have left one item (A5).
   await page.getByTestId('doc-bubble-tool-addToAgent').click();
-  await page.waitForTimeout(500);
-  await expect(page.locator(SELECTION_CHIP)).toHaveCount(1);
-
-  // A line, from its handle's menu (A2).
   await openHandleMenu(page, 1);
   await page.getByTestId('doc-block-row-addToAgent').click();
   await expect(page.locator(BLOCK_CHIP)).toHaveCount(1, { timeout: 20_000 });
   await expect(page.locator(BLOCK_CHIP)).toContainText('Second line');
+  await expect(page.locator(SELECTION_CHIP)).toHaveCount(1);
 
   // The same line, edited and handed over again, is one item holding the
   // new words (A5).
