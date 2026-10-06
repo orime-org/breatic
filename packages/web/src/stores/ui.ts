@@ -25,7 +25,7 @@ export type ActiveRegion = 'space' | 'agent';
 
 /** The account and project the Agent panel state is stored under. */
 interface AgentPanelOwner {
-  userId: string;
+  userId: string | undefined;
   projectId: string;
 }
 
@@ -128,7 +128,7 @@ export const useUIStore = create<UIState>()(
     restoreAgentPanel: (userId, projectId) =>
       set((s) => {
         s.chatPanelCollapsed = readAgentPanelOpen(userId, projectId) === false;
-        s.agentPanelOwner = userId === undefined || userId === '' ? null : { userId, projectId };
+        s.agentPanelOwner = { userId, projectId };
       }),
     setChatPanelCollapsed: (collapsed) => {
       set((s) => {

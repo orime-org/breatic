@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 
+import { openAccountRecord } from '@web/lib/account-record';
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
 
 /**
@@ -11,11 +12,9 @@ import { STORAGE_KEYS } from '@web/lib/storage-keys';
  * snap. Two people share a browser often enough to matter, so the record is
  * keyed by account id and each account reads only its own entry.
  *
- * This module is the only place the key is read or written. Every field is
- * validated on its own: a value that does not parse costs that field its
- * stored value and nothing else. A broken account entry leaves every other
- * account's alone. A key that is not JSON reads as empty for everybody, and
- * the next write replaces it with that account's entry alone.
+ * This module is the only place the key is read or written, through
+ * `openAccountRecord`. Every field is validated on its own: a value that does
+ * not parse costs that field its stored value and nothing else.
  */
 
 /** Which Studio rail sections are folded. */
@@ -60,50 +59,14 @@ const preferencesSchema = z.object({
   snapToGrid: z.boolean().catch(false),
 });
 
-/** The whole key: account id to whatever was stored under it. */
-type Record_ = Record<string, unknown>;
-
-/**
- * Read the whole key, with anything unreadable reported as an empty record.
- * @returns The parsed record; nothing inside it is validated here.
- */
-function readRecord(): Record_ {
-  try {
-    const value = window.localStorage.getItem(STORAGE_KEYS.userPreferences);
-    if (value === null) return {};
-    const parsed: unknown = JSON.parse(value);
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return {};
-    }
-    return parsed as Record_;
-  } catch {
-    // Private mode and blocked site data throw on access; a value that is not
-    // JSON throws on parse. Both read as nothing stored.
-    return {};
-  }
-}
-
-/**
- * One account's stored entry, or an empty one when it is absent or is not an
- * object.
- * @param record - The whole record.
- * @param userId - The signed-in account.
- * @returns That account's raw entry.
- */
-function entryFor(record: Record_, userId: string): Record_ {
-  const entry: unknown = record[userId];
-  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return {};
-  return entry as Record_;
-}
-
 /**
  * This account's preferences, every missing or unusable field at its default.
  * @param userId - The signed-in account; without one the defaults are returned.
  * @returns The account's preferences.
  */
 export function readUserPreferences(userId: string | undefined): UserPreferences {
-  if (userId === undefined || userId === '') return DEFAULT_USER_PREFERENCES;
-  return preferencesSchema.parse(entryFor(readRecord(), userId));
+  const account = openAccountRecord(STORAGE_KEYS.userPreferences, userId);
+  return account === null ? DEFAULT_USER_PREFERENCES : preferencesSchema.parse(account.entry ?? {});
 }
 
 /**
@@ -116,13 +79,6 @@ export function writeUserPreference(
   userId: string | undefined,
   patch: Partial<UserPreferences>,
 ): void {
-  if (userId === undefined || userId === '') return;
-  const record = readRecord();
-  const next = { ...record, [userId]: { ...entryFor(record, userId), ...patch } };
-  try {
-    window.localStorage.setItem(STORAGE_KEYS.userPreferences, JSON.stringify(next));
-  } catch {
-    // Quota and blocked site data both throw; the value is still held in
-    // memory for this session, it just is not remembered.
-  }
+  const account = openAccountRecord(STORAGE_KEYS.userPreferences, userId);
+  account?.write({ ...account.entry, ...patch });
 }

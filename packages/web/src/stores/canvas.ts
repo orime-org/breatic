@@ -190,8 +190,8 @@ interface CanvasState {
    * `restoreViewPreferences`.
    */
   snapToGrid: boolean;
-  /** The account minimap and snap changes are stored under; null before a project opens. */
-  viewPreferencesOwner: string | null;
+  /** The account minimap and snap changes are stored under; unset before a project opens. */
+  viewPreferencesOwner: string | undefined;
   showLockedOverlay: boolean;
   /** Chrome → canvas mailbox: what to create at the viewport centre. */
   pendingNodeCreate: CreateIntent | null;
@@ -486,7 +486,7 @@ export const useCanvasStore = create<CanvasState>()(
     minimapVisible: true,
     // Snap-to-grid ships OFF — free placement is the default, snapping is opt-in.
     snapToGrid: false,
-    viewPreferencesOwner: null,
+    viewPreferencesOwner: undefined,
     showLockedOverlay: false,
     pendingNodeCreate: null,
     placingAnnotation: false,
@@ -529,21 +529,21 @@ export const useCanvasStore = create<CanvasState>()(
       set((s) => {
         s.minimapVisible = minimapVisible;
         s.snapToGrid = snapToGrid;
-        s.viewPreferencesOwner = userId === undefined || userId === '' ? null : userId;
+        s.viewPreferencesOwner = userId;
       });
     },
     setMinimapVisible: (visible) => {
       set((s) => {
         s.minimapVisible = visible;
       });
-      writeUserPreference(get().viewPreferencesOwner ?? undefined, { minimapVisible: visible });
+      writeUserPreference(get().viewPreferencesOwner, { minimapVisible: visible });
     },
     toggleMinimap: () => get().setMinimapVisible(!get().minimapVisible),
     setSnapToGrid: (enabled) => {
       set((s) => {
         s.snapToGrid = enabled;
       });
-      writeUserPreference(get().viewPreferencesOwner ?? undefined, { snapToGrid: enabled });
+      writeUserPreference(get().viewPreferencesOwner, { snapToGrid: enabled });
     },
     toggleSnapToGrid: () => get().setSnapToGrid(!get().snapToGrid),
     setShowLockedOverlay: (show) =>
