@@ -313,7 +313,7 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
           data-testid='generate-camera-angle'
           onKeyDown={onKeyDown}
           className={cn(
-            'relative aspect-[4/3] w-full touch-none overflow-hidden rounded-md border border-border bg-muted outline-none',
+            'relative aspect-[4/3] w-full touch-none overflow-hidden rounded-chrome border border-border bg-muted outline-none',
             'focus-visible:ring-1 focus-visible:ring-ring',
           )}
         >
