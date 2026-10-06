@@ -502,7 +502,7 @@ export function DocumentBlockMenu({
                   close();
                   return;
                 }
-                openCommentDraft(editor as never, [
+                openCommentDraft(editor, [
                   { from: over.from, to: over.to },
                 ]);
                 close();
@@ -527,7 +527,7 @@ export function DocumentBlockMenu({
               {...itemWithin(faces.canComment, () => {
                 const live = rowNow();
                 if (live !== undefined) {
-                  void attachToChat(projectId, [blockItem(editor as never, live.id)]);
+                  void attachToChat(projectId, [blockItem(editor, live.id)]);
                 }
                 close();
               })}
