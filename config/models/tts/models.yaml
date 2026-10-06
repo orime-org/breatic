@@ -2843,6 +2843,8 @@ models:
         max: 1
         step: 0.05
         default: 0.5
+        # The three points ElevenLabs describes for v3 (text-to-speech best practices).
+        value_labels: {"0": "Creative", "0.5": "Natural", "1": "Robust"}
         fill: "panel"
       voice_id:
         description: "Voice identifier"

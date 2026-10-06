@@ -212,17 +212,20 @@ export function assertParamDeclarations(
 }
 
 /**
- * The values a control lets the reader pick.
+ * Whether a control lets the reader pick the value a key spells.
  * @param declared - The declaration.
- * @returns Its `values`, else every step of its `min`/`max`/`step` range, else nothing.
+ * @param key - A value in its string form, as a yaml map key holds it.
+ * @returns True for one of its `values`, or a step of its `min`/`max`/`step`
+ * range counted from `min`, within float rounding.
  */
-function offeredValues(declared: ParamDeclaration): readonly (string | number | boolean)[] {
-  if (declared.values !== undefined) return declared.values;
+function offers(declared: ParamDeclaration, key: string): boolean {
+  if (declared.values !== undefined) return declared.values.some((v) => String(v) === key);
   const { min, max, step } = declared;
-  if (min === undefined || max === undefined || step === undefined || step <= 0) return [];
-  const steps: number[] = [];
-  for (let at = min; at <= max; at += step) steps.push(at);
-  return steps;
+  const at = Number(key);
+  if (min === undefined || max === undefined || step === undefined || step <= 0 || key.trim() === "") return false;
+  if (!Number.isFinite(at) || at < min || at > max) return false;
+  const steps = (at - min) / step;
+  return Math.abs(steps - Math.round(steps)) < 1e-9;
 }
 
 /**
@@ -279,9 +282,9 @@ function faultsOn(
 
   // A label for a value the control does not offer is a label for nothing, and
   // usually a value renamed in one place and not the other.
-  const offered = new Set(offeredValues(declared).map(String));
+  const offered = new Set((declared.values ?? []).map(String));
   for (const value of Object.keys(declared.value_labels ?? {})) {
-    if (!offered.has(value)) {
+    if (!offers(declared, value)) {
       faults.push(`value_labels names "${value}", which the control does not offer`);
     }
   }

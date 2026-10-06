@@ -42,7 +42,7 @@ export type AudioParamControl =
      * where they do not: nothing about 0.50 says what it will sound like, and
      * the vendor describes exactly three points on that scale.
      */
-    stops?: readonly { value: number; labelKey: string }[];
+    stops?: readonly { value: number; label: string }[];
   };
 
 /** The app's translator, as `useTranslation` hands it over. */
@@ -56,8 +56,6 @@ interface AudioParamSpec {
   labelKey: string;
   /** Renders a value for display — the unit belongs to the number. */
   format: (value: number, t: Translate) => string;
-  /** Named positions on this param's scale, ascending. */
-  stops?: readonly { value: number; labelKey: string }[];
 }
 
 /**
@@ -72,15 +70,6 @@ export const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
   stability: {
     labelKey: 'canvas.generatePanel.voiceStability',
     format: (v) => v.toFixed(2),
-    // ElevenLabs describes v3's stability at three points and nowhere else
-    // (elevenlabs.io/docs/overview/capabilities/text-to-speech/best-practices).
-    // The value travels as the 0-1 double every upstream takes; these are what
-    // tell a reader which part of that range they are dragging into.
-    stops: [
-      { value: 0, labelKey: 'canvas.generatePanel.voiceStabilityCreative' },
-      { value: 0.5, labelKey: 'canvas.generatePanel.voiceStabilityNatural' },
-      { value: 1, labelKey: 'canvas.generatePanel.voiceStabilityRobust' },
-    ],
   },
   similarity: {
     labelKey: 'canvas.generatePanel.voiceSimilarity',
@@ -144,6 +133,10 @@ function controlFor(
   // A step of zero or one that runs backwards leaves a control with no reachable
   // stop, and an empty range leaves it with exactly one.
   if (step <= 0 || max <= min) return null;
+  // The positions the model names in its value_labels, in English.
+  const stops = Object.entries(descriptor.value_labels ?? {})
+    .map(([at, label]) => ({ value: Number(at), label }))
+    .sort((a, b) => a.value - b.value);
   return {
     name,
     labelKey: spec.labelKey,
@@ -151,7 +144,7 @@ function controlFor(
     min,
     max,
     step,
-    ...(spec.stops ? { stops: spec.stops } : {}),
+    ...(stops.length > 0 ? { stops } : {}),
   };
 }
 

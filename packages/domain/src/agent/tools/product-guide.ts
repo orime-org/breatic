@@ -634,9 +634,8 @@ export function renderProductGuide(): string {
       `sliders such as ${quoted(t("canvas.generatePanel.voiceSpeed"))}, ` +
       `${quoted(t("canvas.generatePanel.voiceVolume"))}, ${quoted(t("canvas.generatePanel.voiceSimilarity"))} ` +
       `and ${quoted(t("canvas.generatePanel.voiceStability"))} (marked ` +
-      `${quoted(t("canvas.generatePanel.voiceStabilityCreative"))}, ` +
-      `${quoted(t("canvas.generatePanel.voiceStabilityNatural"))} and ` +
-      `${quoted(t("canvas.generatePanel.voiceStabilityRobust"))} along it) when the model has them; a sound ` +
+      "Creative, Natural and Robust along it, in English in every interface language) when the model has " +
+      "them; a sound " +
       `effect's ${quoted(t("canvas.generatePanel.sfxDuration"))}; and any settings of the model's own, where a ` +
       `setting that is a list opens beside it with ${quoted(t("canvas.generatePanel.itemsAdd"))} for another ` +
       "entry and an X on each to remove it. When " +

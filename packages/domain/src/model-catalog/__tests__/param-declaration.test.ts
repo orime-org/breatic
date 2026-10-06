@@ -425,6 +425,32 @@ describe("a parameter declaration", () => {
     ).not.toThrow();
   });
 
+  it("names the steps of a range whose step is a fraction", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "tts",
+        modelWith({
+          stability: {
+            fill: "panel",
+            min: 0,
+            max: 1,
+            step: 0.05,
+            default: 0.5,
+            value_labels: { "0": "Creative", "0.5": "Natural", "0.95": "Near", "1": "Robust" },
+          },
+        }),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertParamDeclarations(
+        "tts",
+        modelWith({
+          stability: { fill: "panel", min: 0, max: 1, step: 0.05, default: 0.5, value_labels: { "0.52": "Off" } },
+        }),
+      ),
+    ).toThrow(/stability.*value_labels.*0\.52/s);
+  });
+
   it("is refused when it names a number the range never steps on", () => {
     expect(() =>
       assertParamDeclarations(

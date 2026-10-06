@@ -593,7 +593,7 @@ function ParamControlRow({
       min={control.min}
       max={control.max}
       step={control.step}
-      stops={control.stops?.map((stop) => ({ value: stop.value, label: t(stop.labelKey) }))}
+      stops={control.stops}
       value={value}
       format={(v) => formatAudioParam(control.name, v, t)}
       onChange={onChange}
