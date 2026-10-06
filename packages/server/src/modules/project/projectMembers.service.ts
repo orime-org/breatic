@@ -18,7 +18,7 @@
  * line-replacement, and we never silently drop a notification.
  */
 
-import { db, projectMembersRepo } from "@breatic/core";
+import { db, logger, projectMembersRepo } from "@breatic/core";
 import { publishMembersChanged } from "@breatic/core";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { ConflictError, NotFoundError } from "@breatic/core";
@@ -162,14 +162,47 @@ export async function remove(
     }
     return role;
   });
-  await publishMembersChanged(projectId, {
-    affectedUserId: targetUserId,
-    action: "remove",
-  });
+  try {
+    await publishMembersChanged(projectId, {
+      affectedUserId: targetUserId,
+      action: "remove",
+    });
+  } catch (err) {
+    // The row is already gone. Failing the request here would tell the
+    // caller the removal did not happen when it did.
+    logger.error({ err, projectId, targetUserId }, "project_member_removed_publish_failed");
+  }
   await recordProjectActivity({
     projectId,
     actorUserId: actorUserId ?? null,
     type: "member:removed",
     payload: { previousRole: current, targetUserId },
   });
+}
+
+/**
+ * Leave a project of one's own accord.
+ *
+ * An archived project freezes its membership, and the owner has to hand the
+ * project over first; both are refused with their own sentence. The owner
+ * check here reads outside the lock only to pick that sentence — the locked
+ * check inside {@link remove} is what keeps a transfer landing in between
+ * from taking the project's only owner with it.
+ * @param projectId - Project UUID
+ * @param userId - The member leaving
+ * @throws {NotFoundError} if the caller is not an active member
+ * @throws {ConflictError} if the project is archived, or the caller owns it
+ */
+export async function leave(projectId: string, userId: string): Promise<void> {
+  const access = await projectMembersRepo.getAccess(projectId, userId);
+  if (access === null) {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  if (access.archived) {
+    throw new ConflictError(t("server.project.archived"));
+  }
+  if (access.role === "owner") {
+    throw new ConflictError(t("server.project.leave_owner"));
+  }
+  await remove(projectId, userId, userId);
 }

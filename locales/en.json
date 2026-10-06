@@ -77,7 +77,8 @@
       "no_active_owner": "This project has no active Owner",
       "not_found": "Project not found",
       "archived": "This project is archived and can only be viewed.",
-      "copy_name": "Copy of {name}"
+      "copy_name": "Copy of {name}",
+      "leave_owner": "The owner has to transfer ownership before leaving."
     },
     "text_tool": {
       "already_running": "Another text tool is already running. Please wait."

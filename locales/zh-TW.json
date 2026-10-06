@@ -77,7 +77,8 @@
       "no_active_owner": "這個 Project 沒有在任的 Owner",
       "not_found": "找不到這個 Project",
       "archived": "這個 Project 已封存，只能檢視。",
-      "copy_name": "副本 - {name}"
+      "copy_name": "副本 - {name}",
+      "leave_owner": "Owner 需要先轉讓所有權才能退出。"
     },
     "payment": {
       "tier_not_found": "未知的方案：{tier}。可選：{available}",

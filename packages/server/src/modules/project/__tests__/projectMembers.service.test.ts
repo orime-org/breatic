@@ -49,6 +49,7 @@ vi.mock("@breatic/core", () => {
     },
     projectMembersRepo: {
       getRole: vi.fn(),
+      getAccess: vi.fn(),
       lockMemberRole: vi.fn(),
       listByProjectId: vi.fn(),
       upsertMember: vi.fn(),
@@ -59,14 +60,24 @@ vi.mock("@breatic/core", () => {
     // path (after the repo mutates); stubbed so the unit test runs
     // without an ioredis connection.
     publishMembersChanged: vi.fn().mockResolvedValue(undefined),
+    logger: { error: vi.fn() },
     ConflictError,
     NotFoundError,
   };
 });
 
-import { projectMembersRepo, ConflictError, NotFoundError } from "@breatic/core";
+import {
+  projectMembersRepo,
+  publishMembersChanged,
+  logger,
+  ConflictError,
+  NotFoundError,
+} from "@breatic/core";
+import { t } from "@breatic/shared";
+import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import {
   changeRole,
+  leave,
   remove,
 } from "../projectMembers.service.js";
 
@@ -138,5 +149,66 @@ describe("remove", () => {
     vi.mocked(projectMembersRepo.softDelete).mockResolvedValueOnce(true);
     await remove(PID, "u-target");
     expect(projectMembersRepo.getRole).not.toHaveBeenCalled();
+  });
+});
+
+describe("remove after the commit", () => {
+  it("still succeeds and logs when announcing the change fails", async () => {
+    // The row is already soft-deleted when the announcement runs; the answer
+    // has to say so, or the caller is told the removal failed when it did not.
+    vi.mocked(projectMembersRepo.lockMemberRole).mockResolvedValueOnce("editor");
+    vi.mocked(projectMembersRepo.softDelete).mockResolvedValueOnce(true);
+    vi.mocked(publishMembersChanged).mockRejectedValueOnce(new Error("redis down"));
+    await expect(remove(PID, "u-target", "u-owner")).resolves.toBeUndefined();
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(recordProjectActivity).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("leave", () => {
+  it("refuses an archived project before touching the member row", async () => {
+    vi.mocked(projectMembersRepo.getAccess).mockResolvedValueOnce({ role: "editor", archived: true });
+    const err = await leave(PID, "u-me").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect((err as Error).message).toBe(t("server.project.archived"));
+    expect(projectMembersRepo.softDelete).not.toHaveBeenCalled();
+  });
+
+  it("refuses the owner with the transfer-first sentence", async () => {
+    vi.mocked(projectMembersRepo.getAccess).mockResolvedValueOnce({ role: "owner", archived: false });
+    const err = await leave(PID, "u-me").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect((err as Error).message).toBe(t("server.project.leave_owner"));
+    expect((err as Error).message).not.toBe(t("server.error.conflict"));
+    expect(projectMembersRepo.softDelete).not.toHaveBeenCalled();
+  });
+
+  it("answers NotFound when the caller is no longer a member", async () => {
+    vi.mocked(projectMembersRepo.getAccess).mockResolvedValueOnce(null);
+    await expect(leave(PID, "u-me")).rejects.toBeInstanceOf(NotFoundError);
+    expect(projectMembersRepo.softDelete).not.toHaveBeenCalled();
+  });
+
+  it("removes a viewer through the locked removal and credits them as the actor", async () => {
+    vi.mocked(projectMembersRepo.getAccess).mockResolvedValueOnce({ role: "viewer", archived: false });
+    vi.mocked(projectMembersRepo.lockMemberRole).mockResolvedValueOnce("viewer");
+    vi.mocked(projectMembersRepo.softDelete).mockResolvedValueOnce(true);
+    await leave(PID, "u-me");
+    expect(projectMembersRepo.lockMemberRole).toHaveBeenCalledWith(PID, "u-me", FAKE_TX);
+    expect(projectMembersRepo.softDelete).toHaveBeenCalledWith(PID, "u-me", FAKE_TX);
+    expect(recordProjectActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: "u-me",
+        type: "member:removed",
+        payload: expect.objectContaining({ targetUserId: "u-me" }),
+      }),
+    );
+  });
+
+  it("still refuses an owner the lock reveals after a transfer landed in between", async () => {
+    vi.mocked(projectMembersRepo.getAccess).mockResolvedValueOnce({ role: "editor", archived: false });
+    vi.mocked(projectMembersRepo.lockMemberRole).mockResolvedValueOnce("owner");
+    await expect(leave(PID, "u-me")).rejects.toBeInstanceOf(ConflictError);
+    expect(projectMembersRepo.softDelete).not.toHaveBeenCalled();
   });
 });

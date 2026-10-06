@@ -77,7 +77,8 @@
       "no_active_owner": "이 Project에는 현재 Owner가 없습니다",
       "not_found": "Project를 찾을 수 없습니다",
       "archived": "이 Project는 보관되어 보기만 할 수 있습니다.",
-      "copy_name": "사본 - {name}"
+      "copy_name": "사본 - {name}",
+      "leave_owner": "Owner는 소유권을 이전한 후에 나갈 수 있습니다."
     },
     "text_tool": {
       "already_running": "다른 텍스트 도구가 이미 실행 중입니다. 잠시 기다려 주세요."
