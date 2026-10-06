@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import {
   cellButtonBox,
   columnHandleCentre,
+  rowHandleDrop,
   type Box,
 } from '@web/spaces/document/document-table-control-place';
 
@@ -95,5 +96,21 @@ describe('the column handle', () => {
     const visible = box(100, 40, 145, 75);
     const below = cellButtonBox(box(100, 75, 145, 110));
     expect(columnHandleCentre(visible, line, below)).toBe(122.5);
+  });
+});
+
+describe('the row handle stands beside its row\'s first line (inner#1278)', () => {
+  it('moves up from the middle of a tall row to its first line', () => {
+    // Measured 2026-10-06: a row 283px tall from 100, the first line of its
+    // first cell 108 → 127. The library centres the handle on the row, at 241.5.
+    expect(rowHandleDrop({ top: 108, height: 19 }, { top: 100, height: 283 })).toBe(117.5 - 241.5);
+  });
+
+  it('barely moves on a one-line row', () => {
+    expect(rowHandleDrop({ top: 108, height: 19 }, { top: 100, height: 37 })).toBe(-1);
+  });
+
+  it('stays put while the row shows no line', () => {
+    expect(rowHandleDrop(undefined, { top: 100, height: 283 })).toBe(0);
   });
 });
