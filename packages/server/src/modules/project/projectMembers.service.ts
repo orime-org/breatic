@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Project members service — invite / change-role / remove with
+ * Project members service — invite / change-role / remove / leave with
  * permission and invariant enforcement.
  *
  * The service layer sits between Hono routes and the repo. Routes
- * have already enforced `requireRole('owner')` for write operations,
- * so the service only verifies invariants that are intrinsic to the
- * member graph itself (no double-owner, owner cannot be removed,
- * cannot demote owner without transfer).
+ * enforce `requireRole('owner')` for invite / change-role / remove;
+ * `leave` is open to any member and checks the archive state and the
+ * caller's own role itself. Beyond that the service only verifies
+ * invariants intrinsic to the member graph (no double-owner, owner
+ * cannot be removed, cannot demote owner without transfer).
  *
  * v10 §7.2.5 mandates that every member-state change publish a Redis
  * pub/sub event so collab can broadcast invalidation to connected

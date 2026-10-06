@@ -53,8 +53,9 @@ const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'>
  *
  * Stack uses the backend `Member` shape ({id, userId, name, email, role})
  * per 2026-05-28 spec § 5; the subtitle below each member name shows the
- * email. The popover is read-only — every row shows the member's role
- * badge. Removing / changing a member lives solely in the "Manage
+ * email. Every row is read-only and shows the member's role badge; the
+ * footer holds at most one action — "Manage collaborators" for the owner,
+ * "Leave project" for a member who may leave. Removing / changing a member lives solely in the "Manage
  * collaborators" modal (owner-only); the popover never offers a remove
  * control (2026-06-18 — the per-row hover-remove was dropped so remove
  * has a single home).

@@ -12,8 +12,10 @@
  *
  * One rule, read by the studio's project lists and the project page, which
  * send it as flags so a card's menu and the title offer exactly what the
- * server will accept, and by the write paths before they write. Managing the object is not entering the
- * project: the studio admin may rename a project they are not on, and still
+ * server will accept, and by the manage / archive write paths before they
+ * write; leaving re-checks the same two facts (archived, owner) in
+ * `projectMembersService.leave` so each refusal names its own reason.
+ * Managing the object is not entering the project: the studio admin may rename a project they are not on, and still
  * has to ask to join before they can open it.
  */
 
