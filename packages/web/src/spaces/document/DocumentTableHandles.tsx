@@ -73,10 +73,8 @@ import {
   columnHandleCentre,
   COLUMN_HANDLE_NUDGE,
   ROW_HANDLE_NUDGE,
-  rowHandleDrop,
   type Box,
 } from '@web/spaces/document/document-table-control-place';
-import { firstLineOfTableRow } from '@web/spaces/document/document-strip-alignment';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
 import { endTableDrag, startTableDrag } from '@web/spaces/document/document-table-drag';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
@@ -112,12 +110,10 @@ interface FramePlace {
   readonly shift: number;
   /** Whether it is hidden: the part in view has no room for it. */
   readonly hidden: boolean;
-  /** How far the row handle moves down, onto its row's first line (`rowHandleDrop`). */
-  readonly drop: number;
 }
 
 /** No move against the frame; the nudge onto its line still applies. */
-const IN_PLACE: FramePlace = { shift: 0, hidden: false, drop: 0 };
+const IN_PLACE: FramePlace = { shift: 0, hidden: false };
 
 /**
  * The cell button's box, when the caret's cell is in this table.
@@ -145,15 +141,13 @@ function cellButtonIn(view: EditorView, table: Element, frame: DOMRect, caretCel
  * (`TableHandlesController.tsx:108-124`) and the column handle centred over
  * the hovered cell (`:125-141`); on a table scrolled sideways either can lie
  * outside the frame. The row handle moves across by the width scrolled out of
- * it, so it sits on the frame's left line, and down from the middle of its row
- * to the row's first line;
+ * it, so it sits on the frame's left line;
  * the column handle moves onto the part of its cell in view, aside from the
  * cell button there (`columnHandleCentre`), and is hidden when that part has
  * no room for it.
  * @param view - The editor view.
  * @param blockId - The table block's id.
  * @param row - Whether this is the row handle.
- * @param rowIndex - The hovered row.
  * @param cell - The hovered cell's box, as the controller read it, if it has.
  * @param caretCell - The position before the caret's cell, or null.
  * @returns The placement.
@@ -162,7 +156,6 @@ function framePlaceOf(
   view: EditorView | undefined,
   blockId: string,
   row: boolean,
-  rowIndex: number | undefined,
   cell: DOMRect | undefined,
   caretCell: number | null,
 ): FramePlace {
@@ -170,15 +163,7 @@ function framePlaceOf(
   const frame = table?.closest('[data-radix-scroll-area-viewport]');
   if (view === undefined || !table || !frame) return IN_PLACE;
   const box = frame.getBoundingClientRect();
-  if (row) {
-    const tableRow = rowIndex === undefined ? undefined : table.querySelectorAll('tr')[rowIndex];
-    const line = tableRow === undefined ? undefined : firstLineOfTableRow(tableRow);
-    return {
-      shift: Math.max(0, box.left - table.getBoundingClientRect().left),
-      hidden: false,
-      drop: cell === undefined ? 0 : rowHandleDrop(line, cell),
-    };
-  }
+  if (row) return { shift: Math.max(0, box.left - table.getBoundingClientRect().left), hidden: false };
   if (cell === undefined) return IN_PLACE;
   const visible = {
     left: Math.max(cell.left, box.left),
@@ -187,9 +172,7 @@ function framePlaceOf(
     bottom: cell.bottom,
   };
   const x = columnHandleCentre(visible, table.getBoundingClientRect().top, cellButtonIn(view, table, box, caretCell));
-  return x === null
-    ? { shift: 0, hidden: true, drop: 0 }
-    : { shift: x - (cell.left + cell.width / 2), hidden: false, drop: 0 };
+  return x === null ? { shift: 0, hidden: true } : { shift: x - (cell.left + cell.width / 2), hidden: false };
 }
 
 /** The handle menu's own reading of its target cell. */
@@ -365,12 +348,12 @@ export function DocumentTableHandle({
     const place =
       state === undefined
         ? IN_PLACE
-        : framePlaceOf(editor.prosemirrorView, state.block.id, row, state.rowIndex, state.referencePosCell, caretCell);
+        : framePlaceOf(editor.prosemirrorView, state.block.id, row, state.referencePosCell, caretCell);
     if (place.hidden) return { visibility: 'hidden' };
-    // Centred on its line: the row handle on the table's left line, beside
-    // its row's first line; the column handle on the table's top line.
+    // Centred on its line: the row handle on the table's left line, the
+    // column handle on its top line.
     const across = place.shift + (row ? ROW_HANDLE_NUDGE : 0);
-    const up = row ? place.drop : COLUMN_HANDLE_NUDGE;
+    const up = row ? 0 : COLUMN_HANDLE_NUDGE;
     return { transform: `translate(${String(across)}px, ${String(up)}px)` };
   }, [editor, row, state, caretCell]);
 

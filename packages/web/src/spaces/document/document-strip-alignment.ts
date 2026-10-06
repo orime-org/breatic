@@ -149,13 +149,13 @@ export function firstLineOf(row: Element): DOMRect | undefined {
  * (inner#1278).
  *
  * A cell's words start at its top, after the cell's padding, so this line is
- * the same distance below the row's top line however tall the row grows; a
- * row's own box would put a handle centred on it halfway down a tall row
- * (measured 2026-10-06: 142px down a 283px first row).
+ * the same distance below the table's top line however tall the first row
+ * grows; centring the strip on the row's own box put it halfway down a tall
+ * row (measured 2026-10-06: 142px down a 283px first row).
  * @param tableRow - The `tr`.
  * @returns The box, or undefined when the row has no cell.
  */
-export function firstLineOfTableRow(tableRow: Element): DOMRect | undefined {
+function firstLineOfTableRow(tableRow: Element): DOMRect | undefined {
   const cell = tableRow.querySelector('td, th');
   if (cell === null) return undefined;
   return lineOf(cell.firstElementChild ?? cell);
