@@ -66,6 +66,7 @@ export type {
   ModelProvider,
   ModelEntry,
   CameraCommandEntry,
+  CameraAngleParams,
   PricingContract,
   ExtraStep,
   SourceGroup,
@@ -407,6 +408,14 @@ export {
   type CameraCommand,
   type CameraCommandAxis,
 } from "@shared/camera-commands.js";
+export {
+  CAMERA_ANGLE_GRID,
+  DEFAULT_CAMERA_ANGLE,
+  nearestCameraAngle,
+  stepCameraAngle,
+  type CameraAngle,
+  type CameraAngleAxis,
+} from "@shared/camera-angle.js";
 export { appliesInMode, paramsForMode } from "@shared/param-modes.js";
 export {
   storyboardSend,
