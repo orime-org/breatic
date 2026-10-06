@@ -16,7 +16,7 @@ import {
 import { Button } from '@web/components/ui/button';
 import { toast } from '@web/lib/toast';
 import { docName, getDoc } from '@web/data/yjs/manager';
-import { useSocket } from '@web/data/yjs/use-socket';
+import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import type { SpaceBodyProps } from '@web/spaces';
@@ -30,13 +30,9 @@ import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 /**
  * Document space body — a collaborative rich-text document.
  *
- * This is the container: it resolves the Space's Yjs document, joins the shared
- * collab socket for collaborator carets, and hands the resulting editor to
- * {@link DocumentEditor} for presentation.
- *
- * The socket acquire here is a cheap share, not a second connection —
- * `SpaceDocSync` already holds a reference to the same document for as long as
- * the tab is open, and the provider registry is reference-counted.
+ * This is the container: it resolves the Space's Yjs document, reads the
+ * connection its tab holds (`OpenSpace`) for collaborator carets, and hands the
+ * resulting editor to {@link DocumentEditor} for presentation.
  * @param root0 - Space body props supplied by the project space outlet.
  * @param root0.spaceId - ID of the document space.
  * @param root0.projectId - ID of the owning project.
@@ -72,14 +68,12 @@ export function DocumentSpace({
   // would tear the editor out of the DOM on every blip, taking the caret, the
   // in-flight IME composition and the reader's place on the page with it.
   //
-  // The latch is kept with the document in the provider registry, not here:
-  // this component is remounted on every Space-tab switch, and a latch that
-  // resets there would show a loading placeholder in front of content the
-  // local Y.Doc already holds.
-  const { provider, hasEverSynced, status } = useSocket({
-    name,
-    doc,
-  });
+  // Read from the tab rather than subscribed here: this body is hidden, not
+  // unmounted, on a Space-tab switch, and hiding cleans up its effects. A
+  // subscription of its own would start over as "never synced" on the way
+  // back and put a loading placeholder in front of content the local Y.Doc
+  // already holds.
+  const { provider, hasEverSynced, status } = useSpaceConnection();
 
   // This Space's own document was REFUSED — deleted, membership revoked, or the
   // session expired. It is told to the user and does NOT disable the editor:
@@ -100,14 +94,21 @@ export function DocumentSpace({
   // empty — and what fills the space is a statement of the very problem.
   const unavailable = refused && !hasEverSynced;
 
-  // Told once per transition, not re-announced on every render.
+  // Told once per transition into it. Effects run again when a hidden Space is
+  // shown (inner#1235), and that is not a second refusal.
+  const refusalTold = React.useRef(false);
   React.useEffect(() => {
-    if (refused && hasEverSynced) toast.error(t('spaces.document.refusedNotice'));
+    const refusedWithContent = refused && hasEverSynced;
+    if (refusedWithContent && !refusalTold.current) {
+      toast.error(t('spaces.document.refusedNotice'));
+    }
+    refusalTold.current = refusedWithContent;
   }, [refused, hasEverSynced, t]);
 
-  // The editor belongs to the document, not to this component: switching Space
-  // tabs remounts this body, and what the Y.Doc does not hold — undo stack,
-  // selection, composition state — would go with it.
+  // The editor belongs to the document, not to this component: this body can
+  // unmount while the tab keeps the document open (StrictMode mounts it
+  // twice), and what the Y.Doc does not hold — undo stack, selection,
+  // composition state — would go with it.
   // This build's vocabulary against the one the server publishes, and against
   // what this document actually holds. Read from the project's meta document —
   // the same instance the project page is already subscribed to, since

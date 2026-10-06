@@ -10,6 +10,7 @@ import { useInpaintStore } from '@web/stores/inpaint';
 import { useMiniToolStore } from '@web/stores/mini-tool';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import { useUIStore } from '@web/stores/ui';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 /**
  * #1771 — leaving a project must clear its per-user UI session state so re-entry
@@ -20,8 +21,8 @@ import { useUIStore } from '@web/stores/ui';
 describe('resetProjectUiStores (#1771)', () => {
   beforeEach(() => {
     // Start each case from a known-dirty state exercising all five stores.
-    useCanvasStore.getState().openGeneratePanel('node-1', 'image');
-    useCanvasStore.getState().startReferencePick('node-1');
+    canvasSessions.of('s').getState().openGeneratePanel('node-1', 'image');
+    canvasSessions.of('s').getState().startReferencePick('node-1');
     useCanvasStore.getState().setSelectedNodeIds(['node-1', 'node-2']);
     useCanvasStore.getState().setMinimapVisible(false); // preference
     useCanvasStore.getState().setSnapToGrid(true); // preference
@@ -43,19 +44,19 @@ describe('resetProjectUiStores (#1771)', () => {
   });
 
   it('clears the open Generate panel and pick session (the reported symptom)', () => {
-    expect(useCanvasStore.getState().panelHostId).toBe('node-1');
+    expect(canvasSessions.of('s').getState().panelHostId).toBe('node-1');
     resetProjectUiStores('project-1');
-    expect(useCanvasStore.getState().panelHostId).toBeNull();
-    expect(useCanvasStore.getState().pickSession).toBeNull();
+    expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
   });
 
   it('clears all per-project SESSION state across the five stores', () => {
     resetProjectUiStores('project-1');
-    const canvas = useCanvasStore.getState();
-    expect(canvas.selectedNodeIds).toEqual([]);
-    expect(canvas.panelHostId).toBeNull();
-    expect(canvas.panelKind).toBeNull();
-    expect(canvas.pickSession).toBeNull();
+    expect(useCanvasStore.getState().selectedNodeIds).toEqual([]);
+    const session = canvasSessions.of('s').getState();
+    expect(session.panelHostId).toBeNull();
+    expect(session.panelKind).toBeNull();
+    expect(session.pickSession).toBeNull();
 
     const ui = useUIStore.getState();
     expect(ui.activeOverlayId).toBeNull();

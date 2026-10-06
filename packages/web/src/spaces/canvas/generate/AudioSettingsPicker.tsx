@@ -40,6 +40,7 @@ import { VoiceList } from '@web/spaces/canvas/generate/VoiceList';
 import { SecondPanelFrame, SecondPanelRow, useSecondPanelSide } from '@web/spaces/canvas/generate/second-panel';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
+import { useDraftBox } from '@web/spaces/canvas/generate/use-draft-box';
 
 /** The second panel's width in pixels. */
 const SECOND_PANEL_WIDTH = 288;
@@ -511,12 +512,7 @@ interface SpeakerNameBoxProps {
  */
 function SpeakerNameBox({ label, placeholder, held, onCommit }: SpeakerNameBoxProps): React.JSX.Element {
   const id = React.useId();
-  const [draft, setDraft] = React.useState<string | null>(null);
-  /** Writes the draft, when it differs from what the node holds, and drops it. */
-  const commit = (): void => {
-    if (draft !== null && draft !== held) onCommit(draft);
-    setDraft(null);
-  };
+  const box = useDraftBox(held, onCommit);
   return (
     <div className='border-b border-border p-3'>
       <label htmlFor={id} className='mb-1.5 block text-xs font-medium text-muted-foreground'>
@@ -527,12 +523,7 @@ function SpeakerNameBox({ label, placeholder, held, onCommit }: SpeakerNameBoxPr
         id={id}
         data-testid='generate-audio-speaker-name'
         placeholder={placeholder}
-        value={draft ?? held}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && !event.nativeEvent.isComposing) commit();
-        }}
+        {...box}
         className='h-8 text-xs'
       />
     </div>

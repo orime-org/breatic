@@ -81,7 +81,7 @@ import {
   type CanvasContextValue,
 } from '@web/spaces/canvas/canvas-context';
 import { modelsApi } from '@web/data/api';
-import { useCanvasStore } from '@web/stores';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 /**
  * Stands in for the canvas's "who made the newest write" getter.
@@ -205,7 +205,7 @@ describe('the audio container keeps its memoized panel bail-able', () => {
     seenReferences.length = 0;
     seenPromptSlots.length = 0;
     _resetForTests();
-    useCanvasStore.setState({
+    canvasSessions.of('s').setState({
       panelHostId: null,
       panelKind: null,
       pickSession: null,
@@ -238,7 +238,7 @@ describe('the audio container keeps its memoized panel bail-able', () => {
     vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
     mount();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'audio');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
     });
     await waitFor(() => {
       expect(seenPromptSlots.length).toBeGreaterThan(0);
@@ -250,7 +250,7 @@ describe('the audio container keeps its memoized panel bail-able', () => {
     vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
     const { rerender } = mount();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'audio');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
     });
     await waitFor(() => {
       expect(seenParams.length).toBeGreaterThan(0);
@@ -275,7 +275,7 @@ describe('the audio container keeps its memoized panel bail-able', () => {
     vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
     const { rerender } = mount();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'audio');
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
     });
     await waitFor(() => {
       expect(seenParams.length).toBeGreaterThan(0);

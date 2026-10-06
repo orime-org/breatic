@@ -16,6 +16,7 @@ import { expect, test, type Page } from 'playwright/test';
 import { credentialsFor } from '../helpers/credentials';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { signIn, signOut } from '../helpers/session';
+import { visibleSpace } from '../helpers/space';
 
 const AGENT_COLUMN = '[data-testid="agent-column"]';
 const AGENT_PANEL = '[data-testid="agent-column-panel"]';
@@ -27,7 +28,7 @@ const AGENT_PANEL = '[data-testid="agent-column-panel"]';
  */
 async function openProject(page: Page, index = 0): Promise<void> {
   await openSmokeProject(page, 'A', index);
-  await expect(page.locator('.react-flow__pane').first()).toBeVisible({ timeout: 30_000 });
+  await expect(visibleSpace(page).locator('.react-flow__pane')).toBeVisible({ timeout: 30_000 });
 }
 
 /**
@@ -36,7 +37,7 @@ async function openProject(page: Page, index = 0): Promise<void> {
  */
 async function reloadProject(page: Page): Promise<void> {
   await page.reload();
-  await expect(page.locator('.react-flow__pane').first()).toBeVisible({ timeout: 30_000 });
+  await expect(visibleSpace(page).locator('.react-flow__pane')).toBeVisible({ timeout: 30_000 });
 }
 
 /**
@@ -134,7 +135,7 @@ test('the Agent column width, minimap and snap come back after a reload', async 
   expect(Math.abs(restored - dragged)).toBeLessThanOrEqual(2);
   await expect(toggle(page, /minimap/i)).toHaveAttribute('aria-pressed', 'false');
   await expect(toggle(page, /snap to grid/i)).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.react-flow__minimap')).toHaveCount(0);
+  await expect(visibleSpace(page).locator('.react-flow__minimap')).toHaveCount(0);
 });
 
 test('a folded Studio rail section stays folded after a reload', async ({ page }) => {
@@ -226,7 +227,7 @@ test('another account in the same browser gets its own preferences', async ({ pa
     { timeout: 20_000 },
   );
   await openSmokeProject(page, 'B');
-  await expect(page.locator('.react-flow__pane').first()).toBeVisible({ timeout: 30_000 });
+  await expect(visibleSpace(page).locator('.react-flow__pane')).toBeVisible({ timeout: 30_000 });
   await expect(page.locator(AGENT_COLUMN)).toBeVisible({ timeout: 20_000 });
   await expect(toggle(page, /minimap/i)).toHaveAttribute('aria-pressed', 'true');
 

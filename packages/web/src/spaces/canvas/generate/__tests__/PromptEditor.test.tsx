@@ -34,6 +34,8 @@ import {
 } from '@web/spaces/canvas/generate/PromptEditor';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ReferenceKind } from '@breatic/shared';
+import { CanvasContext } from '@web/spaces/canvas/canvas-context';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 /** Reads the empty paragraph's data-placeholder (what the Placeholder ext renders). */
 function currentPlaceholder(): string | null {
@@ -719,5 +721,91 @@ describe('PromptEditor — what the `@` list shows when it has nothing to list',
       query: 'alp',
     });
     expect(screen.queryByText(EMPTY)).toBeNull();
+  });
+});
+
+describe('PromptEditor — kept across a hidden Space (inner#1235 A13)', () => {
+  const SPACE = 'kept-space';
+
+  /**
+   * A prompt editor on a canvas whose generate panel is open.
+   * @param fragment - The prompt to bind.
+   * @returns The element tree.
+   */
+  function onCanvas(fragment: Y.XmlFragment): React.JSX.Element {
+    return (
+      <CanvasContext.Provider
+        value={{ projectId: 'p', spaceId: SPACE, readOnly: false, myRole: 'editor', caretProvider: null }}
+      >
+        <PromptEditor
+          fragment={fragment}
+          placeholder='Describe'
+          onTextChange={vi.fn()}
+          onAtMentionsChange={vi.fn()}
+          references={[]}
+          referenceKinds={[]}
+          mentionEmptyLabel='No references'
+        />
+      </CanvasContext.Provider>
+    );
+  }
+
+  /**
+   * The editable element on screen.
+   * @returns It, or null.
+   */
+  function editable(): HTMLElement | null {
+    return document.querySelector('.ProseMirror');
+  }
+
+  it('shows the same editor, caret in it, when the panel mounts again in the same opening', async () => {
+    // The editor lives as long as the opening of the panel, not as long as the
+    // component; the caret and the undo history live on the editor.
+    canvasSessions.of(SPACE).getState().openGeneratePanel('n', 'image');
+    const fragment = new Y.Doc().getXmlFragment('prompt');
+    const first = render(onCanvas(fragment));
+    await waitFor(() => expect(editable()).not.toBeNull());
+    const before = editable() as HTMLElement;
+    act(() => before.focus());
+    first.unmount();
+
+    render(onCanvas(fragment));
+
+    expect(editable()).toBe(before);
+    await waitFor(() => expect(document.activeElement).toBe(before));
+  });
+
+  it('still puts the caret back when the panel unmounts again right after mounting', async () => {
+    // A mount undone straight away (Strict Mode) takes the panel down before
+    // the caret could go back in; that second take-down must not read as the
+    // reader having left the prompt.
+    canvasSessions.of(SPACE).getState().openGeneratePanel('n', 'image');
+    const fragment = new Y.Doc().getXmlFragment('prompt');
+    const first = render(onCanvas(fragment));
+    await waitFor(() => expect(editable()).not.toBeNull());
+    const before = editable() as HTMLElement;
+    act(() => before.focus());
+    first.unmount();
+    render(onCanvas(fragment)).unmount();
+
+    render(onCanvas(fragment));
+
+    await waitFor(() => expect(document.activeElement).toBe(before));
+  });
+
+  it('starts a new editor once the panel it was opened in has closed', async () => {
+    canvasSessions.of(SPACE).getState().openGeneratePanel('n', 'image');
+    const fragment = new Y.Doc().getXmlFragment('prompt');
+    const first = render(onCanvas(fragment));
+    await waitFor(() => expect(editable()).not.toBeNull());
+    const before = editable();
+    first.unmount();
+    act(() => canvasSessions.of(SPACE).getState().closeActivePanel());
+    canvasSessions.of(SPACE).getState().openGeneratePanel('n', 'image');
+
+    render(onCanvas(fragment));
+
+    await waitFor(() => expect(editable()).not.toBeNull());
+    expect(editable()).not.toBe(before);
   });
 });

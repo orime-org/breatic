@@ -35,7 +35,7 @@ describe('observeViewportTransform', () => {
   it('calls back when the viewport transform changes', async () => {
     const viewport = mountViewport();
     const onChange = vi.fn();
-    observeViewportTransform(onChange);
+    observeViewportTransform(document, onChange);
 
     viewport.style.transform = 'translate(10px, 20px) scale(1)';
     await delivered();
@@ -46,7 +46,7 @@ describe('observeViewportTransform', () => {
   it('stops calling back once disconnected', async () => {
     const viewport = mountViewport();
     const onChange = vi.fn();
-    const stop = observeViewportTransform(onChange);
+    const stop = observeViewportTransform(document, onChange);
     stop();
 
     viewport.style.transform = 'translate(10px, 20px) scale(1)';
@@ -61,7 +61,7 @@ describe('observeViewportTransform', () => {
     // picking, which move nothing.
     const viewport = mountViewport();
     const onChange = vi.fn();
-    observeViewportTransform(onChange);
+    observeViewportTransform(document, onChange);
 
     viewport.setAttribute('data-something', 'x');
     viewport.className = 'react-flow__viewport canvas-pick-dimmed';
@@ -74,7 +74,7 @@ describe('observeViewportTransform', () => {
     // Unit tests and non-canvas routes have no viewport element; observing
     // must stay silent rather than throw.
     const onChange = vi.fn();
-    const stop = observeViewportTransform(onChange);
+    const stop = observeViewportTransform(document, onChange);
 
     expect(() => stop()).not.toThrow();
     expect(onChange).not.toHaveBeenCalled();

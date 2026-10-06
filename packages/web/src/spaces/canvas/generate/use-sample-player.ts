@@ -26,10 +26,14 @@ export function useSamplePlayer(): SamplePlayer {
   // not darken the button of the sample now on the speakers.
   const attemptRef = React.useRef(0);
 
+  // Runs when the Space is hidden as well as when it closes: the sample stops
+  // and the row says so, so a Space shown again is not left showing a sample
+  // that is no longer playing.
   React.useEffect(
     () => () => {
       audioRef.current?.pause();
       audioRef.current = null;
+      setPlaying(null);
     },
     [],
   );

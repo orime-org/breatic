@@ -17,7 +17,7 @@ import { expect, test, type Locator, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 test.use({ storageState: STATE_FILE.A, viewport: { width: 1400, height: 900 } });
 
@@ -128,8 +128,8 @@ test('a copied picture pastes onto the canvas and lands as a stored picture @nee
   // The node never holds the outside address; the server writes the stored one.
   expect(pasted.content).not.toBe(copied?.content);
   // It lands in the view, the way a pasted file does.
-  const pane = await page.locator('.react-flow').boundingBox();
-  const placed = await page.locator(`.react-flow__node[data-id="${pasted.id}"]`).boundingBox();
+  const pane = await visibleSpace(page).locator('.react-flow').boundingBox();
+  const placed = await visibleSpace(page).locator(`.react-flow__node[data-id="${pasted.id}"]`).boundingBox();
   if (pane === null || placed === null) throw new Error('the canvas or the node is not on screen');
   expect(placed.x).toBeGreaterThanOrEqual(pane.x);
   expect(placed.y).toBeGreaterThanOrEqual(pane.y);

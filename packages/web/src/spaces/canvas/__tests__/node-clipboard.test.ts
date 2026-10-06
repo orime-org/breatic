@@ -11,13 +11,17 @@ import {
   captureClipboard,
   clipboardBoundingBox,
   externalParentAbs,
-  pasteAnchorOffset,
+  pasteOffsetFor,
+  stepPastOccupied,
   textToNode,
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
 
 /** No body text for this case — the parameter is required so omitting it cannot be an accident. */
 const NO_TEXT: ReadonlyMap<string, string> = new Map();
+
+/** The Space the captured nodes are copied on. */
+const SPACE = 'space-a';
 
 describe('node-clipboard', () => {
   it('serializeNodes + parseClipboardNodes round-trip through the marker', () => {
@@ -62,9 +66,10 @@ describe('node-clipboard', () => {
       ['n'],
       [{ id: 'n', type: 'image', position: { x: 5, y: 6 }, data: { name: 'Hero', content: 'a.png' } }],
       NO_TEXT,
+      SPACE,
     );
     expect(out).toEqual([
-      { type: 'image', position: { x: 5, y: 6 }, name: 'Hero', content: 'a.png', id: 'n' },
+      { type: 'image', position: { x: 5, y: 6 }, name: 'Hero', content: 'a.png', id: 'n', space: SPACE },
     ]);
   });
 
@@ -82,6 +87,7 @@ describe('node-clipboard', () => {
         },
       ],
       NO_TEXT,
+      SPACE,
     );
     expect(out).toEqual([
       {
@@ -91,6 +97,7 @@ describe('node-clipboard', () => {
         content: 'clip.mp4',
         coverUrl: 'clip-cover.jpg',
         id: 'v',
+        space: SPACE,
       },
     ]);
   });
@@ -123,6 +130,7 @@ describe('node-clipboard', () => {
         },
       ],
       NO_TEXT,
+      SPACE,
     );
     expect(out[0].width).toBe(300);
     expect(out[0].height).toBe(200);
@@ -136,8 +144,8 @@ describe('node-clipboard', () => {
     // member is captured alone (group not selected) → abs = group(100,100)+rel(20,30).
     // A text node's words live in a shared body now, so they reach the
     // clipboard through this map rather than off the node's data (#1774).
-    expect(captureClipboard(['m'], nodes, new Map([['m', 'hi']]))).toEqual([
-      { type: 'text', position: { x: 120, y: 130 }, content: 'hi', id: 'm', parentId: 'g' },
+    expect(captureClipboard(['m'], nodes, new Map([['m', 'hi']]), SPACE)).toEqual([
+      { type: 'text', position: { x: 120, y: 130 }, content: 'hi', id: 'm', parentId: 'g', space: SPACE },
     ]);
   });
 
@@ -154,7 +162,7 @@ describe('node-clipboard', () => {
     ];
     // Selecting the group AND a member must not emit the member twice; the
     // group's name is carried (R2-B — a duplicated group keeps its name).
-    const out = captureClipboard(['g', 'm1'], nodes, new Map([['m1', 'a']]));
+    const out = captureClipboard(['g', 'm1'], nodes, new Map([['m1', 'a']]), SPACE);
     expect(out).toEqual([
       {
         type: 'group',
@@ -164,9 +172,10 @@ describe('node-clipboard', () => {
         height: 200,
         backgroundColor: 'status-info',
         id: 'g',
+        space: SPACE,
       },
-      { type: 'text', position: { x: 120, y: 130 }, content: 'a', id: 'm1', parentId: 'g' },
-      { type: 'image', position: { x: 160, y: 140 }, id: 'm2', parentId: 'g' },
+      { type: 'text', position: { x: 120, y: 130 }, content: 'a', id: 'm1', parentId: 'g', space: SPACE },
+      { type: 'image', position: { x: 160, y: 140 }, id: 'm2', parentId: 'g', space: SPACE },
     ]);
   });
 
@@ -175,6 +184,7 @@ describe('node-clipboard', () => {
       ['a'],
       [{ id: 'a', type: 'annotation', position: { x: 0, y: 0 }, data: {} }],
       NO_TEXT,
+      SPACE,
     );
     expect(out).toEqual([]);
   });
@@ -297,12 +307,30 @@ describe('node-clipboard', () => {
   });
 });
 
-describe('pasteAnchorOffset — viewport-aware Cmd+V placement (R2-H, Figma-style)', () => {
+describe('pasteOffsetFor — viewport-aware Cmd+V placement (R2-H, Figma-style)', () => {
   // A 1000x800 viewport at flow origin.
   const viewport = { x: 0, y: 0, width: 1000, height: 800 };
+  /**
+   * A payload of one node copied on this Space, covering `box`.
+   * @param box - Its top-left and, optionally, size (a bare point is zero-sized).
+   * @param box.x - Its left.
+   * @param box.y - Its top.
+   * @param box.width - Its width.
+   * @param box.height - Its height.
+   * @returns The payload.
+   */
+  const copied = (box: { x: number; y: number; width?: number; height?: number }): ClipboardNode[] => [
+    {
+      type: 'image',
+      position: { x: box.x, y: box.y },
+      width: box.width ?? 0,
+      height: box.height ?? 0,
+      space: 'here',
+    },
+  ];
 
   it('anchor inside the viewport → paste next to it (+offset)', () => {
-    expect(pasteAnchorOffset({ x: 500, y: 400 }, viewport, 24)).toEqual({
+    expect(pasteOffsetFor(copied({ x: 500, y: 400 }), viewport, 'here')).toEqual({
       dx: 24,
       dy: 24,
     });
@@ -312,7 +340,7 @@ describe('pasteAnchorOffset — viewport-aware Cmd+V placement (R2-H, Figma-styl
     // top-left (1200,400) is past the right edge (1000) and the box has no size,
     // so it does not overlap the viewport → recenter (the old 50%-inflated rule
     // wrongly nudged it +24 and left it off-screen).
-    expect(pasteAnchorOffset({ x: 1200, y: 400 }, viewport, 24)).toEqual({
+    expect(pasteOffsetFor(copied({ x: 1200, y: 400 }), viewport, 'here')).toEqual({
       dx: 500 - 1200,
       dy: 400 - 400,
     });
@@ -321,14 +349,14 @@ describe('pasteAnchorOffset — viewport-aware Cmd+V placement (R2-H, Figma-styl
   it('a box that still partly overlaps the viewport pastes beside it (+offset)', () => {
     // box spans x 900..1100 — its left half is inside the 0..1000 viewport → in view.
     expect(
-      pasteAnchorOffset({ x: 900, y: 400, width: 200, height: 100 }, viewport, 24),
+      pasteOffsetFor(copied({ x: 900, y: 400, width: 200, height: 100 }), viewport, 'here'),
     ).toEqual({ dx: 24, dy: 24 });
   });
 
   it('anchor far outside (scrolled away) → paste at the viewport center', () => {
     // anchor at (5000,5000) is well past the 50%-larger area → recenter.
     // viewport center = (500,400); offset = center − anchor.
-    expect(pasteAnchorOffset({ x: 5000, y: 5000 }, viewport, 24)).toEqual({
+    expect(pasteOffsetFor(copied({ x: 5000, y: 5000 }), viewport, 'here')).toEqual({
       dx: 500 - 5000,
       dy: 400 - 5000,
     });
@@ -338,13 +366,13 @@ describe('pasteAnchorOffset — viewport-aware Cmd+V placement (R2-H, Figma-styl
     // bbox 5000..5300 × 5000..5200 → center (5150, 5100); viewport center
     // (500, 400) → offset moves the bbox center to the viewport center.
     expect(
-      pasteAnchorOffset({ x: 5000, y: 5000, width: 300, height: 200 }, viewport, 24),
+      pasteOffsetFor(copied({ x: 5000, y: 5000, width: 300, height: 200 }), viewport, 'here'),
     ).toEqual({ dx: 500 - 5150, dy: 400 - 5100 });
   });
 
   it('a degenerate (zero-area) viewport falls back to the in-place nudge', () => {
     // No layout measured yet (jsdom / pre-mount) → can't recenter, so nudge.
-    expect(pasteAnchorOffset({ x: 999, y: 999 }, { x: 0, y: 0, width: 0, height: 0 }, 24)).toEqual({
+    expect(pasteOffsetFor(copied({ x: 999, y: 999 }), { x: 0, y: 0, width: 0, height: 0 }, 'here')).toEqual({
       dx: 24,
       dy: 24,
     });
@@ -353,7 +381,7 @@ describe('pasteAnchorOffset — viewport-aware Cmd+V placement (R2-H, Figma-styl
   it('recenter works with a non-origin viewport', () => {
     const vp = { x: 2000, y: 1000, width: 1000, height: 800 };
     // center = (2500,1400); anchor (0,0) far outside → offset = center − anchor.
-    expect(pasteAnchorOffset({ x: 0, y: 0 }, vp, 24)).toEqual({ dx: 2500, dy: 1400 });
+    expect(pasteOffsetFor(copied({ x: 0, y: 0 }), vp, 'here')).toEqual({ dx: 2500, dy: 1400 });
   });
 });
 
@@ -377,5 +405,71 @@ describe('clipboardBoundingBox — the payload bounding box for viewport-center 
     expect(
       clipboardBoundingBox([{ type: 'group', position: { x: 5, y: 6 }, width: 300, height: 200 }]),
     ).toEqual({ x: 5, y: 6, width: 300, height: 200 });
+  });
+});
+
+describe('pasteOffsetFor — where a paste lands on the Space it is pasted into (inner#1235 A20)', () => {
+  const viewport = { x: 0, y: 0, width: 1000, height: 800 };
+  const at = (space?: string): ClipboardNode => ({
+    type: 'image',
+    position: { x: 500, y: 0 },
+    width: 100,
+    height: 100,
+    ...(space === undefined ? {} : { space }),
+  });
+
+  it('pastes a node copied on this Space beside its source when the source is in view', () => {
+    expect(pasteOffsetFor([at('here')], viewport, 'here')).toEqual({ dx: 24, dy: 24 });
+  });
+
+  it('pastes a node copied on another Space at the centre of this view, even where its old place is in view', () => {
+    expect(pasteOffsetFor([at('there')], viewport, 'here')).toEqual({ dx: -50, dy: 350 });
+  });
+
+  it('pastes nodes from a mix of Spaces at the centre of this view', () => {
+    expect(
+      pasteOffsetFor([at('here'), at('there')], viewport, 'here'),
+    ).toEqual({ dx: -50, dy: 350 });
+  });
+
+  it('pastes a node that names no Space at the centre of this view', () => {
+    expect(pasteOffsetFor([at()], viewport, 'here')).toEqual({ dx: -50, dy: 350 });
+  });
+});
+
+describe('captureClipboard — the Space a copy comes from (inner#1235 A20)', () => {
+  it('records the Space on every node it captures', () => {
+    const out = captureClipboard(
+      ['a', 'g'],
+      [
+        { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: {} },
+        { id: 'g', type: 'group', position: { x: 10, y: 10 }, data: {} },
+      ],
+      NO_TEXT,
+      'here',
+    );
+    expect(out.map((node) => node.space)).toEqual(['here', 'here']);
+  });
+});
+
+describe('stepPastOccupied — one rule for every paste (inner#1235 A20)', () => {
+  it('stays put on a free spot', () => {
+    expect(stepPastOccupied([{ x: 0, y: 0 }], [{ x: 100, y: 100 }])).toEqual({ dx: 0, dy: 0 });
+  });
+
+  it('steps down and right until the spot is free', () => {
+    expect(
+      stepPastOccupied([{ x: 0, y: 0 }], [{ x: 0, y: 0 }, { x: 24, y: 24 }, { x: 60, y: 0 }]),
+    ).toEqual({ dx: 48, dy: 48 });
+  });
+
+  it('counts a node less than a step away as on the spot', () => {
+    expect(stepPastOccupied([{ x: 0, y: 0 }], [{ x: 10, y: -10 }])).toEqual({ dx: 24, dy: 24 });
+  });
+
+  it('steps the whole batch when any one of its nodes would land on a taken spot', () => {
+    expect(
+      stepPastOccupied([{ x: 0, y: 0 }, { x: 400, y: 300 }], [{ x: 400, y: 300 }]),
+    ).toEqual({ dx: 24, dy: 24 });
   });
 });

@@ -16,6 +16,7 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { blankEntry, entriesOf, fixedEntries } from '@web/spaces/canvas/generate/fixed-entries';
 import type { ItemFieldControl } from '@web/spaces/canvas/generate/model-controls';
+import { useDraftBox } from '@web/spaces/canvas/generate/use-draft-box';
 
 interface ItemsEditorProps {
   /** The param name, for the change and the test ids. */
@@ -155,7 +156,8 @@ interface FieldCellProps {
  * @returns The cell.
  */
 function FieldCell({ testId, field, placeholder, value, onCommit }: FieldCellProps): React.JSX.Element {
-  const [draft, setDraft] = React.useState<string | null>(null);
+  const held = typeof value === 'string' ? value : '';
+  const box = useDraftBox(held, onCommit);
   if (field.kind === 'choice') {
     const current = field.options.find((o) => o.value === value) ?? field.options[0];
     return (
@@ -179,23 +181,12 @@ function FieldCell({ testId, field, placeholder, value, onCommit }: FieldCellPro
       </Select>
     );
   }
-  const held = typeof value === 'string' ? value : '';
-  /** Writes the draft, when it differs from what the entry holds, and drops it. */
-  const commit = (): void => {
-    if (draft !== null && draft !== held) onCommit(draft);
-    setDraft(null);
-  };
   return (
     <Input
       autoComplete='off'
       data-testid={testId}
       placeholder={placeholder}
-      value={draft ?? held}
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={commit}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' && !event.nativeEvent.isComposing) commit();
-      }}
+      {...box}
       className='h-8 min-w-0 flex-1 text-xs'
     />
   );

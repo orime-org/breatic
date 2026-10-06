@@ -72,7 +72,7 @@ describe('拦截成立时', () => {
 
   it('先建好了、后来才成立 → 这个 hook 不再把它交出去，但销毁不归它管', () => {
     // **销毁的职责已经搬走了**，搬去了 `DocumentInterceptGuard`（测试在
-    // `pages/project/__tests__/SpaceDocSync.intercept.test.tsx`）。
+    // `pages/project/__tests__/OpenSpace.intercept.test.tsx`）。
     //
     // 原因是作用域对不上：这个 hook 只在用户正看着的那个 Space 上跑，而编辑器
     // 是按文档缓存的、故意活过 tab 切换。销毁写在这儿，就永远够不着那些「已经

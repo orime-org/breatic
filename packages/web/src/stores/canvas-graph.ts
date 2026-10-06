@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { Edge, Node } from '@xyflow/react';
-import { create } from 'zustand';
+import { createStore, type StoreApi } from 'zustand/vanilla';
+
+import { createSpaceRegistry } from '@web/stores/space-registry';
 
 /**
- * Canvas graph store (#1647 step 4) — owns the ReactFlow render buffer for the
- * ONE active canvas (`SpaceOutlet` mounts only the active space's body, keyed on
- * its id, so a single canvas renders at a time). Yjs remains the source of
+ * Canvas graph store (#1647 step 4) — owns one canvas's ReactFlow render
+ * buffer. Every open Space that has been on screen keeps its canvas mounted
+ * (inner#1235), so each Space has its own buffer, kept while its tab is open. Yjs remains the source of
  * truth; this holds the local ReactFlow mirror (`flowNodes` / `flowEdges`) so
  * drag stays smooth and selection is per-user.
  *
@@ -22,23 +24,35 @@ import { create } from 'zustand';
  * subscription), instead of the whole component re-running its O(N) derived
  * computations on every change.
  */
-interface CanvasGraphState {
-  /** ReactFlow node render buffer for the active canvas (Yjs mirror). */
+export interface CanvasGraphState {
+  /** ReactFlow node render buffer (Yjs mirror). */
   flowNodes: Node[];
-  /** ReactFlow edge render buffer for the active canvas (Yjs mirror). */
+  /** ReactFlow edge render buffer (Yjs mirror). */
   flowEdges: Edge[];
   /** Apply an updater to the node buffer (reference-stable merge / node changes). */
   setFlowNodes: (updater: (prev: Node[]) => Node[]) => void;
   /** Apply an updater to the edge buffer. */
   setFlowEdges: (updater: (prev: Edge[]) => Edge[]) => void;
-  /** Clear both buffers — run on canvas unmount so a space switch never flashes the previous space's nodes. */
-  reset: () => void;
 }
 
-export const useCanvasGraphStore = create<CanvasGraphState>((set, get) => ({
-  flowNodes: [],
-  flowEdges: [],
-  setFlowNodes: (updater) => set({ flowNodes: updater(get().flowNodes) }),
-  setFlowEdges: (updater) => set({ flowEdges: updater(get().flowEdges) }),
-  reset: () => set({ flowNodes: [], flowEdges: [] }),
-}));
+/** One canvas's render buffer. */
+export type CanvasGraphStore = StoreApi<CanvasGraphState>;
+
+/**
+ * Create one canvas's render buffer.
+ * @returns The store.
+ */
+function createCanvasGraphStore(): CanvasGraphStore {
+  return createStore<CanvasGraphState>((set, get) => ({
+    flowNodes: [],
+    flowEdges: [],
+    setFlowNodes: (updater) => set({ flowNodes: updater(get().flowNodes) }),
+    setFlowEdges: (updater) => set({ flowEdges: updater(get().flowEdges) }),
+  }));
+}
+
+/**
+ * Canvas render buffers live as long as their Space's tab: created on first
+ * use, dropped when the tab is closed, all cleared when the project is left.
+ */
+export const canvasGraphs = createSpaceRegistry<CanvasGraphStore>(createCanvasGraphStore);

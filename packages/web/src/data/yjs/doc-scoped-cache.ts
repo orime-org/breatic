@@ -7,13 +7,14 @@
  *
  * Two kinds of state live only in memory and are never written to the Y.Doc: an
  * undo stack, and an editor instance with its selection and input-method state.
- * Both are lost if a React component owns them, because switching Space tabs
- * remounts the body — `SpaceOutlet` is keyed on the Space id. The text
- * survives, since that IS in the Y.Doc; everything around it silently does not.
+ * Both are lost if a React component owns them and that component unmounts
+ * while its tab keeps the document open — StrictMode's double mount, a body
+ * that shows something else for a while. The text survives, since that IS in
+ * the Y.Doc; everything around it silently does not.
  *
  * Binding such state to the DOCUMENT instead — the same lifetime as the cached
- * `Y.Doc` — is what makes a tab switch harmless. Callers differ only in how
- * their value is built and torn down, so both are parameters.
+ * `Y.Doc` — makes any such remount harmless. Callers differ only in how their
+ * value is built and torn down, so both are parameters.
  */
 
 import type * as Y from 'yjs';

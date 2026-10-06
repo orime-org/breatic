@@ -6,8 +6,8 @@
  *
  * The editor itself is not created here — it belongs to the document, not to
  * this component, and is built once and kept in {@link getDocumentEditor}. See
- * that module for why the editor rather than just its history is what survives
- * a Space tab switch.
+ * that module for why the editor rather than just its history is what outlives
+ * this component.
  *
  * What is left for the hook is the part that genuinely changes while an editor
  * lives: whether it is editable, and whether this client's caret should read as

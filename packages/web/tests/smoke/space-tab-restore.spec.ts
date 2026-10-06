@@ -24,7 +24,7 @@ import { expect, test, type Locator, type Page } from 'playwright/test';
 import { credentialsFor } from '../helpers/credentials';
 import { openSmokeProject, smokeProjectUrl } from '../helpers/project';
 import { signIn, signOut } from '../helpers/session';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import {
   VIEWPORT,
   activeId,
@@ -55,7 +55,7 @@ test('brings three tabs and the one that was showing back through a reload', asy
   await expect.poll(() => activeId(page)).toBe(before[1]);
 
   await page.reload();
-  await expect(page.locator('.react-flow__pane').first()).toBeVisible({
+  await expect(visibleSpace(page).locator('.react-flow__pane:visible')).toBeVisible({
     timeout: 20_000,
   });
   expect(await stripIds(page)).toEqual(before);
@@ -67,7 +67,7 @@ test('keeps the camera of a Space the reader only looked at', async ({ page }) =
   // last saw — the framing this canvas does on a Space it has nothing stored
   // for included. Leaving stores them, so the next visit opens on that view.
   //
-  // The switch is the point: the camera is written when the canvas unmounts,
+  // The switch is the point: the camera is written when the canvas is hidden,
   // and that is the path this walks.
   //
   // The Space needs something in it: framing an empty canvas moves nothing, so
@@ -79,7 +79,7 @@ test('keeps the camera of a Space the reader only looked at', async ({ page }) =
   await page.locator(`[data-testid="space-tab-${looked}"]`).click();
   await expect.poll(() => activeId(page)).toBe(looked as string);
   await seedImageNode(page, projectIdOf(projectUrl), looked as string, { x: 2400, y: 1800 });
-  await expect(page.locator('.react-flow__node')).toHaveCount(1, {
+  await expect(visibleSpace(page).locator('.react-flow__node:visible')).toHaveCount(1, {
     timeout: 20_000,
   });
   // The framing waits for the node to measure, so wait for the camera to
@@ -120,7 +120,7 @@ test('frames a Space it has no camera for', async ({ page }) => {
   await page.locator(`[data-testid="space-tab-${target}"]`).click();
   await expect.poll(() => activeId(page)).toBe(target as string);
   await seedImageNode(page, projectIdOf(projectUrl), target as string, { x: 2400, y: 1800 });
-  await expect(page.locator('.react-flow__node')).toHaveCount(1, { timeout: 20_000 });
+  await expect(visibleSpace(page).locator('.react-flow__node:visible')).toHaveCount(1, { timeout: 20_000 });
 
   await page.evaluate((id) => {
     const raw = window.localStorage.getItem('breatic.projectTabs');
@@ -139,7 +139,7 @@ test('frames a Space it has no camera for', async ({ page }) => {
   expect(await storedViewport(page, target as string)).toBeNull();
 
   await page.reload();
-  await expect(page.locator('.react-flow__pane').first()).toBeVisible({
+  await expect(visibleSpace(page).locator('.react-flow__pane:visible')).toBeVisible({
     timeout: 20_000,
   });
   await page.locator(`[data-testid="space-tab-${target}"]`).click();
@@ -151,7 +151,7 @@ test('frames a Space it has no camera for', async ({ page }) => {
       timeout: 20_000,
     })
     .toBe(true);
-  const node = page.locator('.react-flow__node').first();
+  const node = visibleSpace(page).locator('.react-flow__node:visible').first();
   await expect(node).toBeInViewport({ timeout: 20_000 });
 });
 
@@ -163,7 +163,7 @@ test('comes back to the camera the user aimed, across a switch and a reload', as
   await expect.poll(() => activeId(page)).toBe(first);
 
   // Aim it: a real wheel gesture over the pane, which is how the user pans.
-  const pane = page.locator('.react-flow__pane').first();
+  const pane = visibleSpace(page).locator('.react-flow__pane:visible');
   await pane.hover();
   await page.mouse.wheel(0, 240);
   await page.waitForTimeout(400);
@@ -176,11 +176,41 @@ test('comes back to the camera the user aimed, across a switch and a reload', as
   expect(await camera(page)).toEqual(aimed);
 
   await page.reload();
-  await expect(page.locator('.react-flow__pane').first()).toBeVisible({
+  await expect(visibleSpace(page).locator('.react-flow__pane:visible')).toBeVisible({
     timeout: 20_000,
   });
   expect(await activeId(page)).toBe(first);
   expect(await camera(page)).toEqual(aimed);
+});
+
+test('puts back both the offset and the zoom of a Space switched away from', async ({ page }) => {
+  // A Space switched away from stays mounted and hidden (inner#1235), and its
+  // camera comes back as the reader left it, the zoom as well as the offset.
+  await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await page.locator(`[data-testid="space-tab-${first}"]`).click();
+  await expect.poll(() => activeId(page)).toBe(first);
+
+  const pane = visibleSpace(page).locator('.react-flow__pane:visible');
+  await pane.hover();
+  await page.mouse.wheel(0, 240);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.up('Control');
+  await page.waitForTimeout(400);
+  const aimed = await camera(page);
+  expect(aimed.zoom).not.toBe(1);
+
+  await page.locator(`[data-testid="space-tab-${second}"]`).click();
+  await expect.poll(() => activeId(page)).toBe(second);
+  await page.locator(`[data-testid="space-tab-${first}"]`).click();
+  await expect.poll(() => activeId(page)).toBe(first);
+  await expect.poll(() => camera(page)).toEqual(aimed);
+
+  await page.reload();
+  await expect(visibleSpace(page).locator('.react-flow__pane:visible')).toBeVisible({ timeout: 20_000 });
+  await expect.poll(() => camera(page)).toEqual(aimed);
 });
 
 test('remembers a camera aimed from the minimap, which carries no pointer event', async ({
@@ -196,9 +226,9 @@ test('remembers a camera aimed from the minimap, which carries no pointer event'
   await expect.poll(() => activeId(page)).toBe(target as string);
   // A node to aim at: dragging the minimap of an empty canvas moves nothing.
   await seedImageNode(page, projectIdOf(projectUrl), target as string, { x: 2400, y: 1800 });
-  await expect(page.locator('.react-flow__node')).toHaveCount(1, { timeout: 20_000 });
+  await expect(visibleSpace(page).locator('.react-flow__node:visible')).toHaveCount(1, { timeout: 20_000 });
 
-  const map = page.locator('.react-flow__minimap');
+  const map = visibleSpace(page).locator('.react-flow__minimap:visible');
   await expect(map).toBeVisible();
   const box = await map.boundingBox();
   if (!box) throw new Error('the minimap has no box');
@@ -348,7 +378,7 @@ test('opens on a Space again after the last one on the strip was deleted', async
   expect(JSON.stringify(await stored(page))).toContain(doomed);
 
   await page.goto(projectUrl);
-  await expect(page.locator('.react-flow__pane').first()).toBeVisible({
+  await expect(visibleSpace(page).locator('.react-flow__pane:visible')).toBeVisible({
     timeout: 20_000,
   });
   const back = await stripIds(page);
@@ -407,9 +437,9 @@ test('keeps each project on its own strip when the browser goes back to it', asy
   // And the record still says the same thing for both.
   const firstId = first.slice(-36);
   const record = (await stored(page)) as Record<string, Record<string, {
-    tabs: Array<{ spaceId: string }>;
+    tabs: Array<{ spaceId: string; open: boolean }>;
   }>>;
   const slot = Object.values(record).map((p) => p[firstId]).find(Boolean);
-  expect(slot?.tabs.map((t) => t.spaceId)).toEqual(firstStrip);
+  expect(slot?.tabs.filter((t) => t.open).map((t) => t.spaceId)).toEqual(firstStrip);
   for (const id of secondStrip) expect(firstStrip).not.toContain(id);
 });

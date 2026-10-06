@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import * as React from 'react';
 import { renderHook, act } from '@testing-library/react';
 import * as Y from 'yjs';
 import type { CanvasNodeFields } from '@breatic/shared';
@@ -220,4 +221,41 @@ describe('which notes a peer deleted (#1881)', () => {
     });
     expect(result.current.deletedByPeer('A')).toBe(false);
   });
+
+  it('still knows who wrote while its Space was hidden', () => {
+    // A Space switched away from keeps its canvas, with its effects taken
+    // down (inner#1235). A peer's delete in that time has to be on record when
+    // the Space is shown again: the open panel on that node learns it is
+    // gone only then, and says who removed it.
+    const p = 'proj-hidden';
+    const s = 'space-hidden';
+    const { result, rerender } = renderHook(() => useCanvasSpace(p, s), {
+      wrapper: ({ children }: { children: React.ReactNode }) => (
+        <React.Activity mode={hiddenRef.current ? 'hidden' : 'visible'}>
+          {children}
+        </React.Activity>
+      ),
+    });
+    const doc = getDoc(docName.canvasSpace(p, s));
+    act(() => addNode(p, s, makeNode('A')));
+
+    hiddenRef.current = true;
+    rerender();
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+    peer.transact(() => {
+      peer.getMap<Y.Map<unknown>>('nodesMap').delete('A');
+    });
+    act(() => {
+      Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer), 'peer');
+    });
+    hiddenRef.current = false;
+    rerender();
+
+    expect(result.current.deletedByPeer('A')).toBe(true);
+    expect(result.current.getLastWriteWasLocal()).toBe(false);
+  });
 });
+
+/** Whether the wrapper above hides its Space; a ref so a rerender reads it. */
+const hiddenRef = { current: false };

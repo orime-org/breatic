@@ -197,6 +197,40 @@ describe('SpaceTabBar', () => {
     expect(onActivate).toHaveBeenCalledWith('s2');
   });
 
+  it('switching by a tab leaves focus where the reader was writing', async () => {
+    // A Space shown again finds its editor still open only if the press on
+    // the tab did not take the caret away first (inner#1235 A13).
+    const user = userEvent.setup();
+    const { onActivate } = setup();
+    const space = document.createElement('div');
+    space.setAttribute('data-space-outlet', 's1');
+    const field = document.createElement('textarea');
+    space.appendChild(field);
+    document.body.appendChild(space);
+    field.focus();
+
+    await user.click(screen.getByTestId('space-tab-s2'));
+
+    expect(onActivate).toHaveBeenCalledWith('s2');
+    expect(document.activeElement).toBe(field);
+    space.remove();
+  });
+
+  it('lets a press on a tab take focus from a box outside the Space', async () => {
+    // A tab or project name being renamed is saved when it loses focus, and
+    // pressing another tab is one of the ways a reader leaves it.
+    const user = userEvent.setup();
+    setup();
+    const field = document.createElement('input');
+    document.body.appendChild(field);
+    field.focus();
+
+    await user.click(screen.getByTestId('space-tab-s2'));
+
+    expect(document.activeElement).not.toBe(field);
+    field.remove();
+  });
+
   it('agent toggle button flips chatPanelCollapsed in the UI store', async () => {
     const user = userEvent.setup();
     setup();

@@ -28,6 +28,7 @@ import {
   typeLongBody,
 } from '../helpers/bubble-bar';
 import { bodyView } from '../helpers/link-panel';
+import { VISIBLE_SPACE, DOCUMENT_EDITOR } from '../helpers/space';
 
 for (const scheme of ['light', 'dark'] as const) {
   test(`浮出条的位置和视觉规格（${scheme}）`, async ({ page }) => {
@@ -358,9 +359,9 @@ test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台
     if (m.type() === 'warning') lines.push(m.text());
   });
   const bodyBefore = await page.evaluate(
-    () =>
-      document.querySelector('[data-testid="document-space"] .ProseMirror')
-        ?.innerHTML ?? '',
+    (space: string) =>
+      document.querySelector(`${space} [data-testid="document-space"] .ProseMirror`)
+        ?.innerHTML ?? '', VISIBLE_SPACE
   );
 
   const ai = await hoverOpenSlot(page, 'doc-bubble-ai');
@@ -384,9 +385,9 @@ test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台
   expect(lines.filter((l) => l.includes('not implemented yet'))).toHaveLength(1);
   expect(
     await page.evaluate(
-      () =>
-        document.querySelector('[data-testid="document-space"] .ProseMirror')
-          ?.innerHTML ?? '',
+      (space: string) =>
+        document.querySelector(`${space} [data-testid="document-space"] .ProseMirror`)
+          ?.innerHTML ?? '', VISIBLE_SPACE
     ),
   ).toBe(bodyBefore);
 
@@ -406,12 +407,12 @@ test('按过浮出条之后再点到编辑器外面，条要消失', async ({ pa
   await page.getByTestId('doc-bubble-tool-bold').click();
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
 
-  const stillFocused = await page.evaluate(() => {
+  const stillFocused = await page.evaluate((space: string) => {
     const editor = document.querySelector(
-      '[data-testid="document-space"] .ProseMirror',
+      `${space} [data-testid="document-space"] .ProseMirror`,
     );
     return editor?.contains(document.activeElement) ?? false;
-  });
+  }, VISIBLE_SPACE);
   expect(stillFocused).toBe(true);
 
   // 真的用鼠标点，不是按 Tab。两条路进插件的方式不同：实测点击派发**一次**
@@ -456,8 +457,8 @@ test('正文列右边放不下时，浮出条改成右边缘对齐选区左边�
   // 双击行尾那个词：选区左边到正文列右沿的余量小于条宽，flip 的 crossAxis
   // 就会把 `top-start` 翻成 `top-end`。这是水平方向的自适应，跟竖直方向翻到
   // 下方是同一套机制（定稿 §5.1）。
-  const spot = await page.evaluate(() => {
-    const p = document.querySelector('[data-testid="document-space"] .ProseMirror p');
+  const spot = await page.evaluate((space: string) => {
+    const p = document.querySelector(`${space} [data-testid="document-space"] .ProseMirror p`);
     const text = p?.firstChild as Text;
     const range = document.createRange();
     // 走一遍每个字符，找出**第一行**上最靠右的那一个。写死「倒数第 7 个字符」
@@ -479,12 +480,12 @@ test('正文列右边放不下时，浮出条改成右边缘对齐选区左边�
     range.setEnd(text, first.offset + 1);
     const r = range.getBoundingClientRect();
     return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.dblclick(spot.x, spot.y);
   const bar = page.getByTestId('doc-selection-bubble-bar');
   await expect(bar).toBeVisible({ timeout: 5_000 });
 
-  const m = await page.evaluate(() => {
+  const m = await page.evaluate((space: string) => {
     const el = document.querySelector(
       '[data-testid="doc-selection-bubble-bar"]',
     ) as HTMLElement;
@@ -495,7 +496,7 @@ test('正文列右边放不下时，浮出条改成右边缘对齐选区左边�
     // 得出「放得下」而 flip 已经不翻了，下面三句就红在一个跟被测行为无关的
     // 原因上。
     const viewport = document
-      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)
       ?.getBoundingClientRect();
     return {
       roomToTheRight: box && viewport ? Math.round(viewport.right - box.left) : null,
@@ -504,7 +505,7 @@ test('正文列右边放不下时，浮出条改成右边缘对齐选区左边�
       rightDelta: box ? Math.round(b.right - box.left) : null,
       insideWindow: b.left >= 0 && b.right <= window.innerWidth,
     };
-  });
+  }, VISIBLE_SPACE);
 
   // 先确认这个几何真的造出了「放不下」，否则下面的断言测的是另一件事。
   expect(m.roomToTheRight).toBeLessThan(m.barWidth);
@@ -528,12 +529,12 @@ test('全选时条钉在鼠标那儿，滚动不改变它的屏幕坐标', async
   await scrollBodyTo(page, 0);
 
   // 把鼠标停在正文里一个确定的点上，全选之后条就该出现在这儿。
-  const spot = await page.evaluate(() => {
+  const spot = await page.evaluate((space: string) => {
     const v = document
-      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)
       ?.getBoundingClientRect();
     return { x: Math.round((v?.left ?? 0) + 300), y: Math.round((v?.top ?? 0) + 240) };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.move(spot.x, spot.y);
   await selectWholeDocument(page);
 
@@ -556,7 +557,7 @@ test('全选时鼠标不在正文里就不显示，鼠标不进来滚多远都�
 
   // 先让编辑器拿到焦点（点一下正文），再把鼠标挪到窗口左上角——那儿在正文
   // 显示区外面，是顶部横条那一带。
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
   await page.mouse.move(8, 8);
   await selectWholeDocument(page);
 
@@ -574,19 +575,19 @@ test('全选后鼠标回到正文里，条自己就出来了——不用滚动',
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
 
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
   await page.mouse.move(8, 8);
   await selectWholeDocument(page);
   expect((await readBar(page)).shown).toBe(false);
 
   // 鼠标从正文外面进到正文里。这一下就是触发时刻——user 2026-08-20 把条件
   // 从「每次滚动」改成「鼠标进入正文」，所以不需要滚，也不需要再按全选。
-  const spot = await page.evaluate(() => {
+  const spot = await page.evaluate((space: string) => {
     const v = document
-      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)
       ?.getBoundingClientRect();
     return { x: Math.round((v?.left ?? 0) + 420), y: Math.round((v?.top ?? 0) + 300) };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.move(spot.x, spot.y);
   await page.waitForTimeout(400);
 
@@ -620,15 +621,15 @@ test('全选时鼠标贴着正文区域上沿，条也不画到区域外面', as
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
 
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
 
-  const spot = await page.evaluate(() => {
+  const spot = await page.evaluate((space: string) => {
     const v = document
-      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)
       ?.getBoundingClientRect();
     const top = Math.round(v?.top ?? 0);
     return { x: Math.round((v?.left ?? 0) + 420), y: top + 4, top };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.move(spot.x, spot.y);
   await selectWholeDocument(page);
   await page.waitForTimeout(400);
@@ -648,16 +649,16 @@ test('鼠标离开浏览器之后，键盘全选不把条摆出来', async ({ pa
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
 
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+  await page.locator(`${DOCUMENT_EDITOR} p`).first().click();
 
   // 先在正文里待过，好让「最后一次已知位置」确实落在正文里——不这样的话
   // 断言的就是「从没知道过」，跟这条要测的「知道过又作废」不是一回事。
-  const spot = await page.evaluate(() => {
+  const spot = await page.evaluate((space: string) => {
     const v = document
-      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)
       ?.getBoundingClientRect();
     return { x: Math.round((v?.left ?? 0) + 420), y: Math.round((v?.top ?? 0) + 300) };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.move(spot.x, spot.y);
 
   // 出页面。视口外的坐标让 Chrome 发一个 relatedTarget 为空的 mouseout。
@@ -680,12 +681,12 @@ test('全选摆出条之后点掉选区，再在正文外全选，条不许拿�
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
 
-  const spot = await page.evaluate(() => {
+  const spot = await page.evaluate((space: string) => {
     const v = document
-      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)
       ?.getBoundingClientRect();
     return { x: Math.round((v?.left ?? 0) + 320), y: Math.round((v?.top ?? 0) + 260) };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.move(spot.x, spot.y);
   await selectWholeDocument(page);
   const pinned = await readBar(page);
@@ -721,13 +722,13 @@ test('窗口缩小时，两档的条都跟着动并留在正文区域内', async
     viewRight: number;
     inside: boolean;
   }> =>
-    page.evaluate(() => {
+    page.evaluate((space: string) => {
       const el = document.querySelector(
         '[data-testid="doc-selection-bubble-bar"]',
       ) as HTMLElement;
       const b = el.getBoundingClientRect();
       const v = document
-        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+        .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)!
         .getBoundingClientRect();
       return {
         shown: el.isConnected && getComputedStyle(el).visibility !== 'hidden',
@@ -740,7 +741,7 @@ test('窗口缩小时，两档的条都跟着动并留在正文区域内', async
         // 舍入后都是 1680，精确比较仍判 false。
         inside: b.left >= v.left - 1 && b.right <= v.right + 1,
       };
-    });
+    }, VISIBLE_SPACE);
 
   // 选了一部分：锚点每次现场量，条自然跟着重排后的选区走。
   await selectParagraph(page, 6);
@@ -757,15 +758,15 @@ test('窗口缩小时，两档的条都跟着动并留在正文区域内', async
   // 一个已经在区域外面的位置上。
   await page.setViewportSize({ width: 1680, height: 950 });
   await page.waitForTimeout(600);
-  const pin = await page.evaluate(() => {
+  const pin = await page.evaluate((space: string) => {
     const v = document
-      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+      .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)!
       .getBoundingClientRect();
     // A quarter of the way in. The bar is about 421 wide and fits to the right
     // of that point at both widths, so `shift` leaves it where the anchor puts
     // it and `barLeft` below reads the pin itself.
     return { x: Math.round(v.left + v.width * 0.25), y: Math.round(v.top) + 300 };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.move(pin.x, pin.y);
   await selectWholeDocument(page);
   const allWide = await geo();
@@ -821,7 +822,7 @@ test('the bar leaves view with its line, and comes back with it', async ({ page 
     lineBottom: number;
     viewTop: number;
     viewBottom: number;
-  }> => page.evaluate(() => {
+  }> => page.evaluate((space: string) => {
     const el = document.querySelector(
       '[data-testid="doc-selection-bubble-bar"]',
     ) as HTMLElement | null;
@@ -830,7 +831,7 @@ test('the bar leaves view with its line, and comes back with it', async ({ page 
       ? window.getSelection()!.getRangeAt(0).getBoundingClientRect()
       : null;
     const v = document
-      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)
       ?.getBoundingClientRect();
     return {
       barTop: bar ? Math.round(bar.top) : null,
@@ -840,7 +841,7 @@ test('the bar leaves view with its line, and comes back with it', async ({ page 
       viewTop: v ? Math.round(v.top) : 0,
       viewBottom: v ? Math.round(v.bottom) : 0,
     };
-  });
+  }, VISIBLE_SPACE);
 
   const start = await measure();
 
@@ -893,13 +894,13 @@ test('条的左右不伸出正文显示区——选了一部分和全选各量�
     viewLeft: number;
     viewRight: number;
   }> =>
-    page.evaluate(() => {
+    page.evaluate((space: string) => {
       const el = document.querySelector(
         '[data-testid="doc-selection-bubble-bar"]',
       ) as HTMLElement;
       const b = el.getBoundingClientRect();
       const v = document
-        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+        .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)!
         .getBoundingClientRect();
       return {
         barLeft: Math.round(b.left),
@@ -907,7 +908,7 @@ test('条的左右不伸出正文显示区——选了一部分和全选各量�
         viewLeft: Math.round(v.left),
         viewRight: Math.round(v.right),
       };
-    });
+    }, VISIBLE_SPACE);
 
   // 选了一部分：选区必须真的做到正文列最右端，否则条离右边界还有几百像素，
   // 两条断言恒真、`shift` 的 boundary 删掉都不会红（第八轮对抗查实）。
@@ -917,8 +918,8 @@ test('条的左右不伸出正文显示区——选了一部分和全选各量�
   // 外边距随窗口宽度变（正文列有最大宽度，窗口越宽外边距越大）。所以下面的
   // 前置断言按「条被推到了列的右端、不是停在列中间」来写，不钉某个具体像素
   // 数——那个数只在量它的那个视口下成立。
-  const spot = await page.evaluate(() => {
-    const p = document.querySelector('[data-testid="document-space"] .ProseMirror p');
+  const spot = await page.evaluate((space: string) => {
+    const p = document.querySelector(`${space} [data-testid="document-space"] .ProseMirror p`);
     const text = p?.firstChild as Text;
     const range = document.createRange();
     const first = { top: 0, right: 0, offset: 0 };
@@ -937,7 +938,7 @@ test('条的左右不伸出正文显示区——选了一部分和全选各量�
     range.setEnd(text, first.offset + 1);
     const r = range.getBoundingClientRect();
     return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.dblclick(spot.x, spot.y);
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible({ timeout: 5_000 });
   const partial = await edges();
@@ -947,12 +948,12 @@ test('条的左右不伸出正文显示区——选了一部分和全选各量�
   expect(partial.barLeft).toBeGreaterThanOrEqual(partial.viewLeft);
 
   // 全选：鼠标停在正文可见区右边缘往里 2px，条整个得被推回区域内。
-  const rightEdge = await page.evaluate(() => {
+  const rightEdge = await page.evaluate((space: string) => {
     const v = document
-      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+      .querySelector(`${space} .doc-body-scroller [data-radix-scroll-area-viewport]`)!
       .getBoundingClientRect();
     return { x: Math.round(v.right) - 2, y: Math.round(v.top) + 200 };
-  });
+  }, VISIBLE_SPACE);
   await page.mouse.move(rightEdge.x, rightEdge.y);
   await selectWholeDocument(page);
   const all = await edges();
@@ -1048,7 +1049,7 @@ test('浮出条第一次画出来就在它最终的位置上', async ({ page }) 
   // bar's entry would be covered by a gate that has nothing to do with where
   // it is placed.
   await page
-    .locator('[data-testid="document-space"] .ProseMirror p')
+    .locator(`${DOCUMENT_EDITOR} p`)
     .nth(5)
     .click();
   await expect(page.getByTestId('doc-selection-bubble-bar')).not.toBeAttached();
@@ -1086,7 +1087,7 @@ test('往上拖着选到正文区顶端，松手后条整个在正文区里', as
   await scrollBodyTo(page, 400);
 
   const view = await bodyView(page);
-  const paragraphs = page.locator('[data-testid="document-space"] .ProseMirror p');
+  const paragraphs = page.locator(`${DOCUMENT_EDITOR} p`);
   const startBox = (await paragraphs
     .filter({ hasText: 'line' })
     .first()

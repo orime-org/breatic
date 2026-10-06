@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import { expect, test, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 let page: Page;
 let spaceId = '';
@@ -75,7 +75,7 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
   // Pan away from where the space opened. A reader asking for this has been
   // working somewhere, and what lands has to be in front of THEM -- framing
   // the group against a canvas that has not been moved proves nothing.
-  const pane = page.locator('.react-flow__pane');
+  const pane = visibleSpace(page).locator('.react-flow__pane');
   const paneBox = await pane.boundingBox();
   await page.mouse.move(
     (paneBox?.x ?? 0) + (paneBox?.width ?? 0) / 2,
@@ -136,25 +136,25 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
     `the card shows no credits and no run time. Read: "${cardText}"`,
   ).toBe(0);
 
-  const before = await page.locator('.react-flow__node').count();
+  const before = await visibleSpace(page).locator('.react-flow__node').count();
   await card.getByTestId('proposal-use').click();
 
   // Two nodes, the group the canvas puts two or more of them into, and the
   // wire between them. Counted rather than matched by id: the ids are minted
   // by the canvas as it places them.
-  await expect(page.locator('.react-flow__node')).toHaveCount(before + 3, {
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(before + 3, {
     timeout: 20_000,
   });
-  await expect(page.locator('.react-flow__node-group')).toHaveCount(1, {
+  await expect(visibleSpace(page).locator('.react-flow__node-group')).toHaveCount(1, {
     timeout: 20_000,
   });
-  await expect(page.locator('.react-flow__edge')).toHaveCount(1, { timeout: 20_000 });
+  await expect(visibleSpace(page).locator('.react-flow__edge')).toHaveCount(1, { timeout: 20_000 });
 
   // Every node of the group is on screen. The empty ones are what the reader
   // is being asked to fill, so a group placed where they have to go looking
   // for it is not the one press this feature promises.
   const view = await pane.boundingBox();
-  const nodes = await page.locator('.react-flow__node').all();
+  const nodes = await visibleSpace(page).locator('.react-flow__node').all();
   const offScreen: string[] = [];
   for (const node of nodes) {
     const box = await node.boundingBox();
@@ -175,7 +175,7 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
   // What the reader is left looking at: the node that generates, selected,
   // with its panel open and the prompt already in the box. The bracket is
   // what says the rest is theirs to do.
-  const selected = page.locator('.react-flow__node.selected');
+  const selected = visibleSpace(page).locator('.react-flow__node.selected');
   await expect(selected).toHaveCount(1, { timeout: 20_000 });
   const prompt = page.getByTestId('generate-prompt-editor');
   await expect(prompt).toBeVisible({ timeout: 20_000 });
@@ -192,10 +192,10 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
   // on the canvas and this reading of it meaningless.
   await pane.click({ position: { x: 24, y: 24 } });
   await page.keyboard.press('ControlOrMeta+z');
-  await expect(page.locator('.react-flow__node')).toHaveCount(before, {
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(before, {
     timeout: 20_000,
   });
-  await expect(page.locator('.react-flow__edge')).toHaveCount(0, {
+  await expect(visibleSpace(page).locator('.react-flow__edge')).toHaveCount(0, {
     timeout: 20_000,
   });
 });

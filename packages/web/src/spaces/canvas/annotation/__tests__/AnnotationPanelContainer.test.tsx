@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
+import { Activity } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlowProvider } from '@xyflow/react';
 
@@ -13,6 +14,7 @@ import { CanvasActionsContext } from '@web/spaces/canvas/canvas-actions';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useCanvasStore } from '@web/stores/canvas';
 import { useUIStore } from '@web/stores/ui';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 vi.mock('@web/data/yjs/canvas-space', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -106,13 +108,14 @@ function mount(
  * @returns True while the slot holds this note.
  */
 const stillOpen = (): boolean =>
-  useCanvasStore.getState().panelKind === 'annotation';
+  canvasSessions.of('s1').getState().panelKind === 'annotation';
 
 beforeEach(() => {
   warn.mockClear();
   useCanvasStore.getState().reset();
+  canvasSessions.clear();
   useUIStore.setState({ activeRegion: 'space' });
-  useCanvasStore.getState().openAnnotationPanel('n1');
+  canvasSessions.of('s1').getState().openAnnotationPanel('n1');
 });
 
 /**
@@ -127,7 +130,7 @@ function holdADraft(
   // A closed draft only ever reaches the store carrying a drop notice — the
   // sticky stores `null` for a closed one without it (`AnnotationSticky.tsx`),
   // so a plain closed draft is a shape nothing can produce.
-  useCanvasStore.getState().setAnnotationDraft('n1', {
+  canvasSessions.of('s1').getState().setAnnotationDraft('n1', {
     draft:
       mode === 'closed'
         ? { mode, use, text: '', opened: '', dropped: 'targetGone' }
@@ -135,6 +138,37 @@ function holdADraft(
     target: use === 'edit' ? { kind: 'body' } : null,
   });
 }
+
+describe('an open sticky across a switch of Space', () => {
+  // inner#1235 A14: a Space switched away from is hidden, not left. The note
+  // stays expanded and a rewrite half written stays held; only closing the
+  // tab drops them, and that drops this canvas's whole session.
+  it('stays expanded with its rewrite held when its Space is hidden and shown', () => {
+    holdADraft('typing', 'edit');
+    const inSpace = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+      <Activity mode={mode}>{tree(NODES)}</Activity>
+    );
+    const view = render(inSpace('visible'));
+
+    act(() => view.rerender(inSpace('hidden')));
+    act(() => view.rerender(inSpace('visible')));
+
+    expect(stillOpen()).toBe(true);
+    expect(canvasSessions.of('s1').getState().annotationDrafts['n1']).toBeDefined();
+  });
+
+  it('collapses the note it leaves when another note is opened', () => {
+    const board = [...NODES, { ...NODES[0], id: 'n2' } as CanvasNodeView];
+    holdADraft('typing', 'edit');
+    const view = mount(board);
+
+    act(() => canvasSessions.of('s1').getState().openAnnotationPanel('n2'));
+    view.rerender(tree(board));
+
+    expect(canvasSessions.of('s1').getState().annotationDrafts['n1']).toBeUndefined();
+    expect(canvasSessions.of('s1').getState().panelHostId).toBe('n2');
+  });
+});
 
 describe('a note that goes missing under an open sticky', () => {
   it('says so when a collaborator deleted it while somebody was writing', () => {
@@ -258,7 +292,7 @@ describe('Escape, as the sticky answers it', () => {
     holdADraft('typing', 'reply');
     mount();
     fireEvent.keyDown(document.body, { key: 'Escape' });
-    expect(useCanvasStore.getState().annotationDrafts['n1']?.draft.text).toBe(
+    expect(canvasSessions.of('s1').getState().annotationDrafts['n1']?.draft.text).toBe(
       'half an answer',
     );
   });
@@ -268,7 +302,7 @@ describe('Escape, as the sticky answers it', () => {
     holdADraft('typing', 'edit');
     mount();
     fireEvent.keyDown(document.body, { key: 'Escape' });
-    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
+    expect(canvasSessions.of('s1').getState().annotationDrafts['n1']).toBeUndefined();
   });
 
   it('leaves it open while the note tool is armed, which the press is for', () => {
@@ -276,7 +310,7 @@ describe('Escape, as the sticky answers it', () => {
     // reader just picked up sits over the note they opened earlier, so the
     // press puts the tool down and the next one collapses the note. Measured
     // before this, with both listening: one press did both.
-    useCanvasStore.getState().startAnnotationPlacement();
+    canvasSessions.of('s1').getState().startAnnotationPlacement();
     mount();
     fireEvent.keyDown(document.body, { key: 'Escape' });
     expect(stillOpen()).toBe(true);
@@ -290,8 +324,8 @@ describe('what a sticky closing does to the box that was open', () => {
     // was, with Post and Cancel still on it.
     holdADraft('typing', 'reply');
     const view = mount();
-    act(() => useCanvasStore.getState().closeActivePanel());
-    expect(useCanvasStore.getState().annotationDrafts['n1']?.draft.text).toBe(
+    act(() => canvasSessions.of('s1').getState().closeActivePanel());
+    expect(canvasSessions.of('s1').getState().annotationDrafts['n1']?.draft.text).toBe(
       'half an answer',
     );
     view.unmount();
@@ -302,8 +336,8 @@ describe('what a sticky closing does to the box that was open', () => {
     // answer: the words stay where they were typed.
     holdADraft('typing', 'reply');
     const view = mount();
-    act(() => useCanvasStore.getState().openAnnotationPanel('n2'));
-    expect(useCanvasStore.getState().annotationDrafts['n1']?.draft.text).toBe(
+    act(() => canvasSessions.of('s1').getState().openAnnotationPanel('n2'));
+    expect(canvasSessions.of('s1').getState().annotationDrafts['n1']?.draft.text).toBe(
       'half an answer',
     );
     view.unmount();
@@ -317,9 +351,9 @@ describe('what a sticky closing does to the box that was open', () => {
     holdADraft('typing', 'reply');
     const board = [...NODES, { ...NODES[0], id: 'n2' } as CanvasNodeView];
     const view = mount(board);
-    act(() => useCanvasStore.getState().openAnnotationPanel('n2'));
-    expect(useCanvasStore.getState().panelHostId).toBe('n2');
-    expect(useCanvasStore.getState().panelKind).toBe('annotation');
+    act(() => canvasSessions.of('s1').getState().openAnnotationPanel('n2'));
+    expect(canvasSessions.of('s1').getState().panelHostId).toBe('n2');
+    expect(canvasSessions.of('s1').getState().panelKind).toBe('annotation');
     view.unmount();
   });
 
@@ -329,8 +363,8 @@ describe('what a sticky closing does to the box that was open', () => {
     // collaborator's newer body is what the next rewrite starts from.
     holdADraft('typing', 'edit');
     const view = mount();
-    act(() => useCanvasStore.getState().closeActivePanel());
-    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
+    act(() => canvasSessions.of('s1').getState().closeActivePanel());
+    expect(canvasSessions.of('s1').getState().annotationDrafts['n1']).toBeUndefined();
     view.unmount();
   });
 
@@ -341,7 +375,7 @@ describe('what a sticky closing does to the box that was open', () => {
     holdADraft('typing');
     const view = mount();
     view.rerender(tree(NODES));
-    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeDefined();
+    expect(canvasSessions.of('s1').getState().annotationDrafts['n1']).toBeDefined();
     view.unmount();
   });
 
@@ -350,24 +384,15 @@ describe('what a sticky closing does to the box that was open', () => {
     holdADraft('typing');
     const view = mount();
     act(() =>
-      useCanvasStore.getState().setAnnotationDraft('n1', {
+      canvasSessions.of('s1').getState().setAnnotationDraft('n1', {
         draft: { mode: 'typing', use: 'reply', text: 'half an answer!', opened: '' },
         target: null,
       }),
     );
-    expect(useCanvasStore.getState().annotationDrafts['n1']?.draft.text).toBe(
+    expect(canvasSessions.of('s1').getState().annotationDrafts['n1']?.draft.text).toBe(
       'half an answer!',
     );
     view.unmount();
   });
 
-  it('closes the slot when the canvas goes away under it', () => {
-    // Switching to another Space tab unmounts this canvas with the sticky open
-    // — §8.7.3's 「切 Space / 组件卸载 → 收起」 row. The slot is reset per
-    // PROJECT, so without this the sticky was drawn open again on the way back.
-    holdADraft('typing');
-    const view = mount();
-    view.unmount();
-    expect(useCanvasStore.getState().panelKind).toBeNull();
-  });
 });

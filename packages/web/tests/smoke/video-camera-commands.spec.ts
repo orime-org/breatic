@@ -19,7 +19,7 @@ import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
-import { createSpace, deleteSpace } from '../helpers/space';
+import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
 
 test.use({ viewport: { width: 1440, height: 1200 } });
 
@@ -44,15 +44,15 @@ const option = (name: string): string =>
  * @returns The node's id.
  */
 async function seedVideoNode(p: Page): Promise<string> {
-  await expect(p.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await expect(visibleSpace(p).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   const nodeId = crypto.randomUUID();
   const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
-  const origin = await p.evaluate(() => {
-    const vp = document.querySelector('.react-flow__viewport');
+  const origin = await p.evaluate((space) => {
+    const vp = document.querySelector(`${space} .react-flow__viewport`);
     if (!(vp instanceof HTMLElement)) throw new Error('canvas not mounted');
     const m = new DOMMatrixReadOnly(getComputedStyle(vp).transform);
     return { tx: m.e, ty: m.f, scale: m.a };
-  });
+  }, VISIBLE_SPACE);
   await p.evaluate(
     async ([pid, sid, id, x, y, at]: [string, string, string, number, number, string]) => {
       const canvas = (await import(/* @vite-ignore */ at)) as {
@@ -80,7 +80,7 @@ async function seedVideoNode(p: Page): Promise<string> {
  * @param model - The model to pick.
  */
 async function openOn(p: Page, nodeId: string, mode: 't2v' | 'multi-shot', model: string): Promise<void> {
-  const node = p.locator(`.react-flow__node[data-id="${nodeId}"]`);
+  const node = visibleSpace(p).locator(`.react-flow__node[data-id="${nodeId}"]`);
   await expect(node).toBeVisible({ timeout: 15_000 });
   await node.click({ button: 'right' });
   await p.getByTestId('node-menu-generate').click();

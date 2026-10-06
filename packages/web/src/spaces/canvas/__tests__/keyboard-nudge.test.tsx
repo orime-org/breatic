@@ -19,7 +19,7 @@ import { createGroupNode } from '@web/spaces/canvas/node-factory';
 import { GROUP_PADDING } from '@web/spaces/canvas/group-geometry';
 import { useCanvasStore, useUIStore } from '@web/stores';
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
-import { useCanvasGraphStore } from '@web/stores/canvas-graph';
+import { canvasGraphs } from '@web/stores/canvas-graph';
 import {
   clickNode,
   mockSpace,
@@ -44,6 +44,18 @@ vi.mock('@web/data/yjs/use-socket', () => ({
     }),
   ),
 }));
+vi.mock('@web/data/yjs/space-connection', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@web/data/yjs/space-connection')>();
+  const { useSocket } = await import('@web/data/yjs/use-socket');
+  return {
+    ...actual,
+    // The body reads the connection its tab holds; here that is whatever the
+    // `useSocket` stub above answers.
+    useSpaceConnection: () => useSocket({ name: '', doc: undefined as never }),
+  };
+});
+
 
 const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 
@@ -139,8 +151,7 @@ function groupWidth(): unknown {
 function selectAll(ids: ReadonlyArray<string>): void {
   const picked = new Set(ids);
   act(() => {
-    useCanvasGraphStore
-      .getState()
+    canvasGraphs.of('s').getState()
       .setFlowNodes((prev) =>
         prev.map((n) => ({ ...n, selected: picked.has(n.id) })),
       );

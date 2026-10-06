@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { PickSession } from '@web/stores/canvas';
+import type { PickSession } from '@web/stores/canvas-session';
 
 /**
  * The three local sources that together say which nodes this client is

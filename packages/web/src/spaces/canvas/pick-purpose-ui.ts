@@ -24,7 +24,7 @@
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { STYLE_SLOT } from '@web/spaces/canvas/generate/style-slot';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import type { PickPurpose } from '@web/stores/canvas';
+import type { PickPurpose } from '@web/stores/canvas-session';
 
 /** The panel kinds that own pick tools (the other panel kinds start none). */
 type PickingPanelKind = 'generate' | 'generateVideo' | 'generateAudio';

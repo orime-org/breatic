@@ -11,6 +11,7 @@ import {
   createGroup,
   getPromptFragment,
   getTextBody,
+  readNodeCorners,
   runCanvasUndoBatch,
   setGroupBackground,
   setNodeMode,
@@ -27,6 +28,7 @@ import {
 import { planFlowLayout, type Spot } from '@web/spaces/canvas/lib/place-flow';
 import {
   cloneForPaste,
+  stepPastOccupied,
   textToNode,
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
@@ -79,13 +81,16 @@ export interface NodeCreation {
     position: { x: number; y: number },
   ) => CreatedUploadNode;
   /**
-   * Paste plain text as a new text node CENTRED on a point; returns its id.
-   * The pasted text becomes the node's content.
+   * Paste plain text as a new text node CENTRED on a point, stepped past any
+   * node already on that spot; returns its id. The pasted text becomes the
+   * node's content.
    */
   pasteTextAt: (text: string, position: { x: number; y: number }) => string;
   /**
    * Paste cloned clipboard nodes (fresh ids, positions shifted by `offset`
-   * so relative layout is preserved); returns the new node ids in order.
+   * so relative layout is preserved, then the whole batch stepped past any
+   * node already where one of them would land); returns the new node ids in
+   * order.
    * The duplicate path (which can re-home a clone into an existing Group +
    * grow it) is orchestrated by the canvas, not here.
    */
@@ -93,6 +98,12 @@ export interface NodeCreation {
     nodes: ReadonlyArray<ClipboardNode>,
     offset: { dx: number; dy: number },
   ) => string[];
+  /**
+   * How far a paste whose nodes would land at `corners` (their top-lefts, in
+   * flow coordinates) steps down and right past the nodes already on this
+   * Space. Every paste goes through it (inner#1235 A20).
+   */
+  stepPaste: (corners: ReadonlyArray<{ x: number; y: number }>) => { dx: number; dy: number };
   /**
    * Place a whole proposed flow around a point, wired and configured.
    * One press is ONE undo entry: a half-placed flow -- nodes without their
@@ -195,24 +206,42 @@ export function useNodeCreation(
     },
     [projectId, spaceId, userId],
   );
+  // Every paste steps past the nodes already on its spot, so it shows
+  // (inner#1235 A20). The spot is read from the document, so a paste made a
+  // moment ago counts before it has rendered.
+  const stepPaste = React.useCallback(
+    (corners: ReadonlyArray<{ x: number; y: number }>): { dx: number; dy: number } =>
+      stepPastOccupied(corners, readNodeCorners(projectId, spaceId)),
+    [projectId, spaceId],
+  );
   const pasteTextAt = React.useCallback(
     (text: string, position: { x: number; y: number }): string => {
+      const topLeft = centerToTopLeft(position, EMPTY_NODE_SIZE);
+      const step = stepPaste([topLeft]);
       const node = textToNode(
         text,
-        centerToTopLeft(position, EMPTY_NODE_SIZE),
+        { x: topLeft.x + step.dx, y: topLeft.y + step.dy },
         userId,
       );
       addNode(projectId, spaceId, node);
       return node.id;
     },
-    [projectId, spaceId, userId],
+    [projectId, spaceId, userId, stepPaste],
   );
   const pasteNodesAt = React.useCallback(
     (
       nodes: ReadonlyArray<ClipboardNode>,
       offset: { dx: number; dy: number },
     ): string[] => {
-      const cloned = cloneForPaste(nodes, userId, offset);
+      // Clipboard positions are absolute, Group members included, so each one
+      // plus the offset is where that node will be painted.
+      const step = stepPaste(
+        nodes.map((node) => ({ x: node.position.x + offset.dx, y: node.position.y + offset.dy })),
+      );
+      const cloned = cloneForPaste(nodes, userId, {
+        dx: offset.dx + step.dx,
+        dy: offset.dy + step.dy,
+      });
       // One paste is ONE undo entry — a group + its members (or a multi-node
       // selection) must undo as a unit, not node-by-node (mirrors the duplicate
       // path's batch).
@@ -239,7 +268,7 @@ export function useNodeCreation(
       });
       return cloned.map((node) => node.id);
     },
-    [projectId, spaceId, userId, t],
+    [projectId, spaceId, userId, t, stepPaste],
   );
   const placeProposalAt = React.useCallback(
     (proposal: CanvasProposal, start: Spot): PlacedProposal => {
@@ -344,6 +373,7 @@ export function useNodeCreation(
     createUploadNodeAt,
     pasteTextAt,
     pasteNodesAt,
+    stepPaste,
     placeProposalAt,
   };
 }

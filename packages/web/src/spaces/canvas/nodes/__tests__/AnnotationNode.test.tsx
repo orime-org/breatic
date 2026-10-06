@@ -13,6 +13,7 @@ import { AnnotationNode } from '@web/spaces/canvas/nodes/AnnotationNode';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { PIN_SCREEN_SIZE } from '@web/spaces/canvas/annotation/pin-geometry';
 import { useCanvasStore } from '@web/stores/canvas';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 const NAMES = new Map([
   ['u-me', { id: 'u-me', name: 'Mika', email: '', avatarUrl: 'mika.png' }],
@@ -73,6 +74,7 @@ function mount(
 describe('what an annotation is on the canvas', () => {
   beforeEach(() => {
     useCanvasStore.getState().reset();
+    canvasSessions.clear();
   });
 
   it('is a pin, and the sticky is not on the board with it', () => {
@@ -113,7 +115,7 @@ describe('what an annotation is on the canvas', () => {
     const user = userEvent.setup();
     mount();
     await user.click(screen.getByTestId('annotation-pin'));
-    const s = useCanvasStore.getState();
+    const s = canvasSessions.of('').getState();
     expect(s.panelHostId).toBe('n1');
     expect(s.panelKind).toBe('annotation');
   });
@@ -124,6 +126,6 @@ describe('what an annotation is on the canvas', () => {
     const pin = screen.getByTestId('annotation-pin');
     await user.click(pin);
     await user.click(pin);
-    expect(useCanvasStore.getState().panelKind).toBeNull();
+    expect(canvasSessions.of('').getState().panelKind).toBeNull();
   });
 });

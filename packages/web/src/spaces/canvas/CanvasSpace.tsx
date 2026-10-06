@@ -28,6 +28,7 @@ import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
 import * as React from 'react';
 import { createPortal } from 'react-dom';
+import { useStore as useStoreOf } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { toast } from '@web/lib/toast';
@@ -155,6 +156,7 @@ import {
 import {
   EMPTY_NODE_SIZE,
   GROUP_MIN_SIZE,
+  groupRectForMembers,
   GROUP_PADDING,
   groupResizeBounds,
   planGroupGrowth,
@@ -217,11 +219,13 @@ import {
 import {
   CanvasContext,
   type CanvasContextValue,
+  canvasRootOf,
   useCanvasContext,
+  useCanvasSession,
+  useCanvasSessionStore,
 } from '@web/spaces/canvas/canvas-context';
 import { useUserProfiles } from '@web/data/use-user-profiles';
-import { useSocket } from '@web/data/yjs/use-socket';
-import { docName, getDoc } from '@web/data/yjs/manager';
+import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
 import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
@@ -256,12 +260,14 @@ import {
   cloneForPaste,
   externalParentAbs,
   canvasTakesPaste,
+  PASTE_OFFSET_PX,
   pasteOffsetFor,
   parseClipboardNodes,
   serializeNodes,
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
 import {
+  centerToTopLeft,
   createAnnotationNode,
   createGroupNode,
   isCreatableNodeType,
@@ -270,14 +276,12 @@ import {
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
-import { isProposalIntent, useCanvasStore, taskPanelOpenFor } from '@web/stores';
-import { useCanvasGraphStore } from '@web/stores/canvas-graph';
+import { isProposalIntent, useCanvasStore } from '@web/stores';
+import { canvasGraphs } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
-import {
-  readSpaceViewport,
-  writeSpaceViewport,
-} from '@web/lib/project-tabs-storage';
+import { readSpaceViewport, writeSpaceViewport } from '@web/lib/project-tabs-storage';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
+import { taskPanelOpenFor, type CanvasSessionStore } from '@web/stores/canvas-session';
 
 /** Node types a focus pick can crop (#1782 images, #1987 video frames). */
 const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
@@ -430,9 +434,6 @@ const UPLOAD_ACCEPT: Partial<Record<Modality, string>> = {
  */
 const STAGGER_STEP_PX = 24;
 const STAGGER_WRAP = 8;
-
-/** Pixels a pasted node is shifted from its source so it doesn't fully cover it. */
-const PASTE_OFFSET_PX = 24;
 
 /**
  * Operation id for the drop/upload batch prefix in the per-space operation
@@ -794,23 +795,12 @@ function CanvasSpaceInner({
   // The ReactFlow render buffer lives in a dedicated plain zustand store
   // (#1647 step 4), not local state, so discrete consumers can subscribe to
   // just their slice instead of the whole component re-running on every change.
-  const flowNodes = useCanvasGraphStore((s) => s.flowNodes);
-  const setFlowNodes = useCanvasGraphStore((s) => s.setFlowNodes);
-  const flowEdges = useCanvasGraphStore((s) => s.flowEdges);
-  const setFlowEdges = useCanvasGraphStore((s) => s.setFlowEdges);
-  // Clear the shared buffer BEFORE this space's first paint. A space switch
-  // remounts this body (keyed on space id), but the buffer is a global store
-  // that survives the remount, so it still holds the PREVIOUS space's nodes on
-  // the new mount. A passive unmount cleanup runs only after the next space has
-  // already painted → the new space flashes the old nodes for one frame
-  // (adversarial finding, #1647). `useLayoutEffect` on mount resets before
-  // paint, restoring the pre-store `useState([])` empty start; the mirror
-  // effect below then fills it with this space's nodes. Also reset on unmount so
-  // a closed space leaves nothing lingering in the singleton.
-  React.useLayoutEffect(() => {
-    useCanvasGraphStore.getState().reset();
-    return () => useCanvasGraphStore.getState().reset();
-  }, []);
+  // One per Space, kept while its tab is open (inner#1235).
+  const graphStore = canvasGraphs.of(spaceId);
+  const flowNodes = useStoreOf(graphStore, (s) => s.flowNodes);
+  const setFlowNodes = useStoreOf(graphStore, (s) => s.setFlowNodes);
+  const flowEdges = useStoreOf(graphStore, (s) => s.flowEdges);
+  const setFlowEdges = useStoreOf(graphStore, (s) => s.setFlowEdges);
   const containerRef = React.useRef<HTMLDivElement>(null);
   // Presence: one awareness for the space, shared with the carets.
   const { caretProvider } = useCanvasContext();
@@ -852,26 +842,23 @@ function CanvasSpaceInner({
   // store for the toolbar's read-out, and run the toolbar's commands (posted
   // through the store mailbox) against ReactFlow here, where the API exists.
   const setZoom = useCanvasStore((s) => s.setZoom);
-  // The live zoom, for the new-note box: it hangs in the viewport portal and
-  // would otherwise scale with the board, while the sticky it turns into holds
-  // one screen size (#1881 §8.7.4).
-  const zoom = useCanvasStore((s) => s.zoom);
   // Minimap visibility (single source, #1548) — toggled by the viewport
   // toolbar, consumed here to mount/unmount the map.
   const minimapVisible = useCanvasStore((s) => s.minimapVisible);
   const snapToGrid = useCanvasStore((s) => s.snapToGrid);
-  const openGeneratePanel = useCanvasStore((s) => s.openGeneratePanel);
-  const openEmptyImagePanel = useCanvasStore((s) => s.openEmptyImagePanel);
-  const openHistoryPanel = useCanvasStore((s) => s.openHistoryPanel);
-  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
-  const panelHostId = useCanvasStore((s) => s.panelHostId);
-  const pickSession = useCanvasStore((s) => s.pickSession);
+  const openGeneratePanel = useCanvasSession((s) => s.openGeneratePanel);
+  const openEmptyImagePanel = useCanvasSession((s) => s.openEmptyImagePanel);
+  const openHistoryPanel = useCanvasSession((s) => s.openHistoryPanel);
+  const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
+  const panelHostId = useCanvasSession((s) => s.panelHostId);
+  const panelKind = useCanvasSession((s) => s.panelKind);
+  const pickSession = useCanvasSession((s) => s.pickSession);
   // The node a pick is running for, or null — stands in
   // for the mechanical "is a pick active / which node" checks that don't care
   // about the purpose. The purpose is read separately where completion /
   // candidate-dimming / banner text branch on it (#1664).
   const pickForNodeId = pickSession?.nodeId ?? null;
-  const endPick = useCanvasStore((s) => s.endPick);
+  const endPick = useCanvasSession((s) => s.endPick);
   // Banner Exit (a11y, adversarial round-1): the Exit button unmounts with
   // the banner, dropping keyboard focus to <body>. Hand focus to the panel's
   // pick trigger — still mounted, because the pick keeps the panel open. The
@@ -884,8 +871,9 @@ function CanvasSpaceInner({
   // asking the store a second question. Nothing on screen — a pick that
   // outlived its panel — leaves focus where it already is; where focus goes
   // after a pick ends is #125.
+  const sessionStore = useCanvasSessionStore();
   const onExitPick = React.useCallback((): void => {
-    const purpose = useCanvasStore.getState().pickSession?.purpose;
+    const purpose = sessionStore.getState().pickSession?.purpose;
     endPick();
     if (purpose === undefined) return;
     // A caret mid-sentence is a live surface: Escape reaches here from the
@@ -894,7 +882,7 @@ function CanvasSpaceInner({
     // trigger below.
     if (isEditableTarget(document.activeElement)) return;
     for (const testId of Object.values(PICK_PURPOSE_UI[purpose].trigger)) {
-      const trigger = document.querySelector<HTMLElement>(
+      const trigger = canvasRootOf(spaceId).querySelector<HTMLElement>(
         `[data-testid="${testId}"]`,
       );
       if (trigger) {
@@ -902,7 +890,7 @@ function CanvasSpaceInner({
         return;
       }
     }
-  }, [endPick]);
+  }, [sessionStore, endPick, spaceId]);
   /**
    * Return the focus session to its PICK state (user 2026-07-17 A): drop
    * the crop target so the overlay unmounts, but keep the session — the
@@ -941,7 +929,7 @@ function CanvasSpaceInner({
   // node still exists) — that keeps a marquee alive across a pan-away-and-
   // back (adversarial round-8 of #1782, where an img-absent discard was
   // eating careful selections on every pan).
-  const focusTargetVerdict = useCanvasGraphStore((st): FocusTargetVerdict => {
+  const focusTargetVerdict = useStoreOf(graphStore, (st): FocusTargetVerdict => {
     if (focusTarget === null) return 'ok';
     const node = st.flowNodes.find((n) => n.id === focusTarget.id);
     if (!node) return 'gone';
@@ -969,16 +957,18 @@ function CanvasSpaceInner({
     // never grab focus from elsewhere. The effect runs while the overlay DOM
     // is still mounted (unmount lands next render), so the containment check
     // still sees it.
-    const overlay = document.querySelector('[data-testid="focus-crop-overlay"]');
+    const overlay = canvasRootOf(spaceId).querySelector(
+      '[data-testid="focus-crop-overlay"]',
+    );
     if (overlay?.contains(document.activeElement)) {
-      handOffFocusToPickBanner(overlay);
+      handOffFocusToPickBanner(overlay, canvasRootOf(spaceId));
     }
     // Who wrote it decides which column speaks: a peer's delete is news, a
     // local undo is the user's own keystroke coming back to him.
     const author = getLastWriteWasLocal() ? 'local' : 'peer';
     toast.warning(t(FOCUS_EXIT_TOAST_KEY[author][focusTargetVerdict]));
     setFocusTarget(null);
-  }, [focusTargetVerdict, getLastWriteWasLocal, t]);
+  }, [focusTargetVerdict, getLastWriteWasLocal, t, spaceId]);
   // Esc during a focus session with NO crop target yet (round-4): the
   // overlay owns the two-stage Esc but is unmounted until the first image
   // is clicked, leaving Esc silently dead in the banner-only state. Same
@@ -994,8 +984,8 @@ function CanvasSpaceInner({
     pickSession !== null &&
     (pickSession.purpose !== 'focus' || focusCropTargetId === null);
   useEscapeInSpace(pickEscActive, onExitPick);
-  const placingAnnotation = useCanvasStore((s) => s.placingAnnotation);
-  const endAnnotationPlacement = useCanvasStore(
+  const placingAnnotation = useCanvasSession((s) => s.placingAnnotation);
+  const endAnnotationPlacement = useCanvasSession(
     (s) => s.endAnnotationPlacement,
   );
   // Escape puts the annotation tool away without dropping anything. The box
@@ -1003,12 +993,36 @@ function CanvasSpaceInner({
   // already down.
   useEscapeInSpace(placingAnnotation, endAnnotationPlacement);
 
-  // The tool is armed in the chrome and spent here, so it outlives this canvas
-  // unless something puts it down (§6.4's last row). The store is a module
-  // singleton reset per PROJECT, and a Space switch is not that: left armed,
-  // the first click on the next canvas dropped a note box nobody asked for —
-  // reproduced on a board.
+  // The tool is armed in the chrome and spent here. Hiding this canvas puts it
+  // down, as it does a menu (§6.4's last row): coming back finds nothing armed
+  // that the reader did not just arm.
   React.useEffect(() => () => endAnnotationPlacement(), [endAnnotationPlacement]);
+
+  // Shown again, the canvas library still holds a key that was down when this
+  // Space was hidden: its key listeners were off while the key came up, so Cmd
+  // went on adding every click to the selection (inner#1235). Its
+  // `useKeyPress` (`@xyflow/react` 12.11.2) lets every key go on a window
+  // `contextmenu`, which nothing of ours listens for. Runs after the
+  // library's listeners are back, since a parent's effects follow its
+  // children's on show.
+  React.useEffect(() => {
+    window.dispatchEvent(new Event('contextmenu'));
+  }, []);
+
+  // Track an in-flight front-end operation (upload / extraction / focus crop)
+  // in the per-space operation registry (#1617): register on start, unregister
+  // once the work settles — which for these flows is once the browser's half is over:
+  // the bytes are delivered and whatever this side writes locally is written.
+  // Closing the space tab is blocked while any operation is registered, so that
+  // write gets a chance to sync before detach.
+  const trackOperation = React.useCallback(
+    (operationId: string, work: Promise<unknown>): void => {
+      const ops = useSpaceOperationsStore.getState();
+      ops.register(spaceId, operationId);
+      void work.finally(() => ops.unregister(spaceId, operationId));
+    },
+    [spaceId],
+  );
 
   // A confirmed focus marquee (#1782): gate the pool cap (counting the
   // in-flight placeholders so a burst of confirms cannot overshoot), park a
@@ -1019,10 +1033,10 @@ function CanvasSpaceInner({
     // hand-written shape here is a place fields go missing without anything
     // noticing, and `natural` already had.
     (result: FocusCropConfirm): boolean => {
-      const session = useCanvasStore.getState().pickSession;
+      const session = sessionStore.getState().pickSession;
       if (session?.purpose !== 'focus') return false;
       const panelNodeId = session.nodeId;
-      const graph = useCanvasGraphStore.getState();
+      const graph = graphStore.getState();
       const source = graph.flowNodes.find((n) => n.id === focusCropTargetId);
       const data = source?.data as
         | { content?: unknown; name?: unknown }
@@ -1045,7 +1059,7 @@ function CanvasSpaceInner({
         MAX_FOCUS_NAME,
       );
       const cap = getCachedReferencePoolCap();
-      const store = useCanvasStore.getState();
+      const store = sessionStore.getState();
       // Crops-only hard ceiling BEFORE the upload (round-9): with the knob
       // above 200 (or unloaded), the write-side MAX_FOCUS_ENTRIES refusal
       // used to fire only AFTER a successful upload + ledger report.
@@ -1053,7 +1067,7 @@ function CanvasSpaceInner({
         ?.data as { focusImages?: unknown } | undefined;
       if (
         validFocusImages(panelData?.focusImages).length +
-          pendingFocusCount(panelNodeId) >=
+          pendingFocusCount(sessionStore, panelNodeId) >=
         MAX_FOCUS_ENTRIES
       ) {
         toast.warning(
@@ -1066,7 +1080,7 @@ function CanvasSpaceInner({
       if (
         cap !== null &&
         referencePoolCount(graph.flowEdges, graph.flowNodes, panelNodeId) +
-          pendingFocusCount(panelNodeId) >=
+          pendingFocusCount(sessionStore, panelNodeId) >=
           cap
       ) {
         // Rejection keeps the marquee (the overlay clears only on true) —
@@ -1080,113 +1094,116 @@ function CanvasSpaceInner({
         nodeId: panelNodeId,
         name: sourceName,
       });
-      void runFocusCrop(
-        {
-          sourceUrl,
-          sourceName,
-          sourceTimeSeconds: result.sourceTimeSeconds,
-          crop: result.crop,
-          projectId,
-        },
-        {
-          exportCrop: exportCropBlob,
-          uploadFile: async (file, pid) => {
-            const { fileUrl } = await uploadMedia(file, {
-              projectId: pid,
-              spaceId,
-              // No node: a crop is a pool entry, so there is no handling to
-              // fence and nothing for the server to announce to. That is
-              // also why this path reads its URL from the answer rather
-              // than from Yjs (design §9).
-              // A byproduct: registered in the ledger for attribution and
-              // dedup, without an activity-feed row of its own.
-              derived: true,
-            });
-            // The rejection carries the REASON as its message (Gate-2 R5): a
-            // hashing failure cannot be fixed by retrying on this page, so the
-            // crop pipeline must be able to say "reload" rather than the
-            // generic "try again".
-            if (fileUrl === undefined) throw new UploadFailedError('upload');
-            return fileUrl;
+      trackOperation(
+        pendingId,
+        runFocusCrop(
+          {
+            sourceUrl,
+            sourceName,
+            sourceTimeSeconds: result.sourceTimeSeconds,
+            crop: result.crop,
+            projectId,
           },
-          addFocusImage: (image) => {
-            useCanvasStore.getState().removePendingFocusUpload(pendingId);
-            // A refused append must be SAID — the upload already succeeded,
-            // and silence here loses the crop after real side effects
-            // (round-7). Each refusal gets its TRUTHFUL message (round-8:
-            // one boolean told "pool full (200)" when the panel node was
-            // deleted mid-upload), and the just-uploaded orphan asset is
-            // reported deleted (ledger parity with the ✕ path) unless the
-            // URL survives elsewhere.
-            const outcome = addNodeFocusImage(
-              projectId,
-              spaceId,
-              panelNodeId,
-              image,
-            );
-            if (outcome === 'added') return;
-            if (outcome === 'pool-full') {
-              toast.warning(
-                t('canvas.generatePanel.referencePoolFull', {
-                  cap: MAX_FOCUS_ENTRIES,
-                }),
+          {
+            exportCrop: exportCropBlob,
+            uploadFile: async (file, pid) => {
+              const { fileUrl } = await uploadMedia(file, {
+                projectId: pid,
+                spaceId,
+                // No node: a crop is a pool entry, so there is no handling to
+                // fence and nothing for the server to announce to. That is
+                // also why this path reads its URL from the answer rather
+                // than from Yjs (design §9).
+                // A byproduct: registered in the ledger for attribution and
+                // dedup, without an activity-feed row of its own.
+                derived: true,
+              });
+              // The rejection carries the REASON as its message (Gate-2 R5): a
+              // hashing failure cannot be fixed by retrying on this page, so the
+              // crop pipeline must be able to say "reload" rather than the
+              // generic "try again".
+              if (fileUrl === undefined) throw new UploadFailedError('upload');
+              return fileUrl;
+            },
+            addFocusImage: (image) => {
+              sessionStore.getState().removePendingFocusUpload(pendingId);
+              // A refused append must be SAID — the upload already succeeded,
+              // and silence here loses the crop after real side effects
+              // (round-7). Each refusal gets its TRUTHFUL message (round-8:
+              // one boolean told "pool full (200)" when the panel node was
+              // deleted mid-upload), and the just-uploaded orphan asset is
+              // reported deleted (ledger parity with the ✕ path) unless the
+              // URL survives elsewhere.
+              const outcome = addNodeFocusImage(
+                projectId,
+                spaceId,
+                panelNodeId,
+                image,
               );
-            } else {
-              toast.warning(t('canvas.generatePanel.focusCropDiscarded'));
-            }
-            if (
-              isReportableAssetUrl(image.url) &&
+              if (outcome === 'added') return;
+              if (outcome === 'pool-full') {
+                toast.warning(
+                  t('canvas.generatePanel.referencePoolFull', {
+                    cap: MAX_FOCUS_ENTRIES,
+                  }),
+                );
+              } else {
+                toast.warning(t('canvas.generatePanel.focusCropDiscarded'));
+              }
+              if (
+                isReportableAssetUrl(image.url) &&
               !assetUrlSurvives(
                 image.url,
                 readCanvasGraph(projectId, spaceId).nodes,
               )
-            ) {
-              void assetsApi
-                .reportDeleted({
-                  projectId,
-                  entries: [
-                    {
-                      fileUrl: image.url,
-                      kind: 'image',
-                      nodeId: panelNodeId,
-                      spaceId,
-                    },
-                  ],
-                })
-                .catch(() => {
+              ) {
+                void assetsApi
+                  .reportDeleted({
+                    projectId,
+                    entries: [
+                      {
+                        fileUrl: image.url,
+                        kind: 'image',
+                        nodeId: panelNodeId,
+                        spaceId,
+                      },
+                    ],
+                  })
+                  .catch(() => {
                   // Silent: audit-feed miss at worst (reportDeletedAssets
                   // parity).
-                });
-            }
+                  });
+              }
+            },
+            onFailure: (stage) => {
+              sessionStore.getState().removePendingFocusUpload(pendingId);
+              // Two of these are not retryable, and saying "try again" to
+              // either is worse than useless: a hashing refusal hits the same
+              // broken worker on this page (Gate-2 R5), and a full account has
+              // no room to find in the seconds a retry takes (#89).
+              if (stage === 'hash') {
+                toast.error(t('canvas.upload.hashUnavailable'));
+                return;
+              }
+              if (stage === 'storage') {
+                toast.error(t('canvas.upload.storageFull'));
+                return;
+              }
+              toast.error(
+                t(
+                  stage === 'export'
+                    ? 'canvas.generatePanel.focusExportFailed'
+                    : 'canvas.generatePanel.focusUploadFailed',
+                ),
+              );
+            },
+            makeId: newId,
           },
-          onFailure: (stage) => {
-            useCanvasStore.getState().removePendingFocusUpload(pendingId);
-            // Two of these are not retryable, and saying "try again" to
-            // either is worse than useless: a hashing refusal hits the same
-            // broken worker on this page (Gate-2 R5), and a full account has
-            // no room to find in the seconds a retry takes (#89).
-            if (stage === 'hash') {
-              toast.error(t('canvas.upload.hashUnavailable'));
-              return;
-            }
-            if (stage === 'storage') {
-              toast.error(t('canvas.upload.storageFull'));
-              return;
-            }
-            toast.error(
-              t(
-                stage === 'export'
-                  ? 'canvas.generatePanel.focusExportFailed'
-                  : 'canvas.generatePanel.focusUploadFailed',
-              ),
-            );
-          },
-          makeId: newId,
-        },
+        ),
       );
       return true;
     },
-    [focusCropTargetId, projectId, spaceId, t],
+    [graphStore, sessionStore, trackOperation, focusCropTargetId, projectId, spaceId, t],
   );
   // Warm the reference-pool cap knob (#1782) once per canvas mount. A
   // failure leaves the soft cap off (degrade-to-uncapped by design — no
@@ -1196,14 +1213,17 @@ function CanvasSpaceInner({
     void canvasApi.fetchLimits().catch(() => undefined);
   }, []);
 
+  // This canvas's own zoom: mirrored for the toolbar below, and it undoes the
+  // board's scale on the new-note box, which hangs in the viewport portal while
+  // the sticky it turns into holds one screen size (#1881 §8.7.4).
   const rfZoom = useStore((s) => s.transform[2]);
   React.useEffect(() => {
     setZoom(rfZoom);
   }, [rfZoom, setZoom]);
 
   // ---- Camera, kept for the next visit (#2165) ----
-  // Read once: this component is keyed on the Space id, so a switch back is a
-  // fresh mount and reads again.
+  // Read at mount. A Space switched away from and back to is the same mount,
+  // shown again with its camera where it was.
   const [storedViewport] = React.useState(() =>
     readSpaceViewport(viewerId, projectId, spaceId),
   );
@@ -1241,27 +1261,12 @@ function CanvasSpaceInner({
   const noteCameraPlaced = React.useCallback((): void => {
     cameraPlaced.current = true;
   }, []);
-  /**
-   * Whether this canvas has already been left.
-   *
-   * Tearing the canvas down resets the library's transform, and that reset
-   * reaches this component as one more `onPanZoomEnd` — the same event a
-   * reader's pan ends with, except that it reports the identity transform and
-   * arrives after the cleanup below has stored the real camera. Measured on a
-   * Space the reader had panned: `{-2004.5, -1395, 1}` written from the
-   * cleanup, then `{0, 0, 1}` written from `onPanZoomEnd`, which is what the
-   * next visit read.
-   *
-   * The effect body clears it again, so a run that ends because one of the
-   * ids changed goes on storing the camera.
-   */
-  const left = React.useRef(false);
   /** Store where the camera sits right now. */
   const storeCamera = React.useCallback((): void => {
-    if (left.current) return;
     const [x, y, zoom] = rfStoreApi.getState().transform;
     writeSpaceViewport(viewerId, projectId, spaceId, { x, y, zoom });
   }, [rfStoreApi, viewerId, projectId, spaceId]);
+
   const rememberViewport = React.useCallback((): void => {
     cameraPlaced.current = true;
     storeCamera();
@@ -1273,7 +1278,6 @@ function CanvasSpaceInner({
   // being put into the back/forward cache fires `pagehide` and runs no effect
   // cleanup at all.
   React.useEffect(() => {
-    left.current = false;
     /** Store the camera, once there is one worth storing. */
     const flush = (): void => {
       if (!cameraPlaced.current) return;
@@ -1283,7 +1287,6 @@ function CanvasSpaceInner({
     return () => {
       window.removeEventListener('pagehide', flush);
       flush();
-      left.current = true;
     };
   }, [storeCamera]);
   // Panel ⇄ selection binding (user-ratified 2026-07-11) — one state machine,
@@ -1347,6 +1350,26 @@ function CanvasSpaceInner({
     closeActivePanel,
     selectOnlyNode,
   ]);
+
+  // The node a panel is open on was deleted: the panel closes, and a
+  // collaborator's delete is told (canvas awareness design §5.7.2). One place
+  // for every node-anchored panel but the sticky, which has its own wording
+  // for a note somebody was writing in. This canvas reads only its own Space,
+  // so a host missing from `nodes` is a delete, never a switch of Space.
+  const panelHostGone =
+    panelHostId !== null &&
+    panelKind !== 'annotation' &&
+    !nodes.some((n) => n.id === panelHostId);
+  React.useEffect(() => {
+    if (!panelHostGone || panelHostId === null) return;
+    if (deletedByPeer(panelHostId)) {
+      toast.warning(t('canvas.panel.hostDeletedByPeer'));
+    }
+    closeActivePanel();
+    // The panel held the keyboard focus and has gone from the page; hand it
+    // to the canvas. Focus somewhere else is the reader's and stays there.
+    if (document.activeElement === document.body) containerRef.current?.focus();
+  }, [panelHostGone, panelHostId, deletedByPeer, closeActivePanel, t]);
 
   const pendingViewportCommand = useCanvasStore(
     (s) => s.pendingViewportCommand,
@@ -1440,6 +1463,7 @@ function CanvasSpaceInner({
           spaceId,
           allNodes.filter((n) => n.type === 'text').map((n) => n.id),
         ),
+        spaceId,
       ),
     [projectId, spaceId],
   );
@@ -1449,6 +1473,7 @@ function CanvasSpaceInner({
     createUploadNodeAt,
     pasteTextAt,
     pasteNodesAt,
+    stepPaste,
     placeProposalAt,
   } = useNodeCreation(projectId, spaceId);
 
@@ -1573,7 +1598,7 @@ function CanvasSpaceInner({
         ?.closest('.react-flow__node[data-id]')
         ?.getAttribute('data-id');
       const frozen = id
-        ? lockedNodeIds(useCanvasGraphStore.getState().flowNodes)
+        ? lockedNodeIds(graphStore.getState().flowNodes)
         : null;
       start = id && frozen?.has(id) ? { x: e.clientX, y: e.clientY } : null;
       warned = false;
@@ -1614,7 +1639,7 @@ function CanvasSpaceInner({
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
     };
-  }, [t, readOnly]);
+  }, [graphStore, t, readOnly]);
 
 
   // Veto deletions BEFORE ReactFlow touches the local buffer: a locked group's
@@ -1712,14 +1737,14 @@ function CanvasSpaceInner({
       // valid snap and then silently no-op at the addEdge write boundary —
       // reject it here so the gesture reads invalid while still in-flight.
       if (connection.source === connection.target) return false;
-      const { flowNodes } = useCanvasGraphStore.getState();
+      const { flowNodes } = graphStore.getState();
       const sourceKind =
         flowNodes.find((n) => n.id === connection.source)?.type ?? '';
       const targetKind =
         flowNodes.find((n) => n.id === connection.target)?.type ?? '';
       return canConnect(sourceKind, targetKind);
     },
-    [],
+    [graphStore],
   );
 
   // Localized node-kind display name for the connection-rules toast; an
@@ -1861,7 +1886,7 @@ function CanvasSpaceInner({
         from,
         toNodeId: targetEl?.getAttribute('data-id') ?? null,
         kindOf: (id) =>
-          useCanvasGraphStore.getState().flowNodes.find((n) => n.id === id)
+          graphStore.getState().flowNodes.find((n) => n.id === id)
             ?.type,
       });
       if (!rejection) return;
@@ -1872,7 +1897,7 @@ function CanvasSpaceInner({
         }),
       );
     },
-    [t, kindLabel],
+    [graphStore, t, kindLabel],
   );
 
   const onConnect = React.useCallback(
@@ -1882,7 +1907,7 @@ function CanvasSpaceInner({
       // blocks an invalid drop in the UI, so this only fires if ReactFlow
       // hands over a connection that bypassed the drag validation — reject
       // silently rather than write a rule-breaking edge.
-      const { flowNodes } = useCanvasGraphStore.getState();
+      const { flowNodes } = graphStore.getState();
       const sourceKind =
         flowNodes.find((n) => n.id === connection.source)?.type ?? '';
       const targetKind =
@@ -1895,8 +1920,7 @@ function CanvasSpaceInner({
       // A re-drag of an EXISTING connection overwrites the same deterministic
       // edge id (idempotent) — it adds nothing to the pool, so it must not
       // trip the cap gate into a false "pool full" rejection (round-3).
-      const duplicateEdge = useCanvasGraphStore
-        .getState()
+      const duplicateEdge = graphStore.getState()
         .flowEdges.some(
           (e) => e.id === `${connection.source}->${connection.target}`,
         );
@@ -1904,11 +1928,11 @@ function CanvasSpaceInner({
         !duplicateEdge &&
         cap !== null &&
         referencePoolCount(
-          useCanvasGraphStore.getState().flowEdges,
+          graphStore.getState().flowEdges,
           flowNodes,
           connection.target,
         ) +
-          pendingFocusCount(connection.target) >=
+          pendingFocusCount(sessionStore, connection.target) >=
           cap
       ) {
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
@@ -1928,7 +1952,7 @@ function CanvasSpaceInner({
         toast.error(t('canvas.generatePanel.referenceAddFailed'));
       }
     },
-    [projectId, spaceId, t],
+    [graphStore, sessionStore, projectId, spaceId, t],
   );
 
   // Reference-pick mode (Generate panel "add reference from canvas"): while a
@@ -1943,7 +1967,7 @@ function CanvasSpaceInner({
       // the panel switched to another node between render and this click, the
       // closure would wire the pick to the PREVIOUS node. The purpose decides
       // whether the click wires an i2i reference edge or fills a source slot.
-      const session = useCanvasStore.getState().pickSession;
+      const session = sessionStore.getState().pickSession;
       if (!session) return;
       const target = session.nodeId;
       // Clicking the target itself is always a no-op (dimmed for both purposes).
@@ -1963,8 +1987,7 @@ function CanvasSpaceInner({
         // copy alone could open a crop the verdict ends on its first pass —
         // and the snapshot taken off the render copy would be compared
         // against fresher content, ejecting the user the instant they click.
-        const fresh = useCanvasGraphStore
-          .getState()
+        const fresh = graphStore.getState()
           .flowNodes.find((n) => n.id === node.id);
         if (!fresh || !isFocusCandidate(fresh, target)) {
           // The node looked pickable — the dimming reads the render copy, and
@@ -2029,8 +2052,7 @@ function CanvasSpaceInner({
         (e) => e.target === target && e.source === node.id,
       );
       if (alreadyReferenced) return;
-      const targetNode = useCanvasGraphStore
-        .getState()
+      const targetNode = graphStore.getState()
         .flowNodes.find((n) => n.id === target);
       const targetKind = targetNode?.type ?? '';
       if (!canConnect(node.type ?? '', targetKind)) {
@@ -2056,11 +2078,11 @@ function CanvasSpaceInner({
       if (
         cap !== null &&
         referencePoolCount(
-          useCanvasGraphStore.getState().flowEdges,
-          useCanvasGraphStore.getState().flowNodes,
+          graphStore.getState().flowEdges,
+          graphStore.getState().flowNodes,
           target,
         ) +
-          pendingFocusCount(target) >=
+          pendingFocusCount(sessionStore, target) >=
           cap
       ) {
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
@@ -2078,7 +2100,7 @@ function CanvasSpaceInner({
       // Stay in pick mode either way; Exit is the only way out (item 7).
       if (!added) toast.error(t('canvas.generatePanel.referenceAddFailed'));
     },
-    [projectId, spaceId, flowEdges, t, kindLabel, endPick],
+    [graphStore, sessionStore, projectId, spaceId, flowEdges, t, kindLabel, endPick],
   );
 
   // Where the new note goes, in canvas coordinates, while its box is open.
@@ -2215,11 +2237,11 @@ function CanvasSpaceInner({
   // per-handler close enumeration).
   const onNodeClick = React.useCallback(
     (event: React.MouseEvent, node: Node): void => {
-      if (useCanvasStore.getState().pickSession) {
+      if (sessionStore.getState().pickSession) {
         onPickNodeClick(event, node);
       }
     },
-    [onPickNodeClick],
+    [sessionStore, onPickNodeClick],
   );
 
   // Clicking the empty canvas deselects everything (nodes AND edges — native
@@ -2231,19 +2253,19 @@ function CanvasSpaceInner({
   // identity when nothing was selected, so idle misclicks re-render nothing.
   const onPaneClick = React.useCallback(
     (): void => {
-      if (useCanvasStore.getState().pickSession != null) return;
+      if (sessionStore.getState().pickSession != null) return;
       setFlowNodes((current) => reconcileSelection(current, () => false));
       setFlowEdges((current) => reconcileSelection(current, () => false));
       rfStoreApi.setState({ nodesSelectionActive: false });
     },
-    [setFlowNodes, setFlowEdges, rfStoreApi],
+    [sessionStore, setFlowNodes, setFlowEdges, rfStoreApi],
   );
 
   // Recenter the picking node so it stays findable while selecting references
   // across a large canvas (user 2026-07-10 item 7 locate). Pans only — keeps the
   // current zoom.
   const onLocateSource = React.useCallback((): void => {
-    const id = useCanvasStore.getState().pickSession?.nodeId ?? null;
+    const id = sessionStore.getState().pickSession?.nodeId ?? null;
     if (id == null) return;
     // A grouped member stores its position relative to its Group, so
     // `node.position` is NOT canvas-absolute — setCenter expects absolute
@@ -2260,7 +2282,7 @@ function CanvasSpaceInner({
       zoom: rfZoom,
       duration: 300,
     });
-  }, [getInternalNode, setCenter, rfZoom]);
+  }, [sessionStore, getInternalNode, setCenter, rfZoom]);
 
   // Put a node a press just wrote in front of the reader, together with the
   // node it was read from. Pans only, keeping the reader's zoom, the way
@@ -2406,20 +2428,6 @@ function CanvasSpaceInner({
   // the media path's ending comes from the task row (#186 §3.7.3) and the local
   // extraction, which has no row, keeps its own `data.errorMessage` (§3.7.4).
   // No file is rejected. Created nodes are batch-selected once mirrored back.
-  // Track an in-flight front-end operation (upload / extraction) in the
-  // per-space operation registry (#1617): register on start, unregister once the
-  // work settles — which for these flows is once the browser's half is over:
-  // the bytes are delivered and whatever this side writes locally is written.
-  // Closing the space tab is blocked while any operation is registered, so that
-  // write gets a chance to sync before detach.
-  const trackOperation = React.useCallback(
-    (operationId: string, work: Promise<unknown>): void => {
-      const ops = useSpaceOperationsStore.getState();
-      ops.register(spaceId, operationId);
-      void work.finally(() => ops.unregister(spaceId, operationId));
-    },
-    [spaceId],
-  );
 
   // Whoever is at this browser: stamped on everything created here, which is
   // both the nodes a drop makes and the Group it wraps them in.
@@ -2492,7 +2500,11 @@ function CanvasSpaceInner({
   );
 
   const processFiles = React.useCallback(
-    (files: File[], origin: { x: number; y: number }): void => {
+    (
+      files: File[],
+      origin: { x: number; y: number },
+      stepPastTaken = false,
+    ): void => {
       if (readOnly || files.length === 0) return;
       // Register the batch SYNCHRONOUSLY (before the config-fetch await) so the
       // tab-close guard sees the space busy from the drop onward — not only once
@@ -2537,7 +2549,24 @@ function CanvasSpaceInner({
         // Group around them go down as a single undo step.
         let selectAfter: string[] = [];
         runCanvasUndoBatch(projectId, spaceId, () => {
-          const centres = batchCentresAt(origin, admitted.length);
+          const laid = batchCentresAt(origin, admitted.length);
+          const tops = laid.map((centre) => centerToTopLeft(centre, EMPTY_NODE_SIZE));
+          // Two or more files arrive inside a Group, framed the way
+          // `planGroupCreation` frames them below.
+          const frame =
+            tops.length >= 2
+              ? groupRectForMembers(tops.map((top) => ({ ...top, ...EMPTY_NODE_SIZE })))
+              : null;
+          // Only a paste steps the whole batch, its Group included, past nodes
+          // already on its spot, so it shows (inner#1235 A20).
+          const step =
+            stepPastTaken
+              ? stepPaste(frame === null ? tops : [...tops, frame])
+              : { dx: 0, dy: 0 };
+          const centres = laid.map((centre) => ({
+            x: centre.x + step.dx,
+            y: centre.y + step.dy,
+          }));
           admitted.forEach(({ file, spec }, i) => {
             const { id, position } = createUploadNodeAt(
               spec.nodeType,
@@ -2638,6 +2667,7 @@ function CanvasSpaceInner({
       userId,
       failUploadNode,
       createUploadNodeAt,
+      stepPaste,
       t,
       trackOperation,
     ],
@@ -2647,24 +2677,31 @@ function CanvasSpaceInner({
   // synchronously inside the button click to keep user-activation, so it
   // lives in chrome and posts here). Drop them at the viewport centre; the
   // canvas owns the viewport. Always clear the mailbox afterward.
+  /**
+   * The middle of the view, in flow coordinates.
+   * @param rect - The canvas container's box on screen.
+   * @returns That point.
+   */
+  const viewCentre = React.useCallback(
+    (rect: DOMRect): { x: number; y: number } =>
+      screenToFlowPosition({
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      }),
+    [screenToFlowPosition],
+  );
   const pendingUploadFiles = useCanvasStore((s) => s.pendingUploadFiles);
   const consumePendingUpload = useCanvasStore((s) => s.consumePendingUpload);
   React.useEffect(() => {
     if (!pendingUploadFiles) return;
     const files = pendingUploadFiles;
     const rect = containerRef.current?.getBoundingClientRect();
-    if (rect && !readOnly) {
-      const center = screenToFlowPosition({
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
-      });
-      processFiles(files, center);
-    }
+    if (rect && !readOnly) processFiles(files, viewCentre(rect));
     consumePendingUpload();
   }, [
     pendingUploadFiles,
     readOnly,
-    screenToFlowPosition,
+    viewCentre,
     processFiles,
     consumePendingUpload,
   ]);
@@ -2773,10 +2810,10 @@ function CanvasSpaceInner({
       // A reference pick owns pointer interactions until Exit (adversarial
       // round-1): the create/paste menu would mutate the pick surface and its
       // creations auto-select mid-session. Fresh store read — closures stale.
-      if (useCanvasStore.getState().pickSession) return;
+      if (sessionStore.getState().pickSession) return;
       setContextMenu({ open: true, x: event.clientX, y: event.clientY });
     },
-    [readOnly],
+    [sessionStore, readOnly],
   );
 
   const onContextMenuPick = React.useCallback(
@@ -2805,7 +2842,7 @@ function CanvasSpaceInner({
       // Pick session gate (adversarial round-1): the node menu's Upload
       // silently no-ops behind the item-12 gate and its Delete would mutate
       // the pick surface — the pick owns node interactions until Exit.
-      if (useCanvasStore.getState().pickSession) return;
+      if (sessionStore.getState().pickSession) return;
       const locked = Boolean((node.data as { locked?: unknown }).locked);
       setNodeMenu({
         open: true,
@@ -2818,7 +2855,7 @@ function CanvasSpaceInner({
         isText: node.type === 'text',
       });
     },
-    [readOnly],
+    [sessionStore, readOnly],
   );
 
   // Selection / edge right-click: ReactFlow leaked the browser menu on these two
@@ -2829,10 +2866,10 @@ function CanvasSpaceInner({
       event.preventDefault();
       if (readOnly) return;
       // Same pick-session gate as the node / pane menus.
-      if (useCanvasStore.getState().pickSession) return;
+      if (sessionStore.getState().pickSession) return;
       setSelectionMenu({ open: true, x: event.clientX, y: event.clientY });
     },
-    [readOnly],
+    [sessionStore, readOnly],
   );
 
   const onEdgeContextMenu = React.useCallback(
@@ -2840,7 +2877,7 @@ function CanvasSpaceInner({
       event.preventDefault();
       if (readOnly) return;
       // Same pick-session gate — deleting an edge mid-pick mutates the rail.
-      if (useCanvasStore.getState().pickSession) return;
+      if (sessionStore.getState().pickSession) return;
       setEdgeMenu({
         open: true,
         x: event.clientX,
@@ -2848,7 +2885,7 @@ function CanvasSpaceInner({
         edgeId: edge.id,
       });
     },
-    [readOnly],
+    [sessionStore, readOnly],
   );
 
   const onToggleNodeLock = React.useCallback((): void => {
@@ -2896,29 +2933,26 @@ function CanvasSpaceInner({
       claimRegion('space');
 
       // File paste (screenshot / copied file) carries binary in
-      // `clipboardData.files` — route it through the upload flow, dropped at
-      // the viewport centre like a text paste. Checked first: a real file
-      // paste also has these files (a plain-text paste does not).
+      // `clipboardData.files` — route it through the upload flow, laid out
+      // around the viewport centre like a text paste and stepped past nodes
+      // already there. Checked first: a real file paste also has these files
+      // (a plain-text paste does not).
       const files = event.clipboardData?.files;
       if (files && files.length > 0) {
         event.preventDefault();
         const rect = containerRef.current?.getBoundingClientRect();
-        if (rect) {
-          const center = screenToFlowPosition({
-            x: rect.left + rect.width / 2,
-            y: rect.top + rect.height / 2,
-          });
-          processFiles([...files], center);
-        }
+        if (rect) processFiles([...files], viewCentre(rect), true);
         return;
       }
 
       const clipboardNodes = parseClipboardNodes(text);
       if (clipboardNodes && clipboardNodes.length > 0) {
         event.preventDefault();
-        // Viewport-aware placement (R2-H, Figma-style): paste beside the source
-        // when it's in view, else recenter on the current viewport so the paste
-        // is never dropped off-screen after the canvas was scrolled away.
+        // Viewport-aware placement (R2-H, Figma-style): nodes copied on this
+        // Space paste beside their source while it is in view; anything else
+        // lands in the middle of the view, so a paste is never dropped
+        // off-screen (inner#1235 A20). `pasteNodesAt` then steps the batch past
+        // nodes already on its spot.
         const rect = containerRef.current?.getBoundingClientRect();
         let offset = { dx: PASTE_OFFSET_PX, dy: PASTE_OFFSET_PX };
         if (rect) {
@@ -2927,7 +2961,7 @@ function CanvasSpaceInner({
           offset = pasteOffsetFor(
             clipboardNodes,
             { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y },
-            PASTE_OFFSET_PX,
+            spaceId,
           );
         }
         setSelectAfterCreate(pasteNodesAt(clipboardNodes, offset));
@@ -2938,15 +2972,11 @@ function CanvasSpaceInner({
       event.preventDefault();
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const center = screenToFlowPosition({
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
-      });
-      setSelectAfterCreate([pasteTextAt(text, center)]);
+      setSelectAfterCreate([pasteTextAt(text, viewCentre(rect))]);
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
-  }, [readOnly, pasteNodesAt, pasteTextAt, screenToFlowPosition, processFiles]);
+  }, [readOnly, pasteNodesAt, pasteTextAt, screenToFlowPosition, viewCentre, processFiles, spaceId]);
 
   React.useEffect(() => {
     /**
@@ -2957,9 +2987,15 @@ function CanvasSpaceInner({
     const onCopy = (event: ClipboardEvent): void => {
       if (readOnly) return;
       // Words the reader dragged across are the ones they asked for, wherever
-      // they sit, so the browser copies those and the nodes stay put.
+      // they sit, so the browser copies those and the nodes stay put. Words
+      // left selected in a hidden Space are not on screen to be asked for
+      // (inner#1235 A5): a hidden Space keeps its page and its selection.
       const selection = window.getSelection();
-      if (selection !== null && !selection.isCollapsed) return;
+      const anchor = selection?.anchorNode ?? null;
+      const at = anchor instanceof Element ? anchor : (anchor?.parentElement ?? null);
+      if (selection !== null && !selection.isCollapsed && (at?.checkVisibility?.() ?? true)) {
+        return;
+      }
       // With nothing highlighted, the event's target is wherever the caret was
       // last left and says nothing about this copy, so focus answers the
       // question the other outlets put to `event.target`: an overlay or the
@@ -3493,8 +3529,9 @@ function CanvasSpaceInner({
 
   // Pane-menu Paste: reads the SYSTEM clipboard (async, needs the menu click's
   // user-activation), then mirrors the Cmd+V handler but anchored at the right-
-  // click point — a marked node payload clones nodes with the first one landing
-  // at the cursor, plain text makes a text node there.
+  // click point — a marked node payload clones nodes with their bounding box
+  // centred on the cursor, plain text makes a text node there; either way the
+  // batch then steps past nodes already on that spot (inner#1235 A20).
   const pasteAtCursor = React.useCallback((): void => {
     if (readOnly) return;
     const point = screenToFlowPosition({ x: contextMenu.x, y: contextMenu.y });
@@ -3558,7 +3595,7 @@ function CanvasSpaceInner({
       // double-click on an empty node — or the node-menu Upload, both funnel
       // here — must not pop the file picker over the running pick session.
       // Read fresh from the store; the render closure can be stale.
-      if (useCanvasStore.getState().pickSession) return;
+      if (sessionStore.getState().pickSession) return;
       const accept = UPLOAD_ACCEPT[modality];
       const input = uploadInputRef.current;
       if (!accept || !input) return; // 3d / web have no picker yet
@@ -3572,7 +3609,7 @@ function CanvasSpaceInner({
       input.value = '';
       input.click();
     },
-    [readOnly, projectId, spaceId, t],
+    [sessionStore, readOnly, projectId, spaceId, t],
   );
   // Node menu Upload: open the file picker for the right-clicked node and fill
   // (or replace) its content — the menu form of the empty-node double-click.
@@ -3750,7 +3787,7 @@ function CanvasSpaceInner({
   // all, so the item and its target come from one answer (#2108).
   // The same question the node body asks itself, asked the same way: a failed
   // node shows its content again while its own task list is open beside it.
-  const menuHostTasksOpen = useCanvasStore(taskPanelOpenFor(nodeMenu.nodeId));
+  const menuHostTasksOpen = useCanvasSession(taskPanelOpenFor(nodeMenu.nodeId));
   const menuDownloadUrl = React.useMemo(
     () =>
       readOnly
@@ -3942,8 +3979,7 @@ function CanvasSpaceInner({
         // no `React.memo` below would ever bail. Same lazy read as the
         // connect guard above, and the edges a delete needs are the ones on
         // screen when it happens.
-        const touching = useCanvasGraphStore
-          .getState()
+        const touching = graphStore.getState()
           .flowEdges.filter(
             (edge) => edge.source === nodeId || edge.target === nodeId,
           );
@@ -4081,6 +4117,7 @@ function CanvasSpaceInner({
       activateNodeUpload,
     }),
     [
+      graphStore,
       projectId,
       spaceId,
       readOnly,
@@ -4370,6 +4407,10 @@ function CanvasSpaceInner({
           onChange={onUploadInputChange}
         />
         <ReactFlow
+          // The ids the library writes into the page (the dot grid's pattern,
+          // edge markers) are built from this; every kept canvas needs its own,
+          // or the one on screen draws with a hidden canvas's grid.
+          id={`canvas-${spaceId}`}
           ref={setFlowShell}
           onKeyDownCapture={nudgeKeys.onKeyDownCapture}
           onKeyDown={nudgeKeys.onKeyDown}
@@ -4511,7 +4552,7 @@ function CanvasSpaceInner({
                 // transform is the right tool here and the wrong one on the
                 // pin: nothing measures this box, and xyflow measures that one.
                 style={{
-                  transform: `translate(${composerAt.x}px, ${composerAt.y}px) scale(${1 / zoom})`,
+                  transform: `translate(${composerAt.x}px, ${composerAt.y}px) scale(${1 / rfZoom})`,
                   transformOrigin: 'top left',
                   zIndex: ANNOTATION_COMPOSER_Z,
                 }}
@@ -4862,11 +4903,12 @@ function CanvasSpaceInner({
  * pending crop occupies its slot BEFORE its Yjs write lands (adversarial
  * 2026-07-16: the edge gates ignoring pending let a same-client burst
  * overshoot the cap the confirm gate guards).
+ * @param session - The canvas's session store.
  * @param nodeId - The pool's target node.
  * @returns The number of in-flight focus uploads for that node.
  */
-function pendingFocusCount(nodeId: string): number {
-  return useCanvasStore
+function pendingFocusCount(session: CanvasSessionStore, nodeId: string): number {
+  return session
     .getState()
     .pendingFocusUploads.filter((p) => p.nodeId === nodeId).length;
 }
@@ -4915,17 +4957,13 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // until it has one, so without this the first Generate of a session pays for
   // the round trip with a blank patch of screen.
   usePrefetchModelCatalog();
-  const canvasDocName = docName.canvasSpace(props.projectId, props.spaceId);
-  const canvasDoc = React.useMemo(() => getDoc(canvasDocName), [canvasDocName]);
   // Resolved once, here, and handed to every collaborative editor on the board
-  // — the text nodes and the generation prompt. `useSocket` reference-counts
-  // the shared provider the space's tab already holds, so this opens no second
-  // connection; what it buys is a single answer to "whose caret is this",
-  // instead of one per editor that could drift apart.
-  const { provider: caretProvider, synced } = useSocket({
-    name: canvasDocName,
-    doc: canvasDoc,
-  });
+  // — the text nodes and the generation prompt — so there is a single answer
+  // to "whose caret is this", instead of one per editor that could drift
+  // apart. Read from the connection the Space's tab holds (`OpenSpace`): this
+  // body is hidden rather than unmounted on a tab switch, and a subscription
+  // of its own would start over unsynced on the way back.
+  const { provider: caretProvider, synced } = useSpaceConnection();
   const canvas = React.useMemo<CanvasContextValue>(
     () => ({
       projectId: props.projectId,
@@ -4956,7 +4994,8 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // what they read rather than re-running an O(N) derivation on every change
   // (`stores/canvas-graph.ts`), and an author list changes only when the
   // document does.
-  const namedOnTheBoard = useCanvasGraphStore(
+  const namedOnTheBoard = useStoreOf(
+    canvasGraphs.of(props.spaceId),
     useShallow((st) => everyAnnotationAuthor(st.flowNodes)),
   );
   const annotationNames = useUserProfiles(namedOnTheBoard);

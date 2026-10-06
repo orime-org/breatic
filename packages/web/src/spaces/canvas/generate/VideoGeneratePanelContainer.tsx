@@ -31,7 +31,7 @@ import { useShots } from '@web/data/yjs/use-storyboard';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { useCanvasStore } from '@web/stores';
+import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import {
   evaluateExecute,
   extractPromptText,
@@ -184,7 +184,7 @@ function VideoGeneratePanelBody({
   nodeId: string;
 }): React.JSX.Element {
   const t = useTranslation();
-  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
+  const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
   const { caretProvider } = useCanvasContext();
 
   const { data: catalog } = useQuery(modelCatalogQuery());
@@ -202,7 +202,6 @@ function VideoGeneratePanelBody({
     isSubmitting,
     setIsSubmitting,
     submittingRef,
-    isMountedRef,
   } = useGenerateSubmitState();
 
   // The ids the prompt `@`-mentions right now. Kept in a ref rather than in
@@ -368,7 +367,7 @@ function VideoGeneratePanelBody({
   // stays empty from the moment the marquee is confirmed until the upload
   // lands — and on a node whose rail is otherwise empty the rail does not
   // render at all, so the row appears out of nowhere on success.
-  const pendingFocusAll = useCanvasStore((s) => s.pendingFocusUploads);
+  const pendingFocusAll = useCanvasSession((s) => s.pendingFocusUploads);
   const pendingFocus = React.useMemo(
     () =>
       pendingFocusAll
@@ -521,37 +520,38 @@ function VideoGeneratePanelBody({
   // un-highlights when a collaborator, a mode switch or Exit ends the pick —
   // not only on a local click. A pick is a single session, so starting one
   // purpose replaces the other.
-  const endPick = useCanvasStore((s) => s.endPick);
-  const startReferencePick = useCanvasStore((s) => s.startReferencePick);
-  const startFirstFramePick = useCanvasStore((s) => s.startFirstFramePick);
-  const startEndFramePick = useCanvasStore((s) => s.startEndFramePick);
-  const startCharacterImagePick = useCanvasStore(
+  const endPick = useCanvasSession((s) => s.endPick);
+  const startReferencePick = useCanvasSession((s) => s.startReferencePick);
+  const startFirstFramePick = useCanvasSession((s) => s.startFirstFramePick);
+  const startEndFramePick = useCanvasSession((s) => s.startEndFramePick);
+  const startCharacterImagePick = useCanvasSession(
     (s) => s.startCharacterImagePick,
   );
-  const startDrivingVideoPick = useCanvasStore((s) => s.startDrivingVideoPick);
-  const startDrivingAudioPick = useCanvasStore((s) => s.startDrivingAudioPick);
-  const startSourceVideoPick = useCanvasStore((s) => s.startSourceVideoPick);
-  const startLeftAudioPick = useCanvasStore((s) => s.startLeftAudioPick);
-  const startRightAudioPick = useCanvasStore((s) => s.startRightAudioPick);
-  const referencePicking = useCanvasStore(
+  const startDrivingVideoPick = useCanvasSession((s) => s.startDrivingVideoPick);
+  const startDrivingAudioPick = useCanvasSession((s) => s.startDrivingAudioPick);
+  const startSourceVideoPick = useCanvasSession((s) => s.startSourceVideoPick);
+  const startLeftAudioPick = useCanvasSession((s) => s.startLeftAudioPick);
+  const startRightAudioPick = useCanvasSession((s) => s.startRightAudioPick);
+  const referencePicking = useCanvasSession(
     (s) =>
       s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'reference',
   );
-  const focusPicking = useCanvasStore(
+  const focusPicking = useCanvasSession(
     (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'focus',
   );
   // Focus pick, toggled from the toolbar (#1978). Same shape as the image
   // panel's: a second click on a running focus pick for THIS node ends it,
   // so the button is a real toggle rather than a one-way trip.
-  const startFocusPick = useCanvasStore((s) => s.startFocusPick);
+  const startFocusPick = useCanvasSession((s) => s.startFocusPick);
+  const sessionStore = useCanvasSessionStore();
   const onFocus = React.useCallback(() => {
-    const session = useCanvasStore.getState().pickSession;
+    const session = sessionStore.getState().pickSession;
     if (session?.nodeId === nodeId && session.purpose === 'focus') {
       endPick();
     } else {
       startFocusPick(nodeId);
     }
-  }, [startFocusPick, endPick, nodeId]);
+  }, [sessionStore, startFocusPick, endPick, nodeId]);
 
   // One starter per slot. `Record<VideoSlot, …>` is what makes a new slot
   // impossible to half-wire: leaving it out here does not compile.
@@ -578,7 +578,7 @@ function VideoGeneratePanelBody({
     ],
   );
   /** The slot whose pick is running on this node, if any. */
-  const activeSlot = useCanvasStore((s) => {
+  const activeSlot = useCanvasSession((s) => {
     if (s.pickSession?.nodeId === nodeId) {
       const name = slotForPurpose(s.pickSession.purpose);
       // The lookup spans every registry, and this panel draws only its own
@@ -588,16 +588,16 @@ function VideoGeneratePanelBody({
     return undefined;
   });
   const onAddReference = React.useCallback(() => {
-    const session = useCanvasStore.getState().pickSession;
+    const session = sessionStore.getState().pickSession;
     if (session?.nodeId === nodeId && session.purpose === 'reference') {
       endPick();
     } else {
       startReferencePick(nodeId);
     }
-  }, [startReferencePick, endPick, nodeId]);
+  }, [sessionStore, startReferencePick, endPick, nodeId]);
   const onPickSlot = React.useCallback(
     (slot: VideoSlot) => {
-      const session = useCanvasStore.getState().pickSession;
+      const session = sessionStore.getState().pickSession;
       if (
         session?.nodeId === nodeId &&
         session.purpose === VIDEO_SLOTS[slot].purpose
@@ -607,7 +607,7 @@ function VideoGeneratePanelBody({
       }
       startSlotPick[slot](nodeId);
     },
-    [startSlotPick, endPick, nodeId],
+    [sessionStore, startSlotPick, endPick, nodeId],
   );
   const { stylePicking, onStylePick, onRemoveStyle } = useStyleSlot(
     projectId,
@@ -761,6 +761,10 @@ function VideoGeneratePanelBody({
       return;
     }
     submittingRef.current = true;
+    // Which opening of the panel this submit came from: the answer may land
+    // after the reader closed or replaced this panel, and then it closes
+    // nothing they opened since.
+    const session = sessionStore.getState().panelSession;
     setIsSubmitting(true);
     try {
       // Inside the try: if the payload build or the lease read throws, the
@@ -781,40 +785,27 @@ function VideoGeneratePanelBody({
         poolParams: poolParams(fresh.pool, fresh.referenceUrls),
       });
       await canvasApi.createTask(payload);
-      // Close only if THIS mount is alive AND the panel is still on this node:
-      // a stale submit from a since-unmounted instance must not close a
-      // freshly-reopened panel.
-      if (
-        isMountedRef.current &&
-        useCanvasStore.getState().panelHostId === nodeId &&
-        useCanvasStore.getState().panelKind === 'generateVideo'
-      ) {
-        closeActivePanel();
-      }
+      sessionStore.getState().closePanelOfSession(session);
     } catch (err) {
       // Unconditional (silent-fail mandate): a submit that failed after the
-      // user closed the panel still explains itself. Only the state writes are
-      // gated on the mount being alive.
+      // user closed the panel still explains itself.
       toast.error(
         executeErrorMessage(
           err instanceof ApiException ? err.status : undefined,
           t,
         ),
       );
-      if (!isMountedRef.current) return;
       submittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [
+  }, [sessionStore,
     nodeId,
     projectId,
     spaceId,
     freshVm,
-    closeActivePanel,
     t,
     // Stable for this mount's lifetime; listed because they come from a hook,
     // where the linter cannot see that for itself.
-    isMountedRef,
     promptEditorRef,
     promptTextRef,
     setIsSubmitting,
