@@ -83,11 +83,6 @@ export function SpaceOutlet({
   // `readOnly` goes to BOTH: the body uses it to gate editing, and the notice
   // uses it to stay quiet for a viewer, whose read-only is their role rather
   // than something the server took away.
-  //
-  // A newly registered Space type is NOT covered by this alone — the notice
-  // reads the connection `OpenSpace` holds for the document `DOC_NAME_BUILDERS`
-  // names, and a type missing from that table has no connection, so the notice
-  // shows nothing. Adding a type means both tables.
   return (
     <div
       className='relative h-full w-full'

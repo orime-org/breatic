@@ -4,10 +4,10 @@
 /**
  * #904 验收 A20: the editor outlives the component that shows it.
  *
- * Switching Space tabs remounts the body — `SpaceOutlet` is keyed on the Space
- * id — and the undo stack, the selection and any in-flight composition belong
- * to the editor rather than to the Yjs document. `document-editor-cache` keeps
- * the editor across that switch so they survive; the file itself carries why
+ * The body can unmount while its tab still holds the document open (Strict
+ * Mode, for one), and the undo stack, the selection and any in-flight
+ * composition belong to the editor rather than to the Yjs document.
+ * `document-editor-cache` keeps the editor across that remount so they survive; the file itself carries why
  * rescuing the undo stack alone is a dead end.
  *
  * On this stack that rests on one fact about BlockNote, which is what these

@@ -10,8 +10,8 @@
  * a paragraph someone else is still writing.
  *
  * The lifetime tests exist because the editor deliberately outlives the
- * component that renders it. A Space tab switch remounts the body, and what the
- * Y.Doc does not hold — undo stack, selection, in-flight input-method
+ * component that renders it. The body can remount while its tab stays open,
+ * and what the Y.Doc does not hold — undo stack, selection, in-flight input-method
  * composition — would be lost with a component-owned editor.
  *
  * The editor is mounted here, unlike in the hook's own contract: the
@@ -471,14 +471,14 @@ describe('useDocumentEditor', () => {
   });
 
   describe('lifetime — the editor outlives the component', () => {
-    it('hands back the same editor after a Space tab switch', async () => {
+    it('hands back the same editor after its body is remounted', async () => {
       const { rendered, handle, editor } = await mountEditor();
       write(editor, { type: 'paragraph', content: 'written before the switch' });
       await waitFor(() =>
         expect(handle.undoManager.undoStack.length).toBeGreaterThan(0),
       );
 
-      // Switching Space tabs remounts the body — SpaceOutlet is keyed on the id.
+      // The body unmounts while the tab still holds the document.
       rendered.unmount();
       const { editor: second, handle: again } = await mountEditor();
 
