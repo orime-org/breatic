@@ -29,7 +29,7 @@ interface RailStudioGroupProps {
   activeSlug: string | null;
   /** Text shown when the group is empty — rendered, never hidden (spec §0.1). */
   emptyText: string;
-  /** Stable key for persisting this section's collapse state across sessions. */
+  /** Which rail section this is; its collapse state is remembered per account. */
   section: RailSection;
 }
 
