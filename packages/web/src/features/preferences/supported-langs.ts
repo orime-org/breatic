@@ -7,6 +7,7 @@ import { usersApi } from '@web/data/api/users';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { toast } from '@web/lib/toast';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 export interface SupportedLang {
   code: Locale;
@@ -49,13 +50,16 @@ export interface UseLocaleSwitch {
 }
 
 /**
- * Switch the interface language and record it on the account. The interface
- * switches at once; the account write runs behind it, and when it fails the
- * reader is told the choice was not saved to the account.
+ * Switch the interface language and, when someone is signed in, record it on
+ * the account. The interface switches at once and the choice is kept on this
+ * device; the account write runs behind it, and when it fails the reader is
+ * told the choice was not saved to the account. A visitor on a sign-in page
+ * has no account to write to, so their choice stays on the device only.
  * @param code - The locale the reader picked.
  */
 function switchLocale(code: Locale): void {
   changeLocale(code);
+  if (useCurrentUserStore.getState().user === null) return;
   usersApi.setLocale(code).catch(() => {
     toast.error(t('chrome.languageNotSaved'));
   });
