@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import type { TrayItem } from '@web/stores/chat-attachments';
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
 import { TABLE_MENU_ROWS } from '@web/spaces/document/document-block-menu-rows';
 import { DocumentProjectProvider } from '@web/spaces/document/document-project-context';
@@ -39,7 +40,7 @@ import {
 } from '@web/spaces/document/__tests__/bubble-bar-harness';
 
 const attachToChat = vi.hoisted(() =>
-  vi.fn(async (_projectId: string, _items: readonly unknown[]): Promise<void> => undefined),
+  vi.fn(async (_projectId: string, _items: readonly TrayItem[]): Promise<void> => undefined),
 );
 vi.mock('@web/stores/attach-to-chat', () => ({ attachToChat }));
 
@@ -55,10 +56,12 @@ afterEach(() => {
   closeShared();
 });
 
-/** The first item handed to the tray in the first call. */
-function handed(): { id: string; name: string; chip?: { data_snapshot: unknown } } {
-  const call = attachToChat.mock.calls[0] as unknown as [string, Array<{ id: string; name: string; chip?: { data_snapshot: unknown } }>];
-  return call[1][0]!;
+/**
+ * The first item handed to the tray in the first call.
+ * @returns The item.
+ */
+function handed(): TrayItem {
+  return attachToChat.mock.calls[0]![1][0]!;
 }
 
 describe('the bubble bar entry', () => {
@@ -137,22 +140,11 @@ function table(cells: [string, string]): unknown {
   return { type: 'table', content: { type: 'tableContent', rows: [{ cells }] } };
 }
 
-/**
- * Opens a mounted editor holding two blocks: words, then an empty row.
- * @returns The editor.
- */
-function openBlocks(): Editor {
-  const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
-  const root = document.createElement('div');
-  document.body.appendChild(root);
-  editor.mount(root);
-  mounted.push(editor);
-  editor.replaceBlocks(editor.document, [
-    { type: 'paragraph', content: 'alpha bravo' },
-    { type: 'paragraph', content: '' },
-  ] as never);
-  return editor;
-}
+/** Two rows: words, then an empty one. */
+const TWO_ROWS = [
+  { type: 'paragraph', content: 'alpha bravo' },
+  { type: 'paragraph', content: '' },
+];
 
 /**
  * Opens the block menu over one block, inside a project.
@@ -188,7 +180,7 @@ function openMenuOver(
 
 describe('the block menu row', () => {
   it('sits right after Comment and before Delete', () => {
-    const editor = openBlocks();
+    const editor = openWith(TWO_ROWS);
     openMenuOver(editor, 0);
 
     const rows = [...document.querySelectorAll('[data-testid^="doc-block-row-"]')].map((el) =>
@@ -200,7 +192,7 @@ describe('the block menu row', () => {
   });
 
   it('hands the block to the project and closes the menu', async () => {
-    const editor = openBlocks();
+    const editor = openWith(TWO_ROWS);
     const close = openMenuOver(editor, 0);
     const id = (editor.document as unknown as PressedBlock[])[0]!.id;
 
@@ -214,7 +206,7 @@ describe('the block menu row', () => {
   });
 
   it('is unavailable over a row with no words, like Comment', () => {
-    const editor = openBlocks();
+    const editor = openWith(TWO_ROWS);
     openMenuOver(editor, 1);
 
     expect(screen.getByTestId('doc-block-row-addToAgent').getAttribute('aria-disabled')).toBe('true');

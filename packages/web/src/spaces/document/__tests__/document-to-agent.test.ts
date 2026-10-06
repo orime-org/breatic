@@ -79,7 +79,7 @@ describe('selectionItem', () => {
     ]);
     const view = editor.prosemirrorView!;
     view.dispatch(
-      view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, view.state.doc.content.size - 1)),
+      view.state.tr.setSelection(TextSelection.between(view.state.doc.resolve(1), view.state.doc.resolve(view.state.doc.content.size - 1))),
     );
 
     const item = selectionItem(editor);
@@ -91,16 +91,27 @@ describe('selectionItem', () => {
     expect(item.name).toBe('bold words');
   });
 
-  it('gives what copy gives for words inside one block, styles dropped', () => {
-    // BlockNote exports a selection inside one block as bare inline HTML, and
-    // its Markdown conversion keeps no styles from that; text/plain on copy is
-    // the same string.
+  it('keeps the styles of words inside one block', () => {
     const editor = open([
       { type: 'paragraph', content: [{ type: 'text', text: 'bold words', styles: { bold: true } }] },
     ]);
     selectWords(editor, 'bold words');
 
-    expect(selectionItem(editor).chip?.data_snapshot).toEqual({ text: 'bold words' });
+    expect(selectionItem(editor).chip?.data_snapshot).toEqual({ text: '**bold words**' });
+  });
+
+  it('gives the raw lines of a code block, as copy does', () => {
+    const editor = open([{ type: 'codeBlock', content: 'a = 1\nb = 2' }]);
+    selectWords(editor, 'a = 1');
+    const view = editor.prosemirrorView!;
+    const { $from } = view.state.selection;
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, $from.start(), $from.end()),
+      ),
+    );
+
+    expect(selectionItem(editor).chip?.data_snapshot).toEqual({ text: 'a = 1\nb = 2' });
   });
 
   it('keeps a line break inside one block as a Markdown hard break', () => {
@@ -150,7 +161,7 @@ describe('selectionItem', () => {
     ]);
     const view = editor.prosemirrorView!;
     view.dispatch(
-      view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, view.state.doc.content.size - 1)),
+      view.state.tr.setSelection(TextSelection.between(view.state.doc.resolve(1), view.state.doc.resolve(view.state.doc.content.size - 1))),
     );
 
     expect(selectionItem(editor).name).toBe('a'.repeat(40));

@@ -3,8 +3,8 @@
 
 /**
  * What the document hands the Agent's attachment tray (inner#936): one text
- * item holding the Markdown that copy would put on the clipboard, taken at the
- * moment of the click.
+ * item holding the selection or the block as Markdown, taken at the moment of
+ * the click.
  *
  * Ids follow the canvas convention of naming what was picked
  * (`spaces/canvas/attach-nodes.ts`): a block is keyed by its id, so adding it
@@ -13,8 +13,8 @@
  * leaves one item.
  */
 
-import { selectedFragmentToHTML } from '@blocknote/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import { cleanHTMLToMarkdown, getNodeById, selectedFragmentToHTML } from '@blocknote/core';
+import type { EditorView } from '@tiptap/pm/view';
 import { MessageSquarePlus } from 'lucide-react';
 
 import { ATTACHMENT_NAME_CHARS, hashOf } from '@web/lib/attachment-naming';
@@ -51,6 +51,36 @@ function textItem(id: string, name: string, text: string): TrayItem {
 }
 
 /**
+ * The words the selection covers, one stretch per range: over table cells
+ * that is the selected cells only.
+ * @param view - The editor's view.
+ * @returns The words, a line per stretch.
+ */
+function selectedWords(view: EditorView): string {
+  const { doc, selection } = view.state;
+  return selection.ranges
+    .map((range) => doc.textBetween(range.$from.pos, range.$to.pos, '\n', '\n'))
+    .join('\n');
+}
+
+/**
+ * The selection as Markdown: what copy puts on the clipboard, except inside
+ * one block. There BlockNote exports bare inline HTML, and its Markdown
+ * conversion reads a top-level `<br>` as nothing and a top-level link as a
+ * block of its own, so the words are wrapped in the paragraph they came from
+ * first. A code block keeps the raw text copy gives it.
+ * @param editor - The document editor.
+ * @param view - Its view.
+ * @returns The Markdown, without the exporter's closing newline.
+ */
+function selectionMarkdown(editor: ToolEditor, view: EditorView): string {
+  const { externalHTML, markdown } = selectedFragmentToHTML(view, editor);
+  const { $from, $to } = view.state.selection;
+  const insideOneBlock = $from.sameParent($to) && $from.parent.type.spec.code !== true;
+  return (insideOneBlock ? cleanHTMLToMarkdown(`<p>${externalHTML}</p>`) : markdown).trimEnd();
+}
+
+/**
  * The reader's selection, as an item for the tray.
  * @param editor - The document editor, mounted.
  * @returns The item.
@@ -59,33 +89,8 @@ function textItem(id: string, name: string, text: string): TrayItem {
 export function selectionItem(editor: ToolEditor): TrayItem {
   const view = editor.prosemirrorView;
   if (view === null) throw new Error('the document editor is not mounted');
-  // The trailing newline the exporter ends with says nothing to the agent.
-  const markdown = selectedFragmentToHTML(view, editor).markdown.trimEnd();
-  const { doc, selection } = view.state;
-  // One stretch per range: over table cells that is the selected cells only.
-  const words = selection.ranges
-    .map((range) => doc.textBetween(range.$from.pos, range.$to.pos, '\n', '\n'))
-    .join('\n');
-  return textItem(`document-selection-${hashOf([markdown])}`, nameFrom(words), markdown);
-}
-
-/**
- * The ProseMirror node of one block, children and cells included.
- * @param doc - The document.
- * @param blockId - The block's id.
- * @returns The node, or undefined when no block has that id.
- */
-function blockNode(doc: PMNode, blockId: string): PMNode | undefined {
-  let found: PMNode | undefined;
-  doc.descendants((node) => {
-    if (found !== undefined) return false;
-    if (node.type.name === 'blockContainer' && node.attrs.id === blockId) {
-      found = node;
-      return false;
-    }
-    return true;
-  });
-  return found;
+  const markdown = selectionMarkdown(editor, view);
+  return textItem(`document-selection-${hashOf([markdown])}`, nameFrom(selectedWords(view)), markdown);
 }
 
 /**
@@ -93,12 +98,11 @@ function blockNode(doc: PMNode, blockId: string): PMNode | undefined {
  * @param editor - The document editor, mounted.
  * @param blockId - The block's id.
  * @returns The item.
- * @throws {Error} When the editor is not mounted or holds no such block.
+ * @throws {Error} When the editor holds no such block.
  */
 export function blockItem(editor: ToolEditor, blockId: string): TrayItem {
-  const view = editor.prosemirrorView;
   const block = editor.getBlock(blockId);
-  const node = view === null ? undefined : blockNode(view.state.doc, blockId);
+  const node = getNodeById(blockId, editor.prosemirrorState.doc)?.node;
   if (block === undefined || node === undefined) {
     throw new Error(`no block ${blockId} in the document`);
   }
@@ -122,11 +126,7 @@ export const addToAgentTool: ToolDef = {
    */
   canRun: (editor: ToolEditor): boolean => {
     const view = editor.prosemirrorView;
-    if (view === null) return false;
-    const { doc, selection } = view.state;
-    return selection.ranges.some(
-      (range) => doc.textBetween(range.$from.pos, range.$to.pos, '\n', '\n').trim() !== '',
-    );
+    return view !== null && selectedWords(view).trim() !== '';
   },
 
   /**
@@ -141,7 +141,7 @@ export const addToAgentTool: ToolDef = {
    * @param projectId - The project the document is in.
    */
   run: (editor: ToolEditor, projectId?: string | null): void => {
-    if (projectId == null || editor.prosemirrorView === null) return;
+    if (projectId == null) return;
     void attachToChat(projectId, [selectionItem(editor)]);
   },
 };

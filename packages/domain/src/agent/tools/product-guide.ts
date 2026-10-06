@@ -863,9 +863,8 @@ export function renderProductGuide(): string {
       `and ${quoted(t("spaces.document.commands.quote"))}; the alignment menu lists ` +
       `${quoted(t("spaces.document.commands.alignLeft"))}, ${quoted(t("spaces.document.commands.alignCenter"))} ` +
       `and ${quoted(t("spaces.document.commands.alignRight"))}. The speech bubble starts a comment (see ` +
-      "Comments below). The speech bubble with a plus puts the selected text, with its formatting where the " +
-      "selection spans more than one line, into the Agent's box as an attachment, opening the Agent panel if it " +
-      "is hidden. The AI menu's commands look " +
+      "Comments below). The speech bubble with a plus puts the selected text, with its formatting, into the " +
+      "Agent's box as an attachment, opening the Agent panel if it is hidden. The AI menu's commands look " +
       "available but do nothing yet. With the whole document selected there is no link icon. Inside a code " +
       "block the bold, italic, strikethrough, underline, code, link and colour buttons are greyed, and a code " +
       "block cannot be aligned. On inline code the same buttons are greyed except code, which shows as on; " +
