@@ -22,6 +22,7 @@ import {
 } from '@web/components/ui/dropdown-menu';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
+import { TABLE_MENU_ROWS } from '@web/spaces/document/document-block-menu-rows';
 import { DocumentProjectProvider } from '@web/spaces/document/document-project-context';
 import type {
   HandleEditor,
@@ -33,6 +34,7 @@ import {
   mountDocumentEditor,
   openSharedBody,
   selectBlockText,
+  selectTextRange,
   waitForBar,
 } from '@web/spaces/document/__tests__/bubble-bar-harness';
 
@@ -88,6 +90,16 @@ describe('the bubble bar entry', () => {
     expect(handed().name).toBe('alpha bravo');
   });
 
+  it('is unavailable over a selection of spaces only', async () => {
+    const editor = openSharedBody('<p>a   b</p>');
+    mountDocumentEditor(editor, false, 'project-1');
+    focusBody(editor);
+    selectTextRange(editor, 1, 4);
+    await waitForBar();
+
+    expect(screen.getByTestId('doc-bubble-tool-addToAgent')).toHaveProperty('disabled', true);
+  });
+
   it('is not shown to a viewer', async () => {
     const editor = openSharedBody('<p>alpha bravo</p>');
     mountDocumentEditor(editor, true, 'project-1');
@@ -100,6 +112,30 @@ describe('the bubble bar entry', () => {
     expect(screen.queryByTestId('doc-bubble-tool-addToAgent')).toBeNull();
   });
 });
+
+/**
+ * Opens a mounted editor holding the blocks given.
+ * @param blocks - The document.
+ * @returns The editor.
+ */
+function openWith(blocks: unknown[]): Editor {
+  const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  editor.mount(root);
+  mounted.push(editor);
+  editor.replaceBlocks(editor.document, blocks as never);
+  return editor;
+}
+
+/**
+ * A one-row table holding the two cells given.
+ * @param cells - The cells' words.
+ * @returns The block.
+ */
+function table(cells: [string, string]): unknown {
+  return { type: 'table', content: { type: 'tableContent', rows: [{ cells }] } };
+}
 
 /**
  * Opens a mounted editor holding two blocks: words, then an empty row.
@@ -122,9 +158,14 @@ function openBlocks(): Editor {
  * Opens the block menu over one block, inside a project.
  * @param editor - The editor.
  * @param index - Which block.
+ * @param rows - The rows to draw; a block's grip rows when left out.
  * @returns The close callback the menu was handed.
  */
-function openMenuOver(editor: Editor, index: number): () => void {
+function openMenuOver(
+  editor: Editor,
+  index: number,
+  rows?: typeof TABLE_MENU_ROWS,
+): () => void {
   const close = vi.fn();
   const block = (editor.document as unknown as PressedBlock[])[index]!;
   render(
@@ -136,6 +177,7 @@ function openMenuOver(editor: Editor, index: number): () => void {
             editor={editor as unknown as HandleEditor}
             block={block}
             close={close}
+            rows={rows}
           />
         </DropdownMenuContent>
       </DropdownMenu>
@@ -174,6 +216,44 @@ describe('the block menu row', () => {
   it('is unavailable over a row with no words, like Comment', () => {
     const editor = openBlocks();
     openMenuOver(editor, 1);
+
+    expect(screen.getByTestId('doc-block-row-addToAgent').getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByTestId('doc-block-row-comment').getAttribute('aria-disabled')).toBe('true');
+  });
+});
+
+describe('the table entry\'s menu row', () => {
+  it('sits right after Comment and before Delete', () => {
+    const editor = openWith([table(['', 'cell text'])]);
+    openMenuOver(editor, 0, TABLE_MENU_ROWS);
+
+    const rows = [...document.querySelectorAll('[data-testid^="doc-block-row-"]')].map((el) =>
+      el.getAttribute('data-testid'),
+    );
+    const at = rows.indexOf('doc-block-row-addToAgent');
+    expect(at).toBe(rows.indexOf('doc-block-row-comment') + 1);
+    expect(rows[at + 1]).toBe('doc-block-row-delete');
+  });
+
+  it('hands the whole table to the project', async () => {
+    const editor = openWith([table(['', 'cell text'])]);
+    const close = openMenuOver(editor, 0, TABLE_MENU_ROWS);
+    const id = (editor.document as unknown as PressedBlock[])[0]!.id;
+    const markdown = editor.blocksToMarkdownLossy([editor.getBlock(id)!]).trimEnd();
+
+    fireEvent.click(screen.getByTestId('doc-block-row-addToAgent'));
+
+    await waitFor(() => expect(attachToChat).toHaveBeenCalledTimes(1));
+    expect(handed().id).toBe(`document-block-${id}`);
+    expect(handed().name).toBe('cell text');
+    expect(handed().chip?.data_snapshot).toEqual({ text: markdown });
+    expect(markdown).toContain('cell text');
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('is unavailable over a table with no words, like Comment', () => {
+    const editor = openWith([table(['', ''])]);
+    openMenuOver(editor, 0, TABLE_MENU_ROWS);
 
     expect(screen.getByTestId('doc-block-row-addToAgent').getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByTestId('doc-block-row-comment').getAttribute('aria-disabled')).toBe('true');
