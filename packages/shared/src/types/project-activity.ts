@@ -109,7 +109,11 @@ export const SpaceActivityPayloadSchema = z.object({
 export const MemberActivityPayloadSchema = z.object({
   role: z.custom<ProjectRole>().optional(),
   previousRole: z.custom<ProjectRole>().optional(),
-  /** Affected user when the actor acts on someone else (remove etc.). */
+  /**
+   * The member the event is about (remove, role change). Equal to the actor
+   * when a member leaves on their own, which is how the feed tells a leave
+   * from a removal.
+   */
   targetUserId: z.string().optional(),
 });
 

@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Project members service — invite / change-role / remove with
+ * Project members service — invite / change-role / remove / leave with
  * permission and invariant enforcement.
  *
  * The service layer sits between Hono routes and the repo. Routes
- * have already enforced `requireRole('owner')` for write operations,
- * so the service only verifies invariants that are intrinsic to the
- * member graph itself (no double-owner, owner cannot be removed,
- * cannot demote owner without transfer).
+ * enforce `requireRole('owner')` for invite / change-role / remove;
+ * `leave` is open to any member and checks the archive state and the
+ * caller's own role itself. Beyond that the service only verifies
+ * invariants intrinsic to the member graph (no double-owner, owner
+ * cannot be removed, cannot demote owner without transfer).
  *
  * v10 §7.2.5 mandates that every member-state change publish a Redis
  * pub/sub event so collab can broadcast invalidation to connected
@@ -18,12 +19,32 @@
  * line-replacement, and we never silently drop a notification.
  */
 
-import { db, projectMembersRepo } from "@breatic/core";
+import { db, logger, projectMembersRepo } from "@breatic/core";
 import { publishMembersChanged } from "@breatic/core";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { ProjectMember, ProjectRole } from "@breatic/shared";
+
+/**
+ * Tell collab a member's standing changed, once the change has committed.
+ *
+ * The write is already in the database when this runs; a failed announcement
+ * is logged and the request still succeeds, or the caller would be told the
+ * change did not happen when it did.
+ * @param projectId - Project UUID
+ * @param detail - Which member changed and how
+ */
+async function announceMembersChanged(
+  projectId: string,
+  detail: Parameters<typeof publishMembersChanged>[1],
+): Promise<void> {
+  try {
+    await publishMembersChanged(projectId, detail);
+  } catch (err) {
+    logger.error({ err, projectId, detail }, "project_members_changed_publish_failed");
+  }
+}
 
 /**
  * List active members of a project (caller has already checked access).
@@ -104,7 +125,7 @@ export async function changeRole(
     }
     return role;
   });
-  await publishMembersChanged(projectId, {
+  await announceMembersChanged(projectId, {
     affectedUserId: targetUserId,
     action: "update",
     newRole,
@@ -162,7 +183,7 @@ export async function remove(
     }
     return role;
   });
-  await publishMembersChanged(projectId, {
+  await announceMembersChanged(projectId, {
     affectedUserId: targetUserId,
     action: "remove",
   });
@@ -172,4 +193,28 @@ export async function remove(
     type: "member:removed",
     payload: { previousRole: current, targetUserId },
   });
+}
+
+/**
+ * Leave a project of one's own accord.
+ *
+ * An archived project freezes its membership, and the owner has to hand the
+ * project over first; both are refused with their own sentence. The owner
+ * check here reads outside the lock only to pick that sentence — the locked
+ * check inside {@link remove} is what keeps a transfer landing in between
+ * from taking the project's only owner with it.
+ * @param projectId - Project UUID
+ * @param userId - The member leaving
+ * @throws {NotFoundError} if the caller is not an active member
+ * @throws {ConflictError} if the project is archived, or the caller owns it
+ */
+export async function leave(projectId: string, userId: string): Promise<void> {
+  const access = await projectMembersRepo.getAccess(projectId, userId);
+  if (access?.archived) {
+    throw new ConflictError(t("server.project.archived"));
+  }
+  if (access?.role === "owner") {
+    throw new ConflictError(t("server.project.leave_owner"));
+  }
+  await remove(projectId, userId, userId);
 }

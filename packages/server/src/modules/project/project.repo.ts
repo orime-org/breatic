@@ -332,7 +332,7 @@ export async function getProjectById(
 /** A studio's project as listed, before the caller's card permissions are added. */
 export type StudioProjectRow = Omit<
   ProjectSummary,
-  "canManageMeta" | "canDuplicate" | "canArchive" | "canRestore"
+  "canManageMeta" | "canDuplicate" | "canArchive" | "canRestore" | "canLeave"
 >;
 
 /**

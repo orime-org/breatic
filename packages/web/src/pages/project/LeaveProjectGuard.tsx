@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { useBlocker, type Location } from 'react-router-dom';
+import { NavigationType, useBlocker, type Location } from 'react-router-dom';
 
 import {
   AlertDialog,
@@ -37,6 +37,31 @@ export function shouldBlockLeave(
   return hasFrontEndOps && currentPath !== nextPath;
 }
 
+/** Navigation state that marks the landing after leaving the project. */
+export interface LeftProjectState {
+  leftProject: true;
+}
+
+/** The state `LeaveProjectFromPage` navigates with once the caller has left. */
+export const LEFT_PROJECT_STATE: LeftProjectState = { leftProject: true };
+
+/**
+ * Whether a navigation is the landing that follows leaving the project. The
+ * marker stays on that history entry, so Back or Forward onto it later
+ * (`POP`) is an ordinary navigation and does not count.
+ * @param nextLocation - Where the navigation goes.
+ * @param historyAction - How it gets there.
+ * @returns True for the landing itself.
+ */
+export function isLandingAfterLeave(
+  nextLocation: Pick<Location, 'state'>,
+  historyAction: NavigationType,
+): boolean {
+  if (historyAction === NavigationType.Pop) return false;
+  const state = nextLocation.state as Partial<LeftProjectState> | null | undefined;
+  return state?.leftProject === LEFT_PROJECT_STATE.leftProject;
+}
+
 /**
  * Confirm before leaving a project (in-app navigation — the top-bar "Studio"
  * back link, the logo, browser back) while a front-end operation is still in
@@ -53,10 +78,13 @@ export function LeaveProjectGuard(): React.JSX.Element {
       ({
         currentLocation,
         nextLocation,
+        historyAction,
       }: {
         currentLocation: Location;
         nextLocation: Location;
+        historyAction: NavigationType;
       }) =>
+        !isLandingAfterLeave(nextLocation, historyAction) &&
         shouldBlockLeave(
           useSpaceOperationsStore.getState().hasAnyOperations(),
           currentLocation.pathname,
