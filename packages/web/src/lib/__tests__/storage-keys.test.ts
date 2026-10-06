@@ -8,15 +8,15 @@ import { STORAGE_PREFIX, STORAGE_KEYS } from '@web/lib/storage-keys';
 describe('storage-keys registry', () => {
   const entries = Object.entries(STORAGE_KEYS);
 
-  it('exposes at least the four known keys', () => {
-    expect(Object.keys(STORAGE_KEYS)).toEqual(
-      expect.arrayContaining([
-        'locale',
-        'preferences',
-        'railMyStudios',
-        'railJoinedStudios',
-      ]),
-    );
+  it('registers exactly the keys the app stores', () => {
+    expect(STORAGE_KEYS).toEqual({
+      locale: 'breatic.locale',
+      theme: 'breatic.theme',
+      projectTabs: 'breatic.projectTabs',
+      userPreferences: 'breatic.userPreferences',
+      sessionSeen: 'breatic.sessionSeen',
+      deferredAppVersions: 'breatic.deferredAppVersions',
+    });
   });
 
   it('pins STORAGE_PREFIX to "breatic."', () => {
