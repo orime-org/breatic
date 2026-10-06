@@ -103,6 +103,45 @@ describe('selectionItem', () => {
     expect(selectionItem(editor).chip?.data_snapshot).toEqual({ text: 'bold words' });
   });
 
+  it('keeps a line break inside one block as a Markdown hard break', () => {
+    const editor = open([{ type: 'paragraph', content: 'line one\nline two' }]);
+    selectWords(editor, 'line one');
+    const view = editor.prosemirrorView!;
+    const { $from } = view.state.selection;
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, $from.start(), $from.end()),
+      ),
+    );
+
+    expect(selectionItem(editor).chip?.data_snapshot).toEqual({ text: 'line one\\\nline two' });
+  });
+
+  it('keeps a link inside one block in its line', () => {
+    const editor = open([
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'see ', styles: {} },
+          { type: 'link', href: 'https://example.com', content: 'link' },
+          { type: 'text', text: ' here', styles: {} },
+        ],
+      },
+    ]);
+    const view = editor.prosemirrorView!;
+    selectWords(editor, 'see');
+    const { $from } = view.state.selection;
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, $from.start(), $from.end()),
+      ),
+    );
+
+    expect(selectionItem(editor).chip?.data_snapshot).toEqual({
+      text: 'see [link](https://example.com) here',
+    });
+  });
+
   it('names the item after the first line and cuts it at 40 characters', () => {
     const long = 'a'.repeat(60);
     const editor = open([
