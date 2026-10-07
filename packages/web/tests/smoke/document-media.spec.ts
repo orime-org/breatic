@@ -846,6 +846,28 @@ test('closing the tab during an upload asks first (A12)', async () => {
   expect(await leaveIsHeld()).toBe(false);
 });
 
+test('a picture copied with the keyboard pastes back as the same picture (A10, A18)', async () => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openFreshDocument(page);
+  await page.keyboard.type('alpha');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('omega');
+  await page.keyboard.press('ArrowUp');
+  await pastePicture(page, 'copy.png');
+  const img = page.locator(`${IMAGE} img`);
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const src = await img.getAttribute('src');
+
+  await img.click();
+  await page.keyboard.press('ControlOrMeta+c');
+  await page.locator(`${EDITOR} .bn-block-content`).last().click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('ControlOrMeta+v');
+
+  await expect(img).toHaveCount(2);
+  expect(await img.nth(1).getAttribute('src')).toBe(src);
+});
+
 test('a picture is still there after a reload (A13)', async () => {
   await openFreshDocument(page);
   await pastePicture(page, 'kept.png');
