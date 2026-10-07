@@ -488,6 +488,17 @@ export function renderProductGuide(): string {
       "was clicked, Esc deselects the node and the panel closes with it. When the model list cannot be loaded, the panel " +
       `does not open and a message says why: ${quoted(t("canvas.generatePanel.catalogUnavailable"))}, or ` +
       `${quoted(t("canvas.generatePanel.catalogOffline"))}`,
+    `Left of the X is a button with a layout icon whose tip reads ${quoted(t("canvas.template.title"))}. It ` +
+      `opens a list under that heading of the templates for this kind of node, each a name with a line under ` +
+      `it. A picture node lists ${quoted(t("canvas.template.storyboard-grid-25.name"))} ` +
+      `(${quoted(t("canvas.template.storyboard-grid-25.description"))}) and ` +
+      `${quoted(t("canvas.template.costume-sheet.name"))} (${quoted(t("canvas.template.costume-sheet.description"))}); ` +
+      `video and sound nodes list none and show ${quoted(t("canvas.template.empty"))}. A template whose model this ` +
+      `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
+      "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
+      "template's, its 📎 spots mentioning the pictures already in the reference list; nothing asks first, and " +
+      `the message ${quoted(t("canvas.generatePanel.editMarks"))} appears. Its bracketed spots work the way a ` +
+      "proposal's do (see below), and the reader can change anything after.",
     "Fill in what the panel asks for, then press the round button with an upward arrow at the right end of the " +
       "panel's bottom row. Usually that is the prompt; some modes also need a source slot filled, a voice or " +
       "speakers picked, or a connected node mentioned in the prompt (see Mentions). If something is missing, " +
@@ -827,7 +838,8 @@ export function renderProductGuide(): string {
       "file. Each spot's note is also a line on the card; where the panel shows no prompt box, that line is the " +
       "only place the spot appears. Whatever is left in a prompt is sent as it is, brackets included: once a spot " +
       "is done -- the words replaced, the setting picked, the file in its node -- the reader deletes its bracket " +
-      "from the prompt or shot.",
+      `from the prompt or shot. When placed nodes carry such spots, the message ${quoted(t("canvas.generatePanel.editMarks"))} ` +
+      "appears; nothing checks whether they were done.",
     "How work reaches a node depends on where it goes:",
     "- Into the reference list: the prompt, or a shot, mentions it where the proposal points at it, and a 📎 spot already " +
       "mentions its empty node.",
