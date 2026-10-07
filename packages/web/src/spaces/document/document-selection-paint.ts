@@ -13,8 +13,8 @@
  *
  * WHICH SELECTIONS. A range that is not empty (a drag, Shift with an arrow,
  * select-all) paints every no-text block wholly inside it. A node selection
- * paints only a divider: the reader makes one by clicking a divider or walking
- * onto it with the arrows, and the 2026-09-18 rule that the machinery's own
+ * paints only a divider or a media block: the reader makes one by clicking it
+ * or walking onto it with the arrows, and the 2026-09-18 rule that the machinery's own
  * node selections are not drawn (`index.css:558`) stays for every other block.
  *
  * WHEN. Only while the reader can see a selection at all. In an editable body
@@ -53,8 +53,14 @@ export const IN_SELECTION_CLASS = 'doc-in-selection';
  */
 export const EMPTY_LINE_CLASS = 'doc-empty-line-in-selection';
 
+/** The image, video and audio blocks (inner#1127). */
+const MEDIA = ['image', 'video', 'audio'];
+
 /** The blocks with no text that a range selection paints. */
-const NO_TEXT = new Set([DIVIDER, UNSUPPORTED_BLOCK]);
+const NO_TEXT = new Set([DIVIDER, UNSUPPORTED_BLOCK, ...MEDIA]);
+
+/** The blocks the reader node-selects by clicking them or arrowing onto them. */
+const NODE_SELECTED = new Set([DIVIDER, ...MEDIA]);
 
 /** Tags the transaction that asks for the band to be redrawn. */
 const KEY = new PluginKey('documentSelectionPaint');
@@ -97,7 +103,7 @@ function paintFor(state: EditorState): DecorationSet {
   const { selection, doc } = state;
   const found: Decoration[] = [];
   if (selection instanceof NodeSelection) {
-    if (selection.node.type.name === DIVIDER) {
+    if (NODE_SELECTED.has(selection.node.type.name)) {
       found.push(
         Decoration.node(selection.from, selection.to, { class: IN_SELECTION_CLASS }),
       );

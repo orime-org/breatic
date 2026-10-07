@@ -10,12 +10,13 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
-import { NodeSelection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
+import { IN_SELECTION_CLASS } from '@web/spaces/document/document-selection-paint';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -129,5 +130,34 @@ describe.each(MEDIA)('a selected %s block', (type) => {
       'paragraph:Below',
     ]);
     expect(blocks[2]!.props['quoted']).toBe(true);
+  });
+});
+
+describe.each(MEDIA)('a %s block in the selection is drawn as selected', (type) => {
+  /**
+   * Whether the media block's element carries the selected look.
+   * @param editor - The editor.
+   * @returns True when it does.
+   */
+  function painted(editor: Editor): boolean {
+    return editor.prosemirrorView!.dom
+      .querySelector(`[data-content-type="${type}"]`)!
+      .classList.contains(IN_SELECTION_CLASS);
+  }
+
+  it('when it is clicked, which selects it', () => {
+    const { editor } = open(type);
+
+    expect(painted(editor)).toBe(true);
+  });
+
+  it('when a range runs over it', () => {
+    const { editor } = open(type);
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, view.state.doc.content.size - 3)),
+    );
+
+    expect(painted(editor)).toBe(true);
   });
 });

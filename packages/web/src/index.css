@@ -552,10 +552,10 @@ body {
    machinery makes for itself: the one `blockDragStart` puts on a row it
    carries, and the one ProseMirror falls back to when no plugin answers a
    modifier-click in a read-only body. Both framed a block the reader never
-   selected. A divider is the one exception: it has no text, so clicking it or
-   walking onto it with the arrows node-selects it, and that selection IS the
-   reader's. It is painted by `.doc-in-selection` further down, the same band a
-   drag across it gets (#124).
+   selected. A divider and a media block are the exceptions: neither has text,
+   so clicking one or walking onto it with the arrows node-selects it, and that
+   selection IS the reader's. It is painted by `.doc-in-selection` further
+   down, the same band a drag across it gets (#124, inner#1127).
 
    The rule below stays because the library draws a marker of its own over the
    same block — a `#64a0ff` wash with a 4px inset ring, a fixed value that
