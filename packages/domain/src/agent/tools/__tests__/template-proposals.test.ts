@@ -138,3 +138,53 @@ describe("the template prompts the agent is shown inside a request", () => {
     expect(said).toContain(japanese);
   });
 });
+
+describe("empty nodes counted by the place their mark takes", () => {
+  /**
+   * A first-frame slot node listed before a pool node, both empty, feeding
+   * Kling O3 image-to-video, with the given number of material marks.
+   * @param marks - How many asset marks the prompt carries.
+   * @returns The proposal as the agent sends it.
+   */
+  function slotThenPool(marks: number): Parameters<typeof answerFor>[0] {
+    const asset = (label: string): { slot: { kind: "asset"; label: string; note: string } } => ({
+      slot: { kind: "asset", label, note: label },
+    });
+    const prompt = [
+      { text: "She walks forward. " },
+      ...(marks >= 2 ? [asset("first frame"), { text: " opens it. " }] : []),
+      asset("character"),
+      { text: " stays the same." },
+    ];
+    return {
+      nodes: [
+        { role: "source", type: "image", name: "First frame" },
+        { role: "source", type: "image", name: "Character" },
+        {
+          role: "generate",
+          type: "video",
+          name: "Clip",
+          mode: "i2v",
+          model: "kling-video-o3-4k-image-to-video",
+          prompt,
+        },
+      ],
+      edges: [
+        { fromIndex: 0, toIndex: 2 },
+        { fromIndex: 1, toIndex: 2 },
+      ],
+      rationale: "A clip from a first frame, keeping the character.",
+      groupName: "Clip",
+    };
+  }
+
+  it("refuses one mark when the pool node comes second, since that mark lands on the slot", () => {
+    const answer = answerFor(slotThenPool(1));
+    expect(answer).toMatchObject({ placed: false, reason: expect.stringContaining("2 material mark") });
+  });
+
+  it("places a mark for each place in order", () => {
+    const answer = answerFor(slotThenPool(2));
+    expect(answer).toMatchObject({ placed: true });
+  });
+});
