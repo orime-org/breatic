@@ -65,6 +65,7 @@ import { getLegalConfig } from "@server/config/legal.js";
 import bcrypt from "bcryptjs";
 import postgres from "postgres";
 import { initCore, loadLocales, AppError, TooManyRequestsError, env, getRedis, runWithLocale } from "@breatic/core";
+import { t } from "@breatic/shared";
 
 try {
   initCore(process.env);
@@ -317,6 +318,18 @@ describe("two browsers on one address", () => {
 });
 
 describe("resending the code", () => {
+  it("writes the resent mail in the language the resend was asked in", async () => {
+    const email = freshEmail();
+    const { ticket } = await startSignup({ ticket: null, email, password: "password1", locale: "ko" });
+    await sleep(1100);
+    await runWithLocale("ja", () => resendSignupCode(ticket));
+
+    const japanese = runWithLocale("ja", () => t("server.mail.signup_code.subject"));
+    const korean = runWithLocale("ko", () => t("server.mail.signup_code.subject"));
+    expect(sent.mails[1]!.subject).toContain(japanese);
+    expect(sent.mails[1]!.subject).not.toContain(korean);
+  });
+
   it("refuses inside the wait and afterwards sends a new code that replaces the old one", async () => {
     const email = freshEmail();
     const { ticket } = await startSignup({ ticket: null, email, password: "password1", locale: "en" });

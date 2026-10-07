@@ -140,7 +140,7 @@ return 1
  * deleted.
  *
  * KEYS[1] pending sign-up · ARGV[1] normalized address · ARGV[2] password
- * hash · ARGV[3] language.
+ * hash.
  * Returns the milliseconds the sign-up has left · 0 no such sign-up or another address.
  */
 const UPDATE_PENDING_SCRIPT = `
@@ -151,7 +151,7 @@ if held ~= ARGV[1] then
 end
 local left = redis.call('PTTL', KEYS[1])
 if left <= 0 then return 0 end
-redis.call('HSET', KEYS[1], 'passwordHash', ARGV[2], 'locale', ARGV[3])
+redis.call('HSET', KEYS[1], 'passwordHash', ARGV[2])
 return left
 `;
 
@@ -228,7 +228,6 @@ export async function startSignup(input: {
         signupKey(input.ticket),
         email,
         passwordHash,
-        input.locale,
       ),
     );
     if (leftMs > 0) {
@@ -251,7 +250,7 @@ export async function startSignup(input: {
   const { ttlSeconds } = getSignupCodeConfig();
   await redis
     .multi()
-    .hset(key, { email, passwordHash, locale: input.locale })
+    .hset(key, { email, passwordHash })
     .expire(key, ttlSeconds)
     .exec();
   try {
@@ -264,7 +263,9 @@ export async function startSignup(input: {
 
 /**
  * Mail a new code for the browser's pending sign-up; the old code stops
- * working and the count starts again.
+ * working and the count starts again. The mail is written in the language
+ * this request is made in, which follows the reader if they switched it on
+ * the code step.
  * @param ticket - The browser's ticket, or `null` when it has none.
  * @returns The ticket and the two timings the page shows.
  * @throws {AppError} 410 when there is no such pending sign-up.
@@ -272,14 +273,12 @@ export async function startSignup(input: {
  * @throws {AppError} 503 when the mail was not sent.
  */
 export async function resendSignupCode(ticket: string | null): Promise<SignupCodeSent> {
-  const pending =
-    ticket === null ? null : await getRedis().hmget(signupKey(ticket), "email", "locale");
-  const [email, locale] = pending ?? [null, null];
-  if (ticket === null || email == null || locale == null) {
+  const email = ticket === null ? null : await getRedis().hget(signupKey(ticket), "email");
+  if (ticket === null || email === null) {
     throw new AppError(HTTP_GONE, t("server.auth.signup_expired"));
   }
   await takeCooldown(email);
-  return sendCode(ticket, email, locale);
+  return sendCode(ticket, email, getActiveLocale());
 }
 
 /**
