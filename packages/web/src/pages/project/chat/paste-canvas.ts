@@ -8,7 +8,8 @@
 
 import type { ChatAttachedChip } from '@breatic/shared';
 
-import { hashOf, nodeNameOf, pickId } from '@web/spaces/canvas/attach-nodes';
+import { hashOf } from '@web/lib/attachment-naming';
+import { nodeNameOf, pickId } from '@web/spaces/canvas/attach-nodes';
 import type { ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 import type { TrayItem } from '@web/stores/chat-attachments';
 
