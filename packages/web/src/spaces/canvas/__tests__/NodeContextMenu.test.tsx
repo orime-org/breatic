@@ -119,18 +119,20 @@ describe('NodeContextMenu', () => {
   });
 
   it('node target: shows generate / upload / tools at the top', () => {
-    setup({ target: 'node', onUpload: () => {}, onGenerate: () => {} });
+    setup({
+      target: 'node',
+      onUpload: () => {},
+      onGenerate: () => {},
+      toolsOffered: true,
+    });
     expect(screen.getByTestId('node-menu-generate')).toBeInTheDocument();
     expect(screen.getByTestId('node-menu-upload')).toBeInTheDocument();
     expect(screen.getByTestId('node-menu-tools')).toBeInTheDocument();
   });
 
-  it('leaves generate out for a node kind that does not generate; tools always disabled; upload active', () => {
+  it('leaves generate out for a node kind that does not generate; upload active', () => {
     setup({ target: 'node', onUpload: () => {} });
     expect(screen.queryByTestId('node-menu-generate')).toBeNull();
-    expect(screen.getByTestId('node-menu-tools')).toHaveAttribute(
-      'data-disabled',
-    );
     expect(screen.getByTestId('node-menu-upload')).not.toHaveAttribute(
       'data-disabled',
     );
@@ -168,14 +170,19 @@ describe('NodeContextMenu', () => {
   });
 
   it('group target: never shows generate / upload / tools', () => {
-    setup({ target: 'group', onUpload: () => {}, onUngroup: () => {} });
+    setup({
+      target: 'group',
+      onUpload: () => {},
+      onUngroup: () => {},
+      toolsOffered: true,
+    });
     expect(screen.queryByTestId('node-menu-generate')).toBeNull();
     expect(screen.queryByTestId('node-menu-upload')).toBeNull();
     expect(screen.queryByTestId('node-menu-tools')).toBeNull();
   });
 
   it('node target: omits generate / upload / tools without onUpload (viewer)', () => {
-    setup({ target: 'node' });
+    setup({ target: 'node', toolsOffered: true });
     expect(screen.queryByTestId('node-menu-generate')).toBeNull();
     expect(screen.queryByTestId('node-menu-upload')).toBeNull();
     expect(screen.queryByTestId('node-menu-tools')).toBeNull();
@@ -208,30 +215,86 @@ describe('NodeContextMenu', () => {
     expect(screen.getAllByTestId('node-menu-download')).toHaveLength(1);
   });
 
-  // Download, Understand and Tools all act on the asset a node is showing,
-  // and a text node shows none — it holds words. An item greyed out on every
-  // text node forever says "not right now" about something that is never
-  // going to be offered, so the three are absent rather than disabled
-  // (user 2026-09-20). Snapshot is the same distinction read the other way:
-  // it is offered on text nodes and absent elsewhere.
+  // Download and Understand act on the asset a node is showing, and a text
+  // node shows none — it holds words. An item greyed out on every text node
+  // forever says "not right now" about something that is never going to be
+  // offered, so the two are absent rather than disabled (user 2026-09-20).
+  // Snapshot is the same distinction read the other way: it is offered on
+  // text nodes and absent elsewhere. Tools answers to its own prop.
   it.each([
     ['node-menu-download'],
     ['node-menu-understand'],
-    ['node-menu-tools'],
   ])('leaves out %s on a node holding no asset', (testId) => {
     setup({ target: 'node', onUpload: () => {}, assetActionsOffered: false });
     expect(screen.queryByTestId(testId)).toBeNull();
   });
 
-  // The other half: a node that DOES show an asset keeps all three, greyed
-  // when this particular node cannot act right now.
+  // The other half: a node that DOES show an asset keeps both, greyed when
+  // this particular node cannot act right now.
   it.each([
     ['node-menu-download'],
     ['node-menu-understand'],
-    ['node-menu-tools'],
   ])('keeps %s on a node holding an asset', (testId) => {
     setup({ target: 'node', onUpload: () => {} });
     expect(screen.getByTestId(testId)).not.toBeNull();
+  });
+
+  // inner#888 §7.1: Tools is a submenu listing the tools this node's kind
+  // offers. Whether the kind is offered any is its own prop, apart from the
+  // asset actions; a node of such a kind with nothing in it greys the row.
+  describe('tools submenu', () => {
+    const TOOLS = [
+      { id: 'image.upscale', labelKey: 'canvas.miniTool.image.upscale.label' },
+      { id: 'image.remove-bg', labelKey: 'canvas.miniTool.image.remove-bg.label' },
+    ];
+
+    it('leaves Tools out for a kind that offers no tools', () => {
+      setup({ target: 'node', onUpload: () => {} });
+      expect(screen.queryByTestId('node-menu-tools')).toBeNull();
+    });
+
+    it('greys Tools on a node of such a kind that holds nothing yet', () => {
+      setup({ target: 'node', onUpload: () => {}, toolsOffered: true });
+      expect(screen.getByTestId('node-menu-tools')).toHaveAttribute(
+        'data-disabled',
+      );
+    });
+
+    it('lists the offered tools in order and hands back the one chosen', () => {
+      const onTool = vi.fn();
+      setup({
+        target: 'node',
+        onUpload: () => {},
+        toolsOffered: true,
+        tools: TOOLS,
+        onTool,
+      });
+
+      const trigger = screen.getByTestId('node-menu-tools');
+      expect(trigger).not.toHaveAttribute('data-disabled');
+      fireEvent.keyDown(trigger, { key: 'ArrowRight' });
+
+      const items = screen.getAllByTestId(/^node-menu-tool-/);
+      expect(items.map((item) => item.dataset.testid)).toEqual([
+        'node-menu-tool-image.upscale',
+        'node-menu-tool-image.remove-bg',
+      ]);
+      fireEvent.click(screen.getByTestId('node-menu-tool-image.remove-bg'));
+      expect(onTool).toHaveBeenCalledWith('image.remove-bg');
+    });
+
+    it('keeps Tools apart from the asset actions', () => {
+      setup({
+        target: 'node',
+        onUpload: () => {},
+        assetActionsOffered: false,
+        toolsOffered: true,
+        tools: TOOLS,
+        onTool: () => {},
+      });
+      expect(screen.queryByTestId('node-menu-download')).toBeNull();
+      expect(screen.getByTestId('node-menu-tools')).toBeInTheDocument();
+    });
   });
 
   // Understand sits with Download because both act on the asset the node is
