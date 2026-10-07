@@ -1293,10 +1293,6 @@
     "inviteSent": "Invite sent.",
     "inviteFailed": "Could not send the invite. Please try again.",
     "invalidEmail": "Please enter a valid email address.",
-    "inviteLinkLabel": "Invite link",
-    "copyInviteLink": "Copy invite link",
-    "inviteLinkCopied": "Invite link copied.",
-    "inviteLinkCopyFailed": "Could not copy the link.",
     "role": {
       "view": "Viewer",
       "edit": "Editor"

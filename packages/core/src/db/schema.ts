@@ -1791,8 +1791,7 @@ export const studioInvitations = pgTable(
      * Names this request in the `/decision?token=` link. Minted when the
      * request is filed and never rotated, so the LINK stays valid for as long
      * as the row exists — what expires is the request, not the URL. Shared by
-     * all three channels that can reach the request: the email, the bell entry
-     * and (for a project invite) the owner's copyable share link.
+     * both channels that can reach the request: the email and the bell entry.
      */
     shareToken: varchar("share_token", { length: 64 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -1868,8 +1867,7 @@ export const projectInvitations = pgTable(
      * Names this request in the `/decision?token=` link. Minted when the
      * request is filed and never rotated, so the LINK stays valid for as long
      * as the row exists — what expires is the request, not the URL. Shared by
-     * all three channels that can reach the request: the email, the bell entry
-     * and (for a project invite) the owner's copyable share link.
+     * both channels that can reach the request: the email and the bell entry.
      */
     shareToken: varchar("share_token", { length: 64 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -1955,8 +1953,7 @@ export const roleUpgradeRequests = pgTable(
      * Names this request in the `/decision?token=` link. Minted when the
      * request is filed and never rotated, so the LINK stays valid for as long
      * as the row exists — what expires is the request, not the URL. Shared by
-     * all three channels that can reach the request: the email, the bell entry
-     * and (for a project invite) the owner's copyable share link.
+     * both channels that can reach the request: the email and the bell entry.
      */
     shareToken: varchar("share_token", { length: 64 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -2058,8 +2055,7 @@ export const projectTransfers = pgTable(
      * Names this request in the `/decision?token=` link. Minted when the
      * request is filed and never rotated, so the LINK stays valid for as long
      * as the row exists — what expires is the request, not the URL. Shared by
-     * all three channels that can reach the request: the email, the bell entry
-     * and (for a project invite) the owner's copyable share link.
+     * both channels that can reach the request: the email and the bell entry.
      */
     shareToken: varchar("share_token", { length: 64 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -2105,8 +2101,7 @@ export const studioTransfers = pgTable(
      * Names this request in the `/decision?token=` link. Minted when the
      * request is filed and never rotated, so the LINK stays valid for as long
      * as the row exists — what expires is the request, not the URL. Shared by
-     * all three channels that can reach the request: the email, the bell entry
-     * and (for a project invite) the owner's copyable share link.
+     * both channels that can reach the request: the email and the bell entry.
      */
     shareToken: varchar("share_token", { length: 64 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),

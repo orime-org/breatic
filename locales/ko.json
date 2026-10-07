@@ -1293,10 +1293,6 @@
     "inviteSent": "초대를 보냈습니다.",
     "inviteFailed": "초대를 보낼 수 없습니다. 다시 시도해 주세요.",
     "invalidEmail": "유효한 이메일 주소를 입력해 주세요.",
-    "inviteLinkLabel": "초대 링크",
-    "copyInviteLink": "초대 링크 복사",
-    "inviteLinkCopied": "초대 링크를 복사했습니다.",
-    "inviteLinkCopyFailed": "링크를 복사할 수 없습니다.",
     "role": {
       "view": "Viewer",
       "edit": "Editor"

@@ -1293,10 +1293,6 @@
     "inviteSent": "招待を送信しました。",
     "inviteFailed": "招待を送信できませんでした。再試行してください。",
     "invalidEmail": "有効なメールアドレスを入力してください。",
-    "inviteLinkLabel": "招待リンク",
-    "copyInviteLink": "招待リンクをコピー",
-    "inviteLinkCopied": "招待リンクをコピーしました。",
-    "inviteLinkCopyFailed": "リンクをコピーできませんでした。",
     "role": {
       "view": "Viewer",
       "edit": "Editor"

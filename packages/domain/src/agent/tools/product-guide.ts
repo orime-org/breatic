@@ -134,9 +134,8 @@ export function renderProductGuide(): string {
       `${quoted(t("share.inviteSection"))}: type an address in ${quoted(t("share.invitePlaceholder"))}, pick ` +
       `${quoted(t("share.role.view"))} or ${quoted(t("share.role.edit"))} and press ` +
       `${quoted(t("share.inviteButton"))}; an address that is not one shows ${quoted(t("share.invalidEmail"))} ` +
-      `After sending, ${quoted(t("share.inviteLinkLabel"))} shows a link with a copy icon beside it. Only ` +
-      "someone who already has an account can be invited, and they join only once they accept, from their " +
-      "bell, the email or that link. Otherwise the invitation is refused with a message such as " +
+      "Only someone who already has an account can be invited, and they join only once they accept, from " +
+      "their bell or the email. Otherwise the invitation is refused with a message such as " +
       `${quoted(t("server.project.email_not_registered"))} ${quoted(t("server.project.already_member"))} or ` +
       `${quoted(t("server.project.already_invited"))} (a full project says how many collaborators its plan ` +
       "allows: the plan of the studio's admin, so only their upgrade raises it). Last is a " +
