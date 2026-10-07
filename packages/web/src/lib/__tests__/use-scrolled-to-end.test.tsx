@@ -120,7 +120,9 @@ describe('useScrolledToEnd', () => {
     expect(observers).toHaveLength(0);
     expect(onReachEnd).not.toHaveBeenCalled();
 
-    getByTestId('viewport').dispatchEvent(new Event('scroll'));
+    const viewport = getByTestId('viewport');
+    viewport.scrollTop = 40;
+    viewport.dispatchEvent(new Event('scroll'));
     expect(onReachEnd).toHaveBeenCalledTimes(1);
   });
 
@@ -131,10 +133,47 @@ describe('useScrolledToEnd', () => {
     );
 
     const viewport = getByTestId('viewport');
-    viewport.dispatchEvent(new Event('scroll'));
-    viewport.dispatchEvent(new Event('scroll'));
+    for (const top of [40, 80, 120]) {
+      viewport.scrollTop = top;
+      viewport.dispatchEvent(new Event('scroll'));
+    }
+
+    expect(onReachEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not ask again when the failure shortens the list and the browser pulls the scroll back', () => {
+    const onReachEnd = vi.fn();
+    const { getByTestId, rerender } = render(
+      <Harness enabled failed={false} onReachEnd={onReachEnd} />,
+    );
+    const viewport = getByTestId('viewport');
+    viewport.scrollTop = 1391;
+    rerender(<Harness enabled failed onReachEnd={onReachEnd} />);
+
+    // The failure row is shorter than the placeholders it replaces.
+    viewport.scrollTop = 1254;
     viewport.dispatchEvent(new Event('scroll'));
 
+    expect(onReachEnd).not.toHaveBeenCalled();
+  });
+
+  it('asks again once the reader scrolls toward the end after the browser pulled the scroll back', () => {
+    const onReachEnd = vi.fn();
+    const { getByTestId, rerender } = render(
+      <Harness enabled failed={false} onReachEnd={onReachEnd} />,
+    );
+    const viewport = getByTestId('viewport');
+    viewport.scrollTop = 1391;
+    rerender(<Harness enabled failed onReachEnd={onReachEnd} />);
+    viewport.scrollTop = 1254;
+    viewport.dispatchEvent(new Event('scroll'));
+
+    viewport.scrollTop = 1200;
+    viewport.dispatchEvent(new Event('scroll'));
+    expect(onReachEnd).not.toHaveBeenCalled();
+
+    viewport.scrollTop = 1254;
+    viewport.dispatchEvent(new Event('scroll'));
     expect(onReachEnd).toHaveBeenCalledTimes(1);
   });
 
