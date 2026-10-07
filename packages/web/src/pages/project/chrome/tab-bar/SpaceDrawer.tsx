@@ -7,6 +7,7 @@ import {
   FileText,
   Lock,
   Menu,
+  MoreVertical,
   Palette,
   Trash2,
   Unlock,
@@ -23,9 +24,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@web/components/ui/alert-dialog';
 import { Button } from '@web/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@web/components/ui/dropdown-menu';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import {
   Sheet,
@@ -35,13 +41,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@web/components/ui/sheet';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
-import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { spacesNewestFirst } from '@breatic/shared';
@@ -240,8 +240,8 @@ interface SpaceDrawerRowProps {
 }
 
 /**
- * A single space row in the drawer: type icon, name, status chip, and the
- * hover-revealed view / lock / delete actions.
+ * A single space row in the drawer: type icon, name, status chip, and a
+ * menu button, shown on hover, holding view / lock / delete.
  * @param root0 - Component props.
  * @param root0.space - The space rendered by this row.
  * @param root0.isActive - Whether this space is the user's active tab (shows the "editing" chip).
@@ -275,14 +275,22 @@ function SpaceDrawerRow({
   const made = relativeTime(space.createdAt ?? Number.NaN);
   const [lockBusy, setLockBusy] = React.useState(false);
   const [deleteBusy, setDeleteBusy] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const choseDelete = React.useRef(false);
+  // Why delete is not offered, said on the greyed item. The backend refuses
+  // both cases too; this keeps the action from being offered at all.
+  const deleteBlocked = space.locked
+    ? 'spaces.drawer.action.deleteLocked'
+    : isLastSpace
+      ? 'spaces.drawer.action.deleteLastSpace'
+      : null;
 
   /**
    * Toggles the space's locked state via `onSetSpaceLocked`, surfacing a
    * toast on failure.
-   * @param e - The click event from the lock action button.
    */
-  const onToggleLock = async (e: React.MouseEvent): Promise<void> => {
-    e.stopPropagation();
+  const onToggleLock = async (): Promise<void> => {
     if (lockBusy || !onSetSpaceLocked) return;
     setLockBusy(true);
     try {
@@ -310,7 +318,7 @@ function SpaceDrawerRow({
    */
   const onDelete = async (e: React.MouseEvent): Promise<void> => {
     e.stopPropagation();
-    if (deleteBusy || space.locked || isLastSpace || !onDeleteSpace) return;
+    if (deleteBusy || deleteBlocked !== null || !onDeleteSpace) return;
     setDeleteBusy(true);
     try {
       await onDeleteSpace(space.id);
@@ -348,7 +356,9 @@ function SpaceDrawerRow({
           aria-current={isActive ? 'true' : undefined}
           // `justify-start` restates the left alignment the row had before the
           // primitive's `justify-center` arrived with it.
-          className='flex min-w-0 flex-1 items-start gap-3 text-left'
+          // Room kept on the right for the menu button floating there, so the
+          // name truncates before it.
+          className='flex min-w-0 flex-1 items-start gap-3 pr-12 text-left'
         >
           <span className='mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chrome bg-muted text-muted-foreground'>
             <Icon className='h-4 w-4' />
@@ -381,170 +391,117 @@ function SpaceDrawerRow({
           </span>
         </Button>
         <div
-          // Out of the flow: the group is invisible until the pointer
-          // arrives, and holding its width open the rest of the time takes
-          // that width from the only thing on the row that identifies the
-          // Space (user 2026-09-12). Centred on the row, which keeps its
-          // icon and two lines of text top-aligned.
-          className='absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100'
+          // Out of the flow and over the room the row button keeps free on
+          // its right (`pr-12`), so the name truncates before it rather than
+          // running under it. Shown while the row is hovered, while focus is
+          // inside it, and while its menu is open.
+          className={cn(
+            'absolute right-2 top-1/2 -translate-y-1/2 transition-opacity group-hover:opacity-100 focus-within:opacity-100',
+            menuOpen ? 'opacity-100' : 'opacity-0',
+          )}
           data-testid={`space-drawer-actions-${space.id}`}
         >
-          <RowAction
-            label={t('spaces.drawer.action.view')}
-            testId={`space-drawer-view-${space.id}`}
-            onClick={onView}
-          >
-            <Eye className='h-4 w-4' />
-          </RowAction>
-          <RowAction
-            label={
-              space.locked
-                ? t('spaces.drawer.action.unlock')
-                : t('spaces.drawer.action.lock')
-            }
-            testId={`space-drawer-lock-${space.id}`}
-            onClick={onToggleLock}
-            busy={lockBusy}
-          >
-            {space.locked ? (
-              <Unlock className='h-4 w-4' />
-            ) : (
-              <Lock className='h-4 w-4' />
-            )}
-          </RowAction>
-          {space.locked || isLastSpace ? (
-            // Disabled delete: locked content, OR the project's last space
-            // (a project must keep >=1). The backend refuses both too; this
-            // is the UI gate so the action is never offered.
-            <RowAction
-              label={
-                space.locked
-                  ? t('spaces.drawer.action.deleteLocked')
-                  : t('spaces.drawer.action.deleteLastSpace')
-              }
-              testId={`space-drawer-delete-${space.id}`}
-              onClick={(e) => e.stopPropagation()}
-              disabled
-            >
-              <Trash2 className='h-4 w-4' />
-            </RowAction>
-          ) : (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <RowAction
-                  label={t('spaces.drawer.action.delete')}
-                  testId={`space-drawer-delete-${space.id}`}
-                  onClick={(e) => e.stopPropagation()}
-                  onFocusCapture={suppressTooltipFocusOpen}
-                  disabled={deleteBusy}
-                >
-                  <Trash2 className='h-4 w-4' />
-                </RowAction>
-              </AlertDialogTrigger>
-              <AlertDialogContent
-                data-testid={`space-drawer-delete-confirm-${space.id}`}
-                onClick={(e) => e.stopPropagation()}
-                onCloseAutoFocus={onConfirmCloseAutoFocus}
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type='button'
+                variant='chrome-ghost'
+                size='chrome'
+                aria-label={t('spaces.drawer.rowActions')}
+                data-testid={`space-drawer-menu-${space.id}`}
               >
-                <AlertDialogHeader>
-                  <AlertDialogTitle>
-                    {t('spaces.drawer.action.deleteConfirmTitle', {
-                      name: space.name,
-                    })}
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t('spaces.drawer.action.deleteConfirmDescription')}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-                  <AlertDialogAction
-                    variant='destructive'
-                    onClick={onDelete}
-                    data-testid={`space-drawer-delete-confirm-action-${space.id}`}
-                  >
-                    {t('spaces.drawer.action.delete')}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
+                <MoreVertical className='h-4 w-4' />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align='end'
+              // Asking to delete opens a dialog. Opened from `onSelect`, it
+              // would mount into the press still finishing, read it as a
+              // press outside itself and close. So the item only records the
+              // choice and the dialog opens here, once the menu has closed;
+              // `preventDefault` keeps the focus off the trigger the dialog is
+              // about to take it from. The same shape as the conversation
+              // history rows.
+              onCloseAutoFocus={(event) => {
+                if (!choseDelete.current) return;
+                choseDelete.current = false;
+                event.preventDefault();
+                setConfirmOpen(true);
+              }}
+            >
+              <DropdownMenuItem
+                data-testid={`space-drawer-view-${space.id}`}
+                onSelect={onView}
+              >
+                <Eye className='mr-2 h-4 w-4' aria-hidden='true' />
+                {t('spaces.drawer.action.view')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid={`space-drawer-lock-${space.id}`}
+                disabled={lockBusy}
+                onSelect={() => void onToggleLock()}
+              >
+                {space.locked ? (
+                  <Unlock className='mr-2 h-4 w-4' aria-hidden='true' />
+                ) : (
+                  <Lock className='mr-2 h-4 w-4' aria-hidden='true' />
+                )}
+                {space.locked
+                  ? t('spaces.drawer.action.unlock')
+                  : t('spaces.drawer.action.lock')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid={`space-drawer-delete-${space.id}`}
+                disabled={deleteBlocked !== null || deleteBusy}
+                // A greyed item still shows the not-allowed cursor; the
+                // primitive turns pointer events off on a disabled item.
+                className='items-start data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
+                onSelect={() => {
+                  choseDelete.current = true;
+                }}
+              >
+                <Trash2 className='mr-2 mt-0.5 h-4 w-4' aria-hidden='true' />
+                <span className='flex flex-col'>
+                  {t('spaces.drawer.action.delete')}
+                  {deleteBlocked !== null ? (
+                    <span className='text-2xs text-muted-foreground'>
+                      {t(deleteBlocked)}
+                    </span>
+                  ) : null}
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+            <AlertDialogContent
+              data-testid={`space-drawer-delete-confirm-${space.id}`}
+              onClick={(e) => e.stopPropagation()}
+              onCloseAutoFocus={onConfirmCloseAutoFocus}
+            >
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {t('spaces.drawer.action.deleteConfirmTitle', {
+                    name: space.name,
+                  })}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('spaces.drawer.action.deleteConfirmDescription')}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+                <AlertDialogAction
+                  variant='destructive'
+                  onClick={onDelete}
+                  data-testid={`space-drawer-delete-confirm-action-${space.id}`}
+                >
+                  {t('spaces.drawer.action.delete')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
     </li>
-  );
-}
-
-interface RowActionProps {
-  label: string;
-  testId: string;
-  onClick: (e: React.MouseEvent) => void;
-  children: React.ReactNode;
-  disabled?: boolean;
-  busy?: boolean;
-  /**
-   * `onFocusCapture` for the button — passed only when this action's button
-   * is ALSO an overlay trigger (the delete action wraps it in AlertDialog),
-   * so closing that overlay does not re-pop the row-action tooltip. See
-   * {@link suppressTooltipFocusOpen}.
-   */
-  onFocusCapture?: React.FocusEventHandler;
-}
-
-/**
- * Tooltip-wrapped icon button used for a drawer row's hover actions
- * (view / lock / delete).
- * @param root0 - Component props.
- * @param root0.label - Accessible label and tooltip text for the action.
- * @param root0.testId - Test id applied to the action button.
- * @param root0.onClick - Click handler for the action.
- * @param root0.children - Icon content rendered inside the button.
- * @param root0.disabled - When `true`, the button is disabled and shows a not-allowed cursor.
- * @param root0.busy - When `true`, the button is disabled and pulses to indicate an in-flight operation.
- * @param root0.onFocusCapture - `onFocusCapture` for the button — set only when the action is also an overlay trigger (delete), so closing it does not re-pop the tooltip.
- * @returns The icon action button with its tooltip.
- */
-function RowAction({
-  label,
-  testId,
-  onClick,
-  children,
-  disabled,
-  busy,
-  onFocusCapture,
-}: RowActionProps): React.JSX.Element {
-  // Wrap the icon button in a shadcn Tooltip (visual / timing
-  // consistent with the rest of the chrome). Native `title` attribute
-  // was inconsistent across OS/browsers (long delay, OS-themed bubble
-  // that breaks dark mode, unreliable on touch). `aria-label` stays
-  // for screen readers; TooltipContent text duplicates it for sighted
-  // mouse / keyboard users (PR after #140, 2026-05-25 user ask).
-  // TooltipProvider is mounted globally in App.tsx, so no per-instance
-  // provider needed here.
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant={null}
-          size={null}
-          type='button'
-          aria-label={label}
-          onClick={onClick}
-          onFocusCapture={onFocusCapture}
-          disabled={disabled || busy}
-          data-testid={testId}
-          className={cn(
-            'inline-flex h-7 w-7 items-center justify-center rounded-chrome transition-colors',
-            disabled
-              ? 'cursor-not-allowed text-foreground-disabled'
-              : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-            busy && 'animate-pulse',
-          )}
-        >
-          {children}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent portal>{label}</TooltipContent>
-    </Tooltip>
   );
 }

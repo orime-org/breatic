@@ -1047,6 +1047,7 @@
       "description": "{count, plural, other {# 件 · クリックで切替、右側で操作}}",
       "empty": "Spaces はまだありません",
       "openAria": "{name} を開く",
+      "rowActions": "この Space を表示、ロック、または削除",
       "status": {
         "editing": "編集中",
         "open": "開いています"

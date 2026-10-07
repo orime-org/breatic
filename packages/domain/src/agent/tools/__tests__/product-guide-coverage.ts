@@ -696,6 +696,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.drawer.empty": { excluded: REASONS.EMPTY_OR_SEARCH },
   "spaces.drawer.label": { excluded: REASONS.SCREEN_READER, look: /three lines with the number of spaces/ },
   "spaces.drawer.openAria": { excluded: REASONS.SCREEN_READER, look: /Clicking a row opens that space as a tab/ },
+  "spaces.drawer.rowActions": { excluded: REASONS.SCREEN_READER, look: /Hovering a row shows three dots at its right end/ },
   "spaces.kind.canvasSub": { excluded: REASONS.FILLS_A_VALUE },
   "spaces.kind.documentSub": { excluded: REASONS.FILLS_A_VALUE },
   "spaces.kind.timeline": { described: /a third, greyed card is marked/ },
