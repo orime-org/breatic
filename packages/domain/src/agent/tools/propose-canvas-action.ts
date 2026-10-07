@@ -604,6 +604,18 @@ function checkGenerateNode(
       reason: `"${model}" cannot carry a mention of "${nodesAt(markable)[lost]?.name ?? ""}". Say what you meant in the words themselves, and in your reply where the reader picks it up.`,
     };
   }
+  // An empty node the prompt may mention is material picked by that mention:
+  // image to image sends only the references the prompt mentions. Each one
+  // needs its own material mark, which the canvas writes as the mention, or
+  // the reader fills the node and the run goes without it.
+  const mentionable = canName.sources.filter((i) => i !== null).length;
+  const marked = prompt.filter((segment) => segment.slot?.kind === "asset").length;
+  if (marked < mentionable) {
+    return {
+      ok: false,
+      reason: `"${node.name}" has ${String(mentionable)} empty node(s) wired in for the reader's material and ${String(marked)} material mark(s) mentioning them. Give each its own {"slot":{"kind":"asset"}} segment, in the order the nodes are listed; a mark written as words mentions nothing, and the material put there is not sent.`,
+    };
+  }
   // What the panel's own gate would say about the box this proposal fills in.
   // It is asked with the text the box will hold (`promptTextOf`), so the two
   // judge the same string; the sentences differ because this one is read by
