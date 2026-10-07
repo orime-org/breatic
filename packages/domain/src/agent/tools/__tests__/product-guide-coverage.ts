@@ -350,6 +350,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.task.failure.source_too_slow": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.source_unreachable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.tool_failed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "canvas.task.failure.no_audio_track": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.understand_over_cap": { described: /larger than a reading takes, or of a type it cannot read/ },
   "canvas.task.failure.understand_unsupported_type": { described: /larger than a reading takes, or of a type it cannot read/ },
   "canvas.task.failure.unsupported_type": { excluded: REASONS.SAYS_WHAT_HAPPENED },

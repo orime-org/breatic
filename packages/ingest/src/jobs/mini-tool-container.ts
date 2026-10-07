@@ -20,6 +20,7 @@ import type { IngestMeasurements, MiniToolJobReport, MiniToolJobRequest } from "
 
 import { noteFailure } from "@ingest/error-monitoring.js";
 import { MEDIA_OBJECT_HOST, mediaObjectUrl, serveOneObject } from "@ingest/media-object-route.js";
+import { readContainerReport, type ContainerReportBody, type MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { PROBE_PORT } from "@ingest/probe-answer.js";
 import { transition, type JobEvent, type JobState } from "@ingest/jobs/transition.js";
@@ -52,21 +53,6 @@ export type MiniToolClass = keyof typeof CLASS_BINDINGS;
 
 /** What the edge measured about one written object. */
 type Written = Pick<IngestMeasurements, "sha256" | "sizeBytes" | "contentType">;
-
-/** The numbers ffprobe read inside the container, per main output. */
-interface MediaOfOutput {
-  width: number | null;
-  height: number | null;
-  durationSeconds: number | null;
-  cover: { width: number | null; height: number | null } | null;
-}
-
-/** What the container reports. */
-export interface ContainerReportBody {
-  ok: boolean;
-  cpuUsec: number | null;
-  media: Record<string, MediaOfOutput>;
-}
 
 /** One job as the object stores it. */
 interface JobRecord {
@@ -102,7 +88,7 @@ function reportOf(record: JobRecord): MiniToolJobReport {
   const usage =
     state.endedAt === null ? null : { wallMs: state.endedAt - state.startedAt, cpuUsec: record.cpuUsec };
   if (state.phase === "starting" || state.phase === "running") return { state: state.phase };
-  if (state.phase === "failed" || usage === null) return { state: "failed", reason: "tool_failed", usage };
+  if (state.phase === "failed" || usage === null) return { state: "failed", reason: state.reason ?? "tool_failed", usage };
   return {
     state: "done",
     usage,
@@ -237,7 +223,7 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
     const record = await this.load();
     if (!record) return;
     await this.save({ ...record, media: body.media, cpuUsec: body.cpuUsec });
-    await this.apply({ type: "reported", ok: body.ok });
+    await this.apply({ type: "reported", ok: body.ok, ...(body.reason !== undefined && { reason: body.reason }) });
   }
 
   /**
@@ -372,9 +358,9 @@ async function jobObjects(request: Request, env: MiniToolEnv, ctx: OutboundHandl
  * @returns An acknowledgement.
  */
 async function jobReport(request: Request, env: MiniToolEnv, ctx: OutboundHandlerContext): Promise<Response> {
-  const body = await request.json<ContainerReportBody>().catch(() => null);
-  if (body === null || typeof body.ok !== "boolean") return new Response("Unreadable report", { status: 400 });
-  await jobObject(env, ctx).noteReported({ ok: body.ok, cpuUsec: body.cpuUsec ?? null, media: body.media ?? {} });
+  const body = readContainerReport(await request.json().catch(() => null));
+  if (body === null) return new Response("Unreadable report", { status: 400 });
+  await jobObject(env, ctx).noteReported(body);
   return new Response(null, { status: 200 });
 }
 

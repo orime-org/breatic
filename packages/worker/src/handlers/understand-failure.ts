@@ -149,6 +149,7 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
   declined: false,
   media_refused: false,
   tool_failed: false,
+  no_audio_track: false,
 };
 
 /**

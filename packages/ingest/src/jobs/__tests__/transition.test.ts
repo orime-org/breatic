@@ -37,6 +37,13 @@ describe("job transition", () => {
     expect(next.state?.reason).toBe("tool_failed");
   });
 
+  it("keeps the cause a failed report names, and calls an unnamed failure tool_failed", () => {
+    const named = transition(at("running"), { type: "reported", ok: false, reason: "no_audio_track" }, 9_000);
+    expect(named.state?.phase).toBe("failed");
+    expect(named.state?.reason).toBe("no_audio_track");
+    expect(transition(at("running"), { type: "reported", ok: false }, 9_000).state?.reason).toBe("tool_failed");
+  });
+
   it("finishes a report that lands while still starting the same way as while running", () => {
     const next = transition(at("starting", ["out/a.mp4"]), { type: "reported", ok: true }, 9_000);
     expect(next.state?.phase).toBe("done");

@@ -13,7 +13,7 @@
 
 import { z } from "zod";
 
-import { CONTAINER_OPS, type ContainerOp } from "@shared/mini-tools/types.js";
+import { CONTAINER_FAILURES, CONTAINER_OPS, type ContainerFailure, type ContainerOp } from "@shared/mini-tools/types.js";
 import {
   askWorker,
   ingestMeasurements,
@@ -55,7 +55,7 @@ export interface ContainerUsage {
 export type MiniToolJobReport =
   | { state: "starting" | "running" }
   | { state: "done"; outputs: (IngestMeasurements & { storageKey: string })[]; usage: ContainerUsage }
-  | { state: "failed"; reason: "tool_failed"; usage: ContainerUsage | null };
+  | { state: "failed"; reason: ContainerFailure; usage: ContainerUsage | null };
 
 /**
  * The request as the ingest Worker reads it before believing it. The op's
@@ -95,7 +95,7 @@ const report = z.discriminatedUnion("state", [
     outputs: z.array(ingestMeasurements.extend({ storageKey: z.string().min(1).max(500) })),
     usage,
   }),
-  z.object({ state: z.literal("failed"), reason: z.literal("tool_failed"), usage: usage.nullable() }),
+  z.object({ state: z.literal("failed"), reason: z.enum(CONTAINER_FAILURES), usage: usage.nullable() }),
 ]);
 
 /**

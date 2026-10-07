@@ -10,6 +10,8 @@
  * exists, so they are not events here.
  */
 
+import type { ContainerFailure } from "@shared/mini-tools/types.js";
+
 /** Where a job is. */
 export type JobPhase = "starting" | "running" | "done" | "failed";
 
@@ -27,14 +29,14 @@ export interface JobState {
   /** Epoch ms, taken at destroy; null until the job ends. */
   endedAt: number | null;
   /** Why the job failed; null otherwise. */
-  reason: "tool_failed" | null;
+  reason: ContainerFailure | null;
 }
 
 /** Something that happened to a job. */
 export type JobEvent =
   | { type: "accepted" }
   | { type: "written"; key: string }
-  | { type: "reported"; ok: boolean }
+  | { type: "reported"; ok: boolean; reason?: ContainerFailure }
   | { type: "stopped" }
   | { type: "containerGone" }
   | { type: "expired"; attemptId: string }
@@ -56,11 +58,12 @@ const STAY = (state: JobState | null): Transition => ({ state, effects: [] });
  * @param state - The job.
  * @param phase - Where it ends.
  * @param now - Epoch ms.
+ * @param reason - Why a failed job failed.
  * @returns The ended job and its effects.
  */
-function end(state: JobState, phase: "done" | "failed", now: number): Transition {
+function end(state: JobState, phase: "done" | "failed", now: number, reason: ContainerFailure = "tool_failed"): Transition {
   return {
-    state: { ...state, phase, endedAt: now, reason: phase === "failed" ? "tool_failed" : null },
+    state: { ...state, phase, endedAt: now, reason: phase === "failed" ? reason : null },
     effects: ["destroy", "cancelSchedule"],
   };
 }
@@ -84,7 +87,7 @@ export function transition(state: JobState | null, event: JobEvent, now: number)
         : STAY(state);
     case "reported": {
       const complete = state.outputs.every((key) => state.written.includes(key));
-      return end(state, event.ok && complete ? "done" : "failed", now);
+      return end(state, event.ok && complete ? "done" : "failed", now, event.ok ? undefined : event.reason);
     }
     case "stopped":
     case "containerGone":

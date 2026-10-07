@@ -839,7 +839,8 @@
         "no_credits": "沒有可用積分。",
         "declined": "模型拒絕了這次請求。",
         "media_refused": "模型不接受這個檔案。",
-        "tool_failed": "工具沒能處理這個檔案。"
+        "tool_failed": "工具沒能處理這個檔案。",
+        "no_audio_track": "這個影片沒有音軌。"
       },
       "title": {
         "upload": "上傳 · {name}",

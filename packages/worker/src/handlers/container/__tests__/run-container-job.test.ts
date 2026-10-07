@@ -143,6 +143,14 @@ describe("runContainerJob", () => {
     expect(h.markFailed).toHaveBeenCalledWith("s1", "tool_failed");
   });
 
+  // §8.3: a cause the job names, such as a silent source, reaches the task row.
+  it("fails with the cause the job named", async () => {
+    h.readMiniToolJob.mockResolvedValueOnce({ state: "failed", reason: "no_audio_track", usage: USAGE });
+
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toMatchObject({ reason: "no_audio_track" });
+    expect(h.markFailed).toHaveBeenCalledWith("s1", "no_audio_track");
+  });
+
   it("fails with the report handler's reason when an output is refused", async () => {
     h.readMiniToolJob.mockResolvedValueOnce({ state: "done", outputs: [MEASURED], usage: USAGE });
     h.applyIngestReport.mockResolvedValueOnce({ status: "rejected", reason: "unsupported_type" });

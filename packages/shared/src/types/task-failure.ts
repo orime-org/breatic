@@ -88,6 +88,11 @@ export const TASK_FAILURE_REASONS = [
    * ran out of time, or stopped before it wrote everything.
    */
   "tool_failed",
+  /**
+   * A mini-tool that works on the sound was given a video without one. The
+   * same file fails the same way, so running it again is not what is next.
+   */
+  "no_audio_track",
 ] as const;
 
 /** One of the causes above. */

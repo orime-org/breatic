@@ -839,7 +839,8 @@
         "no_credits": "No credits available.",
         "declined": "The model declined this request.",
         "media_refused": "The model would not take this file.",
-        "tool_failed": "The tool could not process this file."
+        "tool_failed": "The tool could not process this file.",
+        "no_audio_track": "This video has no audio track."
       },
       "title": {
         "upload": "Upload · {name}",

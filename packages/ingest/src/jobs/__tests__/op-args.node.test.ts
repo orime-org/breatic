@@ -11,7 +11,8 @@
 import { describe, expect, it } from "vitest";
 import { buildAdjustVideoFilter, defaultAdjustValue } from "@breatic/shared";
 
-import { opRuns } from "@ingest/jobs/op-args.js";
+import { inputRefusal, opRuns } from "@ingest/jobs/op-args.js";
+import type { ProbeReport } from "@ingest/media-metadata.js";
 
 const IN = "http://r2.local/video/in.mp4";
 const OUT = "/tmp/job/out.mp4";
@@ -81,5 +82,29 @@ describe("opRuns", () => {
     const [hlg] = opRuns("hdr", { transfer: "hlg" }, IN, OUT, WORK);
     expect(after(hlg!, "-vf")).toContain("t=arib-std-b67");
     expect(after(hlg!, "-color_trc")).toBe("arib-std-b67");
+  });
+});
+
+describe("inputRefusal", () => {
+  const stream = (codecType: string) => ({
+    index: 0,
+    codecType,
+    codecName: null,
+    width: null,
+    height: null,
+    attachedPic: false,
+  });
+  const probe = (...types: string[]): ProbeReport => ({ streams: types.map(stream), durationSeconds: 3 });
+
+  // §8.3: denoise works on the sound, so a video without one fails as such.
+  it("refuses audio denoise on a source with no sound", () => {
+    expect(inputRefusal("audio_denoise", probe("video"))).toBe("no_audio_track");
+    expect(inputRefusal("audio_denoise", probe("video", "audio"))).toBeNull();
+  });
+
+  it("lets the picture operations run on a silent source", () => {
+    for (const op of ["crop", "speed", "cut", "adjust", "stabilize", "hdr"] as const) {
+      expect(inputRefusal(op, probe("video"))).toBeNull();
+    }
   });
 });

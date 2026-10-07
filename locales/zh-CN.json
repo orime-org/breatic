@@ -839,7 +839,8 @@
         "no_credits": "没有可用积分。",
         "declined": "模型拒绝了这次请求。",
         "media_refused": "模型不接受这个文件。",
-        "tool_failed": "工具没能处理这个文件。"
+        "tool_failed": "工具没能处理这个文件。",
+        "no_audio_track": "这个视频没有音轨。"
       },
       "title": {
         "upload": "上传 · {name}",

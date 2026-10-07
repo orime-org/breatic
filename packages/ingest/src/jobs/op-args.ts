@@ -9,11 +9,12 @@
  * the same way it carries the probe's arguments.
  */
 
-import type { ContainerOp } from "@shared/mini-tools/types.js";
+import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js";
 // The one runtime piece of shared the container needs, taken from its own
 // file: the container's bundle is built without shared's dependencies, and
 // this file has none.
 import { buildAdjustVideoFilter, parseAdjustValue } from "@shared/adjust-value.js";
+import type { ProbeReport } from "@ingest/media-metadata.js";
 
 /** The container's run endpoint, which the Durable Object posts a job to. */
 export const RUN_PATH = "/run";
@@ -71,6 +72,21 @@ function numberOf(params: Record<string, unknown>, key: string): number {
 
 /** HDR transfer characteristics by the panel's choice. */
 const TRANSFER = { pq: "smpte2084", hlg: "arib-std-b67" } as const;
+
+/** The operations that work on the source's sound. */
+const ON_SOUND: ReadonlySet<ContainerOp> = new Set(["audio_denoise"]);
+
+/**
+ * Why a source cannot go through an operation, read off its probe before any
+ * run starts: an operation on the sound needs a sound to work on.
+ * @param op - The operation.
+ * @param probe - The source's probe.
+ * @returns The failure to report, or null when the source will do.
+ */
+export function inputRefusal(op: ContainerOp, probe: ProbeReport): ContainerFailure | null {
+  if (ON_SOUND.has(op) && !probe.streams.some((stream) => stream.codecType === "audio")) return "no_audio_track";
+  return null;
+}
 
 /**
  * The runs one operation makes, in order; the last writes `output`.

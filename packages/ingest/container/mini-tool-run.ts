@@ -19,8 +19,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 
-import type { ContainerOp } from "@shared/mini-tools/types.js";
-import { opRuns } from "@ingest/jobs/op-args.js";
+import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js";
+import { inputRefusal, opRuns } from "@ingest/jobs/op-args.js";
 import { pickMediaMetadata, NOTHING_FOUND } from "@ingest/media-metadata.js";
 import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pngSize } from "@ingest/png-size.js";
@@ -42,7 +42,7 @@ const COVER_MAX_BYTES = 10 * 1024 * 1024;
  * Run one tool to completion.
  * @param program - `ffmpeg` or `ffprobe`.
  * @param args - Its arguments.
- * @param timeoutMs - How long it may run.
+ * @param timeoutMs - How long it may run; 0 leaves it to the job's deadline.
  * @param maxBytes - The most stdout may hold.
  * @returns What it wrote to stdout.
  * @throws {Error} When it fails, times out or writes too much.
@@ -97,11 +97,20 @@ export async function runJob(job: RunBody): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "mini-tool-"));
   const media: Record<string, unknown> = {};
   let ok = false;
+  let reason: ContainerFailure | undefined;
   try {
+    const source = await runTool("ffprobe", probeArgs(job.input), job.toolTimeoutMs);
+    const refused = inputRefusal(job.op, readProbeOutput(source.toString("utf8")));
+    if (refused !== null) {
+      reason = refused;
+      throw new Error(`source refused: ${refused}`);
+    }
     for (const output of job.outputs) {
       const file = join(dir, "out.mp4");
+      // An operation runs as long as its job's deadline allows; the Durable
+      // Object destroys the container when that passes.
       for (const args of opRuns(job.op, job.params, job.input, file, dir)) {
-        await runTool("ffmpeg", args, job.toolTimeoutMs);
+        await runTool("ffmpeg", args, 0);
       }
       await put(output.url, file);
 
@@ -130,6 +139,6 @@ export async function runJob(job: RunBody): Promise<void> {
   await fetch(job.reportUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ ok, cpuUsec: await cpuUsec(), media }),
+    body: JSON.stringify({ ok, cpuUsec: await cpuUsec(), media, ...(reason !== undefined && { reason }) }),
   }).catch((err: unknown) => console.error("mini_tool_report_failed", { err: String(err) }));
 }

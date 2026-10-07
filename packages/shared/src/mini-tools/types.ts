@@ -19,6 +19,16 @@ export const CONTAINER_OPS = ["crop", "speed", "cut", "adjust", "audio_denoise",
 /** One of {@link CONTAINER_OPS}. */
 export type ContainerOp = (typeof CONTAINER_OPS)[number];
 
+/**
+ * Why a container job failed. `no_audio_track` is an operation on the sound
+ * given a source without one; everything else the tool or the run broke on is
+ * `tool_failed`.
+ */
+export const CONTAINER_FAILURES = ["tool_failed", "no_audio_track"] as const;
+
+/** One of {@link CONTAINER_FAILURES}. */
+export type ContainerFailure = (typeof CONTAINER_FAILURES)[number];
+
 /** Where a tool runs. */
 export type MiniToolRun =
   | { readonly kind: "browser" }
