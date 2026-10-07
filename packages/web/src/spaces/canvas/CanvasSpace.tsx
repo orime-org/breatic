@@ -39,14 +39,16 @@ import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { useKeyboardNudge } from '@web/spaces/canvas/use-keyboard-nudge';
 import {
   canGenerate,
+  newId,
+} from '@breatic/shared';
+import {
   defaultParamsOf,
   miniToolById,
   miniToolsFor,
-  newId,
   servedMiniToolsFor,
   type MiniToolSnapshot,
   type MiniToolSpec,
-} from '@breatic/shared';
+} from '@breatic/shared/mini-tools';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 
 import { Button } from '@web/components/ui/button';

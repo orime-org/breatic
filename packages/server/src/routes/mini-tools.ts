@@ -12,7 +12,8 @@
 import { Hono } from "hono";
 import { AppError, createQueue, defaultJobOpts, logger } from "@breatic/core";
 import { taskService } from "@breatic/domain";
-import { miniToolById, miniToolRequestSchema, type TaskFailureReason } from "@breatic/shared";
+import { type TaskFailureReason } from "@breatic/shared";
+import { miniToolById, miniToolRequestSchema } from "@breatic/shared/mini-tools";
 
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";

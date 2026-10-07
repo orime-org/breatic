@@ -11,7 +11,8 @@
  */
 
 import { coverKeyFor, getStorageConfig } from "@breatic/core";
-import type { MiniToolJobOutput, MiniToolOutput } from "@breatic/shared";
+import type { MiniToolJobOutput } from "@breatic/shared";
+import type { MiniToolOutput } from "@breatic/shared/mini-tools";
 
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
 

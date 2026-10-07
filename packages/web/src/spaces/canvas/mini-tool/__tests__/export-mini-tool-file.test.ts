@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { miniToolById, type MiniToolSnapshot } from '@breatic/shared';
+import { miniToolById, type MiniToolSnapshot } from '@breatic/shared/mini-tools';
 
 const exporter = vi.hoisted(() => ({
   exportCropBlob: vi.fn(() => Promise.resolve(new Blob(['c'], { type: 'image/png' }))),

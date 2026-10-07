@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { miniToolById, type MiniToolSnapshot, type MiniToolSpec } from '@breatic/shared';
+import { miniToolById, type MiniToolSnapshot, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 const canvas = vi.hoisted(() => ({
   addNode: vi.fn(),

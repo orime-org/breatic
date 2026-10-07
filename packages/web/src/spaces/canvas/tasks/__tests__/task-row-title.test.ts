@@ -8,7 +8,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { UNDERSTAND_MODEL, miniToolById } from '@breatic/shared';
+import { UNDERSTAND_MODEL } from '@breatic/shared';
+import { miniToolById } from '@breatic/shared/mini-tools';
 
 import { taskRowTitle } from '@web/spaces/canvas/tasks/task-row-title';
 

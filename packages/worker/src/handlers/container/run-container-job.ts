@@ -27,12 +27,14 @@ import {
   readMiniToolJob,
   submitMiniToolJob,
   UploadHttpError,
-  type ContainerOp,
   type ContainerUsage,
   type MiniToolJobOutput,
   type MiniToolJobReport,
-  type MiniToolSpec,
 } from "@breatic/shared";
+import {
+  type ContainerOp,
+  type MiniToolSpec,
+} from "@breatic/shared/mini-tools";
 
 import { containerCostUsd } from "@worker/handlers/container/billing.js";
 import { storedAsOutput } from "@worker/handlers/persisted-output.js";

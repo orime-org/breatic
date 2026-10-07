@@ -10,12 +10,14 @@
 
 import {
   t,
+} from '@breatic/shared';
+import {
   type MiniToolRequest,
   type MiniToolRequestSlot,
   type MiniToolSlotValue,
   type MiniToolSnapshot,
   type MiniToolSpec,
-} from '@breatic/shared';
+} from '@breatic/shared/mini-tools';
 
 import { miniToolsApi } from '@web/data/api/mini-tools';
 import { ApiException } from '@web/data/api/types';

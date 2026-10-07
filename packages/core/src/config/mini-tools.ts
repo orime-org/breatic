@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { CONTAINER_OPS, type ContainerOp } from "@breatic/shared";
+import { CONTAINER_OPS, type ContainerOp } from "@breatic/shared/mini-tools";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const classSchema = z.object({

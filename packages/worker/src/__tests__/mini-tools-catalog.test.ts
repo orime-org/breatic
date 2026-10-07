@@ -7,7 +7,7 @@
  * worker loads.
  */
 
-import { MINI_TOOLS, modelOf, toolParamKeys } from "@breatic/shared";
+import { MINI_TOOLS, modelOf, toolParamKeys } from "@breatic/shared/mini-tools";
 import { initCore } from "@breatic/core";
 import { getFullModelConfig } from "@breatic/domain";
 import { beforeAll, describe, expect, it } from "vitest";

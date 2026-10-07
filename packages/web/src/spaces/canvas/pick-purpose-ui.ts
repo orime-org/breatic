@@ -21,7 +21,7 @@
  * the miss above happening a second time.
  */
 
-import { miniToolById } from '@breatic/shared';
+import { miniToolById } from '@breatic/shared/mini-tools';
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { STYLE_SLOT } from '@web/spaces/canvas/generate/style-slot';

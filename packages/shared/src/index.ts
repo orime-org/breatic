@@ -378,39 +378,6 @@ export {
 } from "@shared/adjust-value.js";
 export type { AdjustValue } from "@shared/adjust-value.js";
 
-export {
-  CONTAINER_OPS,
-  MINI_TOOLS,
-  catalogEntryOf,
-  defaultParamsOf,
-  isModelTool,
-  localParamLabelKey,
-  miniToolById,
-  miniToolEstimateInput,
-  miniToolRequestSchema,
-  miniToolsFor,
-  modelOf,
-  servedMiniToolsFor,
-  toolParamKeys,
-} from "@shared/mini-tools/index.js";
-export type {
-  ContainerOp,
-  LocalToolSpec,
-  MiniToolIcon,
-  MiniToolMedium,
-  MiniToolModelParam,
-  MiniToolOption,
-  MiniToolOutput,
-  MiniToolParam,
-  MiniToolRequest,
-  MiniToolRequestSlot,
-  MiniToolRun,
-  MiniToolSlot,
-  MiniToolSlotValue,
-  MiniToolSnapshot,
-  MiniToolSpec,
-  ModelToolSpec,
-} from "@shared/mini-tools/index.js";
 
 // The confirmation email names the instant the window closes, in the buyer's
 // zone and in UTC; the eligibility rule beside it asks whether that instant

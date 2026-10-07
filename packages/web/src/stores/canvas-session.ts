@@ -14,7 +14,8 @@
  * does the chrome outside it (the left menu reads the active Space's).
  */
 
-import type { MiniToolSlotValue, NodeType } from '@breatic/shared';
+import type { NodeType } from '@breatic/shared';
+import type { MiniToolSlotValue } from '@breatic/shared/mini-tools';
 import { immer } from 'zustand/middleware/immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 

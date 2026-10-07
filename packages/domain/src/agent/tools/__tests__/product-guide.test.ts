@@ -15,7 +15,8 @@ import { resolve } from "node:path";
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { getAgentConfig, loadLocales, runWithLocale } from "@breatic/core";
-import { CHAT_MESSAGE_MAX_CHARS, MINI_TOOLS, canConnect, canGenerate, t } from "@breatic/shared";
+import { CHAT_MESSAGE_MAX_CHARS, canConnect, canGenerate, t } from "@breatic/shared";
+import { MINI_TOOLS } from "@breatic/shared/mini-tools";
 
 import { CANVAS_TOOLS, TOOL_MAP } from "@domain/agent/tools/index.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";

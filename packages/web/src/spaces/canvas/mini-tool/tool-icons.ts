@@ -22,7 +22,7 @@ import {
   Wand2,
   type LucideIcon,
 } from 'lucide-react';
-import type { MiniToolIcon } from '@breatic/shared';
+import type { MiniToolIcon } from '@breatic/shared/mini-tools';
 
 /** The lucide component each registry icon name stands for. */
 export const MINI_TOOL_ICONS: Readonly<Record<MiniToolIcon, LucideIcon>> = {

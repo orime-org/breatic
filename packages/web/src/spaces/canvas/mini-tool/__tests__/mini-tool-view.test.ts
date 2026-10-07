@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from 'vitest';
-import { miniToolById, type ModelEntry, type ParamDescriptor } from '@breatic/shared';
+import { type ModelEntry, type ParamDescriptor } from '@breatic/shared';
+import { miniToolById } from '@breatic/shared/mini-tools';
 
 import {
   aspectRatioOf,

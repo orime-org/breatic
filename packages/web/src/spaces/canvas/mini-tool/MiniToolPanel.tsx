@@ -6,17 +6,19 @@ import * as React from 'react';
 
 import {
   defaultAdjustValue,
-  isModelTool,
-  localParamLabelKey,
   parseAdjustValue,
   type AdjustValue,
+  type ModelEntry,
+} from '@breatic/shared';
+import {
+  isModelTool,
+  localParamLabelKey,
   type LocalToolSpec,
   type MiniToolMedium,
   type MiniToolParam,
   type MiniToolSlotValue,
   type MiniToolSpec,
-  type ModelEntry,
-} from '@breatic/shared';
+} from '@breatic/shared/mini-tools';
 
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';

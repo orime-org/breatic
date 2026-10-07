@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { MINI_TOOLS, isModelTool, localParamLabelKey } from '@breatic/shared';
+import { MINI_TOOLS, isModelTool, localParamLabelKey } from '@breatic/shared/mini-tools';
 
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 

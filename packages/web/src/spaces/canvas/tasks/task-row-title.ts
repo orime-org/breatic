@@ -7,7 +7,8 @@
  * and a tool run read apart at a glance.
  */
 
-import { miniToolById, UNDERSTAND_MODEL, type NodeTaskEntry } from '@breatic/shared';
+import { UNDERSTAND_MODEL, type NodeTaskEntry } from '@breatic/shared';
+import { miniToolById } from '@breatic/shared/mini-tools';
 
 /** A translator, as the rows are given one. */
 type Translate = (key: string, values?: Record<string, string | number | Date>) => string;

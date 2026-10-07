@@ -12,11 +12,13 @@ import { extname, resolve } from 'node:path';
 
 import {
   GENERATION_NODE_BUCKETS,
-  MINI_TOOLS,
-  toolParamKeys,
   type ModelEntry,
   type ParamDescriptor,
 } from '@breatic/shared';
+import {
+  MINI_TOOLS,
+  toolParamKeys,
+} from '@breatic/shared/mini-tools';
 import { describe, it, expect } from 'vitest';
 import { parse } from 'yaml';
 

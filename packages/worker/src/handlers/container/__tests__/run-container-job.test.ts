@@ -55,7 +55,8 @@ vi.mock("@breatic/shared", async (importOriginal) => ({
   submitMiniToolJob: h.submitMiniToolJob,
 }));
 
-import { miniToolById, UploadHttpError, type MiniToolSpec } from "@breatic/shared";
+import { UploadHttpError } from "@breatic/shared";
+import { miniToolById, type MiniToolSpec } from "@breatic/shared/mini-tools";
 
 import { ContainerJobFailed, runContainerJob } from "@worker/handlers/container/run-container-job.js";
 

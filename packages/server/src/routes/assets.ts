@@ -24,10 +24,12 @@ import {
   isUploadableMediaType,
   UploadHttpError,
   INGEST_REFUSED_UNNAMED,
-  miniToolById,
   t,
   type NodeTaskAction,
 } from "@breatic/shared";
+import {
+  miniToolById,
+} from "@breatic/shared/mini-tools";
 import {
   assetService,
   ingestReportService,

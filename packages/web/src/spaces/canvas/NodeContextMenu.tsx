@@ -33,7 +33,7 @@ import {
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { MiniToolIcon } from '@breatic/shared';
+import type { MiniToolIcon } from '@breatic/shared/mini-tools';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 import { MINI_TOOL_ICONS } from '@web/spaces/canvas/mini-tool/tool-icons';
 

@@ -49,7 +49,8 @@ import {
   type PersistedOutput,
 } from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
-import { canvasSpaceDocName, isModelTool, miniToolById, type GenerationSource } from "@breatic/shared";
+import { canvasSpaceDocName, type GenerationSource } from "@breatic/shared";
+import { isModelTool, miniToolById } from "@breatic/shared/mini-tools";
 import type { NodeTaskResult, TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";

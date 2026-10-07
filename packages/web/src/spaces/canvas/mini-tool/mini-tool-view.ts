@@ -7,12 +7,14 @@
  */
 
 import {
+  type ModelEntry,
+} from '@breatic/shared';
+import {
   isModelTool,
   toolParamKeys,
   type MiniToolSlotValue,
   type MiniToolSpec,
-  type ModelEntry,
-} from '@breatic/shared';
+} from '@breatic/shared/mini-tools';
 
 /** A crop rectangle in source pixels. */
 export interface CropRect {

@@ -14,7 +14,7 @@ import {
   type CropRect as DisplayRect,
   type CropSize,
 } from '@web/lib/crop-math';
-import { isModelTool, miniToolById } from '@breatic/shared';
+import { isModelTool, miniToolById } from '@breatic/shared/mini-tools';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { asContentView } from '@web/data/yjs/node-view';

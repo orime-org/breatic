@@ -11,12 +11,14 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 
 import {
   ActivityNewSignalSchema,
-  miniToolById,
   t as translate,
   type ProjectActivityEntry,
   type ProjectActivityType,
   type ProjectRole,
 } from '@breatic/shared';
+import {
+  miniToolById,
+} from '@breatic/shared/mini-tools';
 import { activitiesApi } from '@web/data/api/activities';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import {

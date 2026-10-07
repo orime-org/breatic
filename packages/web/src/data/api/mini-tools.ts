@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { MiniToolRequest } from '@breatic/shared';
+import type { MiniToolRequest } from '@breatic/shared/mini-tools';
 
 import { apiPost } from '@web/data/api/request';
 

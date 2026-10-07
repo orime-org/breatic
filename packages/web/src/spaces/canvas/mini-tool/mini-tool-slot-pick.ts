@@ -9,7 +9,7 @@
  * what a click takes cannot disagree.
  */
 
-import { miniToolById, type MiniToolSlot, type MiniToolSlotValue } from '@breatic/shared';
+import { miniToolById, type MiniToolSlot, type MiniToolSlotValue } from '@breatic/shared/mini-tools';
 
 import {
   pickedSlotCover,

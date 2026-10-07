@@ -16,15 +16,17 @@ import {
   modelCatalog,
 } from "@breatic/domain";
 import {
-  isModelTool,
-  miniToolEstimateInput,
   paramValueAllowed,
   t,
+  type ModelEntry,
+} from "@breatic/shared";
+import {
+  isModelTool,
+  miniToolEstimateInput,
   type MiniToolRequest,
   type MiniToolSnapshot,
   type MiniToolSpec,
-  type ModelEntry,
-} from "@breatic/shared";
+} from "@breatic/shared/mini-tools";
 
 /** A run ready to queue. */
 export interface PreparedRun {
