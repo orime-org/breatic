@@ -369,7 +369,7 @@ pnpm test / typecheck / lint
 
 ## 产品镜像发布
 
-产品标签 CI 构建并检查三个 linux/amd64 镜像：`breatic`（Server / Worker / Collab）、`breatic-web`（自托管 Web）、`breatic-ingest-media`（Ingest 媒体容器）。标签发布将同一批已测试镜像上传 GHCR，产品 Release `release.json` 的 `images.ingestMedia` 固定媒体摘要。媒体镜像包含 `/app/build-info.json` 与 OCI 版本/提交标签；`scripts/ingest-media-smoke.mjs` 在发布前实际解析 HTTP 视频并生成封面。PR/main 只检查，不发布。部署仓编译独立 Worker JS、下载媒体摘要后打包；手动上线才转存 Cloudflare 并发布 Worker，不重建镜像。详见 [版本发布说明](../self-host/RELEASE-CN.md)。
+产品标签 CI 在原生 runner 构建并检查后端/Web 的 AMD64、ARM64 镜像，媒体仅 AMD64：`breatic`（Server / Worker / Collab）、`breatic-web`（自托管 Web）、`breatic-ingest-media`（Ingest 媒体容器）。标签构建先上传无标签内容并按摘要原生测试，通过后为后端/Web 发布多平台索引，为媒体原摘要打标签；schemaVersion 2 的 imagePlatforms 逐镜像声明架构，产品 Release `release.json` 的 `images.ingestMedia` 固定媒体摘要。媒体镜像包含 `/app/build-info.json` 与 OCI 版本/提交标签；`scripts/ingest-media-smoke.mjs` 在发布前实际解析 HTTP 视频并生成封面。PR/main 只检查，不发布。部署仓编译独立 Worker JS、下载媒体摘要后打包；手动上线才转存 Cloudflare 并发布 Worker，不重建镜像。详见 [版本发布说明](../self-host/RELEASE-CN.md)。
 
 ## Frontend
 
