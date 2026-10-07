@@ -70,7 +70,7 @@ function paramsSchema(spec: MiniToolSpec): z.ZodType {
 
 /**
  * The slots schema of one tool. Whether a slot may stay empty is the yaml's
- * `optional`, checked by the server.
+ * `optional`; the panel holds Run until every required slot is filled.
  * @param spec - The tool.
  * @returns A strict object over the tool's slot keys.
  */

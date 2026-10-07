@@ -1188,14 +1188,6 @@ describe('FocusCropControls — lit implies a marquee (#1991 invariant)', () => 
     expectClearedAndUnlit('focus-ratio-9:16');
   });
 
-  it('content swapped under the marquee takes the lit item with it', async () => {
-    const { img } = renderImageOverlayReady({ width: 800, height: 600 });
-    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
-    img.setAttribute('src', 'https://cdn/other.png');
-    await relayout();
-    expectClearedAndUnlit('focus-ratio-1:1');
-  });
-
   it('a gesture cut off by the picture going away, whose marquee fails the gauge, leaves nothing lit', async () => {
     const { img } = renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
@@ -1220,20 +1212,6 @@ describe('FocusCropControls — lit implies a marquee (#1991 invariant)', () => 
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
     img.setAttribute('src', 'https://cdn/swapped.png');
     fireEvent.click(screen.getByTestId('focus-crop-confirm'));
-    expectClearedAndUnlit('focus-ratio-1:1');
-  });
-
-  it('the source remounted as a different element with different content clears both', async () => {
-    const { img } = renderImageOverlayReady({ width: 800, height: 600 });
-    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
-    const wrapper = img.parentElement!;
-    img.remove();
-    const fresh = document.createElement('img');
-    fresh.setAttribute('data-testid', 'image-node-img');
-    fresh.setAttribute('src', 'https://cdn/regenerated.png');
-    natural(fresh, 800, 600);
-    wrapper.prepend(fresh);
-    await relayout();
     expectClearedAndUnlit('focus-ratio-1:1');
   });
 

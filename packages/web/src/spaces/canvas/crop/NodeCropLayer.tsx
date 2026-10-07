@@ -207,12 +207,6 @@ export function NodeCropLayer({ nodeId, wrapper }: NodeCropLayerProps): React.JS
     [nodeId, store],
   );
 
-  // The content under the marquee changed: what the marquee selected is gone.
-  const swapped = focus !== null && geometry !== null && geometry.src !== focus.content;
-  React.useEffect(() => {
-    if (swapped) store.getState().setFocusMarquee(null, null);
-  }, [swapped, store]);
-
   // The tool's source size, read off the element the export crops.
   const toolNatural = rectParam === undefined ? null : (geometry?.natural ?? null);
   React.useEffect(() => {
