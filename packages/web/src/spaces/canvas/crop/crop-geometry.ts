@@ -33,6 +33,12 @@ export function offsetWithin(el: HTMLElement, ancestor: HTMLElement): { x: numbe
     y += at.offsetTop;
     const parent: Element | null = at.offsetParent;
     at = parent instanceof HTMLElement ? parent : null;
+    // An offset starts inside its parent's border; the wrapper's own border
+    // is left out because the crop box is placed inside it too.
+    if (at !== null && at !== ancestor) {
+      x += at.clientLeft;
+      y += at.clientTop;
+    }
   }
   return at === ancestor ? { x, y } : null;
 }

@@ -21,11 +21,13 @@ import {
  * @param parent - Its `offsetParent`.
  * @returns The element.
  */
-function laidOut(left: number, top: number, parent: HTMLElement | null): HTMLElement {
+function laidOut(left: number, top: number, parent: HTMLElement | null, border = 0): HTMLElement {
   const el = document.createElement('div');
   Object.defineProperty(el, 'offsetLeft', { value: left });
   Object.defineProperty(el, 'offsetTop', { value: top });
   Object.defineProperty(el, 'offsetParent', { value: parent });
+  Object.defineProperty(el, 'clientLeft', { value: border });
+  Object.defineProperty(el, 'clientTop', { value: border });
   return el;
 }
 
@@ -36,6 +38,16 @@ describe('offsetWithin', () => {
     const player = laidOut(5, 5, shell);
     const video = laidOut(0, 0, player);
     expect(offsetWithin(video, wrapper)).toEqual({ x: 5, y: 5 });
+  });
+
+  // An offset is measured from inside the offset parent's border, so every
+  // border between the element and the wrapper is added; the wrapper's own is
+  // not, the box being placed inside it as well.
+  it('adds the borders of the layers in between, and not the wrapper own', () => {
+    const wrapper = laidOut(0, 0, null, 2);
+    const shell = laidOut(0, 0, wrapper, 1);
+    const img = laidOut(4, 4, shell);
+    expect(offsetWithin(img, wrapper)).toEqual({ x: 5, y: 5 });
   });
 
   it('counts the element sitting straight on the wrapper', () => {
