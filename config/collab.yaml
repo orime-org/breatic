@@ -118,7 +118,7 @@ quiet: true
 # there is the rescue file plus the alert, not storing more often.
 store_interval_ms: 10000
 
-# ── Project edit time (#1020) ─────────────────────
+# ── Project edit time (inner#1020) ─────────────────────
 # After a Space document's store lands, or a Space is created, renamed,
 # locked, deleted or restored, collab records the project as edited for the
 # studio list's "last edited" sort. One instance writes a project at most

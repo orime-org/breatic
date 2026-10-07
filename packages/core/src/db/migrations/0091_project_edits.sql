@@ -1,5 +1,5 @@
 -- When each project was last edited, for the studio list's "last edited" sort
--- (#1020). One row per project, moved forward in place; written by collab
+-- (inner#1020). One row per project, moved forward in place; written by collab
 -- after a Space document's store lands or a Space changes, and by the server
 -- with a rename, description or cover change.
 CREATE TABLE "project_edits" (

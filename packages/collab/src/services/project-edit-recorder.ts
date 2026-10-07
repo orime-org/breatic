@@ -3,7 +3,7 @@
 
 /**
  * Records that a project was edited, for the studio list's "last edited"
- * sort (#1020).
+ * sort (inner#1020).
  *
  * Called after a Space document's store lands and after a Space is created,
  * renamed, locked, deleted or restored. Each instance writes a project at

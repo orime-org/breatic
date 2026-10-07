@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The studio project list's sorts and pages against a real Postgres (#1020).
+ * The studio project list's sorts and pages against a real Postgres (inner#1020).
  *
  * Paging is a keyset over each sort, so the property that matters is that
  * walking every page in order yields each project exactly once, in the sort's

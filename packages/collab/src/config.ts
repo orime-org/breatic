@@ -60,7 +60,7 @@ const collabConfigSchema = z.object({
   store_interval_ms: z.number().int().positive().default(10_000),
 
   // The shortest gap between two writes of one project's edit time from this
-  // instance (#1020). Bounds how often stores reach the business database;
+  // instance (inner#1020). Bounds how often stores reach the business database;
   // the studio list's "last edited" is at most this stale.
   project_edit_touch_interval_ms: z.number().int().positive().default(60_000),
   store_rescue_dir: z.string().default("logs/collab/rescue"),
