@@ -21,7 +21,7 @@ API / 后台任务 ────→ Ingest Worker / AI 供应商
 
 ## 2. 准备条件和版本
 
-- 主机安装并启动 Docker Engine / Docker Desktop，带 Compose v2。当前核对的 GHCR `main` 前后端镜像只发布了 `linux/amd64`：本安装路径以 x86-64 主机为基线（Linux、Intel Mac 或 x86-64 Windows/WSL2）。Apple Silicon / ARM 主机不能据此视为原生支持，需等待配套 ARM 镜像或单独验证模拟运行；不要直接照用并期望 Docker 自动解决架构问题。Windows 在启用 Docker Desktop 集成的 WSL2 终端执行命令。
+- 主机安装并启动 Docker Engine / Docker Desktop，带 Compose v2。已发布的 v0.0.3 及更早版本仅支持 AMD64。本份源码准备 v0.0.4，必须等该 GitHub Release 正式完成后再用于部署。Apple Silicon / ARM64 原生运行需确认所选 Release 的 schemaVersion 2 清单对 backend/web 声明双架构，并使用该版本的 Compose。Docker 根据主机自动选择同一标签下的架构；旧标签不会自动获得 ARM64 支持。Windows 在启用 Docker Desktop 集成的 WSL2 终端执行。
 - 能访问 GitHub、GHCR、Docker 镜像源、Cloudflare 和所需模型服务。
 - Cloudflare 账户已开通 R2，并具备 Containers 使用资格。按 [Cloudflare 前置条件](https://developers.cloudflare.com/containers/get-started/) 确认账户计划及计费。
 - 准备自己的模型 API 密钥和额度。至少配置文本模型才能使用 AI 聊天，媒体生成还需对应供应商。

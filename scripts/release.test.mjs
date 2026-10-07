@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildInfo, checkComposeTag, composeImageTags, releaseManifest } from './release.mjs';
+import { buildInfo, checkComposeTag, composeImageTags, releaseManifest, checkImageIndex } from './release.mjs';
 const sha = 'a'.repeat(40);
 const backend = `ghcr.io/orime-org/breatic@sha256:${'b'.repeat(64)}`;
 const web = `ghcr.io/orime-org/breatic-web@sha256:${'c'.repeat(64)}`;
@@ -31,7 +31,9 @@ test('release manifests pin all three images to digest and one source revision',
   assert.equal(result.revision, sha);
   assert.equal(result.images.backend, backend);
   assert.equal(result.images.ingestMedia, media);
-  assert.equal(result.platform, 'linux/amd64');
+  assert.equal(result.schemaVersion, 2);
+  assert.equal(result.platform, undefined);
+  assert.deepEqual(result.imagePlatforms, { backend: ['linux/amd64', 'linux/arm64'], web: ['linux/amd64', 'linux/arm64'], ingestMedia: ['linux/amd64'] });
 });
 test('moving tags, wrong repositories, truncated digests cannot become a release', () => {
   for (const ref of ['ghcr.io/orime-org/breatic:latest', backend.slice(0, -1), web, backend.replace('orime-org', 'other')]) {
@@ -112,4 +114,15 @@ test('the repository compose file pins one stable release for every product imag
   const [tag] = composeImageTags(text);
   assert.doesNotMatch(tag, /-rc\./);
   checkComposeTag(tag, text);
+});
+
+const descriptor = (arch, hash) => ({ digest: 'sha256:' + hash.repeat(64), platform: { os: 'linux', architecture: arch } });
+test('indexes must contain exactly the two tested native image digests', () => {
+  const amd = descriptor('amd64', 'b'); const arm = descriptor('arm64', 'c');
+  const index = { manifests: [amd, arm] };
+  assert.doesNotThrow(() => checkImageIndex(index, amd.digest, arm.digest));
+  for (const manifests of [[amd], [arm], [amd, amd], [amd, descriptor('arm64', 'd')], [amd, arm, descriptor('s390x', 'e')]]) {
+    assert.throws(() => checkImageIndex({ manifests }, amd.digest, arm.digest));
+  }
+  assert.throws(() => checkImageIndex({ ...index, manifests: [amd, { ...arm, platform: { os: 'windows', architecture: 'arm64' } }] }, amd.digest, arm.digest));
 });
