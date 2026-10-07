@@ -837,6 +837,126 @@
     },
     "panel": {
       "hostDeletedByPeer": "协作者删除了节点。"
+    },
+    "miniTool": {
+      "image": {
+        "remove-bg": {
+          "label": "去背景"
+        },
+        "upscale": {
+          "label": "放大"
+        },
+        "digital-human": {
+          "label": "数字人",
+          "slot": {
+            "audio": "选一个音频节点作为声音"
+          }
+        },
+        "crop": {
+          "label": "裁剪"
+        },
+        "rotate": {
+          "label": "旋转/翻转"
+        }
+      },
+      "video": {
+        "upscale": {
+          "label": "放大"
+        },
+        "interpolate": {
+          "label": "补帧"
+        },
+        "extend": {
+          "label": "延长",
+          "prompt": "描述接下来发生什么"
+        },
+        "edit": {
+          "label": "编辑",
+          "slot": {
+            "images": "选图片作为参考",
+            "audios": "选音频作为参考"
+          },
+          "prompt": "描述要怎么改"
+        },
+        "motion": {
+          "label": "动作迁移",
+          "slot": {
+            "character": "选一张图片作为角色参考"
+          },
+          "prompt": "描述动作"
+        },
+        "animate": {
+          "label": "动画化",
+          "slot": {
+            "character": "选一张图片作为角色参考"
+          },
+          "prompt": "描述外观和背景"
+        },
+        "crop": {
+          "label": "裁剪"
+        },
+        "speed": {
+          "label": "变速"
+        },
+        "cut": {
+          "label": "剪切"
+        },
+        "adjust": {
+          "label": "调色"
+        },
+        "audio-denoise": {
+          "label": "音频降噪"
+        },
+        "stabilize": {
+          "label": "稳定"
+        },
+        "hdr": {
+          "label": "HDR"
+        }
+      },
+      "audio": {
+        "separate": {
+          "label": "人声分离"
+        },
+        "extend": {
+          "label": "延长",
+          "prompt": "描述要接上的声音"
+        }
+      },
+      "param": {
+        "aspect": {
+          "label": "比例",
+          "free": "自由",
+          "original": "原始"
+        },
+        "rect": {
+          "label": "尺寸（px）"
+        },
+        "orient": {
+          "label": "朝向"
+        },
+        "rate": {
+          "label": "速度"
+        },
+        "range": {
+          "label": "区间"
+        },
+        "value": {
+          "label": "颜色"
+        },
+        "intensity": {
+          "label": "强度"
+        },
+        "shakiness": {
+          "label": "抖动程度"
+        },
+        "smoothing": {
+          "label": "平滑度"
+        },
+        "transfer": {
+          "label": "传输特性"
+        }
+      }
     }
   },
   "auth": {

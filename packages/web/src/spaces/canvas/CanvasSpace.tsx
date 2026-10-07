@@ -37,7 +37,7 @@ import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 import { claimRegion } from '@web/features/active-region/use-track-active-region';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { useKeyboardNudge } from '@web/spaces/canvas/use-keyboard-nudge';
-import { canGenerate, newId } from '@breatic/shared';
+import { canGenerate, defaultParamsOf, miniToolById, miniToolsFor, newId } from '@breatic/shared';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 
 import { Button } from '@web/components/ui/button';
@@ -2325,9 +2325,11 @@ function CanvasSpaceInner({
     isGroup: false,
     isAnnotation: false,
     // A text node holds words; every other content kind holds an asset. The
-    // menu's Download / Understand / Tools act on that asset, so they are
-    // left off a text node's menu entirely.
+    // menu's Download / Understand act on that asset, so they are left off a
+    // text node's menu entirely.
     isText: false,
+    // Which mini-tools the Tools submenu lists (inner#888 §7.1).
+    type: '',
   });
   const [selectionMenu, setSelectionMenu] = React.useState({
     open: false,
@@ -2824,6 +2826,7 @@ function CanvasSpaceInner({
         isGroup: node.type === 'group',
         isAnnotation: node.type === 'annotation',
         isText: node.type === 'text',
+        type: node.type ?? '',
       });
     },
     [sessionStore, readOnly],
@@ -3805,6 +3808,29 @@ function CanvasSpaceInner({
       },
     });
   }, [nodeMenu.nodeId, projectId, spaceId, queryClient]);
+  // Tools act on the asset the node is showing, so they are listed exactly
+  // when Download is offered (inner#888 §7.1).
+  const menuTools = React.useMemo(
+    () =>
+      menuDownloadUrl === null
+        ? undefined
+        : miniToolsFor(nodeMenu.type).map((tool) => ({ id: tool.id, labelKey: tool.labelKey })),
+    [menuDownloadUrl, nodeMenu.type],
+  );
+  const openMiniTool = useCanvasSession((s) => s.openMiniTool);
+  const openToolFromMenu = React.useCallback(
+    (toolId: string): void => {
+      const spec = miniToolById(toolId);
+      if (spec === undefined || menuDownloadUrl === null) return;
+      const nodeId = nodeMenu.nodeId;
+      openMiniTool(nodeId, toolId, {
+        sourceContent: menuDownloadUrl,
+        params: defaultParamsOf(spec),
+      });
+      selectOnlyNode(nodeId);
+    },
+    [menuDownloadUrl, nodeMenu.nodeId, openMiniTool, selectOnlyNode],
+  );
   // Understand is offered on exactly what Download is offered on — the asset
   // the node's body is showing — so it reads the same answer. What happens
   // after the press is `startUnderstandRun`'s: it settles what the browser
@@ -4787,6 +4813,9 @@ function CanvasSpaceInner({
           onUnderstand={
             menuDownloadUrl === null ? undefined : understandFromMenu
           }
+          toolsOffered={miniToolsFor(nodeMenu.type).length > 0}
+          tools={menuTools}
+          onTool={openToolFromMenu}
           // Rename is frozen on a locked node / group (the name is on-canvas
           // content); hide it rather than offer a silent no-op. A sticky has
           // no name header to rename into (`node-name-header.test.tsx` pins

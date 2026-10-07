@@ -837,6 +837,126 @@
     },
     "panel": {
       "hostDeletedByPeer": "コラボレーターがノードを削除しました。"
+    },
+    "miniTool": {
+      "image": {
+        "remove-bg": {
+          "label": "背景を削除"
+        },
+        "upscale": {
+          "label": "アップスケール"
+        },
+        "digital-human": {
+          "label": "デジタルヒューマン",
+          "slot": {
+            "audio": "声に使う音声ノードを選んでください"
+          }
+        },
+        "crop": {
+          "label": "トリミング"
+        },
+        "rotate": {
+          "label": "回転・反転"
+        }
+      },
+      "video": {
+        "upscale": {
+          "label": "アップスケール"
+        },
+        "interpolate": {
+          "label": "フレーム補間"
+        },
+        "extend": {
+          "label": "延長",
+          "prompt": "続きの内容を説明"
+        },
+        "edit": {
+          "label": "編集",
+          "slot": {
+            "images": "参考にする画像を選んでください",
+            "audios": "参考にする音声を選んでください"
+          },
+          "prompt": "変更内容を説明"
+        },
+        "motion": {
+          "label": "モーション転写",
+          "slot": {
+            "character": "キャラクターにする画像を選んでください"
+          },
+          "prompt": "動きを説明"
+        },
+        "animate": {
+          "label": "アニメート",
+          "slot": {
+            "character": "キャラクターにする画像を選んでください"
+          },
+          "prompt": "見た目と背景を説明"
+        },
+        "crop": {
+          "label": "トリミング"
+        },
+        "speed": {
+          "label": "速度変更"
+        },
+        "cut": {
+          "label": "カット"
+        },
+        "adjust": {
+          "label": "色調整"
+        },
+        "audio-denoise": {
+          "label": "音声ノイズ除去"
+        },
+        "stabilize": {
+          "label": "手ぶれ補正"
+        },
+        "hdr": {
+          "label": "HDR"
+        }
+      },
+      "audio": {
+        "separate": {
+          "label": "ボーカル分離"
+        },
+        "extend": {
+          "label": "延長",
+          "prompt": "続ける音を説明"
+        }
+      },
+      "param": {
+        "aspect": {
+          "label": "比率",
+          "free": "フリー",
+          "original": "元の比率"
+        },
+        "rect": {
+          "label": "サイズ（px）"
+        },
+        "orient": {
+          "label": "向き"
+        },
+        "rate": {
+          "label": "速度"
+        },
+        "range": {
+          "label": "範囲"
+        },
+        "value": {
+          "label": "色"
+        },
+        "intensity": {
+          "label": "強さ"
+        },
+        "shakiness": {
+          "label": "揺れの大きさ"
+        },
+        "smoothing": {
+          "label": "滑らかさ"
+        },
+        "transfer": {
+          "label": "伝達特性"
+        }
+      }
     }
   },
   "auth": {

@@ -97,6 +97,16 @@ function defaultOf(param: MiniToolParam): unknown {
 }
 
 /**
+ * The panel label of a browser or container tool's param. A model tool's
+ * params are labelled as the generation panel labels them.
+ * @param key - The param's key.
+ * @returns The message key.
+ */
+export function localParamLabelKey(key: string): string {
+  return `canvas.miniTool.param.${key}.label`;
+}
+
+/**
  * A browser or container tool's starting params. A model tool's draft is
  * resolved from its catalog entry when the panel opens, so it starts empty.
  * @param spec - The tool.

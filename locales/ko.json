@@ -837,6 +837,126 @@
     },
     "panel": {
       "hostDeletedByPeer": "공동 작업자가 노드를 삭제했습니다."
+    },
+    "miniTool": {
+      "image": {
+        "remove-bg": {
+          "label": "배경 제거"
+        },
+        "upscale": {
+          "label": "업스케일"
+        },
+        "digital-human": {
+          "label": "디지털 휴먼",
+          "slot": {
+            "audio": "목소리로 쓸 오디오 노드를 선택하세요"
+          }
+        },
+        "crop": {
+          "label": "자르기"
+        },
+        "rotate": {
+          "label": "회전/뒤집기"
+        }
+      },
+      "video": {
+        "upscale": {
+          "label": "업스케일"
+        },
+        "interpolate": {
+          "label": "프레임 보간"
+        },
+        "extend": {
+          "label": "연장",
+          "prompt": "이어질 내용을 설명하세요"
+        },
+        "edit": {
+          "label": "편집",
+          "slot": {
+            "images": "참고할 이미지를 선택하세요",
+            "audios": "참고할 오디오를 선택하세요"
+          },
+          "prompt": "바꿀 내용을 설명하세요"
+        },
+        "motion": {
+          "label": "모션 전이",
+          "slot": {
+            "character": "캐릭터로 쓸 이미지를 선택하세요"
+          },
+          "prompt": "동작을 설명하세요"
+        },
+        "animate": {
+          "label": "애니메이트",
+          "slot": {
+            "character": "캐릭터로 쓸 이미지를 선택하세요"
+          },
+          "prompt": "외형과 배경을 설명하세요"
+        },
+        "crop": {
+          "label": "자르기"
+        },
+        "speed": {
+          "label": "속도 변경"
+        },
+        "cut": {
+          "label": "컷"
+        },
+        "adjust": {
+          "label": "색 보정"
+        },
+        "audio-denoise": {
+          "label": "오디오 노이즈 제거"
+        },
+        "stabilize": {
+          "label": "흔들림 보정"
+        },
+        "hdr": {
+          "label": "HDR"
+        }
+      },
+      "audio": {
+        "separate": {
+          "label": "보컬 분리"
+        },
+        "extend": {
+          "label": "연장",
+          "prompt": "이어질 소리를 설명하세요"
+        }
+      },
+      "param": {
+        "aspect": {
+          "label": "비율",
+          "free": "자유",
+          "original": "원본"
+        },
+        "rect": {
+          "label": "크기(px)"
+        },
+        "orient": {
+          "label": "방향"
+        },
+        "rate": {
+          "label": "속도"
+        },
+        "range": {
+          "label": "구간"
+        },
+        "value": {
+          "label": "색상"
+        },
+        "intensity": {
+          "label": "강도"
+        },
+        "shakiness": {
+          "label": "흔들림 정도"
+        },
+        "smoothing": {
+          "label": "부드러움"
+        },
+        "transfer": {
+          "label": "전송 특성"
+        }
+      }
     }
   },
   "auth": {

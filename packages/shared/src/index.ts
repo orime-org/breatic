@@ -383,6 +383,7 @@ export {
   MINI_TOOLS,
   defaultParamsOf,
   isModelTool,
+  localParamLabelKey,
   miniToolById,
   miniToolEstimateInput,
   miniToolRequestSchema,

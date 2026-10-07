@@ -837,6 +837,126 @@
     },
     "panel": {
       "hostDeletedByPeer": "A collaborator deleted the node."
+    },
+    "miniTool": {
+      "image": {
+        "remove-bg": {
+          "label": "Remove background"
+        },
+        "upscale": {
+          "label": "Upscale"
+        },
+        "digital-human": {
+          "label": "Talking head",
+          "slot": {
+            "audio": "Pick an audio node for the voice"
+          }
+        },
+        "crop": {
+          "label": "Crop"
+        },
+        "rotate": {
+          "label": "Rotate & flip"
+        }
+      },
+      "video": {
+        "upscale": {
+          "label": "Upscale"
+        },
+        "interpolate": {
+          "label": "Interpolate"
+        },
+        "extend": {
+          "label": "Extend",
+          "prompt": "Describe what happens next"
+        },
+        "edit": {
+          "label": "Edit",
+          "slot": {
+            "images": "Pick images as references",
+            "audios": "Pick audio as references"
+          },
+          "prompt": "Describe the change"
+        },
+        "motion": {
+          "label": "Motion transfer",
+          "slot": {
+            "character": "Pick an image for the character"
+          },
+          "prompt": "Describe the motion"
+        },
+        "animate": {
+          "label": "Animate",
+          "slot": {
+            "character": "Pick an image for the character"
+          },
+          "prompt": "Describe the look and background"
+        },
+        "crop": {
+          "label": "Crop"
+        },
+        "speed": {
+          "label": "Speed"
+        },
+        "cut": {
+          "label": "Cut"
+        },
+        "adjust": {
+          "label": "Adjust"
+        },
+        "audio-denoise": {
+          "label": "Audio denoise"
+        },
+        "stabilize": {
+          "label": "Stabilize"
+        },
+        "hdr": {
+          "label": "HDR"
+        }
+      },
+      "audio": {
+        "separate": {
+          "label": "Separate vocals"
+        },
+        "extend": {
+          "label": "Extend",
+          "prompt": "Describe the sound to add"
+        }
+      },
+      "param": {
+        "aspect": {
+          "label": "Ratio",
+          "free": "Free",
+          "original": "Original"
+        },
+        "rect": {
+          "label": "Size (px)"
+        },
+        "orient": {
+          "label": "Orientation"
+        },
+        "rate": {
+          "label": "Speed"
+        },
+        "range": {
+          "label": "Range"
+        },
+        "value": {
+          "label": "Color"
+        },
+        "intensity": {
+          "label": "Strength"
+        },
+        "shakiness": {
+          "label": "Shakiness"
+        },
+        "smoothing": {
+          "label": "Smoothing"
+        },
+        "transfer": {
+          "label": "Transfer"
+        }
+      }
     }
   },
   "auth": {
