@@ -121,6 +121,7 @@ describe('mini-tool draft (inner#888 §7.2)', () => {
       prompt: '',
       params: { creativity: 0 },
       slots: {},
+      sourceSize: null,
     });
   });
 
@@ -238,5 +239,110 @@ describe('history focus (inner#888 §7.7)', () => {
     store.getState().openHistoryPanel('node-a', 'h-1');
     store.getState().closeActivePanel();
     expect(store.getState().historyFocus).toBeNull();
+  });
+});
+
+describe('focus crop (inner#888 §7.4.1)', () => {
+  const RECT = { x: 0.1, y: 0.2, width: 0.3, height: 0.4 };
+  const FRAME = { width: 400, height: 300, natural: { width: 800, height: 600 } };
+
+  /**
+   * A store with a focus pick running on `host`.
+   * @returns The store.
+   */
+  function focusing(): ReturnType<typeof createCanvasSessionStore> {
+    const store = createCanvasSessionStore();
+    store.getState().startFocusPick('host');
+    return store;
+  }
+
+  it('starts a target with no marquee and nothing shown', () => {
+    const store = focusing();
+    store.getState().setFocusTarget({ nodeId: 'n1', content: 'https://cdn/a.png' });
+    expect(store.getState().focusCrop).toEqual({
+      nodeId: 'n1',
+      content: 'https://cdn/a.png',
+      rect: null,
+      preset: null,
+      frame: null,
+    });
+  });
+
+  it('keeps the marquee when the same node is set as the target again', () => {
+    const store = focusing();
+    store.getState().setFocusTarget({ nodeId: 'n1', content: 'https://cdn/a.png' });
+    store.getState().setFocusMarquee(RECT, { kind: 'ratio', value: 1 });
+    store.getState().setFocusFrame('n1', FRAME);
+    const before = store.getState().focusCrop;
+    store.getState().setFocusTarget({ nodeId: 'n1', content: 'https://cdn/a.png' });
+    expect(store.getState().focusCrop).toBe(before);
+  });
+
+  it('starts over when another node becomes the target', () => {
+    const store = focusing();
+    store.getState().setFocusTarget({ nodeId: 'n1', content: 'https://cdn/a.png' });
+    store.getState().setFocusMarquee(RECT, null);
+    store.getState().setFocusTarget({ nodeId: 'n2', content: 'https://cdn/b.png' });
+    expect(store.getState().focusCrop).toEqual({
+      nodeId: 'n2',
+      content: 'https://cdn/b.png',
+      rect: null,
+      preset: null,
+      frame: null,
+    });
+  });
+
+  it('writes the frame only for the node that is the target', () => {
+    const store = focusing();
+    store.getState().setFocusFrame('n1', FRAME);
+    expect(store.getState().focusCrop).toBeNull();
+    store.getState().setFocusTarget({ nodeId: 'n1', content: 'https://cdn/a.png' });
+    store.getState().setFocusFrame('n2', FRAME);
+    expect(store.getState().focusCrop?.frame).toBeNull();
+    store.getState().setFocusFrame('n1', FRAME);
+    expect(store.getState().focusCrop?.frame).toEqual(FRAME);
+    store.getState().setFocusFrame('n1', null);
+    expect(store.getState().focusCrop?.frame).toBeNull();
+  });
+
+  it('ignores a marquee write with no target', () => {
+    const store = focusing();
+    store.getState().setFocusMarquee(RECT, null);
+    expect(store.getState().focusCrop).toBeNull();
+  });
+
+  it('ends the target with the focus pick', () => {
+    const ends: Array<(store: ReturnType<typeof createCanvasSessionStore>) => void> = [
+      (store) => store.getState().endPick(),
+      (store) => store.getState().closeActivePanel(),
+      (store) => store.getState().openGeneratePanel('other', 'image'),
+      (store) => store.getState().startReferencePick('host'),
+      (store) => store.getState().startAnnotationPlacement(),
+      (store) => store.getState().startFocusPick('host'),
+    ];
+    for (const end of ends) {
+      const store = focusing();
+      store.getState().setFocusTarget({ nodeId: 'n1', content: 'https://cdn/a.png' });
+      end(store);
+      expect(store.getState().focusCrop).toBeNull();
+    }
+  });
+});
+
+describe('mini-tool source size (inner#888 §7.4.1)', () => {
+  it('holds the size the crop box reads off the element, and starts empty', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('n1', 'image.crop', { sourceContent: 'a', params: {} });
+    expect(store.getState().miniTool?.sourceSize).toBeNull();
+    store.getState().setMiniToolSourceSize({ width: 800, height: 600 });
+    expect(store.getState().miniTool?.sourceSize).toEqual({ width: 800, height: 600 });
+  });
+
+  it('forgets the size when the source changes', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('n1', 'image.crop', { sourceContent: 'a', params: {} });
+    store.getState().setMiniToolSourceSize({ width: 800, height: 600 });
+    store.getState().resetMiniToolSource('b', {});
+    expect(store.getState().miniTool?.sourceSize).toBeNull();
   });
 });

@@ -19,6 +19,7 @@ import type { MiniToolSlotValue } from '@breatic/shared/mini-tools';
 import { immer } from 'zustand/middleware/immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
+import type { CropPreset, CropRect } from '@web/lib/crop-math';
 import type { DraftState, DraftTarget } from '@web/stores/annotation-draft';
 
 import { createSpaceRegistry } from '@web/stores/space-registry';
@@ -145,6 +146,38 @@ export interface MiniToolDraft {
   readonly prompt: string;
   readonly params: Readonly<Record<string, unknown>>;
   readonly slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[]>>;
+  /**
+   * The source's own pixel size as the crop box read it off the shown
+   * element, null until it has (inner#888 §7.4.1). The crop converts between
+   * the box and source pixels with it, the same size the export crops in.
+   */
+  readonly sourceSize: { readonly width: number; readonly height: number } | null;
+}
+
+/** The target's box as the crop box last saw it in the node. */
+export interface CropFrame {
+  /** Its size in the node's own layout pixels. */
+  readonly width: number;
+  readonly height: number;
+  /** The material's own pixel size, null until the element reports it. */
+  readonly natural: { readonly width: number; readonly height: number } | null;
+}
+
+/**
+ * The focus crop in progress (inner#888 §7.4.1): which node is being cropped
+ * and the marquee on it. One object, so the target and its marquee cannot
+ * describe two nodes.
+ */
+export interface FocusCrop {
+  readonly nodeId: string;
+  /** The node's content when it was picked; a change of content ends the crop. */
+  readonly content: string;
+  /** The marquee as fractions (0 to 1) of the shown box, or null when none. */
+  readonly rect: CropRect | null;
+  /** The ratio item holding the marquee, or null when it is free. */
+  readonly preset: CropPreset | null;
+  /** The target's box while it is on screen, null while it is not. */
+  readonly frame: CropFrame | null;
 }
 
 /** One canvas's session state and its writers. */
@@ -190,6 +223,8 @@ export interface CanvasSessionState {
     | null;
   /** The open mini-tool panel's draft; null whenever another panel or none is open. */
   miniTool: MiniToolDraft | null;
+  /** The focus crop in progress; only ever set during a focus pick. */
+  focusCrop: FocusCrop | null;
   /**
    * The history entry a task row's View asked the history panel to find;
    * null whenever the history panel is not open, or was opened without one.
@@ -269,6 +304,14 @@ export interface CanvasSessionState {
   clearMiniToolSlot: (slotKey: string, url?: string) => void;
   /** The source changed under the open panel: reset what depends on its geometry. */
   resetMiniToolSource: (sourceContent: string, params: Readonly<Record<string, unknown>>) => void;
+  /** Record the source size the crop box read off the shown element. */
+  setMiniToolSourceSize: (size: { width: number; height: number }) => void;
+  /** Make a node the focus crop target; the current target again changes nothing, null ends it. */
+  setFocusTarget: (target: { nodeId: string; content: string } | null) => void;
+  /** Write the marquee and the ratio item holding it. */
+  setFocusMarquee: (rect: CropRect | null, preset: CropPreset | null) => void;
+  /** The crop box reports the target's box; only the target's own box is written. */
+  setFocusFrame: (nodeId: string, frame: CropFrame | null) => void;
   /** Start picking a node into a mini-tool slot. */
   startMiniToolSlotPick: (nodeId: string, slotKey: string, capacity?: number) => void;
   /**
@@ -377,6 +420,7 @@ function endPanel(s: CanvasSessionState): void {
   s.miniTool = null;
   s.historyFocus = null;
   s.pickSession = null;
+  s.focusCrop = null;
   s.panelSession += 1;
 }
 
@@ -398,6 +442,7 @@ function openPanel(
   s.panelHostId = nodeId;
   s.panelKind = kind;
   s.pickSession = null;
+  s.focusCrop = null;
   if (kind !== 'miniTool') s.miniTool = null;
   s.historyFocus = null;
 }
@@ -406,6 +451,7 @@ function openPanel(
 interface CanvasModeSlots {
   placingAnnotation: boolean;
   pickSession: PickSession | null;
+  focusCrop: FocusCrop | null;
 }
 
 /**
@@ -423,6 +469,7 @@ interface CanvasModeSlots {
  * @param s - The draft state being written.
  * @param s.placingAnnotation - Whether the note tool is armed.
  * @param s.pickSession - The pick in progress, if any.
+ * @param s.focusCrop - The crop target of the pick in progress, if any.
  * @param mode - The pick to start, or `'annotation'` for the note tool.
  */
 function claimTheNextClick(
@@ -431,6 +478,8 @@ function claimTheNextClick(
 ): void {
   s.placingAnnotation = mode === 'annotation';
   s.pickSession = mode === 'annotation' ? null : mode;
+  // A crop target belongs to the focus pick it was made in.
+  s.focusCrop = null;
 }
 
 /**
@@ -446,6 +495,7 @@ export function createCanvasSessionStore(): CanvasSessionStore {
       panelKind: null,
       panelSession: 0,
       miniTool: null,
+      focusCrop: null,
       historyFocus: null,
       editingTextNode: null,
       taskPanelStatus: null,
@@ -493,7 +543,14 @@ export function createCanvasSessionStore(): CanvasSessionStore {
           if (!same && s.panelKind === 'miniTool' && s.panelHostId === nodeId) s.panelSession += 1;
           openPanel(s, nodeId, 'miniTool');
           if (!same) {
-            s.miniTool = { toolId, sourceContent: start.sourceContent, prompt: '', params: { ...start.params }, slots: {} };
+            s.miniTool = {
+              toolId,
+              sourceContent: start.sourceContent,
+              prompt: '',
+              params: { ...start.params },
+              slots: {},
+              sourceSize: null,
+            };
           }
         }),
       setMiniToolParam: (key, value) =>
@@ -522,7 +579,31 @@ export function createCanvasSessionStore(): CanvasSessionStore {
         }),
       resetMiniToolSource: (sourceContent, params) =>
         set((s) => {
-          if (s.miniTool) s.miniTool = { ...s.miniTool, sourceContent, params: { ...s.miniTool.params, ...params } };
+          if (s.miniTool) {
+            s.miniTool = { ...s.miniTool, sourceContent, params: { ...s.miniTool.params, ...params }, sourceSize: null };
+          }
+        }),
+      setMiniToolSourceSize: (size) =>
+        set((s) => {
+          if (s.miniTool) s.miniTool = { ...s.miniTool, sourceSize: { width: size.width, height: size.height } };
+        }),
+      setFocusTarget: (target) =>
+        set((s) => {
+          if (target === null) {
+            s.focusCrop = null;
+            return;
+          }
+          // A click on the target itself reaches here too; it keeps the marquee.
+          if (s.focusCrop?.nodeId === target.nodeId) return;
+          s.focusCrop = { nodeId: target.nodeId, content: target.content, rect: null, preset: null, frame: null };
+        }),
+      setFocusMarquee: (rect, preset) =>
+        set((s) => {
+          if (s.focusCrop) s.focusCrop = { ...s.focusCrop, rect, preset };
+        }),
+      setFocusFrame: (nodeId, frame) =>
+        set((s) => {
+          if (s.focusCrop?.nodeId === nodeId) s.focusCrop = { ...s.focusCrop, frame };
         }),
       startMiniToolSlotPick: (nodeId, slotKey, capacity) =>
         set((s) =>
@@ -583,6 +664,7 @@ export function createCanvasSessionStore(): CanvasSessionStore {
       endPick: () =>
         set((s) => {
           s.pickSession = null;
+          s.focusCrop = null;
         }),
     })),
   );
