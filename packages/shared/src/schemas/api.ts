@@ -207,11 +207,6 @@ export const chatMessageSchema = z.object({
    */
   attached_chips: z.array(chatAttachedChipSchema).default([]),
   /**
-   * A skill name for this message. The composer has no control that sends
-   * it, and the `/message` handler does not read it.
-   */
-  skill: z.string().optional(),
-  /**
    * A model override for this message. The composer does not send it, and
    * the `/message` handler does not read it: the model comes from the
    * agent config.
@@ -233,7 +228,6 @@ export const taskCreateSchema = z
   .object({
     task_type: z.string(),
     model: z.string().optional(),
-    skill_name: z.string().optional(),
     params: z.record(z.string(), z.unknown()),
     /**
      * Result nodes this task will update on completion (1..N).

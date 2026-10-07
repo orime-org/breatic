@@ -30,7 +30,6 @@ import { noTrojanSource } from "#repo-lint/checks/no-trojan-source";
 import { noUnresolvedAliasInDist } from "#repo-lint/checks/no-unresolved-alias-in-dist";
 import { serviceEntriesPresent } from "#repo-lint/checks/service-entries-present";
 import { sharedDepsInCatalog } from "#repo-lint/checks/shared-deps-in-catalog";
-import { skillRoutingMatchesSkills } from "#repo-lint/checks/skill-routing-matches-skills";
 import { storageKeyPrefixHtml } from "#repo-lint/checks/storage-key-prefix-html";
 import { tokenValues } from "#repo-lint/checks/token-values";
 
@@ -71,7 +70,6 @@ export const CHECKS: readonly Check[] = [
   noUnresolvedAliasInDist,
   serviceEntriesPresent,
   sharedDepsInCatalog,
-  skillRoutingMatchesSkills,
   storageKeyPrefixHtml,
   tokenValues,
 ];

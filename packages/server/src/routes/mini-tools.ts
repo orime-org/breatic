@@ -70,7 +70,6 @@ async function enqueueMiniTool(
     "append",
     params,
     undefined,
-    undefined,
     "mini_tool",
   );
 

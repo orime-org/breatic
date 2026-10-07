@@ -306,7 +306,6 @@ export interface TaskEntity {
    */
   mode: "append" | "overwrite";
   model: string | null;
-  skillName: string | null;
   status: string;
   params: Record<string, unknown>;
   result: Record<string, unknown> | null;
@@ -316,7 +315,6 @@ export interface TaskEntity {
   completedAt: Date | null;
   creditsUsed: number;
   durationMs: number | null;
-  resolvedSkills: string[];
   source: string;
   /** URL returned by the AIGC provider (pre-persistence). Set as the "no-retry" point of no return. */
   providerResultUrl: string | null;
@@ -759,12 +757,3 @@ export interface MemoryContext {
   conversationMemory: string;
 }
 
-/** Skill metadata (from built-in SkillRegistry). */
-export interface SkillMeta {
-  name: string;
-  description: string;
-  category: string;
-  tools: string[];
-  outputType: string;
-  keywords: string[];
-}

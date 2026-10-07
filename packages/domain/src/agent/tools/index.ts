@@ -60,15 +60,10 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
 } as const;
 
 /**
- * Every tool a skill may ask for, in a stable order.
+ * The tools that do work on their own, in a stable order.
  *
- * This is what a caller that declares no tools of its own receives. Bare
- * chat used to pass an empty array and end up with no tools at all — the
- * model could not search, so it made things up instead.
- *
- * It is narrower than `TOOL_MAP`: the canvas tools below are for a caller
- * looking at a canvas, so they are not in it. This list — not the map —
- * answers "what does a caller get by default".
+ * Narrower than `TOOL_MAP`: the canvas tools below are about the spaces in
+ * front of the reader, so they are kept apart.
  */
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
@@ -94,13 +89,6 @@ export const INTERACTION_TOOLS: readonly string[] = [ASK_USER];
 
 /**
  * The tools that describe the spaces the reader is looking at.
- *
- * Separate from the baseline because the baseline is wider than they are: a
- * skill run takes the union of the baseline and its own tools, and a worker
- * job runs a skill with no canvas and no one to act on what it learns. Both
- * would spend part of the model's attention on an option it cannot take, and
- * a skill whose own prompt already states which modes exist would be handed a
- * second answer to the same question.
  *
  * What makes a tool belong here is that its answer is about the product in
  * front of someone, which is why the search tools are not in it even though
@@ -165,9 +153,8 @@ function isConfigured(name: string): boolean {
 /**
  * Build a tool set for the AI SDK from a list of tool names.
  *
- * Unknown names are silently skipped, which is what keeps a stale name in a
- * skill's metadata from taking down the whole assembly. Tools whose required
- * configuration is missing are skipped too — see `TOOL_REQUIREMENTS`.
+ * Unknown names are skipped, and so are tools whose required configuration is
+ * missing — see `TOOL_REQUIREMENTS`.
  * @param toolNames - Array of tool name strings to include.
  * @returns A `Record<string, Tool>` suitable for the AI SDK `tools` option.
  * @example

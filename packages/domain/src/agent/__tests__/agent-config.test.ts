@@ -9,17 +9,11 @@
  * reading all three side by side. The point of the factory is that there is
  * nothing left to disagree.
  *
- * The "both entry points agree" test is the load-bearing one. Spying that the
- * factory was called would not catch the failure that matters -- two callers
- * can both call it and still pass different arguments, which is exactly how
- * the three implementations drifted apart in the first place.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { getAgentConfig, initCore } from "@breatic/core";
 import type * as CoreModule from "@breatic/core";
-import type * as SkillsLoaderModule from "@domain/agent/skills-loader.js";
 import { buildAgentConfig } from "@domain/agent/agent-config.js";
-import { BASELINE_TOOLS } from "@domain/agent/tools/index.js";
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
@@ -38,60 +32,13 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
-vi.mock("@domain/agent/skills-loader.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof SkillsLoaderModule>();
-  return {
-    ...actual,
-    getSkillRegistry: () => {
-      const skills: Record<string, Record<string, unknown>> = {
-        researchy: { name: "researchy", description: "d", tools: ["web_search"], category: "research" },
-        // Declares an interaction tool. No shipped skill does, which is why
-        // the fixture has to.
-        chatty: { name: "chatty", description: "d", tools: ["ask_user"], category: "research" },
-      };
-      return {
-        get: (name: string) => skills[name],
-        getInternal: (name: string) => skills[name],
-        loadSkillContent: (name: string) => `## Skill: ${name}\nbody text`,
-      };
-    },
-  };
-});
-
 beforeAll(() => {
   initCore(process.env);
 });
 
 
 describe("buildAgentConfig", () => {
-  it("gives both entry points the same model and tools for one skill", () => {
-    // The two entries genuinely differ in what they pass: chat has a base
-    // prompt and memory, worker has neither. So the previous version of this
-    // test — same literal twice — could never fail; it asserted that a pure
-    // function is deterministic.
-    //
-    // What must hold across them is the part that is not caller-specific:
-    // the model and the tool set. Instructions legitimately differ, and the
-    // skill's own body has to be in both.
-    const fromChat = buildAgentConfig({
-      skillName: "researchy",
-      basePrompt: "chat base prompt",
-      memoryContext: {
-        projectMemory: "p",
-        conversationMemory: "c",
-      },
-    });
-    const fromWorker = buildAgentConfig({ skillName: "researchy" });
-
-    expect(fromChat.modelId).toBe(fromWorker.modelId);
-    expect(Object.keys(fromChat.tools).sort()).toEqual(
-      Object.keys(fromWorker.tools).sort(),
-    );
-    expect(fromChat.instructions).toContain("body text");
-    expect(fromWorker.instructions).toContain("body text");
-  });
-
-  it("hands a caller that declares no skill the baseline and the canvas tools", () => {
+  it("hands a caller the baseline and the canvas tools", () => {
     // The defect this fixes: bare chat used to pass an empty array and get
     // no tools at all, so the model could not search and invented answers.
     //
@@ -99,10 +46,6 @@ describe("buildAgentConfig", () => {
     // which would be self-referential — adding a tool nobody vetted to that
     // constant would change both sides and stay green. This is the list, and
     // adding to it is supposed to require editing this line.
-    //
-    // The canvas tools are here and not in the baseline: this branch is
-    // the plain chat turn, and the baseline also reaches skill runs and
-    // worker jobs, which have no canvas (#261).
     const config = buildAgentConfig({ basePrompt: "base", interactive: true });
     expect(Object.keys(config.tools).sort()).toEqual([
       "ask_user",
@@ -115,16 +58,6 @@ describe("buildAgentConfig", () => {
       "understand_media",
       "web_search",
     ]);
-  });
-
-  it("gives a skill the baseline plus whatever else it declares", () => {
-    // Ten of the eleven skills declare no tools. If a skill's declaration
-    // replaced the baseline instead of adding to it, every one of them would
-    // run with nothing -- the same defect, moved to the skill path.
-    const config = buildAgentConfig({ skillName: "researchy", interactive: true });
-    for (const name of BASELINE_TOOLS) {
-      expect(Object.keys(config.tools)).toContain(name);
-    }
   });
 
   it("takes the model from config rather than a literal", () => {
@@ -146,61 +79,38 @@ describe("buildAgentConfig", () => {
     expect(buildAgentConfig({}).modelId).toBe(sentinel);
   });
 
-  it("puts the skill body into the instructions", () => {
-    const config = buildAgentConfig({ skillName: "researchy", basePrompt: "base" });
-    expect(config.instructions).toContain("base");
-    expect(config.instructions).toContain("body text");
+  it("puts the base prompt first and the memory layers after it", () => {
+    const config = buildAgentConfig({
+      basePrompt: "base",
+      memoryContext: { projectMemory: "p", conversationMemory: "c" },
+    });
+    expect(config.instructions).toBe("base\n\n## Project Context\np\n\n## Conversation Memory\nc");
   });
 
-  it("names the active skill above its body", () => {
-    // The body arrives as a wall of markdown with its own headings. Without
-    // a line saying which skill is running, the model gets instructions with
-    // no subject -- it cannot say "I am running X" or tell the skill's rules
-    // apart from the persona's. The chat path had this line and the
-    // collapse into one factory dropped it.
-    const config = buildAgentConfig({ skillName: "researchy", basePrompt: "base" });
-    expect(config.instructions).toContain("## Active Skill: researchy");
-    expect(config.instructions.indexOf("## Active Skill: researchy")).toBeLessThan(
-      config.instructions.indexOf("body text"),
-    );
-  });
-
-  it("omits the skill section when no skill is named", () => {
+  it("is the base prompt alone when there is no memory", () => {
     expect(buildAgentConfig({ basePrompt: "base" }).instructions).toBe("base");
   });
 
   it("keeps interaction tools away from a caller that cannot draw them", () => {
-    // Worker runs a task with nobody watching. Handing it ask_user
-    // means the model asks a question, nothing renders it, and the raw
-    // sentinel string comes back as the answer.
+    // A caller with nobody watching would have the model ask a question that
+    // nothing renders, and the raw sentinel string come back as the answer.
     // Everything that does work of its own stays: a caller with no reader
     // still benefits from what a search found, because that reaches the model.
-    const config = buildAgentConfig({ skillName: "researchy" });
+    const config = buildAgentConfig({});
     expect(Object.keys(config.tools).sort()).toEqual([
+      "get_canvas_capabilities",
+      "get_product_guide",
       "judge_likelihood",
+      "list_generation_models",
+      "propose_canvas_action",
       "search_images",
       "understand_media",
       "web_search",
     ]);
   });
 
-  it("keeps them away even when the skill itself asks for one", () => {
-    // The filter has to hold over the result, not over the baseline it was
-    // applied to. Filtering the baseline and then unioning the skill's tools
-    // on top puts the tool right back, and no skill declares one today —
-    // which is what would let that go unnoticed until one did.
-    const config = buildAgentConfig({ skillName: "chatty" });
-    expect(Object.keys(config.tools)).not.toContain("ask_user");
-  });
-
   it("gives them to a caller that can", () => {
-    const config = buildAgentConfig({ skillName: "researchy", interactive: true });
+    const config = buildAgentConfig({ interactive: true });
     expect(Object.keys(config.tools)).toContain("ask_user");
-  });
-
-  it("throws a typed error for a skill that does not exist", () => {
-    expect(() => buildAgentConfig({ skillName: "nope" })).toThrow(
-      /nope/,
-    );
   });
 });

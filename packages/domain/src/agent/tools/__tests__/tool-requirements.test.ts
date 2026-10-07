@@ -89,9 +89,8 @@ describe("tools that need configuration", () => {
   });
 
   it("skips a name it does not know rather than failing the whole assembly", async () => {
-    // A stale name in a skill's metadata — one of the tools this PR deleted,
-    // say — must cost that skill the tool and nothing else. Throwing here
-    // would take down every run of every skill that carries the typo.
+    // A stale name in a tool list must cost that one tool and nothing else.
+    // Throwing here would take down every turn that carries the typo.
     await withEnv("BRAVE_SEARCH_API_KEY", "brave-key");
     expect(buildToolSet(["no_such_tool"])).toEqual({});
     expect(Object.keys(buildToolSet(["no_such_tool", "web_search"]))).toEqual([

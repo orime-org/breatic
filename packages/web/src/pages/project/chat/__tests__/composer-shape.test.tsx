@@ -72,7 +72,6 @@ describe('the row of controls under the box', () => {
     render(<ChatComposer {...BASICS} />);
 
     expect(screen.queryByTestId('chat-composer-select-mode')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('chat-composer-skill')).not.toBeInTheDocument();
     expect(screen.getByTestId('chat-composer-attach')).toBeInTheDocument();
     expect(screen.getByTestId('chat-composer-send')).toBeInTheDocument();
   });

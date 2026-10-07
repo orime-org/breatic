@@ -370,8 +370,8 @@ describe("search_images: what the model reads", () => {
   });
 
   it("says nothing about where the pictures ended up", async () => {
-    // The same answer reaches a caller with no panel at all -- a worker
-    // running a skill gets this tool too. A sentence saying the pictures are
+    // The same answer reaches a caller with no panel at all: a turn that is
+    // not interactive gets this tool too. A sentence saying the pictures are
     // on screen has the model tell that reader something untrue.
     httpRequestMock.mockImplementation(async () => imagesOk([braveResult()]));
 

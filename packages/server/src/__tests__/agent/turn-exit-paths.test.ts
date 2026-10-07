@@ -218,8 +218,6 @@ describe("what a plain chat turn hands the model", () => {
 
     const called = thisCase.model?.doStreamCalls[0];
     const names = (called?.tools ?? []).map((t) => t.name).sort();
-    // The canvas tools reach this branch and no other: the plain chat turn is
-    // the only caller that names no skill (#261, #229).
     expect(names).toEqual([
       "ask_user",
       "get_canvas_capabilities",
@@ -251,13 +249,6 @@ describe("what a turn hands the model", () => {
       interactive: true,
       basePrompt: "system",
     });
-  });
-
-  it("names no skill", async () => {
-    // A chat turn reaches no skill at all, so the factory is never told one.
-    buildAgentConfig.mockReturnValueOnce(stubConfig);
-    await runTurn(saidAndSpent("hi", 100));
-    expect(buildAgentConfig.mock.calls[0]?.[0]).not.toHaveProperty("skillName");
   });
 });
 

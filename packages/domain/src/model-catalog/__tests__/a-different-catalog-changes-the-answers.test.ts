@@ -10,8 +10,8 @@
  * rather than both, one of its controls waits on a switch of its own, and
  * there is a mode nothing in this repository has ever heard of.
  *
- * Three of the four consumers run here: the pre-enqueue gate, the proposal
- * tool, and the skill prompt. The fourth is the generate panel, which reads
+ * Two of the three consumers run here: the pre-enqueue gate and the proposal
+ * tool. The third is the generate panel, which reads
  * none of this itself -- it reads the projection over the wire. So the last
  * case holds what the projection ships, and what the panel does with it is
  * held by `video-source-places.test.ts` and `audio-source-places.test.ts` in
@@ -97,18 +97,6 @@ const MODES = [
   "      description: Circles the subject.",
 ].join("\n");
 
-/** The skill prompt these declarations are injected into. */
-const SKILL = [
-  "---",
-  "name: generate_video_plan",
-  "description: Plan a video generation",
-  "---",
-  "",
-  "Pick a mode:",
-  "",
-  "{available_modes}",
-].join("\n");
-
 /**
  * Mount the catalog above.
  * @returns Nothing; the modules imported after it read this catalog.
@@ -117,7 +105,6 @@ async function useSwappedCatalog(): Promise<void> {
   await useFixtureCatalog({
     modes: MODES,
     buckets: { video: VIDEO },
-    skills: { generate_video_plan: SKILL },
   });
 }
 
@@ -173,19 +160,6 @@ describe("a catalog that differs from this repository's", () => {
         groupName: "A slow pan",
       }),
     ).toEqual({ ok: true });
-  });
-
-  it("writes these labels into the skill prompt", async () => {
-    await useSwappedCatalog();
-    const { SkillRegistry } = await import("@domain/agent/skills-loader.js");
-
-    const body = new SkillRegistry().loadSkillContent("generate_video_plan");
-
-    expect(body).toContain("**i2v** (A Picture, Moving): Takes one picture and moves it.");
-    // The panel offers six video modes and this one is not among them, so the
-    // prompt leaves it out -- which list a node opens is a product decision,
-    // and it is the one thing here the catalog does not move.
-    expect(body).not.toContain("orbit");
   });
 
   it("hands back the mode layer too when the catalog is reset", async () => {

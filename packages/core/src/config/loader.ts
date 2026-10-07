@@ -49,14 +49,6 @@ function reservedForMemory(ceilings: {
 
 const agentConfigSchema = z.object({
   max_tool_iterations: z.number().int().positive().default(40),
-  /**
-   * Step ceiling for a worker task running one skill.
-   *
-   * Separate from `max_tool_iterations` on purpose: chat has a person
-   * waiting and can afford more turns, a worker task is a bounded job.
-   * Both used to be literals in three places, disagreeing 40 against 15.
-   */
-  skill_agent_max_steps: z.number().int().positive().default(15),
   // A model id has to end in something other than the prefix separator, so
   // that neither a blank value nor a half-typed prefix gets through. Both
   // start clean and fail on the first message: a blank one reaches whatever
@@ -163,7 +155,7 @@ const agentConfigSchema = z.object({
    * characters.
    *
    * Measured against everything about to go to the model — system prompt,
-   * skill bodies, memory, tool definitions, history and this turn's question
+   * memory, tool definitions, history and this turn's question
    * — because those are what fill a context window, and a budget that only
    * counted the history would be blind to the segments it cannot shorten.
    *

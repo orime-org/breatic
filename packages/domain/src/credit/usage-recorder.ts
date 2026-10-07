@@ -29,8 +29,7 @@ export type UsageFeature =
   | "chat_turn"
   | "memory_consolidation"
   | "text_tool"
-  | "canvas_understand"
-  | "skill_task";
+  | "canvas_understand";
 
 /** What inside the operation made the call. */
 export type UsageSource =

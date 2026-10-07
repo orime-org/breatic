@@ -30,7 +30,6 @@ import {
   startHealthServer,
   runGracefulShutdown,
   getAgentConfig,
-  getSkillRouting,
 } from "@breatic/core";
 import {
   agentModelIds,
@@ -51,10 +50,8 @@ const monitoring = initSentry();
 initLogger("worker");
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
 // i18n: register the catalogs before anything can throw. `t()` echoes the key
-// back when no catalog is loaded, so without this a failed node reads
-// `server.skill.not_available_on_deployment` where a sentence belongs —
-// `dispatch.ts` reaches that throw through `buildAgentConfig` ->
-// `assertSkillModelRunnable`.
+// back when no catalog is loaded, so without this a failed node reads a
+// message key where a sentence belongs.
 //
 // The sentence is English whoever is looking, and deliberately so. A job has
 // no request behind it, so nothing pins a locale the way `localeMiddleware`
@@ -74,19 +71,7 @@ globalThis.AI_SDK_LOG_WARNINGS = ({ warnings, provider, model }) => {
   logger.warn({ warnings, provider, model }, "ai_sdk_warning");
 };
 
-// Read the skill routing config now rather than on the first job. It is lazy
-// like every other config reader, and lazy here means a typo surfaces halfway
-// through a job that has already been claimed off the queue — the failure
-// lands on whatever task happened to be first, and BullMQ retries it into the
-// same wall. The library throws and this layer decides the process's fate.
-try {
-  getSkillRouting();
-} catch (err) {
-  logger.error({ err }, "skill_routing_config_invalid");
-  await exitProcess(1);
-}
-
-// And config/agent.yaml, read here for the same reason: this process takes
+// Read config/agent.yaml now rather than on the first job: this process takes
 // its step cap and output ceiling from it, both on the path a claimed job
 // already walks. A file that no longer parses would otherwise surface as a
 // job failure BullMQ retries into the same wall.

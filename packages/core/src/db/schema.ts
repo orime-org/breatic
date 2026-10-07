@@ -522,7 +522,6 @@ export const tasks = pgTable(
      */
     mode: varchar("mode", { length: 16 }).notNull(),
     model: varchar("model", { length: 100 }),
-    skillName: varchar("skill_name", { length: 100 }),
     status: varchar("status", { length: 20 }).default("pending").notNull(),
     params: jsonb("params").$type<Record<string, unknown>>().default({}),
     result: jsonb("result").$type<Record<string, unknown>>(),
@@ -532,7 +531,6 @@ export const tasks = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
     creditsUsed: doublePrecision("credits_used").default(0).notNull(),
     durationMs: integer("duration_ms"),
-    resolvedSkills: jsonb("resolved_skills").$type<string[]>().default([]),
     source: varchar("source", { length: 20 }).default("canvas").notNull(),
     /**
      * URL returned by the AIGC provider, before persistence to permanent
@@ -1389,8 +1387,7 @@ export const agentUsageRecords = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     operationKey: varchar("operation_key", { length: 255 }).notNull(),
-    // `chat_turn` / `memory_consolidation` / `text_tool` / `canvas_understand`
-    // / `skill_task`.
+    // `chat_turn` / `memory_consolidation` / `text_tool` / `canvas_understand`.
     feature: varchar("feature", { length: 40 }).notNull(),
     // `model`, or `tool:<name>` for a paid call a tool made.
     source: varchar("source", { length: 40 }).notNull(),
@@ -1564,59 +1561,6 @@ export const projectMemoryEntries = pgTable(
   },
   (table) => [
     index("project_mem_entries_project_id_idx").on(table.projectId),
-  ],
-);
-
-// ── 15. Custom Skills ────────────────────────────────────────────────
-
-export const customSkills = pgTable(
-  "custom_skills",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    ownerUserId: uuid("owner_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    name: varchar("name", { length: 64 }).notNull(),
-    description: text("description").default("").notNull(),
-    version: varchar("version", { length: 32 }).default("1.0.0").notNull(),
-    tags: text("tags").array(),
-    files: jsonb("files").$type<Record<string, { type: string; data: string }>>(),
-    isPublished: boolean("is_published").default(false).notNull(),
-    installCount: integer("install_count").default(0).notNull(),
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
-    ...timestamps,
-  },
-  (table) => [
-    uniqueIndex("custom_skills_owner_name_idx").on(
-      table.ownerUserId,
-      table.name,
-    ),
-    index("custom_skills_owner_id_idx").on(table.ownerUserId),
-  ],
-);
-
-// ── 16. Skill Installs ───────────────────────────────────────────────
-
-export const skillInstalls = pgTable(
-  "skill_installs",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    skillId: uuid("skill_id")
-      .notNull()
-      .references(() => customSkills.id, { onDelete: "restrict" }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
-  },
-  (table) => [
-    uniqueIndex("skill_installs_user_skill_idx").on(
-      table.userId,
-      table.skillId,
-    ),
   ],
 );
 
