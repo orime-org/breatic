@@ -1611,7 +1611,7 @@
       },
       "toolbar": {
         "sortLabel": "Sort",
-        "sortValue": "Recently opened",
+        "sortValue": "Last opened",
         "sort": {
           "opened": "Last opened",
           "edited": "Last edited",

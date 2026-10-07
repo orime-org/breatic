@@ -5,8 +5,8 @@
  * The studio project list's keyset cursor and the name collation it pages by.
  *
  * A cursor is the sort values of the last row a page returned. Times travel
- * as the text Postgres renders them in, so they keep their microseconds:
- * a `Date` would round them to milliseconds and rows inside the same
+ * as whole microseconds since the epoch, so they keep the precision Postgres
+ * stores: a `Date` would round them to milliseconds and rows inside the same
  * millisecond would be skipped at a page boundary.
  */
 

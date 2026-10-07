@@ -25,9 +25,9 @@ interface ProjectCardProps {
 /**
  * A project card in the studio container Projects tab (spec §3.3). Its body is
  * the same `ItemCardBody` the Recent landing uses — cover, name, and one meta
- * line carrying one of the project's times (the one the list is sorted by,
- * creation by default) with the viewer's role as plain text at its
- * right end — plus the `⋯` menu whenever the server says the viewer may do
+ * line carrying the time `timeKind` names, which follows the list's sort
+ * (the edit or archive time under the name sort), with the viewer's role as
+ * plain text at its right end — plus the `⋯` menu whenever the server says the viewer may do
  * something from it. A member's card links to `/project/{slug}-{uuid}`; for a
  * project the viewer is not on, the card opens the join dialog in place and
  * shows no role. An archived card carries the archived badge, still opens for

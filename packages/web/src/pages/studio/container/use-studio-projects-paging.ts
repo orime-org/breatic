@@ -68,8 +68,9 @@ export function toContainerProject(p: ProjectSummary): ContainerProject {
  * reader nears the end of the page's scroll area.
  *
  * The query key carries the interface language, because names sort by it.
- * Pages are joined dropping any project already shown: a project another
- * member renamed or edited between two pages can come back in a later one.
+ * Pages are joined dropping any project already shown: under the name sort,
+ * a project another member renamed between two pages can come back in a
+ * later one.
  * The next page is asked for only while nothing else is in flight: a refetch
  * clears the failure flag the moment it starts, and asking for the next page
  * then would cancel that refetch.
