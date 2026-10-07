@@ -443,6 +443,9 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             placeholder={t('spaces.document.media.captionPlaceholder')}
             className='mt-1.5 w-full border-0 border-b border-border bg-transparent py-0.5 text-center text-sm text-foreground outline-none'
             onKeyDown={(event) => {
+              // An input method confirms and cancels its candidates with these
+              // same keys; those belong to it.
+              if (event.nativeEvent.isComposing) return;
               if (event.key === 'Enter') commitCaption(event.currentTarget.value);
               if (event.key === 'Escape') setEditingCaption(false);
             }}

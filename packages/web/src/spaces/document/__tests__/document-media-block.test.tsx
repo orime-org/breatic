@@ -246,6 +246,18 @@ describe('the toolbar', () => {
     expect(media(editor).props['caption']).toBe('Dusk');
   });
 
+  it.each(['Enter', 'Escape'])('leaves the caption open on %s pressed while an input method composes', (key) => {
+    const editor = open('image');
+
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-caption-button'));
+    const input = within(element(editor)).getByTestId('doc-media-caption-input');
+    fireEvent.change(input, { target: { value: 'せつめい' } });
+    fireEvent.keyDown(input, { key, isComposing: true });
+
+    expect(within(element(editor)).getByTestId('doc-media-caption-input')).toBeTruthy();
+    expect(media(editor).props['caption']).toBe('');
+  });
+
   it('keeps the block when a key is pressed in its caption while it is selected', () => {
     const editor = open('image', { caption: 'Dusk' });
     fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-caption-button'));
