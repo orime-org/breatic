@@ -652,6 +652,10 @@ test('a picture or a video is selected by a click on what it shows, never on the
     await expect(block.locator('[data-testid="doc-media-resize-se"]')).toHaveCount(0);
     expect(await block.locator('[data-media-frame]').evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('none');
 
+    // Nor does a triple click there.
+    await page.mouse.click(frame.x + frame.width + 40, frame.y + frame.height / 2, { clickCount: 3 });
+    await expect(block.locator('[data-testid="doc-media-resize-se"]')).toHaveCount(0);
+
     // What it shows still selects it: its middle, clear of the toolbar a
     // first block carries along its top edge and the player's controls.
     await page.mouse.click(frame.x + frame.width / 2, frame.y + frame.height / 2);
@@ -662,6 +666,9 @@ test('a picture or a video is selected by a click on what it shows, never on the
 test('the keyboard stays with the body through the toolbar and the caption, and a right press beside the picture selects nothing (A10)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('alpha');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('omega');
+  await page.keyboard.press('ArrowUp');
   await pastePicture(page, 'keys.png');
   const picture = page.locator(IMAGE);
   await expect(picture.locator('img')).toBeVisible({ timeout: UPLOAD_TIMEOUT });
@@ -693,6 +700,14 @@ test('the keyboard stays with the body through the toolbar and the caption, and 
   const frame = (await picture.locator('[data-media-frame]').boundingBox())!;
   await page.mouse.click(frame.x + frame.width + 40, frame.y + frame.height / 2, { button: 'right' });
   await expect(knob).toHaveCount(0);
+
+  // A click there puts the caret on the line under the picture.
+  await page.mouse.click(frame.x + frame.width + 40, frame.y + frame.height / 2);
+  await page.keyboard.type('z');
+  const rows = await page.locator(`${EDITOR} .bn-block-content`).evaluateAll((all) =>
+    all.map((row) => (row.getAttribute('data-content-type') === 'image' ? 'image' : (row.textContent ?? ''))),
+  );
+  expect(rows[rows.indexOf('image') + 1]).toBe('zomega');
 });
 
 test('a picture dragged by itself moves like a row dragged by its handle (A10)', async () => {

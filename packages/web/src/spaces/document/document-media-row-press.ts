@@ -41,12 +41,13 @@ const MEDIA_ROW = MEDIA_BLOCK_TYPES.map((type) => `[data-content-type="${type}"]
 function clickBesideMedia(view: EditorView, event: MouseEvent): boolean {
   if (!(event.target instanceof Element)) return false;
   const row = event.target.closest(MEDIA_ROW);
-  if (row === null || !view.dom.contains(row) || event.target.closest('[data-media-box]') !== null) return false;
-  const { doc } = view.state;
-  // The row is the block's content element; it starts where the block does.
-  const at = view.posAtDOM(row, 0);
-  const caret = caretUnder(doc, Math.min(at + (doc.nodeAt(at)?.nodeSize ?? 1), doc.content.size));
+  if (row === null || event.target.closest('[data-media-box]') !== null) return false;
+  // The row is the block's content element and starts where the block does;
+  // a media block is an atom, so it ends one further on.
+  const caret = caretUnder(view.state.doc, view.posAtDOM(row, 0) + 1);
   if (caret !== null) view.dispatch(view.state.tr.setSelection(caret));
+  // The row is not editable, so the press gives the body no focus of its own.
+  view.focus();
   return true;
 }
 

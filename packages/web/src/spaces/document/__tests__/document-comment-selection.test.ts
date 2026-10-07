@@ -395,5 +395,7 @@ describe('a click beside a picture', () => {
     view.someProp('handleClick', (handler) => handler(view, view.posAtDOM(row, 0), click));
 
     expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([]);
+    expect(view.state.selection.$from.parent.type.name).not.toBe('image');
+    expect(view.state.selection.empty).toBe(true);
   });
 });
