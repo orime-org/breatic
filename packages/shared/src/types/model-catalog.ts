@@ -88,9 +88,13 @@ export interface ItemField {
 
 /**
  * How a parameter's value reaches the run (#269). `storyboard` is filled from
- * the node's shots in the multi-shot mode (`storyboard.ts`).
+ * the node's shots in the multi-shot mode (`storyboard.ts`); `tool` by a
+ * mini-tool's panel (inner#888).
  */
-export type ParamFill = "canvas" | "pool" | "editor" | "panel" | "remote" | "storyboard" | "none";
+export const PARAM_FILLS = ["canvas", "pool", "editor", "panel", "remote", "storyboard", "tool", "none"] as const;
+
+/** One way a parameter's value reaches the run. */
+export type ParamFill = (typeof PARAM_FILLS)[number];
 
 /** What has to hold before a declared control counts for anything (#269). */
 export interface ParamGate {
@@ -490,7 +494,7 @@ const paramDescriptorSchema = z
     // the panel then draws nothing for it, which is less than it could do
     // rather than a control whose value reaches nobody.
     fill: z
-      .enum(["canvas", "pool", "editor", "panel", "remote", "storyboard", "none"])
+      .enum(PARAM_FILLS)
       .optional()
       .catch(undefined),
     accepts: z.enum(["image", "video", "audio"]).optional().catch(undefined),

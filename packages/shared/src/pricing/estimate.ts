@@ -39,7 +39,12 @@ export interface EstimateInput {
   readonly params: Readonly<Record<string, unknown>>;
   readonly prompt?: string;
   /** Clip lengths in seconds of the sources in each param, keyed like `params`. */
-  readonly durations?: Readonly<Record<string, readonly number[]>>;
+  readonly durations?: Readonly<Record<string, readonly number[]>>;  /**
+   * Params the caller fills from media it already holds, counted as sources
+   * whatever fill the catalog declares them with (a mini-tool's source and
+   * slots are `fill: tool`).
+   */
+  readonly sources?: readonly string[];
 }
 
 /**
@@ -132,10 +137,18 @@ export async function estimateCredits(
    */
   const valueOf = (record: Record<string, unknown>, name: string, spec: PricedParam): unknown =>
     record[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
+  /**
+   * Whether a param carries media the run reads.
+   * @param name - The param's name.
+   * @param spec - Its declaration.
+   * @returns True for a canvas or pool param, or one the caller named.
+   */
+  const isSource = (name: string, spec: PricedParam): boolean =>
+    spec.fill === "canvas" || spec.fill === "pool" || (input.sources?.includes(name) ?? false);
   const own: Record<string, unknown> = { ...input.params };
   let unknown = false;
   for (const [name, spec] of priced) {
-    const source = spec.fill === "canvas" || spec.fill === "pool";
+    const source = isSource(name, spec);
     if (source && !isPresent(valueOf(own, name, spec)) && spec.optional !== true) {
       own[name] = spec.type === "list" ? [UNPICKED] : UNPICKED;
       if (reads(formulas, spec.upstream ?? name)) unknown = true;
@@ -150,7 +163,7 @@ export async function estimateCredits(
   for (const [name, spec] of priced) {
     const field = spec.upstream ?? name;
     const value = valueOf(joined.params, name, spec);
-    const source = spec.fill === "canvas" || spec.fill === "pool";
+    const source = isSource(name, spec);
     upstream[field] = value;
     if (source && isPresent(value)) {
       const known = input.durations?.[name] ?? [];

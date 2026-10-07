@@ -13,24 +13,10 @@
  * on the machine that ships the yaml.
  */
 
+import { PARAM_FILLS } from "@breatic/shared";
 import { z } from "zod";
 
 import { namedModes, SOURCE_TYPES } from "@domain/model-catalog/mode-config.js";
-
-/** How a parameter's value reaches the run. */
-export const FILL_KINDS = [
-  "canvas",
-  "pool",
-  "editor",
-  "panel",
-  "remote",
-  // Filled from the node's shots in the multi-shot mode (node-storyboard.ts).
-  "storyboard",
-  "none",
-] as const;
-
-/** One way a parameter's value reaches the run. */
-export type FillKind = (typeof FILL_KINDS)[number];
 
 /** One model, reduced to what these checks read. */
 export interface ParamClaimant {
@@ -50,7 +36,7 @@ export interface ParamClaimant {
  * strictly here would refuse today's catalog before it has been written.
  */
 const declarationSchema = z.object({
-  fill: z.enum(FILL_KINDS).optional(),
+  fill: z.enum(PARAM_FILLS).optional(),
   accepts: z.enum(SOURCE_TYPES).optional(),
   optional: z.boolean().optional(),
   // Strict: the key set is closed, and a misspelled one used to be dropped in
@@ -305,7 +291,8 @@ function faultsOn(
   // A control the panel draws always stands on a value, and a new node reads
   // it here (user 2026-09-29): a choice on one of its values, a range on a
   // number inside it. Lists and free text start empty by nature.
-  if (declared.fill === "panel" && declared.type === undefined) {
+  // A mini-tool panel (`tool`) draws the same controls a generation panel does.
+  if ((declared.fill === "panel" || declared.fill === "tool") && declared.type === undefined) {
     const fallback = declared.default;
     if (declared.values !== undefined && declared.values.length > 0) {
       if (!declared.values.some((value) => value === fallback)) {

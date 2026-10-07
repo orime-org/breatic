@@ -19,7 +19,7 @@ import { Loader2, RotateCw } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import type { NodeTaskEntry } from '@web/data/api/canvas';
+import type { NodeTaskEntry } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';

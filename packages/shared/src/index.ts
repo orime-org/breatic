@@ -73,6 +73,7 @@ export type {
   ItemField,
   ModelCatalog,
   SourceType,
+  ParamFill,
   ProjectRole,
   ProjectMember,
   Studio,
@@ -203,6 +204,7 @@ export type {
 export {
   modelCatalogSchema,
   sanitizeModelCatalog,
+  PARAM_FILLS,
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
   AUDIO_GENERATION_MODES,
@@ -374,6 +376,35 @@ export {
   buildAdjustVideoFilter,
 } from "@shared/adjust-value.js";
 export type { AdjustValue } from "@shared/adjust-value.js";
+
+export {
+  MINI_TOOLS,
+  defaultParamsOf,
+  isModelTool,
+  miniToolById,
+  miniToolEstimateInput,
+  miniToolRequestSchema,
+  miniToolsFor,
+  modelOf,
+  toolParamKeys,
+} from "@shared/mini-tools/index.js";
+export type {
+  ContainerOp,
+  LocalToolSpec,
+  MiniToolIcon,
+  MiniToolMedium,
+  MiniToolModelParam,
+  MiniToolOption,
+  MiniToolOutput,
+  MiniToolParam,
+  MiniToolRequest,
+  MiniToolRun,
+  MiniToolSlot,
+  MiniToolSlotValue,
+  MiniToolSnapshot,
+  MiniToolSpec,
+  ModelToolSpec,
+} from "@shared/mini-tools/index.js";
 
 // The confirmation email names the instant the window closes, in the buyer's
 // zone and in UTC; the eligibility rule beside it asks whether that instant
@@ -599,6 +630,9 @@ export {
   type AudioFormat,
   type VideoFormat,
 } from "@shared/understand/media-formats.js";
+export { UNDERSTAND_MODEL } from "@shared/understand/pinned-model.js";
+export { NODE_TASK_ACTIONS } from "@shared/types/node-task.js";
+export type { NodeTaskAction, NodeTaskEntry } from "@shared/types/node-task.js";
 // The one word each format goes by on screen, asked by both gates that name a
 // format while refusing a file.
 export {

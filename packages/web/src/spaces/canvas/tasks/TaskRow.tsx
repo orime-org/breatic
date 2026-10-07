@@ -12,11 +12,10 @@
 
 import type { JSX } from 'react';
 import * as React from 'react';
-import { getLocale } from '@breatic/shared';
+import { getLocale, type NodeTaskEntry } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
-import type { NodeTaskEntry } from '@web/data/api/canvas';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { useTranslation } from '@web/i18n/use-translation';
 import { TaskStatusDot } from '@web/spaces/canvas/tasks/TaskStatusDot';

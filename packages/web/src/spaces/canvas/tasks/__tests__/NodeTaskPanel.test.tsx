@@ -15,7 +15,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import type { NodeTaskEntry } from '@web/data/api/canvas';
+import type { NodeTaskEntry } from '@breatic/shared';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
 

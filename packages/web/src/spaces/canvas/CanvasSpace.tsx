@@ -37,7 +37,7 @@ import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 import { claimRegion } from '@web/features/active-region/use-track-active-region';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { useKeyboardNudge } from '@web/spaces/canvas/use-keyboard-nudge';
-import { canGenerate, newId } from '@breatic/shared';
+import { canGenerate, newId, type NodeTaskEntry } from '@breatic/shared';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 
 import { Button } from '@web/components/ui/button';
@@ -50,7 +50,6 @@ import {
 import {
   getCachedReferencePoolCap,
   type NodeHistoryEntry,
-  type NodeTaskEntry,
 } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { fillSlot } from '@web/spaces/canvas/generate/slot-write';

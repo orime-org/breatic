@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { NodeTaskCounts, TaskCreateInput } from '@breatic/shared';
+import type { NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
 
 import { apiDelete, apiGet, apiPost } from '@web/data/api/request';
 
@@ -76,50 +76,6 @@ export interface NodeHistoryEntry {
   mimeType: string | null;
   size: number | null;
   createdAt: string;
-}
-
-/**
- * One row of a node's task list (#186) — what `GET /canvas/nodes/:id/tasks`
- * hands back.
- *
- * `content`, `coverUrl` and the media numbers are read across server-side from
- * the history row this task names. `coverUrl` is that row's thumbnail: a
- * video's cover, or for an image a preview of the content. They are present on a task that
- * landed something, which includes one judged expired before its report
- * arrived; the user replaces the node's content from them without a second
- * request.
- */
-export interface NodeTaskEntry {
-  id: string;
-  projectId: string;
-  spaceId: string;
-  nodeId: string;
-  /** `upload` or `generation`. */
-  kind: string;
-  status: 'running' | 'done' | 'failed' | 'expired';
-  startedByUserId: string;
-  /** Server time the task opened, ISO 8601. */
-  startedAt: string;
-  /** Server time it reached its end state, ISO 8601; `null` while it runs. */
-  settledAt: string | null;
-  /** The conservative allowance this task was given, in ms. */
-  budgetMs: number;
-  /** What the user reads: the filename or the model name. */
-  label: string;
-  errorMessage: string | null;
-  nodeHistoryId: string | null;
-  content: string | null;
-  coverUrl: string | null;
-  /**
-   * The media numbers this content landed on the node with (#2184), under the
-   * node's own field names; a restore writes them back. Null when the medium
-   * has no such number, and on rows written before they were kept.
-   */
-  mediaWidth: number | null;
-  mediaHeight: number | null;
-  duration: number | null;
-  mimeType: string | null;
-  size: number | null;
 }
 
 let limitsCache: CanvasLimits | null = null;

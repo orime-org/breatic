@@ -3,7 +3,9 @@
 
 import type { NodeMediaFields } from '@breatic/shared';
 
-import type { NodeHistoryEntry, NodeTaskEntry } from '@web/data/api/canvas';
+import type { NodeTaskEntry } from '@breatic/shared';
+
+import type { NodeHistoryEntry } from '@web/data/api/canvas';
 import {
   evaluateNodeGate,
   type NodeGateState,

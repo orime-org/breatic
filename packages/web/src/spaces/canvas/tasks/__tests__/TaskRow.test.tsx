@@ -20,7 +20,7 @@ vi.mock('@web/data/api/canvas', () => ({
   getCachedUnderstandMaxBytes: vi.fn(() => null),
 }));
 
-import type { NodeTaskEntry } from '@web/data/api/canvas';
+import type { NodeTaskEntry } from '@breatic/shared';
 import { getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';

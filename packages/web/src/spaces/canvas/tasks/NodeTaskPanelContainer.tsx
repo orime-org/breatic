@@ -14,7 +14,9 @@ import { NodeToolbar, Position, useStore } from '@xyflow/react';
 import * as React from 'react';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { canvasApi, type NodeTaskEntry } from '@web/data/api/canvas';
+import type { NodeTaskEntry } from '@breatic/shared';
+
+import { canvasApi } from '@web/data/api/canvas';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
