@@ -312,6 +312,20 @@ describe('where the toolbar goes', () => {
     expect(toolbar(editor).getAttribute('data-side')).toBe('top');
   });
 
+  it('moves onto the media when the scroller is scrolled until there is no room above', () => {
+    const editor = open('image');
+    place(editor, 300, 100);
+    selectMedia(editor);
+    expect(toolbar(editor).getAttribute('data-side')).toBe('top');
+
+    place(editor, 110, 100);
+    act(() => {
+      document.body.dispatchEvent(new Event('scroll'));
+    });
+
+    expect(toolbar(editor).getAttribute('data-side')).toBe('inside');
+  });
+
   it('sits on the media, at its top, when the scroller has no room above it', () => {
     const editor = open('image');
     place(editor, 110, 100);

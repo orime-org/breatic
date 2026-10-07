@@ -200,8 +200,17 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     const room = element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
     setSide(room >= bar.offsetHeight + TOOLBAR_GAP ? 'top' : 'inside');
   }, []);
+  // Placed when it shows, and again on every scroll while it is up: the room
+  // above the media changes as the body moves under it.
   React.useEffect(() => {
-    if (toolbarShown) placeToolbar();
+    if (!toolbarShown) return undefined;
+    placeToolbar();
+    const scroller = frame.current?.closest(SCROLLER);
+    if (scroller === null || scroller === undefined) return undefined;
+    scroller.addEventListener('scroll', placeToolbar, { passive: true });
+    return () => {
+      scroller.removeEventListener('scroll', placeToolbar);
+    };
   }, [toolbarShown, placeToolbar]);
   const captionField = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => {
