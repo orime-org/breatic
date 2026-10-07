@@ -80,8 +80,46 @@ describe("templates in proposals", () => {
     setLocale("en");
   });
 
-  it("tells the agent to keep the reference marks when it rewrites a template prompt", () => {
-    expect(makeProposeCanvasAction().description).toMatch(/keep(ing)? every \[📎/i);
+  it("tells the agent to keep the reference marks an empty node fills when it rewrites a template prompt", () => {
+    expect(makeProposeCanvasAction().description).toMatch(/keep each \[📎 …\] spot that an empty node/i);
+  });
+
+  it("tells the agent a reference generated upstream takes a ref mark in place of the template's material mark", () => {
+    expect(makeProposeCanvasAction().description).toMatch(/\{"slot":\{"kind":"ref"\}\} mark in place of the \[📎 …\] spot/);
+  });
+});
+
+describe("a template drawing on work generated upstream", () => {
+  /**
+   * A character generated first, wired into a storyboard from the template.
+   * @param prompt - The storyboard prompt the agent sends, or none to keep the template's.
+   * @returns The proposal as the agent sends it.
+   */
+  function chained(
+    prompt?: NonNullable<Parameters<typeof answerFor>[0]["nodes"][number]["prompt"]>,
+  ): Parameters<typeof answerFor>[0] {
+    return {
+      nodes: [
+        { role: "generate", type: "image", name: "Character", mode: "t2i", model: "nano-banana-2", prompt: [{ text: "A young courier in a red coat." }] },
+        { role: "generate", type: "image", name: "Storyboard", template: "storyboard-grid-25", ...(prompt ? { prompt } : {}) },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      rationale: "Make the character, then a storyboard of it.",
+      groupName: "Storyboard",
+    };
+  }
+
+  it("is placed with a ref mark where the template's material mark stood", () => {
+    const answer = answerFor(
+      chained([
+        { text: "Use " },
+        { slot: { kind: "ref", label: "character", note: "The character generated above" } },
+        { text: " as the reference. A 5x5 storyboard of a courier crossing the city." },
+      ]),
+    );
+    expect(answer.placed).toBe(true);
+    if (!answer.placed) return;
+    expect(answer.nodes[1]?.prompt?.filter((s) => s.slot).map((s) => s.slot?.kind)).toEqual(["ref"]);
   });
 });
 
@@ -186,5 +224,66 @@ describe("empty nodes counted by the place their mark takes", () => {
   it("places a mark for each place in order", () => {
     const answer = answerFor(slotThenPool(2));
     expect(answer).toMatchObject({ placed: true });
+  });
+
+  /**
+   * A picture and a voice, both empty, wired into a reference-to-video node
+   * whose pool takes pictures only, in the given order; a second node in the
+   * group takes the voice.
+   * @param voiceFirst - Whether the voice is listed before the picture.
+   * @returns The proposal as the agent sends it.
+   */
+  function pictureAndVoice(voiceFirst: boolean): Parameters<typeof answerFor>[0] {
+    const picture = { role: "source" as const, type: "image" as const, name: "Character" };
+    const voice = { role: "source" as const, type: "audio" as const, name: "Voice" };
+    const mark = { slot: { kind: "asset" as const, label: "character", note: "character" } };
+    return {
+      nodes: [
+        voiceFirst ? voice : picture,
+        voiceFirst ? picture : voice,
+        {
+          role: "generate",
+          type: "video",
+          name: "Clip",
+          mode: "ref",
+          model: "happyhorse-1.1-reference-to-video",
+          prompt: [mark, { text: " walks through the rain." }],
+        },
+        {
+          role: "generate",
+          type: "video",
+          name: "Talking",
+          mode: "ref",
+          model: "wan-3.0-reference-to-video",
+          prompt: [mark, { text: " speaks to camera in " }, { slot: { kind: "asset" as const, label: "voice", note: "voice" } }, { text: "." }],
+        },
+      ],
+      edges: [
+        { fromIndex: 0, toIndex: 2 },
+        { fromIndex: 1, toIndex: 2 },
+        { fromIndex: 0, toIndex: 3 },
+        { fromIndex: 1, toIndex: 3 },
+      ],
+      rationale: "Two clips of the character.",
+      groupName: "Clips",
+    };
+  }
+
+  it("needs no mark for a place after the last node the pool can mention", () => {
+    expect(answerFor(pictureAndVoice(false))).toMatchObject({ placed: true });
+  });
+
+  it("names each place in the refusal, a node the pool does not take among them", () => {
+    const answer = answerFor(pictureAndVoice(true));
+    expect(answer).toMatchObject({ placed: false });
+    if (answer.placed) return;
+    expect(answer.reason).toContain('"Clip" needs 2 material mark(s) and has 1');
+    expect(answer.reason).toMatch(/"Voice" \([^)]*does not take[^)]*\), "Character"/);
+  });
+
+  it("says a slot's node takes a place with no mention", () => {
+    const answer = answerFor(slotThenPool(1));
+    if (answer.placed) throw new Error("expected a refusal");
+    expect(answer.reason).toMatch(/"First frame" \([^)]*slot[^)]*\), "Character"/);
   });
 });
