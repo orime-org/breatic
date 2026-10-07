@@ -61,7 +61,7 @@ function nodes(
       id: 'n1',
       // `status` is what marks a node view as a CONTENT one; a fixture without
       // it reads as a node that carries no model, no params and no voice.
-      data: { kind: 'audio', status: 'idle', ...data } as CanvasNodeView['data'],
+      data: { kind: 'audio', handling: false, ...data } as CanvasNodeView['data'],
     },
   ];
 }
@@ -168,7 +168,7 @@ describe('buildAudioPanelViewModel — whether a voice has been chosen', () => {
     // hand-built record can never carry `Alice`, so a test that writes its own
     // fixture cannot see this.
     const { paramsByModel } = resolveModelSwitch(
-      { kind: 'audio', status: 'idle' } as never,
+      { kind: 'audio', handling: false } as never,
       ELEVEN,
     );
     const vm = buildAudioPanelViewModel({

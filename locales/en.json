@@ -544,7 +544,6 @@
       "focusSourceDeleted": "Source deleted.",
       "focusSourceReplaced": "Source replaced.",
       "focusSourceBusy": "Source is processing.",
-      "focusSourceFailed": "Source processing failed.",
       "focusSourceDeletedByPeer": "A collaborator deleted the source.",
       "focusSourceReplacedByPeer": "A collaborator replaced the source.",
       "pickEnded": "Selection ended.",
@@ -721,7 +720,8 @@
       "empty": "{filename} is empty — there's nothing to add.",
       "hashUnavailable": "Couldn't verify this file. Reload the page and try again.",
       "storageFull": "Studio storage is full. Uploading is unavailable.",
-      "failed": "Upload failed."
+      "failed": "Upload failed.",
+      "extractionFailed": "Couldn't read the text in {filename}."
     },
     "minimap": {
       "label": "Canvas minimap"
@@ -795,8 +795,6 @@
         "expired": "Expired"
       },
       "countTip": "{status} · {count}",
-      "someFailed": "A task on this node did not finish.",
-      "view": "View",
       "action": {
         "retry": "Retry",
         "finish": "Mark read",

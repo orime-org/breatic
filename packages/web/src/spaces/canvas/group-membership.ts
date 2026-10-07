@@ -100,15 +100,15 @@ export function lockedNodeIds(
  * no group-membership expansion (only content nodes handle). Kept separate from
  * {@link lockedNodeIds} so the move-freeze (draggable) path stays lock-only.
  *
- * Reads the DERIVED view field `data.status` (`idle` / `handling` / `error`),
- * which `deriveStatus` collapses from the node's four task counts: `running >
- * 0` is what makes a node resist deletion. A task past its deadline keeps
+ * Reads the DERIVED view field `data.handling`, which `deriveHandling` reads
+ * off the node's four task counts: `running > 0` is what makes a node resist
+ * deletion. A task past its deadline keeps
  * counting as running until somebody opens the node's task list and the server
  * judges it (§4.6). The delete guards feed this the ReactFlow render buffer,
  * whose data is a `NodeView` — reading a raw wire field here would silently
  * return the empty set (adversarial round: the delete gate was dead because a
  * test fixture used the wire shape, masking it).
- * @param nodes - Canvas node VIEWS (each `data` is a NodeView carrying `status`).
+ * @param nodes - Canvas node VIEWS (each `data` is a NodeView carrying `handling`).
  * @returns The set of node ids currently in the handling state.
  */
 export function handlingNodeIds(
@@ -116,7 +116,7 @@ export function handlingNodeIds(
 ): Set<string> {
   const ids = new Set<string>();
   for (const node of nodes) {
-    if ((node.data as { status?: unknown } | undefined)?.status === 'handling') {
+    if ((node.data as { handling?: unknown } | undefined)?.handling === true) {
       ids.add(node.id);
     }
   }

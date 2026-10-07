@@ -17,10 +17,6 @@ interface VideoNodeProps {
   selected?: boolean;
   locked?: boolean;
   onActivate?: () => void;
-  /** Open this node's task list on its failures (#186 §3.7.2). */
-  onViewTasks?: () => void;
-  /** Whether that list is already open beside this node. */
-  tasksPanelOpen?: boolean;
   onRename?: (name: string) => void;
 }
 
@@ -29,12 +25,11 @@ interface VideoNodeProps {
  * cover poster + a scrubber, volume and fullscreen control bar, zero
  * third-party player dependency).
  * @param root0 - Video node props.
- * @param root0.data - Video node payload (asset URL, cover poster, status, optional error message).
+ * @param root0.data - Video node payload (asset URL, cover poster).
  * @param root0.selected - Whether the node is selected, driving the selection ring.
  * @param root0.locked - Whether the node is locked, showing the lock indicator.
  * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
- * @param root0.onViewTasks - Open this node's task list on its failures.
  * @returns The video node element (placeholder or native video player).
  */
 export const VideoNode = React.memo(function VideoNode({
@@ -42,8 +37,6 @@ export const VideoNode = React.memo(function VideoNode({
   selected,
   locked,
   onActivate,
-  onViewTasks,
-  tasksPanelOpen,
   onRename,
 }: VideoNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
@@ -57,7 +50,6 @@ export const VideoNode = React.memo(function VideoNode({
     <ContentNodeFrame
       modality='video'
       name={data.name}
-      status={data.status}
       selected={selected}
       locked={locked}
       onRename={onRename}
@@ -65,10 +57,6 @@ export const VideoNode = React.memo(function VideoNode({
       resolution={resolution}
     >
       <NodeContent
-        onViewTasks={onViewTasks}
-        tasksPanelOpen={tasksPanelOpen}
-        status={data.status}
-        errorMessage={data.errorMessage}
         hasContent={hasContent}
         placeholder={
           <NodePlaceholder modality='video' onActivate={onActivate} />

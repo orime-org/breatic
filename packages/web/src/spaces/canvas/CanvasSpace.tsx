@@ -83,7 +83,6 @@ import {
   isNodeLocked,
   restoreNodeMedia,
   setNodeExtractedText,
-  setNodeExtractionError,
   setNodeLocked,
   setNodeName,
   setNodeParent,
@@ -144,10 +143,7 @@ import {
   type PanelSelectionSnapshot,
 } from '@web/spaces/canvas/lib/generate-panel-selection';
 import { asContentView } from '@web/data/yjs/node-view';
-import type {
-  DisplayStatus,
-  Modality,
-} from '@web/data/yjs/node-view';
+import type { Modality } from '@web/data/yjs/node-view';
 import {
   planGroupCreation,
   type GroupCreationPlan,
@@ -277,7 +273,7 @@ import { canvasGraphs } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { readSpaceViewport, writeSpaceViewport } from '@web/lib/project-tabs-storage';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
-import { taskPanelOpenFor, type CanvasSessionStore } from '@web/stores/canvas-session';
+import type { CanvasSessionStore } from '@web/stores/canvas-session';
 
 /** Node types a focus pick can crop (#1782 images, #1987 video frames). */
 const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
@@ -323,19 +319,7 @@ const FOCUS_TARGET_Z = 1002;
 const ANNOTATION_PIN_Z = 1001;
 
 /** What became of the node a focus crop is open on (#2000). */
-type FocusTargetVerdict = 'ok' | 'gone' | 'replaced' | 'busy' | 'failed';
-
-/**
- * Which verdict a node that stopped being croppable lands on.
- *
- * Stated as a total map over the non-idle statuses so that a new member of
- * `DisplayStatus` fails typecheck here instead of falling into whichever
- * branch happened to be last (#2000, second adversarial round).
- */
-const STATUS_VERDICT: Record<
-  Exclude<DisplayStatus, 'idle'>,
-  Extract<FocusTargetVerdict, 'busy' | 'failed'>
-> = { handling: 'busy', error: 'failed' };
+type FocusTargetVerdict = 'ok' | 'gone' | 'replaced' | 'busy';
 
 /**
  * The toast each ending verdict shows, by who made the write.
@@ -348,12 +332,9 @@ const STATUS_VERDICT: Record<
  * undo, a redo and a plain delete all land here — so it states what happened
  * and stops (user 2026-08-23).
  *
- * `busy` / `failed` say "processing" rather than "generating": an upload
- * opens a task row on the node just as a generation does, so naming the cause
- * would be wrong half the time.
- *
- * A failure has no author to name — the upload or the generation failed on
- * its own — so both columns share one line for it.
+ * `busy` says "processing" rather than "generating": an upload opens a task
+ * row on the node just as a generation does, so naming the cause would be
+ * wrong half the time.
  */
 const FOCUS_EXIT_TOAST_KEY: Record<
   'local' | 'peer',
@@ -363,13 +344,11 @@ const FOCUS_EXIT_TOAST_KEY: Record<
     gone: 'canvas.generatePanel.focusSourceDeleted',
     replaced: 'canvas.generatePanel.focusSourceReplaced',
     busy: 'canvas.generatePanel.focusSourceBusy',
-    failed: 'canvas.generatePanel.focusSourceFailed',
   },
   peer: {
     gone: 'canvas.generatePanel.focusSourceDeletedByPeer',
     replaced: 'canvas.generatePanel.focusSourceReplacedByPeer',
     busy: 'canvas.generatePanel.focusSourceBusyByPeer',
-    failed: 'canvas.generatePanel.focusSourceFailed',
   },
 };
 
@@ -381,22 +360,21 @@ const FOCUS_EXIT_TOAST_KEY: Record<
  * copies of the same conditions, and round-4 already fixed one drifting from
  * the other into "looks selectable, click does nothing".
  *
- * `idle` is load-bearing rather than tidiness: the crop overlay anchors its
- * marquee to a RENDERED element, and an error node renders its message box
- * where the media would be.
+ * Not `handling` because a task writing to the node may replace the media the
+ * crop is anchored to.
  * @param node - The node being judged.
  * @param targetId - The node whose panel started the pick (never a source).
  * @returns Whether a focus pick accepts this node.
  */
 function isFocusCandidate(node: Node, targetId: string): boolean {
-  const data = node.data as { content?: unknown; status?: unknown };
+  const data = node.data as { content?: unknown; handling?: unknown };
   return (
     node.id !== targetId &&
     typeof node.type === 'string' &&
     FOCUS_SOURCE_TYPES.has(node.type) &&
     typeof data.content === 'string' &&
     data.content.length > 0 &&
-    data.status === 'idle'
+    data.handling !== true
   );
 }
 
@@ -934,17 +912,15 @@ function CanvasSpaceInner({
       return 'replaced';
     }
     // The pick's own admission test, reapplied: it already states every
-    // condition a croppable source must hold (type, non-empty content, idle),
+    // condition a croppable source must hold (type, non-empty content, not
+    // handling),
     // so a target that stops satisfying it has stopped being croppable. The
     // host id it wants can be anything but this node's own id.
-    if (isFocusCandidate(node, '')) return 'ok';
-    // Reaching here means `status` left 'idle' — the predicate's other three
-    // conditions cannot fail at this point. The host check gets '' (always
+    // Reaching past it means a task is writing to the node — the predicate's
+    // other three conditions cannot fail here. The host check gets '' (always
     // true), a node's type never changes, and an emptied `content` is caught
     // by `replaced` above (the snapshot is non-empty).
-    const status = (node.data as { status?: DisplayStatus }).status;
-    if (status === undefined || status === 'idle') return 'ok';
-    return STATUS_VERDICT[status];
+    return isFocusCandidate(node, '') ? 'ok' : 'busy';
   });
   React.useEffect(() => {
     if (focusTargetVerdict === 'ok') return;
@@ -2423,7 +2399,7 @@ function CanvasSpaceInner({
   // directly; pdf/docx/xlsx parsed in-browser). A failure is told to the person
   // who tried, in their language, and never written into the shared document —
   // the media path's ending comes from the task row (#186 §3.7.3) and the local
-  // extraction, which has no row, keeps its own `data.errorMessage` (§3.7.4).
+  // extraction, which has no row, is a toast (inner#888 §7.8).
   // No file is rejected. Created nodes are batch-selected once mirrored back.
 
   // Whoever is at this browser: stamped on everything created here, which is
@@ -2441,13 +2417,6 @@ function CanvasSpaceInner({
   // reference pool entry, so its failures are toast-only and it has its own
   // sink further up. It reads the same reason vocabulary and reaches for the
   // same two toast keys, which is what keeps the two consistent.
-  //
-  // Fixed-English wire string — like AIGC failure messages and the group
-  // default name: errorMessage goes into Yjs and renders raw to every
-  // collaborator, so it must not freeze the uploader's locale into the shared
-  // doc; the filename is the locale-free part telling the user WHICH file
-  // failed. For a retryable failure the File is stashed BEFORE the error lands
-  // so the error re-render already sees the Retry stash (#1609 P4).
   //
   // Two reasons are different in kind and neither is stashed. A `hash` failure
   // means the browser could not fingerprint the file, so no retry of THIS page
@@ -2494,6 +2463,16 @@ function CanvasSpaceInner({
       }
     },
     [projectId, spaceId, t],
+  );
+
+  // Text this browser could not extract never reached the server, so no task
+  // row tells of it: the person who picked the file is told, and the node is
+  // left as it was (inner#888 §7.8).
+  const failExtraction = React.useCallback(
+    (file: File): void => {
+      toast.error(t('canvas.upload.extractionFailed', { filename: file.name }));
+    },
+    [t],
   );
 
   const processFiles = React.useCallback(
@@ -2643,14 +2622,7 @@ function CanvasSpaceInner({
                 .then((text) =>
                   setNodeExtractedText(projectId, spaceId, nodeId, text),
                 )
-                .catch(() =>
-                  setNodeExtractionError(
-                    projectId,
-                    spaceId,
-                    nodeId,
-                    `Extraction failed: ${file.name}`,
-                  ),
-                ),
+                .catch(() => failExtraction(file)),
             );
           }
         }
@@ -2663,6 +2635,7 @@ function CanvasSpaceInner({
       spaceId,
       userId,
       failUploadNode,
+      failExtraction,
       createUploadNodeAt,
       stepPaste,
       t,
@@ -3681,8 +3654,7 @@ function CanvasSpaceInner({
           // Also the text path only, and a text-extraction failure has nothing
           // to re-upload — every upload failure goes through `onUploadFailure`
           // below, where the Retry stash is decided per reason.
-          setError: (id, message) =>
-            setNodeExtractionError(projectId, spaceId, id, message),
+          onExtractionFailure: failExtraction,
           // The same outcome as the drop path, reason for reason: one place
           // decides the stash and says the remedy in the reader's language.
           onUploadFailure: (outcome, f) => failUploadNode(outcome, f),
@@ -3690,7 +3662,7 @@ function CanvasSpaceInner({
       })();
       trackOperation(nodeId, work);
     },
-    [projectId, spaceId, t, failUploadNode, trackOperation],
+    [projectId, spaceId, t, failUploadNode, failExtraction, trackOperation],
   );
   // Reset an image node to a fresh blank PNG (#1623): the panel's Execute. reset
   // ≡ "upload a new image" (user 2026-07-20), so it rasterises the blank canvas
@@ -3782,18 +3754,12 @@ function CanvasSpaceInner({
   // Node menu "download": the asset the menu's node is showing, or null when
   // it shows none — which is also what decides whether the item is offered at
   // all, so the item and its target come from one answer (#2108).
-  // The same question the node body asks itself, asked the same way: a failed
-  // node shows its content again while its own task list is open beside it.
-  const menuHostTasksOpen = useCanvasSession(taskPanelOpenFor(nodeMenu.nodeId));
   const menuDownloadUrl = React.useMemo(
     () =>
       readOnly
         ? null
-        : downloadableAsset(
-          nodes.find((n) => n.id === nodeMenu.nodeId)?.data,
-          menuHostTasksOpen,
-        ),
-    [readOnly, nodes, nodeMenu.nodeId, menuHostTasksOpen],
+        : downloadableAsset(nodes.find((n) => n.id === nodeMenu.nodeId)?.data),
+    [readOnly, nodes, nodeMenu.nodeId],
   );
   // A read, like history browsing: no node gate, a locked node downloads too.
   // The role term above is what its three neighbours state, and what keeps it
@@ -4235,7 +4201,7 @@ function CanvasSpaceInner({
         paintingSlot.multiple ? readSlotPicks(paintingSlot, targetData?.[paintingSlot.field]).map((p) => p.url) : [],
       );
       return paint((node) => {
-        const data = node.data as { content?: unknown; status?: unknown };
+        const data = node.data as { content?: unknown; handling?: unknown };
         return (
           node.id === target ||
           node.type !== accepts ||
@@ -4810,8 +4776,8 @@ function CanvasSpaceInner({
           assetActionsOffered={!nodeMenu.isText}
           // Download is offered exactly when the node's body is showing an
           // asset (user 2026-09-18). `downloadableAsset` is that judgement:
-          // it says which three modalities carry one, and it asks what
-          // `NodeContent` asks before rendering the body.
+          // it says which three modalities carry one and whether the node
+          // holds one.
           onDownload={menuDownloadUrl === null ? undefined : downloadFromMenu}
           // The same answer Download reads: both act on the asset the node's
           // body is showing, and a node showing none disables both.

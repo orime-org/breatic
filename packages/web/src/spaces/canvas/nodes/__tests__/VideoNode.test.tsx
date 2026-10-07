@@ -20,7 +20,7 @@ afterEach(() => {
 
 describe('VideoNode', () => {
   it('renders placeholder when no url', () => {
-    render(<VideoNode data={{ kind: 'video', status: 'idle' }} />);
+    render(<VideoNode data={{ kind: 'video', handling: false }} />);
     expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
   });
 
@@ -33,7 +33,7 @@ describe('VideoNode', () => {
         data={{
           kind: 'video',
           content: 'https://e.com/v.mp4',
-          status: 'idle',
+          handling: false,
         }}
       />,
     );
@@ -49,7 +49,7 @@ describe('VideoNode', () => {
           kind: 'video',
           content: 'https://e.com/v.mp4',
           coverUrl: 'https://e.com/c.jpg',
-          status: 'idle',
+          handling: false,
         }}
       />,
     );
@@ -61,27 +61,12 @@ describe('VideoNode', () => {
     expect(screen.getByTestId('fullscreen')).toBeInTheDocument();
   });
 
-  it('error status shows the error message', () => {
-    render(
-      <VideoNode
-        data={{
-          kind: 'video',
-          status: 'error',
-          errorMessage: 'Failed',
-        }}
-      />,
-    );
-    expect(screen.getByTestId('node-content-error')).toHaveTextContent(
-      'Failed',
-    );
-  });
-
   // #1616: non-empty video nodes show their pixel resolution top-right once the
   // metadata loads; read from the DOM (videoWidth/Height), no data-model field.
   it('shows the resolution badge after video metadata loads (#1616)', () => {
     render(
       <VideoNode
-        data={{ kind: 'video', status: 'idle', content: 'https://e.com/v.mp4' }}
+        data={{ kind: 'video', handling: false, content: 'https://e.com/v.mp4' }}
       />,
     );
     const v = screen.getByTestId('media-element');
@@ -94,7 +79,7 @@ describe('VideoNode', () => {
   });
 
   it('empty video node shows no resolution badge (#1616)', () => {
-    render(<VideoNode data={{ kind: 'video', status: 'idle' }} />);
+    render(<VideoNode data={{ kind: 'video', handling: false }} />);
     expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
   });
 
@@ -104,7 +89,7 @@ describe('VideoNode', () => {
   it('hides its control bar for the whole focus pick session (#1987 A5)', () => {
     const data = {
       kind: 'video' as const,
-      status: 'idle' as const,
+      handling: false as const,
       content: 'https://e.com/v.mp4',
     };
     render(<VideoNode data={data} />);

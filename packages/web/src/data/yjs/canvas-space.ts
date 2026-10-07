@@ -1570,36 +1570,7 @@ export function setNodeExtractedText(
   if (!(data instanceof Y.Map)) return;
   doc.transact(() => {
     landHandlingContent(data, node.get('type'), content);
-    data.delete('errorMessage');
   }, CONTENT_WRITE);
-}
-
-/**
- * Write the message a failed local text extraction leaves on a node.
- *
- * Nothing on the server heard of this extraction — it happened in the browser
- * and produced no task row — so the node's own field is where the reader
- * finds out (#186 §3.7.4). Fixed-English: it lands in the shared document,
- * where a locale-frozen sentence would reach collaborators reading in
- * another language.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the node the extraction was for.
- * @param message - What went wrong.
- */
-export function setNodeExtractionError(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  message: string,
-): void {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
-  doc.transact(() => data.set('errorMessage', message), CONTENT_WRITE);
 }
 
 /**
@@ -1614,7 +1585,6 @@ export function setNodeExtractionError(
  *   describes a file the node no longer shows. Only a video carries a cover;
  *   image / audio pass null, and a cover URL written onto them would be a
  *   phantom asset reference the asset-GC treats as live (Gate-1 R4 HIGH).
- * - Clears `errorMessage` (restoring a good result over a prior error state).
  * - Leaves the node's tasks alone. A node's tasks are the server's to move
  *   (#186 §3.3), and a restore is the reader choosing which result the node
  *   shows — the later write wins, as it does between two finished tasks.
@@ -1651,7 +1621,6 @@ export function restoreNodeMedia(
     // #2184 carries none, which removes the previous result's numbers rather
     // than leaving them to describe a medium the node no longer shows.
     writeNodeMedia(data, restored.media);
-    data.delete('errorMessage');
   }, CONTENT_WRITE);
 }
 

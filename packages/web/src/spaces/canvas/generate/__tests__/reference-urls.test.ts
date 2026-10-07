@@ -36,13 +36,13 @@ function node(id: string, data: NodeView): Pick<CanvasNodeView, 'id' | 'data'> {
 }
 
 /** An image node with a URL. */
-const IMAGE_A = node('a', { kind: 'image', status: 'idle', content: 'https://cdn/a.png' });
+const IMAGE_A = node('a', { kind: 'image', handling: false, content: 'https://cdn/a.png' });
 /** A second image node, so order is observable. */
-const IMAGE_B = node('b', { kind: 'image', status: 'idle', content: 'https://cdn/b.png' });
+const IMAGE_B = node('b', { kind: 'image', handling: false, content: 'https://cdn/b.png' });
 /** A video node. */
-const CLIP = node('v', { kind: 'video', status: 'idle', content: 'https://cdn/v.mp4' });
+const CLIP = node('v', { kind: 'video', handling: false, content: 'https://cdn/v.mp4' });
 /** An audio node. */
-const TRACK = node('s', { kind: 'audio', status: 'idle', content: 'https://cdn/s.mp3' });
+const TRACK = node('s', { kind: 'audio', handling: false, content: 'https://cdn/s.mp3' });
 
 /**
  * Rail rows for the given source ids, in rail order.
@@ -96,11 +96,11 @@ describe('mentionedReferenceUrls — rows', () => {
   });
 
   it('sends nothing for a text row, an empty one, a malformed one or a missing one', () => {
-    const text = node('t', { kind: 'text', status: 'idle' });
-    const empty = node('e', { kind: 'image', status: 'idle', content: '' });
+    const text = node('t', { kind: 'text', handling: false });
+    const empty = node('e', { kind: 'image', handling: false, content: '' });
     const malformed = node('m', {
       kind: 'image',
-      status: 'idle',
+      handling: false,
       content: { url: 'x' } as unknown as string,
     });
     expect(
@@ -143,7 +143,7 @@ describe('mentionedReferenceUrls — crops', () => {
         references: rows('c1'),
         focusImages: [CROP],
         atMentioned: new Set(['c1']),
-        nodes: [node('c1', { kind: 'image', status: 'idle', content: 'https://cdn/node-c1.png' })],
+        nodes: [node('c1', { kind: 'image', handling: false, content: 'https://cdn/node-c1.png' })],
       }).image,
     ).toEqual(['https://cdn/node-c1.png']);
   });
@@ -251,9 +251,9 @@ describe('mentionDurations — how long the mentioned clips and tracks run', () 
     audio: { param: 'audios', cap: undefined },
   };
   const clip = (id: string, duration?: number): Pick<CanvasNodeView, 'id' | 'data'> =>
-    node(id, { kind: 'video', status: 'idle', content: `https://cdn/${id}.mp4`, duration });
+    node(id, { kind: 'video', handling: false, content: `https://cdn/${id}.mp4`, duration });
   const track = (id: string, duration?: number): Pick<CanvasNodeView, 'id' | 'data'> =>
-    node(id, { kind: 'audio', status: 'idle', content: `https://cdn/${id}.mp3`, duration });
+    node(id, { kind: 'audio', handling: false, content: `https://cdn/${id}.mp3`, duration });
 
   it('lists each kind\'s lengths in the order its files are sent, under its param', () => {
     const durations = mentionDurations(pool, {

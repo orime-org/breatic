@@ -422,23 +422,20 @@ export default function PrimitivesGallery(): React.JSX.Element {
             </div>
           </Section>
 
-          <Section title='Canvas node states · NodeShell 1px state border + content states'>
+          <Section title='Canvas node states · NodeShell 1px border + content states'>
             <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3'>
-              {(['idle', 'handling', 'error'] as const).map((status) => (
+              {([false, true] as const).map((hasContent) => (
                 <NodeShell
-                  key={status}
-                  status={status}
+                  key={String(hasContent)}
                   className='w-full'
-                  testId={`shell-${status}`}
+                  testId={hasContent ? 'shell-filled' : 'shell-empty'}
                 >
                   <NodeContent
-                    status={status}
-                    errorMessage='Demo error message'
-                    hasContent={status === 'idle'}
+                    hasContent={hasContent}
                     placeholder={<NodePlaceholder modality='image' />}
                     content={
                       <div className='p-3 text-xs'>
-                        idle content
+                        filled content
                       </div>
                     }
                   />

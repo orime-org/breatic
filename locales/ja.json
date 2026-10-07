@@ -532,7 +532,6 @@
       "focusSourceDeleted": "素材が削除されました。",
       "focusSourceReplaced": "素材が差し替えられました。",
       "focusSourceBusy": "素材を処理中です。",
-      "focusSourceFailed": "素材の処理に失敗しました。",
       "focusSourceDeletedByPeer": "コラボレーターが素材を削除しました。",
       "focusSourceReplacedByPeer": "コラボレーターが素材を差し替えました。",
       "pickEnded": "選択を終了しました。",
@@ -721,7 +720,8 @@
       "empty": "{filename} は空のファイルです。追加できる内容がありません。",
       "hashUnavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。",
       "storageFull": "Studio のストレージがいっぱいです。アップロードできません。",
-      "failed": "アップロードに失敗しました。"
+      "failed": "アップロードに失敗しました。",
+      "extractionFailed": "{filename} のテキストを読み取れません。"
     },
     "minimap": {
       "label": "キャンバスのミニマップ"
@@ -795,8 +795,6 @@
         "expired": "時間切れ"
       },
       "countTip": "{status} · {count}",
-      "someFailed": "このノードで完了しなかったタスクがあります。",
-      "view": "表示",
       "action": {
         "retry": "再試行",
         "finish": "既読にする",

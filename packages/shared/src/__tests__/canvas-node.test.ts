@@ -108,7 +108,6 @@ describe("CanvasNodeFields", () => {
         createdBy: "user-1",
         locked: false,
         attachments: [],
-        errorMessage: undefined,
         content: "https://cdn.example.com/image.png",
         coverUrl: "https://cdn.example.com/image.png",
         mediaWidth: 1024,
@@ -283,8 +282,11 @@ describe("CanvasNodeFields", () => {
     // @ts-expect-error runType was removed earlier; verify still absent
     data.runType;
 
-    // @ts-expect-error errorInfo renamed to errorMessage; old name gone
+    // @ts-expect-error errorInfo removed; a node carries no failure text
     data.errorInfo;
+
+    // @ts-expect-error errorMessage removed (inner#888 §7.8 — failures live in the task list)
+    data.errorMessage;
 
     // @ts-expect-error outputType removed (2026-06-15 model revision — no generative node)
     data.outputType;

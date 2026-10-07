@@ -335,19 +335,11 @@ export function renderProductGuide(): string {
       "sound node takes a new file of its kind; a file of another kind is refused with " +
       `${quoted(t("canvas.upload.typeMismatch"))} A text node's picker lists text, Markdown, PDF, Word and ` +
       "Excel files: plain text, PDF, .docx and Excel files give their text, which replaces what the node held. " +
-      "Any other file, an older .doc included, leaves the node showing Extraction failed: and the file's name, " +
-      "in English on every screen, in place of its words, with a red border and no button; its words cannot be " +
-      "typed into until a file that reads is put in with Upload.",
-    "An empty picture, video or sound node with a failed or expired task and nothing running shows " +
-      `${quoted(t("canvas.task.someFailed"))} and a ${quoted(t("canvas.task.view"))} button in place of its ` +
-      "content, and a red border; the button opens the failed tasks, or the expired ones when none failed. The " +
-      "box steps aside while that list is open and goes once those rows are cleared with " +
-      `${quoted(t("canvas.task.action.clear"))}; until then double-clicking does not pick a file, so use ` +
-      `${quoted(t("canvas.nodeMenu.upload"))} instead. A node that already holds something keeps showing it ` +
-      "when a later task fails, and a text node whose task failed, such as a reading made with " +
-      `${quoted(t("canvas.nodeMenu.understand"))}, does not show this box either: there the ` +
-      "failure is only in " +
-      "the column of task icons described under Generating. A picture or video node shows its width × " +
+      "Any other file, an older .doc included, leaves the node as it was, and a message names the file it " +
+      "could not read.",
+    "A running, failed or expired task changes nothing on the node, which keeps showing what it holds, or its " +
+      "empty look; what its tasks did is in the column of task icons described under Generating. A picture or " +
+      "video node shows its width × " +
       "height just outside its top-right corner. Video and sound nodes have their own play, time, volume and, " +
       "for video, full-screen controls.",
     "Every picture, video, sound and text node shows its name just above its top-left corner, after a type " +
@@ -513,20 +505,22 @@ export function renderProductGuide(): string {
       "To get another, open the panel again and press the arrow: it can start while an earlier task is still " +
       "running, each finished result replaces what the node holds in turn, and the earlier ones stay in its " +
       `${quoted(t("canvas.nodeMenu.history"))}.`,
-    "A small column of icons appears just past the node's right edge, level with its top, one icon for each " +
+    "The node itself shows no task state; a small column of icons appears just past the node's right edge, " +
+      "level with its top, one icon for each " +
       "state that has tasks, uploads included: a spinning circle (running), a circle with a tick (done), a circle " +
       "with an X (failed), a clock (expired). Hovering one shows how many; clicking it opens a list headed " +
       `${quoted(t("canvas.task.status.running"))}, ${quoted(t("canvas.task.status.done"))}, ` +
       `${quoted(t("canvas.task.status.failed"))} or ${quoted(t("canvas.task.status.expired"))}, each row saying ` +
       "when it started or ended; the list closes with its X. Zoomed far out, only the spinning icon remains. A running task shows how long " +
       "it has run and has left; an expired one says " +
-      `${quoted(t("canvas.task.expired"))} (${quoted(t("canvas.task.lateResult"))} when a result came late); a ` +
-      `done one offers ${quoted(t("canvas.task.action.replace"))}, which puts its result on the node, and ` +
-      `${quoted(t("canvas.task.action.finish"))}; a failed one says why and offers ` +
-      `${quoted(t("canvas.task.action.retry"))} for an upload still at hand, and ` +
-      `${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
-      `${quoted(t("canvas.task.action.replace"))} when a late result came, and ` +
-      `${quoted(t("canvas.task.action.clear"))}.`,
+      `${quoted(t("canvas.task.expired"))} (${quoted(t("canvas.task.lateResult"))} when a result came late). ` +
+      "Each row first says what the task was doing: an upload with the file's name, a generation or a reading " +
+      "with the model's name, or the tool's name. A done row offers " +
+      `${quoted(t("canvas.task.action.finish"))}, which takes the row away (its result is already on the ` +
+      `node); a failed one says why and offers ${quoted(t("canvas.task.action.retry"))} for an upload still at ` +
+      `hand, and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
+      `${quoted(t("canvas.task.action.view"))} when a late result came, which opens the node's history at that ` +
+      `result so you can restore it, and ${quoted(t("canvas.task.action.clear"))}.`,
     "",
     "## Inside the generation panel",
     "The top row holds the tool buttons, each an icon over its name, with an X at the far right that closes the " +
@@ -732,7 +726,7 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.focusConfirm"))}, the crop joins the strip above the prompt as a chip ` +
       "with a crop icon before the source node's name (a spinner shows while it uploads); if it cannot be made, " +
       `a message says so, such as ${quoted(t("canvas.generatePanel.focusExportFailed"))} If the source node ` +
-      "is replaced, starts processing, fails or is deleted while you crop it, the bar under it closes and a " +
+      "is replaced, starts processing or is deleted while you crop it, the bar under it closes and a " +
       `message says what happened, such as ${quoted(t("canvas.generatePanel.focusSourceDeleted"))} Picking goes ` +
       "on: click a source node again. If the picture changed just as you pressed " +
       `${quoted(t("canvas.generatePanel.focusConfirm"))}, only the box is cleared, with ` +

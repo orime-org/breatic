@@ -185,8 +185,12 @@ export interface FillNodeDeps {
    * is written by the server through Yjs (design §6.6).
    */
   setContent: (nodeId: string, content: string) => void;
-  /** Error write-back (fixed-English wire string — never a toast). */
-  setError: (nodeId: string, message: string) => void;
+  /**
+   * The text path's failure: nothing reached the server, so there is no task
+   * row, and the person who picked the file is told (inner#888 §7.8). The
+   * node is left as it was.
+   */
+  onExtractionFailure: (file: File) => void;
   /** The space the node lives in, which rides the ticket. */
   spaceId?: string;
 }
@@ -254,7 +258,7 @@ export async function fillNodeFromFile(
   try {
     deps.setContent(nodeId, await deps.extractText(file));
   } catch {
-    deps.setError(nodeId, `Extraction failed: ${file.name}`);
+    deps.onExtractionFailure(file);
   }
 }
 

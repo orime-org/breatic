@@ -5,7 +5,7 @@
  * #2108 — which nodes offer Download, and what it hands over.
  *
  * The rule under test is the reader's: a node showing content can be
- * downloaded, one showing an error box or an empty frame cannot. These pin
+ * downloaded, an empty frame cannot. These pin
  * both halves of the answer at once, since the menu item's presence and its
  * target come from the same call.
  */
@@ -19,85 +19,79 @@ const ASSET = 'https://assets.example.com/image/2026-09-13/a.png';
 
 describe('the asset a node offers for download', () => {
   it('is the image a filled image node is showing', () => {
-    const node: NodeView = { kind: 'image', status: 'idle', content: ASSET };
+    const node: NodeView = { kind: 'image', handling: false, content: ASSET };
 
-    expect(downloadableAsset(node, false)).toBe(ASSET);
+    expect(downloadableAsset(node)).toBe(ASSET);
   });
 
   it('is the file a filled video node is showing', () => {
-    const node: NodeView = { kind: 'video', status: 'idle', content: ASSET };
+    const node: NodeView = { kind: 'video', handling: false, content: ASSET };
 
-    expect(downloadableAsset(node, false)).toBe(ASSET);
+    expect(downloadableAsset(node)).toBe(ASSET);
   });
 
   it('is the file a filled audio node is showing', () => {
-    const node: NodeView = { kind: 'audio', status: 'idle', content: ASSET };
+    const node: NodeView = { kind: 'audio', handling: false, content: ASSET };
 
-    expect(downloadableAsset(node, false)).toBe(ASSET);
+    expect(downloadableAsset(node)).toBe(ASSET);
   });
 
   it('is nothing on an empty node', () => {
-    const node: NodeView = { kind: 'image', status: 'idle' };
+    const node: NodeView = { kind: 'image', handling: false };
 
-    expect(downloadableAsset(node, false)).toBeNull();
+    expect(downloadableAsset(node)).toBeNull();
   });
 
   it('is nothing when the node holds an empty address', () => {
-    const node: NodeView = { kind: 'image', status: 'idle', content: '' };
+    const node: NodeView = { kind: 'image', handling: false, content: '' };
 
-    expect(downloadableAsset(node, false)).toBeNull();
+    expect(downloadableAsset(node)).toBeNull();
   });
 
-  it('is nothing on a node showing an error box', () => {
-    const node: NodeView = { kind: 'image', status: 'error', content: ASSET };
+  it('is the content a node keeps showing after a task on it failed', () => {
+    // A node shows no task state (inner#888 §7.8): a failed task leaves the
+    // body on what it holds.
+    const node: NodeView = { kind: 'image', handling: false, content: ASSET };
 
-    expect(downloadableAsset(node, false)).toBeNull();
-  });
-
-  it('is the content again once the task list opens beside a failed node', () => {
-    // The error box steps aside for the body while that list is open
-    // (`showsErrorBox`), so what the reader sees is the image again.
-    const node: NodeView = { kind: 'image', status: 'error', content: ASSET };
-
-    expect(downloadableAsset(node, true)).toBe(ASSET);
+    expect(downloadableAsset(node)).toBe(ASSET);
   });
 
   it('is the content a node keeps showing while a task writes to it', () => {
-    const node: NodeView = { kind: 'video', status: 'handling', content: ASSET };
+    const node: NodeView = { kind: 'video', handling: true, content: ASSET };
 
-    expect(downloadableAsset(node, false)).toBe(ASSET);
+    expect(downloadableAsset(node)).toBe(ASSET);
   });
 
   it('is still nothing when an empty node has a task running', () => {
-    const node: NodeView = { kind: 'audio', status: 'handling' };
+    const node: NodeView = { kind: 'audio', handling: true };
 
-    expect(downloadableAsset(node, false)).toBeNull();
+    expect(downloadableAsset(node)).toBeNull();
   });
 });
 
 describe('the modalities that offer download', () => {
   it('leaves out a text node', () => {
-    const node: NodeView = { kind: 'text', status: 'idle' };
+    const node: NodeView = { kind: 'text', handling: false };
 
-    expect(downloadableAsset(node, false)).toBeNull();
+    expect(downloadableAsset(node)).toBeNull();
   });
 
   it('leaves out a 3d node', () => {
-    const node: NodeView = { kind: '3d', status: 'idle', content: ASSET };
+    const node: NodeView = { kind: '3d', handling: false, content: ASSET };
 
-    expect(downloadableAsset(node, false)).toBeNull();
+    expect(downloadableAsset(node)).toBeNull();
   });
 
   it('leaves out a web node', () => {
-    const node: NodeView = { kind: 'web', status: 'idle', content: ASSET };
+    const node: NodeView = { kind: 'web', handling: false, content: ASSET };
 
-    expect(downloadableAsset(node, false)).toBeNull();
+    expect(downloadableAsset(node)).toBeNull();
   });
 
   it('leaves out a group container', () => {
     const node: NodeView = { kind: 'group' };
 
-    expect(downloadableAsset(node, false)).toBeNull();
+    expect(downloadableAsset(node)).toBeNull();
   });
 
   it('leaves out an annotation sticky', () => {
@@ -109,11 +103,11 @@ describe('the modalities that offer download', () => {
       replies: [],
     };
 
-    expect(downloadableAsset(node, false)).toBeNull();
+    expect(downloadableAsset(node)).toBeNull();
   });
 
   it('is nothing when the canvas holds no such node', () => {
-    expect(downloadableAsset(undefined, false)).toBeNull();
+    expect(downloadableAsset(undefined)).toBeNull();
   });
 });
 

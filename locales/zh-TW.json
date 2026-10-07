@@ -532,7 +532,6 @@
       "focusSourceDeleted": "素材已被刪除。",
       "focusSourceReplaced": "素材已更換。",
       "focusSourceBusy": "素材正在處理。",
-      "focusSourceFailed": "素材處理失敗。",
       "focusSourceDeletedByPeer": "協作者刪除了素材。",
       "focusSourceReplacedByPeer": "協作者更換了素材。",
       "pickEnded": "已退出選擇。",
@@ -721,7 +720,8 @@
       "empty": "{filename} 是空檔案，沒有內容可以新增。",
       "hashUnavailable": "無法驗證此檔案，請重新整理頁面後再試。",
       "storageFull": "Studio 儲存空間已滿，目前無法上傳。",
-      "failed": "上傳失敗。"
+      "failed": "上傳失敗。",
+      "extractionFailed": "無法讀取 {filename} 中的文字。"
     },
     "minimap": {
       "label": "畫布縮略圖"
@@ -795,8 +795,6 @@
         "expired": "逾時"
       },
       "countTip": "{status} · {count}",
-      "someFailed": "這個節點上有任務沒能完成。",
-      "view": "檢視",
       "action": {
         "retry": "重試",
         "finish": "已讀",

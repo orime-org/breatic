@@ -29,37 +29,37 @@ const CONTENT_NODES: ReadonlyArray<{
   {
     name: 'TextNode',
     Comp: TextNode as ComponentType<{ data: NodeView }>,
-    data: { kind: 'text', status: 'idle' },
+    data: { kind: 'text', handling: false },
     label: 'Text',
   },
   {
     name: 'ImageNode',
     Comp: ImageNode as ComponentType<{ data: NodeView }>,
-    data: { kind: 'image', status: 'idle' },
+    data: { kind: 'image', handling: false },
     label: 'Image',
   },
   {
     name: 'AudioNode',
     Comp: AudioNode as ComponentType<{ data: NodeView }>,
-    data: { kind: 'audio', status: 'idle' },
+    data: { kind: 'audio', handling: false },
     label: 'Audio',
   },
   {
     name: 'VideoNode',
     Comp: VideoNode as ComponentType<{ data: NodeView }>,
-    data: { kind: 'video', status: 'idle' },
+    data: { kind: 'video', handling: false },
     label: 'Video',
   },
   {
     name: 'ThreeDNode',
     Comp: ThreeDNode as ComponentType<{ data: NodeView }>,
-    data: { kind: '3d', status: 'idle' },
+    data: { kind: '3d', handling: false },
     label: '3D',
   },
   {
     name: 'WebNode',
     Comp: WebNode as ComponentType<{ data: NodeView }>,
-    data: { kind: 'web', status: 'idle' },
+    data: { kind: 'web', handling: false },
     label: 'Web',
   },
 ];
@@ -74,7 +74,7 @@ describe('node name header', () => {
 
   it('content node shows its name when present', () => {
     render(
-      <ImageNode data={{ kind: 'image', status: 'idle', name: 'Hero shot' }} />,
+      <ImageNode data={{ kind: 'image', handling: false, name: 'Hero shot' }} />,
     );
     expect(screen.getByTestId('node-header')).toHaveTextContent('Hero shot');
   });

@@ -700,11 +700,10 @@ describe("what the guide says about each surface", () => {
     expect(filling).toMatch(/placed from a proposal card has the name the card showed/);
   });
 
-  it("says the failure box shows only on an empty media node", () => {
+  it("says a task changes nothing on the node and a failed reading leaves it as it was", () => {
     const filling = section("Filling a node");
-    expect(filling).toMatch(/An empty picture, video or sound node with a failed or expired task and nothing running/);
-    expect(filling).toMatch(/a text node whose task failed, such as a reading made with "[^"]+", does not show this box/);
-    expect(filling).toMatch(/Extraction failed: and the file's name/);
+    expect(filling).toMatch(/A running, failed or expired task changes nothing on the node/);
+    expect(filling).toMatch(/leaves the node as it was, and a message names the file it could not read/);
   });
 
   it("says files dropped on a node still make new nodes", () => {

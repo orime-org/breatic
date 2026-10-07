@@ -18,7 +18,6 @@ import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { NODE_KIND_LIST } from '@web/spaces/canvas/nodes/registry';
 import type { TextNodeView } from '@web/data/yjs/node-view';
-import { canvasSessions } from '@web/stores/canvas-session';
 
 const PID = 'p1';
 const SID = 's1';
@@ -44,7 +43,7 @@ describe('FLOW_NODE_TYPES', () => {
     const Text = FLOW_NODE_TYPES.text;
     const data: TextNodeView = {
       kind: 'text',
-      status: 'idle',
+      handling: false,
       name: 'Old',
     };
     render(
@@ -63,61 +62,13 @@ describe('FLOW_NODE_TYPES', () => {
     expect(renameNode).toHaveBeenCalledWith('n1', 'Renamed');
   });
 
-  // §3.7.2 traded the node's concrete failure reason and its Retry button away
-  // on the condition that the box carry a way to the list where both now live.
-  // The wrapper is the only layer that knows this node's id, so it is the one
-  // that can bind it.
-  it('gives the error box a way into this node’s task list', () => {
-    renderImage({
-      kind: 'image',
-      status: 'error',
-      name: 'N',
-      taskCounts: { running: 0, done: 0, failed: 1, expired: 0 },
-    });
-
-    expect(
-      screen.getByTestId('node-content-view-tasks'),
-    ).toBeInTheDocument();
-  });
-
-  // `deriveStatus` puts the error box up for `expired` as readily as for
-  // `failed`, so the box's way in has to lead somewhere for both. The list
-  // shows one state at a time; sending this reader to `failed` shows an empty
-  // one.
-  it('opens the expired list when that is the node’s only failure', () => {
-    renderImage({
-      kind: 'image',
-      status: 'error',
-      name: 'N',
-      taskCounts: { running: 0, done: 0, failed: 0, expired: 1 },
-    });
-
-    fireEvent.click(screen.getByTestId('node-content-view-tasks'));
-
-    expect(canvasSessions.of('').getState().taskPanelStatus).toBe('expired');
-  });
-
-  // Text this browser could not extract writes `errorMessage` and opens no
-  // task at all (§3.7.4), so the box has no list to lead to.
-  it('offers no way in when the node carries no failed task', () => {
-    renderImage({
-      kind: 'image',
-      status: 'error',
-      name: 'N',
-      errorMessage: 'could not read this file',
-      taskCounts: { running: 0, done: 0, failed: 0, expired: 0 },
-    });
-
-    expect(screen.queryByTestId('node-content-view-tasks')).toBeNull();
-  });
-
   // xyflow starts a node drag one pixel into a press, so a count without
   // `nodrag` slides the node under the cursor and writes a new position into
   // the shared document while the user is opening a list.
   it('keeps a press on the counts from dragging the node', () => {
     renderImage({
       kind: 'image',
-      status: 'idle',
+      handling: false,
       name: 'N',
       content: 'https://cdn.invalid/a.png',
       taskCounts: { running: 1, done: 0, failed: 0, expired: 0 },
@@ -136,7 +87,7 @@ describe('FLOW_NODE_TYPES', () => {
     // beside it is bare canvas: a marquee or a pane drag can begin in it.
     renderImage({
       kind: 'image',
-      status: 'idle',
+      handling: false,
       name: 'N',
       content: 'https://cdn.invalid/a.png',
     });
@@ -173,7 +124,7 @@ describe('FLOW_NODE_TYPES', () => {
     }
 
     const Text = FLOW_NODE_TYPES.text;
-    const data: TextNodeView = { kind: 'text', status: 'idle', name: 'N' };
+    const data: TextNodeView = { kind: 'text', handling: false, name: 'N' };
     render(
       <ReactFlowProvider>
         <CanvasContext.Provider
@@ -202,7 +153,7 @@ describe('FLOW_NODE_TYPES', () => {
     const Text = FLOW_NODE_TYPES.text;
     const data: TextNodeView = {
       kind: 'text',
-      status: 'idle',
+      handling: false,
       name: 'N',
     };
     const { container } = render(
@@ -245,7 +196,7 @@ describe('FLOW_NODE_TYPES', () => {
     const Text = FLOW_NODE_TYPES.text;
     const data: TextNodeView = {
       kind: 'text',
-      status: 'idle',
+      handling: false,
       name: 'N',
     };
     const { container } = render(
@@ -359,7 +310,7 @@ describe('FLOW_NODE_TYPES', () => {
     const Text = FLOW_NODE_TYPES.text;
     const data: TextNodeView = {
       kind: 'text',
-      status: 'idle',
+      handling: false,
       name: 'Old',
     };
     render(
@@ -392,7 +343,7 @@ describe('FLOW_NODE_TYPES', () => {
           <Image
             {...({
               id: 'n1',
-              data: { kind: 'image', content: '', status: 'idle', name: 'N' },
+              data: { kind: 'image', content: '', handling: false, name: 'N' },
               selected: false,
             } as unknown as NodeProps)}
           />
@@ -484,7 +435,7 @@ function renderImage(data: Record<string, unknown>, zoom?: number): void {
 /** A node with one task in each of the four states. */
 const ONE_OF_EACH = {
   kind: 'image',
-  status: 'idle',
+  handling: false,
   name: 'N',
   content: 'https://cdn.invalid/a.png',
   taskCounts: { running: 1, done: 1, failed: 1, expired: 1 },

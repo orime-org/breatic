@@ -26,7 +26,6 @@ import {
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import type { NodeView } from '@web/data/yjs/node-view';
-import { failedTaskListToOpen } from '@web/data/yjs/node-view';
 
 /**
  * What a node whose document carries no counts yet reads as. It is the four
@@ -47,13 +46,6 @@ interface InnerNodeProps {
    * file picker and fills this node (media nodes). Text handles its own edit.
    */
   onActivate?: () => void;
-  /**
-   * Open this node's task list on its failures, pre-bound to this node
-   * (#186 §3.7.2). The node's error box carries one sentence; this is the way
-   * from it to the row that says which task failed and why.
-   */
-  onViewTasks?: () => void;
-  tasksPanelOpen?: boolean;
 }
 
 /**
@@ -187,13 +179,6 @@ function makeFlowNode(
       },
       [closeActivePanel, openTaskPanel, props.id],
     );
-    // Absent when no task on this node failed, which is what keeps the error
-    // box from offering a way into a list with nothing in it: the counts that
-    // put that box on screen also say which of the two failure states to show.
-    const failedList = failedTaskListToOpen(taskCounts);
-    const onViewTasks = React.useCallback((): void => {
-      if (failedList !== null) openTaskPanel(props.id, failedList);
-    }, [failedList, openTaskPanel, props.id]);
     return (
       <NodeIdContext.Provider value={props.id}>
         <NodeScaleContext.Provider value={headerScale}>
@@ -208,8 +193,6 @@ function makeFlowNode(
                 locked={data.locked}
                 onRename={onRename}
                 onActivate={onActivate}
-                {...(failedList !== null && { onViewTasks })}
-                tasksPanelOpen={taskPanelOpenHere !== null}
               />
               {/* The resize controls render AFTER the body for the same reason
                 the connection handles below do: absolutely-positioned siblings

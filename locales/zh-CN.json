@@ -532,7 +532,6 @@
       "focusSourceDeleted": "素材已被删除。",
       "focusSourceReplaced": "素材已更换。",
       "focusSourceBusy": "素材正在处理。",
-      "focusSourceFailed": "素材处理失败。",
       "focusSourceDeletedByPeer": "协作者删除了素材。",
       "focusSourceReplacedByPeer": "协作者更换了素材。",
       "pickEnded": "已退出选择。",
@@ -721,7 +720,8 @@
       "empty": "{filename} 是空文件，没有内容可以添加。",
       "hashUnavailable": "无法校验此文件，请刷新页面后重试。",
       "storageFull": "Studio 存储已满，当前无法上传。",
-      "failed": "上传失败。"
+      "failed": "上传失败。",
+      "extractionFailed": "无法读取 {filename} 中的文字。"
     },
     "minimap": {
       "label": "画布缩略图"
@@ -795,8 +795,6 @@
         "expired": "超时"
       },
       "countTip": "{status} · {count}",
-      "someFailed": "这个节点上有任务没能完成。",
-      "view": "查看",
       "action": {
         "retry": "重试",
         "finish": "已读",

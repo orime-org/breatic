@@ -79,7 +79,7 @@ function node(id: string, data: NodeView): CanvasNodeView {
 
 /** An image node view carrying generate inputs. */
 function imageView(over: Partial<Extract<NodeView, { kind: 'image' }>> = {}): NodeView {
-  return { kind: 'image', status: 'idle', ...over };
+  return { kind: 'image', handling: false, ...over };
 }
 
 describe('buildGeneratePanelViewModel', () => {
@@ -263,7 +263,7 @@ describe('buildGeneratePanelViewModel', () => {
     // i2i source is definitionally an image (adversarial 2026-07-10).
     const nodes = [
       node('n1', i2iView()),
-      node('aud', { kind: 'audio', status: 'idle', name: 'Song', content: 'https://cdn/x.mp3' }),
+      node('aud', { kind: 'audio', handling: false, name: 'Song', content: 'https://cdn/x.mp3' }),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'aud', target: 'n1' }];
     const vm = buildVm({

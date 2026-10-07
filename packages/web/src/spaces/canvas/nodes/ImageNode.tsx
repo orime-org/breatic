@@ -15,10 +15,6 @@ interface ImageNodeProps {
   selected?: boolean;
   locked?: boolean;
   onActivate?: () => void;
-  /** Open this node's task list on its failures (#186 §3.7.2). */
-  onViewTasks?: () => void;
-  /** Whether that list is already open beside this node. */
-  tasksPanelOpen?: boolean;
   onRename?: (name: string) => void;
 }
 
@@ -27,12 +23,11 @@ interface ImageNodeProps {
  * node is empty. Click-to-generate lives in the toolbar left zone (PR 7);
  * here we just render the asset.
  * @param root0 - Image node props.
- * @param root0.data - Image node payload (asset URL, status, optional error message).
+ * @param root0.data - Image node payload (asset URL).
  * @param root0.selected - Whether the node is selected, driving the selection ring.
  * @param root0.locked - Whether the node is locked, showing the lock indicator.
  * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
- * @param root0.onViewTasks - Open this node's task list on its failures.
  * @returns The image node element (placeholder or rendered image).
  */
 export const ImageNode = React.memo(function ImageNode({
@@ -40,8 +35,6 @@ export const ImageNode = React.memo(function ImageNode({
   selected,
   locked,
   onActivate,
-  onViewTasks,
-  tasksPanelOpen,
   onRename,
 }: ImageNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
@@ -50,7 +43,6 @@ export const ImageNode = React.memo(function ImageNode({
     <ContentNodeFrame
       modality='image'
       name={data.name}
-      status={data.status}
       selected={selected}
       locked={locked}
       onRename={onRename}
@@ -58,10 +50,6 @@ export const ImageNode = React.memo(function ImageNode({
       resolution={resolution}
     >
       <NodeContent
-        onViewTasks={onViewTasks}
-        tasksPanelOpen={tasksPanelOpen}
-        status={data.status}
-        errorMessage={data.errorMessage}
         hasContent={hasContent}
         placeholder={
           <NodePlaceholder modality='image' onActivate={onActivate} />
