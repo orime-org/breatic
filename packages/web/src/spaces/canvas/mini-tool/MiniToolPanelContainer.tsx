@@ -6,6 +6,7 @@ import * as React from 'react';
 
 import {
   catalogEntryOf,
+  defaultParamsOf,
   isModelTool,
   miniToolById,
   miniToolEstimateInput,
@@ -146,12 +147,11 @@ function OpenMiniToolPanel({
   React.useEffect(() => {
     if (sourceContent === undefined || content === '' || content === sourceContent) return;
     if (pickSession !== null) endPick();
+    const all = defaultParamsOf(spec);
     const defaults = Object.fromEntries(
       isModelTool(spec)
         ? []
-        : spec.params
-          .filter((param) => SOURCE_BOUND.has(param.kind))
-          .map((param) => [param.key, param.kind === 'orient' ? { turns: 0, flipX: false, flipY: false } : null]),
+        : spec.params.filter((param) => SOURCE_BOUND.has(param.kind)).map((param) => [param.key, all[param.key]]),
     );
     resetMiniToolSource(content, defaults);
     toast.warning(

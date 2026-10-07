@@ -105,6 +105,13 @@ export function toolParamKeys(spec: MiniToolSpec): readonly string[] {
   return isModelTool(spec) ? spec.params.map((param) => param.key) : [];
 }
 
+/** No turn and no flip: the picture as it is, the orientation param's default. */
+export const UPRIGHT: Readonly<{ turns: number; flipX: boolean; flipY: boolean }> = Object.freeze({
+  turns: 0,
+  flipX: false,
+  flipY: false,
+});
+
 /**
  * The starting value of one declared param.
  * @param param - The param.
@@ -121,7 +128,7 @@ function defaultOf(param: MiniToolParam): unknown {
     case "adjust":
       return { ...defaultAdjustValue };
     case "orient":
-      return { turns: 0, flipX: false, flipY: false };
+      return { ...UPRIGHT };
   }
 }
 

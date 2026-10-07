@@ -11,6 +11,7 @@
 
 import { corsUrl } from '@web/lib/cors-url';
 import type { CropRect } from '@web/lib/crop-math';
+import { intrinsicSize } from '@web/spaces/canvas/focus/crop-source';
 
 /**
  * A hair past 0, still inside frame 0 for any real frame rate (shorter than
@@ -215,8 +216,7 @@ export function orientedSize(width: number, height: number, turns: number): { wi
  */
 export async function exportOrientedBlob(source: CropSource, orientation: Orientation): Promise<Blob> {
   const el = await prepareCropSource(source);
-  const width = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth;
-  const height = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight;
+  const { width, height } = intrinsicSize(el);
   const size = orientedSize(width, height, orientation.turns);
   const canvas = document.createElement('canvas');
   canvas.width = size.width;

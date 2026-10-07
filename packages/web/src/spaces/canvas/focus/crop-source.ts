@@ -9,6 +9,12 @@
 
 import type { CropHandle } from '@web/lib/crop-math';
 
+/** A node's croppable media, one selector per element kind. */
+const MEDIA_SELECTORS = ['[data-testid=image-node-img]', '[data-testid=media-element]'] as const;
+
+/** A node's croppable media, inside the node. */
+export const MEDIA_SELECTOR = MEDIA_SELECTORS.join(', ');
+
 /**
  * The croppable element inside ONE target node. Image nodes render an `<img>`;
  * video nodes render the shared media player's element, whose testid audio
@@ -25,7 +31,7 @@ import type { CropHandle } from '@web/lib/crop-math';
  */
 export function cropSourceSelector(nodeId: string): string {
   const scope = `.react-flow__node[data-id="${CSS.escape(nodeId)}"]`;
-  return `${scope} [data-testid=image-node-img], ${scope} [data-testid=media-element]`;
+  return MEDIA_SELECTORS.map((one) => `${scope} ${one}`).join(', ');
 }
 
 /** Anything the nine-arg `drawImage` accepts as a source, in our nodes. */

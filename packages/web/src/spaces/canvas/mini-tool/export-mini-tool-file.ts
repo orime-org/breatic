@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { MiniToolSnapshot, MiniToolSpec } from '@breatic/shared/mini-tools';
+import { UPRIGHT, type MiniToolSnapshot, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 import {
   exportCropBlob,
@@ -10,9 +10,6 @@ import {
   type Orientation,
 } from '@web/spaces/canvas/focus/crop-export';
 import type { CropRect } from '@web/spaces/canvas/mini-tool/mini-tool-view';
-
-/** No turn and no flip: the picture as it is. */
-const UPRIGHT: Orientation = { turns: 0, flipX: false, flipY: false };
 
 /**
  * Make a browser tool's file from the snapshot taken at the press

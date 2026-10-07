@@ -13,6 +13,7 @@ import {
 import {
   isModelTool,
   localParamLabelKey,
+  UPRIGHT,
   type LocalToolSpec,
   type MiniToolMedium,
   type MiniToolParam,
@@ -450,11 +451,7 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
       );
     }
     case 'orient': {
-      const held = (params[param.key] as { turns: number; flipX: boolean; flipY: boolean } | undefined) ?? {
-        turns: 0,
-        flipX: false,
-        flipY: false,
-      };
+      const held = (params[param.key] as typeof UPRIGHT | undefined) ?? UPRIGHT;
       const buttons = [
         { id: 'left', Icon: RotateCcw, key: 'rotateLeft', next: { ...held, turns: (held.turns + 3) % 4 } },
         { id: 'right', Icon: RotateCw, key: 'rotateRight', next: { ...held, turns: (held.turns + 1) % 4 } },

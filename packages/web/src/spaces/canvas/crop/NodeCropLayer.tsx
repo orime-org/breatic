@@ -11,12 +11,9 @@ import { presetRatio } from '@web/lib/crop-math';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { fromFraction, offsetWithin, toFraction, type BoxSize } from '@web/spaces/canvas/crop/crop-geometry';
 import { NodeCropFrame } from '@web/spaces/canvas/crop/NodeCropFrame';
-import { intrinsicSize, isCropSource, type CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
+import { intrinsicSize, isCropSource, MEDIA_SELECTOR, type CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
 import { aspectRatioOf, type CropRect as SourceRect } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import type { FocusCrop, MiniToolDraft } from '@web/stores/canvas-session';
-
-/** The node's croppable media, inside its own wrapper. */
-const MEDIA_SELECTOR = '[data-testid=image-node-img], [data-testid=media-element]';
 
 /** Where the shown media is in the node, and what it is. */
 interface Geometry {
