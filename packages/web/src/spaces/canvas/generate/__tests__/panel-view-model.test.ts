@@ -513,10 +513,10 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.models.some((m) => m.name === 'bg-remover')).toBe(false);
   });
 
-  it('surfaces the node status so execute can refuse while handling', () => {
-    const nodes = [node('n1', imageView({ model: 'flux', status: 'handling' }))];
-    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
-    expect(vm.nodeStatus).toBe('handling');
+  it('reports that the node is on the board, which the execute gate reads', () => {
+    const nodes = [node('n1', imageView({ model: 'flux' }))];
+    expect(buildVm({ nodeId: 'n1', nodes, edges: [], models }).nodeExists).toBe(true);
+    expect(buildVm({ nodeId: 'gone', nodes, edges: [], models }).nodeExists).toBe(false);
   });
 
   // `missing` drives the #1675 execute gate: a model whose mode needs a

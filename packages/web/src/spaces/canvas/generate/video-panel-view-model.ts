@@ -71,8 +71,8 @@ export interface VideoPanelViewModel {
   model: string;
   /** Effective params, reconciled against the current model. */
   params: Record<string, unknown>;
-  /** The target node's display status — gates execute (no submit while handling). */
-  nodeStatus: string | undefined;
+  /** Whether the target node is still on the board — gates execute. */
+  nodeExists: boolean;
   /**
    * The mode this view model was built for. Echoed back because the payload is
    * built from the mode, and the container must send the same one the slots
@@ -353,7 +353,7 @@ export function buildVideoPanelViewModel(input: {
   return {
     model,
     params: style.params,
-    nodeStatus: content?.status,
+    nodeExists: content !== undefined,
     mode,
     slots,
     styleCap: style.styleCap,

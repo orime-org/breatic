@@ -261,12 +261,9 @@ describe('withListDefaultVoice — the first voice stands in when none is held',
 });
 
 describe('buildAudioPanelViewModel — what execute needs to know', () => {
-  it('reports the node status the execute gate reads', () => {
-    const vm = buildAudioPanelViewModel({
-      ...BASE,
-      nodes: nodes({ status: 'handling' }),
-    });
-    expect(vm.nodeStatus).toBe('handling');
+  it('reports that the node is on the board, which the execute gate reads', () => {
+    const vm = buildAudioPanelViewModel({ ...BASE, nodes: nodes() });
+    expect(vm.nodeExists).toBe(true);
   });
 
   it('says the prompt is required for a model that consumes one', () => {

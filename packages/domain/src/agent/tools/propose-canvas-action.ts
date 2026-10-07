@@ -634,7 +634,7 @@ function checkGenerateNode(
   const verdict = evaluateExecute({
     promptText: sent,
     model,
-    nodeStatus: "idle",
+    nodeExists: true,
     isSubmitting: false,
     promptRequired: chosen.takesPrompt,
     ...(chosen.maxInputChars === undefined ? {} : { maxInputChars: chosen.maxInputChars }),

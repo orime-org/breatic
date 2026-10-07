@@ -722,7 +722,7 @@ function VideoGeneratePanelBody({
     const verdict = evaluateExecute({
       promptText: freshPrompt,
       model: fresh.model,
-      nodeStatus: fresh.nodeStatus,
+      nodeExists: fresh.nodeExists,
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
       maxInputChars,
@@ -991,7 +991,7 @@ function VideoGeneratePanelBody({
         evaluateExecute({
           promptText,
           model: vm.model,
-          nodeStatus: vm.nodeStatus,
+          nodeExists: vm.nodeExists,
           isSubmitting,
           promptRequired: vm.promptRequired,
           maxInputChars: vm.modelEntry?.max_input_chars,

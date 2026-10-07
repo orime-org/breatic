@@ -337,15 +337,15 @@ describe('buildVideoPanelViewModel', () => {
     expect(vm.params.duration).toBe(12);
   });
 
-  it('reports the node status so the panel can block submitting mid-generation', () => {
-    const nodes = [node('n1', videoView({ status: 'handling' }))];
+  it('reports that the node is on the board, which the execute gate reads', () => {
+    const nodes = [node('n1', videoView({}))];
     const vm = buildVm({
       nodeId: 'n1',
       nodes,
       models,
       mode: 't2v',
     });
-    expect(vm.nodeStatus).toBe('handling');
+    expect(vm.nodeExists).toBe(true);
   });
 
   it('resolves a default model for a node that is not on the canvas', () => {
@@ -355,7 +355,7 @@ describe('buildVideoPanelViewModel', () => {
       models,
       mode: 't2v',
     });
-    expect(vm.nodeStatus).toBeUndefined();
+    expect(vm.nodeExists).toBe(false);
     expect(vm.model).toBe('veo-3.1');
   });
 
