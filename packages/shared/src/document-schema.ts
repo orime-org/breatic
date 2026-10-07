@@ -93,7 +93,7 @@ export interface DocumentSchema {
  * beside it, which decides who stops editing, is computed from the lists.
  */
 export const DOCUMENT_SCHEMA: DocumentSchema = {
-  publishedAt: "2026-10-03T00:00:00Z",
+  publishedAt: "2026-10-07T00:00:00Z",
 
   // Attribute names are here because adding an attribute to a node both sides
   // already know (a heading gaining an alignment, say) leaves no trace in the
@@ -104,6 +104,7 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
   // `blockContainer` per block carrying its id, and the block's own node
   // inside that. `@breatic/shared`'s `document-body` draws the shape.
   nodes: {
+    audio: ["backgroundColor", "caption", "name", "quoted", "showPreview", "url"],
     blockContainer: ["id"],
     blockGroup: [],
     bulletListItem: [
@@ -123,6 +124,16 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
     divider: ["quoted"],
     doc: [],
     hardBreak: [],
+    image: [
+      "backgroundColor",
+      "caption",
+      "name",
+      "previewWidth",
+      "quoted",
+      "showPreview",
+      "textAlignment",
+      "url",
+    ],
     heading: [
       "backgroundColor",
       "isToggleable",
@@ -168,6 +179,16 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
     // wrapper.
     unsupportedBlock: ["originalName"],
     unsupportedInline: ["originalName"],
+    video: [
+      "backgroundColor",
+      "caption",
+      "name",
+      "previewWidth",
+      "quoted",
+      "showPreview",
+      "textAlignment",
+      "url",
+    ],
   },
 
   marks: {

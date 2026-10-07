@@ -85,7 +85,7 @@ function withProps<T extends SpecWithProps>(
 }
 
 /**
- * Builds the schema: nine block types, three added props, the rest turned off.
+ * Builds the schema: twelve block types, three added props, the rest turned off.
  * @returns The schema to hand `BlockNoteEditor.create`.
  * @throws {Error} Whatever BlockNote throws while validating the specs.
  */
@@ -97,9 +97,8 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     // make the coexistence rule false for whichever came in as a container.
     quote: _quote,
     toggleListItem: _toggleListItem,
-    image: _image,
-    video: _video,
-    audio: _audio,
+    // Uploads admit images, videos and audio only (inner#1127 A5), so nothing
+    // this Space does can produce a generic file block.
     file: _file,
     ...enabled
   } = defaultBlockSpecs;
@@ -137,6 +136,11 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     // places the divider and the caret in one transaction instead.
     divider: { ...withProps(enabled.divider, QUOTED_PROP), extensions: [] },
     table: buildTableSpec(),
+    // The library's own props: image and video carry a width and an
+    // alignment, audio neither (inner#1127 A8, A9).
+    image: withProps(enabled.image, QUOTED_PROP),
+    video: withProps(enabled.video, QUOTED_PROP),
+    audio: withProps(enabled.audio, QUOTED_PROP),
     unsupportedBlock: unsupportedBlockSpec,
   };
 
