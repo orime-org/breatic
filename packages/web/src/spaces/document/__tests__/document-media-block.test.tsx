@@ -41,6 +41,7 @@ afterEach(() => {
   });
   document.body.removeAttribute('data-radix-scroll-area-viewport');
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const URL_OF = 'https://cdn.example/image/2026-10-07/a.png';
@@ -180,11 +181,29 @@ describe('the toolbar', () => {
   });
 
   it('offers alignment on an image narrower than the body (A9)', () => {
+    // What the browser does when the block or its row changes size.
+    const resized: (() => void)[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        /** @param callback - Called on a resize. */
+        constructor(callback: () => void) {
+          resized.push(callback);
+        }
+        /** Unused. */
+        observe(): void {}
+        /** Unused. */
+        disconnect(): void {}
+      },
+    );
     const editor = open('image', { previewWidth: 200 });
-    const frame = within(element(editor)).getByTestId('doc-media-box');
-    vi.spyOn(frame.parentElement!, 'clientWidth', 'get').mockReturnValue(600);
+    const box = within(element(editor)).getByTestId('doc-media-box');
+    vi.spyOn(box, 'offsetWidth', 'get').mockReturnValue(200);
+    vi.spyOn(box.parentElement!, 'clientWidth', 'get').mockReturnValue(600);
     act(() => {
-      editor.updateBlock(media(editor).id, { props: { previewWidth: 210 } } as never);
+      resized.forEach((callback) => {
+        callback();
+      });
     });
 
     fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-align-left'));

@@ -10,7 +10,7 @@ import * as React from 'react';
 import { createPortal } from 'react-dom';
 
 import { DocumentMediaBlock } from '@web/spaces/document/DocumentMediaBlock';
-import { setHoveredMedia, useDocumentBars } from '@web/spaces/document/document-bars';
+import { mediaBarShown, setHoveredMedia, useDocumentBars } from '@web/spaces/document/document-bars';
 import {
   mediaViewsOf,
   onMediaViewsChange,
@@ -33,7 +33,7 @@ export function DocumentMediaViews({ editor }: DocumentMediaViewsProps): React.J
     [editor],
   );
   const views = React.useSyncExternalStore(subscribe, () => mediaViewsOf(editor));
-  const { hoveredMedia, linkToolbarUp } = useDocumentBars(editor);
+  const bars = useDocumentBars(editor);
   const onHover = React.useCallback(
     (host: HTMLElement, on: boolean): void => {
       setHoveredMedia(editor, host, on);
@@ -48,12 +48,8 @@ export function DocumentMediaViews({ editor }: DocumentMediaViewsProps): React.J
             type={entry.type}
             props={entry.props}
             selected={entry.selected}
-            hovered={hoveredMedia === host}
-            // One bar at a time (`document-bars.ts`): the block under the
-            // pointer first, then the link toolbar, then the selected block.
-            toolbarShown={
-              hoveredMedia === null ? entry.selected && !linkToolbarUp : hoveredMedia === host
-            }
+            hovered={bars.hoveredMedia === host}
+            toolbarShown={mediaBarShown(bars, host, entry.selected)}
             host={host}
             onHover={onHover}
             actions={entry.actions}

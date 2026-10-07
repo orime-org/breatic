@@ -103,7 +103,7 @@ import { onEditorSettled } from '@web/spaces/document/use-editor-snapshot';
 import { Separator } from '@web/components/ui/separator';
 import { usePressKeepsFocus } from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
-import { useDocumentBars } from '@web/spaces/document/document-bars';
+import { textBarsStandAside, useDocumentBars } from '@web/spaces/document/document-bars';
 
 /** The document editor, as far as the bar needs to know. */
 type BubbleEditor = ViewedEditor;
@@ -499,7 +499,7 @@ function BubbleBar({
   // A media block under the pointer owns the one bar the document shows
   // (`document-bars.ts`); this one steps aside, keeping its state, and is
   // back when the pointer leaves.
-  const standingAside = useDocumentBars(editor).hoveredMedia !== null;
+  const standingAside = textBarsStandAside(useDocumentBars(editor));
   const barRef = React.useRef<HTMLDivElement | null>(null);
   // Whether one of the bar's own overlays — a slot menu or the link panel — is
   // open. Read by `isWarranted`, written just below where both are tracked.

@@ -170,7 +170,7 @@ function ToolButton({
  * @param props.actions - What its controls do.
  * @returns The block's content.
  */
-export function DocumentMediaBlock({
+export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   type,
   props,
   selected,
@@ -226,7 +226,7 @@ export function DocumentMediaBlock({
     return () => {
       observer.disconnect();
     };
-  });
+  }, [sized]);
 
   const width = dragWidth ?? props.previewWidth;
   const alignment = props.textAlignment ?? 'center';
@@ -478,4 +478,4 @@ export function DocumentMediaBlock({
       )}
     </div>
   );
-}
+});

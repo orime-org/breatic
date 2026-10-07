@@ -106,6 +106,27 @@ export function setLinkToolbarUp(editor: object, up: boolean): void {
 }
 
 /**
+ * Whether a media block's toolbar is the bar on screen.
+ * @param bars - The state.
+ * @param host - The block's container.
+ * @param selected - Whether the block is node-selected.
+ * @returns True when its toolbar shows.
+ */
+export function mediaBarShown(bars: DocumentBars, host: HTMLElement, selected: boolean): boolean {
+  return bars.hoveredMedia === null ? selected && !bars.linkToolbarUp : bars.hoveredMedia === host;
+}
+
+/**
+ * Whether the link toolbar and the selection bubble bar step aside, which they
+ * do while a media block is under the pointer.
+ * @param bars - The state.
+ * @returns True when they do.
+ */
+export function textBarsStandAside(bars: DocumentBars): boolean {
+  return bars.hoveredMedia !== null;
+}
+
+/**
  * The state, kept current in a component.
  * @param editor - The editor.
  * @returns The state.

@@ -85,7 +85,7 @@ import {
   LINK_TOOLBAR_OPEN_DELAY_MS,
   LINK_TOOLBAR_CLOSE_DELAY_MS,
 } from '@web/spaces/document/link-toolbar-timing';
-import { setLinkToolbarUp, useDocumentBars } from '@web/spaces/document/document-bars';
+import { setLinkToolbarUp, textBarsStandAside, useDocumentBars } from '@web/spaces/document/document-bars';
 
 /** Which of the toolbar's two faces is showing. */
 type ToolbarFace = 'read' | 'form';
@@ -846,7 +846,7 @@ export function DocumentLinkToolbar({
     },
     [editor],
   );
-  const standingAside = useDocumentBars(editor).hoveredMedia !== null;
+  const standingAside = textBarsStandAside(useDocumentBars(editor));
 
   if (!open || !held) return null;
 
