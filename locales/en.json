@@ -1652,8 +1652,8 @@
       "list": {
         "columns": {
           "name": "Name",
-          "lastOpened": "Last opened",
-          "lastEdited": "Last edited",
+          "opened": "Last opened",
+          "edited": "Last edited",
           "created": "Created",
           "archived": "Archived",
           "role": "My role"

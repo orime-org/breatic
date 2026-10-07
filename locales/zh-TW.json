@@ -1652,8 +1652,8 @@
       "list": {
         "columns": {
           "name": "名稱",
-          "lastOpened": "最近開啟",
-          "lastEdited": "最近修改",
+          "opened": "最近開啟",
+          "edited": "最近修改",
           "created": "建立時間",
           "archived": "封存時間",
           "role": "我的角色"

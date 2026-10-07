@@ -1,29 +1,25 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import * as React from 'react';
-import { Link } from 'react-router-dom';
+import type * as React from 'react';
 
-import { Button } from '@web/components/ui/button';
-import { JoinProjectDialog } from '@web/features/project-join/JoinProjectDialog';
 import { useTranslation } from '@web/i18n/use-translation';
 import { hasCardMenu, ProjectCardMenu } from '@web/pages/studio/container/cards/ProjectCardMenu';
+import { ProjectOpenTarget, ROLE_KEY } from '@web/pages/studio/container/cards/ProjectOpenTarget';
 import type { ContainerProject, ProjectTimeKind } from '@web/pages/studio/container/container-types';
 import { projectTimeLine } from '@web/pages/studio/container/project-time';
 import { ItemCardBody } from '@web/pages/studio/shared/ItemCardBody';
 import { ArchivedBadge } from '@web/pages/studio/shared/badges';
-import type { ItemRole } from '@web/pages/studio/shared/studio-types';
 
-const ROLE_KEY: Record<ItemRole, string> = {
-  owner: 'studio.container.badge.roleOwner',
-  editor: 'studio.container.badge.roleEditor',
-  viewer: 'studio.container.badge.roleViewer',
-};
+// The link, join button or inert wrapper fills the card above its menu. The
+// button's own type and alignment are reset so all three lay the body out alike.
+const OPEN_TARGET =
+  'flex w-full flex-col items-stretch justify-start whitespace-normal rounded-none text-left text-base font-normal focus-visible:outline-none focus-visible:ring-0';
 
 interface ProjectCardProps {
   project: ContainerProject;
   /** Which of the project's times the meta line shows; follows the list's sort. */
-  timeKind?: ProjectTimeKind;
+  timeKind: ProjectTimeKind;
 }
 
 /**
@@ -42,10 +38,8 @@ interface ProjectCardProps {
  * @param props.timeKind which time the meta line shows.
  * @returns the project card.
  */
-export function ProjectCard({ project, timeKind = 'created' }: ProjectCardProps): React.JSX.Element {
+export function ProjectCard({ project, timeKind }: ProjectCardProps): React.JSX.Element {
   const t = useTranslation();
-  const [joinOpen, setJoinOpen] = React.useState(false);
-  const openJoin = React.useCallback(() => setJoinOpen(true), []);
   const body = (
     <ItemCardBody
       thumbnailUrl={project.thumbnailUrl}
@@ -61,29 +55,9 @@ export function ProjectCard({ project, timeKind = 'created' }: ProjectCardProps)
       data-testid={`project-card-${project.id}`}
       className='group relative overflow-hidden rounded-chrome border border-border bg-card transition-colors hover:border-foreground-disabled has-[>:first-child:focus-visible]:ring-1 has-[>:first-child:focus-visible]:ring-ring'
     >
-      {project.myRole === null && project.archivedAt !== null ? (
-        <div className='flex flex-col'>{body}</div>
-      ) : project.myRole !== null ? (
-        <Link
-          to={`/project/${project.slug}-${project.id}`}
-          className='flex flex-col focus-visible:outline-none'
-        >
-          {body}
-        </Link>
-      ) : (
-        <>
-          <Button
-            type='button'
-            variant={null}
-            size={null}
-            onClick={openJoin}
-            className='flex w-full flex-col items-stretch justify-start whitespace-normal rounded-none text-left text-base font-normal focus-visible:ring-0'
-          >
-            {body}
-          </Button>
-          <JoinProjectDialog projectId={project.id} open={joinOpen} onOpenChange={setJoinOpen} />
-        </>
-      )}
+      <ProjectOpenTarget project={project} className={OPEN_TARGET}>
+        {body}
+      </ProjectOpenTarget>
       {project.archivedAt !== null ? (
         <span className='pointer-events-none absolute left-[7px] top-[7px] z-[1]'>
           <ArchivedBadge />

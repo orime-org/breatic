@@ -59,7 +59,7 @@ const AS_STUDIO_ADMIN = { canManageMeta: true, canDuplicate: true, canArchive: t
 const AS_NOBODY = { canManageMeta: false, canDuplicate: false, canArchive: false, canRestore: false, canLeave: false };
 const AS_EDITOR = { ...AS_NOBODY, canLeave: true };
 
-function setup(p: ContainerProject = project, timeKind?: ProjectTimeKind) {
+function setup(p: ContainerProject = project, timeKind: ProjectTimeKind = 'created') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>

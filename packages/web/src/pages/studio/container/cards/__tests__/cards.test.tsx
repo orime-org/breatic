@@ -51,7 +51,7 @@ function renderProject(project: ContainerProject) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <MemoryRouter>
-        <ProjectCard project={project} />
+        <ProjectCard project={project} timeKind='created' />
       </MemoryRouter>
     </QueryClientProvider>,
   );

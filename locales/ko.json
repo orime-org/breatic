@@ -1652,8 +1652,8 @@
       "list": {
         "columns": {
           "name": "이름",
-          "lastOpened": "최근 열람",
-          "lastEdited": "최근 수정",
+          "opened": "최근 열람",
+          "edited": "최근 수정",
           "created": "생성일",
           "archived": "보관일",
           "role": "내 역할"

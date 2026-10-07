@@ -23,26 +23,43 @@ export function timeKindForSort(sort: StudioProjectSort, archived: boolean): Pro
 }
 
 /**
- * The card's meta line for one of the project's times.
+ * One of the project's times.
+ * @param project - The project.
+ * @param kind - Which time.
+ * @returns The ISO time, or null for a project never opened by the viewer or not archived.
+ */
+export function projectTime(project: ContainerProject, kind: ProjectTimeKind): string | null {
+  switch (kind) {
+    case 'opened':
+      return project.lastOpenedAt;
+    case 'edited':
+      return project.lastEditedAt;
+    case 'archived':
+      return project.archivedAt;
+    case 'created':
+      return project.createdAt;
+  }
+}
+
+const LINE_KEY: Record<ProjectTimeKind, string> = {
+  opened: 'studio.container.card.openedAt',
+  edited: 'studio.container.card.editedAt',
+  archived: 'studio.container.card.archivedAt',
+  created: 'studio.container.card.createdAt',
+};
+
+/**
+ * The card's meta line for one of the project's times. A project the viewer
+ * never opened says so beside its creation time.
  * @param project - The project.
  * @param kind - Which time to show.
  * @param t - The translator.
  * @returns The localized line.
  */
 export function projectTimeLine(project: ContainerProject, kind: ProjectTimeKind, t: Translate): string {
+  const at = projectTime(project, kind);
   const created = formatRelativeTime(project.createdAt, t);
-  switch (kind) {
-    case 'opened':
-      return project.lastOpenedAt === null
-        ? t('studio.container.card.neverOpened', { time: created })
-        : t('studio.container.card.openedAt', { time: formatRelativeTime(project.lastOpenedAt, t) });
-    case 'edited':
-      return t('studio.container.card.editedAt', { time: formatRelativeTime(project.lastEditedAt, t) });
-    case 'archived':
-      return project.archivedAt === null
-        ? t('studio.container.card.createdAt', { time: created })
-        : t('studio.container.card.archivedAt', { time: formatRelativeTime(project.archivedAt, t) });
-    case 'created':
-      return t('studio.container.card.createdAt', { time: created });
-  }
+  if (at !== null) return t(LINE_KEY[kind], { time: formatRelativeTime(at, t) });
+  if (kind === 'opened') return t('studio.container.card.neverOpened', { time: created });
+  return t(LINE_KEY.created, { time: created });
 }

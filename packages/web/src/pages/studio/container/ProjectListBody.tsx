@@ -1,19 +1,18 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import * as React from 'react';
-import { Link } from 'react-router-dom';
+import type * as React from 'react';
 import type { StudioProjectSort } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
-import { JoinProjectDialog } from '@web/features/project-join/JoinProjectDialog';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
 import { ProjectCard } from '@web/pages/studio/container/cards/ProjectCard';
 import { hasCardMenu, ProjectCardMenu } from '@web/pages/studio/container/cards/ProjectCardMenu';
-import type { ContainerProject, ProjectListView } from '@web/pages/studio/container/container-types';
-import { timeKindForSort } from '@web/pages/studio/container/project-time';
+import { ProjectOpenTarget, ROLE_KEY } from '@web/pages/studio/container/cards/ProjectOpenTarget';
+import type { ContainerProject, ProjectListView, ProjectTimeKind } from '@web/pages/studio/container/container-types';
+import { projectTime, timeKindForSort } from '@web/pages/studio/container/project-time';
 import type { StudioProjectList } from '@web/pages/studio/container/use-studio-projects-paging';
 import { DefaultProjectCover } from '@web/ui/DefaultProjectCover';
 
@@ -26,27 +25,12 @@ const FIRST_PAGE_PLACEHOLDERS = 8;
 const NEXT_PAGE_PLACEHOLDERS = 4;
 const ROW_PLACEHOLDERS = 3;
 
-const ROLE_KEY = {
-  owner: 'studio.container.badge.roleOwner',
-  editor: 'studio.container.badge.roleEditor',
-  viewer: 'studio.container.badge.roleViewer',
-} as const;
-
-type TimeColumn = 'lastOpened' | 'lastEdited' | 'created' | 'archived';
-type Column = 'name' | TimeColumn;
+type Column = 'name' | ProjectTimeKind;
 
 const TIME_COLUMNS = {
-  live: ['lastOpened', 'lastEdited', 'created'],
-  archived: ['archived', 'lastEdited', 'created'],
-} as const satisfies Record<string, readonly TimeColumn[]>;
-
-const SORTED_COLUMN: Record<StudioProjectSort, Column> = {
-  opened: 'lastOpened',
-  edited: 'lastEdited',
-  name: 'name',
-  created: 'created',
-  archived: 'archived',
-};
+  live: ['opened', 'edited', 'created'],
+  archived: ['archived', 'edited', 'created'],
+} as const satisfies Record<string, readonly ProjectTimeKind[]>;
 
 interface ProjectListBodyProps {
   list: StudioProjectList;
@@ -103,7 +87,7 @@ export function ProjectListBody({ list, archived, sort, view, empty }: ProjectLi
         <ProjectTable
           projects={list.projects}
           columns={archived ? TIME_COLUMNS.archived : TIME_COLUMNS.live}
-          sorted={SORTED_COLUMN[sort]}
+          sorted={sort === 'name' ? 'name' : sort}
           placeholders={loadingMore ? ROW_PLACEHOLDERS : 0}
         />
       )}
@@ -143,7 +127,7 @@ function CardPlaceholder(): React.JSX.Element {
 
 interface ProjectTableProps {
   projects: readonly ContainerProject[];
-  columns: readonly TimeColumn[];
+  columns: readonly ProjectTimeKind[];
   sorted: Column;
   placeholders: number;
 }
@@ -216,54 +200,27 @@ function ProjectTable({ projects, columns, sorted, placeholders }: ProjectTableP
  * @param t - The translator.
  * @returns The relative time, or the never-opened note.
  */
-function timeCell(project: ContainerProject, column: TimeColumn, t: Translate): string {
-  switch (column) {
-    case 'lastOpened':
-      return project.lastOpenedAt === null
-        ? t('studio.container.list.neverOpened')
-        : formatRelativeTime(project.lastOpenedAt, t);
-    case 'lastEdited':
-      return formatRelativeTime(project.lastEditedAt, t);
-    case 'created':
-      return formatRelativeTime(project.createdAt, t);
-    case 'archived':
-      return project.archivedAt === null ? '—' : formatRelativeTime(project.archivedAt, t);
-  }
+function timeCell(project: ContainerProject, column: ProjectTimeKind, t: Translate): string {
+  const at = projectTime(project, column);
+  if (at !== null) return formatRelativeTime(at, t);
+  return column === 'opened' ? t('studio.container.list.neverOpened') : '—';
 }
 
 // Stretches the name's link or button over the whole row, so the row opens
 // the project; the menu sits above it.
 const STRETCH =
-  'text-left font-medium text-foreground focus-visible:outline-none after:absolute after:inset-0 after:content-[""]';
+  'rounded-none text-left font-medium text-foreground focus-visible:outline-none after:absolute after:inset-0 after:content-[""]';
 
 /**
- * One project row. A member's row links to the project; a row for a live
- * project the viewer is not on opens the join dialog; an archived project the
- * viewer is not on opens nothing — the same three cases as the card.
+ * One project row. Its name opens the project the way the card does
+ * ({@link ProjectOpenTarget}), stretched over the whole row.
  * @param props - The row's project and columns.
  * @param props.project - The project.
  * @param props.columns - The time columns, in order.
  * @returns The row.
  */
-function ProjectRow({ project, columns }: { project: ContainerProject; columns: readonly TimeColumn[] }): React.JSX.Element {
+function ProjectRow({ project, columns }: { project: ContainerProject; columns: readonly ProjectTimeKind[] }): React.JSX.Element {
   const t = useTranslation();
-  const [joinOpen, setJoinOpen] = React.useState(false);
-  const openJoin = React.useCallback(() => setJoinOpen(true), []);
-  const name =
-    project.myRole !== null ? (
-      <Link to={`/project/${project.slug}-${project.id}`} className={STRETCH}>
-        {project.name}
-      </Link>
-    ) : project.archivedAt === null ? (
-      <>
-        <Button type='button' variant={null} size={null} onClick={openJoin} className={`${STRETCH} rounded-none`}>
-          {project.name}
-        </Button>
-        <JoinProjectDialog projectId={project.id} open={joinOpen} onOpenChange={setJoinOpen} />
-      </>
-    ) : (
-      <span className='font-medium text-foreground'>{project.name}</span>
-    );
   return (
     <tr
       data-testid={`project-row-${project.id}`}
@@ -278,7 +235,11 @@ function ProjectRow({ project, columns }: { project: ContainerProject; columns: 
           )}
         </div>
       </td>
-      <td className={`${CELL} w-full max-w-0 truncate`}>{name}</td>
+      <td className={`${CELL} w-full max-w-0 truncate`}>
+        <ProjectOpenTarget project={project} className={STRETCH}>
+          {project.name}
+        </ProjectOpenTarget>
+      </td>
       {columns.map((column) => (
         <td key={column} className={`${CELL} whitespace-nowrap text-xs`}>
           {timeCell(project, column, t)}

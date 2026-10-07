@@ -1652,8 +1652,8 @@
       "list": {
         "columns": {
           "name": "名前",
-          "lastOpened": "最近開いた日時",
-          "lastEdited": "最終編集",
+          "opened": "最近開いた日時",
+          "edited": "最終編集",
           "created": "作成日",
           "archived": "アーカイブ日",
           "role": "自分の役割"
