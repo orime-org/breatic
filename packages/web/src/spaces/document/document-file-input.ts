@@ -14,6 +14,7 @@
  * option this editor does not have (`fileDropExtension.ts:27-45`).
  */
 
+import { carriesFiles } from '@web/lib/stray-file-drop';
 import {
   blockToNode,
   createExtension,
@@ -134,16 +135,6 @@ export function anchorAtCaret(state: EditorState): FileGap {
     return gapAt(state.doc, emptyLine ? start : start + container.nodeSize);
   }
   return gapAt(state.doc, state.doc.content.size - 1);
-}
-
-/**
- * Whether a drag carries files from outside the page.
- * @param event - The drag event.
- * @returns True when it does.
- */
-export function carriesFiles(event: Event): boolean {
-  const { dataTransfer } = event as Partial<DragEvent>;
-  return dataTransfer?.types.includes('Files') === true;
 }
 
 /**

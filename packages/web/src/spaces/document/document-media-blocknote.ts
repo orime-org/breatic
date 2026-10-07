@@ -27,7 +27,7 @@
  * (`createSpec.ts:437-456`), and the schema keeps a node it is handed.
  */
 
-import { carriesFiles } from '@web/spaces/document/document-file-input';
+import { carriesFiles } from '@web/lib/stray-file-drop';
 import {
   addNodeAndExtensionsToSpec,
   camelToDataKebab,

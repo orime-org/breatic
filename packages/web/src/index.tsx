@@ -16,10 +16,12 @@ import '@web/index.css';
 import { bootstrapLocale } from '@web/i18n/locale-bootstrap';
 import { errorMonitoringInit } from '@web/lib/error-monitoring';
 import { removeRetiredStorageKeys } from '@web/lib/storage-keys';
+import { guardStrayFileDrops } from '@web/lib/stray-file-drop';
 
 // i18n must initialize before any component renders useTranslation().
 bootstrapLocale();
 removeRetiredStorageKeys();
+guardStrayFileDrops(window);
 
 const errorMonitoring = errorMonitoringInit({
   dsn: import.meta.env.VITE_SENTRY_DSN,
