@@ -185,8 +185,10 @@ export function opRuns(
       const transfer = TRANSFER[params.transfer as keyof typeof TRANSFER];
       if (transfer === undefined) throw new Error("transfer is not pq or hlg");
       // SDR white lands at 203 nits, the reference white BT.2408 places it at.
+      // The linear step names its output primaries: an untagged source would
+      // leave them unknown, and zimg finds no path from there.
       const filter =
-        "zscale=tin=bt709:pin=bt709:min=bt709:t=linear:npl=203,format=gbrpf32le," +
+        "zscale=tin=bt709:pin=bt709:min=bt709:t=linear:npl=203:p=bt709,format=gbrpf32le," +
         `zscale=p=bt2020:t=${transfer}:m=bt2020nc:r=tv,format=yuv420p10le`;
       return [
         [

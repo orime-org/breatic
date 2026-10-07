@@ -83,6 +83,14 @@ describe("opRuns", () => {
     expect(after(hlg!, "-vf")).toContain("t=arib-std-b67");
     expect(after(hlg!, "-color_trc")).toBe("arib-std-b67");
   });
+
+  // An untagged source leaves the linear step's output primaries unknown, and
+  // zimg then finds no path between colorspaces ("code 3074").
+  it("names the primaries the linear step writes", () => {
+    const [pq] = opRuns("hdr", { transfer: "pq" }, IN, OUT, WORK);
+    const linear = after(pq!, "-vf")!.split(",")[0]!;
+    expect(linear.split(":")).toContain("p=bt709");
+  });
 });
 
 describe("inputRefusal", () => {
