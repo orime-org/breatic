@@ -86,7 +86,7 @@ describe('ShareDialog — invite by email flow', () => {
     expect(toast.success).toHaveBeenCalled();
   });
 
-  it('confirms a sent invite with a toast and an empty field, and shows no invite link', async () => {
+  it('confirms a sent invite with a toast and closes the popover', async () => {
     const user = userEvent.setup();
     vi.mocked(projectInvitationsApi.inviteMember).mockResolvedValueOnce();
     setup();
@@ -99,9 +99,27 @@ describe('ShareDialog — invite by email flow', () => {
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalled();
     });
-    expect(screen.getByTestId('share-invite-input')).toHaveValue('');
-    expect(screen.queryByTestId('share-invite-url')).toBeNull();
-    expect(screen.queryByTestId('share-copy-invite-link')).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByTestId('share-popover')).toBeNull();
+    });
+    expect(useUIStore.getState().shareOpen).toBe(false);
+  });
+
+  it('keeps the popover open with the error when the invite is rejected', async () => {
+    const user = userEvent.setup();
+    vi.mocked(projectInvitationsApi.inviteMember).mockRejectedValueOnce(
+      new ApiException({ status: 409, code: 'CONFLICT', message: 'Already invited' }),
+    );
+    setup();
+    await user.type(
+      screen.getByTestId('share-invite-input'),
+      'new@example.com',
+    );
+    await user.click(screen.getByTestId('share-send-invite'));
+
+    expect(await screen.findByText(/Already invited/)).toBeInTheDocument();
+    expect(screen.getByTestId('share-popover')).toBeInTheDocument();
+    expect(screen.getByTestId('share-invite-input')).toHaveValue('new@example.com');
   });
 
   it('shows ApiException.message inline when the invite is rejected', async () => {
