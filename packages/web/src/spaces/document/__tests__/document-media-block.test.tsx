@@ -600,6 +600,7 @@ describe('dragging a media block by its media (A10)', () => {
       vi.spyOn(menu, 'blockDragStart').mockImplementation(() => undefined);
       const end = vi.spyOn(menu, 'blockDragEnd').mockImplementation(() => undefined);
       const frame = within(element(editor)).getByTestId('doc-media-frame');
+      const removed = vi.spyOn(document, 'removeEventListener');
       dragFrom(element(editor).querySelector('img')!);
 
       document.body.dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }));
@@ -608,6 +609,8 @@ describe('dragging a media block by its media (A10)', () => {
         vi.runAllTimers();
       });
       expect(end).toHaveBeenCalledOnce();
+      // The page is left as it was: no drop listener outlives the drag.
+      expect(removed).toHaveBeenCalledWith('drop', expect.any(Function), true);
 
       fireEvent.dragEnd(frame);
       document.body.dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }));
@@ -618,5 +621,27 @@ describe('dragging a media block by its media (A10)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('a media block whose neighbour goes away', () => {
+  it('keeps its own player, so a video playing below a deleted picture keeps playing', () => {
+    const editor = open('image');
+    act(() => {
+      editor.insertBlocks(
+        [{ type: 'video', props: { url: URL_OF, name: 'v.mp4' } }] as never,
+        (editor.document as { id: string }[]).at(-1)!.id,
+        'after',
+      );
+    });
+    const video = (): HTMLVideoElement => editor.prosemirrorView!.dom.querySelector('[data-content-type="video"] video')!;
+    const before = video();
+    expect(before).not.toBeNull();
+
+    act(() => {
+      editor.removeBlocks([media(editor).id]);
+    });
+
+    expect(video()).toBe(before);
   });
 });

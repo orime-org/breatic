@@ -36,6 +36,27 @@ const NO_VIEWS: Views = [];
 /** Keyed by editor, so an editor that is dropped takes its entries with it. */
 const store = keyedStore<object, Views>(() => NO_VIEWS);
 
+/** One key per container, for the life of the container. */
+const keys = new WeakMap<HTMLElement, string>();
+let lastKey = 0;
+
+/**
+ * The key the portal into a container is rendered under. React matches
+ * portals by key, so a block taken out ahead of this one leaves this one's
+ * player — and a video playing in it — as it was.
+ * @param host - The container.
+ * @returns Its key.
+ */
+export function mediaViewKey(host: HTMLElement): string {
+  let key = keys.get(host);
+  if (key === undefined) {
+    lastKey += 1;
+    key = String(lastKey);
+    keys.set(host, key);
+  }
+  return key;
+}
+
 /**
  * Enters or replaces what one container shows.
  * @param editor - The editor.

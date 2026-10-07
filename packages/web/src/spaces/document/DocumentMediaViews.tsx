@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom';
 import { DocumentMediaBlock } from '@web/spaces/document/DocumentMediaBlock';
 import { mediaBarShown, setHoveredMedia, useDocumentBars } from '@web/spaces/document/document-bars';
 import {
+  mediaViewKey,
   mediaViewsOf,
   onMediaViewsChange,
 } from '@web/spaces/document/document-media-views';
@@ -55,6 +56,7 @@ export function DocumentMediaViews({ editor }: DocumentMediaViewsProps): React.J
             actions={entry.actions}
           />,
           host,
+          mediaViewKey(host),
         ),
       )}
     </>
