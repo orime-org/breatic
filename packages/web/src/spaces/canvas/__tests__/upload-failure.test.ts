@@ -14,7 +14,12 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
+import { UPLOAD_FAILURE_REASONS } from '@web/data/upload/media-upload';
+import {
+  resolveUploadFailure,
+  uploadFailureMessageKey,
+  uploadRetryCanChange,
+} from '@web/spaces/canvas/upload-failure';
 
 /**
  * The plan for a failure the browser says rather than reports.
@@ -128,5 +133,19 @@ describe('resolveUploadFailure', () => {
     for (const reason of ['storage', 'hash', 'upload'] as const) {
       expect(spoken({ reason }).severity).toBe('error');
     }
+  });
+});
+
+describe('which failures a retry can change (shared with the document body, inner#1127 A6)', () => {
+  it('answers yes for the catch-all alone', () => {
+    expect(UPLOAD_FAILURE_REASONS.filter(uploadRetryCanChange)).toEqual(['upload']);
+  });
+
+  it('names the same sentence a toast would, a transfer with no row reading as a failed upload', () => {
+    expect(uploadFailureMessageKey('storage')).toBe('canvas.upload.storageFull');
+    expect(uploadFailureMessageKey('hash')).toBe('canvas.upload.hashUnavailable');
+    expect(uploadFailureMessageKey('unsupportedType')).toBe('canvas.upload.unsupportedType');
+    expect(uploadFailureMessageKey('upload')).toBe('canvas.upload.failed');
+    expect(uploadFailureMessageKey('transfer')).toBe('canvas.upload.failed');
   });
 });

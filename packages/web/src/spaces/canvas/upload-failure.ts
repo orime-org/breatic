@@ -104,6 +104,30 @@ export function ingestRefusalToastKey(status: number | undefined): string {
 }
 
 /**
+ * Whether sending the same file again can end differently.
+ *
+ * Only the catch-all is about this attempt. Every named reason is about the
+ * file or the account, and re-sending meets the same answer.
+ * @param reason - Why the upload ended.
+ * @returns True when a Retry is worth offering.
+ */
+export function uploadRetryCanChange(reason: UploadFailure['reason']): boolean {
+  return reason === 'upload';
+}
+
+/**
+ * The sentence a failure is said in.
+ *
+ * A transfer reads as any failed upload: where no row exists to report it
+ * against, that is all the reader can be told.
+ * @param reason - Why the upload ended.
+ * @returns The message key.
+ */
+export function uploadFailureMessageKey(reason: UploadFailure['reason']): string {
+  return reason === 'transfer' ? TOAST_KEY.upload : TOAST_KEY[reason];
+}
+
+/**
  * Decide what a failed upload leaves behind.
  *
  * The person who tried is told either way — whether a row exists decides who
@@ -123,11 +147,11 @@ export function resolveUploadFailure(
       ? { kind: 'reportToServer', taskId: outcome.taskId }
       : {
         kind: 'toastOnly',
-        toastKey: TOAST_KEY.upload,
+        toastKey: uploadFailureMessageKey(outcome.reason),
         severity: 'error',
       };
   }
-  const toastKey = TOAST_KEY[outcome.reason];
+  const toastKey = uploadFailureMessageKey(outcome.reason);
   const severity: UploadFailureSeverity = REFUSALS.has(outcome.reason)
     ? 'warning'
     : 'error';
@@ -135,9 +159,7 @@ export function resolveUploadFailure(
     kind: 'toastOnly',
     toastKey,
     severity,
-    // Only the catch-all is about this attempt. Every named reason is about
-    // the file or the account, and re-sending meets the same answer.
-    ...(outcome.reason === 'upload' &&
+    ...(uploadRetryCanChange(outcome.reason) &&
       outcome.taskId !== undefined && { keepFileFor: outcome.taskId }),
   };
 }

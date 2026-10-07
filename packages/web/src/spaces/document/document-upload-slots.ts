@@ -38,6 +38,8 @@ export interface SlotAnchor {
 export interface SlotFailure {
   /** The message key the placeholder shows beside the file name. */
   readonly messageKey: string;
+  /** The values the message is filled with. */
+  readonly params: Readonly<Record<string, string>>;
   /** Whether sending the same file again can end differently. */
   readonly retryable: boolean;
 }
