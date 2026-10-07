@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import * as React from 'react';
 import * as Y from 'yjs';
 import { NodeSelection } from '@tiptap/pm/state';
@@ -24,16 +24,21 @@ const { TooltipProvider } = await import('@web/components/ui/tooltip');
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
+const roots: HTMLElement[] = [];
 
 beforeEach(() => {
   download.trigger.mockReset();
 });
 
 afterEach(() => {
+  // React takes its own portals down first; only then the editors go.
+  cleanup();
   mounted.splice(0).forEach((editor) => {
     editor.unmount();
   });
-  document.body.innerHTML = '';
+  roots.splice(0).forEach((root) => {
+    root.remove();
+  });
   document.body.removeAttribute('data-radix-scroll-area-viewport');
   vi.restoreAllMocks();
 });
@@ -57,6 +62,7 @@ function open(type: 'image' | 'video' | 'audio', props: Record<string, unknown> 
   const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
   const root = document.createElement('div');
   document.body.appendChild(root);
+  roots.push(root);
   act(() => {
     editor.mount(root);
   });
