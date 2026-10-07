@@ -16,7 +16,7 @@ import {
 const ok = {
   promptText: 'a cat',
   model: 'midjourney-v7',
-  nodeStatus: 'idle' as string | undefined,
+  nodeExists: true,
   isSubmitting: false,
   promptRequired: true,
   voiceRequired: false,
@@ -77,7 +77,7 @@ describe('evaluateExecute — which precondition is the one that fails', () => {
     // the node's existence, or the in-flight latch.
     const noPrompt = { ...ok, promptText: '', promptRequired: false };
     expect(refusalOf({ ...noPrompt, model: '' })).toBe('no-model');
-    expect(refusalOf({ ...noPrompt, nodeStatus: undefined })).toBe(
+    expect(refusalOf({ ...noPrompt, nodeExists: false })).toBe(
       'node-gone',
     );
     expect(refusalOf({ ...noPrompt, isSubmitting: true })).toBe(
@@ -131,19 +131,11 @@ describe('evaluateExecute — which precondition is the one that fails', () => {
     expect(refusalOf({ ...ok, model: '' })).toBe('no-model');
   });
 
-  it('stays executable while handling — the click surfaces the gate toast (user 2026-07-18)', () => {
-    // handling no longer greys the button; clicking it hits the node-state gate,
-    // which shows the handling warn-toast (same pattern as a locked node) rather
-    // than a silently-disabled button. The gate still blocks the actual submit.
-    expect(refusalOf({ ...ok, nodeStatus: 'handling' })).toBeNull();
-  });
-
-  it('names the node when it no longer exists (status undefined = deleted)', () => {
-    expect(refusalOf({ ...ok, nodeStatus: undefined })).toBe('node-gone');
-  });
-
-  it('stays executable after a prior failure so the user can retry', () => {
-    expect(refusalOf({ ...ok, nodeStatus: 'error' })).toBeNull();
+  // inner#888 §7.8: a node carries no display status any more. Whether its
+  // tasks run or failed is not weighed here; the only fact the gate needs
+  // from the node is that it is still on the board.
+  it('names the node when it no longer exists', () => {
+    expect(refusalOf({ ...ok, nodeExists: false })).toBe('node-gone');
   });
 
   it('names the in-flight submission', () => {
@@ -188,7 +180,7 @@ describe('evaluateExecute — order: environment facts first, what the user can 
         ...ok,
         promptText: '',
         model: '',
-        nodeStatus: undefined,
+        nodeExists: false,
         isSubmitting: true,
       }),
     ).toBe('node-gone');
