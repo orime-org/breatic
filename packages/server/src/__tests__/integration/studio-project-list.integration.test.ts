@@ -158,9 +158,9 @@ async function walk(
   archived: boolean,
   sort: StudioProjectSort,
   locale = "en",
-): Promise<{ ids: string[]; totals: number[] }> {
+): Promise<{ ids: string[]; totals: Array<number | null> }> {
   const ids: string[] = [];
-  const totals: number[] = [];
+  const totals: Array<number | null> = [];
   let cursor: string | undefined;
   for (let guard = 0; guard < 20; guard += 1) {
     const page = await projectService.listByStudioForViewer(studioId, viewer, {
@@ -213,7 +213,8 @@ describe("studio project list — every page together is the sorted list, once e
 
       expect(new Set(ids).size).toBe(ids.length);
       expect(ids).toEqual(await expected(f.studioId, f.admin, orderBy));
-      expect(totals).toEqual([120, 120, 120]);
+      // Counted once, on the first page.
+      expect(totals).toEqual([120, null, null]);
     });
   }
 
@@ -290,6 +291,57 @@ describe("studio project list — every page together is the sorted list, once e
     expect(garbage.items.map((p) => p.id)).toEqual(first.items.map((p) => p.id));
   });
 
+  it("starts over from the first page on a readable cursor holding values the database cannot take, and reports it", async () => {
+    const f = await bigStudio();
+    const id = "00000000-0000-4000-8000-000000000000";
+    const encode = (c: object): string => Buffer.from(JSON.stringify(c)).toString("base64url");
+    const forged: Array<[StudioProjectSort, string]> = [
+      ["created", encode({ s: "created", createdAt: "garbage", id })],
+      ["created", encode({ s: "created", createdAt: "2026-13-01 00:00:00+00", id })],
+      ["created", encode({ s: "created", createdAt: "99999999999999999999", id })],
+      ["name", encode({ s: "name", collation: "und-x-icu", name: "a\u0000b", id })],
+    ];
+    for (const [sort, cursor] of forged) {
+      const first = await projectService.listByStudioForViewer(f.studioId, f.admin, {
+        archived: false,
+        sort,
+        limit: 50,
+        locale: "en",
+      });
+      const onRejectedCursor = vi.fn();
+      const page = await projectService.listByStudioForViewer(f.studioId, f.admin, {
+        archived: false,
+        sort,
+        cursor,
+        limit: 50,
+        locale: "en",
+        onRejectedCursor,
+      });
+      expect(page.items.map((p) => p.id)).toEqual(first.items.map((p) => p.id));
+      expect(onRejectedCursor).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("does not report a cursor it reads", async () => {
+    const f = await bigStudio();
+    const first = await projectService.listByStudioForViewer(f.studioId, f.admin, {
+      archived: false,
+      sort: "edited",
+      limit: 50,
+      locale: "en",
+    });
+    const onRejectedCursor = vi.fn();
+    await projectService.listByStudioForViewer(f.studioId, f.admin, {
+      archived: false,
+      sort: "edited",
+      cursor: first.nextCursor ?? undefined,
+      limit: 50,
+      locale: "en",
+      onRejectedCursor,
+    });
+    expect(onRejectedCursor).not.toHaveBeenCalled();
+  });
+
   it("starts over when a name cursor was made under another language", async () => {
     const f = await bigStudio();
     const zhFirst = await projectService.listByStudioForViewer(f.studioId, f.admin, {
@@ -355,7 +407,7 @@ describe("studio project list — archived", () => {
         locale: "en",
       });
       pages.push(...page.items.map((p) => p.id));
-      total = page.total;
+      if (cursor === undefined) total = page.total ?? -1;
       if (!page.nextCursor) break;
       cursor = page.nextCursor;
     }
