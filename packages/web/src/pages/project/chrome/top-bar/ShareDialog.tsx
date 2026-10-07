@@ -68,8 +68,9 @@ export function ShareDialog({
 
   /**
    * Validates the address and creates a pending project invite, surfacing
-   * errors inline. On success the input clears and a toast confirms the invite
-   * was sent (the invitee gets a bell notification + best-effort email).
+   * errors inline and keeping the popover open on failure. On success a toast
+   * confirms the invite was sent and the popover closes (the invitee gets a bell
+   * notification + best-effort email).
    * @returns once the invite has been created (or the error surfaced inline).
    */
   async function handleSendInvite(): Promise<void> {
@@ -87,7 +88,7 @@ export function ShareDialog({
         role: inviteRole,
       });
       toast.success(t('share.inviteSent'));
-      setInvite('');
+      setOpen(false);
     } catch (err) {
       const msg =
         err instanceof ApiException ? err.message : t('share.inviteFailed');
