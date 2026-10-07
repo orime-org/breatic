@@ -13,7 +13,8 @@ import type { ProjectTimeKind } from '@web/pages/studio/container/container-type
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
-vi.mock('@web/data/api/projects', () => ({
+vi.mock('@web/data/api/projects', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/projects')>()),
   projectsApi: {
     rename: vi.fn(() => Promise.resolve({ name: 'Renamed' })),
     duplicate: vi.fn(() => Promise.resolve({ name: 'Copy of Cyberpunk Alley' })),
