@@ -10,7 +10,7 @@ import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import * as React from 'react';
 import * as Y from 'yjs';
-import { NodeSelection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -653,5 +653,31 @@ describe('a media block whose neighbour goes away', () => {
     });
 
     expect(video()).toBe(before);
+  });
+});
+
+describe('a press beside a media block', () => {
+  it('selects nothing and puts the caret on the line under it, while a press on the media still selects it', () => {
+    const editor = open('image', { previewWidth: 200 });
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.dispatch(view.state.tr.setSelection(TextSelection.atStart(view.state.doc)));
+    });
+
+    // The row outside the media and its caption.
+    const beside = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+    act(() => {
+      element(editor).dispatchEvent(beside);
+    });
+
+    expect(beside.defaultPrevented).toBe(true);
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    expect(view.state.selection.$from.parent.textContent).toBe('Below');
+
+    const onMedia = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+    act(() => {
+      element(editor).querySelector('img')!.dispatchEvent(onMedia);
+    });
+    expect(onMedia.defaultPrevented).toBe(false);
   });
 });

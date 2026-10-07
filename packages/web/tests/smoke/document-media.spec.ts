@@ -629,6 +629,36 @@ test('a picture is no longer selected once the focus leaves the body, and never 
   await expect(knob(first)).toHaveCount(0);
 });
 
+test('a picture or a video is selected by a click on what it shows, never on the empty row beside it (A10)', async () => {
+  await openFreshDocument(page);
+  await pickFromPlus(page, 'video', {
+    name: 'beside.mp4',
+    mimeType: 'video/mp4',
+    buffer: readFileSync(resolve(__dirname, '../fixtures/media-history.mp4')),
+  });
+  const video = page.locator(VIDEO);
+  await expect(video.locator('video')).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  await page.locator(`${EDITOR} .bn-block-content`).last().click();
+  await pastePicture(page, 'beside.png');
+  const picture = page.locator(IMAGE);
+  await expect(picture.locator('img')).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+
+  for (const block of [picture, video]) {
+    const frame = (await block.locator('[data-media-frame]').boundingBox())!;
+    const row = (await block.boundingBox())!;
+    // The empty part of the row, to the right of what the block shows.
+    expect(row.x + row.width - (frame.x + frame.width)).toBeGreaterThan(80);
+    await page.mouse.click(frame.x + frame.width + 40, frame.y + frame.height / 2);
+    await expect(block.locator('[data-testid="doc-media-resize-se"]')).toHaveCount(0);
+    expect(await block.locator('[data-media-frame]').evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('none');
+
+    // What it shows still selects it: its middle, clear of the toolbar a
+    // first block carries along its top edge and the player's controls.
+    await page.mouse.click(frame.x + frame.width / 2, frame.y + frame.height / 2);
+    await expect(block.locator('[data-testid="doc-media-resize-se"]')).toBeVisible();
+  }
+});
+
 test('a picture dragged by itself moves like a row dragged by its handle (A10)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('alpha');
