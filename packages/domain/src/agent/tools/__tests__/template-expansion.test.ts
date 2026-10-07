@@ -74,6 +74,11 @@ describe("expandTemplate", () => {
     expect(out).toEqual({ ok: false, reason: expect.stringContaining("storyboard-grid-25") });
   });
 
+  it("refuses a template on a node that does not generate, saying where it goes", () => {
+    const out = expandTemplate(named({ role: "source" }));
+    expect(out).toEqual({ ok: false, reason: expect.stringContaining("generate node") });
+  });
+
   it("refuses a template on a node of another type", () => {
     const out = expandTemplate(named({ type: "video" }));
     expect(out).toEqual({ ok: false, reason: expect.stringContaining("image") });
