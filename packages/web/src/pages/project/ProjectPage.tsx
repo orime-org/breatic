@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchProjectCredits } from '@web/data/api/credits';
 import * as React from 'react';
 import { useStore } from 'zustand';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
 
 import { newId, type SpaceRpcResponse } from '@breatic/shared';
@@ -231,7 +231,6 @@ function ProjectWorkspace({
   project: ProjectDetail;
 }): React.JSX.Element {
   const t = useTranslation();
-  const navigate = useNavigate();
 
   // Record the open once the project has loaded — floats it to the top of the
   // cross-studio Recent landing. StrictMode-safe + best-effort (see the hook).
@@ -876,17 +875,12 @@ function ProjectWorkspace({
           <ConnectionBanner
             status={connectionStatus}
             onReload={() => window.location.reload()}
-            onReLogin={() => {
-              // The session behind the stored account has expired, so the
-              // account leaves this device first, as signing out does: the
-              // sign-in page must not act for an account the server no longer
-              // accepts. The current path rides along as `?next=` so the login
-              // page can bounce back to the project after a successful re-auth.
-              clearCurrentUser();
-              navigate(
-            `/login?next=${encodeURIComponent(window.location.pathname)}`,
-              );
-            }}
+            // The connection was refused, which this banner answers with
+            // "sign in again": drop the stored account on this device (local
+            // only, no server logout) so the sign-in page does not act for it.
+            // ProtectedRoute then sends the reader to /login with this address
+            // as `?next=`.
+            onReLogin={clearCurrentUser}
           />
           {/*
         Nothing reaches INTO this element to disable it when the connection

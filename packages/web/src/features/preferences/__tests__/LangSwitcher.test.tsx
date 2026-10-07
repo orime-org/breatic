@@ -37,7 +37,7 @@ function signIn(): void {
 }
 
 // Shared language switcher (features/preferences) — rendered identically by
-// the project AND studio top bars. The i18n engine is the single source of
+// the project and studio top bars and the sign-in page header. The i18n engine is the single source of
 // truth (no Zustand mirror — see `feedback_double_source_state_mirror_trap`).
 describe('LangSwitcher', () => {
   beforeEach(() => {
