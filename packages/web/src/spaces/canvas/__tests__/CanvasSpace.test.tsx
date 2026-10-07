@@ -944,6 +944,59 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     append.mockRestore();
   });
 
+  // inner#888 §7.3: a mini-tool slot pick writes into the panel's draft.
+  const motionNodes = () =>
+    mockSpace({
+      nodes: [
+        { id: 'target', type: 'video', position: { x: 0, y: 0 }, data: { kind: 'video', content: 'https://cdn/v.mp4', handling: false } },
+        { id: 'src-image', type: 'image', position: { x: 600, y: 0 }, data: { kind: 'image', content: 'https://cdn/x.png', handling: false } },
+      ],
+    });
+  const openMotion = (): void => {
+    act(() => {
+      const session = canvasSessions.of('s').getState();
+      session.openMiniTool('target', 'video.motion', { sourceContent: 'https://cdn/v.mp4', params: {} });
+      session.startMiniToolSlotPick('target', 'character');
+    });
+  };
+
+  it('mini-tool slot pick fills the draft, writes no node, and ends on a one-item slot', async () => {
+    const write = vi.spyOn(canvasSpace, 'appendNodeSlotItem');
+    mockUseCanvasSpace.mockReturnValue(motionNodes());
+    renderSpace();
+    openMotion();
+    expect(screen.getByText('Pick an image for the character')).toBeInTheDocument();
+    clickSource();
+    await waitFor(() =>
+      expect(canvasSessions.of('s').getState().miniTool?.slots.character).toEqual({ url: 'https://cdn/x.png' }),
+    );
+    expect(canvasSessions.of('s').getState().pickSession).toBeNull();
+    expect(write).not.toHaveBeenCalled();
+    write.mockRestore();
+  });
+
+  it('mini-tool slot pick dims a node of another kind', () => {
+    mockUseCanvasSpace.mockReturnValue(motionNodes());
+    renderSpace();
+    openMotion();
+    const cls = (id: string): string =>
+      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ?? '';
+    expect(cls('target')).toContain('canvas-pick-dimmed');
+    expect(cls('src-image')).toContain('canvas-pick-selectable');
+  });
+
+  it('hands focus back to the mini-tool slot button when its pick exits', () => {
+    mockUseCanvasSpace.mockReturnValue(motionNodes());
+    renderSpace();
+    const button = document.createElement('button');
+    button.setAttribute('data-testid', 'mini-tool-slot-video.motion-character');
+    document.body.appendChild(button);
+    openMotion();
+    fireEvent.click(screen.getByTestId('reference-pick-exit'));
+    expect(document.activeElement).toBe(button);
+    button.remove();
+  });
+
   it('style pick dims a picture the slot already holds', () => {
     mockUseCanvasSpace.mockReturnValue(styleNodes(['https://cdn/x.png']));
     renderSpace();

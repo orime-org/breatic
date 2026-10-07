@@ -194,6 +194,12 @@ import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
 import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
 import { startMiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
+import {
+  activeMiniToolSlot,
+  heldSlotUrls,
+  miniToolSlotCandidate,
+  miniToolSlotValue,
+} from '@web/spaces/canvas/mini-tool/mini-tool-slot-pick';
 import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
 import { readSlotPicks, slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
@@ -841,7 +847,7 @@ function CanvasSpaceInner({
   const panelHostId = useCanvasSession((s) => s.panelHostId);
   const panelKind = useCanvasSession((s) => s.panelKind);
   const pickSession = useCanvasSession((s) => s.pickSession);
-  const miniToolId = useCanvasSession((s) => s.miniTool?.toolId);
+  const miniToolDraft = useCanvasSession((s) => s.miniTool);
   // The node a pick is running for, or null — stands in
   // for the mechanical "is a pick active / which node" checks that don't care
   // about the purpose. The purpose is read separately where completion /
@@ -1992,6 +1998,22 @@ function CanvasSpaceInner({
         // The predicate already established this is a non-empty string.
         const { content } = fresh.data as { content: string };
         setFocusTarget({ id: node.id, content });
+        return;
+      }
+
+      if (session.purpose === 'miniToolSlot') {
+        // A mini-tool slot (inner#888 §7.3): the pick writes into the panel's
+        // draft, never into a node. A list slot takes one per click until it
+        // is full; a one-item slot ends on the first.
+        const { miniTool, fillMiniToolSlot } = sessionStore.getState();
+        const slot = activeMiniToolSlot(session, miniTool);
+        if (slot === undefined || miniTool === null) return;
+        const held = heldSlotUrls(miniTool, slot);
+        if (!miniToolSlotCandidate(node, target, slot, held)) return;
+        const value = miniToolSlotValue(node);
+        if (value === null) return;
+        fillMiniToolSlot(slot.key, value, slot.many);
+        if (!slot.many || (session.capacity !== undefined && held.size + 1 >= session.capacity)) endPick();
         return;
       }
 
@@ -4276,6 +4298,14 @@ function CanvasSpaceInner({
       return paint((node) => !isFocusCandidate(node, target));
     }
 
+    if (pickSession.purpose === 'miniToolSlot') {
+      // Judged by the same predicate the click uses (inner#888 §7.3).
+      const slot = activeMiniToolSlot(pickSession, miniToolDraft);
+      if (slot === undefined || miniToolDraft === null) return paint(() => true);
+      const held = heldSlotUrls(miniToolDraft, slot);
+      return paint((node) => !miniToolSlotCandidate(node, target, slot, held));
+    }
+
     const paintingSlot = slotSpec(slotForPurpose(pickSession.purpose) ?? '');
     if (paintingSlot) {
       // Every source slot shares the candidate rule: any non-empty node of
@@ -4317,7 +4347,7 @@ function CanvasSpaceInner({
         alreadyReferenced.has(node.id) ||
         !canConnect(node.type ?? '', targetKind),
     );
-  }, [renderNodes, pickSession, flowEdges]);
+  }, [renderNodes, pickSession, flowEdges, miniToolDraft]);
 
   // Arrow keys move the selected nodes through xyflow; this writes each
   // nudge the way a drag release would.
@@ -4713,7 +4743,7 @@ function CanvasSpaceInner({
             <span>
               {t(
                 pickSession
-                  ? pickSessionUi(pickSession, miniToolId).banner
+                  ? pickSessionUi(pickSession, miniToolDraft?.toolId).banner
                   : 'canvas.generatePanel.selectFromCanvas',
               )}
             </span>
