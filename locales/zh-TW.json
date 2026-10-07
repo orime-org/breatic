@@ -968,6 +968,41 @@
         "transfer": {
           "label": "傳輸特性"
         }
+      },
+      "panel": {
+        "close": "關閉",
+        "run": "執行",
+        "free": "免費",
+        "usage": "按實際用量計",
+        "slot": "{kind, select, image {圖片} audio {音訊} other {影片}}{required, select, yes {（必填）} other {}}",
+        "clearSlot": "移除",
+        "rotateLeft": "−90°",
+        "rotateRight": "90°",
+        "flipX": "水平翻轉",
+        "flipY": "垂直翻轉",
+        "rangeLength": "時長 {seconds} s",
+        "sourceMissing": "素材還沒載入完，等它載入好再試。",
+        "exportFailed": "無法產生檔案。",
+        "sourceGone": "來源節點已被刪除。",
+        "sourceChanged": "素材已更換，裁切框、區間和方向已重設。",
+        "sourceChangedByPeer": "協作者更換了素材，裁切框、區間和方向已重設。"
+      },
+      "adjust": {
+        "exposure": "曝光",
+        "highlights": "高光",
+        "shadows": "陰影",
+        "contrast": "對比度",
+        "saturation": "飽和度",
+        "vibrance": "自然飽和度",
+        "temperature": "色溫",
+        "tint": "色調",
+        "hue": "色相",
+        "sharpness": "銳化",
+        "noiseReduction": "降噪",
+        "clarity": "清晰度",
+        "vignette": "暗角",
+        "grain": "顆粒",
+        "fade": "褪色"
       }
     }
   },

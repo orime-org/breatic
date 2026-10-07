@@ -968,6 +968,41 @@
         "transfer": {
           "label": "전송 특성"
         }
+      },
+      "panel": {
+        "close": "닫기",
+        "run": "실행",
+        "free": "무료",
+        "usage": "사용량만큼 청구",
+        "slot": "{kind, select, image {이미지} audio {오디오} other {동영상}}{required, select, yes { (필수)} other {}}",
+        "clearSlot": "제거",
+        "rotateLeft": "−90°",
+        "rotateRight": "90°",
+        "flipX": "좌우 반전",
+        "flipY": "상하 반전",
+        "rangeLength": "길이 {seconds}초",
+        "sourceMissing": "소재를 아직 불러오지 못했습니다. 다 불러온 뒤 다시 시도하세요.",
+        "exportFailed": "파일을 만들 수 없습니다.",
+        "sourceGone": "원본 노드가 삭제되었습니다.",
+        "sourceChanged": "소재가 바뀌어 자르기, 구간, 방향을 초기화했습니다.",
+        "sourceChangedByPeer": "공동 작업자가 소재를 바꿔 자르기, 구간, 방향을 초기화했습니다."
+      },
+      "adjust": {
+        "exposure": "노출",
+        "highlights": "하이라이트",
+        "shadows": "그림자",
+        "contrast": "대비",
+        "saturation": "채도",
+        "vibrance": "생동감",
+        "temperature": "색온도",
+        "tint": "색조",
+        "hue": "색상",
+        "sharpness": "선명도",
+        "noiseReduction": "노이즈 감소",
+        "clarity": "명료도",
+        "vignette": "비네트",
+        "grain": "그레인",
+        "fade": "페이드"
       }
     }
   },

@@ -968,6 +968,41 @@
         "transfer": {
           "label": "Transfer"
         }
+      },
+      "panel": {
+        "close": "Close",
+        "run": "Run",
+        "free": "Free",
+        "usage": "Billed by usage",
+        "slot": "{kind, select, image {Image} audio {Audio} other {Video}}{required, select, yes { (required)} other {}}",
+        "clearSlot": "Remove",
+        "rotateLeft": "−90°",
+        "rotateRight": "90°",
+        "flipX": "Flip horizontal",
+        "flipY": "Flip vertical",
+        "rangeLength": "Length {seconds} s",
+        "sourceMissing": "The source hasn't loaded yet. Try again once it has.",
+        "exportFailed": "Couldn't make the file.",
+        "sourceGone": "The source node was deleted.",
+        "sourceChanged": "The source changed. The crop, range and orientation were reset.",
+        "sourceChangedByPeer": "A collaborator changed the source. The crop, range and orientation were reset."
+      },
+      "adjust": {
+        "exposure": "Exposure",
+        "highlights": "Highlights",
+        "shadows": "Shadows",
+        "contrast": "Contrast",
+        "saturation": "Saturation",
+        "vibrance": "Vibrance",
+        "temperature": "Temperature",
+        "tint": "Tint",
+        "hue": "Hue",
+        "sharpness": "Sharpness",
+        "noiseReduction": "Noise reduction",
+        "clarity": "Clarity",
+        "vignette": "Vignette",
+        "grain": "Grain",
+        "fade": "Fade"
       }
     }
   },

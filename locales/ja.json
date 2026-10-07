@@ -968,6 +968,41 @@
         "transfer": {
           "label": "伝達特性"
         }
+      },
+      "panel": {
+        "close": "閉じる",
+        "run": "実行",
+        "free": "無料",
+        "usage": "実際の使用量で課金",
+        "slot": "{kind, select, image {画像} audio {音声} other {動画}}{required, select, yes {（必須）} other {}}",
+        "clearSlot": "削除",
+        "rotateLeft": "−90°",
+        "rotateRight": "90°",
+        "flipX": "左右反転",
+        "flipY": "上下反転",
+        "rangeLength": "長さ {seconds} 秒",
+        "sourceMissing": "素材の読み込みが終わっていません。読み込み後にもう一度お試しください。",
+        "exportFailed": "ファイルを作成できませんでした。",
+        "sourceGone": "元のノードが削除されました。",
+        "sourceChanged": "素材が変わったため、トリミング・範囲・向きをリセットしました。",
+        "sourceChangedByPeer": "共同編集者が素材を変えたため、トリミング・範囲・向きをリセットしました。"
+      },
+      "adjust": {
+        "exposure": "露出",
+        "highlights": "ハイライト",
+        "shadows": "シャドウ",
+        "contrast": "コントラスト",
+        "saturation": "彩度",
+        "vibrance": "自然な彩度",
+        "temperature": "色温度",
+        "tint": "色かぶり補正",
+        "hue": "色相",
+        "sharpness": "シャープネス",
+        "noiseReduction": "ノイズ除去",
+        "clarity": "明瞭度",
+        "vignette": "周辺減光",
+        "grain": "粒子",
+        "fade": "フェード"
       }
     }
   },

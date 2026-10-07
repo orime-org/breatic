@@ -1,0 +1,117 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { miniToolById, type MiniToolSpec } from '@breatic/shared';
+
+import { TooltipProvider } from '@web/components/ui/tooltip';
+import { MiniToolPanel, type MiniToolPanelProps } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
+
+/**
+ * A registry tool by id.
+ * @param id - The tool id.
+ * @returns The declaration.
+ */
+function tool(id: string): MiniToolSpec {
+  const spec = miniToolById(id);
+  if (!spec) throw new Error(id);
+  return spec;
+}
+
+/**
+ * Render the panel with defaults the case overrides.
+ * @param over - Props to override.
+ * @returns The props used.
+ */
+function mount(over: Partial<MiniToolPanelProps> = {}): MiniToolPanelProps {
+  const props: MiniToolPanelProps = {
+    spec: tool('image.rotate'),
+    modelControls: undefined,
+    modelEntry: undefined,
+    params: { orient: { turns: 0, flipX: false, flipY: false } },
+    onParams: vi.fn(),
+    source: { width: 1600, height: 1000 },
+    slots: {},
+    slotCaps: {},
+    pickingSlot: null,
+    onPickSlot: vi.fn(),
+    onClearSlot: vi.fn(),
+    prompt: '',
+    onPrompt: vi.fn(),
+    creditText: 'Free',
+    refusal: null,
+    onRun: vi.fn(),
+    onClose: vi.fn(),
+    ...over,
+  };
+  render(
+    <TooltipProvider>
+      <MiniToolPanel {...props} />
+    </TooltipProvider>,
+  );
+  return props;
+}
+
+describe('MiniToolPanel', () => {
+  it('heads itself with the tool name and closes on its X', () => {
+    const props = mount();
+    expect(screen.getByTestId('mini-tool-panel-title')).toHaveTextContent('Rotate & flip');
+    fireEvent.click(screen.getByTestId('mini-tool-panel-close'));
+    expect(props.onClose).toHaveBeenCalledOnce();
+  });
+
+  it('turns and flips the orientation from its four buttons', () => {
+    const props = mount();
+    fireEvent.click(screen.getByTestId('mini-tool-orient-right'));
+    expect(props.onParams).toHaveBeenLastCalledWith({ orient: { turns: 1, flipX: false, flipY: false } });
+    fireEvent.click(screen.getByTestId('mini-tool-orient-left'));
+    expect(props.onParams).toHaveBeenLastCalledWith({ orient: { turns: 3, flipX: false, flipY: false } });
+    fireEvent.click(screen.getByTestId('mini-tool-orient-flipX'));
+    expect(props.onParams).toHaveBeenLastCalledWith({ orient: { turns: 0, flipX: true, flipY: false } });
+  });
+
+  // A9: a locked ratio puts the largest rectangle of it on the source.
+  it('reshapes the crop when a ratio is chosen', () => {
+    const props = mount({ spec: tool('image.crop'), params: { aspect: 'free', rect: null } });
+    fireEvent.click(screen.getByTestId('mini-tool-param-aspect-1:1'));
+    expect(props.onParams).toHaveBeenLastCalledWith({ aspect: '1:1', rect: { x: 300, y: 0, w: 1000, h: 1000 } });
+  });
+
+  it('shows the full source as the crop until the reader sets one', () => {
+    mount({ spec: tool('image.crop'), params: { aspect: 'free', rect: null } });
+    expect(screen.getByTestId('mini-tool-rect-w')).toHaveValue(1600);
+    expect(screen.getByTestId('mini-tool-rect-h')).toHaveValue(1000);
+  });
+
+  it('names a required slot and starts its pick', () => {
+    const props = mount({ spec: tool('video.motion'), modelEntry: undefined, params: {} });
+    const slot = screen.getByTestId('mini-tool-slot-video.motion-character');
+    expect(slot).toHaveAccessibleName('Image (required)');
+    fireEvent.click(slot);
+    expect(props.onPickSlot).toHaveBeenCalledWith('character');
+  });
+
+  it('holds Run back while a required input is missing, and runs otherwise', () => {
+    mount({ refusal: 'slotMissing' });
+    expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
+  });
+
+  // A7: a source still loading is said when Run is pressed, so the button stays live.
+  it('leaves Run pressable when only the source is not ready', () => {
+    const props = mount({ refusal: 'sourceMissing' });
+    fireEvent.click(screen.getByTestId('mini-tool-run'));
+    expect(props.onRun).toHaveBeenCalledOnce();
+  });
+
+  it('states the cost beside Run', () => {
+    mount({ creditText: 'Billed by usage' });
+    expect(screen.getByTestId('mini-tool-credit')).toHaveTextContent('Billed by usage');
+  });
+
+  it('draws a prompt box for a tool that takes one', () => {
+    const props = mount({ spec: tool('video.motion'), params: {} });
+    fireEvent.change(screen.getByTestId('mini-tool-prompt'), { target: { value: 'walk' } });
+    expect(props.onPrompt).toHaveBeenCalledWith('walk');
+  });
+});

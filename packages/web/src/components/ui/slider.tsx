@@ -45,15 +45,20 @@ export function Slider({
           className={cn('absolute rounded-full bg-current', vertical ? 'w-full' : 'h-full')}
         />
       </SliderPrimitive.Track>
-      <SliderPrimitive.Thumb
-        aria-label={ariaLabel}
-        // The ring follows `currentColor` for the same reason the track and
-        // the thumb do: this control sits on a themed surface in some places
-        // and on a video's dark scrim in others, and `--ring` is a themed
-        // colour. On the scrim in light theme it rings dark on dark, so a
-        // keyboard reader cannot see which control they are on.
-        className='block size-3 rounded-full bg-current shadow-sm outline-none transition-transform hover:scale-110 focus-visible:ring-1 focus-visible:ring-current'
-      />
+      {/* One thumb per value: a range of two values is a span with a handle at
+          each end. */}
+      {Array.from({ length: Math.max(1, (props.value ?? props.defaultValue)?.length ?? 1) }, (_, index) => (
+        <SliderPrimitive.Thumb
+          key={index}
+          aria-label={ariaLabel}
+          // The ring follows `currentColor` for the same reason the track and
+          // the thumb do: this control sits on a themed surface in some places
+          // and on a video's dark scrim in others, and `--ring` is a themed
+          // colour. On the scrim in light theme it rings dark on dark, so a
+          // keyboard reader cannot see which control they are on.
+          className='block size-3 rounded-full bg-current shadow-sm outline-none transition-transform hover:scale-110 focus-visible:ring-1 focus-visible:ring-current'
+        />
+      ))}
     </SliderPrimitive.Root>
   );
 }
