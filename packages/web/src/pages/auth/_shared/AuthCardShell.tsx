@@ -11,8 +11,9 @@ import { PRIVACY_URL, TERMS_URL } from '@web/lib/official-home';
 import { BrandHomeLink } from '@web/ui/BrandHomeLink';
 import { TopBar } from '@web/ui/TopBar';
 
-/** Links in the page footer: muted until hovered. */
-const FOOTER_LINK_CLASS = 'underline-offset-4 hover:text-foreground hover:underline';
+/** Links in the page footer: muted until hovered, with the app's focus ring. */
+const FOOTER_LINK_CLASS =
+  'rounded-chrome-sm underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 /**
  * Shared frame for the sign-in, sign-up and account-recovery pages and the

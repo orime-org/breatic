@@ -21,7 +21,7 @@ export function BrandHomeLink(): React.JSX.Element {
       target='_blank'
       rel='noopener noreferrer'
       aria-label={t('chrome.aria.home')}
-      className='flex items-center gap-[7px]'
+      className='flex items-center gap-[7px] rounded-chrome-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
     >
       <BrandMark size={24} />
       <span className='text-sm font-semibold text-foreground'>Breatic</span>
