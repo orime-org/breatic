@@ -312,3 +312,60 @@ describe("what the extension reports back about its own write", () => {
     expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: true, outcome: "refused" });
   });
 });
+
+describe("createPersistenceExtension — recording that a project was edited", () => {
+  const PID = "11111111-1111-4111-8111-111111111111";
+  const CANVAS = `project-${PID}/canvas-22222222-2222-4222-9222-222222222222`;
+  const META = `project-${PID}/meta`;
+
+  /**
+   * An extension whose store succeeds or fails, and the edits it reported.
+   * @param fail - Whether the store throws.
+   * @returns The extension and the project ids it reported.
+   */
+  function editHarness(fail = false) {
+    const edits: string[] = [];
+    const extension = createPersistenceExtension({
+      fetch: async () => null,
+      store: async () => {
+        if (fail) throw new Error("db down");
+      },
+      recordEdit: (projectId) => edits.push(projectId),
+    });
+    return { extension, edits };
+  }
+
+  /**
+   * Run one armed store of a document that has unsaved content.
+   * @param extension - The extension under test.
+   * @param documentName - The document to store.
+   */
+  async function storeOnce(
+    extension: ReturnType<typeof createPersistenceExtension>,
+    documentName: string,
+  ): Promise<void> {
+    forgetDocument(documentName);
+    noteDocumentChange(documentName);
+    const arm = armTimedStore(documentName);
+    await extension.onStoreDocument({ documentName, document: documentWithText("x") });
+    releaseTimedStoreArm(documentName, arm);
+  }
+
+  it("a stored Space document records its project as edited", async () => {
+    const { extension, edits } = editHarness();
+    await storeOnce(extension, CANVAS);
+    expect(edits).toEqual([PID]);
+  });
+
+  it("a stored meta document records nothing", async () => {
+    const { extension, edits } = editHarness();
+    await storeOnce(extension, META);
+    expect(edits).toEqual([]);
+  });
+
+  it("a store that failed records nothing", async () => {
+    const { extension, edits } = editHarness(true);
+    await storeOnce(extension, CANVAS);
+    expect(edits).toEqual([]);
+  });
+});
