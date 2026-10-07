@@ -8,7 +8,7 @@
  * object, and reading names the class the job was submitted to.
  */
 
-import { miniToolJobRequestSchema, type MiniToolJobRequest } from "@breatic/shared";
+import { miniToolJobRequestSchema } from "@breatic/shared";
 
 import { fromOurBackend } from "@ingest/backend-secret.js";
 import { noteFailure } from "@ingest/error-monitoring.js";
@@ -34,7 +34,7 @@ export const JOB_PATH = /^\/jobs\/([^/]+)\/([^/]+)$/;
 function namespaceOf(env: JobsEnv, containerClass: string): MiniToolEnv["MINI_TOOL_STD1"] | null {
   if (!Object.hasOwn(CLASS_BINDINGS, containerClass)) return null;
   // Both classes share one shape; only their instance size differs.
-  return env[CLASS_BINDINGS[containerClass as MiniToolClass]] as MiniToolEnv["MINI_TOOL_STD1"];
+  return env[CLASS_BINDINGS[containerClass as MiniToolClass]];
 }
 
 /**
@@ -49,7 +49,7 @@ export async function submitJob(request: Request, env: JobsEnv): Promise<Respons
   if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
   const parsed = miniToolJobRequestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return new Response("Not a job", { status: 400 });
-  const job = parsed.data as MiniToolJobRequest;
+  const job = parsed.data;
   const namespace = namespaceOf(env, job.containerClass);
   if (namespace === null) return new Response("Unknown container class", { status: 400 });
   try {

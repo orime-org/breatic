@@ -73,7 +73,7 @@ async function put(url: string, file: string): Promise<void> {
     headers: { "content-length": String(size) },
     body: Readable.toWeb(createReadStream(file)) as ReadableStream<Uint8Array>,
     duplex: "half",
-  } as RequestInit);
+  });
   if (!answered.ok) throw new Error(`the write of ${url} was answered ${answered.status}`);
 }
 
