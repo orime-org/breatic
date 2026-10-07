@@ -227,8 +227,8 @@ function createDocumentEditor(
     comments: { doc, readWho: inputs.readWho },
     ...(uploader !== null && {
       onFiles: (arrival: FilesArrival) => {
-        const view = editor.prosemirrorView;
-        if (view !== undefined && view !== null) {
+        const view = viewOf(editor);
+        if (view !== null) {
           void uploader.start(view, arrival.files, arrival.anchor, arrival.quoted);
         }
       },

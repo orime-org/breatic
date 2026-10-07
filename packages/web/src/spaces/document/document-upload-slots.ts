@@ -24,6 +24,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
+import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 
 /** Where a batch was dropped: the blocks on either side of the gap. */
@@ -59,7 +60,7 @@ export interface UploadSlot {
 }
 
 /** One pick, drop or paste: its files, in the order they came in. */
-interface UploadBatch extends SlotAnchor {
+export interface UploadBatch extends SlotAnchor {
   readonly slots: readonly UploadSlot[];
 }
 
@@ -161,9 +162,16 @@ export function slotPositions(state: EditorState): Map<string, number> {
  * @returns The slots.
  */
 export function uploadSlots(state: EditorState): UploadSlot[] {
-  return (documentUploadsKey.getState(state)?.batches ?? []).flatMap((batch) =>
-    batch.slots.filter((slot) => slot.phase !== 'inserted'),
-  );
+  return waitingSlots(uploadBatchesIn(state));
+}
+
+/**
+ * Every slot of these batches still waiting for a block, in batch order.
+ * @param batches - The batches.
+ * @returns The slots.
+ */
+export function waitingSlots(batches: readonly UploadBatch[]): UploadSlot[] {
+  return batches.flatMap((batch) => batch.slots.filter((slot) => slot.phase !== 'inserted'));
 }
 
 /**
@@ -221,6 +229,24 @@ function reduce(batches: readonly UploadBatch[], action: UploadsAction): UploadB
 }
 
 /**
+ * The batches as the state holds them; the same array until one changes,
+ * which is what lets a store snapshot be taken off it directly.
+ * @param state - The editor state.
+ * @returns The batches.
+ */
+export function uploadBatchesIn(state: EditorState): readonly UploadBatch[] {
+  return documentUploadsKey.getState(state)?.batches ?? NO_BATCHES;
+}
+
+/** No uploads in flight, as one array. */
+const NO_BATCHES: readonly UploadBatch[] = [];
+
+const watch = watchPluginState(uploadBatchesIn);
+
+/** Hears about every change to the uploads in flight. */
+export const onUploadSlotsChange: (listener: () => void) => () => void = watch.onChange;
+
+/**
  * The plugin.
  * @returns A fresh plugin.
  */
@@ -240,6 +266,7 @@ function uploadsPlugin(): Plugin<UploadsState> {
     props: {
       decorations: (state) => documentUploadsKey.getState(state)?.decorations,
     },
+    view: watch.view,
   });
 }
 

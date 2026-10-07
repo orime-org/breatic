@@ -31,7 +31,9 @@ import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 import { DocumentTableCellButton } from '@web/spaces/document/DocumentTableCellButton';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { type FocusReturn, useFocusReturn } from '@web/lib/use-focus-return';
+import { viewOf } from '@web/spaces/document/document-editor-view';
 import { DocumentMediaPicker } from '@web/spaces/document/DocumentMediaPicker';
+import { DocumentUploadPlaceholders } from '@web/spaces/document/DocumentUploadPlaceholders';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
 
 interface DocumentEditorProps {
@@ -182,7 +184,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   );
 
   const viewOfEditor = React.useCallback(
-    () => handle.editor.prosemirrorView ?? null,
+    () => viewOf(handle.editor),
     [handle.editor],
   );
 
@@ -253,6 +255,16 @@ export const DocumentEditor = React.memo(function DocumentEditor({
         <SelectionBubbleBar
           editor={handle.editor}
           viewport={viewport}
+          readOnly={readOnly}
+        />
+      )}
+      {/* What each upload in flight shows, in the body where it will land
+          (inner#1127 A4). Kept for a body that turned read-only meanwhile:
+          a failed file still has its placeholder to remove. */}
+      {uploader !== null && (
+        <DocumentUploadPlaceholders
+          editor={handle.editor}
+          uploader={uploader}
           readOnly={readOnly}
         />
       )}
