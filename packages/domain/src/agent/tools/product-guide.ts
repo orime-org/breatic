@@ -65,12 +65,12 @@ function generatingLine(): string {
 }
 
 /**
- * Where the generate row is greyed, read off the same rule.
+ * Where the generate row is left off the menu, read off the same rule.
  * @returns A parenthetical naming the node types that do not generate, or nothing when all do.
  */
-function greyedGenerate(): string {
+function generateNotOffered(): string {
   const idle = CREATABLE.filter((type) => !canGenerate(type)).map(typeLabel);
-  return idle.length === 0 ? "" : ` (greyed on ${idle.join(", ")})`;
+  return idle.length === 0 ? "" : ` (not on ${idle.join(", ")})`;
 }
 
 /**
@@ -362,7 +362,7 @@ export function renderProductGuide(): string {
     "## Node menus",
     "Right-clicking a node opens its menu (right-clicking inside text being typed opens the browser's own menu). " +
       "On a picture, video, sound or text node the rows are, top to bottom:",
-    `- ${quoted(t("canvas.nodeMenu.generate"))}${greyedGenerate()} and ` +
+    `- ${quoted(t("canvas.nodeMenu.generate"))}${generateNotOffered()} and ` +
       `${quoted(t("canvas.nodeMenu.upload"))}.`,
     `- On a picture node, ${quoted(t("canvas.nodeMenu.resetEmpty"))}: a panel under the node, headed ` +
       `${quoted(t("canvas.emptyImage.title"))}, has ${quoted(t("canvas.emptyImage.sections.ratio"))}, ` +
@@ -480,7 +480,7 @@ export function renderProductGuide(): string {
     "",
     "## Generating",
     generatingLine(),
-    `Right-click such a node and choose ${quoted(t("canvas.nodeMenu.generate"))}${greyedGenerate()}: the ` +
+    `Right-click such a node and choose ${quoted(t("canvas.nodeMenu.generate"))}: the ` +
       "generation panel opens just below the node. Clicking a node selects it without opening the " +
       "panel. The panel closes with the X at its top-right, once a run you started is accepted, when another " +
       "panel opens on the canvas, or when the node stops being selected; while you are picking nodes for it, " +

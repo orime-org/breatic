@@ -665,11 +665,12 @@ describe("what the guide says about each surface", () => {
     expect(source).not.toMatch(/10,000|up to ten|at most 50/);
   });
 
-  it("greys generate on exactly the node types that do not generate", () => {
+  it("leaves generate off the menu of exactly the node types that do not generate", () => {
     const idle = CREATABLE.filter((type) => !canGenerate(type)).map(label);
     const menus = section("Node menus");
     for (const name of idle) expect(menus).toContain(name);
-    expect(menus).toContain(`(greyed on ${idle.join(", ")})`);
+    expect(menus).toContain(`(not on ${idle.join(", ")})`);
+    expect(menus).not.toMatch(/greyed on/);
   });
 
   it("says the send button is a dark square and when a message can go", () => {
