@@ -3,7 +3,13 @@
 
 import * as React from 'react';
 
-import { nameableFeeders, newId, promptPlainText, type CanvasProposal } from '@breatic/shared';
+import {
+  nameableFeeders,
+  newId,
+  promptPlainText,
+  proposalMarkSegments,
+  type CanvasProposal,
+} from '@breatic/shared';
 
 import {
   addEdge,
@@ -364,9 +370,15 @@ export function useNodeCreation(
           }
         });
       });
+      // A mark is a place the reader still fills in or rewrites. Saying so is
+      // all: what they leave as it is goes out as it is (inner#977).
+      const marked = proposal.nodes.some((node) =>
+        proposalMarkSegments(node).some((segment) => segment.slot && segment.slot.kind !== 'ref'),
+      );
+      if (marked) toast.info(t('canvas.generatePanel.editMarks'));
       return groupId === undefined ? { nodeIds } : { nodeIds, groupId };
     },
-    [projectId, spaceId, createNodeAt, userId],
+    [projectId, spaceId, createNodeAt, userId, t],
   );
   return {
     createNodeAt,

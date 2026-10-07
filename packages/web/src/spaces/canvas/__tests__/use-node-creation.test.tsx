@@ -536,6 +536,19 @@ describe('useNodeCreation', () => {
         expect(toast.info).toHaveBeenCalledTimes(1);
       });
 
+      it('says nothing for a mark that only points at an upstream node', () => {
+        const pointing: CanvasProposal = {
+          ...PAIR,
+          nodes: [
+            PAIR.nodes[0]!,
+            { ...PAIR.nodes[1]!, prompt: [{ slot: { kind: 'ref', label: 'photo', note: '' } }] },
+          ],
+        };
+        const { result } = renderHook(() => useNodeCreation('p-ref', 's-ref'));
+        result.current.placeProposalAt(pointing, { x: 0, y: 0 });
+        expect(toast.info).not.toHaveBeenCalled();
+      });
+
       it('says nothing when the prompts are plain words', () => {
         const { result } = renderHook(() => useNodeCreation('p-plain', 's-plain'));
         result.current.placeProposalAt(PAIR, { x: 0, y: 0 });
