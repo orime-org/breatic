@@ -34,6 +34,7 @@ import { type FocusReturn, useFocusReturn } from '@web/lib/use-focus-return';
 import { viewOf } from '@web/spaces/document/document-editor-view';
 import { DocumentMediaPicker } from '@web/spaces/document/DocumentMediaPicker';
 import { DocumentUploadPlaceholders } from '@web/spaces/document/DocumentUploadPlaceholders';
+import { DocumentMediaViews } from '@web/spaces/document/DocumentMediaViews';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
 
 interface DocumentEditorProps {
@@ -258,6 +259,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           readOnly={readOnly}
         />
       )}
+      {/* Every image, video and audio block, drawn into its node view's
+          container from inside this tree (inner#1127). A viewer sees them
+          too; their controls are hidden while the body is not editable. */}
+      <DocumentMediaViews editor={handle.editor} />
       {/* What each upload in flight shows, in the body where it will land
           (inner#1127 A4). Kept for a body that turned read-only meanwhile:
           a failed file still has its placeholder to remove. */}

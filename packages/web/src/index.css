@@ -1833,6 +1833,14 @@ body {
   border-top-color: var(--color-border);
 }
 
+/* A media block's toolbar, caption field and resize handles write to the
+   document, so a body the reader may not write to shows none of them
+   (inner#1127 A11). Read off the surface's own editability: the node view
+   that draws them is not rebuilt when that changes. */
+.doc-body[contenteditable='false'] [data-media-chrome] {
+  display: none;
+}
+
 /* A table wider than the column scrolls inside its block, in the ScrollArea
    `document-table-blocknote.tsx` wraps it in. The library's wrapper is a
    scroller of its own (`overflow-x: auto` from prosemirror-tables), which

@@ -1,0 +1,276 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * inner#1127 A7–A10, A16, A17, A19: a media block in the body — what it
+ * shows, and what its toolbar does.
+ */
+
+import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import * as React from 'react';
+import * as Y from 'yjs';
+import { NodeSelection } from '@tiptap/pm/state';
+
+import { documentBodyFragment } from '@breatic/shared';
+
+const download = vi.hoisted(() => ({ trigger: vi.fn() }));
+vi.mock('@web/lib/download', () => ({ triggerDownload: download.trigger }));
+
+const { buildDocumentEditor } = await import('@web/spaces/document/build-document-editor');
+const { DocumentMediaViews } = await import('@web/spaces/document/DocumentMediaViews');
+const { TooltipProvider } = await import('@web/components/ui/tooltip');
+
+type Editor = ReturnType<typeof buildDocumentEditor>;
+
+const mounted: Editor[] = [];
+
+beforeEach(() => {
+  download.trigger.mockReset();
+});
+
+afterEach(() => {
+  mounted.splice(0).forEach((editor) => {
+    editor.unmount();
+  });
+  document.body.innerHTML = '';
+});
+
+const URL_OF = 'https://cdn.example/image/2026-10-07/a.png';
+
+/** A block as this file reads it. */
+interface Seen {
+  id: string;
+  type: string;
+  props: Record<string, unknown>;
+}
+
+/**
+ * Opens an editor holding one media block between two lines.
+ * @param type - The media block's type.
+ * @param props - Its props.
+ * @returns The editor.
+ */
+function open(type: 'image' | 'video' | 'audio', props: Record<string, unknown> = {}): Editor {
+  const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  act(() => {
+    editor.mount(root);
+  });
+  mounted.push(editor);
+  // The page's tree, which the blocks are rendered from.
+  render(
+    <TooltipProvider>
+      <DocumentMediaViews editor={editor} />
+    </TooltipProvider>,
+  );
+  act(() => {
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'Above' },
+      { type, props: { url: URL_OF, name: 'a.png', ...props } },
+      { type: 'paragraph', content: 'Below' },
+    ] as never);
+  });
+  return editor;
+}
+
+/**
+ * The media block.
+ * @param editor - The editor.
+ * @returns It, as the document holds it now.
+ */
+function media(editor: Editor): Seen {
+  return (editor.document as Seen[])[1]!;
+}
+
+/**
+ * The media block's element in the body.
+ * @param editor - The editor.
+ * @returns The `blockContent` element.
+ */
+function element(editor: Editor): HTMLElement {
+  return editor.prosemirrorView!.dom.querySelector<HTMLElement>(
+    `[data-content-type="${media(editor).type}"]`,
+  )!;
+}
+
+/**
+ * The media block's toolbar.
+ * @param editor - The editor.
+ * @returns It.
+ */
+function toolbar(editor: Editor): HTMLElement {
+  return within(element(editor)).getByTestId('doc-media-toolbar');
+}
+
+describe('what a media block shows (A7)', () => {
+  it('draws an image lazily from its address', () => {
+    const editor = open('image');
+
+    const img = element(editor).querySelector('img')!;
+    expect(img.getAttribute('src')).toBe(URL_OF);
+    expect(img.getAttribute('loading')).toBe('lazy');
+  });
+
+  it.each(['video', 'audio'] as const)('plays a %s with the product player', (type) => {
+    const editor = open(type);
+
+    expect(within(element(editor)).getByTestId('media-player')).toBeTruthy();
+  });
+
+  it('shows its caption under it, and nothing when it has none (A16)', () => {
+    const editor = open('image', { caption: 'Dusk' });
+    expect(within(element(editor)).getByTestId('doc-media-caption').textContent).toBe('Dusk');
+
+    act(() => {
+      editor.updateBlock(media(editor).id, { props: { caption: '' } } as never);
+    });
+    expect(within(element(editor)).queryByTestId('doc-media-caption')).toBeNull();
+  });
+});
+
+describe('a change to its props (A8, A9)', () => {
+  it('redraws in place: the element stays the one it was', () => {
+    const editor = open('video');
+    const before = element(editor);
+
+    act(() => {
+      editor.updateBlock(media(editor).id, { props: { previewWidth: 320 } } as never);
+    });
+
+    expect(element(editor)).toBe(before);
+    expect(within(before).getByTestId('doc-media-frame').style.width).toBe('320px');
+  });
+
+  it('keeps the block\'s own attributes current, alignment and quote', () => {
+    const editor = open('image');
+
+    act(() => {
+      editor.updateBlock(media(editor).id, {
+        props: { textAlignment: 'right', quoted: true },
+      } as never);
+    });
+
+    expect(element(editor).getAttribute('data-text-alignment')).toBe('right');
+    expect(element(editor).getAttribute('data-quoted')).toBe('true');
+  });
+});
+
+describe('the toolbar', () => {
+  it.each([
+    ['image', ['caption', 'fullscreen', 'download', 'delete']],
+    ['video', ['caption', 'download', 'delete']],
+    ['audio', ['caption', 'download', 'delete']],
+  ] as const)('offers on %s: %j, and alignment only when narrower than the body', (type, rows) => {
+    const editor = open(type);
+
+    const buttons = within(toolbar(editor))
+      .getAllByRole('button')
+      .map((b) => b.getAttribute('data-action'));
+    expect(buttons).toEqual(rows);
+  });
+
+  it('offers alignment on an image narrower than the body (A9)', () => {
+    const editor = open('image', { previewWidth: 200 });
+    const frame = within(element(editor)).getByTestId('doc-media-frame');
+    vi.spyOn(frame.parentElement!, 'clientWidth', 'get').mockReturnValue(600);
+    act(() => {
+      editor.updateBlock(media(editor).id, { props: { previewWidth: 210 } } as never);
+    });
+
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-align-left'));
+
+    expect(media(editor).props['textAlignment']).toBe('left');
+  });
+
+  it('never offers alignment on audio, which is as wide as the body', () => {
+    const editor = open('audio');
+
+    expect(within(toolbar(editor)).queryByTestId('doc-media-align-left')).toBeNull();
+  });
+
+  it('downloads through the same address the canvas uses (A19)', () => {
+    const editor = open('audio');
+
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-download'));
+
+    expect(download.trigger).toHaveBeenCalledWith(
+      `/api/v1/assets/download?url=${encodeURIComponent(URL_OF)}`,
+    );
+  });
+
+  it('deletes the block', () => {
+    const editor = open('video');
+
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-delete'));
+
+    expect((editor.document as Seen[]).map((b) => b.type)).toEqual(['paragraph', 'paragraph']);
+  });
+
+  it('writes a caption on Enter (A16)', () => {
+    const editor = open('image');
+
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-caption-button'));
+    const input = within(element(editor)).getByTestId('doc-media-caption-input');
+    fireEvent.change(input, { target: { value: 'Dusk' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(media(editor).props['caption']).toBe('Dusk');
+  });
+
+  it('keeps the block when a key is pressed in its caption while it is selected', () => {
+    const editor = open('image', { caption: 'Dusk' });
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-caption-button'));
+    const input = within(element(editor)).getByTestId('doc-media-caption-input');
+    const view = editor.prosemirrorView!;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'image') at = pos;
+      return at < 0;
+    });
+    act(() => {
+      view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)));
+    });
+
+    fireEvent.keyDown(input, { key: 'Backspace' });
+    fireEvent.keyPress(input, { key: 'x', charCode: 120 });
+
+    expect((editor.document as Seen[]).map((b) => b.type)).toEqual([
+      'paragraph',
+      'image',
+      'paragraph',
+    ]);
+  });
+
+  it('opens an image full screen, from the toolbar and on a double click (A17)', () => {
+    const editor = open('image');
+
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-fullscreen'));
+    expect(screen.getByTestId('doc-media-fullscreen-image').getAttribute('src')).toBe(URL_OF);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+
+    fireEvent.doubleClick(element(editor).querySelector('img')!);
+    expect(screen.getByTestId('doc-media-fullscreen-image')).toBeTruthy();
+  });
+});
+
+describe('resizing (A8)', () => {
+  it('writes the width once, when the handle is let go', () => {
+    const editor = open('image', { previewWidth: 200, textAlignment: 'left' });
+    const handle = within(element(editor)).getByTestId('doc-media-resize-right');
+
+    fireEvent.pointerDown(handle, { clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: 150, pointerId: 1 });
+    expect(media(editor).props['previewWidth']).toBe(200);
+    fireEvent.pointerUp(handle, { clientX: 150, pointerId: 1 });
+
+    expect(media(editor).props['previewWidth']).toBe(250);
+  });
+
+  it('gives audio no handles', () => {
+    const editor = open('audio');
+
+    expect(within(element(editor)).queryByTestId('doc-media-resize-right')).toBeNull();
+  });
+});

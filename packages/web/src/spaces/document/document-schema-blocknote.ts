@@ -35,6 +35,7 @@ import {
 
 import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
 import { buildListItemSpecs } from '@web/spaces/document/document-list-block';
+import { withMediaView } from '@web/spaces/document/document-media-blocknote';
 import { buildTableSpec } from '@web/spaces/document/document-table-blocknote';
 import {
   unsupportedBlockSpec,
@@ -138,9 +139,9 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     table: buildTableSpec(),
     // The library's own props: image and video carry a width and an
     // alignment, audio neither (inner#1127 A8, A9).
-    image: withProps(enabled.image, QUOTED_PROP),
-    video: withProps(enabled.video, QUOTED_PROP),
-    audio: withProps(enabled.audio, QUOTED_PROP),
+    image: withMediaView(withProps(enabled.image, QUOTED_PROP)),
+    video: withMediaView(withProps(enabled.video, QUOTED_PROP)),
+    audio: withMediaView(withProps(enabled.audio, QUOTED_PROP)),
     unsupportedBlock: unsupportedBlockSpec,
   };
 
