@@ -134,7 +134,7 @@ export function AuthLink({
   return (
     <Link
       to={to}
-      className='text-sm font-medium text-foreground underline-offset-4 hover:underline'
+      className='rounded-chrome-sm text-sm font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
     >
       {children}
     </Link>
