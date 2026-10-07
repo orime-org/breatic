@@ -1240,6 +1240,23 @@
         "splitCell": "Split cell",
         "mergeCells": "Merge cells",
         "textHighlight": "Highlight"
+      },
+      "media": {
+        "image": "Image",
+        "audio": "Audio",
+        "video": "Video",
+        "uploading": "Uploading",
+        "uploadingPercent": "Uploading {percent}%",
+        "readOnly": "Read-only now.",
+        "retry": "Retry",
+        "remove": "Remove",
+        "caption": "Caption",
+        "captionPlaceholder": "Add a caption",
+        "fullscreen": "View full screen",
+        "close": "Close",
+        "download": "Download",
+        "delete": "Delete",
+        "leftOut": "{count, plural, one {# image, video or audio was not pasted.} other {# images, videos or audio were not pasted.}} Drop or paste the files instead."
       }
     },
     "readOnlyReconnect": "Reconnect"

@@ -120,9 +120,11 @@ export function DocumentSpace({
     metaDoc,
   });
 
+  const uploadTarget = React.useMemo(() => ({ projectId, spaceId }), [projectId, spaceId]);
   const handle = useDocumentEditor({
     doc,
     name,
+    uploadTarget,
     caretProvider: provider,
     readWho,
     // Only the ROLE decides this. A refused or read-only connection is reported

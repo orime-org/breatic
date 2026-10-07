@@ -1240,6 +1240,23 @@
         "splitCell": "分割儲存格",
         "mergeCells": "合併儲存格",
         "textHighlight": "背景（醒目提示文字）"
+      },
+      "media": {
+        "image": "圖片",
+        "audio": "音訊",
+        "video": "影片",
+        "uploading": "上傳中",
+        "uploadingPercent": "上傳中 {percent}%",
+        "readOnly": "目前唯讀。",
+        "retry": "重試",
+        "remove": "移除",
+        "caption": "圖說",
+        "captionPlaceholder": "新增圖說",
+        "fullscreen": "全螢幕檢視",
+        "close": "關閉",
+        "download": "下載",
+        "delete": "刪除",
+        "leftOut": "{count} 個圖片、影片或音訊沒有貼上，可以直接拖入或貼上檔案。"
       }
     },
     "readOnlyReconnect": "重新連線"

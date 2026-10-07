@@ -1240,6 +1240,23 @@
         "splitCell": "셀 분할",
         "mergeCells": "셀 병합",
         "textHighlight": "배경(텍스트 강조)"
+      },
+      "media": {
+        "image": "이미지",
+        "audio": "오디오",
+        "video": "동영상",
+        "uploading": "업로드 중",
+        "uploadingPercent": "업로드 중 {percent}%",
+        "readOnly": "현재 읽기 전용입니다.",
+        "retry": "다시 시도",
+        "remove": "제거",
+        "caption": "캡션",
+        "captionPlaceholder": "캡션 추가",
+        "fullscreen": "전체 화면으로 보기",
+        "close": "닫기",
+        "download": "다운로드",
+        "delete": "삭제",
+        "leftOut": "이미지, 동영상, 오디오 {count}개는 붙여넣지 않았습니다. 파일을 직접 끌어다 놓거나 붙여넣으세요."
       }
     },
     "readOnlyReconnect": "다시 연결"

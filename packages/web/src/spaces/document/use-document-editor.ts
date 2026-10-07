@@ -23,6 +23,7 @@ import type { DocumentCommentAuthInput } from '@web/spaces/document/document-com
 import {
   getDocumentEditor,
   type DocumentEditorHandle,
+  type DocumentUploadTarget,
 } from '@web/spaces/document/document-editor-cache';
 
 /** Inputs for {@link useDocumentEditor}. */
@@ -46,6 +47,8 @@ export interface UseDocumentEditorOptions {
   readWho: () => DocumentCommentAuthInput;
   /** False puts the editor in read-only mode (viewer role, history preview). */
   editable?: boolean;
+  /** Where files put into the body are uploaded to; construction-time. */
+  uploadTarget?: DocumentUploadTarget;
   /**
    * False means no editor is BUILT. Used while the content has not arrived yet,
    * and when this build must not open the document at all (its vocabulary no
@@ -82,6 +85,7 @@ export interface UseDocumentEditorOptions {
  * @param options.readWho - Who is reading, read afresh per comment-auth answer.
  * @param options.editable - False for read-only.
  * @param options.enabled - False builds no editor. Destroying one that exists belongs to `DocumentInterceptGuard`, not here.
+ * @param options.uploadTarget - Where files put into the body are uploaded to.
  * @returns The editor and its undo manager, or null while the wiring is absent.
  */
 export function useDocumentEditor({
@@ -91,6 +95,7 @@ export function useDocumentEditor({
   readWho,
   editable = true,
   enabled = true,
+  uploadTarget,
 }: UseDocumentEditorOptions): DocumentEditorHandle | null {
   // From context, not from a prop: the roster is a project-level fact and every
   // layer between here and the project page used to have to forward it.
@@ -113,6 +118,7 @@ export function useDocumentEditor({
           resolveCollaboratorName: collaboratorNames?.resolve,
           readWho,
           editable,
+          ...(uploadTarget !== undefined && { uploadTarget }),
         })
         : null,
     // `editable` is deliberately NOT a dependency: it is construction-time
