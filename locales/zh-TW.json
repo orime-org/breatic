@@ -689,7 +689,8 @@
         "title": "機位",
         "reset": "重設",
         "loadFailed": "3D 視圖載入失敗，重新整理頁面後可用"
-      }
+      },
+      "editMarks": "請修改提示詞裡標出的內容"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -828,6 +829,19 @@
     },
     "panel": {
       "hostDeletedByPeer": "協作者刪除了節點。"
+    },
+    "template": {
+      "title": "範本",
+      "empty": "暫無範本",
+      "unavailable": "目前無法使用",
+      "storyboard-grid-25": {
+        "name": "25 宮格時序圖",
+        "description": "一張 5×5 的連續畫面，用來生成影片"
+      },
+      "costume-sheet": {
+        "name": "三視圖定妝照",
+        "description": "正面、側面、背面三視圖，加局部特寫"
+      }
     }
   },
   "auth": {

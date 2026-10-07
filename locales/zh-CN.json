@@ -689,7 +689,8 @@
         "title": "机位",
         "reset": "重置",
         "loadFailed": "3D 视图加载失败，刷新页面后可用"
-      }
+      },
+      "editMarks": "请修改提示词里标出的内容"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -828,6 +829,19 @@
     },
     "panel": {
       "hostDeletedByPeer": "协作者删除了节点。"
+    },
+    "template": {
+      "title": "模板",
+      "empty": "暂无模板",
+      "unavailable": "当前不可用",
+      "storyboard-grid-25": {
+        "name": "25 宫格时序图",
+        "description": "一张 5×5 的连续画面，用来生成视频"
+      },
+      "costume-sheet": {
+        "name": "三视图定妆照",
+        "description": "正面、侧面、背面三视图，加局部特写"
+      }
     }
   },
   "auth": {

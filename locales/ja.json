@@ -689,7 +689,8 @@
         "title": "カメラアングル",
         "reset": "リセット",
         "loadFailed": "3D ビューを読み込めませんでした。ページを再読み込みすると使えます"
-      }
+      },
+      "editMarks": "プロンプトの印の部分を書き換えてください"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -828,6 +829,19 @@
     },
     "panel": {
       "hostDeletedByPeer": "コラボレーターがノードを削除しました。"
+    },
+    "template": {
+      "title": "テンプレート",
+      "empty": "テンプレートはありません",
+      "unavailable": "利用できません",
+      "storyboard-grid-25": {
+        "name": "25コマ絵コンテ",
+        "description": "1つの物語を5×5で並べた連続画面。動画の素材に"
+      },
+      "costume-sheet": {
+        "name": "三面図キャラクター設定",
+        "description": "正面・側面・背面の三面図と部分のクローズアップ"
+      }
     }
   },
   "auth": {

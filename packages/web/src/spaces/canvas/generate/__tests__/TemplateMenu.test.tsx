@@ -11,6 +11,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 
 import { findTemplate, type GenerationNodeType } from '@breatic/shared';
 
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { TemplateMenu } from '@web/spaces/canvas/generate/TemplateMenu';
 
 const TEMPLATE_MODEL = 'nano-banana-pro-edit-ultra';
@@ -27,7 +28,11 @@ function open(
   models: readonly { name: string }[] = [{ name: TEMPLATE_MODEL }],
   onPick: (id: string) => void = () => {},
 ): void {
-  render(<TemplateMenu nodeType={nodeType} models={models} onPick={(t) => onPick(t.id)} />);
+  render(
+    <TooltipProvider>
+      <TemplateMenu nodeType={nodeType} models={models} onPick={(t) => onPick(t.id)} />
+    </TooltipProvider>,
+  );
   fireEvent.keyDown(screen.getByTestId('generate-template-trigger'), { key: 'Enter' });
 }
 

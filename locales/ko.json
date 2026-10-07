@@ -689,7 +689,8 @@
         "title": "카메라 앵글",
         "reset": "초기화",
         "loadFailed": "3D 보기를 불러오지 못했습니다. 페이지를 새로고침하면 사용할 수 있습니다"
-      }
+      },
+      "editMarks": "프롬프트에서 표시된 부분을 수정하세요"
     },
     "nodeMenu": {
       "generate": "생성",
@@ -828,6 +829,19 @@
     },
     "panel": {
       "hostDeletedByPeer": "공동 작업자가 노드를 삭제했습니다."
+    },
+    "template": {
+      "title": "템플릿",
+      "empty": "템플릿 없음",
+      "unavailable": "사용할 수 없음",
+      "storyboard-grid-25": {
+        "name": "25칸 스토리보드",
+        "description": "한 이야기를 5×5로 담은 연속 장면, 영상 생성용"
+      },
+      "costume-sheet": {
+        "name": "삼면도 캐릭터 시트",
+        "description": "정면·측면·후면 삼면도와 부분 클로즈업"
+      }
     }
   },
   "auth": {

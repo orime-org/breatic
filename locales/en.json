@@ -701,7 +701,8 @@
         "title": "Camera angle",
         "reset": "Reset",
         "loadFailed": "The 3D view could not load. Refresh the page to use it."
-      }
+      },
+      "editMarks": "Edit the marked parts of the prompt"
     },
     "edge": {
       "delete": "Delete connection"
@@ -828,6 +829,19 @@
     },
     "panel": {
       "hostDeletedByPeer": "A collaborator deleted the node."
+    },
+    "template": {
+      "title": "Templates",
+      "empty": "No templates",
+      "unavailable": "Unavailable",
+      "storyboard-grid-25": {
+        "name": "25-panel storyboard",
+        "description": "A 5×5 sequence of one story, for turning into a video"
+      },
+      "costume-sheet": {
+        "name": "Character turnaround",
+        "description": "Front, side and back views plus a close-up of a detail"
+      }
     }
   },
   "auth": {
