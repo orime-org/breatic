@@ -34,7 +34,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
-import { BUBBLE_BAR_CLASS, BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
+import { BUBBLE_BAR_CLASS, BUBBLE_ICON_BUTTON_SIZE, PRESSED_CLASS } from '@web/spaces/document/document-tool-button';
 import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 
 /** The media block types. */
@@ -162,9 +162,9 @@ function ToolButton({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant={pressed === true ? 'secondary' : 'ghost'}
+          variant='ghost'
           size='icon'
-          className={cn(BUBBLE_ICON_BUTTON_SIZE, '[&_svg]:h-4 [&_svg]:w-4', className)}
+          className={cn(BUBBLE_ICON_BUTTON_SIZE, '[&_svg]:h-4 [&_svg]:w-4', pressed === true && PRESSED_CLASS, className)}
           data-action={action}
           data-testid={testId}
           data-state={pressed === true ? 'on' : 'off'}

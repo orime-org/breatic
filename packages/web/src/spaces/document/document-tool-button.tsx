@@ -26,6 +26,7 @@ import type { BlockNoteEditor } from '@blocknote/core';
 import type { Bold } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
+import { cn } from '@web/lib/utils';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -41,6 +42,13 @@ export const BUBBLE_CONTROL_HEIGHT = 'h-[var(--btn-inline)]';
 
 /** The height above plus the 28 the same demo rule gives an icon button. */
 export const BUBBLE_ICON_BUTTON_SIZE = `${BUBBLE_CONTROL_HEIGHT} w-7`;
+
+/**
+ * A pressed button on a bar over the body: the fill every chosen option in
+ * the product reads in (the theme menu's current row), held through hover so
+ * pointing at it does not take the mark away.
+ */
+export const PRESSED_CLASS = 'bg-accent-strong hover:bg-accent-strong';
 
 /**
  * The frame of a bar of these buttons floating over the body: the selection
@@ -120,7 +128,7 @@ export const ToolButton = React.memo(function ToolButton({
   if (!shown || (tool.needsProject === true && projectId === null)) return null;
   return (
     <Button
-      variant={state.active ? 'secondary' : 'ghost'}
+      variant='ghost'
       size='icon'
       aria-label={t(tool.labelKey)}
       aria-pressed={state.active}
@@ -132,7 +140,7 @@ export const ToolButton = React.memo(function ToolButton({
       // collides with the body's own focus. The keyboard route to these
       // commands is their shortcuts.
       tabIndex={-1}
-      className={BUBBLE_ICON_BUTTON_SIZE}
+      className={cn(BUBBLE_ICON_BUTTON_SIZE, state.active && PRESSED_CLASS)}
     >
       <Icon className='h-4 w-4' />
     </Button>

@@ -206,9 +206,19 @@ describe('the toolbar', () => {
       });
     });
 
+    // The one the picture has reads as chosen, in the fill every chosen
+    // option in the product uses.
+    act(() => {
+      editor.updateBlock(media(editor).id, { props: { textAlignment: 'center' } } as never);
+    });
+    expect(within(toolbar(editor)).getByTestId('doc-media-align-center').className).toContain('bg-accent-strong');
+    expect(within(toolbar(editor)).getByTestId('doc-media-align-left').className).not.toContain('bg-accent-strong');
+
     fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-align-left'));
 
     expect(media(editor).props['textAlignment']).toBe('left');
+    expect(within(toolbar(editor)).getByTestId('doc-media-align-left').className).toContain('bg-accent-strong');
+    expect(within(toolbar(editor)).getByTestId('doc-media-align-center').className).not.toContain('bg-accent-strong');
   });
 
   it('never offers alignment on audio, which is as wide as the body', () => {
