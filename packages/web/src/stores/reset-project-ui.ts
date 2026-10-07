@@ -6,7 +6,6 @@ import { canvasGraphs } from '@web/stores/canvas-graph';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { useInpaintStore } from '@web/stores/inpaint';
-import { useMiniToolStore } from '@web/stores/mini-tool';
 import { useUIStore } from '@web/stores/ui';
 
 /**
@@ -45,5 +44,4 @@ export function resetProjectUiStores(projectId: string): void {
   // The brush-stroke undo history (zundo `temporal`) lives outside store state,
   // so clear it too — otherwise a fresh entry could undo back into old strokes.
   useInpaintStore.temporal.getState().clear();
-  useMiniToolStore.getState().reset();
 }
