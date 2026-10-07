@@ -107,7 +107,7 @@ const report = z.discriminatedUnion("state", [
 export function readMiniToolJobReport(answered: unknown): MiniToolJobReport {
   const read = report.safeParse(answered);
   if (!read.success) throw new Error("The ingest Worker answered a job report this side cannot read");
-  return read.data as MiniToolJobReport;
+  return read.data;
 }
 
 /**

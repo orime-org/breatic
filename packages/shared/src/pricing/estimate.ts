@@ -39,7 +39,8 @@ export interface EstimateInput {
   readonly params: Readonly<Record<string, unknown>>;
   readonly prompt?: string;
   /** Clip lengths in seconds of the sources in each param, keyed like `params`. */
-  readonly durations?: Readonly<Record<string, readonly number[]>>;  /**
+  readonly durations?: Readonly<Record<string, readonly number[]>>;
+  /**
    * Params the caller fills from media it already holds, counted as sources
    * whatever fill the catalog declares them with (a mini-tool's source and
    * slots are `fill: tool`).

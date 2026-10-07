@@ -7,6 +7,7 @@
  * and a charge computed from the run's measured usage.
  */
 
+import type * as sharedModule from "@breatic/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -50,7 +51,7 @@ vi.mock("@breatic/domain", () => ({
 }));
 
 vi.mock("@breatic/shared", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@breatic/shared")>()),
+  ...(await importOriginal<typeof sharedModule>()),
   readMiniToolJob: h.readMiniToolJob,
   submitMiniToolJob: h.submitMiniToolJob,
 }));

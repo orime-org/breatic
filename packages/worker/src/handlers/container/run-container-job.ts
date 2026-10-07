@@ -43,6 +43,7 @@ import type { PersistedOutput } from "@worker/handlers/persisted-output.js";
 /** A container run that ended without its outputs; the message is the row's cause code. */
 export class ContainerJobFailed extends Error {
   /**
+   * A failed run, named by the cause code its task row shows.
    * @param reason - The cause code the task row holds.
    */
   constructor(readonly reason: string) {
