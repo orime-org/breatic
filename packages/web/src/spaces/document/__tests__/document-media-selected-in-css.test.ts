@@ -48,4 +48,18 @@ describe('a selected or hovered media block in the stylesheet', () => {
     expect(hovered).toBeDefined();
     expect(hovered).toBe(selected);
   });
+
+  it('draws the same frame on the block the reader selected, off its own selected state', () => {
+    const css = readFileSync(resolve(import.meta.dirname, '../../../index.css'), 'utf8');
+    let own: string | undefined;
+    postcss.parse(css).walkRules((rule) => {
+      rule.walkDecls('outline', (decl) => {
+        if (rule.selectors.some((selector) => selector.includes('[data-selected=\'true\']') && selector.includes('[data-media-frame]'))) {
+          own = decl.value;
+        }
+      });
+    });
+
+    expect(own).toBe('1px solid var(--color-content-link)');
+  });
 });

@@ -13,9 +13,10 @@
  *
  * WHICH SELECTIONS. A range that is not empty (a drag, Shift with an arrow,
  * select-all) paints every no-text block wholly inside it. A node selection
- * paints only a divider or a media block: the reader makes one by clicking it
- * or walking onto it with the arrows, and the 2026-09-18 rule that the machinery's own
- * node selections are not drawn (`index.css:558`) stays for every other block.
+ * paints only a divider: the reader makes one by clicking it or walking onto
+ * it with the arrows, and the 2026-09-18 rule that the machinery's own node
+ * selections are not drawn (`index.css:558`) stays for every other block. A
+ * media block the reader selects draws itself (see `NODE_SELECTED`).
  *
  * WHEN. Only while the reader can see a selection at all. In an editable body
  * that is while it holds the focus. A read-only body never takes the focus —
@@ -66,8 +67,12 @@ const MEDIA = new Set(['image', 'video', 'audio']);
 /** The blocks with no text that a range selection paints. */
 const NO_TEXT = new Set([DIVIDER, UNSUPPORTED_BLOCK, ...MEDIA]);
 
-/** The blocks the reader node-selects by clicking them or arrowing onto them. */
-const NODE_SELECTED = new Set([DIVIDER, ...MEDIA]);
+/**
+ * The node selections painted here. A media block the reader selected draws
+ * its own frame, with its corner knobs and its toolbar, off its own selected
+ * state (`DocumentMediaBlock`), so all of it comes and goes together.
+ */
+const NODE_SELECTED = new Set([DIVIDER]);
 
 /**
  * The class a no-text block in the selection is painted with.

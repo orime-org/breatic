@@ -8,7 +8,7 @@
  * keeps its quote.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 
@@ -151,10 +151,15 @@ describe.each(MEDIA)('a %s block in the selection is framed, not filled', (type)
     );
   }
 
-  it('when it is clicked, which selects it', () => {
+  it('when it is clicked, which selects it: it draws its own frame, and no band', () => {
     const { editor } = open(type);
+    const element = editor.prosemirrorView!.dom.querySelector(`[data-content-type="${type}"]`)!;
 
-    expect(painted(editor)).toBe(true);
+    // The frame comes with the corner knobs and the toolbar off the block's
+    // own selected state, so the selection paint stays off it.
+    expect(element.classList.contains('ProseMirror-selectednode')).toBe(true);
+    expect(element.classList.contains(MEDIA_IN_SELECTION_CLASS)).toBe(false);
+    expect(element.classList.contains(IN_SELECTION_CLASS)).toBe(false);
   });
 
   it('when a range runs over it', () => {
@@ -165,5 +170,45 @@ describe.each(MEDIA)('a %s block in the selection is framed, not filled', (type)
     );
 
     expect(painted(editor)).toBe(true);
+  });
+});
+
+describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
+  it('stops being selected once the focus leaves the body', () => {
+    const { editor } = open(type);
+    const view = editor.prosemirrorView!;
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+    outside.focus();
+
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    expect(view.state.selection.$from.parent.textContent).toBe('Below');
+    outside.remove();
+    vi.restoreAllMocks();
+  });
+
+  it('stays selected when the window itself loses the focus', () => {
+    const { editor } = open(type);
+    const view = editor.prosemirrorView!;
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+
+    view.dom.blur();
+
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    vi.restoreAllMocks();
+  });
+
+  it('stays selected while the focus moves to something inside the body, its toolbar or caption', () => {
+    const { editor } = open(type);
+    const view = editor.prosemirrorView!;
+    const inside = document.createElement('input');
+    view.dom.querySelector(`[data-content-type="${type}"]`)!.appendChild(inside);
+
+    inside.focus();
+
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    inside.remove();
   });
 });

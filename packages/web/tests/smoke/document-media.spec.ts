@@ -576,6 +576,59 @@ async function pastePicture(p: Page, name: string): Promise<void> {
   );
 }
 
+test('a picture is no longer selected once the focus leaves the body, and never re-frames when another is picked (A10)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('alpha');
+  await pastePicture(page, 'first.png');
+  await expect(page.locator(`${IMAGE} img`)).toHaveCount(1, { timeout: UPLOAD_TIMEOUT });
+  await page.keyboard.press('ArrowDown');
+  await pastePicture(page, 'second.png');
+  const first = page.locator(IMAGE).nth(0);
+  const second = page.locator(IMAGE).nth(1);
+  await expect(second.locator('img')).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  await expect(first.locator('img')).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const outlineOf = (block: typeof first): Promise<string> =>
+    block.locator('[data-media-frame]').evaluate((frame) => getComputedStyle(frame).outlineStyle);
+  const knob = (block: typeof first) => block.locator('[data-testid="doc-media-resize-se"]');
+
+  await first.locator('img').click();
+  await expect(knob(first)).toBeVisible();
+  expect(await outlineOf(first)).toBe('solid');
+
+  // A menu outside the body takes the focus: nothing in the body is selected
+  // any more, so the frame, the corner knobs and the toolbar all go.
+  await page.getByTestId('theme-toggle').click();
+  await expect(page.getByTestId('theme-popover')).toBeVisible();
+  await expect(knob(first)).toHaveCount(0);
+  expect(await outlineOf(first)).toBe('none');
+  await expect(first.locator('[data-testid="doc-media-toolbar"][data-shown="true"]')).toHaveCount(0);
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('theme-popover')).toBeHidden();
+
+  // Every frame of the first picture's outline while the second is clicked.
+  await first.locator('[data-media-frame]').evaluate((frame) => {
+    const seen: string[] = [];
+    (window as unknown as { seenOutline: string[] }).seenOutline = seen;
+    const sample = (): void => {
+      seen.push(getComputedStyle(frame).outlineStyle);
+      if (seen.length < 120) requestAnimationFrame(sample);
+    };
+    sample();
+  });
+  // A hand's click: the button is held for a moment before it comes up.
+  const target = (await second.locator('img').boundingBox())!;
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await expect(knob(second)).toBeVisible();
+  await page.waitForFunction(() => (window as unknown as { seenOutline: string[] }).seenOutline.length >= 120);
+  const seen = await page.evaluate(() => (window as unknown as { seenOutline: string[] }).seenOutline);
+  expect(seen).not.toContain('solid');
+  await expect(knob(first)).toHaveCount(0);
+});
+
 test('a picture dragged by itself moves like a row dragged by its handle (A10)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('alpha');

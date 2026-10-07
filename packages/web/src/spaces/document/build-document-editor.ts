@@ -42,6 +42,7 @@ import { documentNodeCompositionExtension } from '@web/spaces/document/document-
 import { documentDividerInputExtension } from '@web/spaces/document/document-divider';
 import { documentBodyEdgePointerExtension } from '@web/spaces/document/document-body-edge-pointer';
 import { documentBodyEdgeExtension } from '@web/spaces/document/document-body-edge-selection';
+import { documentNodeSelectionFocusExtension } from '@web/spaces/document/document-node-selection-focus';
 import { documentSelectionPaintExtension } from '@web/spaces/document/document-selection-paint';
 import { documentEnterExtension } from '@web/spaces/document/document-enter';
 import { documentKeyboardMoveExtension } from '@web/spaces/document/document-keyboard-move';
@@ -167,6 +168,7 @@ export function buildDocumentEditor(
       documentBodyEdgePointerExtension(),
       documentBodyEdgeExtension(),
       documentSelectionPaintExtension(),
+      documentNodeSelectionFocusExtension(),
       documentLinkEditMarkExtension(),
       documentDragDropExtension(),
       documentNoNodeClickExtension(),
