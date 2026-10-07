@@ -48,6 +48,7 @@ import {
   PANEL_EDITOR_PARAM,
   promptPlainText,
   promptTextOf,
+  templatePrompt,
   proposalMarkSegments,
   referenceCapExceeded,
   storyboardSend,
@@ -1052,18 +1053,32 @@ export function renderProposalForModel(answer: ProposalAnswer): string {
 }
 
 /**
- * The templates as the agent reads them: id, what each makes, and how many
- * references its prompt asks the reader to put in.
+ * The templates as the agent reads them: id, what each makes, how many
+ * references it takes, and its prompt in the reader's language, so the agent
+ * can rewrite that prompt rather than write one from nothing.
+ * @returns The paragraph appended to the tool's description.
  */
-const TEMPLATE_GUIDE =
-  "Templates a generate node can start from: " +
-  GENERATION_TEMPLATES.map((t) => {
-    const references = t.references;
-    return `${t.id} (${t.nodeType}, ${t.mode}, ${t.model}, ${references} reference${references === 1 ? "" : "s"}): ${t.agentNote}`;
-  }).join("; ") +
-  ". Each reference is an empty node wired in, as with any proposal.";
+function templateGuide(): string {
+  return (
+    "Templates a generate node can start from: " +
+    GENERATION_TEMPLATES.map((t) => {
+      const references = t.references;
+      return `${t.id} (${t.nodeType}, ${t.mode}, ${t.model}, ${references} reference${references === 1 ? "" : "s"}): ${t.agentNote}. Its prompt: "${promptTextOf(templatePrompt(t))}"`;
+    }).join("; ") +
+    ". Each reference is an empty node wired in, as with any proposal. Name the template on the node and leave " +
+    "out what you keep. To put the reader's own story or detail in, send the template's prompt with its ✏️ spot " +
+    "rewritten, keeping every [📎 …] spot as it is: each one is where an empty node gets mentioned, and image to " +
+    "image sends only the pictures the prompt mentions."
+  );
+}
 
-export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnswer> = tool({
+/**
+ * The proposal tool, built per turn: its description carries the template
+ * prompts in the reader's language, which only a turn knows.
+ * @returns The tool.
+ */
+export function makeProposeCanvasAction(): Tool<z.infer<typeof inputSchema>, ProposalAnswer> {
+  return tool({
   description:
     "The canvas is where models are run and where the pieces of one job are " +
     "laid out in relation to each other. Propose the canvas nodes for what " +
@@ -1086,7 +1101,7 @@ export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnsw
     "can judge; the rest is theirs to run. Say in your reply, in numbered " +
     `steps written from what ${GET_PRODUCT_GUIDE} says, what they do once it ` +
     "is placed -- what to put in, what to pick, what to press. " +
-    TEMPLATE_GUIDE,
+    templateGuide(),
   inputSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
   toModelOutput: ({ output }) => ({ type: "text", value: renderProposalForModel(output) }),
@@ -1099,3 +1114,4 @@ export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnsw
     return answerFor(proposal);
   },
 });
+}

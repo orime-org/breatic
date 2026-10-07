@@ -22,7 +22,7 @@ import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js
 import { canvasCapabilities } from "@domain/agent/tools/canvas-capabilities.js";
 import { generationModels } from "@domain/agent/tools/generation-models.js";
 import { productGuide } from "@domain/agent/tools/product-guide.js";
-import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
+import { makeProposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 
 /**
@@ -54,7 +54,9 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   [GET_CANVAS_CAPABILITIES]: () => canvasCapabilities,
   [LIST_GENERATION_MODELS]: () => generationModels,
   [GET_PRODUCT_GUIDE]: () => productGuide,
-  [PROPOSE_CANVAS_ACTION]: () => proposeCanvasAction,
+  // Built per turn: its description quotes the template prompts in the
+  // reader's language.
+  [PROPOSE_CANVAS_ACTION]: () => makeProposeCanvasAction(),
   // Holds nothing between calls, so one object serves every turn.
   [JUDGE_LIKELIHOOD]: () => judgeLikelihood,
 } as const;
@@ -180,7 +182,7 @@ export {
   makeSearchTools,
   canvasCapabilities,
   generationModels,
-  proposeCanvasAction,
+  makeProposeCanvasAction,
 };
 
 export { renderCapabilitiesForModel } from "@domain/agent/tools/canvas-capabilities.js";
