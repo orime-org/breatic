@@ -11,11 +11,11 @@ import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
 import { BLOCK_TYPE_ITEMS } from '@web/spaces/document/document-block-type';
-import { BLOCK_MENU_ROWS } from '@web/spaces/document/document-block-menu-rows';
+import { BLOCK_MENU_ROWS, TABLE_MENU_ROWS } from '@web/spaces/document/document-block-menu-rows';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
 
 describe('the block handle menu', () => {
-  it('holds seven rows in the order the demo has them', () => {
+  it('holds the demo\'s seven rows in its order, with Add to Agent after Comment', () => {
     expect(BLOCK_MENU_ROWS.map((row) => row.id)).toEqual([
       'blockType',
       'duplicate',
@@ -23,6 +23,19 @@ describe('the block handle menu', () => {
       'align',
       'color',
       'comment',
+      'addToAgent',
+      'delete',
+    ]);
+  });
+
+  it('holds the table entry\'s rows with Add to Agent after Comment', () => {
+    expect(TABLE_MENU_ROWS.map((row) => row.id)).toEqual([
+      'insertBelow',
+      'duplicate',
+      'indent',
+      'unindent',
+      'comment',
+      'addToAgent',
       'delete',
     ]);
   });

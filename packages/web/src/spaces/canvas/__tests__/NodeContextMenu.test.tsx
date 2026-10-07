@@ -119,17 +119,15 @@ describe('NodeContextMenu', () => {
   });
 
   it('node target: shows generate / upload / tools at the top', () => {
-    setup({ target: 'node', onUpload: () => {} });
+    setup({ target: 'node', onUpload: () => {}, onGenerate: () => {} });
     expect(screen.getByTestId('node-menu-generate')).toBeInTheDocument();
     expect(screen.getByTestId('node-menu-upload')).toBeInTheDocument();
     expect(screen.getByTestId('node-menu-tools')).toBeInTheDocument();
   });
 
-  it('generate is a disabled placeholder without onGenerate; tools always disabled; upload active', () => {
+  it('leaves generate out for a node kind that does not generate; tools always disabled; upload active', () => {
     setup({ target: 'node', onUpload: () => {} });
-    expect(screen.getByTestId('node-menu-generate')).toHaveAttribute(
-      'data-disabled',
-    );
+    expect(screen.queryByTestId('node-menu-generate')).toBeNull();
     expect(screen.getByTestId('node-menu-tools')).toHaveAttribute(
       'data-disabled',
     );

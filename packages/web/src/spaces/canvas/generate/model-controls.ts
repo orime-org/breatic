@@ -15,9 +15,19 @@
  * modes only is drawn in those modes only, so every reader names the mode.
  */
 
-import { appliesInMode, type ItemField, type ModelEntry, type ParamDescriptor } from '@breatic/shared';
+import {
+  CAMERA_ANGLE_AXES,
+  appliesInMode,
+  nearestCameraAngle,
+  type CameraAngle,
+  type CameraAngleParams,
+  type ItemField,
+  type ModelEntry,
+  type ParamDescriptor,
+} from '@breatic/shared';
 
 import type { ParamOption } from '@web/spaces/canvas/generate/ParamOptionGroup';
+import type { SliderStop } from '@web/spaces/canvas/generate/ParamSliderRow';
 
 /** One field of a list editor's row. */
 export type ItemFieldControl =
@@ -28,12 +38,45 @@ export type ItemFieldControl =
 export type ModelControl =
   | { kind: 'toggle'; name: string }
   | { kind: 'choice'; name: string; options: ParamOption[] }
-  | { kind: 'range'; name: string; min: number; max: number; step: number }
+  | { kind: 'range'; name: string; min: number; max: number; step: number; stops?: SliderStop[] }
   | { kind: 'text'; name: string }
-  | { kind: 'items'; name: string; max: number | undefined; fields: ItemFieldControl[] };
+  | { kind: 'items'; name: string; max: number | undefined; fields: ItemFieldControl[] }
+  | { kind: 'cameraAngle'; name: 'camera_angle'; params: CameraAngleParams };
 
 /**
- * How one value of a choice reads on screen.
+ * How a camera pose reads, azimuth then elevation then distance, each step
+ * named by its param's `value_labels` (inner#830).
+ * @param specs - The model's params.
+ * @param params - The three param names.
+ * @param pose - The pose; read at the nearest step of the grid.
+ * @returns The three names.
+ */
+export function cameraAngleNames(
+  specs: Readonly<Record<string, Pick<ParamDescriptor, 'value_labels'>>>,
+  params: CameraAngleParams,
+  pose: CameraAngle,
+): [string, string, string] {
+  const at = nearestCameraAngle(pose);
+  return [
+    optionLabel(specs[params.azimuth] ?? {}, at.azimuth),
+    optionLabel(specs[params.elevation] ?? {}, at.elevation),
+    optionLabel(specs[params.distance] ?? {}, at.distance),
+  ];
+}
+
+/**
+ * The params a control writes, by name.
+ * @param control - One of a model's own controls.
+ * @returns Its param names: three for a camera pose, one otherwise.
+ */
+function controlParams(control: ModelControl): string[] {
+  return control.kind === 'cameraAngle'
+    ? CAMERA_ANGLE_AXES.map((axis) => control.params[axis])
+    : [control.name];
+}
+
+/**
+ * How one value of a choice, or one step of a range, reads on screen.
  * @param spec - The param's declaration.
  * @param value - One of its values.
  * @returns The declared label, else the value with a capital first letter.
@@ -41,6 +84,17 @@ export type ModelControl =
 export function optionLabel(spec: Pick<ParamDescriptor, 'value_labels'>, value: string | number): string {
   const raw = String(value);
   return spec.value_labels?.[raw] ?? raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+/**
+ * The steps of a range its `value_labels` name, in order along the track.
+ * @param spec - The range's declaration.
+ * @returns One stop per named step; empty when none is named.
+ */
+export function rangeStops(spec: Pick<ParamDescriptor, 'value_labels'>): SliderStop[] {
+  return Object.entries(spec.value_labels ?? {})
+    .map(([at, label]) => ({ value: Number(at), label }))
+    .sort((a, b) => a.value - b.value);
 }
 
 /**
@@ -64,7 +118,15 @@ function controlFor(name: string, spec: ParamDescriptor): ModelControl | undefin
     return { kind: 'choice', name, options };
   }
   if (typeof spec.min === 'number' && typeof spec.max === 'number') {
-    return { kind: 'range', name, min: spec.min, max: spec.max, step: spec.step ?? 1 };
+    const stops = rangeStops(spec);
+    return {
+      kind: 'range',
+      name,
+      min: spec.min,
+      max: spec.max,
+      step: spec.step ?? 1,
+      ...(stops.length > 0 ? { stops } : {}),
+    };
   }
   return undefined;
 }
@@ -90,9 +152,16 @@ function fieldControl(name: string, field: ItemField): ItemFieldControl {
  */
 export function modelControls(model: ModelEntry, mode: string): ModelControl[] {
   const controls: ModelControl[] = [];
+  const pose = model.camera_angle;
+  const inPose = new Set(pose ? CAMERA_ANGLE_AXES.map((axis) => pose[axis]) : []);
   for (const [name, spec] of Object.entries(model.params)) {
     if (spec.fill !== 'panel' || typeof spec.label !== 'string') continue;
     if (!appliesInMode(spec, mode)) continue;
+    // The three params of one pose are one control, drawn where the first of them is declared.
+    if (pose && inPose.has(name)) {
+      if (!controls.some((c) => c.kind === 'cameraAngle')) controls.push({ kind: 'cameraAngle', name: 'camera_angle', params: pose });
+      continue;
+    }
     const control = controlFor(name, spec);
     if (control) controls.push(control);
   }
@@ -118,15 +187,19 @@ export function ownControlValues(
   if (!model) return {};
   const out: Record<string, unknown> = {};
   for (const control of modelControls(model, mode)) {
-    if (params[control.name] !== undefined) out[control.name] = params[control.name];
+    for (const name of controlParams(control)) {
+      if (params[name] !== undefined) out[name] = params[name];
+    }
   }
   return out;
 }
 
 /**
  * What the model's own controls stand on, as the settings pill shows it: a
- * choice by its option's name, a range by its number, a switch by its name
- * while it is on, a text box or a list by its name while it holds something.
+ * choice by its option's name, a range by its step's `value_labels` name or
+ * else its number, a switch by its name
+ * while it is on, a text box or a list by its name while it holds something,
+ * a camera pose by the names of its azimuth, elevation and distance.
  * @param model - The active model.
  * @param mode - The mode the panel is in.
  * @param params - What the node holds for it, with the model's defaults resolved in.
@@ -144,11 +217,19 @@ export function ownControlSummary(
   const parts: string[] = [];
   for (const control of modelControls(model, mode)) {
     if (include && !include(control)) continue;
+    if (control.kind === 'cameraAngle') {
+      const { azimuth, elevation, distance } = control.params;
+      const [a, e, d] = [params[azimuth], params[elevation], params[distance]];
+      if (typeof a === 'number' && typeof e === 'number' && typeof d === 'number') {
+        parts.push(...cameraAngleNames(model.params, control.params, { azimuth: a, elevation: e, distance: d }));
+      }
+      continue;
+    }
     const shown = params[control.name];
     if (control.kind === 'choice' && (typeof shown === 'string' || typeof shown === 'number')) {
       parts.push(optionLabel(model.params[control.name] ?? {}, shown));
     } else if (control.kind === 'range' && typeof shown === 'number') {
-      parts.push(String(shown));
+      parts.push(optionLabel(model.params[control.name] ?? {}, shown));
     } else if (control.kind === 'toggle' && shown === true) {
       parts.push(nameOf(control.name));
     } else if (control.kind === 'text' && typeof shown === 'string' && shown.trim() !== '') {

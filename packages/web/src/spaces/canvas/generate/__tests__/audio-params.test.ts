@@ -33,7 +33,14 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
 // The two shipped tts models, as their yaml declares them.
 const ELEVENLABS = model({
   voice_id: { description: '', default: 'Alice', remote_source: 'voices' },
-  stability: { description: '', min: 0, max: 1, step: 0.05, default: 0.5 },
+  stability: {
+    description: '',
+    min: 0,
+    max: 1,
+    step: 0.05,
+    default: 0.5,
+    value_labels: { 0: 'Creative', 0.5: 'Natural', 1: 'Robust' },
+  },
   similarity: { description: '', min: 0, max: 1, step: 0.05, default: 0.75 },
 });
 const FISH = model({
@@ -52,13 +59,12 @@ describe('audioParamControls — each model states its own speaking params', () 
         min: 0,
         max: 1,
         step: 0.05,
-        // The vendor describes these three positions and no others, so the
-        // slider names them where they sit rather than leaving a reader to
-        // guess what 0.50 sounds like.
+        // The vendor describes these three positions and no others; the
+        // model names them in English in its value_labels.
         stops: [
-          { value: 0, labelKey: 'canvas.generatePanel.voiceStabilityCreative' },
-          { value: 0.5, labelKey: 'canvas.generatePanel.voiceStabilityNatural' },
-          { value: 1, labelKey: 'canvas.generatePanel.voiceStabilityRobust' },
+          { value: 0, label: 'Creative' },
+          { value: 0.5, label: 'Natural' },
+          { value: 1, label: 'Robust' },
         ],
       },
       {

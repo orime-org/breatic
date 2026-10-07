@@ -13,6 +13,7 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import {
   CameraPicker,
   cameraSummary,
@@ -54,6 +55,8 @@ interface RatioResolutionPickerProps {
   value: RatioResolutionValue & Readonly<Record<string, unknown>>;
   /** Called with the changed field only. */
   onChange: (partial: object) => void;
+  /** The first image the model is sent, which a camera-angle control puts on its card. */
+  subjectImageUrl?: string;
 }
 
 /**
@@ -79,6 +82,7 @@ export const RATIO_RESOLUTION_PARAMS = ['aspect_ratio', 'resolution'] as const;
  * @param root0.mode - The mode the panel is in.
  * @param root0.value - The current ratio + resolution.
  * @param root0.onChange - Called with the changed field.
+ * @param root0.subjectImageUrl - The first image the model is sent.
  * @returns The ratio + resolution picker.
  */
 export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
@@ -86,6 +90,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   mode,
   value,
   onChange,
+  subjectImageUrl,
 }: RatioResolutionPickerProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
@@ -165,7 +170,9 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
         // the screen edge like the generate panel instead of jumping near a border.
         avoidCollisions={false}
         aria-label={t('canvas.generatePanel.ratio')}
-        className='relative w-64 p-3 shadow-md'
+        // A camera-angle control names four heights and three distances under
+        // its sliders; at w-64 those words overlap in English and Japanese.
+        className={cn('relative p-3 shadow-md', model.camera_angle ? 'w-80' : 'w-64')}
       >
         <ParamOptionGroup
           label={t('canvas.generatePanel.resolution')}
@@ -188,6 +195,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
           value={value}
           onChange={onChange}
           className={hasShared ? SECTION_BREAK : undefined}
+          subjectUrl={subjectImageUrl}
         />
         {cameraSupported ? (
           // The camera sits in the model's own section, under its switches.

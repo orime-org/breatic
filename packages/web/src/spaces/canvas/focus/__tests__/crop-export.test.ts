@@ -127,7 +127,7 @@ describe('prepareCropSource', () => {
     // halves are needed — the attribute asks for CORS, the param makes sure
     // the request is not answered from that cache.
     expect(img.crossOrigin).toBe('anonymous');
-    expect(new URL(img.src).searchParams.get('focus-crop')).toBe('1');
+    expect(new URL(img.src).searchParams.get('cors')).toBe('1');
   });
 
   it('视频源：同样跨域取一份，并且只要元数据', async () => {
@@ -138,7 +138,7 @@ describe('prepareCropSource', () => {
     );
     expect(el).toBe(video);
     expect(video.crossOrigin).toBe('anonymous');
-    expect(new URL(video.src).searchParams.get('focus-crop')).toBe('1');
+    expect(new URL(video.src).searchParams.get('cors')).toBe('1');
     // metadata + a seek is all a single frame needs; 'auto' would pull the
     // whole file over the network for one frame.
     expect(video.preload).toBe('metadata');

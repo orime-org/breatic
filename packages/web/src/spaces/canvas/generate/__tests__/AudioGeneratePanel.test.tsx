@@ -263,7 +263,14 @@ describe('AudioGeneratePanel — speaking params (#1960 A15)', () => {
       // The shape elevenlabs.yaml declares: a continuous range, which the
       // panel renders as a slider with the vendor's three named stops beneath
       // it. A list of values here would be a model no catalog ships.
-      stability: { description: '', min: 0, max: 1, step: 0.05, default: 0.5 },
+      stability: {
+        description: '',
+        min: 0,
+        max: 1,
+        step: 0.05,
+        default: 0.5,
+        value_labels: { 0: 'Creative', 0.5: 'Natural', 1: 'Robust' },
+      },
     },
   };
 

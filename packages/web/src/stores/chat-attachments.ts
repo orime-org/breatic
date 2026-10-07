@@ -14,7 +14,12 @@ export type TrayFailure = 'upload' | 'extract' | 'too_long';
 
 /** One item waiting above the chat box. */
 export interface TrayItem {
-  /** Made from the picked node ids for a piece of the canvas, or fresh for a file picked from disk. */
+  /**
+   * Names what was attached, so attaching it again replaces it: the picked
+   * node ids for a piece of the canvas, a document block's id, a hash of a
+   * document selection's Markdown or of pasted content; fresh for a file
+   * picked from disk.
+   */
   id: string;
   /** What the reader sees it called. */
   name: string;

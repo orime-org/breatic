@@ -43,12 +43,12 @@ export async function openTray(projectId: string): Promise<Tray | undefined> {
 }
 
 /**
- * Hand items from the canvas to the agent.
+ * Hand items to the agent: from the canvas, a document or a paste.
  *
  * The agent column is brought back into view so the reader sees them arrive.
  * The batch goes in whole or not at all, and what stopped it is said above
  * the box.
- * @param projectId - The project the canvas is in.
+ * @param projectId - The project the items come from.
  * @param items - The items, ready, in order.
  */
 export async function attachToChat(projectId: string, items: readonly TrayItem[]): Promise<void> {

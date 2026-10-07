@@ -79,6 +79,7 @@ export type {
   ModelProvider,
   ModelEntry,
   CameraCommandEntry,
+  CameraAngleParams,
   PricingContract,
   ExtraStep,
   SourceGroup,

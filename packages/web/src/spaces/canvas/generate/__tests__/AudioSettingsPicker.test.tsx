@@ -59,7 +59,14 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
 
 const ELEVENLABS = model({
   voice_id: { description: '', default: 'Alice', remote_source: 'voices' },
-  stability: { description: '', min: 0, max: 1, step: 0.05, default: 0.5 },
+  stability: {
+    description: '',
+    min: 0,
+    max: 1,
+    step: 0.05,
+    default: 0.5,
+    value_labels: { 0: 'Creative', 0.5: 'Natural', 1: 'Robust' },
+  },
   similarity: { description: '', min: 0, max: 1, step: 0.05, default: 0.75 },
 });
 // As minimax-speech-2.8-hd declares them: volume is a gain, 1 unchanged.

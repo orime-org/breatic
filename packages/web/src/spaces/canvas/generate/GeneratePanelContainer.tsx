@@ -73,7 +73,7 @@ import {
   PromptEditor,
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { buildGenerateTaskPayload, imageEstimateInput } from '@web/spaces/canvas/generate/task-payload';
-import { poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
+import { mentionedReferenceUrls, poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
 import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
@@ -186,12 +186,15 @@ function GeneratePanelBody({
 
   // The `@`-picked source ids, mirrored to a ref for the same reason as the
   // prompt text: onExecute reads them SYNCHRONOUSLY so the i2i source subset is
-  // the prompt's state at click time (state would lag a frame). No React state
-  // mirror — nothing in the render tree depends on the picks (the rail shows the
-  // full pool).
+  // the prompt's state at click time (state would lag a frame). The state copy
+  // is for the render tree: the camera-angle sphere puts the first picked image
+  // on its card (inner#830). It changes only when the picks do, so typing
+  // elsewhere in the prompt does not redraw the panel.
   const atMentionedRef = React.useRef<string[]>([]);
+  const [atMentioned, setAtMentioned] = React.useState<readonly string[]>([]);
   const handleAtMentionsChange = React.useCallback((sourceIds: string[]) => {
     atMentionedRef.current = sourceIds;
+    setAtMentioned((was) => (was.join('\n') === sourceIds.join('\n') ? was : sourceIds));
   }, []);
   // Click a reference-rail chip → insert its @-mention at the prompt cursor
   // (user 2026-07-10 item 8); the editor places it at the caret or the end.
@@ -730,6 +733,20 @@ function GeneratePanelBody({
     ],
   );
 
+  // The first image the model is sent, which the camera-angle sphere puts on
+  // its card: the picks in rail order, crops after node rows, as the submit
+  // sends them.
+  const subjectImageUrl = React.useMemo(
+    () =>
+      mentionedReferenceUrls({
+        references: vm.references,
+        focusImages: vm.focusImages,
+        atMentioned: new Set(atMentioned),
+        nodes,
+      }).image[0],
+    [vm.references, vm.focusImages, atMentioned, nodes],
+  );
+
   return (
     <GeneratePanel
       models={stableModels}
@@ -739,6 +756,7 @@ function GeneratePanelBody({
       promptRequired={vm.promptRequired}
       params={stableParams}
       references={stableReferences}
+      subjectImageUrl={subjectImageUrl}
       referenceKinds={referenceKinds}
       creditText={creditText}
       executeRefusal={executeRefusal}

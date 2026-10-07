@@ -293,6 +293,7 @@ test('A5: the table icon opens the table menu, and dragging it moves the whole t
     'doc-block-row-indent',
     'doc-block-row-unindent off',
     'doc-block-row-comment',
+    'doc-block-row-addToAgent',
     'doc-block-row-delete',
   ]);
   await page.keyboard.press('Escape');

@@ -188,10 +188,7 @@ describe('the audio slots', () => {
     // Walked off the table rather than hand-listed: a param added later comes
     // with a label key, and a list written out here would not know about it —
     // the panel would print the raw key at whichever locale forgot it.
-    const paramKeys = Object.values(AUDIO_PARAMS).flatMap((spec) => [
-      spec.labelKey,
-      ...(spec.stops ? spec.stops.map((s) => s.labelKey) : []),
-    ]);
+    const paramKeys = Object.values(AUDIO_PARAMS).map((spec) => spec.labelKey);
     const keys = [
       ...AUDIO_MODE_OPTIONS.map((o) => o.placeholderKey),
       ...paramKeys,

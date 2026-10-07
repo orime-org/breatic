@@ -28,6 +28,7 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
+import { DocumentProjectProvider } from '@web/spaces/document/document-project-context';
 
 import { textblockReading } from './textblocks';
 
@@ -123,20 +124,30 @@ export function closeShared(): void {
  * open yet explain themselves through a tooltip.
  * @param editor - An editor with its body already in place.
  * @param readOnly - True for a viewer.
+ * @param projectId - The project the document sits in, for the entries that
+ *   hand its words to the Agent; left out, the editor is mounted outside one.
  */
 export function mountDocumentEditor(
   editor: HarnessEditor,
   readOnly = false,
+  projectId?: string,
 ): void {
   const surface = surfaces.get(editor);
   if (!surface) throw new Error('open the editor with openSharedBody first');
+  const body = (
+    <DocumentEditor
+      handle={{ editor, surface }}
+      readOnly={readOnly}
+      myRole={readOnly ? 'viewer' : 'editor'}
+    />
+  );
   render(
     <TooltipProvider>
-      <DocumentEditor
-        handle={{ editor, surface }}
-        readOnly={readOnly}
-        myRole={readOnly ? 'viewer' : 'editor'}
-      />
+      {projectId === undefined ? (
+        body
+      ) : (
+        <DocumentProjectProvider projectId={projectId}>{body}</DocumentProjectProvider>
+      )}
     </TooltipProvider>,
   );
 }

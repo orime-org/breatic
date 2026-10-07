@@ -59,10 +59,10 @@ interface NodeContextMenuProps {
   onUpload?: () => void;
   /**
    * Open the Generate panel for this node. Passed for content nodes of a
-   * modality that generates (`canGenerate`); when
-   * absent the Generate item stays a disabled placeholder (the modalities
-   * whose slice has not shipped). Which PANEL opens is decided downstream by
-   * the modality, so this stays one handler however many panels exist.
+   * modality that generates (`canGenerate`); when absent the Generate item
+   * does not render, so a text node never shows it. Which PANEL opens is
+   * decided downstream by the modality, so this stays one handler however
+   * many panels exist.
    */
   onGenerate?: () => void;
   /**
@@ -134,13 +134,14 @@ interface NodeContextMenuProps {
  * (coming soon). Two different questions decide what a reader sees. Whether
  * this KIND of node is ever offered an item is answered by leaving it out:
  * `snapshotOffered` and `assetActionsOffered` drop Snapshot and the three
- * asset items whole, because an item greyed on every text node forever says
- * "not right now" about something never on offer. Whether THIS node can act
- * on an item it is offered is answered by greying it: Generate, Snapshot,
- * Download, Understand and Tools render without their handler and disable,
- * the work being built and only the material missing, which is also why their
- * cursor refuses rather than saying nothing. The rest — reset, history, copy,
- * duplicate, rename, delete — render only when their handler is supplied.
+ * asset items whole, and Generate is dropped with its handler, because an
+ * item greyed on every text node forever says "not right now" about something
+ * never on offer. Whether THIS node can act on an item it is offered is
+ * answered by greying it: Snapshot, Download, Understand and Tools render
+ * without their handler and disable, the work being built and only the
+ * material missing, which is also why their cursor refuses rather than saying
+ * nothing. The rest — generate, reset, history, copy, duplicate, rename,
+ * delete — render only when their handler is supplied.
  * Lock / unlock is always present. Shortcut hints are platform-aware via
  * {@link formatShortcut}.
  * @param root0 - Component props.
@@ -224,18 +225,17 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
       >
         {!isGroup && onUpload ? (
           <>
-            {/* Generate is enabled for content nodes that support it (image),
-                gated by the onGenerate handler; Tools is still a disabled
-                placeholder (no mini-tool wired yet). A disabled item has no
-                side effect when clicked. */}
-            <DropdownMenuItem
-              disabled={!onGenerate}
-              data-testid='node-menu-generate'
-              onSelect={onGenerate}
-            >
-              <Sparkles className='mr-2 h-4 w-4' aria-hidden='true' />
-              {t('canvas.nodeMenu.generate')}
-            </DropdownMenuItem>
+            {/* Generate is on the menu of a node kind that generates and
+                nowhere else: the handler is passed exactly for those. */}
+            {onGenerate ? (
+              <DropdownMenuItem
+                data-testid='node-menu-generate'
+                onSelect={onGenerate}
+              >
+                <Sparkles className='mr-2 h-4 w-4' aria-hidden='true' />
+                {t('canvas.nodeMenu.generate')}
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem data-testid='node-menu-upload' onSelect={onUpload}>
               <Upload className='mr-2 h-4 w-4' aria-hidden='true' />
               {t('canvas.nodeMenu.upload')}

@@ -296,7 +296,7 @@ jobs:
           REF: ${{ github.ref }}
           REVISION: ${{ github.sha }}
         run: |
-          node --test scripts/release.test.mjs
+          node --test scripts/release.test.mjs scripts/backend-sourcemaps.test.mjs
           node scripts/release.mjs ci "$REF" "$REVISION" >> "$GITHUB_OUTPUT"
           if [[ "$REF" == refs/tags/* ]]; then
             git merge-base --is-ancestor "$REVISION" origin/main
@@ -349,6 +349,7 @@ jobs:
           REVISION: ${{ github.sha }}
         run: |
           docker run --rm --entrypoint cat "$BACKEND" /app/build-info.json > backend-info.json
+          docker run --rm -v "$PWD/scripts/backend-sourcemaps.mjs:/tmp/verify-maps.mjs:ro" --entrypoint node "$BACKEND" /tmp/verify-maps.mjs /app --installed
           docker run --rm --entrypoint cat "$WEB" /usr/share/nginx/html/app-version.json > web-info.json
           node --input-type=module <<'JS'
           import { readFileSync } from 'node:fs';

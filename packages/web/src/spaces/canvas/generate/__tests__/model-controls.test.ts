@@ -14,8 +14,15 @@ import { GENERATION_NODE_BUCKETS, type ModelEntry, type ParamDescriptor } from '
 import { describe, it, expect } from 'vitest';
 import { parse } from 'yaml';
 
-import { modelControls, ownControlSummary } from '@web/spaces/canvas/generate/model-controls';
+import {
+  cameraAngleNames,
+  modelControls,
+  ownControlSummary,
+  ownControlValues,
+} from '@web/spaces/canvas/generate/model-controls';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+
+import { CAMERA_PARAMS, CAMERA_SPECS } from './camera-angle-specs';
 
 /**
  * A model declaring the given params.
@@ -208,12 +215,86 @@ describe('ownControlSummary', () => {
     expect(ownControlSummary(OWN, 't2i', { quality: 'low', chaos: 5, negative_prompt: '' }, nameOf)).toEqual(['Low', '5']);
   });
 
+  it('names a range by its value_labels where one names the step it stands on', () => {
+    const named = model({
+      strength: { description: '', label: 'Strength', min: 0, max: 1, step: 0.5, value_labels: { '1': 'Full', '0': 'Off' }, default: 0, fill: 'panel' },
+    });
+    expect(modelControls(named, 't2i')).toEqual([
+      { kind: 'range', name: 'strength', min: 0, max: 1, step: 0.5, stops: [{ value: 0, label: 'Off' }, { value: 1, label: 'Full' }] },
+    ]);
+    expect(ownControlSummary(named, 't2i', { strength: 1 }, nameOf)).toEqual(['Full']);
+    expect(ownControlSummary(named, 't2i', { strength: 0.5 }, nameOf)).toEqual(['0.5']);
+  });
+
   it('reads what the node holds, and names a switch only while it is on', () => {
     expect(ownControlSummary(OWN, 't2i', { quality: 'xhigh', chaos: 5, transparency: true }, nameOf)).toEqual([
       'XHigh',
       '5',
       'name:transparency',
     ]);
+  });
+});
+
+describe('a model whose three params set one camera pose', () => {
+  const ANGLES = {
+    ...model({
+      quality: { description: '', label: 'Quality', values: ['low', 'high'], default: 'low', fill: 'panel' },
+      ...CAMERA_SPECS,
+    }),
+    camera_angle: { azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' },
+  };
+  const nameOf = (name: string): string => `name:${name}`;
+
+  it('draws the three as one camera-angle control where the first of them is declared', () => {
+    expect(modelControls(ANGLES, 't2i')).toEqual([
+      { kind: 'choice', name: 'quality', options: [{ value: 'low', label: 'Low' }, { value: 'high', label: 'High' }] },
+      {
+        kind: 'cameraAngle',
+        name: 'camera_angle',
+        params: { azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' },
+      },
+    ]);
+  });
+
+  it('hands the picker all three values, so a committed pose redraws it', () => {
+    expect(
+      ownControlValues(ANGLES, 't2i', { quality: 'low', horizontal_angle: 90, vertical_angle: 30, distance: 2 }),
+    ).toEqual({ quality: 'low', horizontal_angle: 90, vertical_angle: 30, distance: 2 });
+  });
+
+  it('names the pose in the pill by its azimuth, elevation and distance', () => {
+    expect(
+      ownControlSummary(ANGLES, 't2i', { quality: 'low', horizontal_angle: 45, vertical_angle: -30, distance: 2 }, nameOf),
+    ).toEqual([
+      'Low',
+      'Front right',
+      'Low angle',
+      'Wide shot',
+    ]);
+  });
+
+  it('names a pose off the grid by its nearest step', () => {
+    expect(cameraAngleNames(CAMERA_SPECS, CAMERA_PARAMS, { azimuth: 100, elevation: 50, distance: 0 })).toEqual([
+      'Right',
+      'High angle',
+      'Close-up',
+    ]);
+  });
+
+  it('leaves the three as plain sliders on a model that does not declare them a pose', () => {
+    const plain = { ...ANGLES, camera_angle: undefined };
+    expect(modelControls(plain, 't2i').map((c) => c.kind)).toEqual(['choice', 'range', 'range', 'range']);
+  });
+});
+
+describe('the camera-angle control\'s own words in every locale', () => {
+  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'])('%s has the title, reset and load failure, and no pose names', (lang) => {
+    const json = JSON.parse(readFileSync(resolve(process.cwd(), `../../locales/${lang}.json`), 'utf8')) as {
+      canvas: { generatePanel: { cameraAngle?: Record<string, unknown> } };
+    };
+    const words = json.canvas.generatePanel.cameraAngle ?? {};
+    expect(Object.keys(words).sort()).toEqual(['loadFailed', 'reset', 'title']);
+    expect(Object.values(words).every((w) => typeof w === 'string' && w !== '')).toBe(true);
   });
 });
 
