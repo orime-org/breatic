@@ -64,7 +64,7 @@ import crypto from "node:crypto";
 import { getLegalConfig } from "@server/config/legal.js";
 import bcrypt from "bcryptjs";
 import postgres from "postgres";
-import { initCore, loadLocales, AppError, TooManyRequestsError, env, getRedis } from "@breatic/core";
+import { initCore, loadLocales, AppError, TooManyRequestsError, env, getRedis, runWithLocale } from "@breatic/core";
 
 try {
   initCore(process.env);
@@ -223,15 +223,15 @@ describe("sending the code fails by throwing", () => {
 });
 
 describe("verifying the code", () => {
-  it("writes a verified account with the password and language from the sign-up", async () => {
+  it("writes a verified account with the sign-up's password and the language the code was entered in", async () => {
     const email = freshEmail();
     const { ticket } = await startSignup({ ticket: null, email, password: "password1", locale: "ko" });
-    const user = await verifySignupCode(ticket, lastCode());
+    const user = await runWithLocale("ja", () => verifySignupCode(ticket, lastCode()));
 
     expect(user.email).toBe(email);
     const row = await stored(email);
     expect(row!.email_verified).toBe(true);
-    expect(row!.locale).toBe("ko");
+    expect(row!.locale).toBe("ja");
     expect(await bcrypt.compare("password1", row!.hashed_password)).toBe(true);
     // The pending sign-up is gone once it became an account.
     expect(await statusOf(verifySignupCode(ticket, lastCode()))).toBe(410);
