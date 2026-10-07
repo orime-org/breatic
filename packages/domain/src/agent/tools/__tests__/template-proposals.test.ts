@@ -84,3 +84,43 @@ describe("templates in proposals", () => {
     expect(makeProposeCanvasAction().description).toMatch(/keep(ing)? every \[📎/i);
   });
 });
+
+describe("an empty node wired into a reference pool", () => {
+  /**
+   * The template proposal with the agent's own prompt on the generate node.
+   * @param prompt - The prompt the agent wrote.
+   * @param template - Whether the node names the template.
+   * @returns The proposal as the agent sends it.
+   */
+  function withPrompt(
+    prompt: NonNullable<Parameters<typeof answerFor>[0]["nodes"][number]["prompt"]>,
+    template = true,
+  ): Parameters<typeof answerFor>[0] {
+    const sent = proposalWith("storyboard-grid-25");
+    const generate = template
+      ? { ...sent.nodes[1]!, prompt }
+      : { role: "generate" as const, type: "image" as const, name: "Storyboard", mode: "i2i", model: "nano-banana-pro-edit-ultra", prompt };
+    return { ...sent, nodes: [sent.nodes[0]!, generate] };
+  }
+
+  it("is refused when the prompt names it only in words, since the picture put there would not be sent", () => {
+    const answer = answerFor(withPrompt([{ text: "Use [📎 character reference] as the reference. A 5x5 storyboard." }]));
+    expect(answer).toMatchObject({ placed: false, reason: expect.stringContaining('"kind":"asset"') });
+  });
+
+  it("is placed when a material mark mentions it", () => {
+    const answer = answerFor(
+      withPrompt([
+        { text: "Use " },
+        { slot: { kind: "asset", label: "character reference", note: "Put the photo in the empty node" } },
+        { text: " as the reference. A 5x5 storyboard." },
+      ]),
+    );
+    expect(answer.placed).toBe(true);
+  });
+
+  it("holds a proposal without a template to the same rule", () => {
+    const answer = answerFor(withPrompt([{ text: "A 5x5 storyboard of the character." }], false));
+    expect(answer).toMatchObject({ placed: false, reason: expect.stringContaining('"kind":"asset"') });
+  });
+});
