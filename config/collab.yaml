@@ -118,6 +118,15 @@ quiet: true
 # there is the rescue file plus the alert, not storing more often.
 store_interval_ms: 10000
 
+# ── Project edit time (#1020) ─────────────────────
+# After a Space document's store lands, or a Space is created, renamed,
+# locked, deleted or restored, collab records the project as edited for the
+# studio list's "last edited" sort. One instance writes a project at most
+# once per this many milliseconds, so the list's edit time is at most this
+# stale and the business database sees at most one small write per edited
+# project per interval.
+project_edit_touch_interval_ms: 60000
+
 # There is deliberately no timeout over a store, here or anywhere. A store is
 # one event with two outcomes — it lands or it does not — and only the write
 # itself can say which. A clock racing it cancels nothing, so giving up on one

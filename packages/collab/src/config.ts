@@ -58,6 +58,11 @@ const collabConfigSchema = z.object({
   // Timed store (#40). Storing is driven by a timer rather than by edits,
   // so a failed write is retried and has no consequence for the editor.
   store_interval_ms: z.number().int().positive().default(10_000),
+
+  // The shortest gap between two writes of one project's edit time from this
+  // instance (#1020). Bounds how often stores reach the business database;
+  // the studio list's "last edited" is at most this stale.
+  project_edit_touch_interval_ms: z.number().int().positive().default(60_000),
   store_rescue_dir: z.string().default("logs/collab/rescue"),
   store_alert_email: z.string().default(""),
   store_alert_window_ms: z.number().int().positive().default(600_000),

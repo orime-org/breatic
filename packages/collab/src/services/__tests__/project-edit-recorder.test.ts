@@ -72,6 +72,22 @@ describe("createProjectEditRecorder", () => {
     expect(h.recorder.size()).toBe(1);
   });
 
+  it("reports a write that throws before returning a promise, without throwing", async () => {
+    const failure = new Error("not configured");
+    let now = 0;
+    const onError = vi.fn();
+    const recorder = createProjectEditRecorder({
+      intervalMs: 60_000,
+      now: () => now++,
+      touch: () => {
+        throw failure;
+      },
+      onError,
+    });
+    expect(() => recorder.record("p-1")).not.toThrow();
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(failure, "p-1"));
+  });
+
   it("reports a failed write without throwing", async () => {
     const failure = new Error("db down");
     const h = harness(async () => {

@@ -47,6 +47,7 @@
  * Returns a `SpaceRpcResponse` whose `id` echoes the request id so
  * the client can demultiplex concurrent in-flight RPCs.
  */
+import { recordProjectEdit } from "@collab/services/project-edit-recorder.js";
 import { randomUUID } from "node:crypto";
 
 import type { Hocuspocus } from "@hocuspocus/server";
@@ -491,7 +492,8 @@ type PublishOutcome =
  *    facts — a callback can do both, and a caller that undoes earlier
  *    steps must not infer one from the other.
  * @param conn - Direct connection to the project's meta doc.
- * @param logCtx - Fields for the line written when either side fails.
+ * @param logCtx - Fields for the line written when either side fails; its
+ *   `projectId` is the project a broadcast change records as edited.
  * @param write - The publishing callback. Calls `mark()` right before its
  *   first write, then writes. A guard that decides the operation's answer
  *   without writing returns that answer — a refusal or an idempotent
@@ -500,7 +502,7 @@ type PublishOutcome =
  */
 async function publishMetaChange(
   conn: MetaDirectConnection,
-  logCtx: Record<string, unknown>,
+  logCtx: { projectId: string } & Record<string, unknown>,
   write: (doc: Y.Doc, mark: () => void) => SpaceRpcResponse | void,
 ): Promise<PublishOutcome> {
   let wrote = false;
@@ -561,6 +563,9 @@ async function publishMetaChange(
       return { kind: "failed-before-broadcast" };
     }
   }
+  // A change that reached the clients is an edit of the project, for the
+  // studio list's "last edited" sort.
+  if (wrote) recordProjectEdit(logCtx.projectId);
   return decided === undefined
     ? { kind: "published" }
     : { kind: "decided", response: decided, broadcast: wrote };
