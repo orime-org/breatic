@@ -104,3 +104,139 @@ describe('canvas session store', () => {
     expect(store.getState().editingTextNode).toBeNull();
   });
 });
+
+describe('mini-tool draft (inner#888 §7.2)', () => {
+  const OPEN = { sourceContent: 'https://cdn.example/a.png', params: { creativity: 0 } };
+
+  it('opens the tool panel with a fresh draft built from what the caller resolved', () => {
+    const store = createCanvasSessionStore();
+
+    store.getState().openMiniTool('node-a', 'image.upscale', OPEN);
+
+    expect(store.getState().panelHostId).toBe('node-a');
+    expect(store.getState().panelKind).toBe('miniTool');
+    expect(store.getState().miniTool).toEqual({
+      toolId: 'image.upscale',
+      sourceContent: 'https://cdn.example/a.png',
+      prompt: '',
+      params: { creativity: 0 },
+      slots: {},
+    });
+  });
+
+  it('keeps the draft and the opening when the same tool is chosen again on its node', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('node-a', 'image.upscale', OPEN);
+    store.getState().setMiniToolParam('creativity', 4);
+    const session = store.getState().panelSession;
+
+    store.getState().openMiniTool('node-a', 'image.upscale', OPEN);
+
+    expect(store.getState().panelSession).toBe(session);
+    expect(store.getState().miniTool?.params).toEqual({ creativity: 4 });
+  });
+
+  it('starts a new opening with a fresh draft when the tool changes', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('node-a', 'image.upscale', OPEN);
+    store.getState().setMiniToolPrompt('sharper');
+    const session = store.getState().panelSession;
+
+    store.getState().openMiniTool('node-a', 'image.remove-bg', {
+      sourceContent: OPEN.sourceContent,
+      params: {},
+    });
+
+    expect(store.getState().panelSession).not.toBe(session);
+    expect(store.getState().miniTool).toMatchObject({
+      toolId: 'image.remove-bg',
+      prompt: '',
+      params: {},
+    });
+  });
+
+  it('starts a new opening when the same tool opens on another node', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('node-a', 'image.upscale', OPEN);
+    store.getState().setMiniToolParam('creativity', 4);
+    const session = store.getState().panelSession;
+
+    store.getState().openMiniTool('node-b', 'image.upscale', OPEN);
+
+    expect(store.getState().panelSession).not.toBe(session);
+    expect(store.getState().miniTool?.params).toEqual({ creativity: 0 });
+  });
+
+  it('drops the draft when another panel takes the slot or the panel closes', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('node-a', 'image.upscale', OPEN);
+    store.getState().openGeneratePanel('node-a', 'image');
+    expect(store.getState().miniTool).toBeNull();
+
+    store.getState().openMiniTool('node-a', 'image.upscale', OPEN);
+    store.getState().closeActivePanel();
+    expect(store.getState().miniTool).toBeNull();
+    expect(store.getState().panelKind).toBeNull();
+  });
+
+  it('replaces a single slot and appends to a many slot', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('node-a', 'image.digital-human', OPEN);
+
+    store.getState().fillMiniToolSlot('audio', { url: 'a1.mp3', duration: 3 }, false);
+    store.getState().fillMiniToolSlot('audio', { url: 'a2.mp3', duration: 5 }, false);
+    store.getState().fillMiniToolSlot('refs', { url: 'r1.png' }, true);
+    store.getState().fillMiniToolSlot('refs', { url: 'r2.png' }, true);
+
+    expect(store.getState().miniTool?.slots).toEqual({
+      audio: { url: 'a2.mp3', duration: 5 },
+      refs: [{ url: 'r1.png' }, { url: 'r2.png' }],
+    });
+  });
+
+  it('picks for a tool slot under its own purpose, carrying the slot and its cap', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('node-a', 'image.digital-human', OPEN);
+
+    store.getState().startMiniToolSlotPick('node-a', 'audio', 1);
+
+    expect(store.getState().pickSession).toEqual({
+      nodeId: 'node-a',
+      purpose: 'miniToolSlot',
+      slotKey: 'audio',
+      capacity: 1,
+    });
+    expect(store.getState().panelKind).toBe('miniTool');
+  });
+});
+
+describe('history focus (inner#888 §7.7)', () => {
+  it('opens history focused on the entry View asked for', () => {
+    const store = createCanvasSessionStore();
+
+    store.getState().openHistoryPanel('node-a', 'h-1');
+
+    expect(store.getState().panelKind).toBe('history');
+    expect(store.getState().historyFocus).toBe('h-1');
+  });
+
+  it('holds no focus when history is opened without one', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openHistoryPanel('node-a', 'h-1');
+
+    store.getState().openHistoryPanel('node-b');
+
+    expect(store.getState().historyFocus).toBeNull();
+  });
+
+  it('drops the focus when another panel opens or the panel closes', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openHistoryPanel('node-a', 'h-1');
+    store.getState().openGeneratePanel('node-a', 'image');
+    expect(store.getState().historyFocus).toBeNull();
+
+    store.getState().openHistoryPanel('node-a', 'h-1');
+    store.getState().closeActivePanel();
+    expect(store.getState().historyFocus).toBeNull();
+  });
+});
