@@ -276,6 +276,50 @@ interface LocalParamControlProps {
   source: MiniToolSourceInfo;
 }
 
+interface RectSideInputProps {
+  side: 'w' | 'h';
+  /** The side's size in source pixels. */
+  value: number;
+  onCommit: (side: 'w' | 'h', value: number) => void;
+}
+
+/**
+ * One side of the crop, typed as digits. The field holds what is being typed
+ * and writes it when the field is left or Enter is pressed, so a side can be
+ * cleared and retyped; a field left empty goes back to the side's size.
+ * @param root0 - Component props.
+ * @param root0.side - Which side.
+ * @param root0.value - The side's size.
+ * @param root0.onCommit - Receives the typed size.
+ * @returns The field.
+ */
+function RectSideInput({ side, value, onCommit }: RectSideInputProps): React.JSX.Element {
+  const [draft, setDraft] = React.useState<string | null>(null);
+  /**
+   * Write what was typed, if anything, and stop holding it.
+   */
+  const commit = (): void => {
+    if (draft !== null && draft !== '') onCommit(side, Number(draft));
+    setDraft(null);
+  };
+  return (
+    <Input
+      type='text'
+      inputMode='numeric'
+      autoComplete='off'
+      data-testid={`mini-tool-rect-${side}`}
+      aria-label={side === 'w' ? 'W' : 'H'}
+      value={draft ?? String(value)}
+      onChange={(event) => setDraft(event.target.value.replace(/[^0-9]/g, ''))}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') commit();
+      }}
+      className='h-8 w-24 text-xs tabular-nums'
+    />
+  );
+}
+
 /**
  * The control one browser or container param calls for.
  * @param root0 - Component props.
@@ -346,27 +390,9 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
         <div className='flex flex-col gap-1.5'>
           <span className='text-xs font-medium text-muted-foreground'>{label}</span>
           <div className='flex items-center gap-1.5'>
-            <Input
-              type='number'
-              autoComplete='off'
-              data-testid='mini-tool-rect-w'
-              aria-label='W'
-              value={Math.round(rect.w)}
-              min={1}
-              onChange={(event) => set('w', Number(event.target.value))}
-              className='h-8 w-24 text-xs tabular-nums'
-            />
+            <RectSideInput side='w' value={Math.round(rect.w)} onCommit={set} />
             <span className='text-xs text-muted-foreground'>×</span>
-            <Input
-              type='number'
-              autoComplete='off'
-              data-testid='mini-tool-rect-h'
-              aria-label='H'
-              value={Math.round(rect.h)}
-              min={1}
-              onChange={(event) => set('h', Number(event.target.value))}
-              className='h-8 w-24 text-xs tabular-nums'
-            />
+            <RectSideInput side='h' value={Math.round(rect.h)} onCommit={set} />
           </div>
         </div>
       );

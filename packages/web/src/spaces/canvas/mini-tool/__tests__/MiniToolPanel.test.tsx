@@ -80,8 +80,35 @@ describe('MiniToolPanel', () => {
 
   it('shows the full source as the crop until the reader sets one', () => {
     mount({ spec: tool('image.crop'), params: { aspect: 'free', rect: null } });
-    expect(screen.getByTestId('mini-tool-rect-w')).toHaveValue(1600);
-    expect(screen.getByTestId('mini-tool-rect-h')).toHaveValue(1000);
+    expect(screen.getByTestId('mini-tool-rect-w')).toHaveValue('1600');
+    expect(screen.getByTestId('mini-tool-rect-h')).toHaveValue('1000');
+  });
+
+  // A9: clearing a side to type a new one leaves the field empty until the
+  // typing is done; the size is written when the field is left or Enter pressed.
+  it('lets a side be cleared and retyped, writing it when the typing is done', () => {
+    const props = mount({ spec: tool('image.crop'), params: { aspect: 'free', rect: null } });
+    const width = screen.getByTestId('mini-tool-rect-w');
+    fireEvent.change(width, { target: { value: '' } });
+    expect(width).toHaveValue('');
+    fireEvent.change(width, { target: { value: '500' } });
+    expect(props.onParams).not.toHaveBeenCalled();
+    fireEvent.blur(width);
+    expect(props.onParams).toHaveBeenLastCalledWith({ rect: { x: 0, y: 0, w: 500, h: 1000 } });
+  });
+
+  it('writes a typed side on Enter, and drops a side left empty', () => {
+    const props = mount({ spec: tool('image.crop'), params: { aspect: 'free', rect: null } });
+    const height = screen.getByTestId('mini-tool-rect-h');
+    fireEvent.change(height, { target: { value: '40x0' } });
+    expect(height).toHaveValue('400');
+    fireEvent.keyDown(height, { key: 'Enter' });
+    expect(props.onParams).toHaveBeenLastCalledWith({ rect: { x: 0, y: 0, w: 1600, h: 400 } });
+    const width = screen.getByTestId('mini-tool-rect-w');
+    fireEvent.change(width, { target: { value: '' } });
+    fireEvent.blur(width);
+    expect(props.onParams).toHaveBeenCalledTimes(1);
+    expect(width).toHaveValue('1600');
   });
 
   it('names a required slot and starts its pick', () => {
