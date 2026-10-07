@@ -204,7 +204,7 @@ function ProjectTable({ projects, columns, sorted, placeholders }: ProjectTableP
 function timeCell(project: ContainerProject, column: ProjectTimeKind, t: Translate): string {
   const at = projectTime(project, column);
   if (at !== null) return formatRelativeTime(at, t);
-  return column === 'opened' ? t('studio.container.list.neverOpened') : '—';
+  return column === 'opened' ? t('studio.container.card.neverOpened') : '—';
 }
 
 // Stretches the name's link or button over the whole row, so the row opens
@@ -223,10 +223,12 @@ const STRETCH =
  */
 function ProjectRow({ project, columns }: { project: ContainerProject; columns: readonly ProjectTimeKind[] }): React.JSX.Element {
   const t = useTranslation();
+  // `isolate` keeps the menu's layer inside the row, below the toolbar pinned
+  // over the list.
   return (
     <tr
       data-testid={`project-row-${project.id}`}
-      className='relative text-muted-foreground hover:[&>td]:bg-accent hover:[&>td]:text-foreground has-[:focus-visible]:[&>td]:bg-accent has-[:focus-visible]:[&>td]:text-foreground'
+      className='relative isolate text-muted-foreground hover:[&>td]:bg-accent hover:[&>td]:text-foreground has-[:focus-visible]:[&>td]:bg-accent has-[:focus-visible]:[&>td]:text-foreground'
     >
       <td className={`${CELL} w-px pr-0`}>
         <div className='aspect-video w-12 overflow-hidden rounded-content-sm bg-muted text-muted-foreground'>

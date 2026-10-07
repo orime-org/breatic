@@ -1451,7 +1451,7 @@
         "openedAt": "{time}に開いた",
         "editedAt": "{time}に編集",
         "archivedAt": "{time}にアーカイブ",
-        "neverOpened": "未オープン · {time}に作成"
+        "neverOpened": "未オープン"
       },
       "projects": {
         "new": "Project を新規作成",
@@ -1658,7 +1658,6 @@
           "archived": "アーカイブ日",
           "role": "自分の役割"
         },
-        "neverOpened": "未オープン",
         "loadFailed": "Projects を読み込めませんでした",
         "pageFailed": "残りの Projects を読み込めませんでした",
         "retry": "再試行",

@@ -95,9 +95,15 @@ describe('ProjectCard', () => {
     expect(screen.getByText('Opened 5 minutes ago')).toBeInTheDocument();
   });
 
-  it('says a project was never opened, with its creation time, under the last-opened sort', () => {
+  it('says only that a project was never opened, under the last-opened sort', () => {
     setup({ ...project, lastOpenedAt: null }, 'opened');
-    expect(screen.getByText('Never opened · Created 30 minutes ago')).toBeInTheDocument();
+    expect(screen.getByText('Never opened')).toBeInTheDocument();
+    expect(screen.queryByText(/Created/)).not.toBeInTheDocument();
+  });
+
+  it('keeps its own layers inside the card, so its menu never rises above the pinned toolbar', () => {
+    setup();
+    expect(screen.getByTestId(`project-card-${project.id}`).className).toMatch(/(^|\s)isolate(\s|$)/);
   });
 
   it('shows the edit time under the last-edited sort', () => {

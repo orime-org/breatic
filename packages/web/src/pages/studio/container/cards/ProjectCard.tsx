@@ -50,10 +50,12 @@ export function ProjectCard({ project, timeKind }: ProjectCardProps): React.JSX.
       }
     />
   );
+  // `isolate` keeps the menu's and badge's layers inside the card, below the
+  // toolbar pinned over the list.
   return (
     <div
       data-testid={`project-card-${project.id}`}
-      className='group relative overflow-hidden rounded-chrome border border-border bg-card transition-colors hover:border-foreground-disabled has-[>:first-child:focus-visible]:ring-1 has-[>:first-child:focus-visible]:ring-ring'
+      className='group relative isolate overflow-hidden rounded-chrome border border-border bg-card transition-colors hover:border-foreground-disabled has-[>:first-child:focus-visible]:ring-1 has-[>:first-child:focus-visible]:ring-ring'
     >
       <ProjectOpenTarget project={project} className={OPEN_TARGET}>
         {body}

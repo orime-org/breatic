@@ -1451,7 +1451,7 @@
         "openedAt": "打开于 {time}",
         "editedAt": "修改于 {time}",
         "archivedAt": "归档于 {time}",
-        "neverOpened": "从未打开 · 创建于 {time}"
+        "neverOpened": "从未打开"
       },
       "projects": {
         "new": "新建 Project",
@@ -1658,7 +1658,6 @@
           "archived": "归档时间",
           "role": "我的角色"
         },
-        "neverOpened": "从未打开",
         "loadFailed": "Projects 没加载出来",
         "pageFailed": "后面的 Projects 没加载出来",
         "retry": "重试",

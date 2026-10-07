@@ -1451,7 +1451,7 @@
         "openedAt": "{time}에 열람",
         "editedAt": "{time}에 수정",
         "archivedAt": "{time}에 보관",
-        "neverOpened": "열지 않음 · {time}에 생성"
+        "neverOpened": "열지 않음"
       },
       "projects": {
         "new": "새 Project",
@@ -1658,7 +1658,6 @@
           "archived": "보관일",
           "role": "내 역할"
         },
-        "neverOpened": "열지 않음",
         "loadFailed": "Projects를 불러오지 못했습니다",
         "pageFailed": "나머지 Projects를 불러오지 못했습니다",
         "retry": "다시 시도",

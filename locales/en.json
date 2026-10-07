@@ -1451,7 +1451,7 @@
         "openedAt": "Opened {time}",
         "editedAt": "Edited {time}",
         "archivedAt": "Archived {time}",
-        "neverOpened": "Never opened · Created {time}"
+        "neverOpened": "Never opened"
       },
       "projects": {
         "new": "New project",
@@ -1658,7 +1658,6 @@
           "archived": "Archived",
           "role": "My role"
         },
-        "neverOpened": "Never opened",
         "loadFailed": "Projects did not load",
         "pageFailed": "The rest of the projects did not load",
         "retry": "Retry",

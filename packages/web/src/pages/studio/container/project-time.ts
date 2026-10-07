@@ -50,7 +50,7 @@ const LINE_KEY: Record<ProjectTimeKind, string> = {
 
 /**
  * The card's meta line for one of the project's times. A project the viewer
- * never opened says so beside its creation time.
+ * never opened says only that.
  * @param project - The project.
  * @param kind - Which time to show.
  * @param t - The translator.
@@ -60,6 +60,6 @@ export function projectTimeLine(project: ContainerProject, kind: ProjectTimeKind
   const at = projectTime(project, kind);
   const created = formatRelativeTime(project.createdAt, t);
   if (at !== null) return t(LINE_KEY[kind], { time: formatRelativeTime(at, t) });
-  if (kind === 'opened') return t('studio.container.card.neverOpened', { time: created });
+  if (kind === 'opened') return t('studio.container.card.neverOpened');
   return t(LINE_KEY.created, { time: created });
 }

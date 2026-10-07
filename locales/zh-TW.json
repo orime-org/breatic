@@ -1451,7 +1451,7 @@
         "openedAt": "開啟於 {time}",
         "editedAt": "修改於 {time}",
         "archivedAt": "封存於 {time}",
-        "neverOpened": "從未開啟 · 建立於 {time}"
+        "neverOpened": "從未開啟"
       },
       "projects": {
         "new": "新增 Project",
@@ -1658,7 +1658,6 @@
           "archived": "封存時間",
           "role": "我的角色"
         },
-        "neverOpened": "從未開啟",
         "loadFailed": "Projects 沒有載入",
         "pageFailed": "後面的 Projects 沒有載入",
         "retry": "重試",

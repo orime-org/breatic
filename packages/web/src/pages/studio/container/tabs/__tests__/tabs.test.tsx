@@ -192,6 +192,11 @@ describe('ProjectsTab — views and loading', () => {
     }
   });
 
+  it('keeps each row\'s layers inside the row, so its menu never rises above the pinned toolbar', () => {
+    withQuery(<ProjectsTab list={listOf([STUDIO_VISIBLE])} {...LIST_CONTROLS} view='list' studioRole='guest' />);
+    expect(screen.getByTestId('project-row-a').className).toMatch(/(^|\s)isolate(\s|$)/);
+  });
+
   it('gives a first-load placeholder row the name column\'s width, so the headers do not move when the rows arrive', () => {
     withRouter(
       <ProjectsTab list={listOf([], { isPending: true, total: null })} {...LIST_CONTROLS} view='list' studioRole='guest' />,
