@@ -114,11 +114,11 @@ export async function runJob(job: RunBody): Promise<void> {
       }
       await put(output.url, file);
 
-      const probed = await runTool("ffprobe", probeArgs(file), job.toolTimeoutMs).catch(() => null);
+      const probed = await runTool("ffprobe", probeArgs(file, "own-file"), job.toolTimeoutMs).catch(() => null);
       const numbers = pickMediaMetadata(probed === null ? NOTHING_FOUND : readProbeOutput(probed.toString("utf8")));
       let cover: { width: number | null; height: number | null } | null = null;
       if (output.coverUrl !== undefined && numbers.width !== null) {
-        const frame = await runTool("ffmpeg", coverArgs(file), job.toolTimeoutMs, COVER_MAX_BYTES).catch(() => null);
+        const frame = await runTool("ffmpeg", coverArgs(file, "own-file"), job.toolTimeoutMs, COVER_MAX_BYTES).catch(() => null);
         if (frame !== null && frame.length > 0) {
           const coverFile = join(dir, "cover.png");
           await writeFile(coverFile, frame);

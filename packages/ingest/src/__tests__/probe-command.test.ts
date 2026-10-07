@@ -54,6 +54,15 @@ describe("what ffprobe is asked", () => {
     expect(args).toContain("-protocol_whitelist");
     expect(args[args.indexOf("-protocol_whitelist") + 1]).toBe("http,tcp");
   });
+
+  // A mini-tool run reads back the file its own ffmpeg wrote; with only the
+  // object's protocols allowed, ffprobe refuses it and the result is filed
+  // with no size, no duration and no cover.
+  it("reads a file the container wrote through the file protocol alone", () => {
+    for (const args of [probeArgs("/tmp/run/out.mp4", "own-file"), coverArgs("/tmp/run/out.mp4", "own-file")]) {
+      expect(args[args.indexOf("-protocol_whitelist") + 1]).toBe("file");
+    }
+  });
 });
 
 describe("what ffmpeg is asked for the cover", () => {
