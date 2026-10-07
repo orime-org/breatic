@@ -26,6 +26,8 @@ export interface NodeHistoryPanelProps {
   modality: HistoryModality;
   /** Id of the row to tag "current" (the node's live content), or null. */
   currentEntryId: string | null;
+  /** Id of the row a task row's View opened the history at, once loaded. */
+  focusedEntryId: string | null;
   /** The first page is still loading (past the grace delay) → skeleton (#1812). */
   isLoading: boolean;
   /** The first page load errored (no data) → in-panel error + retry (#1812). */
@@ -57,6 +59,7 @@ export interface NodeHistoryPanelProps {
  * @param root0.total - Total rows for the header count.
  * @param root0.modality - Host node modality.
  * @param root0.currentEntryId - Row id to tag "current", or null.
+ * @param root0.focusedEntryId - Row id to outline and scroll to, or null.
  * @param root0.isLoading - First page still loading → skeleton.
  * @param root0.isError - First page load errored → in-panel error + retry.
  * @param root0.onRetry - Retry the first-page load.
@@ -72,6 +75,7 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
   total,
   modality,
   currentEntryId,
+  focusedEntryId,
   isLoading,
   isError,
   onRetry,
@@ -86,6 +90,19 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
     enabled: hasNextPage && !isFetchingNextPage,
     onReachEnd: onLoadMore,
   });
+  // Scrolled to once, when the focused row first renders; the reader's own
+  // scrolling after that is theirs.
+  const viewportRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const viewport = viewportRef.current;
+    if (focusedEntryId === null || viewport === null) return;
+    const row = Array.from(
+      viewport.querySelectorAll<HTMLElement>('[data-entry-id]'),
+    ).find((element) => element.dataset.entryId === focusedEntryId);
+    if (row === undefined) return;
+    viewport.scrollTop +=
+      row.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+  }, [focusedEntryId]);
 
   return (
     // `nowheel` + `nodrag`: the panel floats over the ReactFlow canvas, which
@@ -170,7 +187,10 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
         </div>
       ) : (
         <div ref={scrollerRef}>
-          <ScrollArea viewportClassName='max-h-[318px] px-1.5 pb-1.5'>
+          <ScrollArea
+            viewportRef={viewportRef}
+            viewportClassName='max-h-[318px] px-1.5 pb-1.5'
+          >
             <div className='flex flex-col gap-0.5'>
               {entries.map((entry) => (
                 <NodeHistoryRow
@@ -178,6 +198,7 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
                   entry={entry}
                   modality={modality}
                   isCurrent={entry.id === currentEntryId}
+                  isFocused={entry.id === focusedEntryId}
                   onRestore={onRestore}
                 />
               ))}

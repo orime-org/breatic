@@ -77,6 +77,11 @@ export interface NodeHistoryRowProps {
   /** Whether this row is the node's current content (tagged, not restorable). */
   isCurrent: boolean;
   /**
+   * Whether a task row's View opened the history at this entry (inner#888
+   * §7.7): the row is outlined so the reader sees which result it meant.
+   */
+  isFocused: boolean;
+  /**
    * Restore an entry onto the node. Takes the entry so the panel can pass ONE
    * stable handler to every row (an inline `() => onRestore(entry)` per row
    * would give each memo'd row a fresh prop identity and defeat the memo).
@@ -160,6 +165,7 @@ function previewFor(
  * @param root0.entry - The history row.
  * @param root0.modality - The host node's modality.
  * @param root0.isCurrent - Whether this row is the node's current content.
+ * @param root0.isFocused - Whether a task row's View opened the history here.
  * @param root0.onRestore - Restore this entry onto the node.
  * @returns The row.
  */
@@ -167,6 +173,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
   entry,
   modality,
   isCurrent,
+  isFocused,
   onRestore,
 }: NodeHistoryRowProps): React.JSX.Element {
   const t = useTranslation();
@@ -217,9 +224,12 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
   return (
     <div
       data-testid='node-history-row'
+      data-entry-id={entry.id}
+      data-focused={isFocused ? 'true' : undefined}
       className={
         'group grid grid-cols-[46px_1fr_auto] items-center gap-2.5 rounded-content-sm px-1.5 py-1.5 transition-colors' +
         (isCurrent ? ' bg-accent-strong' : ' hover:bg-accent') +
+        (isFocused ? ' ring-1 ring-inset ring-active-border' : '') +
         (failed ? ' opacity-60' : '')
       }
     >

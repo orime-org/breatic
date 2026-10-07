@@ -95,6 +95,7 @@ function renderRow(
       entry={e}
       modality={modality}
       isCurrent={false}
+      isFocused={false}
       onRestore={() => {}}
     />,
   );
@@ -142,12 +143,14 @@ describe('NodeHistoryRow (#1619)', () => {
           entry={entry()}
           modality='image'
           isCurrent
+          isFocused={false}
           onRestore={() => {}}
         />
         <NodeHistoryRow
           entry={entry({ id: 'h2' })}
           modality='image'
           isCurrent={false}
+          isFocused={false}
           onRestore={() => {}}
         />
       </>,
@@ -321,6 +324,7 @@ describe('reading a row against its fill (#2186)', () => {
         entry={entry({ entryType: 'snapshot', status: 'success', content: 'kept', operatorName: 'Lin' })}
         modality='text'
         isCurrent
+        isFocused={false}
         onRestore={() => {}}
       />,
     );
@@ -339,6 +343,7 @@ describe('reading a row against its fill (#2186)', () => {
         entry={entry({ entryType: 'snapshot', status: 'success', content: 'kept', operatorName: 'Lin' })}
         modality='text'
         isCurrent={false}
+        isFocused={false}
         onRestore={() => {}}
       />,
     );
