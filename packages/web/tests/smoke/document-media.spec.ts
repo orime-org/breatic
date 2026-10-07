@@ -428,9 +428,9 @@ test('a selected picture is framed with a knob on each corner, and its handle st
 
 test('the document shows one bar at a time (inner#1127)', async () => {
   await openFreshDocument(page);
-  await page.keyboard.type('hello world');
+  await page.keyboard.type('hello world, a line that runs on past the pictures');
   await page.keyboard.press('Enter');
-  for (const name of ['one.png', 'two.png']) {
+  for (const [index, name] of ['one.png', 'two.png'].entries()) {
     const png = (await pngBytes(page, 200, 120)).toString('base64');
     await page.locator(EDITOR).evaluate((element, [base64, file]) => {
       const transfer = new DataTransfer();
@@ -438,7 +438,7 @@ test('the document shows one bar at a time (inner#1127)', async () => {
       transfer.items.add(new File([bytes], file!, { type: 'image/png' }));
       element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
     }, [png, name]);
-    await expect(page.locator(`${IMAGE} img`).last()).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+    await expect(page.locator(`${IMAGE} img`)).toHaveCount(index + 1, { timeout: UPLOAD_TIMEOUT });
   }
   const pictures = page.locator(IMAGE);
   await expect(pictures).toHaveCount(2);
@@ -453,7 +453,17 @@ test('the document shows one bar at a time (inner#1127)', async () => {
   await expect(pictures.nth(1).locator('[data-media-frame]')).toHaveCSS('outline-style', 'solid');
 
   // Text selected, a picture under the pointer: the bubble bar steps aside.
-  await page.locator(`${EDITOR} p`).first().dblclick();
+  // The last word, out past the selected picture's bar, which covers the
+  // start of the line while it is up.
+  const word = await page.locator(EDITOR).evaluate((element) => {
+    const text = [...element.querySelectorAll('p')].find((p) => p.textContent?.startsWith('hello'))!.firstChild!;
+    const range = document.createRange();
+    range.setStart(text, text.textContent!.length - 3);
+    range.setEnd(text, text.textContent!.length);
+    const box = range.getBoundingClientRect();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  });
+  await page.mouse.dblclick(word.x, word.y);
   const bubble = page.getByTestId('doc-selection-bubble-bar');
   await expect(bubble).toBeVisible();
   await pictures.nth(1).locator('img').hover();
