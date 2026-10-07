@@ -621,7 +621,6 @@ describe("Tasks routes", () => {
       "append",
       expect.anything(),
       expect.anything(),
-      undefined,
       "understand",
     );
   });
