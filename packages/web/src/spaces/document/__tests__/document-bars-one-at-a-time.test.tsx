@@ -70,15 +70,15 @@ function toolbarShown(block: HTMLElement): boolean {
 }
 
 /**
- * Moves the pointer onto or off a picture block.
+ * Moves the pointer onto or off what a picture block shows.
  * @param block - The picture block's element.
  * @param on - True to move onto it.
  */
 function hover(block: HTMLElement, on: boolean): void {
-  const box = within(block).getByTestId('doc-media-box');
+  const frame = within(block).getByTestId('doc-media-frame');
   act(() => {
-    if (on) fireEvent.pointerEnter(box);
-    else fireEvent.pointerLeave(box);
+    if (on) fireEvent.pointerEnter(frame);
+    else fireEvent.pointerLeave(frame);
   });
 }
 

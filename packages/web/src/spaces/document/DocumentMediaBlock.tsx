@@ -71,13 +71,13 @@ interface DocumentMediaBlockProps {
   props: MediaBlockProps;
   /** Whether the block is node-selected, which gives it its corner knobs. */
   selected: boolean;
-  /** Whether the pointer is on the block, which frames it as selected does. */
+  /** Whether the pointer is on the media or its toolbar, which frames it as selected does. */
   hovered: boolean;
   /** Whether its toolbar is the one bar the document shows (`document-bars.ts`). */
   toolbarShown: boolean;
   /** The container the block is drawn into, which names it to `onHover`. */
   host: HTMLElement;
-  /** Told when the pointer arrives on the block or leaves it. */
+  /** Told when the pointer arrives on the media or its toolbar, or leaves them. */
   onHover: (host: HTMLElement, on: boolean) => void;
   actions: MediaBlockActions;
 }
@@ -189,7 +189,7 @@ function ToolButton({
  * @param props.type - Image, video or audio.
  * @param props.props - The block's props.
  * @param props.selected - Whether the block is node-selected.
- * @param props.hovered - Whether the pointer is on it.
+ * @param props.hovered - Whether the pointer is on the media or its toolbar.
  * @param props.toolbarShown - Whether its toolbar is on screen.
  * @param props.host - Its container.
  * @param props.onHover - Told when the pointer arrives or leaves.
@@ -257,6 +257,16 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       scroller.removeEventListener('scroll', placeToolbar);
     };
   }, [toolbarShown, placeToolbar]);
+  // The pointer is on the block while it is on what the block shows or on
+  // its toolbar; the caption under it is the block's text, and answers
+  // neither the hover nor a click (`document-media-row-press.ts`).
+  const pointerOn = React.useCallback((): void => {
+    placeToolbar();
+    onHover(host, true);
+  }, [placeToolbar, onHover, host]);
+  const pointerOff = React.useCallback((): void => {
+    onHover(host, false);
+  }, [onHover, host]);
   const captionField = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => {
     if (editingCaption) {
@@ -372,13 +382,6 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         data-media-box=''
         data-hovered={hovered ? 'true' : undefined}
         data-selected={selected ? 'true' : undefined}
-        onPointerEnter={() => {
-          placeToolbar();
-          onHover(host, true);
-        }}
-        onPointerLeave={() => {
-          onHover(host, false);
-        }}
         className={cn('relative max-w-full', !sized && 'w-full')}
         style={{
           ...(type === 'video' && { minWidth: `${MIN_WIDTH.video}px` }),
@@ -391,6 +394,8 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             the line above the media is clickable the rest of the time. */}
         <div
           data-media-chrome=''
+          onPointerEnter={pointerOn}
+          onPointerLeave={pointerOff}
           className={cn(
             'absolute left-1/2 z-10 -translate-x-1/2',
             toolbarShown ? 'pointer-events-auto' : 'pointer-events-none',
@@ -466,6 +471,8 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         <div
           data-testid='doc-media-frame'
           data-media-frame=''
+          onPointerEnter={pointerOn}
+          onPointerLeave={pointerOff}
           className='relative'
           draggable
           // Decided as the press lands: the corners resize and the player's

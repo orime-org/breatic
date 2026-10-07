@@ -663,7 +663,7 @@ test('a picture or a video is selected by a click on what it shows, never on the
   }
 });
 
-test('the keyboard stays with the body through the toolbar and the caption, and a right press beside the picture selects nothing (A10)', async () => {
+test('the keyboard stays with the body through the toolbar and the caption; a press beside the picture or on its caption selects nothing (A10)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('alpha');
   await page.keyboard.press('Enter');
@@ -703,13 +703,73 @@ test('the keyboard stays with the body through the toolbar and the caption, and 
   await page.mouse.click(frame.x + frame.width + 40, frame.y + frame.height / 2, { button: 'right' });
   await expect(knob).toHaveCount(0);
 
-  // A click there puts the caret on the line under the picture.
+  // A click there, or on the caption, leaves the body with no focus and
+  // nothing selected: a key typed afterwards writes nothing.
+  const rowsNow = (): Promise<string[]> =>
+    page.locator(`${EDITOR} .bn-block-content`).evaluateAll((all) =>
+      all.map((row) => (row.getAttribute('data-content-type') === 'image' ? 'image' : (row.textContent ?? ''))),
+    );
+  const before = await rowsNow();
+  const caption = picture.getByTestId('doc-media-caption');
+  const captionBox = (await caption.boundingBox())!;
+  for (const [x, y] of [
+    [frame.x + frame.width + 40, frame.y + frame.height / 2],
+    [captionBox.x + captionBox.width / 2, captionBox.y + captionBox.height / 2],
+  ] as const) {
+    await img.click();
+    await expect(knob).toBeVisible();
+    await page.mouse.click(x, y);
+    await expect(knob).toHaveCount(0);
+    expect(await page.evaluate(() => document.activeElement?.closest('.ProseMirror') ?? null)).toBeNull();
+    await page.keyboard.type('z');
+    expect(await rowsNow()).toEqual(before);
+  }
+
+  // The pointer on the caption does not frame the picture; on the picture it does.
+  const outline = (): Promise<string> =>
+    picture.locator('[data-media-frame]').evaluate((el) => getComputedStyle(el).outlineStyle);
+  await page.mouse.move(captionBox.x + captionBox.width / 2, captionBox.y + captionBox.height / 2);
+  expect(await outline()).toBe('none');
+  await img.hover();
+  expect(await outline()).toBe('solid');
+
+  // After a click beside it, a hand's press on the picture selects it without
+  // a caret showing first on the line under it.
   await page.mouse.click(frame.x + frame.width + 40, frame.y + frame.height / 2);
-  await page.keyboard.type('z');
-  const rows = await page.locator(`${EDITOR} .bn-block-content`).evaluateAll((all) =>
-    all.map((row) => (row.getAttribute('data-content-type') === 'image' ? 'image' : (row.textContent ?? ''))),
-  );
-  expect(rows[rows.indexOf('image') + 1]).toBe('zomega');
+  await page.evaluate(() => {
+    const carets: string[] = [];
+    (window as unknown as { carets: string[] }).carets = carets;
+    let frames = 0;
+    const sample = (): void => {
+      const selection = getSelection();
+      const editable = document.activeElement?.closest('.ProseMirror');
+      const at = selection?.anchorNode;
+      const holder = at instanceof Element ? at : at?.parentElement;
+      // A caret is drawn only where text can be typed, and not while the
+      // editor hides the selection behind a selected block.
+      if (
+        editable &&
+        !editable.classList.contains('ProseMirror-hideselection') &&
+        selection?.isCollapsed &&
+        holder instanceof HTMLElement &&
+        holder.isContentEditable
+      ) {
+        carets.push(at?.textContent ?? '');
+      }
+      frames += 1;
+      if (frames < 60) requestAnimationFrame(sample);
+    };
+    sample();
+  });
+  const at = (await img.boundingBox())!;
+  await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2);
+  await page.mouse.down();
+  await expect(knob).toBeVisible();
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => (window as unknown as { carets: string[] }).carets)).toEqual([]);
+  await expect(knob).toBeVisible();
 });
 
 test('a picture dragged by itself moves like a row dragged by its handle (A10)', async () => {

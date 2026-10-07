@@ -329,7 +329,7 @@ describe('where the toolbar goes', () => {
     const editor = open('image');
     place(editor, 300, 100);
 
-    fireEvent.pointerEnter(within(element(editor)).getByTestId('doc-media-box'));
+    fireEvent.pointerEnter(within(element(editor)).getByTestId('doc-media-frame'));
 
     expect(toolbar(editor).getAttribute('data-side')).toBe('top');
   });
@@ -352,7 +352,7 @@ describe('where the toolbar goes', () => {
     const editor = open('image');
     place(editor, 110, 100);
 
-    fireEvent.pointerEnter(within(element(editor)).getByTestId('doc-media-box'));
+    fireEvent.pointerEnter(within(element(editor)).getByTestId('doc-media-frame'));
 
     expect(toolbar(editor).getAttribute('data-side')).toBe('inside');
   });
@@ -507,15 +507,40 @@ describe('the frame around a media block', () => {
     expect(frame.contains(within(element(editor)).getByTestId('doc-media-caption'))).toBe(false);
   });
 
-  it('is drawn while the pointer is on the block, the same way as when selected', () => {
+  it('is drawn while the pointer is on the media, the same way as when selected', () => {
     const editor = open('video');
     const box = within(element(editor)).getByTestId('doc-media-box');
+    const frame = within(element(editor)).getByTestId('doc-media-frame');
     expect(box.getAttribute('data-hovered')).toBeNull();
 
-    fireEvent.pointerEnter(box);
+    fireEvent.pointerEnter(frame);
     expect(box.getAttribute('data-hovered')).toBe('true');
 
-    fireEvent.pointerLeave(box);
+    fireEvent.pointerLeave(frame);
+    expect(box.getAttribute('data-hovered')).toBeNull();
+  });
+
+  it('stays while the pointer goes from the media up to its toolbar', () => {
+    const editor = open('video');
+    const box = within(element(editor)).getByTestId('doc-media-box');
+    const frame = within(element(editor)).getByTestId('doc-media-frame');
+    const layer = toolbar(editor).parentElement!;
+
+    fireEvent.pointerEnter(frame);
+    fireEvent.pointerLeave(frame);
+    fireEvent.pointerEnter(layer);
+    expect(box.getAttribute('data-hovered')).toBe('true');
+
+    fireEvent.pointerLeave(layer);
+    expect(box.getAttribute('data-hovered')).toBeNull();
+  });
+
+  it('is not drawn while the pointer is on the caption', () => {
+    const editor = open('audio', { caption: 'A note' });
+    const box = within(element(editor)).getByTestId('doc-media-box');
+
+    fireEvent.pointerEnter(box);
+    fireEvent.pointerEnter(within(element(editor)).getByTestId('doc-media-caption'));
     expect(box.getAttribute('data-hovered')).toBeNull();
   });
 });
@@ -660,12 +685,9 @@ describe('a media block whose neighbour goes away', () => {
 });
 
 describe('a press beside a media block', () => {
-  it('leaves the press to the browser and answers the click: it selects nothing and puts the caret on the line under it', () => {
-    const editor = open('image', { previewWidth: 200 });
+  it('leaves the press to the browser and answers the click: nothing in the body is selected or focused', () => {
+    const editor = open('image', { previewWidth: 200, caption: 'A note' });
     const view = editor.prosemirrorView!;
-    act(() => {
-      view.dispatch(view.state.tr.setSelection(TextSelection.atStart(view.state.doc)));
-    });
 
     // The press itself goes on: a drag or a shift-press from here is the
     // browser's, as it is anywhere else.
@@ -675,23 +697,59 @@ describe('a press beside a media block', () => {
     });
     expect(press.defaultPrevented).toBe(false);
 
-    // A click there — any button — is answered before the block is picked.
-    for (const button of [0, 2]) {
+    // A click there — any button, on the empty row or on the caption — is
+    // answered before the block is picked.
+    const caption = within(element(editor)).getByTestId('doc-media-caption');
+    for (const [target, button] of [[element(editor), 0], [element(editor), 2], [caption, 0]] as const) {
+      selectMedia(editor);
+      act(() => {
+        view.focus();
+      });
       const click = new MouseEvent('mouseup', { bubbles: true, button });
-      Object.defineProperty(click, 'target', { value: element(editor) });
+      Object.defineProperty(click, 'target', { value: target });
       let answered = false;
       act(() => {
         answered = view.someProp('handleClick', (f) => f(view, 0, click)) === true;
       });
       expect(answered).toBe(true);
       expect(view.state.selection).toBeInstanceOf(TextSelection);
-      expect(view.state.selection.$from.parent.textContent).toBe('Below');
-      // The row is not editable; the keyboard has to reach the body anyway.
-      expect(document.activeElement).toBe(view.dom);
-      act(() => {
-        (document.activeElement as HTMLElement).blur();
-      });
+      expect(view.state.selection.empty).toBe(true);
+      expect(view.dom.contains(document.activeElement)).toBe(false);
     }
+  });
+
+  it('selects the media as the press on it lands, before the body has the focus back', () => {
+    const editor = open('image', { previewWidth: 200 });
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(view.state.doc)));
+    });
+
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+    act(() => {
+      element(editor).querySelector('img')!.dispatchEvent(press);
+    });
+
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect((view.state.selection as NodeSelection).node.type.name).toBe('image');
+    // The press goes on to the browser, which starts a drag from it.
+    expect(press.defaultPrevented).toBe(false);
+  });
+
+  it('leaves a Shift press on the media to the editor, which extends the selection', () => {
+    const editor = open('image', { previewWidth: 200 });
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(view.state.doc)));
+    });
+
+    act(() => {
+      element(editor)
+        .querySelector('img')!
+        .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, shiftKey: true }));
+    });
+
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
   });
 
   it('leaves a click on the media itself to the editor, which selects it', () => {
