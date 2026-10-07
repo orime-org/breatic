@@ -150,3 +150,47 @@ describe('a placeholder whose file failed (A6)', () => {
     expect(screen.getByTestId('doc-upload-remove')).toBeTruthy();
   });
 });
+
+describe('a placeholder whose neighbours change (A4, A6)', () => {
+  it('stays on screen, retry and all, after the block before it on its level is deleted', () => {
+    const editor = buildDocumentEditor({
+      fragment: documentBodyFragment(new Y.Doc()),
+      extensions: [documentUploadsExtension()],
+    });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'A' },
+      { type: 'paragraph', content: 'B' },
+    ] as never);
+    const [a, b] = (editor.document as { id: string }[]).map((block) => block.id);
+    const uploader = { start: vi.fn(), retry: vi.fn(), remove: vi.fn() };
+    render(
+      <DocumentUploadPlaceholders
+        editor={editor as never}
+        uploader={uploader as unknown as DocumentUploader}
+        readOnly={false}
+      />,
+    );
+    let slot = '';
+    act(() => {
+      [slot] = addUploadBatch(editor.prosemirrorView!, { before: a!, after: b! }, ['clip.mp4']);
+    });
+    act(() => {
+      patchUploadSlot(editor.prosemirrorView!, slot, {
+        phase: 'failed',
+        failure: { messageKey: 'canvas.upload.failed', params: {}, retryable: true },
+      });
+    });
+
+    act(() => {
+      editor.removeBlocks([a!]);
+    });
+
+    const shown = screen.getByTestId('doc-upload-placeholder');
+    expect(editor.prosemirrorView!.dom.contains(shown)).toBe(true);
+    expect(screen.getByTestId('doc-upload-retry')).toBeTruthy();
+  });
+});

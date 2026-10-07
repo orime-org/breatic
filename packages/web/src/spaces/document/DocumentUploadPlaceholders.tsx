@@ -17,10 +17,11 @@ import { createPortal } from 'react-dom';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
+  onUploadSlotHoldersChange,
   onUploadSlotsChange,
+  uploadSlotHoldersIn,
   uploadBatchesIn,
   waitingSlots,
-  UPLOAD_SLOT_ATTRIBUTE,
   type UploadBatch,
   type UploadSlot,
 } from '@web/spaces/document/document-upload-slots';
@@ -30,6 +31,8 @@ import type { SnapshotEditor } from '@web/spaces/document/use-editor-snapshot';
 
 /** No uploads in flight, before the editor has a view. */
 const NO_UPLOADS: readonly UploadBatch[] = [];
+
+const NO_HOLDERS: ReadonlyMap<string, HTMLElement> = new Map();
 
 interface DocumentUploadPlaceholdersProps {
   /** The body's editor. */
@@ -154,12 +157,19 @@ export function DocumentUploadPlaceholders({
     },
     [editor, uploader],
   );
-  const dom = viewOf(editor)?.dom;
+  const view = viewOf(editor);
+  const subscribeHolders = React.useCallback(
+    (listener: () => void) => (view === null ? () => undefined : onUploadSlotHoldersChange(view, listener)),
+    [view],
+  );
+  const holders = React.useSyncExternalStore(subscribeHolders, () =>
+    view === null ? NO_HOLDERS : uploadSlotHoldersIn(view),
+  );
   return (
     <>
       {slots.map((slot) => {
-        const holder = dom?.querySelector(`[${UPLOAD_SLOT_ATTRIBUTE}="${slot.id}"]`);
-        return holder === null || holder === undefined
+        const holder = holders.get(slot.id);
+        return holder === undefined
           ? null
           : createPortal(
             <Placeholder

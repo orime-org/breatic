@@ -11,7 +11,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
-import { TextSelection } from '@tiptap/pm/state';
+import { TextSelection, type EditorState } from '@tiptap/pm/state';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
@@ -22,11 +22,25 @@ import {
   documentUploadsExtension,
   insertSlotBlock,
   removeUploadSlot,
-  slotPositions,
+  documentUploadsKey,
   uploadSlots,
 } from '@web/spaces/document/document-upload-slots';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
+
+/**
+ * Where each waiting slot's placeholder is drawn, read off the decorations
+ * the plugin hands the view.
+ * @param state - The editor state.
+ * @returns Slot id to position.
+ */
+function drawnAt(state: EditorState): Map<string, number> {
+  const drawn = new Map<string, number>();
+  documentUploadsKey.getState(state)!.decorations.find().forEach((widget) => {
+    drawn.set((widget.spec as { key: string }).key, widget.from);
+  });
+  return drawn;
+}
 
 const mounted: Editor[] = [];
 
@@ -191,7 +205,7 @@ describe('where the placeholder and the block go', () => {
     const ids = addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B') }, FILES);
     land(editor, ids[1]!);
 
-    const drawn = slotPositions(view.state).get(ids[0]!)!;
+    const drawn = drawnAt(view.state).get(ids[0]!)!;
     const landedId = land(editor, ids[0]!)!;
     let landedAt = -1;
     view.state.doc.descendants((node, pos) => {
@@ -314,7 +328,7 @@ describe('landing a block leaves the reader where they are (A4)', () => {
 
     land(editor, ids[0]!);
 
-    expect([...slotPositions(view.state).keys()]).toEqual([ids[1]]);
+    expect([...drawnAt(view.state).keys()]).toEqual([ids[1]]);
   });
 
   it('lands nothing for a slot that was removed', () => {

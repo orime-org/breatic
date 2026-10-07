@@ -140,23 +140,6 @@ export function resolveSlotPosition(batch: UploadBatch, k: number, doc: PMNode):
 }
 
 /**
- * Every slot still waiting for a block, with where it is drawn.
- * @param state - The editor state.
- * @returns Slot id to position.
- */
-export function slotPositions(state: EditorState): Map<string, number> {
-  const positions = new Map<string, number>();
-  for (const batch of documentUploadsKey.getState(state)?.batches ?? []) {
-    batch.slots.forEach((slot, k) => {
-      if (slot.phase !== 'inserted') {
-        positions.set(slot.id, resolveSlotPosition(batch, k, state.doc));
-      }
-    });
-  }
-  return positions;
-}
-
-/**
  * Every slot still waiting for a block, in batch order.
  * @param state - The editor state.
  * @returns The slots.
@@ -188,16 +171,25 @@ function decorate(batches: readonly UploadBatch[], doc: PMNode): DecorationSet {
       widgets.push(
         Decoration.widget(
           resolveSlotPosition(batch, k, doc),
-          () => {
+          (view) => {
             const holder = document.createElement('div');
             holder.setAttribute(UPLOAD_SLOT_ATTRIBUTE, slot.id);
             holder.contentEditable = 'false';
+            putSlotHolder(view, slot.id, holder);
             return holder;
           },
-          // Keyed by slot so the container, and what the page renders into
-          // it, survives every redraw. Sides in batch order keep files that
-          // share a position in the order they came in.
-          { key: slot.id, side: k - batch.slots.length },
+          // Keyed by slot so the container usually survives a redraw. When
+          // ProseMirror builds a new one anyway (a block before it on its
+          // level went), the new one is entered and the page moves there.
+          // Sides in batch order keep files that share a position in the
+          // order they came in.
+          {
+            key: slot.id,
+            side: k - batch.slots.length,
+            destroy: (node) => {
+              dropSlotHolder(node as HTMLElement);
+            },
+          },
         ),
       );
     });
@@ -240,6 +232,94 @@ export function uploadBatchesIn(state: EditorState): readonly UploadBatch[] {
 
 /** No uploads in flight, as one array. */
 const NO_BATCHES: readonly UploadBatch[] = [];
+
+/** One view's placeholder containers by slot id, and who listens to them. */
+interface Holders {
+  map: ReadonlyMap<string, HTMLElement>;
+  readonly view: EditorView;
+  readonly listeners: Set<() => void>;
+}
+
+/** Keyed by view, so a view that is dropped takes its containers with it. */
+const holdersByView = new WeakMap<EditorView, Holders>();
+
+/** Keyed by container, for the widget's teardown, which is handed only that. */
+const holdersByNode = new WeakMap<HTMLElement, { holders: Holders; slotId: string }>();
+
+const NO_HOLDERS: ReadonlyMap<string, HTMLElement> = new Map();
+
+/**
+ * One view's containers, made on first use.
+ * @param view - The editor view.
+ * @returns Its containers.
+ */
+function holdersOf(view: EditorView): Holders {
+  let holders = holdersByView.get(view);
+  if (holders === undefined) {
+    holders = { map: NO_HOLDERS, view, listeners: new Set() };
+    holdersByView.set(view, holders);
+  }
+  return holders;
+}
+
+/**
+ * Replaces the containers and tells the listeners.
+ * @param holders - The view's containers.
+ * @param next - What they are now.
+ */
+function setHolders(holders: Holders, next: Map<string, HTMLElement>): void {
+  holders.map = next;
+  holders.listeners.forEach((listener) => {
+    listener();
+  });
+}
+
+/**
+ * Enters the container a slot's widget just built.
+ * @param view - The editor view.
+ * @param slotId - The slot.
+ * @param holder - Its container.
+ */
+function putSlotHolder(view: EditorView, slotId: string, holder: HTMLElement): void {
+  const holders = holdersOf(view);
+  holdersByNode.set(holder, { holders, slotId });
+  setHolders(holders, new Map(holders.map).set(slotId, holder));
+}
+
+/**
+ * Takes a container out when its widget goes, unless a newer one took its slot.
+ * @param holder - The container.
+ */
+function dropSlotHolder(holder: HTMLElement): void {
+  const entry = holdersByNode.get(holder);
+  if (entry === undefined || entry.holders.map.get(entry.slotId) !== holder) return;
+  const next = new Map(entry.holders.map);
+  next.delete(entry.slotId);
+  setHolders(entry.holders, next);
+}
+
+/**
+ * Every slot's container in a view now; the same map until one changes.
+ * @param view - The editor view.
+ * @returns The containers by slot id.
+ */
+export function uploadSlotHoldersIn(view: EditorView): ReadonlyMap<string, HTMLElement> {
+  return holdersOf(view).map;
+}
+
+/**
+ * Hears about every change to a view's containers.
+ * @param view - The editor view.
+ * @param listener - Called after each change.
+ * @returns The function that stops it.
+ */
+export function onUploadSlotHoldersChange(view: EditorView, listener: () => void): () => void {
+  const { listeners } = holdersOf(view);
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 
 const watch = watchPluginState(uploadBatchesIn);
 
@@ -353,7 +433,7 @@ export function insertSlotBlock(
   block: SlotBlock,
   undo?: UndoCapture,
 ): string | null {
-  const batches = documentUploadsKey.getState(view.state)?.batches ?? [];
+  const batches = uploadBatchesIn(view.state);
   for (const batch of batches) {
     const k = batch.slots.findIndex((slot) => slot.id === slotId);
     if (k < 0 || batch.slots[k]!.phase !== 'uploading') continue;
