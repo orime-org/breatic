@@ -58,8 +58,7 @@ const LINE_KEY: Record<ProjectTimeKind, string> = {
  */
 export function projectTimeLine(project: ContainerProject, kind: ProjectTimeKind, t: Translate): string {
   const at = projectTime(project, kind);
-  const created = formatRelativeTime(project.createdAt, t);
   if (at !== null) return t(LINE_KEY[kind], { time: formatRelativeTime(at, t) });
   if (kind === 'opened') return t('studio.container.card.neverOpened');
-  return t(LINE_KEY.created, { time: created });
+  return t(LINE_KEY.created, { time: formatRelativeTime(project.createdAt, t) });
 }
