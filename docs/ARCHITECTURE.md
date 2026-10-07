@@ -367,6 +367,10 @@ pnpm test / typecheck / lint
 
 启动时先 `checkInfraReady()` 验证 PG/Redis 可达;连不上立即退出(避免无声挂死)。Migration 是独立步骤,不绑在 dev 启动里。
 
+## 产品镜像发布
+
+产品标签 CI 构建并检查三个 linux/amd64 镜像：`breatic`（Server / Worker / Collab）、`breatic-web`（自托管 Web）、`breatic-ingest-media`（Ingest 媒体容器）。标签发布将同一批已测试镜像上传 GHCR，产品 Release `release.json` 的 `images.ingestMedia` 固定媒体摘要。媒体镜像包含 `/app/build-info.json` 与 OCI 版本/提交标签；`scripts/ingest-media-smoke.mjs` 在发布前实际解析 HTTP 视频并生成封面。PR/main 只检查，不发布。部署仓编译独立 Worker JS、下载媒体摘要后打包；手动上线才转存 Cloudflare 并发布 Worker，不重建镜像。详见 [版本发布说明](../self-host/RELEASE-CN.md)。
+
 ## Frontend
 
 `packages/web/` — breatic 的 React 前端 app,跑在浏览器里(后端架构见上面的 [Backend](#backend) 部分)。
