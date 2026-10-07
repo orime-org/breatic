@@ -4789,8 +4789,7 @@ function CanvasSpaceInner({
           // the recipe; EXECUTE is what the gate stops — the arrow stays
           // clickable and `onExecute` answers with a toast saying why, rather
           // than greying out with no explanation. Groups / non-generating
-          // modalities / read-only get no handler (a disabled placeholder
-          // item).
+          // modalities / read-only get no handler, and the item is left off.
           onGenerate={(() => {
             const genNode = nodes.find((n) => n.id === nodeMenu.nodeId);
             // Held in a const so the narrowing survives into the closure below,
