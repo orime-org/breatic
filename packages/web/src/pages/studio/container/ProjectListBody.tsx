@@ -92,7 +92,8 @@ export function ProjectListBody({ list, archived, sort, view, empty }: ProjectLi
         />
       )}
       {list.hasNextPage ? <div ref={list.sentinelRef} aria-hidden='true' /> : null}
-      {list.pageFailed ? (
+      {/* A retry in flight shows as loading, so the tail says one thing at a time. */}
+      {list.pageFailed && !list.isFetchingNextPage ? (
         <div role='alert' className='flex items-center justify-center gap-2.5 pt-[18px] text-xs text-muted-foreground'>
           {t('studio.container.list.pageFailed')}
           <Button type='button' variant='outline' size='sm' onClick={list.loadMore}>
@@ -177,7 +178,7 @@ function ProjectTable({ projects, columns, sorted, placeholders }: ProjectTableP
             <td className={`${CELL} w-px pr-0`}>
               <Skeleton className='aspect-video w-12 rounded-content-sm' />
             </td>
-            <td className={CELL}>
+            <td className={`${CELL} w-full max-w-0`}>
               <Skeleton className='h-3.5 w-2/5' />
             </td>
             {columns.map((column) => (
@@ -207,9 +208,10 @@ function timeCell(project: ContainerProject, column: ProjectTimeKind, t: Transla
 }
 
 // Stretches the name's link or button over the whole row, so the row opens
-// the project; the menu sits above it.
+// the project; the menu sits above it. Keyboard focus outlines the stretched
+// area, which tells it apart from a row the pointer only rests on.
 const STRETCH =
-  'rounded-none text-left font-medium text-foreground focus-visible:outline-none after:absolute after:inset-0 after:content-[""]';
+  'rounded-none text-left font-medium text-foreground focus-visible:outline-none after:absolute after:inset-0 after:content-[""] focus-visible:after:ring-1 focus-visible:after:ring-inset focus-visible:after:ring-ring';
 
 /**
  * One project row. Its name opens the project the way the card does
@@ -224,7 +226,7 @@ function ProjectRow({ project, columns }: { project: ContainerProject; columns: 
   return (
     <tr
       data-testid={`project-row-${project.id}`}
-      className='relative text-muted-foreground hover:[&>td]:bg-accent has-[:focus-visible]:[&>td]:bg-accent'
+      className='relative text-muted-foreground hover:[&>td]:bg-accent hover:[&>td]:text-foreground has-[:focus-visible]:[&>td]:bg-accent has-[:focus-visible]:[&>td]:text-foreground'
     >
       <td className={`${CELL} w-px pr-0`}>
         <div className='aspect-video w-12 overflow-hidden rounded-content-sm bg-muted text-muted-foreground'>

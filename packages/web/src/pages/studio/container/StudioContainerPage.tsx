@@ -5,6 +5,7 @@ import * as React from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
+import type { StudioProjectSort } from '@breatic/shared';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { studiosApi } from '@web/data/api/studios';
 import { ApiException } from '@web/data/api/types';
@@ -79,6 +80,25 @@ export default function StudioContainerPage(): React.JSX.Element {
   });
   // Archived projects are the studio admin's alone; nobody else is sent for them.
   const isStudioAdmin = studioQuery.data?.myStudioRole === 'admin';
+  // A new sort reads from the top of the list: the toolbar stays on screen
+  // while the list scrolls, so it can be changed from anywhere down the list.
+  const viewportRef = React.useRef<HTMLDivElement>(null);
+  const { setSort: setProjectSort } = projectPrefs;
+  const { setSort: setArchivedSort } = archivedPrefs;
+  const onProjectSortChange = React.useCallback(
+    (sort: StudioProjectSort): void => {
+      if (viewportRef.current) viewportRef.current.scrollTop = 0;
+      setProjectSort(sort);
+    },
+    [setProjectSort],
+  );
+  const onArchivedSortChange = React.useCallback(
+    (sort: StudioProjectSort): void => {
+      if (viewportRef.current) viewportRef.current.scrollTop = 0;
+      setArchivedSort(sort);
+    },
+    [setArchivedSort],
+  );
   const archivedProjects = useStudioProjectsPaging({
     slug,
     archived: true,
@@ -202,13 +222,13 @@ export default function StudioContainerPage(): React.JSX.Element {
             }
             className='min-h-0 flex-1'
           >
-            <ScrollArea className='h-full'>
+            <ScrollArea className='h-full' viewportRef={viewportRef}>
               <div className={`${CENTER_COLUMN} pt-[18px] pb-12`}>
                 {tab === 'projects' ? (
                   <ProjectsTab
                     list={projects}
                     sort={projectPrefs.sort}
-                    onSortChange={projectPrefs.setSort}
+                    onSortChange={onProjectSortChange}
                     view={projectPrefs.view}
                     onViewChange={projectPrefs.setView}
                     studioRole={view.studio.myStudioRole}
@@ -221,7 +241,7 @@ export default function StudioContainerPage(): React.JSX.Element {
                   <ArchivedTab
                     list={archivedProjects}
                     sort={archivedPrefs.sort}
-                    onSortChange={archivedPrefs.setSort}
+                    onSortChange={onArchivedSortChange}
                     view={archivedPrefs.view}
                     onViewChange={archivedPrefs.setView}
                   />

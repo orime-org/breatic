@@ -61,10 +61,11 @@ type ContainerToolbarProps = ContainerToolbarCreate & {
 const CONTROL =
   'inline-flex h-[30px] items-center gap-1.5 rounded-chrome border border-border px-2.5 text-xs font-medium text-foreground';
 const VIEW_BUTTON =
-  'flex h-[30px] w-[30px] items-center justify-center rounded-none text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring aria-pressed:bg-muted aria-pressed:text-foreground';
+  'flex h-[30px] w-[30px] items-center justify-center rounded-none text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring aria-pressed:bg-accent-strong aria-pressed:text-foreground aria-pressed:hover:bg-accent-strong';
 
 /**
- * The Projects / Collections / Archived tab toolbar (locked mock `.toolbar`):
+ * The Projects / Collections / Archived tab toolbar (locked mock `.toolbar`),
+ * pinned to the top of the scroll area while the list under it scrolls:
  * a title + count chip on the left, then the sort control, the grid/list view
  * switch, and the create button on the right. The project lists pass working
  * `sort` and `view` controls; Collections still shows disabled placeholders,
@@ -99,7 +100,10 @@ export function ContainerToolbar({
   return (
     <div
       data-testid='container-toolbar'
-      className='mb-[18px] flex items-center gap-2'
+      // Pinned to the top of the scroll area: only the list under it scrolls.
+      // The negative margin and padding keep the column's 18px above it, now
+      // painted, so rows passing under a pinned bar do not show through.
+      className='sticky top-0 z-10 -mt-[18px] flex items-center gap-2 bg-background py-[18px]'
     >
       <h2 className='flex items-center gap-1.5 text-base font-semibold tracking-tight text-foreground'>
         {title}
