@@ -376,9 +376,8 @@ export function renderProductGuide(): string {
       `its words) and shows ${quoted(t("canvas.history.snapshotKept"))}`,
     `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.download"))}, which saves the file, then ` +
       `${quoted(t("canvas.nodeMenu.understand"))}, which writes a description of what the node holds into a new ` +
-      `text node connected to it, and ${quoted(t("canvas.nodeMenu.tools"))}, which is always greyed: it is not ` +
-      `open yet. ${quoted(t("canvas.nodeMenu.download"))} and ${quoted(t("canvas.nodeMenu.understand"))} are ` +
-      "greyed while the node holds nothing or shows a failure in place of its content. A reading that cannot " +
+      `text node connected to it, and ${quoted(t("canvas.nodeMenu.tools"))}, described under Mini-tools. All three ` +
+      "are greyed while the node holds nothing. A reading that cannot " +
       `begin says ${quoted(t("canvas.understand.couldNotStart"))} A file it cannot take makes no new node and ` +
       "says why: it is larger than a reading takes, or of a type it cannot read. If the node being read is " +
       "deleted as it starts, " +
@@ -715,6 +714,36 @@ export function renderProductGuide(): string {
       "its chip in the panel. Removing a connection also removes every mention of that node from the prompt: " +
       "at once from the box on screen, and from another mode's prompt or a shot not on screen the next time " +
       "that box is shown.",
+    "",
+    "## Mini-tools",
+    `Right-click a picture, video or sound node and point at ${quoted(t("canvas.nodeMenu.tools"))}: a list opens to ` +
+      "its right with every tool for that kind of node, each an icon and a name. Text, 3D and web nodes, groups and " +
+      "notes have no such row. The tools are:",
+    `- Picture: ${quoted(t("canvas.miniTool.image.remove-bg.label"))}, ${quoted(t("canvas.miniTool.image.upscale.label"))}, ` +
+      `${quoted(t("canvas.miniTool.image.digital-human.label"))} (makes a video of the person speaking a sound you pick), ` +
+      `${quoted(t("canvas.miniTool.image.crop.label"))} and ${quoted(t("canvas.miniTool.image.rotate.label"))}.`,
+    `- Video: ${quoted(t("canvas.miniTool.video.upscale.label"))}, ${quoted(t("canvas.miniTool.video.interpolate.label"))}, ` +
+      `${quoted(t("canvas.miniTool.video.extend.label"))}, ${quoted(t("canvas.miniTool.video.edit.label"))}, ` +
+      `${quoted(t("canvas.miniTool.video.motion.label"))}, ${quoted(t("canvas.miniTool.video.animate.label"))}, ` +
+      `${quoted(t("canvas.miniTool.video.crop.label"))}, ${quoted(t("canvas.miniTool.video.speed.label"))}, ` +
+      `${quoted(t("canvas.miniTool.video.cut.label"))}, ${quoted(t("canvas.miniTool.video.adjust.label"))}, ` +
+      `${quoted(t("canvas.miniTool.video.audio-denoise.label"))}, ${quoted(t("canvas.miniTool.video.stabilize.label"))} ` +
+      `and ${quoted(t("canvas.miniTool.video.hdr.label"))}.`,
+    `- Sound: ${quoted(t("canvas.miniTool.audio.separate.label"))} (makes two sound nodes, the voice and the backing) ` +
+      `and ${quoted(t("canvas.miniTool.audio.extend.label"))}.`,
+    "Choosing a tool opens its panel under the node, in the place the generation panel opens; the two never show " +
+      "together. The panel is headed with the tool's name and holds that tool's settings, a box to pick a second " +
+      "piece of media from the canvas when the tool needs one (picking works as in the generation panel, and a " +
+      "required one must be filled before the arrow works; a small X on a filled box empties it), and for some " +
+      "tools a text box. A crop shows a box with " +
+      "eight handles on the node and takes a ratio and a size in pixels in the panel; rotating turns and flips the " +
+      "picture on the node as you press. The bottom line says what it costs: crop and rotate are free, the video " +
+      "tools that work on the file are billed by how long they run, and the others show an estimate. The X, Esc or " +
+      "a click on empty canvas closes the panel. Pressing the arrow puts the result in new nodes to the right of the " +
+      "source, joined to it by a line and named after it (such as CROP- followed by its name); one undo takes them " +
+      "all away, and the source stays as it was. What the run did shows in the new node's column of task icons and " +
+      "its task list, the same as a generation. If the node's picture or video changes while the panel is open, " +
+      "the crop, range and turns go back to their start.",
     "",
     "## Focus crops",
     `In a picture or video panel, ${quoted(t("canvas.generatePanel.focus"))} takes a region of a picture or ` +
