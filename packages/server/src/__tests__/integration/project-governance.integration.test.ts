@@ -236,7 +236,7 @@ describe("the studio's project lists", () => {
   it("list live projects with the flags each caller's menu shows", async () => {
     const s = await seedScene();
     const flags = async (who: string): Promise<unknown> => {
-      const [p] = await projectService.listByStudioForViewer(s.studioId, who, { archived: false });
+      const { items: [p] } = await projectService.listByStudioForViewer(s.studioId, who, { archived: false, locale: "en" });
       return { canManageMeta: p!.canManageMeta, canDuplicate: p!.canDuplicate, canArchive: p!.canArchive, canRestore: p!.canRestore };
     };
     expect(await flags(s.adminId)).toEqual({ canManageMeta: true, canDuplicate: true, canArchive: true, canRestore: false });
@@ -248,23 +248,23 @@ describe("the studio's project lists", () => {
   it("move an archived project from the live list to the archived list, which only the admin may read", async () => {
     const s = await seedScene();
     await projectService.archive(s.projectId, s.adminId);
-    expect(await projectService.listByStudioForViewer(s.studioId, s.adminId, { archived: false })).toEqual([]);
-    const archived = await projectService.listByStudioForViewer(s.studioId, s.adminId, { archived: true });
+    expect((await projectService.listByStudioForViewer(s.studioId, s.adminId, { archived: false, locale: "en" })).items).toEqual([]);
+    const { items: archived } = await projectService.listByStudioForViewer(s.studioId, s.adminId, { archived: true, locale: "en" });
     expect(archived.map((p) => p.id)).toEqual([s.projectId]);
     expect(archived[0]!.archivedAt).toBeInstanceOf(Date);
     expect(archived[0]!.canRestore).toBe(true);
     expect(archived[0]!.canManageMeta).toBe(false);
     await expect(
-      projectService.listByStudioForViewer(s.studioId, s.ownerId, { archived: true }),
+      projectService.listByStudioForViewer(s.studioId, s.ownerId, { archived: true, locale: "en" }),
     ).rejects.toBeInstanceOf(ForbiddenError);
   });
 
   it("refuse the archived list to someone outside the studio, while the live list is just empty", async () => {
     const s = await seedScene();
     const outsider = await insertUser(`outsider-${s.projectId.slice(0, 8)}`);
-    expect(await projectService.listByStudioForViewer(s.studioId, outsider, { archived: false })).toEqual([]);
+    expect((await projectService.listByStudioForViewer(s.studioId, outsider, { archived: false, locale: "en" })).items).toEqual([]);
     await expect(
-      projectService.listByStudioForViewer(s.studioId, outsider, { archived: true }),
+      projectService.listByStudioForViewer(s.studioId, outsider, { archived: true, locale: "en" }),
     ).rejects.toBeInstanceOf(ForbiddenError);
   });
 });

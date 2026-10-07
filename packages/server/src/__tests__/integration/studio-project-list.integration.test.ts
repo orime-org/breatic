@@ -238,18 +238,38 @@ describe("studio project list — every page together is the sorted list, once e
 
   it("carries the viewer's open time and the edit time on each row", async () => {
     const f = await bigStudio();
-    const page = await projectService.listByStudioForViewer(f.studioId, f.admin, {
+    const first = await projectService.listByStudioForViewer(f.studioId, f.admin, {
       archived: false,
       sort: "created",
-      limit: 120,
+      limit: 100,
       locale: "en",
     });
+    const second = await projectService.listByStudioForViewer(f.studioId, f.admin, {
+      archived: false,
+      sort: "created",
+      cursor: first.nextCursor ?? undefined,
+      limit: 100,
+      locale: "en",
+    });
+    const page = { items: [...first.items, ...second.items] };
     const neverOpenedNeverEdited = page.items.find((p) => p.id === f.ids[119])!;
     expect(neverOpenedNeverEdited.lastOpenedAt).toBeNull();
     expect(new Date(neverOpenedNeverEdited.lastEditedAt).getTime()).toBe(
       new Date(neverOpenedNeverEdited.createdAt).getTime(),
     );
     expect(page.items.find((p) => p.id === f.ids[0])!.lastOpenedAt).not.toBeNull();
+  });
+
+  it("clamps a page size above the ceiling", async () => {
+    const f = await bigStudio();
+    const page = await projectService.listByStudioForViewer(f.studioId, f.admin, {
+      archived: false,
+      sort: "created",
+      limit: 1000,
+      locale: "en",
+    });
+    expect(page.items).toHaveLength(100);
+    expect(page.nextCursor).not.toBeNull();
   });
 
   it("starts over from the first page on a cursor it cannot read", async () => {

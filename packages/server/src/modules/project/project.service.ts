@@ -22,19 +22,26 @@ import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { projectAuthService } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import { studioAuthService } from "@breatic/domain";
-import { db, getLimitsForStudio } from "@breatic/core";
+import { db, getLimitsForStudio, projectEditsRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
-import { ROLE_RANK } from "@breatic/shared";
+import { ARCHIVED_PROJECT_SORTS, LIVE_PROJECT_SORTS, ROLE_RANK } from "@breatic/shared";
+import { getStudioProjectPageLimits } from "@server/config/limits.js";
+import {
+  decodeProjectListCursor,
+  encodeProjectListCursor,
+  nameCollationFor,
+} from "@server/modules/project/project-list-cursor.js";
 import { copyName } from "@server/modules/project/copy-name.js";
 import { mayArchive, mayManage, projectPermissions } from "@server/modules/project/projectGovernance.js";
 import type {
   ProjectEntity,
   ProjectRole,
-  ProjectSummary,
   SpaceType,
   StudioRole,
+  StudioProjectPage,
+  StudioProjectSort,
 } from "@breatic/shared";
 
 /**
@@ -284,63 +291,89 @@ export async function loadForViewer(
   throw new NotFoundError(t("server.error.not_found"));
 }
 
+/** What one page of a studio's projects list is asked for with. */
+export interface StudioProjectListOptions {
+  /** The archived list instead of the live one. */
+  archived: boolean;
+  /** The sort; the list's default when omitted. */
+  sort?: StudioProjectSort;
+  /** The previous page's `nextCursor`; the first page when omitted. */
+  cursor?: string;
+  /** Page size; clamped to the configured bounds, the default when omitted. */
+  limit?: number;
+  /** The reader's interface language, which decides how names compare. */
+  locale: string;
+}
+
 /**
- * List the projects of a studio a viewer may see, for the studio container's
- * "projects" and "archived" tabs, each with the permissions its card menu shows.
+ * One page of the projects of a studio a viewer may see, for the studio
+ * container's "projects" and "archived" tabs, each with the permissions its
+ * card menu shows.
  *
- * A non-member of the studio gets `[]` (the non-member shell shows no
- * projects, IA #267); every studio member gets every live project, tagged with
- * their own role on it. The archived list is the studio admin's alone.
+ * A non-member of the studio gets an empty page (the non-member shell shows
+ * no projects, IA #267); every studio member pages through every live
+ * project, tagged with their own role on it. The archived list is the studio
+ * admin's alone.
  * @param studioId - Studio UUID whose projects to list
  * @param viewerUserId - Authenticated user UUID
- * @param options - Which list
- * @param options.archived - The archived list instead of the live one
- * @returns The visible project summaries (empty for non-members)
+ * @param options - Which list, sort, page and language; see {@link StudioProjectListOptions}
+ * @returns The page (empty for non-members)
  * @throws {ForbiddenError} when anyone but the studio's admin asks for the archived list
  */
 export async function listByStudioForViewer(
   studioId: string,
   viewerUserId: string,
-  options: { archived: boolean },
-): Promise<ProjectSummary[]> {
+  options: StudioProjectListOptions,
+): Promise<StudioProjectPage> {
   const studioRole = await studioAuthService.loadStudioRole(viewerUserId, studioId);
   if (options.archived && !mayArchive({ studioRole, projectRole: null })) {
     throw new ForbiddenError(t("server.error.forbidden"));
   }
-  if (studioRole === null) return [];
-  const rows = await projectRepo.listProjectsByStudioForViewer(
+  if (studioRole === null) return { items: [], nextCursor: null, total: 0 };
+  const sort = options.sort ?? (options.archived ? ARCHIVED_PROJECT_SORTS[0] : LIVE_PROJECT_SORTS[0]);
+  const limits = getStudioProjectPageLimits();
+  const limit = Math.min(Math.max(options.limit ?? limits.default, 1), limits.max);
+  const collation = nameCollationFor(options.locale);
+  const page = await projectRepo.listStudioProjectPage({
     studioId,
     viewerUserId,
-    options.archived,
-  );
-  return rows.map((row) => ({
-    ...row,
-    ...projectPermissions({
-      studioRole,
-      projectRole: row.myRole,
-      archived: row.archivedAt !== null,
-    }),
-  }));
+    archived: options.archived,
+    sort,
+    cursor: decodeProjectListCursor(options.cursor, sort, collation),
+    limit,
+    collation,
+  });
+  return {
+    items: page.rows.map((row) => ({
+      ...row,
+      ...projectPermissions({
+        studioRole,
+        projectRole: row.myRole,
+        archived: row.archivedAt !== null,
+      }),
+    })),
+    nextCursor: page.next ? encodeProjectListCursor(page.next) : null,
+    total: page.total,
+  };
 }
 
 /**
- * List a studio's visible projects by the studio's URL slug.
+ * One page of a studio's visible projects, by the studio's URL slug.
  *
  * Resolves the slug to a studio (404 if none), then delegates to
  * {@link listByStudioForViewer}. Backs `GET /studio/:slug/projects`.
  * @param slug - The studio's URL handle
  * @param viewerUserId - Authenticated user UUID
- * @param options - Which list
- * @param options.archived - The archived list instead of the live one
- * @returns The visible project summaries (empty for non-members)
+ * @param options - Which list, sort, page and language
+ * @returns The page (empty for non-members)
  * @throws {NotFoundError} when no active studio has that slug
  * @throws {ForbiddenError} when anyone but the studio's admin asks for the archived list
  */
 export async function listByStudioSlug(
   slug: string,
   viewerUserId: string,
-  options: { archived: boolean },
-): Promise<ProjectSummary[]> {
+  options: StudioProjectListOptions,
+): Promise<StudioProjectPage> {
   const studio = await studioService.getStudioBySlug(slug);
   if (!studio) throw new NotFoundError(t("server.error.not_found"));
   return listByStudioForViewer(studio.id, viewerUserId, options);
@@ -438,9 +471,12 @@ async function writeMeta(
   projectId: string,
   patch: Parameters<typeof projectRepo.updateProjectMeta>[1],
 ): Promise<ProjectEntity> {
-  const updated = await projectRepo.updateProjectMeta(projectId, patch);
-  if (!updated) throw new ConflictError(t("server.project.archived"));
-  return updated;
+  return db.transaction(async (tx) => {
+    const updated = await projectRepo.updateProjectMeta(projectId, patch, tx);
+    if (!updated) throw new ConflictError(t("server.project.archived"));
+    await projectEditsRepo.touchProjectEdit(projectId, tx);
+    return updated;
+  });
 }
 
 /**

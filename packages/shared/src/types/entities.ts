@@ -707,6 +707,10 @@ export interface ProjectSummary {
   updatedAt: Date;
   /** When it was archived, or null while live. */
   archivedAt: Date | null;
+  /** When the viewer last opened it, or null if they never have. */
+  lastOpenedAt: Date | null;
+  /** When its content or metadata last changed; its creation time until then. */
+  lastEditedAt: Date;
   /** The card menu: rename and change the cover. */
   canManageMeta: boolean;
   /** The card menu: duplicate. */
@@ -717,6 +721,26 @@ export interface ProjectSummary {
   canRestore: boolean;
   /** The card menu: leave the project. */
   canLeave: boolean;
+}
+
+/** How the live projects list can be sorted, the first being the default. */
+export const LIVE_PROJECT_SORTS = ["opened", "edited", "name", "created"] as const;
+
+/** How the archived projects list can be sorted, the first being the default. */
+export const ARCHIVED_PROJECT_SORTS = ["archived", "name", "created"] as const;
+
+/** Any sort of a studio's projects list. */
+export type StudioProjectSort =
+  | (typeof LIVE_PROJECT_SORTS)[number]
+  | (typeof ARCHIVED_PROJECT_SORTS)[number];
+
+/** One page of a studio's projects list. */
+export interface StudioProjectPage {
+  items: ProjectSummary[];
+  /** Feed back as `?cursor` for the next page; null at the end. */
+  nextCursor: string | null;
+  /** How many projects the whole list holds. */
+  total: number;
 }
 
 /**

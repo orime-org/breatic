@@ -23,11 +23,15 @@ export type {
   ProjectEntity,
   ProjectDetail,
   ProjectSummary,
+  StudioProjectSort,
+  StudioProjectPage,
   RecentItem,
   MemoryContext,
   SkillMeta,
   StoredMessageMetadata,
 } from "@shared/types/entities.js";
+
+export { LIVE_PROJECT_SORTS, ARCHIVED_PROJECT_SORTS } from "@shared/types/entities.js";
 
 export type {
   CreditPage,

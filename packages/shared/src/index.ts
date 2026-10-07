@@ -46,6 +46,8 @@ export type {
   ProjectEntity,
   ProjectDetail,
   ProjectSummary,
+  StudioProjectSort,
+  StudioProjectPage,
   RecentItem,
   MemoryContext,
   SkillMeta,
@@ -120,6 +122,8 @@ export type {
 } from "@shared/types/index.js";
 
 export {
+  LIVE_PROJECT_SORTS,
+  ARCHIVED_PROJECT_SORTS,
   ROLE_RANK,
   STUDIO_ROLE_RANK,
   MEMBERSHIP_TIERS,

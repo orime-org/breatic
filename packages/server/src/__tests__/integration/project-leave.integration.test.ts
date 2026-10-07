@@ -166,7 +166,7 @@ describe("who is offered leaving", () => {
   it("the studio card offers it to the editor and the viewer, never the owner, the admin or a non-member", async () => {
     const s = await seedScene();
     const canLeave = async (who: string): Promise<boolean> => {
-      const [p] = await projectService.listByStudioForViewer(s.studioId, who, { archived: false });
+      const { items: [p] } = await projectService.listByStudioForViewer(s.studioId, who, { archived: false, locale: "en" });
       return p!.canLeave;
     };
     expect(await canLeave(s.editorId)).toBe(true);

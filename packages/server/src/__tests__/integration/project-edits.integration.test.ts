@@ -98,10 +98,10 @@ describe("touchProjectEdit", () => {
 
     const after = await readEdit(projectId);
     expect(after.rows).toBe(1);
-    const [{ moved }] = await sql<{ moved: boolean }[]>`
+    const [result] = await sql<{ moved: boolean }[]>`
       SELECT ${after.at}::timestamptz > ${before.at}::timestamptz AS moved
     `;
-    expect(moved).toBe(true);
+    expect(result?.moved).toBe(true);
   });
 
   it("is undone with the transaction it was written in", async () => {
