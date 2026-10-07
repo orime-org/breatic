@@ -129,7 +129,8 @@ export function anchorAtCaret(state: EditorState): FileGap {
     const container = $head.node(depth);
     if (container.type.name !== 'blockContainer') continue;
     const start = $head.before(depth);
-    const emptyLine = container.firstChild?.content.size === 0;
+    const emptyLine =
+      container.firstChild?.isTextblock === true && container.firstChild.content.size === 0;
     return gapAt(state.doc, emptyLine ? start : start + container.nodeSize);
   }
   return gapAt(state.doc, state.doc.content.size - 1);
@@ -140,22 +141,33 @@ export function anchorAtCaret(state: EditorState): FileGap {
  * @param event - The drag event.
  * @returns True when it does.
  */
-function carriesFiles(event: DragEvent): boolean {
-  return event.dataTransfer?.types.includes('Files') === true;
+export function carriesFiles(event: Event): boolean {
+  const { dataTransfer } = event as Partial<DragEvent>;
+  return dataTransfer?.types.includes('Files') === true;
 }
 
 /**
- * The drop entry.
- * @param sink - Where arriving files go.
+ * The drop entry. Without a sink a dropped file is still taken, so the
+ * browser never opens it in place of the page, and goes nowhere.
+ * @param sink - Where arriving files go, when the body uploads them.
  * @returns The extension, for the assembly to register.
  */
-export function documentFileDropExtension(sink: FilesSink): ExtensionFactoryInstance {
+export function documentFileDropExtension(sink?: FilesSink): ExtensionFactoryInstance {
   return createExtension(() => ({
     key: 'documentFileDrop',
     prosemirrorPlugins: [
       new Plugin({
         props: {
           handleDOMEvents: {
+            // Taken in a read-only body too, and over a media block's own
+            // controls: a file drag whose `dragover` nobody cancels gets no
+            // `drop`, and the browser opens the file in place of the page.
+            dragover: (view, event) => {
+              if (view.dragging !== null || !carriesFiles(event)) return false;
+              event.preventDefault();
+              if (!view.editable && event.dataTransfer !== null) event.dataTransfer.dropEffect = 'none';
+              return !view.editable;
+            },
             drop: (view, event) => {
               if (view.dragging !== null || !carriesFiles(event)) return false;
               // The browser opens a dropped file in place of the page unless
@@ -164,7 +176,7 @@ export function documentFileDropExtension(sink: FilesSink): ExtensionFactoryInst
               if (!view.editable) return true;
               const files = Array.from(event.dataTransfer?.files ?? []);
               const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
-              if (files.length === 0 || at === null) return true;
+              if (sink === undefined || files.length === 0 || at === null) return true;
               sink({ files, ...anchorAtGap(view.state.doc, at.pos) });
               return true;
             },

@@ -27,6 +27,7 @@
  * (`createSpec.ts:437-456`), and the schema keeps a node it is handed.
  */
 
+import { carriesFiles } from '@web/spaces/document/document-file-input';
 import {
   addNodeAndExtensionsToSpec,
   camelToDataKebab,
@@ -187,7 +188,11 @@ function mediaNodeView(
       dom.classList.remove('ProseMirror-selectednode');
       render();
     },
-    stopEvent: (event) => event.target instanceof Element && event.target.closest(CHROME) !== null,
+    // A file dragged onto the controls is the body's drop like anywhere else.
+    stopEvent: (event) =>
+      !carriesFiles(event) &&
+      event.target instanceof Element &&
+      event.target.closest(CHROME) !== null,
     // What React draws inside is not the document's; the node has no content.
     ignoreMutation: () => true,
     destroy: () => {

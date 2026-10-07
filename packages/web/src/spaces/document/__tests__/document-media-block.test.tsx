@@ -368,6 +368,7 @@ describe('resizing (A8)', () => {
   it('writes the width once, when the corner is let go', () => {
     const editor = open('image', { previewWidth: 200, textAlignment: 'left' });
     selectMedia(editor);
+    vi.spyOn(within(element(editor)).getByTestId('doc-media-box'), 'offsetWidth', 'get').mockReturnValue(200);
     const handle = within(element(editor)).getByTestId('doc-media-resize-se');
 
     fireEvent.pointerDown(handle, { clientX: 100, pointerId: 1 });
@@ -381,12 +382,39 @@ describe('resizing (A8)', () => {
   it('shrinks from a left corner when it is dragged inwards', () => {
     const editor = open('video', { previewWidth: 300, textAlignment: 'left' });
     selectMedia(editor);
+    vi.spyOn(within(element(editor)).getByTestId('doc-media-box'), 'offsetWidth', 'get').mockReturnValue(300);
     const handle = within(element(editor)).getByTestId('doc-media-resize-nw');
 
     fireEvent.pointerDown(handle, { clientX: 100, pointerId: 1 });
     fireEvent.pointerUp(handle, { clientX: 140, pointerId: 1 });
 
     expect(media(editor).props['previewWidth']).toBe(260);
+  });
+
+  it('starts from the width on screen when the body is narrower than the stored width', () => {
+    const editor = open('image', { previewWidth: 900, textAlignment: 'left' });
+    selectMedia(editor);
+    const box = within(element(editor)).getByTestId('doc-media-box');
+    vi.spyOn(box, 'offsetWidth', 'get').mockReturnValue(700);
+    vi.spyOn(within(element(editor)).getByTestId('doc-media-row'), 'clientWidth', 'get').mockReturnValue(700);
+    const handle = within(element(editor)).getByTestId('doc-media-resize-se');
+
+    fireEvent.pointerDown(handle, { clientX: 100, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: 50, pointerId: 1 });
+
+    expect(media(editor).props['previewWidth']).toBe(650);
+  });
+
+  it('writes nothing when a corner is pressed and let go without moving', () => {
+    const editor = open('image', { textAlignment: 'left' });
+    selectMedia(editor);
+    const before = media(editor).props['previewWidth'];
+    const handle = within(element(editor)).getByTestId('doc-media-resize-se');
+
+    fireEvent.pointerDown(handle, { clientX: 100, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: 100, pointerId: 1 });
+
+    expect(media(editor).props['previewWidth']).toBe(before);
   });
 
   it('gives audio no knobs', () => {
@@ -426,5 +454,19 @@ describe('the delete button', () => {
     const remove = within(toolbar(editor)).getByTestId('doc-media-delete');
     expect(remove.className).toContain('text-status-error-foreground');
     expect(remove.className).toContain('hover:text-status-error-foreground');
+  });
+});
+
+describe('a file dragged onto the controls of a media block (A2)', () => {
+  it.each(['dragover', 'drop'] as const)('has its %s taken, so the browser does not open the file', (type) => {
+    const editor = open('image');
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', {
+      value: { types: ['Files'], files: [new File([new Uint8Array(4)], 'a.png', { type: 'image/png' })] },
+    });
+
+    within(toolbar(editor)).getByTestId('doc-media-delete').dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
   });
 });

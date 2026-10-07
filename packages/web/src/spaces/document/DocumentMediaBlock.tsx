@@ -242,7 +242,8 @@ export function DocumentMediaBlock({
     const handle = event.currentTarget;
     handle.setPointerCapture?.(event.pointerId);
     const startX = event.clientX;
-    const startWidth = props.previewWidth ?? element.offsetWidth;
+    // What is on screen, which a narrower body caps below the stored width.
+    const startWidth = element.offsetWidth;
     const maxWidth = element.parentElement?.clientWidth ?? 0;
     // A centred block grows on both sides at once.
     const factor = (alignment === 'center' ? 2 : 1) * (side === 'right' ? 1 : -1);
@@ -272,7 +273,7 @@ export function DocumentMediaBlock({
       handle.removeEventListener('pointerup', onUp);
       handle.removeEventListener('pointercancel', onUp);
       setDragWidth(null);
-      actions.setProps({ previewWidth: widthAt(up.clientX) });
+      if (up.clientX !== startX) actions.setProps({ previewWidth: widthAt(up.clientX) });
     };
     handle.addEventListener('pointermove', onMove);
     handle.addEventListener('pointerup', onUp);

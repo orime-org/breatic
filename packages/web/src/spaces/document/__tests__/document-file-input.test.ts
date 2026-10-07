@@ -8,7 +8,7 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
-import { TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -138,6 +138,26 @@ describe('the gap a paste goes into (A3)', () => {
   });
 });
 
+describe('the gap a paste goes into with a block selected (A3)', () => {
+  it.each(['image', 'divider'] as const)('is after a selected %s block', (type) => {
+    const editor = open([
+      { type: 'paragraph', content: 'A' },
+      type === 'image' ? { type, props: { url: 'https://cdn.example/a.png', name: 'a.png' } } : { type },
+      { type: 'paragraph', content: 'B' },
+    ]);
+    const view = editor.prosemirrorView!;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === type) at = pos;
+      return at < 0;
+    });
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)));
+    const selectedId = (editor.document as Seen[])[1]!.id;
+
+    expect(anchorAtCaret(view.state).anchor).toEqual({ before: selectedId, after: idOf(editor, 'B') });
+  });
+});
+
 describe('the gap a drop goes into (A2)', () => {
   it('names the blocks on either side of it', () => {
     const editor = open([
@@ -192,6 +212,31 @@ describe('a paste of files', () => {
 
     editor.prosemirrorView!.dom.dispatchEvent(event);
 
+    expect(sink).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A file drag event, as the browser fires it.
+ * @param type - `dragover` or `drop`.
+ * @returns The event.
+ */
+function fileDrag(type: 'dragover' | 'drop'): Event {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'dataTransfer', { value: clipboard([PNG]) });
+  return event;
+}
+
+describe('a file dragged over a read-only body (A11)', () => {
+  it.each(['dragover', 'drop'] as const)('has its %s taken, so the browser does not open the file', (type) => {
+    const sink = vi.fn();
+    const editor = open([{ type: 'paragraph', content: 'A' }], sink);
+    editor.isEditable = false;
+    const event = fileDrag(type);
+
+    editor.prosemirrorView!.dom.firstElementChild!.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
     expect(sink).not.toHaveBeenCalled();
   });
 });

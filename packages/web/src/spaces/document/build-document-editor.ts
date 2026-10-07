@@ -176,7 +176,7 @@ export function buildDocumentEditor(
       commentWiring(options.comments),
       documentCommentPasteExtension(),
       documentCommentDraftRange(),
-      ...(options.onFiles === undefined ? [] : [documentFileDropExtension(options.onFiles)]),
+      documentFileDropExtension(options.onFiles),
       documentPastedMediaExtension(options.media),
       ...(options.extensions ?? []),
     ],
