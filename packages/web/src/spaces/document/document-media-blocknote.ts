@@ -28,6 +28,8 @@
  */
 
 import { carriesFiles } from '@web/lib/stray-file-drop';
+import type { ReaderPlace } from '@web/spaces/document/document-drag-selection';
+import { endRowDrag, startRowDrag } from '@web/spaces/document/document-row-drag';
 import {
   addNodeAndExtensionsToSpec,
   camelToDataKebab,
@@ -147,6 +149,9 @@ function mediaNodeView(
     return typeof id === 'string' ? id : null;
   };
 
+  // The row a drag from the media started, and where the reader was then.
+  let dragging: { id: string; held: ReaderPlace | undefined } | null = null;
+
   const actions: MediaBlockActions = {
     setProps: (props) => {
       const id = blockId();
@@ -159,6 +164,20 @@ function mediaNodeView(
     download: () => {
       const { url } = propsOf(node);
       if (url !== '') triggerDownload(downloadHref(url));
+    },
+    dragStart: (event) => {
+      const id = blockId();
+      if (id === null || !editor.isEditable) {
+        event.preventDefault();
+        return;
+      }
+      dragging = { id, held: startRowDrag(editor as never, event, id) };
+    },
+    dragEnd: () => {
+      if (dragging === null) return;
+      const { id, held } = dragging;
+      dragging = null;
+      endRowDrag(editor as never, id, held);
     },
   };
 
@@ -189,10 +208,13 @@ function mediaNodeView(
       render();
     },
     // A file dragged onto the controls is the body's drop like anywhere else.
+    // A drag from the media moves the row through `startRowDrag`, which
+    // sets up what ProseMirror's own dragstart would.
     stopEvent: (event) =>
-      !carriesFiles(event) &&
+      event.type === 'dragstart' ||
+      (!carriesFiles(event) &&
       event.target instanceof Element &&
-      event.target.closest(CHROME) !== null,
+      event.target.closest(CHROME) !== null),
     // What React draws inside is not the document's; the node has no content.
     ignoreMutation: () => true,
     destroy: () => {

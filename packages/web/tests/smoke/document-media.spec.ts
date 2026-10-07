@@ -529,6 +529,32 @@ async function pastePicture(p: Page, name: string): Promise<void> {
   );
 }
 
+test('a picture dragged by itself moves like a row dragged by its handle (A10)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('alpha');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('beta');
+  await page.keyboard.press('ArrowUp');
+  await pastePicture(page, 'move.png');
+  const img = page.locator(`${IMAGE} img`);
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const order = (): Promise<string[]> =>
+    page.locator(`${EDITOR} .bn-block-content`).evaluateAll((rows) =>
+      rows.map((row) => row.getAttribute('data-content-type') === 'image' ? 'image' : (row.textContent ?? '')),
+    );
+  expect(await order()).toEqual(['alpha', 'image', 'beta']);
+
+  const from = (await img.boundingBox())!;
+  const beta = (await page.locator(`${EDITOR} .bn-block-content`).filter({ hasText: 'beta' }).boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height - 10);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2 + 8, from.y + from.height, { steps: 4 });
+  await page.mouse.move(beta.x + 40, beta.y + beta.height - 2, { steps: 8 });
+  await page.mouse.up();
+
+  await expect.poll(order).toEqual(['alpha', 'beta', 'image']);
+});
+
 test('a failed upload says so in place, and a retry lands it (A6)', async () => {
   await openFreshDocument(page);
   await page.route('**/api/v1/assets/upload-ticket', (route) => route.fulfill({ status: 500, body: '{}' }));

@@ -51,16 +51,8 @@ import {
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
-import {
-  rowHasLanded,
-  rowIsFlying,
-} from '@web/spaces/document/document-drag-drop';
-import {
-  caretAtStartOf,
-  readerPlace,
-  restoreReaderPlace,
-  type ReaderPlace,
-} from '@web/spaces/document/document-drag-selection';
+import type { ReaderPlace } from '@web/spaces/document/document-drag-selection';
+import { endRowDrag, startRowDrag } from '@web/spaces/document/document-row-drag';
 import { deleteRow } from '@web/spaces/document/document-handle-commands';
 import {
   BLOCK_MENU_ROWS,
@@ -339,38 +331,15 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
             className={drags ? `${STRIP_BUTTON} cursor-grab` : STRIP_BUTTON}
             draggable={drags ? true : undefined}
             onDragStart={(event) => {
-              // Read before the library takes the selection for its own
-              // (`blockDragStart` puts a node selection on the row).
               setDragActive(true);
               setMenuFace(face);
-              place.current = readerPlace(editor.prosemirrorView.state);
-              // Which row is in flight, for the drop to read out of the
-              // document rather than out of the payload (§8).
-              rowIsFlying(block.id, place.current);
-              sideMenu.blockDragStart(event, block as never);
+              place.current = startRowDrag(editor as never, event.nativeEvent, block.id);
             }}
             onDragEnd={() => {
               setDragActive(false);
-              rowHasLanded();
-              sideMenu.blockDragEnd();
               const held = place.current;
               place.current = undefined;
-              // A text selection goes back whatever the reader had: the node
-              // selection the library put on the row at dragstart is still
-              // there when the drag ends, and the bubble bar comes up for any
-              // selection that is not empty — so a row nobody selected would
-              // carry the bar. The reader's own place when there was one; the
-              // caret in the row that moved when there was not (`readerPlace`
-              // declines anything that is not a text selection, and a gap
-              // cursor is one of those).
-              restoreReaderPlace(
-                editor.prosemirrorView,
-                held ?? caretAtStartOf(block.id),
-              );
-              // The press that started the drag took the focus to this button,
-              // and a key pressed after the drag has to land in the document —
-              // the same reason the menu hands focus back when it closes.
-              editor.focus();
+              endRowDrag(editor as never, block.id, held);
             }}
             onClick={() => {
               if (!menuOpen) setMenuFace(face);

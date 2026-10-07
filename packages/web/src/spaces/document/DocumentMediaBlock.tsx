@@ -56,6 +56,10 @@ export interface MediaBlockActions {
   readonly setProps: (props: Partial<Record<'caption' | 'textAlignment' | 'previewWidth', unknown>>) => void;
   readonly remove: () => void;
   readonly download: () => void;
+  /** Starts moving the row, the way its handle does. */
+  readonly dragStart: (event: DragEvent) => void;
+  /** Ends what {@link MediaBlockActions.dragStart} started. */
+  readonly dragEnd: () => void;
 }
 
 interface DocumentMediaBlockProps {
@@ -79,6 +83,9 @@ const MIN_WIDTH = 48;
 
 /** The gap between the toolbar and the media's top edge, `pb-2` above it and `top-2` on it. */
 const TOOLBAR_GAP = 8;
+
+/** The block's own controls, which the node view hands their events. */
+const CHROME = '[data-media-chrome]';
 
 /** The scroller the body is shown in, which clips what sticks out of it. */
 const SCROLLER = '[data-radix-scroll-area-viewport]';
@@ -416,7 +423,22 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         </div>
         {/* The media itself, which is what a frame goes around: the caption
             under it is the block's text, not its content area. */}
-        <div data-testid='doc-media-frame' data-media-frame='' className='relative'>
+        <div
+          data-testid='doc-media-frame'
+          data-media-frame=''
+          className='relative'
+          draggable
+          onDragStart={(event) => {
+            // The corners resize and the player's controls play; a drag from
+            // either is theirs.
+            if (event.target instanceof Element && event.target.closest(`${CHROME}, .nodrag`) !== null) {
+              event.preventDefault();
+              return;
+            }
+            actions.dragStart(event.nativeEvent);
+          }}
+          onDragEnd={actions.dragEnd}
+        >
           {body}
           {sized &&
             selected &&

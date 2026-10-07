@@ -515,3 +515,47 @@ describe('a file dragged onto the controls of a media block (A2)', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 });
+
+describe('dragging a media block by its media (A10)', () => {
+  /**
+   * A `dragstart` from inside the block, as the browser fires it.
+   * @param target - Where the press started.
+   * @returns The event.
+   */
+  function dragFrom(target: Element): Event {
+    const event = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', {
+      value: { setData: vi.fn(), clearData: vi.fn(), setDragImage: vi.fn(), effectAllowed: 'all' },
+    });
+    Object.defineProperty(event, 'clientY', { value: 0 });
+    act(() => {
+      target.dispatchEvent(event);
+    });
+    return event;
+  }
+
+  it('moves the row the way its handle does', async () => {
+    const editor = open('image');
+    const { SideMenuExtension } = await import('@blocknote/core/extensions');
+    const start = vi.spyOn(editor.getExtension(SideMenuExtension)!, 'blockDragStart').mockImplementation(() => undefined);
+    const frame = within(element(editor)).getByTestId('doc-media-frame');
+
+    expect(frame.getAttribute('draggable')).toBe('true');
+    dragFrom(element(editor).querySelector('img')!);
+
+    expect(start).toHaveBeenCalledOnce();
+    expect((start.mock.calls[0]![1] as { id: string }).id).toBe(media(editor).id);
+  });
+
+  it('leaves a press on its own controls to them', async () => {
+    const editor = open('image', { previewWidth: 200 });
+    const { SideMenuExtension } = await import('@blocknote/core/extensions');
+    const start = vi.spyOn(editor.getExtension(SideMenuExtension)!, 'blockDragStart').mockImplementation(() => undefined);
+    selectMedia(editor);
+
+    const event = dragFrom(within(element(editor)).getByTestId('doc-media-resize-se'));
+
+    expect(start).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(true);
+  });
+});
