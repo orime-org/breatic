@@ -80,6 +80,8 @@ const declarationSchema = z.object({
   // cap at all, so it widens the limit the yaml meant to state; a fraction is
   // read as a cap and enforced, and there is no half a piece of material.
   max_items: z.number().int().positive().optional(),
+  // The longest the picked clips may run together, in seconds (inner#888).
+  max_total_duration: z.number().positive().optional(),
   // The fewest entries a run takes; the panel keeps adding rows up to it.
   min_items: z.number().int().positive().optional(),
   // Another param this one stands in for: when this one is sent, that one is
@@ -120,6 +122,7 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "note",
   "type",
   "max_items",
+  "max_total_duration",
   "min_items",
   "replaces",
   "description",

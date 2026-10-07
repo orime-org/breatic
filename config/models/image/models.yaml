@@ -603,19 +603,20 @@ models:
       creativity:
         description: "How freely detail is invented"
         default: 0
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        min: 0
+        max: 10
+        fill: "tool"
       image:
         description: "Source image"
         default: null
         accepts: "image"
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        fill: "tool"
       target_megapixels:
         description: "Output size in megapixels"
         default: 4
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        min: 1
+        max: 1500
+        fill: "tool"
     providers:
       - name: "wavespeed"
         model_id: "clarity-ai/crystal-upscaler"
@@ -639,8 +640,7 @@ models:
         description: "Source image"
         default: null
         accepts: "image"
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        fill: "tool"
     providers:
       - name: "wavespeed"
         model_id: "bria/remove-background"

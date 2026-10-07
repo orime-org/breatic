@@ -162,6 +162,8 @@ export interface ParamDescriptor {
    */
   type?: "list" | "items" | "text";
   max_items?: number;
+  /** The longest the picked clips may run together, in seconds. */
+  max_total_duration?: number;
   /** The fewest entries a run takes; the panel keeps rows up to it. */
   min_items?: number;
   /** Another param this one stands in for: when this one is sent, that one is not. */
@@ -478,6 +480,7 @@ const paramDescriptorSchema = z
     step: z.number().optional().catch(undefined),
     type: z.enum(["list", "items", "text"]).optional().catch(undefined),
     max_items: z.number().optional().catch(undefined),
+    max_total_duration: z.number().optional().catch(undefined),
     min_items: z.number().optional().catch(undefined),
     replaces: z.string().optional().catch(undefined),
     fields: z.record(z.string(), itemFieldSchema).optional().catch(undefined),

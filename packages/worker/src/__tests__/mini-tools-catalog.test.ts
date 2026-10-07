@@ -35,15 +35,17 @@ function catalog(): Map<string, FullModel> {
 
 /**
  * The bare identifiers a pricing formula reads, leaving out `$` variables,
- * function calls, quoted strings and the provider's own pricing constants.
+ * function calls, a call's named arguments (`get_duration(video, max=30)`),
+ * quoted strings and the provider's own pricing constants.
  * @param formula - The JSONata pricing formula.
  * @param constants - The provider pricing keys the formula may read.
  * @returns The param names the formula reads.
  */
 function formulaParams(formula: string, constants: ReadonlySet<string>): string[] {
   const unquoted = formula.replace(/\\?"[^"\\]*(?:\\.[^"\\]*)*\\?"/g, " ");
+  const bare = unquoted.replace(/([(,]\s*)[a-z_][a-z0-9_]*=(?!=)/g, "$1");
   const names = new Set<string>();
-  for (const match of unquoted.matchAll(/(?<![$\w.])([a-z_][a-z0-9_]*)\b(?!\s*\()/g)) {
+  for (const match of bare.matchAll(/(?<![$\w.])([a-z_][a-z0-9_]*)\b(?!\s*\()/g)) {
     const name = match[1]!;
     if (["true", "false", "null", "and", "or", "in"].includes(name)) continue;
     if (constants.has(name)) continue;
