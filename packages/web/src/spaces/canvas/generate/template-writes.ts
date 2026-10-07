@@ -26,13 +26,11 @@ export interface TemplateWrites {
  * What a template writes to a node.
  * @param template - The template picked.
  * @param remembered - The node's per-model params as they are now.
- * @param locale - The reader's interface language.
  * @returns The writes.
  */
 export function templateWrites(
   template: GenerationTemplate,
   remembered: Readonly<Record<string, Record<string, unknown>>> | undefined,
-  locale: string,
 ): TemplateWrites {
   return {
     mode: template.mode,
@@ -41,7 +39,7 @@ export function templateWrites(
       ...remembered,
       [template.model]: { ...remembered?.[template.model], ...template.params },
     },
-    prompt: templatePrompt(template, locale),
+    prompt: templatePrompt(template),
   };
 }
 

@@ -109,17 +109,6 @@
       "not_found": "找不到这笔购买。",
       "unavailable": "这个部署不出售积分。"
     },
-    "skill": {
-      "not_found": "找不到这个 Skill",
-      "name_taken": "你已经有一个同名的 Skill",
-      "not_published": "这个 Skill 还没有发布",
-      "cannot_install_own": "不能安装自己的 Skill",
-      "already_installed": "这个 Skill 已经安装过了",
-      "not_available_here": "Skill「{skill}」在这里不可用",
-      "not_user_invocable": "Skill「{skill}」不能直接调用",
-      "not_available_on_deployment": "Skill「{skill}」在当前服务器上不可用",
-      "not_found_named": "找不到 Skill「{skill}」"
-    },
     "conversation": {
       "not_found": "找不到这个会话",
       "attachment_not_found": "找不到这个附件",
@@ -836,11 +825,13 @@
       "unavailable": "当前不可用",
       "storyboard-grid-25": {
         "name": "25 宫格时序图",
-        "description": "一张 5×5 的连续画面，用来生成视频"
+        "description": "一张 5×5 的连续画面，用来生成视频",
+        "prompt": "以 [📎 角色或场景参考图] 为参考，生成一张图：正好 5 行 5 列、共 25 格的时序分镜图，格子之间用细白线隔开，从左到右、从上到下按时间顺序连续发生。故事：[✏️ 故事内容]。每一格的人物、服装、场景和光线都与参考图一致。景别和机位逐格变化，像电影分镜。不出现文字和编号。"
       },
       "costume-sheet": {
         "name": "三视图定妆照",
-        "description": "正面、侧面、背面三视图，加局部特写"
+        "description": "正面、侧面、背面三视图，加局部特写",
+        "prompt": "以 [📎 角色参考图] 为角色参考，生成一张图：浅灰纯色背景的角色定妆照。左边是同一角色的正面、侧面、背面全身三视图，并排站立；右边是[✏️ 手部或身体某个部位]的局部特写小图。与参考图同样的写实摄影风格，不是插画。每一个视图里，脸、发型、服装、颜色和身材比例都与参考图一致。均匀的棚拍光线。不出现文字。"
       }
     }
   },

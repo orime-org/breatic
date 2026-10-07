@@ -24,10 +24,9 @@ export type TemplateExpansion =
 /**
  * Fills a node from the template it names.
  * @param node - The node as the agent sent it, naming a template.
- * @param locale - The reader's interface language, for the template prompt.
  * @returns The expanded node, or a reason the agent can act on.
  */
-export function expandTemplate(node: ProposalNode & { template: string }, locale: string): TemplateExpansion {
+export function expandTemplate(node: ProposalNode & { template: string }): TemplateExpansion {
   const { template: id, ...rest } = node;
   const template = findTemplate(id);
   if (!template) {
@@ -50,7 +49,7 @@ export function expandTemplate(node: ProposalNode & { template: string }, locale
       mode,
       model,
       ...(params === undefined ? {} : { params }),
-      prompt: rest.prompt ?? [...templatePrompt(template, locale)],
+      prompt: rest.prompt ?? templatePrompt(template),
     },
   };
 }

@@ -62,6 +62,38 @@ export function markText(slot: NonNullable<PromptSegment["slot"]>): string {
   return `${MARK_OPEN}${MARK_SYMBOL[slot.kind]} ${slot.label}${MARK_CLOSE}`;
 }
 
+/** A mark as {@link markText} writes it, with its kind and label captured. */
+const MARK_PATTERN = new RegExp(
+  `\\${MARK_OPEN}(${Object.values(MARK_SYMBOL).join("|")}) ([^\\${MARK_CLOSE}]+)\\${MARK_CLOSE}`,
+  "gu",
+);
+
+/**
+ * Read a prompt written the way the box shows it back into segments: each
+ * mark {@link markText} writes becomes the place it stands for, its label
+ * doubling as its note. The inverse of {@link markText}, so a prompt kept as
+ * the sentence the reader sees (a template's, in the locale files) lands as
+ * the same marks a proposal's would.
+ * @param text - The prompt as the box shows it.
+ * @returns Its segments.
+ * @throws {never} Never.
+ */
+export function markedSegments(text: string): PromptSegment[] {
+  const kindOf = Object.fromEntries(
+    Object.entries(MARK_SYMBOL).map(([kind, symbol]) => [symbol, kind as "asset" | "tweak"]),
+  );
+  const segments: PromptSegment[] = [];
+  let at = 0;
+  for (const match of text.matchAll(MARK_PATTERN)) {
+    const [whole, symbol = "", label = ""] = match;
+    if (match.index > at) segments.push({ text: text.slice(at, match.index) });
+    segments.push({ slot: { kind: kindOf[symbol] ?? "tweak", label, note: label } });
+    at = match.index + whole.length;
+  }
+  if (at < text.length) segments.push({ text: text.slice(at) });
+  return segments;
+}
+
 /**
  * The prompt as the panel will read it back, marks and all.
  *

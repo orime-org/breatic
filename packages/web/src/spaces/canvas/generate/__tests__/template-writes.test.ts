@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { findTemplate, templatePrompt } from '@breatic/shared';
+import { findTemplate, setLocale, templatePrompt } from '@breatic/shared';
 
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { templateFeeders, templateWrites } from '@web/spaces/canvas/generate/template-writes';
@@ -17,14 +17,16 @@ if (!grid) throw new Error('grid template missing');
 
 describe('templateWrites', () => {
   it('writes the template mode, model and prompt in the reader’s language', () => {
-    const out = templateWrites(grid, undefined, 'zh-CN');
+    setLocale('zh-CN');
+    const out = templateWrites(grid, undefined);
     expect(out.mode).toBe('i2i');
     expect(out.model).toBe('nano-banana-pro-edit-ultra');
-    expect(out.prompt).toEqual(templatePrompt(grid, 'zh-CN'));
+    expect(out.prompt).toEqual(templatePrompt(grid));
+    expect(out.prompt.map((s) => s.text ?? '').join('')).toContain('5 行 5 列');
   });
 
   it('keeps what the node remembers for other models', () => {
-    const out = templateWrites(grid, { 'gpt-image-2.5-sunburst-edit': { quality: 'high' } }, 'en');
+    const out = templateWrites(grid, { 'gpt-image-2.5-sunburst-edit': { quality: 'high' } });
     expect(out.paramsByModel['gpt-image-2.5-sunburst-edit']).toEqual({ quality: 'high' });
   });
 
@@ -32,7 +34,6 @@ describe('templateWrites', () => {
     const out = templateWrites(
       grid,
       { 'nano-banana-pro-edit-ultra': { aspect_ratio: '9:16', style_images: ['x'] } },
-      'en',
     );
     expect(out.paramsByModel['nano-banana-pro-edit-ultra']).toEqual({
       aspect_ratio: '1:1',

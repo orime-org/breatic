@@ -6,15 +6,30 @@
  * writes (inner#977).
  */
 
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   GENERATION_TEMPLATES,
-  TEMPLATE_LOCALES,
   findTemplate,
   templatePrompt,
   templatesFor,
 } from '@shared/canvas/generation-templates.js';
+import { setLocale, setLocaleMessages } from '@shared/i18n/index.js';
+
+const LOCALES = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'];
+
+beforeAll(() => {
+  for (const locale of LOCALES) {
+    const file = resolve(import.meta.dirname, `../../../../../locales/${locale}.json`);
+    setLocaleMessages(locale, JSON.parse(readFileSync(file, 'utf-8')) as Record<string, unknown>);
+  }
+});
+
+afterEach(() => {
+  setLocale('en');
+});
 
 describe('generation templates', () => {
   it('lists the two image templates and nothing for video or audio yet', () => {
@@ -42,26 +57,27 @@ describe('generation templates', () => {
     expect(findTemplate('no-such-template')).toBeUndefined();
   });
 
-  it('carries a prompt in every interface language, each with one reference mark first and one rewrite mark', () => {
+  it('carries a prompt in every interface language with as many reference marks as it declares', () => {
     for (const template of GENERATION_TEMPLATES) {
-      for (const locale of TEMPLATE_LOCALES) {
-        const segments = templatePrompt(template, locale);
-        const slots = segments.flatMap((s) => (s.slot ? [s.slot.kind] : []));
+      for (const locale of LOCALES) {
+        setLocale(locale);
+        const slots = templatePrompt(template).flatMap((s) => (s.slot ? [s.slot.kind] : []));
+        expect(slots.filter((kind) => kind === 'asset'), `${template.id} ${locale}`).toHaveLength(template.references);
         expect(slots, `${template.id} ${locale}`).toEqual(['asset', 'tweak']);
-        expect(segments.find((s) => s.slot)?.slot?.kind, `${template.id} ${locale}`).toBe('asset');
       }
     }
   });
 
-  it('writes the prompt in the reader’s language and falls back to English', () => {
+  it('writes the prompt in the reader’s language', () => {
     const grid = findTemplate('storyboard-grid-25');
     if (!grid) throw new Error('grid template missing');
-    const text = (locale: string): string =>
-      templatePrompt(grid, locale)
+    const text = (locale: string): string => {
+      setLocale(locale);
+      return templatePrompt(grid)
         .map((s) => s.text ?? '')
         .join('');
+    };
     expect(text('zh-CN')).toContain('5 行 5 列');
     expect(text('en')).toContain('5 rows and 5 columns');
-    expect(text('fr')).toBe(text('en'));
   });
 });

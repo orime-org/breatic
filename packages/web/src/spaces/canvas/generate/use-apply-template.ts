@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import { getLocale, t, type GenerationTemplate } from '@breatic/shared';
+import { t, type GenerationTemplate } from '@breatic/shared';
 
 import {
   getPromptFragment,
@@ -41,7 +41,7 @@ export function useApplyTemplate(
     (template: GenerationTemplate) => {
       const graph = readCanvasGraph(projectId, spaceId);
       const content = asContentView(graph.nodes.find((n) => n.id === nodeId)?.data);
-      const writes = templateWrites(template, content?.paramsByModel, getLocale());
+      const writes = templateWrites(template, content?.paramsByModel);
       setNodeMode(projectId, spaceId, nodeId, writes.mode, writes.model, writes.paramsByModel);
       // Also an explicit pick, so the mode remembers the template's model.
       setNodeModel(projectId, spaceId, nodeId, writes.mode, writes.model, writes.paramsByModel);

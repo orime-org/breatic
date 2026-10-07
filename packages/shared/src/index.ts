@@ -48,7 +48,6 @@ export type {
   ProjectSummary,
   RecentItem,
   MemoryContext,
-  SkillMeta,
   NodeType,
   AttachRef,
   FocusImage,
@@ -218,6 +217,7 @@ export {
   proposalMarkSegments,
   nameableFeeders,
   markText,
+  markedSegments,
   promptPlainText,
   promptTextOf,
   sanitizeVoicePage,
@@ -613,12 +613,10 @@ export { assetNameFromUrl } from "@shared/media/asset-name.js";
 export { writeNodeMedia, type NodeMediaFields } from "@shared/canvas/node-media.js";
 export {
   GENERATION_TEMPLATES,
-  TEMPLATE_LOCALES,
   findTemplate,
   templatePrompt,
   templatesFor,
   type GenerationTemplate,
-  type TemplateLocale,
 } from "@shared/canvas/generation-templates.js";
 // Plain text in and out of a text node's body ships at
 // `@breatic/shared/canvas/text-body` — that file says why it is not here.

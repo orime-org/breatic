@@ -8,6 +8,7 @@
 
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
+import { loadLocales } from "@breatic/core";
 import { GENERATION_TEMPLATES } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
@@ -15,6 +16,7 @@ import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests
 import { answerFor, inputSchema, proposeCanvasAction } from "../propose-canvas-action.js";
 
 beforeEach(() => {
+  loadLocales();
   useFullCatalog();
 });
 

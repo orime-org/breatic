@@ -40,7 +40,6 @@ import {
   canConnect,
   evaluateExecute,
   GENERATION_TEMPLATES,
-  getLocale,
   extractPromptText,
   feedersOf,
   nameableFeeders,
@@ -1023,7 +1022,7 @@ export function answerFor(sent: z.infer<typeof inputSchema>): ProposalAnswer {
       nodes.push(plain);
       continue;
     }
-    const expanded = expandTemplate({ ...node, template: node.template }, getLocale());
+    const expanded = expandTemplate({ ...node, template: node.template });
     if (!expanded.ok) return { placed: false, reason: expanded.reason };
     nodes.push(expanded.node);
   }
@@ -1059,7 +1058,7 @@ export function renderProposalForModel(answer: ProposalAnswer): string {
 const TEMPLATE_GUIDE =
   "Templates a generate node can start from: " +
   GENERATION_TEMPLATES.map((t) => {
-    const references = t.prompts.en.filter((s) => s.slot?.kind === "asset").length;
+    const references = t.references;
     return `${t.id} (${t.nodeType}, ${t.mode}, ${t.model}, ${references} reference${references === 1 ? "" : "s"}): ${t.agentNote}`;
   }).join("; ") +
   ". Each reference is an empty node wired in, as with any proposal.";

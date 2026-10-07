@@ -25,7 +25,6 @@ export type {
   ProjectSummary,
   RecentItem,
   MemoryContext,
-  SkillMeta,
   StoredMessageMetadata,
 } from "@shared/types/entities.js";
 
@@ -119,6 +118,7 @@ export {
   feedersOf,
   layersOf,
   markText,
+  markedSegments,
   proposalMarkSegments,
   nameableFeeders,
   promptPlainText,
