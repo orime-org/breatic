@@ -20,7 +20,7 @@ import { UploadFailedError, uploadMedia } from '@web/data/upload/media-upload';
  * format is not one we take, the page could not fingerprint the file (a reload
  * fixes it, a retry on this page does not), or something else a retry may fix.
  */
-export type PictureFailure = 'storage' | 'unsupportedType' | 'hash' | 'upload';
+export type PictureFailure = 'storage' | 'unsupportedType' | 'hash' | 'rateLimited' | 'upload';
 
 /**
  * Reduce whatever a picture upload threw to what the person is told.
@@ -29,7 +29,10 @@ export type PictureFailure = 'storage' | 'unsupportedType' | 'hash' | 'upload';
  */
 export function pictureFailureOf(err: unknown): PictureFailure {
   if (!(err instanceof UploadFailedError)) return 'upload';
-  return err.reason === 'storage' || err.reason === 'unsupportedType' || err.reason === 'hash'
+  return err.reason === 'storage' ||
+    err.reason === 'unsupportedType' ||
+    err.reason === 'hash' ||
+    err.reason === 'rateLimited'
     ? err.reason
     : 'upload';
 }
@@ -64,6 +67,7 @@ export function pictureErrorMessage(
   const failure = pictureFailureOf(err);
   if (failure === 'unsupportedType') return t('studio.container.imageError.unsupported_type');
   if (failure === 'hash') return t('studio.container.imageError.hash_unavailable');
+  if (failure === 'rateLimited') return t('studio.container.imageError.rate_limited');
   return t(keys[failure]);
 }
 

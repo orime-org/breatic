@@ -253,7 +253,7 @@
       "attach": "ファイルを添付",
       "removeAttachment": "{name} を外す",
       "attachmentUploading": "アップロード中",
-      "attachmentFailed": "{reason, select, upload {アップロード失敗} extract {読み取り失敗} too_long {長すぎます} other {失敗}}",
+      "attachmentFailed": "{reason, select, upload {アップロード失敗} rate_limited {アップロードが多すぎます。後でお試しください} extract {読み取り失敗} too_long {長すぎます} other {失敗}}",
       "attachFull": "添付できるのは最大 {limit, number} 件です",
       "attachTooLong": "添付した内容が多すぎます。件数を減らすか、短いファイルにしてください。",
       "attachUnsupported": "{filename} は添付できません",
@@ -1638,7 +1638,8 @@
         "not_an_image": "そのファイルは画像として読み取れませんでした。",
         "encode_failed": "画像を準備できませんでした。別の画像をお試しください。",
         "unsupported_type": "このファイル形式には対応していません。",
-        "hash_unavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。"
+        "hash_unavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。",
+        "rate_limited": "アップロードの回数が多すぎます。しばらくしてからもう一度お試しください。"
       },
       "cropRegion": "切り抜き範囲 — 矢印キーで移動できます",
       "cover": {

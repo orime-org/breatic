@@ -21,6 +21,7 @@ import {
 } from '@web/data/upload/media-upload';
 import type { CropRect } from '@web/lib/crop-math';
 import type { CropSource } from '@web/spaces/canvas/focus/crop-export';
+import { uploadFailureMessageKey } from '@web/spaces/canvas/upload-failure';
 
 /** Everything `runFocusCrop` needs injected (all unit-mockable). */
 export interface FocusCropDeps {
@@ -120,4 +121,18 @@ export async function runFocusCrop(
     const tagged = err instanceof Error ? err.message : '';
     deps.onFailure(isUploadFailureReason(tagged) ? tagged : 'upload');
   }
+}
+
+/**
+ * The sentence a failed focus crop shows.
+ *
+ * A reason that names its cause reads as the canvas's upload sentence for it;
+ * the catch-all and a transfer read as the crop's own.
+ * @param stage - Where it failed: the export, or why the upload ended.
+ * @returns The message key.
+ */
+export function focusFailureMessageKey(stage: 'export' | UploadFailureReason): string {
+  if (stage === 'export') return 'canvas.generatePanel.focusExportFailed';
+  if (stage === 'upload' || stage === 'transfer') return 'canvas.generatePanel.focusUploadFailed';
+  return uploadFailureMessageKey(stage);
 }

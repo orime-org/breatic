@@ -84,6 +84,7 @@ describe('pictureFailureOf', () => {
     expect(pictureFailureOf(new UploadFailedError('storage'))).toBe('storage');
     expect(pictureFailureOf(new UploadFailedError('unsupportedType'))).toBe('unsupportedType');
     expect(pictureFailureOf(new UploadFailedError('hash'))).toBe('hash');
+    expect(pictureFailureOf(new UploadFailedError('rateLimited'))).toBe('rateLimited');
     expect(pictureFailureOf(new UploadFailedError('transfer'))).toBe('upload');
     expect(pictureFailureOf(new Error('network'))).toBe('upload');
   });
@@ -96,6 +97,12 @@ describe('pictureErrorMessage', () => {
   it('tells the person to reload when the file could not be fingerprinted', () => {
     expect(pictureErrorMessage(new UploadFailedError('hash'), t, KEYS)).toBe(
       'studio.container.imageError.hash_unavailable',
+    );
+  });
+
+  it('tells the person they are uploading too often', () => {
+    expect(pictureErrorMessage(new UploadFailedError('rateLimited'), t, KEYS)).toBe(
+      'studio.container.imageError.rate_limited',
     );
   });
 

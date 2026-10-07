@@ -253,7 +253,7 @@
       "attach": "添加文件",
       "removeAttachment": "移除 {name}",
       "attachmentUploading": "上传中",
-      "attachmentFailed": "{reason, select, upload {上传失败} extract {读取失败} too_long {太长} other {失败}}",
+      "attachmentFailed": "{reason, select, upload {上传失败} rate_limited {上传太频繁，请稍后重试} extract {读取失败} too_long {太长} other {失败}}",
       "attachFull": "最多附带 {limit, number} 项",
       "attachTooLong": "附带的内容太多了，请少挂几项或换短一点的文件。",
       "attachUnsupported": "{filename} 不能附带",
@@ -1638,7 +1638,8 @@
         "not_an_image": "无法把这个文件读成图片。",
         "encode_failed": "无法处理这张图片，请换一张试试。",
         "unsupported_type": "这个文件的格式不支持。",
-        "hash_unavailable": "无法校验此文件，请刷新页面后重试。"
+        "hash_unavailable": "无法校验此文件，请刷新页面后重试。",
+        "rate_limited": "上传太频繁，请稍后重试。"
       },
       "cropRegion": "裁剪区域 — 可用方向键移动",
       "cover": {

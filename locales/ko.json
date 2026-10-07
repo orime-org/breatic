@@ -253,7 +253,7 @@
       "attach": "파일 첨부",
       "removeAttachment": "{name} 제거",
       "attachmentUploading": "업로드 중",
-      "attachmentFailed": "{reason, select, upload {업로드 실패} extract {읽기 실패} too_long {너무 김} other {실패}}",
+      "attachmentFailed": "{reason, select, upload {업로드 실패} rate_limited {업로드가 너무 잦음, 잠시 후 다시 시도} extract {읽기 실패} too_long {너무 김} other {실패}}",
       "attachFull": "최대 {limit, number}개까지 첨부할 수 있습니다",
       "attachTooLong": "첨부한 내용이 너무 많습니다. 항목을 줄이거나 더 짧은 파일을 사용하세요.",
       "attachUnsupported": "{filename}은(는) 첨부할 수 없습니다",
@@ -1638,7 +1638,8 @@
         "not_an_image": "해당 파일을 이미지로 읽을 수 없습니다.",
         "encode_failed": "이미지를 준비하지 못했습니다. 다른 이미지를 시도해 주세요.",
         "unsupported_type": "지원하지 않는 파일 형식입니다.",
-        "hash_unavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요."
+        "hash_unavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요.",
+        "rate_limited": "업로드가 너무 잦습니다. 잠시 후 다시 시도해 주세요."
       },
       "cropRegion": "자르기 영역 — 화살표 키로 이동할 수 있습니다",
       "cover": {

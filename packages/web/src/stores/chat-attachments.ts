@@ -10,7 +10,7 @@ import type { ChatAttachedChip } from '@breatic/shared';
 export type TrayStatus = 'uploading' | 'ready' | 'failed';
 
 /** Why an item could not be attached. */
-export type TrayFailure = 'upload' | 'extract' | 'too_long';
+export type TrayFailure = 'upload' | 'rate_limited' | 'extract' | 'too_long';
 
 /** One item waiting above the chat box. */
 export interface TrayItem {

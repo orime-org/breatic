@@ -253,7 +253,7 @@
       "attach": "新增檔案",
       "removeAttachment": "移除 {name}",
       "attachmentUploading": "上傳中",
-      "attachmentFailed": "{reason, select, upload {上傳失敗} extract {讀取失敗} too_long {太長} other {失敗}}",
+      "attachmentFailed": "{reason, select, upload {上傳失敗} rate_limited {上傳太頻繁，請稍後再試} extract {讀取失敗} too_long {太長} other {失敗}}",
       "attachFull": "最多附帶 {limit, number} 項",
       "attachTooLong": "附帶的內容太多了，請少掛幾項或換短一點的檔案。",
       "attachUnsupported": "{filename} 不能附帶",
@@ -1638,7 +1638,8 @@
         "not_an_image": "無法把這個檔案讀成圖片。",
         "encode_failed": "無法處理這張圖片，請換一張試試。",
         "unsupported_type": "不支援這個檔案的格式。",
-        "hash_unavailable": "無法驗證此檔案，請重新整理頁面後再試。"
+        "hash_unavailable": "無法驗證此檔案，請重新整理頁面後再試。",
+        "rate_limited": "上傳太頻繁，請稍後再試。"
       },
       "cropRegion": "裁切區域 — 可用方向鍵移動",
       "cover": {
