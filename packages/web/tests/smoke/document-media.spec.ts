@@ -355,6 +355,47 @@ test('the toolbar sits above a picture with lines above it (A9)', async () => {
   const [bar, media] = await Promise.all([toolbar.boundingBox(), img.boundingBox()]);
   expect(bar!.y + bar!.height).toBeLessThanOrEqual(media!.y);
   expect(Math.abs(bar!.x + bar!.width / 2 - (media!.x + media!.width / 2))).toBeLessThan(1);
+
+  // Moving up onto the bar slowly, through the gap between it and the
+  // picture, keeps it up: the pointer never leaves the media's frame.
+  const centre = page.locator(`${IMAGE} [data-testid="doc-media-align-center"]`);
+  const target = (await centre.boundingBox())!;
+  await page.mouse.move(media!.x + media!.width / 2, media!.y + 4);
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 20 });
+  await expect(toolbar).toBeVisible();
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(page.locator(IMAGE)).toHaveAttribute('data-text-alignment', 'center');
+});
+
+test('a selected picture is framed with a knob on each corner, and its handle stands at its top (A8, A10)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('Above');
+  await page.keyboard.press('Enter');
+  const png = (await pngBytes(page, 300, 400)).toString('base64');
+  await page.locator(EDITOR).evaluate((element, base64) => {
+    const transfer = new DataTransfer();
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    transfer.items.add(new File([bytes], 'tall.png', { type: 'image/png' }));
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+  }, png);
+  const img = page.locator(`${IMAGE} img`);
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+
+  await img.hover();
+  const handle = page.getByTestId('doc-block-handle');
+  await expect(handle).toBeVisible();
+  const [grip, media] = await Promise.all([handle.boundingBox(), img.boundingBox()]);
+  expect(grip!.y + grip!.height / 2).toBeLessThan(media!.y + 30);
+
+  await img.click();
+  const frame = page.locator(`${IMAGE} [data-media-frame]`);
+  await expect(frame).toHaveCSS('outline-style', 'solid');
+  await expect(frame).toHaveCSS('outline-width', '1px');
+  for (const corner of ['nw', 'ne', 'sw', 'se']) {
+    await expect(page.getByTestId(`doc-media-resize-${corner}`)).toBeVisible();
+  }
+  await expect(page.locator(IMAGE)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 });
 
 test('a video plays in place and keeps playing while its width changes (A7, A8)', async () => {
@@ -366,10 +407,10 @@ test('a video plays in place and keeps playing while its width changes (A7, A8)'
   });
   const video = page.locator(`${VIDEO} video`);
   await expect(video).toBeVisible({ timeout: UPLOAD_TIMEOUT });
-  const handle = page.locator(`${VIDEO} [data-testid="doc-media-resize-right"]`);
+  const handle = page.locator(`${VIDEO} [data-testid="doc-media-resize-se"]`);
   const element = await video.elementHandle();
 
-  await page.locator(VIDEO).hover();
+  await page.locator(VIDEO).click({ position: { x: 20, y: 20 } });
   const box = (await handle.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();

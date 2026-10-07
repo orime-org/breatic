@@ -306,5 +306,5 @@ test('a viewer sees a picture the owner added, and none of its controls (inner#1
   await img.hover();
   await viewer.waitForTimeout(500);
   await expect(viewer.getByTestId('doc-media-toolbar')).toBeHidden();
-  await expect(viewer.getByTestId('doc-media-resize-right')).toBeHidden();
+  await expect(viewer.getByTestId('doc-media-resize-se')).toHaveCount(0);
 });
