@@ -56,7 +56,6 @@ import {
   type ControlGate,
   type GenerationNodeType,
   type ReferenceKind,
-  type PromptSegment,
   type ProposalAnswer,
   type ProposalNode,
 } from "@breatic/shared";
@@ -89,23 +88,36 @@ const promptSegment = z.union([
   z.object({ text: z.string().min(1) }).strict(),
   z
     .object({
-      slot: z
-        .object({
-          kind: z
-            .enum(["asset", "tweak", "ref"])
-            .describe(
-              "asset: material the reader supplies in an empty node. " +
-                "tweak: something only they can pick or write in the panel. " +
-                "ref: names a node wired in, no to-do; text lands here",
-            ),
-          label: z.string().trim().min(1),
-          note: z
-            .string()
-            .trim()
-            .min(1)
-            .describe("The line this puts on the card"),
-        })
-        .strict(),
+      slot: z.union([
+        z
+          .object({
+            kind: z
+              .enum(["asset", "tweak"])
+              .describe(
+                "asset: a node wired in that the reader @s by hand to use it -- empty for their " +
+                  "material, generated, or a text node; the label says which (uploaded, generated, " +
+                  "the words you wrote). tweak: words only the reader can write",
+              ),
+            label: z.string().trim().min(1),
+            note: z
+              .string()
+              .trim()
+              .min(1)
+              .describe("The line this puts on the card"),
+          })
+          .strict(),
+        z
+          .object({
+            kind: z
+              .literal("note")
+              .describe(
+                "How to operate the panel, never sent to the model: e.g. which slot to pick a node " +
+                  "into, for material a model takes through a slot rather than an @",
+              ),
+            label: z.string().trim().min(1).describe("The note, which is also the card's line"),
+          })
+          .strict(),
+      ]),
     })
     .strict(),
 ]);
@@ -144,10 +156,10 @@ const proposalNode = z
       .array(promptSegment)
       .optional()
       .describe(
-        "What to generate, or a written node's words. Mark what the reader " +
-          "supplies or picks; the k-th asset mark pairs with the k-th empty " +
-          "node wired in, the k-th ref mark with the k-th other, in the " +
-          "order the nodes are listed",
+        "What to generate, or a written node's words, in the language the reader " +
+          "writes in. Marks are words shown to the reader, nothing more: no mention " +
+          "is written for them, and the reader @s every reference by hand, so give " +
+          "every node wired in that they could @ an asset mark",
       ),
     shots: z
       .array(
@@ -163,8 +175,7 @@ const proposalNode = z
       .describe(
         "role generate only, in mode multi_shot and nowhere else: each " +
           "shot's own prompt and whole seconds, which add up to the duration. " +
-          "The main prompt is not sent then, so leave it out. Marks count " +
-          "across the prompt, then each shot in order",
+          "The main prompt is not sent then, so leave it out",
       ),
   })
   .strict();
@@ -404,37 +415,6 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
 }
 
 /**
- * The prompt as the panel will measure it once the group is placed.
- *
- * A mark pointing upstream writes no text of its own, and at Generate time
- * the body of the text node it names takes its place in the string the panel
- * measures (`serializePromptText`). Measured as nothing, a script past the
- * model's cap is placed and the reader meets the refusal at a button they
- * cannot fix from -- the words are in another node.
- *
- * A mark naming anything else substitutes nothing there either, so it counts
- * for nothing here.
- * @param prompt - The proposed prompt.
- * @param named - The nodes its marks point at, in the order they are marked.
- * @returns The text to measure against the model's cap.
- * @throws {never} Never.
- */
-function measuredPrompt(
-  prompt: readonly PromptSegment[],
-  named: readonly (ProposalNode | null)[],
-): string {
-  let seen = 0;
-  return prompt
-    .map((segment) => {
-      if (segment.slot?.kind !== "ref") return promptTextOf([segment]);
-      const node = named[seen];
-      seen += 1;
-      return node?.role === "written" ? promptPlainText(node.prompt ?? []) : "";
-    })
-    .join("");
-}
-
-/**
  * Judge one generation node against the catalog and its own group.
  * @param proposal - The whole proposal, for reading the group around it.
  * @param node - The node being judged.
@@ -512,28 +492,17 @@ function checkGenerateNode(
   // this model uses is what it declares, carried here by the same projection
   // the agent is answered out of.
   const pools = poolParams(chosen);
-  // A model drawing no box mounts no editor and forces the box empty, so both
-  // the words and a mark that lands as a mention of upstream work reach
-  // nobody. Asked further down instead, the mention would be turned away for
-  // the panel it cannot fit in, and the way out named there is words -- which
-  // this same clause refuses. What stays is what the card draws its to-dos
-  // from and the reader then acts on in the panel: material marks, and marks
-  // naming something for them to pick there.
-  if (
-    !chosen.takesPrompt &&
-    prompt.some((segment) => segment.slot === undefined || segment.slot.kind === "ref")
-  ) {
+  // A model drawing no box mounts no editor and forces the box empty, so
+  // words written there reach nobody. Marks stay: they are what the card
+  // lists for the reader to do in the panel.
+  if (!chosen.takesPrompt && prompt.some((segment) => segment.slot === undefined)) {
     return {
       ok: false,
-      reason: `"${model}" draws no prompt box, so words written there and marks pointing upstream reach nobody. Keep the marks naming what the reader supplies or picks, and take the rest out.`,
+      reason: `"${model}" draws no prompt box, so words written there reach nobody. Keep the marks naming what the reader supplies or picks, and take the rest out.`,
     };
   }
-  // The one reading of what feeds a node, shared with the card that files its
-  // to-dos by it and the canvas that writes its mentions from it. A second
-  // walk over the edges here is how the three come to disagree about which
-  // node the k-th mark is about.
   const held = feedersOf(proposal, index);
-  // What this prompt may name, by the one rule the canvas and the card read.
+  // What the reader could @ here, by the panel's own picker rule.
   const canName = nameableFeeders(proposal, index);
   /**
    * The nodes behind a run of feeder indices, in the proposal's own order.
@@ -543,127 +512,48 @@ function checkGenerateNode(
    */
   const nodesAt = (list: readonly number[]): ProposalNode[] =>
     list.flatMap((i) => proposal.nodes[i] ?? []);
-  // What each mark pointing upstream lands on, in the order the marks appear.
-  // The k-th mark is about the k-th node wired in past the ones that fill a
-  // required slot, so the pairing is settled once here and read the same way
-  // by the gate below, the length it is measured at, and the nodes a refusal
-  // names. Asked of the whole list of
-  // feeders instead, each of those three answers a different question from
-  // the one the canvas will act on.
-  //
-  // `null` where that mark lands on nothing: a place this panel would not
-  // take a mention of, or no k-th feeder at all. A ref mark's mention IS its
-  // text (`markText` answers with the empty string for it), so a mark landing
-  // on nothing writes nothing -- the words on either side close up and the
-  // sentence reaches the reader without what it was about.
-  //
-  // Asset marks are paired the same way. One standing on a slot's place has no
-  // source behind it and still names the slot to fill, which under the slot
-  // path is the whole instruction there; one standing on a node the prompt can
-  // mention is required by the check below.
-  const pointed = prompt
-    .filter((segment) => segment.slot?.kind === "ref")
-    .map((_, k) => canName.upstream[k])
-    .map((i) => (i === undefined || i === null ? null : (proposal.nodes[i] ?? null)));
-  // Four sentences because the way out differs, and a mark landing on nothing
-  // leaves nothing on screen to work it out from: the reader is handed a
-  // sentence missing what it was about, with no bracket and no gap to see.
-  const lost = pointed.findIndex((n) => n === null);
-  if (lost !== -1) {
-    const wired = held.upstream.length;
-    if (wired === 0 && held.sources.length === 0) {
-      return {
-        ok: false,
-        reason: `"${node.name}" points at something upstream and nothing is wired into it. Wire an edge to what it draws on.`,
-      };
-    }
-    if (wired === 0) {
-      // An empty node is the place the reader fills, so it reaches the
-      // generation through the panel's material slots rather than as upstream
-      // work. The other mark is the one that names it.
-      return {
-        ok: false,
-        reason: `"${node.name}" points at something upstream, and what is wired into it is material the reader fills in. Mark it as material, or wire in the work this draws on.`,
-      };
-    }
-    // The slot's nodes are picked in the panel, so the marks count the rest.
-    const markable = held.upstream.filter((i) => !canName.slotted.includes(i));
-    if (lost >= markable.length) {
-      const slot = nodesAt(held.upstream.filter((i) => canName.slotted.includes(i)));
-      const filled = slot
-        .map((n) => ` "${n?.name ?? ""}" fills the ${n?.type ?? ""} slot "${model}" cannot run without, which the reader picks in the panel, so no mark is about it.`)
-        .join("");
-      const counted = slot.length > 0 ? "past the slot" : "are wired into it";
-      return {
-        ok: false,
-        reason: `"${node.name}" points upstream ${String(pointed.length)} time(s) and ${String(markable.length)} node(s) ${counted}. Each mark is about one of them, in the order they are listed.${filled}`,
-      };
-    }
-    return {
-      ok: false,
-      reason: `"${model}" cannot carry a mention of "${nodesAt(markable)[lost]?.name ?? ""}". Say what you meant in the words themselves, and in your reply where the reader picks it up.`,
-    };
-  }
-  // An empty node the prompt may mention is material picked by that mention:
-  // image to image sends only the references the prompt mentions. The k-th
-  // material mark mentions the k-th empty node, and one the prompt cannot
-  // mention takes a place too, so the marks have to reach the last node that
-  // can be mentioned.
-  const needed = canName.sources.findLastIndex((i) => i !== null) + 1;
+  // Every node the reader could @ is used only once they @ it -- image to
+  // image sends only the pictures the prompt mentions, and a text node's
+  // words go in only where it is mentioned -- so each needs a bracket telling
+  // them to. Counted, never paired: the reader does the @.
+  const mentionable = nodesAt(
+    [...canName.sources, ...canName.upstream].filter((i): i is number => i !== null).sort((x, y) => x - y),
+  );
   const marked = prompt.filter((segment) => segment.slot?.kind === "asset").length;
-  if (marked < needed) {
-    const places = held.sources
-      .map((i, k) => {
-        const name = `"${proposal.nodes[i]?.name ?? ""}"`;
-        if (canName.sources[k] !== null) return name;
-        return canName.slotted.includes(i)
-          ? `${name} (fills a slot, no mention)`
-          : `${name} (a kind "${model}" does not take, no mention)`;
-      })
-      .join(", ");
+  if (marked < mentionable.length) {
     return {
       ok: false,
-      reason: `"${node.name}" needs ${String(needed)} material mark(s) and has ${String(marked)}. Its empty nodes, in the order they are listed: ${places}. The k-th {"slot":{"kind":"asset"}} segment stands on the k-th of them; a mark written as words mentions nothing, and the material put there is not sent.`,
+      reason: `"${node.name}" has ${String(mentionable.length)} node(s) wired in that the reader @s to use (${mentionable.map((n) => `"${n.name}"`).join(", ")}) and ${String(marked)} asset mark(s). Give each one an asset mark saying what to @; a node not @'d is not used.`,
     };
   }
-  // What the panel's own gate would say about the box this proposal fills in.
-  // It is asked with the text the box will hold (`promptTextOf`), so the two
-  // judge the same string; the sentences differ because this one is read by
-  // the model that sent the proposal rather than by the reader.
-  //
-  // Imprecise in one direction, and only after this group is on the canvas: a
-  // reference the reader @-mentions writes nothing into the text, so the
-  // spaces around it collapse to one and the box holds a character less than
-  // it looks. A prompt proposed at exactly the cap can therefore be refused
-  // by a character once the reader mentions something in it (#268).
-  // Measured once and reported from the same string: a sentence quoting the
-  // unsubstituted length names a number below the cap it just refused on, and
-  // tells the model to shorten a prompt that holds none of those characters.
-  // The pointed nodes run across the main prompt and then each shot, so each
-  // part is measured with the slice of them its own ref marks land on.
-  /**
-   * How many ref marks a part of the prompt carries.
-   * @param segments - That part.
-   * @returns The count.
-   */
-  const refsIn = (segments: readonly PromptSegment[]): number =>
-    segments.filter((segment) => segment.slot?.kind === "ref").length;
-  let taken = refsIn(node.prompt ?? []);
-  const measured = measuredPrompt(node.prompt ?? [], pointed.slice(0, taken));
-  const shots = (node.shots ?? []).map((shot) => {
-    const from = taken;
-    taken += refsIn(shot.prompt);
-    return { text: measuredPrompt(shot.prompt, pointed.slice(from, taken)), duration: shot.duration };
-  });
+  // The words of a wired text node go in where the reader @s it, so they
+  // count once against what is sent. Measured as nothing, a script past the
+  // model's cap is placed and the reader meets the refusal at a button they
+  // cannot fix from -- the words are in another node.
+  const scripts = mentionable.filter((n) => n.role === "written");
+  const scriptWords = scripts.map((n) => promptPlainText(n.prompt ?? [])).join("");
+  const shotCap = board?.maxChars;
+  if (shotCap !== undefined) {
+    const long = scripts.find((n) => [...extractPromptText(promptPlainText(n.prompt ?? []))].length > shotCap);
+    if (long) {
+      return {
+        ok: false,
+        reason: `"${long.name}" is longer than the ${String(shotCap)} characters "${model}" takes for one shot, so @'ing it into a shot is refused at Generate. Shorten it, or propose a model that takes it.`,
+      };
+    }
+  }
+  // What the panel's own gate would say about the box this proposal fills in,
+  // asked with the text the box will hold. A note is left out of it.
+  const shots = (node.shots ?? []).map((shot) => ({ text: promptTextOf(shot.prompt), duration: shot.duration }));
   const totalParam = board?.totalParam;
   const total = totalParam === undefined
     ? undefined
     : Number(node.params?.[totalParam] ?? chosen.params[totalParam]?.default);
   // What goes out as the prompt: the shots written into one, for a model with
   // no field for them, so its length is held to the model's cap.
-  const sent = board === undefined
-    ? measured
-    : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "");
+  const sent = (board === undefined
+    ? promptTextOf(node.prompt ?? [])
+    : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "")) + scriptWords;
   const verdict = evaluateExecute({
     promptText: sent,
     model,
@@ -677,7 +567,7 @@ function checkGenerateNode(
             shots,
             total,
             ...(board === undefined ? {} : { maxShots: board.maxShots }),
-            ...(board?.maxChars === undefined ? {} : { maxChars: board.maxChars }),
+            ...(shotCap === undefined ? {} : { maxChars: shotCap }),
           },
         }
       : {}),
@@ -699,11 +589,7 @@ function checkGenerateNode(
   }
   if (verdict?.refusal === "prompt-too-long") {
     const written = [...extractPromptText(sent)].length;
-    // The words are often in another node, and "shorten it" is not something
-    // the model can act on until it knows which one.
-    const holding = pointed
-      .filter((n) => n?.role === "written")
-      .map((n) => `"${n?.name ?? ""}"`);
+    const holding = scripts.map((n) => `"${n.name}"`);
     return {
       ok: false,
       reason: `"${model}" takes ${String(chosen.maxInputChars)} characters and this prompt is ${String(written)}${board === undefined ? "" : " with the shots written into it"}${holding.length > 0 ? `, counting the words in ${holding.join(", ")}` : ""}. Shorten it, or propose a model that takes it.`,
@@ -715,12 +601,10 @@ function checkGenerateNode(
   // turned away.
   //
   // Counted per kind over the nodes of that kind wired in and not taken by a
-  // required slot, which is the most
-  // the prompt's marks can put in that pool: the panel sends each mentioned
-  // row in the list of its own kind (`mentionedReferenceUrls`), and the words
-  // upstream are never one of them. A wired node the prompt never marks is
-  // counted here, and reaches the pool only once the reader mentions it.
-  // A node the model's required slot takes is picked there, not in the pool.
+  // required slot, which is the most the reader's @s can put in that pool:
+  // the panel sends each mentioned row in the list of its own kind
+  // (`mentionedReferenceUrls`). A node the model's required slot takes is
+  // picked there, not in the pool.
   const wired = nodesAt([...held.sources, ...held.upstream].filter((i) => !canName.slotted.includes(i)));
   for (const { kind, info } of pools) {
     const pooled = wired.filter((n) => n.type === kind).length;
@@ -785,21 +669,17 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
       reason: `"${node.name}" already holds its words, so it takes no mode, model or shots -- nothing is generated there.`,
     };
   }
-  // Both marks that reach outside the words land as a mention, and a text
-  // node's body holds none: one would ask for material nothing here reads,
-  // the other would name a node nothing here looks at. Whatever they say
-  // belongs in the message this proposal travels with.
-  //
-  // Asked before the words are measured: a mark pointing upstream writes no
-  // characters, so a body made of one measures empty, and "carries no words"
-  // sends the model off to add some while keeping the mark.
+  // A text node's body holds words and nothing else: a reference would ask
+  // for material nothing here reads, and a note would vanish from words that
+  // are kept as written. Whatever they say belongs in the message this
+  // proposal travels with.
   const reaching = (node.prompt ?? []).find(
-    (segment) => segment.slot?.kind === "asset" || segment.slot?.kind === "ref",
+    (segment) => segment.slot?.kind === "asset" || segment.slot?.kind === "note",
   );
   if (reaching) {
     return {
       ok: false,
-      reason: `"${node.name}" holds words the reader keeps as they are, and nothing there reaches another node. Take the mark out and mention what you meant in your own message.`,
+      reason: `"${node.name}" holds words the reader keeps as they are, so it takes no reference or note mark. Take the mark out and say what you meant in your own message.`,
     };
   }
   // Without them it lands as an empty text node, which is the thing a reader
@@ -1088,10 +968,9 @@ function templateGuide(): string {
       return `${t.id} (${t.nodeType}, ${t.mode}, ${t.model}, ${references} reference${references === 1 ? "" : "s"}): ${t.agentNote}. Its prompt: "${promptTextOf(templatePrompt(t))}"`;
     }).join("; ") +
     ". Each reference is a node wired in, as with any proposal. Name the template on the node and leave out what " +
-    "you keep. To put the reader's own story or detail in, or to draw on work generated upstream, send the " +
-    "template's prompt rewritten: replace its ✏️ spot, keep each [📎 …] spot that an empty node wired in fills, " +
-    'and put a {"slot":{"kind":"ref"}} mark in place of the [📎 …] spot that work generated upstream fills. ' +
-    "Image to image sends only the pictures the prompt mentions, and a mark is how it mentions one."
+    "you keep. To put the reader's own story or detail in, send the template's prompt rewritten in the " +
+    "language they write in: fill the ✏️ spot or keep it for them, and keep each 📎 spot, saying in its label " +
+    "whether the picture is uploaded or generated. The reader @s it by hand."
   );
 }
 
