@@ -15,7 +15,7 @@ import { resolve } from "node:path";
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { getAgentConfig, loadLocales, runWithLocale } from "@breatic/core";
-import { CHAT_MESSAGE_MAX_CHARS, canConnect, canGenerate, t } from "@breatic/shared";
+import { CHAT_MESSAGE_MAX_CHARS, MINI_TOOLS, canConnect, canGenerate, t } from "@breatic/shared";
 
 import { CANVAS_TOOLS, TOOL_MAP } from "@domain/agent/tools/index.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
@@ -775,5 +775,37 @@ describe("what the guide says about each surface", () => {
     const panel = section("Inside the generation panel");
     expect(panel).not.toMatch(/camera icon/);
     expect(panel).toContain(`a row named ${'"'}${t("canvas.generatePanel.camera")}${'"'}`);
+  });
+});
+
+// inner#888 §7.8, §9: the node shows no task state, the task row's buttons
+// changed, and the node menu gained a Tools submenu. The guide is what the
+// agent tells the reader, so each of these has to be true there too.
+describe("mini-tools and the task rows", () => {
+  it("quotes none of the controls that left the screen", () => {
+    const ids = messageIds();
+    for (const gone of ["canvas.task.action.replace", "canvas.task.someFailed", "canvas.task.view"]) {
+      expect(ids).not.toContain(gone);
+    }
+    expect(renderProductGuide()).not.toMatch(/red border/i);
+  });
+
+  it("says a node shows no task state and points to the column beside it", () => {
+    expect(section("Generating")).toMatch(/node itself shows no task state/i);
+  });
+
+  it("names every tool by the label its menu row shows, under the Tools row", () => {
+    const tools = section("Mini-tools");
+    expect(tools).toContain(`"${t("canvas.nodeMenu.tools")}"`);
+    for (const tool of MINI_TOOLS) {
+      expect(tools).toContain(`"${t(tool.labelKey)}"`);
+    }
+  });
+
+  it("says what each task row offers, View opening history at that result", () => {
+    const generating = section("Generating");
+    expect(generating).toContain(`"${t("canvas.task.action.finish")}"`);
+    expect(generating).toContain(`"${t("canvas.task.action.view")}"`);
+    expect(generating).toMatch(/opens the node's history at that result/i);
   });
 });
