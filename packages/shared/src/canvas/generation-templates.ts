@@ -35,6 +35,8 @@ export interface GenerationTemplate {
   model: string;
   /** Only the params the template fixes. */
   params: Readonly<Record<string, unknown>>;
+  /** What it makes and what it is for, in the words the agent reads. */
+  agentNote: string;
   /** The prompt in each interface language. */
   prompts: Readonly<Record<TemplateLocale, readonly PromptSegment[]>>;
 }
@@ -72,6 +74,8 @@ const STORYBOARD_GRID_25: GenerationTemplate = {
   mode: "i2i",
   model: "nano-banana-pro-edit-ultra",
   params: { aspect_ratio: "1:1", resolution: "4k" },
+  agentNote:
+    "one 5x5 storyboard picture of a continuous story, the same characters and place in every panel; made to be turned into a video afterwards",
   prompts: {
     en: [
       words("Use "),
@@ -123,6 +127,8 @@ const COSTUME_SHEET: GenerationTemplate = {
   mode: "i2i",
   model: "nano-banana-pro-edit-ultra",
   params: { aspect_ratio: "16:9", resolution: "4k" },
+  agentNote:
+    "a character costume sheet: front, side and back full-body views plus close-ups of the hands or another body part, for keeping a character consistent",
   prompts: {
     en: [
       words("Use "),

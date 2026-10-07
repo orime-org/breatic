@@ -39,6 +39,8 @@ import { z } from "zod";
 import {
   canConnect,
   evaluateExecute,
+  GENERATION_TEMPLATES,
+  getLocale,
   extractPromptText,
   feedersOf,
   nameableFeeders,
@@ -59,6 +61,7 @@ import {
   type ProposalNode,
 } from "@breatic/shared";
 
+import { expandTemplate } from "@domain/agent/tools/template-expansion.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
 import {
   modelsForMode,
@@ -119,6 +122,14 @@ const proposalNode = z
       .min(1)
       .max(MAX_NODE_NAME_LEN)
       .describe("What the reader sees on the node"),
+    template: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "role generate only: start this node from a template; it fills the mode, " +
+          "model, params and prompt you leave out, and what you write wins",
+      ),
     mode: z.string().min(1).optional().describe("role generate only"),
     model: z.string().min(1).optional().describe("role generate only"),
     params: z
@@ -1002,7 +1013,19 @@ function checkResolved(proposal: CanvasProposal): ProposalVerdict {
  * @returns The answer the card and the canvas read.
  * @throws {never} Never.
  */
-export function answerFor(proposal: CanvasProposal): ProposalAnswer {
+export function answerFor(sent: z.infer<typeof inputSchema>): ProposalAnswer {
+  const nodes: ProposalNode[] = [];
+  for (const node of sent.nodes) {
+    if (node.template === undefined) {
+      const { template: _none, ...plain } = node;
+      nodes.push(plain);
+      continue;
+    }
+    const expanded = expandTemplate({ ...node, template: node.template }, getLocale());
+    if (!expanded.ok) return { placed: false, reason: expanded.reason };
+    nodes.push(expanded.node);
+  }
+  const proposal: CanvasProposal = { ...sent, nodes };
   const resolved = withCatalogFacts(proposal);
   const verdict = checkResolved(resolved);
   if (!verdict.ok) return { placed: false, reason: verdict.reason };
@@ -1027,6 +1050,18 @@ export function renderProposalForModel(answer: ProposalAnswer): string {
     : `That proposal was refused, so nothing is on screen. ${answer.reason}`;
 }
 
+/**
+ * The templates as the agent reads them: id, what each makes, and how many
+ * references its prompt asks the reader to put in.
+ */
+const TEMPLATE_GUIDE =
+  "Templates a generate node can start from: " +
+  GENERATION_TEMPLATES.map((t) => {
+    const references = t.prompts.en.filter((s) => s.slot?.kind === "asset").length;
+    return `${t.id} (${t.nodeType}, ${t.mode}, ${t.model}, ${references} reference${references === 1 ? "" : "s"}): ${t.agentNote}`;
+  }).join("; ") +
+  ". Each reference is an empty node wired in, as with any proposal.";
+
 export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnswer> = tool({
   description:
     "The canvas is where models are run and where the pieces of one job are " +
@@ -1049,7 +1084,8 @@ export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnsw
     "propose only a mode and model they returned. Fill in every setting you " +
     "can judge; the rest is theirs to run. Say in your reply, in numbered " +
     `steps written from what ${GET_PRODUCT_GUIDE} says, what they do once it ` +
-    "is placed -- what to put in, what to pick, what to press.",
+    "is placed -- what to put in, what to pick, what to press. " +
+    TEMPLATE_GUIDE,
   inputSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
   toModelOutput: ({ output }) => ({ type: "text", value: renderProposalForModel(output) }),
