@@ -184,3 +184,50 @@ export async function exportCropBlob(
   if (!blob) throw new Error('canvas export produced no blob');
   return blob;
 }
+
+/** Quarter turns clockwise and flips, as the rotate & flip tool holds them. */
+export interface Orientation {
+  turns: number;
+  flipX: boolean;
+  flipY: boolean;
+}
+
+/**
+ * The size a source takes after an orientation: a quarter or three-quarter
+ * turn swaps its sides.
+ * @param width - The source's width.
+ * @param height - The source's height.
+ * @param turns - Quarter turns clockwise.
+ * @returns The oriented size.
+ */
+export function orientedSize(width: number, height: number, turns: number): { width: number; height: number } {
+  return ((turns % 4) + 4) % 2 === 1 ? { width: height, height: width } : { width, height };
+}
+
+/**
+ * Export a source turned and flipped as a PNG blob at natural resolution
+ * (inner#888 §7.4). The flips apply to the picture as it stands and the turn
+ * after them, which is the order the node's preview transform draws in.
+ * @param source - The source URL plus, for a video, the frame to draw.
+ * @param orientation - The turns and flips.
+ * @returns The oriented PNG blob.
+ * @throws {Error} When the source fails to load CORS-clean, or the canvas cannot export.
+ */
+export async function exportOrientedBlob(source: CropSource, orientation: Orientation): Promise<Blob> {
+  const el = await prepareCropSource(source);
+  const width = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth;
+  const height = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight;
+  const size = orientedSize(width, height, orientation.turns);
+  const canvas = document.createElement('canvas');
+  canvas.width = size.width;
+  canvas.height = size.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('canvas 2d context unavailable');
+  ctx.translate(size.width / 2, size.height / 2);
+  ctx.rotate((orientation.turns * Math.PI) / 2);
+  ctx.scale(orientation.flipX ? -1 : 1, orientation.flipY ? -1 : 1);
+  ctx.drawImage(el, -width / 2, -height / 2);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('canvas export produced no blob');
+  return blob;
+}
