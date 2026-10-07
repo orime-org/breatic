@@ -331,7 +331,8 @@ test('the toolbar hands the stored file to the browser as a download (A19) @need
   await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
   const stored = await img.evaluate((element) => (element as HTMLImageElement).src);
 
-  await img.hover();
+  // The first block's bar sits on the picture's top, so the pointer rests low.
+  await img.hover({ position: { x: 4, y: 86 } });
   // The same path the canvas node menu takes: a navigation instead of a
   // download would leave this waiting.
   const [download] = await Promise.all([
