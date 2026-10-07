@@ -124,7 +124,7 @@ describe("runCatalogTask", () => {
 
     expect(call(0)).toMatchObject({ endpoint: "minimax/speech-2.8-hd", body: { text: "hello", voice_id: "Wise_Woman" } });
     expect(steps.map((s) => s.status)).toEqual(["done"]);
-    expect(result).toEqual({ url: "https://cdn/out.mp3", model: "minimax-speech-2.8-hd", cost: 0.01 });
+    expect(result).toEqual({ outputs: [{ url: "https://cdn/out.mp3" }], model: "minimax-speech-2.8-hd", cost: 0.01 });
   });
 
   it("resumes a submitted step by its stored prediction id", async () => {
@@ -189,7 +189,7 @@ describe("runCatalogTask", () => {
     expect(voiceId).toMatch(/\d/);
     expect(call(1)).toEqual({ endpoint: "minimax/speech-2.8-hd", body: { text: "read this", voice_id: voiceId } });
     expect(clones.get("voice:sha-of-https://a/me.mp3")).toBe(voiceId);
-    expect(result.url).toBe("https://cdn/speech.mp3");
+    expect(result.outputs).toEqual([{ url: "https://cdn/speech.mp3" }]);
   });
 
   it("skips the steps a previous delivery finished and uses what they answered", async () => {
@@ -381,3 +381,46 @@ describe("runCatalogTask", () => {
     ).rejects.toThrow("No output URL after WaveSpeed polling");
   });
 });
+
+describe("runCatalogTask outputs", () => {
+  it("keeps every upstream output up to the count asked for, in upstream order", async () => {
+    const { deps, steps } = stores();
+    answers(["https://cdn/vocals.mp3", "https://cdn/backing.mp3"]);
+
+    const result = await runCatalogTask(deps, CTX, "audio", "", "vocal-remover", { audio: "https://a/song.mp3" }, 2);
+
+    expect(result.outputs).toEqual([{ url: "https://cdn/vocals.mp3" }, { url: "https://cdn/backing.mp3" }]);
+    expect(steps[0]!.output.urls).toEqual(["https://cdn/vocals.mp3", "https://cdn/backing.mp3"]);
+  });
+
+  it("hands on only the first output when one is asked for", async () => {
+    const { deps } = stores();
+    answers(["https://cdn/vocals.mp3", "https://cdn/backing.mp3"]);
+
+    const result = await runCatalogTask(deps, CTX, "audio", "", "vocal-remover", { audio: "https://a/song.mp3" }, 1);
+
+    expect(result.outputs).toEqual([{ url: "https://cdn/vocals.mp3" }]);
+  });
+
+  it("answers both outputs again when it resumes after the generate step finished", async () => {
+    const { deps } = stores([
+      { id: "s0", position: 0, kind: "generate", endpoint: "wavespeed-ai/audio-vocal-isolator", itemIndex: null, status: "done", predictionId: "pred-a", output: { urls: ["https://cdn/v.mp3", "https://cdn/b.mp3"], prediction: "pred-a" }, inlineCostUsd: 0 },
+    ]);
+
+    const result = await runCatalogTask(deps, CTX, "audio", "", "vocal-remover", { audio: "https://a/song.mp3" }, 2);
+
+    expect(runPredictionMock).not.toHaveBeenCalled();
+    expect(result.outputs).toEqual([{ url: "https://cdn/v.mp3" }, { url: "https://cdn/b.mp3" }]);
+  });
+
+  it("reads a step finished before outputs were stored as a list as one output", async () => {
+    const { deps } = stores([
+      { id: "s0", position: 0, kind: "generate", endpoint: "minimax/speech-2.8-hd", itemIndex: null, status: "done", predictionId: "pred-a", output: { url: "https://cdn/old.mp3", prediction: "pred-a" }, inlineCostUsd: 0 },
+    ]);
+
+    const result = await runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }, 1);
+
+    expect(result.outputs).toEqual([{ url: "https://cdn/old.mp3" }]);
+  });
+});
+
