@@ -222,7 +222,7 @@ export function MiniToolCropOverlay({
               <div
                 key={id}
                 data-testid={`mini-tool-crop-handle-${id}`}
-                className={`absolute h-2 w-2 border border-foreground bg-background ${ratio !== null ? 'rounded-full ' : ''}${className}`}
+                className={`absolute h-2 w-2 border border-foreground bg-background ${ratio === null ? 'rounded-full ' : ''}${className}`}
                 onPointerDown={onHandleDown(id)}
               />
             ))}

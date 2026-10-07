@@ -1556,20 +1556,20 @@ describe('FocusCropOverlay — the Original preset, and a click that draws (#199
     ).toBe('false');
   });
 
-  it('handles are round while a ratio is locked and square when free (A9)', () => {
+  it('handles are round when free and square while a ratio is locked (A9)', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     draw({ x: 160, y: 90 }, { x: 280, y: 180 });
-    // A hand-drawn marquee never locked a ratio, so the handles are square
-    expect(screen.getByTestId('focus-crop-handle-se').className).not.toContain(
-      'rounded-full',
-    );
-    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
+    // A hand-drawn marquee never locked a ratio, so the handles are round
     expect(screen.getByTestId('focus-crop-handle-se').className).toContain(
       'rounded-full',
     );
-    // Un-lighting returns them to square
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
     expect(screen.getByTestId('focus-crop-handle-se').className).not.toContain(
+      'rounded-full',
+    );
+    // Un-lighting returns them to round
+    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
+    expect(screen.getByTestId('focus-crop-handle-se').className).toContain(
       'rounded-full',
     );
   });

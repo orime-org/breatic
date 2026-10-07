@@ -864,12 +864,12 @@ export function FocusCropOverlay({
                   <div
                     key={id}
                     data-testid={`focus-crop-handle-${id}`}
-                    // Shape says whether the ratio is locked (#1991, user
-                    // 2026-08-21): round while a preset holds the marquee,
-                    // square while it is free. The signal sits on the handle
+                    // Shape says whether the ratio is locked (user
+                    // 2026-10-07): round while the marquee is free, square
+                    // while a preset holds it. The signal sits on the handle
                     // because the handle IS the control that changes the
                     // shape. Size and stroke stay put — only the corner.
-                    className={`absolute h-2 w-2 border border-foreground bg-background ${preset !== null ? 'rounded-full ' : ''}${className}`}
+                    className={`absolute h-2 w-2 border border-foreground bg-background ${preset === null ? 'rounded-full ' : ''}${className}`}
                     onPointerDown={onHandlePointerDown(id)}
                   />
                 ))}

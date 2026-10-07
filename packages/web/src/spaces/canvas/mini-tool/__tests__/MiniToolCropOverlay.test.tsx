@@ -82,8 +82,13 @@ describe('MiniToolCropOverlay', () => {
     expect(onChange).toHaveBeenLastCalledWith({ x: 100, y: 100, w: 200, h: 160 });
   });
 
-  it('rounds the handles while a ratio holds the box', () => {
-    mount(null, vi.fn(), 1);
+  it('rounds the handles while the box is free', () => {
+    mount(null, vi.fn(), null);
     expect(screen.getByTestId('mini-tool-crop-handle-se').className).toContain('rounded-full');
+  });
+
+  it('squares the handles while a ratio holds the box', () => {
+    mount(null, vi.fn(), 1);
+    expect(screen.getByTestId('mini-tool-crop-handle-se').className).not.toContain('rounded-full');
   });
 });
