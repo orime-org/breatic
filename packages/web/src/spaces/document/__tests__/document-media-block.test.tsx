@@ -319,6 +319,22 @@ function selectMedia(editor: Editor): void {
   });
 }
 
+describe('a caption written through an input method (A16)', () => {
+  it('is kept when the block is selected while the words are composed', () => {
+    const editor = open('image');
+    selectMedia(editor);
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-caption-button'));
+    const input = within(element(editor)).getByTestId('doc-media-caption-input');
+
+    fireEvent.compositionStart(input, { data: '' });
+    fireEvent.change(input, { target: { value: '说明' } });
+    fireEvent.compositionEnd(input, { data: '说明' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(media(editor).props['caption']).toBe('说明');
+  });
+});
+
 describe('the toolbar looks like the selection bubble bar', () => {
   it('takes the bar\'s frame and the bar\'s button size', async () => {
     const { BUBBLE_BAR_CLASS, BUBBLE_ICON_BUTTON_SIZE } = await import(

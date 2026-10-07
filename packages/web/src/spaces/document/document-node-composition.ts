@@ -76,8 +76,17 @@ export const documentNodeCompositionExtension = createExtension(() => {
           fromYjs(tr) ||
           (!tr.docChanged && tr.selection.eq(state.selection)),
         view: (view) => {
-          /** Starts holding when the composition begins on a node selection. */
-          const onStart = (): void => {
+          /**
+           * Starts holding when the composition begins on a node selection.
+           *
+           * A composition in a field of its own — a media block's caption
+           * (inner#1127) — is that field's, not the body's: the characters go
+           * into the field, and holding would refuse the write that saves them.
+           * @param event - The composition's start.
+           */
+          const onStart = (event: Event): void => {
+            const { target } = event;
+            if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
             if (view.state.selection instanceof NodeSelection) {
               view.dispatch(view.state.tr.setMeta(KEY, true));
             }
