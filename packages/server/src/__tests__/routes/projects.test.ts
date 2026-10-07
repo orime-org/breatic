@@ -100,6 +100,29 @@ describe("Projects routes", () => {
       expect(mocks.projectService.create.mock.calls[0]?.[4]).toBe("canvas");
     });
 
+    it("stores the name without its surrounding whitespace", async () => {
+      mocks.projectService.create.mockResolvedValue({ id: PROJ_UUID });
+      const res = await createApp().request("/api/v1/projects", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({ studioId: PROJ_UUID, name: "  My Project \n", slug: "my-project" }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mocks.projectService.create.mock.calls[0]?.[2]).toBe("My Project");
+    });
+
+    it("rejects a whitespace-only name with 422", async () => {
+      const res = await createApp().request("/api/v1/projects", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({ studioId: PROJ_UUID, name: "   ", slug: "my-project" }),
+      });
+
+      expect(res.status).toBe(422);
+      expect(mocks.projectService.create).not.toHaveBeenCalled();
+    });
+
     it("rejects missing name with 422", async () => {
       const app = createApp();
       const res = await app.request("/api/v1/projects", {
@@ -158,6 +181,29 @@ describe("Projects routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json() as { data: { id: string; name: string } };
       expect(body.data.name).toBe("New Name");
+    });
+
+    it("PATCH stores the new name without its surrounding whitespace", async () => {
+      mocks.projectService.update.mockResolvedValue({ id: PROJ_UUID, name: "New Name" });
+      const res = await createApp().request(`/api/v1/projects/${PROJ_UUID}`, {
+        method: "PATCH",
+        headers: AUTH,
+        body: JSON.stringify({ name: "\t New Name  " }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mocks.projectService.update.mock.calls[0]?.[2]).toMatchObject({ name: "New Name" });
+    });
+
+    it("PATCH rejects a whitespace-only name with 422", async () => {
+      const res = await createApp().request(`/api/v1/projects/${PROJ_UUID}`, {
+        method: "PATCH",
+        headers: AUTH,
+        body: JSON.stringify({ name: "   " }),
+      });
+
+      expect(res.status).toBe(422);
+      expect(mocks.projectService.update).not.toHaveBeenCalled();
     });
 
     it("PUT method is no longer accepted (DD #152 — REST semantic align with members.patch)", async () => {
