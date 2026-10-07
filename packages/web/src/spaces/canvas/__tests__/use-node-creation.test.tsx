@@ -309,7 +309,7 @@ describe('useNodeCreation', () => {
       expect(generate.paramsByModel).toEqual({ 'some-model': { ratio: '1:1' } });
     });
 
-    it('puts the prompt in the generation node, mentioning the empty one', () => {
+    it('puts the prompt in the generation node, @-ing nothing for the reader', () => {
       const withSlot: CanvasProposal = {
         ...PAIR,
         nodes: [
@@ -330,10 +330,9 @@ describe('useNodeCreation', () => {
       const fragment = canvasSpace.getPromptFragment('p-pr', 's-pr', ids[1]!, 'i2i');
       expect(fragment).not.toBeNull();
       const written = fragment!.toJSON();
-      expect(written).toContain('white ground, [📎 your photo]');
-      // The mention points at the empty node this group placed, not at a name
-      // or a guess -- that id is what makes the reader's file reach generation.
-      expect(written).toContain(`sourceNodeId="${ids[0]}"`);
+      expect(written).toContain('white ground, [📎 Use @ to pick your photo]');
+      // The reader @s the node by hand, and sees then whether it is still empty.
+      expect(written).not.toContain('sourceNodeId');
     });
 
     it('leaves the bracket alone where the reader picks material in the panel', () => {
@@ -360,45 +359,8 @@ describe('useNodeCreation', () => {
       const { nodeIds: ids } = result.current.placeProposalAt(bySlot, { x: 0, y: 0 });
 
       const written = canvasSpace.getPromptFragment('p-slot', 's-slot', ids[1]!, 'i2i')!.toJSON();
-      expect(written).toContain('animate [📎 your photo]');
+      expect(written).toContain('animate [📎 Use @ to pick your photo]');
       expect(written).not.toContain('sourceNodeId');
-    });
-
-    it('names the words upstream, not the picture, where a slot feeds it', () => {
-      // Two things feed it: the step before, whose picture the reader picks
-      // in the slot, and a node carrying words, whose body substitutes into
-      // the prompt. The k-th mark is about the k-th node wired in, so two
-      // marks are written and only the second one lands a mention -- the
-      // picture keeps its place and takes none.
-      const both: CanvasProposal = {
-        nodes: [
-          {
-            role: 'generate', type: 'image', name: 'The shot', mode: 't2i',
-            model: 'some-model', params: {}, poolKinds: [], takesPrompt: true,
-            prompt: [{ text: 'a running shoe' }],
-          },
-          { role: 'written', type: 'text', name: 'The caption', prompt: [{ text: 'slow and warm' }] },
-          {
-            role: 'generate', type: 'video', name: 'It turns', mode: 'i2v',
-            model: 'some-model', params: {}, poolKinds: [], takesPrompt: true,
-            prompt: [
-              { slot: { kind: 'ref', label: 'the shot', note: '' } },
-              { text: 'in the tone of ' },
-              { slot: { kind: 'ref', label: 'the caption', note: '' } },
-            ],
-          },
-        ],
-        edges: [{ fromIndex: 0, toIndex: 2 }, { fromIndex: 1, toIndex: 2 }],
-        rationale: '',
-        groupName: 'One spot',
-      };
-      const { result } = renderHook(() => useNodeCreation('p-ref', 's-ref'));
-
-      const { nodeIds: ids } = result.current.placeProposalAt(both, { x: 0, y: 0 });
-
-      const written = canvasSpace.getPromptFragment('p-ref', 's-ref', ids[2]!, 'i2v')!.toJSON();
-      expect(written).toContain(`sourceNodeId="${ids[1]}"`);
-      expect(written).not.toContain(`sourceNodeId="${ids[0]}"`);
     });
 
     it('records the model as a choice, so switching mode and back keeps it', () => {
@@ -414,51 +376,6 @@ describe('useNodeCreation', () => {
       expect(generate.modelByMode).toEqual({ i2i: 'some-model' });
     });
 
-    it('mentions the empty nodes in the order they are placed, not the order they are wired', () => {
-      // The k-th marked place belongs to the k-th empty node, which is what
-      // the reader sees left to right. Nothing makes a model list its edges
-      // in that same order, and a bracket pointing at the other node tells
-      // the reader to drop their photo where the backdrop goes.
-      const two: CanvasProposal = {
-        nodes: [
-          { role: 'source', type: 'image', name: 'Your product photo' },
-          { role: 'source', type: 'image', name: 'Your backdrop' },
-          {
-            role: 'generate',
-            type: 'image',
-            name: 'Composited',
-            mode: 'i2i',
-            model: 'some-model',
-            poolKinds: ['image'],
-            takesPrompt: true,
-            prompt: [
-              { text: 'the product, ' },
-              { slot: { kind: 'asset', label: 'your photo', note: 'drop it in the first' } },
-              { text: ' on ' },
-              { slot: { kind: 'asset', label: 'your backdrop', note: 'drop it in the second' } },
-            ],
-          },
-        ],
-        // Listed second-then-first, which the proposal is free to do.
-        edges: [
-          { fromIndex: 1, toIndex: 2 },
-          { fromIndex: 0, toIndex: 2 },
-        ],
-        modelNote: '',
-        rationale: '',
-      };
-      const { result } = renderHook(() => useNodeCreation('p-ord', 's-ord'));
-
-      const { nodeIds: ids } = result.current.placeProposalAt(two, { x: 0, y: 0 });
-
-      const written = canvasSpace.getPromptFragment('p-ord', 's-ord', ids[2]!, 'i2i')!.toJSON();
-      const first = written.indexOf(`sourceNodeId="${ids[0]}"`);
-      const second = written.indexOf(`sourceNodeId="${ids[1]}"`);
-      expect(first).toBeGreaterThan(-1);
-      expect(second).toBeGreaterThan(-1);
-      expect(first).toBeLessThan(second);
-    });
-
     it('writes the prompt into the mode the proposal chose, and no other (#2218)', () => {
       const { result } = renderHook(() => useNodeCreation('p-mode', 's-mode'));
       const withWords: CanvasProposal = {
@@ -472,7 +389,7 @@ describe('useNodeCreation', () => {
       expect(canvasSpace.getPromptFragment('p-mode', 's-mode', ids[1]!, 't2i')!.toJSON()).not.toContain('a red boat');
     });
 
-    it('lands proposed shots on the node, mentions counted across shots', () => {
+    it('lands proposed shots on the node, their marks as words', () => {
       const shots: CanvasProposal = {
         nodes: [
           { role: 'source', type: 'image', name: 'Hero' },
@@ -496,8 +413,9 @@ describe('useNodeCreation', () => {
 
       const landed = readShots('p-shot', 's-shot', ids[2]!);
       expect(landed?.map((shot) => shot.duration)).toEqual([2, 3]);
-      expect(landed?.[0]?.prompt.toJSON()).toContain(`sourceNodeId="${ids[0]}"`);
-      expect(landed?.[1]?.prompt.toJSON()).toContain(`sourceNodeId="${ids[1]}"`);
+      expect(landed?.[0]?.prompt.toJSON()).toContain('first [📎 Use @ to pick hero]');
+      expect(landed?.[1]?.prompt.toJSON()).toContain('then [📎 Use @ to pick extra]');
+      expect(landed?.map((shot) => shot.prompt.toJSON()).join('')).not.toContain('sourceNodeId');
     });
 
     describe('reminding the reader to edit the marked parts (inner#977)', () => {
@@ -536,17 +454,35 @@ describe('useNodeCreation', () => {
         expect(toast.info).toHaveBeenCalledTimes(1);
       });
 
-      it('says nothing for a mark that only points at an upstream node', () => {
-        const pointing: CanvasProposal = {
+      it('says nothing, and writes nothing, where the model draws no prompt box', () => {
+        const boxless: CanvasProposal = {
           ...PAIR,
           nodes: [
             PAIR.nodes[0]!,
-            { ...PAIR.nodes[1]!, prompt: [{ slot: { kind: 'ref', label: 'photo', note: '' } }] },
+            {
+              ...PAIR.nodes[1]!,
+              takesPrompt: false,
+              prompt: [{ slot: { kind: 'note', label: 'Pick the photo in the panel' } }],
+            },
           ],
         };
-        const { result } = renderHook(() => useNodeCreation('p-ref', 's-ref'));
-        result.current.placeProposalAt(pointing, { x: 0, y: 0 });
+        const { result } = renderHook(() => useNodeCreation('p-box', 's-box'));
+        const { nodeIds: ids } = result.current.placeProposalAt(boxless, { x: 0, y: 0 });
         expect(toast.info).not.toHaveBeenCalled();
+        expect(canvasSpace.getPromptFragment('p-box', 's-box', ids[1]!, 'i2i')!.toJSON()).not.toContain('Pick the photo');
+      });
+
+      it('reminds them when a placed prompt carries only a note', () => {
+        const noted: CanvasProposal = {
+          ...PAIR,
+          nodes: [
+            PAIR.nodes[0]!,
+            { ...PAIR.nodes[1]!, prompt: [{ slot: { kind: 'note', label: 'Pick it in the panel' } }, { text: 'white' }] },
+          ],
+        };
+        const { result } = renderHook(() => useNodeCreation('p-nt', 's-nt'));
+        result.current.placeProposalAt(noted, { x: 0, y: 0 });
+        expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editMarks);
       });
 
       it('says nothing when the prompts are plain words', () => {
@@ -669,10 +605,10 @@ describe('useNodeCreation', () => {
 
       const body = canvasSpace.getTextBody('p-copy', 's-copy', nodeIds[0]!);
       expect(body).not.toBeNull();
-      // The bracket stays in the words: it is what says which part is still
-      // theirs to rewrite (#263 A16).
+      // The braces stay in the words: they are what says which part is still
+      // theirs to rewrite (#263 A16, inner#977).
       expect(bodyToPlainText(body!)).toBe(
-        'A pour-over kettle, [✏️ your brand], slow and warm.',
+        'A pour-over kettle, {✏️ your brand}, slow and warm.',
       );
     });
 

@@ -255,7 +255,7 @@ describe('a flow that is more than one thing', () => {
 
     expect(screen.getByTestId('proposal-card')).toBeTruthy();
     expect(screen.getByTestId('proposal-words').textContent).toBe(
-      'A pour-over kettle,\nslow and warm, for [\u270f\ufe0f your brand].',
+      'A pour-over kettle,\nslow and warm, for {\u270f\ufe0f your brand}.',
     );
   });
 

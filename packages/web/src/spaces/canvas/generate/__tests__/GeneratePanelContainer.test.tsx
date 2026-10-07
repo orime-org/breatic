@@ -1560,8 +1560,10 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
     });
     const prompt = getPromptFragment('p', 's', 'target', 'i2i')?.toString() ?? '';
     expect(prompt).toContain('storyboard grid of exactly 5 rows');
-    expect(prompt).toContain('sourceNodeId="src"');
-    expect(prompt).toContain('[✏️ the story]');
+    // The picture wired in is left for the reader to @ by hand.
+    expect(prompt).not.toContain('sourceNodeId');
+    expect(prompt).toContain('[📎 Use @ to pick character or scene reference]');
+    expect(prompt).toContain('{✏️ the story}');
     expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editMarks, expect.anything());
     listSpy.mockRestore();
   });
