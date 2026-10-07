@@ -271,6 +271,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.panel.hostDeletedByPeer": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.template.costume-sheet.prompt": { described: /replaces that mode's prompt with the template's/ },
   "canvas.template.storyboard-grid-25.prompt": { described: /replaces that mode's prompt with the template's/ },
+  "canvas.promptMark.reference": { described: /A 📎 mark in square brackets asks the reader to @ a node/ },
   "canvas.task.couldNotStart": { excluded: REASONS.SAYS_TRY_AGAIN },
   "canvas.task.countTip": { excluded: REASONS.FILLS_A_VALUE },
   "canvas.task.dismissFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },

@@ -80,12 +80,8 @@ describe("templates in proposals", () => {
     setLocale("en");
   });
 
-  it("tells the agent to keep the reference marks an empty node fills when it rewrites a template prompt", () => {
-    expect(makeProposeCanvasAction().description).toMatch(/keep each \[📎 …\] spot that an empty node/i);
-  });
-
-  it("tells the agent a reference generated upstream takes a ref mark in place of the template's material mark", () => {
-    expect(makeProposeCanvasAction().description).toMatch(/\{"slot":\{"kind":"ref"\}\} mark in place of the \[📎 …\] spot/);
+  it("tells the agent to keep each reference mark and say whether the picture is uploaded or generated", () => {
+    expect(makeProposeCanvasAction().description).toMatch(/keep each 📎 spot, saying in its label whether the picture is uploaded or generated/);
   });
 });
 
@@ -109,17 +105,19 @@ describe("a template drawing on work generated upstream", () => {
     };
   }
 
-  it("is placed with a ref mark where the template's material mark stood", () => {
+  it("is placed with the template's reference mark naming the generated character", () => {
     const answer = answerFor(
       chained([
         { text: "Use " },
-        { slot: { kind: "ref", label: "character", note: "The character generated above" } },
+        { slot: { kind: "asset", label: "the generated character", note: "@ the character generated above" } },
         { text: " as the reference. A 5x5 storyboard of a courier crossing the city." },
       ]),
     );
     expect(answer.placed).toBe(true);
-    if (!answer.placed) return;
-    expect(answer.nodes[1]?.prompt?.filter((s) => s.slot).map((s) => s.slot?.kind)).toEqual(["ref"]);
+  });
+
+  it("is placed with the template's own prompt left as it is, its reference mark still asking for the picture", () => {
+    expect(answerFor(chained()).placed).toBe(true);
   });
 });
 
@@ -143,7 +141,7 @@ describe("an empty node wired into a reference pool", () => {
 
   it("is refused when the prompt names it only in words, since the picture put there would not be sent", () => {
     const answer = answerFor(withPrompt([{ text: "Use [📎 character reference] as the reference. A 5x5 storyboard." }]));
-    expect(answer).toMatchObject({ placed: false, reason: expect.stringContaining('"kind":"asset"') });
+    expect(answer).toMatchObject({ placed: false, reason: expect.stringMatching(/"Character".*asset mark/) });
   });
 
   it("is placed when a material mark mentions it", () => {
@@ -159,7 +157,7 @@ describe("an empty node wired into a reference pool", () => {
 
   it("holds a proposal without a template to the same rule", () => {
     const answer = answerFor(withPrompt([{ text: "A 5x5 storyboard of the character." }], false));
-    expect(answer).toMatchObject({ placed: false, reason: expect.stringContaining('"kind":"asset"') });
+    expect(answer).toMatchObject({ placed: false, reason: expect.stringMatching(/"Character".*asset mark/) });
   });
 });
 
@@ -177,7 +175,7 @@ describe("the template prompts the agent is shown inside a request", () => {
   });
 });
 
-describe("empty nodes counted by the place their mark takes", () => {
+describe("empty nodes counted, a slot's and an unused kind's left out", () => {
   /**
    * A first-frame slot node listed before a pool node, both empty, feeding
    * Kling O3 image-to-video, with the given number of material marks.
@@ -216,9 +214,8 @@ describe("empty nodes counted by the place their mark takes", () => {
     };
   }
 
-  it("refuses one mark when the pool node comes second, since that mark lands on the slot", () => {
-    const answer = answerFor(slotThenPool(1));
-    expect(answer).toMatchObject({ placed: false, reason: expect.stringContaining("2 material mark") });
+  it("places one mark for the pool node, the slot's node needing none", () => {
+    expect(answerFor(slotThenPool(1))).toMatchObject({ placed: true });
   });
 
   it("places a mark for each place in order", () => {
@@ -269,21 +266,8 @@ describe("empty nodes counted by the place their mark takes", () => {
     };
   }
 
-  it("needs no mark for a place after the last node the pool can mention", () => {
+  it("needs one mark for the picture whichever order the voice is listed in", () => {
     expect(answerFor(pictureAndVoice(false))).toMatchObject({ placed: true });
-  });
-
-  it("names each place in the refusal, a node the pool does not take among them", () => {
-    const answer = answerFor(pictureAndVoice(true));
-    expect(answer).toMatchObject({ placed: false });
-    if (answer.placed) return;
-    expect(answer.reason).toContain('"Clip" needs 2 material mark(s) and has 1');
-    expect(answer.reason).toMatch(/"Voice" \([^)]*does not take[^)]*\), "Character"/);
-  });
-
-  it("says a slot's node takes a place with no mention", () => {
-    const answer = answerFor(slotThenPool(1));
-    if (answer.placed) throw new Error("expected a refusal");
-    expect(answer.reason).toMatch(/"First frame" \([^)]*slot[^)]*\), "Character"/);
+    expect(answerFor(pictureAndVoice(true))).toMatchObject({ placed: true });
   });
 });

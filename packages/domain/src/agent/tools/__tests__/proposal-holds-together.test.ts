@@ -241,7 +241,7 @@ const sourcelessOn = (nodeType: GenerationNodeType): Reachable =>
  * One generation node, configured, with as many marks of each kind as asked.
  * @param at - The node type, mode and model to propose.
  * @param marks - How many places say the reader puts material there.
- * @param refs - How many places point at an upstream node.
+ * @param refs - How many reference marks name an upstream node.
  * @returns The node.
  * @throws {never} Never.
  */
@@ -262,7 +262,7 @@ function generation(at: Reachable, marks = 0, refs = 0): ProposalNode {
           note: "Put it in the empty node",
         },
       })),
-      ...Array.from({ length: refs }, () => ({ slot: { kind: "ref" as const, label: "the step before", note: "Nothing to do" } })),
+      ...Array.from({ length: refs }, () => ({ slot: { kind: "asset" as const, label: "the step before", note: "@ the step before" } })),
       ...Array.from({ length: at.choices.length > 0 ? 1 : 0 }, () => ({
         slot: { kind: "tweak" as const, label: "the voice", note: "Pick one in the panel" },
       })),
@@ -332,7 +332,7 @@ describe("a mode whose material arrives through the reference pool", () => {
           ...made,
           prompt: [
             ...(made.prompt ?? []),
-            { slot: { kind: "ref", label: "the step before", note: "Nothing to do" } },
+            { slot: { kind: "asset", label: "the step before", note: "Nothing to do" } },
           ],
         },
         {
@@ -397,7 +397,7 @@ describe("a mode whose material arrives through the reference pool", () => {
           // is about is that it also occupies one of the pool's rows.
           prompt: [
             ...(made.prompt ?? []),
-            { slot: { kind: "ref", label: "the step before", note: "Nothing to do" } },
+            { slot: { kind: "asset", label: "the step before", note: "Nothing to do" } },
           ],
         },
         {
@@ -785,7 +785,7 @@ describe("what the model is allowed to fill in", () => {
         { role: "generate", type: at.nodeType, name: "The read", mode: at.mode,
           model: at.model, params: {}, prompt: [
             { text: "read " },
-            { slot: { kind: "ref", label: "the step before", note: "Nothing to do" } },
+            { slot: { kind: "asset", label: "the step before", note: "Nothing to do" } },
             ...(at.choices.length > 0
               ? [{ slot: { kind: "tweak" as const, label: "the voice", note: "Pick one in the panel" } }]
               : []),
@@ -1038,32 +1038,6 @@ describe("what the answer tells the canvas", () => {
     expect(checkProposal(propose(at, { sources, marks: sources.length })).ok).toBe(true);
   });
 
-  it("refuses a mark naming generated work that fills the required slot", () => {
-    const at = mixed();
-    const first = pick((m) => m.nodeType === "image" && m.needs.length === 0 && m.takesPrompt, "text-to-image mode");
-    const proposal: CanvasProposal = {
-      nodes: [
-        { role: "generate", type: "image", name: "Knight", mode: first.mode, model: first.model, params: {}, prompt: [{ text: "a knight" }] },
-        {
-          role: "generate",
-          type: at.nodeType,
-          name: "Clip",
-          mode: at.mode,
-          model: at.model,
-          params: {},
-          prompt: [{ slot: { kind: "ref", label: "knight", note: "" } }, { text: " walks forward" }],
-        },
-      ],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
-      rationale: "",
-      groupName: "Knight clip",
-    };
-
-    const verdict = checkProposal(proposal);
-    expect(verdict.ok).toBe(false);
-    expect(verdict.ok ? "" : verdict.reason).toMatch(/slot/);
-  });
-
   it("lets a mark name the generated work wired in past the one that fills the slot", () => {
     const at = mixed();
     const first = pick((m) => m.nodeType === "image" && m.needs.length === 0 && m.takesPrompt, "text-to-image mode");
@@ -1087,7 +1061,7 @@ describe("what the answer tells the canvas", () => {
           mode: at.mode,
           model: at.model,
           params: {},
-          prompt: [{ text: "walk to " }, { slot: { kind: "ref", label: "castle", note: "" } }],
+          prompt: [{ text: "walk to " }, { slot: { kind: "asset", label: "castle", note: "" } }],
         },
       ],
       edges: [
@@ -1387,7 +1361,7 @@ describe("a flow of any shape", () => {
       rationale: "",
     });
 
-    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("mention") });
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("takes no reference or note mark") });
   });
 
   it("places a generation the step before it feeds, through a panel slot", () => {
@@ -1435,7 +1409,7 @@ describe("a flow of any shape", () => {
         { role: "generate", type: at.nodeType, name: "The clip", mode: at.mode,
           model: at.model, params: {}, prompt: [
             { text: "in the words of " },
-            { slot: { kind: "ref", label: "the step before", note: "Nothing to do" } },
+            { slot: { kind: "asset", label: "the step before", note: "Nothing to do" } },
             { text: ", using " },
             { slot: { kind: "asset", label: "yours", note: "Put it in" } },
           ] },
@@ -1464,7 +1438,7 @@ describe("a flow of any shape", () => {
         { role: "generate", type: at.nodeType, name: "The clip", mode: at.mode,
           model: at.model, params: {}, prompt: [
             { text: "in the words of " },
-            { slot: { kind: "ref", label: "the step before", note: "Nothing to do" } },
+            { slot: { kind: "asset", label: "the step before", note: "Nothing to do" } },
             { text: ", using " },
             { slot: { kind: "asset", label: "yours", note: "Put it in" } },
           ] },
@@ -1859,7 +1833,7 @@ describe("a mark pointing at an upstream node", () => {
           name: "Your copy",
           prompt: [
             { text: "After " },
-            { slot: { kind: "ref", label: "the step before", note: "Nothing to do" } },
+            { slot: { kind: "asset", label: "the step before", note: "Nothing to do" } },
           ],
         },
       ],
@@ -1867,54 +1841,7 @@ describe("a mark pointing at an upstream node", () => {
       rationale: "",
     });
 
-    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("mention") });
-  });
-
-  it("refuses a prompt whose only words are the marks pointing upstream", () => {
-    // A mark pointing upstream writes no bracket of its own -- it lands as the
-    // mention and nothing else -- so a prompt made of nothing but those is an
-    // empty box the reader is handed with a Generate button that refuses.
-    const at = pooled();
-    const first = sourcelessOn(at.nodeType);
-    const second = generation(at, 0, 1);
-
-    const verdict = checkProposal({
-      nodes: [
-        generation(first),
-        { ...second, prompt: (second.prompt ?? []).filter((s) => s.slot) },
-      ],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
-      modelNote: "",
-      rationale: "",
-      groupName: "Two steps",
-    });
-
-    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("writes nothing") });
-  });
-
-  it("refuses a prompt pointing upstream more times than there are nodes to point at", () => {
-    // How many marks go in a prompt is the agent's to decide, and a mark
-    // pointing at a node that is not there is not that decision: the k-th
-    // mark is about the k-th node wired in, so the later ones land on
-    // nothing. A ref mark's mention IS its text, so one landing on nothing
-    // writes nothing -- there is no bracket left on screen for the reader to
-    // take out, only a sentence closed up over what it was about.
-    const at = pooled();
-    const first = sourcelessOn(at.nodeType);
-    const second = generation(at, 0, 3);
-
-    const verdict = checkProposal({
-      nodes: [generation(first), second],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
-      modelNote: "",
-      rationale: "The second works on what the first made.",
-      groupName: "Two steps",
-    });
-
-    expect(verdict).toEqual({
-      ok: false,
-      reason: expect.stringContaining("node(s) are wired into it"),
-    });
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("takes no reference or note mark") });
   });
 
   it("tells a written node carrying one upstream mark to take the mark out", () => {
@@ -1927,7 +1854,7 @@ describe("a mark pointing at an upstream node", () => {
           role: "written",
           type: "text",
           name: "Your copy",
-          prompt: [{ slot: { kind: "ref", label: "the picture", note: "Nothing to do" } }],
+          prompt: [{ slot: { kind: "asset", label: "the picture", note: "Nothing to do" } }],
         },
         generation(sourceless(), 0, 0),
       ],
@@ -1967,115 +1894,6 @@ describe("a mark pointing at an upstream node", () => {
     expect(verdict).toEqual({ ok: true });
   });
 
-  it("refuses a second mark when only one node is wired in to carry it", () => {
-    // The k-th mark is about the k-th node wired in, so a run with more marks
-    // than feeders leaves the last ones pointing at nothing. A ref mark lands
-    // as a mention and nothing else, so one that resolves to nothing closes
-    // the words up over the gap and hands the reader a sentence missing what
-    // it was about.
-    const at = pick(
-      (m) => m.takesPrompt && m.needs.length === 0,
-      "prompt-driven mode needing no material",
-    );
-    const pointing = generation(at, 0, 2);
-
-    const verdict = checkProposal({
-      nodes: [
-        { role: "written", type: "text", name: "The script", prompt: [{ text: "hello there" }] },
-        pointing,
-      ],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
-      modelNote: "",
-      rationale: "",
-      groupName: "Two steps",
-    });
-
-    expect(verdict).toEqual({
-      ok: false,
-      reason: expect.stringContaining("node(s) are wired into it"),
-    });
-  });
-
-  it("tells a mark pointing upstream that what is wired in is material, not upstream work", () => {
-    // An empty node is the place the reader drops their own material into, so
-    // it reaches the generation through the panel's material slots rather than
-    // as upstream work. A mark pointing upstream finds nothing there, and the
-    // way out is the other mark -- saying the model cannot mention it would
-    // send the model to rewrite words that are not the problem.
-    const at = slotted();
-    const pointing = generation(at, 0, 1);
-
-    const verdict = checkProposal({
-      nodes: [
-        { role: "source", type: at.needs[0] as GenerationNodeType, name: "Yours to fill" },
-        pointing,
-      ],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
-      modelNote: "",
-      rationale: "",
-      groupName: "Two steps",
-    });
-
-    expect(verdict).toEqual({
-      ok: false,
-      reason: expect.stringContaining("material"),
-    });
-  });
-
-  it("names in a too-long refusal only the nodes whose words were counted", () => {
-    // A written node reaches the count through a mark that points at it. One
-    // wired in with no mark pointing at it contributes nothing, so naming it
-    // sends the model to shorten a node that is not in the number -- and the
-    // number does not move, which leaves the refusal with no way out.
-    const at = pick(
-      (m) => m.takesPrompt && m.needs.length === 0 && m.maxInputChars !== undefined,
-      "prompt-driven mode declaring an input cap",
-    );
-    const cap = at.maxInputChars ?? 0;
-    const overlong = generation(at, 0, 0);
-
-    const verdict = checkProposal({
-      nodes: [
-        { role: "written", type: "text", name: "Pronunciation notes", prompt: [{ text: "soft" }] },
-        { ...overlong, prompt: [{ text: "x".repeat(cap + 1) }] },
-      ],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
-      modelNote: "",
-      rationale: "",
-      groupName: "Two steps",
-    });
-
-    expect(verdict).toEqual({ ok: false, reason: expect.any(String) });
-    expect(verdict.ok ? "" : verdict.reason).not.toContain("Pronunciation notes");
-  });
-
-  it("refuses a mark pointing at a node this panel would not take a mention of", () => {
-    // A mark pointing upstream lands as a mention and nothing else, and a
-    // mention this panel refuses lands as nothing at all: the words on either
-    // side close up and the sentence loses what it was about. Which feeders
-    // can be mentioned is the catalog's answer, so the check has it.
-    const at = pick(
-      (m) => !m.byReference && m.takesPrompt && m.needs.length > 0,
-      "mode fed by a panel slot that still takes a prompt",
-    );
-    const first = sourcelessOn(at.needs[0] as GenerationNodeType);
-    const second = generation(at, 0, 1);
-
-    const verdict = checkProposal({
-      nodes: [generation(first), second],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
-      modelNote: "",
-      rationale: "The second works on what the first made.",
-      groupName: "Two steps",
-    });
-
-    // Generated work of the kind the model's slot takes fills that slot, and
-    // a slot is picked in the panel, never mentioned.
-    expect(verdict).toEqual({
-      ok: false,
-      reason: expect.stringMatching(/fills the \w+ slot/),
-    });
-  });
 });
 
 describe("what the model itself settles", () => {
@@ -2107,7 +1925,7 @@ describe("what the model itself settles", () => {
           params: {},
           prompt: [
             { text: "follow " },
-            { slot: { kind: "ref" as const, label: "the step before", note: "Nothing to do" } },
+            { slot: { kind: "asset" as const, label: "the step before", note: "Nothing to do" } },
             ...Array.from({ length: cap }, (_, i) => ({
               slot: {
                 kind: "asset" as const,
@@ -2127,13 +1945,6 @@ describe("what the model itself settles", () => {
     });
 
     expect(verdict).toEqual({ ok: true });
-  });
-
-  it("tells the model which node upstream each mark pointing there is about", () => {
-    const prompt = inputSchema.shape.nodes.element.shape.prompt;
-
-    expect(prompt.description).toMatch(/node wired in/);
-    expect(prompt.description).toMatch(/in the order the nodes are listed/);
   });
 
   it("keeps credits and run time out of the model note", () => {
@@ -2221,37 +2032,6 @@ describe("a model the panel draws no prompt box for", () => {
     });
   });
 
-  it("refuses a mark pointing upstream for the same reason, in one sentence", () => {
-    // With no editor mounted there is no box for a mention either, so both
-    // are turned away together. Answered as "this panel cannot carry a
-    // mention of that node" instead, the way out it names is words -- and
-    // words are what the clause above refuses for this same model, which
-    // leaves the two refusals pointing at each other.
-    const at = promptless();
-    const upstream = makerOf(at.needs[0] as GenerationNodeType);
-
-    const verdict = checkProposal({
-      nodes: [
-        generation(upstream),
-        ...at.needs.slice(1).map((kind) => generation(makerOf(kind))),
-        { role: "generate", type: at.nodeType, name: "The result", mode: at.mode, model: at.model,
-          params: {}, prompt: [
-            ...Array.from({ length: at.pieces }, (_, i) => ({
-              slot: { kind: "asset" as const, label: `piece ${String(i + 1)}`, note: "Pick it in the slot" },
-            })),
-            { slot: { kind: "ref" as const, label: "the step before", note: "Nothing to do" } },
-          ] },
-      ],
-      edges: at.needs.map((_, i) => ({ fromIndex: i, toIndex: at.needs.length })),
-      rationale: "x", groupName: "g",
-    });
-
-    expect(verdict).toEqual({
-      ok: false,
-      reason: expect.stringContaining("reach nobody"),
-    });
-    expect(verdict.ok ? "" : verdict.reason).not.toContain("in the words themselves");
-  });
 });
 
 // What `get_canvas_capabilities` now tells the model a text node is for: one

@@ -215,19 +215,20 @@ describe("what the guide says", () => {
     expect(section("Proposal cards")).not.toMatch(/a clock|a star/);
   });
 
-  it("tells the two kinds of bracketed spot apart", () => {
-    // A pencil spot is words to write or a setting to pick; a paperclip spot
-    // is the reader's own material, which goes in an empty node.
+  it("tells the three kinds of mark apart", () => {
+    // A paperclip asks the reader to @ a node, a pencil is words they write,
+    // and an orange note says how to operate the panel and is never sent.
     const proposals = section("Proposal cards");
-    expect(proposals).toMatch(/✏️[^.]*(own words|pick in the panel)/);
-    expect(proposals).toMatch(/📎[^.]*material/);
+    expect(proposals).toMatch(/A 📎 mark in square brackets asks the reader to @ a node/);
+    expect(proposals).toMatch(/A ✏️ mark in braces is words only the reader can write/);
+    expect(proposals).toMatch(/orange note[^.]*it is never sent to the model/);
   });
 
   it("says material bound for a source slot is picked in the panel, not mentioned", () => {
     // The placing mentions a feeder only where a mention is what picks it; a
     // node feeding one of the mode's slots, empty or generated, gets none.
     const proposals = section("Proposal cards");
-    expect(proposals).toMatch(/source slots: it is not mentioned/i);
+    expect(proposals).toMatch(/source slots: it is not @'d; an orange note says which slot/i);
     expect(proposals).toMatch(/file or its generated result/i);
     expect(proposals).toMatch(/presses that slot's button and clicks the node/i);
   });
@@ -424,7 +425,7 @@ describe("what the guide says", () => {
     expect(webSource("spaces/canvas/generate/AudioGeneratePanelContainer.tsx")).not.toContain("<PromptNotUsedNotice");
     const proposals = section("Proposal cards");
     expect(proposals).toMatch(new RegExp(`picture or video panel shows "${t("canvas.generatePanel.promptNotUsed").replace(/\./g, "\\.")}"`));
-    expect(proposals).toMatch(/a sound panel still shows a box that holds only the proposal's bracketed spots/);
+    expect(proposals).toMatch(/a sound panel still shows an empty box/);
   });
 
   it("names the picture panel's settings pill by the word it shows when there is nothing to summarise", () => {
@@ -533,9 +534,9 @@ describe("what the guide says", () => {
     expect(proposals).toMatch(/when every generating node uses the same model and you gave a model note, a line with that model's name/);
   });
 
-  it("says a slot-bound 📎 spot still has its note on the card", () => {
-    const slot = section("Proposal cards").split("Into one of the mode's source slots")[1] ?? "";
-    expect(slot).toMatch(/own material still has its 📎 note on the card; a generated result has no line/);
+  it("says nothing is @'d for the reader and a node not @'d is not used", () => {
+    const pool = section("Proposal cards").split("Into the reference list")[1] ?? "";
+    expect(pool).toMatch(/Nothing is @'d for them, and a node wired in that is not @'d is not used/);
   });
 
   it("says how to indent and outdent in a document", () => {
@@ -737,7 +738,7 @@ describe("what the guide says about each surface", () => {
   });
 
   it("says brackets left in a prompt are sent", () => {
-    expect(section("Proposal cards")).toMatch(/Whatever is left in a prompt is sent as it is, brackets included/);
+    expect(section("Proposal cards")).toMatch(/Square-bracket and brace marks left in a prompt are sent as they are/);
   });
 
   it("says what the read-only notice counts and what the leave prompt covers", () => {
