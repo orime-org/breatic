@@ -66,6 +66,11 @@ import { documentCommentPasteExtension } from '@web/spaces/document/document-com
 import { documentCommentSelection } from '@web/spaces/document/document-comment-selection';
 import { documentNoNodeClickExtension } from '@web/spaces/document/document-no-node-click';
 import { LINK_ANCHOR_SELECTOR } from '@web/spaces/document/document-link';
+import {
+  documentFileDropExtension,
+  filesPasteHandler,
+  type FilesSink,
+} from '@web/spaces/document/document-file-input';
 
 /** What a caller has to supply to open a document. */
 export interface DocumentEditorOptions {
@@ -80,6 +85,12 @@ export interface DocumentEditorOptions {
    * two registrars brings the comment mark — see {@link commentWiring}.
    */
   readonly comments?: DocumentCommentsOptions;
+  /**
+   * Where files dropped or pasted into the body are handed over, with the gap
+   * they go into (inner#1127 A2, A3). Left out, a dropped or pasted file does
+   * nothing.
+   */
+  readonly onFiles?: FilesSink;
 }
 
 /**
@@ -156,9 +167,14 @@ export function buildDocumentEditor(
       commentWiring(options.comments),
       documentCommentPasteExtension(),
       documentCommentDraftRange(),
+      ...(options.onFiles === undefined ? [] : [documentFileDropExtension(options.onFiles)]),
       ...(options.extensions ?? []),
     ],
     disableExtensions: [
+      // `documentFileDropExtension` takes file drops; the library's own would
+      // take them first, at the DOM event, and insert nothing without an
+      // `uploadFile` option (`fileDropExtension.ts:27-45`).
+      'dropFile',
       // Ours draws the placeholder, from `document-placeholders-blocknote.ts`.
       'placeholder',
       // §14 keeps our own bubble bar, so BlockNote's is never drawn — and a
@@ -202,7 +218,10 @@ export function buildDocumentEditor(
       cellTextColor: false,
       headers: true,
     },
-    pasteHandler: documentPasteHandler,
+    pasteHandler:
+      options.onFiles === undefined
+        ? documentPasteHandler
+        : filesPasteHandler(options.onFiles, documentPasteHandler),
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;
 }

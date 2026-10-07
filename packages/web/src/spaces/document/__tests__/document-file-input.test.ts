@@ -1,0 +1,197 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * inner#1127 A2, A3, A11: files arriving by drop or paste, and the gap they
+ * are handed over with.
+ */
+
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import * as Y from 'yjs';
+import { TextSelection } from '@tiptap/pm/state';
+
+import { documentBodyFragment } from '@breatic/shared';
+
+import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import {
+  anchorAtCaret,
+  anchorAtGap,
+  pastedFiles,
+  type FilesArrival,
+} from '@web/spaces/document/document-file-input';
+
+type Editor = ReturnType<typeof buildDocumentEditor>;
+
+const mounted: Editor[] = [];
+
+afterEach(() => {
+  mounted.splice(0).forEach((editor) => {
+    editor.unmount();
+  });
+});
+
+/**
+ * Opens an editor holding the given blocks, with files handed to `sink`.
+ * @param blocks - What the document starts with.
+ * @param sink - Where arriving files go.
+ * @returns The editor.
+ */
+function open(blocks: unknown[], sink?: (arrival: FilesArrival) => void): Editor {
+  const editor = buildDocumentEditor({
+    fragment: documentBodyFragment(new Y.Doc()),
+    ...(sink !== undefined && { onFiles: sink }),
+  });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  editor.mount(root);
+  mounted.push(editor);
+  editor.replaceBlocks(editor.document, blocks as never);
+  return editor;
+}
+
+/** A block as this file reads it. */
+interface Seen {
+  id: string;
+  content?: { text?: string }[];
+}
+
+/**
+ * The id of the block holding this text.
+ * @param editor - The editor.
+ * @param text - Its text.
+ * @returns Its id.
+ */
+function idOf(editor: Editor, text: string): string {
+  return (editor.document as Seen[]).find(
+    (b) => (b.content ?? []).map((c) => c.text ?? '').join('') === text,
+  )!.id;
+}
+
+/**
+ * A clipboard as the paste event carries it.
+ * @param files - Its files.
+ * @param data - Its strings by type.
+ * @returns The clipboard.
+ */
+function clipboard(files: File[], data: Record<string, string> = {}): DataTransfer {
+  return {
+    files: files as unknown as FileList,
+    types: [...Object.keys(data), ...(files.length > 0 ? ['Files'] : [])],
+    items: [] as unknown as DataTransferItemList,
+    getData: (type: string) => data[type] ?? '',
+  } as unknown as DataTransfer;
+}
+
+const PNG = new File([new Uint8Array(4)], 'shot.png', { type: 'image/png' });
+
+describe('which pastes are files (A3)', () => {
+  it('takes files that come alone', () => {
+    expect(pastedFiles(clipboard([PNG]))).toEqual([PNG]);
+  });
+
+  it('takes the file when the HTML beside it is just that one image', () => {
+    const data = clipboard([PNG], { 'text/html': '<meta charset="utf-8"><img src="https://x.example/a.png">' });
+    expect(pastedFiles(data)).toEqual([PNG]);
+  });
+
+  it('leaves a table with a rendered picture of it to the HTML paste', () => {
+    const data = clipboard([PNG], {
+      'text/html': '<table><tr><td>1</td></tr></table>',
+    });
+    expect(pastedFiles(data)).toBeNull();
+  });
+
+  it('leaves words around an image to the HTML paste', () => {
+    const data = clipboard([PNG], { 'text/html': '<p>caption</p><img src="a.png">' });
+    expect(pastedFiles(data)).toBeNull();
+  });
+
+  it('has nothing to take from a paste with no files', () => {
+    expect(pastedFiles(clipboard([], { 'text/plain': 'hi' }))).toBeNull();
+  });
+});
+
+describe('the gap a paste goes into (A3)', () => {
+  it('is after the block the caret is in', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'A' },
+      { type: 'paragraph', props: { quoted: true }, content: 'B' },
+      { type: 'paragraph', content: 'C' },
+    ]);
+    editor.setTextCursorPosition(idOf(editor, 'B'), 'end');
+
+    expect(anchorAtCaret(editor.prosemirrorView!.state)).toEqual({
+      anchor: { before: idOf(editor, 'B'), after: idOf(editor, 'C') },
+      quoted: true,
+    });
+  });
+
+  it('is above an empty line the caret is on, which keeps the caret', () => {
+    const editor = open([{ type: 'paragraph', content: 'A' }, { type: 'paragraph' }]);
+    const empty = (editor.document as Seen[])[1]!.id;
+    editor.setTextCursorPosition(empty, 'start');
+
+    expect(anchorAtCaret(editor.prosemirrorView!.state).anchor).toEqual({
+      before: idOf(editor, 'A'),
+      after: empty,
+    });
+  });
+});
+
+describe('the gap a drop goes into (A2)', () => {
+  it('names the blocks on either side of it', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'A' },
+      { type: 'paragraph', content: 'B' },
+    ]);
+    const { doc } = editor.prosemirrorView!.state;
+    // Inside A's words: the gap a block dropped there lands in is the one
+    // after A, the same one a dragged row lands in.
+    const insideA = 4;
+
+    expect(anchorAtGap(doc, insideA).anchor).toEqual({
+      before: idOf(editor, 'A'),
+      after: idOf(editor, 'B'),
+    });
+  });
+});
+
+describe('a paste of files', () => {
+  it('hands the files and the gap at the caret over, and inserts nothing itself', () => {
+    const sink = vi.fn();
+    const editor = open(
+      [
+        { type: 'paragraph', content: 'A' },
+        { type: 'paragraph', content: 'B' },
+      ],
+      sink,
+    );
+    editor.setTextCursorPosition(idOf(editor, 'A'), 'end');
+    const view = editor.prosemirrorView!;
+    const before = view.state.doc;
+
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', { value: clipboard([PNG]) });
+    view.dom.dispatchEvent(event);
+
+    expect(sink).toHaveBeenCalledWith({
+      files: [PNG],
+      anchor: { before: idOf(editor, 'A'), after: idOf(editor, 'B') },
+      quoted: false,
+    });
+    expect(view.state.doc.eq(before)).toBe(true);
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
+  });
+
+  it('hands nothing over in a read-only body', () => {
+    const sink = vi.fn();
+    const editor = open([{ type: 'paragraph', content: 'A' }], sink);
+    editor.isEditable = false;
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', { value: clipboard([PNG]) });
+
+    editor.prosemirrorView!.dom.dispatchEvent(event);
+
+    expect(sink).not.toHaveBeenCalled();
+  });
+});
