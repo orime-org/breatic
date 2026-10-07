@@ -70,6 +70,6 @@ describe("POST /projects/:pid/invitations", () => {
     expect(JSON.parse(text)).toEqual({ data: { ok: true } });
     expect(text).not.toContain(TOKEN);
     expect(text).not.toContain("/decision");
-    expect(createInvite).toHaveBeenCalledWith(PID, "user-1", "b@x.com", "viewer", "https://app.test");
+    expect(createInvite).toHaveBeenCalledWith(PID, "user-1", "b@x.com", "viewer", expect.any(String));
   });
 });

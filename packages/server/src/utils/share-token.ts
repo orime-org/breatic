@@ -6,9 +6,8 @@
  *
  * Every request row owns one, minted where the row is created, so the link in
  * an email stays valid for exactly as long as the request exists — what runs
- * out is the request, not the URL. All three channels that can reach a request
- * carry the same token: the email, the bell entry, and (for a project invite)
- * the owner's copyable share link.
+ * out is the request, not the URL. Both channels that can reach a request carry
+ * the same token: the email and the bell entry.
  *
  * It is a signpost, not a credential. Opening the landing page still requires
  * being signed in, and deciding still requires being the person the request is

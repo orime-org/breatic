@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { Copy, Send, UserPlus } from 'lucide-react';
+import { Send, UserPlus } from 'lucide-react';
 import * as React from 'react';
 import { toast } from '@web/lib/toast';
 
@@ -39,11 +39,6 @@ const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * inbox (and best-effort an email link to the `/decision` landing page).
  * The invitee becomes a member only after they confirm — no immediate access.
  *
- * On success the server returns the `/decision?token=` URL, which the
- * dialog reveals in a read-only field with a copy button: this is the third
- * delivery channel (alongside the bell + email) and all three funnel through the
- * same landing page every waiting request is answered on.
- *
  * Invite address is email-only: usernames are mutable and can't serve as a
  * stable invite identifier, and only already-registered users can be invited.
  * @param root0 - Share dialog props.
@@ -62,26 +57,19 @@ export function ShareDialog({
     React.useState<InvitableProjectRole>('viewer');
   const [inviteSubmitting, setInviteSubmitting] = React.useState(false);
   const [inviteError, setInviteError] = React.useState<string | null>(null);
-  // The copyable `/decision?token=` URL from the last successful invite
-  // (null until the first invite lands). Each new invite replaces it.
-  const [inviteLink, setInviteLink] = React.useState<string | null>(null);
-
   // Reset the transient invite state every time the popover opens, so reopening
-  // never shows a stale link / email / error left over from a prior session
-  // (the link in particular is single-use, so showing the previous one is
-  // misleading). The role keeps its last value — it is a harmless preference.
+  // never shows an email / error left over from a prior session. The role keeps
+  // its last value — it is a harmless preference.
   React.useEffect(() => {
     if (!open) return;
-    setInviteLink(null);
     setInvite('');
     setInviteError(null);
   }, [open]);
 
   /**
    * Validates the address and creates a pending project invite, surfacing
-   * errors inline. On success the input clears, a toast confirms the invite was
-   * sent, and the returned `/decision?token=` URL is revealed for copying
-   * (the invitee also gets a bell notification + best-effort email).
+   * errors inline. On success the input clears and a toast confirms the invite
+   * was sent (the invitee gets a bell notification + best-effort email).
    * @returns once the invite has been created (or the error surfaced inline).
    */
   async function handleSendInvite(): Promise<void> {
@@ -94,33 +82,18 @@ export function ShareDialog({
     setInviteError(null);
     setInviteSubmitting(true);
     try {
-      const { inviteLink: link } = await projectInvitationsApi.inviteMember(
-        projectId,
-        { email: trimmed, role: inviteRole },
-      );
+      await projectInvitationsApi.inviteMember(projectId, {
+        email: trimmed,
+        role: inviteRole,
+      });
       toast.success(t('share.inviteSent'));
       setInvite('');
-      setInviteLink(link);
     } catch (err) {
       const msg =
         err instanceof ApiException ? err.message : t('share.inviteFailed');
       setInviteError(msg);
     } finally {
       setInviteSubmitting(false);
-    }
-  }
-
-  /**
-   * Copy the revealed invite URL to the clipboard, toasting the outcome.
-   * @returns once the copy has been attempted (and its outcome toasted).
-   */
-  async function handleCopyInviteLink(): Promise<void> {
-    if (inviteLink === null) return;
-    try {
-      await navigator.clipboard.writeText(inviteLink);
-      toast.success(t('share.inviteLinkCopied'), { id: 'share-invite-link' });
-    } catch {
-      toast.error(t('share.inviteLinkCopyFailed'), { id: 'share-invite-link' });
     }
   }
 
@@ -185,30 +158,6 @@ export function ShareDialog({
               : t('share.inviteButton')}
           </Button>
         </div>
-        {inviteLink !== null ? (
-          <>
-            <SectionTitle>{t('share.inviteLinkLabel')}</SectionTitle>
-            <div className='flex items-center gap-2 px-2 pb-2'>
-              <Input
-                readOnly
-                value={inviteLink}
-                className='h-8 flex-1 text-xs'
-                data-testid='share-invite-url'
-                aria-label={t('share.inviteLinkLabel')}
-                onFocus={(e) => e.currentTarget.select()}
-              />
-              <Button
-                variant='outline'
-                size='chrome'
-                aria-label={t('share.copyInviteLink')}
-                onClick={handleCopyInviteLink}
-                data-testid='share-copy-invite-link'
-              >
-                <Copy className='h-4 w-4' />
-              </Button>
-            </div>
-          </>
-        ) : null}
       </PopoverContent>
     </Popover>
   );

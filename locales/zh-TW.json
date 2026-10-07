@@ -1293,10 +1293,6 @@
     "inviteSent": "邀請已傳送。",
     "inviteFailed": "邀請傳送失敗,請重試。",
     "invalidEmail": "請輸入有效的電子郵件地址。",
-    "inviteLinkLabel": "邀請連結",
-    "copyInviteLink": "複製邀請連結",
-    "inviteLinkCopied": "邀請連結已複製。",
-    "inviteLinkCopyFailed": "無法複製連結。",
     "role": {
       "view": "Viewer",
       "edit": "Editor"

@@ -529,7 +529,7 @@ lib/        工具(cn / format / 存储键 / toast)+ 不 import 上层的 hook
 - `/project/:projectId/*` — 项目页(Agent 列 + Space outlet;Space 是 Project 内的 type / 模板,**不是**路由段)。项目详情接口答 403(studio 成员、但不是这个项目的成员)时,地址不变,页面显示 `ProjectJoinGate`:空白页上盖着申请加入的对话框
 - 资源 404：业务前端复用现有 Studio / Project 详情查询；接口返回 404 时保留当前地址并显示当前语言的 `NotFoundScreen`，不跳转 `/studio` 或独立错误地址。Project 在资源查询成功后才挂编辑器与协作连接；非法 UUID 在 GET 路由返回 404。权限隐藏策略仍由后端决定，不追加存在性探测。网络 / 5xx 等加载失败显示重试，已有数据的后台查询失败保留内容。SPA 文档请求通常仍为 200，404 来自资源接口；站点静态缺页的 HTTP 404 由部署 Worker 处理。未知顶层业务路由也显示本地化 404。语言与主题继续使用 `breatic.locale` 和 `breatic.theme`。
 - `/choose-slug` — 注册第二步:选 slug → 建个人 studio(已登录但豁免个人-studio 闸门;显示文案仍叫「网址标识 / Handle」,只 URL 路径改名)
-- `/login`、`/register`、`/forgot-password`、`/reset-password`、`/decision` — auth + 决策落地页(`/decision?token=`,需登录;六个等答复的流〔两个邀请 / 两个转让 / 角色升级 / 加入申请〕的三条通道〔邮件 / 铃铛 / 可复制链接〕全汇聚此页)
+- `/login`、`/register`、`/forgot-password`、`/reset-password`、`/decision` — auth + 决策落地页(`/decision?token=`,需登录;六个等答复的流〔两个邀请 / 两个转让 / 角色升级 / 加入申请〕的两条通道〔邮件 / 铃铛〕全汇聚此页)
 
 ### Source layout
 
