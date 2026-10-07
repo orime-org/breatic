@@ -148,7 +148,9 @@ interface ProjectTableProps {
   placeholders: number;
 }
 
-const CELL = 'border-b border-border px-3 py-2 align-middle';
+// The border colour is translucent, so a cell's fill stops at its padding: a
+// highlighted row would otherwise show through its own bottom line.
+const CELL = 'border-b border-border bg-clip-padding px-3 py-2 align-middle';
 
 /**
  * The list view: a cover column, the name and three times, and the viewer's

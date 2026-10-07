@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { expectChosenFill, expectHoverableSiblingFill } from '@web/test-utils/selection-fill';
 import { ContainerToolbar } from '@web/pages/studio/container/ContainerToolbar';
 
 describe('ContainerToolbar', () => {
@@ -78,12 +79,16 @@ describe('ContainerToolbar', () => {
     expect(trigger).toHaveTextContent('Last opened');
 
     await userEvent.click(trigger);
-    const items = screen.getAllByRole('menuitemradio');
+    const items = await screen.findAllByTestId(/^container-sort-option-/);
     expect(items.map((i) => i.textContent)).toEqual(['Last opened', 'Last edited', 'Name', 'Created']);
-    expect(items[0]).toHaveAttribute('aria-checked', 'true');
+    // Same chosen fill as the language and theme menus, no radio dot.
+    expectChosenFill(items[0]!);
+    for (const sibling of items.slice(1)) expectHoverableSiblingFill(sibling);
+    expect(items[0]!.querySelector('svg')).toBeNull();
 
     await userEvent.click(items[2]!);
     expect(onChange).toHaveBeenCalledWith('name');
+    expect(screen.queryByTestId('container-sort-option-name')).not.toBeInTheDocument();
   });
 
   it('switches between grid and list and shows which one is on', async () => {

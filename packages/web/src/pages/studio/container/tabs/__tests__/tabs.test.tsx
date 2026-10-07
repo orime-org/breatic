@@ -176,6 +176,16 @@ describe('ProjectsTab — views and loading', () => {
     expect(within(table).getByRole('link', { name: 'Open Project' })).toHaveAttribute('href', '/project/open-a');
   });
 
+  it('keeps a highlighted row\'s fill off its own bottom border, so that line matches the one above', () => {
+    withQuery(
+      <ProjectsTab list={listOf([STUDIO_VISIBLE, NOT_JOINED])} {...LIST_CONTROLS} view='list' studioRole='guest' />,
+    );
+    // The border colour is translucent: a fill painted under it would show through and light the line up.
+    for (const cell of within(screen.getByTestId('project-row-a')).getAllByRole('cell')) {
+      expect(cell.className).toContain('bg-clip-padding');
+    }
+  });
+
   it('shows placeholders and no count while the first page loads', () => {
     withRouter(
       <ProjectsTab

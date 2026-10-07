@@ -1,19 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 import { ChevronDown, LayoutGrid, List, Plus } from 'lucide-react';
 import type { StudioProjectSort } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '@web/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import type { ProjectListView } from '@web/pages/studio/container/container-types';
 
 /**
@@ -118,34 +113,7 @@ export function ContainerToolbar({
         ) : null}
       </h2>
       <div className='flex-1' />
-      {sort ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type='button' variant={null} size={null} className={`${CONTROL} hover:bg-accent`}>
-              <span className='font-normal text-muted-foreground'>
-                {t('studio.container.toolbar.sortLabel')}
-              </span>
-              {t(`studio.container.toolbar.sort.${sort.value}`)}
-              <ChevronDown className='h-3 w-3 text-muted-foreground' aria-hidden='true' />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align='end'>
-            <DropdownMenuRadioGroup
-              value={sort.value}
-              onValueChange={(value) => {
-                const next = sort.options.find((option) => option === value);
-                if (next) sort.onChange(next);
-              }}
-            >
-              {sort.options.map((option) => (
-                <DropdownMenuRadioItem key={option} value={option}>
-                  {t(`studio.container.toolbar.sort.${option}`)}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : null}
+      {sort ? <SortMenu sort={sort} /> : null}
       {view ? (
         <div className='inline-flex overflow-hidden rounded-chrome border border-border'>
           <Button
@@ -215,5 +183,53 @@ export function ContainerToolbar({
         </Button>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The sort control: a trigger naming the current sort, opening the same
+ * chosen-fill list the language and theme menus use.
+ * @param props - The sort control.
+ * @param props.sort - The list's sorts, the current one, and a change.
+ * @returns The trigger and its popover.
+ */
+function SortMenu({ sort }: { sort: ToolbarSort }): React.JSX.Element {
+  const t = useTranslation();
+  const [open, setOpen] = React.useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type='button' variant={null} size={null} className={`${CONTROL} hover:bg-accent`}>
+          <span className='font-normal text-muted-foreground'>
+            {t('studio.container.toolbar.sortLabel')}
+          </span>
+          {t(`studio.container.toolbar.sort.${sort.value}`)}
+          <ChevronDown className='h-3 w-3 text-muted-foreground' aria-hidden='true' />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align='end' className='w-44 p-1'>
+        <div className='flex flex-col gap-0.5'>
+          {sort.options.map((option) => (
+            <Button
+              key={option}
+              type='button'
+              variant='ghost'
+              size='menu-item'
+              className={cn(
+                'justify-start',
+                sort.value === option && 'bg-accent-strong hover:bg-accent-strong',
+              )}
+              onClick={() => {
+                sort.onChange(option);
+                setOpen(false);
+              }}
+              data-testid={`container-sort-option-${option}`}
+            >
+              {t(`studio.container.toolbar.sort.${option}`)}
+            </Button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
