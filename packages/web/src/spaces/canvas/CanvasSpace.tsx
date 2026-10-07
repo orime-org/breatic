@@ -69,10 +69,10 @@ import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-que
 import { historyKey } from '@web/spaces/canvas/history/use-node-history';
 import { usePrefetchModelCatalog } from '@web/spaces/canvas/generate/use-prefetch-model-catalog';
 import {
-  FocusCropOverlay,
+  FocusCropControls,
   handOffFocusToPickBanner,
   type FocusCropConfirm,
-} from '@web/spaces/canvas/focus/FocusCropOverlay';
+} from '@web/spaces/canvas/focus/FocusCropControls';
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
@@ -195,7 +195,6 @@ import { triggerDownload } from '@web/lib/download';
 import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
 import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
-import { MiniToolCropOverlayContainer } from '@web/spaces/canvas/mini-tool/MiniToolCropOverlay';
 import { startMiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import {
   activeMiniToolSlot,
@@ -889,33 +888,22 @@ function CanvasSpaceInner({
       }
     }
   }, [sessionStore, endPick, spaceId]);
+  // The image or video node a focus crop is open on (#1782, video #1987), with
+  // the content it carried when picked and the marquee on it (inner#888
+  // §7.4.1). It lives in the session store, which ends it with the focus pick,
+  // so the node's crop box and the controls bar read the same one.
+  const focusTarget = useCanvasSession((s) => s.focusCrop);
+  const setFocusTarget = useCanvasSession((s) => s.setFocusTarget);
+  const focusCropTargetId = focusTarget?.nodeId ?? null;
   /**
    * Return the focus session to its PICK state (user 2026-07-17 A): drop
-   * the crop target so the overlay unmounts, but keep the session — the
-   * banner stays and another node can be picked. Cancel and the overlay's
-   * bare Esc land here; a further Esc then exits via the pick Esc handler.
+   * the crop target, but keep the session — the banner stays and another
+   * node can be picked. Cancel and the bare Esc land here; a further Esc
+   * then exits via the pick Esc handler.
    */
   const onFocusBackToPick = React.useCallback((): void => {
     setFocusTarget(null);
-  }, []);
-  // The image or video node a focus crop marquee is open on (#1782, video
-  // #1987), or null, together with the content it carried when the crop
-  // opened. Local React state — it only exists while THIS user's focus pick
-  // runs; the effect clears it whenever the session ends or changes purpose
-  // (Exit, zombie guards, another pick replacing it).
-  //
-  // The id and the snapshot live in ONE object so they cannot describe
-  // different nodes: the verdict below compares the snapshot against the
-  // node the id names, and a split pair would let a switch of target leave
-  // the previous node's content behind.
-  const [focusTarget, setFocusTarget] = React.useState<{
-    id: string;
-    content: string;
-  } | null>(null);
-  const focusCropTargetId = focusTarget?.id ?? null;
-  React.useEffect(() => {
-    if (pickSession?.purpose !== 'focus') setFocusTarget(null);
-  }, [pickSession]);
+  }, [setFocusTarget]);
   // What became of the crop target (#2000). Four things end a crop: the node
   // is gone, its content was swapped, it entered handling, or it failed. Any
   // of them can come from this client or from a peer — this selector reads
@@ -929,7 +917,7 @@ function CanvasSpaceInner({
   // eating careful selections on every pan).
   const focusTargetVerdict = useStoreOf(graphStore, (st): FocusTargetVerdict => {
     if (focusTarget === null) return 'ok';
-    const node = st.flowNodes.find((n) => n.id === focusTarget.id);
+    const node = st.flowNodes.find((n) => n.id === focusTarget.nodeId);
     if (!node) return 'gone';
     if ((node.data as { content?: unknown }).content !== focusTarget.content) {
       return 'replaced';
@@ -949,22 +937,19 @@ function CanvasSpaceInner({
     if (focusTargetVerdict === 'ok') return;
     // Keyboard-focus rescue (adversarial round-2 of #1782): a collaborator
     // ending the crop must not orphan focus to <body>. It only fires when
-    // focus actually sits INSIDE the dying overlay — a remote write must
-    // never grab focus from elsewhere. The effect runs while the overlay DOM
-    // is still mounted (unmount lands next render), so the containment check
-    // still sees it.
-    const overlay = canvasRootOf(spaceId).querySelector(
-      '[data-testid="focus-crop-overlay"]',
-    );
-    if (overlay?.contains(document.activeElement)) {
-      handOffFocusToPickBanner(overlay, canvasRootOf(spaceId));
+    // focus actually sits INSIDE the dying controls bar — a remote write must
+    // never grab focus from elsewhere. The effect runs while the bar is still
+    // mounted (unmount lands next render), so the containment check sees it.
+    const bar = canvasRootOf(spaceId).querySelector('[data-testid="focus-crop-controls"]');
+    if (bar?.contains(document.activeElement)) {
+      handOffFocusToPickBanner(bar, canvasRootOf(spaceId));
     }
     // Who wrote it decides which column speaks: a peer's delete is news, a
     // local undo is the user's own keystroke coming back to him.
     const author = getLastWriteWasLocal() ? 'local' : 'peer';
     toast.warning(t(FOCUS_EXIT_TOAST_KEY[author][focusTargetVerdict]));
     setFocusTarget(null);
-  }, [focusTargetVerdict, getLastWriteWasLocal, t, spaceId]);
+  }, [focusTargetVerdict, getLastWriteWasLocal, t, spaceId, setFocusTarget]);
   // Esc during a focus session with NO crop target yet (round-4): the
   // overlay owns the two-stage Esc but is unmounted until the first image
   // is clicked, leaving Esc silently dead in the banner-only state. Same
@@ -2000,7 +1985,9 @@ function CanvasSpaceInner({
         }
         // The predicate already established this is a non-empty string.
         const { content } = fresh.data as { content: string };
-        setFocusTarget({ id: node.id, content });
+        // The target itself again (a click on its own crop box bubbles here)
+        // keeps its marquee; the store makes that a no-op.
+        setFocusTarget({ nodeId: node.id, content });
         return;
       }
 
@@ -2112,7 +2099,7 @@ function CanvasSpaceInner({
       // Stay in pick mode either way; Exit is the only way out (item 7).
       if (!added) toast.error(t('canvas.generatePanel.referenceAddFailed'));
     },
-    [graphStore, sessionStore, projectId, spaceId, flowEdges, t, kindLabel, endPick],
+    [graphStore, sessionStore, projectId, spaceId, flowEdges, t, kindLabel, endPick, setFocusTarget],
   );
 
   // Where the new note goes, in canvas coordinates, while its box is open.
@@ -4719,6 +4706,9 @@ function CanvasSpaceInner({
             readOnly={readOnly}
             onRetry={retryNodeUpload}
           />
+          {/* The focus crop's bar under its node; the marquee is drawn inside
+              the node by the node's own crop box (inner#888 §7.4.1). */}
+          <FocusCropControls onConfirm={onFocusCropConfirm} onBackToPick={onFocusBackToPick} />
         </ReactFlow>
         {pickForNodeId ? (
           <div
@@ -4772,21 +4762,6 @@ function CanvasSpaceInner({
               {t('canvas.generatePanel.exitSelect')}
             </Button>
           </div>
-        ) : null}
-        <MiniToolCropOverlayContainer nodes={nodes} />
-        {pickSession?.purpose === 'focus' && focusCropTargetId !== null ? (
-          <FocusCropOverlay
-            nodeId={focusCropTargetId}
-            // ABSOLUTE position (member + ancestor group offsets): a member
-            // node's own position is parent-relative, so a GROUP drag moves
-            // the image without touching it — the overlay's re-measure
-            // signal must follow the composed coordinates (adversarial
-            // round-2). The overlay deps on the x/y primitives, so the
-            // fresh object identity per render is harmless.
-            nodePosition={absoluteNodePosition(renderNodes, focusCropTargetId)}
-            onConfirm={onFocusCropConfirm}
-            onBackToPick={onFocusBackToPick}
-          />
         ) : null}
         {flowNodes.length === 0 ? (
           <div
@@ -4974,38 +4949,6 @@ function pendingFocusCount(session: CanvasSessionStore, nodeId: string): number 
   return session
     .getState()
     .pendingFocusUploads.filter((p) => p.nodeId === nodeId).length;
-}
-
-/**
- * Composes a node's ABSOLUTE flow position by walking its parentId chain —
- * a Group member's own position is parent-relative, so a group drag moves
- * the node on screen without changing it (adversarial round-2: the focus
- * overlay re-measures off this signal). Cycle-guarded like ReactFlow's own
- * resolver; missing nodes contribute nothing.
- * @param nodes - The current render nodes (position + parentId).
- * @param nodeId - The node whose absolute position to compose.
- * @returns The absolute { x, y } flow position (0,0 for a missing node).
- */
-function absoluteNodePosition(
-  nodes: ReadonlyArray<{
-    id: string;
-    position: { x: number; y: number };
-    parentId?: string;
-  }>,
-  nodeId: string,
-): { x: number; y: number } {
-  let x = 0;
-  let y = 0;
-  const seen = new Set<string>();
-  let current = nodes.find((n) => n.id === nodeId);
-  while (current && !seen.has(current.id)) {
-    seen.add(current.id);
-    x += current.position.x;
-    y += current.position.y;
-    const parentId = current.parentId;
-    current = parentId ? nodes.find((n) => n.id === parentId) : undefined;
-  }
-  return { x, y };
 }
 
 /**

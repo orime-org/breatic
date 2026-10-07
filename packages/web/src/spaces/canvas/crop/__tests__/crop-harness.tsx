@@ -13,6 +13,7 @@ import { ReactFlow, type Node, type NodeProps } from '@xyflow/react';
 import * as React from 'react';
 import { vi } from 'vitest';
 
+import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { NodeCropLayer } from '@web/spaces/canvas/crop/NodeCropLayer';
 
 /** The media's box on screen, and its layout size unless {@link LAYOUT} says otherwise. Mutable. */
@@ -34,9 +35,9 @@ export interface MediaNodeData extends Record<string, unknown> {
  * @returns The node.
  */
 function MediaNode({ id, data }: NodeProps<Node<MediaNodeData>>): React.JSX.Element {
-  const wrapper = React.useRef<HTMLDivElement>(null);
+  const [wrapper, setWrapper] = React.useState<HTMLDivElement | null>(null);
   return (
-    <div ref={wrapper} className='relative'>
+    <div ref={setWrapper} className='relative'>
       {data.kind === 'video' ? (
         // eslint-disable-next-line jsx-a11y/media-has-caption -- mirrors MediaPlayer's own element.
         <video data-testid='media-element' src={data.src} />
@@ -69,6 +70,8 @@ export function cropCanvas(
         edges={[]}
         nodeTypes={NODE_TYPES}
         defaultViewport={{ x: 0, y: 0, zoom }}
+        minZoom={CANVAS_MIN_ZOOM}
+        maxZoom={CANVAS_MAX_ZOOM}
       >
         {children}
       </ReactFlow>
@@ -77,8 +80,14 @@ export function cropCanvas(
   );
 }
 
-/** Callbacks of every ResizeObserver the crop box created. */
-const observers: Array<() => void> = [];
+/** One recorded size observer, and whether it watches media. */
+interface Watcher {
+  callback: (entries: unknown[]) => void;
+  media: boolean;
+}
+
+/** The size observers that watch a media element: the crop box's own. */
+const observers = new Set<Watcher>();
 
 /**
  * Stub the layout jsdom does not have. The media reports {@link IMG_BOX}
@@ -86,7 +95,7 @@ const observers: Array<() => void> = [];
  * origin. Call from `beforeEach`.
  */
 export function installLayout(): void {
-  observers.length = 0;
+  observers.clear();
   delete LAYOUT.width;
   delete LAYOUT.height;
   IMG_BOX.left = 100;
@@ -122,22 +131,33 @@ export function installLayout(): void {
   vi.stubGlobal(
     'ResizeObserver',
     class {
+      private readonly entry: Watcher;
+
       /**
        * Record the callback.
        * @param callback - What a size change runs.
        */
-      constructor(callback: () => void) {
-        observers.push(callback);
+      constructor(callback: (entries: unknown[]) => void) {
+        this.entry = { callback, media: false };
+        observers.add(this.entry);
       }
 
-      /** Nothing to watch in jsdom. */
-      observe(): void {}
+      /**
+       * Note whether this observer watches media; the canvas's own observers
+       * measure nodes with APIs jsdom lacks and are left alone.
+       * @param target - The watched element.
+       */
+      observe(target: Element): void {
+        if (isMedia(target)) this.entry.media = true;
+      }
 
       /** Nothing to stop watching. */
       unobserve(): void {}
 
-      /** Nothing to release. */
-      disconnect(): void {}
+      /** Stop recording this observer. */
+      disconnect(): void {
+        observers.delete(this.entry);
+      }
     },
   );
 }
@@ -148,7 +168,7 @@ export function installLayout(): void {
  */
 export async function relayout(): Promise<void> {
   await act(async () => {
-    for (const run of [...observers]) run();
+    for (const { callback, media } of [...observers]) if (media) callback([]);
     await Promise.resolve();
   });
 }

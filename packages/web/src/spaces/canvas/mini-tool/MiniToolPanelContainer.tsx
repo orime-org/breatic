@@ -127,13 +127,17 @@ function OpenMiniToolPanel({
 
   const view = asContentView(node.data);
   const content = view !== undefined && 'content' in view ? (view.content ?? '') : '';
+  // A crop is converted with the size the node's crop box read off the shown
+  // picture, the size the export crops in (inner#888 §7.4.1).
+  const crops = !isModelTool(spec) && spec.params.some((param) => param.kind === 'rect');
+  const measured = draft?.sourceSize ?? null;
   const source = React.useMemo<MiniToolSourceInfo>(
     () => ({
-      width: view !== undefined && 'width' in view ? view.width : undefined,
-      height: view !== undefined && 'height' in view ? view.height : undefined,
+      width: crops ? measured?.width : view !== undefined && 'width' in view ? view.width : undefined,
+      height: crops ? measured?.height : view !== undefined && 'height' in view ? view.height : undefined,
       duration: view !== undefined && 'duration' in view ? view.duration : undefined,
     }),
-    [view],
+    [crops, measured, view],
   );
 
   // The source took new content while the panel was open: whatever was
@@ -189,7 +193,14 @@ function OpenMiniToolPanel({
         ? t('canvas.miniTool.panel.usage')
         : (estimate ?? '');
 
-  const refusal = miniToolRefusal({ spec, entry, prompt, slots, sourceShown: content !== '', exporting });
+  const refusal = miniToolRefusal({
+    spec,
+    entry,
+    prompt,
+    slots,
+    sourceShown: content !== '' && (!crops || measured !== null),
+    exporting,
+  });
   const pickingSlot = pickSession?.purpose === 'miniToolSlot' ? (pickSession.slotKey ?? null) : null;
 
   const onParams = React.useCallback(

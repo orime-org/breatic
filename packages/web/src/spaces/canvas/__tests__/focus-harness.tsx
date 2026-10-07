@@ -8,9 +8,18 @@ import type * as React from 'react';
 
 import type * as canvasSpace from '@web/data/yjs/canvas-space';
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 /** The canvas nodes `useCanvasSpace` hands back. */
 export type Nodes = ReturnType<typeof canvasSpace.useCanvasSpace>['nodes'];
+
+/**
+ * The node the focus crop is open on in the test Space, or null.
+ * @returns Its id.
+ */
+export function focusTarget(): string | null {
+  return canvasSessions.of('s').getState().focusCrop?.nodeId ?? null;
+}
 
 /**
  * Builds the shape `useCanvasSpace` returns.

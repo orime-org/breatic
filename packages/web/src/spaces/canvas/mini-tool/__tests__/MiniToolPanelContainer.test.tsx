@@ -108,6 +108,25 @@ describe('MiniToolPanelContainer', () => {
     expect(toast.warning).toHaveBeenCalledOnce();
   });
 
+  // The crop is converted with the size the crop box read off the shown
+  // picture, the size the export crops in (inner#888 §7.4.1); the node's own
+  // record of its size can be missing or stale.
+  it('a crop tool waits for the size the crop box read off the picture', () => {
+    canvasSessions.of('').getState().openMiniTool('src', 'image.crop', {
+      sourceContent: 'a.png',
+      params: { aspect: 'free', rect: null },
+    });
+    const onRun = vi.fn(() => Promise.resolve());
+    const view = render(tree(source('a.png'), onRun));
+    expect(screen.queryByTestId('mini-tool-rect-w')).toBeNull();
+    fireEvent.click(screen.getByTestId('mini-tool-run'));
+    expect(onRun).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledOnce();
+    canvasSessions.of('').getState().setMiniToolSourceSize({ width: 800, height: 600 });
+    view.rerender(tree(source('a.png'), onRun));
+    expect((screen.getByTestId('mini-tool-rect-w') as HTMLInputElement).value).toBe('800');
+  });
+
   it('closes on Escape', () => {
     render(tree(source('a.png'), () => Promise.resolve()));
     fireEvent.keyDown(screen.getByTestId('mini-tool-panel-title'), { key: 'Escape' });

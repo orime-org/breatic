@@ -47,25 +47,11 @@ interface NodeCropFrameProps {
   toBoxPoint: (clientX: number, clientY: number) => { x: number; y: number };
   /** Called with the marquee as a gesture shapes it, null to drop it. */
   onChange: (rect: CropRect | null) => void;
-}
-
-/** How far apart two box-pixel values may be and still be the same write. */
-const SAME_WRITE = 1e-6;
-
-/**
- * Whether two marquees are the same within the round-trip through fractions.
- * @param a - One marquee.
- * @param b - The other.
- * @returns True when they describe the same rect.
- */
-function sameRect(a: CropRect | null, b: CropRect | null): boolean {
-  if (a === null || b === null) return a === b;
-  return (
-    Math.abs(a.x - b.x) < SAME_WRITE &&
-    Math.abs(a.y - b.y) < SAME_WRITE &&
-    Math.abs(a.width - b.width) < SAME_WRITE &&
-    Math.abs(a.height - b.height) < SAME_WRITE
-  );
+  /**
+   * Counts the times the marquee was written by anyone but this box (Esc,
+   * Cancel, a ratio item, the panel, a reset); a new count ends the gesture.
+   */
+  writtenElsewhere: number;
 }
 
 /**
@@ -86,6 +72,7 @@ function sameRect(a: CropRect | null, b: CropRect | null): boolean {
  * @param root0.zoom - The canvas zoom.
  * @param root0.toBoxPoint - Maps a pointer into box pixels.
  * @param root0.onChange - Receives the marquee a gesture shapes.
+ * @param root0.writtenElsewhere - Counts the writes made by others.
  * @returns The box.
  */
 export function NodeCropFrame({
@@ -98,29 +85,20 @@ export function NodeCropFrame({
   zoom,
   toBoxPoint,
   onChange,
+  writtenElsewhere,
 }: NodeCropFrameProps): React.JSX.Element {
   const gestureRef = React.useRef<Gesture | null>(null);
-  // What this box last wrote. A marquee arriving that differs from it was
-  // written by someone else, which ends the gesture: without that, the next
+  // A marquee written by anyone else ends the gesture: without that, the next
   // move of a still-held pointer redraws a marquee Esc or Cancel just cleared.
-  const wroteRef = React.useRef<CropRect | null>(rect);
-  if (!sameRect(rect, wroteRef.current)) {
+  const seenRef = React.useRef(writtenElsewhere);
+  if (seenRef.current !== writtenElsewhere) {
+    seenRef.current = writtenElsewhere;
     gestureRef.current = null;
-    wroteRef.current = rect;
   }
   const rectRef = React.useRef(rect);
   rectRef.current = rect;
   const gaugeRef = React.useRef({ box, natural, onChange });
   gaugeRef.current = { box, natural, onChange };
-
-  /**
-   * Write a marquee and remember it as this box's own.
-   * @param next - The marquee, or null.
-   */
-  const write = (next: CropRect | null): void => {
-    wroteRef.current = next;
-    onChange(next);
-  };
 
   // A gesture cut off by this box going away (the node scrolled out of view
   // and was culled mid-drag) gets the same gauge a release does.
@@ -144,7 +122,7 @@ export function NodeCropFrame({
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const p = toBoxPoint(e.clientX, e.clientY);
     gestureRef.current = { type: 'draw', anchor: p, pointerId: e.pointerId };
-    write(drawRect(p, p, box, ratio));
+    onChange(drawRect(p, p, box, ratio));
   };
 
   /**
@@ -182,12 +160,12 @@ export function NodeCropFrame({
     if (gesture === null || e.pointerId !== gesture.pointerId) return;
     const p = toBoxPoint(e.clientX, e.clientY);
     if (gesture.type === 'draw') {
-      write(drawRect(gesture.anchor, p, box, ratio));
+      onChange(drawRect(gesture.anchor, p, box, ratio));
     } else if (gesture.type === 'move') {
       gestureRef.current = { type: 'move', last: p, pointerId: gesture.pointerId };
-      if (rect !== null) write(moveRect(rect, p.x - gesture.last.x, p.y - gesture.last.y, box));
+      if (rect !== null) onChange(moveRect(rect, p.x - gesture.last.x, p.y - gesture.last.y, box));
     } else {
-      write(resizeFromCapture(gesture.capture, p, box, ratio));
+      onChange(resizeFromCapture(gesture.capture, p, box, ratio));
     }
   };
 
@@ -200,7 +178,7 @@ export function NodeCropFrame({
     const gesture = gestureRef.current;
     if (gesture !== null && e.pointerId !== gesture.pointerId) return;
     gestureRef.current = null;
-    if (gesture !== null && rect !== null && !isCropUsable(rect, box, natural)) write(null);
+    if (gesture !== null && rect !== null && !isCropUsable(rect, box, natural)) onChange(null);
   };
 
   const scale = handleScale(zoom);

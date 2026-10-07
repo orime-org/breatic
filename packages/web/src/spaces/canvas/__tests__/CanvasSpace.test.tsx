@@ -95,6 +95,7 @@ import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import * as downloadLib from '@web/lib/download';
 import { canvasSessions } from '@web/stores/canvas-session';
+import { installLayout, relayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
 
 const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 
@@ -3462,13 +3463,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     act(() => {
       canvasSessions.of('s').getState().startFocusPick('target');
     });
-    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
+    expect(canvasSessions.of('s').getState().focusCrop).toBeNull();
     act(() => {
       fireEvent.click(
         document.querySelector('.react-flow__node[data-id="src-video"]')!,
       );
     });
-    expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
+    expect(canvasSessions.of('s').getState().focusCrop?.nodeId).toBe('src-video');
   });
 
   it('聚焦挑选：音频节点两道都被拒（#1987）', () => {
@@ -3507,7 +3508,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         document.querySelector('.react-flow__node[data-id="src-audio"]')!,
       );
     });
-    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
+    expect(canvasSessions.of('s').getState().focusCrop).toBeNull();
   });
 
   it('聚焦挑选：正在生成的视频和空视频不是候选（#1987 A1）', () => {
@@ -3556,7 +3557,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
           document.querySelector(`.react-flow__node[data-id="${id}"]`)!,
         );
       });
-      expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
+      expect(canvasSessions.of('s').getState().focusCrop).toBeNull();
     }
   });
 
@@ -3585,30 +3586,17 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     act(() => {
       fireEvent.click(document.querySelector('.react-flow__node[data-id="target"]')!);
     });
-    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
+    expect(canvasSessions.of('s').getState().focusCrop).toBeNull();
   });
 
   /**
    * Picks a video source for `target`, draws a crop at 4.375s and confirms it.
-   * @returns Restores the measured rectangles.
+   * The media gets a layout box, which jsdom lacks, so the node's crop box
+   * and its bar are drawn.
+   * @returns Restores the stubbed layout.
    */
-  const confirmVideoCrop = (): (() => void) => {
-    const rect = vi
-      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
-      .mockImplementation(function (this: HTMLElement) {
-        const isTarget = this.tagName === 'VIDEO';
-        return {
-          x: isTarget ? 100 : 0,
-          y: isTarget ? 50 : 0,
-          left: isTarget ? 100 : 0,
-          top: isTarget ? 50 : 0,
-          right: isTarget ? 500 : 1000,
-          bottom: isTarget ? 350 : 1000,
-          width: isTarget ? 400 : 1000,
-          height: isTarget ? 300 : 1000,
-          toJSON: () => ({}),
-        } as DOMRect;
-      });
+  const confirmVideoCrop = async (): Promise<() => void> => {
+    installLayout();
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
@@ -3650,9 +3638,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       writable: true,
       configurable: true,
     });
-    act(() => {
-      fireEvent(window, new Event('resize'));
-    });
+    await relayout();
     const layer = screen.getByTestId('focus-crop-layer');
     act(() => {
       fireEvent.pointerDown(layer, { clientX: 150, clientY: 100, button: 0 });
@@ -3662,14 +3648,17 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     act(() => {
       fireEvent.click(screen.getByTestId('focus-crop-confirm'));
     });
-    return () => rect.mockRestore();
+    return () => {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    };
   };
 
-  it('贯通：浮层交出的时间点原样到达 runFocusCrop 的入参（#1987 A9）', () => {
+  it('贯通：浮层交出的时间点原样到达 runFocusCrop 的入参（#1987 A9）', async () => {
     // 从浮层到取源之间有五个环节，其中一个是函数赋值 —— 编译器管不住它，
     // 少给一个字段照样编译通过（`natural` 今天就是这么被吃掉的）。所以这条
     // 走完整条链：真的点节点、真的画选框、真的点确认，然后看最下游收到什么。
-    const restore = confirmVideoCrop();
+    const restore = await confirmVideoCrop();
     try {
       expect(mockRunFocusCrop).toHaveBeenCalledTimes(1);
       expect(mockRunFocusCrop.mock.calls[0]![0]).toMatchObject({
@@ -3692,7 +3681,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
           finish = resolve;
         }),
     );
-    const restore = confirmVideoCrop();
+    const restore = await confirmVideoCrop();
     try {
       expect(useSpaceOperationsStore.getState().hasOperations('s')).toBe(true);
       await act(async () => {

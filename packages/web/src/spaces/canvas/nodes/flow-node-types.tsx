@@ -23,6 +23,7 @@ import {
   cellMeetsTargetSize,
   overlayCounterScale,
 } from '@web/spaces/canvas/overlay-scale';
+import { NodeCropLayer } from '@web/spaces/canvas/crop/NodeCropLayer';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import type { NodeView } from '@web/data/yjs/node-view';
@@ -120,6 +121,9 @@ function makeFlowNode(
     // is an edge endpoint, so neither gets a handle. With no handle there is
     // nothing for xyflow to start or land a connection on (#1881 §8.5).
     const takesEdges = !isGroup && data.kind !== 'annotation';
+    // The crop box positions itself inside this wrapper; an element in state
+    // rather than a ref, so a node shown again hands it the element anew.
+    const [wrapper, setWrapper] = React.useState<HTMLDivElement | null>(null);
     // Per-control resize bounds (from groupResizeBounds, attached in renderNodes)
     // — each edge / corner carries its own min so ReactFlow's native clamp
     // hard-stops it at "members + padding" (see GroupResizer). Empty for a
@@ -184,6 +188,7 @@ function makeFlowNode(
         <NodeScaleContext.Provider value={headerScale}>
           <NodeOccupantsContext.Provider value={occupants}>
             <div
+              ref={setWrapper}
               className={isGroup ? 'relative size-full' : 'relative'}
               onDoubleClickCapture={onDoubleClickCapture}
             >
@@ -242,6 +247,10 @@ function makeFlowNode(
                   />
                 </>
               ) : null}
+              {/* The crop box (inner#888 §7.4.1) sits on this wrapper, outside
+                the card's clip so the handles on the picture's edge are whole,
+                and after the connection handles so a press on it is its own. */}
+              {takesEdges ? <NodeCropLayer nodeId={props.id} wrapper={wrapper} /> : null}
               {/* Outside the node's own box, so it never covers content and
                 never changes what the body is sized to. It counter-scales on
                 the same factor as the name header. Once the canvas has taken

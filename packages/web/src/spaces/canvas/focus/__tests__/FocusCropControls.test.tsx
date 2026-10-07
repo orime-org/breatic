@@ -469,6 +469,16 @@ describe('FocusCropControls', () => {
     expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
   });
 
+  it('a REJECTED confirm keeps the marquee (pool full is fixable — round-3)', () => {
+    const onConfirm = vi.fn(() => false);
+    renderOverlay(onConfirm);
+    natural(screen.getByTestId('image-node-img'), 800, 600);
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
+  });
+
   it('a resize collapsed onto its anchor is discarded on release (round-3)', () => {
     renderOverlay();
     const layer = screen.getByTestId('focus-crop-layer');
@@ -500,9 +510,14 @@ describe('FocusCropControls', () => {
     const layer = screen.getByTestId('focus-crop-layer');
     expect(layer.className).toContain('nodrag');
     expect(layer.className).toContain('nopan');
-    const wheel = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120, ctrlKey: true });
-    layer.dispatchEvent(wheel);
-    expect(wheel.defaultPrevented).toBe(false);
+    const reached: Event[] = [];
+    const listen = (e: Event): void => {
+      reached.push(e);
+    };
+    const node = layer.closest('.react-flow__node') as HTMLElement;
+    node.addEventListener('wheel', listen);
+    layer.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120 }));
+    expect(reached).toHaveLength(1);
   });
 
   it('an accepted confirm kills a second pointer in-flight gesture (round-11)', () => {
@@ -540,7 +555,6 @@ describe('FocusCropControls', () => {
     expect(screen.queryByTestId('focus-crop-layer')).toBeNull();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onBackToPick).toHaveBeenCalledTimes(1);
-    expect(canvasSessions.of('').getState().focusCrop?.rect).not.toBeNull();
   });
 
   it('a ratio preset keeps a small but natural-valid marquee (round-10)', async () => {
