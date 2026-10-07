@@ -718,12 +718,13 @@ describe('a press beside a media block', () => {
     }
   });
 
-  it('selects the media as the press on it lands, before the body has the focus back', () => {
+  it('selects the media as the press on it lands, and gives the body the focus with it selected', () => {
     const editor = open('image', { previewWidth: 200 });
     const view = editor.prosemirrorView!;
     act(() => {
       view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(view.state.doc)));
     });
+    expect(view.dom.contains(document.activeElement)).toBe(false);
 
     const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
     act(() => {
@@ -732,6 +733,10 @@ describe('a press beside a media block', () => {
 
     expect(view.state.selection).toBeInstanceOf(NodeSelection);
     expect((view.state.selection as NodeSelection).node.type.name).toBe('image');
+    // Focused only once the media is selected: ProseMirror writes the
+    // selection to the page as it takes the focus, so the caret the body kept
+    // while it had none is never drawn.
+    expect(document.activeElement).toBe(view.dom);
     // The press goes on to the browser, which starts a drag from it.
     expect(press.defaultPrevented).toBe(false);
   });

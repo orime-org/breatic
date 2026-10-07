@@ -627,6 +627,20 @@ test('a picture is no longer selected once the focus leaves the body, and never 
   const seen = await page.evaluate(() => (window as unknown as { seenOutline: string[] }).seenOutline);
   expect(seen).not.toContain('solid');
   await expect(knob(first)).toHaveCount(0);
+  // The caret the body kept while the menu had the focus is not drawn.
+  expect(
+    await page.evaluate(() => {
+      const selection = getSelection();
+      const at = selection?.anchorNode;
+      const holder = at instanceof Element ? at : at?.parentElement;
+      return (
+        selection?.isCollapsed === true &&
+        holder instanceof HTMLElement &&
+        holder.isContentEditable &&
+        getComputedStyle(holder).caretColor !== 'rgba(0, 0, 0, 0)'
+      );
+    }),
+  ).toBe(false);
 });
 
 test('a picture or a video is selected by a click on what it shows, never on the empty row beside it (A10)', async () => {
@@ -733,29 +747,38 @@ test('the keyboard stays with the body through the toolbar and the caption; a pr
   await img.hover();
   expect(await outline()).toBe('solid');
 
-  // After a click beside it, a hand's press on the picture selects it without
-  // a caret showing first on the line under it.
+  // Selected, then a click beside it, then a hand's press on it again: the
+  // picture is selected and no caret shows anywhere while that happens or
+  // after, on the line under it least of all.
+  await img.click();
+  await expect(knob).toBeVisible();
   await page.mouse.click(frame.x + frame.width + 40, frame.y + frame.height / 2);
+  await expect(knob).toHaveCount(0);
   await page.evaluate(() => {
     const carets: string[] = [];
-    (window as unknown as { carets: string[] }).carets = carets;
-    let frames = 0;
-    const sample = (): void => {
+    const w = window as unknown as { carets: string[]; drawnCaret: () => string | null };
+    w.carets = carets;
+    // A caret is drawn where the selection is collapsed in text that can be
+    // typed into, in a colour that is not transparent.
+    w.drawnCaret = (): string | null => {
       const selection = getSelection();
-      const editable = document.activeElement?.closest('.ProseMirror');
       const at = selection?.anchorNode;
       const holder = at instanceof Element ? at : at?.parentElement;
-      // A caret is drawn only where text can be typed, and not while the
-      // editor hides the selection behind a selected block.
       if (
-        editable &&
-        !editable.classList.contains('ProseMirror-hideselection') &&
+        document.activeElement?.closest('.ProseMirror') &&
         selection?.isCollapsed &&
         holder instanceof HTMLElement &&
-        holder.isContentEditable
+        holder.isContentEditable &&
+        getComputedStyle(holder).caretColor !== 'rgba(0, 0, 0, 0)'
       ) {
-        carets.push(at?.textContent ?? '');
+        return at?.textContent ?? '';
       }
+      return null;
+    };
+    let frames = 0;
+    const sample = (): void => {
+      const caret = w.drawnCaret();
+      if (caret !== null) carets.push(caret);
       frames += 1;
       if (frames < 60) requestAnimationFrame(sample);
     };
@@ -769,6 +792,7 @@ test('the keyboard stays with the body through the toolbar and the caption; a pr
   await page.mouse.up();
   await page.waitForTimeout(500);
   expect(await page.evaluate(() => (window as unknown as { carets: string[] }).carets)).toEqual([]);
+  expect(await page.evaluate(() => (window as unknown as { drawnCaret: () => string | null }).drawnCaret())).toBeNull();
   await expect(knob).toBeVisible();
 });
 

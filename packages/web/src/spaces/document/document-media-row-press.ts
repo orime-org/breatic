@@ -21,12 +21,15 @@
  * handlers, which the editor asks first, still close a thread the reader had
  * open.
  *
- * A press on the media selects it as it lands. The press gives the body the
- * focus back, which draws whatever selection the body kept while it had none
- * — the caret under the block, after a click beside it or after the focus
- * left — and ProseMirror selects the clicked block only when the button comes
- * up; between the two the reader would see that caret. The press is not
- * otherwise taken: the drag the media starts is the browser's.
+ * A press on the media selects it as it lands, and only then gives the body
+ * the focus. While the body has no focus ProseMirror keeps a selection in its
+ * state without writing it to the page, and on taking the focus back it does
+ * not write it either: the page keeps the caret it was left with — the line
+ * under the block, after a click beside it or after the focus left — and the
+ * click that follows finds the block already selected and writes nothing.
+ * `EditorView.focus` writes the state's selection to the page as it focuses,
+ * so the block is what the page has selected from the first frame. The press
+ * is not otherwise taken: the drag the media starts is the browser's.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -71,6 +74,7 @@ function pressOnMedia(view: EditorView, event: MouseEvent): void {
   if (row === null) return;
   const selection = NodeSelection.create(view.state.doc, view.posAtDOM(row, 0));
   if (!view.state.selection.eq(selection)) view.dispatch(view.state.tr.setSelection(selection));
+  if (!view.hasFocus()) view.focus();
 }
 
 /**
