@@ -269,6 +269,16 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'storage' });
   });
 
+  it('names a rate limit at once, asking for the ticket only one time', async () => {
+    const requestTicket = vi.fn().mockRejectedValue(apiError(429));
+    const deps = makeUploadDeps({ requestTicket });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(requestTicket).toHaveBeenCalledOnce();
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'rateLimited' });
+  });
+
   it('reports a failure when the knobs cannot be fetched', async () => {
     const deps = makeUploadDeps({
       getUploadConfig: vi.fn().mockRejectedValue(new Error('offline')),

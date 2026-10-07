@@ -716,6 +716,7 @@
       "empty": "{filename} is empty — there's nothing to add.",
       "hashUnavailable": "Couldn't verify this file. Reload the page and try again.",
       "storageFull": "Studio storage is full. Uploading is unavailable.",
+      "rateLimited": "Uploading too often. Try again later.",
       "failed": "Upload failed."
     },
     "minimap": {

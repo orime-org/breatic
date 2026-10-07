@@ -18,8 +18,8 @@
  * not change.
  *
  * The two do not even judge "transient" the same way. What goes through this
- * file keeps the reading below: 5xx, 429, and a network-level failure, with a
- * 4xx taken as a fact rather than weather. The transport reads the protocol
+ * file keeps the reading below: 5xx and a network-level failure, with a 4xx —
+ * 429 included — taken as a fact rather than weather. The transport reads the protocol
  * instead, retrying 408 and 429 despite both being 4xx.
  *
  * The transport would also honour `Retry-After`, and the Worker never sends
@@ -92,7 +92,9 @@ export function isTransientUploadError(err: unknown): boolean {
   if (status === STORAGE_FULL_STATUS) return false;
   // status 0 = no HTTP response reached us (network drop / timeout / CORS),
   // which apiGet normalizes to `.status = 0` — the most retryable case.
-  if (status !== null) return status === 0 || status >= 500 || status === 429;
+  // A 429 is the per-user limit, whose window outlasts every retry here; the
+  // reader is told and retries once it has passed.
+  if (status !== null) return status === 0 || status >= 500;
   return false;
 }
 

@@ -86,6 +86,8 @@ const TOAST_KEY: Readonly<
   hash: 'canvas.upload.hashUnavailable',
   // The bytes are not a kind we keep, which re-sending them does not change.
   unsupportedType: 'canvas.upload.unsupportedType',
+  // The window passes; the reader retries after it.
+  rateLimited: 'canvas.upload.rateLimited',
   upload: 'canvas.upload.failed',
 };
 
@@ -106,15 +108,16 @@ export function ingestRefusalToastKey(status: number | undefined): string {
 /**
  * Whether sending the same file again can end differently.
  *
- * The catch-all and a transfer are about this attempt: a transfer ends when
- * the connection drops, the ticket runs out or the edge could not store a
- * part, and a fresh ticket starts all of that over. The other reasons are
- * about the file or the account, and re-sending meets the same answer.
+ * The catch-all, a transfer and a rate limit are about this attempt: a
+ * transfer ends when the connection drops, the ticket runs out or the edge
+ * could not store a part, and a fresh ticket starts all of that over; a rate
+ * limit lifts once its window passes. The other reasons are about the file or
+ * the account, and re-sending meets the same answer.
  * @param reason - Why the upload ended.
  * @returns True when a Retry is worth offering.
  */
 export function uploadRetryCanChange(reason: UploadFailure['reason']): boolean {
-  return reason === 'upload' || reason === 'transfer';
+  return reason === 'upload' || reason === 'transfer' || reason === 'rateLimited';
 }
 
 /**

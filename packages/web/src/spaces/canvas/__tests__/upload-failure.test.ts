@@ -138,7 +138,11 @@ describe('resolveUploadFailure', () => {
 
 describe('which failures a retry can change (shared with the document body, inner#1127 A6)', () => {
   it('answers yes for the failures that are about this attempt: a transfer and the catch-all', () => {
-    expect(UPLOAD_FAILURE_REASONS.filter(uploadRetryCanChange)).toEqual(['transfer', 'upload']);
+    expect(UPLOAD_FAILURE_REASONS.filter(uploadRetryCanChange)).toEqual([
+      'rateLimited',
+      'transfer',
+      'upload',
+    ]);
   });
 
   it('names the same sentence a toast would, a transfer with no row reading as a failed upload', () => {
@@ -147,5 +151,6 @@ describe('which failures a retry can change (shared with the document body, inne
     expect(uploadFailureMessageKey('unsupportedType')).toBe('canvas.upload.unsupportedType');
     expect(uploadFailureMessageKey('upload')).toBe('canvas.upload.failed');
     expect(uploadFailureMessageKey('transfer')).toBe('canvas.upload.failed');
+    expect(uploadFailureMessageKey('rateLimited')).toBe('canvas.upload.rateLimited');
   });
 });

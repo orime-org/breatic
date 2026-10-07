@@ -316,6 +316,7 @@ describe('an upload that fails (A6)', () => {
   it.each([
     ['upload', 'canvas.upload.failed', true],
     ['transfer', 'canvas.upload.failed', true],
+    ['rateLimited', 'canvas.upload.rateLimited', true],
     ['storage', 'canvas.upload.storageFull', false],
     ['hash', 'canvas.upload.hashUnavailable', false],
     ['unsupportedType', 'canvas.upload.unsupportedType', false],

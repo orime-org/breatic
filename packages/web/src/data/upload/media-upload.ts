@@ -52,6 +52,8 @@ export interface StoredUpload {
  * `storage` — the studio's account is out of room (#89), which no retry fixes
  * either, for the opposite reason: nothing is broken, there is simply nowhere
  * to put the bytes until the admin acts.
+ * `rateLimited` — the reader asked for more tickets than the per-user limit
+ * allows in its window. A retry once the window has passed goes through.
  * `unsupportedType` — the edge read the stored bytes and turned them down.
  * The bytes are what they are, so re-sending them meets the same refusal.
  * `transfer` — the transfer half ended without our server hearing anything:
@@ -65,6 +67,7 @@ export interface StoredUpload {
 export const UPLOAD_FAILURE_REASONS = [
   'hash',
   'storage',
+  'rateLimited',
   'unsupportedType',
   'transfer',
   'upload',
@@ -104,10 +107,14 @@ export interface UploadFailure {
   taskId?: string;
 }
 
+/** Too Many Requests (RFC 6585 §4): the per-user limit on tickets. */
+const RATE_LIMITED_STATUS = 429;
+
 /** The statuses that say something other than "try again". */
 const FINAL_BY_STATUS: ReadonlyMap<number, UploadFailureReason> = new Map([
   [STORAGE_FULL_STATUS, 'storage'],
   [UNSUPPORTED_TYPE_STATUS, 'unsupportedType'],
+  [RATE_LIMITED_STATUS, 'rateLimited'],
 ]);
 
 /**
