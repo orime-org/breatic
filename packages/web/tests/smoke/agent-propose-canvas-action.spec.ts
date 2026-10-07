@@ -286,7 +286,9 @@ test('starts a storyboard from its template, and reminds the reader to fill it i
   const prompt = page.getByTestId('generate-prompt-editor');
   await expect(prompt).toBeVisible({ timeout: 20_000 });
   await expect(prompt).toContainText('5 rows and 5 columns');
-  // The reference spot survives the rewrite, so the character photo is mentioned.
+  // The reference spot survives the rewrite as a mention of the empty node,
+  // which is what makes image to image send the photo put there.
   await expect(prompt).toContainText('[📎');
+  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(1);
   await expect(page.getByTestId('generate-model-trigger')).toContainText('Nano Banana Pro');
 });
