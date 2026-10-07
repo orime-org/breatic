@@ -57,6 +57,7 @@ import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
 import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
 import { showLinkEditSpan } from '@web/spaces/document/document-link-edit-mark';
 import { LINK_PANEL_SURFACE } from '@web/spaces/document/document-link-panel';
+import { cn } from '@web/lib/utils';
 import {
   panelReference,
   underPointer,
@@ -84,6 +85,7 @@ import {
   LINK_TOOLBAR_OPEN_DELAY_MS,
   LINK_TOOLBAR_CLOSE_DELAY_MS,
 } from '@web/spaces/document/link-toolbar-timing';
+import { setLinkToolbarUp, useDocumentBars } from '@web/spaces/document/document-bars';
 
 /** Which of the toolbar's two faces is showing. */
 type ToolbarFace = 'read' | 'form';
@@ -831,6 +833,21 @@ export function DocumentLinkToolbar({
     [refs],
   );
 
+  // The one bar the document shows (`document-bars.ts`): this toolbar says
+  // when it is up, so a selected media block keeps its own down meanwhile, and
+  // steps aside while a media block is under the pointer.
+  const up = open && held !== null;
+  React.useEffect(() => {
+    setLinkToolbarUp(editor, up);
+  }, [editor, up]);
+  React.useEffect(
+    () => () => {
+      setLinkToolbarUp(editor, false);
+    },
+    [editor],
+  );
+  const standingAside = useDocumentBars(editor).hoveredMedia !== null;
+
   if (!open || !held) return null;
 
   return (
@@ -839,7 +856,8 @@ export function DocumentLinkToolbar({
         ref={holdSurface}
         style={floatingStyles}
         data-testid='doc-link-toolbar'
-        className={LINK_PANEL_SURFACE}
+        data-standing-aside={standingAside ? 'true' : undefined}
+        className={cn(LINK_PANEL_SURFACE, standingAside && 'invisible pointer-events-none')}
         {...getFloatingProps({
           onMouseEnter: takeSurface,
           onMouseLeave: releaseSurface,

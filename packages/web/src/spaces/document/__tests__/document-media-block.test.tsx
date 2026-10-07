@@ -148,7 +148,7 @@ describe('a change to its props (A8, A9)', () => {
     });
 
     expect(element(editor)).toBe(before);
-    expect(within(before).getByTestId('doc-media-frame').style.width).toBe('320px');
+    expect(within(before).getByTestId('doc-media-box').style.width).toBe('320px');
   });
 
   it('keeps the block\'s own attributes current, alignment and quote', () => {
@@ -181,7 +181,7 @@ describe('the toolbar', () => {
 
   it('offers alignment on an image narrower than the body (A9)', () => {
     const editor = open('image', { previewWidth: 200 });
-    const frame = within(element(editor)).getByTestId('doc-media-frame');
+    const frame = within(element(editor)).getByTestId('doc-media-box');
     vi.spyOn(frame.parentElement!, 'clientWidth', 'get').mockReturnValue(600);
     act(() => {
       editor.updateBlock(media(editor).id, { props: { previewWidth: 210 } } as never);
@@ -271,7 +271,7 @@ describe('where the toolbar goes', () => {
    * @param scrollerTop - Where the scroller's top edge is.
    */
   function place(editor: Editor, mediaTop: number, scrollerTop: number): void {
-    const frame = within(element(editor)).getByTestId('doc-media-frame');
+    const frame = within(element(editor)).getByTestId('doc-media-box');
     // The body stands in for the scroller the block is shown in.
     const scroller = document.body;
     scroller.setAttribute('data-radix-scroll-area-viewport', '');
@@ -288,7 +288,7 @@ describe('where the toolbar goes', () => {
     const editor = open('image');
     place(editor, 300, 100);
 
-    fireEvent.pointerEnter(within(element(editor)).getByTestId('doc-media-frame'));
+    fireEvent.pointerEnter(within(element(editor)).getByTestId('doc-media-box'));
 
     expect(toolbar(editor).getAttribute('data-side')).toBe('top');
   });
@@ -297,7 +297,7 @@ describe('where the toolbar goes', () => {
     const editor = open('image');
     place(editor, 110, 100);
 
-    fireEvent.pointerEnter(within(element(editor)).getByTestId('doc-media-frame'));
+    fireEvent.pointerEnter(within(element(editor)).getByTestId('doc-media-box'));
 
     expect(toolbar(editor).getAttribute('data-side')).toBe('bottom');
   });
@@ -394,5 +394,27 @@ describe('resizing (A8)', () => {
     selectMedia(editor);
 
     expect(within(element(editor)).queryByTestId('doc-media-resize-se')).toBeNull();
+  });
+});
+
+describe('the frame around a media block', () => {
+  it('goes around the media and leaves the caption out', () => {
+    const editor = open('image', { caption: 'A note' });
+
+    const frame = element(editor).querySelector('[data-media-frame]')!;
+    expect(frame.querySelector('img')).not.toBeNull();
+    expect(frame.contains(within(element(editor)).getByTestId('doc-media-caption'))).toBe(false);
+  });
+
+  it('is drawn while the pointer is on the block, the same way as when selected', () => {
+    const editor = open('video');
+    const box = within(element(editor)).getByTestId('doc-media-box');
+    expect(box.getAttribute('data-hovered')).toBeNull();
+
+    fireEvent.pointerEnter(box);
+    expect(box.getAttribute('data-hovered')).toBe('true');
+
+    fireEvent.pointerLeave(box);
+    expect(box.getAttribute('data-hovered')).toBeNull();
   });
 });

@@ -388,14 +388,80 @@ test('a selected picture is framed with a knob on each corner, and its handle st
   const [grip, media] = await Promise.all([handle.boundingBox(), img.boundingBox()]);
   expect(grip!.y + grip!.height / 2).toBeLessThan(media!.y + 30);
 
-  await img.click();
+  // The pointer alone frames it, in the selected text's own colour.
   const frame = page.locator(`${IMAGE} [data-media-frame]`);
+  const selectionColour = await page.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.style.color = 'var(--color-selection)';
+    document.querySelector('.doc-body')!.appendChild(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  });
   await expect(frame).toHaveCSS('outline-style', 'solid');
+  await expect(frame).toHaveCSS('outline-color', selectionColour);
+  const hoveredOutline = await frame.evaluate((element) => getComputedStyle(element).outline);
+
+  await img.click();
   await expect(frame).toHaveCSS('outline-width', '1px');
+  expect(await frame.evaluate((element) => getComputedStyle(element).outline)).toBe(hoveredOutline);
   for (const corner of ['nw', 'ne', 'sw', 'se']) {
     await expect(page.getByTestId(`doc-media-resize-${corner}`)).toBeVisible();
   }
   await expect(page.locator(IMAGE)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+
+  // The frame stops at the media: a caption under it is outside.
+  await page.locator(`${IMAGE} [data-testid="doc-media-caption-button"]`).click();
+  await page.locator(`${IMAGE} [data-testid="doc-media-caption-input"]`).fill('A note');
+  await page.keyboard.press('Enter');
+  const [frameBox, captionBox] = await Promise.all([
+    frame.boundingBox(),
+    page.locator(`${IMAGE} [data-testid="doc-media-caption"]`).boundingBox(),
+  ]);
+  expect(frameBox!.y + frameBox!.height).toBeLessThanOrEqual(captionBox!.y);
+
+  // The handle comes back on the next visit after a click (it used to stay away).
+  await page.mouse.move(5, 5);
+  await img.hover();
+  await expect(handle).toBeVisible();
+});
+
+test('the document shows one bar at a time (inner#1127)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('hello world');
+  await page.keyboard.press('Enter');
+  for (const name of ['one.png', 'two.png']) {
+    const png = (await pngBytes(page, 200, 120)).toString('base64');
+    await page.locator(EDITOR).evaluate((element, [base64, file]) => {
+      const transfer = new DataTransfer();
+      const bytes = Uint8Array.from(atob(base64!), (c) => c.charCodeAt(0));
+      transfer.items.add(new File([bytes], file!, { type: 'image/png' }));
+      element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+    }, [png, name]);
+    await expect(page.locator(`${IMAGE} img`).last()).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  }
+  const pictures = page.locator(IMAGE);
+  await expect(pictures).toHaveCount(2);
+  const visibleToolbars = page.locator('[data-testid="doc-media-toolbar"]:visible');
+
+  // One picture selected, the other under the pointer: only the latter's bar.
+  await pictures.nth(0).locator('img').click();
+  await expect(visibleToolbars).toHaveCount(1);
+  await pictures.nth(1).locator('img').hover();
+  await expect(visibleToolbars).toHaveCount(1);
+  await expect(pictures.nth(1).locator('[data-testid="doc-media-toolbar"]')).toBeVisible();
+  await expect(pictures.nth(1).locator('[data-media-frame]')).toHaveCSS('outline-style', 'solid');
+
+  // Text selected, a picture under the pointer: the bubble bar steps aside.
+  await page.locator(`${EDITOR} p`).first().dblclick();
+  const bubble = page.getByTestId('doc-selection-bubble-bar');
+  await expect(bubble).toBeVisible();
+  await pictures.nth(1).locator('img').hover();
+  await expect(bubble).toBeHidden();
+  await expect(visibleToolbars).toHaveCount(1);
+  await page.mouse.move(5, 5);
+  await expect(bubble).toBeVisible();
+  await expect(visibleToolbars).toHaveCount(0);
 });
 
 test('a video plays in place and keeps playing while its width changes (A7, A8)', async () => {

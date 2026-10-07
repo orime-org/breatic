@@ -103,6 +103,7 @@ import { onEditorSettled } from '@web/spaces/document/use-editor-snapshot';
 import { Separator } from '@web/components/ui/separator';
 import { usePressKeepsFocus } from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
+import { useDocumentBars } from '@web/spaces/document/document-bars';
 
 /** The document editor, as far as the bar needs to know. */
 type BubbleEditor = ViewedEditor;
@@ -495,6 +496,10 @@ function BubbleBar({
   // instead, which put focus outside the bar's subtree, which took the bar off
   // the screen — measured, hovering a slot removed the whole bar.
   const [barEl, setBarEl] = React.useState<HTMLDivElement | null>(null);
+  // A media block under the pointer owns the one bar the document shows
+  // (`document-bars.ts`); this one steps aside, keeping its state, and is
+  // back when the pointer leaves.
+  const standingAside = useDocumentBars(editor).hoveredMedia !== null;
   const barRef = React.useRef<HTMLDivElement | null>(null);
   // Whether one of the bar's own overlays — a slot menu or the link panel — is
   // open. Read by `isWarranted`, written just below where both are tracked.
@@ -1088,6 +1093,7 @@ function BubbleBar({
         ref={takeBarNode}
         style={floatingStyles}
         data-testid='doc-selection-bubble-bar'
+        data-standing-aside={standingAside ? 'true' : undefined}
         // Above the whole-document entry. The bar is the transient one, summoned
         // by a selection the reader just made, and its horizontal position
         // follows that selection far enough to reach the entry's corner. The
@@ -1103,7 +1109,7 @@ function BubbleBar({
           // selection, that is the scroller's own top left corner (320, 80),
           // one frame before the real place (616, 290). A mouse selection hides
           // this behind the press gate; the keyboard has no such gate.
-          (panelOpen || pointerDown || !isPositioned)
+          (panelOpen || pointerDown || !isPositioned || standingAside)
             && 'invisible pointer-events-none',
         )}
       >

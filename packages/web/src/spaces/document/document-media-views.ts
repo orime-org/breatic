@@ -12,6 +12,7 @@
  * React node views do. A root of their own would stand outside all of it.
  */
 
+import { setHoveredMedia } from '@web/spaces/document/document-bars';
 import type {
   MediaBlockActions,
   MediaBlockProps,
@@ -80,6 +81,8 @@ export function putMediaView(editor: object, host: HTMLElement, entry: MediaView
  */
 export function dropMediaView(editor: object, host: HTMLElement): void {
   const registry = registryOf(editor);
+  // A block taken away under the pointer gets no leave event.
+  setHoveredMedia(editor, host, false);
   if (registry.entries.delete(host)) changed(registry);
 }
 

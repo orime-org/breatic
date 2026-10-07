@@ -1842,11 +1842,17 @@ body {
   display: none;
 }
 
-/* A media block inside the selection is framed on the media itself, in the
-   colour a carried block and its landing line use; a band behind it would
-   fill the empty rest of its row (inner#1127). */
-.doc-body .doc-media-in-selection [data-media-frame] {
-  outline: 1px solid var(--color-status-selected);
+/* A media block inside the selection, and the one the pointer is on, is
+   framed on the media itself — not its caption — in the selected text's own
+   colour; a band behind it would fill the empty rest of its row (inner#1127).
+   The corner knobs of a selected one take the same colour. */
+.doc-body .doc-media-in-selection [data-media-frame],
+.doc-body [data-media-box][data-hovered='true'] [data-media-frame] {
+  outline: 1px solid var(--color-selection);
+}
+
+.doc-body [data-media-knob] {
+  border-color: var(--color-selection);
 }
 
 /* A table wider than the column scrolls inside its block, in the ScrollArea

@@ -61,8 +61,16 @@ export interface MediaBlockActions {
 interface DocumentMediaBlockProps {
   type: MediaBlockType;
   props: MediaBlockProps;
-  /** Whether the block is node-selected, which keeps its toolbar up. */
+  /** Whether the block is node-selected, which gives it its corner knobs. */
   selected: boolean;
+  /** Whether the pointer is on the block, which frames it as selected does. */
+  hovered: boolean;
+  /** Whether its toolbar is the one bar the document shows (`document-bars.ts`). */
+  toolbarShown: boolean;
+  /** The container the block is drawn into, which names it to `onHover`. */
+  host: HTMLElement;
+  /** Told when the pointer arrives on the block or leaves it. */
+  onHover: (host: HTMLElement, on: boolean) => void;
   actions: MediaBlockActions;
 }
 
@@ -151,6 +159,10 @@ function ToolButton({
  * @param props.type - Image, video or audio.
  * @param props.props - The block's props.
  * @param props.selected - Whether the block is node-selected.
+ * @param props.hovered - Whether the pointer is on it.
+ * @param props.toolbarShown - Whether its toolbar is on screen.
+ * @param props.host - Its container.
+ * @param props.onHover - Told when the pointer arrives or leaves.
  * @param props.actions - What its controls do.
  * @returns The block's content.
  */
@@ -158,6 +170,10 @@ export function DocumentMediaBlock({
   type,
   props,
   selected,
+  hovered,
+  toolbarShown,
+  host,
+  onHover,
   actions,
 }: DocumentMediaBlockProps): React.JSX.Element {
   const t = useTranslation();
@@ -180,8 +196,8 @@ export function DocumentMediaBlock({
     setSide(room >= bar.offsetHeight + TOOLBAR_GAP ? 'top' : 'bottom');
   }, []);
   React.useEffect(() => {
-    if (selected) placeToolbar();
-  }, [selected, placeToolbar]);
+    if (toolbarShown) placeToolbar();
+  }, [toolbarShown, placeToolbar]);
   const captionField = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => {
     if (editingCaption) captionField.current?.focus();
@@ -291,26 +307,38 @@ export function DocumentMediaBlock({
     >
       <div
         ref={frame}
-        data-testid='doc-media-frame'
-        data-media-frame=''
+        data-testid='doc-media-box'
+        data-media-box=''
+        data-hovered={hovered ? 'true' : undefined}
         data-selected={selected ? 'true' : undefined}
-        onPointerEnter={placeToolbar}
-        className={`group/media relative max-w-full ${sized ? '' : 'w-full'}`}
+        onPointerEnter={() => {
+          placeToolbar();
+          onHover(host, true);
+        }}
+        onPointerLeave={() => {
+          onHover(host, false);
+        }}
+        className={`relative max-w-full ${sized ? '' : 'w-full'}`}
         style={sized && width !== undefined ? { width: `${width}px` } : undefined}
       >
         {/* The gap between the media and its bar is padding on this layer, not
-            a margin, so a pointer crossing it stays inside the frame and the
+            a margin, so a pointer crossing it stays inside the block and the
             bar stays up. It takes the pointer only while the bar is shown, so
             the line above the media is clickable the rest of the time. */}
         <div
           data-media-chrome=''
-          className={`pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 group-hover/media:pointer-events-auto group-data-[selected=true]/media:pointer-events-auto ${side === 'top' ? 'bottom-full pb-2' : 'top-full pt-2'}`}
+          className={cn(
+            'absolute left-1/2 z-10 -translate-x-1/2',
+            toolbarShown ? 'pointer-events-auto' : 'pointer-events-none',
+            side === 'top' ? 'bottom-full pb-2' : 'top-full pt-2',
+          )}
         >
           <div
             ref={toolbarRef}
             data-testid='doc-media-toolbar'
             data-side={side}
-            className={cn(BUBBLE_BAR_CLASS, 'invisible group-hover/media:visible group-data-[selected=true]/media:visible')}
+            data-shown={toolbarShown ? 'true' : undefined}
+            className={cn(BUBBLE_BAR_CLASS, !toolbarShown && 'invisible')}
           >
             {sized &&
             narrower &&
@@ -368,20 +396,25 @@ export function DocumentMediaBlock({
             </ToolButton>
           </div>
         </div>
-        {body}
-        {sized &&
-          selected &&
-          CORNERS.map(({ corner, side: towards, place, cursor }) => (
-            <span
-              key={corner}
-              data-media-chrome=''
-              data-testid={`doc-media-resize-${corner}`}
-              className={`absolute h-2 w-2 rounded-sm border border-status-selected bg-background ${place} ${cursor}`}
-              onPointerDown={(event) => {
-                startResize(towards, event);
-              }}
-            />
-          ))}
+        {/* The media itself, which is what a frame goes around: the caption
+            under it is the block's text, not its content area. */}
+        <div data-testid='doc-media-frame' data-media-frame='' className='relative'>
+          {body}
+          {sized &&
+            selected &&
+            CORNERS.map(({ corner, side: towards, place, cursor }) => (
+              <span
+                key={corner}
+                data-media-chrome=''
+                data-media-knob=''
+                data-testid={`doc-media-resize-${corner}`}
+                className={`absolute h-2 w-2 rounded-sm border bg-background ${place} ${cursor}`}
+                onPointerDown={(event) => {
+                  startResize(towards, event);
+                }}
+              />
+            ))}
+        </div>
         {editingCaption ? (
           <input
             data-media-chrome=''
