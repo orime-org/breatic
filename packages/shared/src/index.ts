@@ -211,6 +211,7 @@ export {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   isGenerationNodeType,
+  paramValueAllowed,
   paramValues,
   PANEL_EDITOR_PARAM,
   feedersOf,
@@ -378,6 +379,7 @@ export {
 export type { AdjustValue } from "@shared/adjust-value.js";
 
 export {
+  CONTAINER_OPS,
   MINI_TOOLS,
   defaultParamsOf,
   isModelTool,
@@ -398,6 +400,7 @@ export type {
   MiniToolOutput,
   MiniToolParam,
   MiniToolRequest,
+  MiniToolRequestSlot,
   MiniToolRun,
   MiniToolSlot,
   MiniToolSlotValue,

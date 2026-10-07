@@ -14,7 +14,10 @@
 export type MiniToolMedium = "image" | "video" | "audio";
 
 /** The ffmpeg operations the mini-tool container runs. */
-export type ContainerOp = "crop" | "speed" | "cut" | "adjust" | "audio_denoise" | "stabilize" | "hdr";
+export const CONTAINER_OPS = ["crop", "speed", "cut", "adjust", "audio_denoise", "stabilize", "hdr"] as const;
+
+/** One of {@link CONTAINER_OPS}. */
+export type ContainerOp = (typeof CONTAINER_OPS)[number];
 
 /** Where a tool runs. */
 export type MiniToolRun =

@@ -25,7 +25,7 @@ export interface MiniToolSnapshot {
   readonly params: Readonly<Record<string, unknown>>;
   readonly prompt: string;
   readonly source: { readonly url: string; readonly duration?: number };
-  readonly slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[]>>;
+  readonly slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined>>;
 }
 
 const BY_ID = new Map(MINI_TOOLS.map((tool) => [tool.id, tool]));

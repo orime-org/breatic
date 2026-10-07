@@ -106,12 +106,35 @@ function memberSchema(spec: MiniToolSpec): z.ZodObject {
   });
 }
 
+/** One picked piece of media as the request carries it. */
+export interface MiniToolRequestSlot {
+  url: string;
+  duration?: number | undefined;
+}
+
+/** A validated `POST /mini-tools` body. */
+export interface MiniToolRequest {
+  tool: string;
+  project_id: string;
+  space_id: string;
+  node_ids: string[];
+  source: {
+    url: string;
+    mime_type?: string | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    duration?: number | undefined;
+  };
+  prompt?: string | undefined;
+  params: Record<string, unknown>;
+  slots: Record<string, MiniToolRequestSlot | MiniToolRequestSlot[] | undefined>;
+}
+
 const SERVER_TOOLS = MINI_TOOLS.filter((spec) => spec.run.kind !== "browser");
 
+// The members are generated from the registry at load time, so zod cannot
+// infer the body's shape; MiniToolRequest states it.
 export const miniToolRequestSchema = z.discriminatedUnion(
   "tool",
   SERVER_TOOLS.map(memberSchema) as unknown as [z.ZodObject, z.ZodObject, ...z.ZodObject[]],
-);
-
-/** A validated `POST /mini-tools` body. */
-export type MiniToolRequest = z.infer<typeof miniToolRequestSchema>;
+) as unknown as z.ZodType<MiniToolRequest>;

@@ -240,6 +240,11 @@
         "lead": "在注册页面输入下面的验证码，完成创建账号。",
         "footer": "验证码将在 {minutes, plural, other {# 分钟}}后失效。如果不是你本人操作，可以忽略这封邮件。"
       }
+    },
+    "mini_tool": {
+      "unavailable": "这个工具暂时不可用。",
+      "invalidParam": "“{name}”的值这个工具不支持。",
+      "foreignSource": "这个文件无法处理。"
     }
   },
   "chat": {

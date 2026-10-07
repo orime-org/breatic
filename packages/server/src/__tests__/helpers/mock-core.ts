@@ -30,6 +30,7 @@ import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/
 // route names it on the row, on the job and against the charge, and a copy
 // here would let all three drift from it while the suite stayed green.
 import { UNDERSTAND_PINS as REAL_UNDERSTAND_PINS } from "../../../../domain/src/understand/types.js";
+import { creditsForUsd as REAL_CREDITS_FOR_USD } from "../../../../domain/src/credit/usage-cost.js";
 // Real: the tracker is pure, and what a turn hands off depends on it.
 import {
   isGenerationId as realIsGenerationId,
@@ -579,6 +580,8 @@ export const domainMock = () => ({
   listAvailableModels: vi.fn().mockReturnValue([]),
   // #1580 #7 credit pre-check inputs (canvas + mini-tools routes).
   MIN_TASK_CREDIT_COST: 5,
+  // Arithmetic, so the real one: a double would be a second copy of the rate.
+  creditsForUsd: REAL_CREDITS_FOR_USD,
   estimateTaskCredits: vi.fn().mockResolvedValue(5),
   violatesSourceRequirementForModel: mocks.violatesSourceRequirementForModel,
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,

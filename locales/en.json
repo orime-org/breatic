@@ -240,6 +240,11 @@
         "lead": "Enter this code on the sign-up page to finish creating your account.",
         "footer": "This code expires in {minutes, plural, one {# minute} other {# minutes}}. If you didn't try to sign up, you can ignore this email."
       }
+    },
+    "mini_tool": {
+      "unavailable": "This tool is unavailable right now.",
+      "invalidParam": "\"{name}\" has a value this tool does not take.",
+      "foreignSource": "This file cannot be processed."
     }
   },
   "chat": {

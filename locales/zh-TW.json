@@ -240,6 +240,11 @@
         "lead": "在註冊頁面輸入下方的驗證碼，完成建立帳號。",
         "footer": "驗證碼將在 {minutes, plural, other {# 分鐘}}後失效。如果不是你本人操作，可以忽略這封郵件。"
       }
+    },
+    "mini_tool": {
+      "unavailable": "這個工具暫時無法使用。",
+      "invalidParam": "「{name}」的值這個工具不支援。",
+      "foreignSource": "這個檔案無法處理。"
     }
   },
   "chat": {
