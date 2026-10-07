@@ -74,7 +74,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
   {
     id: "image.upscale",
     source: "image",
-    run: { kind: "model", model: "crystal-upscaler" },
+    run: { kind: "model", model: "pro-upscaler" },
     labelKey: key("image.upscale", "label"),
     icon: "Maximize2",
     params: [{ key: "target_megapixels" }, { key: "creativity" }],
@@ -85,13 +85,14 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
   {
     id: "image.digital-human",
     source: "image",
-    run: { kind: "model", model: "omnihuman-1.5" },
+    run: { kind: "model", model: "seedance-2.5-talking-avatar" },
     labelKey: key("image.digital-human", "label"),
     icon: "UserRound",
-    params: [],
+    params: [{ key: "resolution" }],
     slots: [slot("image.digital-human", "audio", "audio", "audio")],
     outputs: [{ modality: "video", namePrefix: "AVATAR" }],
     sourceParam: "image",
+    prompt: { placeholderKey: key("image.digital-human", "prompt") },
   },
   {
     id: "image.crop",

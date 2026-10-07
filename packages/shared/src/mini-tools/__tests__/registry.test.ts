@@ -106,7 +106,7 @@ describe("miniToolsFor", () => {
 describe("servedMiniToolsFor", () => {
   const entry = (name: string) => ({ name }) as never;
   const catalog = {
-    image: [entry("crystal-upscaler")],
+    image: [entry("pro-upscaler")],
     video: [],
     audio: [],
     tts: [],
@@ -131,7 +131,7 @@ describe("servedMiniToolsFor", () => {
   });
 
   it("finds a catalog entry by name in any bucket", () => {
-    expect(catalogEntryOf(catalog, "crystal-upscaler")).toEqual({ name: "crystal-upscaler" });
+    expect(catalogEntryOf(catalog, "pro-upscaler")).toEqual({ name: "pro-upscaler" });
     expect(catalogEntryOf(catalog, "absent")).toBeUndefined();
   });
 });
@@ -139,7 +139,7 @@ describe("servedMiniToolsFor", () => {
 describe("modelOf and toolParamKeys", () => {
   it("pins the upscaler and exposes its own target params", () => {
     const upscale = miniToolById("image.upscale");
-    expect(upscale && modelOf(upscale)).toBe("crystal-upscaler");
+    expect(upscale && modelOf(upscale)).toBe("pro-upscaler");
     expect(upscale && toolParamKeys(upscale)).toEqual(["target_megapixels", "creativity"]);
   });
 

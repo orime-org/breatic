@@ -328,6 +328,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.video.edit.slot.audios": { excluded: REASONS.SAYS_WHAT_TO_PICK },
   "canvas.miniTool.video.motion.slot.character": { excluded: REASONS.SAYS_WHAT_TO_PICK },
   "canvas.miniTool.video.animate.slot.character": { excluded: REASONS.SAYS_WHAT_TO_PICK },
+  "canvas.miniTool.image.digital-human.prompt": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "canvas.miniTool.video.extend.prompt": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "canvas.miniTool.video.edit.prompt": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "canvas.miniTool.video.motion.prompt": { excluded: REASONS.SAYS_WHAT_TO_TYPE },

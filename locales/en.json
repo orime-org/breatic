@@ -863,7 +863,8 @@
           "label": "Talking head",
           "slot": {
             "audio": "Pick an audio node for the voice"
-          }
+          },
+          "prompt": "Describe the expression and movement (optional)"
         },
         "crop": {
           "label": "Crop"

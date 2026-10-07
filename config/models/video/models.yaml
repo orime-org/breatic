@@ -1377,6 +1377,40 @@ models:
           formula: "{\"total_price\": $min([$ceil(get_duration(audio)), 600]) * base_price}"
           discount_rate: 100
 
+  - name: "seedance-2.5-talking-avatar"
+    display_name: "Seedance 2.5 Talking Avatar"
+    mode: "talking_head"
+    takes_prompt: true
+    tier: "recommended"
+    description: "A portrait that talks the audio, up to two minutes"
+    guide: "Turn a portrait and a voice recording into a presenter clip; the prompt steers expression and movement."
+    generation_time: 180
+    icon: "seedream"
+    params:
+      audio:
+        description: "Source audio"
+        default: null
+        accepts: "audio"
+        fill: "canvas"
+      image:
+        description: "Source image"
+        default: null
+        accepts: "image"
+        fill: "canvas"
+      resolution:
+        description: "Output resolution"
+        default: "720p"
+        values: ["480p", "720p"]
+        fill: "panel"
+    providers:
+      - name: "wavespeed"
+        model_id: "bytedance/seedance-2.5/talking-avatar"
+        priority: 1
+        pricing:
+          base_price: 1100000
+          formula: "{\"total_price\": $max([4, $min([$ceil(get_duration(audio)), 120])]) / 5 * base_price * (resolution = \"480p\" ? 1 : 2)}"
+          discount_rate: 100
+
   - name: "sync-lipsync-3"
     display_name: "Sync Lipsync 3"
     mode: "talking_head"
