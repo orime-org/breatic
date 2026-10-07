@@ -79,13 +79,27 @@ interface DocumentMediaBlockProps {
 }
 
 /** The narrowest an image or a video can be dragged to. */
-const MIN_WIDTH = 48;
+const MIN_WIDTH: Readonly<Record<'image' | 'video', number>> = {
+  image: 48,
+  // The player's play button, seek bar and full-screen button, the controls
+  // it keeps at its narrowest (`MediaPlayer`).
+  video: 128,
+};
 
 /** The gap between the toolbar and the media's top edge, `pb-2` above it and `top-2` on it. */
 const TOOLBAR_GAP = 8;
 
 /** The block's own controls, which the node view hands their events. */
 const CHROME = '[data-media-chrome]';
+
+/**
+ * Whether a press belongs to the block's own controls or the player's.
+ * @param target - Where it landed.
+ * @returns True when it does.
+ */
+function ownsPress(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(`${CHROME}, .nodrag`) !== null;
+}
 
 /** The scroller the body is shown in, which clips what sticks out of it. */
 const SCROLLER = '[data-radix-scroll-area-viewport]';
@@ -271,7 +285,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     const widthAt = (x: number): number => {
       const raw = startWidth + (x - startX) * factor;
       const capped = maxWidth > 0 ? Math.min(raw, maxWidth) : raw;
-      return Math.round(Math.max(MIN_WIDTH, capped));
+      return Math.round(Math.max(MIN_WIDTH[type === 'video' ? 'video' : 'image'], capped));
     };
     /**
      * Shows the width the drag has reached.
@@ -340,8 +354,11 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         onPointerLeave={() => {
           onHover(host, false);
         }}
-        className={`relative max-w-full ${sized ? '' : 'w-full'}`}
-        style={sized && width !== undefined ? { width: `${width}px` } : undefined}
+        className={cn('relative max-w-full', !sized && 'w-full')}
+        style={{
+          ...(type === 'video' && { minWidth: `${MIN_WIDTH.video}px` }),
+          ...(sized && width !== undefined && { width: `${width}px` }),
+        }}
       >
         {/* Above the media, the gap between it and its bar is padding on this
             layer, not a margin, so a pointer crossing it stays inside the
@@ -428,10 +445,14 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
           data-media-frame=''
           className='relative'
           draggable
+          // Decided as the press lands: the corners resize and the player's
+          // controls play, and a native drag starting under either would
+          // cancel their pointer (a drag begins with `pointercancel`).
+          onPointerDownCapture={(event) => {
+            event.currentTarget.draggable = !ownsPress(event.target);
+          }}
           onDragStart={(event) => {
-            // The corners resize and the player's controls play; a drag from
-            // either is theirs.
-            if (event.target instanceof Element && event.target.closest(`${CHROME}, .nodrag`) !== null) {
+            if (ownsPress(event.target)) {
               event.preventDefault();
               return;
             }

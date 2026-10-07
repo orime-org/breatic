@@ -499,7 +499,7 @@ test('a video plays in place and keeps playing while its width changes (A7, A8)'
   const handle = page.locator(`${VIDEO} [data-testid="doc-media-resize-se"]`);
   const element = await video.elementHandle();
 
-  await page.locator(VIDEO).click({ position: { x: 20, y: 20 } });
+  await selectFromBelow(page, VIDEO);
   const box = (await handle.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
@@ -510,6 +510,53 @@ test('a video plays in place and keeps playing while its width changes (A7, A8)'
   // The same element: the block redrew in place rather than being rebuilt.
   expect(await page.locator(`${VIDEO} video`).evaluate((v, before) => v === before, element)).toBe(true);
 });
+
+test('a narrow video keeps play, seek and full screen inside it, and shows its times once it is wide (A7)', async () => {
+  await openFreshDocument(page);
+  await pickFromPlus(page, 'video', {
+    name: 'clip.mp4',
+    mimeType: 'video/mp4',
+    buffer: readFileSync(resolve(__dirname, '../fixtures/media-history.mp4')),
+  });
+  const video = page.locator(VIDEO);
+  await expect(video.locator('video')).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const fits = (): Promise<{ inside: boolean; times: boolean; width: number }> =>
+    video.evaluate((block) => {
+      const controls = block.querySelector('[data-testid="controls"]') as HTMLElement;
+      const frame = block.querySelector('[data-media-frame]')!.getBoundingClientRect();
+      const inside = ['play-toggle', 'seek', 'fullscreen'].every((id) => {
+        const box = block.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect();
+        return box.width > 0 && box.left >= frame.left - 0.5 && box.right <= frame.right + 0.5;
+      });
+      const time = block.querySelector('[data-testid="time-current"]') as HTMLElement;
+      return { inside: inside && controls.scrollWidth <= controls.clientWidth, times: time.offsetWidth > 0, width: Math.round(frame.width) };
+    });
+
+  // The source is 64px wide; the block holds the player's narrowest.
+  expect(await fits()).toEqual({ inside: true, times: false, width: 128 });
+
+  await selectFromBelow(page, VIDEO);
+  const handle = page.locator(`${VIDEO} [data-testid="doc-media-resize-se"]`);
+  const box = (await handle.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 300, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => (await fits()).times).toBe(true);
+  expect((await fits()).inside).toBe(true);
+});
+
+/**
+ * Selects the media block from the line under it, with the up arrow.
+ * @param p - The page.
+ * @param block - The media block.
+ */
+async function selectFromBelow(p: Page, block: string): Promise<void> {
+  const box = (await p.locator(block).boundingBox())!;
+  await p.mouse.click(box.x + 4, box.y + box.height + 12);
+  await p.keyboard.press('ArrowUp');
+  await expect(p.locator(`${block} [data-testid="doc-media-resize-se"]`)).toBeVisible();
+}
 
 /**
  * Pastes a fresh picture under the caret's line.

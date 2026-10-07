@@ -183,7 +183,10 @@ export function MediaPlayer({
 
   if (isVideo) {
     return (
-      <div className='relative' data-testid='media-player'>
+      // Sized as a container: narrower players drop the times, then the
+      // volume, keeping play, seek and full screen (the breakpoints a
+      // responsive Video.js or Plyr player uses the same way).
+      <div className='@container relative' data-testid='media-player'>
         {/* eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded asset; no caption track until caption authoring lands. */}
         <video
           ref={ref as React.RefObject<HTMLVideoElement>}
@@ -213,7 +216,7 @@ export function MediaPlayer({
           {playButton}
           <span
             data-testid='time-current'
-            className='shrink-0 text-2xs tabular-nums'
+            className='hidden shrink-0 text-2xs tabular-nums @min-[16rem]:inline'
           >
             {formatSeconds(p.currentTime)}
           </span>
@@ -229,11 +232,11 @@ export function MediaPlayer({
           />
           <span
             data-testid='time-total'
-            className='shrink-0 text-2xs tabular-nums'
+            className='hidden shrink-0 text-2xs tabular-nums @min-[16rem]:inline'
           >
             {formatSeconds(p.duration)}
           </span>
-          {showVolume ? volumeControl : null}
+          {showVolume ? <span className='hidden @min-[11rem]:contents'>{volumeControl}</span> : null}
           {showFullscreen ? (
             <Button
               type='button'

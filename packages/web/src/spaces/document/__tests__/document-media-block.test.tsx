@@ -462,6 +462,21 @@ describe('resizing (A8)', () => {
     expect(media(editor).props['previewWidth']).toBe(before);
   });
 
+  it.each([
+    ['image', 48],
+    ['video', 128],
+  ] as const)('stops a %s at %ipx, however far the corner is pulled in', (type, floor) => {
+    const editor = open(type, { previewWidth: 300, textAlignment: 'left' });
+    selectMedia(editor);
+    vi.spyOn(within(element(editor)).getByTestId('doc-media-box'), 'offsetWidth', 'get').mockReturnValue(300);
+    const handle = within(element(editor)).getByTestId('doc-media-resize-se');
+
+    fireEvent.pointerDown(handle, { clientX: 400, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: 0, pointerId: 1 });
+
+    expect(media(editor).props['previewWidth']).toBe(floor);
+  });
+
   it('gives audio no knobs', () => {
     const editor = open('audio');
     selectMedia(editor);
@@ -545,6 +560,18 @@ describe('dragging a media block by its media (A10)', () => {
 
     expect(start).toHaveBeenCalledOnce();
     expect((start.mock.calls[0]![1] as { id: string }).id).toBe(media(editor).id);
+  });
+
+  it('turns the drag off as a press lands on a corner, so the resize keeps its pointer', () => {
+    const editor = open('image', { previewWidth: 200 });
+    selectMedia(editor);
+    const frame = within(element(editor)).getByTestId('doc-media-frame');
+
+    fireEvent.pointerDown(within(element(editor)).getByTestId('doc-media-resize-se'), { pointerId: 1 });
+    expect(frame.draggable).toBe(false);
+
+    fireEvent.pointerDown(element(editor).querySelector('img')!, { pointerId: 2 });
+    expect(frame.draggable).toBe(true);
   });
 
   it('leaves a press on its own controls to them', async () => {
