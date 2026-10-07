@@ -377,6 +377,32 @@ export const projectLastOpened = pgTable(
   ],
 );
 
+// ── 4d. Project Edits ────────────────────────────────────────────────
+//
+// When a project's content was last changed, backing the studio list's
+// "last edited" sort. Canvas and document content lives in the separate yjs
+// database, so it can never be joined from here; collab writes this row after
+// a Space document's store lands and after a Space is created, renamed,
+// locked, deleted or restored, and the server writes it with a rename,
+// description or cover change. One row per project, moved forward in place.
+//
+// No `deleted_at`, for the same reason as `project_last_opened`: a row for a
+// deleted project is filtered out by the list's join, so a leftover row is
+// harmless. `created_at` is the first recorded edit; the mutable timestamp is
+// `last_edited_at`, so there is no `updated_at`.
+
+export const projectEdits = pgTable("project_edits", {
+  projectId: uuid("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "restrict" }),
+  lastEditedAt: timestamp("last_edited_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 // ── 4b. Studio Members ───────────────────────────────────────────────
 //
 // Studio-level membership + role (Admin / Member). The admin role lives
