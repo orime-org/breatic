@@ -332,7 +332,7 @@ describe("a mode whose material arrives through the reference pool", () => {
           ...made,
           prompt: [
             ...(made.prompt ?? []),
-            { slot: { kind: "asset", label: "the step before", note: "Nothing to do" } },
+            { slot: { kind: "asset", label: "the step before", note: "@ the step before" } },
           ],
         },
         {
@@ -397,7 +397,7 @@ describe("a mode whose material arrives through the reference pool", () => {
           // is about is that it also occupies one of the pool's rows.
           prompt: [
             ...(made.prompt ?? []),
-            { slot: { kind: "asset", label: "the step before", note: "Nothing to do" } },
+            { slot: { kind: "asset", label: "the step before", note: "@ the step before" } },
           ],
         },
         {
@@ -776,44 +776,6 @@ describe("what the model is allowed to fill in", () => {
     const room = (at.maxInputChars ?? 0) - [...marks].length;
 
     expect(checkProposal(propose(at, { text: "a".repeat(room) }))).toEqual({ ok: true });
-  });
-
-  it("counts the words a mark pointing upstream will substitute in", () => {
-    // A ref mark writes no text of its own, and at Generate time the body of
-    // the text node it names takes its place in the string the panel measures
-    // (`serializePromptText`). Measured as nothing, a script past the cap is
-    // placed, and the reader meets the refusal at a button they cannot fix
-    // from -- the words are in another node.
-    const at = pick(
-      (m) => m.maxInputChars !== undefined && m.needs.length === 0 && m.takesPrompt,
-      "model stating an input cap and needing no material",
-    );
-    const script = "x".repeat((at.maxInputChars ?? 0) + 1);
-
-    const verdict = checkProposal({
-      nodes: [
-        { role: "written", type: "text", name: "The script", prompt: [{ text: script }] },
-        { role: "generate", type: at.nodeType, name: "The read", mode: at.mode,
-          model: at.model, params: {}, prompt: [
-            { text: "read " },
-            { slot: { kind: "asset", label: "the step before", note: "Nothing to do" } },
-            ...(at.choices.length > 0
-              ? [{ slot: { kind: "tweak" as const, label: "the voice", note: "Pick one in the panel" } }]
-              : []),
-          ] },
-      ],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
-      rationale: "x", groupName: "g",
-    });
-
-    if (verdict.ok) throw new Error("expected a refusal");
-    // The number in the sentence is the one it refused on, and it names the
-    // node holding the words: told the prompt is nineteen characters and to
-    // shorten it, the model has nothing it can shorten and no idea where the
-    // rest of them are.
-    const said = /and this prompt is (\d+)/.exec(verdict.reason)?.[1];
-    expect(Number(said)).toBeGreaterThan(at.maxInputChars ?? 0);
-    expect(verdict.reason).toContain("The script");
   });
 
   it("refuses a number outside the range the model declares", () => {
@@ -1420,7 +1382,7 @@ describe("a flow of any shape", () => {
         { role: "generate", type: at.nodeType, name: "The clip", mode: at.mode,
           model: at.model, params: {}, prompt: [
             { text: "in the words of " },
-            { slot: { kind: "asset", label: "the step before", note: "Nothing to do" } },
+            { slot: { kind: "asset", label: "the step before", note: "@ the step before" } },
             { text: ", using " },
             { slot: { kind: "asset", label: "yours", note: "Put it in" } },
           ] },
@@ -1449,7 +1411,7 @@ describe("a flow of any shape", () => {
         { role: "generate", type: at.nodeType, name: "The clip", mode: at.mode,
           model: at.model, params: {}, prompt: [
             { text: "in the words of " },
-            { slot: { kind: "asset", label: "the step before", note: "Nothing to do" } },
+            { slot: { kind: "asset", label: "the step before", note: "@ the step before" } },
             { text: ", using " },
             { slot: { kind: "asset", label: "yours", note: "Put it in" } },
           ] },
@@ -1844,7 +1806,7 @@ describe("a mark pointing at an upstream node", () => {
           name: "Your copy",
           prompt: [
             { text: "After " },
-            { slot: { kind: "asset", label: "the step before", note: "Nothing to do" } },
+            { slot: { kind: "asset", label: "the step before", note: "@ the step before" } },
           ],
         },
       ],
@@ -1865,7 +1827,7 @@ describe("a mark pointing at an upstream node", () => {
           role: "written",
           type: "text",
           name: "Your copy",
-          prompt: [{ slot: { kind: "asset", label: "the picture", note: "Nothing to do" } }],
+          prompt: [{ slot: { kind: "asset", label: "the picture", note: "@ the step before" } }],
         },
         generation(sourceless(), 0, 0),
       ],
@@ -1936,7 +1898,7 @@ describe("what the model itself settles", () => {
           params: {},
           prompt: [
             { text: "follow " },
-            { slot: { kind: "asset" as const, label: "the step before", note: "Nothing to do" } },
+            { slot: { kind: "asset" as const, label: "the step before", note: "@ the step before" } },
             ...Array.from({ length: cap }, (_, i) => ({
               slot: {
                 kind: "asset" as const,

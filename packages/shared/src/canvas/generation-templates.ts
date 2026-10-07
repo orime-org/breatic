@@ -5,9 +5,9 @@
  * Generation templates (inner#977): a fixed mode, model, params and prompt a
  * reader picks in a generate panel, and the agent may start a proposed node
  * from. The prompt is interface text, so it lives in the locale files under
- * `canvas.template.<id>.prompt`, written as the box shows it: the places the
- * reader fills in are the proposal marks (`[📎 …]` for material, `[✏️ …]`
- * for words).
+ * `canvas.template.<id>.prompt`, with the places the reader acts on written as
+ * the proposal marks: `[📎 …]` for material to @, `{✏️ …}` for words to fill
+ * in, `(💡 …)` for a note on operating the panel.
  *
  * The mode, model, ratio and wording of the two image templates come from real
  * runs on Nano Banana Pro Ultra: a fixed ratio keeps the reference's own frame

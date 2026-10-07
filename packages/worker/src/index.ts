@@ -32,8 +32,6 @@ import {
   getAgentConfig,
 } from "@breatic/core";
 import {
-  agentModelIds,
-  assertModelsPriced,
   modelCatalog,
   USAGE_LOOKUP_QUEUE,
   MEDIA_READ_QUEUE,
@@ -71,25 +69,14 @@ globalThis.AI_SDK_LOG_WARNINGS = ({ warnings, provider, model }) => {
   logger.warn({ warnings, provider, model }, "ai_sdk_warning");
 };
 
-// Read config/agent.yaml now rather than on the first job: this process prices
-// the agent's models from it at startup and schedules each usage lookup by
-// it, the latter on the path a claimed job already walks. A file that no longer parses would otherwise surface as a
-// job failure BullMQ retries into the same wall.
+// Read config/agent.yaml now rather than on the first job: the model calls a
+// job makes read their retry count from it (`llm_max_retries`). A file that no
+// longer parses would otherwise surface as a job failure BullMQ retries into
+// the same wall.
 try {
   getAgentConfig();
 } catch (err) {
   logger.error({ err }, "agent_config_invalid");
-  await exitProcess(1);
-}
-
-// Every model the agent runs on has to be priceable (#296). One reached
-// directly reports tokens but no cost, and is priced from
-// config/usage-pricing.yaml; lazily, a missing price would surface as the
-// first call that spent money failing to record what it spent.
-try {
-  assertModelsPriced(agentModelIds());
-} catch (err) {
-  logger.error({ err }, "usage_pricing_incomplete");
   await exitProcess(1);
 }
 
