@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
@@ -69,9 +69,7 @@ describe('ShareDialog — invite by email flow', () => {
 
   it('sends a valid email + role=viewer (default) to the new invitations endpoint', async () => {
     const user = userEvent.setup();
-    vi.mocked(projectInvitationsApi.inviteMember).mockResolvedValueOnce({
-      inviteLink: 'https://app.example/decision?token=tok-1',
-    });
+    vi.mocked(projectInvitationsApi.inviteMember).mockResolvedValueOnce();
     setup();
     await user.type(
       screen.getByTestId('share-invite-input'),
@@ -88,55 +86,9 @@ describe('ShareDialog — invite by email flow', () => {
     expect(toast.success).toHaveBeenCalled();
   });
 
-  it('reveals a copyable invite URL after a successful invite', async () => {
+  it('confirms a sent invite with a toast and an empty field, and shows no invite link', async () => {
     const user = userEvent.setup();
-    const inviteLink = 'https://app.example/decision?token=tok-42';
-    vi.mocked(projectInvitationsApi.inviteMember).mockResolvedValueOnce({
-      inviteLink,
-    });
-    // jsdom has no real clipboard — stub writeText (a getter-only property, so
-    // `defineProperty`, not `Object.assign`), restoring it after the test.
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText },
-      configurable: true,
-    });
-
-    try {
-      setup();
-      await user.type(
-        screen.getByTestId('share-invite-input'),
-        'new@example.com',
-      );
-      await user.click(screen.getByTestId('share-send-invite'));
-
-      // The link surfaces in a read-only input the owner can copy.
-      const urlField = await screen.findByTestId('share-invite-url');
-      expect(urlField).toHaveValue(inviteLink);
-      expect(urlField).toHaveAttribute('readonly');
-
-      // Clicking copy writes the link to the clipboard.
-      await user.click(screen.getByTestId('share-copy-invite-link'));
-      await waitFor(() => {
-        expect(writeText).toHaveBeenCalledWith(inviteLink);
-      });
-    } finally {
-      if (original) {
-        Object.defineProperty(navigator, 'clipboard', original);
-      } else {
-        // jsdom defines no clipboard by default — drop the stub entirely.
-        delete (navigator as { clipboard?: unknown }).clipboard;
-      }
-    }
-  });
-
-  it('clears the stale invite link when the dialog is reopened', async () => {
-    const user = userEvent.setup();
-    const inviteLink = 'https://app.example/decision?token=tok-stale';
-    vi.mocked(projectInvitationsApi.inviteMember).mockResolvedValueOnce({
-      inviteLink,
-    });
+    vi.mocked(projectInvitationsApi.inviteMember).mockResolvedValueOnce();
     setup();
     await user.type(
       screen.getByTestId('share-invite-input'),
@@ -144,20 +96,12 @@ describe('ShareDialog — invite by email flow', () => {
     );
     await user.click(screen.getByTestId('share-send-invite'));
 
-    // The single-use link surfaces after the first invite.
-    const urlField = await screen.findByTestId('share-invite-url');
-    expect(urlField).toHaveValue(inviteLink);
-
-    // Close the popover, then reopen it: the prior (single-use, now stale) link
-    // must not reappear, and the email input is cleared.
-    act(() => useUIStore.setState({ shareOpen: false }));
     await waitFor(() => {
-      expect(screen.queryByTestId('share-invite-url')).toBeNull();
+      expect(toast.success).toHaveBeenCalled();
     });
-    act(() => useUIStore.setState({ shareOpen: true }));
-
-    expect(screen.queryByTestId('share-invite-url')).toBeNull();
     expect(screen.getByTestId('share-invite-input')).toHaveValue('');
+    expect(screen.queryByTestId('share-invite-url')).toBeNull();
+    expect(screen.queryByTestId('share-copy-invite-link')).toBeNull();
   });
 
   it('shows ApiException.message inline when the invite is rejected', async () => {
