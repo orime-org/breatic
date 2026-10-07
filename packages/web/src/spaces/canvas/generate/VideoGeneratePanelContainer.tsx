@@ -342,6 +342,8 @@ function VideoGeneratePanelBody({
     [projectId, spaceId, nodeId, models, availableModes],
   );
 
+  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId);
+
   /**
    * The node's live content view, or undefined when the node is gone or is not
    * a content node. Read fresh at click time for the same reason freshVm is: a
@@ -349,7 +351,6 @@ function VideoGeneratePanelBody({
    * this render.
    * @returns The node's content view, or undefined.
    */
-  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId);
   const freshContent = React.useCallback((): ContentNodeView | undefined => {
     const graph = readCanvasGraph(projectId, spaceId);
     return asContentView(graph.nodes.find((n) => n.id === nodeId)?.data);

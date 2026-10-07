@@ -71,9 +71,9 @@ globalThis.AI_SDK_LOG_WARNINGS = ({ warnings, provider, model }) => {
   logger.warn({ warnings, provider, model }, "ai_sdk_warning");
 };
 
-// Read config/agent.yaml now rather than on the first job: this process takes
-// its step cap and output ceiling from it, both on the path a claimed job
-// already walks. A file that no longer parses would otherwise surface as a
+// Read config/agent.yaml now rather than on the first job: this process prices
+// the agent's models from it at startup and schedules each usage lookup by
+// it, the latter on the path a claimed job already walks. A file that no longer parses would otherwise surface as a
 // job failure BullMQ retries into the same wall.
 try {
   getAgentConfig();
@@ -94,7 +94,7 @@ try {
 }
 
 // Same preflight for config/models/*.yaml (#1966). Every model must declare
-// `takes_prompt`, and the catalog is as lazy as the routing config above —
+// `takes_prompt`, and the catalog is lazy like agent.yaml above —
 // lazy here means a missing declaration surfaces inside whichever job first
 // resolves a model, which BullMQ then retries into the same wall. Loading it
 // here puts that in front of whoever edited the file.
