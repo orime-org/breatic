@@ -1009,7 +1009,9 @@ function checkResolved(proposal: CanvasProposal): ProposalVerdict {
  * Exported so a test can read the answer without standing up a tool call:
  * everything below `execute` is this function, and a test that reached it
  * through the SDK would be pinning the SDK's calling convention.
- * @param proposal - What the model sent.
+ * Nodes naming a template are expanded first, so the check judges the node
+ * that will be placed.
+ * @param sent - What the model sent.
  * @returns The answer the card and the canvas read.
  * @throws {never} Never.
  */
