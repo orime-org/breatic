@@ -106,6 +106,12 @@ export function MediaPlayer({
   // fullscreen so it can live inside an auto-close HoverCard.
   const showVolume = variant !== 'preview';
   const showFullscreen = variant !== 'preview';
+  // The times give way only in the full player, which shares its row with the
+  // volume and full-screen buttons; the preview row has room for them.
+  const timeCls =
+    variant === 'preview'
+      ? 'shrink-0 text-2xs tabular-nums'
+      : 'hidden shrink-0 text-2xs tabular-nums @min-[16rem]:inline';
 
   // Video controls sit on a dark scrim (light-on-video); audio controls sit on
   // the themed node surface.
@@ -216,7 +222,7 @@ export function MediaPlayer({
           {playButton}
           <span
             data-testid='time-current'
-            className='hidden shrink-0 text-2xs tabular-nums @min-[16rem]:inline'
+            className={timeCls}
           >
             {formatSeconds(p.currentTime)}
           </span>
@@ -232,7 +238,7 @@ export function MediaPlayer({
           />
           <span
             data-testid='time-total'
-            className='hidden shrink-0 text-2xs tabular-nums @min-[16rem]:inline'
+            className={timeCls}
           >
             {formatSeconds(p.duration)}
           </span>
