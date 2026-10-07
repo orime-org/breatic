@@ -26,6 +26,7 @@ vi.mock("@server/modules", async (importOriginal) => {
   return serverModulesMock(importOriginal);
 });
 
+import { ForbiddenError } from "@breatic/core";
 import { modelCatalog } from "@breatic/domain";
 
 import { createApp } from "../../app.js";
@@ -74,6 +75,7 @@ describe("POST /mini-tools", () => {
     mocks.taskService.create.mockResolvedValue({ id: "task-1", taskType: "image" });
     mocks.taskService.markFailed.mockReset();
     mocks.nodeTaskService.open.mockClear();
+    mocks.projectService.assertAccess.mockReset();
     mockQueueAdd.mockReset();
     mockQueueAdd.mockResolvedValue({ id: "job-1" });
     mocks.getStorageAdapter.mockResolvedValue({
@@ -197,5 +199,20 @@ describe("POST /mini-tools", () => {
     });
 
     expect(res.status).toBe(422);
+  });
+
+  it("refuses a caller below editor on the project, before spending or opening a row", async () => {
+    mocks.projectService.assertAccess.mockRejectedValue(new ForbiddenError("forbidden"));
+    const res = await post({
+      tool: "image.upscale",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png" },
+    });
+
+    expect(res.status).toBe(403);
+    expect(mocks.projectService.assertAccess).toHaveBeenCalledWith(PID, "user-1", "editor");
+    expect(mocks.creditLotService.getSpendableCredits).not.toHaveBeenCalled();
+    expect(mocks.taskService.create).not.toHaveBeenCalled();
+    expect(mocks.nodeTaskService.open).not.toHaveBeenCalled();
   });
 });
