@@ -364,7 +364,8 @@ export function renderProductGuide(): string {
       "with a blank one of that size and colour, and the X closes the panel without a change.",
     `- ${quoted(t("canvas.nodeMenu.history"))}: a panel listing what the node has held, each content once, ` +
       `whether it came from a generation, an upload or a snapshot, each marked ${quoted(t("canvas.history.typeGeneration"))}, ` +
-      `${quoted(t("canvas.history.typeUpload"))} or ${quoted(t("canvas.history.typeSnapshot"))}; the one it ` +
+      `${quoted(t("canvas.history.typeUpload"))} or ${quoted(t("canvas.history.typeSnapshot"))}, and a result a ` +
+      `mini-tool made marked with the tool's name instead; the one it ` +
       `holds now is marked ${quoted(t("canvas.history.current"))}, ${quoted(t("canvas.history.restore"))} puts ` +
       `an earlier one back, and a failed attempt shows ${quoted(t("canvas.history.failed"))}. The panel is headed ` +
       `${quoted(t("canvas.history.title"))} with the number of entries, closes with its X, and ends with ` +

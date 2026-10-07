@@ -176,6 +176,7 @@ export async function cleanupFailedJobNodes(
           credits: task.billedCredits ?? undefined,
           durationMs: task.durationMs ?? undefined,
           params: task.params,
+          toolId: job.data.source === "mini_tool" ? job.data.toolId : undefined,
         }),
       },
       nodeResultsFrom(targetNodeIds, outputs),

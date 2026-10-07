@@ -26,8 +26,10 @@ import {
   entryCredits,
   entryFilename,
   entryModel,
+  entryTool,
   isRestorable,
 } from '@web/spaces/canvas/history/history-format';
+import { MINI_TOOL_ICONS } from '@web/spaces/canvas/mini-tool/tool-icons';
 
 /** The host node's modality — picks the thumbnail treatment. */
 export type HistoryModality = 'image' | 'video' | 'audio' | 'text';
@@ -183,6 +185,8 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
   const model = entryModel(entry);
   const credits = entryCredits(entry);
   const filename = entryFilename(entry);
+  const tool = entryTool(entry);
+  const ToolIcon = tool === undefined ? undefined : MINI_TOOL_ICONS[tool.icon];
   const restorable = isRestorable(entry);
   // muted-foreground measures under 4.5:1 on the chosen fill in both themes
   // (light 4.39, dark 3.73) and on the dark hover fill (4.46), so text on a
@@ -266,14 +270,16 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
               secondaryText
             }
           >
-            {entry.entryType === 'generation' ? (
+            {ToolIcon !== undefined ? (
+              <ToolIcon className='h-2.5 w-2.5' aria-hidden='true' />
+            ) : entry.entryType === 'generation' ? (
               <Sparkles className='h-2.5 w-2.5' aria-hidden='true' />
             ) : entry.entryType === 'snapshot' ? (
               <Bookmark className='h-2.5 w-2.5' aria-hidden='true' />
             ) : (
               <ArrowUp className='h-2.5 w-2.5' aria-hidden='true' />
             )}
-            {t(TYPE_LABEL[entry.entryType])}
+            {t(tool?.labelKey ?? TYPE_LABEL[entry.entryType])}
           </span>
           <span
             className={

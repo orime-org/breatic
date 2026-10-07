@@ -111,6 +111,14 @@ describe('NodeHistoryRow (#1619)', () => {
     expect(screen.getByText('canvas.history.typeGeneration')).toBeTruthy();
   });
 
+  // A20: a mini-tool result is named by its tool, as its task row is, whichever
+  // way its bytes reached the node (a browser export lands as an upload).
+  it('names the mini-tool that made the result instead of the way it landed', () => {
+    renderRow(entry({ entryType: 'upload', status: 'success', metadata: { toolId: 'image.crop', filename: 'CROP.png' } }));
+    expect(screen.getByText('canvas.miniTool.image.crop.label')).toBeTruthy();
+    expect(screen.queryByText('canvas.history.typeUpload')).toBeNull();
+  });
+
   it('upload row: the type chip states Upload', () => {
     renderRow(entry({ entryType: 'upload', status: 'failed' }));
     expect(screen.getByText('canvas.history.typeUpload')).toBeTruthy();

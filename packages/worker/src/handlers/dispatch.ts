@@ -388,6 +388,7 @@ async function runTaskBody(
             credits: existing.billedCredits ?? undefined,
             durationMs: existing.durationMs ?? undefined,
             params,
+            toolId: source === "mini_tool" ? toolName : undefined,
           }),
         },
         nodeResultsFrom(nodeIds, storedOutputs),
@@ -750,6 +751,7 @@ async function runTaskBody(
           credits: creditsUsed,
           durationMs,
           params,
+          toolId: source === "mini_tool" ? toolName : undefined,
         }),
       },
       nodeResultsFrom(nodeIds, persistedOutputs),
@@ -1094,8 +1096,14 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
     end.projectId,
     end.nodeIds,
     end.userId,
-    end.model,
-    end.params,
+    generationMetadata({
+      reportedModel: undefined,
+      jobModel: end.model,
+      credits: undefined,
+      durationMs: undefined,
+      params: end.params,
+      toolId: end.source === "mini_tool" ? end.toolName : undefined,
+    }),
     end.errorMessage,
   );
   if (end.canvasDocName && end.settles) {
@@ -1129,8 +1137,7 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
  * @param projectId - Project the failed nodes belong to; when undefined the call is a no-op
  * @param nodeIds - Canvas nodes that should receive a failure history entry
  * @param userId - User who owns the failed task
- * @param model - Model name used for the attempt, if any
- * @param params - Original task params, stored in the history metadata
+ * @param metadata - What the history row says about the run
  * @param errorMessage - Human-readable failure reason
  */
 async function recordFailureHistory(
@@ -1138,8 +1145,7 @@ async function recordFailureHistory(
   projectId: string | undefined,
   nodeIds: string[],
   userId: string,
-  model: string | undefined,
-  params: Record<string, unknown>,
+  metadata: ReturnType<typeof generationMetadata>,
   errorMessage: string,
 ): Promise<void> {
   if (!projectId || nodeIds.length === 0) return;
@@ -1151,7 +1157,7 @@ async function recordFailureHistory(
         userId,
         errorMessage,
         taskId,
-        metadata: { model, params },
+        metadata,
       });
     } catch (err) {
       logger.warn({ err, taskId, nodeId }, "Failed to record node history (failure)");
