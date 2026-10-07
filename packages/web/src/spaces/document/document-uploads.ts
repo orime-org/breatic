@@ -81,8 +81,14 @@ interface Held {
   readonly quoted: boolean;
 }
 
-/** The kinds the server files that have a block to become. */
-const MEDIA_TYPES: readonly string[] = ['image', 'video', 'audio'] satisfies MediaType[];
+/**
+ * Whether a kind the server filed has a block to become.
+ * @param kind - The kind.
+ * @returns True for an image, a video or an audio.
+ */
+function isMediaType(kind: string): kind is MediaType {
+  return kind === 'image' || kind === 'video' || kind === 'audio';
+}
 
 /** The failure a body that stopped being editable meanwhile shows. */
 const READ_ONLY: SlotFailure = {
@@ -157,7 +163,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       return;
     }
     // The kind the server read off the stored bytes, not the name's guess.
-    if (!MEDIA_TYPES.includes(stored.kind)) {
+    if (!isMediaType(stored.kind)) {
       patchUploadSlot(view, slotId, {
         phase: 'failed',
         failure: failureOf(new UploadFailedError('unsupportedType'), entry.file),
@@ -172,7 +178,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       view,
       slotId,
       {
-        type: stored.kind as MediaType,
+        type: stored.kind,
         props: { url: stored.fileUrl, name: entry.file.name, [QUOTED]: entry.quoted },
       },
       deps.undo,

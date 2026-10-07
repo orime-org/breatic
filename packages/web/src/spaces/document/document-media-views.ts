@@ -12,6 +12,7 @@
  * React node views do. A root of their own would stand outside all of it.
  */
 
+import { keyedStore } from '@web/lib/keyed-store';
 import { setHoveredMedia } from '@web/spaces/document/document-bars';
 import type {
   MediaBlockActions,
@@ -27,40 +28,13 @@ export interface MediaViewEntry {
   readonly actions: MediaBlockActions;
 }
 
-/** One editor's entries, and who listens to them. */
-interface Registry {
-  readonly entries: Map<HTMLElement, MediaViewEntry>;
-  snapshot: readonly (readonly [HTMLElement, MediaViewEntry])[];
-  readonly listeners: Set<() => void>;
-}
+/** One editor's containers and what each shows, in the order they came in. */
+type Views = readonly (readonly [HTMLElement, MediaViewEntry])[];
+
+const NO_VIEWS: Views = [];
 
 /** Keyed by editor, so an editor that is dropped takes its entries with it. */
-const registries = new WeakMap<object, Registry>();
-
-/**
- * One editor's registry, made on first use.
- * @param editor - The editor.
- * @returns Its registry.
- */
-function registryOf(editor: object): Registry {
-  let registry = registries.get(editor);
-  if (registry === undefined) {
-    registry = { entries: new Map(), snapshot: [], listeners: new Set() };
-    registries.set(editor, registry);
-  }
-  return registry;
-}
-
-/**
- * Takes a new snapshot and tells the listeners.
- * @param registry - The registry that changed.
- */
-function changed(registry: Registry): void {
-  registry.snapshot = [...registry.entries];
-  registry.listeners.forEach((listener) => {
-    listener();
-  });
-}
+const store = keyedStore<object, Views>(() => NO_VIEWS);
 
 /**
  * Enters or replaces what one container shows.
@@ -69,9 +43,12 @@ function changed(registry: Registry): void {
  * @param entry - What it shows.
  */
 export function putMediaView(editor: object, host: HTMLElement, entry: MediaViewEntry): void {
-  const registry = registryOf(editor);
-  registry.entries.set(host, entry);
-  changed(registry);
+  const views = store.get(editor);
+  const at = views.findIndex(([held]) => held === host);
+  store.set(
+    editor,
+    at < 0 ? [...views, [host, entry]] : views.map((view, k) => (k === at ? [host, entry] : view)),
+  );
 }
 
 /**
@@ -80,10 +57,12 @@ export function putMediaView(editor: object, host: HTMLElement, entry: MediaView
  * @param host - The container.
  */
 export function dropMediaView(editor: object, host: HTMLElement): void {
-  const registry = registryOf(editor);
   // A block taken away under the pointer gets no leave event.
   setHoveredMedia(editor, host, false);
-  if (registry.entries.delete(host)) changed(registry);
+  const views = store.get(editor);
+  if (views.some(([held]) => held === host)) {
+    store.set(editor, views.filter(([held]) => held !== host));
+  }
 }
 
 /**
@@ -91,8 +70,8 @@ export function dropMediaView(editor: object, host: HTMLElement): void {
  * @param editor - The editor.
  * @returns The entries.
  */
-export function mediaViewsOf(editor: object): readonly (readonly [HTMLElement, MediaViewEntry])[] {
-  return registryOf(editor).snapshot;
+export function mediaViewsOf(editor: object): Views {
+  return store.get(editor);
 }
 
 /**
@@ -102,9 +81,5 @@ export function mediaViewsOf(editor: object): readonly (readonly [HTMLElement, M
  * @returns The function that stops it.
  */
 export function onMediaViewsChange(editor: object, listener: () => void): () => void {
-  const { listeners } = registryOf(editor);
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
+  return store.subscribe(editor, listener);
 }

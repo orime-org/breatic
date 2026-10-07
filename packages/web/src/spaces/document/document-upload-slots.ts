@@ -24,6 +24,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
+import { keyedStore } from '@web/lib/keyed-store';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 
@@ -233,46 +234,13 @@ export function uploadBatchesIn(state: EditorState): readonly UploadBatch[] {
 /** No uploads in flight, as one array. */
 const NO_BATCHES: readonly UploadBatch[] = [];
 
-/** One view's placeholder containers by slot id, and who listens to them. */
-interface Holders {
-  map: ReadonlyMap<string, HTMLElement>;
-  readonly view: EditorView;
-  readonly listeners: Set<() => void>;
-}
-
-/** Keyed by view, so a view that is dropped takes its containers with it. */
-const holdersByView = new WeakMap<EditorView, Holders>();
-
-/** Keyed by container, for the widget's teardown, which is handed only that. */
-const holdersByNode = new WeakMap<HTMLElement, { holders: Holders; slotId: string }>();
-
 const NO_HOLDERS: ReadonlyMap<string, HTMLElement> = new Map();
 
-/**
- * One view's containers, made on first use.
- * @param view - The editor view.
- * @returns Its containers.
- */
-function holdersOf(view: EditorView): Holders {
-  let holders = holdersByView.get(view);
-  if (holders === undefined) {
-    holders = { map: NO_HOLDERS, view, listeners: new Set() };
-    holdersByView.set(view, holders);
-  }
-  return holders;
-}
+/** Every view's placeholder containers by slot id. */
+const holders = keyedStore<EditorView, ReadonlyMap<string, HTMLElement>>(() => NO_HOLDERS);
 
-/**
- * Replaces the containers and tells the listeners.
- * @param holders - The view's containers.
- * @param next - What they are now.
- */
-function setHolders(holders: Holders, next: Map<string, HTMLElement>): void {
-  holders.map = next;
-  holders.listeners.forEach((listener) => {
-    listener();
-  });
-}
+/** The view each container was built for, for the widget's teardown. */
+const viewOfHolder = new WeakMap<HTMLElement, EditorView>();
 
 /**
  * Enters the container a slot's widget just built.
@@ -281,9 +249,8 @@ function setHolders(holders: Holders, next: Map<string, HTMLElement>): void {
  * @param holder - Its container.
  */
 function putSlotHolder(view: EditorView, slotId: string, holder: HTMLElement): void {
-  const holders = holdersOf(view);
-  holdersByNode.set(holder, { holders, slotId });
-  setHolders(holders, new Map(holders.map).set(slotId, holder));
+  viewOfHolder.set(holder, view);
+  holders.set(view, new Map(holders.get(view)).set(slotId, holder));
 }
 
 /**
@@ -291,11 +258,14 @@ function putSlotHolder(view: EditorView, slotId: string, holder: HTMLElement): v
  * @param holder - The container.
  */
 function dropSlotHolder(holder: HTMLElement): void {
-  const entry = holdersByNode.get(holder);
-  if (entry === undefined || entry.holders.map.get(entry.slotId) !== holder) return;
-  const next = new Map(entry.holders.map);
-  next.delete(entry.slotId);
-  setHolders(entry.holders, next);
+  const view = viewOfHolder.get(holder);
+  const slotId = holder.getAttribute(UPLOAD_SLOT_ATTRIBUTE);
+  if (view === undefined || slotId === null) return;
+  const now = holders.get(view);
+  if (now.get(slotId) !== holder) return;
+  const next = new Map(now);
+  next.delete(slotId);
+  holders.set(view, next);
 }
 
 /**
@@ -304,7 +274,7 @@ function dropSlotHolder(holder: HTMLElement): void {
  * @returns The containers by slot id.
  */
 export function uploadSlotHoldersIn(view: EditorView): ReadonlyMap<string, HTMLElement> {
-  return holdersOf(view).map;
+  return holders.get(view);
 }
 
 /**
@@ -314,11 +284,7 @@ export function uploadSlotHoldersIn(view: EditorView): ReadonlyMap<string, HTMLE
  * @returns The function that stops it.
  */
 export function onUploadSlotHoldersChange(view: EditorView, listener: () => void): () => void {
-  const { listeners } = holdersOf(view);
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
+  return holders.subscribe(view, listener);
 }
 
 const watch = watchPluginState(uploadBatchesIn);
