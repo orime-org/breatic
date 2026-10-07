@@ -12,7 +12,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import type { CanvasProposal, ProposalNode } from "@breatic/shared";
+import { GENERATION_TEMPLATES, t, templatePrompt, type CanvasProposal, type ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
@@ -175,6 +175,86 @@ describe("the words a wired text node holds", () => {
       groupName: "Clip",
     };
     expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringMatching(/"Script".*512/) });
+  });
+});
+
+describe("a node wired into an optional slot", () => {
+  /**
+   * The given number of empty pictures wired into a model whose style slot
+   * takes up to three and whose pool takes the rest.
+   * @param count - How many empty pictures are wired in.
+   * @param prompt - The node's prompt.
+   * @returns The proposal.
+   */
+  function styled(count: number, prompt: NonNullable<ProposalNode["prompt"]>): CanvasProposal {
+    const pictures = Array.from({ length: count }, (_, i): ProposalNode => ({ role: "source", type: "image", name: `Picture ${String(i + 1)}` }));
+    return edit(pictures, prompt);
+  }
+
+  it("needs no reference mark when a note points it into the slot", () => {
+    const note = { slot: { kind: "note" as const, label: "Pick the style picture into the style slot" } };
+    expect(checkProposal(styled(2, [note, reference("the uploaded character"), { text: " at night" }]))).toEqual({ ok: true });
+  });
+
+  it("still needs a reference mark for each picture past the slot's room", () => {
+    const answer = checkProposal(styled(4, [{ text: "Make it night." }]));
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringContaining("1 asset mark") });
+    expect(checkProposal(styled(4, [reference("the uploaded character"), { text: " at night" }]))).toEqual({ ok: true });
+  });
+});
+
+describe("a mark the agent writes as words", () => {
+  const written = [
+    ["a reference", "[📎 the uploaded photo]"],
+    ["a fill-in", "{✏️ the story}"],
+    ["a note", "(💡 pick it in the panel)"],
+  ] as const;
+
+  it.each(written)("is refused when %s is typed into the words, naming the slot segment to send", (_, mark) => {
+    const answer = checkProposal(edit([CHARACTER], [reference("the generated character"), { text: ` Use ${mark} at night.` }]));
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/"Night".*"slot"/s) });
+  });
+
+  it("is refused in a shot too", () => {
+    const proposal: CanvasProposal = {
+      nodes: [
+        {
+          role: "generate",
+          type: "video",
+          name: "Clip",
+          mode: "multi_shot",
+          model: "kling-v3.0-4k-text-to-video",
+          params: { duration: 5 },
+          shots: [
+            { prompt: [{ text: "A boat {✏️ where it goes}" }], duration: 2 },
+            { prompt: [{ text: "the pond at dusk" }], duration: 3 },
+          ],
+        },
+      ],
+      edges: [],
+      rationale: "",
+    };
+    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringContaining('"Clip"') });
+  });
+
+  it("leaves plain brackets the prompt means as words alone", () => {
+    expect(checkProposal(edit([CHARACTER], [reference("the generated character"), { text: " at night [cinematic] {wide}" }]))).toEqual({ ok: true });
+  });
+});
+
+describe("the templates as the agent is shown them", () => {
+  it("lists each prompt as the segments to send, labels without the words the canvas adds", () => {
+    const said = makeProposeCanvasAction().description ?? "";
+    for (const template of GENERATION_TEMPLATES) {
+      for (const segment of templatePrompt(template)) {
+        if (segment.slot) expect(said).toContain(JSON.stringify({ slot: { kind: segment.slot.kind, label: segment.slot.label } }));
+      }
+    }
+    expect(said).not.toContain(t("canvas.promptMark.reference", { label: "" }).trim());
+  });
+
+  it("says on a reference label that the words asking the reader to @ are added for it", () => {
+    expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/added for you/);
   });
 });
 

@@ -610,6 +610,17 @@ describe("what only the reader can fill in", () => {
       false,
     );
   });
+
+  it("asks for a note on what to write in that box, which never reaches the model", () => {
+    // A fill-in mark is sent as it stands, so a mark saying where the lyrics
+    // go would be sung; a note is how the panel's own boxes are pointed at.
+    const at = pick((m) => PANEL_EDITOR_PARAM in m.params, "model with its own text box");
+
+    expect(checkProposal(propose(at, { params: { [PANEL_EDITOR_PARAM]: "la la la" } }))).toEqual({
+      ok: false,
+      reason: expect.stringMatching(/add a note/),
+    });
+  });
 });
 
 describe("what the model is allowed to fill in", () => {

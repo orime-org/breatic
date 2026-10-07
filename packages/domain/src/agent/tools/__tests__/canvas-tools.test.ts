@@ -232,6 +232,15 @@ describe("what the rendered answer tells the model", () => {
     );
   });
 
+  // Nano Banana Pro Edit Ultra takes up to three style pictures in a slot of
+  // its own beside the pool, so a wired picture can go either way.
+  it("says how many wired nodes an optional slot can take instead of the pool", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /\(nano-banana-pro-edit-ultra\)[^\n]*Up to 3 image nodes wired in can go into its style_images slot instead \(say so in a note\); those need no asset mark\./,
+    );
+  });
+
   it("prices a per-character model per thousand characters while it has no text", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
     expect(renderGenerationModelsForModel(answer)).toMatch(/credits per 1000 characters of prompt/);
