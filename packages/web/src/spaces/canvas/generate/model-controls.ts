@@ -169,6 +169,26 @@ export function modelControls(model: ModelEntry, mode: string): ModelControl[] {
 }
 
 /**
+ * The controls a mini-tool's panel draws for its pinned model (inner#888 §5):
+ * the params the tool lists, in that order, each read from the model's own
+ * declaration. A param only a mini-tool fills (`tool`) or one the generation
+ * panel also fills (`panel`) is drawn; any other is left to the request.
+ * @param model - The pinned model.
+ * @param keys - The params the tool lists.
+ * @returns One control per drawable listed param.
+ */
+export function controlsForKeys(model: ModelEntry, keys: readonly string[]): ModelControl[] {
+  const controls: ModelControl[] = [];
+  for (const name of keys) {
+    const spec = model.params[name];
+    if (spec === undefined || (spec.fill !== 'tool' && spec.fill !== 'panel')) continue;
+    const control = controlFor(name, spec);
+    if (control) controls.push(control);
+  }
+  return controls;
+}
+
+/**
  * What the node holds for this model's own controls, and nothing else.
  *
  * A panel hands its pickers a record built from the handful of params it

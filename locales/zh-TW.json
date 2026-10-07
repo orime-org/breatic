@@ -652,7 +652,19 @@
         "model_mode": "區域",
         "creativity": "創造力",
         "rendering": "渲染類型",
-        "style_match": "風格貼合"
+        "style_match": "風格貼合",
+        "target_megapixels": "目標像素（百萬）",
+        "target_resolution": "目標解析度",
+        "resolution": "解析度",
+        "duration": "時長",
+        "generate_audio": "生成音訊",
+        "enable_prompt_expansion": "擴寫提示詞",
+        "character_orientation": "朝向依據",
+        "keep_original_sound": "保留原聲",
+        "motion_prompt": "動作描述",
+        "append_duration": "延長時長",
+        "ambience": "環境音",
+        "double_output": "生成兩版"
       },
       "paramField": {
         "speaker": "名字",

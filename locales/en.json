@@ -664,7 +664,19 @@
         "model_mode": "Region",
         "creativity": "Creativity",
         "rendering": "Rendering",
-        "style_match": "Style match"
+        "style_match": "Style match",
+        "target_megapixels": "Target megapixels",
+        "target_resolution": "Target resolution",
+        "resolution": "Resolution",
+        "duration": "Duration",
+        "generate_audio": "Generate audio",
+        "enable_prompt_expansion": "Expand prompt",
+        "character_orientation": "Orientation from",
+        "keep_original_sound": "Keep original sound",
+        "motion_prompt": "Motion",
+        "append_duration": "Added length",
+        "ambience": "Ambience",
+        "double_output": "Two takes"
       },
       "paramField": {
         "speaker": "Name",

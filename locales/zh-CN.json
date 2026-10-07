@@ -652,7 +652,19 @@
         "model_mode": "区域",
         "creativity": "创造力",
         "rendering": "渲染类型",
-        "style_match": "风格贴合"
+        "style_match": "风格贴合",
+        "target_megapixels": "目标像素（百万）",
+        "target_resolution": "目标分辨率",
+        "resolution": "分辨率",
+        "duration": "时长",
+        "generate_audio": "生成音频",
+        "enable_prompt_expansion": "扩写提示词",
+        "character_orientation": "朝向依据",
+        "keep_original_sound": "保留原声",
+        "motion_prompt": "动作描述",
+        "append_duration": "延长时长",
+        "ambience": "环境音",
+        "double_output": "生成两版"
       },
       "paramField": {
         "speaker": "名字",

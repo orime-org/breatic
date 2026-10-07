@@ -652,7 +652,19 @@
         "model_mode": "영역",
         "creativity": "창의성",
         "rendering": "렌더링",
-        "style_match": "스타일 일치도"
+        "style_match": "스타일 일치도",
+        "target_megapixels": "목표 메가픽셀",
+        "target_resolution": "목표 해상도",
+        "resolution": "해상도",
+        "duration": "길이",
+        "generate_audio": "오디오 생성",
+        "enable_prompt_expansion": "프롬프트 확장",
+        "character_orientation": "방향 기준",
+        "keep_original_sound": "원본 소리 유지",
+        "motion_prompt": "동작 설명",
+        "append_duration": "늘릴 길이",
+        "ambience": "주변음",
+        "double_output": "두 가지 생성"
       },
       "paramField": {
         "speaker": "이름",

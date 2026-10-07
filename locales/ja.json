@@ -652,7 +652,19 @@
         "model_mode": "範囲",
         "creativity": "創造性",
         "rendering": "レンダリング",
-        "style_match": "スタイル一致度"
+        "style_match": "スタイル一致度",
+        "target_megapixels": "目標メガピクセル",
+        "target_resolution": "目標解像度",
+        "resolution": "解像度",
+        "duration": "長さ",
+        "generate_audio": "音声を生成",
+        "enable_prompt_expansion": "プロンプトを拡張",
+        "character_orientation": "向きの基準",
+        "keep_original_sound": "元の音声を保持",
+        "motion_prompt": "動きの説明",
+        "append_duration": "延長する長さ",
+        "ambience": "環境音",
+        "double_output": "2 パターン生成"
       },
       "paramField": {
         "speaker": "名前",
