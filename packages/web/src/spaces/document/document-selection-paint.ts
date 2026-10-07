@@ -53,14 +53,30 @@ export const IN_SELECTION_CLASS = 'doc-in-selection';
  */
 export const EMPTY_LINE_CLASS = 'doc-empty-line-in-selection';
 
-/** The image, video and audio blocks (inner#1127). */
-const MEDIA = ['image', 'video', 'audio'];
+/**
+ * The class `index.css` frames an image, video or audio block inside the
+ * selection with. A band behind the media would fill the rest of its row; the
+ * frame sits on the media itself (inner#1127).
+ */
+export const MEDIA_IN_SELECTION_CLASS = 'doc-media-in-selection';
+
+/** The image, video and audio blocks. */
+const MEDIA = new Set(['image', 'video', 'audio']);
 
 /** The blocks with no text that a range selection paints. */
 const NO_TEXT = new Set([DIVIDER, UNSUPPORTED_BLOCK, ...MEDIA]);
 
 /** The blocks the reader node-selects by clicking them or arrowing onto them. */
 const NODE_SELECTED = new Set([DIVIDER, ...MEDIA]);
+
+/**
+ * The class a no-text block in the selection is painted with.
+ * @param name - The block's node name.
+ * @returns The frame for a media block, the band for the rest.
+ */
+function paintClassOf(name: string): string {
+  return MEDIA.has(name) ? MEDIA_IN_SELECTION_CLASS : IN_SELECTION_CLASS;
+}
 
 /** Tags the transaction that asks for the band to be redrawn. */
 const KEY = new PluginKey('documentSelectionPaint');
@@ -105,7 +121,9 @@ function paintFor(state: EditorState): DecorationSet {
   if (selection instanceof NodeSelection) {
     if (NODE_SELECTED.has(selection.node.type.name)) {
       found.push(
-        Decoration.node(selection.from, selection.to, { class: IN_SELECTION_CLASS }),
+        Decoration.node(selection.from, selection.to, {
+          class: paintClassOf(selection.node.type.name),
+        }),
       );
     }
   } else if (!selection.empty) {
@@ -114,7 +132,7 @@ function paintFor(state: EditorState): DecorationSet {
     doc.nodesBetween(selection.from, selection.to, (node, pos) => {
       if (node.isTextblock) return false;
       if (!NO_TEXT.has(node.type.name)) return true;
-      found.push(Decoration.node(pos, pos + node.nodeSize, { class: IN_SELECTION_CLASS }));
+      found.push(Decoration.node(pos, pos + node.nodeSize, { class: paintClassOf(node.type.name) }));
       return false;
     });
     found.push(...emptyLinesAtEnds(selection, doc));

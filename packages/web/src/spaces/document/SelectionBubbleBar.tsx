@@ -84,6 +84,7 @@ import { commentTool } from '@web/spaces/document/document-comment-entries';
 import { addToAgentTool } from '@web/spaces/document/document-to-agent';
 import { mergeCellsTool } from '@web/spaces/document/document-table-tools';
 import {
+  BUBBLE_BAR_CLASS,
   ToolButton,
   type ToolDef,
 } from '@web/spaces/document/document-tool-button';
@@ -1093,7 +1094,8 @@ function BubbleBar({
         // editor shell is `isolate`, so this number is compared against the
         // entry's and nothing else on the page.
         className={cn(
-          'z-20 flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md',
+          'z-20',
+          BUBBLE_BAR_CLASS,
           // `isPositioned` is the third term, and it is about the bar's first
           // frame. floating-ui has to have the element in the document before
           // it can measure it, so the bar enters carrying whatever offsets the

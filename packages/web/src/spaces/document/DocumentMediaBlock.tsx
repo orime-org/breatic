@@ -33,6 +33,8 @@ import {
 } from '@web/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
+import { BUBBLE_BAR_CLASS, BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
 import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 
 /** The media block types. */
@@ -80,6 +82,14 @@ const ALIGNMENTS = [
   { value: 'right', Icon: AlignRight, labelKey: 'spaces.document.commands.alignRight' },
 ] as const;
 
+/** The corner knobs of a selected picture or video, and the side each one pulls. */
+const CORNERS = [
+  { corner: 'nw', side: 'left', place: '-left-1 -top-1', cursor: 'cursor-nwse-resize' },
+  { corner: 'ne', side: 'right', place: '-right-1 -top-1', cursor: 'cursor-nesw-resize' },
+  { corner: 'sw', side: 'left', place: '-bottom-1 -left-1', cursor: 'cursor-nesw-resize' },
+  { corner: 'se', side: 'right', place: '-bottom-1 -right-1', cursor: 'cursor-nwse-resize' },
+] as const;
+
 /** Where each alignment puts the media in its row. */
 const JUSTIFY: Readonly<Record<string, string>> = {
   left: 'justify-start',
@@ -119,9 +129,9 @@ function ToolButton({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant='chrome-ghost'
+          variant={pressed === true ? 'secondary' : 'ghost'}
           size='icon'
-          className='h-[var(--btn-inline)] w-[var(--btn-inline)] [&_svg]:h-4 [&_svg]:w-4'
+          className={`${BUBBLE_ICON_BUTTON_SIZE} [&_svg]:h-4 [&_svg]:w-4`}
           data-action={action}
           data-testid={testId}
           data-state={pressed === true ? 'on' : 'off'}
@@ -282,19 +292,27 @@ export function DocumentMediaBlock({
       <div
         ref={frame}
         data-testid='doc-media-frame'
+        data-media-frame=''
         data-selected={selected ? 'true' : undefined}
         onPointerEnter={placeToolbar}
         className={`group/media relative max-w-full ${sized ? '' : 'w-full'}`}
         style={sized && width !== undefined ? { width: `${width}px` } : undefined}
       >
+        {/* The gap between the media and its bar is padding on this layer, not
+            a margin, so a pointer crossing it stays inside the frame and the
+            bar stays up. It takes the pointer only while the bar is shown, so
+            the line above the media is clickable the rest of the time. */}
         <div
-          ref={toolbarRef}
           data-media-chrome=''
-          data-testid='doc-media-toolbar'
-          data-side={side}
-          className={`${side === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'} invisible absolute left-1/2 z-10 flex -translate-x-1/2 group-hover/media:visible group-data-[selected=true]/media:visible items-center gap-0.5 rounded-md border border-border bg-popover p-0.5 shadow-sm`}
+          className={`pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 group-hover/media:pointer-events-auto group-data-[selected=true]/media:pointer-events-auto ${side === 'top' ? 'bottom-full pb-2' : 'top-full pt-2'}`}
         >
-          {sized &&
+          <div
+            ref={toolbarRef}
+            data-testid='doc-media-toolbar'
+            data-side={side}
+            className={cn(BUBBLE_BAR_CLASS, 'invisible group-hover/media:visible group-data-[selected=true]/media:visible')}
+          >
+            {sized &&
             narrower &&
             ALIGNMENTS.map(({ value, Icon, labelKey }) => (
               <ToolButton
@@ -310,55 +328,57 @@ export function DocumentMediaBlock({
                 <Icon />
               </ToolButton>
             ))}
-          <ToolButton
-            label={t('spaces.document.media.caption')}
-            action='caption'
-            testId='doc-media-caption-button'
-            onPress={() => {
-              setEditingCaption(true);
-            }}
-          >
-            <Type />
-          </ToolButton>
-          {type === 'image' && (
             <ToolButton
-              label={t('spaces.document.media.fullscreen')}
-              action='fullscreen'
-              testId='doc-media-fullscreen'
+              label={t('spaces.document.media.caption')}
+              action='caption'
+              testId='doc-media-caption-button'
               onPress={() => {
-                setFullscreen(true);
+                setEditingCaption(true);
               }}
             >
-              <Maximize2 />
+              <Type />
             </ToolButton>
-          )}
-          <ToolButton
-            label={t('spaces.document.media.download')}
-            action='download'
-            testId='doc-media-download'
-            onPress={actions.download}
-          >
-            <Download />
-          </ToolButton>
-          <ToolButton
-            label={t('spaces.document.media.delete')}
-            action='delete'
-            testId='doc-media-delete'
-            onPress={actions.remove}
-          >
-            <Trash2 />
-          </ToolButton>
+            {type === 'image' && (
+              <ToolButton
+                label={t('spaces.document.media.fullscreen')}
+                action='fullscreen'
+                testId='doc-media-fullscreen'
+                onPress={() => {
+                  setFullscreen(true);
+                }}
+              >
+                <Maximize2 />
+              </ToolButton>
+            )}
+            <ToolButton
+              label={t('spaces.document.media.download')}
+              action='download'
+              testId='doc-media-download'
+              onPress={actions.download}
+            >
+              <Download />
+            </ToolButton>
+            <ToolButton
+              label={t('spaces.document.media.delete')}
+              action='delete'
+              testId='doc-media-delete'
+              onPress={actions.remove}
+            >
+              <Trash2 />
+            </ToolButton>
+          </div>
         </div>
         {body}
         {sized &&
-          (['left', 'right'] as const).map((side) => (
+          selected &&
+          CORNERS.map(({ corner, side: towards, place, cursor }) => (
             <span
-              key={side}
+              key={corner}
               data-media-chrome=''
-              data-testid={`doc-media-resize-${side}`}
-              className={`invisible absolute top-1/2 group-hover/media:visible group-data-[selected=true]/media:visible h-10 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-full bg-foreground/50 ${side === 'left' ? 'left-1.5' : 'right-1.5'}`}
+              data-testid={`doc-media-resize-${corner}`}
+              className={`absolute h-2 w-2 rounded-sm border border-status-selected bg-background ${place} ${cursor}`}
               onPointerDown={(event) => {
-                startResize(side, event);
+                startResize(towards, event);
               }}
             />
           ))}

@@ -303,10 +303,56 @@ describe('where the toolbar goes', () => {
   });
 });
 
+/**
+ * Node-selects the media block, the way a click on it does.
+ * @param editor - The editor.
+ */
+function selectMedia(editor: Editor): void {
+  const view = editor.prosemirrorView!;
+  let at = -1;
+  view.state.doc.descendants((node, pos) => {
+    if (['image', 'video', 'audio'].includes(node.type.name)) at = pos;
+    return at < 0;
+  });
+  act(() => {
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)));
+  });
+}
+
+describe('the toolbar looks like the selection bubble bar', () => {
+  it('takes the bar\'s frame and the bar\'s button size', async () => {
+    const { BUBBLE_BAR_CLASS, BUBBLE_ICON_BUTTON_SIZE } = await import(
+      '@web/spaces/document/document-tool-button'
+    );
+    const editor = open('image');
+
+    for (const name of BUBBLE_BAR_CLASS.split(' ')) {
+      expect(toolbar(editor).classList).toContain(name);
+    }
+    for (const button of within(toolbar(editor)).getAllByRole('button')) {
+      for (const name of BUBBLE_ICON_BUTTON_SIZE.split(' ')) {
+        expect(button.classList).toContain(name);
+      }
+    }
+  });
+});
+
 describe('resizing (A8)', () => {
-  it('writes the width once, when the handle is let go', () => {
+  it('offers a knob on each corner of a selected picture or video, and none before', () => {
+    const editor = open('image', { previewWidth: 200 });
+    expect(within(element(editor)).queryByTestId('doc-media-resize-se')).toBeNull();
+
+    selectMedia(editor);
+
+    for (const corner of ['nw', 'ne', 'sw', 'se']) {
+      expect(within(element(editor)).getByTestId(`doc-media-resize-${corner}`)).toBeTruthy();
+    }
+  });
+
+  it('writes the width once, when the corner is let go', () => {
     const editor = open('image', { previewWidth: 200, textAlignment: 'left' });
-    const handle = within(element(editor)).getByTestId('doc-media-resize-right');
+    selectMedia(editor);
+    const handle = within(element(editor)).getByTestId('doc-media-resize-se');
 
     fireEvent.pointerDown(handle, { clientX: 100, pointerId: 1 });
     fireEvent.pointerMove(handle, { clientX: 150, pointerId: 1 });
@@ -316,9 +362,21 @@ describe('resizing (A8)', () => {
     expect(media(editor).props['previewWidth']).toBe(250);
   });
 
-  it('gives audio no handles', () => {
-    const editor = open('audio');
+  it('shrinks from a left corner when it is dragged inwards', () => {
+    const editor = open('video', { previewWidth: 300, textAlignment: 'left' });
+    selectMedia(editor);
+    const handle = within(element(editor)).getByTestId('doc-media-resize-nw');
 
-    expect(within(element(editor)).queryByTestId('doc-media-resize-right')).toBeNull();
+    fireEvent.pointerDown(handle, { clientX: 100, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: 140, pointerId: 1 });
+
+    expect(media(editor).props['previewWidth']).toBe(260);
+  });
+
+  it('gives audio no knobs', () => {
+    const editor = open('audio');
+    selectMedia(editor);
+
+    expect(within(element(editor)).queryByTestId('doc-media-resize-se')).toBeNull();
   });
 });

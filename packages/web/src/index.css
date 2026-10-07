@@ -554,8 +554,9 @@ body {
    modifier-click in a read-only body. Both framed a block the reader never
    selected. A divider and a media block are the exceptions: neither has text,
    so clicking one or walking onto it with the arrows node-selects it, and that
-   selection IS the reader's. It is painted by `.doc-in-selection` further
-   down, the same band a drag across it gets (#124, inner#1127).
+   selection IS the reader's. A divider is painted by `.doc-in-selection`
+   further down, the same band a drag across it gets (#124); a media block is
+   framed by `.doc-media-in-selection` (inner#1127).
 
    The rule below stays because the library draws a marker of its own over the
    same block — a `#64a0ff` wash with a 4px inset ring, a fixed value that
@@ -1839,6 +1840,13 @@ body {
    that draws them is not rebuilt when that changes. */
 .doc-body[contenteditable='false'] [data-media-chrome] {
   display: none;
+}
+
+/* A media block inside the selection is framed on the media itself, in the
+   colour a carried block and its landing line use; a band behind it would
+   fill the empty rest of its row (inner#1127). */
+.doc-body .doc-media-in-selection [data-media-frame] {
+  outline: 1px solid var(--color-status-selected);
 }
 
 /* A table wider than the column scrolls inside its block, in the ScrollArea

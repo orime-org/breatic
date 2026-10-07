@@ -42,6 +42,13 @@ export const BUBBLE_CONTROL_HEIGHT = 'h-[var(--btn-inline)]';
 /** The height above plus the 28 the same demo rule gives an icon button. */
 export const BUBBLE_ICON_BUTTON_SIZE = `${BUBBLE_CONTROL_HEIGHT} w-7`;
 
+/**
+ * The frame of a bar of these buttons floating over the body: the selection
+ * bubble bar, and a media block's toolbar (inner#1127), which looks the same.
+ */
+export const BUBBLE_BAR_CLASS =
+  'flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md';
+
 /** The document editor, as far as a tool needs to know. */
 export type ToolEditor = BlockNoteEditor<never, never, never>;
 

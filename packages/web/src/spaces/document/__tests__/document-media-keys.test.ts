@@ -16,7 +16,10 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
-import { IN_SELECTION_CLASS } from '@web/spaces/document/document-selection-paint';
+import {
+  IN_SELECTION_CLASS,
+  MEDIA_IN_SELECTION_CLASS,
+} from '@web/spaces/document/document-selection-paint';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -133,16 +136,19 @@ describe.each(MEDIA)('a selected %s block', (type) => {
   });
 });
 
-describe.each(MEDIA)('a %s block in the selection is drawn as selected', (type) => {
+describe.each(MEDIA)('a %s block in the selection is framed, not filled', (type) => {
   /**
-   * Whether the media block's element carries the selected look.
+   * Whether the media block's element carries the framed look, and not the
+   * band a divider gets.
    * @param editor - The editor.
    * @returns True when it does.
    */
   function painted(editor: Editor): boolean {
-    return editor.prosemirrorView!.dom
-      .querySelector(`[data-content-type="${type}"]`)!
-      .classList.contains(IN_SELECTION_CLASS);
+    const element = editor.prosemirrorView!.dom.querySelector(`[data-content-type="${type}"]`)!;
+    return (
+      element.classList.contains(MEDIA_IN_SELECTION_CLASS) &&
+      !element.classList.contains(IN_SELECTION_CLASS)
+    );
   }
 
   it('when it is clicked, which selects it', () => {
