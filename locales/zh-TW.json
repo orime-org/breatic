@@ -937,9 +937,7 @@
       },
       "param": {
         "aspect": {
-          "label": "比例",
-          "free": "自由",
-          "original": "原始"
+          "label": "比例"
         },
         "rect": {
           "label": "尺寸（px）"

@@ -46,10 +46,14 @@ export type MiniToolIcon =
   | "SplitSquareVertical"
   | "Timer";
 
-/** One choice of an enum param. Without a label key the value is shown as written. */
+/**
+ * One choice of an enum param. It reads as its `label` when it has one — the
+ * same word in every language, as the focus crop's presets are — and as its
+ * value otherwise.
+ */
 export interface MiniToolOption {
   readonly value: string;
-  readonly labelKey?: string;
+  readonly label?: string;
 }
 
 /** A slider. */

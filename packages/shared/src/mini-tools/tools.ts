@@ -45,8 +45,8 @@ const ASPECT: EnumParam = {
   key: "aspect",
   default: "free",
   options: [
-    { value: "free", labelKey: "canvas.miniTool.param.aspect.free" },
-    { value: "original", labelKey: "canvas.miniTool.param.aspect.original" },
+    { value: "free", label: "Free" },
+    { value: "original", label: "Original" },
     { value: "1:1" },
     { value: "2:3" },
     { value: "3:2" },

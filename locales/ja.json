@@ -937,9 +937,7 @@
       },
       "param": {
         "aspect": {
-          "label": "比率",
-          "free": "フリー",
-          "original": "元の比率"
+          "label": "比率"
         },
         "rect": {
           "label": "サイズ（px）"

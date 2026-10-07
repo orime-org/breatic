@@ -937,9 +937,7 @@
       },
       "param": {
         "aspect": {
-          "label": "비율",
-          "free": "자유",
-          "original": "원본"
+          "label": "비율"
         },
         "rect": {
           "label": "크기(px)"

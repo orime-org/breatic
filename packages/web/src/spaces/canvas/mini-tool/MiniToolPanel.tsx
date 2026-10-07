@@ -313,7 +313,7 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
           label={label}
           options={param.options.map((option) => ({
             value: option.value,
-            label: option.labelKey === undefined ? option.value : t(option.labelKey),
+            label: option.label ?? option.value,
           }))}
           value={typeof params[param.key] === 'string' ? (params[param.key] as string) : param.default}
           onSelect={(value) => {

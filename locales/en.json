@@ -937,9 +937,7 @@
       },
       "param": {
         "aspect": {
-          "label": "Ratio",
-          "free": "Free",
-          "original": "Original"
+          "label": "Ratio"
         },
         "rect": {
           "label": "Size (px)"
