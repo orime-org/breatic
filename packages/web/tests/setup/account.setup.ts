@@ -255,13 +255,22 @@ async function removeOlderRuns(
   api: APIRequestContext,
   studioSlug: string,
 ): Promise<void> {
-  const listed = await api.get(`/api/v1/studio/${studioSlug}/projects`);
-  if (!listed.ok()) return;
-  const { data } = (await listed.json()) as { data: { id: string; slug: string }[] };
-  for (const project of data) {
-    if (!project.slug.startsWith(MADE_BY_SMOKE)) continue;
-    await api.delete(`/api/v1/projects/${project.id}`);
-  }
+  // The list comes a page at a time. Paging by creation time is unaffected by
+  // the deletes: each cursor carries the last row's own values, not an offset.
+  let cursor: string | undefined;
+  do {
+    const query = new URLSearchParams({ sort: 'created', limit: '100', ...(cursor ? { cursor } : {}) });
+    const listed = await api.get(`/api/v1/studio/${studioSlug}/projects?${query}`);
+    if (!listed.ok()) return;
+    const { data } = (await listed.json()) as {
+      data: { items: { id: string; slug: string }[]; nextCursor: string | null };
+    };
+    for (const project of data.items) {
+      if (!project.slug.startsWith(MADE_BY_SMOKE)) continue;
+      await api.delete(`/api/v1/projects/${project.id}`);
+    }
+    cursor = data.nextCursor ?? undefined;
+  } while (cursor);
 }
 
 /**
