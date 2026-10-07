@@ -1447,7 +1447,11 @@
         "archived": "アーカイブしました",
         "archiveFailed": "アーカイブできませんでした",
         "restored": "復元しました",
-        "restoreFailed": "復元できませんでした"
+        "restoreFailed": "復元できませんでした",
+        "openedAt": "{time}に開いた",
+        "editedAt": "{time}に編集",
+        "archivedAt": "{time}にアーカイブ",
+        "neverOpened": "未オープン · {time}に作成"
       },
       "projects": {
         "new": "Project を新規作成",
@@ -1607,7 +1611,18 @@
       },
       "toolbar": {
         "sortLabel": "並び替え",
-        "sortValue": "最近開いた順"
+        "sortValue": "最近開いた順",
+        "sort": {
+          "opened": "最近開いた順",
+          "edited": "最近編集した順",
+          "name": "名前",
+          "created": "作成日",
+          "archived": "アーカイブ日"
+        },
+        "view": {
+          "grid": "グリッド表示",
+          "list": "リスト表示"
+        }
       },
       "imageError": {
         "too_large": "そのファイルは 20 MB を超えています。もっと小さい画像を選んでください。",
@@ -1633,6 +1648,21 @@
       "archived": {
         "emptyTitle": "アーカイブ済みの Project はありません",
         "emptyHint": "アーカイブした Project はここに表示され、いつでも復元できます。"
+      },
+      "list": {
+        "columns": {
+          "name": "名前",
+          "lastOpened": "最近開いた日時",
+          "lastEdited": "最終編集",
+          "created": "作成日",
+          "archived": "アーカイブ日",
+          "role": "自分の役割"
+        },
+        "neverOpened": "未オープン",
+        "loadFailed": "Projects を読み込めませんでした",
+        "pageFailed": "残りの Projects を読み込めませんでした",
+        "retry": "再試行",
+        "end": "Project {count} 件"
       }
     },
     "rail": {

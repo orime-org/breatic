@@ -6,7 +6,8 @@ import * as React from 'react';
 import { render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-vi.mock('@web/data/api/projects', () => ({
+vi.mock('@web/data/api/projects', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/projects')>()),
   projectsApi: { recordOpen: vi.fn() },
 }));
 import { projectsApi } from '@web/data/api/projects';

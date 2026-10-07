@@ -5,7 +5,6 @@ import * as React from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
-import type { ProjectSummary } from '@breatic/shared';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { studiosApi } from '@web/data/api/studios';
 import { ApiException } from '@web/data/api/types';
@@ -14,10 +13,9 @@ import { ResourceLoadError } from '@web/components/resource-load-error';
 import { useTranslation } from '@web/i18n/use-translation';
 import { CENTER_COLUMN } from '@web/pages/studio/container/container-layout';
 import { getEmptyContainerView } from '@web/pages/studio/container/container-stub';
-import type {
-  ContainerProject,
-  StudioMember,
-} from '@web/pages/studio/container/container-types';
+import type { StudioMember } from '@web/pages/studio/container/container-types';
+import { useStudioListPrefs } from '@web/pages/studio/container/list-prefs';
+import { useStudioProjectsPaging } from '@web/pages/studio/container/use-studio-projects-paging';
 import {
   creatableStudios,
   defaultCreateStudioId,
@@ -40,32 +38,6 @@ import { SettingsTab } from '@web/pages/studio/container/tabs/SettingsTab';
 import { WorksTab } from '@web/pages/studio/container/tabs/WorksTab';
 
 /**
- * Map a backend `ProjectSummary` (the studio-projects API contract) onto the
- * container's `ContainerProject` view model. Owner is derived at the callsite
- * as `myRole === 'owner'` (no redundant field); `createdAt` is normalized to an
- * ISO string for the card's "created {time}" label (the catalog shows a stable
- * creation time, not last-activity).
- * @param p the project summary from `GET /studio/:slug/projects`.
- * @returns the project card view model.
- */
-function toContainerProject(p: ProjectSummary): ContainerProject {
-  return {
-    id: p.id,
-    slug: p.slug,
-    name: p.name,
-    thumbnailUrl: p.thumbnailUrl,
-    myRole: p.myRole,
-    createdAt: new Date(p.createdAt).toISOString(),
-    archivedAt: p.archivedAt === null ? null : new Date(p.archivedAt).toISOString(),
-    canManageMeta: p.canManageMeta,
-    canDuplicate: p.canDuplicate,
-    canArchive: p.canArchive,
-    canRestore: p.canRestore,
-    canLeave: p.canLeave,
-  };
-}
-
-/**
  * Studio container page (`/studio/{slug}`, spec §6) — the per-studio
  * workspace. The rail + top bar live in the layout route; this page renders
  * the studio header + center area, forking on the viewer's role:
@@ -79,7 +51,8 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
  *   studio data is rendered, so private content cannot leak (spec §6.3).
  *
  * The studio header comes from the real API (`GET /studio/:slug`, with the
- * viewer's role); projects come from `GET /studio/:slug/projects` (slice 2).
+ * viewer's role); projects come from `GET /studio/:slug/projects` a page at a
+ * time, each list in the sort and layout this browser remembers for it.
  * The remaining sections render EMPTY (not faked) until their own slices
  * wire real backends. A missing slug renders the error state (the service returns 404);
  * React Query dedupes the queries so StrictMode's double mount fetches once.
@@ -92,16 +65,24 @@ export default function StudioContainerPage(): React.JSX.Element {
     queryKey: ['studio', slug],
     queryFn: () => studiosApi.get(slug),
   });
-  const projectsQuery = useQuery({
-    queryKey: ['studio', slug, 'projects'],
-    queryFn: () => studiosApi.listProjects(slug),
-    enabled: studioQuery.isSuccess,
+  // Remembered per studio by id, so renaming the studio keeps the choice.
+  const studioId = studioQuery.data?.id ?? '';
+  const projectPrefs = useStudioListPrefs(studioId, 'projects');
+  const archivedPrefs = useStudioListPrefs(studioId, 'archived');
+  // A non-member's façade shows no projects; nobody else is refused them.
+  const isMember = studioQuery.data !== undefined && studioQuery.data.myStudioRole !== null;
+  const projects = useStudioProjectsPaging({
+    slug,
+    archived: false,
+    sort: projectPrefs.sort,
+    enabled: isMember,
   });
   // Archived projects are the studio admin's alone; nobody else is sent for them.
   const isStudioAdmin = studioQuery.data?.myStudioRole === 'admin';
-  const archivedQuery = useQuery({
-    queryKey: ['studio', slug, 'projects', 'archived'],
-    queryFn: () => studiosApi.listProjects(slug, true),
+  const archivedProjects = useStudioProjectsPaging({
+    slug,
+    archived: true,
+    sort: archivedPrefs.sort,
     enabled: isStudioAdmin,
   });
   const membersQuery = useQuery({
@@ -128,14 +109,6 @@ export default function StudioContainerPage(): React.JSX.Element {
   const { refetch } = studioQuery;
   const retry = React.useCallback(() => { void refetch(); }, [refetch]);
   const studio = studioQuery.data;
-  // Projects (slice 2) + members (slice 3) come from the real API; the other
-  // tab CONTENTS stay EMPTY (not faked) until their own slices wire real APIs.
-  const projects: ContainerProject[] = (projectsQuery.data ?? []).map(
-    toContainerProject,
-  );
-  const archivedProjects: ContainerProject[] = (archivedQuery.data ?? []).map(
-    toContainerProject,
-  );
   const membersView = membersQuery.data;
   const members: StudioMember[] = (membersView?.members ?? []).map((m) => ({
     id: m.userId,
@@ -208,50 +181,76 @@ export default function StudioContainerPage(): React.JSX.Element {
             current={tab}
             slug={slug}
             counts={{
-              projects: projects.length,
-              ...(isStudioAdmin ? { archived: archivedProjects.length } : {}),
+              // A list's chip waits for its first page: until then the total is unknown.
+              ...(projects.total !== null ? { projects: projects.total } : {}),
+              ...(isStudioAdmin && archivedProjects.total !== null
+                ? { archived: archivedProjects.total }
+                : {}),
               collections: view.collections.length,
               members: members.length,
             }}
           />
-          <ScrollArea className='min-h-0 flex-1'>
-            <div className={`${CENTER_COLUMN} pt-[18px] pb-12`}>
-              {tab === 'projects' ? (
-                <ProjectsTab
-                  projects={projects}
-                  studioRole={view.studio.myStudioRole}
-                  onCreateProject={createProject}
-                  creatableStudios={creatable}
-                  defaultStudioId={defaultStudioId}
-                />
-              ) : null}
-              {tab === 'archived' ? (
-                <ArchivedTab projects={archivedProjects} />
-              ) : null}
-              {tab === 'collections' ? (
-                <CollectionsTab
-                  collections={view.collections}
-                  studioRole={view.studio.myStudioRole}
-                />
-              ) : null}
-              {tab === 'works' ? <WorksTab /> : null}
-              {tab === 'members' ? (
-                <MembersTab
-                  slug={slug}
-                  members={members}
-                  pendingInvitations={pendingInvitations}
-                  studioRole={view.studio.myStudioRole}
-                  studioType={view.studio.type}
-                />
-              ) : null}
-              {tab === 'credits' ? (
-                <CreditsTab slug={slug} />
-              ) : null}
-              {tab === 'settings' ? (
-                <SettingsTab studio={view.studio} members={members} />
-              ) : null}
-            </div>
-          </ScrollArea>
+          {/* The list being read pages as its end scrolls into view; only
+              one of the two is on screen, so only it watches the scroller. */}
+          <div
+            ref={
+              tab === 'projects'
+                ? projects.scrollerRef
+                : tab === 'archived'
+                  ? archivedProjects.scrollerRef
+                  : undefined
+            }
+            className='min-h-0 flex-1'
+          >
+            <ScrollArea className='h-full'>
+              <div className={`${CENTER_COLUMN} pt-[18px] pb-12`}>
+                {tab === 'projects' ? (
+                  <ProjectsTab
+                    list={projects}
+                    sort={projectPrefs.sort}
+                    onSortChange={projectPrefs.setSort}
+                    view={projectPrefs.view}
+                    onViewChange={projectPrefs.setView}
+                    studioRole={view.studio.myStudioRole}
+                    onCreateProject={createProject}
+                    creatableStudios={creatable}
+                    defaultStudioId={defaultStudioId}
+                  />
+                ) : null}
+                {tab === 'archived' ? (
+                  <ArchivedTab
+                    list={archivedProjects}
+                    sort={archivedPrefs.sort}
+                    onSortChange={archivedPrefs.setSort}
+                    view={archivedPrefs.view}
+                    onViewChange={archivedPrefs.setView}
+                  />
+                ) : null}
+                {tab === 'collections' ? (
+                  <CollectionsTab
+                    collections={view.collections}
+                    studioRole={view.studio.myStudioRole}
+                  />
+                ) : null}
+                {tab === 'works' ? <WorksTab /> : null}
+                {tab === 'members' ? (
+                  <MembersTab
+                    slug={slug}
+                    members={members}
+                    pendingInvitations={pendingInvitations}
+                    studioRole={view.studio.myStudioRole}
+                    studioType={view.studio.type}
+                  />
+                ) : null}
+                {tab === 'credits' ? (
+                  <CreditsTab slug={slug} />
+                ) : null}
+                {tab === 'settings' ? (
+                  <SettingsTab studio={view.studio} members={members} />
+                ) : null}
+              </div>
+            </ScrollArea>
+          </div>
         </div>
       )}
     </div>

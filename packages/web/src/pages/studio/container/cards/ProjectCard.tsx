@@ -8,9 +8,9 @@ import { Button } from '@web/components/ui/button';
 import { JoinProjectDialog } from '@web/features/project-join/JoinProjectDialog';
 import { useTranslation } from '@web/i18n/use-translation';
 import { hasCardMenu, ProjectCardMenu } from '@web/pages/studio/container/cards/ProjectCardMenu';
-import type { ContainerProject } from '@web/pages/studio/container/container-types';
+import type { ContainerProject, ProjectTimeKind } from '@web/pages/studio/container/container-types';
+import { projectTimeLine } from '@web/pages/studio/container/project-time';
 import { ItemCardBody } from '@web/pages/studio/shared/ItemCardBody';
-import { formatRelativeTime } from '@web/lib/format-relative-time';
 import { ArchivedBadge } from '@web/pages/studio/shared/badges';
 import type { ItemRole } from '@web/pages/studio/shared/studio-types';
 
@@ -22,12 +22,15 @@ const ROLE_KEY: Record<ItemRole, string> = {
 
 interface ProjectCardProps {
   project: ContainerProject;
+  /** Which of the project's times the meta line shows; follows the list's sort. */
+  timeKind?: ProjectTimeKind;
 }
 
 /**
  * A project card in the studio container Projects tab (spec §3.3). Its body is
  * the same `ItemCardBody` the Recent landing uses — cover, name, and one meta
- * line reading "created {time}" with the viewer's role as plain text at its
+ * line carrying one of the project's times (the one the list is sorted by,
+ * creation by default) with the viewer's role as plain text at its
  * right end — plus the `⋯` menu whenever the server says the viewer may do
  * something from it. A member's card links to `/project/{slug}-{uuid}`; for a
  * project the viewer is not on, the card opens the join dialog in place and
@@ -36,9 +39,10 @@ interface ProjectCardProps {
  * takes no join requests.
  * @param props the card's props.
  * @param props.project the project to render.
+ * @param props.timeKind which time the meta line shows.
  * @returns the project card.
  */
-export function ProjectCard({ project }: ProjectCardProps): React.JSX.Element {
+export function ProjectCard({ project, timeKind = 'created' }: ProjectCardProps): React.JSX.Element {
   const t = useTranslation();
   const [joinOpen, setJoinOpen] = React.useState(false);
   const openJoin = React.useCallback(() => setJoinOpen(true), []);
@@ -48,11 +52,7 @@ export function ProjectCard({ project }: ProjectCardProps): React.JSX.Element {
       name={project.name}
       role={project.myRole === null ? null : t(ROLE_KEY[project.myRole])}
       meta={
-        <span className='truncate'>
-          {t('studio.container.card.createdAt', {
-            time: formatRelativeTime(project.createdAt, t),
-          })}
-        </span>
+        <span className='truncate'>{projectTimeLine(project, timeKind, t)}</span>
       }
     />
   );

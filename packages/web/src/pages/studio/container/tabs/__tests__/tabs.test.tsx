@@ -159,7 +159,7 @@ function withQuery(ui: ReactElement) {
 
 describe('ProjectsTab — views and loading', () => {
   it('lists the projects as table rows with the six columns in the list view, the sorted column marked', () => {
-    withRouter(
+    withQuery(
       <ProjectsTab
         list={listOf([STUDIO_VISIBLE, NOT_JOINED])}
         {...LIST_CONTROLS}
@@ -216,7 +216,7 @@ describe('ProjectsTab — views and loading', () => {
   });
 
   it('says how many projects there are once all of them are loaded, and shows the total in the toolbar', () => {
-    withRouter(
+    withQuery(
       <ProjectsTab list={listOf([STUDIO_VISIBLE, NOT_JOINED])} {...LIST_CONTROLS} studioRole='guest' />,
     );
     expect(screen.getByText('2 projects')).toBeInTheDocument();

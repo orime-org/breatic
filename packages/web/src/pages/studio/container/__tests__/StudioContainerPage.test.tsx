@@ -10,7 +10,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
-import type { ProjectSummary, StudioDetail, StudioSummary } from '@breatic/shared';
+import type { ProjectSummary, StudioProjectPage, StudioDetail, StudioSummary } from '@breatic/shared';
 
 vi.mock('@web/data/api/studios', () => ({
   studiosApi: {
@@ -113,6 +113,8 @@ const PROJECTS: readonly ProjectSummary[] = [
     createdAt: new Date('2026-06-07T00:00:00.000Z'),
     updatedAt: new Date('2026-06-07T00:00:00.000Z'),
     archivedAt: null,
+    lastOpenedAt: null,
+    lastEditedAt: new Date('2026-06-07T00:00:00.000Z'),
     canManageMeta: true,
     canDuplicate: true,
     canArchive: true,
@@ -120,6 +122,15 @@ const PROJECTS: readonly ProjectSummary[] = [
     canLeave: false,
   },
 ];
+
+/**
+ * One page holding these projects, the whole list.
+ * @param items - The projects.
+ * @returns The page.
+ */
+function pageOf(items: readonly ProjectSummary[]): StudioProjectPage {
+  return { items: [...items], nextCursor: null, total: items.length };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -130,7 +141,7 @@ beforeEach(() => {
     return TEAM;
   });
   vi.mocked(studiosApi.listUserStudios).mockResolvedValue([...STUDIOS]);
-  vi.mocked(studiosApi.listProjects).mockResolvedValue([...PROJECTS]);
+  vi.mocked(studiosApi.listProjects).mockResolvedValue(pageOf(PROJECTS));
   vi.mocked(projectsApi.create).mockResolvedValue({
     id: 'p-new',
     studioId: 's-acme',
@@ -413,23 +424,23 @@ describe('StudioContainerPage', () => {
   });
 
   it('lists the archived projects on the admin\'s Archived tab', async () => {
-    vi.mocked(studiosApi.listProjects).mockImplementation(async (_slug, archived) =>
+    vi.mocked(studiosApi.listProjects).mockImplementation(async (_slug, { archived }) =>
       archived
-        ? [{ ...PROJECTS[0]!, id: 'p-old', name: 'Old Logo', archivedAt: new Date('2026-09-01T00:00:00.000Z'), canManageMeta: false, canDuplicate: false, canArchive: false, canRestore: true }]
-        : [...PROJECTS],
+        ? pageOf([{ ...PROJECTS[0]!, id: 'p-old', name: 'Old Logo', archivedAt: new Date('2026-09-01T00:00:00.000Z'), canManageMeta: false, canDuplicate: false, canArchive: false, canRestore: true }])
+        : pageOf(PROJECTS),
     );
     setup('acme-studio', false, 'archived');
     expect(await screen.findByText('Old Logo')).toBeInTheDocument();
     expect(within(screen.getByTestId('project-card-p-old')).getByText('Archived')).toBeInTheDocument();
     expect(screen.queryByText('Real Studio Project')).toBeNull();
-    expect(studiosApi.listProjects).toHaveBeenCalledWith('acme-studio', true);
+    expect(studiosApi.listProjects).toHaveBeenCalledWith('acme-studio', expect.objectContaining({ archived: true }));
   });
 
   it('does not ask for the archived list on behalf of a member who is not the admin', async () => {
     setup('maintained-studio');
     await screen.findByRole('navigation', { name: 'Studio sections' });
     await waitFor(() => expect(studiosApi.listProjects).toHaveBeenCalled());
-    expect(studiosApi.listProjects).not.toHaveBeenCalledWith('maintained-studio', true);
+    expect(studiosApi.listProjects).not.toHaveBeenCalledWith('maintained-studio', expect.objectContaining({ archived: true }));
   });
 
   it('sends a member who is not the admin away from Archived', async () => {

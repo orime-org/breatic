@@ -90,7 +90,26 @@ describe('studio tabs — empty state (spec §3.13)', () => {
   it('shows the empty hint and the new-project card when there are no projects', () => {
     render(
       <MemoryRouter>
-        <ProjectsTab projects={[]} studioRole='admin' />
+        <ProjectsTab
+          list={{
+            projects: [],
+            total: 0,
+            isPending: false,
+            firstPageFailed: false,
+            retryFirstPage: vi.fn(),
+            isFetchingNextPage: false,
+            hasNextPage: false,
+            pageFailed: false,
+            loadMore: vi.fn(),
+            sentinelRef: vi.fn(),
+            scrollerRef: vi.fn(),
+          }}
+          sort='opened'
+          onSortChange={vi.fn()}
+          view='grid'
+          onViewChange={vi.fn()}
+          studioRole='admin'
+        />
       </MemoryRouter>,
     );
     expect(screen.getByText(/No projects yet/)).toBeInTheDocument();
