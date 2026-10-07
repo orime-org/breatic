@@ -191,15 +191,22 @@ describe("a node wired into an optional slot", () => {
     return edit(pictures, prompt);
   }
 
-  it("needs no reference mark when a note points it into the slot", () => {
-    const note = { slot: { kind: "note" as const, label: "Pick the style picture into the style slot" } };
+  const note = { slot: { kind: "note" as const, label: "Pick the style picture into the style slot" } };
+
+  it("takes a note pointing it into the slot in place of a reference mark", () => {
     expect(checkProposal(styled(2, [note, reference("the uploaded character"), { text: " at night" }]))).toEqual({ ok: true });
   });
 
-  it("still needs a reference mark for each picture past the slot's room", () => {
-    const answer = checkProposal(styled(4, [{ text: "Make it night." }]));
-    expect(answer).toMatchObject({ ok: false, reason: expect.stringContaining("1 asset mark") });
-    expect(checkProposal(styled(4, [reference("the uploaded character"), { text: " at night" }]))).toEqual({ ok: true });
+  it("still asks for an instruction for every picture, naming the slot", () => {
+    expect(checkProposal(styled(1, [{ text: "Make it night." }]))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("style_images slot"),
+    });
+  });
+
+  it("lets notes stand in no more often than the slot holds pictures", () => {
+    expect(checkProposal(styled(5, [note, note, note, note, reference("the uploaded character")]))).toMatchObject({ ok: false });
+    expect(checkProposal(styled(5, [note, note, note, reference("the character"), reference("the scene")]))).toEqual({ ok: true });
   });
 });
 

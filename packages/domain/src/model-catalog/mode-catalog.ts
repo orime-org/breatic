@@ -470,6 +470,20 @@ export function requiredSlotKinds(chosen: ModelInfo): ReferenceKind[] {
 }
 
 /**
+ * The optional slots a model takes material through, with how many nodes each holds.
+ * @param chosen - The model, as the catalog projects it.
+ * @returns Each optional slot's name, kind and room, in declaration order.
+ * @throws {never} Never.
+ */
+export function optionalSlots(chosen: ModelInfo): { name: string; kind: ReferenceKind; room: number }[] {
+  return Object.entries(chosen.params).flatMap(([name, info]) =>
+    info.filledBySource === true && info.fromReferencePool !== true && info.optional === true && isReferenceKind(info.accepts)
+      ? [{ name, kind: info.accepts, room: info.maxItems ?? 1 }]
+      : [],
+  );
+}
+
+/**
  * The models one generation node can use in one mode.
  *
  * A mode the node cannot be set to is answered as such rather than with an

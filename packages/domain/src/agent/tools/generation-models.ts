@@ -20,6 +20,7 @@ import type { CreditEstimate } from "@breatic/shared/pricing";
 import {
   modelsForMode,
   poolParams,
+  optionalSlots,
   requiredSlotKinds,
   type ModelInfo,
   type ModelsForMode,
@@ -132,12 +133,17 @@ function renderModel(model: PricedModelInfo): string {
       : "";
   // A kind taken both by a required slot and by the pool is routed by the
   // order the nodes are listed (`nameableFeeders`), which the model cannot
-  // see from the parameters alone.
+  // see from the parameters alone. An optional slot is the reader's to pick
+  // into or leave, so the nodes it can hold are said to need no asset mark.
   const pooled = poolParams(model).map((pool) => pool.kind);
   const shared = [...new Set(requiredSlotKinds(model).filter((kind) => pooled.includes(kind)))];
-  const routing = shared
-    .map((kind) => ` Of the ${String(kind)} nodes wired in, the first in the order the proposal lists its nodes is the one the reader picks into its ${String(kind)} slot (say so in a note); later ones go to its pool (an asset mark each).`)
-    .join("");
+  const routing =
+    shared
+      .map((kind) => ` Of the ${String(kind)} nodes wired in, the first in the order the proposal lists its nodes is the one the reader picks into its ${String(kind)} slot (say so in a note); later ones go to its pool (an asset mark each).`)
+      .join("") +
+    optionalSlots(model)
+      .map(({ name, kind, room }) => ` Up to ${String(room)} ${String(kind)} node${room === 1 ? "" : "s"} wired in can go into its ${name} slot instead (say so in a note); those need no asset mark.`)
+      .join("");
   const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderStoryboard(model)}${renderCameraCommands(model)}`;
   const params = Object.entries(model.params).filter(([, spec]) => !spec.fromStoryboard).map(([name, spec]) => {
     // Shape and cap belong to the parameter, so they are stated whatever else

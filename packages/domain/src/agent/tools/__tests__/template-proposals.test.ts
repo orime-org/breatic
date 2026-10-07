@@ -9,11 +9,25 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { GENERATION_TEMPLATES, promptTextOf, setLocale, templatePrompt } from "@breatic/shared";
+import { GENERATION_TEMPLATES, setLocale, templatePrompt, type GenerationTemplate } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
 import { answerFor, inputSchema, makeProposeCanvasAction } from "../propose-canvas-action.js";
+
+/**
+ * A template's prompt in the shape a proposal sends it: words as text
+ * segments, each mark as a slot segment with its label and nothing added.
+ * @param template - The template.
+ * @returns The segments, as JSON.
+ */
+function shown(template: GenerationTemplate): string {
+  return JSON.stringify(
+    templatePrompt(template).map((segment) =>
+      segment.slot === undefined ? { text: segment.text } : { slot: { kind: segment.slot.kind, label: segment.slot.label } },
+    ),
+  );
+}
 
 beforeEach(() => {
   loadLocales();
@@ -74,14 +88,14 @@ describe("templates in proposals", () => {
     setLocale("zh-CN");
     const said = makeProposeCanvasAction().description ?? "";
     for (const template of GENERATION_TEMPLATES) {
-      expect(said).toContain(promptTextOf(templatePrompt(template)));
+      expect(said).toContain(shown(template));
     }
     expect(said).toContain("故事内容");
     setLocale("en");
   });
 
   it("tells the agent to keep each reference mark and say whether the picture is uploaded or generated", () => {
-    expect(makeProposeCanvasAction().description).toMatch(/keep each 📎 spot, saying in its label whether the picture is uploaded or generated/);
+    expect(makeProposeCanvasAction().description).toMatch(/keep each asset segment, saying in its label whether the picture is uploaded or generated/);
   });
 });
 
@@ -141,7 +155,7 @@ describe("an empty node wired into a reference pool", () => {
 
   it("is refused when the prompt names it only in words, since the picture put there would not be sent", () => {
     const answer = answerFor(withPrompt([{ text: "Use [📎 character reference] as the reference. A 5x5 storyboard." }]));
-    expect(answer).toMatchObject({ placed: false, reason: expect.stringMatching(/"Character".*asset mark/) });
+    expect(answer).toMatchObject({ placed: false, reason: expect.stringMatching(/a mark into its words \("character reference"\)/) });
   });
 
   it("is placed when a material mark mentions it", () => {
@@ -169,8 +183,8 @@ describe("the template prompts the agent is shown inside a request", () => {
     if (!grid) throw new Error("no template");
     setLocale("en");
     const said = runWithLocale("ja", () => buildAgentConfig({}).tools["propose_canvas_action"]?.description ?? "");
-    const japanese = runWithLocale("ja", () => promptTextOf(templatePrompt(grid)));
-    expect(japanese).not.toBe(promptTextOf(templatePrompt(grid)));
+    const japanese = runWithLocale("ja", () => shown(grid));
+    expect(japanese).not.toBe(shown(grid));
     expect(said).toContain(japanese);
   });
 });

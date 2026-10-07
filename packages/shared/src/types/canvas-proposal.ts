@@ -174,9 +174,8 @@ export interface ProposalNode {
    *
    * The catalog is the authority and the check has just read it, so the
    * answer travels with the proposal rather than being asked again on the
-   * canvas -- a reader can press Use before the catalog has loaded there, and
-   * a guess either writes a mention the panel refuses or drops one the pool
-   * needs. Absent on a node that generates nothing.
+   * canvas -- a reader can press Use before the catalog has loaded there.
+   * Absent on a node that generates nothing.
    */
   poolKinds?: ReferenceKind[];
   /**
@@ -216,21 +215,14 @@ export interface CanvasProposal {
   groupName?: string;
 }
 
-/**
- * Which feeders the reader could @ in a prompt, in node order.
- *
- * `null` where the panel would not take a mention of that node. The upstream
- * list leaves out the nodes that fill a required slot, which the reader picks
- * in the panel.
- */
+/** Which feeders the reader could @ in a prompt, and which a slot takes instead. */
 export interface NameableFeederIndices {
-  /** Indices of the empty nodes wired in, null where none can be mentioned. */
-  sources: (number | null)[];
-  /** The same for the nodes wired in that carry work of their own, past the ones in `slotted`. */
-  upstream: (number | null)[];
+  /** The feeders the panel would take an @ of, past the ones in `slotted`, in node order. */
+  mentionable: number[];
   /**
-   * The nodes wired in that fill a required slot, in node order. The reader
-   * picks each into its slot in the panel, so none of them is mentioned.
+   * The feeders a required slot takes, in node order: the first nodes of each
+   * kind, one per entry in {@link ProposalNode.slotKinds}. The reader picks
+   * each in the panel, so none of them is @'d.
    */
   slotted: number[];
 }
@@ -276,11 +268,10 @@ export function feedersOf(proposal: CanvasProposal, index: number): ProposalFeed
  * this node when it read the catalog.
  *
  * A row stored before the check wrote them names nothing: what the panel
- * accepts turns on both, and a guess either writes a mention it refuses or
- * drops one the pool needs.
+ * accepts turns on both.
  * @param proposal - The proposal being read.
  * @param index - The node being fed.
- * @returns The feeders the reader could @, each in node order.
+ * @returns The feeders the reader could @, and those a slot takes.
  * @throws {never} Never.
  */
 export function nameableFeeders(
@@ -290,7 +281,7 @@ export function nameableFeeders(
   const at = proposal.nodes[index];
   const poolKinds = at?.poolKinds;
   if (poolKinds === undefined || at?.takesPrompt === undefined) {
-    return { sources: [], upstream: [], slotted: [] };
+    return { mentionable: [], slotted: [] };
   }
   const byPool = poolKinds.length > 0;
   const held = feedersOf(proposal, index);
@@ -309,26 +300,19 @@ export function nameableFeeders(
   // takes one, in the order the nodes are listed, before any reaches the pool.
   const open = [...(at.slotKinds ?? [])];
   const slotted: number[] = [];
-  for (const i of [...held.sources, ...held.upstream].sort((a, b) => a - b)) {
+  const wired = [...held.sources, ...held.upstream].sort((a, b) => a - b);
+  for (const i of wired) {
     const slot = open.indexOf(proposal.nodes[i]?.type as ReferenceKind);
     if (slot === -1) continue;
     open.splice(slot, 1);
     slotted.push(i);
   }
-  /**
-   * One entry per node in the list, the index where it can be mentioned.
-   * @param list - The feeders, in the order the nodes are listed.
-   * @param can - Whether a mention is possible for this run at all.
-   * @returns The same length, null where no mention can be written.
-   * @throws {never} Never.
-   */
-  const keepingPlaces = (list: readonly number[], can: boolean): (number | null)[] =>
-    list.map((i) => (can && !slotted.includes(i) && mentionable(i) ? i : null));
   return {
     // An empty node is @'d only where that mention is what picks the
     // material; through a slot the reader clicks it in instead.
-    sources: keepingPlaces(held.sources, byPool),
-    upstream: keepingPlaces(held.upstream.filter((i) => !slotted.includes(i)), true),
+    mentionable: wired.filter(
+      (i) => !slotted.includes(i) && (byPool || !held.sources.includes(i)) && mentionable(i),
+    ),
     slotted,
   };
 }

@@ -14,7 +14,6 @@
 import { describe, it, expect } from 'vitest';
 import type { CanvasProposal, ModelCatalog, ModelEntry, ProposalNode } from '@breatic/shared';
 
-import { nameableFeeders } from '@breatic/shared';
 
 import { nameOf, shapeOf, todosOf } from '@web/pages/project/chat/proposal-card';
 
@@ -332,39 +331,6 @@ describe('where each generation\'s prompt is found (#289)', () => {
     const proposal = flow([empty('Your photo'), written('Your copy')]);
 
     expect(todosOf(proposal, LINES)).toEqual([]);
-  });
-});
-
-describe('a proposal stored before the check answered these questions', () => {
-  it('names no feeder at all, rather than guessing which way it took', () => {
-    // A row stored before the two catalog facts travelled on the node. What
-    // the panel would accept turns on them, so a guess either writes a
-    // mention it refuses or drops one the pool needs.
-    const proposal = flow(
-      [
-        generates('The first take'),
-        { ...generates('On white'), poolKinds: undefined, takesPrompt: undefined },
-      ],
-      [[0, 1]],
-    );
-
-    expect(nameableFeeders(proposal, 1)).toEqual({ sources: [], upstream: [], slotted: [] });
-  });
-
-  it('holds the place of a feeder the panel cannot mention', () => {
-    // The k-th mark is about the k-th node wired in, and the marks are written
-    // against the whole run. Dropping the one that cannot be mentioned would
-    // slide every mark after it onto the wrong node.
-    const proposal = flow(
-      [
-        { role: 'source', type: 'video', name: 'Your clip' },
-        { role: 'source', type: 'image', name: 'Your still' },
-        generates('The cut'),
-      ],
-      [[0, 2], [1, 2]],
-    );
-
-    expect(nameableFeeders(proposal, 2)).toEqual({ sources: [null, 1], upstream: [], slotted: [] });
   });
 });
 

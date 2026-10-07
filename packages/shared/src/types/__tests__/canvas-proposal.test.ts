@@ -43,33 +43,52 @@ describe("nameableFeeders", () => {
   it("sends the reader's picture to the required slot before the pool", () => {
     const proposal = into([photo("First frame"), mixedRun]);
 
-    expect(nameableFeeders(proposal, 1).sources).toEqual([null]);
+    expect(nameableFeeders(proposal, 1)).toEqual({ mentionable: [], slotted: [0] });
   });
 
   it("sends a picture past the required slots to the pool", () => {
     const proposal = into([photo("First frame"), photo("Hero"), mixedRun]);
 
-    expect(nameableFeeders(proposal, 2).sources).toEqual([null, 1]);
+    expect(nameableFeeders(proposal, 2)).toEqual({ mentionable: [1], slotted: [0] });
   });
 
   it("mentions every picture where the model takes them only by the pool", () => {
     const proposal = into([photo("A"), photo("B"), { ...mixedRun, slotKinds: [] }]);
 
-    expect(nameableFeeders(proposal, 2).sources).toEqual([0, 1]);
+    expect(nameableFeeders(proposal, 2)).toEqual({ mentionable: [0, 1], slotted: [] });
   });
 
   it("sends generated work to the required slot before the pool too", () => {
     const work: ProposalNode = { role: "generate", type: "image", name: "Knight", mode: "t2i", model: "m", poolKinds: [], takesPrompt: true };
     const proposal = into([work, mixedRun]);
 
-    expect(nameableFeeders(proposal, 1)).toEqual({ sources: [], upstream: [], slotted: [0] });
+    expect(nameableFeeders(proposal, 1)).toEqual({ mentionable: [], slotted: [0] });
   });
 
   it("gives the slot to whichever node of that kind is listed first", () => {
     const work: ProposalNode = { role: "generate", type: "image", name: "Knight", mode: "t2i", model: "m", poolKinds: [], takesPrompt: true };
     const proposal = into([work, photo("Hero"), mixedRun]);
 
-    expect(nameableFeeders(proposal, 2)).toEqual({ sources: [1], upstream: [], slotted: [0] });
+    expect(nameableFeeders(proposal, 2)).toEqual({ mentionable: [1], slotted: [0] });
+  });
+
+  it("names no feeder of a row stored before the check answered for it", () => {
+    const proposal = into([photo("Hero"), { ...mixedRun, poolKinds: undefined, takesPrompt: undefined }]);
+
+    expect(nameableFeeders(proposal, 1)).toEqual({ mentionable: [], slotted: [] });
+  });
+
+  it("leaves out a feeder the panel would not take an @ of", () => {
+    const clip: ProposalNode = { role: "source", type: "video", name: "Your clip" };
+    const proposal = into([clip, photo("Hero"), { ...mixedRun, slotKinds: [] }]);
+
+    expect(nameableFeeders(proposal, 2)).toEqual({ mentionable: [1], slotted: [] });
+  });
+
+  it("gives two slots of one kind to the first two nodes of that kind", () => {
+    const proposal = into([photo("A"), photo("B"), photo("C"), { ...mixedRun, slotKinds: ["image", "image"] }]);
+
+    expect(nameableFeeders(proposal, 3)).toEqual({ mentionable: [2], slotted: [0, 1] });
   });
 });
 
