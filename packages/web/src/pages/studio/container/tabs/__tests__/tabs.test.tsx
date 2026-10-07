@@ -176,6 +176,44 @@ describe('ProjectsTab — views and loading', () => {
     expect(within(table).getByRole('link', { name: 'Open Project' })).toHaveAttribute('href', '/project/open-a');
   });
 
+  it('raises a highlighted row\'s text to the foreground and outlines the row keyboard focus is on', () => {
+    withQuery(
+      <ProjectsTab list={listOf([STUDIO_VISIBLE, NOT_JOINED])} {...LIST_CONTROLS} view='list' studioRole='guest' />,
+    );
+    const row = screen.getByTestId('project-row-a');
+    // Muted text on the highlight fill falls under 4.5:1 in the dark theme.
+    expect(row.className).toContain('hover:[&>td]:text-foreground');
+    expect(row.className).toContain('has-[:focus-visible]:[&>td]:text-foreground');
+    // The outline is what tells focus apart from a row the pointer rests on.
+    for (const target of [within(row).getByRole('link'), within(screen.getByTestId('project-row-b')).getByRole('button', { name: 'Other Project' })]) {
+      expect(target.className).toContain('focus-visible:after:ring-1');
+      expect(target.className).toContain('focus-visible:after:ring-inset');
+      expect(target.className).toContain('focus-visible:after:ring-ring');
+    }
+  });
+
+  it('gives a first-load placeholder row the name column\'s width, so the headers do not move when the rows arrive', () => {
+    withRouter(
+      <ProjectsTab list={listOf([], { isPending: true, total: null })} {...LIST_CONTROLS} view='list' studioRole='guest' />,
+    );
+    const placeholder = screen.getAllByTestId('project-placeholder')[0]!;
+    const nameCell = placeholder.querySelectorAll('td')[1]!;
+    expect(nameCell.className).toContain('w-full');
+    expect(nameCell.className).toContain('max-w-0');
+  });
+
+  it('shows only the loading placeholders while the next page is being asked for again after a failure', () => {
+    withRouter(
+      <ProjectsTab
+        list={listOf([STUDIO_VISIBLE], { hasNextPage: true, pageFailed: true, isFetchingNextPage: true, total: 2 })}
+        {...LIST_CONTROLS}
+        studioRole='guest'
+      />,
+    );
+    expect(screen.getAllByTestId('project-placeholder').length).toBeGreaterThan(0);
+    expect(screen.queryByText('The rest of the projects did not load')).not.toBeInTheDocument();
+  });
+
   it('keeps a highlighted row\'s fill off its own bottom border, so that line matches the one above', () => {
     withQuery(
       <ProjectsTab list={listOf([STUDIO_VISIBLE, NOT_JOINED])} {...LIST_CONTROLS} view='list' studioRole='guest' />,

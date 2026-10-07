@@ -103,6 +103,24 @@ describe('ContainerToolbar', () => {
     expect(onChange).toHaveBeenCalledWith('list');
   });
 
+  it('marks the chosen view one step past hover, so hovering the other one never looks chosen', () => {
+    render(<ContainerToolbar title='Projects' count={3} view={{ value: 'grid', onChange: vi.fn() }} />);
+    for (const button of [screen.getByRole('button', { name: 'Grid view' }), screen.getByRole('button', { name: 'List view' })]) {
+      expect(button.className).toContain('aria-pressed:bg-accent-strong');
+      expect(button.className).toContain('aria-pressed:hover:bg-accent-strong');
+      expect(button.className).not.toMatch(/aria-pressed:bg-muted(\s|$)/);
+    }
+  });
+
+  it('stays at the top of the scroll area while the list under it scrolls', () => {
+    render(<ContainerToolbar title='Projects' count={3} />);
+    const bar = screen.getByTestId('container-toolbar');
+    expect(bar.className).toMatch(/(^|\s)sticky(\s|$)/);
+    expect(bar.className).toMatch(/(^|\s)top-0(\s|$)/);
+    // Opaque, so the rows passing under it do not show through.
+    expect(bar.className).toMatch(/(^|\s)bg-background(\s|$)/);
+  });
+
   it('shows no count while the list has not loaded', () => {
     render(<ContainerToolbar title='Projects' count={null} />);
     expect(screen.queryByTestId('container-toolbar-count')).not.toBeInTheDocument();

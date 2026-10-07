@@ -27,7 +27,8 @@ vi.mock('@web/data/api/credits', () => ({
   }),
 }));
 
-vi.mock('@web/data/api/projects', () => ({
+vi.mock('@web/data/api/projects', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/projects')>()),
   projectsApi: { create: vi.fn() },
 }));
 import { studiosApi } from '@web/data/api/studios';
@@ -421,6 +422,18 @@ describe('StudioContainerPage', () => {
     // what is rendered" rather than as one special case for Settings.
     setup('acme-studio', false, 'credits');
     expect(await screen.findByTestId('studio-spendable')).toBeInTheDocument();
+  });
+
+  it('takes the list back to its top when the sort changes', async () => {
+    setup('acme-studio');
+    await screen.findByText('Real Studio Project');
+    const viewport = screen.getByTestId('container-toolbar').closest('[data-radix-scroll-area-viewport]') as HTMLElement;
+    viewport.scrollTop = 600;
+
+    await userEvent.click(within(screen.getByTestId('container-toolbar')).getByRole('button', { name: /Sort/ }));
+    await userEvent.click(await screen.findByTestId('container-sort-option-name'));
+
+    expect(viewport.scrollTop).toBe(0);
   });
 
   it('lists the archived projects on the admin\'s Archived tab', async () => {
