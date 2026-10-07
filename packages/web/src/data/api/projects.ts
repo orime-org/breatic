@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { QueryClient } from '@tanstack/react-query';
-import type { ProjectRole, SpaceType } from '@breatic/shared';
+import type { ProjectRole, SpaceType, StudioProjectSort } from '@breatic/shared';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@web/data/api/request';
 
 /**
@@ -53,10 +53,31 @@ export interface LiveTransfer {
   expiresAt: string;
 }
 
+/** Which studio projects list a cached query holds. */
+export interface StudioProjectsListKeyParts {
+  archived: boolean;
+  sort: StudioProjectSort;
+  /** Names sort by the interface language, so each language is its own list. */
+  locale: string;
+}
+
 /**
- * Whether a React Query key is a studio container projects-list key, i.e.
- * `['studio', <slug>, 'projects']` (spec §6 / slice 2), so every studio's
- * lists can be refreshed from a caller that knows only the project id.
+ * The React Query key of one studio projects list.
+ * @param slug the studio's URL handle.
+ * @param parts which list, in which sort and language.
+ * @returns the key.
+ */
+export function studioProjectsListKey(
+  slug: string,
+  parts: StudioProjectsListKeyParts,
+): readonly ['studio', string, 'projects', StudioProjectsListKeyParts] {
+  return ['studio', slug, 'projects', parts];
+}
+
+/**
+ * Whether a React Query key is a studio container projects-list key (built by
+ * {@link studioProjectsListKey}), so every studio's lists can be refreshed from
+ * a caller that knows only the project id.
  * @param key the React Query key to test.
  * @returns whether the key is a studio projects-list key.
  */

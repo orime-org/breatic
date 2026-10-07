@@ -6,6 +6,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { getLocale } from '@breatic/shared';
 import type { ProjectSummary, StudioProjectPage, StudioProjectSort } from '@breatic/shared';
 
+import { studioProjectsListKey } from '@web/data/api/projects';
 import { studiosApi } from '@web/data/api/studios';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
@@ -94,7 +95,7 @@ export function useStudioProjectsPaging({
   useTranslation();
   const locale = getLocale();
   const query = useInfiniteQuery({
-    queryKey: ['studio', slug, 'projects', { archived, sort, locale }],
+    queryKey: studioProjectsListKey(slug, { archived, sort, locale }),
     queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
       studiosApi.listProjects(slug, { archived, sort, cursor: pageParam }),
     initialPageParam: undefined as string | undefined,

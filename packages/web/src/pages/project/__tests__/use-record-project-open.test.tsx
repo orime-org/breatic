@@ -10,7 +10,7 @@ vi.mock('@web/data/api/projects', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/projects')>()),
   projectsApi: { recordOpen: vi.fn() },
 }));
-import { projectsApi } from '@web/data/api/projects';
+import { projectsApi, studioProjectsListKey } from '@web/data/api/projects';
 import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open';
 
 function Harness({
@@ -81,7 +81,7 @@ describe('useRecordProjectOpen (critical path: StrictMode-safe one-shot)', () =>
   it('refreshes every studio projects list after a successful record, so last-opened order is current', async () => {
     vi.mocked(projectsApi.recordOpen).mockResolvedValue({ ok: true });
     const client = new QueryClient();
-    client.setQueryData(['studio', 'acme', 'projects', { archived: false, sort: 'opened', locale: 'en' }], {
+    client.setQueryData(studioProjectsListKey('acme', { archived: false, sort: 'opened', locale: 'en' }), {
       pages: [],
       pageParams: [],
     });
@@ -90,7 +90,7 @@ describe('useRecordProjectOpen (critical path: StrictMode-safe one-shot)', () =>
 
     await waitFor(() =>
       expect(
-        client.getQueryState(['studio', 'acme', 'projects', { archived: false, sort: 'opened', locale: 'en' }])
+        client.getQueryState(studioProjectsListKey('acme', { archived: false, sort: 'opened', locale: 'en' }))
           ?.isInvalidated,
       ).toBe(true),
     );
