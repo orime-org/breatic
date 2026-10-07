@@ -95,6 +95,23 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(deps.onFailure).not.toHaveBeenCalled();
   });
 
+  it('reports progress as the share of the file that has landed (inner#1127 A4)', async () => {
+    const big = new File([new Uint8Array(400)], 'clip.mp4', { type: 'video/mp4' });
+    const onProgress = vi.fn();
+    const deps = makeUploadDeps({
+      onProgress,
+      sendToIngest: vi.fn(async (_file, _ticket, _cfg, onPartLanded?: (n: number) => void) => {
+        onPartLanded?.(100);
+        onPartLanded?.(400);
+        return { assetId: 'a', fileUrl: 'https://cdn/c.mp4', kind: 'video' };
+      }),
+    });
+
+    await runMediaUpload(big, context, deps);
+
+    expect(onProgress.mock.calls).toEqual([[0.25], [1]]);
+  });
+
   // The node reads its result from Yjs and ignores this; an upload with no
   // node behind it has no other channel and reads it here (design §9).
   it('hands back what completing the upload said it became', async () => {

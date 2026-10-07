@@ -148,7 +148,10 @@ export interface MediaUploadDeps {
     file: File,
     ticket: UploadTicket,
     cfg: UploadClientConfig,
+    onPartLanded?: (bytesLanded: number) => void,
   ) => Promise<IngestOutcome>;
+  /** Told the share of the file that has landed, from 0 to 1, after each part. */
+  onProgress?: (fraction: number) => void;
   /**
    * The bytes are delivered and the server has them.
    *
@@ -236,7 +239,13 @@ export async function runMediaUpload(
   }
 
   try {
-    const outcome = await deps.sendToIngest(file, answer, cfg);
+    const { onProgress } = deps;
+    const outcome =
+      onProgress === undefined
+        ? await deps.sendToIngest(file, answer, cfg)
+        : await deps.sendToIngest(file, answer, cfg, (landed) => {
+          onProgress(landed / file.size);
+        });
     deps.onSuccess({
       fileUrl: outcome.fileUrl,
       assetId: outcome.assetId ?? undefined,
@@ -266,16 +275,22 @@ export class UploadFailedError extends Error {
  * behind it — it reads its result here rather than from Yjs.
  * @param file - The file to upload.
  * @param context - Where it lands and what it is for.
+ * @param onProgress - Told the share of the file that has landed, after each part.
  * @returns What the server filed the upload under.
  * @throws {UploadFailedError} When the upload does not complete.
  */
-export function uploadMedia(file: File, context: UploadContext): Promise<StoredUpload> {
+export function uploadMedia(
+  file: File,
+  context: UploadContext,
+  onProgress?: (fraction: number) => void,
+): Promise<StoredUpload> {
   return new Promise((resolve, reject) => {
     void runMediaUpload(file, context, {
       getUploadConfig: assetsApi.fetchUploadConfig,
       hashFile,
       requestTicket: assetsApi.requestUploadTicket,
       sendToIngest: sendFileAndFinish,
+      ...(onProgress !== undefined && { onProgress }),
       onSuccess: resolve,
       onFailure: (outcome) => reject(new UploadFailedError(outcome.reason)),
     });

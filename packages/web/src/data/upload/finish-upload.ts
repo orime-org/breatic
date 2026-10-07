@@ -63,6 +63,7 @@ export class BytesNotDelivered extends Error {
  * @param file - What the person picked.
  * @param ticket - What the ticket endpoint issued for it.
  * @param cfg - The upload knobs, which size the per-part deadlines.
+ * @param onPartLanded - Told how many bytes have landed, after each part.
  * @returns The registered row, as our server filed it.
  * @throws {Error} When any part is refused, or the finish fails every attempt.
  */
@@ -70,8 +71,9 @@ export async function sendFileAndFinish(
   file: File,
   ticket: UploadTicket,
   cfg: UploadClientConfig,
+  onPartLanded?: (bytesLanded: number) => void,
 ): Promise<IngestOutcome> {
-  const held = await sendBytesToIngest(file, ticket, cfg).catch(
+  const held = await sendBytesToIngest(file, ticket, cfg, onPartLanded).catch(
     (err: unknown) => {
       throw new BytesNotDelivered(err);
     },
