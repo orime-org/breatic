@@ -21,6 +21,7 @@ import {
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
 import { QUOTED } from '@web/spaces/document/document-list-block';
+import type { SlotAnchor } from '@web/spaces/document/document-upload-slots';
 
 /** How many rows and columns a new table has. */
 export interface TableSize {
@@ -129,6 +130,54 @@ export function insertBelow(
   } else {
     runBlockType(editor, choice, insertRowForMenu(editor, row), false);
   }
+}
+
+/** Where a media pick's files upload into, and the quoting they take. */
+export interface MediaGap {
+  readonly anchor: SlotAnchor;
+  readonly quoted: boolean;
+}
+
+/**
+ * The gap the insert-below submenu's media entries upload into
+ * (inner#1127 A1).
+ *
+ * The row a divider or a table gets under it is made here, at the pick, with
+ * the caret in it; the files go above that row. The upload finishing later
+ * then only adds blocks — it moves no caret and makes no row, so the reader
+ * typing elsewhere meanwhile is left where they are, and a batch of files
+ * lands with nothing between them.
+ * @param editor - The editor to write to.
+ * @param row - The block the menu was opened on.
+ * @returns The gap.
+ * @throws {Error} `Block with ID … not found`, from BlockNote's
+ *   `insertBlocks`, when the pressed block is no longer in the document.
+ */
+export function mediaGapBelow(editor: HandleEditor, row: PressedBlock): MediaGap {
+  const made = insertRowForMenu(editor, row);
+  const before = editor.getPrevBlock(made) as { id: string } | undefined;
+  return {
+    anchor: { before: before?.id ?? null, after: made },
+    quoted: row.props?.[QUOTED] === true,
+  };
+}
+
+/**
+ * The gap the plus menu's media entries upload into: above the empty line it
+ * was opened on, which keeps the caret (inner#1127 A1).
+ * @param editor - The editor to write to.
+ * @param row - The empty paragraph the plus is on.
+ * @returns The gap.
+ * @throws {Error} `Block with ID … not found`, from BlockNote, when the row is
+ *   no longer in the document.
+ */
+export function mediaGapOnRow(editor: HandleEditor, row: PressedBlock): MediaGap {
+  const before = editor.getPrevBlock(row.id) as { id: string } | undefined;
+  editor.setTextCursorPosition(row.id, 'start');
+  return {
+    anchor: { before: before?.id ?? null, after: row.id },
+    quoted: row.props?.[QUOTED] === true,
+  };
 }
 
 /**
