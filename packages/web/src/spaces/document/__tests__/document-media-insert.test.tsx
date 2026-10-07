@@ -117,7 +117,7 @@ describe('the file picker (A1)', () => {
     expect(input.accept.split(',').every((type) => type.startsWith('video/'))).toBe(true);
   });
 
-  it('makes the gap once files are chosen and starts them there', () => {
+  it('hands the chosen files over with the way to make their gap, and makes none itself', () => {
     const anchor = { before: 'a', after: 'b' };
     const gap = vi.fn(() => ({ anchor, quoted: true }));
     const { input, start } = setup(gap);
@@ -128,8 +128,9 @@ describe('the file picker (A1)', () => {
     const file = new File(['x'], 'clip.mp4', { type: 'video/mp4' });
     fireEvent.change(input, { target: { files: [file] } });
 
-    expect(gap).toHaveBeenCalledTimes(1);
-    expect(start).toHaveBeenCalledWith(expect.anything(), [file], anchor, true);
+    // The uploader makes the gap once a file is admitted.
+    expect(gap).not.toHaveBeenCalled();
+    expect(start).toHaveBeenCalledWith(expect.anything(), [file], gap);
   });
 
   it('makes no gap and starts nothing when the picker is closed with no file', () => {

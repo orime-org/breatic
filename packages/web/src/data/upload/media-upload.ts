@@ -30,11 +30,13 @@ import { hashFile } from '@web/data/upload/hash';
 
 /**
  * What the server filed a finished upload under, when it said: the address,
- * and the ledger row a cover or an avatar is then pointed at.
+ * the ledger row a cover or an avatar is then pointed at, and the kind it read
+ * off the stored bytes.
  */
 export interface StoredUpload {
   fileUrl: string | undefined;
   assetId: string | undefined;
+  kind: string | undefined;
 }
 
 /**
@@ -234,7 +236,7 @@ export async function runMediaUpload(
     // Nothing moves. When a node is behind this upload, the server has already
     // written its history and published what ends its handling; an upload with
     // no node reads what the answer names.
-    deps.onSuccess({ fileUrl: answer.fileUrl, assetId: answer.assetId });
+    deps.onSuccess({ fileUrl: answer.fileUrl, assetId: answer.assetId, kind: answer.kind });
     return;
   }
 
@@ -249,6 +251,7 @@ export async function runMediaUpload(
     deps.onSuccess({
       fileUrl: outcome.fileUrl,
       assetId: outcome.assetId ?? undefined,
+      kind: outcome.kind,
     });
   } catch (err) {
     deps.onFailure({

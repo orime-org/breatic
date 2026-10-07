@@ -55,10 +55,20 @@ export interface DocumentUploaderDeps {
   readonly undo: UndoCapture;
 }
 
+/** Where admitted files go, and whether that gap is inside a quote. */
+export interface UploadGap {
+  readonly anchor: SlotAnchor;
+  readonly quoted: boolean;
+}
+
 /** What the entries and the placeholders call. */
 export interface DocumentUploader {
-  /** Admits the files and starts the ones that pass, at one gap. */
-  start(view: EditorView, files: readonly File[], anchor: SlotAnchor, quoted: boolean): Promise<void>;
+  /**
+   * Admits the files and starts the ones that pass at one gap, asked for only
+   * once at least one file is admitted (the insert menu makes its gap then);
+   * null puts nothing anywhere.
+   */
+  start(view: EditorView, files: readonly File[], place: () => UploadGap | null): Promise<void>;
   /** Sends a failed file again, when doing so can end differently. */
   retry(view: EditorView, slotId: string): void;
   /** Takes a failed placeholder away. */
@@ -68,9 +78,11 @@ export interface DocumentUploader {
 /** A file that was admitted, and what it needs to become a block. */
 interface Held {
   readonly file: File;
-  readonly type: MediaType;
   readonly quoted: boolean;
 }
+
+/** The kinds the server files that have a block to become. */
+const MEDIA_TYPES: readonly string[] = ['image', 'video', 'audio'] satisfies MediaType[];
 
 /** The failure a body that stopped being editable meanwhile shows. */
 const READ_ONLY: SlotFailure = {
@@ -137,10 +149,18 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       return;
     }
     deps.unregister(slotId);
-    if (stored.fileUrl === undefined) {
+    if (stored.fileUrl === undefined || stored.kind === undefined) {
       patchUploadSlot(view, slotId, {
         phase: 'failed',
         failure: failureOf(new UploadFailedError('upload'), entry.file),
+      });
+      return;
+    }
+    // The kind the server read off the stored bytes, not the name's guess.
+    if (!MEDIA_TYPES.includes(stored.kind)) {
+      patchUploadSlot(view, slotId, {
+        phase: 'failed',
+        failure: failureOf(new UploadFailedError('unsupportedType'), entry.file),
       });
       return;
     }
@@ -152,7 +172,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       view,
       slotId,
       {
-        type: entry.type,
+        type: stored.kind as MediaType,
         props: { url: stored.fileUrl, name: entry.file.name, [QUOTED]: entry.quoted },
       },
       deps.undo,
@@ -161,7 +181,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
   }
 
   return {
-    async start(view, files, anchor, quoted) {
+    async start(view, files, place) {
       const maxBytes = await deps.maxUploadBytes();
       const admitted: File[] = [];
       for (const file of files) {
@@ -176,10 +196,11 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
         }
       }
       if (admitted.length === 0) return;
-      const ids = addUploadBatch(view, anchor, admitted.map((file) => file.name));
+      const gap = place();
+      if (gap === null) return;
+      const ids = addUploadBatch(view, gap.anchor, admitted.map((file) => file.name));
       ids.forEach((slotId, k) => {
-        const file = admitted[k]!;
-        held.set(slotId, { file, type: fileToNodeSpec(file).nodeType as MediaType, quoted });
+        held.set(slotId, { file: admitted[k]!, quoted: gap.quoted });
         void run(view, slotId);
       });
     },

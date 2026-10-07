@@ -106,13 +106,15 @@ export function ingestRefusalToastKey(status: number | undefined): string {
 /**
  * Whether sending the same file again can end differently.
  *
- * Only the catch-all is about this attempt. Every named reason is about the
- * file or the account, and re-sending meets the same answer.
+ * The catch-all and a transfer are about this attempt: a transfer ends when
+ * the connection drops, the ticket runs out or the edge could not store a
+ * part, and a fresh ticket starts all of that over. The other reasons are
+ * about the file or the account, and re-sending meets the same answer.
  * @param reason - Why the upload ended.
  * @returns True when a Retry is worth offering.
  */
 export function uploadRetryCanChange(reason: UploadFailure['reason']): boolean {
-  return reason === 'upload';
+  return reason === 'upload' || reason === 'transfer';
 }
 
 /**

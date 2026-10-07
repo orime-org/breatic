@@ -73,9 +73,8 @@ export function DocumentMediaPicker({
       pending.current = null;
       const target = view();
       if (files.length === 0 || makeGap === null || target === null) return;
-      const gap = makeGap();
-      if (gap === null) return;
-      void uploader.start(target, files, gap.anchor, gap.quoted);
+      // The gap is made only once a file is admitted.
+      void uploader.start(target, files, makeGap);
     },
     [uploader, view],
   );

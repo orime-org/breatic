@@ -123,6 +123,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith({
       fileUrl: 'https://cdn/p.png',
       assetId: 'asset-new',
+      kind: 'image',
     });
   });
 
@@ -142,6 +143,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith({
       fileUrl: 'https://cdn/existing.png',
       assetId: 'asset-existing',
+      kind: 'image',
     });
   });
 
@@ -321,6 +323,7 @@ describe('uploadMedia — the pipeline wired to the real network, as a promise',
     await expect(uploadMedia(file, { projectId: 'p1', derived: true })).resolves.toEqual({
       fileUrl: 'https://cdn/p.png',
       assetId: 'asset-new',
+      kind: 'image',
     });
     expect(assetsApi.requestUploadTicket).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: 'p1', derived: true, hash: HASH }),

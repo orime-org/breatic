@@ -137,8 +137,8 @@ describe('resolveUploadFailure', () => {
 });
 
 describe('which failures a retry can change (shared with the document body, inner#1127 A6)', () => {
-  it('answers yes for the catch-all alone', () => {
-    expect(UPLOAD_FAILURE_REASONS.filter(uploadRetryCanChange)).toEqual(['upload']);
+  it('answers yes for the failures that are about this attempt: a transfer and the catch-all', () => {
+    expect(UPLOAD_FAILURE_REASONS.filter(uploadRetryCanChange)).toEqual(['transfer', 'upload']);
   });
 
   it('names the same sentence a toast would, a transfer with no row reading as a failed upload', () => {
