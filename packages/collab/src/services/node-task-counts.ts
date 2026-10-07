@@ -46,6 +46,10 @@ export function applyNodeTaskCounts(
   const data = node.get("data");
   if (!(data instanceof Y.Map)) return;
   const isText = node.get("type") === "text";
+  // The server republishes a node's counts whenever its task list is read,
+  // by anyone who may view it. Writing the same four numbers again would
+  // still be a document update, stored and counted as an edit of the project.
+  if (event.result === undefined && sameCounts(data.get("taskCounts"), event.counts)) return;
 
   doc.transact(() => {
     data.set("taskCounts", { ...event.counts });
@@ -67,4 +71,21 @@ export function applyNodeTaskCounts(
     data.set("content", result.content);
     writeNodeMedia(data, result);
   });
+}
+
+/**
+ * Whether the counts a node holds are exactly these.
+ * @param held - What the node's `taskCounts` holds, if anything.
+ * @param next - The counts just published.
+ * @returns True when all four match.
+ */
+function sameCounts(held: unknown, next: NodeTaskCounts): boolean {
+  if (typeof held !== "object" || held === null) return false;
+  const h = held as Partial<NodeTaskCounts>;
+  return (
+    h.running === next.running &&
+    h.done === next.done &&
+    h.failed === next.failed &&
+    h.expired === next.expired
+  );
 }

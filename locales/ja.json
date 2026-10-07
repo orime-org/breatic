@@ -1376,7 +1376,7 @@
       "emptyTitle": "最近のコンテンツはまだありません",
       "emptyHint": "まだ Project を作成・参加していません。最初の Project を作成するか、Studio を開いて始めましょう —— 編集した内容がここに表示されます。",
       "loadError": "最近の Projects を読み込めませんでした。ページを再読み込みしてください。",
-      "openedAt": "{time}に開いた"
+      "openedAt": "最後に開いた：{time}"
     },
     "topBar": {
       "home": "Studio ホーム",
@@ -1430,7 +1430,7 @@
       "card": {
         "assetCount": "アセット {count} 個",
         "more": "その他の操作",
-        "createdAt": "{time}に作成",
+        "createdAt": "作成：{time}",
         "rename": "名前を変更",
         "duplicate": "複製",
         "archive": "アーカイブ",
@@ -1447,7 +1447,11 @@
         "archived": "アーカイブしました",
         "archiveFailed": "アーカイブできませんでした",
         "restored": "復元しました",
-        "restoreFailed": "復元できませんでした"
+        "restoreFailed": "復元できませんでした",
+        "openedAt": "最後に開いた：{time}",
+        "editedAt": "最終編集：{time}",
+        "archivedAt": "アーカイブ：{time}",
+        "neverOpened": "未オープン"
       },
       "projects": {
         "new": "Project を新規作成",
@@ -1607,7 +1611,18 @@
       },
       "toolbar": {
         "sortLabel": "並び替え",
-        "sortValue": "最近開いた順"
+        "sortValue": "最近開いた順",
+        "sort": {
+          "opened": "最近開いた順",
+          "edited": "最近編集した順",
+          "name": "名前",
+          "created": "作成日",
+          "archived": "アーカイブ日"
+        },
+        "view": {
+          "grid": "グリッド表示",
+          "list": "リスト表示"
+        }
       },
       "imageError": {
         "too_large": "そのファイルは 20 MB を超えています。もっと小さい画像を選んでください。",
@@ -1633,6 +1648,20 @@
       "archived": {
         "emptyTitle": "アーカイブ済みの Project はありません",
         "emptyHint": "アーカイブした Project はここに表示され、いつでも復元できます。"
+      },
+      "list": {
+        "columns": {
+          "name": "名前",
+          "opened": "最近開いた日時",
+          "edited": "最終編集",
+          "created": "作成日",
+          "archived": "アーカイブ日",
+          "role": "自分の役割"
+        },
+        "loadFailed": "Projects を読み込めませんでした",
+        "pageFailed": "残りの Projects を読み込めませんでした",
+        "retry": "再試行",
+        "end": "Project {count} 件"
       }
     },
     "rail": {

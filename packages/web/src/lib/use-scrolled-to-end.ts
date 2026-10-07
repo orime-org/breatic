@@ -6,7 +6,7 @@ import * as React from 'react';
 interface ScrolledToEndOptions {
   /** There is more to fetch. Nothing is watched when this is false. */
   enabled: boolean;
-  /** Called when the end of the list comes into view, or scrolled to again. */
+  /** Called when the end of the list comes into view, or scrolled toward again. */
   onReachEnd: () => void;
   /**
    * How many rows are listed right now.
@@ -26,8 +26,7 @@ interface ScrolledToEndOptions {
    * view when an attempt fails -- nothing moved -- so a watcher for it would
    * report the same thing the instant it started, and asking again would be
    * the failure's own doing rather than the reader's. While this is true the
-   * end is not watched at all; a scroll is, and that is a thing only the
-   * reader can do.
+   * end is not watched at all; a scroll toward the end is.
    */
   failed?: boolean;
 }
@@ -64,10 +63,12 @@ interface ScrolledToEndRefs {
  * fill its window past its second page: the end came into view once and stayed
  * there, and a watcher only reports crossings.
  *
- * After a failure it watches for a scroll instead. The end being in view is a
- * state, and a state that a failure leaves untouched: watching it again would
- * report it again immediately, and the next request would be the failure's own
- * doing. A scroll is an event, and one only the reader produces.
+ * After a failure it watches for a scroll toward the end instead. The end
+ * being in view is a state, and a state that a failure leaves untouched:
+ * watching it again would report it again immediately, and the next request
+ * would be the failure's own doing. A scroll back is no sign either: the
+ * failure row is usually shorter than the placeholder rows it replaces, and
+ * the browser pulls the scroll back to fit, firing a scroll of its own.
  *
  * That leaves one case with no way to ask again: a list too short to scroll,
  * whose page failed. Reaching the end is the only way to ask, and a list that
@@ -79,7 +80,7 @@ interface ScrolledToEndRefs {
  * end stays in view, and only the caller knows whether a request is out.
  * @param options - What to watch, and what to call.
  * @param options.enabled - There is more to fetch.
- * @param options.onReachEnd - Called when the end comes into view, or is scrolled to again.
+ * @param options.onReachEnd - Called when the end comes into view, or is scrolled toward again.
  * @param options.itemCount - How many rows are listed right now.
  * @param options.failed - The last attempt did not arrive.
  * @returns The two refs to place.
@@ -98,12 +99,22 @@ export function useScrolledToEnd({
     if (!sentinel || !viewport || !enabled) return;
 
     if (failed) {
+      let last = viewport.scrollTop;
       /**
-       * The reader has moved, which is them asking again.
-       * @returns Nothing.
+       * The reader has moved toward the end, which is them asking again.
+       * Moving back is not: it is also what the browser does on its own when
+       * the failure row comes in shorter than the rows it replaces.
        */
-      const moved = (): void => onReachEnd();
-      viewport.addEventListener('scroll', moved, { passive: true, once: true });
+      const moved = (): void => {
+        const top = viewport.scrollTop;
+        if (top <= last) {
+          last = top;
+          return;
+        }
+        viewport.removeEventListener('scroll', moved);
+        onReachEnd();
+      };
+      viewport.addEventListener('scroll', moved, { passive: true });
       return () => viewport.removeEventListener('scroll', moved);
     }
 

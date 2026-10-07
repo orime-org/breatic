@@ -30,15 +30,14 @@ export interface ContainerProject {
   thumbnailUrl: string | null;
   /** The viewer's role on this project, or `null` when they are not a member of it. Owner is derived as `myRole === 'owner'`; no redundant `isOwner` field. */
   myRole: ItemRole | null;
-  /**
-   * ISO-8601 creation timestamp, shown as the card's "created {time}" label.
-   * The studio container is a catalog — it shows a stable creation time, NOT a
-   * "last modified" time (canvas edits live in Yjs and never touch the project
-   * row, so "modified" would be misleading). Recent-landing handles recency.
-   */
+  /** ISO-8601 creation timestamp. */
   createdAt: string;
   /** ISO-8601 archive timestamp, or `null` while the project is live. */
   archivedAt: string | null;
+  /** ISO-8601 time the viewer last opened it, or `null` if they never have. */
+  lastOpenedAt: string | null;
+  /** ISO-8601 time its content or metadata last changed; its creation time until then. */
+  lastEditedAt: string;
   /** The card menu may offer rename and change cover. */
   canManageMeta: boolean;
   /** The card menu may offer duplicate. */
@@ -50,6 +49,12 @@ export interface ContainerProject {
   /** The card menu may offer leaving the project. */
   canLeave: boolean;
 }
+
+/** Which of a project's times a card or row shows: the one its list is sorted by. */
+export type ProjectTimeKind = 'opened' | 'edited' | 'created' | 'archived';
+
+/** How a projects list is laid out. */
+export type ProjectListView = 'grid' | 'list';
 
 /** The dominant media kind of a collection, shown as a tag (spec §3.4). */
 export type CollectionKind = 'image' | 'video' | 'audio';

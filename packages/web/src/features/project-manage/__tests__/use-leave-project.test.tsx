@@ -17,10 +17,12 @@ vi.mock('@web/lib/toast', () => ({
 import { projectsApi } from '@web/data/api';
 import { toast } from '@web/lib/toast';
 import { ApiException } from '@web/data/api/types';
+import { studioProjectsListKey } from '@web/data/api/projects';
 import { useLeaveProject } from '@web/features/project-manage/use-leave-project';
 
 const LISTS = [
-  ['studio', 'acme', 'projects'],
+  studioProjectsListKey('acme', { archived: false, sort: 'opened', locale: 'en' }),
+  studioProjectsListKey('acme', { archived: true, sort: 'archived', locale: 'en' }),
   ['studios', 'recent'],
 ] as const;
 

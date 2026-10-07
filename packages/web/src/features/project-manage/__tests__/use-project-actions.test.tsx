@@ -21,13 +21,15 @@ vi.mock('@web/lib/toast', () => ({
 import { projectsApi } from '@web/data/api';
 import { toast } from '@web/lib/toast';
 import { ApiException } from '@web/data/api/types';
+import { studioProjectsListKey } from '@web/data/api/projects';
 import { useProjectActions } from '@web/features/project-manage/use-project-actions';
 
 // Every studio's lists: the in-project banner does not know the studio's slug.
+const LIVE = studioProjectsListKey('acme', { archived: false, sort: 'opened', locale: 'en' });
 const LISTS = [
-  ['studio', 'acme', 'projects'],
-  ['studio', 'acme', 'projects', 'archived'],
-  ['studio', 'other', 'projects', 'archived'],
+  LIVE,
+  studioProjectsListKey('acme', { archived: true, sort: 'archived', locale: 'en' }),
+  studioProjectsListKey('other', { archived: true, sort: 'name', locale: 'zh-CN' }),
   ['studios', 'recent'],
   ['project', 'p1'],
 ] as const;
@@ -86,6 +88,6 @@ describe('useProjectActions', () => {
         description: 'This studio is full.',
       }),
     );
-    expect(client.getQueryState(['studio', 'acme', 'projects'])?.isInvalidated).toBe(false);
+    expect(client.getQueryState([...LIVE])?.isInvalidated).toBe(false);
   });
 });

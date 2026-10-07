@@ -1447,7 +1447,11 @@
         "archived": "보관했습니다",
         "archiveFailed": "보관하지 못했습니다",
         "restored": "복원했습니다",
-        "restoreFailed": "복원하지 못했습니다"
+        "restoreFailed": "복원하지 못했습니다",
+        "openedAt": "{time}에 열람",
+        "editedAt": "{time}에 수정",
+        "archivedAt": "{time}에 보관",
+        "neverOpened": "열지 않음"
       },
       "projects": {
         "new": "새 Project",
@@ -1607,7 +1611,18 @@
       },
       "toolbar": {
         "sortLabel": "정렬",
-        "sortValue": "최근 연 순"
+        "sortValue": "최근 연 순",
+        "sort": {
+          "opened": "최근 연 순",
+          "edited": "최근 수정 순",
+          "name": "이름",
+          "created": "생성일",
+          "archived": "보관일"
+        },
+        "view": {
+          "grid": "그리드 보기",
+          "list": "목록 보기"
+        }
       },
       "imageError": {
         "too_large": "파일이 20 MB를 넘습니다. 더 작은 이미지를 선택하세요.",
@@ -1633,6 +1648,20 @@
       "archived": {
         "emptyTitle": "보관된 Project가 없습니다",
         "emptyHint": "보관한 Project는 여기에 표시되며 언제든 복원할 수 있습니다."
+      },
+      "list": {
+        "columns": {
+          "name": "이름",
+          "opened": "최근 열람",
+          "edited": "최근 수정",
+          "created": "생성일",
+          "archived": "보관일",
+          "role": "내 역할"
+        },
+        "loadFailed": "Projects를 불러오지 못했습니다",
+        "pageFailed": "나머지 Projects를 불러오지 못했습니다",
+        "retry": "다시 시도",
+        "end": "Project {count}개"
       }
     },
     "rail": {

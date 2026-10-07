@@ -27,6 +27,7 @@ const {
   activityInsertIgnoreMock,
   activityLatestUnrestoredMock,
   activityConsumeRestoreMock,
+  recordEditMock,
 } = vi.hoisted(() => ({
   softDeleteByNameMock: vi.fn(),
   restoreByNameMock: vi.fn(),
@@ -38,6 +39,7 @@ const {
   activityInsertIgnoreMock: vi.fn(),
   activityLatestUnrestoredMock: vi.fn(),
   activityConsumeRestoreMock: vi.fn(),
+  recordEditMock: vi.fn(),
 }));
 
 // The yjs-store repo moved to collab; space-rpc imports it locally.
@@ -46,6 +48,12 @@ vi.mock("@collab/services/yjs-documents.repo.js", () => ({
   restoreByName: restoreByNameMock,
   seedInitialState: seedInitialStateMock,
   countLiveSpaceDocs: countLiveSpaceDocsMock,
+}));
+
+// The project's edit time is recorded through this module; here only whether
+// it is asked to is observed.
+vi.mock("@collab/services/project-edit-recorder.js", () => ({
+  recordProjectEdit: recordEditMock,
 }));
 
 // The cross-instance delete lock is unit-tested in space-delete-lock.test.ts.
@@ -157,6 +165,7 @@ beforeEach(() => {
   activityLatestUnrestoredMock.mockReset();
   activityLatestUnrestoredMock.mockResolvedValue(null);
   activityConsumeRestoreMock.mockReset();
+  recordEditMock.mockReset();
   // Default: this instance wins the consume CAS (returns true).
   activityConsumeRestoreMock.mockResolvedValue(true);
 });
@@ -548,6 +557,33 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
     );
     expect(res.ok).toBe(true);
     expect(activityInsertMock).not.toHaveBeenCalled();
+  });
+
+  it("a published Space change records the project as edited", async () => {
+    seedSpace(SID, { type: "canvas", name: "Old", locked: false });
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "u-1", role: "editor" },
+      { id: "r1", type: "space:rename", payload: { spaceId: SID, name: "New" } },
+    );
+
+    expect(res.ok).toBe(true);
+    expect(recordEditMock).toHaveBeenCalledWith(PID);
+  });
+
+  it("a Space change that writes nothing records no edit", async () => {
+    seedSpace(SID, { type: "canvas", name: "Same", locked: false });
+
+    await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "u-1", role: "editor" },
+      { id: "r1", type: "space:rename", payload: { spaceId: SID, name: "Same" } },
+    );
+
+    expect(recordEditMock).not.toHaveBeenCalled();
   });
 
   it("space:rename refuses when the space is locked", async () => {
