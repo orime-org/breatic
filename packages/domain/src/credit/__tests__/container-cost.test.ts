@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { containerCostUsd } from "@worker/handlers/container/billing.js";
+import { containerCostUsd } from "@domain/credit/container-cost.js";
 
 const STD1 = { vcpu: 0.5, memory_gib: 4, disk_gb: 8 };
 const PRICES = { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 };

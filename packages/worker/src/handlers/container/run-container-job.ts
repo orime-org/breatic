@@ -17,6 +17,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { env, getMiniToolsConfig, logger } from "@breatic/core";
 import {
   assetService,
+  containerCostUsd,
   createUsageRecorder,
   creditsForUsd,
   ingestReportService,
@@ -36,7 +37,6 @@ import {
   type MiniToolSpec,
 } from "@breatic/shared/mini-tools";
 
-import { containerCostUsd } from "@worker/handlers/container/billing.js";
 import { storedAsOutput } from "@worker/handlers/persisted-output.js";
 import type { PersistedOutput } from "@worker/handlers/persisted-output.js";
 

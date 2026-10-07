@@ -31,6 +31,7 @@ import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/
 // here would let all three drift from it while the suite stayed green.
 import { UNDERSTAND_PINS as REAL_UNDERSTAND_PINS } from "../../../../domain/src/understand/types.js";
 import { creditsForUsd as REAL_CREDITS_FOR_USD } from "../../../../domain/src/credit/usage-cost.js";
+import { containerCostUsd as REAL_CONTAINER_COST_USD } from "../../../../domain/src/credit/container-cost.js";
 // Real: the tracker is pure, and what a turn hands off depends on it.
 import {
   isGenerationId as realIsGenerationId,
@@ -582,6 +583,7 @@ export const domainMock = () => ({
   MIN_TASK_CREDIT_COST: 5,
   // Arithmetic, so the real one: a double would be a second copy of the rate.
   creditsForUsd: REAL_CREDITS_FOR_USD,
+  containerCostUsd: REAL_CONTAINER_COST_USD,
   estimateTaskCredits: vi.fn().mockResolvedValue(5),
   violatesSourceRequirementForModel: mocks.violatesSourceRequirementForModel,
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,

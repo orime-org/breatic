@@ -85,6 +85,8 @@ describe("POST /mini-tools", () => {
       image: [CRYSTAL],
       video: [],
       audio: [VOCALS],
+      tts: [],
+      three_d: [],
     } as never);
   });
 
@@ -180,6 +182,8 @@ describe("POST /mini-tools", () => {
       image: [],
       video: [],
       audio: [],
+      tts: [],
+      three_d: [],
     } as never);
     const res = await post({
       tool: "image.upscale",

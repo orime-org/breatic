@@ -36,7 +36,9 @@ vi.mock("@breatic/core", () => ({
   }),
 }));
 
-vi.mock("@breatic/domain", () => ({
+vi.mock("@breatic/domain", async () => ({
+  // The billing formula itself, so the charge these cases assert is the real one.
+  containerCostUsd: (await import("@domain/credit/container-cost.js")).containerCostUsd,
   assetService: { mediaLimits: () => ({ runDeadlineMs: 1, toolTimeoutMs: 1 }) },
   creditsForUsd: (usd: number, multiplier: number) => usd * 100 * multiplier,
   createUsageRecorder: () => ({ recordServiceCall: h.recordServiceCall, settle: async () => 0 }),

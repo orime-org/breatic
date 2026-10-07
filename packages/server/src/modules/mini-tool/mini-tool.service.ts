@@ -10,6 +10,7 @@
 
 import { AppError, env, getMiniToolsConfig, getStorageAdapter } from "@breatic/core";
 import {
+  containerCostUsd,
   creditsForUsd,
   estimateTaskCredits,
   MIN_TASK_CREDIT_COST,
@@ -18,9 +19,9 @@ import {
 import {
   paramValueAllowed,
   t,
-  type ModelEntry,
 } from "@breatic/shared";
 import {
+  catalogEntryOf,
   isModelTool,
   miniToolEstimateInput,
   type MiniToolRequest,
@@ -38,18 +39,6 @@ export interface PreparedRun {
   sourceKey: string | undefined;
   /** What the precheck holds the reader to. */
   credits: number;
-}
-
-/**
- * The catalog entry a model is served under.
- * @param name - The model name.
- * @returns The entry, or undefined when this deployment does not serve it.
- */
-function servedModel(name: string): ModelEntry | undefined {
-  const catalog = modelCatalog.getModelCatalog();
-  return [catalog.image, catalog.video, catalog.audio, catalog.tts, catalog.three_d]
-    .flatMap((bucket) => bucket ?? [])
-    .find((entry) => entry.name === name);
 }
 
 /**
@@ -79,7 +68,7 @@ function snapshotOf(body: MiniToolRequest): MiniToolSnapshot {
  */
 async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promise<PreparedRun> {
   const model = spec.run.kind === "model" ? spec.run.model : "";
-  const entry = servedModel(model);
+  const entry = catalogEntryOf(modelCatalog.getModelCatalog(), model);
   if (!entry) throw new AppError(503, t("server.mini_tool.unavailable"));
   for (const [name, value] of Object.entries(body.params)) {
     const declared = entry.params?.[name];
@@ -113,15 +102,13 @@ async function prepareContainerRun(op: string, body: MiniToolRequest): Promise<P
   const config = getMiniToolsConfig();
   const plan = config.ops[op as keyof typeof config.ops];
   const size = config.classes[plan.container_class]!;
-  const perSecond =
-    size.vcpu * config.prices.vcpu_second_usd +
-    size.memory_gib * config.prices.memory_gib_second_usd +
-    size.disk_gb * config.prices.disk_gb_second_usd;
+  // The expected run billed as the charge bills it, with the full vCPU for its time.
+  const usd = containerCostUsd({ wallMs: plan.precheck_seconds * 1000, cpuUsec: null }, size, config.prices);
   return {
     model: undefined,
     params: body.params,
     sourceKey,
-    credits: Math.max(creditsForUsd(perSecond * plan.precheck_seconds, env.CREDIT_MULTIPLIER), MIN_TASK_CREDIT_COST),
+    credits: Math.max(creditsForUsd(usd, env.CREDIT_MULTIPLIER), MIN_TASK_CREDIT_COST),
   };
 }
 

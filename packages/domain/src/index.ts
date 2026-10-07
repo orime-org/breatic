@@ -25,6 +25,11 @@ export * as creditLotService from "@domain/credit/creditLot.service.js";
 export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 export { SMALLEST_CREDIT } from "@domain/credit/credit-math.js";
 export {
+  containerCostUsd,
+  type ContainerPrices,
+  type ContainerSize,
+} from "@domain/credit/container-cost.js";
+export {
   createUsageRecorder,
   type RecordedOperation,
   type UsageRecorder,
