@@ -381,6 +381,7 @@ export type { AdjustValue } from "@shared/adjust-value.js";
 export {
   CONTAINER_OPS,
   MINI_TOOLS,
+  catalogEntryOf,
   defaultParamsOf,
   isModelTool,
   localParamLabelKey,
@@ -389,6 +390,7 @@ export {
   miniToolRequestSchema,
   miniToolsFor,
   modelOf,
+  servedMiniToolsFor,
   toolParamKeys,
 } from "@shared/mini-tools/index.js";
 export type {

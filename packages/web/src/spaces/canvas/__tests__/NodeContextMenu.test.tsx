@@ -244,8 +244,8 @@ describe('NodeContextMenu', () => {
   // asset actions; a node of such a kind with nothing in it greys the row.
   describe('tools submenu', () => {
     const TOOLS = [
-      { id: 'image.upscale', labelKey: 'canvas.miniTool.image.upscale.label' },
-      { id: 'image.remove-bg', labelKey: 'canvas.miniTool.image.remove-bg.label' },
+      { id: 'image.upscale', labelKey: 'canvas.miniTool.image.upscale.label', icon: 'Maximize2' as const },
+      { id: 'image.remove-bg', labelKey: 'canvas.miniTool.image.remove-bg.label', icon: 'Eraser' as const },
     ];
 
     it('leaves Tools out for a kind that offers no tools', () => {
@@ -279,6 +279,8 @@ describe('NodeContextMenu', () => {
         'node-menu-tool-image.upscale',
         'node-menu-tool-image.remove-bg',
       ]);
+      // Each row leads with its tool's icon, as the menu's other rows do.
+      expect(items.every((item) => item.querySelector('svg') !== null)).toBe(true);
       fireEvent.click(screen.getByTestId('node-menu-tool-image.remove-bg'));
       expect(onTool).toHaveBeenCalledWith('image.remove-bg');
     });

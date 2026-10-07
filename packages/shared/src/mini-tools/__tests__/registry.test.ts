@@ -9,8 +9,10 @@ import {
   miniToolById,
   miniToolEstimateInput,
   miniToolRequestSchema,
+  catalogEntryOf,
   miniToolsFor,
   modelOf,
+  servedMiniToolsFor,
   toolParamKeys,
 } from "@shared/mini-tools/index.js";
 
@@ -96,6 +98,41 @@ describe("miniToolsFor", () => {
     expect(miniToolsFor("text")).toEqual([]);
     expect(miniToolsFor("3d")).toEqual([]);
     expect(miniToolsFor("web")).toEqual([]);
+  });
+});
+
+// inner#888 A1: a model tool whose pinned model the catalog does not serve is
+// left off the submenu, as the generation panel leaves such models off its list.
+describe("servedMiniToolsFor", () => {
+  const entry = (name: string) => ({ name }) as never;
+  const catalog = {
+    image: [entry("crystal-upscaler")],
+    video: [],
+    audio: [],
+    tts: [],
+    three_d: [],
+    total: 1,
+    credit_multiplier: 1,
+  } as never;
+
+  it("keeps browser tools and the model tools the catalog serves, in order", () => {
+    expect(servedMiniToolsFor("image", catalog).map((tool) => tool.id)).toEqual([
+      "image.upscale",
+      "image.crop",
+      "image.rotate",
+    ]);
+  });
+
+  it("lists no model tools before the catalog has loaded", () => {
+    expect(servedMiniToolsFor("image", undefined).map((tool) => tool.id)).toEqual([
+      "image.crop",
+      "image.rotate",
+    ]);
+  });
+
+  it("finds a catalog entry by name in any bucket", () => {
+    expect(catalogEntryOf(catalog, "crystal-upscaler")).toEqual({ name: "crystal-upscaler" });
+    expect(catalogEntryOf(catalog, "absent")).toBeUndefined();
   });
 });
 

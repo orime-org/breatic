@@ -33,7 +33,9 @@ import {
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
+import type { MiniToolIcon } from '@breatic/shared';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
+import { MINI_TOOL_ICONS } from '@web/spaces/canvas/mini-tool/tool-icons';
 
 /**
  * The tools submenu stands 4px off the menu's edge. `sideOffset` measures
@@ -46,6 +48,7 @@ const SUBMENU_SIDE_OFFSET = 4 + 5;
 export interface NodeMenuTool {
   id: string;
   labelKey: string;
+  icon: MiniToolIcon;
 }
 
 interface NodeContextMenuProps {
@@ -352,15 +355,19 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                   {t('canvas.nodeMenu.tools')}
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent sideOffset={SUBMENU_SIDE_OFFSET}>
-                  {tools?.map((tool) => (
-                    <DropdownMenuItem
-                      key={tool.id}
-                      data-testid={`node-menu-tool-${tool.id}`}
-                      onSelect={() => onTool?.(tool.id)}
-                    >
-                      {t(tool.labelKey)}
-                    </DropdownMenuItem>
-                  ))}
+                  {tools?.map((tool) => {
+                    const Icon = MINI_TOOL_ICONS[tool.icon];
+                    return (
+                      <DropdownMenuItem
+                        key={tool.id}
+                        data-testid={`node-menu-tool-${tool.id}`}
+                        onSelect={() => onTool?.(tool.id)}
+                      >
+                        <Icon className='mr-2 h-4 w-4' aria-hidden='true' />
+                        {t(tool.labelKey)}
+                      </DropdownMenuItem>
+                    );
+                  })}
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
             ) : null}

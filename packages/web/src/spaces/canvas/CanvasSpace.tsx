@@ -37,7 +37,7 @@ import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 import { claimRegion } from '@web/features/active-region/use-track-active-region';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { useKeyboardNudge } from '@web/spaces/canvas/use-keyboard-nudge';
-import { canGenerate, defaultParamsOf, miniToolById, miniToolsFor, newId } from '@breatic/shared';
+import { canGenerate, defaultParamsOf, miniToolById, miniToolsFor, newId, servedMiniToolsFor } from '@breatic/shared';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 
 import { Button } from '@web/components/ui/button';
@@ -53,7 +53,8 @@ import {
 } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { historyKey } from '@web/spaces/canvas/history/use-node-history';
 import { usePrefetchModelCatalog } from '@web/spaces/canvas/generate/use-prefetch-model-catalog';
 import {
@@ -3810,12 +3811,19 @@ function CanvasSpaceInner({
   }, [nodeMenu.nodeId, projectId, spaceId, queryClient]);
   // Tools act on the asset the node is showing, so they are listed exactly
   // when Download is offered (inner#888 §7.1).
+  // A model tool whose pinned model the catalog does not serve is left off,
+  // as the generation panel leaves such models off its list.
+  const menuCatalog = useQuery(modelCatalogQuery()).data;
   const menuTools = React.useMemo(
     () =>
       menuDownloadUrl === null
         ? undefined
-        : miniToolsFor(nodeMenu.type).map((tool) => ({ id: tool.id, labelKey: tool.labelKey })),
-    [menuDownloadUrl, nodeMenu.type],
+        : servedMiniToolsFor(nodeMenu.type, menuCatalog).map((tool) => ({
+          id: tool.id,
+          labelKey: tool.labelKey,
+          icon: tool.icon,
+        })),
+    [menuDownloadUrl, nodeMenu.type, menuCatalog],
   );
   const openMiniTool = useCanvasSession((s) => s.openMiniTool);
   const openToolFromMenu = React.useCallback(

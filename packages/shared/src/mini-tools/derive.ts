@@ -11,6 +11,7 @@ import { defaultAdjustValue } from "@shared/adjust-value.js";
 import { MINI_TOOLS } from "@shared/mini-tools/tools.js";
 import type { MiniToolParam, MiniToolSpec, ModelToolSpec } from "@shared/mini-tools/types.js";
 import type { EstimateInput } from "@shared/pricing/estimate.js";
+import type { ModelCatalog, ModelEntry } from "@shared/types/model-catalog.js";
 
 /** One piece of media picked into a slot. */
 export interface MiniToolSlotValue {
@@ -46,6 +47,34 @@ export function miniToolById(id: string): MiniToolSpec | undefined {
  */
 export function miniToolsFor(type: string): readonly MiniToolSpec[] {
   return MINI_TOOLS.filter((tool) => tool.source === type);
+}
+
+/**
+ * The catalog entry with this name, in whichever modality bucket holds it.
+ * @param catalog - The model catalog.
+ * @param name - The model name.
+ * @returns The entry, or undefined when the catalog does not serve it.
+ */
+export function catalogEntryOf(catalog: ModelCatalog, name: string): ModelEntry | undefined {
+  for (const bucket of [catalog.image, catalog.video, catalog.audio, catalog.tts, catalog.three_d]) {
+    const entry = bucket.find((model) => model.name === name);
+    if (entry !== undefined) return entry;
+  }
+  return undefined;
+}
+
+/**
+ * The tools a node of this type can open now: every browser and container
+ * tool, and the model tools whose pinned model the catalog serves.
+ * @param type - The node's type.
+ * @param catalog - The model catalog, or undefined before it has loaded.
+ * @returns The tools in submenu order.
+ */
+export function servedMiniToolsFor(type: string, catalog: ModelCatalog | undefined): readonly MiniToolSpec[] {
+  return miniToolsFor(type).filter((tool) => {
+    if (!isModelTool(tool)) return true;
+    return catalog !== undefined && catalogEntryOf(catalog, tool.run.model) !== undefined;
+  });
 }
 
 /**
