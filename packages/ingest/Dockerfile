@@ -22,6 +22,9 @@ WORKDIR /src
 COPY packages/ingest/tsconfig.json ./
 COPY packages/ingest/src ./src
 COPY packages/ingest/container ./container
+# The mini-tool runs build their colour filter from this one file of shared
+# (src/jobs/op-args.ts), resolved through tsconfig's @shared/* path.
+COPY packages/shared/src/adjust-value.ts /shared/src/adjust-value.ts
 # esbuild is pinned so this image builds the same way on every machine. No
 # manifest in this repository declares esbuild — it arrives seven times over as
 # a transitive dependency, at seven different versions — so there is no "the

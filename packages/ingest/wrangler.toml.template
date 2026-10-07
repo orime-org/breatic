@@ -80,6 +80,42 @@ class_name = "MediaContainer"
 type = "durable-object"
 storage = "sqlite"
 
+# The mini-tool containers (inner#888 §8.3). The same image as the media
+# container; one class per instance size, because a container's size is fixed
+# by the class it is bound under. `config/mini-tools.yaml` names the class each
+# operation runs in, and the worker passes that name on every job. A job runs
+# for minutes, so `max_instances` bounds how many tool runs a deployment holds
+# at once.
+[[containers]]
+class_name = "MiniToolContainerStd1"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-1"
+max_instances = <how many standard-1 tool runs may run at once; start at 5>
+
+[[containers]]
+class_name = "MiniToolContainerStd4"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-4"
+max_instances = <how many standard-4 tool runs may run at once; start at 2>
+
+[[durable_objects.bindings]]
+name = "MINI_TOOL_STD1"
+class_name = "MiniToolContainerStd1"
+
+[[durable_objects.bindings]]
+name = "MINI_TOOL_STD4"
+class_name = "MiniToolContainerStd4"
+
+[exports.MiniToolContainerStd1]
+type = "durable-object"
+storage = "sqlite"
+
+[exports.MiniToolContainerStd4]
+type = "durable-object"
+storage = "sqlite"
+
 # Nothing else here keeps state between requests. What one upload needs
 # remembered — its multipart upload id and the parts that landed — travels with
 # the browser and comes back on every request, which is how Cloudflare's own
@@ -179,5 +215,35 @@ name = "MEDIA"
 class_name = "MediaContainer"
 
 [env.production.exports.MediaContainer]
+type = "durable-object"
+storage = "sqlite"
+
+[[env.production.containers]]
+class_name = "MiniToolContainerStd1"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-1"
+max_instances = <how many standard-1 tool runs may run at once>
+
+[[env.production.containers]]
+class_name = "MiniToolContainerStd4"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-4"
+max_instances = <how many standard-4 tool runs may run at once>
+
+[[env.production.durable_objects.bindings]]
+name = "MINI_TOOL_STD1"
+class_name = "MiniToolContainerStd1"
+
+[[env.production.durable_objects.bindings]]
+name = "MINI_TOOL_STD4"
+class_name = "MiniToolContainerStd4"
+
+[env.production.exports.MiniToolContainerStd1]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.MiniToolContainerStd4]
 type = "durable-object"
 storage = "sqlite"

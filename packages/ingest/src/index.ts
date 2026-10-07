@@ -31,7 +31,9 @@ import {
   type UploadTicketPayload,
 } from "@breatic/shared";
 import * as Sentry from "@sentry/cloudflare";
+import { fromOurBackend } from "@ingest/backend-secret.js";
 import { downloadTarget, serveDownload } from "@ingest/download.js";
+import { JOB_PATH, readJob, submitJob, type JobsEnv } from "@ingest/jobs/routes.js";
 import {
   monitoringOptions,
   noted,
@@ -60,6 +62,7 @@ import {
 
 export { ContainerProxy } from "@cloudflare/containers";
 export { MediaContainer } from "@ingest/media-container.js";
+export { MiniToolContainerStd1, MiniToolContainerStd4 } from "@ingest/jobs/mini-tool-container.js";
 
 /**
  * `/uploads/{uploadId}/parts/{n}`. The part number is captured as digits so
@@ -80,7 +83,7 @@ const ALLOWED_METHODS = "POST, PUT, OPTIONS";
 const COMPLETE_PATH = /^\/uploads\/([^/]+)\/complete$/;
 
 /** What wrangler binds into the Worker. */
-export interface Env extends MediaEnv, MonitoringEnv {
+export interface Env extends MediaEnv, MonitoringEnv, JobsEnv {
   BUCKET: R2Bucket;
   /** Signs the ticket we verify, and authenticates what we send back. */
   INGEST_SHARED_SECRET: string;
@@ -104,6 +107,8 @@ const REQUIRED_SETTINGS = [
   "ALLOWED_ORIGINS",
   "BUCKET",
   "MEDIA",
+  "MINI_TOOL_STD1",
+  "MINI_TOOL_STD4",
 ] as const;
 
 /**
@@ -788,37 +793,6 @@ interface FetchBody {
 }
 
 /**
- * Whether two secrets are the same, without leaking where they diverge.
- * @param a - One secret.
- * @param b - The other.
- * @returns True when they match.
- */
-function secretsMatch(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let differing = 0;
-  for (let i = 0; i < a.length; i += 1) {
-    differing |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return differing === 0;
-}
-
-/**
- * Whether this request comes from our own backend.
- *
- * A ticket and a session token both travel to the browser, so neither says
- * anything about who is asking. The secret is the one thing only our servers
- * hold, and it is what the endpoints that must not be reachable from a page
- * ask for.
- * @param request - The request to judge.
- * @param env - The Worker's bindings.
- * @returns True when the request carries our shared secret.
- */
-function fromOurBackend(request: Request, env: Env): boolean {
-  const secret = request.headers.get("x-ingest-secret");
-  return secret !== null && secretsMatch(secret, env.INGEST_SHARED_SECRET);
-}
-
-/**
  * What this object will be stored and served as, or null when it may not be
  * stored at all.
  *
@@ -1147,6 +1121,15 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "POST" && pathname === "/media") {
     return readStoredMedia(request, env);
+  }
+
+  if (request.method === "POST" && pathname === "/jobs") {
+    return submitJob(request, env);
+  }
+
+  const job = JOB_PATH.exec(pathname);
+  if (request.method === "GET" && job) {
+    return readJob(request, env, job[1] ?? "", job[2] ?? "");
   }
 
   const part = PART_PATH.exec(pathname);

@@ -685,6 +685,7 @@ export {
 } from "@shared/upload/ingest-client.js";
 // The mini-tool container job protocol, read by the worker and the ingest Worker.
 export {
+  miniToolJobRequestSchema,
   readMiniToolJob,
   readMiniToolJobReport,
   submitMiniToolJob,

@@ -20,47 +20,47 @@ function at(phase: JobState["phase"], written: string[] = []): JobState {
 describe("job transition", () => {
   it("records a main output written while the job is still starting", () => {
     const next = transition(at("starting"), { type: "written", key: "out/a.mp4" }, 2_000);
-    expect(next.state.written).toEqual(["out/a.mp4"]);
-    expect(next.state.phase).toBe("starting");
+    expect(next.state?.written).toEqual(["out/a.mp4"]);
+    expect(next.state?.phase).toBe("starting");
   });
 
   it("finishes as done when every main output is written, ending the clock at destroy", () => {
     const next = transition(at("running", ["out/a.mp4"]), { type: "reported", ok: true }, 9_000);
-    expect(next.state.phase).toBe("done");
-    expect(next.state.endedAt).toBe(9_000);
+    expect(next.state?.phase).toBe("done");
+    expect(next.state?.endedAt).toBe(9_000);
     expect(next.effects).toEqual(["destroy", "cancelSchedule"]);
   });
 
   it("fails a completion report that arrives before every main output is written", () => {
     const next = transition(at("running"), { type: "reported", ok: true }, 9_000);
-    expect(next.state.phase).toBe("failed");
-    expect(next.state.reason).toBe("tool_failed");
+    expect(next.state?.phase).toBe("failed");
+    expect(next.state?.reason).toBe("tool_failed");
   });
 
   it("finishes a report that lands while still starting the same way as while running", () => {
     const next = transition(at("starting", ["out/a.mp4"]), { type: "reported", ok: true }, 9_000);
-    expect(next.state.phase).toBe("done");
+    expect(next.state?.phase).toBe("done");
   });
 
   it("ignores a stop event in starting and in no state at all", () => {
-    expect(transition(at("starting"), { type: "stopped" }, 5_000).state.phase).toBe("starting");
+    expect(transition(at("starting"), { type: "stopped" }, 5_000).state?.phase).toBe("starting");
     expect(transition(null, { type: "stopped" }, 5_000).state).toBeNull();
   });
 
   it("fails a running job whose container stopped", () => {
     const next = transition(at("running"), { type: "stopped" }, 5_000);
-    expect(next.state.phase).toBe("failed");
-    expect(next.state.endedAt).toBe(5_000);
+    expect(next.state?.phase).toBe("failed");
+    expect(next.state?.endedAt).toBe(5_000);
   });
 
   it("fails a running job when a poll finds no container running", () => {
     const next = transition(at("running"), { type: "containerGone" }, 6_000);
-    expect(next.state.phase).toBe("failed");
+    expect(next.state?.phase).toBe("failed");
   });
 
   it("expires only the attempt the schedule was set for", () => {
-    expect(transition(at("running"), { type: "expired", attemptId: "att-0" }, 7_000).state.phase).toBe("running");
-    expect(transition(at("running"), { type: "expired", attemptId: "att-1" }, 7_000).state.phase).toBe("failed");
+    expect(transition(at("running"), { type: "expired", attemptId: "att-0" }, 7_000).state?.phase).toBe("running");
+    expect(transition(at("running"), { type: "expired", attemptId: "att-1" }, 7_000).state?.phase).toBe("failed");
   });
 
   it("clears the job when the start fails, so a resubmission starts afresh", () => {

@@ -13,7 +13,7 @@
 
 import { z } from "zod";
 
-import type { ContainerOp } from "@shared/mini-tools/types.js";
+import { CONTAINER_OPS, type ContainerOp } from "@shared/mini-tools/types.js";
 import {
   askWorker,
   ingestMeasurements,
@@ -56,6 +56,31 @@ export type MiniToolJobReport =
   | { state: "starting" | "running" }
   | { state: "done"; outputs: (IngestMeasurements & { storageKey: string })[]; usage: ContainerUsage }
   | { state: "failed"; reason: "tool_failed"; usage: ContainerUsage | null };
+
+/**
+ * The request as the ingest Worker reads it before believing it. The op's
+ * params were validated against the registry by our server; here they are an
+ * object and nothing more.
+ */
+export const miniToolJobRequestSchema = z.object({
+  jobId: z.string().min(1).max(200),
+  containerClass: z.string().min(1).max(100),
+  deadlineAt: z.number().int().positive(),
+  op: z.enum(CONTAINER_OPS),
+  params: z.record(z.string(), z.unknown()),
+  input: z.object({ storageKey: z.string().min(1).max(500) }),
+  outputs: z
+    .array(
+      z.object({
+        storageKey: z.string().min(1).max(500),
+        contentType: z.string().min(1).max(100),
+        coverKey: z.string().min(1).max(500).optional(),
+      }),
+    )
+    .min(1)
+    .max(8),
+  limits: z.object({ runDeadlineMs: z.number().positive(), toolTimeoutMs: z.number().positive() }),
+});
 
 const usage = z.object({
   wallMs: z.number().nonnegative(),
