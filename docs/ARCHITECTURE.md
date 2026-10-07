@@ -2,7 +2,7 @@
 
 breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架构(8 package + 3 服务)、**Frontend**(`packages/web`)、以及全栈**函数定义编码规范**。行为 mandate(头号原则 / DD / TDD / 红线 / 判定题)在仓库根 [`CLAUDE.md`](../CLAUDE.md);本文写"怎么做的细节"(技术栈 / 包依赖 / 数据流 / 命名 / 节点模型 / token / 函数注释格式),mandate 指向这里。
 
-- [Backend](#backend) — 技术栈 / 8 package / 3 服务 / 画布协作 / 两层记忆 / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志
+- [Backend](#backend) — 技术栈 / 8 package / 3 服务 / 画布协作 / 两层记忆 / Worker / Mini-Tool / 生成模板 / Agent tools / 配置 / 日志
 - [Frontend](#frontend) — `packages/web` 技术栈 / 7 层 layered / 节点模型 / 命名规范 / 路由 / 源码布局
 - [Coding standards (function definition format)](#coding-standards-function-definition-format) — 函数注释 / 显式返回类型 / 异常类型格式 + CI 强制
 
@@ -39,15 +39,15 @@ packages/
 ├── core/     # 后端共享内核 barrel (@breatic/core) — 纯地基,零 AIGC 业务
 │              auth/(共享鉴权内核:projectMembers.repo + projectAuth.service〔loadProjectRole〕,collab+server 共用) ·
 │              db/(schema.ts 40 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/session-store/control-events) · config/
-├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — asset(资产登记 / studio 内去重 / 回收队列)· auth(studio 级鉴权:studioAuth.service + studioMembers.repo)· credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费 + upstreamStep.repo〔`task_upstream_steps`,一个任务的每次上游调用〕+ upstreamClone.repo〔`studio_upstream_clones`,studio 克隆过的音色 / 人声 / 元素〕)· node-history · agent(skills-loader/agent-config〔模型+指令+工具的唯一装配点〕/skill-gate/skill-availability/turn-finalizer/tools/llm)· model-catalog · node-task(PR4 自 core 迁入,各域 *.repo/*.service 功能文件夹)· understand(按一个地址取媒体、问模型一句话,worker 的理解那一路调它)
-├── server/   # HTTP 壳 (Hono): routes/(account/auth/chat/canvas/credits/decisions/mini-tools/models/projects/members/project-invitations/project-join-requests/role-upgrade-requests/notifications/skills/studios/subscription/tasks/text-tools/users/payment/activities〔project 活动流读取〕/assets〔上传握手 + 删除上报〕) + middleware/(路由层=接线员,不写业务;`rateLimitFor` 限流走 `config/rate-limits.yaml`;`validate(target, schema)` 是路由校验请求的唯一入口——包一层 `@hono/zod-validator` 把它「自己发响应」变成「抛 `ValidationError`」,于是校验失败也走 `errorHandler` 这一个出口;`localeMiddleware` 用 AsyncLocalStorage 钉住这次请求的语言,出口那里还读得到) + modules/(server 私有领域,**按域分功能文件夹**,每域 service+repo+test:account/activity〔活动流写入 + 读取〕/asset/auth〔含 user.repo + recovery-code + signup-code〔启用邮件时的待验证注册,存 Redis〕〕/conversation/credit/decision/memory/notification/payment/project〔含 projectMembers〕/project-invite〔含 project-invite-mail〕/project-join-request/recent/role-upgrade-request/skill/studio/subscription/task〔节点任务行的开启与计数发布〕/text-tool,barrel index.ts re-export) + infra/(stripe/mailer) + config/(auth/pricing/text-tools/limits/rate-limits;**运行参数一律 yaml、禁硬编码**)(healthz 走独立 :3001 进程)
-├── worker/   # BullMQ 壳: handlers/(dispatch.ts=4 路分发 + step-deps〔多步上游调用读写的两张表 + 素材的缓存键 + 可灵元素的一句描述〕+ local/{runtime,video} 本地 ffmpeg 执行) + providers/(图片 / 视频 / 音频 / 语音同一条路,全部跑在 WaveSpeed:generate / plan-steps / run-steps / upstream-body〔按 yaml 的 `upstream` 声明拼请求体,`joins` 槽位并进它点名的池子〕/ wavespeed + families/{minimax-speech,nano-banana};three-d/ 自成一路) + 根(index 入口 / voice-samples〔维护样音的人本地跑的入口,生成固定样音地址还缺的样音〕/ mini-tool-registry / bootstrap-config)
+├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — asset(资产登记 / studio 内去重 / 回收队列)· auth(studio 级鉴权:studioAuth.service + studioMembers.repo)· credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费 + upstreamStep.repo〔`task_upstream_steps`,一个任务的每次上游调用〕+ upstreamClone.repo〔`studio_upstream_clones`,studio 克隆过的音色 / 人声 / 元素〕)· node-history · agent(agent-config〔模型+指令+工具的唯一装配点〕/turn-finalizer/tools/llm)· model-catalog · node-task(PR4 自 core 迁入,各域 *.repo/*.service 功能文件夹)· understand(按一个地址取媒体、问模型一句话,worker 的理解那一路调它)
+├── server/   # HTTP 壳 (Hono): routes/(account/auth/chat/canvas/credits/decisions/mini-tools/models/projects/members/project-invitations/project-join-requests/role-upgrade-requests/notifications/studios/subscription/tasks/text-tools/users/payment/activities〔project 活动流读取〕/assets〔上传握手 + 删除上报〕) + middleware/(路由层=接线员,不写业务;`rateLimitFor` 限流走 `config/rate-limits.yaml`;`validate(target, schema)` 是路由校验请求的唯一入口——包一层 `@hono/zod-validator` 把它「自己发响应」变成「抛 `ValidationError`」,于是校验失败也走 `errorHandler` 这一个出口;`localeMiddleware` 用 AsyncLocalStorage 钉住这次请求的语言,出口那里还读得到) + modules/(server 私有领域,**按域分功能文件夹**,每域 service+repo+test:account/activity〔活动流写入 + 读取〕/asset/auth〔含 user.repo + recovery-code + signup-code〔启用邮件时的待验证注册,存 Redis〕〕/conversation/credit/decision/memory/notification/payment/project〔含 projectMembers〕/project-invite〔含 project-invite-mail〕/project-join-request/recent/role-upgrade-request/studio/subscription/task〔节点任务行的开启与计数发布〕/text-tool,barrel index.ts re-export) + infra/(stripe/mailer) + config/(auth/pricing/text-tools/limits/rate-limits;**运行参数一律 yaml、禁硬编码**)(healthz 走独立 :3001 进程)
+├── worker/   # BullMQ 壳: handlers/(dispatch.ts=3 路分发 + step-deps〔多步上游调用读写的两张表 + 素材的缓存键 + 可灵元素的一句描述〕+ local/{runtime,video} 本地 ffmpeg 执行) + providers/(图片 / 视频 / 音频 / 语音同一条路,全部跑在 WaveSpeed:generate / plan-steps / run-steps / upstream-body〔按 yaml 的 `upstream` 声明拼请求体,`joins` 槽位并进它点名的池子〕/ wavespeed + families/{minimax-speech,nano-banana};three-d/ 自成一路) + 根(index 入口 / voice-samples〔维护样音的人本地跑的入口,生成固定样音地址还缺的样音〕/ mini-tool-registry / bootstrap-config)
 ├── collab/   # Hocuspocus 独立进程: hooks/(auth/meta-write-attempt-log/presence/awareness-identity/presence-wiring/unload-gate〔文档离开内存前的最后一次存盘〕) + services/(persistence〔谁可以写库的唯一决定处〕/store-tracker〔有没有没存下的内容 + 一次性 arm〕/store-loop〔10 秒一轮的定时存盘,唯一的重试机制〕/store-alert/rescue-file〔存不进库时内容落本地,永不自动清理〕/event-stream/space-rpc/task-listener/members-sync/lazy-seed/lifecycle-listener/connection-registry/connection-tracking/role-recheck〔连接注册后再读一次角色,变了就按重新认证的原因关掉〕/space-delete-lock/yjs-documents.repo) + infra/(health-checks · connection-gate〔连接准入:升级阶段从原始对端地址裁决,回环豁免、非回环取 nginx 的 x-real-ip 否则 403;裁决本身随请求头传下去〕 · client-identity〔上面那条规则的纯判定〕 · socket-ceilings〔库里几个「超了就关整条 socket」的上限,从一个声明数推导〕) + 根(index/hocuspocus 装配/config)
 ├── web/      # React app — see the [Frontend](#frontend) part
 ├── integration-tests/ # 不构建、不部署:横跨两个以上服务的集成测试(src/__tests__/),加上所有起容器的集成套件共用的容器启动(src/test-utils/:containers 起 PG + Redis 并迁移两个库、env 把地址写进每个测试文件的 process.env)。服务源码按路径别名读,不声明 server / worker / collab
 └── ingest/   # Cloudflare Worker(`wrangler`,不在上面那条依赖链上):浏览器把分片发给它,它转写 R2 的分片上传并边写边算 sha256。**字节也可以不经过任何人的手** —— 交给它一个地址(`POST /fetch`),它自己去拉、边拉边写边算,后端的生成结果和用户提交的外链都走这条。**它也是字节出去的那一端**:`GET|HEAD /download/{key}` 把对象带着 `Content-Disposition: attachment` 答出来,而那个头是浏览器把一个跨域响应收进自己下载列表的唯一途径 —— 桶在它自己的域名上,这个头只能由发字节的人加。
 │              **零常驻状态** —— 一次上传要记住的 R2 `uploadId` 和每片 etag 由发起方持有、每次请求带回来;收尾由我们的 server 发起,它把真实字节数和 hash 答在响应里、不回调我们任何地址(机制见下面的「存储层」)
-config/ skills/ locales/ (git-tracked)
+config/ locales/ (git-tracked)
 ```
 
 **包依赖方向:** `shared(零依赖,前后端共用) ← core(后端共享内核) ← {domain, collab}`;`domain(server+worker 共享 AIGC 业务) ← server / worker`;前端 `web ← shared` 不依赖 core/server。**`@breatic/domain`**:server+worker 共享、collab 永不碰的 AIGC 业务(资产 / studio 级鉴权 / 积分花 / 任务 / 节点历史 / agent / model-catalog / node-task)单独成包,`lint:dependency-cruiser` 的 `collab-no-domain-import` 规则守卫 collab 不 import domain(业务归属:credit/task/node-history/agent/model-catalog/node-task + 各自 repo 与通知邮件的 `mail` 队列在 domain;user.repo/stripe/邮件模板/pricing/text-tools 在 server;发信的 `sendMail` 在 core;core 是纯地基)。**严格边界**:server 不 import worker,worker 不 import server;**模块化单体**:core 只放全后端共享内核(共享鉴权 + infra + schema + 跨服务事件协议;AIGC 业务钱/任务/节点历史/agent 等已迁 `@breatic/domain`),**服务私有领域逻辑归各自服务**(server 私有业务在 `server/src/modules`,经三层边界:路由层=接线员 → 业务 service 层 → core 共享内核;`lint:dependency-cruiser` 的 `library-no-app-import` 规则守卫 core/shared 不反向 import 服务包)。collab 依赖 core infrastructure(`createRedisClient` / 日志 / 配置),production-safety 配置不 raw 实例化。鉴权 / 会话 / 成员事件这类**全后端(含 collab)必须一致**的逻辑属 core 共享内核,collab 用 core 的统一鉴权;**鉴权统一**:collab `hooks/auth.ts` 调 core 的 `getSession` + `projectAuthService.loadProjectRole`,跟 server 共用同一套原语。**DB 适配统一**:collab 不手搓 postgres.js 连接池——`yjs_documents` 的持久化(`persistence`)/ 存在性判定用的 Space 名单(`services/project-space-list.ts`,**只在本进程还没持有那份 meta 文档时经载入路径读一次**,见 Canvas collaboration 段)/ space-rpc 软删·恢复全走 **collab 本包**的 `services/yjs-documents.repo.ts`(那张表的唯一 repo 家,一表一 repo),经 core 的 `yjsDb` 单例跑 Drizzle;健康探针走 `pingDb()`、boot 连通性走统一的 core `checkInfraReady(redisClients)`(各服务传自己依赖的 Redis 单例:server/worker `{general,queue,stream}`、collab `{general,stream}`);collab `postgres` 无直接依赖。**全项目 postgres.js 驱动只在 core,Drizzle 是唯一查询适配层**;CI 守卫 `breatic/no-postgres-outside-core`(驱动只许 core)+ `breatic/no-yjs-documents-outside-repo`(一表一 repo)+ `breatic/no-raw-sql-outside-repo`(现扫 collab,本包零裸 SQL)。**Redis 适配同理统一**:`ioredis` 驱动也只在 core(工厂 + 单例 + `pingRedis` + re-export `Redis` 类型),collab/domain 删直接依赖、`Redis` 类型从 core 拿;collab 会话查走 `getRedis()` 单例,**但订阅 / 阻塞流 / Hocuspocus pub-sub 等专用连接保持独立**(Redis 协议要求每角色独占 socket,连接数收不了,跟 postgres 单池本质不同);跨服务 stream key `:stream:task-events` 收成 core 的 `taskEventsStreamKey()` 单一来源(消灭 worker 发布侧 + collab 消费侧各造的静默断风险);CI 守卫 `breatic/no-ioredis-outside-core`。
@@ -140,14 +140,13 @@ config/ skills/ locales/ (git-tracked)
 
 普通一次打开(已有会话)完全不碰项目行,因此不跟邀请 / 转让那些事务抢锁。
 
-### Worker 4 paths
+### Worker 3 paths
 
 1. **AIGC Mini-Tool**(source="mini_tool")→ toolName 查表 → provider 直调
 2. **Understand**(task_type="understand")→ 把一个图片 / 视频 / 音频读成一段文字,写进一个文本节点
 3. **AIGC 直达**(image/audio/video/3d/tts)→ provider `generateAsync()`
-4. **Skill(显式)** → 指定 skillName → AI SDK Agent 执行
 
-以上都不匹配 → 直接抛错(`needs an explicit skill_name to run`)。原先还有第 5 路「按 category 合并 Skills 交 LLM 选」,它跟「一个 skill 的三样定死」不相容 —— 合并之后谁的模型算数?
+以上都不匹配 → 直接抛错(`has no runner`)。
 
 ### 一个 AIGC 任务的执行顺序,和「不归路」
 
@@ -187,18 +186,16 @@ config/ skills/ locales/ (git-tracked)
 
 Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue / generate / character / storyboard / script。操作类发完整 `document` + `selection` 保证上下文。自动匹配输入语言回复。
 
-### Skill system
+### 生成模板
 
-**skill 出现在哪由 `config/skill-routing.yaml` 的 `surfaces` 定**,取值是 `packages/core/src/config/skill-routing.ts` 的 `SKILL_SURFACES` 闭集:`chat`(多轮对话,注入上下文)/ `canvas` / `image_node` / `video_node` / `document`(各 node 面与画布是 Worker 单次执行,必须生成)。**当前实际被路由到的只有 `chat` 和 `canvas`** —— 后三个是已开放但还没有 skill 用的面,数各面上有几个 skill 一律现读那份 yaml。
+**模板 = 一组定死的模式、模型、参数和提示词**(inner#977),写在代码里:注册表是 `packages/shared/src/canvas/generation-templates.ts`(web 和后端共用)。**提示词是界面文字,放在 `locales/*.json` 的 `canvas.template.<id>.prompt`**,写成输入框里看到的样子 —— `[📎 …]` 是读者要放的素材,`[✏️ …]` 是要改写的词,跟提议卡片是同一套标记,由 `markedSegments`(`canvas-proposal.ts`,`markText` 的逆)读回片段。取的是当前生效的语言,服务端即这次请求的语言。每个模板声明 `references`(提示词要几张参考图),注册表测试逐个语言核对标记数跟它一致。
 
-**一个 skill 的声明分两处,`skills-loader.ts` 各读各的**:
-
-| 出处 | 读到什么 |
+| 入口 | 做什么 |
 |---|---|
-| `SKILL.md` 的 frontmatter | `name` —— **唯一必填项**,缺了这个 skill 直接不进注册表;`description` —— 缺了取空串 |
-| `metadata.json` | 只出运行期配置:`model` / `always` / `tools` / `output_type` / `requires` / `category` / `keywords` 七个字段,全部有 default 兜底(`category` 默认 `"default"`,`output_type` 默认 `"canvas"`),整个文件缺失也照样加载 |
+| 生成面板右上角、关闭按钮左边的模板按钮(`TemplateMenu`) | 列出这种节点的模板,模型不在本部署目录里的那一项灰掉。点一个 → `useApplyTemplate`:写模板的模式、模型和那个模型的参数(节点上其他模型记住的参数不动),这个模式的提示词换成模板的,`[📎 …]` 依次 @ 参考栏里已连上的图片 |
+| Agent 的 `propose_canvas_action` | 生成节点可以带 `template`。`expandTemplate` 以模板为起点填模式、模型、参数和提示词,Agent 自己写了的保留;模式和模型都还是模板的,模板参数才带上。之后照常过 `checkProposal` |
 
-**`metadata.json` 里的 `name` / `description` 不被读取** —— 内置 skill 两处各写了一份同样的值,看不出读的是哪一份;只在 `metadata.json` 里填 `name` 的 skill 会被静默跳过。字段的读取处是 `skills-loader.ts` 里那串 `pkg.*` 取值(没有 schema 声明)。**入口权限不在这里** —— 哪个界面能用、用户能不能直接调、模型能不能自己调起,三样都在 `config/skill-routing.yaml`。禁用 npm 字段(version/author/license/engines/files/main)。
+Agent 里没有选模板的控件,它按读者的需求自己调用。**提示词里留着的标记不检查、不拦生成**:点模板和提议落到画布时各弹一条提醒(`canvas.generatePanel.editMarks`),读者不改也照常发出去。
 
 ### Agent tools (8)
 
@@ -240,7 +237,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **卡片走 SDK 的原生 tool part 到前端**,`to-chat-message.ts` 读成 `proposals`、`ProposalCard.tsx` 画成那张卡;**卡上不显示积分和执行时间**:`proposal-card.ts` 从目录只取模型的显示名,卡片画的是节点的形状、用哪个模型、读者之后还要做什么,底部是一个撑满整行的「Use」按钮。**每个生成节点的说明末尾有一行产品固定文案,说它的设置在哪看**(#289):agent 写的提示词在生成面板里,而面板要右键节点选「生成」才打开;节点的 `takesPrompt` 为 `false` 或没有提示词时,那一行说的是「设置已配好」。**模型读回的不是整份提议,而是一句话**(`toModelOutput`):它就是发提议的那一方,把整份重复进后面每一轮等于把整个载荷再付一遍。
 
-**这四个只到普通聊天,不进 `BASELINE_TOOLS`**(`CANVAS_TOOLS`,`tools/index.ts`)。基线比它们宽:一次 skill 运行拿到的是基线并上自己声明的那些,而一个 worker 任务跑 skill 时既没有画布、也没有人去用它学到的东西 —— 两者都会把模型的一部分注意力花在一个它做不到的选项上,而一个自己的提示词里已经列了模式的 skill 会拿到同一个问题的第二份答案。判据是**这个工具答的是不是「某个人眼前的我们的产品」**:搜索那两个虽然也由面板独自画出来,答的却不是画布,所以不在其列。
+**这四个单列一组,不进 `BASELINE_TOOLS`**(`CANVAS_TOOLS`,`tools/index.ts`)。判据是**这个工具答的是不是「某个人眼前的我们的产品」**:搜索那两个虽然也由面板独自画出来,答的却不是画布,所以不在其列。
 
 **能力答复描述的是面板给什么,不是目录允许什么**(MANDATORY)。目录说得出「这个模型声明了 `camera`」,说不出「这个节点的面板画不画得出这个控件、画出来要等什么条件才算数、哪个参数由画布填而不该让人去打字」。这些事实现在由模型自己的 yaml 一词一答:每个参数写一个 `fill`(`canvas` · `pool` · `editor` · `panel` · `remote` · `storyboard` · `none`),等什么条件写 `when`,只在哪几个模式下算数写 `modes`;画法留在面板,而两边对不上的时候 `packages/web/src/spaces/canvas/generate/__tests__/declarations-have-claimants.test.ts` 的十三条守卫会点名是哪个模型的哪个参数。判定题:**我正要让答复说一句关于「用户能不能设这个」的话吗?那句话的出处必须是那个参数自己的声明。**
 
@@ -249,8 +246,6 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 **`web_search` 的两个旋钮走 `config/agent.yaml`**:`web_search_timeout_ms`(10 秒,上界 import 传输层导出的 `MAX_TIMER_MS`、不在配置层重写那个数字,管**一条腿**不管整次搜索 —— 三次投递各一次、最后那次之后的正文读再一次,整次的上界是它的四倍加退避)· `web_search_max_tokens`(8192,一次搜索要回多少正文)。后者两端(1024 / 32768)都是服务方自己的边界,写进 schema 是为了让越界在配置加载时就失败、不必等到每次调用都被拒。
 
 **打 Brave 的请求一律钉 `redirect: "manual"`,任何 3xx 当拒绝处理**(MANDATORY)。两个工具(`web_search` / `search_images`)共用 `tools/brave.ts` 的 `braveJson`,这条钉在那一个文件里、不逐端点抄。Fetch 规范跨源只剥 `Authorization` / `Cookie` / `Proxy-Authorization` 三个标准头,自定义头会跟着跳 —— 跟随一次 301 就等于把订阅密钥送到重定向指向的那台主机上。判定题:**这个请求带着我们的凭据吗?带着 → 它不许自己跟随重定向。**
-
-**无脚本执行能力**。第一版的 skill 只声明要用哪些工具,不带脚本 —— 「skill 带一个脚本、由 agent 执行它」是一整套要单独设计的东西(在哪跑 / 跑多久 / 能碰什么 / 失败怎么办 / 算不算钱),整块不做。
 
 ### Agent 聊天的 SSE 事件契约
 
@@ -268,9 +263,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 <a id="agent-provider-routing"></a>
 
-**一张表答三个问题**:这次调用打给谁 · 积分流水记谁的账 · 怎么跟这家说「要 / 不要思考」。表在 `packages/domain/src/agent/llm.ts`,拆成两个导出:`DIRECT_ROUTES` 四条(`anthropic/` · `google/` · `openai/` · `deepseek/`)带前缀,`FALLBACK_ROUTE` 一条不带 —— 前缀是不是必有,由类型分开而不是由一个可选字段。四个消费方(`getModel` · `resolveProvider` · `reasoningFor` · skill 可用性判定)读的是同一张表。
+**一张表答三个问题**:这次调用打给谁 · 积分流水记谁的账 · 怎么跟这家说「要 / 不要思考」。表在 `packages/domain/src/agent/llm.ts`,拆成两个导出:`DIRECT_ROUTES` 四条(`anthropic/` · `google/` · `openai/` · `deepseek/`)带前缀,`FALLBACK_ROUTE` 一条不带 —— 前缀是不是必有,由类型分开而不是由一个可选字段。三个消费方(`getModel` · `resolveProvider` · `reasoningFor`)读的是同一张表。
 
-**判定要前缀和 key 两样都对**:模型 id 带某条的前缀、**且**这个部署配了它那把 key,才走直连;缺任何一样都落兜底。所以一把 OpenRouter key 足够跑起**全部文本模型调用**(聊天 · 记忆归纳 · skill agent · text mini-tool · nano-banana 的提示词扩写),而补上哪家的 key,哪家就自动改走直连 —— 不改代码、不改配置。**图片 / 视频 / 音频 / 3D 生成不在其列**,它们走 `config/models/*/providers.yaml` 的 `api_key_env` 指的那把 key(今天五个模态都只有 WaveSpeed 一家,即 `WAVESPEED_API_KEY`),而且还要文本那条路同时可达(`skill-availability.ts` 的 `checkSkillModelRunnable` 两条都查)。直连时前缀被剥掉(厂商只认自己的 id),走兜底时原样保留(OpenRouter 认带前缀的)。
+**判定要前缀和 key 两样都对**:模型 id 带某条的前缀、**且**这个部署配了它那把 key,才走直连;缺任何一样都落兜底。所以一把 OpenRouter key 足够跑起**全部文本模型调用**(聊天 · 记忆归纳 · text mini-tool · nano-banana 的提示词扩写),而补上哪家的 key,哪家就自动改走直连 —— 不改代码、不改配置。**图片 / 视频 / 音频 / 3D 生成不在其列**,它们走 `config/models/*/providers.yaml` 的 `api_key_env` 指的那把 key(今天五个模态都只有 WaveSpeed 一家,即 `WAVESPEED_API_KEY`)。直连时前缀被剥掉(厂商只认自己的 id),走兜底时原样保留(OpenRouter 认带前缀的)。
 
 **`keyName` 收窄成 schema 自己的键名**(`Extract<keyof CoreConfig, \`${string}_API_KEY\`>`),写一个 schema 里没有的名字是编译错误,而不是一条静默永不打开的路由。**每条路由仍然把 key 名写两遍** —— `keyName` 用来判路由,provider 闭包里那一遍用来建实例,两者之间没有类型把它们绑住;拿测试盯着(`llm.test.ts` 断言每条路由的认证 header 用的是它自己 `keyName` 那把 key)。
 
@@ -278,7 +273,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **有偏好的调用自己说,怎么说由表决定**。调用方传一个布尔进 `reasoningFor(modelId, thinking)`,拿回一个可以直接摊进模型调用的 `providerOptions`。五家的写法各不相同 —— 一家要 `thinking: { type }`、一家要努力档位、一家要 token 预算 —— 让调用方知道自己在跟谁说话,等于把这张表抄第五遍。
 
-**说了就把开和关都明写,不靠「不表态」**:字段留空对每家的含义不同,而那是各家自己的默认值、它们随时可以改。**六个模型调用点里今天有两处在说** —— 聊天要 reasoning、记忆归纳不要;其余四处(text mini-tool · nano-banana · skill agent · understand)拿它们各自 provider 的默认值。
+**说了就把开和关都明写,不靠「不表态」**:字段留空对每家的含义不同,而那是各家自己的默认值、它们随时可以改。**今天有两处在说** —— 聊天要 reasoning、记忆归纳不要;其余各处(text mini-tool · nano-banana · understand)拿它们各自 provider 的默认值。
 
 **这里没有全局开关** —— 一个跨所有调用点的设置必然对其中一处是错的。
 
@@ -302,7 +297,6 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | `config/legal.yaml` | 当前生效的使用条款版本 `terms_version`。登录和注册两张卡片底部那行条款小字之下建的每个新账号,在 `users` 上记下这个版本和建号时刻(`terms_version` / `terms_accepted_at`;migration 0089 之前建的账号两列为空)。breatic.ai 上的条款改版时改它。加载器 `packages/server/src/config/legal.ts` |
 | `config/rate-limits.yaml` | 各动作的限流次数与窗口(Redis 滑动窗口)。加载器 `packages/server/src/config/rate-limits.ts`,中间件 `rateLimitFor(action, keyBy)`;**key 维度(IP 还是 user)按 action 写死在代码里**,只有次数进 yaml |
 | `config/storage.yaml` | 浏览器上传:上传大小上限、客户端拿票据的重试次数与分片停滞判据、ingest Worker 的分片大小与两个窗口(票据有效期 / 会话令牌 TTL)、边缘容器探测的两个时限、一次「让 Worker 去拉这个地址」的上界。**加载时就校验两件事**(`assertUploadWindows`):一片的截止时间不超过定时器能持有的上限、会话令牌盖得住分片与收尾两条重试链,填反了当场报错、不等用户传文件才发现。加载器 `packages/core/src/config/storage.ts` |
-| `config/skill-routing.yaml` | 哪个 skill 能在哪用、谁能调起(`surfaces` / `user_invocable` / `model_invocable`)。**缺了它每个 skill 都哪儿都不许用**,两个服务启动时读一次、读不了就 `exit(1)`。加载器 `packages/core/src/config/skill-routing.ts` |
 | `config/limits.yaml` | 分页大小 · 画布参考池上限 · 答复期限等业务旋钮。server 加载器 `packages/server/src/config/limits.ts`(镜像 `pricing.ts`)。**成员容量不在这儿** —— studio 成员数和 project 协作者数都按会员档位查 `config/membership.yaml`,键是该 studio 当前 admin 的档位 |
 | `config/models/<模态>/models.yaml` · `providers.yaml` · `config/models/modes.yaml` | AI 模型目录(按模态分目录):`models.yaml` 列这个模态的全部模型,每个带 WaveSpeed 定价契约(`base_price` / 公式 / `discount_rate`)、每个参数发往上游时叫什么(`upstream`)、额外的上游调用(`extra_steps`);`providers.yaml` 是上游的地址、key 名与并发;`modes.yaml` 是模式的名字与说明。字段说明写在各文件表头 |
 | `config/voice-samples.json` | 音色样音的固定公开地址 `base_url`(所有部署都从这里播,`sample_key` 是它下面的路径;读者是 domain 的 `voice-sample-config.ts`)、每种语言念的那句话,以及个别模型要多带的参数。目录新增音色时,维护样音的人用指向这个地址的存储设置跑一次 `pnpm voice-samples`(`packages/worker/src/voice-samples.ts`),把 `config/models/tts/models.yaml` 里 `sample_key` 点名、这个地址还没有的样音生成上去;`config/models/video/models.yaml` 里 `camera_commands` 的 `sample_key` 点名的运镜指令预览片段也由这一步生成,用模型的文生视频端点拍同一个场景,再转码成 640 宽、无音轨、`moov` 在文件头的 mp4 |
