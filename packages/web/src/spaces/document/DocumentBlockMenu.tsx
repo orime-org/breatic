@@ -79,8 +79,13 @@ import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import {
   insertBelow,
+  mediaGapBelow,
   type InsertChoice,
 } from '@web/spaces/document/document-insert-row';
+import {
+  useDocumentMediaPick,
+  type MediaKind,
+} from '@web/spaces/document/DocumentMediaPicker';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
 
@@ -282,6 +287,23 @@ export function DocumentBlockMenu({
     [editor, rowNow, close],
   );
 
+  // The media entries: the files land under this row once they are chosen
+  // (inner#1127 A1). Absent where nothing picks — a body with no uploader.
+  const mediaPick = useDocumentMediaPick();
+  const onInsertMediaBelow = React.useMemo(
+    () =>
+      mediaPick === null
+        ? undefined
+        : (kind: MediaKind): void => {
+          mediaPick(kind, () => {
+            const live = rowNow();
+            return live === undefined ? null : mediaGapBelow(editor, live);
+          });
+          close();
+        },
+    [mediaPick, editor, rowNow, close],
+  );
+
   /**
    * Runs one row and closes the menu.
    *
@@ -372,7 +394,10 @@ export function DocumentBlockMenu({
                 className={TYPE_MENU_WIDTH}
                 rowsClassName='flex flex-col gap-1'
               >
-                <DocumentInsertChoices onPick={onInsertBelow} />
+                <DocumentInsertChoices
+                  onPick={onInsertBelow}
+                  onPickMedia={onInsertMediaBelow}
+                />
               </DropdownMenuSubContent>
             </DropdownMenuSub>
           );

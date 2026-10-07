@@ -223,7 +223,12 @@ export function DocumentSpace({
           </Button>
         </div>
       ) : shown ? (
-        <DocumentEditor handle={shown} readOnly={readOnly} myRole={myRole} />
+        <DocumentEditor
+          handle={shown}
+          readOnly={readOnly}
+          myRole={myRole}
+          uploader={shown.uploader}
+        />
       ) : (
         <div
           data-testid='document-space-loading'

@@ -31,6 +31,8 @@ import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 import { DocumentTableCellButton } from '@web/spaces/document/DocumentTableCellButton';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { type FocusReturn, useFocusReturn } from '@web/lib/use-focus-return';
+import { DocumentMediaPicker } from '@web/spaces/document/DocumentMediaPicker';
+import type { DocumentUploader } from '@web/spaces/document/document-uploads';
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -47,6 +49,8 @@ interface DocumentEditorProps {
    * does.
    */
   myRole?: ProjectRole;
+  /** What takes files into this body; a body without one offers no media entries. */
+  uploader?: DocumentUploader | null;
 }
 
 /**
@@ -63,6 +67,7 @@ interface DocumentEditorProps {
  * @param root0.handle - The editor to render, with its surface.
  * @param root0.readOnly - True for a viewer.
  * @param root0.myRole - The reader's role on the project.
+ * @param root0.uploader - What takes files into this body.
  * @returns The editor body, the comment panel beside it, the entry and the
  *   bubble bar.
  */
@@ -70,6 +75,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   handle,
   readOnly = false,
   myRole = 'viewer',
+  uploader = null,
 }: DocumentEditorProps): React.JSX.Element {
   const body = React.useRef<HTMLDivElement>(null);
   // The one bit that says whether the panel is on screen, and the reader is
@@ -175,7 +181,12 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     () => handle.editor.prosemirrorView?.focus(),
   );
 
-  return (
+  const viewOfEditor = React.useCallback(
+    () => handle.editor.prosemirrorView ?? null,
+    [handle.editor],
+  );
+
+  const chrome = (
     // `isolate` keeps the z-values below local: the entry has to paint over
     // the body and the bubble bar over the entry, and neither of those two
     // relationships is anyone else's business. Without it both numbers would
@@ -268,5 +279,15 @@ export const DocumentEditor = React.memo(function DocumentEditor({
         />
       )}
     </div>
+  );
+
+  // A viewer gets no media entries (A11); the menus that offer them are not
+  // drawn for one either.
+  return uploader === null || readOnly ? (
+    chrome
+  ) : (
+    <DocumentMediaPicker uploader={uploader} view={viewOfEditor}>
+      {chrome}
+    </DocumentMediaPicker>
   );
 });

@@ -69,8 +69,13 @@ import { itemWithin } from '@web/spaces/document/document-block-menu-parts';
 import {
   fillEmptyRow,
   isEmptyParagraph,
+  mediaGapOnRow,
   type InsertChoice,
 } from '@web/spaces/document/document-insert-row';
+import {
+  useDocumentMediaPick,
+  type MediaKind,
+} from '@web/spaces/document/DocumentMediaPicker';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { useStripOnFirstLine } from '@web/spaces/document/document-strip-alignment';
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
@@ -244,6 +249,23 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
     [editor, rowNow, closeMenu],
   );
 
+  // The plus menu's media entries: the files land above the empty line once
+  // they are chosen, and the caret stays in it (inner#1127 A1).
+  const mediaPick = useDocumentMediaPick();
+  const onFillMedia = React.useMemo(
+    () =>
+      mediaPick === null
+        ? undefined
+        : (kind: MediaKind): void => {
+          mediaPick(kind, () => {
+            const live = rowNow();
+            return live === undefined ? null : mediaGapOnRow(editor as never, live);
+          });
+          closeMenu();
+        },
+    [mediaPick, editor, rowNow, closeMenu],
+  );
+
   // The plus menu's last entry: the empty line itself goes.
   const onDelete = React.useCallback((): void => {
     const live = rowNow();
@@ -386,6 +408,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
             <>
               <DocumentInsertChoices
                 onPick={onFill}
+                onPickMedia={onFillMedia}
                 unreachable={row.quoted ? QUOTE_GREYED : undefined}
               />
               {/* The grip menu's delete row, the one command an empty line

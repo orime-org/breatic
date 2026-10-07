@@ -10,7 +10,7 @@
  * list itself is drawn here once.
  */
 
-import { Minus, Table } from 'lucide-react';
+import { Image as ImageIcon, Minus, Music, Table, Video } from 'lucide-react';
 import * as React from 'react';
 
 import {
@@ -30,6 +30,14 @@ import { DIVIDER } from '@web/spaces/document/document-divider';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
 import type { InsertChoice, TableSize } from '@web/spaces/document/document-insert-row';
 import { DocumentTableSizeGrid } from '@web/spaces/document/DocumentTableSizeGrid';
+import type { MediaKind } from '@web/spaces/document/DocumentMediaPicker';
+
+/** The media entries, in the order the menu shows them (inner#1127 A1). */
+const MEDIA_ENTRIES: readonly { kind: MediaKind; Icon: typeof ImageIcon }[] = [
+  { kind: 'image', Icon: ImageIcon },
+  { kind: 'audio', Icon: Music },
+  { kind: 'video', Icon: Video },
+];
 
 interface DocumentInsertChoicesProps {
   /** What picking an entry does. */
@@ -39,6 +47,8 @@ interface DocumentInsertChoicesProps {
    * reachable when it is left out.
    */
   unreachable?: ReadonlySet<InsertChoice>;
+  /** What picking a media entry does; left out, the menu offers none. */
+  onPickMedia?: (kind: MediaKind) => void;
 }
 
 /**
@@ -46,11 +56,13 @@ interface DocumentInsertChoicesProps {
  * @param props - See {@link DocumentInsertChoicesProps}.
  * @param props.onPick - What picking an entry does.
  * @param props.unreachable - Entries that would do nothing here.
+ * @param props.onPickMedia - What picking a media entry does.
  * @returns The rows.
  */
 export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
   onPick,
   unreachable,
+  onPickMedia,
 }: DocumentInsertChoicesProps): React.JSX.Element {
   const t = useTranslation();
   const onPickTable = React.useCallback(
@@ -102,6 +114,19 @@ export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
           <DocumentTableSizeGrid onPick={onPickTable} />
         </DropdownMenuSubContent>
       </DropdownMenuSub>
+      {onPickMedia !== undefined &&
+        MEDIA_ENTRIES.map(({ kind, Icon }) => (
+          <DropdownMenuItem
+            key={kind}
+            data-testid={`doc-block-insert-${kind}`}
+            {...itemWithin(true, () => {
+              onPickMedia(kind);
+            })}
+          >
+            <Icon />
+            {t(`spaces.document.media.${kind}`)}
+          </DropdownMenuItem>
+        ))}
     </>
   );
 });
