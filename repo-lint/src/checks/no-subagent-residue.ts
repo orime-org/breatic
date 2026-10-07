@@ -81,19 +81,16 @@ export const DELETED_NAMES: ReadonlyArray<readonly [string, string, string]> = [
 /**
  * Nothing in the repository names deleted machinery.
  *
- * The deleted concept, the five filesystem and script tools, the two skills
- * that used them, and the plan-JSON path are gone. A surviving mention either
- * tells a reader a capability exists when it does not, or — in a Dockerfile
- * `COPY` or a skill's declared tools — makes the build or the assembly reach
+ * Two deletions are covered: PR-2 (the derived-agent concept, the five
+ * filesystem and script tools, two skills and the plan-JSON path) and
+ * inner#977 (the skill mechanism). A surviving mention either tells a reader
+ * a capability exists when it does not, or makes the build or the code reach
  * for something that is no longer there.
  *
  * Scope is every tracked file whose bytes are text. That is subtraction from
- * the whole tree rather than a list of extensions to select from, which
- * matters here: the residues sit in a Dockerfile with no extension, in README,
- * in `docs/`, in the skills' JSON, and in each package's `CLAUDE.md`. The
- * design doc's first draft of this check listed paths and missed the
- * repository-root `CLAUDE.md` and `skills/` — a list would have gone green
- * while both still named the deleted things.
+ * the whole tree rather than a list of extensions to select from: residues
+ * sit in files with no extension (a Dockerfile), in README, in `docs/` and in
+ * each package's `CLAUDE.md`, and a list of paths misses some of them.
  *
  * Comments are not stripped, deliberately. A comment explaining how the
  * deleted machinery used to work still tells a reader it exists, and it does
