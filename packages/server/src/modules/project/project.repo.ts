@@ -476,6 +476,11 @@ function afterCursor(
   c: ProjectListCursor,
   cols: { openedAt: SQL | typeof projectLastOpened.lastOpenedAt; editedAt: SQL; name: SQL },
 ): SQL {
+  /**
+   * A cursor's full-precision timestamp text as a timestamptz.
+   * @param v - The text
+   * @returns The SQL value
+   */
   const ts = (v: string): SQL => sql`${v}::timestamptz`;
   switch (c.s) {
     case "opened": {
