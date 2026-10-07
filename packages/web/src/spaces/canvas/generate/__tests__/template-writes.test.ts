@@ -9,7 +9,8 @@ import { describe, expect, it } from 'vitest';
 
 import { findTemplate, templatePrompt } from '@breatic/shared';
 
-import { templateWrites } from '@web/spaces/canvas/generate/template-writes';
+import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { templateFeeders, templateWrites } from '@web/spaces/canvas/generate/template-writes';
 
 const grid = findTemplate('storyboard-grid-25');
 if (!grid) throw new Error('grid template missing');
@@ -38,5 +39,34 @@ describe('templateWrites', () => {
       resolution: '4k',
       style_images: ['x'],
     });
+  });
+});
+
+/**
+ * A reference rail row.
+ * @param id - The source node id.
+ * @param type - The source node type.
+ * @param focus - Whether it is a focus crop row.
+ * @returns The row.
+ */
+function row(id: string, type: ReferenceRailItem['sourceNodeType'], focus?: true): ReferenceRailItem {
+  return { refId: `e-${id}`, sourceNodeId: id, sourceNodeType: type, sourceNodeName: id, ...(focus ? { focus } : {}) };
+}
+
+describe('templateFeeders', () => {
+  it('hands the wired-in images to the asset marks in rail order', () => {
+    const feeders = templateFeeders([row('a', 'image'), row('t', 'text'), row('b', 'image')]);
+    expect(feeders).toEqual({
+      sources: [
+        { id: 'a', kind: 'image' },
+        { id: 'b', kind: 'image' },
+      ],
+      upstream: [],
+    });
+  });
+
+  it('leaves focus crops and repeated nodes out', () => {
+    const feeders = templateFeeders([row('a', 'image'), row('a', 'image'), row('focus:x', 'image', true)]);
+    expect(feeders.sources).toEqual([{ id: 'a', kind: 'image' }]);
   });
 });
