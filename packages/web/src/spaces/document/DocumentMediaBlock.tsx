@@ -33,6 +33,7 @@ import {
 } from '@web/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
+import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-end';
 import { usePressKeepsFocus } from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
 import { BUBBLE_BAR_CLASS, BUBBLE_ICON_BUTTON_SIZE, PRESSED_CLASS } from '@web/spaces/document/document-tool-button';
@@ -221,16 +222,11 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     setToolbarEl(el);
   }, []);
   usePressKeepsFocus(toolbarEl);
-  // Set when the caption field closes on a key, which hands the keyboard back
-  // to the body; a field the reader clicked away from leaves it where it went.
+  // Set when the caption field closes on a key, so its blur does not commit
+  // a second time, or commit what Escape threw away.
   const closedOnKey = React.useRef(false);
   // An input method confirms and cancels its candidates with Enter and Escape.
-  // Engines differ in how the key that ends a composition reads: Chrome sends
-  // compositionend first and then the key with `isComposing` false (measured
-  // in `document-enter.ts`), WebKit reports it as keyCode 229. So the key is
-  // the input method's while it composes and until whatever the browser has
-  // already queued for that key has run.
-  const composing = React.useRef(false);
+  const captionComposition = React.useMemo(compositionEnd, []);
   // Where the keyboard was when the full-screen picture opened, to go back to.
   const fullscreenOpener = React.useRef<Element | null>(null);
   const openFullscreen = React.useCallback((): void => {
@@ -266,11 +262,8 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     if (editingCaption) {
       closedOnKey.current = false;
       captionField.current?.focus();
-    } else if (closedOnKey.current) {
-      closedOnKey.current = false;
-      actions.focusBody();
     }
-  }, [editingCaption, actions]);
+  }, [editingCaption]);
 
   // Alignment changes nothing on screen when the media is as wide as the
   // body, so it is offered only when it is narrower (A9).
@@ -511,24 +504,18 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             defaultValue={props.caption}
             placeholder={t('spaces.document.media.captionPlaceholder')}
             className='mt-1.5 w-full border-0 border-b border-border bg-transparent py-0.5 text-center text-sm text-foreground outline-none'
-            onCompositionStart={() => {
-              composing.current = true;
-            }}
-            onCompositionEnd={() => {
-              setTimeout(() => {
-                composing.current = false;
-              }, 0);
-            }}
+            onCompositionEnd={captionComposition.mark}
             onKeyDown={(event) => {
-              if (event.nativeEvent.isComposing || event.keyCode === 229 || composing.current) return;
-              if (event.key === 'Enter') {
-                closedOnKey.current = true;
-                commitCaption(event.currentTarget.value);
-              }
-              if (event.key === 'Escape') {
-                closedOnKey.current = true;
-                setEditingCaption(false);
-              }
+              if (keyBelongsToInputMethod(event.nativeEvent, captionComposition)) return;
+              if (event.key !== 'Enter' && event.key !== 'Escape') return;
+              closedOnKey.current = true;
+              const { value } = event.currentTarget;
+              // The keyboard goes back to the body while the field still holds
+              // it: a focused field leaving the page reads as the reader
+              // leaving the body, which lets go of the block.
+              actions.focusBody();
+              if (event.key === 'Enter') commitCaption(value);
+              else setEditingCaption(false);
             }}
             onBlur={(event) => {
               // A key already closed it, or the window went to another app and

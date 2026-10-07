@@ -65,6 +65,9 @@ interface MediaSpec {
   readonly extensions?: readonly unknown[];
 }
 
+/** Where a media block's drags may start: the media, and its caption field. */
+const MEDIA_BLOCK_DRAGS = '[data-media-frame], [data-testid="doc-media-caption-input"]';
+
 /**
  * Writes the block's props onto its own element the way the library does:
  * one `data-*` attribute per prop that is not at its default.
@@ -183,12 +186,15 @@ function mediaNodeView(
   };
 
   /**
-   * Refuses a drag from the empty part of the row. ProseMirror makes a selected
-   * block's whole element draggable; what moves the row is the media itself.
+   * Lets through the two drags a media block has — the media moving its row,
+   * and the caption field's own words — and refuses the rest. A press on a
+   * selected block makes whatever was pressed draggable (ProseMirror's
+   * `LeftMouseDown`), and the node view keeps every dragstart from
+   * ProseMirror, so such a drag would carry nothing.
    * @param event - The dragstart.
    */
   const refuseRowDrag = (event: DragEvent): void => {
-    if (!(event.target instanceof Element) || event.target.closest('[data-media-frame]') === null) {
+    if (!(event.target instanceof Element) || event.target.closest(MEDIA_BLOCK_DRAGS) === null) {
       event.preventDefault();
     }
   };

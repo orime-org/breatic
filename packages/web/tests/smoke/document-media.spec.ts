@@ -692,6 +692,8 @@ test('the keyboard stays with the body through the toolbar and the caption, and 
   await page.keyboard.press('Enter');
   await expect(picture.getByTestId('doc-media-caption')).toHaveText('Dusk');
   expect(await page.evaluate(() => document.activeElement?.classList.contains('ProseMirror'))).toBe(true);
+  // Closing the field is not leaving the body: the picture stays selected.
+  await expect(knob).toBeVisible();
   await page.getByTestId('theme-toggle').click();
   await expect(knob).toHaveCount(0);
   await page.keyboard.press('Escape');

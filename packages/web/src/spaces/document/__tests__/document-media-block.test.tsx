@@ -785,17 +785,39 @@ describe('the caption field and the keyboard', () => {
     return { editor, field };
   }
 
-  it.each([
-    ['the key an input method reports while it confirms', { key: 'Enter', keyCode: 229 }],
-    ['the Enter that follows the end of a composition', { key: 'Enter', keyCode: 13 }],
-  ])('stays open on %s', (_name, init) => {
+  it('stays open on the key an input method reports as 229', () => {
+    const { editor, field } = openCaption();
+
+    fireEvent.keyDown(field, { key: 'Enter', keyCode: 229 });
+
+    expect(within(element(editor)).queryByTestId('doc-media-caption-input')).not.toBeNull();
+  });
+
+  it('stays open on the Enter that follows the end of a composition', () => {
     const { editor, field } = openCaption();
 
     fireEvent.compositionStart(field);
     fireEvent.compositionEnd(field);
-    fireEvent.keyDown(field, init);
+    fireEvent.keyDown(field, { key: 'Enter', keyCode: 13 });
 
     expect(within(element(editor)).queryByTestId('doc-media-caption-input')).not.toBeNull();
+  });
+
+  it.each(['Enter', 'Escape'])('hands the keyboard to the body before the field goes on %s', (key) => {
+    const { editor, field } = openCaption();
+    const view = editor.prosemirrorView!;
+    // The body takes the keyboard while the field is still on the page, so
+    // the field's going is not read as the reader leaving the body.
+    let fieldWhenBodyFocused: boolean | null = null;
+    view.dom.addEventListener('focus', () => {
+      fieldWhenBodyFocused = field.isConnected;
+    });
+
+    fireEvent.keyDown(field, { key });
+
+    expect(fieldWhenBodyFocused).toBe(true);
+    expect(document.activeElement).toBe(view.dom);
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
   });
 
   it('closes on an Enter pressed after the composition is over', async () => {
@@ -849,13 +871,45 @@ describe('the full-screen picture and where the keyboard was', () => {
   });
 });
 
-describe('a drag from beside a media block', () => {
-  it('is refused, while a drag from the media itself goes on', () => {
-    const editor = open('image', { previewWidth: 200 });
-    const beside = new Event('dragstart', { bubbles: true, cancelable: true });
-    act(() => {
-      element(editor).dispatchEvent(beside);
+describe('the drags a media block lets through', () => {
+  /**
+   * Sends a dragstart from inside the block.
+   * @param target - Where it starts.
+   * @returns Whether it was refused.
+   */
+  function refused(target: Element): boolean {
+    const event = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', {
+      value: { types: [], getData: () => '', setData: vi.fn(), clearData: vi.fn(), setDragImage: vi.fn(), effectAllowed: 'all' },
     });
-    expect(beside.defaultPrevented).toBe(true);
+    Object.defineProperty(event, 'clientY', { value: 0 });
+    act(() => {
+      target.dispatchEvent(event);
+    });
+    return event.defaultPrevented;
+  }
+
+  it('refuses one from the empty part of the row, or from the shown caption', async () => {
+    const editor = open('image', { previewWidth: 200, caption: 'A note' });
+    const { SideMenuExtension } = await import('@blocknote/core/extensions');
+    vi.spyOn(editor.getExtension(SideMenuExtension)!, 'blockDragStart').mockImplementation(() => undefined);
+
+    expect(refused(element(editor))).toBe(true);
+    expect(refused(within(element(editor)).getByTestId('doc-media-caption'))).toBe(true);
+  });
+
+  it('lets the media move its row, and the caption field drag its own words', async () => {
+    const editor = open('image', { previewWidth: 200 });
+    const { SideMenuExtension } = await import('@blocknote/core/extensions');
+    const menu = editor.getExtension(SideMenuExtension)!;
+    vi.spyOn(menu, 'blockDragStart').mockImplementation(() => undefined);
+    vi.spyOn(menu, 'blockDragEnd').mockImplementation(() => undefined);
+
+    expect(refused(element(editor).querySelector('img')!)).toBe(false);
+    fireEvent.dragEnd(within(element(editor)).getByTestId('doc-media-frame'));
+
+    selectMedia(editor);
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-caption-button'));
+    expect(refused(within(element(editor)).getByTestId('doc-media-caption-input'))).toBe(false);
   });
 });
