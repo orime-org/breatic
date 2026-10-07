@@ -303,6 +303,11 @@ export interface StudioProjectListOptions {
   limit?: number;
   /** The reader's interface language, which decides how names compare. */
   locale: string;
+  /**
+   * Told when a cursor was sent but could not be read; the first page is
+   * listed instead. The interface never sends such a cursor.
+   */
+  onRejectedCursor?: () => void;
 }
 
 /**
@@ -334,12 +339,14 @@ export async function listByStudioForViewer(
   const limits = getStudioProjectPageLimits();
   const limit = Math.min(Math.max(options.limit ?? limits.default, 1), limits.max);
   const collation = nameCollationFor(options.locale);
+  const cursor = decodeProjectListCursor(options.cursor, sort, collation);
+  if (options.cursor && cursor === null) options.onRejectedCursor?.();
   const page = await projectRepo.listStudioProjectPage({
     studioId,
     viewerUserId,
     archived: options.archived,
     sort,
-    cursor: decodeProjectListCursor(options.cursor, sort, collation),
+    cursor,
     limit,
     collation,
   });

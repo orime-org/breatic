@@ -739,8 +739,8 @@ export interface StudioProjectPage {
   items: ProjectSummary[];
   /** Feed back as `?cursor` for the next page; null at the end. */
   nextCursor: string | null;
-  /** How many projects the whole list holds. */
-  total: number;
+  /** How many projects the whole list holds; on the first page only, null on the pages after it. */
+  total: number | null;
 }
 
 /**

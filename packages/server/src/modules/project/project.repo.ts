@@ -18,7 +18,7 @@
 
 import { eq, and, isNull, isNotNull, desc, inArray, count, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
-import type { PgTransaction } from "drizzle-orm/pg-core";
+import type { AnyPgColumn, PgTransaction } from "drizzle-orm/pg-core";
 import { db, projectMembersRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
@@ -358,11 +358,12 @@ export interface StudioProjectPageQuery {
   collation: NameCollation;
 }
 
-/** One page of rows, the cursor after its last row, and the list's size. */
+/** One page of rows, the cursor after its last row, and on the first page the list's size. */
 export interface StudioProjectRowPage {
   rows: StudioProjectRow[];
   next: ProjectListCursor | null;
-  total: number;
+  /** Counted on the first page only; null on the pages after it. */
+  total: number | null;
 }
 
 /**
@@ -378,9 +379,10 @@ export interface StudioProjectRowPage {
  *
  * Each sort ends on `id`, so rows sharing a sort value still have one order
  * and a page boundary between them loses or repeats nothing. One row more than
- * the page is read to know whether another page follows.
+ * the page is read to know whether another page follows. The list is counted
+ * on the first page only; the pages after it carry no count.
  * @param q - What to list; see {@link StudioProjectPageQuery}
- * @returns The page's rows, the cursor for the next page, and the list's size
+ * @returns The page's rows, the cursor for the next page, and on the first page the list's size
  */
 export async function listStudioProjectPage(
   q: StudioProjectPageQuery,
@@ -415,10 +417,10 @@ export async function listStudioProjectPage(
       archivedAt: projects.archivedAt,
       lastOpenedAt: openedAt,
       lastEditedAt: editedAt,
-      createdAtText: sql<string>`${projects.createdAt}::text`,
-      openedAtText: sql<string | null>`${openedAt}::text`,
-      editedAtText: sql<string>`${editedAt}::text`,
-      archivedAtText: sql<string | null>`${projects.archivedAt}::text`,
+      createdAtMicros: epochMicros<string>(projects.createdAt),
+      openedAtMicros: epochMicros<string | null>(openedAt),
+      editedAtMicros: epochMicros<string>(editedAt),
+      archivedAtMicros: epochMicros<string | null>(projects.archivedAt),
     })
     .from(projects)
     .leftJoin(
@@ -438,7 +440,9 @@ export async function listStudioProjectPage(
     .orderBy(...order)
     .limit(q.limit + 1);
 
-  const [counted] = await db.select({ total: count() }).from(projects).where(listFilter);
+  const counted = q.cursor
+    ? null
+    : (await db.select({ total: count() }).from(projects).where(listFilter))[0];
 
   const page = rows.slice(0, q.limit);
   const last = page[page.length - 1];
@@ -458,8 +462,18 @@ export async function listStudioProjectPage(
       lastEditedAt: new Date(row.lastEditedAt),
     })),
     next,
-    total: Number(counted?.total ?? 0),
+    total: q.cursor ? null : Number(counted?.total ?? 0),
   };
+}
+
+/**
+ * A time as whole microseconds since the Unix epoch, in decimal text: the
+ * full precision Postgres stores, in a form a cursor check can validate.
+ * @param col - The time; `T` is `string | null` where it may be null
+ * @returns The SQL value, null where the time is null
+ */
+function epochMicros<T extends string | null>(col: SQL | AnyPgColumn): SQL<T> {
+  return sql<T>`(extract(epoch from ${col}) * 1000000)::bigint::text`;
 }
 
 /**
@@ -477,36 +491,44 @@ function afterCursor(
   cols: { openedAt: SQL | typeof projectLastOpened.lastOpenedAt; editedAt: SQL; name: SQL },
 ): SQL {
   /**
-   * A cursor's full-precision timestamp text as a timestamptz.
-   * @param v - The text
+   * A cursor time, whole microseconds since the epoch, as a timestamptz.
+   * @param v - The microseconds, in decimal
    * @returns The SQL value
    */
-  const ts = (v: string): SQL => sql`${v}::timestamptz`;
+  const ts = (v: string): SQL => sql`(timestamptz 'epoch' + ${v}::bigint * interval '1 microsecond')`;
+  /**
+   * "After" on a time sorted newest first, ties broken by id descending.
+   * @param col - The time column
+   * @param v - The cursor's microseconds
+   * @returns The WHERE fragment
+   */
+  const before = (col: SQL | AnyPgColumn, v: string): SQL =>
+    sql`(${col} < ${ts(v)} OR (${col} = ${ts(v)} AND ${projects.id} < ${c.id}))`;
   switch (c.s) {
     case "opened": {
-      const createdAfter = sql`(${projects.createdAt} < ${ts(c.createdAt)} OR (${projects.createdAt} = ${ts(c.createdAt)} AND ${projects.id} < ${c.id}))`;
+      const createdAfter = before(projects.createdAt, c.createdAt);
       if (c.openedAt === null) return sql`(${cols.openedAt} IS NULL AND ${createdAfter})`;
       return sql`((${cols.openedAt} IS NOT NULL AND (${cols.openedAt} < ${ts(c.openedAt)} OR (${cols.openedAt} = ${ts(c.openedAt)} AND ${createdAfter}))) OR ${cols.openedAt} IS NULL)`;
     }
     case "edited":
-      return sql`(${cols.editedAt} < ${ts(c.editedAt)} OR (${cols.editedAt} = ${ts(c.editedAt)} AND ${projects.id} < ${c.id}))`;
+      return before(cols.editedAt, c.editedAt);
     case "name":
       return sql`(${cols.name} > ${c.name} OR (${cols.name} = ${c.name} AND ${projects.id} > ${c.id}))`;
     case "created":
-      return sql`(${projects.createdAt} < ${ts(c.createdAt)} OR (${projects.createdAt} = ${ts(c.createdAt)} AND ${projects.id} < ${c.id}))`;
+      return before(projects.createdAt, c.createdAt);
     case "archived":
-      return sql`(${projects.archivedAt} < ${ts(c.archivedAt)} OR (${projects.archivedAt} = ${ts(c.archivedAt)} AND ${projects.id} < ${c.id}))`;
+      return before(projects.archivedAt, c.archivedAt);
   }
 }
 
-/** The text forms of a row's sort values, at full precision. */
+/** A row's sort values as a cursor carries them: times in epoch microseconds. */
 interface CursorSource {
   id: string;
   name: string;
-  createdAtText: string;
-  openedAtText: string | null;
-  editedAtText: string;
-  archivedAtText: string | null;
+  createdAtMicros: string;
+  openedAtMicros: string | null;
+  editedAtMicros: string;
+  archivedAtMicros: string | null;
 }
 
 /**
@@ -519,16 +541,16 @@ interface CursorSource {
 function cursorAt(sort: StudioProjectSort, collation: NameCollation, row: CursorSource): ProjectListCursor {
   switch (sort) {
     case "opened":
-      return { s: "opened", openedAt: row.openedAtText, createdAt: row.createdAtText, id: row.id };
+      return { s: "opened", openedAt: row.openedAtMicros, createdAt: row.createdAtMicros, id: row.id };
     case "edited":
-      return { s: "edited", editedAt: row.editedAtText, id: row.id };
+      return { s: "edited", editedAt: row.editedAtMicros, id: row.id };
     case "name":
       return { s: "name", collation, name: row.name, id: row.id };
     case "created":
-      return { s: "created", createdAt: row.createdAtText, id: row.id };
+      return { s: "created", createdAt: row.createdAtMicros, id: row.id };
     case "archived":
       // Only the archived list sorts by it, where every row carries the time.
-      return { s: "archived", archivedAt: row.archivedAtText ?? "", id: row.id };
+      return { s: "archived", archivedAt: row.archivedAtMicros ?? "", id: row.id };
   }
 }
 

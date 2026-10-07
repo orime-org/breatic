@@ -40,17 +40,30 @@ export function nameCollationFor(locale: string): NameCollation {
     : DEFAULT_NAME_COLLATION;
 }
 
+/**
+ * A time as whole microseconds since the Unix epoch, in decimal. Sixteen
+ * digits reach past the year 2286, well inside what Postgres timestamps hold,
+ * so any value that passes converts without error and at full precision.
+ */
+const epochMicros = z.string().regex(/^-?\d{1,16}$/);
+
 const cursorSchema = z.discriminatedUnion("s", [
   z.object({
     s: z.literal("opened"),
-    openedAt: z.string().nullable(),
-    createdAt: z.string(),
+    openedAt: epochMicros.nullable(),
+    createdAt: epochMicros,
     id: z.uuid(),
   }),
-  z.object({ s: z.literal("edited"), editedAt: z.string(), id: z.uuid() }),
-  z.object({ s: z.literal("name"), collation: z.string(), name: z.string(), id: z.uuid() }),
-  z.object({ s: z.literal("created"), createdAt: z.string(), id: z.uuid() }),
-  z.object({ s: z.literal("archived"), archivedAt: z.string(), id: z.uuid() }),
+  z.object({ s: z.literal("edited"), editedAt: epochMicros, id: z.uuid() }),
+  z.object({
+    s: z.literal("name"),
+    collation: z.string(),
+    // Postgres text cannot hold NUL.
+    name: z.string().refine((v) => !v.includes("\u0000")),
+    id: z.uuid(),
+  }),
+  z.object({ s: z.literal("created"), createdAt: epochMicros, id: z.uuid() }),
+  z.object({ s: z.literal("archived"), archivedAt: epochMicros, id: z.uuid() }),
 ]);
 
 /** Where the previous page stopped, for one sort. */
@@ -68,9 +81,10 @@ export function encodeProjectListCursor(cursor: ProjectListCursor): string {
 /**
  * Read a cursor from the wire, for the list it is being used with.
  *
- * A cursor that does not parse, belongs to another sort, or was made under
- * another name collation reads as none: the list starts again from its first
- * page. It comes from the network, so a bad one must not fail the request.
+ * A cursor that does not parse, holds a value the database could not take,
+ * belongs to another sort, or was made under another name collation reads as
+ * none: the list starts again from its first page. It comes from the network,
+ * so a bad one must not fail the request.
  * @param raw - The opaque string, if any.
  * @param sort - The sort the page is asked for in.
  * @param collation - The name collation of this request.

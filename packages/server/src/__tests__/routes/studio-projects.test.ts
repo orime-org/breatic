@@ -54,7 +54,26 @@ describe("GET /studio/:slug/projects", () => {
       cursor: "abc",
       limit: 20,
       locale: "zh-CN",
+      onRejectedCursor: expect.any(Function),
     });
+  });
+
+  it("logs who sent a cursor the service could not read", async () => {
+    mocks.projectService.listByStudioSlug.mockImplementation(
+      async (_slug: string, _user: string, options: { onRejectedCursor?: () => void }) => {
+        options.onRejectedCursor?.();
+        return EMPTY_PAGE;
+      },
+    );
+    const res = await createApp().request("/api/v1/studio/acme/projects?sort=name&cursor=forged", {
+      headers: AUTH,
+    });
+
+    expect(res.status).toBe(200);
+    expect(mocks.logger.warn).toHaveBeenCalledWith(
+      { userId: "user-1", slug: "acme", sort: "name" },
+      "studio_project_list_cursor_rejected",
+    );
   });
 
   it("refuses a sort the live list does not offer with 422", async () => {

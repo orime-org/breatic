@@ -37,7 +37,7 @@ import {
   recentService,
   creditViewService,
 } from "@server/modules";
-import { NotFoundError, ValidationError } from "@breatic/core";
+import { logger, NotFoundError, ValidationError } from "@breatic/core";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
 import * as studioAvatarService from "@server/modules/studio/studioAvatar.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
@@ -260,6 +260,8 @@ studio.get(
       cursor: query.cursor,
       limit: query.limit,
       locale: getActiveLocale(),
+      onRejectedCursor: () =>
+        logger.warn({ userId: user.id, slug, sort: query.sort ?? null }, "studio_project_list_cursor_rejected"),
     });
     return c.json({ data });
   },
