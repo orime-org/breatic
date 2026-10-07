@@ -9,6 +9,8 @@ import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/useNodeResolution';
+import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
+import { orientPreviewTransform, useOrientPreview } from '@web/spaces/canvas/mini-tool/orient-preview';
 
 interface ImageNodeProps {
   data: ImageNodeView;
@@ -39,6 +41,13 @@ export const ImageNode = React.memo(function ImageNode({
 }: ImageNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
   const { resolution, setResolution } = useNodeResolution(data.content, data.width, data.height);
+  // A rotate & flip panel open on this node previews its result on the
+  // picture itself (inner#888 §7.4); nothing is written until Run.
+  const orient = useOrientPreview(React.useContext(NodeIdContext));
+  const preview =
+    orient === undefined || resolution === undefined
+      ? undefined
+      : orientPreviewTransform(orient, resolution.width, resolution.height);
   return (
     <ContentNodeFrame
       modality='image'
@@ -65,7 +74,8 @@ export const ImageNode = React.memo(function ImageNode({
               loading='lazy'
               decoding='async'
               data-testid='image-node-img'
-              className='block h-auto w-full'
+              className='block h-auto w-full transition-transform duration-200'
+              style={preview === undefined ? undefined : { transform: preview }}
               onLoad={(e) => {
                 const img = e.currentTarget;
                 if (img.naturalWidth > 0 && img.naturalHeight > 0) {

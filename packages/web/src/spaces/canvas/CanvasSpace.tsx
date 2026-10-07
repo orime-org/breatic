@@ -193,6 +193,7 @@ import { triggerDownload } from '@web/lib/download';
 import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
 import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
+import { MiniToolCropOverlayContainer } from '@web/spaces/canvas/mini-tool/MiniToolCropOverlay';
 import { startMiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import {
   activeMiniToolSlot,
@@ -4770,6 +4771,7 @@ function CanvasSpaceInner({
             </Button>
           </div>
         ) : null}
+        <MiniToolCropOverlayContainer nodes={nodes} />
         {pickSession?.purpose === 'focus' && focusCropTargetId !== null ? (
           <FocusCropOverlay
             nodeId={focusCropTargetId}

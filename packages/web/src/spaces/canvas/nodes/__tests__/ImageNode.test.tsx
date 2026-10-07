@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { ImageNode } from '@web/spaces/canvas/nodes/ImageNode';
+import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
+import { canvasSessions } from '@web/stores/canvas-session';
 
 /**
  * jsdom never decodes images, so `naturalWidth`/`naturalHeight` stay 0. Stub
@@ -254,5 +256,41 @@ describe('ImageNode', () => {
       />,
     );
     expect(screen.getByTestId('node-resolution-badge')).toBeInTheDocument();
+  });
+});
+
+// inner#888 A10: a rotate & flip panel open on the node previews its result
+// on the picture, and only on that node.
+describe('ImageNode orientation preview', () => {
+  afterEach(() => canvasSessions.of('').getState().closeActivePanel());
+
+  /**
+   * The node inside its id context, holding a 1600×1000 picture.
+   * @param id - The node's id.
+   */
+  function mountNode(id: string): void {
+    render(
+      <NodeIdContext.Provider value={id}>
+        <ImageNode data={{ kind: 'image', handling: false, content: 'https://e.com/x.jpg', width: 1600, height: 1000 }} />
+      </NodeIdContext.Provider>,
+    );
+  }
+
+  it('turns the picture while the panel holds a turn', () => {
+    canvasSessions.of('').getState().openMiniTool('n1', 'image.rotate', {
+      sourceContent: 'https://e.com/x.jpg',
+      params: { orient: { turns: 1, flipX: false, flipY: false } },
+    });
+    mountNode('n1');
+    expect(screen.getByTestId('image-node-img').style.transform).toBe('rotate(90deg) scale(0.625) scale(1, 1)');
+  });
+
+  it('leaves another node alone', () => {
+    canvasSessions.of('').getState().openMiniTool('n1', 'image.rotate', {
+      sourceContent: 'https://e.com/x.jpg',
+      params: { orient: { turns: 1, flipX: false, flipY: false } },
+    });
+    mountNode('n2');
+    expect(screen.getByTestId('image-node-img').style.transform).toBe('');
   });
 });
