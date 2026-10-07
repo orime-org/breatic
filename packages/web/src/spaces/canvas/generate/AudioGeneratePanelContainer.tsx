@@ -314,7 +314,7 @@ function AudioGeneratePanelBody({
   // Every write re-derives from live Yjs at click time: the render closure goes
   // stale the moment a collaborator edits the node, and writing off it would
   // clobber their edit.
-  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId);
+  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId, models);
   const freshContent = React.useCallback(() => {
     const graph = readCanvasGraph(projectId, spaceId);
     return asContentView(graph.nodes.find((n) => n.id === nodeId)?.data);

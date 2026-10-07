@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import { t, type GenerationTemplate } from '@breatic/shared';
+import { t, type GenerationTemplate, type ModelEntry } from '@breatic/shared';
 
 import {
   getPromptFragment,
@@ -30,18 +30,26 @@ const NO_TEXT: ReadonlyMap<string, string> = new Map();
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The panel's node.
+ * @param models - The models this deployment serves for the node type.
  * @returns The pick handler.
  */
 export function useApplyTemplate(
   projectId: string,
   spaceId: string,
   nodeId: string,
+  models: readonly ModelEntry[],
 ): (template: GenerationTemplate) => void {
   return React.useCallback(
     (template: GenerationTemplate) => {
+      const picked = models.find((m) => m.name === template.model);
+      if (!picked) {
+        // The catalog refetched and dropped the model since the menu drew it.
+        toast.error(t('canvas.generatePanel.modelUnavailable'));
+        return;
+      }
       const graph = readCanvasGraph(projectId, spaceId);
       const content = asContentView(graph.nodes.find((n) => n.id === nodeId)?.data);
-      const writes = templateWrites(template, content?.paramsByModel);
+      const writes = templateWrites(template, content, picked);
       setNodeMode(projectId, spaceId, nodeId, writes.mode, writes.model, writes.paramsByModel);
       // Also an explicit pick, so the mode remembers the template's model.
       setNodeModel(projectId, spaceId, nodeId, writes.mode, writes.model, writes.paramsByModel);
@@ -52,6 +60,6 @@ export function useApplyTemplate(
       }
       toast.info(t('canvas.generatePanel.editMarks'));
     },
-    [projectId, spaceId, nodeId],
+    [projectId, spaceId, nodeId, models],
   );
 }

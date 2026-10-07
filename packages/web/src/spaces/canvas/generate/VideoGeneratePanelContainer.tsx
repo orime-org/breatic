@@ -342,7 +342,7 @@ function VideoGeneratePanelBody({
     [projectId, spaceId, nodeId, models, availableModes],
   );
 
-  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId);
+  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId, models);
 
   /**
    * The node's live content view, or undefined when the node is gone or is not
