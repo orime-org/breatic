@@ -10,18 +10,17 @@
  */
 
 import { Hono } from "hono";
-import { AppError, createQueue, defaultJobOpts, logger } from "@breatic/core";
+import { createQueue, defaultJobOpts } from "@breatic/core";
 import { taskService } from "@breatic/domain";
-import { type TaskFailureReason } from "@breatic/shared";
 import { miniToolById, miniToolRequestSchema } from "@breatic/shared/mini-tools";
 
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { validate } from "@server/middleware/validate.js";
-import { precheckCredits, projectService } from "@server/modules";
+import { projectService } from "@server/modules";
 import { prepareRun } from "@server/modules/mini-tool/mini-tool.service.js";
-import { failOpenedTasks, openGenerationTasks } from "@server/modules/task/generation-task.js";
+import { startRowedRun } from "@server/modules/task/generation-task.js";
 
 const miniTools = new Hono<{ Variables: AuthVariables }>();
 
@@ -58,65 +57,37 @@ miniTools.post("/", rateLimitFor("mini_tool", "user"), validate("json", miniTool
     "mini_tool",
   );
 
-  let rows: Awaited<ReturnType<typeof openGenerationTasks>> = [];
-  try {
-    rows = await openGenerationTasks({
-      projectId: body.project_id,
-      spaceId: body.space_id,
-      nodeIds: body.node_ids,
-      startedByUserId: user.id,
-      taskId: task.id,
-      action: "mini_tool",
-      label: spec.id,
-    });
-
-    await precheckCredits(body.project_id, user.id, run.credits);
-
-    const job = await tasksQueue.add(
-      "execute-mini-tool",
-      {
-        taskId: task.id,
-        userId: user.id,
-        projectId: body.project_id,
-        spaceId: body.space_id,
-        source: "mini_tool",
-        toolId: spec.id,
-        taskType,
-        params: run.params,
-        ...(run.sourceKey !== undefined && { sourceKey: run.sourceKey }),
-        targetNodeIds: body.node_ids,
-        mode: "append" as const,
-      },
-      defaultJobOpts(),
-    );
-
-    // Past the point of no return: the job runs whether or not its id is kept.
-    try {
-      await taskService.setJobId(task.id, job.id ?? "");
-    } catch (err) {
-      logger.error({ err, taskId: task.id, jobId: job.id, projectId: body.project_id }, "mini_tool_job_id_not_recorded");
-    }
-  } catch (err) {
-    const reason: TaskFailureReason =
-      err instanceof AppError && err.statusCode === 402 ? "no_credits" : "internal";
-    for (const settle of [
-      (): Promise<unknown> => taskService.markFailed(task.id, reason),
-      (): Promise<unknown> => failOpenedTasks(body.project_id, body.space_id, rows, reason),
-    ]) {
-      try {
-        await settle();
-      } catch (settleErr) {
-        logger.error({ err: settleErr, taskId: task.id, projectId: body.project_id }, "mini_tool_run_settle_failed");
-      }
-    }
-    logger.warn({ err, taskId: task.id, projectId: body.project_id, tool: spec.id, reason }, "mini_tool_run_failed");
-    if (rows.length > 0) {
-      return c.json({ data: { task_id: task.id, status: "failed" } }, 201);
-    }
-    throw err;
-  }
-
-  return c.json({ data: { task_id: task.id, status: "pending" } }, 201);
+  const status = await startRowedRun({
+    taskId: task.id,
+    projectId: body.project_id,
+    spaceId: body.space_id,
+    nodeIds: body.node_ids,
+    userId: user.id,
+    action: "mini_tool",
+    label: spec.id,
+    credits: () => Promise.resolve(run.credits),
+    enqueue: () =>
+      tasksQueue.add(
+        "execute-mini-tool",
+        {
+          taskId: task.id,
+          userId: user.id,
+          projectId: body.project_id,
+          spaceId: body.space_id,
+          source: "mini_tool",
+          toolId: spec.id,
+          taskType,
+          params: run.params,
+          ...(run.sourceKey !== undefined && { sourceKey: run.sourceKey }),
+          targetNodeIds: body.node_ids,
+          mode: "append" as const,
+        },
+        defaultJobOpts(),
+      ),
+    logTag: "mini_tool",
+    logContext: { tool: spec.id },
+  });
+  return c.json({ data: { task_id: task.id, status } }, 201);
 });
 
 export { miniTools as miniToolsRoute };
