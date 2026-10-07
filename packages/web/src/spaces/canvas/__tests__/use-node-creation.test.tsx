@@ -16,6 +16,12 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { planFlowLayout } from '@web/spaces/canvas/lib/place-flow';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
+import { toast } from '@web/lib/toast';
+import en from '@locales/en.json';
+
+vi.mock('@web/lib/toast', () => ({
+  toast: { info: vi.fn(), error: vi.fn(), warning: vi.fn(), success: vi.fn() },
+}));
 
 describe('useNodeCreation', () => {
   beforeEach(() => {
@@ -492,6 +498,49 @@ describe('useNodeCreation', () => {
       expect(landed?.map((shot) => shot.duration)).toEqual([2, 3]);
       expect(landed?.[0]?.prompt.toJSON()).toContain(`sourceNodeId="${ids[0]}"`);
       expect(landed?.[1]?.prompt.toJSON()).toContain(`sourceNodeId="${ids[1]}"`);
+    });
+
+    describe('reminding the reader to edit the marked parts (inner#977)', () => {
+      beforeEach(() => {
+        vi.mocked(toast.info).mockClear();
+      });
+
+      it('reminds them when a placed prompt carries a mark to fill', () => {
+        const marked: CanvasProposal = {
+          ...PAIR,
+          nodes: [
+            PAIR.nodes[0]!,
+            { ...PAIR.nodes[1]!, prompt: [{ slot: { kind: 'asset', label: 'photo', note: '' } }] },
+          ],
+        };
+        const { result } = renderHook(() => useNodeCreation('p-mk', 's-mk'));
+        result.current.placeProposalAt(marked, { x: 0, y: 0 });
+        expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editMarks);
+      });
+
+      it('reminds them when only a shot carries a mark', () => {
+        const shot: CanvasProposal = {
+          nodes: [
+            {
+              role: 'generate', type: 'video', name: 'Clip', mode: 'multi_shot', model: 'some-model',
+              poolKinds: ['image'], takesPrompt: true,
+              shots: [{ prompt: [{ text: 'a ' }, { slot: { kind: 'tweak', label: 'scene', note: '' } }], duration: 2 }],
+            },
+          ],
+          edges: [],
+          rationale: '',
+          groupName: 'Clip',
+        };
+        const { result } = renderHook(() => useNodeCreation('p-mks', 's-mks'));
+        result.current.placeProposalAt(shot, { x: 0, y: 0 });
+        expect(toast.info).toHaveBeenCalledTimes(1);
+      });
+
+      it('says nothing when the prompts are plain words', () => {
+        const { result } = renderHook(() => useNodeCreation('p-plain', 's-plain'));
+        result.current.placeProposalAt(PAIR, { x: 0, y: 0 });
+        expect(toast.info).not.toHaveBeenCalled();
+      });
     });
 
     it('leaves the source node without a mode or a model', () => {
