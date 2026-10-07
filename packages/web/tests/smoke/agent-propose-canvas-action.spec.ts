@@ -233,3 +233,60 @@ test('proposes a multi-shot video, and the panel opens on its shots @needs-model
     expect(words.trim().length, `shot ${String(shot)} is empty`).toBeGreaterThan(0);
   }
 });
+
+/**
+ * The templates the newest stored conversation's proposals named (inner#977).
+ * @param p - The signed-in page.
+ * @returns Each template id a proposed node carried.
+ */
+async function templatesProposed(p: Page): Promise<string[]> {
+  return p.evaluate(async () => {
+    const list = await (
+      await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })
+    ).json();
+    const id = list?.data?.conversations?.[0]?.id as string;
+    const read = await (
+      await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })
+    ).json();
+    const messages = (read?.data?.messages ?? []) as {
+      parts?: { type?: string; input?: { nodes?: { template?: string }[] } }[];
+    }[];
+    return messages
+      .flatMap((m) => m.parts ?? [])
+      .filter((part) => part.type === 'tool-propose_canvas_action')
+      .flatMap((part) => part.input?.nodes ?? [])
+      .flatMap((node) => (node.template ? [node.template] : []));
+  });
+}
+
+test('starts a storyboard from its template, and reminds the reader to fill it in @needs-model', async () => {
+  test.setTimeout(240_000);
+  const composer = page.getByTestId('chat-composer-box');
+  await expect(composer).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('new-conversation').click();
+  await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
+
+  await composer.fill(
+    'I have a photo of my character. Make me one 25-panel storyboard image of her walking through a night market, to turn into a video later. Do not ask me anything, just propose it.',
+  );
+  await composer.press('Enter');
+
+  await expect(page.getByTestId('message-bubble')).toHaveCount(2, { timeout: 200_000 });
+  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 200_000 });
+  const named = await templatesProposed(page);
+  expect(named, `the proposal started from the storyboard template. Named: ${named.join(', ')}`).toContain(
+    'storyboard-grid-25',
+  );
+
+  const card = page.getByTestId('proposal-card').last();
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  await card.getByTestId('proposal-use').click();
+  await expect(page.getByText('Edit the marked parts of the prompt')).toBeVisible({ timeout: 20_000 });
+
+  const prompt = page.getByTestId('generate-prompt-editor');
+  await expect(prompt).toBeVisible({ timeout: 20_000 });
+  await expect(prompt).toContainText('5 rows and 5 columns');
+  // The reference spot survives the rewrite, so the character photo is mentioned.
+  await expect(prompt).toContainText('[📎');
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Nano Banana Pro');
+});
