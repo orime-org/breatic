@@ -8,7 +8,9 @@
  * place of the app. The places that take files (the canvas, the document
  * body) cancel the drag themselves; this catches the rest of the page — a
  * margin beside the body, the top bar, a dialog — after they had their turn,
- * and shows the pointer that the file cannot land there.
+ * so the file is never opened. Where nothing cancelled the `dragover` the
+ * pointer shows the file cannot land; where something did (every ProseMirror
+ * editor cancels it, files or not), the pointer is left as that set it.
  */
 
 /**

@@ -102,5 +102,5 @@ export function useDocumentBars(editor: object): DocumentBars {
     (listener: () => void) => store.subscribe(editor, listener),
     [editor],
   );
-  return React.useSyncExternalStore(subscribe, () => store.get(editor));
+  return React.useSyncExternalStore(subscribe, () => documentBarsOf(editor));
 }

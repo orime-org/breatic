@@ -12,6 +12,7 @@ import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
+import { guardStrayFileDrops } from '@web/lib/stray-file-drop';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
   anchorAtCaret,
@@ -229,12 +230,14 @@ function fileDrag(type: 'dragover' | 'drop'): Event {
 
 describe('a file dragged over a read-only body (A11)', () => {
   it.each(['dragover', 'drop'] as const)('has its %s taken, so the browser does not open the file', (type) => {
+    const unguard = guardStrayFileDrops(window);
     const sink = vi.fn();
     const editor = open([{ type: 'paragraph', content: 'A' }], sink);
     editor.isEditable = false;
     const event = fileDrag(type);
 
     editor.prosemirrorView!.dom.firstElementChild!.dispatchEvent(event);
+    unguard();
 
     expect(event.defaultPrevented).toBe(true);
     expect(sink).not.toHaveBeenCalled();

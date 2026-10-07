@@ -150,21 +150,12 @@ export function documentFileDropExtension(sink?: FilesSink): ExtensionFactoryIns
       new Plugin({
         props: {
           handleDOMEvents: {
-            // Taken in a read-only body too, and over a media block's own
-            // controls: a file drag whose `dragover` nobody cancels gets no
-            // `drop`, and the browser opens the file in place of the page.
-            dragover: (view, event) => {
-              if (view.dragging !== null || !carriesFiles(event)) return false;
-              event.preventDefault();
-              if (!view.editable && event.dataTransfer !== null) event.dataTransfer.dropEffect = 'none';
-              return !view.editable;
-            },
+            // A read-only body leaves its file drops to the window's guard
+            // (`stray-file-drop.ts`), which keeps the browser from opening
+            // the file.
             drop: (view, event) => {
-              if (view.dragging !== null || !carriesFiles(event)) return false;
-              // The browser opens a dropped file in place of the page unless
-              // the drop is taken, read-only or not.
+              if (view.dragging !== null || !view.editable || !carriesFiles(event)) return false;
               event.preventDefault();
-              if (!view.editable) return true;
               const files = Array.from(event.dataTransfer?.files ?? []);
               const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
               if (sink === undefined || files.length === 0 || at === null) return true;

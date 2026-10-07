@@ -110,8 +110,8 @@ export interface UploadFailure {
 /** Too Many Requests (RFC 6585 §4): the per-user limit on tickets. */
 const RATE_LIMITED_STATUS = 429;
 
-/** The statuses that say something other than "try again". */
-const FINAL_BY_STATUS: ReadonlyMap<number, UploadFailureReason> = new Map([
+/** The statuses that name their own reason; whether a retry helps is `uploadRetryCanChange`'s call. */
+const REASON_BY_STATUS: ReadonlyMap<number, UploadFailureReason> = new Map([
   [STORAGE_FULL_STATUS, 'storage'],
   [UNSUPPORTED_TYPE_STATUS, 'unsupportedType'],
   [RATE_LIMITED_STATUS, 'rateLimited'],
@@ -122,9 +122,7 @@ const FINAL_BY_STATUS: ReadonlyMap<number, UploadFailureReason> = new Map([
  *
  * Read off the status because the sentence beside it is localized on the server
  * and matching on the copy would break the moment anyone edits it or a reader
- * switches language. Two statuses say something a retry cannot change: the
- * account is full, and the stored bytes are not a format we keep. Everything
- * else is about this attempt.
+ * switches language. A status with no reason of its own is the catch-all.
  *
  * Hashing is not read off an error at all — it is refused before anything is
  * sent.
@@ -137,7 +135,7 @@ function failureOf(err: unknown): UploadFailureReason {
   // refusal from it reaches here with a status that says nothing about whether
   // anyone will end the row — and nobody will.
   if (err instanceof BytesNotDelivered) return 'transfer';
-  return FINAL_BY_STATUS.get(errorStatus(err) ?? -1) ?? 'upload';
+  return REASON_BY_STATUS.get(errorStatus(err) ?? -1) ?? 'upload';
 }
 
 /** Injected dependencies for {@link runMediaUpload} (network + result sinks). */
