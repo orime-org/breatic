@@ -1846,8 +1846,9 @@ body {
    one the pointer is on, is framed on the media itself — not its caption — in
    the link colour; a band behind it would fill the empty rest of its row
    (inner#1127). The selected one's frame goes with its corner knobs and its
-   toolbar, all off the block's own selected state. */
-.doc-body [data-media-box][data-selected='true'] [data-media-frame],
+   toolbar, all off the block's own selected state, and like them only in a
+   body the reader can edit. */
+.doc-body[contenteditable='true'] [data-media-box][data-selected='true'] [data-media-frame],
 .doc-body .doc-media-in-selection [data-media-frame],
 .doc-body [data-media-box][data-hovered='true'] [data-media-frame] {
   outline: 1px solid var(--color-content-link);

@@ -49,17 +49,19 @@ describe('a selected or hovered media block in the stylesheet', () => {
     expect(hovered).toBe(selected);
   });
 
-  it('draws the same frame on the block the reader selected, off its own selected state', () => {
+  it('draws the same frame on the block the reader selected, only in a body the reader can edit', () => {
     const css = readFileSync(resolve(import.meta.dirname, '../../../index.css'), 'utf8');
-    let own: string | undefined;
+    let own: { selector: string; outline: string } | undefined;
     postcss.parse(css).walkRules((rule) => {
       rule.walkDecls('outline', (decl) => {
-        if (rule.selectors.some((selector) => selector.includes('[data-selected=\'true\']') && selector.includes('[data-media-frame]'))) {
-          own = decl.value;
-        }
+        const selector = rule.selectors.find((s) => s.includes('[data-selected=\'true\']') && s.includes('[data-media-frame]'));
+        if (selector !== undefined) own = { selector, outline: decl.value };
       });
     });
 
-    expect(own).toBe('1px solid var(--color-content-link)');
+    expect(own?.outline).toBe('1px solid var(--color-content-link)');
+    // A viewer's body hides the knobs and the toolbar and never takes the
+    // focus that would let the selection go.
+    expect(own?.selector).toContain('[contenteditable=\'true\']');
   });
 });
