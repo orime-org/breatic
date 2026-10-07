@@ -453,9 +453,13 @@ function SpaceDrawerRow({
               <DropdownMenuItem
                 data-testid={`space-drawer-delete-${space.id}`}
                 disabled={deleteBlocked !== null || deleteBusy}
-                // A greyed item still shows the not-allowed cursor; the
-                // primitive turns pointer events off on a disabled item.
-                className='items-start data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
+                // Red while it is on offer, as every delete is; greyed with
+                // the not-allowed cursor when it is not (the primitive turns
+                // pointer events off on a disabled item).
+                className={cn(
+                  'items-start data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed',
+                  deleteBlocked === null && 'text-status-error-foreground',
+                )}
                 onSelect={() => {
                   choseDelete.current = true;
                 }}

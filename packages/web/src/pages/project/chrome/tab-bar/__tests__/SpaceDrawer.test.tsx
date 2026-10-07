@@ -100,6 +100,13 @@ describe('SpaceDrawer', () => {
     await openRowMenu(user, 'sp-1');
     const items = screen.getAllByRole('menuitem').map((item) => item.textContent);
     expect(items).toEqual(['View', 'Lock', 'Delete']);
+    // Delete is red, as every delete is (docs/ARCHITECTURE.md, design tokens).
+    expect(screen.getByTestId('space-drawer-delete-sp-1').className).toContain(
+      'text-status-error-foreground',
+    );
+    expect(screen.getByTestId('space-drawer-lock-sp-1').className).not.toContain(
+      'text-status-error-foreground',
+    );
   });
 
   it('views the Space from the row menu', async () => {
@@ -145,6 +152,8 @@ describe('SpaceDrawer', () => {
     const item = screen.getByTestId('space-drawer-delete-sp-1');
     expect(item).toHaveAttribute('data-disabled');
     expect(item).toHaveTextContent('Locked spaces can\'t be deleted');
+    // Greyed, not red: the action is not on offer.
+    expect(item.className).not.toContain('text-status-error-foreground');
     await user.click(item);
     expect(
       screen.queryByTestId('space-drawer-delete-confirm-sp-1'),
