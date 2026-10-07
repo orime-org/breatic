@@ -6,16 +6,11 @@
  * header and footer around the centred card.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import { setLocale } from '@breatic/shared';
 
 import { AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
 import { OFFICIAL_HOME_URL, PRIVACY_URL, TERMS_URL } from '@web/lib/official-home';
-
-afterEach(() => {
-  setLocale('en');
-});
 
 /**
  * Render the shell around a stand-in form.

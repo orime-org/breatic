@@ -23,9 +23,6 @@ vi.mock('@web/data/api/users', () => ({
 }));
 vi.mock('@web/lib/toast', () => ({ toast: { error: vi.fn() } }));
 
-// Shared language switcher (features/preferences) — rendered identically by
-// the project AND studio top bars. The i18n engine is the single source of
-// truth (no Zustand mirror — see `feedback_double_source_state_mirror_trap`).
 /** Put a signed-in account in the store, as `ProtectedRoute` guarantees on app pages. */
 function signIn(): void {
   useCurrentUserStore.setState({
@@ -39,6 +36,9 @@ function signIn(): void {
   });
 }
 
+// Shared language switcher (features/preferences) — rendered identically by
+// the project AND studio top bars. The i18n engine is the single source of
+// truth (no Zustand mirror — see `feedback_double_source_state_mirror_trap`).
 describe('LangSwitcher', () => {
   beforeEach(() => {
     changeLocale('en');
@@ -94,6 +94,7 @@ describe('LangSwitcher', () => {
     const { container } = render(<LangSwitcher />);
     await expectNoA11yViolations(container);
   });
+
   it('keeps a signed-out visitor\'s choice on this device without writing to the account', async () => {
     const user = userEvent.setup();
     render(<LangSwitcher />);

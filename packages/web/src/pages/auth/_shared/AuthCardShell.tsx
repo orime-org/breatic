@@ -9,13 +9,14 @@ import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { useTranslation } from '@web/i18n/use-translation';
 import { PRIVACY_URL, TERMS_URL } from '@web/lib/official-home';
 import { BrandHomeLink } from '@web/ui/BrandHomeLink';
+import { TopBar } from '@web/ui/TopBar';
 
 /** Links in the page footer: muted until hovered. */
 const FOOTER_LINK_CLASS = 'underline-offset-4 hover:text-foreground hover:underline';
 
 /**
- * Shared frame for every auth page (login / register / forgot /
- * reset / verify / slug setup / decision landing).
+ * Shared frame for the sign-in, sign-up and account-recovery pages and the
+ * signed-in pages that look like them (slug setup, decision landing).
  *
  * A page header (brand, language, theme) and a page footer (terms,
  * privacy) around a centered card on the project background — same
@@ -77,22 +78,19 @@ export function AuthCardShell({
 }
 
 /**
- * The page header above the card, the same bar as the Studio top bar: the
- * brand on the left, the language and theme switches on the right.
+ * The page header above the card, on the Studio's top bar: the brand on the
+ * left, the language and theme switches on the right.
  * @returns the page header.
  */
 function AuthPageHeader(): React.JSX.Element {
   return (
-    <header
-      data-testid='auth-page-header'
-      className='flex h-10 shrink-0 items-center justify-between border-b border-border bg-background px-4'
-    >
+    <TopBar testId='auth-page-header'>
       <BrandHomeLink />
       <div className='flex items-center gap-1'>
         <LangSwitcher />
         <ThemeToggle />
       </div>
-    </header>
+    </TopBar>
   );
 }
 

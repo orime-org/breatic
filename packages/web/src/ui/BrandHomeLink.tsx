@@ -9,7 +9,8 @@ import { BrandMark } from '@web/ui/BrandMark';
 
 /**
  * The logo and "Breatic" at the left of a page header, opening the official
- * website in a new tab. Shared by the Studio top bar and the sign-in pages.
+ * website in a new tab. Shared by the Studio top bar and every page framed by
+ * `AuthCardShell`.
  * @returns the brand link.
  */
 export function BrandHomeLink(): React.JSX.Element {

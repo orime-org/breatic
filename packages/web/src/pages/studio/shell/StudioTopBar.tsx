@@ -8,6 +8,7 @@ import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
 import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { StudioAccountMenu } from '@web/pages/studio/shell/StudioAccountMenu';
 import { BrandHomeLink } from '@web/ui/BrandHomeLink';
+import { TopBar } from '@web/ui/TopBar';
 
 interface StudioTopBarProps {
   /**
@@ -31,10 +32,7 @@ interface StudioTopBarProps {
  */
 export function StudioTopBar({ leading }: StudioTopBarProps): React.JSX.Element {
   return (
-    <header
-      role='banner'
-      className='flex h-10 shrink-0 items-center justify-between border-b border-border bg-background px-4'
-    >
+    <TopBar>
       <div className='flex items-center gap-1'>
         {leading}
         <BrandHomeLink />
@@ -45,6 +43,6 @@ export function StudioTopBar({ leading }: StudioTopBarProps): React.JSX.Element 
         <BellMenu />
         <StudioAccountMenu />
       </div>
-    </header>
+    </TopBar>
   );
 }
