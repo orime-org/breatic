@@ -292,3 +292,38 @@ test('starts a storyboard from its template, and reminds the reader to fill it i
   await expect(prompt.locator('[data-reference-mention]')).toHaveCount(1);
   await expect(page.getByTestId('generate-model-trigger')).toContainText('Nano Banana Pro');
 });
+
+test('chains a generated character into a template storyboard through a ref mark @needs-model', async () => {
+  test.setTimeout(240_000);
+  const composer = page.getByTestId('chat-composer-box');
+  await expect(composer).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('new-conversation').click();
+  await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
+
+  await composer.fill(
+    'I have no picture of my character yet. Generate her first (a young courier in a red coat), then make one 25-panel storyboard image of her crossing a rainy city, drawn from that generated picture. Do not ask me anything, just propose both, wired together.',
+  );
+  await composer.press('Enter');
+
+  await expect(page.getByTestId('message-bubble')).toHaveCount(2, { timeout: 200_000 });
+  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 200_000 });
+  const marks = await page.evaluate(async () => {
+    const list = await (await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })).json();
+    const id = list?.data?.conversations?.[0]?.id as string;
+    const read = await (await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })).json();
+    const messages = (read?.data?.messages ?? []) as {
+      parts?: {
+        type?: string;
+        output?: { placed?: boolean };
+        input?: { nodes?: { template?: string; prompt?: { slot?: { kind?: string } }[] }[] };
+      }[];
+    }[];
+    const placed = messages
+      .flatMap((m) => m.parts ?? [])
+      .filter((part) => part.type === 'tool-propose_canvas_action' && part.output?.placed === true);
+    const grid = placed.flatMap((part) => part.input?.nodes ?? []).find((n) => n.template === 'storyboard-grid-25');
+    return grid?.prompt?.flatMap((s) => (s.slot?.kind ? [s.slot.kind] : [])) ?? null;
+  });
+  expect(marks, 'a placed proposal carried the storyboard template').not.toBeNull();
+  expect(marks).toContain('ref');
+});
