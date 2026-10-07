@@ -897,9 +897,12 @@ export function renderProductGuide(): string {
       `and ${quoted(t("spaces.document.commands.color"))} open a submenu when hovered; ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} lists the block types other than ` +
       `${quoted(t("spaces.document.commands.paragraph"))}, then ${quoted(t("spaces.document.commands.divider"))} ` +
-      `and ${quoted(t("spaces.document.commands.table"))} on their own, and puts a new line of the one picked ` +
+      `and ${quoted(t("spaces.document.commands.table"))} on their own, then ` +
+      `${quoted(t("spaces.document.media.image"))}, ${quoted(t("spaces.document.media.audio"))} and ` +
+      `${quoted(t("spaces.document.media.video"))}, and puts a new line of the one picked ` +
       "below; the divider and the table each come with an empty line under them, and a new table puts the caret " +
-      "in its first cell. " +
+      "in its first cell. The last three open the computer's file picker for that kind; the files chosen go " +
+      "under the line, above an empty line made for the caret. " +
       `${quoted(t("spaces.document.commands.table"))} opens a grid of squares, nine across and nine down, with ` +
       `${quoted(t("spaces.document.table.pickSize"))} under it; moving over it lights the squares up to the ` +
       `pointer and the words under it change to the size, such as ${quoted(t("spaces.document.table.size", { rows: 3, cols: 4 }))}, and clicking ` +
@@ -913,6 +916,22 @@ export function renderProductGuide(): string {
       "plain line below, press Enter at the end of the line (Shift+Enter in a code block); if the new line kept " +
       "the list or to-do of the one above, Cmd+Alt+0 makes it plain text, and if it kept the quote, Cmd+Shift+B " +
       "takes the quote off.",
+    "- Images, videos and audio can also be dragged into the document from the computer, landing where the " +
+      "line shows, or pasted, landing under the caret's line. Each file shows a dashed box with its name and how " +
+      "far its upload has got, which only the person uploading sees; when it is done the box becomes the picture, " +
+      "video or audio for everyone. A file that cannot be uploaded turns the box red with the reason, with " +
+      `${quoted(t("spaces.document.media.retry"))} when trying again can help, and ` +
+      `${quoted(t("spaces.document.media.remove"))}. Pictures, videos or audio inside copied web pages or ` +
+      "Markdown are not pasted with the text; drop or paste the files themselves. Hovering a picture, video or " +
+      "audio, or clicking it, shows a row of icons above it: left, centre and right alignment (only when the " +
+      "picture or video is narrower than the page; audio is always as wide as the page), " +
+      `${quoted(t("spaces.document.media.caption"))} (a T), which opens a line under it for a caption, ` +
+      `${quoted(t("spaces.document.media.fullscreen"))} (four arrows, pictures only; double-clicking the ` +
+      "picture does the same, and an X at the top right closes it), " +
+      `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, and ` +
+      `${quoted(t("spaces.document.media.delete"))} (a bin). A picture or video also shows a bar on each side; ` +
+      "dragging one changes its width. Videos and audio play in place. Someone who can only view the document " +
+      "sees and plays them without the icons.",
     "- A table shows a table icon at the left of its first row instead of the six dots. Drag it to move the " +
       `whole table; click it for a menu with ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
