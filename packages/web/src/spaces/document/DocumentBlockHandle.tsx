@@ -34,6 +34,7 @@ import { SideMenuExtension } from '@blocknote/core/extensions';
 import { GripVertical, Plus, Table } from 'lucide-react';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import * as React from 'react';
+import { NodeSelection } from '@tiptap/pm/state';
 
 import {
   useBlockNoteEditor,
@@ -184,7 +185,12 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
     // while ours is `BlockNoteEditor<never, never, never>` — the same cast
     // `DocumentBlockControls` makes when it puts the editor into the context.
     editor as never,
-    (current) => !current.prosemirrorState.selection.empty,
+    // A whole block selected by a click — a picture, a video — is not a
+    // range the strip would stand over, and the strip is how that block is
+    // dragged (inner#1127).
+    (current) =>
+      !current.prosemirrorState.selection.empty &&
+      !(current.prosemirrorState.selection instanceof NodeSelection),
   );
 
   // Read off the document on every change: the side menu's own snapshot is not

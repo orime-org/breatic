@@ -234,3 +234,27 @@ describe('delete is greyed only on the document\'s only block (A12)', () => {
     expect((editor.document[0] as unknown as { children: unknown[] }).children).toHaveLength(0);
   });
 });
+
+describe('the strip beside a selected block (inner#1127)', () => {
+  it('stays on a picture the reader clicked, which selects it whole', async () => {
+    const { NodeSelection } = await import('@tiptap/pm/state');
+    const editor = openOver(
+      [
+        { type: 'paragraph', content: 'words' },
+        { type: 'image', props: { url: 'https://cdn.example/a.png', name: 'a' } },
+      ],
+      1,
+    );
+    const view = editor.prosemirrorView!;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'image') at = pos;
+      return at < 0;
+    });
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)));
+
+    render(<DocumentBlockHandle />);
+
+    expect(screen.getByTestId('doc-block-handle')).toBeTruthy();
+  });
+});
