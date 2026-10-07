@@ -302,7 +302,6 @@ export class MainAgent {
       const agentConfig: ResolvedAgentConfig = buildAgentConfig({
         basePrompt: buildSystemPrompt(),
         memoryContext,
-        interactive: true,
       });
 
       return {

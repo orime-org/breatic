@@ -229,24 +229,16 @@ describe("what a plain chat turn hands the model", () => {
     ]);
   });
 
-  it("marks the turn interactive, which is what keeps the interaction tools in", async () => {
-    // The reason rather than the outcome, and the two are not the same test:
-    // the interaction tools would still be in that set if the filter stopped
-    // applying altogether, so asserting on the set cannot tell the two apart.
-    await runTurn(saidAndSpent("hi", 100));
-    expect(buildAgentConfig.mock.calls[0]?.[0]).toMatchObject({ interactive: true });
-  });
 });
 
 describe("what a turn hands the model", () => {
   const stubConfig = { modelId: "m", instructions: "s", tools: {} };
 
-  it("marks it interactive and passes the caller's prompt and memory", async () => {
+  it("passes the caller's prompt and memory", async () => {
     // Every argument, so dropping any one of them goes red here.
     buildAgentConfig.mockReturnValueOnce(stubConfig);
     await runTurn(saidAndSpent("hi", 100));
     expect(buildAgentConfig.mock.calls[0]?.[0]).toMatchObject({
-      interactive: true,
       basePrompt: "system",
     });
   });

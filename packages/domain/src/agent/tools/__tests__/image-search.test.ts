@@ -370,9 +370,9 @@ describe("search_images: what the model reads", () => {
   });
 
   it("says nothing about where the pictures ended up", async () => {
-    // The same answer reaches a caller with no panel at all: a turn that is
-    // not interactive gets this tool too. A sentence saying the pictures are
-    // on screen has the model tell that reader something untrue.
+    // This text is what the model reads; where the pictures are drawn is the
+    // panel's business, and a sentence placing them has the model describe a
+    // screen it cannot see.
     httpRequestMock.mockImplementation(async () => imagesOk([braveResult()]));
 
     const text = await runForModel({ query: "cyberpunk city" });

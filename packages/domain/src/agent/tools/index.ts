@@ -76,20 +76,6 @@ export const BASELINE_TOOLS: readonly string[] = [
 ];
 
 /**
- * The tools that put something in front of the user rather than doing work.
- *
- * What separates these from the rest is whether the tool does anything of its
- * own: one of these returns a payload and something else draws it, so a caller
- * with no reader must not be offered it — the model would put something in
- * front of nobody, and with `ask_user` then wait for an answer that cannot
- * arrive. A tool that goes and fetches something belongs in the baseline
- * however its answer is drawn: `web_search` and `search_images` are both drawn
- * by the panel alone, and both are useful to a caller that draws nothing,
- * because what they found also reaches the model.
- */
-export const INTERACTION_TOOLS: readonly string[] = [ASK_USER];
-
-/**
  * The tools that describe the spaces the reader is looking at.
  *
  * What makes a tool belong here is that its answer is about the product in

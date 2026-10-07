@@ -46,7 +46,7 @@ describe("buildAgentConfig", () => {
     // which would be self-referential — adding a tool nobody vetted to that
     // constant would change both sides and stay green. This is the list, and
     // adding to it is supposed to require editing this line.
-    const config = buildAgentConfig({ basePrompt: "base", interactive: true });
+    const config = buildAgentConfig({ basePrompt: "base" });
     expect(Object.keys(config.tools).sort()).toEqual([
       "ask_user",
       "get_canvas_capabilities",
@@ -89,28 +89,5 @@ describe("buildAgentConfig", () => {
 
   it("is the base prompt alone when there is no memory", () => {
     expect(buildAgentConfig({ basePrompt: "base" }).instructions).toBe("base");
-  });
-
-  it("keeps interaction tools away from a caller that cannot draw them", () => {
-    // A caller with nobody watching would have the model ask a question that
-    // nothing renders, and the raw sentinel string come back as the answer.
-    // Everything that does work of its own stays: a caller with no reader
-    // still benefits from what a search found, because that reaches the model.
-    const config = buildAgentConfig({});
-    expect(Object.keys(config.tools).sort()).toEqual([
-      "get_canvas_capabilities",
-      "get_product_guide",
-      "judge_likelihood",
-      "list_generation_models",
-      "propose_canvas_action",
-      "search_images",
-      "understand_media",
-      "web_search",
-    ]);
-  });
-
-  it("gives them to a caller that can", () => {
-    const config = buildAgentConfig({ interactive: true });
-    expect(Object.keys(config.tools)).toContain("ask_user");
   });
 });
