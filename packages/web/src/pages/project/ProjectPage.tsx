@@ -305,6 +305,7 @@ function ProjectWorkspace({
 
   // ---- Current user + Yjs meta + project messages ----
   const userId = useCurrentUserStore((s) => s.user?.id);
+  const clearCurrentUser = useCurrentUserStore((s) => s.clear);
   // Chrome → canvas mailbox: the node-library dropdown posts the picked type
   // here; the canvas resolves the viewport-centre drop point (see CanvasSpace).
   const requestNodeCreate = useCanvasStore((s) => s.requestNodeCreate);
@@ -876,8 +877,12 @@ function ProjectWorkspace({
             status={connectionStatus}
             onReload={() => window.location.reload()}
             onReLogin={() => {
-              // Carry the current path as `?next=` so the login page can
-              // bounce back to the project after a successful re-auth.
+              // The session behind the stored account has expired, so the
+              // account leaves this device first, as signing out does: the
+              // sign-in page must not act for an account the server no longer
+              // accepts. The current path rides along as `?next=` so the login
+              // page can bounce back to the project after a successful re-auth.
+              clearCurrentUser();
               navigate(
             `/login?next=${encodeURIComponent(window.location.pathname)}`,
               );
