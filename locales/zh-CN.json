@@ -798,10 +798,10 @@
       "someFailed": "这个节点上有任务没能完成。",
       "view": "查看",
       "action": {
-        "replace": "替换",
         "retry": "重试",
-        "finish": "移除",
-        "clear": "清除"
+        "finish": "已读",
+        "clear": "已读",
+        "view": "查看"
       },
       "elapsed": "已运行 {duration}",
       "remaining": "剩余 {duration}",
@@ -830,6 +830,11 @@
         "declined": "模型拒绝了这次请求。",
         "media_refused": "模型不接受这个文件。",
         "tool_failed": "工具没能处理这个文件。"
+      },
+      "title": {
+        "upload": "上传 · {name}",
+        "generate": "生成 · {name}",
+        "understand": "理解 · {name}"
       }
     },
     "panel": {

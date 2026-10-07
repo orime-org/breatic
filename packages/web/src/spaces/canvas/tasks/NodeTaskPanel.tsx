@@ -61,8 +61,10 @@ export interface NodeTaskPanelProps {
   onReload: () => void;
   /** Close the list. */
   onClose: () => void;
-  /** Write one task's result onto the node. */
-  onReplace: (taskId: string) => void;
+  /** Open the node's history at one task's late result. */
+  onView: (taskId: string) => void;
+  /** The catalog's name for a model id, for each row's first line. */
+  displayNameOf?: (modelId: string) => string | null;
   /** Send one task's stashed File again. */
   onRetry: (taskId: string) => void;
   /** Drop one row. */
@@ -82,7 +84,8 @@ export interface NodeTaskPanelProps {
  * @param props.medium - What the host node holds, for a refusal's format list.
  * @param props.onReload - Fetch the list again.
  * @param props.onClose - Close the list.
- * @param props.onReplace - Write one task's result onto the node.
+ * @param props.onView - Open the node's history at one task's late result.
+ * @param props.displayNameOf - The catalog's name for a model id.
  * @param props.onRetry - Send one task's stashed File again.
  * @param props.onDismiss - Drop one row.
  * @returns The panel element.
@@ -98,7 +101,8 @@ export function NodeTaskPanel({
   medium,
   onReload,
   onClose,
-  onReplace,
+  onView,
+  displayNameOf,
   onRetry,
   onDismiss,
 }: NodeTaskPanelProps): JSX.Element {
@@ -181,7 +185,8 @@ export function NodeTaskPanel({
                 hasRetryFile={hasRetryFile(task.id)}
                 readOnly={readOnly}
                 {...(medium !== undefined && { medium })}
-                onReplace={onReplace}
+                onView={onView}
+                {...(displayNameOf !== undefined && { displayNameOf })}
                 onRetry={onRetry}
                 onDismiss={onDismiss}
               />

@@ -798,10 +798,10 @@
       "someFailed": "이 노드에서 완료되지 않은 작업이 있습니다.",
       "view": "보기",
       "action": {
-        "replace": "바꾸기",
         "retry": "다시 시도",
-        "finish": "정리",
-        "clear": "지우기"
+        "finish": "읽음",
+        "clear": "읽음",
+        "view": "보기"
       },
       "elapsed": "실행 {duration}",
       "remaining": "{duration} 남음",
@@ -830,6 +830,11 @@
         "declined": "모델이 이 요청을 거부했습니다.",
         "media_refused": "모델이 이 파일을 받지 않았습니다.",
         "tool_failed": "도구가 이 파일을 처리하지 못했습니다."
+      },
+      "title": {
+        "upload": "업로드 · {name}",
+        "generate": "생성 · {name}",
+        "understand": "내용 읽기 · {name}"
       }
     },
     "panel": {

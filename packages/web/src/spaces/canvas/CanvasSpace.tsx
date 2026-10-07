@@ -37,7 +37,7 @@ import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 import { claimRegion } from '@web/features/active-region/use-track-active-region';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { useKeyboardNudge } from '@web/spaces/canvas/use-keyboard-nudge';
-import { canGenerate, newId, type NodeTaskEntry } from '@breatic/shared';
+import { canGenerate, newId } from '@breatic/shared';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 
 import { Button } from '@web/components/ui/button';
@@ -183,7 +183,7 @@ import { keepSnapshot } from '@web/spaces/canvas/keep-snapshot';
 import { startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
 import { downloadHref } from '@web/data/api/download-href';
 import { triggerDownload } from '@web/lib/download';
-import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
+import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
 import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
 import { readSlotPicks, slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
@@ -237,10 +237,7 @@ import {
   HISTORY_MODALITIES,
   type HistoryModality,
 } from '@web/spaces/canvas/history/NodeHistoryRow';
-import {
-  resolveRestore,
-  resolveTaskReplace,
-} from '@web/spaces/canvas/history/restore-node-content';
+import { resolveRestore } from '@web/spaces/canvas/history/restore-node-content';
 import type { EmptyImageExecuteOpts } from '@web/spaces/canvas/empty-image/EmptyImagePanel';
 import { generateBlankPng } from '@web/spaces/canvas/empty-image/generate-blank-png';
 import { EdgeContextMenu } from '@web/spaces/canvas/EdgeContextMenu';
@@ -852,6 +849,7 @@ function CanvasSpaceInner({
   const panelHostId = useCanvasSession((s) => s.panelHostId);
   const panelKind = useCanvasSession((s) => s.panelKind);
   const pickSession = useCanvasSession((s) => s.pickSession);
+  const miniToolId = useCanvasSession((s) => s.miniTool?.toolId);
   // The node a pick is running for, or null — stands in
   // for the mechanical "is a pick active / which node" checks that don't care
   // about the purpose. The purpose is read separately where completion /
@@ -872,15 +870,15 @@ function CanvasSpaceInner({
   // after a pick ends is #125.
   const sessionStore = useCanvasSessionStore();
   const onExitPick = React.useCallback((): void => {
-    const purpose = sessionStore.getState().pickSession?.purpose;
+    const { pickSession: session, miniTool } = sessionStore.getState();
     endPick();
-    if (purpose === undefined) return;
+    if (session === null) return;
     // A caret mid-sentence is a live surface: Escape reaches here from the
     // prompt editor, where ending the pick is what the reader asked for and
     // moving the caret is not. Focus resting anywhere else goes to the
     // trigger below.
     if (isEditableTarget(document.activeElement)) return;
-    for (const testId of Object.values(PICK_PURPOSE_UI[purpose].trigger)) {
+    for (const testId of pickSessionUi(session, miniTool?.toolId).triggers) {
       const trigger = canvasRootOf(spaceId).querySelector<HTMLElement>(
         `[data-testid="${testId}"]`,
       );
@@ -3902,38 +3900,6 @@ function CanvasSpaceInner({
     },
     [fillUpload],
   );
-  // Task list "Replace" (#186 §7.4): put one task's result on the node. A
-  // direct write with no lock — the conflict rule is that the later write
-  // wins, and every task's own result stays on its row for the user to pick
-  // again. Only the node's own lock refuses it.
-  const replaceNodeFromTask = React.useCallback(
-    (nodeId: string, task: NodeTaskEntry): void => {
-      const host = buffer.settled().find((node) => node.id === nodeId);
-      if (host === undefined || !HISTORY_MODALITIES.has(host.type ?? '')) return;
-
-      // The same decision the history panel resolves, because a task's result
-      // and a history row's result are the same thing reached two ways — in
-      // particular a video result with no cover clears the node's poster
-      // rather than leaving the previous clip's on it.
-      const decision = resolveTaskReplace({
-        readOnly,
-        task,
-        modality: host.type as HistoryModality,
-        gateState: { locked: isNodeLocked(projectId, spaceId, nodeId) },
-      });
-      if (decision.kind === 'blocked') {
-        warnNodeGate(t(decision.toastKey));
-        return;
-      }
-      if (decision.kind === 'write') {
-        restoreNodeMedia(projectId, spaceId, nodeId, {
-          content: decision.content,
-          media: decision.media,
-        });
-      }
-    },
-    [readOnly, projectId, spaceId, t, buffer],
-  );
   // Error-state Retry (#1609 P4): re-run the upload from the session stash.
   // The stash survives repeated failures and is dropped when the reader
   // clears that task off the list; a refresh drops it too, and the button
@@ -4655,7 +4621,6 @@ function CanvasSpaceInner({
             projectId={projectId}
             spaceId={spaceId}
             readOnly={readOnly}
-            onReplace={replaceNodeFromTask}
             onRetry={retryNodeUpload}
           />
         </ReactFlow>
@@ -4685,7 +4650,7 @@ function CanvasSpaceInner({
             <span>
               {t(
                 pickSession
-                  ? PICK_PURPOSE_UI[pickSession.purpose].banner
+                  ? pickSessionUi(pickSession, miniToolId).banner
                   : 'canvas.generatePanel.selectFromCanvas',
               )}
             </span>

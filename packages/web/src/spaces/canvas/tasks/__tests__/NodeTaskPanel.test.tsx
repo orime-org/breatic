@@ -36,6 +36,7 @@ function entry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
     spaceId: 's-1',
     nodeId: 'n-1',
     kind: 'upload',
+    action: 'upload',
     status: 'running',
     startedByUserId: 'u-1',
     startedAt: OPENED,
@@ -76,7 +77,7 @@ function renderPanel(
         readOnly={false}
         onReload={(): void => {}}
         onClose={(): void => {}}
-        onReplace={(): void => {}}
+        onView={(): void => {}}
         onRetry={(): void => {}}
         onDismiss={(): void => {}}
         {...props}

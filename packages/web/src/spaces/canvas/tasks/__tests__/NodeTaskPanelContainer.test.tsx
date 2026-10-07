@@ -71,7 +71,6 @@ function panel(hostNodes: Nodes): React.JSX.Element {
             projectId='p'
             spaceId='s'
             readOnly={false}
-            onReplace={vi.fn()}
             onRetry={vi.fn()}
           />
         </ReactFlow>
@@ -215,6 +214,7 @@ describe('NodeTaskPanelContainer, the clock', () => {
         spaceId: 's',
         nodeId: 'target',
         kind: 'upload',
+        action: 'upload',
         status: 'running',
         startedByUserId: 'u-1',
         startedAt: '2026-09-06T00:00:00.000Z',

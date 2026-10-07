@@ -17,6 +17,7 @@ import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeTaskEntry } from '@breatic/shared';
 
 import { canvasApi } from '@web/data/api/canvas';
+import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
@@ -49,8 +50,6 @@ export interface NodeTaskPanelContainerProps {
   spaceId: string;
   /** Whether this reader may write; a read-only row carries no buttons. */
   readOnly: boolean;
-  /** Write one task's result onto its node (§7.4: a direct write, no lock). */
-  onReplace: (nodeId: string, task: NodeTaskEntry) => void;
   /** Send one task's stashed File again as a new task. */
   onRetry: (nodeId: string, taskId: string) => void;
 }
@@ -70,7 +69,6 @@ interface OpenNodeTaskPanelProps extends NodeTaskPanelContainerProps {
  * @param props.projectId - Project the node belongs to.
  * @param props.spaceId - Space the node lives in.
  * @param props.readOnly - Whether this reader may write.
- * @param props.onReplace - Write one task's result onto the node.
  * @param props.onRetry - Send one task's stashed File again.
  * @returns The anchored panel, or null once its host node is gone.
  */
@@ -81,12 +79,24 @@ function OpenNodeTaskPanel({
   projectId,
   spaceId,
   readOnly,
-  onReplace,
   onRetry,
 }: OpenNodeTaskPanelProps): React.JSX.Element | null {
   const t = useTranslation();
   const zoom = useStore((s) => s.transform[2]);
   const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
+  const openHistoryPanel = useCanvasSession((s) => s.openHistoryPanel);
+  // Each row's first line names a model by what the catalog calls it. The
+  // catalog is already cached by the time a list opens on a canvas.
+  const catalog = useQuery(modelCatalogQuery()).data;
+  const displayNameOf = React.useMemo(() => {
+    const names = new Map<string, string>();
+    if (catalog) {
+      for (const bucket of [catalog.image, catalog.video, catalog.audio, catalog.tts, catalog.three_d]) {
+        for (const model of bucket) names.set(model.name, model.display_name);
+      }
+    }
+    return (modelId: string): string | null => names.get(modelId) ?? null;
+  }, [catalog]);
   const queryClient = useQueryClient();
   // A deleted host draws nothing here; `CanvasSpaceInner` closes the panel.
   const hostNode = nodes.find((n) => n.id === nodeId);
@@ -141,12 +151,14 @@ function OpenNodeTaskPanel({
   const reload = React.useCallback((): void => {
     void query.refetch();
   }, [query]);
-  const replace = React.useCallback(
+  // A late result lives in the node's history only; the reader restores it
+  // from there (inner#888 §7.7).
+  const view = React.useCallback(
     (taskId: string): void => {
       const task = entries.find((row) => row.id === taskId);
-      if (task) onReplace(nodeId, task);
+      if (task?.nodeHistoryId) openHistoryPanel(nodeId, task.nodeHistoryId);
     },
-    [entries, onReplace, nodeId],
+    [entries, openHistoryPanel, nodeId],
   );
   const retry = React.useCallback(
     (taskId: string): void => onRetry(nodeId, taskId),
@@ -209,7 +221,8 @@ function OpenNodeTaskPanel({
         hasRetryFile={holdsFile}
         onReload={reload}
         onClose={closeActivePanel}
-        onReplace={replace}
+        onView={view}
+        displayNameOf={displayNameOf}
         onRetry={retry}
         onDismiss={dismiss}
       />
@@ -223,7 +236,6 @@ function OpenNodeTaskPanel({
  * @param props.projectId - Project the nodes belong to.
  * @param props.spaceId - Space the nodes live in.
  * @param props.readOnly - Whether this reader may write.
- * @param props.onReplace - Write one task's result onto its node.
  * @param props.onRetry - Send one task's stashed File again.
  * @returns The open task list, or null when another panel or none is open.
  */

@@ -14,7 +14,7 @@
  * does the chrome outside it (the left menu reads the active Space's).
  */
 
-import type { NodeType } from '@breatic/shared';
+import type { MiniToolSlotValue, NodeType } from '@breatic/shared';
 import { immer } from 'zustand/middleware/immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
@@ -109,7 +109,8 @@ export type PickPurpose =
   | 'musicVocal'
   | 'soundVideo'
   | 'moodImage'
-  | 'style';
+  | 'style'
+  | 'miniToolSlot';
 
 /**
  * An in-progress "pick a node from the canvas" session. Only one is active at a
@@ -128,6 +129,21 @@ export interface PickSession {
    * exits. Absent for every one-file slot, whose pick ends on the first click.
    */
   capacity?: number;
+  /** The mini-tool slot a `miniToolSlot` pick fills (inner#888 §7.3). */
+  slotKey?: string;
+}
+
+/**
+ * The open mini-tool panel's draft (inner#888 §7.1). It lives and dies with
+ * the panel: what the tool runs with is a snapshot of it taken on Execute.
+ */
+export interface MiniToolDraft {
+  readonly toolId: string;
+  /** The source node's content when the panel opened, to tell when it changed. */
+  readonly sourceContent: string;
+  readonly prompt: string;
+  readonly params: Readonly<Record<string, unknown>>;
+  readonly slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[]>>;
 }
 
 /** One canvas's session state and its writers. */
@@ -169,7 +185,15 @@ export interface CanvasSessionState {
     | 'history'
     | 'tasks'
     | 'annotation'
+    | 'miniTool'
     | null;
+  /** The open mini-tool panel's draft; null whenever another panel or none is open. */
+  miniTool: MiniToolDraft | null;
+  /**
+   * The history entry a task row's View asked the history panel to find;
+   * null whenever the history panel is not open, or was opened without one.
+   */
+  historyFocus: string | null;
   /**
    * Which of a node's four task states the open list is showing (#186 §7.1),
    * null whenever the task list is not the open panel.
@@ -219,8 +243,33 @@ export interface CanvasSessionState {
   openGeneratePanel: (nodeId: string, type: NodeType) => void;
   /** Open the reset-empty-image panel for a node (replaces any open panel). */
   openEmptyImagePanel: (nodeId: string) => void;
-  /** Open the node-history panel for a node (#1619, replaces any open panel). */
-  openHistoryPanel: (nodeId: string) => void;
+  /**
+   * Open the node-history panel for a node (#1619, replaces any open panel),
+   * focused on one entry when a task row's View asks for it.
+   */
+  openHistoryPanel: (nodeId: string, focus?: string) => void;
+  /**
+   * Open a mini-tool's panel on a node (inner#888 §7.2). The same tool on the
+   * same node keeps its draft; another tool or another node starts a new one
+   * from what the caller resolved.
+   */
+  openMiniTool: (
+    nodeId: string,
+    toolId: string,
+    start: { sourceContent: string; params: Readonly<Record<string, unknown>> },
+  ) => void;
+  /** Set one param in the open mini-tool draft. */
+  setMiniToolParam: (key: string, value: unknown) => void;
+  /** Set the open mini-tool draft's prompt. */
+  setMiniToolPrompt: (prompt: string) => void;
+  /** Fill one of the draft's slots: a single slot is replaced, a list slot appended to. */
+  fillMiniToolSlot: (slotKey: string, value: MiniToolSlotValue, many: boolean) => void;
+  /** Take one item out of a draft slot. */
+  clearMiniToolSlot: (slotKey: string, url?: string) => void;
+  /** The source changed under the open panel: reset what depends on its geometry. */
+  resetMiniToolSource: (sourceContent: string, params: Readonly<Record<string, unknown>>) => void;
+  /** Start picking a node into a mini-tool slot. */
+  startMiniToolSlotPick: (nodeId: string, slotKey: string, capacity?: number) => void;
   /**
    * Open one state's task list for a node (#186 §7.1, replaces any open
    * panel). Calling it again with another state re-asks the same panel.
@@ -324,6 +373,8 @@ function endPanel(s: CanvasSessionState): void {
   s.panelHostId = null;
   s.panelKind = null;
   s.taskPanelStatus = null;
+  s.miniTool = null;
+  s.historyFocus = null;
   s.pickSession = null;
   s.panelSession += 1;
 }
@@ -346,6 +397,8 @@ function openPanel(
   s.panelHostId = nodeId;
   s.panelKind = kind;
   s.pickSession = null;
+  if (kind !== 'miniTool') s.miniTool = null;
+  s.historyFocus = null;
 }
 
 /** The two slots that read the canvas's next click. */
@@ -391,6 +444,8 @@ export function createCanvasSessionStore(): CanvasSessionStore {
       panelHostId: null,
       panelKind: null,
       panelSession: 0,
+      miniTool: null,
+      historyFocus: null,
       editingTextNode: null,
       taskPanelStatus: null,
       pickSession: null,
@@ -424,7 +479,59 @@ export function createCanvasSessionStore(): CanvasSessionStore {
           openPanel(s, nodeId, kind);
         }),
       openEmptyImagePanel: (nodeId) => set((s) => openPanel(s, nodeId, 'resetEmpty')),
-      openHistoryPanel: (nodeId) => set((s) => openPanel(s, nodeId, 'history')),
+      openHistoryPanel: (nodeId, focus) =>
+        set((s) => {
+          openPanel(s, nodeId, 'history');
+          s.historyFocus = focus ?? null;
+        }),
+      openMiniTool: (nodeId, toolId, start) =>
+        set((s) => {
+          const same = s.panelKind === 'miniTool' && s.panelHostId === nodeId && s.miniTool?.toolId === toolId;
+          // Another tool on the same node is another panel, as far as a late
+          // submit is concerned.
+          if (!same && s.panelKind === 'miniTool' && s.panelHostId === nodeId) s.panelSession += 1;
+          openPanel(s, nodeId, 'miniTool');
+          if (!same) {
+            s.miniTool = { toolId, sourceContent: start.sourceContent, prompt: '', params: { ...start.params }, slots: {} };
+          }
+        }),
+      setMiniToolParam: (key, value) =>
+        set((s) => {
+          if (s.miniTool) s.miniTool = { ...s.miniTool, params: { ...s.miniTool.params, [key]: value } };
+        }),
+      setMiniToolPrompt: (prompt) =>
+        set((s) => {
+          if (s.miniTool) s.miniTool = { ...s.miniTool, prompt };
+        }),
+      fillMiniToolSlot: (slotKey, value, many) =>
+        set((s) => {
+          if (!s.miniTool) return;
+          const held = s.miniTool.slots[slotKey];
+          const next = many ? [...(Array.isArray(held) ? held : []), value] : value;
+          s.miniTool = { ...s.miniTool, slots: { ...s.miniTool.slots, [slotKey]: next } };
+        }),
+      clearMiniToolSlot: (slotKey, url) =>
+        set((s) => {
+          if (!s.miniTool) return;
+          const held = s.miniTool.slots[slotKey];
+          const slots = { ...s.miniTool.slots };
+          if (Array.isArray(held) && url !== undefined) slots[slotKey] = held.filter((item) => item.url !== url);
+          else delete slots[slotKey];
+          s.miniTool = { ...s.miniTool, slots };
+        }),
+      resetMiniToolSource: (sourceContent, params) =>
+        set((s) => {
+          if (s.miniTool) s.miniTool = { ...s.miniTool, sourceContent, params: { ...s.miniTool.params, ...params } };
+        }),
+      startMiniToolSlotPick: (nodeId, slotKey, capacity) =>
+        set((s) =>
+          claimTheNextClick(s, {
+            nodeId,
+            purpose: 'miniToolSlot',
+            slotKey,
+            ...(capacity !== undefined && { capacity }),
+          }),
+        ),
       openTaskPanel: (nodeId, status) =>
         set((s) => {
           openPanel(s, nodeId, 'tasks');

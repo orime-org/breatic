@@ -798,10 +798,10 @@
       "someFailed": "A task on this node did not finish.",
       "view": "View",
       "action": {
-        "replace": "Replace",
         "retry": "Retry",
-        "finish": "Dismiss",
-        "clear": "Clear"
+        "finish": "Mark read",
+        "clear": "Mark read",
+        "view": "View"
       },
       "elapsed": "Running {duration}",
       "remaining": "{duration} left",
@@ -830,6 +830,11 @@
         "declined": "The model declined this request.",
         "media_refused": "The model would not take this file.",
         "tool_failed": "The tool could not process this file."
+      },
+      "title": {
+        "upload": "Upload · {name}",
+        "generate": "Generate · {name}",
+        "understand": "Understand · {name}"
       }
     },
     "panel": {

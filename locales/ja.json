@@ -798,10 +798,10 @@
       "someFailed": "このノードで完了しなかったタスクがあります。",
       "view": "表示",
       "action": {
-        "replace": "置き換える",
         "retry": "再試行",
-        "finish": "片付ける",
-        "clear": "削除"
+        "finish": "既読にする",
+        "clear": "既読にする",
+        "view": "表示"
       },
       "elapsed": "実行時間 {duration}",
       "remaining": "残り {duration}",
@@ -830,6 +830,11 @@
         "declined": "モデルがこのリクエストを拒否しました。",
         "media_refused": "モデルがこのファイルを受け付けませんでした。",
         "tool_failed": "ツールでこのファイルを処理できませんでした。"
+      },
+      "title": {
+        "upload": "アップロード · {name}",
+        "generate": "生成 · {name}",
+        "understand": "内容を読み取る · {name}"
       }
     },
     "panel": {
