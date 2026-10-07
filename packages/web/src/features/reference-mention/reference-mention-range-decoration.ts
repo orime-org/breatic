@@ -40,17 +40,35 @@ export function selectionChipDecorations(
   doc: PMNode,
   selection: { from: number; to: number },
 ): Decoration[] {
+  return coveredNodeDecorations(doc, selection, REFERENCE_MENTION_NODE, RANGE_SELECTED_CLASS);
+}
+
+/**
+ * Node decorations giving every node of one type fully inside a text
+ * selection a class, for atoms the browser's own selection paint skips. A
+ * selection whose edge only touches a node does not cover it; a collapsed one
+ * covers nothing.
+ * @param doc - The document.
+ * @param selection - The current selection range.
+ * @param selection.from - Range start (inclusive).
+ * @param selection.to - Range end (exclusive).
+ * @param type - The node type to look for.
+ * @param className - The class to add.
+ * @returns One node decoration per fully covered node.
+ */
+export function coveredNodeDecorations(
+  doc: PMNode,
+  selection: { from: number; to: number },
+  type: string,
+  className: string,
+): Decoration[] {
   const { from, to } = selection;
   if (from === to) return [];
   const decorations: Decoration[] = [];
   doc.descendants((node, pos) => {
-    if (node.type.name !== REFERENCE_MENTION_NODE) return;
+    if (node.type.name !== type) return;
     if (from <= pos && pos + node.nodeSize <= to) {
-      decorations.push(
-        Decoration.node(pos, pos + node.nodeSize, {
-          class: RANGE_SELECTED_CLASS,
-        }),
-      );
+      decorations.push(Decoration.node(pos, pos + node.nodeSize, { class: className }));
     }
   });
   return decorations;

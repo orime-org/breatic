@@ -4,7 +4,6 @@
 import * as React from 'react';
 
 import {
-  nameableFeeders,
   newId,
   promptPlainText,
   proposalMarkSegments,
@@ -26,11 +25,7 @@ import {
 } from '@web/data/yjs/canvas-space';
 import { setStoryboardShots } from '@web/data/yjs/node-storyboard';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
-import {
-  writeProposalPrompt,
-  type ProposalFeeders,
-  type ProposalSource,
-} from '@web/spaces/canvas/generate/proposal-prompt';
+import { writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
 import { planFlowLayout, type Spot } from '@web/spaces/canvas/lib/place-flow';
 import {
   cloneForPaste,
@@ -125,47 +120,6 @@ export interface PlacedProposal {
   nodeIds: string[];
   /** The group they landed in, when there were two or more of them. */
   groupId?: string;
-}
-
-/**
- * What is wired into one node of a proposal, as nodes now on the canvas.
- *
- * These are what its prompt's marks mention, one each in order, so what the
- * generation reads reaches it without the reader making the mention by hand.
- * Two lists, because the two kinds of mark point at different things: an asset
- * mark at an empty node still to be filled, a ref mark at a node already
- * carrying work.
- * @param proposal - The whole proposal.
- * @param index - Which of its nodes is being fed.
- * @param ids - The placed node ids, in the proposal's own order.
- * @returns The two lists, each in placement order.
- * @throws {never} Never.
- */
-function feedersOnCanvas(
-  proposal: CanvasProposal,
-  index: number,
-  ids: readonly string[],
-): ProposalFeeders {
-  // What the reader still has to fill goes in one list, what already carries
-  // work in the other: an asset mark draws from the first and a ref mark
-  // from the second, and one list would have them taking each other's turn.
-  // The split and its order come from the shared reading, narrowed by the one
-  // rule the card files its to-dos by, which reads the two catalog facts off
-  // the node.
-  const held = nameableFeeders(proposal, index);
-  /**
-   * The placed nodes behind a run of feeder indices.
-   * @param at - The indices to resolve.
-   * @returns One entry per index that has a node on the canvas.
-   */
-  const placed = (at: readonly (number | null)[]): (ProposalSource | null)[] =>
-    at.map((i) => {
-      if (i === null) return null;
-      const id = ids[i];
-      const kind = proposal.nodes[i]?.type;
-      return id && kind ? { id, kind } : null;
-    });
-  return { sources: placed(held.sources), upstream: placed(held.upstream) };
 }
 
 /**
@@ -343,8 +297,7 @@ export function useNodeCreation(
             });
           }
         });
-        // Words last: an asset mark mentions the empty node feeding it, so the
-        // wiring has to be settled before the mentions are written.
+        // Words last, once every node and edge is in place.
         proposal.nodes.forEach((node, i) => {
           const id = nodeIds[i];
           if (!id) return;
@@ -356,24 +309,27 @@ export function useNodeCreation(
             return;
           }
           if (!node.mode) return;
+          // A model drawing no prompt box shows nothing written there; the card
+          // lists its marks instead.
+          if (node.takesPrompt === false) return;
           // The main prompt goes into the proposal's own mode (#2218), then
-          // each shot; their marks pair with the feeders in that one order.
-          let feeders = feedersOnCanvas(proposal, i, nodeIds);
+          // each shot.
           const fragment = getPromptFragment(projectId, spaceId, id, node.mode);
-          if (fragment && node.prompt) feeders = writeProposalPrompt(fragment, node.prompt, feeders);
+          if (fragment && node.prompt) writeProposalPrompt(fragment, node.prompt);
           if (node.shots) {
             const shotFragments = setStoryboardShots(projectId, spaceId, id, node.shots.map((shot) => shot.duration));
             node.shots.forEach((shot, k) => {
               const target = shotFragments[k];
-              if (target) feeders = writeProposalPrompt(target, shot.prompt, feeders);
+              if (target) writeProposalPrompt(target, shot.prompt);
             });
           }
         });
       });
-      // A mark is a place the reader still fills in or rewrites. Saying so is
-      // all: what they leave as it is goes out as it is (inner#977).
-      const marked = proposal.nodes.some((node) =>
-        proposalMarkSegments(node).some((segment) => segment.slot && segment.slot.kind !== 'ref'),
+      // A mark is something the reader still does. Saying so is all: what
+      // they leave as it is goes out as it is (inner#977). Where no prompt box
+      // is drawn nothing was written, and the card is where the marks are.
+      const marked = proposal.nodes.some(
+        (node) => node.takesPrompt !== false && proposalMarkSegments(node).some((segment) => segment.slot),
       );
       if (marked) toast.info(t('canvas.generatePanel.editMarks'));
       return groupId === undefined ? { nodeIds } : { nodeIds, groupId };

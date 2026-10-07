@@ -13,17 +13,13 @@ import {
 } from '@web/data/yjs/canvas-space';
 import { asContentView } from '@web/data/yjs/node-view';
 import { toast } from '@web/lib/toast';
-import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
 import { writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
-import { templateFeeders, templateWrites } from '@web/spaces/canvas/generate/template-writes';
-
-/** Text bodies are not read here: only which images are wired in matters. */
-const NO_TEXT: ReadonlyMap<string, string> = new Map();
+import { templateWrites } from '@web/spaces/canvas/generate/template-writes';
 
 /**
  * Applies a picked template to a generate panel's node (inner#977): the
  * template's mode, model and params, then that mode's prompt replaced by the
- * template's, its asset marks mentioning the images wired in. The same writes
+ * template's; the reader `@`-mentions the pictures it asks for by hand. The same writes
  * the reader makes setting the panel by hand, read fresh at click time like
  * every other panel write. A toast reminds the reader to edit the marked
  * parts; nothing stops them generating without doing so.
@@ -54,10 +50,8 @@ export function useApplyTemplate(
       // Also an explicit pick, so the mode remembers the template's model.
       setNodeModel(projectId, spaceId, nodeId, writes.mode, writes.model, writes.paramsByModel);
       const fragment = getPromptFragment(projectId, spaceId, nodeId, writes.mode);
-      if (fragment) {
-        const references = deriveReferences(nodeId, graph.nodes, graph.edges, NO_TEXT);
-        writeProposalPrompt(fragment, writes.prompt, templateFeeders(references));
-      }
+      // The reader @s the pictures the template asks for by hand.
+      if (fragment) writeProposalPrompt(fragment, writes.prompt);
       toast.info(t('canvas.generatePanel.editMarks'));
     },
     [projectId, spaceId, nodeId, models],

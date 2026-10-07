@@ -535,12 +535,34 @@ body {
    configure a placeholder, pass every test, and show nothing at all. It is a
    property of the extension, not of any one editor, so it lives here and every
    editor that installs Placeholder gets it. */
-.ProseMirror p.is-editor-empty:first-child::before {
+.ProseMirror p.is-editor-empty:first-child::before,
+.ProseMirror .prompt-note + p.is-empty:last-child::before {
   content: attr(data-placeholder);
   float: left;
   height: 0;
   pointer-events: none;
   color: var(--color-muted-foreground);
+}
+/* A note at the top of a prompt (inner#977): how to operate the panel, never
+   sent to the model. Orange because it asks for attention without anything
+   having gone wrong; red is the error colour. Selected the way a selected
+   mention is (.reference-mention--range-selected below): the note is an atom
+   the browser's own selection paint skips, so a note a selection covers --
+   picked on its own or swept over -- gets the same selection tint, focused
+   only. The class comes from the note's own decoration, so the editor's
+   node-selection class keeps drawing nothing. The second placeholder selector
+   above draws the box's sentence on the line under the notes, which is not
+   the editor's first child and so never gets `is-editor-empty`. */
+.prompt-note {
+  color: var(--color-status-warning-foreground);
+  background-color: var(--color-status-warning-bg);
+  border-radius: var(--radius-content-xs);
+  padding: 0 4px;
+  cursor: default;
+  user-select: none;
+}
+.ProseMirror-focused .prompt-note.prompt-note--selected {
+  background-color: color-mix(in srgb, var(--color-status-selected) 35%, transparent);
 }
 /* ---- A node-selected block is not drawn ----
    This Space shows nothing around a block ProseMirror marks with this class

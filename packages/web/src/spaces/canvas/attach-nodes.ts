@@ -10,6 +10,7 @@ import { ATTACHMENT_NAME_CHARS, hashOf } from '@web/lib/attachment-naming';
 import type { ContentNodeView } from '@web/data/yjs/node-view';
 import { toAbsolutePosition } from '@web/spaces/canvas/group-geometry';
 import { currentGeneration } from '@web/spaces/canvas/generate/current-generation';
+import { PROMPT_NOTE_LABEL_ATTR, PROMPT_NOTE_NODE } from '@web/features/prompt-note/prompt-note';
 import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import {
   MENTION_KIND_ATTR,
@@ -31,11 +32,14 @@ export interface NodeReaders {
 }
 
 /**
- * A reference mention read as the name the reader sees on its chip.
+ * A reference mention read as the name the reader sees on its chip, and a
+ * note as its words in the form a template writes it.
  * @param element - An element inside a prompt.
- * @returns `@` and the name, or undefined for anything but a mention.
+ * @returns The text, or undefined for anything else.
  */
 function mentionText(element: Y.XmlElement): string | undefined {
+  // A note is handed over too: the agent is given everything the node holds.
+  if (element.nodeName === PROMPT_NOTE_NODE) return `(💡 ${String(element.getAttribute(PROMPT_NOTE_LABEL_ATTR) ?? '')})`;
   if (element.nodeName !== REFERENCE_MENTION_NODE) return undefined;
   const label = element.getAttribute(MENTION_LABEL_ATTR) ?? element.getAttribute(MENTION_KIND_ATTR);
   return `@${String(label ?? '')}`;

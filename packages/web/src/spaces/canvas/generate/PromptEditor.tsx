@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import { Document } from '@tiptap/extension-document';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { Text } from '@tiptap/extension-text';
@@ -26,6 +25,7 @@ import {
   type MentionOccurrence,
   type ChipDisplaySnapshot,
 } from '@web/spaces/canvas/generate/at-reference';
+import { PromptDocument, PromptNote } from '@web/features/prompt-note/prompt-note';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import {
@@ -283,9 +283,12 @@ export const PromptEditor = React.forwardRef<
       };
       const built = new Editor({
         extensions: [
-          Document,
+          // Notes on operating the panel sit above the words and are never
+          // sent (inner#977); the document keeps a line below them to write in.
+          PromptDocument,
           Paragraph,
           Text,
+          PromptNote,
           // The caret between two adjacent chips (no auto space — user
           // 2026-07-10 item 5) is handled by the chip-boundary caret plugin
           // that ReferenceMention installs (reference-mention-caret.ts).
@@ -306,6 +309,8 @@ export const PromptEditor = React.forwardRef<
           // A function rather than a string: the sentence changes with the mode
           // and the extension is baked in at creation, so it reads the wiring
           // every time the view republishes (see the setEditable effect below).
+          // index.css draws the sentence on an empty box and on the empty
+          // line under the notes, where the caret lands.
           Placeholder.configure({
             placeholder: () => wiring.placeholder,
           }),

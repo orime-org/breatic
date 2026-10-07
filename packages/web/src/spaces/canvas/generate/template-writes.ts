@@ -11,9 +11,7 @@
 
 import { templatePrompt, type GenerationTemplate, type ModelEntry, type PromptSegment } from '@breatic/shared';
 
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { paramsStoreOf, resolveModelSwitch, type ParamsStoreSource } from '@web/spaces/canvas/generate/model-params';
-import type { ProposalFeeders } from '@web/spaces/canvas/generate/proposal-prompt';
 
 /** The mode, model, per-model params and prompt a template puts on a node. */
 export interface TemplateWrites {
@@ -41,19 +39,4 @@ export function templateWrites(
     picked,
   );
   return { mode: template.mode, model: template.model, paramsByModel, prompt: templatePrompt(template) };
-}
-
-/**
- * The nodes a template's asset marks mention: the images already wired into
- * the node, in rail order. Image to image sends only the @-mentioned
- * references, so mentioning them lets the reader generate straight away;
- * marks left over stay as words for the reader to replace.
- * @param references - The node's reference rail rows.
- * @returns The feeders for `writeProposalPrompt`.
- */
-export function templateFeeders(references: readonly ReferenceRailItem[]): ProposalFeeders {
-  const ids = new Set(
-    references.filter((r) => r.sourceNodeType === 'image' && !r.focus).map((r) => r.sourceNodeId),
-  );
-  return { sources: [...ids].map((id) => ({ id, kind: 'image' })), upstream: [] };
 }
