@@ -4,14 +4,26 @@
 import * as React from 'react';
 import { Link } from 'react-router-dom';
 
+import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
+import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
+import { useTranslation } from '@web/i18n/use-translation';
+import { PRIVACY_URL, TERMS_URL } from '@web/lib/official-home';
+import { BrandHomeLink } from '@web/ui/BrandHomeLink';
+import { TopBar } from '@web/ui/TopBar';
+
+/** Links in the page footer: muted until hovered, with the app's focus ring. */
+const FOOTER_LINK_CLASS =
+  'rounded-chrome-sm underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+
 /**
- * Shared frame for every auth page (login / register / forgot /
- * reset / verify).
+ * Shared frame for the sign-in, sign-up and account-recovery pages and the
+ * signed-in pages that look like them (slug setup, decision landing).
  *
- * Renders a centered card on the project background — same surface
- * tokens as the rest of the app so a redirect from `/studio` to
- * `/login` feels seamless. Title + optional subtitle sit in a tight
- * header above the form body; a footer slot below carries
+ * A page header (brand, language, theme) and a page footer (terms,
+ * privacy) around a centered card on the project background — same
+ * surface tokens as the rest of the app so a redirect from `/studio` to
+ * `/login` feels seamless. In the card, title + optional subtitle sit in a
+ * tight header above the form body; a footer slot below carries
  * cross-links ("Don't have an account? Sign up" etc.).
  */
 interface AuthCardShellProps {
@@ -24,14 +36,15 @@ interface AuthCardShellProps {
 }
 
 /**
- * Centered auth-card shell framing a form with a title, body, and footer.
+ * Auth page: page header, a centered card framing a form with a title, body,
+ * and footer, then the page footer.
  * @param root0 - component props
  * @param root0.title - heading shown at the top of the card
  * @param root0.subtitle - optional supporting line beneath the title
  * @param root0.footer - optional footer slot for cross-page links
  * @param root0.notice - optional line rendered under the footer
  * @param root0.children - the form (or other body content) inside the card
- * @returns a centered auth card framing the given title, body, and footer.
+ * @returns the page header, the centered auth card, and the page footer.
  */
 export function AuthCardShell({
   title,
@@ -41,23 +54,66 @@ export function AuthCardShell({
   children,
 }: AuthCardShellProps): React.JSX.Element {
   return (
-    <main className='flex min-h-screen items-center justify-center bg-background p-6'>
-      <div className='w-full max-w-sm rounded-overlay border border-border bg-card p-6 text-card-foreground shadow-sm'>
-        <header className='mb-4 flex flex-col gap-1'>
-          <h1 className='text-xl font-semibold tracking-tight'>{title}</h1>
-          {subtitle ? (
-            <p className='text-sm text-muted-foreground'>{subtitle}</p>
+    <div className='flex min-h-screen flex-col bg-background'>
+      <AuthPageHeader />
+      <main className='flex flex-1 items-center justify-center p-6'>
+        <div className='w-full max-w-sm rounded-overlay border border-border bg-card p-6 text-card-foreground shadow-sm'>
+          <header className='mb-4 flex flex-col gap-1'>
+            <h1 className='text-xl font-semibold tracking-tight'>{title}</h1>
+            {subtitle ? (
+              <p className='text-sm text-muted-foreground'>{subtitle}</p>
+            ) : null}
+          </header>
+          {children}
+          {footer ? (
+            <footer className='mt-6 text-center text-sm text-muted-foreground'>
+              {footer}
+            </footer>
           ) : null}
-        </header>
-        {children}
-        {footer ? (
-          <footer className='mt-6 text-center text-sm text-muted-foreground'>
-            {footer}
-          </footer>
-        ) : null}
-        {notice}
+          {notice}
+        </div>
+      </main>
+      <AuthPageFooter />
+    </div>
+  );
+}
+
+/**
+ * The page header above the card, on the Studio's top bar: the brand on the
+ * left, the language and theme switches on the right.
+ * @returns the page header.
+ */
+function AuthPageHeader(): React.JSX.Element {
+  return (
+    <TopBar testId='auth-page-header'>
+      <BrandHomeLink />
+      <div className='flex items-center gap-1'>
+        <LangSwitcher />
+        <ThemeToggle />
       </div>
-    </main>
+    </TopBar>
+  );
+}
+
+/**
+ * The page footer below the card: the terms and the privacy policy on the
+ * official website, each in a new tab so the form keeps what was typed.
+ * @returns the page footer.
+ */
+function AuthPageFooter(): React.JSX.Element {
+  const t = useTranslation();
+  return (
+    <footer
+      data-testid='auth-page-footer'
+      className='flex shrink-0 justify-center gap-4 py-4 text-xs text-muted-foreground'
+    >
+      <a href={TERMS_URL} target='_blank' rel='noreferrer' className={FOOTER_LINK_CLASS}>
+        {t('auth.terms.termsLink')}
+      </a>
+      <a href={PRIVACY_URL} target='_blank' rel='noreferrer' className={FOOTER_LINK_CLASS}>
+        {t('auth.terms.privacyLink')}
+      </a>
+    </footer>
   );
 }
 

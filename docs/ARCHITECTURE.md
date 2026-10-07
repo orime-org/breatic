@@ -456,7 +456,7 @@ spaces/     Canvas / Document / Timeline 内容实现(open enum)
 features/   真·跨页模块(credits / membership / notifications / preferences)+ 跨页共用、绑全局 store 的 hook(active-region / exclusive-overlay)
 stores/     Zustand store(一文件一 store,互不 import)
 data/       I/O 边界(api / yjs / stream / upload)+ 各自的数据类型与转换
-ui/         跨 feature 的业务原子(Avatar、StatusBadge 等)
+ui/         跨 feature 的业务原子(BrandMark、BrandHomeLink、TopBar、StudioAvatar 等)
 --- 以下同级,不分先后 ---
 components/  我们自己写的共享组件(loading-screen / page-unavailable-screen);`ui/` 子目录是 shadcn 原语(vendor;ESLint 忽略)
 theme/      tokens.css(单一 token 源)+ tailwind 扩展

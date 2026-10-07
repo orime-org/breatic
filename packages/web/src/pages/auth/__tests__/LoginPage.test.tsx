@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
@@ -152,6 +152,6 @@ describe('LoginPage', () => {
     const notice = screen.getByTestId('auth-terms-notice');
     expect(notice.previousElementSibling?.tagName).toBe('FOOTER');
     expect(notice.previousElementSibling).toHaveTextContent('Don\'t have an account?');
-    expect(screen.getByRole('link', { name: 'Terms of Service' })).toBeInTheDocument();
+    expect(within(notice).getByRole('link', { name: 'Terms of Service' })).toBeInTheDocument();
   });
 });

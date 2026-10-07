@@ -27,19 +27,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   render as rtlRender,
+  fireEvent,
   screen,
   waitFor,
   type RenderOptions,
 } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import ProtectedRoute from '@web/app/ProtectedRoute';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
 import type { ConnectionStatus } from '@web/data/yjs/use-socket';
 
 const PID = '11111111-1111-4111-8111-111111111111';
+
+/**
+ * Where the sign-in page would be, showing the address it was reached at.
+ * @returns the stand-in.
+ */
+function LoginStandIn(): React.JSX.Element {
+  const location = useLocation();
+  return <div data-testid='login-page'>{location.pathname + location.search}</div>;
+}
 
 /** Mutable so each case can put the socket in a different state. */
 const socket: { status: ConnectionStatus } = { status: 'connected' };
@@ -143,7 +154,15 @@ function setup(status: ConnectionStatus): void {
   render(
     <MemoryRouter initialEntries={[`/project/demo-${PID}`]}>
       <Routes>
-        <Route path='/project/:projectId' element={<ProjectPage />} />
+        <Route
+          path='/project/:projectId'
+          element={
+            <ProtectedRoute>
+              <ProjectPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path='/login' element={<LoginStandIn />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -211,5 +230,17 @@ describe('ProjectPage — the workspace overlay follows the banner', () => {
     expect(workspace).not.toBeNull();
     expect(workspace?.hasAttribute('inert')).toBe(false);
     expect(workspace?.getAttribute('aria-hidden')).toBeNull();
+  });
+
+  it('signs the reader out on this device before taking them to sign in again', async () => {
+    // The session behind the stored account has expired. Arriving at /login
+    // with that account still in the store would make the page act as if
+    // someone were signed in, for example by writing a language pick to an
+    // account the server no longer accepts.
+    setup('authFailed');
+    fireEvent.click(await screen.findByTestId('connection-banner-relogin'));
+    const login = await screen.findByTestId('login-page');
+    expect(login).toHaveTextContent(`/login?next=${encodeURIComponent(`/project/demo-${PID}`)}`);
+    expect(useCurrentUserStore.getState().user).toBeNull();
   });
 });

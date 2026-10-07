@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
@@ -310,6 +310,6 @@ describe('RegisterPage with email (code step, #287)', () => {
     const notice = screen.getByTestId('auth-terms-notice');
     expect(notice.previousElementSibling?.tagName).toBe('FOOTER');
     expect(notice.previousElementSibling).toHaveTextContent('Already have an account?');
-    expect(screen.getByRole('link', { name: 'Terms of Service' })).toBeInTheDocument();
+    expect(within(notice).getByRole('link', { name: 'Terms of Service' })).toBeInTheDocument();
   });
 });
