@@ -683,6 +683,16 @@ export {
   type MediaLimits,
   type MediaNumbers,
 } from "@shared/upload/ingest-client.js";
+// The mini-tool container job protocol, read by the worker and the ingest Worker.
+export {
+  readMiniToolJob,
+  readMiniToolJobReport,
+  submitMiniToolJob,
+  type ContainerUsage,
+  type MiniToolJobOutput,
+  type MiniToolJobReport,
+  type MiniToolJobRequest,
+} from "@shared/upload/mini-tool-job.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,
 // and a storage key's extension comes from a filename we let be any Unicode.

@@ -30,7 +30,8 @@ export type UsageFeature =
   | "memory_consolidation"
   | "text_tool"
   | "canvas_understand"
-  | "skill_task";
+  | "skill_task"
+  | "mini_tool";
 
 /** What inside the operation made the call. */
 export type UsageSource =
@@ -38,7 +39,8 @@ export type UsageSource =
   | "tool:understand_media"
   | "tool:web_search"
   | "tool:search_images"
-  | "tool:judge_likelihood";
+  | "tool:judge_likelihood"
+  | "container";
 
 /** A service priced per request in `config/usage-pricing.yaml`. */
 export type PricedService = keyof UsagePricing["services"];
@@ -71,6 +73,8 @@ export interface ServiceCall {
   requests: number;
   /** The cost the service reported; absent means price it from the table. */
   costUsd?: number;
+  /** Where `costUsd` came from, when it is not the service's own report. */
+  costSource?: CostSource;
 }
 
 /** A model call as a recorder receives it. */
@@ -145,7 +149,7 @@ function serviceCost(
   call: ServiceCall,
   pricing: UsagePricing,
 ): { costUsd: number; costSource: CostSource } {
-  if (call.costUsd !== undefined) return { costUsd: call.costUsd, costSource: "provider" };
+  if (call.costUsd !== undefined) return { costUsd: call.costUsd, costSource: call.costSource ?? "provider" };
   // OpenRouter reports what it charged on every answer and has no table of
   // ours to fall back on, the same rule `costOfModelCall` applies.
   if (call.provider === "openrouter") return { costUsd: 0, costSource: "missing" };

@@ -62,7 +62,7 @@ describe("model tools against the catalog", () => {
     (_id, tool) => {
       const model = catalog().get(modelOf(tool)!);
       expect(model).toBeDefined();
-      const params = model!.params;
+      const params = model!.params ?? {};
       expect(Object.keys(params)).toContain(tool.sourceParam);
       for (const slot of tool.slots) {
         expect(Object.keys(params)).toContain(slot.param);
@@ -70,7 +70,7 @@ describe("model tools against the catalog", () => {
         if (slot.many) expect(params[slot.param]?.max_items).toBeGreaterThan(0);
       }
       for (const key of toolParamKeys(tool)) {
-        expect(["tool", "panel"]).toContain(params[key]?.fill);
+        expect(["tool", "panel"]).toContain(params[key]?.fill ?? "none");
       }
       expect(tool.prompt !== undefined).toBe(model!.takes_prompt);
     },
@@ -81,12 +81,11 @@ describe("model tools against the catalog", () => {
     const undeclared: string[] = [];
     for (const tool of modelTools) {
       const model = models.get(modelOf(tool)!)!;
-      for (const provider of model.providers) {
-        const pricing = provider.pricing as Record<string, unknown>;
-        const formula = typeof pricing.formula === "string" ? pricing.formula : "";
-        const constants = new Set(Object.keys(pricing));
+      for (const provider of model.providers ?? []) {
+        const formula = provider.pricing?.formula ?? "";
+        const constants = new Set(Object.keys(provider.pricing ?? {}));
         for (const name of formulaParams(formula, constants)) {
-          if (!(name in model.params)) undeclared.push(`${model.name}.${name}`);
+          if (!(name in (model.params ?? {}))) undeclared.push(`${model.name}.${name}`);
         }
       }
     }
@@ -103,7 +102,7 @@ describe("model tools against the catalog", () => {
     }
     const unclaimed: string[] = [];
     for (const model of catalog().values()) {
-      for (const [key, spec] of Object.entries(model.params)) {
+      for (const [key, spec] of Object.entries(model.params ?? {})) {
         if (spec.fill === "tool" && !claimed.has(`${model.name}.${key}`)) {
           unclaimed.push(`${model.name}.${key}`);
         }

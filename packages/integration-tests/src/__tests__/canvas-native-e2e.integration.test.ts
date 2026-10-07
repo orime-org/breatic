@@ -10,7 +10,7 @@
  *   - Real @breatic/core modules: taskService, DB schema
  *   - Real @breatic/collab: handleNodeTaskCountsEvent + startTaskListener
  *   - In-process Hocuspocus: DirectConnection for Yjs doc pre-population + assertion
- *   - Mocked provider boundary: resolveMiniToolEntry → local kind + runLocalHandler (synthetic)
+ *   - Mocked provider boundary: runContainerJob (synthetic), reached through the registry's container tool
  *
  * What this catches that unit tests can't:
  *   - Queue name typos (worker listens on wrong queue)
@@ -62,8 +62,8 @@ vi.mock("ai", () => ({
 // ── Mock the provider boundary BEFORE any worker/core module is imported ────
 //
 // Strategy:
-//   1. Mock resolveMiniToolEntry → always return { kind: 'local', handler: 'test/mock' }
-//   2. Mock runLocalHandler → return values from a per-test controller object
+//   1. The job names a container tool, so runMiniTool reaches runContainerJob
+//   2. Mock runContainerJob → return values from a per-test controller object
 //   3. Mock getStorageAdapter + backendUploadService → no-op URL passthrough
 //   4. Everything else (DB, Redis, BullMQ) is real
 //
@@ -85,12 +85,18 @@ const providerCtrl = {
 };
 
 // Must be hoisted before the module imports below
-vi.mock("@worker/mini-tool-registry.js", () => ({
-  resolveMiniToolEntry: () => ({ kind: "local", handler: "test/mock" }),
+vi.mock("@worker/handlers/container/run-container-job.js", () => ({
+  ContainerJobFailed: class ContainerJobFailed extends Error {},
+  runContainerJob: async (): Promise<[Record<string, unknown>, number]> => [await syntheticRun(), 0],
 }));
 
-vi.mock("@worker/handlers/local/index.js", () => ({
-  runLocalHandler: async () => {
+/**
+ * What the synthetic container run answers this test with.
+ * @returns The run's result.
+ * @throws {Error} The controller's error, in the failing modes.
+ */
+async function syntheticRun(): Promise<Record<string, unknown>> {
+  {
     if (providerCtrl.mode === "failure") {
       throw providerCtrl.error;
     }
@@ -114,8 +120,8 @@ vi.mock("@worker/handlers/local/index.js", () => ({
       })),
       cost: 0,
     };
-  },
-}));
+  }
+}
 
 // Controllable storage stub (asset-layer hardening).
 //   failDownload → the re-host throws (hole #4: a persist failure must
@@ -394,7 +400,8 @@ async function openTaskRows(
     nodeIds,
     startedByUserId: userId,
     taskId,
-    label: "remove-bg",
+    action: "mini_tool",
+    label: "video.cut",
   });
 }
 
@@ -657,7 +664,8 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       projectId: FIXTURE_PROJECT_ID,
       spaceId: FIXTURE_SPACE_ID,
       source: "mini_tool",
-      toolName: "remove-bg",
+      toolId: "video.cut",
+      sourceKey: "video/source.mp4",
       params: {},
       targetNodeIds: [nodeId],
       mode: "append" as const,
@@ -744,7 +752,8 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       projectId: FIXTURE_PROJECT_ID,
       spaceId: FIXTURE_SPACE_ID,
       source: "mini_tool",
-      toolName: "remove-bg",
+      toolId: "video.cut",
+      sourceKey: "video/source.mp4",
       params: {},
       targetNodeIds: [nodeId],
       mode: "append" as const,
@@ -818,7 +827,8 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       projectId: FIXTURE_PROJECT_ID,
       spaceId: FIXTURE_SPACE_ID,
       source: "mini_tool",
-      toolName: "remove-bg",
+      toolId: "video.cut",
+      sourceKey: "video/source.mp4",
       params: {},
       targetNodeIds: [nodeId],
       mode: "append" as const,
@@ -914,7 +924,8 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       projectId: FIXTURE_PROJECT_ID,
       spaceId: FIXTURE_SPACE_ID,
       source: "mini_tool",
-      toolName: "remove-bg",
+      toolId: "video.cut",
+      sourceKey: "video/source.mp4",
       params: {},
       targetNodeIds: [nodeId],
       mode: "append" as const,
@@ -1001,7 +1012,8 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       projectId: FIXTURE_PROJECT_ID,
       spaceId: FIXTURE_SPACE_ID,
       source: "mini_tool",
-      toolName: "multi-angle",
+      toolId: "video.cut",
+      sourceKey: "video/source.mp4",
       params: {},
       targetNodeIds: nodeIds,
       mode: "append" as const,
@@ -1099,7 +1111,8 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
         projectId: FIXTURE_PROJECT_ID,
         spaceId: FIXTURE_SPACE_ID,
         source: "mini_tool",
-        toolName: "remove-bg",
+        toolId: "video.cut",
+      sourceKey: "video/source.mp4",
         params: {},
         targetNodeIds: [opts.nodeId],
         mode: "append" as const,
@@ -1249,7 +1262,8 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
         projectId: FIXTURE_PROJECT_ID,
         spaceId: FIXTURE_SPACE_ID,
         source: "mini_tool",
-        toolName: "tts",
+        toolId: "video.cut",
+        sourceKey: "video/source.mp4",
         params: {},
         targetNodeIds: [nodeId],
         mode: "append" as const,

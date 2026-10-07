@@ -71,16 +71,9 @@ vi.mock("@breatic/shared", () => ({
   canvasSpaceDocName: (pid: string, sid: string) => `project-${pid}/canvas-${sid}`,
 }));
 
-// mini-tool-registry + local handlers + ai are pulled in transitively by
-// handlers/dispatch.ts (which we import for emitNodeStateFailed) — mock
-// them so the provider chains never load (same as
+// ai is pulled in transitively by handlers/dispatch.ts (which we import for
+// emitNodeStateFailed) — mock it so the provider chains never load (same as
 // the sibling dispatch suites).
-vi.mock("@worker/mini-tool-registry.js", () => ({
-  resolveMiniToolEntry: vi.fn(),
-}));
-vi.mock("@worker/handlers/local/index.js", () => ({
-  runLocalHandler: vi.fn(),
-}));
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   generateText: vi.fn(),

@@ -10,9 +10,9 @@ import { agentUsageRecords, db } from "@breatic/core";
 import type { UsageRow } from "@domain/credit/usage-recorder.js";
 
 /**
- * Append one usage row.
+ * Append one usage row. A container run's row is written once per task.
  * @param row - The paid call to record.
- * @returns Nothing once the row is written.
+ * @returns Nothing once the row is written, or once an earlier attempt's is found.
  */
 export async function insertUsageRecord(row: UsageRow): Promise<void> {
   await db
@@ -33,5 +33,8 @@ export async function insertUsageRecord(row: UsageRow): Promise<void> {
       costUsd: String(row.costUsd),
       costSource: row.costSource,
       credits: String(row.credits),
-    });
+    })
+    // Only a container run has a unique key (one row per task, whichever
+    // attempt writes it first); every other row has nothing to conflict with.
+    .onConflictDoNothing();
 }

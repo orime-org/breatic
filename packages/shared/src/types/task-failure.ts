@@ -83,6 +83,11 @@ export const TASK_FAILURE_REASONS = [
    * way, so repeating it is not what the person does next.
    */
   "media_refused",
+  /**
+   * A mini-tool's container run did not finish: the tool failed on this file,
+   * ran out of time, or stopped before it wrote everything.
+   */
+  "tool_failed",
 ] as const;
 
 /** One of the causes above. */

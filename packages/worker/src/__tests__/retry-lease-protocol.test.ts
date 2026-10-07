@@ -39,8 +39,6 @@ vi.mock("@breatic/domain", () => ({
 vi.mock("@breatic/shared", () => ({
   canvasSpaceDocName: (pid: string, sid: string) => `project-${pid}/canvas-${sid}`,
 }));
-vi.mock("../mini-tool-registry.js", () => ({ resolveMiniToolEntry: vi.fn() }));
-vi.mock("../handlers/local/index.js", () => ({ runLocalHandler: vi.fn() }));
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   generateText: vi.fn(),

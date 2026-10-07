@@ -18,9 +18,8 @@
 import type { Job } from "bullmq";
 import { stepCountIs } from "ai";
 import { generateTextRetry } from "@breatic/domain";
-import { resolveMiniToolEntry } from "@worker/mini-tool-registry.js";
 import type { ResumeContext } from "@worker/providers/shared.js";
-import { runLocalHandler } from "@worker/handlers/local/index.js";
+import { runContainerJob } from "@worker/handlers/container/run-container-job.js";
 import { getModel, resolveProvider } from "@breatic/domain";
 import { buildAgentConfig } from "@breatic/domain";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, getAgentConfig } from "@breatic/core";
@@ -50,7 +49,7 @@ import {
   type PersistedOutput,
 } from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
-import { canvasSpaceDocName, type GenerationSource } from "@breatic/shared";
+import { canvasSpaceDocName, isModelTool, miniToolById, type GenerationSource } from "@breatic/shared";
 import type { NodeTaskResult, TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -102,7 +101,10 @@ export interface TaskJobData {
   skillName?: string;
   /** Which lane queued this run, as the activity feed files it. */
   source?: GenerationSource;
-  toolName?: string;
+  /** The registry id of the mini-tool this job runs (`source: "mini_tool"`). */
+  toolId?: string;
+  /** The stored object a container tool reads. */
+  sourceKey?: string;
   /**
    * Target canvas node IDs whose task rows this run settles.
    * Length === 1 for single-output ops; length === N for multi-output ops
@@ -313,7 +315,7 @@ async function runTaskBody(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolName, targetNodeIds } = job.data;
+  const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolId: toolName, sourceKey, targetNodeIds } = job.data;
   const canvasDocName = resolveCanvasDocName(projectId, spaceId);
 
   const streamRedis = getStreamRedis();
@@ -495,10 +497,9 @@ async function runTaskBody(
   try {
     if (source === "mini_tool" && toolName) {
       [providerResult, creditsUsed] = await runMiniTool({
-        toolName,
-        taskType,
+        toolId: toolName,
         params,
-        jobId: job.id ?? "",
+        ...(sourceKey !== undefined && { sourceKey }),
         userId,
         projectId,
         taskId,
@@ -515,7 +516,7 @@ async function runTaskBody(
       }
       [providerResult, creditsUsed] = await runUnderstand(params, recorderFor("canvas_understand"));
     } else if (taskType in AIGC_TASK_TYPES && !skillName) {
-      [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, { resume, taskId, projectId: projectId ?? undefined });
+      [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, { resume, taskId, projectId: projectId ?? undefined, outputCount: 1 });
     } else if (skillName) {
       const [text, skills, credits] = await runSkillAgent(
         skillName,
@@ -576,11 +577,13 @@ async function runTaskBody(
   // and N>1 (local cut) flow through the same code path.
   const unified = toUnifiedOutputs(providerResult);
   if (source === "mini_tool" && nodeIds.length > 0 && unified.outputs.length !== nodeIds.length) {
-    const msg = `outputs.length (${unified.outputs.length}) !== node_ids.length (${nodeIds.length})`;
-    logger.error({ taskId, toolName }, msg);
+    logger.error(
+      { taskId, toolName, outputs: unified.outputs.length, nodes: nodeIds.length },
+      "mini_tool_output_count_mismatch",
+    );
     await finishFailedRun({
       ...runEnd,
-      errorMessage: msg,
+      errorMessage: "no_result" satisfies TaskFailureReason,
       settles: true,
     });
     return { failed: true, reason: "output_count_mismatch" };
@@ -1390,13 +1393,16 @@ export interface ProviderRun {
   resume: ResumeContext;
   taskId: string;
   projectId: string | undefined;
+  /** How many outputs the run writes to nodes: 1 for a canvas generation, the tool's outputs for a mini-tool. */
+  outputCount: number;
 }
 
 interface RunMiniToolOpts {
-  toolName: string;
-  taskType: string;
+  /** The registry id the job names. */
+  toolId: string;
   params: Record<string, unknown>;
-  jobId: string;
+  /** The stored object a container tool reads. */
+  sourceKey?: string;
   userId: string;
   projectId: string | undefined;
   taskId: string;
@@ -1405,73 +1411,56 @@ interface RunMiniToolOpts {
 }
 
 /**
- * Execution path 1: run a mini-tool, dispatching to a local ffmpeg/Sharp
- * handler or to an AIGC provider depending on the registry entry kind.
+ * Execution path 1: run a mini-tool the way its registry entry says
+ * (inner#888 §6.2). A model tool runs on its pinned model, whatever the
+ * params name; a container tool runs as a container job.
  *
- * Exported for its tests. The provider branch carries an invariant nothing else
+ * Exported for its tests. The model branch carries an invariant nothing else
  * can check — that the user's prompt is lifted out of `params` BEFORE they are
  * validated (#1967) — and reaching it through `runTask` would mean standing up
- * the database, Redis and the credit ledger to assert one argument. Adversarial
- * round 2 proved the gap was real: reversing the two steps here left all 246
- * worker tests green.
- * @param opts - Mini-tool invocation context (tool name, task type, params, ids)
- * @returns A `[result, credits]` tuple: the provider/handler result dict and the credits to charge
+ * the database, Redis and the credit ledger to assert one argument.
+ * @param opts - The run.
+ * @returns A `[result, credits]` tuple: the outputs and the credits to charge.
+ * @throws {Error} When the registry holds no such server-run tool, or the run has no project or source.
  */
 export async function runMiniTool(
   opts: RunMiniToolOpts,
 ): Promise<[Record<string, unknown>, number]> {
-  const { toolName, taskType, params, jobId, userId, projectId, taskId, resume } = opts;
-  const entry = resolveMiniToolEntry(taskType, toolName);
+  const { toolId, params, userId, projectId, taskId, resume } = opts;
+  const spec = miniToolById(toolId);
+  if (!spec) throw new Error(`mini-tool ${toolId} is not in the registry`);
 
-  // Strip workflow-meta fields that are for infra (not for the
-  // provider/handler to see). Model override survives so users can
-  // pick a non-default vendor model; it's stripped again inside the
-  // provider branch before validation.
-  const cleanParams = { ...params };
-  delete cleanParams.node_ids;
-  delete cleanParams.project_id;
-
-  if (entry.kind === "local") {
-    // A local handler stores what it produces, and storing it needs a studio
-    // to file it against — which comes from the project. Every canvas
-    // mini-tool carries one (`project_id` is required on each of their request
-    // schemas), so this says the job data was built wrong rather than that a
-    // user did something unusual.
-    if (projectId === undefined) {
-      throw new Error(`mini-tool ${toolName} ran with no project to store its output against`);
-    }
-    const result = await runLocalHandler({
-      handler: entry.handler,
-      taskType,
-      toolName,
-      params: cleanParams,
-      jobId,
-      userId,
+  if (isModelTool(spec)) {
+    const model = spec.run.model;
+    const provider = await importProvider(spec.outputs[0]!.modality);
+    const cleanParams = { ...params };
+    delete cleanParams.model;
+    const [prompt, , validated] = takePromptAndValidate(cleanParams, model, provider.validateParams);
+    const result = await provider.generateAsync(prompt, model, validated, {
+      resume,
+      taskId,
       projectId,
+      outputCount: spec.outputs.length,
     });
-    const cost = result.cost ?? 0;
-    const credits = creditsFor(cost);
-    return [result as unknown as Record<string, unknown>, credits];
+    return [result, creditsFor((result.cost as number) ?? 0)];
   }
 
-  // kind === "provider"
-  const modelName = (cleanParams.model as string) || entry.model;
-  delete cleanParams.model;
+  if (spec.run.kind === "container") {
+    // Its outputs are stored against the project's studio, and its source is
+    // the stored object the server resolved the request's address to.
+    if (projectId === undefined || opts.sourceKey === undefined) {
+      throw new Error(`mini-tool ${toolId} ran with no project or no source key`);
+    }
+    return runContainerJob(spec, spec.run.op, {
+      taskId,
+      userId,
+      projectId,
+      params,
+      sourceKey: opts.sourceKey,
+    });
+  }
 
-  // One call, so there is no order to get wrong here — see
-  // `takePromptAndValidate` for why that is the fix and not just tidier.
-  const provider = await importProvider(taskType);
-  const [prompt, , validated] = takePromptAndValidate(
-    cleanParams,
-    modelName,
-    provider.validateParams,
-  );
-
-  const result = await provider.generateAsync(prompt, modelName, validated, { resume, taskId, projectId });
-  const cost = (result.cost as number) ?? 0;
-  const credits = creditsFor(cost);
-
-  return [result, credits];
+  throw new Error(`mini-tool ${toolId} runs in the browser and never reaches the worker`);
 }
 
 /**
@@ -1730,7 +1719,7 @@ async function importProvider(taskType: string): Promise<{
         async (prompt, model, params, run) => {
           const studioId = run.projectId ? await assetService.resolveOwnerStudioId(run.projectId) : null;
           return {
-            ...(await runCatalogTask(stepDepsFor(studioId), { taskId: run.taskId, studioId }, modality, prompt, model, params)),
+            ...(await runCatalogTask(stepDepsFor(studioId), { taskId: run.taskId, studioId }, modality, prompt, model, params, run.outputCount)),
           };
         },
       );
