@@ -540,7 +540,14 @@ describe('dragging a media block by its media (A10)', () => {
   function dragFrom(target: Element): Event {
     const event = new Event('dragstart', { bubbles: true, cancelable: true });
     Object.defineProperty(event, 'dataTransfer', {
-      value: { setData: vi.fn(), clearData: vi.fn(), setDragImage: vi.fn(), effectAllowed: 'all' },
+      value: {
+        types: [],
+        getData: () => '',
+        setData: vi.fn(),
+        clearData: vi.fn(),
+        setDragImage: vi.fn(),
+        effectAllowed: 'all',
+      },
     });
     Object.defineProperty(event, 'clientY', { value: 0 });
     act(() => {
@@ -560,6 +567,8 @@ describe('dragging a media block by its media (A10)', () => {
 
     expect(start).toHaveBeenCalledOnce();
     expect((start.mock.calls[0]![1] as { id: string }).id).toBe(media(editor).id);
+    vi.spyOn(editor.getExtension(SideMenuExtension)!, 'blockDragEnd').mockImplementation(() => undefined);
+    fireEvent.dragEnd(frame);
   });
 
   it('turns the drag off as a press lands on a corner, so the resize keeps its pointer', () => {
@@ -574,15 +583,40 @@ describe('dragging a media block by its media (A10)', () => {
     expect(frame.draggable).toBe(true);
   });
 
-  it('leaves a press on its own controls to them', async () => {
-    const editor = open('image', { previewWidth: 200 });
-    const { SideMenuExtension } = await import('@blocknote/core/extensions');
-    const start = vi.spyOn(editor.getExtension(SideMenuExtension)!, 'blockDragStart').mockImplementation(() => undefined);
-    selectMedia(editor);
+  it('turns the drag off as a press lands on the player controls, so they keep their pointer', () => {
+    const editor = open('video', { previewWidth: 320 });
+    const frame = within(element(editor)).getByTestId('doc-media-frame');
 
-    const event = dragFrom(within(element(editor)).getByTestId('doc-media-resize-se'));
+    fireEvent.pointerDown(within(element(editor)).getByTestId('seek'), { pointerId: 1 });
+    expect(frame.draggable).toBe(false);
+  });
 
-    expect(start).not.toHaveBeenCalled();
-    expect(event.defaultPrevented).toBe(true);
+  it('ends on a drop in the page, though the element it started from never sees its dragend', async () => {
+    vi.useFakeTimers();
+    try {
+      const editor = open('image');
+      const { SideMenuExtension } = await import('@blocknote/core/extensions');
+      const menu = editor.getExtension(SideMenuExtension)!;
+      vi.spyOn(menu, 'blockDragStart').mockImplementation(() => undefined);
+      const end = vi.spyOn(menu, 'blockDragEnd').mockImplementation(() => undefined);
+      const frame = within(element(editor)).getByTestId('doc-media-frame');
+      dragFrom(element(editor).querySelector('img')!);
+
+      document.body.dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }));
+      expect(end).not.toHaveBeenCalled();
+      act(() => {
+        vi.runAllTimers();
+      });
+      expect(end).toHaveBeenCalledOnce();
+
+      fireEvent.dragEnd(frame);
+      document.body.dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }));
+      act(() => {
+        vi.runAllTimers();
+      });
+      expect(end).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

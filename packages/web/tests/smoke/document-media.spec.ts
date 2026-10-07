@@ -600,6 +600,9 @@ test('a picture dragged by itself moves like a row dragged by its handle (A10)',
   await page.mouse.up();
 
   await expect.poll(order).toEqual(['alpha', 'beta', 'image']);
+  // The drag ended though the element it started from was redrawn: the
+  // library's drag image is taken off the page again.
+  await expect(page.locator('.bn-drag-preview')).toHaveCount(0);
 });
 
 test('a failed upload says so in place, and a retry lands it (A6)', async () => {

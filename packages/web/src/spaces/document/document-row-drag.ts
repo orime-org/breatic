@@ -15,7 +15,6 @@ import {
   caretAtStartOf,
   readerPlace,
   restoreReaderPlace,
-  type ReaderPlace,
 } from '@web/spaces/document/document-drag-selection';
 
 /** The editor, as far as moving a row needs it. */
@@ -23,44 +22,57 @@ type RowDragEditor = BlockNoteEditor<never, never, never>;
 
 /**
  * Starts moving a row.
+ *
+ * The drag ends on whichever comes first: a drop anywhere in the page, or the
+ * `dragend` the caller passes on. The drop is needed because a row dragged by
+ * its own media is redrawn where it lands, and the element the drag started
+ * from is gone before its `dragend` fires, so that event never reaches the
+ * page. A drag cancelled or dropped outside the page moves nothing, so its
+ * `dragend` still arrives.
  * @param editor - The editor.
  * @param event - The `dragstart`.
  * @param event.dataTransfer - What the drag carries.
  * @param event.clientY - Where the pointer is.
  * @param blockId - The row.
- * @returns Where the reader was, to hand back when the drag ends.
+ * @returns Ends the drag; calling it again does nothing.
  */
 export function startRowDrag(
   editor: RowDragEditor,
   event: { dataTransfer: DataTransfer | null; clientY: number },
   blockId: string,
-): ReaderPlace | undefined {
+): () => void {
+  const view = editor.prosemirrorView!;
   // Read before the library takes the selection for its own (`blockDragStart`
   // puts a node selection on the row).
-  const place = readerPlace(editor.prosemirrorView!.state);
+  const held = readerPlace(view.state);
   // Which row is in flight, for the drop to read out of the document rather
   // than out of the payload.
-  rowIsFlying(blockId, place);
+  rowIsFlying(blockId, held);
   editor.getExtension(SideMenuExtension)!.blockDragStart(event as never, editor.getBlock(blockId) as never);
-  return place;
-}
 
-/**
- * Ends moving a row, wherever it landed.
- *
- * A text selection goes back to whatever the reader had: the node selection
- * the library put on the row at dragstart is still there when the drag ends,
- * and the bubble bar comes up for any selection that is not empty. The
- * reader's own place when there was one; the caret in the row that moved when
- * there was not.
- * @param editor - The editor.
- * @param blockId - The row.
- * @param held - Where the reader was when it started.
- */
-export function endRowDrag(editor: RowDragEditor, blockId: string, held: ReaderPlace | undefined): void {
-  rowHasLanded();
-  editor.getExtension(SideMenuExtension)!.blockDragEnd();
-  restoreReaderPlace(editor.prosemirrorView!, held ?? caretAtStartOf(blockId));
-  // A key pressed after the drag has to land in the document.
-  editor.focus();
+  const page = view.dom.ownerDocument;
+  let ended = false;
+  /** Ends the drag, once. */
+  const end = (): void => {
+    if (ended) return;
+    ended = true;
+    page.removeEventListener('drop', onDrop, true);
+    rowHasLanded();
+    editor.getExtension(SideMenuExtension)!.blockDragEnd();
+    // A text selection goes back to whatever the reader had: the node
+    // selection the library put on the row at dragstart is still there, and
+    // the bubble bar comes up for any selection that is not empty.
+    restoreReaderPlace(view, held ?? caretAtStartOf(blockId));
+    // A key pressed after the drag has to land in the document.
+    editor.focus();
+  };
+  /**
+   * Seen in the capture phase, before the editor handles the drop; the end
+   * waits until that handling is done, since it reads the row in flight.
+   */
+  const onDrop = (): void => {
+    setTimeout(end, 0);
+  };
+  page.addEventListener('drop', onDrop, true);
+  return end;
 }

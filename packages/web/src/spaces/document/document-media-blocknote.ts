@@ -28,8 +28,7 @@
  */
 
 import { carriesFiles } from '@web/lib/stray-file-drop';
-import type { ReaderPlace } from '@web/spaces/document/document-drag-selection';
-import { endRowDrag, startRowDrag } from '@web/spaces/document/document-row-drag';
+import { startRowDrag } from '@web/spaces/document/document-row-drag';
 import {
   addNodeAndExtensionsToSpec,
   camelToDataKebab,
@@ -41,10 +40,11 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { downloadHref } from '@web/data/api/download-href';
 import { triggerDownload } from '@web/lib/download';
-import type {
-  MediaBlockActions,
-  MediaBlockProps,
-  MediaBlockType,
+import {
+  MEDIA_CHROME,
+  type MediaBlockActions,
+  type MediaBlockProps,
+  type MediaBlockType,
 } from '@web/spaces/document/DocumentMediaBlock';
 import { dropMediaView, putMediaView } from '@web/spaces/document/document-media-views';
 
@@ -64,9 +64,6 @@ interface MediaSpec {
   } & Record<string, unknown>;
   readonly extensions?: readonly unknown[];
 }
-
-/** The attribute every element the reader works with carries. */
-const CHROME = '[data-media-chrome]';
 
 /**
  * Writes the block's props onto its own element the way the library does:
@@ -149,8 +146,8 @@ function mediaNodeView(
     return typeof id === 'string' ? id : null;
   };
 
-  // The row a drag from the media started, and where the reader was then.
-  let dragging: { id: string; held: ReaderPlace | undefined } | null = null;
+  // Ends the drag the media started, while one is under way.
+  let endDrag: (() => void) | null = null;
 
   const actions: MediaBlockActions = {
     setProps: (props) => {
@@ -171,13 +168,11 @@ function mediaNodeView(
         event.preventDefault();
         return;
       }
-      dragging = { id, held: startRowDrag(editor as never, event, id) };
+      endDrag = startRowDrag(editor as never, event, id);
     },
     dragEnd: () => {
-      if (dragging === null) return;
-      const { id, held } = dragging;
-      dragging = null;
-      endRowDrag(editor as never, id, held);
+      endDrag?.();
+      endDrag = null;
     },
   };
 
@@ -214,7 +209,7 @@ function mediaNodeView(
       event.type === 'dragstart' ||
       (!carriesFiles(event) &&
       event.target instanceof Element &&
-      event.target.closest(CHROME) !== null),
+      event.target.closest(MEDIA_CHROME) !== null),
     // What React draws inside is not the document's; the node has no content.
     ignoreMutation: () => true,
     destroy: () => {

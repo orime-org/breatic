@@ -51,8 +51,7 @@ import {
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { ReaderPlace } from '@web/spaces/document/document-drag-selection';
-import { endRowDrag, startRowDrag } from '@web/spaces/document/document-row-drag';
+import { startRowDrag } from '@web/spaces/document/document-row-drag';
 import { deleteRow } from '@web/spaces/document/document-handle-commands';
 import {
   BLOCK_MENU_ROWS,
@@ -155,8 +154,8 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
   // turn the line from empty to not (or back) while the menu is still on
   // screen, closing included, and that menu stays the one the reader opened.
   const [menuFace, setMenuFace] = React.useState<StripFace>('grip');
-  // Where the reader was when a drag started, to hand back when it ends.
-  const place = React.useRef<ReaderPlace | undefined>(undefined);
+  // Ends the drag started from this handle, while one is under way.
+  const endDrag = React.useRef<(() => void) | null>(null);
   // Whether the drag off this handle is running. The handle IS the drag's
   // source element, so it cannot leave the document while the drag is on —
   // and the drag's own first act is to select the row it moves, which is what
@@ -333,13 +332,12 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
             onDragStart={(event) => {
               setDragActive(true);
               setMenuFace(face);
-              place.current = startRowDrag(editor as never, event.nativeEvent, block.id);
+              endDrag.current = startRowDrag(editor as never, event.nativeEvent, block.id);
             }}
             onDragEnd={() => {
               setDragActive(false);
-              const held = place.current;
-              place.current = undefined;
-              endRowDrag(editor as never, block.id, held);
+              endDrag.current?.();
+              endDrag.current = null;
             }}
             onClick={() => {
               if (!menuOpen) setMenuFace(face);

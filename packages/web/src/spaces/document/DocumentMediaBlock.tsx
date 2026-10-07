@@ -90,7 +90,7 @@ const MIN_WIDTH: Readonly<Record<'image' | 'video', number>> = {
 const TOOLBAR_GAP = 8;
 
 /** The block's own controls, which the node view hands their events. */
-const CHROME = '[data-media-chrome]';
+export const MEDIA_CHROME = '[data-media-chrome]';
 
 /**
  * Whether a press belongs to the block's own controls or the player's.
@@ -98,7 +98,7 @@ const CHROME = '[data-media-chrome]';
  * @returns True when it does.
  */
 function ownsPress(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest(`${CHROME}, .nodrag`) !== null;
+  return target instanceof Element && target.closest(`${MEDIA_CHROME}, .nodrag`) !== null;
 }
 
 /** The scroller the body is shown in, which clips what sticks out of it. */
@@ -452,10 +452,6 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             event.currentTarget.draggable = !ownsPress(event.target);
           }}
           onDragStart={(event) => {
-            if (ownsPress(event.target)) {
-              event.preventDefault();
-              return;
-            }
             actions.dragStart(event.nativeEvent);
           }}
           onDragEnd={actions.dragEnd}
