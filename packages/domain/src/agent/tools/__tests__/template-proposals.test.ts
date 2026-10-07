@@ -124,3 +124,17 @@ describe("an empty node wired into a reference pool", () => {
     expect(answer).toMatchObject({ placed: false, reason: expect.stringContaining('"kind":"asset"') });
   });
 });
+
+describe("the template prompts the agent is shown inside a request", () => {
+  it("are in the request's language, which the turn pins rather than the process", async () => {
+    const { runWithLocale } = await import("@breatic/core");
+    const { buildAgentConfig } = await import("@domain/agent/agent-config.js");
+    const [grid] = GENERATION_TEMPLATES;
+    if (!grid) throw new Error("no template");
+    setLocale("en");
+    const said = runWithLocale("ja", () => buildAgentConfig({}).tools["propose_canvas_action"]?.description ?? "");
+    const japanese = runWithLocale("ja", () => promptTextOf(templatePrompt(grid)));
+    expect(japanese).not.toBe(promptTextOf(templatePrompt(grid)));
+    expect(said).toContain(japanese);
+  });
+});
