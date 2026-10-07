@@ -15,12 +15,10 @@ import type { EditorView } from '@tiptap/pm/view';
 import { uploadAcceptFor } from '@web/spaces/canvas/canvas-upload';
 import type { MediaGap } from '@web/spaces/document/document-insert-row';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
-
-/** The media kinds the insert menu offers. */
-export type MediaKind = 'image' | 'audio' | 'video';
+import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 
 /** Opens the picker for a kind; `gap` makes the gap once files are chosen. */
-type MediaPick = (kind: MediaKind, gap: () => MediaGap | null) => void;
+type MediaPick = (kind: MediaBlockType, gap: () => MediaGap | null) => void;
 
 const MediaPickContext = React.createContext<MediaPick | null>(null);
 

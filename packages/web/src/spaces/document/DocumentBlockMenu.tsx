@@ -85,10 +85,8 @@ import {
   mediaGapBelow,
   type InsertChoice,
 } from '@web/spaces/document/document-insert-row';
-import {
-  useDocumentMediaPick,
-  type MediaKind,
-} from '@web/spaces/document/DocumentMediaPicker';
+import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
+import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
 
@@ -298,7 +296,7 @@ export function DocumentBlockMenu({
     () =>
       mediaPick === null
         ? undefined
-        : (kind: MediaKind): void => {
+        : (kind: MediaBlockType): void => {
           mediaPick(kind, () => {
             const live = rowNow();
             return live === undefined ? null : mediaGapBelow(editor, live);

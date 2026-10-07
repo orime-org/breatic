@@ -30,10 +30,10 @@ import { DIVIDER } from '@web/spaces/document/document-divider';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
 import type { InsertChoice, TableSize } from '@web/spaces/document/document-insert-row';
 import { DocumentTableSizeGrid } from '@web/spaces/document/DocumentTableSizeGrid';
-import type { MediaKind } from '@web/spaces/document/DocumentMediaPicker';
+import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 
 /** The media entries, in the order the menu shows them (inner#1127 A1). */
-const MEDIA_ENTRIES: readonly { kind: MediaKind; Icon: typeof ImageIcon }[] = [
+const MEDIA_ENTRIES: readonly { kind: MediaBlockType; Icon: typeof ImageIcon }[] = [
   { kind: 'image', Icon: ImageIcon },
   { kind: 'audio', Icon: Music },
   { kind: 'video', Icon: Video },
@@ -48,7 +48,7 @@ interface DocumentInsertChoicesProps {
    */
   unreachable?: ReadonlySet<InsertChoice>;
   /** What picking a media entry does; left out, the menu offers none. */
-  onPickMedia?: (kind: MediaKind) => void;
+  onPickMedia?: (kind: MediaBlockType) => void;
 }
 
 /**

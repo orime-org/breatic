@@ -17,8 +17,8 @@ import { setHoveredMedia } from '@web/spaces/document/document-bars';
 import type {
   MediaBlockActions,
   MediaBlockProps,
-  MediaBlockType,
 } from '@web/spaces/document/DocumentMediaBlock';
+import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 
 /** What one container shows. */
 export interface MediaViewEntry {

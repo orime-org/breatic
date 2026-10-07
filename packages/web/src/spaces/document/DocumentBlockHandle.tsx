@@ -64,10 +64,8 @@ import {
   mediaGapOnRow,
   type InsertChoice,
 } from '@web/spaces/document/document-insert-row';
-import {
-  useDocumentMediaPick,
-  type MediaKind,
-} from '@web/spaces/document/DocumentMediaPicker';
+import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
+import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { useStripOnFirstLine } from '@web/spaces/document/document-strip-alignment';
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
@@ -253,7 +251,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
     () =>
       mediaPick === null
         ? undefined
-        : (kind: MediaKind): void => {
+        : (kind: MediaBlockType): void => {
           mediaPick(kind, () => {
             const live = rowNow();
             return live === undefined ? null : mediaGapOnRow(editor as never, live);
