@@ -388,19 +388,18 @@ test('a selected picture is framed with a knob on each corner, and its handle st
   const [grip, media] = await Promise.all([handle.boundingBox(), img.boundingBox()]);
   expect(grip!.y + grip!.height / 2).toBeLessThan(media!.y + 30);
 
-  // The pointer alone frames it, in the selected text's own colour, opaque.
+  // The pointer alone frames it, in the link colour.
   const frame = page.locator(`${IMAGE} [data-media-frame]`);
-  const selectionColour = await page.evaluate(() => {
+  const linkColour = await page.evaluate(() => {
     const probe = document.createElement('div');
-    probe.style.color = 'rgb(from var(--color-selection) r g b / 1)';
+    probe.style.color = 'var(--color-content-link)';
     document.querySelector('.doc-body')!.appendChild(probe);
     const colour = getComputedStyle(probe).color;
     probe.remove();
     return colour;
   });
   await expect(frame).toHaveCSS('outline-style', 'solid');
-  await expect(frame).toHaveCSS('outline-color', selectionColour);
-  expect(selectionColour).not.toMatch(/\/|rgba/);
+  await expect(frame).toHaveCSS('outline-color', linkColour);
   const hoveredOutline = await frame.evaluate((element) => getComputedStyle(element).outline);
 
   await img.click();
