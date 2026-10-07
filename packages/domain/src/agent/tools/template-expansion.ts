@@ -35,6 +35,9 @@ export function expandTemplate(node: ProposalNode & { template: string }): Templ
       reason: `No template "${id}". Templates: ${GENERATION_TEMPLATES.map((t) => t.id).join(", ")}.`,
     };
   }
+  if (rest.role !== "generate") {
+    return { ok: false, reason: `Template "${id}" goes on a generate node; "${rest.name}" is a ${rest.role} node.` };
+  }
   if (rest.type !== template.nodeType) {
     return { ok: false, reason: `Template "${id}" is for ${template.nodeType} nodes, not ${rest.type}.` };
   }
