@@ -18,7 +18,7 @@ import { randomUUID } from 'node:crypto';
 
 import { test, expect, type Locator, type Page } from 'playwright/test';
 
-import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
+import { CANVAS_SPACE, YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
@@ -242,4 +242,51 @@ test('the focus crop draws inside the picked node and its bar hangs under it @ne
 
   await page.getByTestId('focus-crop-confirm').click();
   await expect(bar).toHaveCount(0, { timeout: 5_000 });
+});
+
+// §7.2: the panel and its draft belong to the Space, so leaving and coming back
+// finds them as they were.
+test('the tool panel and its draft wait in their Space while another is open @needs-internet', async () => {
+  await openTool(imageNode, 'image.crop');
+  await page.getByTestId('mini-tool-param-aspect-1:1').click();
+  await expect(page.getByTestId('mini-tool-param-aspect-1:1')).toHaveAttribute('aria-current', 'true');
+
+  const other = await createSpace(page, 'canvas', `mini-tools-other-${Date.now()}`);
+  try {
+    // The Space left behind stays mounted, hidden, so its panel is out of sight.
+    await expect(page.getByTestId('mini-tool-panel-title')).toBeHidden();
+    await page.getByTestId(`space-tab-${spaceId}`).click();
+    await expect(page.getByTestId('mini-tool-panel-title')).toBeVisible();
+    await expect(page.getByTestId('mini-tool-param-aspect-1:1')).toHaveAttribute('aria-current', 'true');
+  } finally {
+    await deleteSpace(page, other);
+  }
+});
+
+// §7.2: what was measured on the old picture is reset when the source takes
+// new content, so the crop covers the new picture whole.
+test('a source that takes new content resets the crop to the new picture @needs-internet', async () => {
+  await openTool(imageNode, 'image.crop');
+  await page.getByTestId('mini-tool-param-aspect-1:1').click();
+  await expect.poll(async () => page.getByTestId('mini-tool-rect-w').inputValue()).toBe('300');
+
+  const managerAt = await liveModuleUrl(page, YJS_MANAGER);
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  await page.evaluate(
+    async ([pid, sid, nodeId, url, managerUrl, canvasUrl]: string[]) => {
+      const manager = (await import(/* @vite-ignore */ managerUrl!)) as {
+        getDoc: (name: string) => unknown;
+        docName: { canvasSpace: (p: string, s: string) => string };
+      };
+      const canvas = (await import(/* @vite-ignore */ canvasUrl!)) as {
+        nodeDataMap: (doc: unknown, id: string) => { set: (k: string, v: unknown) => void } | null;
+      };
+      const doc = manager.getDoc(manager.docName.canvasSpace(pid!, sid!));
+      canvas.nodeDataMap(doc, nodeId!)!.set('content', url!);
+    },
+    [projectId, spaceId, imageNode, 'https://picsum.photos/id/238/600/300.jpg', managerAt, canvasAt],
+  );
+
+  await expect.poll(async () => page.getByTestId('mini-tool-rect-w').inputValue(), { timeout: 20_000 }).toBe('600');
+  expect(await page.getByTestId('mini-tool-rect-h').inputValue()).toBe('300');
 });
