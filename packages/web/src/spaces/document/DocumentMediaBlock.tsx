@@ -77,7 +77,7 @@ interface DocumentMediaBlockProps {
 /** The narrowest an image or a video can be dragged to. */
 const MIN_WIDTH = 48;
 
-/** The gap between the toolbar and the media, `mb-2` / `mt-2`. */
+/** The gap between the toolbar and the media's top edge, `pb-2` above it and `top-2` on it. */
 const TOOLBAR_GAP = 8;
 
 /** The scroller the body is shown in, which clips what sticks out of it. */
@@ -110,6 +110,8 @@ interface ToolButtonProps {
   action: string;
   testId: string;
   pressed?: boolean;
+  /** Classes added to the button, for a colour of its own. */
+  className?: string;
   onPress: () => void;
   children: React.ReactNode;
 }
@@ -121,6 +123,7 @@ interface ToolButtonProps {
  * @param props.action - What it does, for the toolbar's own reading.
  * @param props.testId - Its test id.
  * @param props.pressed - Whether its state is the block's.
+ * @param props.className - Classes added to the button.
  * @param props.onPress - What it does.
  * @param props.children - Its icon.
  * @returns The button.
@@ -130,6 +133,7 @@ function ToolButton({
   action,
   testId,
   pressed,
+  className,
   onPress,
   children,
 }: ToolButtonProps): React.JSX.Element {
@@ -139,7 +143,7 @@ function ToolButton({
         <Button
           variant={pressed === true ? 'secondary' : 'ghost'}
           size='icon'
-          className={`${BUBBLE_ICON_BUTTON_SIZE} [&_svg]:h-4 [&_svg]:w-4`}
+          className={cn(BUBBLE_ICON_BUTTON_SIZE, '[&_svg]:h-4 [&_svg]:w-4', className)}
           data-action={action}
           data-testid={testId}
           data-state={pressed === true ? 'on' : 'off'}
@@ -184,16 +188,17 @@ export function DocumentMediaBlock({
   const [fullscreen, setFullscreen] = React.useState(false);
   const [narrower, setNarrower] = React.useState(false);
   const toolbarRef = React.useRef<HTMLDivElement>(null);
-  // Above the media, unless the scroller has no room there — then under it,
-  // the way a floating layer flips at the edge it would be cut off by.
-  const [side, setSide] = React.useState<'top' | 'bottom'>('top');
+  // Above the media, unless the scroller has no room there — then on the
+  // media itself, along its top. Never under it: below the media sit its
+  // caption and the next block, and a bar there reads as theirs.
+  const [side, setSide] = React.useState<'top' | 'inside'>('top');
   const placeToolbar = React.useCallback((): void => {
     const element = frame.current;
     const bar = toolbarRef.current;
     const scroller = element?.closest(SCROLLER);
     if (element === null || bar === null || scroller === null || scroller === undefined) return;
     const room = element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-    setSide(room >= bar.offsetHeight + TOOLBAR_GAP ? 'top' : 'bottom');
+    setSide(room >= bar.offsetHeight + TOOLBAR_GAP ? 'top' : 'inside');
   }, []);
   React.useEffect(() => {
     if (toolbarShown) placeToolbar();
@@ -321,16 +326,16 @@ export function DocumentMediaBlock({
         className={`relative max-w-full ${sized ? '' : 'w-full'}`}
         style={sized && width !== undefined ? { width: `${width}px` } : undefined}
       >
-        {/* The gap between the media and its bar is padding on this layer, not
-            a margin, so a pointer crossing it stays inside the block and the
-            bar stays up. It takes the pointer only while the bar is shown, so
+        {/* Above the media, the gap between it and its bar is padding on this
+            layer, not a margin, so a pointer crossing it stays inside the
+            block and the bar stays up. It takes the pointer only while the bar is shown, so
             the line above the media is clickable the rest of the time. */}
         <div
           data-media-chrome=''
           className={cn(
             'absolute left-1/2 z-10 -translate-x-1/2',
             toolbarShown ? 'pointer-events-auto' : 'pointer-events-none',
-            side === 'top' ? 'bottom-full pb-2' : 'top-full pt-2',
+            side === 'top' ? 'bottom-full pb-2' : 'top-2',
           )}
         >
           <div
@@ -390,6 +395,9 @@ export function DocumentMediaBlock({
               label={t('spaces.document.media.delete')}
               action='delete'
               testId='doc-media-delete'
+              // The red every delete row in the body uses (block and table
+              // menus), kept on hover.
+              className='text-status-error-foreground hover:text-status-error-foreground'
               onPress={actions.remove}
             >
               <Trash2 />

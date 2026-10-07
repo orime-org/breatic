@@ -267,7 +267,7 @@ test('pictures in pasted web content are left out, and the words come in (A18)',
   expect(await types(page)).not.toContain('image');
 });
 
-test('the toolbar sits above the media, centred, covering none of it, and works (A9, A16, A17, A19)', async () => {
+test('the toolbar of a first block sits on the picture, never under it, centred, and works (A9, A16, A17, A19)', async () => {
   await openFreshDocument(page);
   await pickFromPlus(page, 'image', {
     name: 'tool.png',
@@ -286,10 +286,22 @@ test('the toolbar sits above the media, centred, covering none of it, and works 
     page.locator('[data-testid="document-space"] [data-radix-scroll-area-viewport]').first().boundingBox(),
   ]);
   // The first block has no room above it inside the scroller, so the bar sits
-  // under the picture; either way it covers none of it and is all in view.
-  const clearOfMedia = bar!.y + bar!.height <= media!.y || bar!.y >= media!.y + media!.height;
-  expect(clearOfMedia).toBe(true);
+  // on the picture along its top edge, all in view.
+  await expect(toolbar).toHaveAttribute('data-side', 'inside');
+  expect(bar!.y).toBeGreaterThan(media!.y);
+  expect(bar!.y + bar!.height).toBeLessThan(media!.y + media!.height / 2);
   expect(bar!.y).toBeGreaterThanOrEqual(scroller!.y);
+
+  // Delete is drawn in the error red.
+  const red = await page.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.className = 'text-status-error-foreground';
+    document.body.appendChild(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  });
+  await expect(page.locator(`${IMAGE} [data-testid="doc-media-delete"]`)).toHaveCSS('color', red);
   expect(Math.abs(bar!.x + bar!.width / 2 - (media!.x + media!.width / 2))).toBeLessThan(1);
 
   // Narrower than the body, so alignment is offered.

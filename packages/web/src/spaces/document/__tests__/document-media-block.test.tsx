@@ -293,13 +293,13 @@ describe('where the toolbar goes', () => {
     expect(toolbar(editor).getAttribute('data-side')).toBe('top');
   });
 
-  it('goes under the media when the scroller has no room above it', () => {
+  it('sits on the media, at its top, when the scroller has no room above it', () => {
     const editor = open('image');
     place(editor, 110, 100);
 
     fireEvent.pointerEnter(within(element(editor)).getByTestId('doc-media-box'));
 
-    expect(toolbar(editor).getAttribute('data-side')).toBe('bottom');
+    expect(toolbar(editor).getAttribute('data-side')).toBe('inside');
   });
 });
 
@@ -416,5 +416,15 @@ describe('the frame around a media block', () => {
 
     fireEvent.pointerLeave(box);
     expect(box.getAttribute('data-hovered')).toBeNull();
+  });
+});
+
+describe('the delete button', () => {
+  it('is drawn in the error red, the colour every delete row in the body uses', () => {
+    const editor = open('image');
+
+    const remove = within(toolbar(editor)).getByTestId('doc-media-delete');
+    expect(remove.className).toContain('text-status-error-foreground');
+    expect(remove.className).toContain('hover:text-status-error-foreground');
   });
 });
