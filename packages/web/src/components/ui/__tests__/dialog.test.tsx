@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import {
   Dialog,
@@ -32,6 +32,24 @@ function setup(open: boolean) {
 }
 
 describe('Dialog', () => {
+  it('closes as soon as the pointer goes down outside, before the click', async () => {
+    const onOpenChange = vi.fn();
+    render(
+      <Dialog open onOpenChange={onOpenChange}>
+        <DialogContent>
+          <DialogTitle>Title</DialogTitle>
+          <DialogDescription>Description</DialogDescription>
+        </DialogContent>
+      </Dialog>,
+    );
+    // The outside-pointer listener is attached on the next tick after mount.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
+    fireEvent.pointerDown(document.body, { button: 0 });
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
   it('renders trigger asChild when closed', () => {
     setup(false);
     expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument();

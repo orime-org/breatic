@@ -1,0 +1,26 @@
+diff --git a/dist/index.js b/dist/index.js
+index 8346523c2d639a95daddb68baf73be6a6e52ff3e..cd276206ca3a3ab79f2bc494858e27c5d3167890 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -285,7 +285,7 @@ var DialogContentImpl = /* @__PURE__ */ React.forwardRef(
+             "data-state": getState(context.open),
+             ...contentProps,
+             ref: forwardedRef,
+-            deferPointerDownOutside: true,
++            deferPointerDownOutside: false,
+             onDismiss: () => context.onOpenChange(false)
+           }
+         )
+diff --git a/dist/index.mjs b/dist/index.mjs
+index ef783523e734d903c868c0c9635a0a77080001a1..1bb02a132bc84f456fdc9477fe617f7cab5cb21d 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -234,7 +234,7 @@ var DialogContentImpl = /* @__PURE__ */ React.forwardRef(
+             "data-state": getState(context.open),
+             ...contentProps,
+             ref: forwardedRef,
+-            deferPointerDownOutside: true,
++            deferPointerDownOutside: false,
+             onDismiss: () => context.onOpenChange(false)
+           }
+         )

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
 
@@ -15,6 +15,24 @@ function setup(open: boolean) {
 }
 
 describe('Popover', () => {
+  it('closes as soon as the pointer goes down outside, before the click', async () => {
+    const onOpenChange = vi.fn();
+    render(
+      <Popover open onOpenChange={onOpenChange}>
+        <PopoverTrigger asChild>
+          <button type='button'>Open</button>
+        </PopoverTrigger>
+        <PopoverContent>Panel body</PopoverContent>
+      </Popover>,
+    );
+    // The outside-pointer listener is attached on the next tick after mount.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
+    fireEvent.pointerDown(document.body, { button: 0 });
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
   it('renders trigger as the wrapped child (asChild)', () => {
     setup(false);
     expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument();
