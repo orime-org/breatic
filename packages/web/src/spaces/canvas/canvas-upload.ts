@@ -8,6 +8,7 @@ import {
   uploadableFormatList,
   reduceMediaType,
 } from '@breatic/shared';
+import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import {
   runMediaUpload,
   type MediaUploadDeps,
@@ -193,6 +194,8 @@ export interface FillNodeDeps {
   onExtractionFailure: (file: File) => void;
   /** The space the node lives in, which rides the ticket. */
   spaceId?: string;
+  /** A browser mini-tool's tag, when its export is what is being uploaded. */
+  tag?: MiniToolUploadTag;
 }
 
 /**
@@ -201,10 +204,8 @@ export interface FillNodeDeps {
  * (which CREATES a node), this writes into a node that already exists:
  * media files (image / video / audio) go to the ingest Worker and what the
  * node ends up holding arrives from the server through Yjs, while every other
- * file is read or extracted locally and fills the text here. Failures write a
- * fixed-English error onto the node (shared doc, so never a locale-frozen
- * toast), matching the create-on-drop path's wire strings. A second fill
- * clobber a newer owner's work.
+ * file is read or extracted locally and fills the text here. Failures are
+ * handed to the caller's sinks and nothing is written onto the node.
  *
  * Type gate (user bug 2026-07-03): the picker's `accept` filter is advisory —
  * macOS lets an `audio/*` picker select `.mp4` (the MP4 container family
@@ -240,6 +241,7 @@ export async function fillNodeFromFile(
         projectId,
         nodeId,
         ...(deps.spaceId !== undefined && { spaceId: deps.spaceId }),
+        ...deps.tag,
       },
       {
         getUploadConfig: deps.getUploadConfig,

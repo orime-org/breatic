@@ -255,6 +255,22 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     expect(deps.extractText).not.toHaveBeenCalled();
   });
 
+  // inner#888 §7.5: a browser tool's export names the tool on its ticket, so
+  // its task row reads as that tool.
+  it('media file: puts the mini-tool tag on the ticket', async () => {
+    const deps = makeDeps({ tag: { source: 'mini_tool', toolName: 'image-rotate' } });
+    await fillNodeFromFile(
+      'n1',
+      new File(['x'], 'p.png', { type: 'image/png' }),
+      'image',
+      'p1',
+      deps,
+    );
+    expect(deps.requestTicket).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'mini_tool', toolName: 'image-rotate', nodeId: 'n1' }),
+    );
+  });
+
   it('media upload failure: reports the reason, and does not write the node itself', async () => {
     const deps = makeDeps({
       requestTicket: vi.fn().mockRejectedValue(new Error('403')),

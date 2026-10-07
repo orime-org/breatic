@@ -129,9 +129,10 @@ import {
   UploadFailedError,
 } from '@web/data/upload/media-upload';
 import { hashFile } from '@web/data/upload/hash';
+import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import {
   stashRetryFile,
-  getRetryFile,
+  getRetryUpload,
 } from '@web/spaces/canvas/upload-retry-files';
 import { extractText } from '@web/spaces/canvas/text-extract';
 import {
@@ -2425,7 +2426,7 @@ function CanvasSpaceInner({
   // nobody frees any in the seconds a retry takes. Both remedies can only be
   // said in a localized toast.
   const failUploadNode = React.useCallback(
-    (outcome: UploadFailure, file: File): void => {
+    (outcome: UploadFailure, file: File, tag?: MiniToolUploadTag): void => {
       const plan = resolveUploadFailure(outcome);
       if (plan.kind === 'reportToServer') {
         // Nobody else can end this row: the bytes never reached the edge, so
@@ -2433,7 +2434,7 @@ function CanvasSpaceInner({
         // failure under the node's failed count, where somebody who started
         // this upload and looked away still finds it — which a toast, and a
         // node now running several uploads at once, cannot do.
-        stashRetryFile(projectId, spaceId, plan.taskId, file);
+        stashRetryFile(projectId, spaceId, plan.taskId, file, tag);
         void canvasApi.reportNodeTaskFailure(plan.taskId).catch((err: unknown) => {
           // Nothing on screen: this report is itself a request, and one reason
           // it fails is that the network would not take one — saying so twice
@@ -2459,7 +2460,7 @@ function CanvasSpaceInner({
       // either way — a node that exists is the reader's to remove, and only
       // theirs (#2177).
       if (plan.keepFileFor !== undefined) {
-        stashRetryFile(projectId, spaceId, plan.keepFileFor, file);
+        stashRetryFile(projectId, spaceId, plan.keepFileFor, file, tag);
       }
     },
     [projectId, spaceId, t],
@@ -3599,6 +3600,7 @@ function CanvasSpaceInner({
       nodeId: string,
       file: File,
       modality: UploadNodeSpec['nodeType'],
+      tag?: MiniToolUploadTag,
     ): void => {
       // Re-gate at fill time (adversarial round): activateNodeUpload gates at
       // picker-OPEN, but the OS picker then stays open for seconds — a
@@ -3641,6 +3643,7 @@ function CanvasSpaceInner({
           requestTicket: assetsApi.requestUploadTicket,
           sendToIngest: sendFileAndFinish,
           spaceId,
+          ...(tag !== undefined && { tag }),
           extractText,
           // Type gate: the picker's accept is advisory (macOS lets audio/*
           // select .mp4) — a file that doesn't classify to the node's modality
@@ -3657,7 +3660,7 @@ function CanvasSpaceInner({
           onExtractionFailure: failExtraction,
           // The same outcome as the drop path, reason for reason: one place
           // decides the stash and says the remedy in the reader's language.
-          onUploadFailure: (outcome, f) => failUploadNode(outcome, f),
+          onUploadFailure: (outcome, f) => failUploadNode(outcome, f, tag),
         });
       })();
       trackOperation(nodeId, work);
@@ -3885,9 +3888,9 @@ function CanvasSpaceInner({
       // upload onto the same node has its own (#186 §3.7.2). The failed row
       // stays where it is: re-sending is a new task, and removing the record
       // of the old one is the user's call.
-      const file = getRetryFile(projectId, spaceId, taskId);
-      if (!file) return;
-      fillUpload(nodeId, file, fileToNodeSpec(file).nodeType);
+      const upload = getRetryUpload(projectId, spaceId, taskId);
+      if (!upload) return;
+      fillUpload(nodeId, upload.file, fileToNodeSpec(upload.file).nodeType, upload.context);
     },
     [readOnly, projectId, spaceId, t, fillUpload],
   );
