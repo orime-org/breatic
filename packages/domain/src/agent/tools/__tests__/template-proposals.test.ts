@@ -9,11 +9,11 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { GENERATION_TEMPLATES } from "@breatic/shared";
+import { GENERATION_TEMPLATES, promptTextOf, setLocale, templatePrompt } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-import { answerFor, inputSchema, proposeCanvasAction } from "../propose-canvas-action.js";
+import { answerFor, inputSchema, makeProposeCanvasAction } from "../propose-canvas-action.js";
 
 beforeEach(() => {
   loadLocales();
@@ -65,8 +65,22 @@ describe("templates in proposals", () => {
 
   it("names every template and how many references each takes in its description", () => {
     for (const template of GENERATION_TEMPLATES) {
-      expect(proposeCanvasAction.description).toContain(template.id);
+      expect(makeProposeCanvasAction().description).toContain(template.id);
     }
-    expect(proposeCanvasAction.description).toMatch(/storyboard-grid-25[^.]*1 reference/);
+    expect(makeProposeCanvasAction().description).toMatch(/storyboard-grid-25[^.]*1 reference/);
+  });
+
+  it("shows each template's prompt in the reader's language, so the agent can rewrite it rather than start over", () => {
+    setLocale("zh-CN");
+    const said = makeProposeCanvasAction().description ?? "";
+    for (const template of GENERATION_TEMPLATES) {
+      expect(said).toContain(promptTextOf(templatePrompt(template)));
+    }
+    expect(said).toContain("故事内容");
+    setLocale("en");
+  });
+
+  it("tells the agent to keep the reference marks when it rewrites a template prompt", () => {
+    expect(makeProposeCanvasAction().description).toMatch(/keep(ing)? every \[📎/i);
   });
 });
