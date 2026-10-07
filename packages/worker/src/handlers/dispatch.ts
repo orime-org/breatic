@@ -316,7 +316,7 @@ async function runTaskBody(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolId: toolName, sourceKey, targetNodeIds } = job.data;
+  const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolId, sourceKey, targetNodeIds } = job.data;
   const canvasDocName = resolveCanvasDocName(projectId, spaceId);
 
   const streamRedis = getStreamRedis();
@@ -336,7 +336,7 @@ async function runTaskBody(
     model,
     params,
     source,
-    toolName,
+    toolId,
   };
   // ─── Re-entry guard ───────────────────────────────────────────────
   // Two cases where BullMQ might redeliver a job we've already touched:
@@ -388,7 +388,7 @@ async function runTaskBody(
             credits: existing.billedCredits ?? undefined,
             durationMs: existing.durationMs ?? undefined,
             params,
-            toolId: source === "mini_tool" ? toolName : undefined,
+            toolId: source === "mini_tool" ? toolId : undefined,
           }),
         },
         nodeResultsFrom(nodeIds, storedOutputs),
@@ -409,7 +409,7 @@ async function runTaskBody(
         spaceId,
         nodeId: nodeIds.length === 1 ? nodeIds[0] : null,
         source,
-        toolName,
+        toolName: toolId,
         model,
         // #1622 crash-redelivery: thread the same preview + what the run
         // consumed, so a recovered success row is not preview-less. Sources
@@ -497,9 +497,9 @@ async function runTaskBody(
     });
 
   try {
-    if (source === "mini_tool" && toolName) {
+    if (source === "mini_tool" && toolId) {
       [providerResult, creditsUsed] = await runMiniTool({
-        toolId: toolName,
+        toolId,
         params,
         ...(sourceKey !== undefined && { sourceKey }),
         userId,
@@ -573,14 +573,12 @@ async function runTaskBody(
   }
 
   // ─── Normalize to unified outputs shape ──────────────────────────
-  // Provider paths and local handlers return different shapes; we
-  // collapse them here so the rest of runTask works with a single
-  // `{outputs:[{url,cover_url?,extra?}], extras}` view. N=1 (provider)
-  // and N>1 (local cut) flow through the same code path.
+  // Provider and container paths collapse here so the rest of runTask works
+  // with a single `{outputs:[{url,cover_url?,extra?}], extras}` view.
   const unified = toUnifiedOutputs(providerResult);
   if (source === "mini_tool" && nodeIds.length > 0 && unified.outputs.length !== nodeIds.length) {
     logger.error(
-      { taskId, toolName, outputs: unified.outputs.length, nodes: nodeIds.length },
+      { taskId, toolId, outputs: unified.outputs.length, nodes: nodeIds.length },
       "mini_tool_output_count_mismatch",
     );
     await finishFailedRun({
@@ -751,7 +749,7 @@ async function runTaskBody(
           credits: creditsUsed,
           durationMs,
           params,
-          toolId: source === "mini_tool" ? toolName : undefined,
+          toolId: source === "mini_tool" ? toolId : undefined,
         }),
       },
       nodeResultsFrom(nodeIds, persistedOutputs),
@@ -768,7 +766,7 @@ async function runTaskBody(
       spaceId,
       nodeId: nodeIds.length === 1 ? nodeIds[0] : null,
       source,
-      toolName,
+      toolName: toolId,
       model: (unified.extras.model as string | undefined) ?? model,
       outputCount: persistedOutputs.length,
       // #1622 preview + what the run consumed, taken from the usage the
@@ -1051,7 +1049,7 @@ export interface FailedRunEnd {
   model: string | undefined;
   params: Record<string, unknown>;
   source: GenerationSource | undefined;
-  toolName: string | undefined;
+  toolId: string | undefined;
   /** The one text the task row, the history, the node and the feed all carry. */
   errorMessage: string;
   /**
@@ -1102,7 +1100,7 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
       credits: undefined,
       durationMs: undefined,
       params: end.params,
-      toolId: end.source === "mini_tool" ? end.toolName : undefined,
+      toolId: end.source === "mini_tool" ? end.toolId : undefined,
     }),
     end.errorMessage,
   );
@@ -1124,7 +1122,7 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
       spaceId: end.spaceId,
       nodeId: end.nodeIds.length === 1 ? end.nodeIds[0] : null,
       source: end.source,
-      toolName: end.toolName,
+      toolName: end.toolId,
       model: end.model,
       errorMessage: end.errorMessage,
     });

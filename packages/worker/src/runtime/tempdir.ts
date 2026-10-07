@@ -4,12 +4,13 @@
 /**
  * Per-job temp directory under the OS temp root.
  *
- * Every local handler invocation gets its own isolated directory so
+ * Every job that writes local files gets its own isolated directory so
  * concurrent jobs cannot collide on filenames, and so cleanup can rm
  * a single directory instead of tracking individual files.
  *
  * The lifecycle is:
- *   1. `createJobTempDir(jobId)` at the start of `runLocalHandler`.
+ *   1. `createJobTempDir(jobId)` before the job writes anything (today the
+ *      voice samples in `voice-samples.ts`).
  *   2. Handler reads/writes inside the returned path.
  *   3. `cleanupJobTempDir(dir)` in a `finally` block — always runs
  *      even on thrown errors.
