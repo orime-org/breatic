@@ -21,7 +21,7 @@ This is not an offline installation: storage requires R2 and generation uses ext
 
 ## 2. Prerequisites and versions
 
-- Install and start Docker Engine or Docker Desktop with Compose v2. Published releases up to v0.0.3 are AMD64-only, including the version currently pinned in this source’s Compose file. For native Apple Silicon / ARM64 use, choose a later completed Release whose schema 2 `release.json` lists both architectures for backend and web; obtain that release’s Compose file. Docker selects the host architecture from the same version tag. Do not assume old tags gained ARM64 support. On Windows, use a WSL2 terminal with Docker Desktop integration.
+- Install and start Docker Engine or Docker Desktop with Compose v2. Published releases up to v0.0.3 are AMD64-only. This source prepares v0.0.4; use it for deployment only after that GitHub Release has completed. For native Apple Silicon / ARM64 use, confirm the selected Release's schema 2 `release.json` lists both architectures for backend and web, and obtain that release’s Compose file. Docker selects the host architecture from the same version tag. Do not assume old tags gained ARM64 support. On Windows, use a WSL2 terminal with Docker Desktop integration.
 - Allow access to GitHub, GHCR, container registries, Cloudflare and the model providers you need.
 - Enable R2 and ensure your Cloudflare account can use Containers. Check the [Cloudflare prerequisites](https://developers.cloudflare.com/containers/get-started/) for plan and billing requirements.
 - Prepare your own model API keys and quota. Text chat needs a text provider; media generation needs the selected model's provider.
