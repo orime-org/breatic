@@ -691,7 +691,7 @@
         "reset": "Reset",
         "loadFailed": "The 3D view could not load. Refresh the page to use it."
       },
-      "editMarks": "Edit the marked parts of the prompt"
+      "editMarks": "Replace the text in square brackets and braces. Orange notes are not sent to the model."
     },
     "edge": {
       "delete": "Delete connection"
@@ -826,13 +826,16 @@
       "storyboard-grid-25": {
         "name": "25-panel storyboard",
         "description": "A 5×5 sequence of one story, for turning into a video",
-        "prompt": "Use [📎 character or scene reference] as the reference. Create ONE image: a storyboard grid of exactly 5 rows and 5 columns, 25 equal panels in total, separated by thin white gutters, read left to right and top to bottom as one continuous sequence in time. Story: [✏️ the story]. Every panel keeps the same people, outfits, location and lighting as the reference. Vary shot size and camera angle from panel to panel like a film storyboard. No text, no numbers."
+        "prompt": "Use [📎 character or scene reference] as the reference. Create ONE image: a storyboard grid of exactly 5 rows and 5 columns, 25 equal panels in total, separated by thin white gutters, read left to right and top to bottom as one continuous sequence in time. Story: {✏️ the story}. Every panel keeps the same people, outfits, location and lighting as the reference. Vary shot size and camera angle from panel to panel like a film storyboard. No text, no numbers."
       },
       "costume-sheet": {
         "name": "Character turnaround",
         "description": "Front, side and back views plus a close-up of a detail",
-        "prompt": "Use [📎 character reference] as the character reference. Create ONE image: a character costume sheet on a plain light grey background. On the left, full-body front, side and back views of the same character standing side by side; on the right, smaller close-up frames of [✏️ the hands or another body part]. The same photorealistic photographic style as the reference, not an illustration. The face, hairstyle, outfit, colours and body proportions match the reference in every view. Even studio lighting. No text."
+        "prompt": "Use [📎 character reference] as the character reference. Create ONE image: a character costume sheet on a plain light grey background. On the left, full-body front, side and back views of the same character standing side by side; on the right, smaller close-up frames of {✏️ the hands or another body part}. The same photorealistic photographic style as the reference, not an illustration. The face, hairstyle, outfit, colours and body proportions match the reference in every view. Even studio lighting. No text."
       }
+    },
+    "promptMark": {
+      "reference": "Use @ to pick {label}"
     }
   },
   "auth": {
