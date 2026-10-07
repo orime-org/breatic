@@ -557,10 +557,10 @@ function checkGenerateNode(
   // on nothing writes nothing -- the words on either side close up and the
   // sentence reaches the reader without what it was about.
   //
-  // Asset marks are paired the same way and are left to the agent: that mark
-  // carries its own bracketed text, so one with no source behind it still
-  // names the slot to fill, which under the slot path is the whole
-  // instruction there.
+  // Asset marks are paired the same way. One standing on a slot's place has no
+  // source behind it and still names the slot to fill, which under the slot
+  // path is the whole instruction there; one standing on a node the prompt can
+  // mention is required by the check below.
   const pointed = prompt
     .filter((segment) => segment.slot?.kind === "ref")
     .map((_, k) => canName.upstream[k])
@@ -605,15 +605,15 @@ function checkGenerateNode(
     };
   }
   // An empty node the prompt may mention is material picked by that mention:
-  // image to image sends only the references the prompt mentions. Each one
-  // needs its own material mark, which the canvas writes as the mention, or
-  // the reader fills the node and the run goes without it.
-  const mentionable = canName.sources.filter((i) => i !== null).length;
+  // image to image sends only the references the prompt mentions. The k-th
+  // material mark mentions the k-th empty node, a slot's node taking a place
+  // too, so the marks have to reach the last node that can be mentioned.
+  const needed = canName.sources.reduce<number>((n, i, k) => (i === null ? n : k + 1), 0);
   const marked = prompt.filter((segment) => segment.slot?.kind === "asset").length;
-  if (marked < mentionable) {
+  if (marked < needed) {
     return {
       ok: false,
-      reason: `"${node.name}" has ${String(mentionable)} empty node(s) wired in for the reader's material and ${String(marked)} material mark(s) mentioning them. Give each its own {"slot":{"kind":"asset"}} segment, in the order the nodes are listed; a mark written as words mentions nothing, and the material put there is not sent.`,
+      reason: `"${node.name}" needs ${String(needed)} material mark(s) and has ${String(marked)}. The k-th {"slot":{"kind":"asset"}} segment mentions the k-th empty node wired in, in the order the nodes are listed, and a node filling a slot takes a place too; a mark written as words mentions nothing, and the material put there is not sent.`,
     };
   }
   // What the panel's own gate would say about the box this proposal fills in.
