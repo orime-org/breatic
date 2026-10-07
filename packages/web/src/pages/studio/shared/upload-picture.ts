@@ -13,14 +13,14 @@
 
 import { ApiException } from '@web/data/api/types';
 import type { UploadContext } from '@web/data/upload/ingest-upload';
-import { UploadFailedError, uploadMedia } from '@web/data/upload/media-upload';
+import { UploadFailedError, uploadMedia, type UploadFailureReason } from '@web/data/upload/media-upload';
 
 /**
  * What a failed picture upload tells the person: their account is full, the
  * format is not one we take, the page could not fingerprint the file (a reload
  * fixes it, a retry on this page does not), or something else a retry may fix.
  */
-export type PictureFailure = 'storage' | 'unsupportedType' | 'hash' | 'rateLimited' | 'upload';
+export type PictureFailure = Exclude<UploadFailureReason, 'transfer'>;
 
 /**
  * Reduce whatever a picture upload threw to what the person is told.
@@ -29,13 +29,16 @@ export type PictureFailure = 'storage' | 'unsupportedType' | 'hash' | 'rateLimit
  */
 export function pictureFailureOf(err: unknown): PictureFailure {
   if (!(err instanceof UploadFailedError)) return 'upload';
-  return err.reason === 'storage' ||
-    err.reason === 'unsupportedType' ||
-    err.reason === 'hash' ||
-    err.reason === 'rateLimited'
-    ? err.reason
-    : 'upload';
+  // A transfer that broke off is one more failure a retry may fix.
+  return err.reason === 'transfer' ? 'upload' : err.reason;
 }
+
+/** The sentences both pictures share, by failure. */
+const SHARED_MESSAGE: Readonly<Record<Exclude<PictureFailure, keyof PictureMessageKeys>, string>> = {
+  unsupportedType: 'studio.container.imageError.unsupported_type',
+  hash: 'studio.container.imageError.hash_unavailable',
+  rateLimited: 'studio.container.imageError.rate_limited',
+};
 
 /** The caller's own sentences: the two failures that name the picture. */
 export interface PictureMessageKeys {
@@ -65,10 +68,7 @@ export function pictureErrorMessage(
 ): string {
   if (err instanceof ApiException && err.fromServer) return err.message;
   const failure = pictureFailureOf(err);
-  if (failure === 'unsupportedType') return t('studio.container.imageError.unsupported_type');
-  if (failure === 'hash') return t('studio.container.imageError.hash_unavailable');
-  if (failure === 'rateLimited') return t('studio.container.imageError.rate_limited');
-  return t(keys[failure]);
+  return t(failure === 'storage' || failure === 'upload' ? keys[failure] : SHARED_MESSAGE[failure]);
 }
 
 /** The extension a picture's file is named with, by its type. */
