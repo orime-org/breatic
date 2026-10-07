@@ -3,7 +3,8 @@
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 
 /**
- * Every name PR-2 deleted, paired with what it was.
+ * Every name a deletion removed, paired with what it was and the change that
+ * removed it.
  *
  * Assembled rather than written out, so this file is not the first thing its
  * own check reports and needs no exemption for itself. An exemption is a
@@ -35,38 +36,50 @@ import type { Check, CheckContext, Finding } from "#repo-lint/check";
  * moved them. What makes the two exclusions right is that the names collide
  * with living symbols at all, which stays true however many there are.
  */
-export const DELETED_NAMES: ReadonlyArray<readonly [string, string]> = [
+export const DELETED_NAMES: ReadonlyArray<readonly [string, string, string]> = [
   // The dispatch machinery.
-  [["spawn", "Tool"].join(""), "the dispatch tool that ran a derived agent"],
-  [["spawn", "Count"].join(""), "the per-turn counter that numbered those runs"],
-  [["agent", "loader"].join("-"), "the module that read the agent definitions"],
-  [["load", "Agents"].join(""), "the agent-definition loader"],
-  [["list", "Agents"].join(""), "the agent-definition lister"],
-  [["sub", "agent"].join("-"), "the deleted concept, hyphenated"],
-  [["Sub", "Agent"].join(""), "the deleted concept, in a symbol"],
+  [["spawn", "Tool"].join(""), "the dispatch tool that ran a derived agent", "PR-2"],
+  [["spawn", "Count"].join(""), "the per-turn counter that numbered those runs", "PR-2"],
+  [["agent", "loader"].join("-"), "the module that read the agent definitions", "PR-2"],
+  [["load", "Agents"].join(""), "the agent-definition loader", "PR-2"],
+  [["list", "Agents"].join(""), "the agent-definition lister", "PR-2"],
+  [["sub", "agent"].join("-"), "the deleted concept, hyphenated", "PR-2"],
+  [["Sub", "Agent"].join(""), "the deleted concept, in a symbol", "PR-2"],
   // The five filesystem and script tools, and what supported them.
-  [["run", "script"].join("_"), "the script-execution tool"],
-  [["read", "file"].join("_"), "the file-read tool"],
-  [["write", "file"].join("_"), "the file-write tool"],
-  [["edit", "file"].join("_"), "the file-edit tool"],
-  [["list", "dir"].join("_"), "the directory-listing tool"],
-  [["fs", "sandbox"].join("-"), "the sandbox the file tools ran inside"],
+  [["run", "script"].join("_"), "the script-execution tool", "PR-2"],
+  [["read", "file"].join("_"), "the file-read tool", "PR-2"],
+  [["write", "file"].join("_"), "the file-write tool", "PR-2"],
+  [["edit", "file"].join("_"), "the file-edit tool", "PR-2"],
+  [["list", "dir"].join("_"), "the directory-listing tool", "PR-2"],
+  [["fs", "sandbox"].join("-"), "the sandbox the file tools ran inside", "PR-2"],
   [
     ["FILE", "TOOL", "SANDBOX", "DIR"].join("_"),
     "the env var that configured that sandbox",
+    "PR-2",
   ],
-  [["DEFAULT", "TOOLS"].join("_"), "the tool-set constant with no consumers"],
+  [["DEFAULT", "TOOLS"].join("_"), "the tool-set constant with no consumers", "PR-2"],
   // The two deleted skills.
-  [["skill", "creator"].join("_"), "the skill that let users author skills"],
-  [["a", "fame"].join(""), "the skill whose script the deleted tool ran"],
+  [["skill", "creator"].join("_"), "the skill that let users author skills", "PR-2"],
+  [["a", "fame"].join(""), "the skill whose script the deleted tool ran", "PR-2"],
   // The superseded plan-JSON path.
-  [["extract", "Plan"].join(""), "the function that scraped plan JSON from text"],
-  [["chat", "plan"].join("_"), "the SSE event that carried that JSON"],
-  [["task", "plan"].join("_"), "the skill output type that produced it"],
+  [["extract", "Plan"].join(""), "the function that scraped plan JSON from text", "PR-2"],
+  [["chat", "plan"].join("_"), "the SSE event that carried that JSON", "PR-2"],
+  [["task", "plan"].join("_"), "the skill output type that produced it", "PR-2"],
+  // The skill mechanism, replaced by generation templates.
+  [["skills", "loader"].join("-"), "the module that read the skills directory", "inner#977"],
+  [["get", "Skill", "Registry"].join(""), "the skill registry", "inner#977"],
+  [["skill", "routing"].join("-"), "the config of where a skill could run", "inner#977"],
+  [["assert", "Skill", "Usable"].join(""), "the gate a skill passed before it ran", "inner#977"],
+  [["run", "Skill", "Agent"].join(""), "the worker's skill run", "inner#977"],
+  [["set", "Resolved", "Skills"].join(""), "the write of the skills a task ran", "inner#977"],
+  [["selection", "guide"].join("_"), "the mode-picking prose skill prompts quoted", "inner#977"],
+  [["skill", "agent", "max", "steps"].join("_"), "the step cap of a skill run", "inner#977"],
+  [["skills", "Api"].join(""), "the web client of the skill routes", "inner#977"],
+  [["Skill", "Meta"].join(""), "the shared type of a skill", "inner#977"],
 ];
 
 /**
- * Nothing in the repository names what PR-2 deleted.
+ * Nothing in the repository names deleted machinery.
  *
  * The deleted concept, the five filesystem and script tools, the two skills
  * that used them, and the plan-JSON path are gone. A surviving mention either
@@ -88,7 +101,7 @@ export const DELETED_NAMES: ReadonlyArray<readonly [string, string]> = [
  */
 export const noSubagentResidue = {
   name: "no-subagent-residue",
-  description: "Nothing names what PR-2 deleted",
+  description: "Nothing names deleted machinery",
   run(context: CheckContext): Finding[] {
     if (DELETED_NAMES.length === 0) {
       throw new Error(
@@ -109,12 +122,12 @@ export const noSubagentResidue = {
     for (const file of files) {
       const text = context.read(file);
       text.split("\n").forEach((line, index) => {
-        for (const [name, what] of DELETED_NAMES) {
+        for (const [name, what, deletedIn] of DELETED_NAMES) {
           if (!line.includes(name)) continue;
           findings.push({
             file,
             line: index + 1,
-            message: `Names '${name}' — ${what}, deleted in PR-2. Either it misleads a reader into thinking the capability is still there, or it makes something reach for code that no longer exists.`,
+            message: `Names '${name}' — ${what}, deleted in ${deletedIn}. Either it misleads a reader into thinking the capability is still there, or it makes something reach for code that no longer exists.`,
           });
         }
       });
