@@ -20,13 +20,27 @@
  */
 
 import { createExtension } from '@blocknote/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import { NodeSelection, Plugin, PluginKey, Selection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { DIVIDER } from '@web/spaces/document/document-divider';
+import { MEDIA_BLOCK_TYPES } from '@web/spaces/document/document-media-types';
 
 /** The blocks the reader selects whole, by a click or an arrow. */
-const READER_SELECTED = new Set([DIVIDER, 'image', 'video', 'audio']);
+const READER_SELECTED = new Set<string>([DIVIDER, ...MEDIA_BLOCK_TYPES]);
+
+/**
+ * Where the caret goes when a block is not to be selected: the first place
+ * for text after it, or before it when nothing follows.
+ * @param doc - The document.
+ * @param end - Where the block ends.
+ * @returns The caret, or null in a document with no place for text.
+ */
+export function caretUnder(doc: PMNode, end: number): Selection | null {
+  const $end = doc.resolve(end);
+  return Selection.findFrom($end, 1, true) ?? Selection.findFrom($end, -1, true);
+}
 
 const KEY = new PluginKey('documentNodeSelectionFocus');
 
@@ -43,8 +57,7 @@ function dropWhenFocusLeft(view: EditorView, next: EventTarget | null): void {
   const page = view.dom.ownerDocument;
   // The window itself lost the focus: the body still holds it within the page.
   if (!page.hasFocus()) return;
-  const after = doc.resolve(selection.to);
-  const caret = Selection.findFrom(after, 1, true) ?? Selection.findFrom(after, -1, true);
+  const caret = caretUnder(doc, selection.to);
   if (caret === null) return;
   view.dispatch(view.state.tr.setSelection(caret).setMeta('addToHistory', false));
 }

@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import * as React from 'react';
 import * as Y from 'yjs';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
@@ -657,27 +657,106 @@ describe('a media block whose neighbour goes away', () => {
 });
 
 describe('a press beside a media block', () => {
-  it('selects nothing and puts the caret on the line under it, while a press on the media still selects it', () => {
+  it('leaves the press to the browser and answers the click: it selects nothing and puts the caret on the line under it', () => {
     const editor = open('image', { previewWidth: 200 });
     const view = editor.prosemirrorView!;
     act(() => {
       view.dispatch(view.state.tr.setSelection(TextSelection.atStart(view.state.doc)));
     });
 
-    // The row outside the media and its caption.
-    const beside = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+    // The press itself goes on: a drag or a shift-press from here is the
+    // browser's, as it is anywhere else.
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
     act(() => {
-      element(editor).dispatchEvent(beside);
+      element(editor).dispatchEvent(press);
+    });
+    expect(press.defaultPrevented).toBe(false);
+
+    // A click there — any button — is answered before the block is picked.
+    for (const button of [0, 2]) {
+      const click = new MouseEvent('mouseup', { bubbles: true, button });
+      Object.defineProperty(click, 'target', { value: element(editor) });
+      let answered = false;
+      act(() => {
+        answered = view.someProp('handleClick', (f) => f(view, 0, click)) === true;
+      });
+      expect(answered).toBe(true);
+      expect(view.state.selection).toBeInstanceOf(TextSelection);
+      expect(view.state.selection.$from.parent.textContent).toBe('Below');
+    }
+  });
+
+  it('leaves a click on the media itself to the editor, which selects it', () => {
+    const editor = open('image', { previewWidth: 200 });
+    const view = editor.prosemirrorView!;
+    const click = new MouseEvent('mouseup', { bubbles: true, button: 0 });
+    Object.defineProperty(click, 'target', { value: element(editor).querySelector('img') });
+
+    expect(view.someProp('handleClick', (f) => f(view, 0, click)) === true).toBe(false);
+  });
+});
+
+describe('the focus around a media block', () => {
+  it('stays in the body when its toolbar is pressed', () => {
+    const editor = open('image', { previewWidth: 200 });
+    selectMedia(editor);
+    const align = within(toolbar(editor)).getByTestId('doc-media-download');
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+
+    act(() => {
+      align.dispatchEvent(press);
     });
 
-    expect(beside.defaultPrevented).toBe(true);
+    expect(press.defaultPrevented).toBe(true);
+    expect(align.getAttribute('tabindex')).toBe('-1');
+  });
+
+  it.each(['Enter', 'Escape'])('goes back to the body when the caption closes with %s', (key) => {
+    const editor = open('image', { previewWidth: 200 });
+    selectMedia(editor);
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-caption-button'));
+    const field = within(element(editor)).getByTestId('doc-media-caption-input');
+    act(() => {
+      field.focus();
+    });
+
+    fireEvent.keyDown(field, { key });
+
+    expect(document.activeElement).toBe(editor.prosemirrorView!.dom);
+  });
+
+  it('lets go of the block when it leaves the body from the caption field', () => {
+    const editor = open('image', { previewWidth: 200 });
+    const view = editor.prosemirrorView!;
+    selectMedia(editor);
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-caption-button'));
+    const field = within(element(editor)).getByTestId('doc-media-caption-input');
+    act(() => {
+      field.focus();
+    });
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+    act(() => {
+      outside.focus();
+    });
+
     expect(view.state.selection).toBeInstanceOf(TextSelection);
-    expect(view.state.selection.$from.parent.textContent).toBe('Below');
+    outside.remove();
+  });
 
-    const onMedia = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
-    act(() => {
-      element(editor).querySelector('img')!.dispatchEvent(onMedia);
+  it('goes back to the body when the full-screen picture closes', async () => {
+    const editor = open('image', { previewWidth: 200 });
+    selectMedia(editor);
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-fullscreen'));
+    const picture = await screen.findByTestId('doc-media-fullscreen-image');
+
+    fireEvent.keyDown(picture, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-media-fullscreen-image')).toBeNull();
     });
-    expect(onMedia.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(editor.prosemirrorView!.dom);
   });
 });

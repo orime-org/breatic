@@ -62,6 +62,8 @@ export interface MediaBlockActions {
   readonly dragStart: (event: DragEvent) => void;
   /** Ends what {@link MediaBlockActions.dragStart} started. */
   readonly dragEnd: () => void;
+  /** Hands the keyboard back to the body, from a control of the block that held it. */
+  readonly focusBody: () => void;
 }
 
 interface DocumentMediaBlockProps {
@@ -170,6 +172,7 @@ function ToolButton({
           data-action={action}
           data-testid={testId}
           data-state={pressed === true ? 'on' : 'off'}
+          tabIndex={-1}
           onClick={onPress}
         >
           {children}
@@ -210,7 +213,18 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   const [editingCaption, setEditingCaption] = React.useState(false);
   const [fullscreen, setFullscreen] = React.useState(false);
   const [narrower, setNarrower] = React.useState(false);
-  const toolbarRef = React.useRef<HTMLDivElement>(null);
+  const toolbarRef = React.useRef<HTMLDivElement | null>(null);
+  // The toolbar floats over the body like the selection bubble bar, and the
+  // same way it takes no focus: the keys go on reaching the body.
+  const [toolbarEl, setToolbarEl] = React.useState<HTMLDivElement | null>(null);
+  const holdToolbar = React.useCallback((el: HTMLDivElement | null): void => {
+    toolbarRef.current = el;
+    setToolbarEl(el);
+  }, []);
+  usePressKeepsFocus(toolbarEl);
+  // Set when the caption field closes on a key, which hands the keyboard back
+  // to the body; a field the reader clicked away from leaves it where it went.
+  const closedOnKey = React.useRef(false);
   // Above the media, unless the scroller has no room there — then on the
   // media itself, along its top. Never under it: below the media sit its
   // caption and the next block, and a bar there reads as theirs.
@@ -237,8 +251,14 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   }, [toolbarShown, placeToolbar]);
   const captionField = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => {
-    if (editingCaption) captionField.current?.focus();
-  }, [editingCaption]);
+    if (editingCaption) {
+      closedOnKey.current = false;
+      captionField.current?.focus();
+    } else if (closedOnKey.current) {
+      closedOnKey.current = false;
+      actions.focusBody();
+    }
+  }, [editingCaption, actions]);
 
   // Alignment changes nothing on screen when the media is as wide as the
   // body, so it is offered only when it is narrower (A9).
@@ -375,7 +395,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
           )}
         >
           <div
-            ref={toolbarRef}
+            ref={holdToolbar}
             data-testid='doc-media-toolbar'
             data-side={side}
             data-shown={toolbarShown ? 'true' : undefined}
@@ -487,11 +507,19 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
               // An input method confirms and cancels its candidates with these
               // same keys; those belong to it.
               if (event.nativeEvent.isComposing) return;
-              if (event.key === 'Enter') commitCaption(event.currentTarget.value);
-              if (event.key === 'Escape') setEditingCaption(false);
+              if (event.key === 'Enter') {
+                closedOnKey.current = true;
+                commitCaption(event.currentTarget.value);
+              }
+              if (event.key === 'Escape') {
+                closedOnKey.current = true;
+                setEditingCaption(false);
+              }
             }}
             onBlur={(event) => {
-              commitCaption(event.currentTarget.value);
+              // A key already closed it; the field leaving the page is not
+              // the reader moving away.
+              if (!closedOnKey.current) commitCaption(event.currentTarget.value);
             }}
           />
         ) : props.caption !== '' ? (
@@ -507,6 +535,12 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         <Dialog open={fullscreen} onOpenChange={setFullscreen}>
           <DialogContent
             aria-describedby={undefined}
+            // Opened from the body, with no trigger for the dialog to return
+            // to: the keyboard goes back to the body.
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              actions.focusBody();
+            }}
             className='max-w-[min(96vw,1600px)] items-center border-0 bg-transparent shadow-none'
           >
             <DialogTitle className='sr-only'>{props.name}</DialogTitle>

@@ -375,3 +375,25 @@ describe('resting on a card in the panel', () => {
     expect(first).not.toBe(second);
   });
 });
+
+describe('a click beside a picture', () => {
+  it('still closes the comment that was open, before it puts the caret under the picture', async () => {
+    const editor = open();
+    const threadId = await comment(editor, 0, 5);
+    press(editor, 2);
+    expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([threadId]);
+    editor.insertBlocks(
+      [{ type: 'image', props: { url: 'https://cdn.example/a.png', name: 'a.png' } }] as never,
+      (editor.document as { id: string }[])[0]!.id,
+      'after',
+    );
+    const view = editor.prosemirrorView!;
+    const row = view.dom.querySelector('[data-content-type="image"]')!;
+    const click = new MouseEvent('mouseup', { button: 0 });
+    Object.defineProperty(click, 'target', { value: row });
+
+    view.someProp('handleClick', (handler) => handler(view, view.posAtDOM(row, 0), click));
+
+    expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([]);
+  });
+});

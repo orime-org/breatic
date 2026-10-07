@@ -659,6 +659,42 @@ test('a picture or a video is selected by a click on what it shows, never on the
   }
 });
 
+test('the keyboard stays with the body through the toolbar and the caption, and a right press beside the picture selects nothing (A10)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('alpha');
+  await pastePicture(page, 'keys.png');
+  const picture = page.locator(IMAGE);
+  await expect(picture.locator('img')).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const knob = picture.locator('[data-testid="doc-media-resize-se"]');
+  const img = picture.locator('img');
+
+  // A toolbar button leaves the keys with the body: Backspace takes the
+  // selected picture, and undo brings it back.
+  await img.click();
+  await picture.getByTestId('doc-media-align-left').click();
+  await page.keyboard.press('Backspace');
+  await expect(picture).toHaveCount(0);
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(picture.locator('img')).toBeVisible();
+
+  // A caption closed with Enter hands the keys back, and leaving the body
+  // afterwards lets go of the picture.
+  await picture.locator('img').click();
+  await picture.getByTestId('doc-media-caption-button').click();
+  await page.keyboard.type('Dusk');
+  await page.keyboard.press('Enter');
+  await expect(picture.getByTestId('doc-media-caption')).toHaveText('Dusk');
+  expect(await page.evaluate(() => document.activeElement?.classList.contains('ProseMirror'))).toBe(true);
+  await page.getByTestId('theme-toggle').click();
+  await expect(knob).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // A right press beside the picture selects nothing.
+  const frame = (await picture.locator('[data-media-frame]').boundingBox())!;
+  await page.mouse.click(frame.x + frame.width + 40, frame.y + frame.height / 2, { button: 'right' });
+  await expect(knob).toHaveCount(0);
+});
+
 test('a picture dragged by itself moves like a row dragged by its handle (A10)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('alpha');

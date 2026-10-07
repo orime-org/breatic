@@ -174,6 +174,9 @@ function mediaNodeView(
       endDrag?.();
       endDrag = null;
     },
+    focusBody: () => {
+      editor.focus();
+    },
   };
 
   /** Enters what the container shows now. */
