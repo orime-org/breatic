@@ -75,6 +75,7 @@ import { canvasApi, modelsApi } from '@web/data/api';
 import * as Y from 'yjs';
 
 import {
+  addEdge,
   addNode,
   getPromptFragment,
   readCanvasGraph,
@@ -1521,6 +1522,14 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
       .spyOn(modelsApi, 'list')
       .mockResolvedValue(imageCatalog([T2I_MODEL, TEMPLATE_MODEL]));
     seedImageNode({ paramsByModel: { 'nano-banana': { aspect_ratio: '16:9' } } });
+    // The pick reads the board fresh from Yjs, like every panel write.
+    addNode('p', 's', {
+      id: 'src',
+      type: 'image',
+      position: { x: -400, y: 0 },
+      data: { name: 'Hero', createdAt: 1000, createdBy: 'u1', locked: false, attachments: [] },
+    } as Parameters<typeof addNode>[2]);
+    addEdge('p', 's', { id: 'e1', source: 'src', target: 'target' });
     mountContainer({
       nodes: [
         { id: 'target', data: { kind: 'image', status: 'idle' } },

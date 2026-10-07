@@ -84,6 +84,7 @@ import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import { useVoiceList } from '@web/spaces/canvas/generate/use-voice-list';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
+import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { asContentView } from '@web/data/yjs/node-view';
@@ -313,6 +314,7 @@ function AudioGeneratePanelBody({
   // Every write re-derives from live Yjs at click time: the render closure goes
   // stale the moment a collaborator edits the node, and writing off it would
   // clobber their edit.
+  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId);
   const freshContent = React.useCallback(() => {
     const graph = readCanvasGraph(projectId, spaceId);
     return asContentView(graph.nodes.find((n) => n.id === nodeId)?.data);
@@ -660,6 +662,8 @@ function AudioGeneratePanelBody({
   return (
     <AudioGeneratePanel
       models={modeModels}
+      catalogModels={models}
+      onPickTemplate={onPickTemplate}
       model={vm.model}
       currentModel={vm.modelEntry}
       creditText={creditText}

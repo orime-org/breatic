@@ -81,6 +81,7 @@ import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
+import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 
 /**
  * For the two derivations below that deliberately want no body text. Shared so
@@ -342,6 +343,7 @@ function GeneratePanelBody({
    * this render.
    * @returns The node's content view, or undefined.
    */
+  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId);
   const freshContent = React.useCallback((): ContentNodeView | undefined => {
     const graph = readCanvasGraph(projectId, spaceId);
     return asContentView(graph.nodes.find((n) => n.id === nodeId)?.data);
@@ -750,6 +752,8 @@ function GeneratePanelBody({
   return (
     <GeneratePanel
       models={stableModels}
+      catalogModels={models}
+      onPickTemplate={onPickTemplate}
       model={vm.model}
       mode={vm.mode}
       modeOptions={availableModes}

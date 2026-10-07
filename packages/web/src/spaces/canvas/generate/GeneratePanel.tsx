@@ -4,7 +4,7 @@
 import { ArrowUp, Loader2, Star, X } from 'lucide-react';
 import * as React from 'react';
 
-import type { ModelEntry, ReferenceKind } from '@breatic/shared';
+import type { GenerationTemplate, ModelEntry, ReferenceKind } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -21,6 +21,7 @@ import { RatioResolutionPicker } from '@web/spaces/canvas/generate/RatioResoluti
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
+import { TemplateMenu } from '@web/spaces/canvas/generate/TemplateMenu';
 
 interface GeneratePanelProps {
   /** Catalog image models (already narrowed to the active mode). */
@@ -71,6 +72,10 @@ interface GeneratePanelProps {
   promptSlot: React.ReactNode;
   /** Close the panel without generating (exit button). */
   onExit: () => void;
+  /** Every model served for the node type: the template menu greys out templates it cannot run (inner#977). */
+  catalogModels: readonly ModelEntry[];
+  /** Applies a template picked from the corner menu. */
+  onPickTemplate: (template: GenerationTemplate) => void;
   /** Pick a model. */
   onSelectModel: (modelId: string) => void;
   /** Switch the generation sub-mode (t2i / i2i). */
@@ -134,6 +139,8 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   executeRefusal,
   promptSlot,
   onExit,
+  catalogModels,
+  onPickTemplate,
   onSelectModel,
   onToggleMode,
   onChangeParams,
@@ -178,6 +185,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
           onRemoveStyle={onRemoveStyle}
         />
         <div className='flex items-center gap-1.5'>
+          <TemplateMenu nodeType='image' models={catalogModels} onPick={onPickTemplate} />
           <Button
             type='button'
             variant={null}
