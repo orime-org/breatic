@@ -68,7 +68,8 @@ export function pictureErrorMessage(
 ): string {
   if (err instanceof ApiException && err.fromServer) return err.message;
   const failure = pictureFailureOf(err);
-  return t(failure === 'storage' || failure === 'upload' ? keys[failure] : SHARED_MESSAGE[failure]);
+  const messages: Record<PictureFailure, string> = { ...SHARED_MESSAGE, ...keys };
+  return t(messages[failure]);
 }
 
 /** The extension a picture's file is named with, by its type. */
