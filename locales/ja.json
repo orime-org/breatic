@@ -980,6 +980,7 @@
         "flipY": "上下反転",
         "rangeLength": "長さ {seconds} 秒",
         "sourceMissing": "素材の読み込みが終わっていません。読み込み後にもう一度お試しください。",
+        "slotTooLong": "選んだ素材の合計が {limit} 秒を超えています。",
         "exportFailed": "ファイルを作成できませんでした。",
         "sourceGone": "元のノードが削除されました。",
         "sourceChanged": "素材が変わったため、トリミング・範囲・向きをリセットしました。",

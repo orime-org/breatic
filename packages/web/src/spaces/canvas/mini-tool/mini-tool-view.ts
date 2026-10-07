@@ -31,25 +31,42 @@ export interface SourceSize {
 }
 
 /** Why Execute is held back, or null when it may run. */
-export type MiniToolRefusal = 'sourceMissing' | 'slotMissing' | 'promptMissing' | 'exporting' | null;
+export type MiniToolRefusal =
+  | 'sourceMissing'
+  | 'slotMissing'
+  | 'slotTooLong'
+  | 'promptMissing'
+  | 'exporting'
+  | null;
 
 /** How the panel's footer states the cost. */
 export type CreditMode = 'free' | 'usage' | 'estimate';
 
 /**
  * The params a run is sent: a model tool's listed params on the pinned model's
- * defaults with the draft on top; a local tool's draft as it stands.
+ * defaults with the draft on top; a local tool's draft, with a range nobody
+ * dragged sent as the whole clip the panel shows it as.
  * @param spec - The tool.
  * @param entry - The pinned model's catalog entry, for a model tool.
  * @param draft - The panel's draft params.
+ * @param sourceDuration - The source's length in seconds, once known.
  * @returns The params by key.
  */
 export function resolvedParams(
   spec: MiniToolSpec,
   entry: ModelEntry | undefined,
   draft: Readonly<Record<string, unknown>>,
+  sourceDuration?: number,
 ): Record<string, unknown> {
-  if (!isModelTool(spec)) return { ...draft };
+  if (!isModelTool(spec)) {
+    const out: Record<string, unknown> = { ...draft };
+    for (const param of spec.params) {
+      if (param.kind === 'range' && out[param.key] == null && sourceDuration !== undefined) {
+        out[param.key] = { start: 0, end: sourceDuration };
+      }
+    }
+    return out;
+  }
   const out: Record<string, unknown> = {};
   for (const key of toolParamKeys(spec)) {
     const value = key in draft ? draft[key] : entry?.params[key]?.default;
@@ -80,6 +97,30 @@ export function promptRequired(spec: MiniToolSpec, entry: ModelEntry | undefined
 }
 
 /**
+ * The total length a `many` slot is over, when its picks add up past the
+ * pinned model's `max_total_duration`. Picks whose length is unknown are not
+ * counted; the model answers for them.
+ * @param spec - The tool.
+ * @param entry - The pinned model's catalog entry.
+ * @param slots - The draft slots.
+ * @returns The cap in seconds that is exceeded, or null.
+ */
+export function slotLengthCap(
+  spec: MiniToolSpec,
+  entry: ModelEntry | undefined,
+  slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined>>,
+): number | null {
+  for (const slot of spec.slots) {
+    const cap = entry?.params[slot.param]?.max_total_duration;
+    const held = slots[slot.key];
+    if (cap === undefined || !Array.isArray(held)) continue;
+    const total = (held as readonly MiniToolSlotValue[]).reduce((sum, pick) => sum + (pick.duration ?? 0), 0);
+    if (total > cap) return cap;
+  }
+  return null;
+}
+
+/**
  * Why Execute is held back right now.
  * @param input - What the panel knows.
  * @param input.spec - The tool.
@@ -87,6 +128,7 @@ export function promptRequired(spec: MiniToolSpec, entry: ModelEntry | undefined
  * @param input.prompt - The draft prompt.
  * @param input.slots - The draft slots.
  * @param input.sourceShown - Whether the source node is showing its media.
+ * @param input.sourceDuration - The source's length in seconds, once known.
  * @param input.exporting - Whether a browser tool's export is under way.
  * @returns The first reason in the order the reader would fix them, or null.
  */
@@ -96,16 +138,21 @@ export function miniToolRefusal(input: {
   prompt: string;
   slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined>>;
   sourceShown: boolean;
+  sourceDuration?: number | undefined;
   exporting: boolean;
 }): MiniToolRefusal {
-  const { spec, entry, prompt, slots, sourceShown, exporting } = input;
+  const { spec, entry, prompt, slots, sourceShown, sourceDuration, exporting } = input;
   if (exporting) return 'exporting';
   if (!sourceShown) return 'sourceMissing';
+  // A range is measured on the source's length, which arrives with its metadata.
+  const measuresLength = !isModelTool(spec) && spec.params.some((param) => param.kind === 'range');
+  if (measuresLength && sourceDuration === undefined) return 'sourceMissing';
   for (const slot of spec.slots) {
     const held = slots[slot.key];
     const empty = held === undefined || (Array.isArray(held) && held.length === 0);
     if (empty && !slotOptional(entry, slot.param)) return 'slotMissing';
   }
+  if (slotLengthCap(spec, entry, slots) !== null) return 'slotTooLong';
   if (promptRequired(spec, entry) && prompt.trim() === '') return 'promptMissing';
   return null;
 }

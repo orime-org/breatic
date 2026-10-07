@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { type ModelEntry, type ParamDescriptor } from '@breatic/shared';
-import { miniToolById } from '@breatic/shared/mini-tools';
+import { miniToolById, miniToolRequestSchema } from '@breatic/shared/mini-tools';
 
 import {
   aspectRatioOf,
@@ -12,6 +12,7 @@ import {
   rectForAspect,
   resolvedParams,
   setRectSide,
+  slotLengthCap,
 } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 
 /**
@@ -62,6 +63,28 @@ describe('resolvedParams', () => {
   it('hands a local tool its draft as is', () => {
     expect(resolvedParams(tool('video.speed'), undefined, { rate: 2 })).toEqual({ rate: 2 });
   });
+
+  // The range shows the whole clip until it is dragged; that is what is sent.
+  it('sends an untouched range as the whole clip', () => {
+    const sent = resolvedParams(tool('video.cut'), undefined, { range: null }, 12);
+    expect(sent).toEqual({ range: { start: 0, end: 12 } });
+    const parsed = miniToolRequestSchema.safeParse({
+      tool: 'video.cut',
+      project_id: '00000000-0000-4000-8000-000000000001',
+      space_id: '00000000-0000-4000-8000-000000000002',
+      node_ids: ['00000000-0000-4000-8000-000000000003'],
+      source: { url: 'https://x/a.mp4', duration: 12 },
+      params: sent,
+      slots: {},
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('keeps a dragged range', () => {
+    expect(resolvedParams(tool('video.cut'), undefined, { range: { start: 2, end: 5 } }, 12)).toEqual({
+      range: { start: 2, end: 5 },
+    });
+  });
 });
 
 describe('miniToolRefusal', () => {
@@ -92,6 +115,38 @@ describe('miniToolRefusal', () => {
 
   it('refuses an empty prompt the pinned model requires', () => {
     expect(miniToolRefusal({ ...base, prompt: '  ', sourceShown: true, exporting: false })).toBe('promptMissing');
+  });
+
+  it('refuses a cut while the source length is unknown', () => {
+    const cut = { spec: tool('video.cut'), entry: undefined, prompt: '', slots: {}, sourceShown: true, exporting: false };
+    expect(miniToolRefusal({ ...cut, sourceDuration: undefined })).toBe('sourceMissing');
+    expect(miniToolRefusal({ ...cut, sourceDuration: 12 })).toBeNull();
+  });
+
+  // §5: a `many` slot's `max_total_duration` is held in the browser.
+  describe('a slot over its total length', () => {
+    const edit = entry({
+      reference_images: { description: '', default: null, fill: 'tool', optional: true },
+      reference_audios: { description: '', default: null, fill: 'tool', optional: true, max_total_duration: 15 },
+    });
+    const run = (audios: { url: string; duration?: number }[]) =>
+      miniToolRefusal({
+        spec: tool('video.edit'),
+        entry: edit,
+        prompt: 'x',
+        slots: { audios },
+        sourceShown: true,
+        exporting: false,
+      });
+
+    it('refuses picks that add up past the cap', () => {
+      expect(run([{ url: 'a', duration: 10 }, { url: 'b', duration: 10 }])).toBe('slotTooLong');
+      expect(slotLengthCap(tool('video.edit'), edit, { audios: [{ url: 'a', duration: 10 }, { url: 'b', duration: 10 }] })).toBe(15);
+    });
+
+    it('lets picks within the cap run', () => {
+      expect(run([{ url: 'a', duration: 7 }, { url: 'b', duration: 8 }])).toBeNull();
+    });
   });
 
   it('refuses while a browser tool is exporting', () => {

@@ -24,7 +24,7 @@ import { controlsForKeys } from '@web/spaces/canvas/generate/model-controls';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { MiniToolPanel, type MiniToolSourceInfo } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
-import { creditMode, miniToolRefusal, resolvedParams } from '@web/spaces/canvas/mini-tool/mini-tool-view';
+import { creditMode, miniToolRefusal, resolvedParams, slotLengthCap } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 
 /** The params a changed source resets: they are measured on the source. */
@@ -161,8 +161,8 @@ function OpenMiniToolPanel({
 
   const draftParams = draft?.params;
   const params = React.useMemo(
-    () => resolvedParams(spec, entry, draftParams ?? {}),
-    [spec, entry, draftParams],
+    () => resolvedParams(spec, entry, draftParams ?? {}, source.duration),
+    [spec, entry, draftParams, source.duration],
   );
   const modelControls = React.useMemo(
     () => (entry === undefined ? undefined : controlsForKeys(entry, toolParamKeys(spec))),
@@ -199,6 +199,7 @@ function OpenMiniToolPanel({
     prompt,
     slots,
     sourceShown: content !== '' && (!crops || measured !== null),
+    sourceDuration: source.duration,
     exporting,
   });
   const pickingSlot = pickSession?.purpose === 'miniToolSlot' ? (pickSession.slotKey ?? null) : null;
@@ -226,12 +227,16 @@ function OpenMiniToolPanel({
       toast.warning(t('canvas.miniTool.panel.sourceMissing'));
       return;
     }
+    if (refusal === 'slotTooLong') {
+      toast.warning(t('canvas.miniTool.panel.slotTooLong', { limit: slotLengthCap(spec, entry, slots) ?? 0 }));
+      return;
+    }
     if (refusal !== null) return;
     const running = onRun(nodeId, spec, snapshot);
     if (spec.run.kind !== 'browser') return;
     setExporting(true);
     void running.finally(() => setExporting(false));
-  }, [refusal, onRun, nodeId, spec, snapshot, t]);
+  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, t]);
 
   // Escape closes the panel; a running pick takes the press first.
   useEscapeInSpace(pickSession === null, closeActivePanel);

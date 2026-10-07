@@ -127,6 +127,22 @@ describe('MiniToolPanelContainer', () => {
     expect((screen.getByTestId('mini-tool-rect-w') as HTMLInputElement).value).toBe('800');
   });
 
+  // A12: the range shows the whole clip until dragged, and that is what runs.
+  it('runs a cut nobody dragged on the whole clip', () => {
+    canvasSessions.of('').getState().openMiniTool('src', 'video.cut', { sourceContent: 'a.mp4', params: { range: null } });
+    const onRun = vi.fn(() => Promise.resolve());
+    const video: CanvasNodeView[] = [
+      { id: 'src', type: 'video', position: { x: 0, y: 0 }, data: { kind: 'video', handling: false, content: 'a.mp4', duration: 12 } },
+    ];
+    render(tree(video, onRun));
+    fireEvent.click(screen.getByTestId('mini-tool-run'));
+    expect(onRun).toHaveBeenCalledWith(
+      'src',
+      expect.objectContaining({ id: 'video.cut' }),
+      expect.objectContaining({ params: { range: { start: 0, end: 12 } } }),
+    );
+  });
+
   it('closes on Escape', () => {
     render(tree(source('a.png'), () => Promise.resolve()));
     fireEvent.keyDown(screen.getByTestId('mini-tool-panel-title'), { key: 'Escape' });

@@ -980,6 +980,7 @@
         "flipY": "垂直翻转",
         "rangeLength": "时长 {seconds} s",
         "sourceMissing": "素材还没加载完，等它加载好再试。",
+        "slotTooLong": "所选素材总时长超过 {limit} 秒。",
         "exportFailed": "无法生成文件。",
         "sourceGone": "源节点已被删除。",
         "sourceChanged": "素材已更换，裁剪框、区间和朝向已重置。",

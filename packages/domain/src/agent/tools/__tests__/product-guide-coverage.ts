@@ -309,6 +309,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.panel.sourceGone": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.panel.couldNotStart": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.panel.sourceMissing": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "canvas.miniTool.panel.slotTooLong": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.panel.sourceChanged": { described: /the crop, range and turns go back to their start/ },
   "canvas.miniTool.panel.sourceChangedByPeer": { described: /the crop, range and turns go back to their start/ },
   "canvas.miniTool.panel.free": { described: /crop and rotate are free, the video tools that work on the file are billed by how long they run/ },
