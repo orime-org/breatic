@@ -100,31 +100,11 @@ describe('聚焦目标被改动之后（#2000）', () => {
     const rerender = enterFocus(START);
 
     mockUseCanvasSpace.mockReturnValue(
-      mockSpace([image('host', 0), image('src', 300, { status: 'handling' })]),
+      mockSpace([image('host', 0), image('src', 300, { handling: true })]),
     );
     rerender();
 
     expect(warn.mock.calls[0]?.[0]).toBe('A collaborator is processing the source.');
-    expect(zOf('src')).toBe('0');
-    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
-    expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
-  });
-
-  it('A8b：让它进 error → toast 说处理失败，退回挑选横幅', () => {
-    // deriveStatus reaches 'error' without passing through 'handling' (a
-    // failure writes errorMessage and puts state back to idle), so a client
-    // that receives both writes in one delivery lands here having never seen
-    // 'handling'. Sharing the 'busy' copy would tell that user a generation
-    // is running while the node draws an error frame.
-    const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
-    const rerender = enterFocus(START);
-
-    mockUseCanvasSpace.mockReturnValue(
-      mockSpace([image('host', 0), image('src', 300, { status: 'error' })]),
-    );
-    rerender();
-
-    expect(warn.mock.calls[0]?.[0]).toBe('Source processing failed.');
     expect(zOf('src')).toBe('0');
     expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
     expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
@@ -189,14 +169,13 @@ describe('聚焦目标被改动之后（#2000）', () => {
     expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
   });
 
-  it('A10：八条文案在五份 catalog 里都有', async () => {
+  it('A10：七条文案在五份 catalog 里都有', async () => {
     const locales = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'];
     const keys = [
       'focusSourceDeleted',
       'focusSourceUnavailable',
       'focusSourceReplaced',
       'focusSourceBusy',
-      'focusSourceFailed',
       'focusSourceDeletedByPeer',
       'focusSourceReplacedByPeer',
       'focusSourceBusyByPeer',

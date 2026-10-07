@@ -103,7 +103,7 @@ export function image(id: string, x: number, over = {}): Nodes[number] {
     id,
     type: 'image',
     position: { x, y: 0 },
-    data: { kind: 'image', content: `${id}.png`, status: 'idle', ...over },
+    data: { kind: 'image', content: `${id}.png`, handling: false, ...over },
   } as Nodes[number];
 }
 
