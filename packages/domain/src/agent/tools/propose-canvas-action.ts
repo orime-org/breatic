@@ -606,14 +606,24 @@ function checkGenerateNode(
   }
   // An empty node the prompt may mention is material picked by that mention:
   // image to image sends only the references the prompt mentions. The k-th
-  // material mark mentions the k-th empty node, a slot's node taking a place
-  // too, so the marks have to reach the last node that can be mentioned.
-  const needed = canName.sources.reduce<number>((n, i, k) => (i === null ? n : k + 1), 0);
+  // material mark mentions the k-th empty node, and one the prompt cannot
+  // mention takes a place too, so the marks have to reach the last node that
+  // can be mentioned.
+  const needed = canName.sources.findLastIndex((i) => i !== null) + 1;
   const marked = prompt.filter((segment) => segment.slot?.kind === "asset").length;
   if (marked < needed) {
+    const places = held.sources
+      .map((i, k) => {
+        const name = `"${proposal.nodes[i]?.name ?? ""}"`;
+        if (canName.sources[k] !== null) return name;
+        return canName.slotted.includes(i)
+          ? `${name} (fills a slot, no mention)`
+          : `${name} (a kind "${model}" does not take, no mention)`;
+      })
+      .join(", ");
     return {
       ok: false,
-      reason: `"${node.name}" needs ${String(needed)} material mark(s) and has ${String(marked)}. The k-th {"slot":{"kind":"asset"}} segment mentions the k-th empty node wired in, in the order the nodes are listed, and a node filling a slot takes a place too; a mark written as words mentions nothing, and the material put there is not sent.`,
+      reason: `"${node.name}" needs ${String(needed)} material mark(s) and has ${String(marked)}. Its empty nodes, in the order they are listed: ${places}. The k-th {"slot":{"kind":"asset"}} segment stands on the k-th of them; a mark written as words mentions nothing, and the material put there is not sent.`,
     };
   }
   // What the panel's own gate would say about the box this proposal fills in.
@@ -1077,10 +1087,11 @@ function templateGuide(): string {
       const references = t.references;
       return `${t.id} (${t.nodeType}, ${t.mode}, ${t.model}, ${references} reference${references === 1 ? "" : "s"}): ${t.agentNote}. Its prompt: "${promptTextOf(templatePrompt(t))}"`;
     }).join("; ") +
-    ". Each reference is an empty node wired in, as with any proposal. Name the template on the node and leave " +
-    "out what you keep. To put the reader's own story or detail in, send the template's prompt with its ✏️ spot " +
-    "rewritten, keeping every [📎 …] spot as it is: each one is where an empty node gets mentioned, and image to " +
-    "image sends only the pictures the prompt mentions."
+    ". Each reference is a node wired in, as with any proposal. Name the template on the node and leave out what " +
+    "you keep. To put the reader's own story or detail in, or to draw on work generated upstream, send the " +
+    "template's prompt rewritten: replace its ✏️ spot, keep each [📎 …] spot that an empty node wired in fills, " +
+    'and put a {"slot":{"kind":"ref"}} mark in place of the [📎 …] spot that work generated upstream fills. ' +
+    "Image to image sends only the pictures the prompt mentions, and a mark is how it mentions one."
   );
 }
 
