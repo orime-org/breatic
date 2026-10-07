@@ -985,7 +985,8 @@
         "exportFailed": "Couldn't make the file.",
         "sourceGone": "The source node was deleted.",
         "sourceChanged": "The source changed. The crop, range and orientation were reset.",
-        "sourceChangedByPeer": "A collaborator changed the source. The crop, range and orientation were reset."
+        "sourceChangedByPeer": "A collaborator changed the source. The crop, range and orientation were reset.",
+        "couldNotStart": "Couldn't start the tool. Try again."
       },
       "adjust": {
         "exposure": "Exposure",

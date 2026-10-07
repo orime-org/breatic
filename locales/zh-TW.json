@@ -985,7 +985,8 @@
         "exportFailed": "無法產生檔案。",
         "sourceGone": "來源節點已被刪除。",
         "sourceChanged": "素材已更換，裁切框、區間和方向已重設。",
-        "sourceChangedByPeer": "協作者更換了素材，裁切框、區間和方向已重設。"
+        "sourceChangedByPeer": "協作者更換了素材，裁切框、區間和方向已重設。",
+        "couldNotStart": "工具沒能啟動，請重試。"
       },
       "adjust": {
         "exposure": "曝光",

@@ -1,25 +1,25 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { apiPost } from '@web/data/api/request';
-import type { CanvasTask } from '@web/data/api/canvas';
+import type { MiniToolRequest } from '@breatic/shared';
 
-interface BaseToolRequest {
-  projectId: string;
-  spaceId: string;
-  sourceNodeId: string;
-  toolId: string;
-  params: Record<string, unknown>;
+import { apiPost } from '@web/data/api/request';
+
+/** What the server answers a run with: the task it opened. */
+export interface MiniToolRunAnswer {
+  task_id: string;
+  status: 'pending' | 'failed';
 }
 
 export const miniToolsApi = {
-  image(body: BaseToolRequest) {
-    return apiPost<CanvasTask>('/mini-tools/image', body);
-  },
-  audio(body: BaseToolRequest) {
-    return apiPost<CanvasTask>('/mini-tools/audio', body);
-  },
-  video(body: BaseToolRequest) {
-    return apiPost<CanvasTask>('/mini-tools/video', body);
+  /**
+   * Run a model or container mini-tool into nodes that already exist
+   * (inner#888 §6.1).
+   * @param body - The run, as the shared request schema reads it.
+   * @returns The task the server opened.
+   * @throws {import('@web/data/api/types').ApiException} When no task was opened.
+   */
+  run(body: MiniToolRequest): Promise<MiniToolRunAnswer> {
+    return apiPost<MiniToolRunAnswer>('/mini-tools', body);
   },
 };

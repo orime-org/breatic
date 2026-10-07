@@ -985,7 +985,8 @@
         "exportFailed": "ファイルを作成できませんでした。",
         "sourceGone": "元のノードが削除されました。",
         "sourceChanged": "素材が変わったため、トリミング・範囲・向きをリセットしました。",
-        "sourceChangedByPeer": "共同編集者が素材を変えたため、トリミング・範囲・向きをリセットしました。"
+        "sourceChangedByPeer": "共同編集者が素材を変えたため、トリミング・範囲・向きをリセットしました。",
+        "couldNotStart": "ツールを開始できませんでした。もう一度お試しください。"
       },
       "adjust": {
         "exposure": "露出",
