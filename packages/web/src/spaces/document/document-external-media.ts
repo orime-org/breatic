@@ -23,8 +23,8 @@ import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core'
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin } from '@tiptap/pm/state';
 
-/** The block types that carry an address. */
-const MEDIA_TYPES = new Set(['image', 'video', 'audio']);
+import { isMediaBlockType } from '@web/spaces/document/document-media-types';
+
 
 /** What the body needs to judge pasted media. */
 export interface PastedMediaOptions {
@@ -43,7 +43,7 @@ export interface PastedMediaOptions {
 function isOutsideMedium(node: PMNode, prefix: string | null): boolean {
   if (node.type.name !== 'blockContainer') return false;
   const own = node.firstChild;
-  if (own === null || !MEDIA_TYPES.has(own.type.name)) return false;
+  if (own === null || !isMediaBlockType(own.type.name)) return false;
   const url = own.attrs['url'];
   return prefix === null || typeof url !== 'string' || !url.startsWith(prefix);
 }

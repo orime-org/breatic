@@ -25,6 +25,7 @@ import {
   uploadRetryCanChange,
 } from '@web/spaces/canvas/upload-failure';
 import { QUOTED } from '@web/spaces/document/document-list-block';
+import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import {
   addUploadBatch,
   insertSlotBlock,
@@ -35,9 +36,6 @@ import {
   type SlotFailure,
   type UndoCapture,
 } from '@web/spaces/document/document-upload-slots';
-
-/** The block types a file can become. */
-type MediaType = 'image' | 'video' | 'audio';
 
 /** What the uploader needs from the page. */
 export interface DocumentUploaderDeps {
@@ -79,15 +77,6 @@ export interface DocumentUploader {
 interface Held {
   readonly file: File;
   readonly quoted: boolean;
-}
-
-/**
- * Whether a kind the server filed has a block to become.
- * @param kind - The kind.
- * @returns True for an image, a video or an audio.
- */
-function isMediaType(kind: string): kind is MediaType {
-  return kind === 'image' || kind === 'video' || kind === 'audio';
 }
 
 /** The failure a body that stopped being editable meanwhile shows. */
@@ -163,7 +152,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       return;
     }
     // The kind the server read off the stored bytes, not the name's guess.
-    if (!isMediaType(stored.kind)) {
+    if (!isMediaBlockType(stored.kind)) {
       patchUploadSlot(view, slotId, {
         phase: 'failed',
         failure: failureOf(new UploadFailedError('unsupportedType'), entry.file),

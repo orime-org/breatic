@@ -43,6 +43,7 @@ import {
 } from '@web/spaces/document/document-body-edge-selection';
 import { UNSUPPORTED_BLOCK } from '@web/spaces/document/document-unsupported-blocknote';
 import { DIVIDER } from '@web/spaces/document/document-divider';
+import { MEDIA_BLOCK_TYPES, isMediaBlockType } from '@web/spaces/document/document-media-types';
 
 /** The class `index.css` paints a no-text block inside the selection with. */
 export const IN_SELECTION_CLASS = 'doc-in-selection';
@@ -61,11 +62,9 @@ export const EMPTY_LINE_CLASS = 'doc-empty-line-in-selection';
  */
 export const MEDIA_IN_SELECTION_CLASS = 'doc-media-in-selection';
 
-/** The image, video and audio blocks. */
-const MEDIA = new Set(['image', 'video', 'audio']);
 
 /** The blocks with no text that a range selection paints. */
-const NO_TEXT = new Set([DIVIDER, UNSUPPORTED_BLOCK, ...MEDIA]);
+const NO_TEXT = new Set<string>([DIVIDER, UNSUPPORTED_BLOCK, ...MEDIA_BLOCK_TYPES]);
 
 /**
  * The node selections painted here. A media block the reader selected draws
@@ -80,7 +79,7 @@ const NODE_SELECTED = new Set([DIVIDER]);
  * @returns The frame for a media block, the band for the rest.
  */
 function paintClassOf(name: string): string {
-  return MEDIA.has(name) ? MEDIA_IN_SELECTION_CLASS : IN_SELECTION_CLASS;
+  return isMediaBlockType(name) ? MEDIA_IN_SELECTION_CLASS : IN_SELECTION_CLASS;
 }
 
 /** Tags the transaction that asks for the band to be redrawn. */
