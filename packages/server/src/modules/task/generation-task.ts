@@ -20,7 +20,7 @@ import { canvasSpaceDocName } from "@breatic/shared";
 import { nodeTaskService } from "@breatic/domain";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { t } from "@breatic/shared";
-import type { TaskFailureReason } from "@breatic/shared";
+import type { NodeTaskAction, TaskFailureReason } from "@breatic/shared";
 
 /** One row this request opened, for a caller that may have to settle it. */
 export interface OpenedTaskRow {
@@ -44,7 +44,8 @@ export interface OpenedTaskRow {
  * @param opts.nodeIds - The nodes this run will write to.
  * @param opts.startedByUserId - Who started it.
  * @param opts.taskId - The job every row points at.
- * @param opts.label - What the user reads in the list — the model or tool.
+ * @param opts.action - What the rows' first line names.
+ * @param opts.label - What the user reads in the list — the model or tool id.
  * @returns The rows opened, for a caller that may still have to settle them.
  * @throws {AppError} 503 when a row cannot be opened.
  */
@@ -54,6 +55,7 @@ export async function openGenerationTasks(opts: {
   nodeIds: string[];
   startedByUserId: string;
   taskId: string;
+  action: Exclude<NodeTaskAction, "upload">;
   label: string;
 }): Promise<OpenedTaskRow[]> {
   const budgetMs = getNodeTaskConfig().default_budget_ms;
@@ -68,6 +70,7 @@ export async function openGenerationTasks(opts: {
         spaceId: opts.spaceId,
         nodeId,
         kind: "generation",
+        action: opts.action,
         startedByUserId: opts.startedByUserId,
         budgetMs,
         label: opts.label,

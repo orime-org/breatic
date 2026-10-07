@@ -24,7 +24,9 @@ import {
   isUploadableMediaType,
   UploadHttpError,
   INGEST_REFUSED_UNNAMED,
+  miniToolById,
   t,
+  type NodeTaskAction,
 } from "@breatic/shared";
 import {
   assetService,
@@ -176,7 +178,11 @@ const uploadTicketFields = z.object({
    * job reads — so nothing else is admitted.
    */
   source: z.enum(["mini_tool"]).optional(),
-  tool_name: z.string().max(100).optional(),
+  /** The browser tool whose export this is; present exactly when `source` is. */
+  tool_name: z
+    .string()
+    .refine((id) => miniToolById(id)?.run.kind === "browser")
+    .optional(),
   derived: z.boolean().optional(),
 });
 
@@ -206,6 +212,14 @@ const uploadTicketSchema = z
   // read is deferred on the strength of that (#299). So a purpose is taken for
   // a picture alone, and a cover lands on no node.
   .superRefine((body, ctx) => {
+    // A browser tool's export names the tool its row is shown under.
+    if ((body.source === undefined) !== (body.tool_name === undefined)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["tool_name"],
+        message: "a mini-tool upload names its tool, and only a mini-tool upload does",
+      });
+    }
     if (body.purpose === undefined) return;
     if (!mediaReadService.purposeAccepts(body.content_type)) {
       ctx.addIssue({
@@ -222,6 +236,25 @@ const uploadTicketSchema = z
       });
     }
   });
+
+/**
+ * What an upload's task row says: a browser tool's export is shown as that
+ * tool, every other upload by its file name.
+ * @param body - The ticket request.
+ * @param body.source - What started the upload.
+ * @param body.tool_name - The browser tool, on a mini-tool upload.
+ * @param body.filename - The picked file's name.
+ * @returns The row's action and label.
+ */
+function uploadRowOf(body: {
+  source?: "mini_tool" | undefined;
+  tool_name?: string | undefined;
+  filename: string;
+}): { action: NodeTaskAction; label: string } {
+  return body.source === "mini_tool" && body.tool_name !== undefined
+    ? { action: "mini_tool", label: body.tool_name }
+    : { action: "upload", label: body.filename };
+}
 
 /**
  * `POST /assets/upload-ticket` — the permission slip the browser carries to
@@ -299,6 +332,7 @@ assets.post(
             size: body.size,
             mimeType: body.content_type,
           },
+          row: uploadRowOf(body),
           nodeId: body.node_id,
           spaceId: body.space_id,
         });
@@ -371,7 +405,7 @@ assets.post(
       },
       {
         budgetMs: getNodeTaskConfig().default_budget_ms,
-        label: body.filename,
+        ...uploadRowOf(body),
       },
     );
 

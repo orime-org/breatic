@@ -108,6 +108,7 @@ async function openOn(nodeId: string, label: string): Promise<string> {
     spaceId: crypto.randomUUID(),
     nodeId,
     kind: "upload",
+    action: "upload",
     startedByUserId: userId,
     budgetMs: BUDGET_MS,
     label,

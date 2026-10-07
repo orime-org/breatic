@@ -761,6 +761,9 @@ export const nodeTasks = pgTable(
     nodeId: uuid("node_id").notNull(),
 
     kind: varchar("kind", { length: 20 }).notNull(), // 'upload' | 'generation'
+    // What the row's first line names: 'upload' | 'generate' | 'understand'
+    // | 'mini_tool' (inner#888). Its CHECK lives in 0091.
+    action: varchar("action", { length: 20 }).notNull(),
     // 'running' | 'done' | 'failed' | 'expired'
     status: varchar("status", { length: 20 }).notNull(),
 
@@ -1390,9 +1393,10 @@ export const agentUsageRecords = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     operationKey: varchar("operation_key", { length: 255 }).notNull(),
     // `chat_turn` / `memory_consolidation` / `text_tool` / `canvas_understand`
-    // / `skill_task`.
+    // / `skill_task` / `mini_tool`.
     feature: varchar("feature", { length: 40 }).notNull(),
-    // `model`, or `tool:<name>` for a paid call a tool made.
+    // `model`, `tool:<name>` for a paid call a tool made, or `container` for
+    // a mini-tool container run.
     source: varchar("source", { length: 40 }).notNull(),
     actorUserId: uuid("actor_user_id")
       .notNull()
@@ -1409,7 +1413,8 @@ export const agentUsageRecords = pgTable(
     reasoningTokens: integer("reasoning_tokens"),
     requestCount: integer("request_count"),
     costUsd: numeric("cost_usd", { precision: 20, scale: 8 }).notNull(),
-    // `provider` / `price_table` / `generation_lookup` / `missing`.
+    // `provider` / `price_table` / `generation_lookup` / `computed` /
+    // `missing`.
     costSource: varchar("cost_source", { length: 20 }).notNull(),
     credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -1418,6 +1423,10 @@ export const agentUsageRecords = pgTable(
   },
   (table) => [
     index("agent_usage_records_operation_key_idx").on(table.operationKey),
+    // Every attempt of a container run computes the same cost; one row per task.
+    uniqueIndex("agent_usage_records_container_operation_key")
+      .on(table.operationKey)
+      .where(sql`${table.source} = 'container'`),
   ],
 );
 

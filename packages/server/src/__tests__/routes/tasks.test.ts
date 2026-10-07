@@ -217,8 +217,7 @@ describe("Tasks routes", () => {
       expect(res.status).toBe(402);
       expect(domain.estimateTaskCredits).toHaveBeenCalledWith(
         "test-model",
-        { duration: 10, prompt: "<p>a slow pan</p>" },
-        "a slow pan",
+        { params: { duration: 10, prompt: "<p>a slow pan</p>" }, prompt: "a slow pan" },
       );
       expect(mocks.taskService.create).not.toHaveBeenCalled();
     });

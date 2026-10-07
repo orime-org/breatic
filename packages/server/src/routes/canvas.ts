@@ -191,6 +191,7 @@ canvas.post(
         // still running.
         budgetMs:
           ingest.ticket_expires_seconds * 1000 + ingest.url_fetch_deadline_ms,
+        action: "upload",
         label: labelForUrl(body.url),
       },
     );
@@ -312,11 +313,10 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
   await precheckCredits(
     projectId,
     user.id,
-    await estimateTaskCredits(
-      body.model,
-      body.params,
-      extractPromptText(body.params.prompt ?? body.params.text),
-    ),
+    await estimateTaskCredits(body.model, {
+      params: body.params,
+      prompt: extractPromptText(body.params.prompt ?? body.params.text),
+    }),
   );
 
   // #89: storage gate, the other soft pre-check. AFTER credits, because
@@ -370,6 +370,7 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
     taskId: task.id,
     // What the list shows for this row. The model names it when there is
     // one; a skill run names the skill, and the rest name what they are.
+    action: "generate",
     label: body.model ?? body.skill_name ?? body.task_type,
   });
 
@@ -511,10 +512,11 @@ canvas.post(
         nodeIds,
         startedByUserId: user.id,
         taskId: task.id,
+        action: "understand",
         label: model,
       });
 
-      await precheckCredits(body.project_id, user.id, await estimateTaskCredits(model, params));
+      await precheckCredits(body.project_id, user.id, await estimateTaskCredits(model, { params }));
 
       const job = await tasksQueue.add(
         "execute-task",
