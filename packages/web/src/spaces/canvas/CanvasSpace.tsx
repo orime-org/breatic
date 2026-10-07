@@ -37,7 +37,16 @@ import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 import { claimRegion } from '@web/features/active-region/use-track-active-region';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { useKeyboardNudge } from '@web/spaces/canvas/use-keyboard-nudge';
-import { canGenerate, defaultParamsOf, miniToolById, miniToolsFor, newId, servedMiniToolsFor } from '@breatic/shared';
+import {
+  canGenerate,
+  defaultParamsOf,
+  miniToolById,
+  miniToolsFor,
+  newId,
+  servedMiniToolsFor,
+  type MiniToolSnapshot,
+  type MiniToolSpec,
+} from '@breatic/shared';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 
 import { Button } from '@web/components/ui/button';
@@ -182,6 +191,9 @@ import { startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
 import { downloadHref } from '@web/data/api/download-href';
 import { triggerDownload } from '@web/lib/download';
 import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
+import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
+import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
+import { startMiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
 import { readSlotPicks, slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
@@ -3893,6 +3905,47 @@ function CanvasSpaceInner({
     spaceId,
     viewerId,
   ]);
+  // A mini-tool's Run (inner#888 §7.5): the snapshot was taken by the panel.
+  // A browser tool's export, build and upload are one tracked operation, so a
+  // tab close in the middle is held back as an upload's is.
+  const runMiniTool = React.useCallback(
+    (nodeId: string, spec: MiniToolSpec, snapshot: MiniToolSnapshot): Promise<void> => {
+      const host = nodes.find((n) => n.id === nodeId);
+      const view = asContentView(host?.data);
+      if (host === undefined || view === undefined) return Promise.resolve();
+      const group =
+        host.parentId === undefined
+          ? undefined
+          : nodes.find((n) => n.id === host.parentId);
+      const work = startMiniToolRun({
+        projectId,
+        spaceId,
+        userId: viewerId ?? '',
+        spec,
+        snapshot,
+        source: {
+          id: host.id,
+          name: view.name,
+          position: host.position,
+          groupOrigin: group?.position ?? null,
+          mimeType: view.mimeType,
+          width: 'width' in view ? view.width : undefined,
+          height: 'height' in view ? view.height : undefined,
+        },
+        sourceExists: () => buffer.settled().some((n) => n.id === nodeId),
+        exportFile: exportMiniToolFile,
+        fillUpload,
+        onBuilt: (built) => {
+          setSelectAfterCreate(built.map((node) => node.id));
+          const [first] = built;
+          if (first !== undefined) frameNewNode(first.position, nodeId);
+        },
+      });
+      if (spec.run.kind === 'browser') trackOperation(newId(), work);
+      return work;
+    },
+    [nodes, projectId, spaceId, viewerId, buffer, fillUpload, frameNewNode, trackOperation],
+  );
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
       const file = event.target.files?.[0];
@@ -4597,6 +4650,13 @@ function CanvasSpaceInner({
             projectId={projectId}
             spaceId={spaceId}
             getLastWriteWasLocal={getLastWriteWasLocal}
+          />
+          {/* A mini-tool's parameter panel: the same slot under the node,
+              so it and the Generate panels never show together. */}
+          <MiniToolPanelContainer
+            nodes={nodes}
+            getLastWriteWasLocal={getLastWriteWasLocal}
+            onRun={runMiniTool}
           />
           {/* An expanded annotation: the fifth panel in that same host +
               lifecycle, floating beside its pin. */}
