@@ -332,6 +332,8 @@ Sentry 分三个项目:web · 后端(server / worker / collab 共用一个,事�
 | 后端三服务 | `SENTRY_DSN`(core env schema) | 镜像里 `/app/build-info.json` 的 `revision` | pino `error` / `fatal` 日志(`pinoIntegration`)+ 未捕获异常;server / worker 遇未处理的 Promise 拒绝先上报再退出(`strict`;SDK 写死忽略 `AbortError` / `AI_NoOutputGeneratedError`,这两类既不上报也不退出),collab 有自己的处理器(`none`) |
 | ingest | `wrangler.toml` 的 `SENTRY_DSN` | 部署时 `--var SENTRY_RELEASE:<commit>` | `src/error-monitoring.ts` 的 `noteFailure` 一个出口,读者自己的输入造成的失败只写日志 |
 
+后端镜像的六个包（server / worker / collab / core / domain / shared）构建时生成 source map，在 `pnpm deploy` 之前由锁定版本的 Sentry CLI 注入 Debug ID。构建不上传、不需要令牌；`.map` 随镜像保留，部署仓从已经固定摘要的镜像提取并上传，不能重建一套映射来配旧镜像。`scripts/backend-sourcemaps.mjs` 检查所有 JS 与 map 的 Debug ID，并在镜像 CI 检查生产 node_modules 中的工作区包与注入后的原始产物逐字节一致。镜像不公开提供静态文件，`.map` 不经 HTTP 提供。
+
 三端共用 `@breatic/shared` 的 `error-monitoring.ts`:release **只认 40 位小写 commit**,别的值(含 `unknown`)不设 release;environment 只用 `production` / `staging` / `development`(后端由 `ENV` 映射:`prod` → `production`,`dev` → `development`);`dataCollection` 是同一个收紧基线(不收用户信息、cookie、请求体、URL query、标识性请求头)。**用户只附 `id`**(server 的 `requireAuth`、web 的 current-user store)。不开 tracing / replay / profiling。
 
 后端三个入口在 `bootstrap-config` 之后、`initLogger` 之前 `initSentry()`;**退出一律经各自的 `exitProcess(code)`**:先 `Sentry.flush(2000)` 再 `process.exit`,否则进程退出前那条 fatal 发不出去。入口文件里不出现 `process.exit(`,`entry-exits.test.ts` 钉住。

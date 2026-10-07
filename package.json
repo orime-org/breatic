@@ -33,6 +33,7 @@
     "@breatic/eslint-rules": "workspace:*",
     "@eslint/js": "catalog:",
     "@secretlint/secretlint-rule-preset-recommend": "^13.0.4",
+    "@sentry/cli": "3.8.0",
     "dependency-cruiser": "^17.4.3",
     "eslint": "catalog:",
     "eslint-plugin-drizzle": "^0.2.3",
