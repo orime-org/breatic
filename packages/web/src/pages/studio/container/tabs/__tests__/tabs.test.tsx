@@ -1,13 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { ProjectsTab } from '@web/pages/studio/container/tabs/ProjectsTab';
+import { ArchivedTab } from '@web/pages/studio/container/tabs/ArchivedTab';
+import type { StudioProjectList } from '@web/pages/studio/container/use-studio-projects-paging';
 import { MembersTab } from '@web/pages/studio/container/tabs/MembersTab';
 import { SettingsTab } from '@web/pages/studio/container/tabs/SettingsTab';
 import type {
@@ -29,6 +32,8 @@ const STUDIO_VISIBLE: ContainerProject = {
   myRole: 'viewer',
   createdAt: '2026-06-01T00:00:00.000Z',
   archivedAt: null,
+  lastOpenedAt: null,
+  lastEditedAt: '2026-06-01T00:00:00.000Z',
   canManageMeta: false,
   canDuplicate: false,
   canArchive: false,
@@ -43,6 +48,8 @@ const NOT_JOINED: ContainerProject = {
   myRole: null,
   createdAt: '2026-06-01T00:00:00.000Z',
   archivedAt: null,
+  lastOpenedAt: null,
+  lastEditedAt: '2026-06-01T00:00:00.000Z',
   canManageMeta: false,
   canDuplicate: false,
   canArchive: false,
@@ -50,10 +57,44 @@ const NOT_JOINED: ContainerProject = {
   canLeave: false,
 };
 
+
+/**
+ * A loaded list holding these projects, with nothing more to fetch.
+ * @param projects - The projects.
+ * @param extra - States to override.
+ * @returns The list state a tab renders from.
+ */
+function listOf(
+  projects: readonly ContainerProject[],
+  extra: Partial<StudioProjectList> = {},
+): StudioProjectList {
+  return {
+    projects,
+    total: projects.length,
+    isPending: false,
+    firstPageFailed: false,
+    retryFirstPage: vi.fn(),
+    isFetchingNextPage: false,
+    hasNextPage: false,
+    pageFailed: false,
+    loadMore: vi.fn(),
+    sentinelRef: vi.fn(),
+    scrollerRef: vi.fn(),
+    ...extra,
+  };
+}
+
+const LIST_CONTROLS = {
+  sort: 'opened' as const,
+  onSortChange: vi.fn(),
+  view: 'grid' as const,
+  onViewChange: vi.fn(),
+};
+
 describe('ProjectsTab', () => {
   it('shows a guest every project the server listed, including ones they are not on', () => {
     withQuery(
-      <ProjectsTab projects={[STUDIO_VISIBLE, NOT_JOINED]} studioRole='guest' />,
+      <ProjectsTab list={listOf([STUDIO_VISIBLE, NOT_JOINED])} {...LIST_CONTROLS} studioRole='guest' />,
     );
     expect(screen.getByText('Open Project')).toBeInTheDocument();
     expect(screen.getByText('Other Project')).toBeInTheDocument();
@@ -61,7 +102,7 @@ describe('ProjectsTab', () => {
 
   it('offers create to an admin/maintainer, never to a guest or non-member (spec §7.1)', () => {
     const admin = withRouter(
-      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='admin' />,
+      <ProjectsTab list={listOf([STUDIO_VISIBLE])} {...LIST_CONTROLS} studioRole='admin' />,
     );
     expect(
       screen.getByRole('button', { name: 'New project' }),
@@ -69,7 +110,7 @@ describe('ProjectsTab', () => {
     admin.unmount();
 
     const maintainer = withRouter(
-      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='maintainer' />,
+      <ProjectsTab list={listOf([STUDIO_VISIBLE])} {...LIST_CONTROLS} studioRole='maintainer' />,
     );
     expect(
       screen.getByRole('button', { name: 'New project' }),
@@ -79,13 +120,13 @@ describe('ProjectsTab', () => {
     // A plain guest cannot create — creating is limited to admin/maintainer
     // (spec §0.2 / §8.2).
     const guest = withRouter(
-      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='guest' />,
+      <ProjectsTab list={listOf([STUDIO_VISIBLE])} {...LIST_CONTROLS} studioRole='guest' />,
     );
     expect(screen.queryByRole('button', { name: 'New project' })).toBeNull();
     guest.unmount();
 
     // A non-member viewing the public shell never sees the create entry.
-    withRouter(<ProjectsTab projects={[STUDIO_VISIBLE]} studioRole={null} />);
+    withRouter(<ProjectsTab list={listOf([STUDIO_VISIBLE])} {...LIST_CONTROLS} studioRole={null} />);
     expect(screen.queryByRole('button', { name: 'New project' })).toBeNull();
   });
 });
@@ -115,6 +156,89 @@ function withQuery(ui: ReactElement) {
     </QueryClientProvider>,
   );
 }
+
+describe('ProjectsTab — views and loading', () => {
+  it('lists the projects as table rows with the six columns in the list view, the sorted column marked', () => {
+    withRouter(
+      <ProjectsTab
+        list={listOf([STUDIO_VISIBLE, NOT_JOINED])}
+        {...LIST_CONTROLS}
+        sort='name'
+        view='list'
+        studioRole='guest'
+      />,
+    );
+    const table = screen.getByRole('table');
+    const headers = within(table).getAllByRole('columnheader').map((h) => h.textContent);
+    expect(headers).toEqual(['', 'Name', 'Last opened', 'Last edited', 'Created', 'My role']);
+    expect(within(table).getByRole('columnheader', { name: 'Name' })).toHaveAttribute('aria-sort', 'ascending');
+    expect(within(table).getAllByRole('row')).toHaveLength(3);
+    expect(within(table).getByRole('link', { name: 'Open Project' })).toHaveAttribute('href', '/project/open-a');
+  });
+
+  it('shows placeholders and no count while the first page loads', () => {
+    withRouter(
+      <ProjectsTab
+        list={listOf([], { isPending: true, total: null })}
+        {...LIST_CONTROLS}
+        studioRole='guest'
+      />,
+    );
+    expect(screen.getAllByTestId('project-placeholder').length).toBeGreaterThan(0);
+    expect(screen.queryByTestId('container-toolbar-count')).not.toBeInTheDocument();
+  });
+
+  it('offers to retry a first page that did not arrive', async () => {
+    const list = listOf([], { firstPageFailed: true, total: null });
+    withRouter(<ProjectsTab list={list} {...LIST_CONTROLS} studioRole='guest' />);
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(list.retryFirstPage).toHaveBeenCalled();
+  });
+
+  it('keeps the loaded projects and offers to retry when the next page did not arrive', async () => {
+    const list = listOf([STUDIO_VISIBLE], { hasNextPage: true, pageFailed: true, total: 2 });
+    withRouter(<ProjectsTab list={list} {...LIST_CONTROLS} studioRole='guest' />);
+    expect(screen.getByText('Open Project')).toBeInTheDocument();
+    expect(screen.getByText('The rest of the projects did not load')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(list.loadMore).toHaveBeenCalled();
+  });
+
+  it('shows placeholders at the end while the next page loads', () => {
+    withRouter(
+      <ProjectsTab
+        list={listOf([STUDIO_VISIBLE], { hasNextPage: true, isFetchingNextPage: true, total: 2 })}
+        {...LIST_CONTROLS}
+        studioRole='guest'
+      />,
+    );
+    expect(screen.getAllByTestId('project-placeholder').length).toBeGreaterThan(0);
+  });
+
+  it('says how many projects there are once all of them are loaded, and shows the total in the toolbar', () => {
+    withRouter(
+      <ProjectsTab list={listOf([STUDIO_VISIBLE, NOT_JOINED])} {...LIST_CONTROLS} studioRole='guest' />,
+    );
+    expect(screen.getByText('2 projects')).toBeInTheDocument();
+    expect(screen.getByTestId('container-toolbar-count')).toHaveTextContent('2');
+  });
+});
+
+describe('ArchivedTab', () => {
+  it('offers the archive sorts and shows the archive time in the list view', () => {
+    withRouter(
+      <ArchivedTab
+        list={listOf([{ ...STUDIO_VISIBLE, archivedAt: '2026-06-02T00:00:00.000Z' }])}
+        sort='archived'
+        onSortChange={vi.fn()}
+        view='list'
+        onViewChange={vi.fn()}
+      />,
+    );
+    const headers = within(screen.getByRole('table')).getAllByRole('columnheader').map((h) => h.textContent);
+    expect(headers).toEqual(['', 'Name', 'Archived', 'Last edited', 'Created', 'My role']);
+  });
+});
 
 describe('MembersTab (spec §3.7)', () => {
   it('shows the invite button to an Admin', () => {

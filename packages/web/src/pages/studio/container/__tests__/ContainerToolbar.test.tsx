@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { ContainerToolbar } from '@web/pages/studio/container/ContainerToolbar';
 
@@ -62,5 +63,43 @@ describe('ContainerToolbar', () => {
     );
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(screen.getByText('Members')).toBeInTheDocument();
+  });
+
+  it('offers the given sorts, marks the current one, and reports a new choice', async () => {
+    const onChange = vi.fn();
+    render(
+      <ContainerToolbar
+        title='Projects'
+        count={3}
+        sort={{ value: 'opened', options: ['opened', 'edited', 'name', 'created'], onChange }}
+      />,
+    );
+    const trigger = screen.getByRole('button', { name: /Sort/ });
+    expect(trigger).toHaveTextContent('Last opened');
+
+    await userEvent.click(trigger);
+    const items = screen.getAllByRole('menuitemradio');
+    expect(items.map((i) => i.textContent)).toEqual(['Last opened', 'Last edited', 'Name', 'Created']);
+    expect(items[0]).toHaveAttribute('aria-checked', 'true');
+
+    await userEvent.click(items[2]!);
+    expect(onChange).toHaveBeenCalledWith('name');
+  });
+
+  it('switches between grid and list and shows which one is on', async () => {
+    const onChange = vi.fn();
+    render(<ContainerToolbar title='Projects' count={3} view={{ value: 'grid', onChange }} />);
+    const grid = screen.getByRole('button', { name: 'Grid view' });
+    const list = screen.getByRole('button', { name: 'List view' });
+    expect(grid).toHaveAttribute('aria-pressed', 'true');
+    expect(list).toHaveAttribute('aria-pressed', 'false');
+
+    await userEvent.click(list);
+    expect(onChange).toHaveBeenCalledWith('list');
+  });
+
+  it('shows no count while the list has not loaded', () => {
+    render(<ContainerToolbar title='Projects' count={null} />);
+    expect(screen.queryByTestId('container-toolbar-count')).not.toBeInTheDocument();
   });
 });

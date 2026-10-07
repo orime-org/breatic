@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { projectsApi } from '@web/data/api/projects';
 import { ProjectCard } from '@web/pages/studio/container/cards/ProjectCard';
+import type { ProjectTimeKind } from '@web/pages/studio/container/container-types';
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
@@ -43,6 +44,8 @@ const project: ContainerProject = {
   // Created 30 min ago → en renders a relative "30 minutes ago" label.
   createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
   archivedAt: null,
+  lastOpenedAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+  lastEditedAt: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
   canManageMeta: true,
   canDuplicate: true,
   canArchive: false,
@@ -56,12 +59,12 @@ const AS_STUDIO_ADMIN = { canManageMeta: true, canDuplicate: true, canArchive: t
 const AS_NOBODY = { canManageMeta: false, canDuplicate: false, canArchive: false, canRestore: false, canLeave: false };
 const AS_EDITOR = { ...AS_NOBODY, canLeave: true };
 
-function setup(p: ContainerProject = project) {
+function setup(p: ContainerProject = project, timeKind?: ProjectTimeKind) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <ProjectCard project={p} />
+        <ProjectCard project={p} timeKind={timeKind} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -84,6 +87,26 @@ describe('ProjectCard', () => {
     // "what I recently opened" separately.
     setup();
     expect(screen.getByText(/^Created\b/i)).toBeInTheDocument();
+  });
+
+  it('shows the time the list is sorted by', () => {
+    setup(project, 'opened');
+    expect(screen.getByText('Opened 5 minutes ago')).toBeInTheDocument();
+  });
+
+  it('says a project was never opened, with its creation time, under the last-opened sort', () => {
+    setup({ ...project, lastOpenedAt: null }, 'opened');
+    expect(screen.getByText('Never opened · Created 30 minutes ago')).toBeInTheDocument();
+  });
+
+  it('shows the edit time under the last-edited sort', () => {
+    setup(project, 'edited');
+    expect(screen.getByText('Edited 10 minutes ago')).toBeInTheDocument();
+  });
+
+  it('shows the archive time on an archived card under the archive sort', () => {
+    setup({ ...project, archivedAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString() }, 'archived');
+    expect(screen.getByText('Archived 2 hours ago')).toBeInTheDocument();
   });
 
   it('uses the same card body as the Recent landing: 13px name, one meta line with the role as text', () => {

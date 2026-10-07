@@ -77,6 +77,25 @@ describe('useRecordProjectOpen (critical path: StrictMode-safe one-shot)', () =>
     );
   });
 
+  it('refreshes every studio projects list after a successful record, so last-opened order is current', async () => {
+    vi.mocked(projectsApi.recordOpen).mockResolvedValue({ ok: true });
+    const client = new QueryClient();
+    client.setQueryData(['studio', 'acme', 'projects', { archived: false, sort: 'opened', locale: 'en' }], {
+      pages: [],
+      pageParams: [],
+    });
+    client.setQueryData(['project', 'proj-4'], { id: 'proj-4' });
+    setup('proj-4', true, client);
+
+    await waitFor(() =>
+      expect(
+        client.getQueryState(['studio', 'acme', 'projects', { archived: false, sort: 'opened', locale: 'en' }])
+          ?.isInvalidated,
+      ).toBe(true),
+    );
+    expect(client.getQueryState(['project', 'proj-4'])?.isInvalidated).toBe(false);
+  });
+
   it('swallows a failed record (best-effort, render never throws)', async () => {
     vi.mocked(projectsApi.recordOpen).mockRejectedValue(new Error('nope'));
     setup('proj-3', true);
