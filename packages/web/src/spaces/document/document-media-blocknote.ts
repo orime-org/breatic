@@ -44,8 +44,8 @@ import {
   MEDIA_CHROME,
   type MediaBlockActions,
   type MediaBlockProps,
-  type MediaBlockType,
 } from '@web/spaces/document/DocumentMediaBlock';
+import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { dropMediaView, putMediaView } from '@web/spaces/document/document-media-views';
 
 /** A prop declaration in BlockNote's shape, as far as this reads one. */
@@ -156,7 +156,10 @@ function mediaNodeView(
     },
     remove: () => {
       const id = blockId();
-      if (id !== null) editor.removeBlocks([id]);
+      if (id === null) return;
+      // The caption field goes with the block; the keyboard stays with the body.
+      if (host.contains(host.ownerDocument.activeElement)) editor.focus();
+      editor.removeBlocks([id]);
     },
     download: () => {
       const { url } = propsOf(node);
@@ -178,6 +181,18 @@ function mediaNodeView(
       editor.focus();
     },
   };
+
+  /**
+   * Refuses a drag from the empty part of the row. ProseMirror makes a selected
+   * block's whole element draggable; what moves the row is the media itself.
+   * @param event - The dragstart.
+   */
+  const refuseRowDrag = (event: DragEvent): void => {
+    if (!(event.target instanceof Element) || event.target.closest('[data-media-frame]') === null) {
+      event.preventDefault();
+    }
+  };
+  dom.addEventListener('dragstart', refuseRowDrag);
 
   /** Enters what the container shows now. */
   const render = (): void => {
@@ -216,6 +231,7 @@ function mediaNodeView(
     // What React draws inside is not the document's; the node has no content.
     ignoreMutation: () => true,
     destroy: () => {
+      dom.removeEventListener('dragstart', refuseRowDrag);
       dropMediaView(editor, host);
     },
   };

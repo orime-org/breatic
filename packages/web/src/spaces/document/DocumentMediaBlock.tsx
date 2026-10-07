@@ -39,7 +39,6 @@ import { BUBBLE_BAR_CLASS, BUBBLE_ICON_BUTTON_SIZE, PRESSED_CLASS } from '@web/s
 import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 
 /** The media block types. */
-export type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 
 /** The block's props, as far as this view reads them. */
@@ -225,6 +224,19 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   // Set when the caption field closes on a key, which hands the keyboard back
   // to the body; a field the reader clicked away from leaves it where it went.
   const closedOnKey = React.useRef(false);
+  // An input method confirms and cancels its candidates with Enter and Escape.
+  // Engines differ in how the key that ends a composition reads: Chrome sends
+  // compositionend first and then the key with `isComposing` false (measured
+  // in `document-enter.ts`), WebKit reports it as keyCode 229. So the key is
+  // the input method's while it composes and until whatever the browser has
+  // already queued for that key has run.
+  const composing = React.useRef(false);
+  // Where the keyboard was when the full-screen picture opened, to go back to.
+  const fullscreenOpener = React.useRef<Element | null>(null);
+  const openFullscreen = React.useCallback((): void => {
+    fullscreenOpener.current = document.activeElement;
+    setFullscreen(true);
+  }, []);
   // Above the media, unless the scroller has no room there — then on the
   // media itself, along its top. Never under it: below the media sit its
   // caption and the next block, and a bar there reads as theirs.
@@ -350,9 +362,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         decoding='async'
         draggable={false}
         className='block h-auto w-full'
-        onDoubleClick={() => {
-          setFullscreen(true);
-        }}
+        onDoubleClick={openFullscreen}
       />
     ) : (
       <MediaPlayer modality={type} src={props.url} />
@@ -432,9 +442,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
                 label={t('spaces.document.media.fullscreen')}
                 action='fullscreen'
                 testId='doc-media-fullscreen'
-                onPress={() => {
-                  setFullscreen(true);
-                }}
+                onPress={openFullscreen}
               >
                 <Maximize2 />
               </ToolButton>
@@ -503,10 +511,16 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             defaultValue={props.caption}
             placeholder={t('spaces.document.media.captionPlaceholder')}
             className='mt-1.5 w-full border-0 border-b border-border bg-transparent py-0.5 text-center text-sm text-foreground outline-none'
+            onCompositionStart={() => {
+              composing.current = true;
+            }}
+            onCompositionEnd={() => {
+              setTimeout(() => {
+                composing.current = false;
+              }, 0);
+            }}
             onKeyDown={(event) => {
-              // An input method confirms and cancels its candidates with these
-              // same keys; those belong to it.
-              if (event.nativeEvent.isComposing) return;
+              if (event.nativeEvent.isComposing || event.keyCode === 229 || composing.current) return;
               if (event.key === 'Enter') {
                 closedOnKey.current = true;
                 commitCaption(event.currentTarget.value);
@@ -517,9 +531,10 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
               }
             }}
             onBlur={(event) => {
-              // A key already closed it; the field leaving the page is not
-              // the reader moving away.
-              if (!closedOnKey.current) commitCaption(event.currentTarget.value);
+              // A key already closed it, or the window went to another app and
+              // the field is still the reader's to come back to.
+              if (closedOnKey.current || !event.currentTarget.ownerDocument.hasFocus()) return;
+              commitCaption(event.currentTarget.value);
             }}
           />
         ) : props.caption !== '' ? (
@@ -535,11 +550,17 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         <Dialog open={fullscreen} onOpenChange={setFullscreen}>
           <DialogContent
             aria-describedby={undefined}
-            // Opened from the body, with no trigger for the dialog to return
-            // to: the keyboard goes back to the body.
+            // The dialog has no trigger to return to: the keyboard goes back
+            // where it was when the picture opened, or to the body.
             onCloseAutoFocus={(event) => {
               event.preventDefault();
-              actions.focusBody();
+              const opener = fullscreenOpener.current;
+              fullscreenOpener.current = null;
+              if (opener instanceof HTMLElement && opener.isConnected && opener !== opener.ownerDocument.body) {
+                opener.focus();
+              } else {
+                actions.focusBody();
+              }
             }}
             className='max-w-[min(96vw,1600px)] items-center border-0 bg-transparent shadow-none'
           >

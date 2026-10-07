@@ -375,7 +375,7 @@ function selectMedia(editor: Editor): void {
 }
 
 describe('a caption written through an input method (A16)', () => {
-  it('is kept when the block is selected while the words are composed', () => {
+  it('is kept when the block is selected while the words are composed', async () => {
     const editor = open('image');
     selectMedia(editor);
     fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-caption-button'));
@@ -384,6 +384,9 @@ describe('a caption written through an input method (A16)', () => {
     fireEvent.compositionStart(input, { data: '' });
     fireEvent.change(input, { target: { value: '说明' } });
     fireEvent.compositionEnd(input, { data: '说明' });
+    // The Enter that confirms the candidate is the input method's; the
+    // reader's own Enter afterwards commits.
+    await new Promise((done) => setTimeout(done, 0));
     fireEvent.keyDown(input, { key: 'Enter' });
 
     expect(media(editor).props['caption']).toBe('说明');
@@ -683,6 +686,11 @@ describe('a press beside a media block', () => {
       expect(answered).toBe(true);
       expect(view.state.selection).toBeInstanceOf(TextSelection);
       expect(view.state.selection.$from.parent.textContent).toBe('Below');
+      // The row is not editable; the keyboard has to reach the body anyway.
+      expect(document.activeElement).toBe(view.dom);
+      act(() => {
+        (document.activeElement as HTMLElement).blur();
+      });
     }
   });
 
@@ -758,5 +766,96 @@ describe('the focus around a media block', () => {
       expect(screen.queryByTestId('doc-media-fullscreen-image')).toBeNull();
     });
     expect(document.activeElement).toBe(editor.prosemirrorView!.dom);
+  });
+});
+
+describe('the caption field and the keyboard', () => {
+  /**
+   * Opens a selected picture's caption field with the focus in it.
+   * @returns The editor and the field.
+   */
+  function openCaption(): { editor: Editor; field: HTMLElement } {
+    const editor = open('image', { previewWidth: 200 });
+    selectMedia(editor);
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-caption-button'));
+    const field = within(element(editor)).getByTestId('doc-media-caption-input');
+    act(() => {
+      field.focus();
+    });
+    return { editor, field };
+  }
+
+  it.each([
+    ['the key an input method reports while it confirms', { key: 'Enter', keyCode: 229 }],
+    ['the Enter that follows the end of a composition', { key: 'Enter', keyCode: 13 }],
+  ])('stays open on %s', (_name, init) => {
+    const { editor, field } = openCaption();
+
+    fireEvent.compositionStart(field);
+    fireEvent.compositionEnd(field);
+    fireEvent.keyDown(field, init);
+
+    expect(within(element(editor)).queryByTestId('doc-media-caption-input')).not.toBeNull();
+  });
+
+  it('closes on an Enter pressed after the composition is over', async () => {
+    const { editor, field } = openCaption();
+    fireEvent.compositionStart(field);
+    fireEvent.compositionEnd(field);
+    await new Promise((done) => setTimeout(done, 0));
+
+    fireEvent.keyDown(field, { key: 'Enter', keyCode: 13 });
+
+    expect(within(element(editor)).queryByTestId('doc-media-caption-input')).toBeNull();
+  });
+
+  it('stays open when the window itself loses the focus', () => {
+    const { editor, field } = openCaption();
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+
+    fireEvent.blur(field);
+
+    expect(within(element(editor)).queryByTestId('doc-media-caption-input')).not.toBeNull();
+    vi.restoreAllMocks();
+  });
+
+  it('hands the keyboard to the body when the block is deleted with the field open', () => {
+    const { editor } = openCaption();
+
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-delete'));
+
+    expect(document.activeElement).toBe(editor.prosemirrorView!.dom);
+  });
+});
+
+describe('the full-screen picture and where the keyboard was', () => {
+  it('hands the keyboard back to the box that held it when the picture opened', async () => {
+    const editor = open('image', { previewWidth: 200 });
+    const elsewhere = document.createElement('input');
+    document.body.appendChild(elsewhere);
+    act(() => {
+      elsewhere.focus();
+    });
+
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-fullscreen'));
+    const picture = await screen.findByTestId('doc-media-fullscreen-image');
+    fireEvent.keyDown(picture, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-media-fullscreen-image')).toBeNull();
+    });
+
+    expect(document.activeElement).toBe(elsewhere);
+    elsewhere.remove();
+  });
+});
+
+describe('a drag from beside a media block', () => {
+  it('is refused, while a drag from the media itself goes on', () => {
+    const editor = open('image', { previewWidth: 200 });
+    const beside = new Event('dragstart', { bubbles: true, cancelable: true });
+    act(() => {
+      element(editor).dispatchEvent(beside);
+    });
+    expect(beside.defaultPrevented).toBe(true);
   });
 });
