@@ -476,9 +476,6 @@
       "audioLegacyNoPrompt": "이 노드는 너무 오래되었습니다. 오디오 노드를 새로 만드세요.",
       "audioParams": "매개변수",
       "voiceStability": "안정성",
-      "voiceStabilityCreative": "창의적",
-      "voiceStabilityNatural": "자연스러움",
-      "voiceStabilityRobust": "견고함",
       "voiceSimilarity": "유사도",
       "voiceSpeed": "속도",
       "voiceVolume": "볼륨",
@@ -687,7 +684,12 @@
         "zoom": "줌",
         "other": "기타"
       },
-      "cameraCommandsPreviewHint": "명령에 마우스를 올리면 미리 볼 수 있습니다"
+      "cameraCommandsPreviewHint": "명령에 마우스를 올리면 미리 볼 수 있습니다",
+      "cameraAngle": {
+        "title": "카메라 앵글",
+        "reset": "초기화",
+        "loadFailed": "3D 보기를 불러오지 못했습니다. 페이지를 새로고침하면 사용할 수 있습니다"
+      }
     },
     "nodeMenu": {
       "generate": "생성",

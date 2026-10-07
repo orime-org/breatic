@@ -1,0 +1,162 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * What the web build, the backend services and the ingest Worker hand their
+ * error monitoring in common.
+ *
+ * One Sentry release spans all three projects only when each reports the same
+ * commit, and a filter on `production` catches all of them only when each uses
+ * the same names — so the checks on both live here, once.
+ */
+
+const FULL_COMMIT = /^[0-9a-f]{40}$/;
+
+/** The environment names every project reports under. */
+export const ERROR_MONITORING_ENVIRONMENTS = ["production", "staging", "development"] as const;
+
+/** One of {@link ERROR_MONITORING_ENVIRONMENTS}. */
+export type ErrorMonitoringEnvironment = (typeof ERROR_MONITORING_ENVIRONMENTS)[number];
+
+/**
+ * The release an event carries: the full commit a build was made from.
+ *
+ * Builds made outside the release pipeline carry a placeholder such as
+ * `unknown`; those, and anything else that is not a full lowercase hash, yield
+ * nothing, so their events carry no release rather than a shared placeholder.
+ * @param value - The commit the build recorded, as read from its carrier.
+ * @returns The commit hash, or `undefined`.
+ */
+export function errorMonitoringRelease(value: unknown): string | undefined {
+  return typeof value === "string" && FULL_COMMIT.test(value) ? value : undefined;
+}
+
+/**
+ * The DSN shape the Sentry SDKs accept: `http(s)://<key>@<host>[:port]/[path/]<project>`,
+ * the key a run of word characters and the project starting with a digit.
+ * The SDKs' own parser (`@sentry/core` `utils/dsn.ts`) uses the same rules.
+ */
+const SENTRY_DSN = /^https?:\/\/\w+(?::\w*)?@(?:\[[:.%\w]+\]|[\w.-]+)(?::\d+)?\/(?:[^/]+\/)*\d[^/]*$/;
+
+/**
+ * Whether a value is a DSN the Sentry SDKs will send to.
+ *
+ * The SDKs answer a value their DSN pattern rejects by printing one console
+ * line and sending nothing, so a mistyped DSN would turn monitoring off
+ * without anyone being told; the backend and the ingest Worker check this to
+ * leave monitoring off and log an error that names the setting.
+ * @param value - The configured DSN.
+ * @returns `true` when the SDKs would accept it.
+ */
+export function isSentryDsn(value: string): boolean {
+  return SENTRY_DSN.test(value);
+}
+
+/**
+ * Narrow a configured environment name to one of the shared names.
+ * @param value - The configured name.
+ * @returns The name, or `undefined` when it is not one of the shared ones.
+ */
+export function errorMonitoringEnvironmentName(value: unknown): ErrorMonitoringEnvironment | undefined {
+  return ERROR_MONITORING_ENVIRONMENTS.find((name) => name === value);
+}
+
+/**
+ * Header names whose values identify a person or a network path, or carry a
+ * credential the SDKs' own list does not name: the ingest Worker's signed
+ * `x-upload-ticket` and Stripe's `stripe-signature`.
+ */
+const IDENTIFYING_HEADERS: readonly string[] = [
+  "forwarded",
+  "-ip",
+  "remote-",
+  "via",
+  "-user",
+  "ticket",
+  "signature",
+];
+
+/** The data-collection settings, in the shape the Sentry SDKs accept. */
+export interface ErrorMonitoringDataCollection {
+  userInfo: boolean;
+  cookies: boolean;
+  httpHeaders: { request: { deny: string[] }; response: { deny: string[] } };
+  httpBodies: never[];
+  urlQueryParams: boolean;
+  genAI: { inputs: boolean; outputs: boolean };
+  databaseQueryData: boolean;
+  graphQL: { document: boolean; variables: boolean };
+}
+
+/**
+ * What an SDK may collect on its own, built fresh for each caller.
+ *
+ * Version 11 collects everything when this is left unset; this is the
+ * restrictive baseline from Sentry's v10→v11 migration guide with query
+ * strings switched off as well, because some of our links carry tokens in the
+ * query.
+ * @returns A new settings object.
+ */
+export function errorMonitoringDataCollection(): ErrorMonitoringDataCollection {
+  return {
+    userInfo: false,
+    cookies: false,
+    httpHeaders: {
+      request: { deny: [...IDENTIFYING_HEADERS] },
+      response: { deny: [...IDENTIFYING_HEADERS] },
+    },
+    httpBodies: [],
+    urlQueryParams: false,
+    genAI: { inputs: false, outputs: false },
+    databaseQueryData: false,
+    graphQL: { document: false, variables: false },
+  };
+}
+
+/**
+ * An address without its query or fragment.
+ *
+ * What is reported keeps the path, which names the record an error happened
+ * on, and drops the query, where some of our links carry a credential
+ * (`/reset-password?token=`).
+ * @param address - A full or relative address.
+ * @returns The address up to its path.
+ */
+export function addressWithoutQuery(address: string): string {
+  return address.split(/[?#]/, 1)[0] ?? address;
+}
+
+/** The part of an error event that carries addresses. */
+interface WithRequest {
+  request?: { url?: string; headers?: Record<string, string> };
+}
+
+/**
+ * An event whose request address and referring page carry no query.
+ *
+ * The server SDKs strip the query from the request address only, and the
+ * browser SDK strips neither; the Referer header
+ * holds the full address of the page the request came from, and the header
+ * filter judges names, not values.
+ * @param event - The event about to be sent.
+ * @returns A new event, or the same one when it carries no request.
+ */
+export function requestWithoutQuery<T extends WithRequest>(event: T): T {
+  if (event.request === undefined) return event;
+  const { url, headers } = event.request;
+  return {
+    ...event,
+    request: {
+      ...event.request,
+      ...(url !== undefined && { url: addressWithoutQuery(url) }),
+      ...(headers !== undefined && {
+        headers: Object.fromEntries(
+          Object.entries(headers).map(([name, value]) => [
+            name,
+            name.toLowerCase() === "referer" ? addressWithoutQuery(value) : value,
+          ]),
+        ),
+      }),
+    },
+  };
+}

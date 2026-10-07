@@ -51,6 +51,8 @@ interface GeneratePanelProps {
   params: { aspect_ratio?: string; resolution?: string } & CameraValue & Readonly<Record<string, unknown>>;
   /** The node's derived reference rows. */
   references: ReferenceRailItem[];
+  /** The first image the model is sent, which a camera-angle control puts on its card. */
+  subjectImageUrl?: string;
   /** The kinds the active model's pool takes in this mode (#2156). */
   referenceKinds: readonly ReferenceKind[];
   /** The run's estimate as printed beside the star; undefined until it resolves. */
@@ -126,6 +128,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   promptRequired,
   params,
   references,
+  subjectImageUrl,
   referenceKinds,
   creditText,
   executeRefusal,
@@ -222,6 +225,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
             mode={mode}
             value={params}
             onChange={onChangeParams}
+            subjectImageUrl={subjectImageUrl}
           />
         ) : null}
 

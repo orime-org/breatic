@@ -322,6 +322,22 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 每条日志双时间戳:`timestamp`(ISO 8601)+ `time`(epoch ms)。
 
+### Error monitoring
+
+Sentry 分三个项目:web · 后端(server / worker / collab 共用一个,事件带 `service` 标签区分)· ingest Worker。**DSN 留空就不启动**,自托管实例默认什么都不发。**后端和 ingest 的 DSN 非空但不合法时同样不上报,服务照常运行**,并记一条 error 日志点名 `SENTRY_DSN`(后端 `sentry_dsn_invalid`,ingest `ingest_sentry_dsn_invalid`;判据是 shared 的 `isSentryDsn`)。web 不做这道判断,`VITE_SENTRY_DSN` 填错时只有 SDK 自己在浏览器控制台打一行。**上报的地址只保留到路径**:请求地址和 `Referer` 的 query 与 fragment 一律去掉(shared 的 `requestWithoutQuery`,web 另外处理面包屑),路径里的 id 保留、用来定位出错的那条数据;能单独当凭据用的值不放进路径。
+
+| 端 | DSN | release 从哪来 | 报什么 |
+|---|---|---|---|
+| web | `VITE_SENTRY_DSN` | `VITE_APP_VERSION` | 未捕获异常 + `ErrorBoundary` + 主动 `captureMessage` |
+| 后端三服务 | `SENTRY_DSN`(core env schema) | 镜像里 `/app/build-info.json` 的 `revision` | pino `error` / `fatal` 日志(`pinoIntegration`)+ 未捕获异常;server / worker 遇未处理的 Promise 拒绝先上报再退出(`strict`;SDK 写死忽略 `AbortError` / `AI_NoOutputGeneratedError`,这两类既不上报也不退出),collab 有自己的处理器(`none`) |
+| ingest | `wrangler.toml` 的 `SENTRY_DSN` | 部署时 `--var SENTRY_RELEASE:<commit>` | `src/error-monitoring.ts` 的 `noteFailure` 一个出口,读者自己的输入造成的失败只写日志 |
+
+后端镜像的六个包（server / worker / collab / core / domain / shared）构建时生成 source map，在 `pnpm deploy` 之前由锁定版本的 Sentry CLI 注入 Debug ID。构建不上传、不需要令牌；`.map` 随镜像保留，部署仓从已经固定摘要的镜像提取并上传，不能重建一套映射来配旧镜像。`scripts/backend-sourcemaps.mjs` 检查所有 JS 与 map 的 Debug ID，并在镜像 CI 检查生产 node_modules 中的工作区包与注入后的原始产物逐字节一致。镜像不公开提供静态文件，`.map` 不经 HTTP 提供。
+
+三端共用 `@breatic/shared` 的 `error-monitoring.ts`:release **只认 40 位小写 commit**,别的值(含 `unknown`)不设 release;environment 只用 `production` / `staging` / `development`(后端由 `ENV` 映射:`prod` → `production`,`dev` → `development`);`dataCollection` 是同一个收紧基线(不收用户信息、cookie、请求体、URL query、标识性请求头)。**用户只附 `id`**(server 的 `requireAuth`、web 的 current-user store)。不开 tracing / replay / profiling。
+
+后端三个入口在 `bootstrap-config` 之后、`initLogger` 之前 `initSentry()`;**退出一律经各自的 `exitProcess(code)`**:先 `Sentry.flush(2000)` 再 `process.exit`,否则进程退出前那条 fatal 发不出去。入口文件里不出现 `process.exit(`,`entry-exits.test.ts` 钉住。
+
 ### Shared HTTP transport
 
 `packages/shared/src/http/` —— 一份带重试的 HTTP 传输,**前后端共用**。走不走它只看一条:**打给谁**。打我们自己后端的(前端全站 API)继续走 web 的 axios 单例(`packages/web/src/data/api/request.ts`);打**外部**的(云存储 / vendor API / 任意网址)走这一层,前后端一致。
@@ -378,7 +394,7 @@ pnpm test / typecheck / lint
 | i18n | `intl-messageformat`(ICU)经 shared 的 `t()` + `useTranslation` hook(en / zh-CN / zh-TW / ja / ko);8 产品名词 + 角色名走「不翻译表」全语言英文,见 [packages/web/CLAUDE.md](../packages/web/CLAUDE.md)「产品术语「不翻译表」」。**每条文案必须活在命名空间里**——`locales/*.json` 顶层只许放命名空间对象,不许直接放文案(共用的进 `common`,其余进各功能自己的命名空间);**调用点同样如此**,`t('cancel')` 这种无点 id 一律当场报错。两侧都由 repo-lint 的 `i18n-keys-namespaced` CI 强制。理由是死键守卫 `i18n-no-dead-keys` 靠「在源码里找这个 key 的点分全名」判断有没有人用,**无点的 id 没有形状可找**:放宽成裸词匹配会让 `cancel` / `loading` 这类普通英文词满仓命中(`z.enum(["confirm","cancel"])` / `phase === 'loading'`)、守卫等于作废。**调用点那一半也在**,少了它源码写了无点 id 三个守卫全都不响——catalog 装不下它、死键守卫方向相反碰不到它、缺失文案守卫的形状认不出它,于是用户屏幕上直接显示 `cancel` 这串字。**判在形状上、不绕道查 catalog**:查不到虽然也能得出「错了」,但报错信息会指向 catalog(读的人会去 catalog 里加一条,而那条加不进去),而且那条推导依赖「catalog 里绝不会有无点 id」这个由另一个守卫维持的前提,那个守卫一改这里就静默失效。**「key 长什么样」在 `repo-lint/src/message-keys.ts` 一处定义**:`KEY_SEGMENT` 给段的形状(**允许数字开头** —— `canvas.nodePlaceholder.3d` 五个 catalog 都有却没有任何守卫看得见它),`spelledOutKeys()` 给「怎么在源码里找出一个文案调用、取出括号里的 id」,命名空间守卫和缺失文案守卫共用它、各自套自己的规则。**反方向的守卫是 `i18n-no-missing-keys`**:死键守卫问「catalog 里的文案有没有人读」,它问「源码点名的文案 catalog 答不答得上来」——两个方向都会坏,`t("server.error.notFound")` 这类拼错的 id 由它接住(catalog 里写的是 `not_found`)。它只认「整个参数就是写全的 id」这一种写法,拼接和变量传参一律看不见,边界写在它自己的 docstring 里。**那个边界之外的一类由测试守**:有些函数把文案键当**返回值**交给调用方、自己不调 `t()`(会话列表和活动面板各有一份 `relativeTime`,活动面板还有 `entryMessage`),这种键永远不出现在 `t("字面量")` 里、三个守卫全看不见 —— `chat.relative.isoDate` 就是这么带着「五个 catalog 都没有」发出去的。补法是 `packages/web/src/test-utils/i18n-keys.ts` 的 `expectEveryLocaleRenders`:走遍每条分支,**逐本 catalog 问两个问题** —— 键在不在(直接问 catalog,**不经过 `t()`**,因为 `resolveMessage` 找不到当前语言就回退 en、一本目录缺键会渲染成英文而看不出来),以及带参数的能不能渲染出来(经过 `t()`,因为占位符被改名会从组件渲染里抛出去)。catalog 列表来自 `test-utils/locale-catalogs.ts`,`vitest.setup.ts` 循环它注册 —— 此前那里手写四门语言漏了 `ko`,于是任何在韩文下渲染的测试都拿英文回退、绿得没有意义 |
 | 路由 | React Router 7 |
 | 测试 | Vitest + Playwright + @testing-library + fast-check |
-| 监控 | Sentry |
+| 监控 | Sentry(`@sentry/react` 11;见 [Error monitoring](#error-monitoring)) |
 
 ### Brand home links
 
@@ -543,9 +559,9 @@ packages/web/
 
 | 变量 | 用途 |
 |---|---|
-| `VITE_APP_VERSION` | app 版本号字符串 |
+| `VITE_APP_VERSION` | app 版本号字符串;是 40 位小写 commit 时同时作 Sentry 的 release |
 | `GOOGLE_CLIENT_ID` | Google OAuth(可选;注入为 `__GOOGLE_CLIENT_ID__`) |
-| `VITE_SENTRY_DSN` | Sentry DSN(可选) |
+| `VITE_SENTRY_DSN` | Sentry DSN(可选;留空不启动 Sentry)。environment 取 Vite 的 `MODE`,不是 `production` / `staging` / `development` 之一记作 `development` |
 
 鉴权基于 cookie — 后端在登录 / 注册完成(启用邮件时是验证码输对那一刻) / OAuth 时种一个 httpOnly 的 session cookie;前端不在 JS 里读或存任何 token。**cookie 名是部署级的**(`breatic_session_{REDIS_KEY_PREFIX}`,构造在 core 的 `sessionCookieName()`,是唯一一处),因为 **cookie 不按端口隔离**(RFC 6265 §8.5)—— 同机跑两套部署时端口分得开服务、分不开 cookie jar,同名就会互相顶掉登录态。服务端环境变量 `COOKIE_DOMAIN` + `EMAIL_BACKEND` 见 [Configuration files](#configuration-files) 段(后端)。
 

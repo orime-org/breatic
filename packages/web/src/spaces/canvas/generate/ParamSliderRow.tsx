@@ -24,7 +24,7 @@ function atStop(shown: number | undefined, stop: number): boolean {
 /** A named position on a slider's range. */
 export interface SliderStop {
   value: number;
-  /** What the position is called, already in the reader's language. */
+  /** What the position is called, as the model's `value_labels` name it (English in every language). */
   label: string;
 }
 
@@ -38,6 +38,12 @@ interface ParamSliderRowProps {
   /** Positions on the range with a name, ascending; absent when none have one. */
   stops?: readonly SliderStop[];
   value: number | undefined;
+  /** A value to show in place of `value` without writing it: the pose another input has on screen. */
+  draft?: number;
+  /** Called with the value the thumb is moved to, before it is written. */
+  onDraft?: (value: number) => void;
+  /** Called whenever the row drops its draft: a gesture ends (capture let go, key let go, focus left) or a new key or pointer press starts. */
+  onDraftEnd?: () => void;
   /** How a value reads beside the label, in its own unit. */
   format: (value: number) => string;
   onChange: (partial: Record<string, number>) => void;
@@ -63,6 +69,9 @@ interface ParamSliderRowProps {
  * @param root0.step - The range's increment.
  * @param root0.stops - Named positions on the range, if any.
  * @param root0.value - The stored value.
+ * @param root0.draft - A value to show without writing it.
+ * @param root0.onDraft - Called with the value the thumb is moved to.
+ * @param root0.onDraftEnd - Called whenever the row drops its draft.
  * @param root0.format - How a value reads beside the label.
  * @param root0.onChange - Called with the committed param.
  * @param root0.testIdPrefix - Prefix of every test id.
@@ -77,6 +86,9 @@ export function ParamSliderRow({
   step,
   stops,
   value,
+  draft,
+  onDraft,
+  onDraftEnd,
   format,
   onChange,
   testIdPrefix,
@@ -85,13 +97,19 @@ export function ParamSliderRow({
   // Where the thumb sits until the gesture ends. Held apart from `value` so
   // the control follows the pointer while the document does not.
   const [dragged, setDragged] = React.useState<number | null>(null);
-  const shown = dragged ?? value;
+  const shown = dragged ?? draft ?? value;
 
   // A key the browser is repeating, and the step the last repeat reached.
   const repeatingRef = React.useRef(false);
   const repeatedToRef = React.useRef<number | null>(null);
 
-  const onValueChange = React.useCallback(([next]: number[]) => setDragged(next), []);
+  const onValueChange = React.useCallback(
+    ([next]: number[]) => {
+      setDragged(next);
+      if (next !== undefined) onDraft?.(next);
+    },
+    [onDraft],
+  );
 
   const onValueCommit = React.useCallback(
     ([next]: number[]) => {
@@ -108,17 +126,25 @@ export function ParamSliderRow({
     [onChange, name],
   );
 
+  // Every gesture, by key or by pointer, ends here: the row's draft and the
+  // one it handed out go together. Radix reports a keyboard commit BEFORE it
+  // reports the change, so a draft cleared inside the commit is written
+  // straight back, and a drag released where it began commits nothing; a
+  // draft left set shows this client's number over whatever is stored.
+  const endDraft = React.useCallback((): void => {
+    setDragged(null);
+    onDraftEnd?.();
+  }, [onDraftEnd]);
+
   const endKeyGesture = React.useCallback((): void => {
     repeatingRef.current = false;
     const reached = repeatedToRef.current;
     repeatedToRef.current = null;
-    // Also where the draft is released: Radix reports a keyboard commit
-    // BEFORE it reports the change, so clearing it inside the commit is
-    // written straight back, and a draft left set shows this client's number
-    // over whatever a collaborator stores.
-    setDragged(null);
+    // The held key's value is written before the draft ends, so whoever
+    // shows the draft ends it on a value that is already the node's.
     if (reached !== null) onChange({ [name]: reached });
-  }, [onChange, name]);
+    endDraft();
+  }, [onChange, name, endDraft]);
 
   // Four ways a key gesture ends, and every one of them has to write. Keyup
   // alone leaves the flag set when the release lands on another window, and
@@ -164,38 +190,49 @@ export function ParamSliderRow({
         onKeyUp={endKeyGesture}
         onBlur={endKeyGesture}
         onPointerDown={endKeyGesture}
+        // Radix commits a moved value in its own pointerup; capture is let go
+        // after that, so the draft ends once the commit (if any) is in.
+        onLostPointerCapture={endDraft}
       />
       {stops && (
-        // Under the track, at the positions they name: `justify-between` puts
-        // the first at its start and the last at its end, and the negative
-        // margin pulls each label's own padding back off those ends so the
-        // words line up with the track rather than sitting inside it.
-        <div className='-mx-1 mt-1.5 flex justify-between'>
-          {stops.map((stop) => (
-            <Button
-              key={stop.value}
-              type='button'
-              variant='ghost'
-              size={null}
-              aria-pressed={atStop(shown, stop.value)}
-              data-testid={`${testIdPrefix}-${name}-stop-${stop.value}`}
-              className={cn(
-                // 24px tall so the word is a pointer target the standard takes
-                // (WCAG 2.2 SC 2.5.8 AA). The words sit 6px under a 12px slider
-                // thumb, close enough that the spacing exception cannot rescue
-                // an undersized one: at 16px the two 24px circles were 20.3px
-                // apart, so a click meant for a label dragged the value instead.
-                // The text keeps its own size — only the box around it grows.
-                'h-6 px-1 text-2xs',
-                atStop(shown, stop.value)
-                  ? 'text-foreground'
-                  : 'font-normal text-muted-foreground',
-              )}
-              onClick={() => onChange({ [name]: stop.value })}
-            >
-              {stop.label}
-            </Button>
-          ))}
+        // Under the track, each word centred on the value it names. A word at
+        // either end of the range is pinned to that end instead, so it lines
+        // up with the track's edge rather than hanging half past it; the
+        // negative margin pulls a pinned word's own padding back off the edge.
+        // The space below keeps the words nearer their own track than the next row's name.
+        <div className='relative -mx-1 mb-2 mt-1.5 h-6'>
+          {stops.map((stop) => {
+            const edge = stop.value === min ? 'start' : stop.value === max ? 'end' : undefined;
+            const left = ((stop.value - min) / (max - min)) * 100;
+            return (
+              <Button
+                key={stop.value}
+                type='button'
+                variant='ghost'
+                size={null}
+                aria-pressed={atStop(shown, stop.value)}
+                data-testid={`${testIdPrefix}-${name}-stop-${stop.value}`}
+                data-edge={edge}
+                style={edge === 'end' ? { right: 0 } : { left: `${edge === 'start' ? 0 : left}%` }}
+                className={cn(
+                  // 24px tall so the word is a pointer target the standard takes
+                  // (WCAG 2.2 SC 2.5.8 AA). The words sit 6px under a 12px slider
+                  // thumb, close enough that the spacing exception cannot rescue
+                  // an undersized one: at 16px the two 24px circles were 20.3px
+                  // apart, so a click meant for a label dragged the value instead.
+                  // The text keeps its own size — only the box around it grows.
+                  'absolute top-0 h-6 whitespace-nowrap px-1 text-2xs',
+                  edge === undefined && '-translate-x-1/2',
+                  atStop(shown, stop.value)
+                    ? 'text-foreground'
+                    : 'font-normal text-muted-foreground',
+                )}
+                onClick={() => onChange({ [name]: stop.value })}
+              >
+                {stop.label}
+              </Button>
+            );
+          })}
         </div>
       )}
     </div>

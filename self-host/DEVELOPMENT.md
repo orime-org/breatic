@@ -152,7 +152,7 @@ Replace **every angle-bracket placeholder** in `packages/ingest/wrangler.toml`. 
 | `[[env.production.r2_buckets]].bucket_name` | For this local-only setup, use the same development bucket |
 | `[[env.production.containers]].max_instances` | Integer `5` |
 
-Keep both `image_build_context = "../.."` lines and the template's `compatibility_date`, Durable Object bindings and `exports`. Filling production fields here only makes the template valid; **this local workflow does not run `deploy:worker`**. For a deployed upload service, configure cloud resources using the [Cloudflare deployment steps](LOCAL.md#cloudflare).
+Keep both `image_build_context = "../.."` lines and the template's `compatibility_date`, `compatibility_flags`, Durable Object bindings and `exports`. Filling production fields here only makes the template valid; **this local workflow does not run `deploy:worker`**. For a deployed upload service, configure cloud resources using the [Cloudflare deployment steps](LOCAL.md#cloudflare).
 
 Edit `packages/ingest/.dev.vars`:
 

@@ -476,9 +476,6 @@
       "audioLegacyNoPrompt": "このノードは古すぎます。音声ノードを新規作成してください。",
       "audioParams": "パラメータ",
       "voiceStability": "安定性",
-      "voiceStabilityCreative": "クリエイティブ",
-      "voiceStabilityNatural": "ナチュラル",
-      "voiceStabilityRobust": "ロバスト",
       "voiceSimilarity": "類似度",
       "voiceSpeed": "速度",
       "voiceVolume": "音量",
@@ -687,7 +684,12 @@
         "zoom": "ズーム",
         "other": "その他"
       },
-      "cameraCommandsPreviewHint": "コマンドにカーソルを合わせるとプレビューします"
+      "cameraCommandsPreviewHint": "コマンドにカーソルを合わせるとプレビューします",
+      "cameraAngle": {
+        "title": "カメラアングル",
+        "reset": "リセット",
+        "loadFailed": "3D ビューを読み込めませんでした。ページを再読み込みすると使えます"
+      }
     },
     "nodeMenu": {
       "generate": "生成",

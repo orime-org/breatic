@@ -126,6 +126,7 @@ pnpm --filter @breatic/ingest exec wrangler whoami
 name = "creator-ingest-config"
 main = "src/index.ts"
 compatibility_date = "2026-03-10"
+compatibility_flags = ["nodejs_compat"]
 account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
 
 [env.production]
@@ -153,6 +154,8 @@ class_name = "MediaContainer"
 type = "durable-object"
 storage = "sqlite"
 ```
+
+`compatibility_flags` 必须有：缺了它 Worker 加载失败（`No such module "node:async_hooks"`）。在加这一行之前建的配置，下次部署前要补上。不需要配置错误上报；没有 `SENTRY_DSN` 时 Worker 什么都不上报。
 
 同一 Cloudflare 账户安装多套实例时，为每套使用不同的 production `name`、bucket 和密钥；不要覆盖已有 Worker。正式配置没有 `[dev].port`、`remote=true` 或 `.dev.vars`。
 
