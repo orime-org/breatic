@@ -67,6 +67,10 @@ import { documentCommentSelection } from '@web/spaces/document/document-comment-
 import { documentNoNodeClickExtension } from '@web/spaces/document/document-no-node-click';
 import { LINK_ANCHOR_SELECTOR } from '@web/spaces/document/document-link';
 import {
+  documentPastedMediaExtension,
+  type PastedMediaOptions,
+} from '@web/spaces/document/document-external-media';
+import {
   documentFileDropExtension,
   filesPasteHandler,
   type FilesSink,
@@ -91,6 +95,11 @@ export interface DocumentEditorOptions {
    * nothing.
    */
   readonly onFiles?: FilesSink;
+  /**
+   * How pasted media are judged (inner#1127 A18). Left out, every pasted
+   * medium is left out.
+   */
+  readonly media?: PastedMediaOptions;
 }
 
 /**
@@ -168,6 +177,7 @@ export function buildDocumentEditor(
       documentCommentPasteExtension(),
       documentCommentDraftRange(),
       ...(options.onFiles === undefined ? [] : [documentFileDropExtension(options.onFiles)]),
+      documentPastedMediaExtension(options.media),
       ...(options.extensions ?? []),
     ],
     disableExtensions: [

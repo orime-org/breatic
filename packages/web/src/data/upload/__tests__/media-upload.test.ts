@@ -29,6 +29,7 @@ const CFG = {
   clientRetryBaseDelayMs: 1000,
   clientRequestTimeoutMs: 30000,
   clientPutMinBytesPerSec: 65536,
+  assetUrlPrefix: 'https://cdn/',
 };
 
 const HASH = 'a'.repeat(64);
