@@ -270,3 +270,41 @@ test('a viewer reads a table and gets none of its controls, nor can type in it',
   await expect(viewer.getByTestId('doc-block-table-handle')).toHaveCount(0);
   await expect(cell).toHaveText(CELL);
 });
+
+test('a viewer sees a picture the owner added, and none of its controls (inner#1127 A11, A13)', async () => {
+  await openTheSpace(owner);
+  await owner.locator(EDITOR).click();
+  const png = await owner.evaluate(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 240;
+    canvas.height = 120;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = `hsl(${Date.now() % 360} 60% 50%)`;
+    ctx.fillRect(0, 0, 240, 120);
+    const blob = await new Promise<Blob>((done) => {
+      canvas.toBlob((b) => done(b!), 'image/png');
+    });
+    let out = '';
+    new Uint8Array(await blob.arrayBuffer()).forEach((byte) => {
+      out += String.fromCharCode(byte);
+    });
+    return btoa(out);
+  });
+  await owner.locator(EDITOR).evaluate((element, base64) => {
+    const transfer = new DataTransfer();
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    transfer.items.add(new File([bytes], 'shared.png', { type: 'image/png' }));
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+  }, png);
+  await expect(owner.locator(`${EDITOR} [data-content-type="image"] img`)).toBeVisible({ timeout: 60_000 });
+
+  await openTheSpace(viewer);
+  const img = viewer.locator(`${EDITOR} [data-content-type="image"] img`);
+  await expect(img).toBeVisible({ timeout: 20_000 });
+  await expect.poll(() => img.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBe(240);
+
+  await img.hover();
+  await viewer.waitForTimeout(500);
+  await expect(viewer.getByTestId('doc-media-toolbar')).toBeHidden();
+  await expect(viewer.getByTestId('doc-media-resize-right')).toBeHidden();
+});

@@ -122,6 +122,9 @@ function mediaNodeView(
 } {
   const type = spec.config.type as MediaBlockType;
   const host = document.createElement('div');
+  // The block's content is a flex row, and the host would shrink to the
+  // media; the row the media is aligned in is the whole width of the body.
+  host.style.width = '100%';
   const { dom } = wrapInBlockStructure(
     { dom: host },
     type,

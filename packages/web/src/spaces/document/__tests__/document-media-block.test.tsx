@@ -34,6 +34,8 @@ afterEach(() => {
     editor.unmount();
   });
   document.body.innerHTML = '';
+  document.body.removeAttribute('data-radix-scroll-area-viewport');
+  vi.restoreAllMocks();
 });
 
 const URL_OF = 'https://cdn.example/image/2026-10-07/a.png';
@@ -252,6 +254,46 @@ describe('the toolbar', () => {
 
     fireEvent.doubleClick(element(editor).querySelector('img')!);
     expect(screen.getByTestId('doc-media-fullscreen-image')).toBeTruthy();
+  });
+});
+
+describe('where the toolbar goes', () => {
+  /**
+   * Places the media block and the scroller it is shown in.
+   * @param editor - The editor.
+   * @param mediaTop - Where the media's top edge is.
+   * @param scrollerTop - Where the scroller's top edge is.
+   */
+  function place(editor: Editor, mediaTop: number, scrollerTop: number): void {
+    const frame = within(element(editor)).getByTestId('doc-media-frame');
+    // The body stands in for the scroller the block is shown in.
+    const scroller = document.body;
+    scroller.setAttribute('data-radix-scroll-area-viewport', '');
+    vi.spyOn(toolbar(editor), 'offsetHeight', 'get').mockReturnValue(34);
+    vi.spyOn(frame, 'getBoundingClientRect').mockReturnValue(
+      { top: mediaTop, bottom: mediaTop + 200, left: 0, right: 400, width: 400, height: 200 } as DOMRect,
+    );
+    vi.spyOn(scroller, 'getBoundingClientRect').mockReturnValue(
+      { top: scrollerTop, bottom: scrollerTop + 800, left: 0, right: 1000, width: 1000, height: 800 } as DOMRect,
+    );
+  }
+
+  it('stays above the media when there is room above it', () => {
+    const editor = open('image');
+    place(editor, 300, 100);
+
+    fireEvent.pointerEnter(within(element(editor)).getByTestId('doc-media-frame'));
+
+    expect(toolbar(editor).getAttribute('data-side')).toBe('top');
+  });
+
+  it('goes under the media when the scroller has no room above it', () => {
+    const editor = open('image');
+    place(editor, 110, 100);
+
+    fireEvent.pointerEnter(within(element(editor)).getByTestId('doc-media-frame'));
+
+    expect(toolbar(editor).getAttribute('data-side')).toBe('bottom');
   });
 });
 

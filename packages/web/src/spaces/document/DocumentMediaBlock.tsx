@@ -67,6 +67,12 @@ interface DocumentMediaBlockProps {
 /** The narrowest an image or a video can be dragged to. */
 const MIN_WIDTH = 48;
 
+/** The gap between the toolbar and the media, `mb-2` / `mt-2`. */
+const TOOLBAR_GAP = 8;
+
+/** The scroller the body is shown in, which clips what sticks out of it. */
+const SCROLLER = '[data-radix-scroll-area-viewport]';
+
 /** The alignments, in the order the toolbar offers them. */
 const ALIGNMENTS = [
   { value: 'left', Icon: AlignLeft, labelKey: 'spaces.document.commands.alignLeft' },
@@ -151,6 +157,21 @@ export function DocumentMediaBlock({
   const [editingCaption, setEditingCaption] = React.useState(false);
   const [fullscreen, setFullscreen] = React.useState(false);
   const [narrower, setNarrower] = React.useState(false);
+  const toolbarRef = React.useRef<HTMLDivElement>(null);
+  // Above the media, unless the scroller has no room there — then under it,
+  // the way a floating layer flips at the edge it would be cut off by.
+  const [side, setSide] = React.useState<'top' | 'bottom'>('top');
+  const placeToolbar = React.useCallback((): void => {
+    const element = frame.current;
+    const bar = toolbarRef.current;
+    const scroller = element?.closest(SCROLLER);
+    if (element === null || bar === null || scroller === null || scroller === undefined) return;
+    const room = element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    setSide(room >= bar.offsetHeight + TOOLBAR_GAP ? 'top' : 'bottom');
+  }, []);
+  React.useEffect(() => {
+    if (selected) placeToolbar();
+  }, [selected, placeToolbar]);
   const captionField = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => {
     if (editingCaption) captionField.current?.focus();
@@ -262,13 +283,16 @@ export function DocumentMediaBlock({
         ref={frame}
         data-testid='doc-media-frame'
         data-selected={selected ? 'true' : undefined}
+        onPointerEnter={placeToolbar}
         className={`group/media relative max-w-full ${sized ? '' : 'w-full'}`}
         style={sized && width !== undefined ? { width: `${width}px` } : undefined}
       >
         <div
+          ref={toolbarRef}
           data-media-chrome=''
           data-testid='doc-media-toolbar'
-          className='invisible absolute bottom-full left-1/2 z-10 mb-2 flex -translate-x-1/2 group-hover/media:visible group-data-[selected=true]/media:visible items-center gap-0.5 rounded-md border border-border bg-popover p-0.5 shadow-sm'
+          data-side={side}
+          className={`${side === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'} invisible absolute left-1/2 z-10 flex -translate-x-1/2 group-hover/media:visible group-data-[selected=true]/media:visible items-center gap-0.5 rounded-md border border-border bg-popover p-0.5 shadow-sm`}
         >
           {sized &&
             narrower &&
