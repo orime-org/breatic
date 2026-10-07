@@ -134,11 +134,14 @@ export function stripOffsetFromRowTop(
  * centring the strip on it put the strip between the two lines. A range's
  * rects are one per line box whatever the element is.
  *
- * A table answers with the first line of its first row (`firstLineOfTableRow`).
+ * A table answers with the first line of its first row (`firstLineOfTableRow`);
+ * a media block with a line at the media's top edge (`firstLineOfMedia`).
  * @param row - The row's content element.
  * @returns The box, or undefined when the row shows no line.
  */
 export function firstLineOf(row: Element): DOMRect | undefined {
+  const media = row.querySelector('[data-media-frame]');
+  if (media !== null) return firstLineOfMedia(row, media);
   const firstRow = row.querySelector('tr');
   if (firstRow !== null) return firstLineOfTableRow(firstRow);
   return lineOf(row.firstElementChild ?? row);
@@ -159,6 +162,22 @@ function firstLineOfTableRow(tableRow: Element): DOMRect | undefined {
   const cell = tableRow.querySelector('td, th');
   if (cell === null) return undefined;
   return lineOf(cell.firstElementChild ?? cell);
+}
+
+/**
+ * The line a media block's strip stands on: one line of body text at the
+ * media's top edge (inner#1127). A picture has no words, and centring on its
+ * whole box put the strip halfway down it; a table's strip stands beside its
+ * first line, and this puts a picture's in the same place.
+ * @param row - The block's content element, which carries the body's line height.
+ * @param media - The media's frame.
+ * @returns The box, or undefined when the line height cannot be read.
+ */
+function firstLineOfMedia(row: Element, media: Element): DOMRect | undefined {
+  const lineHeight = Number.parseFloat(getComputedStyle(row).lineHeight);
+  if (!Number.isFinite(lineHeight)) return undefined;
+  const box = media.getBoundingClientRect();
+  return new DOMRect(box.left, box.top, box.width, lineHeight);
 }
 
 /**
