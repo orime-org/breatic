@@ -144,11 +144,24 @@ export function t(
 ): string {
   const message = resolveMessage(key);
   if (message === undefined) return key;
-  if (params === undefined || Object.keys(params).length === 0) {
-    return message;
-  }
+  return formatIn(activeLocale(), key, message, params);
+}
 
-  const locale = activeLocale();
+/**
+ * One message formatted in one locale, the formatter cached per locale and key.
+ * @param locale - The locale the message is formatted in.
+ * @param key - The key it was looked up by, for the cache.
+ * @param message - The raw ICU message.
+ * @param params - Optional parameter map for ICU placeholders.
+ * @returns The formatted string, or the raw message when it takes no params or is malformed.
+ */
+function formatIn(
+  locale: Locale,
+  key: string,
+  message: string,
+  params?: Record<string, string | number | Date>,
+): string {
+  if (params === undefined || Object.keys(params).length === 0) return message;
   const cacheKey = `${locale}|${key}`;
   let formatter = _formatterCache.get(cacheKey);
   if (!formatter) {
@@ -162,7 +175,6 @@ export function t(
       return message;
     }
   }
-
   const formatted = formatter.format(params);
   return typeof formatted === "string" ? formatted : String(formatted);
 }
@@ -241,20 +253,7 @@ export function tInEveryLocale(
   const found = order.flatMap((locale) => {
     const messages = _locales.get(locale);
     const message = messages ? resolveKey(messages, key) : undefined;
-    if (message === undefined) return [];
-    if (params === undefined) return [message];
-    const cacheKey = `${locale}|${key}`;
-    let formatter = _formatterCache.get(cacheKey);
-    if (!formatter) {
-      try {
-        formatter = new IntlMessageFormat(message, locale);
-        _formatterCache.set(cacheKey, formatter);
-      } catch {
-        return [message];
-      }
-    }
-    const formatted = formatter.format(params);
-    return [typeof formatted === "string" ? formatted : String(formatted)];
+    return message === undefined ? [] : [formatIn(locale, key, message, params)];
   });
   return [...new Set(found)];
 }
