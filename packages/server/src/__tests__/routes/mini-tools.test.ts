@@ -101,7 +101,7 @@ describe("POST /mini-tools", () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ data: { task_id: "task-1", status: "pending" } });
     expect(mocks.taskService.create.mock.calls[0]?.[6]).toBe("pro-upscaler");
-    expect(mocks.taskService.create.mock.calls[0]?.[8]).toBe("mini_tool");
+    expect(mocks.taskService.create.mock.calls[0]?.[7]).toBe("mini_tool");
     expect(mocks.nodeTaskService.open).toHaveBeenCalledWith(
       expect.objectContaining({ nodeId: NODE_A, action: "mini_tool", label: "image.upscale" }),
     );

@@ -145,10 +145,10 @@ describe("streams copied into the output", () => {
       ["crop", { rect: null }],
       ["audio_denoise", { intensity: 50 }],
     ] as const) {
-      const [okRun] = opRuns(op, params as Record<string, unknown>, IN, OUT, WORK, safe);
+      const [okRun] = opRuns(op, params, IN, OUT, WORK, safe);
       expect(copies(okRun!, "v"), op).toBe(true);
       for (const probe of [prores, vp8]) {
-        const [run] = opRuns(op, params as Record<string, unknown>, IN, OUT, WORK, probe);
+        const [run] = opRuns(op, params, IN, OUT, WORK, probe);
         expect(copies(run!, "v"), op).toBe(false);
         expect(after(run!, "-c:v"), op).toBe("libx264");
       }
@@ -163,7 +163,7 @@ describe("streams copied into the output", () => {
       ["stabilize", { shakiness: 5, smoothing: 10 }],
       ["hdr", { transfer: "pq" }],
     ] as const) {
-      const last = (probe: ProbeReport): string[] => opRuns(op, params as Record<string, unknown>, IN, OUT, WORK, probe).at(-1)!;
+      const last = (probe: ProbeReport): string[] => opRuns(op, params, IN, OUT, WORK, probe).at(-1)!;
       expect(copies(last(codecProbe("h264", "aac")), "a"), op).toBe(true);
       for (const audio of ["vorbis", "pcm_s16le", "flac"]) {
         expect(after(last(codecProbe("h264", audio)), "-c:a"), `${op} ${audio}`).toBe("aac");
@@ -210,7 +210,7 @@ describe("the runs every encoding operation shares", () => {
   // The source is the copy the container downloaded first; nothing else is opened.
   it("reads the source as a local file alone", () => {
     for (const [op, params] of [...encoding, ["crop", { rect: null }], ["audio_denoise", { intensity: 50 }]] as const) {
-      for (const run of opRuns(op, params as Record<string, unknown>, IN, OUT, WORK, videoProbe())) {
+      for (const run of opRuns(op, params, IN, OUT, WORK, videoProbe())) {
         if (!run.includes(IN)) continue;
         expect(run.indexOf("-protocol_whitelist"), op).toBeGreaterThanOrEqual(0);
         expect(after(run, "-protocol_whitelist"), op).toBe("file");

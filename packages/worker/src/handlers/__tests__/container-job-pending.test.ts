@@ -62,7 +62,6 @@ vi.mock("@breatic/domain", () => ({
     markRunning: h.markRunning,
     getByIdInternal: h.getByIdInternal,
     recordProviderResult: vi.fn(),
-    setResolvedSkills: vi.fn(),
     markCompletedAndBill: h.markCompletedAndBill,
   },
   upstreamStepRepo: { failOpenSteps: vi.fn() },
