@@ -565,6 +565,7 @@ export const domainMock = () => ({
     findByStudioAndHash: vi.fn().mockResolvedValue(null),
     findCoverOf: vi.fn().mockResolvedValue(null),
     setCoverAsset: vi.fn(),
+    findKindByStorageKey: vi.fn().mockResolvedValue("video"),
   },
   // The cover queue's contract. Constants rather than doubles: the report
   // service names them at module scope, so a mock without them fails the

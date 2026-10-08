@@ -27,7 +27,7 @@ vi.mock("@server/modules", async (importOriginal) => {
 });
 
 import { ForbiddenError } from "@breatic/core";
-import { modelCatalog } from "@breatic/domain";
+import { assetRepo, modelCatalog } from "@breatic/domain";
 
 import { createApp } from "../../app.js";
 import { mocks, mockQueueAdd } from "../helpers/mock-core.js";
@@ -163,6 +163,23 @@ describe("POST /mini-tools", () => {
     });
 
     expect(res.status).toBe(400);
+    expect(mocks.taskService.create).not.toHaveBeenCalled();
+  });
+
+  // Every container operation reads a video; another file in the bucket is
+  // only reachable by a forged request.
+  it("refuses a container source our bucket files as something other than a video", async () => {
+    for (const kind of ["image", null]) {
+      vi.mocked(assetRepo.findKindByStorageKey).mockResolvedValueOnce(kind);
+      const res = await post({
+        tool: "video.cut",
+        node_ids: [NODE_A],
+        source: { url: OURS, duration: 8 },
+        params: { range: { start: 0, end: 2 } },
+      });
+      expect(res.status, String(kind)).toBe(400);
+    }
+    expect(vi.mocked(assetRepo.findKindByStorageKey)).toHaveBeenCalledWith("v/abc.mp4");
     expect(mocks.taskService.create).not.toHaveBeenCalled();
   });
 

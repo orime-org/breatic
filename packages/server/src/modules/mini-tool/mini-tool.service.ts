@@ -8,8 +8,9 @@
  * and what the credit precheck holds the reader to.
  */
 
-import { AppError, env, getMiniToolsConfig, getStorageAdapter } from "@breatic/core";
+import { AppError, env, getMiniToolsConfig, getStorageAdapter, logger } from "@breatic/core";
 import {
+  assetRepo,
   containerCostUsd,
   creditsForUsd,
   estimateTaskCredits,
@@ -94,11 +95,18 @@ async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promi
  * @param op - The container operation.
  * @param body - The validated request.
  * @returns The prepared run.
- * @throws {AppError} 400 when the source is not one of our addresses.
+ * @throws {AppError} 400 when the source is not one of our addresses, or not a video.
  */
 async function prepareContainerRun(op: string, body: MiniToolRequest): Promise<PreparedRun> {
   const sourceKey = (await getStorageAdapter()).keyFromUrl(body.source.url);
   if (sourceKey === null) throw new AppError(400, t("server.mini_tool.foreignSource"));
+  // Every container operation reads a video; the panel only offers video
+  // nodes, so another kind here came from a forged request.
+  const kind = await assetRepo.findKindByStorageKey(sourceKey);
+  if (kind !== "video") {
+    logger.warn({ op, sourceKey, kind }, "mini_tool_source_not_video");
+    throw new AppError(400, t("server.mini_tool.foreignSource"));
+  }
   const config = getMiniToolsConfig();
   const plan = config.ops[op as keyof typeof config.ops];
   const size = config.classes[plan.container_class]!;
