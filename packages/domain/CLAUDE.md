@@ -9,7 +9,7 @@
 是不是 —— 只有 server + worker 共享、collab 绝不碰的业务(资产 / studio 级鉴权 / 积分"花" / 任务 / 节点历史 / agent / model-catalog / node-task)?是 → domain。若 collab 也要用 → 进 core;若只一个服务用 → 留那个服务。
 
 ## 装啥
-asset(资产登记 + studio 内去重 + 回收队列 + 上传票据 + 后端上传的两个出口,server 的上传握手与 worker 的产物落库都读它)· auth(**studio 级**鉴权:`studioAuth.service` + `studioMembers.repo`;project 级那套在 core)· 积分"花"侧(credit + `markCompletedAndBill` 原子扣费)· 任务(含 `upstreamStep.repo` —— 一个任务按顺序做的每次上游调用,表 `task_upstream_steps`;`upstreamClone.repo` —— 一个 studio 克隆过的音色 / 人声 / 元素 id,按来源素材缓存,表 `studio_upstream_clones`;两个都只由 worker 读写)· 节点历史 · agent(模型 / 工具 / skill 加载 / llm)· model-catalog(每个模型的 WaveSpeed 定价契约,经 shared 的 `estimateCredits` 估一次运行多少积分:`estimateModelCredits` / `estimateTaskCredits`)· node-task(一个节点上并存的任务行)· mail(通知邮件的 `mail` 队列名与入队函数 `enqueueMail`,server 入队、worker 发出)。
+asset(资产登记 + studio 内去重 + 回收队列 + 上传票据 + 后端上传的两个出口 + 容器类 mini-tool 产物的写入票据(`openContainerOutputs`),server 的上传握手与 worker 的产物落库都读它)· auth(**studio 级**鉴权:`studioAuth.service` + `studioMembers.repo`;project 级那套在 core)· 积分"花"侧(credit + `markCompletedAndBill` 原子扣费)· 任务(含 `upstreamStep.repo` —— 一个任务按顺序做的每次上游调用,表 `task_upstream_steps`;`upstreamClone.repo` —— 一个 studio 克隆过的音色 / 人声 / 元素 id,按来源素材缓存,表 `studio_upstream_clones`;两个都只由 worker 读写)· 节点历史 · agent(模型 / 工具 / skill 加载 / llm)· model-catalog(每个模型的 WaveSpeed 定价契约,经 shared 的 `estimateCredits` 估一次运行多少积分:`estimateModelCredits` / `estimateTaskCredits`)· node-task(一个节点上并存的任务行)· mail(通知邮件的 `mail` 队列名与入队函数 `enqueueMail`,server 入队、worker 发出)。
 
 ## agent 这块的抽象判定线(MANDATORY)
 
