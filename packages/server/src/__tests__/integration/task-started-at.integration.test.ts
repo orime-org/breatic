@@ -43,15 +43,16 @@ afterAll(async () => {
 });
 
 describe("marking a task running", () => {
-  it("keeps the first start when the run is picked up again", async () => {
-    await taskService.markRunning(taskId, "job-1");
-    await sql`UPDATE tasks SET started_at = now() - interval '1 hour' WHERE id = ${taskId}`;
-    const [before] = await sql<{ started_at: Date }[]>`SELECT started_at FROM tasks WHERE id = ${taskId}`;
+  // The start is the worker's clock, the clock the run's end and duration are read on.
+  it("keeps the first start the worker gave, when the run is picked up again", async () => {
+    const first = new Date("2026-01-01T00:00:00.000Z");
 
-    const returned = await taskService.markRunning(taskId, "job-1");
+    const started = await taskService.markRunning(taskId, "job-1", first);
+    const again = await taskService.markRunning(taskId, "job-1", new Date("2026-01-01T00:05:00.000Z"));
 
-    expect(returned.getTime()).toBe(before!.started_at.getTime());
-    const [after] = await sql<{ started_at: Date }[]>`SELECT started_at FROM tasks WHERE id = ${taskId}`;
-    expect(after!.started_at.getTime()).toBe(before!.started_at.getTime());
+    const [row] = await sql<{ started_at: Date }[]>`SELECT started_at FROM tasks WHERE id = ${taskId}`;
+    expect(started.getTime()).toBe(first.getTime());
+    expect(again.getTime()).toBe(first.getTime());
+    expect(row!.started_at.getTime()).toBe(first.getTime());
   });
 });

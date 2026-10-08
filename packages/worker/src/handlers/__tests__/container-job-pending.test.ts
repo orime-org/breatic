@@ -134,9 +134,9 @@ describe("a container job still running when a round of waiting ends", () => {
   });
 
   // A run picked up many times is one run: its duration starts at the first pickup.
-  it("bills the duration from the task's first start, not from the last pickup", async () => {
-    const startedAt = new Date(Date.now() - 600_000);
-    h.getByIdInternal.mockResolvedValue({ status: "running", startedAt, billedAt: null, providerResultUrl: null, providerTaskId: null });
+  it("records the duration from the start markRunning keeps, not from the last pickup", async () => {
+    h.markRunning.mockResolvedValue(new Date(Date.now() - 600_000));
+    h.getByIdInternal.mockResolvedValue({ status: "running", startedAt: new Date(), billedAt: null, providerResultUrl: null, providerTaskId: null });
     h.runContainerJob.mockResolvedValue([{ outputs: [{ url: "https://cdn/out.mp4" }], cost: 0 }, 1]);
 
     await runTask(containerJob(), "lock-token").catch(() => undefined);
@@ -145,12 +145,4 @@ describe("a container job still running when a round of waiting ends", () => {
     expect(durationMs).toBeGreaterThanOrEqual(600_000);
   });
 
-  // A pickup of a run already marked running writes nothing to the task row.
-  it("leaves the task row alone when the run is already marked running", async () => {
-    h.getByIdInternal.mockResolvedValue({ status: "running", startedAt: new Date(), billedAt: null, providerResultUrl: null, providerTaskId: null });
-
-    await expect(runTask(containerJob(), "lock-token")).rejects.toBeInstanceOf(DelayedError);
-
-    expect(h.markRunning).not.toHaveBeenCalled();
-  });
 });

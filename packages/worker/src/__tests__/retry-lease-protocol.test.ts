@@ -79,7 +79,7 @@ describe("isTerminalAttempt (#1580 adversarial: retryable close self-fences the 
   });
 
   it("defensive: missing attemptsMade treats the attempt as terminal (never suppress the only close)", () => {
-    // If BullMQ ever stops populating attemptsStarted, suppressing the
+    // If BullMQ ever stops populating attemptsMade, suppressing the
     // close would strand nodes until the sweeper; emitting a possibly-early
     // close is the safer failure mode (the QueueEvents net + CAS dedup it).
     expect(isTerminalAttempt({ opts: { attempts: 3 } } as never)).toBe(true);

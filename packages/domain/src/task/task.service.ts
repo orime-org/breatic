@@ -108,11 +108,12 @@ export async function softDelete(taskId: string): Promise<void> {
  * Mark a task as running, record the job ID and keep the run's first start.
  * @param taskId - Task UUID
  * @param jobId - BullMQ job ID
+ * @param now - The worker's clock, the one the run's end and duration are read on
  * @returns When the run first started.
  * @throws {Error} When the task row does not exist.
  */
-export async function markRunning(taskId: string, jobId: string): Promise<Date> {
-  return taskRepo.markRunning(taskId, jobId);
+export async function markRunning(taskId: string, jobId: string, now: Date): Promise<Date> {
+  return taskRepo.markRunning(taskId, jobId, now);
 }
 
 /**

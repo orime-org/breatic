@@ -183,14 +183,14 @@ async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJo
 }
 
 /**
- * Write the run's one usage row and work out its credits.
+ * Write the run's one usage row and return what it would cost in credits.
  * @param input - The run.
  * @param op - The operation.
  * @param containerClass - The class it ran in.
  * @param usage - What the container measured.
  * @returns The credits the run costs.
  */
-async function charge(input: ContainerRunInput, op: ContainerOp, containerClass: string, usage: ContainerUsage): Promise<number> {
+async function recordUsage(input: ContainerRunInput, op: ContainerOp, containerClass: string, usage: ContainerUsage): Promise<number> {
   const config = getMiniToolsConfig();
   const size = config.classes[containerClass];
   if (!size) throw new Error(`container class ${containerClass} is not in config/mini-tools.yaml`);
@@ -231,7 +231,7 @@ export async function runContainerJob(
   const report = await checkJob(op, input, job);
   if (report.state === "failed") {
     // A failed run is not charged; its row is still written, to reconcile the bill.
-    if (report.usage) await charge(input, op, job.containerClass, report.usage);
+    if (report.usage) await recordUsage(input, op, job.containerClass, report.usage);
     await upstreamStepRepo.markFailed(stepId, report.reason);
     throw new ContainerJobFailed(report.reason);
   }
@@ -242,7 +242,7 @@ export async function runContainerJob(
     if (!measured) throw new ContainerJobFailed("tool_failed");
     const outcome = await ingestReportService.applyIngestReport({ ...measured, outcome: "completed" });
     if (outcome.status !== "registered" && outcome.status !== "already_registered") {
-      await charge(input, op, job.containerClass, report.usage);
+      await recordUsage(input, op, job.containerClass, report.usage);
       throw new ContainerJobFailed(outcome.status === "rejected" ? outcome.reason : "internal");
     }
     outputs.push(
@@ -259,7 +259,7 @@ export async function runContainerJob(
       }),
     );
   }
-  const credits = await charge(input, op, job.containerClass, report.usage);
+  const credits = await recordUsage(input, op, job.containerClass, report.usage);
   await upstreamStepRepo.markDone(stepId, { state: "done" });
   return [{ outputs, cost: 0 }, credits];
 }
