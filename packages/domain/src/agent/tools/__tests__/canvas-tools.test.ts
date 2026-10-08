@@ -228,7 +228,7 @@ describe("what the rendered answer tells the model", () => {
   it("says which wired node fills a slot the pool shares a kind with", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /\(kling-video-o3-4k-image-to-video\)[^\n]*Of the image nodes wired in, the first in the order the proposal lists its nodes is the one the reader picks into its image slot \(say so in a note\); later ones go to its pool \(an asset mark each\)\./,
+      /\(kling-video-o3-4k-image-to-video\)[^\n]*An image node wired in goes one of 2 ways; say which on its edge with into: "pool" \(the reference pool, at most \d+, an asset mark each\) or "\w+" \(a slot, at most 1, a note each\)\./,
     );
   });
 
@@ -237,14 +237,14 @@ describe("what the rendered answer tells the model", () => {
   it("says how many wired nodes an optional slot can take instead of the pool", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /\(nano-banana-pro-edit-ultra\)[^\n]*Up to 3 image nodes wired in can go into its style_images slot instead \(a note for each, saying so\); those need no asset mark\./,
+      /\(nano-banana-pro-edit-ultra\)[^\n]*An image node wired in goes one of 2 ways; say which on its edge with into: "pool" \(the reference pool, at most 11, an asset mark each\) or "style_images" \(a slot, at most 3, a note each\)\./,
     );
   });
 
   it("says nodes for an optional slot cannot be @'d where the model has no pool of their kind", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /\(krea-v2-large-text-to-image\)[^\n]*Up to 3 image nodes wired in go into its style_images slot \(a note for each, saying so\); they cannot be @'d\./,
+      /\(krea-v2-large-text-to-image\)[^\n]*An image node wired in goes into "style_images" \(a slot, at most 3, a note each\)\./,
     );
   });
 

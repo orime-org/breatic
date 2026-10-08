@@ -178,88 +178,119 @@ describe("the words a wired text node holds", () => {
   });
 });
 
-describe("a node wired into an optional slot", () => {
+describe("where each wired node goes, said on its edge", () => {
+  const note = { slot: { kind: "note" as const, label: "Pick the style picture into the style slot" } };
+  const picture = (name: string): ProposalNode => ({ role: "source", type: "image", name });
+
   /**
-   * The given number of empty pictures wired into a model whose style slot
-   * takes up to three and whose pool takes the rest.
-   * @param count - How many empty pictures are wired in.
-   * @param prompt - The node's prompt.
+   * Pictures wired into the model both templates use: an image pool of 11
+   * and an optional style slot of 3. Each edge says where its picture goes.
+   * @param into - One entry per picture: where its edge says it goes.
+   * @param prompt - The generation's prompt.
    * @returns The proposal.
    */
-  function styled(count: number, prompt: NonNullable<ProposalNode["prompt"]>): CanvasProposal {
-    const pictures = Array.from({ length: count }, (_, i): ProposalNode => ({ role: "source", type: "image", name: `Picture ${String(i + 1)}` }));
-    return edit(pictures, prompt);
+  function routed(into: readonly (string | undefined)[], prompt: NonNullable<ProposalNode["prompt"]>): CanvasProposal {
+    const base = edit(into.map((_, i) => picture(`Picture ${String(i + 1)}`)), prompt);
+    return { ...base, edges: base.edges.map((edge, i) => (into[i] === undefined ? edge : { ...edge, into: into[i] })) };
   }
 
-  const note = { slot: { kind: "note" as const, label: "Pick the style picture into the style slot" } };
+  const marks = (n: number): NonNullable<ProposalNode["prompt"]> =>
+    Array.from({ length: n }, (_, i) => reference(`picture ${String(i + 1)}`));
 
-  it("takes a note pointing it into the slot in place of a reference mark", () => {
-    expect(checkProposal(styled(2, [note, reference("the uploaded character"), { text: " at night" }]))).toEqual({ ok: true });
+  it("asks for the way when the kind can go more than one way, naming each", () => {
+    const answer = checkProposal(routed([undefined], [...marks(1), { text: " at night" }]));
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/"Picture 1".*"pool".*"style_images"/s) });
   });
 
-  it("still asks for an instruction for every picture, naming the slot", () => {
-    expect(checkProposal(styled(1, [{ text: "Make it night." }]))).toMatchObject({
+  it("refuses a way the model does not have, naming the ways it has", () => {
+    const answer = checkProposal(routed(["first_frame"], [...marks(1), { text: " at night" }]));
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/"first_frame".*"pool".*"style_images"/s) });
+  });
+
+  it("takes a picture into the pool with a reference mark", () => {
+    expect(checkProposal(routed(["pool"], [...marks(1), { text: " at night" }]))).toEqual({ ok: true });
+  });
+
+  it("takes a picture into the style slot with a note and no reference mark", () => {
+    expect(checkProposal(routed(["style_images"], [note, { text: "A night version." }]))).toEqual({ ok: true });
+  });
+
+  it("asks for a note for a picture going into a slot", () => {
+    expect(checkProposal(routed(["style_images"], [{ text: "A night version." }]))).toMatchObject({
       ok: false,
-      reason: expect.stringContaining("style_images slot"),
+      reason: expect.stringMatching(/"Picture 1".*style_images.*note/s),
     });
   });
 
-  it("lets notes stand in no more often than the slot holds pictures", () => {
-    expect(checkProposal(styled(5, [note, note, note, note, reference("the uploaded character")]))).toMatchObject({ ok: false });
-    expect(checkProposal(styled(5, [note, note, note, reference("the character"), reference("the scene")]))).toEqual({ ok: true });
-  });
-});
-
-describe("an optional slot and the reference pool", () => {
-  /**
-   * Empty pictures wired into the model both templates use: a pool of 11 and a style slot of 3.
-   * @param count - How many pictures.
-   * @param marks - How many asset marks.
-   * @param notes - How many notes.
-   * @returns The proposal.
-   */
-  function crowd(count: number, marks: number, notes: number): CanvasProposal {
-    const pictures = Array.from({ length: count }, (_, i): ProposalNode => ({ role: "source", type: "image", name: `Picture ${String(i + 1)}` }));
-    const prompt: NonNullable<ProposalNode["prompt"]> = [
-      ...Array.from({ length: notes }, () => ({ slot: { kind: "note" as const, label: "Pick this one into the style slot" } })),
-      ...Array.from({ length: marks }, (_, i) => reference(`picture ${String(i + 1)}`)),
-      { text: " at night" },
-    ];
-    return edit(pictures, prompt);
-  }
-
-  it("leaves the pictures a note sends to the slot out of the pool's ceiling", () => {
-    expect(checkProposal(crowd(13, 11, 2))).toEqual({ ok: true });
-    expect(checkProposal(crowd(14, 11, 3))).toEqual({ ok: true });
+  it("asks for a reference mark for each picture going into the pool", () => {
+    expect(checkProposal(routed(["pool", "pool"], [...marks(1), { text: " at night" }]))).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/"Picture 1".*"Picture 2"/s),
+    });
   });
 
-  it("lets a note take a picture out of the pool only where no bracket covers it", () => {
-    expect(checkProposal(crowd(12, 12, 1))).toMatchObject({ ok: false, reason: expect.stringContaining("holds 11 image") });
-    expect(checkProposal(crowd(12, 11, 1))).toEqual({ ok: true });
+  it("holds the pool and the slot to their own room", () => {
+    const pool12 = Array.from({ length: 12 }, () => "pool");
+    expect(checkProposal(routed(pool12, [...marks(12), { text: " at night" }]))).toMatchObject({ ok: false, reason: expect.stringContaining("11") });
+    expect(checkProposal(routed([...Array.from({ length: 11 }, () => "pool"), "style_images"], [note, ...marks(11), { text: " at night" }]))).toEqual({ ok: true });
+    const style4 = Array.from({ length: 4 }, () => "style_images");
+    expect(checkProposal(routed(style4, [note, note, note, note, { text: "A night version." }]))).toMatchObject({ ok: false, reason: expect.stringContaining("3") });
   });
 
-  it("still refuses a pool past its ceiling once the slot is full", () => {
-    expect(checkProposal(crowd(15, 12, 3))).toMatchObject({ ok: false, reason: expect.stringContaining("holds 11 image") });
-  });
-
-  it("names only a slot that takes the kind wired in", () => {
-    const clips: ProposalNode[] = [
-      { role: "source", type: "video", name: "Clip 1" },
-      { role: "source", type: "video", name: "Clip 2" },
-    ];
+  it("is not thrown by a mark a storyboard repeats in a later shot", () => {
+    const characters = Array.from({ length: 6 }, (_, i) => picture(`Character ${String(i + 1)}`));
     const proposal: CanvasProposal = {
-      nodes: [...clips, { role: "generate", type: "video", name: "Cut", mode: "t2v", model: "seedance-2.5-text-to-video", prompt: [{ text: "A city at dusk." }] }],
-      edges: [{ fromIndex: 0, toIndex: 2 }, { fromIndex: 1, toIndex: 2 }],
+      nodes: [
+        ...characters,
+        picture("Style"),
+        {
+          role: "generate",
+          type: "video",
+          name: "Clip",
+          mode: "multi_shot",
+          model: "happyhorse-1.1-reference-to-video",
+          params: { duration: 5 },
+          shots: [
+            { prompt: [note, ...Array.from({ length: 6 }, (_, i) => reference(`character ${String(i + 1)}`)), { text: " meet" }], duration: 3 },
+            { prompt: [reference("character 1"), { text: " walks away" }], duration: 2 },
+          ],
+        },
+      ],
+      edges: [
+        ...characters.map((_, i) => ({ fromIndex: i, toIndex: 7, into: "pool" })),
+        { fromIndex: 6, toIndex: 7, into: "style_images" },
+      ],
       rationale: "",
-      groupName: "Cut",
+      groupName: "Clip",
     };
-    const answer = checkProposal(proposal);
-    expect(answer).toMatchObject({ ok: false });
-    expect(answer.ok ? "" : answer.reason).not.toContain("style_images");
+    expect(checkProposal(proposal)).toEqual({ ok: true });
   });
 
-  it("asks in the prompt's description for a note for each node an optional slot takes", () => {
-    expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/a note of its own/);
+  it("needs no way where the kind can only go one way", () => {
+    const proposal: CanvasProposal = {
+      nodes: [picture("Style"), { role: "generate", type: "image", name: "Poster", mode: "t2i", model: "krea-v2-large-text-to-image", prompt: [note, { text: "A poster." }] }],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      rationale: "",
+      groupName: "Poster",
+    };
+    expect(checkProposal(proposal)).toEqual({ ok: true });
+  });
+
+  it("refuses a way on the edge of a text node, whose words go in where it is @'d", () => {
+    const proposal: CanvasProposal = {
+      nodes: [
+        { role: "written", type: "text", name: "Script", prompt: [{ text: "Hello there." }] },
+        { role: "generate", type: "audio", name: "Voice", mode: "tts", model: "realtime-tts-2", prompt: [reference("the script the Agent wrote")] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
+      rationale: "",
+      groupName: "Voice",
+    };
+    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringContaining('"Script"') });
+  });
+
+  it("is described on the edge for the agent", () => {
+    expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/"into"/);
   });
 });
 
