@@ -15,7 +15,8 @@ beside the bundle at `/third-party-licences.txt`.
 
 ## Programs in our container images
 
-We publish three images, and one of them carries FFmpeg:
+We publish three images. One of them, the media container, carries FFmpeg and
+vips:
 
 | Image | Built from | Base | Carries FFmpeg |
 |---|---|---|---|
@@ -63,6 +64,29 @@ would move on and stop describing this build.
 
 The image is the whole of `packages/ingest/Dockerfile` plus this repository, so
 anyone holding it can rebuild it from source.
+
+### vips in the media container
+
+| Package | Version | Licence | Source |
+|---|---|---|---|
+| `vips` (libvips and the `vips` program) | `8.17.3-r1` | LGPL-2.1-or-later | `https://gitlab.alpinelinux.org/alpine/aports/-/tree/3c360412cd7cd4680165e445716d654b91b27eee/community/vips` |
+| `libimagequant`, linked by libvips | `4.2.2-r0` | **GPL-3.0-or-later** | `https://gitlab.alpinelinux.org/alpine/aports/-/tree/4ecf0c93ff3dfb56a98f9c9f501a5923c96544db/community/libimagequant` |
+| `fftw-double-libs`, linked by libvips | `3.3.10-r7` | **GPL-2.0-or-later** | `https://gitlab.alpinelinux.org/alpine/aports/-/tree/66e8eb37f5d223bd623b0573c36480e08619add9/main/fftw` |
+
+Installed from Alpine 3.23 with `apk add vips-tools=~8.17`
+([packages/ingest/Dockerfile](./packages/ingest/Dockerfile)). Each source link is
+the recipe Alpine built the package from, and its APKBUILD names the upstream
+source. Because Alpine links the two GPL libraries into libvips, the `vips`
+program in this image is carried under GPL-3.0-or-later.
+
+The container's service runs `vips` as a separate program, handing it the
+picture on stdin and reading the preview from stdout, and loads none of its
+libraries: the `breatic/media-container-own-code-only` ESLint rule allows the
+service only Node builtins and its own modules. The image carries the licence
+texts and a `SOURCE` file at `/usr/share/vips-source/`, written from the
+installed packages while the image is built, as the FFmpeg one above is, so a
+rebuild that resolves `=~8.17` to a later release writes the later one rather
+than repeating what is written here.
 
 ## Packages in our container images
 

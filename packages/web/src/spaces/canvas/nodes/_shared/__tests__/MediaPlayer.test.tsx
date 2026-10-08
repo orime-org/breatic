@@ -175,3 +175,47 @@ describe('MediaPlayer', () => {
     expect(shown.className).not.toContain('translate-y-full');
   });
 });
+
+// A video's poster is its cover, and the cover has a preview (at most 576 wide) beside
+// it (inner#1320).
+describe('MediaPlayer poster', () => {
+  const COVER =
+    'https://resource-dev.breatic.cc/video/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679_cover.png';
+
+  it('shows the cover preview as the poster', () => {
+    render(<MediaPlayer modality='video' src='/v.mp4' poster={COVER} />);
+
+    expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(
+      `${COVER}.preview.webp`,
+    );
+  });
+});
+
+// inner#1320: a video node with a known size reserves its box before the
+// poster arrives and covers it with the skeleton, as an image node does.
+describe('MediaPlayer video with a known size', () => {
+  it('reserves the box from the size and shows the skeleton', () => {
+    render(<MediaPlayer modality='video' src='/v.mp4' poster='/p.jpg' size={{ width: 1080, height: 3840 }} />);
+    const video = screen.getByTestId('media-element');
+
+    expect(video.getAttribute('width')).toBe('1080');
+    expect(video.getAttribute('height')).toBe('3840');
+    expect(video).toHaveClass('h-auto');
+    expect(screen.getByTestId('media-skeleton')).toBeInTheDocument();
+  });
+
+  it('drops the skeleton once the video has its first frame', () => {
+    render(<MediaPlayer modality='video' src='/v.mp4' poster='/p.jpg' size={{ width: 1080, height: 3840 }} />);
+
+    fireEvent.loadedData(screen.getByTestId('media-element'));
+
+    expect(screen.queryByTestId('media-skeleton')).toBeNull();
+  });
+
+  it('reserves nothing and shows no skeleton without a size', () => {
+    render(<MediaPlayer modality='video' src='/v.mp4' poster='/p.jpg' variant='preview' />);
+
+    expect(screen.getByTestId('media-element').getAttribute('width')).toBeNull();
+    expect(screen.queryByTestId('media-skeleton')).toBeNull();
+  });
+});

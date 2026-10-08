@@ -64,6 +64,10 @@ image = "./Dockerfile"
 # repository root. `containers` does not inherit into an environment, so the
 # production block below carries its own copy of this line.
 image_build_context = "../.."
+# 1/4 vCPU and 1 GiB. vips cuts a 1080x64800 PNG's preview in about 5 seconds
+# here where the default lite type (1/16 vCPU, 256 MiB) takes about 22
+# (inner#1339). Not inherited either, so production carries its own copy.
+instance_type = "basic"
 max_instances = <how many may run at once; start at 5>
 
 # A container is reached through a Durable Object, so the class is bound as one.
@@ -208,6 +212,7 @@ image = "./Dockerfile"
 # Same context as the top-level block. `containers` is not inheritable, so
 # leaving this out would deploy with the old context and fail on the first COPY.
 image_build_context = "../.."
+instance_type = "basic"
 max_instances = <how many may run at once>
 
 [[env.production.durable_objects.bindings]]

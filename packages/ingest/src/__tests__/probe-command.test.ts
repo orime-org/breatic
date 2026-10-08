@@ -15,6 +15,7 @@ import { describe, it, expect } from "vitest";
 import {
   probeArgs,
   coverArgs,
+  previewArgs,
   readProbeOutput,
 } from "@ingest/probe-command.js";
 
@@ -34,6 +35,11 @@ describe("what ffprobe is asked", () => {
     // in the same run comes out the other way round.
     expect(entries).toContain("stream_side_data=rotation");
     expect(entries).toContain("format=duration");
+    // The first frame carries the EXIF orientation of a JPEG, which the stream
+    // section does not report.
+    expect(entries).toContain("frame=stream_index");
+    expect(entries).toContain("frame_side_data=rotation");
+    expect(args[args.indexOf("-read_intervals") + 1]).toBe("%+#1");
     expect(args).toContain("-of");
     expect(args[args.indexOf("-of") + 1]).toBe("json");
   });
@@ -99,6 +105,30 @@ describe("what ffmpeg is asked for the cover", () => {
     const args = coverArgs(URL_FOR_KEY);
 
     expect(args[args.indexOf("-protocol_whitelist") + 1]).toBe("http,tcp");
+  });
+});
+
+describe("what vips is asked for the preview", () => {
+  it("reads the bytes from stdin and writes a WebP to stdout", () => {
+    const args = previewArgs();
+
+    expect(args[0]).toBe("thumbnail_source");
+    expect(args[1]).toBe("[descriptor=0]");
+    expect(args[2]).toMatch(/^\.webp\[/);
+  });
+
+  it("fits the picture in 576 by WebP's side limit and never enlarges it", () => {
+    const args = previewArgs();
+
+    expect(args[3]).toBe("576");
+    // WebP holds at most 16383 pixels a side.
+    expect(args[args.indexOf("--height") + 1]).toBe("16383");
+    expect(args[args.indexOf("--size") + 1]).toBe("down");
+  });
+
+  it("keeps the colour profile and drops the rest of the metadata", () => {
+    // A Display P3 picture shown without its profile reads as sRGB: duller.
+    expect(previewArgs()[2]).toBe(".webp[Q=80,keep=icc]");
   });
 });
 
@@ -247,6 +277,103 @@ describe("what the display matrix reads as", () => {
     );
 
     expect(read.streams[0]).not.toHaveProperty("rotation");
+  });
+});
+
+// The first frame's side data is where a JPEG's EXIF orientation shows up, and
+// a video with a display matrix reports the same angle in both places.
+// Measured on ffmpeg 8.0.1 — what the container ships — with the production
+// argument list; the JSON below is that output with the empty sections dropped.
+describe("what the first frame's rotation reads as", () => {
+  it("takes a JPEG's orientation off its first frame", () => {
+    const read = readProbeOutput(
+      JSON.stringify({
+        frames: [
+          { stream_index: 0, width: 400, height: 200, side_data_list: [{ rotation: -90 }] },
+        ],
+        streams: [
+          {
+            index: 0,
+            codec_name: "mjpeg",
+            codec_type: "video",
+            width: 400,
+            height: 200,
+            disposition: { attached_pic: 0 },
+          },
+        ],
+        format: { duration: "0.040000" },
+      }),
+    );
+
+    expect(read.streams[0]).toMatchObject({ rotation: -90 });
+  });
+
+  it("keeps one angle when the stream and its first frame both report it", () => {
+    const read = readProbeOutput(
+      JSON.stringify({
+        frames: [
+          { stream_index: 0, width: 320, height: 240, side_data_list: [{ rotation: 90 }, {}] },
+        ],
+        streams: [
+          {
+            index: 0,
+            codec_name: "h264",
+            codec_type: "video",
+            width: 320,
+            height: 240,
+            disposition: { attached_pic: 0 },
+            side_data_list: [{ rotation: 90 }],
+          },
+          { index: 1, codec_name: "aac", codec_type: "audio", disposition: { attached_pic: 0 } },
+        ],
+        format: { duration: "1.000000" },
+      }),
+    );
+
+    expect(read.streams[0]).toMatchObject({ rotation: 90 });
+    expect(read.streams[1]).not.toHaveProperty("rotation");
+  });
+
+  it("does not hand a frame's angle to a different stream", () => {
+    const read = readProbeOutput(
+      JSON.stringify({
+        frames: [{ stream_index: 1, side_data_list: [{ rotation: -90 }] }],
+        streams: [
+          {
+            index: 0,
+            codec_type: "video",
+            width: 320,
+            height: 240,
+            disposition: { attached_pic: 0 },
+          },
+          { index: 1, codec_type: "audio", disposition: { attached_pic: 0 } },
+        ],
+        format: {},
+      }),
+    );
+
+    expect(read.streams[0]).not.toHaveProperty("rotation");
+  });
+
+  it("falls back to the stream's angle when the first frame reports none", () => {
+    const read = readProbeOutput(
+      JSON.stringify({
+        frames: [{ stream_index: 0, width: 320, height: 240 }],
+        streams: [
+          {
+            index: 0,
+            codec_type: "video",
+            width: 320,
+            height: 240,
+            disposition: { attached_pic: 0 },
+            side_data_list: [{ rotation: 90 }],
+          },
+        ],
+        format: {},
+      }),
+    );
+
+    expect(read.streams[0]).toMatchObject({ rotation: 90 });
   });
 });
 

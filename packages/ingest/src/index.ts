@@ -24,10 +24,12 @@ import {
   canonicalMediaType,
   isUploadableMediaType,
   hasCoverFrame,
+  previewKeyFor,
   INGEST_FAILURE_HEADER,
   type IngestFailureCode,
   type SessionTokenPayload,
   type MediaLimits,
+  type PreviewOutcome,
   type UploadTicketPayload,
 } from "@breatic/shared";
 import * as Sentry from "@sentry/cloudflare";
@@ -42,12 +44,17 @@ import {
 } from "@ingest/error-monitoring.js";
 import { readMediaAtEdge, type MediaEnv } from "@ingest/media-read.js";
 import {
+  hasPreviewableFrame,
   mediaNumbersFor,
   type MediaMetadata,
+  type ProbeReport,
 } from "@ingest/media-metadata.js";
 import { typeCorrectedByReport } from "@ingest/stored-media.js";
 import { pngSize } from "@ingest/png-size.js";
-import { COVER_CONTENT_TYPE } from "@ingest/probe-command.js";
+import {
+  COVER_CONTENT_TYPE,
+  PREVIEW_CONTENT_TYPE,
+} from "@ingest/probe-command.js";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
 import { runWindowLeft } from "@ingest/run-window.js";
 import {
@@ -558,6 +565,40 @@ function limitsOf(sent: MediaLimits | undefined): MediaLimits | null {
   return { runDeadlineMs: run, toolTimeoutMs: tool };
 }
 
+/**
+ * Whether a stored object of this type gets a preview: a picture of its own,
+ * a video of the cover cut from it.
+ * @param contentType - What the stored bytes read as.
+ * @param coverKey - Where a cover goes, when the caller asked for one.
+ * @returns Whether to ask the container for a preview.
+ */
+function wantsPreview(contentType: string, coverKey: string | undefined): boolean {
+  if (contentType.startsWith("image/")) return true;
+  return coverKey !== undefined && hasCoverFrame(contentType);
+}
+
+/**
+ * Store a preview the container cut beside what it was cut from.
+ *
+ * Failing to store one is not the upload's failure: the page shows the
+ * original when no preview answers (inner#1320).
+ * @param env - The Worker's bindings.
+ * @param sourceKey - The key of the picture or cover it was cut from.
+ * @param bytes - The WebP.
+ * @returns Whether it was stored.
+ */
+async function storePreview(
+  env: Env,
+  sourceKey: string,
+  bytes: Uint8Array,
+): Promise<boolean> {
+  const previewKey = previewKeyFor(sourceKey);
+  const stored = await env.BUCKET.put(previewKey, bytes, {
+    httpMetadata: { contentType: PREVIEW_CONTENT_TYPE },
+  }).catch(noted("ingest_preview_store_failed", { previewKey }));
+  return stored !== null;
+}
+
 /** What one finish answers about the media it stored. */
 interface MediaAnswer {
   media: MediaMetadata;
@@ -639,6 +680,7 @@ async function measureMedia(
     // What the bytes read as decides whether to ask for a frame at all: a
     // still picture has none, and running the container for one costs a run.
     wantCover: coverKey !== undefined && hasCoverFrame(about.contentType),
+    wantPreview: wantsPreview(about.contentType, coverKey),
     limits: about.limits,
   });
   const contentType = typeCorrectedByReport(about.contentType, read.report);
@@ -647,6 +689,14 @@ async function measureMedia(
     coverKey === undefined || read.cover === null
       ? null
       : await settleCover(env, coverKey, read.cover, media, contentType);
+  if (read.preview !== null) {
+    // A video's preview is cut from its cover and named after it.
+    await storePreview(
+      env,
+      read.cover !== null && coverKey !== undefined ? coverKey : about.storageKey,
+      read.preview,
+    );
+  }
   return { media, cover, contentType };
 }
 
@@ -935,6 +985,7 @@ interface MediaReadBody {
   storageKey?: unknown;
   contentType?: unknown;
   limits?: MediaLimits;
+  wantPreview?: unknown;
 }
 
 /**
@@ -975,15 +1026,50 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
   const stored = await env.BUCKET.head(storageKey);
   if (stored === null) return new Response("Not found", { status: 404 });
 
+  const askedForPreview = body?.wantPreview === true;
+  // A preview standing there is left as it is; the numbers are read either way.
+  const standing =
+    askedForPreview && (await env.BUCKET.head(previewKeyFor(storageKey))) !== null;
   const read = await readMediaAtEdge(env, {
     storageKey,
     contentType,
     wantCover: false,
+    wantPreview: askedForPreview && !standing,
     limits,
   });
-  return Response.json(
-    mediaNumbersFor(typeCorrectedByReport(contentType, read.report), read.report),
+  const numbers = mediaNumbersFor(
+    typeCorrectedByReport(contentType, read.report),
+    read.report,
   );
+  if (!askedForPreview) return Response.json(numbers);
+  return Response.json({
+    ...numbers,
+    preview: await previewOutcome(env, storageKey, standing, read),
+  });
+}
+
+/**
+ * Settle a preview a read was asked for.
+ * @param env - The Worker's bindings.
+ * @param storageKey - The object it was cut from.
+ * @param standing - Whether one already stood.
+ * @param read - What the container answered.
+ * @param read.answered - Whether a container answered at all.
+ * @param read.report - What ffprobe found.
+ * @param read.preview - The preview it cut, when it cut one.
+ * @returns What became of it: `none` only for a picture with no frame to cut
+ *   from, `failed` for one that had a frame and came back without a preview.
+ */
+async function previewOutcome(
+  env: Env,
+  storageKey: string,
+  standing: boolean,
+  read: { answered: boolean; report: ProbeReport; preview: Uint8Array | null },
+): Promise<PreviewOutcome> {
+  if (standing) return "existing";
+  if (!read.answered) return "failed";
+  if (read.preview === null) return hasPreviewableFrame(read.report) ? "failed" : "none";
+  return (await storePreview(env, storageKey, read.preview)) ? "generated" : "failed";
 }
 
 /**

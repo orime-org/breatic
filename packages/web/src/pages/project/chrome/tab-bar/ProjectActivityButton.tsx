@@ -35,6 +35,7 @@ import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusi
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { useTranslation } from '@web/i18n/use-translation';
 import { relativeTime } from '@web/pages/project/chrome/tab-bar/relative-time';
+import { PreviewImg } from '@web/components/preview-img';
 
 /**
  * Project activity feed surfaced by the Activity icon on the
@@ -449,8 +450,8 @@ export function ProjectActivityButton({
                   >
                     {media.kind === 'image' ||
                     (media.kind === 'video' && media.poster) ? (
-                        <img
-                          src={media.kind === 'image' ? media.src : media.poster}
+                        <PreviewImg
+                          src={(media.kind === 'image' ? media.src : media.poster) ?? ''}
                           alt=''
                           className='h-full w-full object-cover'
                           loading='lazy'

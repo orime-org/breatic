@@ -31,6 +31,7 @@ import {
   type MediaLimits,
   type UploadTicketPayload,
 } from "@breatic/shared";
+import { previewKeyFor } from "@breatic/shared";
 import worker, { type Env } from "@ingest/index.js";
 import { NOTHING_FOUND, type ProbeReport } from "@ingest/media-metadata.js";
 import { head, type Sample } from "./helpers/encoder-heads.js";
@@ -1176,5 +1177,118 @@ describe("a re-delivered finish", () => {
 
     expect(second.asked).toBeNull();
     expect(await replayed.json()).toMatchObject({ contentType: "video/mp4" });
+  });
+});
+
+// Every stored image gets a preview (at most 576 wide) beside it, and a video's cover gets
+// one too (inner#1320). The preview never decides the finish: the answer the
+// caller files is the same with or without one.
+/** One report of a 1200x800 still picture. */
+const STILL: ProbeReport = {
+  durationSeconds: null,
+  streams: [
+    {
+      index: 0,
+      codecType: "video",
+      codecName: "png",
+      width: 1200,
+      height: 800,
+      attachedPic: false,
+    },
+  ],
+};
+
+const PREVIEW_BYTES = new Uint8Array([0x52, 0x49, 0x46, 0x46, 9, 9, 9, 9]);
+
+describe("an upload whose preview is cut", () => {
+  it("stores a still picture's preview beside it", async () => {
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(2, {
+      contentType: "image/png",
+    });
+    const run = containerAnswering(STILL, null, PREVIEW_BYTES);
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      undefined,
+      { limits: LIMITS, media: run.media },
+    );
+
+    expect(response.status).toBe(200);
+    expect(run.asked).toMatchObject({ wantPreview: true });
+    const stored = await env.BUCKET.get(previewKeyFor(storageKey));
+    expect(stored?.httpMetadata?.contentType).toBe("image/webp");
+    expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(PREVIEW_BYTES);
+  });
+
+  it("stores a video cover's preview beside the cover", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    const coverKey = `video/2026-10-08/${seq++}_previewed_cover.png`;
+    const run = containerAnswering(FILM, pngHeader(1920, 1080), PREVIEW_BYTES);
+
+    await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, coverKey, {
+      limits: LIMITS,
+      media: run.media,
+    });
+
+    const stored = await env.BUCKET.get(previewKeyFor(coverKey));
+    expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(PREVIEW_BYTES);
+  });
+
+  // The window is stated as an instant so the container can see what a cold
+  // start has already spent of it.
+  it("tells the container when the whole run has to be answered", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {
+      contentType: "image/png",
+    });
+    const run = containerAnswering(STILL, null, PREVIEW_BYTES);
+    const before = Date.now();
+
+    await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, undefined, {
+      limits: LIMITS,
+      media: run.media,
+    });
+
+    const deadlineAt = run.asked?.deadlineAt ?? 0;
+    expect(deadlineAt).toBeGreaterThanOrEqual(before + LIMITS.runDeadlineMs);
+    expect(deadlineAt).toBeLessThanOrEqual(Date.now() + LIMITS.runDeadlineMs);
+  });
+
+  // The preview runs on whatever the run has left (inner#1339): the request
+  // names the deadline and nothing else about time.
+  it("gives the preview no time limit of its own", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {
+      contentType: "image/png",
+    });
+    const run = containerAnswering(STILL, null, PREVIEW_BYTES);
+
+    await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, undefined, {
+      limits: LIMITS,
+      media: run.media,
+    });
+
+    expect(run.asked).toMatchObject({ wantPreview: true });
+    expect(run.asked).not.toHaveProperty("previewTimeoutMs");
+  });
+
+  it("answers the same numbers when no preview came back", async () => {
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(2, {
+      contentType: "image/png",
+    });
+    const run = containerAnswering(STILL, null, null);
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      undefined,
+      { limits: LIMITS, media: run.media },
+    );
+
+    expect(await response.json()).toMatchObject({ width: 1200, height: 800 });
+    expect(await env.BUCKET.head(previewKeyFor(storageKey))).toBeNull();
   });
 });

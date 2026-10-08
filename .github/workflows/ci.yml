@@ -288,7 +288,7 @@ jobs:
           REF: ${{ github.ref }}
           REVISION: ${{ github.sha }}
         run: |
-          node --test scripts/release.test.mjs scripts/backend-sourcemaps.test.mjs scripts/publish-images.test.mjs
+          node --test scripts/release.test.mjs scripts/backend-sourcemaps.test.mjs scripts/publish-images.test.mjs scripts/backfill-previews-plan.test.mjs
           node scripts/release.mjs ci "$REF" "$REVISION" >> "$GITHUB_OUTPUT"
           if [[ "$REF" == refs/tags/* ]]; then
             git merge-base --is-ancestor "$REVISION" origin/main

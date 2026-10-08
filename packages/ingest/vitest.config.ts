@@ -28,8 +28,11 @@ const alias = {
   "@shared": resolve(__dirname, "../shared/src"),
 };
 
-/** Tests named for Node, which the workers project leaves alone. */
-const NODE_TESTS = "src/**/__tests__/**/*.node.test.ts";
+/**
+ * Tests named for Node, which the workers project leaves alone. The media
+ * container's own tests are among them: it runs on Node, not workerd.
+ */
+const NODE_TESTS = "{src,container}/**/__tests__/**/*.node.test.ts";
 
 const workers = defineWorkersProject({
   test: {
