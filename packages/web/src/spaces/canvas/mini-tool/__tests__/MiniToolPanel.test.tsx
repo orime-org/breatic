@@ -33,6 +33,7 @@ function mount(over: Partial<MiniToolPanelProps> = {}): MiniToolPanelProps {
     params: { orient: { turns: 0, flipX: false, flipY: false } },
     onParams: vi.fn(),
     source: { width: 1600, height: 1000 },
+    sizeTiers: [],
     slots: {},
     slotCaps: {},
     pickingSlot: null,
@@ -122,6 +123,30 @@ describe('MiniToolPanel', () => {
     fireEvent.blur(width);
     expect(props.onParams).toHaveBeenCalledTimes(1);
     expect(width).toHaveValue('1600');
+  });
+
+  // The upscale tool's size reads as tiers with the size each comes to.
+  it('offers output sizes with their pixel size, holding back one that cannot be used', () => {
+    const props = mount({
+      spec: tool('image.upscale'),
+      params: {},
+      sizeTiers: [
+        {
+          key: 'target_megapixels',
+          selected: '4K',
+          options: [
+            { label: '2K', width: 1536, height: 2048, megapixels: 3.15, usable: false },
+            { label: '4K', width: 3072, height: 4096, megapixels: 12.58, usable: true },
+            { label: '8K', width: 6144, height: 8192, megapixels: 50.33, usable: true },
+          ],
+        },
+      ],
+    });
+    expect(screen.getByTestId('mini-tool-size-target_megapixels-4K')).toHaveTextContent('3072×4096');
+    expect(screen.getByTestId('mini-tool-size-target_megapixels-4K')).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByTestId('mini-tool-size-target_megapixels-2K')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('mini-tool-size-target_megapixels-8K'));
+    expect(props.onParams).toHaveBeenCalledWith({ target_megapixels: '8K' });
   });
 
   it('names a required slot and starts its pick', () => {

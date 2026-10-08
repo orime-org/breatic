@@ -197,6 +197,21 @@ test('a drawn crop sets the size in the panel, and Run fills a new node downstre
   await expect(made.getByTestId('image-node-img')).toHaveAttribute('src', /^https?:\/\//, { timeout: 60_000 });
 });
 
+// The upscale panel offers output sizes with the pixel size each comes to on
+// the picture, 4K picked, and the creativity slider names its two ends.
+test('the upscale panel offers sizes measured on the picture @needs-internet', async () => {
+  await openTool(imageNode, 'image.upscale');
+  const fourK = page.getByTestId('mini-tool-size-target_megapixels-4K');
+  await expect(fourK).toHaveAttribute('aria-current', 'true');
+  await expect(fourK).toHaveText(/4K\s*\d+×4096|4K\s*4096×\d+/);
+  await expect(page.getByTestId('generate-param-creativity-stop--10')).toHaveText('Closer to source');
+  await expect(page.getByTestId('generate-param-creativity-stop-10')).toHaveText('More detail');
+  const eightK = (await page.getByTestId('mini-tool-size-target_megapixels-8K').boundingBox())!;
+  const close = (await page.getByTestId('mini-tool-panel-close').boundingBox())!;
+  expect(eightK.x + eightK.width).toBeLessThanOrEqual(close.x + close.width + 0.5);
+  await page.keyboard.press('Escape');
+});
+
 test('Run on the rotate tool fills a new node downstream @needs-internet', async () => {
   await openTool(imageNode, 'image.rotate');
   // The four buttons share the panel's width: the last one ends no further

@@ -175,7 +175,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.generatePanel.cameraCommandGroup.zoom": { described: /laid out in rows by axis/ },
   "canvas.generatePanel.param.chaos": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.generatePanel.param.distance": { excluded: REASONS.MODEL_SETTING_NAME },
-  "canvas.generatePanel.param.creativity": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.generatePanel.param.emotion": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.generatePanel.param.enable_image_search": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.generatePanel.param.enable_web_search": { excluded: REASONS.MODEL_SETTING_NAME },

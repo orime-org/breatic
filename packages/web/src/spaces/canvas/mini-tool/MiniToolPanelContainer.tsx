@@ -20,12 +20,20 @@ import { asContentView } from '@web/data/yjs/node-view';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { NodePanelMount } from '@web/spaces/canvas/_shared/NodePanelMount';
-import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
+import { cropSourceSelector, intrinsicSize, isCropSource } from '@web/spaces/canvas/focus/crop-source';
+import { canvasRootOf, useCanvasContext, useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { controlsForKeys } from '@web/spaces/canvas/generate/model-controls';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
-import { MiniToolPanel, type MiniToolSourceInfo } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
-import { creditMode, miniToolRefusal, resolvedParams, slotLengthCap } from '@web/spaces/canvas/mini-tool/mini-tool-view';
+import { MiniToolPanel } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
+import {
+  creditMode,
+  miniToolRefusal,
+  resolvedParams,
+  sizeTierChoices,
+  slotLengthCap,
+  type MiniToolSourceInfo,
+} from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 
 /** The params a changed source resets: they are measured on the source. */
@@ -43,6 +51,44 @@ export interface MiniToolPanelContainerProps {
    * tool's export has been made (or failed); a server tool resolves at once.
    */
   onRun: (nodeId: string, spec: MiniToolSpec, snapshot: MiniToolSnapshot) => Promise<void>;
+}
+
+/**
+ * The pixel size of the picture or video the node is showing, read off the
+ * element once it can be decoded. A size tier is measured on it when the
+ * node's data does not carry the size.
+ * @param spaceId - The Space the node is drawn in.
+ * @param nodeId - The source node.
+ * @param content - What the node shows, so a new one is read again.
+ * @param wanted - Whether the tool measures anything on the source.
+ * @returns The size, or null until it is known.
+ */
+function useShownSize(
+  spaceId: string,
+  nodeId: string,
+  content: string,
+  wanted: boolean,
+): { width: number; height: number } | null {
+  const [size, setSize] = React.useState<{ width: number; height: number } | null>(null);
+  React.useEffect(() => {
+    setSize(null);
+    if (!wanted || content === '') return undefined;
+    const el = canvasRootOf(spaceId).querySelector(cropSourceSelector(nodeId));
+    if (!isCropSource(el)) return undefined;
+    /** Take the size once the element can say it. */
+    const read = (): void => {
+      const found = intrinsicSize(el);
+      if (found.width > 0 && found.height > 0) setSize(found);
+    };
+    read();
+    el.addEventListener('load', read);
+    el.addEventListener('loadedmetadata', read);
+    return () => {
+      el.removeEventListener('load', read);
+      el.removeEventListener('loadedmetadata', read);
+    };
+  }, [spaceId, nodeId, content, wanted]);
+  return size;
 }
 
 /**
@@ -132,13 +178,15 @@ function OpenMiniToolPanel({
   // picture, the size the export crops in (inner#888 §7.4.1).
   const crops = !isModelTool(spec) && spec.params.some((param) => param.kind === 'rect');
   const measured = draft?.sourceSize ?? null;
+  const { spaceId } = useCanvasContext();
+  const shown = useShownSize(spaceId, nodeId, content, isModelTool(spec) && spec.params.some((p) => p.sizeTiers !== undefined));
   const source = React.useMemo<MiniToolSourceInfo>(
     () => ({
-      width: crops ? measured?.width : view !== undefined && 'width' in view ? view.width : undefined,
-      height: crops ? measured?.height : view !== undefined && 'height' in view ? view.height : undefined,
+      width: crops ? measured?.width : ((view !== undefined && 'width' in view ? view.width : undefined) ?? shown?.width),
+      height: crops ? measured?.height : ((view !== undefined && 'height' in view ? view.height : undefined) ?? shown?.height),
       duration: view !== undefined && 'duration' in view ? view.duration : undefined,
     }),
-    [crops, measured, view],
+    [crops, measured, view, shown],
   );
 
   // The source took new content while the panel was open: whatever was
@@ -161,13 +209,19 @@ function OpenMiniToolPanel({
 
   const draftParams = draft?.params;
   const params = React.useMemo(
-    () => resolvedParams(spec, entry, draftParams ?? {}, source.duration),
-    [spec, entry, draftParams, source.duration],
+    () => resolvedParams(spec, entry, draftParams ?? {}, source),
+    [spec, entry, draftParams, source],
   );
-  const modelControls = React.useMemo(
-    () => (entry === undefined ? undefined : controlsForKeys(entry, toolParamKeys(spec))),
-    [entry, spec],
+  const sizeTiers = React.useMemo(
+    () => sizeTierChoices(spec, entry, draftParams ?? {}, source),
+    [spec, entry, draftParams, source],
   );
+  // A param chosen as an output size draws as tiers; the rest as the model's controls.
+  const modelControls = React.useMemo(() => {
+    if (entry === undefined) return undefined;
+    const tiered = new Set(isModelTool(spec) ? spec.params.filter((p) => p.sizeTiers !== undefined).map((p) => p.key) : []);
+    return controlsForKeys(entry, toolParamKeys(spec).filter((key) => !tiered.has(key)));
+  }, [entry, spec]);
   const slots = draft?.slots ?? NO_SLOTS;
   const prompt = draft?.prompt ?? '';
   const slotCaps = React.useMemo(
@@ -199,7 +253,7 @@ function OpenMiniToolPanel({
     prompt,
     slots,
     sourceShown: content !== '' && (!crops || measured !== null),
-    sourceDuration: source.duration,
+    source,
     exporting,
   });
   const pickingSlot = pickSession?.purpose === 'miniToolSlot' ? (pickSession.slotKey ?? null) : null;
@@ -227,6 +281,10 @@ function OpenMiniToolPanel({
       toast.warning(t('canvas.miniTool.panel.sourceMissing'));
       return;
     }
+    if (refusal === 'alreadyLargest') {
+      toast.warning(t('canvas.miniTool.panel.alreadyLargest'));
+      return;
+    }
     if (refusal === 'slotTooLong') {
       toast.warning(t('canvas.miniTool.panel.slotTooLong', { limit: slotLengthCap(spec, entry, slots) ?? 0 }));
       return;
@@ -247,6 +305,7 @@ function OpenMiniToolPanel({
       <MiniToolPanel
         spec={spec}
         modelControls={modelControls}
+        sizeTiers={sizeTiers}
         modelEntry={entry}
         params={params}
         onParams={onParams}

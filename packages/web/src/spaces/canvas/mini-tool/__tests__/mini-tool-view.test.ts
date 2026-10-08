@@ -66,7 +66,7 @@ describe('resolvedParams', () => {
 
   // The range shows the whole clip until it is dragged; that is what is sent.
   it('sends an untouched range as the whole clip', () => {
-    const sent = resolvedParams(tool('video.cut'), undefined, { range: null }, 12);
+    const sent = resolvedParams(tool('video.cut'), undefined, { range: null }, { duration: 12 });
     expect(sent).toEqual({ range: { start: 0, end: 12 } });
     const parsed = miniToolRequestSchema.safeParse({
       tool: 'video.cut',
@@ -80,8 +80,31 @@ describe('resolvedParams', () => {
     expect(parsed.success).toBe(true);
   });
 
+  // The upscale tool picks an output size; the run is sent its megapixels.
+  const upscaler = entry({
+    target_megapixels: { description: '', default: 4, min: 1, max: 64, fill: 'tool' },
+    creativity: { description: '', default: 0, min: -10, max: 10, fill: 'tool' },
+  });
+
+  it('sends the default size tier as the megapixels it comes to on the source', () => {
+    expect(resolvedParams(tool('image.upscale'), upscaler, {}, { width: 1024, height: 1536 })).toEqual({
+      target_megapixels: 11.19,
+      creativity: 0,
+    });
+  });
+
+  it('sends the size tier the reader picked', () => {
+    expect(
+      resolvedParams(tool('image.upscale'), upscaler, { target_megapixels: '8K' }, { width: 1024, height: 1536 }),
+    ).toEqual({ target_megapixels: 44.74, creativity: 0 });
+  });
+
+  it('sends no size while the source size is unknown', () => {
+    expect(resolvedParams(tool('image.upscale'), upscaler, {}, {})).toEqual({ creativity: 0 });
+  });
+
   it('keeps a dragged range', () => {
-    expect(resolvedParams(tool('video.cut'), undefined, { range: { start: 2, end: 5 } }, 12)).toEqual({
+    expect(resolvedParams(tool('video.cut'), undefined, { range: { start: 2, end: 5 } }, { duration: 12 })).toEqual({
       range: { start: 2, end: 5 },
     });
   });
@@ -117,10 +140,18 @@ describe('miniToolRefusal', () => {
     expect(miniToolRefusal({ ...base, prompt: '  ', sourceShown: true, exporting: false })).toBe('promptMissing');
   });
 
+  it('refuses an upscale while the source size is unknown, or when no tier enlarges it', () => {
+    const upscaler = entry({ target_megapixels: { description: '', default: 4, min: 1, max: 64, fill: 'tool' } });
+    const up = { spec: tool('image.upscale'), entry: upscaler, prompt: '', slots: {}, sourceShown: true, exporting: false };
+    expect(miniToolRefusal({ ...up, source: {} })).toBe('sourceMissing');
+    expect(miniToolRefusal({ ...up, source: { width: 9000, height: 6000 } })).toBe('alreadyLargest');
+    expect(miniToolRefusal({ ...up, source: { width: 1024, height: 1536 } })).toBeNull();
+  });
+
   it('refuses a cut while the source length is unknown', () => {
     const cut = { spec: tool('video.cut'), entry: undefined, prompt: '', slots: {}, sourceShown: true, exporting: false };
-    expect(miniToolRefusal({ ...cut, sourceDuration: undefined })).toBe('sourceMissing');
-    expect(miniToolRefusal({ ...cut, sourceDuration: 12 })).toBeNull();
+    expect(miniToolRefusal({ ...cut, source: {} })).toBe('sourceMissing');
+    expect(miniToolRefusal({ ...cut, source: { duration: 12 } })).toBeNull();
   });
 
   // §5: a `many` slot's `max_total_duration` is held in the browser.

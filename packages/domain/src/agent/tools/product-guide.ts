@@ -738,7 +738,12 @@ export function renderProductGuide(): string {
       "required one must be filled before the arrow works; a small X on a filled box empties it), and for some " +
       "tools a text box. A crop shows a box with " +
       "eight handles on the node and takes a ratio and a size in pixels in the panel; rotating turns and flips the " +
-      "picture on the node as you press. The bottom line says what it costs: crop and rotate are free, the video " +
+      `picture on the node as you press. ${quoted(t("canvas.miniTool.image.upscale.label"))} for a picture offers ` +
+      `three output sizes, 2K, 4K and 8K, each showing the pixel size it comes to on that picture (its long edge ` +
+      "becomes 2048, 4096 or 8192); a size no larger than the picture, or past what the model makes, is greyed out, " +
+      `and when none is left pressing the arrow says ${quoted(t("canvas.miniTool.panel.alreadyLargest"))} Below the ` +
+      `sizes, ${quoted(t("canvas.generatePanel.param.creativity"))} runs from staying close to the picture to adding ` +
+      "detail of its own. The bottom line says what it costs: crop and rotate are free, the video " +
       "tools that work on the file are billed by how long they run, and the others show an estimate. The X, Esc or " +
       "a click on empty canvas closes the panel. Pressing the arrow puts the result in new nodes to the right of the " +
       "source, joined to it by a line and named after it (such as CROP- followed by its name); one undo takes them " +

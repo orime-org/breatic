@@ -39,18 +39,12 @@ import {
   setRectSide,
   type CropRect,
   type MiniToolRefusal,
+  type MiniToolSourceInfo,
+  type SizeTierChoice,
 } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 
 /** What a slot holds in the draft. */
 type HeldSlot = MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined;
-
-/** What the source node is showing, as far as the controls need it. */
-export interface MiniToolSourceInfo {
-  width?: number | undefined;
-  height?: number | undefined;
-  /** Seconds. */
-  duration?: number | undefined;
-}
 
 export interface MiniToolPanelProps {
   spec: MiniToolSpec;
@@ -63,6 +57,8 @@ export interface MiniToolPanelProps {
   /** Called with the changed params only. */
   onParams: (partial: Record<string, unknown>) => void;
   source: MiniToolSourceInfo;
+  /** A model tool's params chosen as output sizes, as they fall on the source. */
+  sizeTiers: readonly SizeTierChoice[];
   slots: Readonly<Record<string, HeldSlot>>;
   /** How many items each list slot holds at most. */
   slotCaps: Readonly<Record<string, number | undefined>>;
@@ -106,6 +102,57 @@ function slotPick(accepts: MiniToolMedium, value: MiniToolSlotValue): SlotPick {
   return { kind: accepts, url: value.url, ...(thumbnail !== undefined && { thumbnail }) };
 }
 
+/** One size tier: its name over the pixel size it comes to, in the option chrome. */
+const SIZE_TIER_CLASS =
+  'flex min-w-0 flex-col items-center gap-0.5 rounded-overlay border border-border px-2 py-1.5 text-xs text-foreground ' +
+  'transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
+  'aria-[current=true]:border-active-border aria-[current=true]:bg-accent-strong aria-[current=true]:hover:bg-accent-strong ' +
+  'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent';
+
+/**
+ * A megapixel param as output sizes: each tier names its size on the source.
+ * @param props - Component props.
+ * @param props.choice - The tiers on the source and the one in use.
+ * @param props.label - The control's name.
+ * @param props.onParams - Called with the picked tier's label.
+ * @returns The group.
+ */
+const SizeTierGroup = React.memo(function SizeTierGroup({
+  choice,
+  label,
+  onParams,
+}: {
+  choice: SizeTierChoice;
+  label: string;
+  onParams: (partial: Record<string, unknown>) => void;
+}): React.JSX.Element {
+  return (
+    <div>
+      <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{label}</p>
+      <div className='grid grid-cols-3 gap-1.5'>
+        {choice.options.map((option) => (
+          <Button
+            key={option.label}
+            type='button'
+            variant={null}
+            size={null}
+            data-testid={`mini-tool-size-${choice.key}-${option.label}`}
+            aria-current={option.label === choice.selected}
+            disabled={!option.usable}
+            onClick={() => onParams({ [choice.key]: option.label })}
+            className={SIZE_TIER_CLASS}
+          >
+            <span>{option.label}</span>
+            <span className='text-2xs tabular-nums text-muted-foreground'>
+              {option.width}×{option.height}
+            </span>
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+});
+
 /**
  * Seconds as `m:ss.s`.
  * @param seconds - The time.
@@ -130,6 +177,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
     modelEntry,
     params,
     onParams,
+    sizeTiers,
     slots,
     slotCaps,
     pickingSlot,
@@ -207,6 +255,14 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
             })}
           </div>
         ) : null}
+        {sizeTiers.map((choice) => (
+          <SizeTierGroup
+            key={choice.key}
+            choice={choice}
+            label={t(`canvas.generatePanel.param.${choice.key}`)}
+            onParams={onParams}
+          />
+        ))}
         {isModelTool(spec) ? (
           modelEntry !== undefined && modelControls !== undefined && modelControls.length > 0 ? (
             <ModelParamControls

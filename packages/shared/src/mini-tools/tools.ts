@@ -77,7 +77,17 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     run: { kind: "model", model: "pro-upscaler" },
     labelKey: key("image.upscale", "label"),
     icon: "Maximize2",
-    params: [{ key: "target_megapixels" }, { key: "creativity" }],
+    params: [
+      {
+        key: "target_megapixels",
+        sizeTiers: [
+          { label: "2K", longEdge: 2048 },
+          { label: "4K", longEdge: 4096 },
+          { label: "8K", longEdge: 8192 },
+        ],
+      },
+      { key: "creativity" },
+    ],
     slots: [],
     outputs: [{ modality: "image", namePrefix: "UPSCALE" }],
     sourceParam: "image",

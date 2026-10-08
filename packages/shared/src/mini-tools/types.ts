@@ -114,9 +114,21 @@ export interface OrientParam {
 /** A param a browser or container tool declares in full. */
 export type MiniToolParam = NumberParam | EnumParam | RectParam | RangeParam | AdjustParam | OrientParam;
 
+/** One output size a megapixel param offers: the source's long edge scaled to `longEdge`. */
+export interface SizeTier {
+  /** The tier's name, the same word in every language. */
+  readonly label: string;
+  readonly longEdge: number;
+}
+
 /** A model tool's exposed param: the yaml name, everything else read from the catalog. */
 export interface MiniToolModelParam {
   readonly key: string;
+  /**
+   * Present on a megapixel param chosen as an output size: the draft holds a
+   * tier's label, and the run is sent the megapixels it comes to on the source.
+   */
+  readonly sizeTiers?: readonly SizeTier[];
 }
 
 /** A second piece of media the tool reads, picked from the canvas. */

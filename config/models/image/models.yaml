@@ -605,6 +605,8 @@ models:
         default: 0
         min: -10
         max: 10
+        step: 1
+        value_labels: {-10: "Closer to source", 10: "More detail"}
         fill: "tool"
       image:
         description: "Source image"

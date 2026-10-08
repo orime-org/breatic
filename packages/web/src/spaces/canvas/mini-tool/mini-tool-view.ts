@@ -10,10 +10,12 @@ import {
   type ModelEntry,
 } from '@breatic/shared';
 import {
+  defaultSizeTier,
   isModelTool,
-  toolParamKeys,
+  sizeTierOptions,
   type MiniToolSlotValue,
   type MiniToolSpec,
+  type SizeTierOption,
 } from '@breatic/shared/mini-tools';
 
 /** A crop rectangle in source pixels. */
@@ -30,9 +32,26 @@ export interface SourceSize {
   height: number;
 }
 
+/** What the source node is showing, as far as the panel needs it. */
+export interface MiniToolSourceInfo {
+  width?: number | undefined;
+  height?: number | undefined;
+  /** Seconds. */
+  duration?: number | undefined;
+}
+
+/** A param chosen as an output size: its tiers on the source and the one in use. */
+export interface SizeTierChoice {
+  key: string;
+  options: readonly SizeTierOption[];
+  /** The tier the run takes; undefined when none enlarges the source. */
+  selected: string | undefined;
+}
+
 /** Why Execute is held back, or null when it may run. */
 export type MiniToolRefusal =
   | 'sourceMissing'
+  | 'alreadyLargest'
   | 'slotMissing'
   | 'slotTooLong'
   | 'promptMissing'
@@ -43,34 +62,68 @@ export type MiniToolRefusal =
 export type CreditMode = 'free' | 'usage' | 'estimate';
 
 /**
+ * The size tiers a model tool offers, as they fall on the source. The draft
+ * holds the picked tier's label; a tier the source has outgrown is not kept.
+ * @param spec - The tool.
+ * @param entry - The pinned model's catalog entry.
+ * @param draft - The panel's draft params.
+ * @param source - The source as the panel knows it.
+ * @returns One choice per tiered param; none while the source size is unknown.
+ */
+export function sizeTierChoices(
+  spec: MiniToolSpec,
+  entry: ModelEntry | undefined,
+  draft: Readonly<Record<string, unknown>>,
+  source: MiniToolSourceInfo,
+): SizeTierChoice[] {
+  if (!isModelTool(spec) || source.width === undefined || source.height === undefined) return [];
+  const size = { width: source.width, height: source.height };
+  return spec.params.flatMap((param) => {
+    if (param.sizeTiers === undefined) return [];
+    const options = sizeTierOptions(param.sizeTiers, size, entry?.params[param.key]?.max);
+    const picked = draft[param.key];
+    const usable = options.some((option) => option.usable && option.label === picked);
+    return [{ key: param.key, options, selected: usable ? (picked as string) : defaultSizeTier(options) }];
+  });
+}
+
+/**
  * The params a run is sent: a model tool's listed params on the pinned model's
- * defaults with the draft on top; a local tool's draft, with a range nobody
- * dragged sent as the whole clip the panel shows it as.
+ * defaults with the draft on top, a size tier sent as the megapixels it comes
+ * to on the source; a local tool's draft, with a range nobody dragged sent as
+ * the whole clip the panel shows it as.
  * @param spec - The tool.
  * @param entry - The pinned model's catalog entry, for a model tool.
  * @param draft - The panel's draft params.
- * @param sourceDuration - The source's length in seconds, once known.
+ * @param source - The source as the panel knows it.
  * @returns The params by key.
  */
 export function resolvedParams(
   spec: MiniToolSpec,
   entry: ModelEntry | undefined,
   draft: Readonly<Record<string, unknown>>,
-  sourceDuration?: number,
+  source: MiniToolSourceInfo = {},
 ): Record<string, unknown> {
   if (!isModelTool(spec)) {
     const out: Record<string, unknown> = { ...draft };
     for (const param of spec.params) {
-      if (param.kind === 'range' && out[param.key] == null && sourceDuration !== undefined) {
-        out[param.key] = { start: 0, end: sourceDuration };
+      if (param.kind === 'range' && out[param.key] == null && source.duration !== undefined) {
+        out[param.key] = { start: 0, end: source.duration };
       }
     }
     return out;
   }
+  const tiers = new Map(sizeTierChoices(spec, entry, draft, source).map((choice) => [choice.key, choice]));
   const out: Record<string, unknown> = {};
-  for (const key of toolParamKeys(spec)) {
-    const value = key in draft ? draft[key] : entry?.params[key]?.default;
-    if (value !== undefined && value !== null) out[key] = value;
+  for (const param of spec.params) {
+    if (param.sizeTiers !== undefined) {
+      const choice = tiers.get(param.key);
+      const tier = choice?.options.find((option) => option.label === choice.selected);
+      if (tier !== undefined) out[param.key] = tier.megapixels;
+      continue;
+    }
+    const value = param.key in draft ? draft[param.key] : entry?.params[param.key]?.default;
+    if (value !== undefined && value !== null) out[param.key] = value;
   }
   return out;
 }
@@ -128,7 +181,7 @@ export function slotLengthCap(
  * @param input.prompt - The draft prompt.
  * @param input.slots - The draft slots.
  * @param input.sourceShown - Whether the source node is showing its media.
- * @param input.sourceDuration - The source's length in seconds, once known.
+ * @param input.source - The source as the panel knows it.
  * @param input.exporting - Whether a browser tool's export is under way.
  * @returns The first reason in the order the reader would fix them, or null.
  */
@@ -138,15 +191,22 @@ export function miniToolRefusal(input: {
   prompt: string;
   slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined>>;
   sourceShown: boolean;
-  sourceDuration?: number | undefined;
+  source?: MiniToolSourceInfo;
   exporting: boolean;
 }): MiniToolRefusal {
-  const { spec, entry, prompt, slots, sourceShown, sourceDuration, exporting } = input;
+  const { spec, entry, prompt, slots, sourceShown, source = {}, exporting } = input;
   if (exporting) return 'exporting';
   if (!sourceShown) return 'sourceMissing';
   // A range is measured on the source's length, which arrives with its metadata.
   const measuresLength = !isModelTool(spec) && spec.params.some((param) => param.kind === 'range');
-  if (measuresLength && sourceDuration === undefined) return 'sourceMissing';
+  if (measuresLength && source.duration === undefined) return 'sourceMissing';
+  // A size tier is measured on the source's pixel size, which arrives the same way.
+  const measuresSize = isModelTool(spec) && spec.params.some((param) => param.sizeTiers !== undefined);
+  if (measuresSize) {
+    const choices = sizeTierChoices(spec, entry, {}, source);
+    if (choices.length === 0) return 'sourceMissing';
+    if (choices.some((choice) => choice.selected === undefined)) return 'alreadyLargest';
+  }
   for (const slot of spec.slots) {
     const held = slots[slot.key];
     const empty = held === undefined || (Array.isArray(held) && held.length === 0);
