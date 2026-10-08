@@ -276,7 +276,7 @@ describe("where each wired node goes, said on its edge", () => {
     expect(checkProposal(proposal)).toEqual({ ok: true });
   });
 
-  it("refuses a way on the edge of a text node, whose words go in where it is @'d", () => {
+  it("takes a text node's edge naming the prompt, its one way", () => {
     const proposal: CanvasProposal = {
       nodes: [
         { role: "written", type: "text", name: "Script", prompt: [{ text: "Hello there." }] },
@@ -286,7 +286,20 @@ describe("where each wired node goes, said on its edge", () => {
       rationale: "",
       groupName: "Voice",
     };
-    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringContaining('"Script"') });
+    expect(checkProposal(proposal)).toEqual({ ok: true });
+  });
+
+  it("refuses a text node's edge naming a way the model does not have, listing the ones it has", () => {
+    const proposal: CanvasProposal = {
+      nodes: [
+        { role: "written", type: "text", name: "Script", prompt: [{ text: "Hello there." }] },
+        { role: "generate", type: "audio", name: "Voice", mode: "tts", model: "realtime-tts-2", prompt: [reference("the script the Agent wrote")] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "lyrics" }],
+      rationale: "",
+      groupName: "Voice",
+    };
+    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringMatching(/"lyrics".*"pool"/s) });
   });
 
   it("is described on the edge for the agent", () => {
@@ -337,9 +350,66 @@ describe("marks the reader can act on", () => {
     expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringMatching(/"omnihuman-1.5" takes no text node, so the edge from "Line" goes nowhere/) });
   });
 
-  it("tells the agent to leave into off an edge from a text node", () => {
+  it("tells the agent into names a text node's box too", () => {
     const edge = inputSchema.shape.edges.element.shape.into.description ?? "";
-    expect(edge).toMatch(/leave it off an edge from a text node/);
+    expect(edge).toMatch(/"lyrics"/);
+  });
+
+  it("keeps asset marks for nodes going into the pool, and none for a node going into a slot", () => {
+    const shape = inputSchema.shape.nodes.element.shape;
+    expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/never a node going into a slot/);
+    expect(shape.prompt.description ?? "").toMatch(/a node going into a slot takes no asset mark/);
+  });
+
+});
+
+describe("the lyrics box a song model draws, a second way for words (table B)", () => {
+  const lyrics: ProposalNode = { role: "written", type: "text", name: "Lyrics", prompt: [{ text: "la la la" }] };
+  /**
+   * A song generation fed the lyrics node.
+   * @param prompt - Its prompt.
+   * @param into - What the edge says, if anything.
+   * @returns The proposal.
+   */
+  function song(prompt: NonNullable<ProposalNode["prompt"]>, into?: string): CanvasProposal {
+    return {
+      nodes: [lyrics, { role: "generate", type: "audio", name: "Song", mode: "t2m", model: "mureka-v9.5-generate-song", prompt }],
+      edges: [{ fromIndex: 0, toIndex: 1, ...(into === undefined ? {} : { into }) }],
+      rationale: "",
+      groupName: "Song",
+    };
+  }
+  const toLyrics = { slot: { kind: "note" as const, label: "@ Lyrics in the lyrics box" } };
+
+  it("places the lyrics node sent into the lyrics box with a note", () => {
+    expect(checkProposal(song([{ text: "upbeat pop" }, toLyrics], "lyrics"))).toEqual({ ok: true });
+  });
+
+  it("asks which box when the edge does not say, naming both", () => {
+    expect(checkProposal(song([{ text: "upbeat pop" }, toLyrics]))).toMatchObject({ ok: false, reason: expect.stringMatching(/"Lyrics".*"pool".*"lyrics"/s) });
+  });
+
+  it("asks for a note for the node sent into the lyrics box", () => {
+    expect(checkProposal(song([{ text: "upbeat pop" }], "lyrics"))).toMatchObject({ ok: false, reason: expect.stringMatching(/"Lyrics" into lyrics.*0 note/s) });
+  });
+
+  it("places the words sent into the prompt with an asset mark", () => {
+    expect(checkProposal(song([{ text: "upbeat pop, " }, reference("the lyrics")], "pool"))).toEqual({ ok: true });
+  });
+});
+
+describe("a way over its room (table C)", () => {
+  it("says to wire fewer, and nothing about another way, when the kind has one way", () => {
+    const pictures = Array.from({ length: 4 }, (_, i): ProposalNode => ({ role: "source", type: "image", name: `P${String(i + 1)}` }));
+    const proposal: CanvasProposal = {
+      nodes: [...pictures, { role: "generate", type: "image", name: "Edit", mode: "i2i", model: "qwen-image-edit-multiple-angles", prompt: [{ text: "edit " }, ...pictures.map((p) => reference(p.name))] }],
+      edges: pictures.map((_, i) => ({ fromIndex: i, toIndex: 4, into: "pool" })),
+      rationale: "",
+      groupName: "g",
+    };
+    const answer = checkProposal(proposal);
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringContaining("Wire fewer.") });
+    expect(answer).not.toMatchObject({ reason: expect.stringContaining("another way") });
   });
 });
 

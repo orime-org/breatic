@@ -227,7 +227,7 @@ describe("what the rendered answer tells the model", () => {
   it("says which wired node fills a slot the pool shares a kind with", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /\(kling-video-o3-4k-image-to-video\)[^\n]*Each image node wired in goes one of 2 ways; say which on its edge with into: "pool" \(the reference pool, at most \d+, an asset mark each\) or "\w+" \(a slot, at most 1\)\./,
+      /\(kling-video-o3-4k-image-to-video\)[^\n]*Each image node wired in goes one of 2 ways; say which on its edge with into: "pool" \(the reference pool, at most \d+, an asset mark each\) or "\w+" \(a slot, at most 1, nothing to write: the panel asks for it\)\./,
     );
   });
 
@@ -238,6 +238,22 @@ describe("what the rendered answer tells the model", () => {
     expect(renderGenerationModelsForModel(answer)).toMatch(
       /\(nano-banana-pro-edit-ultra\)[^\n]*Each image node wired in goes one of 2 ways; say which on its edge with into: "pool" \(the reference pool, at most 11, an asset mark each\) or "style_images" \(a slot, at most 3, a note each\)\./,
     );
+  });
+
+  it("names both boxes a song model's words can go into, and the mark each asks for", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "t2m" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /\(mureka-v9\.5-generate-song\)[^\n]*Each text node wired in goes one of 2 ways; say which on its edge with into: "pool" \(@'d into the prompt, an asset mark each\) or "lyrics" \(@'d into the lyrics box, a note each\)\./,
+    );
+  });
+
+  it("says an asset mark can only ask for words where nothing else wired in can be @'d", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
+    const said = renderGenerationModelsForModel(answer);
+    expect(said).toMatch(
+      /\(seedance-2\.5-image-to-video\)[^\n]*Each image node wired in goes into "image" \(a slot, at most 1, nothing to write: the panel asks for it\)\.[^\n]*Nothing wired in but a text node can be @'d here, so an asset mark can only ask for words\./,
+    );
+    expect(said).not.toMatch(/\(kling-video-o3-4k-image-to-video\)[^\n]*Nothing wired in but a text node/);
   });
 
   it("says nodes for an optional slot cannot be @'d where the model has no pool of their kind", async () => {
