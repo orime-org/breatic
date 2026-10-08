@@ -197,7 +197,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 Agent 里没有选模板的控件,它按读者的需求自己调用。**提示词里留着的标记不检查、不拦生成**:点模板时弹一条提醒,提议落到画布时只要有画提示词框的节点带标记也弹同一条(`canvas.generatePanel.editMarks`),读者不改也照常发出去。
 
-### Agent tools (8)
+### Agent tools (9)
 
 **一个工具的用途、时机和用法只写在它自己的 `description` 和字段的 `.describe()` 里**(MANDATORY)。系统提示词(`packages/server/src/agent/context.ts`)只放对所有工具都成立的规则 —— 调用工具而不是把调用写出来、读报错并照它说的做、拿不到的要说出来。工具可以从注册表里拆掉,说明跟着它一起走;规定在 `packages/domain/CLAUDE.md`,守卫是 `packages/server/src/__tests__/agent/system-prompt.test.ts`(遍历 `TOOL_MAP`,提示词里出现任何一个工具名即红)和 `packages/domain/src/agent/tools/__tests__/tools-say-their-own-use.test.ts`。
 
