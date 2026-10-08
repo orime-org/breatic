@@ -291,8 +291,8 @@ function OpenMiniToolPanel({
       toast.warning(t('canvas.miniTool.panel.sourceMissing'));
       return;
     }
-    if (refusal === 'alreadyLargest') {
-      toast.warning(t('canvas.miniTool.panel.alreadyLargest'));
+    if (refusal === 'noUsableTier') {
+      toast.warning(t('canvas.miniTool.panel.noUsableTier'));
       return;
     }
     if (refusal === 'slotTooLong') {

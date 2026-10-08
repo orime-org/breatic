@@ -140,11 +140,13 @@ describe('miniToolRefusal', () => {
     expect(miniToolRefusal({ ...base, prompt: '  ', sourceShown: true, exporting: false })).toBe('promptMissing');
   });
 
-  it('refuses an upscale while the source size is unknown, or when no tier enlarges it', () => {
+  it('refuses an upscale while the source size is unknown, or when no tier is usable', () => {
     const upscaler = entry({ target_megapixels: { description: '', default: 4, min: 1, max: 64, fill: 'tool' } });
     const up = { spec: tool('image.upscale'), entry: upscaler, prompt: '', slots: {}, sourceShown: true, exporting: false };
     expect(miniToolRefusal({ ...up, source: {} })).toBe('sourceMissing');
-    expect(miniToolRefusal({ ...up, source: { width: 9000, height: 6000 } })).toBe('alreadyLargest');
+    expect(miniToolRefusal({ ...up, source: { width: 9000, height: 6000 } })).toBe('noUsableTier');
+    // A strip too thin for the model's floor at every size, not one too large.
+    expect(miniToolRefusal({ ...up, source: { width: 8000, height: 100 } })).toBe('noUsableTier');
     expect(miniToolRefusal({ ...up, source: { width: 1024, height: 1536 } })).toBeNull();
   });
 

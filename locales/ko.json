@@ -979,7 +979,7 @@
         "rangeLength": "길이 {seconds}초",
         "sourceMissing": "소재를 아직 불러오지 못했습니다. 다 불러온 뒤 다시 시도하세요.",
         "slotTooLong": "선택한 소재의 총 길이가 {limit}초를 넘습니다.",
-        "alreadyLargest": "이 이미지는 더 이상 확대할 수 없습니다.",
+        "noUsableTier": "이 이미지는 확대할 수 없습니다.",
         "exportFailed": "파일을 만들 수 없습니다.",
         "sourceGone": "원본 노드가 삭제되었습니다.",
         "sourceChanged": "소재가 바뀌어 자르기, 구간, 방향을 초기화했습니다.",

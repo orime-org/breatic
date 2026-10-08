@@ -979,7 +979,7 @@
         "rangeLength": "時長 {seconds} s",
         "sourceMissing": "素材還沒載入完，等它載入好再試。",
         "slotTooLong": "所選素材總時長超過 {limit} 秒。",
-        "alreadyLargest": "這張圖已無法再放大。",
+        "noUsableTier": "這張圖無法放大。",
         "exportFailed": "無法產生檔案。",
         "sourceGone": "來源節點已被刪除。",
         "sourceChanged": "素材已更換，裁切框、區間和方向已重設。",

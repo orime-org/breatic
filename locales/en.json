@@ -979,7 +979,7 @@
         "rangeLength": "Length {seconds} s",
         "sourceMissing": "The source hasn't loaded yet. Try again once it has.",
         "slotTooLong": "The picked media run longer than {limit} s in total.",
-        "alreadyLargest": "This image can't be upscaled any further.",
+        "noUsableTier": "This image can't be upscaled.",
         "exportFailed": "Couldn't make the file.",
         "sourceGone": "The source node was deleted.",
         "sourceChanged": "The source changed. The crop, range and orientation were reset.",

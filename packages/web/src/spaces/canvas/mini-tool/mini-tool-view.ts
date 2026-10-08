@@ -52,7 +52,7 @@ export interface SizeTierChoice {
 /** Why Execute is held back, or null when it may run. */
 export type MiniToolRefusal =
   | 'sourceMissing'
-  | 'alreadyLargest'
+  | 'noUsableTier'
   | 'slotMissing'
   | 'slotTooLong'
   | 'promptMissing'
@@ -209,7 +209,7 @@ export function miniToolRefusal(input: {
   if (tieredParamKeys(spec).length > 0) {
     const choices = input.tiers ?? sizeTierChoices(spec, entry, {}, source);
     if (choices.length === 0) return 'sourceMissing';
-    if (choices.some((choice) => choice.selected === undefined)) return 'alreadyLargest';
+    if (choices.some((choice) => choice.selected === undefined)) return 'noUsableTier';
   }
   for (const slot of spec.slots) {
     const held = slots[slot.key];

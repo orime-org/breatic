@@ -7,8 +7,8 @@ import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 /**
  * The CSS transform that previews an orientation on the node's picture
  * (inner#888 §7.4). A quarter turn also shrinks the picture by the shorter
- * over the longer side, so the whole of it stays inside the card; the flips
- * apply before the turn, the order the export draws in.
+ * over the longer side, so the whole of it stays inside the card; the picture
+ * turns and then mirrors along the screen axes, the order the export draws in.
  * @param orientation - The turns and flips.
  * @param width - The picture's width.
  * @param height - The picture's height.

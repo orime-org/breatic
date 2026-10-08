@@ -752,7 +752,7 @@ export function renderProductGuide(): string {
       `picture on the node as you press. ${quoted(t("canvas.miniTool.image.upscale.label"))} for a picture offers ` +
       `three output sizes, 2K, 4K and 8K, each showing the pixel size it comes to on that picture (its long edge ` +
       "becomes 2048, 4096 or 8192); a size no larger than the picture, or past what the model makes, is greyed out, " +
-      `and when none is left pressing the arrow says ${quoted(t("canvas.miniTool.panel.alreadyLargest"))} Below the ` +
+      `and when none can be used pressing the arrow says ${quoted(t("canvas.miniTool.panel.noUsableTier"))} Below the ` +
       `sizes, ${quoted(t("canvas.generatePanel.param.creativity"))} runs from staying close to the picture to adding ` +
       "detail of its own. The bottom line says what it costs: crop and rotate are free, the video " +
       "tools that work on the file are billed by how long they run, and the others show an estimate. The X, Esc or " +
