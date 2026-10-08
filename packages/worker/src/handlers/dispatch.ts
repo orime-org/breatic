@@ -15,11 +15,11 @@
  * fixed" — merged, whose model wins?
  */
 
-import type { Job } from "bullmq";
+import { DelayedError, type Job } from "bullmq";
 import { stepCountIs } from "ai";
 import { generateTextRetry } from "@breatic/domain";
 import type { ResumeContext } from "@worker/providers/shared.js";
-import { runContainerJob } from "@worker/handlers/container/run-container-job.js";
+import { ContainerJobPending, runContainerJob } from "@worker/handlers/container/run-container-job.js";
 import { getModel, resolveProvider } from "@breatic/domain";
 import { buildAgentConfig } from "@breatic/domain";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, getAgentConfig } from "@breatic/core";
@@ -542,6 +542,13 @@ async function runTaskBody(
       );
     }
   } catch (err) {
+    // A container job outlasting one round of waiting is not a failure: the
+    // slot goes back to the queue and the run returns for the same job, and
+    // a delayed job spends none of its attempts.
+    if (err instanceof ContainerJobPending && token !== undefined) {
+      await job.moveToDelayed(Date.now() + getWorkerConfig().poll_interval, token);
+      throw new DelayedError();
+    }
     // Provider call failed. Safe to retry via BullMQ — no charge yet,
     // no provider_result_url recorded. The next retry enters this
     // function fresh.

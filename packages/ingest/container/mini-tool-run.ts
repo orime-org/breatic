@@ -118,11 +118,13 @@ export async function runJob(job: RunBody): Promise<void> {
   let ok = false;
   let reason: ContainerFailure | undefined;
   try {
-    // A source that does not arrive whole is our failure, not the file's.
+    // Moving bytes in and out is ours; a failure there is internal, not the file's.
+    const ours = (err: unknown): never => {
+      reason = "internal";
+      throw err;
+    };
     const input = join(dir, "source");
-    reason = "internal";
-    await download(job.input, input);
-    reason = undefined;
+    await download(job.input, input).catch(ours);
     const source = readProbeOutput((await runTool("ffprobe", probeArgs(input, "own-file"), job.toolTimeoutMs)).toString("utf8"));
     const refused = inputRefusal(job.op, source);
     if (refused !== null) {
@@ -143,7 +145,7 @@ export async function runJob(job: RunBody): Promise<void> {
         reason = empty;
         throw new Error(`output refused: ${empty}`);
       }
-      await put(output.url, file);
+      await put(output.url, file).catch(ours);
       const numbers = pickMediaMetadata(report);
       let cover: { width: number | null; height: number | null } | null = null;
       if (output.coverUrl !== undefined && numbers.width !== null) {

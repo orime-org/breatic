@@ -21,14 +21,21 @@ const h = vi.hoisted(() => ({
   readMiniToolJob: vi.fn(),
   submitMiniToolJob: vi.fn(),
   recordServiceCall: vi.fn(),
+  deadlineFor: vi.fn(),
+  now: { value: 0 },
 }));
 
-vi.mock("node:timers/promises", () => ({ setTimeout: async (): Promise<void> => {} }));
+// Each wait moves the clock it waits on, so a round of polling ends by itself.
+vi.mock("node:timers/promises", () => ({
+  setTimeout: async (ms: number): Promise<void> => {
+    h.now.value += ms;
+  },
+}));
 
 vi.mock("@breatic/core", () => ({
   env: { INGEST_BASE_URL: "https://ingest.test", INGEST_SHARED_SECRET: "s", CREDIT_MULTIPLIER: 2 },
   logger: { warn: vi.fn(), error: vi.fn() },
-  getNodeTaskConfig: () => ({ default_budget_ms: 7_200_000 }),
+  getWorkerConfig: () => ({ poll_max_wait: 300_000 }),
   getMiniToolsConfig: () => ({
     poll_interval_ms: 1000,
     prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
@@ -44,6 +51,7 @@ vi.mock("@breatic/domain", async () => ({
   creditsForUsd: (usd: number, multiplier: number) => usd * 100 * multiplier,
   createUsageRecorder: () => ({ recordServiceCall: h.recordServiceCall, settle: async () => 0 }),
   ingestReportService: { applyIngestReport: h.applyIngestReport },
+  nodeTaskService: { deadlineFor: h.deadlineFor },
   openContainerOutputs: h.openContainerOutputs,
   upstreamStepRepo: {
     ensureSteps: h.ensureSteps,
@@ -62,7 +70,7 @@ vi.mock("@breatic/shared", async (importOriginal) => ({
 import { UploadHttpError } from "@breatic/shared";
 import { miniToolById, type MiniToolSpec } from "@breatic/shared/mini-tools";
 
-import { ContainerJobFailed, runContainerJob } from "@worker/handlers/container/run-container-job.js";
+import { ContainerJobFailed, ContainerJobPending, runContainerJob } from "@worker/handlers/container/run-container-job.js";
 
 const CUT = miniToolById("video.cut") as MiniToolSpec;
 const INPUT = { taskId: "t1", userId: "u1", projectId: "p1", params: { range: { start: 0, end: 2 } }, sourceKey: "v/src.mp4" };
@@ -82,8 +90,13 @@ const REGISTERED = {
   sizeBytes: 10,
 };
 
+const DEADLINE = 1_800_000_000_000;
+
 beforeEach(() => {
   vi.clearAllMocks();
+  h.now.value = DEADLINE - 3_600_000;
+  vi.spyOn(Date, "now").mockImplementation(() => h.now.value);
+  h.deadlineFor.mockResolvedValue(DEADLINE);
   h.steps = [{ id: "s1", status: "pending", output: {} }];
   h.ensureSteps.mockImplementation(async () => h.steps);
   h.recordInline.mockImplementation(async (_id: string, output: Record<string, unknown>) => {
@@ -116,17 +129,39 @@ describe("runContainerJob", () => {
     expect(h.markDone).toHaveBeenCalledWith("s1", { state: "done" });
   });
 
-  // Every task has one ceiling, the node task budget; the container gets no other.
-  it("gives the job the node task budget as its deadline", async () => {
+  // Every task has one ceiling, the one its rows on the canvas count down.
+  it("gives the job the deadline its task rows run out at", async () => {
     h.readMiniToolJob.mockResolvedValueOnce(null).mockResolvedValueOnce({ state: "done", outputs: [MEASURED], usage: USAGE });
     h.submitMiniToolJob.mockResolvedValueOnce({ state: "starting" });
-    const before = Date.now();
 
     await runContainerJob(CUT, "cut", INPUT);
 
-    const { deadlineAt } = h.submitMiniToolJob.mock.calls[0]![2] as { deadlineAt: number };
-    expect(deadlineAt).toBeGreaterThanOrEqual(before + 7_200_000);
-    expect(deadlineAt).toBeLessThanOrEqual(Date.now() + 7_200_000);
+    expect(h.deadlineFor).toHaveBeenCalledWith("t1");
+    expect(h.submitMiniToolJob.mock.calls[0]![2]).toMatchObject({ deadlineAt: DEADLINE });
+  });
+
+  it("refuses to open a job for a task with no row on the canvas", async () => {
+    h.deadlineFor.mockResolvedValueOnce(null);
+
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toThrow(/no task row/);
+    expect(h.openContainerOutputs).not.toHaveBeenCalled();
+  });
+
+  // The slot goes back to the queue between rounds; the run comes back for the same job.
+  it("hands the slot back when a round of waiting ends with the job still running", async () => {
+    h.steps[0]!.output = { jobId: "task:t1", containerClass: "Std1", deadlineAt: DEADLINE, outputs: [OUT] };
+    h.readMiniToolJob.mockResolvedValue({ state: "running" });
+
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(ContainerJobPending);
+    expect(h.readMiniToolJob).toHaveBeenCalledTimes(300);
+  });
+
+  // A retried attempt after a failed step tells the row what the job said, not a generic cause.
+  it("fails a retried attempt with the cause the failed step kept", async () => {
+    h.steps = [{ id: "s1", status: "failed", output: { error: "no_audio_track" } }];
+
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toMatchObject({ reason: "no_audio_track" });
+    expect(h.readMiniToolJob).not.toHaveBeenCalled();
   });
 
   it("reads the job a previous attempt opened, without opening new outputs or submitting again", async () => {

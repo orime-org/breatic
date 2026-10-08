@@ -99,6 +99,15 @@ export async function open(opts: {
 }
 
 /**
+ * When a job's time runs out, as its rows on the canvas count it.
+ * @param taskId - The job.
+ * @returns The epoch milliseconds, or null when the job opened no row.
+ */
+export async function deadlineFor(taskId: string): Promise<number | null> {
+  return repo.deadlineFor(taskId);
+}
+
+/**
  * Record a fact about a task: it finished, it failed, or its time ran out.
  *
  * Never throws on a state mismatch. A report that arrives after the row went

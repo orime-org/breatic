@@ -14,13 +14,14 @@
 
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { env, getMiniToolsConfig, getNodeTaskConfig, logger } from "@breatic/core";
+import { env, getMiniToolsConfig, getWorkerConfig, logger } from "@breatic/core";
 import {
   assetService,
   containerCostUsd,
   createUsageRecorder,
   creditsForUsd,
   ingestReportService,
+  nodeTaskService,
   openContainerOutputs,
   upstreamStepRepo,
 } from "@breatic/domain";
@@ -49,6 +50,21 @@ export class ContainerJobFailed extends Error {
   constructor(readonly reason: string) {
     super(reason);
     this.name = "ContainerJobFailed";
+  }
+}
+
+/**
+ * A round of waiting ended with the job still going: the worker slot goes
+ * back to the queue and the run comes back for the same job later.
+ */
+export class ContainerJobPending extends Error {
+  /**
+   * A job that outlasted one round of waiting.
+   * @param jobId - The job still going.
+   */
+  constructor(jobId: string) {
+    super(`container job ${jobId} is still running`);
+    this.name = "ContainerJobPending";
   }
 }
 
@@ -86,11 +102,14 @@ function storedJob(output: Record<string, unknown>): StoredJob | null {
 
 /**
  * Find this task's job, or open it: the deadline and the output keys are
- * fixed once, on the first attempt.
+ * fixed once, on the first attempt. The deadline is the one the task's rows
+ * on the canvas run out at, so the job and the row end together.
  * @param spec - The tool.
  * @param op - Its operation.
  * @param input - The run.
  * @returns The step's id and the job.
+ * @throws {ContainerJobFailed} When an earlier attempt already failed the step.
+ * @throws {Error} When the task opened no row on the canvas.
  */
 async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunInput): Promise<{ stepId: string; job: StoredJob }> {
   const plan = getMiniToolsConfig().ops[op];
@@ -98,10 +117,14 @@ async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunIn
     { kind: "container_job", endpoint: plan.container_class, itemIndex: null },
   ]);
   if (!step) throw new Error(`task ${input.taskId} has no container step`);
-  if (step.status === "failed") throw new ContainerJobFailed("tool_failed");
+  if (step.status === "failed") {
+    const kept = step.output.error;
+    throw new ContainerJobFailed(typeof kept === "string" ? kept : "tool_failed");
+  }
   const held = storedJob(step.output);
   if (held) return { stepId: step.id, job: held };
-  const deadlineAt = Date.now() + getNodeTaskConfig().default_budget_ms;
+  const deadlineAt = await nodeTaskService.deadlineFor(input.taskId);
+  if (deadlineAt === null) throw new Error(`task ${input.taskId} has no task row to run against`);
   const job: StoredJob = {
     jobId: `task:${input.taskId}`,
     containerClass: plan.container_class,
@@ -119,17 +142,20 @@ async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunIn
 }
 
 /**
- * Submit the job when its class holds none, then wait for it to end.
+ * Submit the job when its class holds none, then wait one round for it to end.
  * @param op - The operation.
  * @param input - The run.
  * @param job - The job.
  * @returns The ending report.
+ * @throws {ContainerJobPending} When the round ends with the job still going.
  * @throws {ContainerJobFailed} When the deadline passes with the job still going.
  */
 async function awaitJob(op: ContainerOp, input: ContainerRunInput, job: StoredJob): Promise<MiniToolJobReport> {
   const { poll_interval_ms: poll } = getMiniToolsConfig();
   const giveUpAt = job.deadlineAt + poll * 2;
+  const roundEndsAt = Date.now() + getWorkerConfig().poll_max_wait;
   while (Date.now() < giveUpAt) {
+    if (Date.now() >= roundEndsAt) throw new ContainerJobPending(job.jobId);
     let report = await readMiniToolJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, job.containerClass, job.jobId);
     if (report === null) {
       try {

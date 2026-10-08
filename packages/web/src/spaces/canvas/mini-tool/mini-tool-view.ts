@@ -45,7 +45,7 @@ export interface MiniToolSourceInfo {
 export interface SizeTierChoice {
   key: string;
   options: readonly SizeTierOption[];
-  /** The tier the run takes; undefined when none enlarges the source. */
+  /** The tier the run takes; undefined when no tier is usable for the source. */
   selected: string | undefined;
 }
 
