@@ -182,7 +182,7 @@ config/ locales/ (git-tracked)
 | 执行 | BullMQ Worker(异步) | API 直接 streamText(同步 SSE) |
 | 结果交付 | Redis → Hocuspocus → Yjs(协作者可见) | SSE 流给请求者(私有,接受后才写 Yjs) |
 | 用户交互 | 等待 → 结果出现 | 打字机效果,可随时 abort |
-| 积分 | 模型工具按 API cost;容器工具按容器报回的用时折算 | 按这次调用的真实花费记录(OpenRouter 回报的 cost,或直连模型的价格表),但这条路今天扣不到任何 studio —— 它的路由还没带 project(#122),而付钱的 studio 由 project 决定 |
+| 积分 | 模型工具按 API cost;容器工具按容器报回的用时折算 | 按这次调用的真实花费记录(OpenRouter 回报的 cost,或直连模型的价格表),但这条路截至 2026-10-08 扣不到任何 studio —— 它的路由还没带 project(#122),而付钱的 studio 由 project 决定 |
 | 并发 | Worker concurrency 控制 | 每用户 1 个(Redis 锁) |
 
 Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue / generate / character / storyboard / script。操作类发完整 `document` + `selection` 保证上下文。自动匹配输入语言回复。
