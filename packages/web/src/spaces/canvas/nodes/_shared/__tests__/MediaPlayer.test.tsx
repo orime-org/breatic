@@ -175,3 +175,18 @@ describe('MediaPlayer', () => {
     expect(shown.className).not.toContain('translate-y-full');
   });
 });
+
+// A video's poster is its cover, and the cover has a 576-wide preview beside
+// it (inner#1320).
+describe('MediaPlayer poster', () => {
+  const COVER =
+    'https://resource-dev.breatic.cc/video/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679_cover.png';
+
+  it('shows the cover preview as the poster', () => {
+    render(<MediaPlayer modality='video' src='/v.mp4' poster={COVER} />);
+
+    expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(
+      `${COVER}.preview.webp`,
+    );
+  });
+});

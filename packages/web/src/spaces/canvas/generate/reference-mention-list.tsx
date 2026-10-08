@@ -13,6 +13,7 @@ import * as React from 'react';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
+import { PreviewImg } from '@web/components/preview-img';
 
 /**
  * The key a reference row is listed under.
@@ -44,7 +45,7 @@ export function ReferenceRow({ item }: ReferenceRowProps): React.JSX.Element {
   return (
     <>
       {typeof item.thumbnail === 'string' && item.thumbnail.length > 0 ? (
-        <img
+        <PreviewImg
           src={item.thumbnail}
           alt=''
           className='h-6 w-6 shrink-0 rounded-sm object-cover'

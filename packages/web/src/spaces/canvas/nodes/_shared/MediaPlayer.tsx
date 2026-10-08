@@ -11,6 +11,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { usePreviewSrc } from '@web/lib/preview-src';
 import { formatSeconds } from '@web/spaces/canvas/lib/duration';
 import type { NodeResolution } from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
 import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/useMediaPlayer';
@@ -102,6 +103,9 @@ export function MediaPlayer({
   const ref = React.useRef<HTMLMediaElement>(null);
   const p = useMediaPlayer(ref, duration);
   const isVideo = modality === 'video';
+  // A poster has no error event of its own, so the cover's preview is tried
+  // off-screen and the original stands in when it is missing (inner#1320).
+  const shownPoster = usePreviewSrc(poster, { probe: true }).src ?? undefined;
   // #1622: the hover-preview variant drops volume (a portaled Popover) and
   // fullscreen so it can live inside an auto-close HoverCard.
   const showVolume = variant !== 'preview';
@@ -188,7 +192,7 @@ export function MediaPlayer({
         <video
           ref={ref as React.RefObject<HTMLVideoElement>}
           src={src}
-          poster={poster}
+          poster={shownPoster}
           playsInline
           // Explicit contract — the spec leaves the missing-value default to
           // the UA. Metadata covers the duration display + dimension badge
