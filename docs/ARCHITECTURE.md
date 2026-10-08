@@ -188,7 +188,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 ### 生成模板
 
-**模板 = 一组定死的模式、模型、参数和提示词**(inner#977),写在代码里:注册表是 `packages/shared/src/canvas/generation-templates.ts`(web 和后端共用)。**提示词是界面文字,放在 `locales/*.json` 的 `canvas.template.<id>.prompt`**,读者要动手的地方写成三种标记 —— `[📎 …]` 是读者要 @ 的素材(落进框里时由 `markText` 套上 `canvas.promptMark.reference` 那句「请用 @ 选择」),`{✏️ …}` 是要改写的词,`(💡 …)` 是操作面板的注意事项(落进框里是橙色的一块、排在最前、不发给模型),跟提议卡片是同一套标记,由 `markedSegments`(`canvas-proposal.ts`)读回片段 —— 它是 `markText` 的逆,从框里复制出来的素材标记读回去也去掉「请用 @ 选择」。给 Agent 看的模板提示词是这些片段本身(`templateGuide`),跟它发回来的形状一致。取的是当前生效的语言,服务端即这次请求的语言。每个模板声明 `references`(提示词要几张参考图),注册表测试逐个语言核对标记数跟它一致。
+**模板 = 一组定死的模式、模型、参数和提示词**(inner#977),写在代码里:注册表是 `packages/shared/src/canvas/generation-templates.ts`(web 和后端共用)。**提示词是界面文字,放在 `locales/*.json` 的 `canvas.template.<id>.prompt`**,读者要动手的地方写成三种标记 —— `[📎 …]` 是读者要 @ 的素材(落进框里时由 `markText` 套上 `canvas.promptMark.reference` 那句「请用 @ 选择」),`{✏️ …}` 是要改写的词,`(💡 …)` 是操作面板的注意事项(落进框里是橙色底的一块、开头显示「注意事项：」(`canvas.generatePanel.notePrefix`,只画在屏幕上)、排在最前、不发给模型),跟提议卡片是同一套标记,由 `markedSegments`(`canvas-proposal.ts`)读回片段 —— 它是 `markText` 的逆,从框里复制出来的素材标记读回去也去掉「请用 @ 选择」。给 Agent 看的模板提示词是这些片段本身(`templateGuide`),跟它发回来的形状一致。取的是当前生效的语言,服务端即这次请求的语言。每个模板声明 `references`(提示词要几张参考图),注册表测试逐个语言核对标记数跟它一致。
 
 | 入口 | 做什么 |
 |---|---|
