@@ -151,7 +151,7 @@ export async function createTask(data: {
 /**
  * Update task status with conditional timestamp handling.
  *
- * - RUNNING → sets started_at
+ * - RUNNING → sets started_at once; a run picked up again keeps its first start
  * - COMPLETED/FAILED/CANCELLED → sets completed_at
  * @param id - UUID of the task to update.
  * @param status - New status string (e.g. `"running"`, `"completed"`, `"failed"`, `"cancelled"`).
@@ -202,6 +202,28 @@ export async function setJobId(id: string, jobId: string): Promise<void> {
     .update(tasks)
     .set({ arqJobId: jobId, updatedAt: new Date() })
     .where(eq(tasks.id, id));
+}
+
+/**
+ * Mark a task running on a job and keep its first start.
+ * @param id - UUID of the task.
+ * @param jobId - The BullMQ job running it.
+ * @returns The start the row holds after the write.
+ * @throws {Error} When the task row does not exist.
+ */
+export async function markRunning(id: string, jobId: string): Promise<Date> {
+  const [row] = await db
+    .update(tasks)
+    .set({
+      arqJobId: jobId,
+      status: "running",
+      startedAt: sql`coalesce(${tasks.startedAt}, now())`,
+      updatedAt: new Date(),
+    })
+    .where(eq(tasks.id, id))
+    .returning({ startedAt: tasks.startedAt });
+  if (!row?.startedAt) throw new Error(`task ${id} has no row to mark running`);
+  return row.startedAt;
 }
 
 /**

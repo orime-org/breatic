@@ -443,8 +443,10 @@ async function runTaskBody(
 
   // A run picked up again (a retry, or a container job coming back for its
   // next read) is still the same run: its duration counts from the first start.
-  const startedAt = existing?.startedAt ?? new Date();
-  await taskService.markRunning(taskId, job.id ?? "");
+  const startedAt =
+    existing?.status === "running" && existing.startedAt
+      ? existing.startedAt
+      : await taskService.markRunning(taskId, job.id ?? "");
 
 
   // ─── Stage 1: Call the provider ───────────────────────────────────

@@ -48,8 +48,9 @@ describe("marking a task running", () => {
     await sql`UPDATE tasks SET started_at = now() - interval '1 hour' WHERE id = ${taskId}`;
     const [before] = await sql<{ started_at: Date }[]>`SELECT started_at FROM tasks WHERE id = ${taskId}`;
 
-    await taskService.markRunning(taskId, "job-1");
+    const returned = await taskService.markRunning(taskId, "job-1");
 
+    expect(returned.getTime()).toBe(before!.started_at.getTime());
     const [after] = await sql<{ started_at: Date }[]>`SELECT started_at FROM tasks WHERE id = ${taskId}`;
     expect(after!.started_at.getTime()).toBe(before!.started_at.getTime());
   });

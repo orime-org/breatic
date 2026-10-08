@@ -118,7 +118,7 @@ export function nodeResultsFrom(
  * @param run.reportedModel - The model the stored result named, when it did.
  * @param run.jobModel - The model the job asked for.
  * @param run.credits - What this run was billed, in credits.
- * @param run.durationMs - How long the provider call took.
+ * @param run.durationMs - How long the run took from its first start, in milliseconds.
  * @param run.params - What the run was given.
  * @param run.toolId - The mini-tool that made the result; the row is named by it.
  * @returns The metadata, in the shape the history row holds.

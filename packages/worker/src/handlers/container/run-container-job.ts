@@ -70,6 +70,9 @@ export class ContainerJobPending extends Error {
   }
 }
 
+/** A report of a job that ended, done or failed. */
+type EndedReport = Extract<MiniToolJobReport, { state: "done" | "failed" }>;
+
 /** What the step keeps so a retry finds the same job. */
 interface StoredJob {
   jobId: string;
@@ -148,11 +151,11 @@ async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunIn
  * @param op - The operation.
  * @param input - The run.
  * @param job - The job.
- * @returns The ending report.
+ * @returns The report of a job that ended.
  * @throws {ContainerJobPending} When the job is still going.
  * @throws {ContainerJobFailed} When the deadline has passed with the job still going.
  */
-async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJob): Promise<MiniToolJobReport> {
+async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJob): Promise<EndedReport> {
   const { poll_interval_ms: poll } = getMiniToolsConfig();
   let report = await readMiniToolJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, job.containerClass, job.jobId);
   if (report === null) {
@@ -171,10 +174,9 @@ async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJo
       // The container could not start; the next pickup submits again.
       if (!(err instanceof UploadHttpError && err.status === 503)) throw err;
       logger.warn({ taskId: input.taskId, jobId: job.jobId }, "mini_tool_container_start_refused");
-      report = null;
     }
   }
-  if (report !== null && (report.state === "done" || report.state === "failed")) return report;
+  if (report?.state === "done" || report?.state === "failed") return report;
   // The Durable Object ends the job at its deadline; two polls leave room for its report to land.
   if (Date.now() >= job.deadlineAt + poll * 2) throw new ContainerJobFailed("tool_failed");
   throw new ContainerJobPending(job.jobId, Date.now() + poll);
@@ -233,7 +235,6 @@ export async function runContainerJob(
     await upstreamStepRepo.markFailed(stepId, report.reason);
     throw new ContainerJobFailed(report.reason);
   }
-  if (report.state !== "done") throw new ContainerJobFailed("tool_failed");
 
   const outputs: PersistedOutput[] = [];
   for (const written of job.outputs) {
