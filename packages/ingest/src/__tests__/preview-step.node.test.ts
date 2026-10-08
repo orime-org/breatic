@@ -90,6 +90,12 @@ describe("whether there is time to cut it", () => {
         now: NOW,
         deadlineAt: NOW + 10_000 + PREVIEW_MARGIN_MS - 1,
       }),
+    ).toBe("late");
+  });
+
+  it("says nothing about time when no preview was asked for", () => {
+    expect(
+      previewSource({ ...ask, wantPreview: false, previewTimeoutMs: 10_000, now: NOW, deadlineAt: NOW }),
     ).toBeNull();
   });
 });

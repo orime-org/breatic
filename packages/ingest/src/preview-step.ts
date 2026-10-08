@@ -34,7 +34,8 @@ export const PREVIEW_MARGIN_MS = 5_000;
  * @param run.deadlineAt - When the Worker stops waiting, in epoch ms.
  * @param run.previewTimeoutMs - How long the preview tool may run.
  * @param run.now - The container's clock now, in epoch ms.
- * @returns `cover`, `object`, or null for no preview.
+ * @returns `cover` or `object` for where to cut it from, `late` when one was
+ *   asked for but the deadline is too close, or null for no preview.
  */
 export function previewSource(run: {
   wantPreview: boolean;
@@ -44,10 +45,10 @@ export function previewSource(run: {
   deadlineAt: number;
   previewTimeoutMs: number;
   now: number;
-}): "cover" | "object" | null {
+}): "cover" | "object" | "late" | null {
   if (!run.wantPreview) return null;
   if (run.deadlineAt - run.now < run.previewTimeoutMs + PREVIEW_MARGIN_MS) {
-    return null;
+    return "late";
   }
   if (run.wantCover) return run.cover === null ? null : "cover";
   return hasPreviewableFrame(run.report) ? "object" : null;

@@ -170,6 +170,14 @@ async function cutPreview(
     previewTimeoutMs: asked.previewTimeoutMs,
     now: Date.now(),
   });
+  if (source === "late") {
+    // The Worker drops the whole answer at its deadline, so this run keeps
+    // the size and the cover and leaves the preview to the backfill.
+    console.error("media_preview_skipped_deadline", {
+      leftMs: asked.deadlineAt - Date.now(),
+    });
+    return null;
+  }
   if (source === null) return null;
   const fromCover = source === "cover" ? found.cover : null;
   const cut = await run(
