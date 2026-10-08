@@ -132,6 +132,9 @@ describe('DocumentEditor', () => {
       }
       return true;
     });
+    // The caret raises the toolbar only while the body holds the focus
+    // (inner#1127 A20).
+    editor.prosemirrorView!.dom.focus();
     editor.transact((tr) => {
       tr.setSelection(TextSelection.create(tr.doc, inside));
     });

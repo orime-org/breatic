@@ -34,7 +34,6 @@ import { SideMenuExtension } from '@blocknote/core/extensions';
 import { GripVertical, Plus, Table } from 'lucide-react';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import * as React from 'react';
-import { NodeSelection } from '@tiptap/pm/state';
 
 import {
   useBlockNoteEditor,
@@ -71,6 +70,7 @@ import { useStripOnFirstLine } from '@web/spaces/document/document-strip-alignme
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import type { PressedBlock } from '@web/spaces/document/document-handle-commands';
+import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useRowNow } from '@web/spaces/document/use-row-now';
 
@@ -165,22 +165,10 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
   // pointer alone (`SideMenu.ts:607` — `onMouseMove` straight to
   // `updateStateFromMousePos`, with no selection in the judgement; it hides
   // only while a key is pressed in the body, `:600-604`), so this gate is
-  // ours. The same reading `DocumentEditor` makes for the link toolbar, from
-  // the same hook: it subscribes to both change and selection change
-  // (`use-editor-snapshot.ts:40-41`) and reads during render, so the strip
-  // arriving under a pointer is served without a second mechanism.
-  const holdsSelection = useEditorSnapshot(
-    // The context's editor type is pinned to the library's own default schema
-    // while ours is `BlockNoteEditor<never, never, never>` — the same cast
-    // `DocumentBlockControls` makes when it puts the editor into the context.
-    editor as never,
-    // A whole block selected by a click — a picture, a video — is not a
-    // range the strip would stand over, and the strip is how that block is
-    // dragged (inner#1127).
-    (current) =>
-      !current.prosemirrorState.selection.empty &&
-      !(current.prosemirrorState.selection instanceof NodeSelection),
-  );
+  // ours. It reads whether the bubble bar is up rather than the selection
+  // behind it: a selection the body let go of stays in the editor without
+  // being drawn, and nothing stands over it (inner#1127, `document-bars.ts`).
+  const holdsSelection = useDocumentBars(editor).bubbleBarUp;
 
   // Read off the document on every change: the side menu's own snapshot is not
   // refreshed while the pointer stays on the same row.

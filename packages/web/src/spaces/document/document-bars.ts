@@ -14,8 +14,12 @@
  * 3. otherwise whatever the selection raises: a selected media block's
  *    toolbar, or the bubble bar.
  *
- * The bubble bar and the link toolbar already keep apart through the
- * selection (`yielding` in `DocumentEditor`); this adds the media blocks.
+ * Two controls stand aside for a bar on screen rather than for the selection
+ * behind it, which stays in the editor while the body does not hold the
+ * focus and is then not drawn (inner#1127, `document-body-focus.ts`): the
+ * row handles and the link toolbar the pointer raises stand aside while the
+ * bubble bar is up, and the column handle makes room for the cell button
+ * while it is up.
  */
 
 import * as React from 'react';
@@ -28,14 +32,22 @@ export interface DocumentBars {
   readonly hoveredMedia: HTMLElement | null;
   /** Whether the link toolbar is up. */
   readonly linkToolbarUp: boolean;
+  /** Whether the selection bubble bar is up, standing aside for a panel of its own included. */
+  readonly bubbleBarUp: boolean;
+  /** The position before the cell the cell button is on, or null while it is not up. */
+  readonly cellButtonCell: number | null;
 }
 
-const NONE: DocumentBars = { hoveredMedia: null, linkToolbarUp: false };
+const NONE: DocumentBars = { hoveredMedia: null, linkToolbarUp: false, bubbleBarUp: false, cellButtonCell: null };
 
 /** Keyed by editor, so an editor that is dropped takes its state with it. */
 const store = keyedStore<object, DocumentBars>(
   () => NONE,
-  (a, b) => a.hoveredMedia === b.hoveredMedia && a.linkToolbarUp === b.linkToolbarUp,
+  (a, b) =>
+    a.hoveredMedia === b.hoveredMedia &&
+    a.linkToolbarUp === b.linkToolbarUp &&
+    a.bubbleBarUp === b.bubbleBarUp &&
+    a.cellButtonCell === b.cellButtonCell,
 );
 
 /**
@@ -69,6 +81,24 @@ export function setHoveredMedia(editor: object, host: HTMLElement, on: boolean):
  */
 export function setLinkToolbarUp(editor: object, up: boolean): void {
   store.set(editor, { ...store.get(editor), linkToolbarUp: up });
+}
+
+/**
+ * Records the bubble bar coming up or going down.
+ * @param editor - The editor.
+ * @param up - Whether it is up.
+ */
+export function setBubbleBarUp(editor: object, up: boolean): void {
+  store.set(editor, { ...store.get(editor), bubbleBarUp: up });
+}
+
+/**
+ * Records the cell the cell button is on, or that it is not up.
+ * @param editor - The editor.
+ * @param cell - The position before the cell, or null.
+ */
+export function setCellButtonCell(editor: object, cell: number | null): void {
+  store.set(editor, { ...store.get(editor), cellButtonCell: cell });
 }
 
 /**

@@ -144,6 +144,9 @@ export function DocumentLinkPopover({
 }): React.JSX.Element | null {
   const t = useTranslation();
   const [mode, setMode] = React.useState<LinkMode>('closed');
+  // The button names the panel it opened, which is how the body counts the
+  // panel among its own layers (inner#1127, design 3.5.1).
+  const panelId = React.useId();
   const [target, setTarget] = React.useState<LinkTarget>(NO_TARGET);
 
   // Subscribed rather than read while rendering: a co-editor's change arrives
@@ -373,6 +376,7 @@ export function DocumentLinkPopover({
         aria-pressed={holdsLink}
         aria-haspopup='dialog'
         aria-expanded={mode !== 'closed'}
+        aria-controls={mode !== 'closed' ? panelId : undefined}
         disabled={!canLink}
         onClick={openFromSelection}
         data-testid='doc-bubble-tool-link'
@@ -397,6 +401,7 @@ export function DocumentLinkPopover({
               // `visibility: hidden` element cannot take focus.
               style={{ ...floatingStyles, opacity: isPositioned ? 1 : 0 }}
               {...getFloatingProps()}
+              id={panelId}
               data-testid='doc-link-popover'
               role='dialog'
               className={`z-50 ${LINK_PANEL_SURFACE}`}

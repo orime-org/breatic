@@ -86,6 +86,7 @@ import {
   LINK_TOOLBAR_CLOSE_DELAY_MS,
 } from '@web/spaces/document/link-toolbar-timing';
 import { setLinkToolbarUp, textBarsStandAside, useDocumentBars } from '@web/spaces/document/document-bars';
+import { bodyFocusStore, bodyLayerMark } from '@web/spaces/document/document-body-focus';
 
 /** Which of the toolbar's two faces is showing. */
 type ToolbarFace = 'read' | 'form';
@@ -334,7 +335,15 @@ export function DocumentLinkToolbar({
     const spanOf = (one: TrackedLink | null): LinkRange | null =>
       resolveTrackedLink(state, one).range;
 
-    const atCaret = linkAtCaret(state);
+    // The caret raises the toolbar only while the body holds the focus and the
+    // focus is in the editable element or in this toolbar (inner#1127, design
+    // 3.5.1): a caret the body let go of is not drawn, and raises nothing.
+    const focus = bodyFocusStore.get(editor);
+    const caretCounts =
+      focus.holds &&
+      focus.focused !== null &&
+      (focus.focused === domElementOf(editor) || surfaceRef.current?.contains(focus.focused) === true);
+    const atCaret = caretCounts ? linkAtCaret(state) : { range: null, href: null };
     const atPointer = resolveTrackedLink(state, pointerOn.current);
 
     // A dismissal lasts while a reason that raised it is still on its link.
@@ -659,9 +668,12 @@ export function DocumentLinkToolbar({
     settle();
     const offChange = editor.onChange(settle);
     const offSelection = editor.onSelectionChange(settle);
+    // The body letting go of the focus, or taking it back, moves no selection.
+    const offFocus = bodyFocusStore.subscribe(editor, settle);
     return () => {
       offChange();
       offSelection();
+      offFocus();
     };
   }, [editor, settle]);
 
@@ -857,6 +869,8 @@ export function DocumentLinkToolbar({
         style={floatingStyles}
         data-testid='doc-link-toolbar'
         data-standing-aside={standingAside ? 'true' : undefined}
+        // A layer of the body, belonging on the link it is about.
+        {...bodyLayerMark(editor, held.range)}
         className={cn(LINK_PANEL_SURFACE, standingAside && 'invisible pointer-events-none')}
         {...getFloatingProps({
           onMouseEnter: takeSurface,
