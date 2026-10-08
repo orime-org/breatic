@@ -511,6 +511,52 @@ test('a video plays in place and keeps playing while its width changes (A7, A8)'
   expect(await page.locator(`${VIDEO} video`).evaluate((v, before) => v === before, element)).toBe(true);
 });
 
+test('a picture that is the first block takes its width from any corner (A8)', async () => {
+  await openFreshDocument(page);
+  await pickFromPlus(page, 'image', { name: 'first.png', mimeType: 'image/png', buffer: await pngBytes(page, 600, 300) });
+  const img = page.locator(`${IMAGE} img`);
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  expect(await types(page)).toEqual(['image', 'paragraph']);
+
+  for (const [corner, by] of [['se', -100], ['ne', -60]] as const) {
+    await img.click();
+    const knob = page.getByTestId(`doc-media-resize-${corner}`);
+    const before = (await img.boundingBox())!.width;
+    const box = (await knob.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + by, box.y + box.height / 2, { steps: 6 });
+    await page.mouse.up();
+    await expect.poll(async () => (await img.boundingBox())!.width).toBeLessThan(before - 20);
+    await expect(page.locator(IMAGE)).toHaveAttribute('data-preview-width', String(Math.round((await img.boundingBox())!.width)));
+  }
+});
+
+test('the keys on a player button are the button\'s: Space and Enter play and pause, and the document stays as it is (A7, A10)', async () => {
+  await openFreshDocument(page);
+  await pickFromPlus(page, 'video', {
+    name: 'keys.mp4',
+    mimeType: 'video/mp4',
+    buffer: readFileSync(resolve(__dirname, '../fixtures/media-history.mp4')),
+  });
+  const video = page.locator(`${VIDEO} video`);
+  await expect(video).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const before = await types(page);
+  const paused = (): Promise<boolean> => video.evaluate((v: HTMLVideoElement) => v.paused);
+  const play = page.locator(`${VIDEO} [data-testid="play-toggle"]`);
+
+  await play.click();
+  await expect.poll(paused).toBe(false);
+  await page.keyboard.press('Space');
+  await expect.poll(paused).toBe(true);
+  await page.keyboard.press('Enter');
+  await expect.poll(paused).toBe(false);
+  await page.keyboard.press('Enter');
+  await expect.poll(paused).toBe(true);
+  expect(await types(page)).toEqual(before);
+  await expect(page.locator(`${VIDEO} [data-testid="doc-media-box"]`)).toHaveAttribute('data-selected', 'true');
+});
+
 test('a narrow video keeps play, seek and full screen inside it, and shows its times once it is wide (A7)', async () => {
   await openFreshDocument(page);
   await pickFromPlus(page, 'video', {
@@ -874,6 +920,38 @@ test('a click held with Cmd or Ctrl in a media row does what the plain click doe
   }
 });
 
+test('a right or middle press on a picture selects it as it lands, with no caret drawn while it is held (A10)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('alpha');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('omega');
+  await page.keyboard.press('ArrowUp');
+  await pastePicture(page, 'press.png');
+  const picture = page.locator(IMAGE);
+  const img = picture.locator('img');
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const knob = picture.locator('[data-testid="doc-media-resize-se"]');
+
+  for (const button of ['right', 'middle'] as const) {
+    // The body without the keyboard, the caret it had kept on the line above.
+    await page.getByTestId('theme-toggle').click();
+    await page.keyboard.press('Escape');
+    await expect(knob).toHaveCount(0);
+    const at = (await img.boundingBox())!;
+    await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2);
+    await page.mouse.down({ button });
+    const drawn: boolean[] = [];
+    for (let i = 0; i < 10; i += 1) {
+      drawn.push(await caretDrawn(page));
+      await page.waitForTimeout(15);
+    }
+    await expect(knob).toBeVisible();
+    await page.mouse.up({ button });
+    expect(drawn).not.toContain(true);
+    await page.keyboard.press('Escape');
+  }
+});
+
 test('a picture shown full screen from its hover toolbar gives the caret back where it was when it closes (A10, A17)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('alpha');
@@ -905,8 +983,12 @@ test('a picture shown full screen from its hover toolbar gives the caret back wh
   expect(rows[rows.indexOf('image') + 1]).toBe('omegaZ');
 });
 
-for (const opening of ['toolbar', 'double click'] as const) {
-  test(`a picture shown full screen from the ${opening} is selected again when it closes (A10, A17)`, async () => {
+for (const [opening, closing] of [
+  ['toolbar', 'Escape'],
+  ['double click', 'Escape'],
+  ['toolbar', 'a press on the overlay'],
+] as const) {
+  test(`a picture shown full screen from the ${opening} is selected again when it closes on ${closing} (A10, A17)`, async () => {
     await openFreshDocument(page);
     await page.keyboard.type('alpha');
     await page.keyboard.press('Enter');
@@ -928,7 +1010,8 @@ for (const opening of ['toolbar', 'double click'] as const) {
     if (opening === 'toolbar') await picture.getByTestId('doc-media-fullscreen').click();
     else await img.dblclick();
     await expect(page.getByTestId('doc-media-fullscreen-image')).toBeVisible();
-    await page.keyboard.press('Escape');
+    if (closing === 'Escape') await page.keyboard.press('Escape');
+    else await page.mouse.click(10, 10);
     await expect(page.getByTestId('doc-media-fullscreen-image')).toHaveCount(0);
     await page.mouse.move(5, 5);
 
