@@ -64,6 +64,7 @@ import {
   modelsForMode,
   waysIn,
   type WayIn,
+  type WayKind,
   type ModelInfo,
   type ParamInfo,
 } from "@domain/model-catalog/mode-catalog.js";
@@ -857,6 +858,24 @@ function placesByKind(proposal: CanvasProposal): Map<string, number> {
 }
 
 /**
+ * How a node of a kind the canvas will not wire in still reaches a
+ * generation: picked into a slot of that kind in the panel (design 5.7 table A).
+ * @param into - The generation the edge was drawn into.
+ * @param kind - The kind of the node at the edge's other end.
+ * @returns The sentence naming those slots, or nothing where the model has none.
+ * @throws {never} Never.
+ */
+function pickedInstead(into: ProposalNode, kind: string): string {
+  if (into.type === "text" || !into.mode || !into.model) return "";
+  const reachable = modelsForMode(into.type, into.mode);
+  const chosen = reachable.available ? reachable.models.find((m) => m.name === into.model) : undefined;
+  const slots = chosen ? (waysIn(chosen).get(kind as WayKind) ?? []).filter((way) => !way.byEdge) : [];
+  if (slots.length === 0) return "";
+  const names = slots.map((way) => `"${way.into}"`).join(" or ");
+  return ` "${into.model}" takes a ${kind} node in its ${names} slot, picked in the panel: leave this edge off and place the node unwired.`;
+}
+
+/**
  * Whether every empty node the proposal places has a place to go.
  *
  * Asked of the group rather than of one generation, because a slot is filled
@@ -947,7 +966,7 @@ function checkResolved(proposal: CanvasProposal): ProposalVerdict {
     if (into && outOf && !canConnect(outOf.type, into.type)) {
       return {
         ok: false,
-        reason: `The canvas does not let a ${outOf.type} node feed a ${into.type} node, by your hand or theirs.`,
+        reason: `The canvas does not let a ${outOf.type} node feed a ${into.type} node, by your hand or theirs.${pickedInstead(into, outOf.type)}`,
       };
     }
   }
