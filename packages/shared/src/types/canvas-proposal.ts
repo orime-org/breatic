@@ -13,6 +13,7 @@
 
 import { t, tInEveryLocale } from "@shared/i18n/index.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
+import type { NodeMediaFields } from "@shared/canvas/node-media.js";
 
 /**
  * What a marked spot in the prompt asks of the reader (inner#977): `asset`
@@ -203,6 +204,23 @@ export interface ProposalNode {
   role: ProposalRole;
   type: ProposalNodeType;
   name: string;
+  /**
+   * The reader's material a source node lands holding: an address in our
+   * storage. A source node without it lands empty for the reader to fill.
+   */
+  material?: string;
+  /**
+   * What the check read off the material's registration, so the node lands
+   * with the numbers an upload would have given it. Written by the check,
+   * never by the model.
+   */
+  materialMedia?: NodeMediaFields;
+  /**
+   * The slots of a generation filled straight from material nodes: slot param
+   * name to the indices of the source nodes that fill it. The slot takes a
+   * snapshot of each, the way a pick in the panel does, and no edge is drawn.
+   */
+  fills?: Record<string, number[]>;
   mode?: string;
   model?: string;
   params?: Record<string, unknown>;
@@ -258,6 +276,23 @@ export function proposalMarkSegments(node: ProposalNode): PromptSegment[] {
 }
 
 /**
+ * Every place one node of a proposal feeds another: its edges, then each fill.
+ *
+ * A material node that fills a slot is drawn with no edge, yet it is as much
+ * part of the generation it fills as one wired in, so whatever arranges the
+ * nodes or groups them reads both through here.
+ * @param proposal - The proposal being read.
+ * @returns One pair per edge and per filled index, edges first.
+ * @throws {never} Never.
+ */
+export function feedsOf(proposal: CanvasProposal): Array<{ fromIndex: number; toIndex: number }> {
+  const fills = proposal.nodes.flatMap((node, toIndex) =>
+    Object.values(node.fills ?? {}).flatMap((indices) => indices.map((fromIndex) => ({ fromIndex, toIndex }))),
+  );
+  return [...proposal.edges.map(({ fromIndex, toIndex }) => ({ fromIndex, toIndex })), ...fills];
+}
+
+/**
  * How far downstream each node of a proposal sits, counting from what starts it.
  *
  * One further than the last thing that feeds it. Both the card's little
@@ -275,9 +310,10 @@ export function proposalMarkSegments(node: ProposalNode): PromptSegment[] {
  */
 export function layersOf(proposal: CanvasProposal): number[] {
   const depth = proposal.nodes.map(() => 0);
+  const feeds = feedsOf(proposal);
   for (let pass = 0; pass < proposal.nodes.length; pass += 1) {
     let moved = false;
-    for (const edge of proposal.edges) {
+    for (const edge of feeds) {
       const from = depth[edge.fromIndex];
       const to = depth[edge.toIndex];
       if (from === undefined || to === undefined || to > from) continue;

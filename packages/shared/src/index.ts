@@ -216,6 +216,7 @@ export {
   PANEL_EDITOR_PARAM,
   insertRefusal,
   isReferenceMaterial,
+  feedsOf,
   layersOf,
   proposalMarkSegments,
   markReadsBack,
