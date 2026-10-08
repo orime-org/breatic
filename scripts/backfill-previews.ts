@@ -23,7 +23,7 @@
  */
 
 import { findRoot, loadEnv } from "./load-env.js";
-import { OUTCOMES, outcomeOf, sizeCorrection } from "./backfill-previews-plan.mjs";
+import { outcomeOf, sizeCorrection } from "./backfill-previews-plan.mjs";
 
 const ROOT = findRoot();
 loadEnv(ROOT);
@@ -35,6 +35,7 @@ const core = (await import("../packages/core/dist/index.js")) as {
 };
 core.initCore(process.env);
 const shared = (await import("../packages/shared/dist/index.js")) as {
+  PREVIEW_OUTCOMES: readonly string[];
   readStoredMediaAtIngest: (
     url: string,
     secret: string,
@@ -66,7 +67,9 @@ const rows = (await core.rawPg`
 console.log(`${rows.length} stored images`);
 
 const limits = domain.assetService.mediaLimits();
-const counts = new Map<string, number>(OUTCOMES.map((outcome) => [outcome, 0]));
+const counts = new Map<string, number>(
+  [...shared.PREVIEW_OUTCOMES, "missing"].map((outcome) => [outcome, 0]),
+);
 const failedKeys: string[] = [];
 let resized = 0;
 let next = 0;

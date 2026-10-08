@@ -52,9 +52,6 @@ export const SERVE_OBJECT = "serveObject";
  */
 const PROBEABLE = /^(?:image|video|audio)\//;
 
-/** What one read answered, or nothing when it could not be run. */
-const NOTHING_READ: ProbeAnswer = UNREAD_ANSWER;
-
 /** What the deadline resolves with, telling it apart from what a run answers. */
 const UNFINISHED = Symbol("unfinished");
 
@@ -89,7 +86,7 @@ export async function readMediaAtEdge(
     limits: MediaLimits;
   },
 ): Promise<ProbeAnswer> {
-  if (!PROBEABLE.test(about.contentType)) return NOTHING_READ;
+  if (!PROBEABLE.test(about.contentType)) return UNREAD_ANSWER;
 
   const instance = env.MEDIA.get(env.MEDIA.idFromName(about.storageKey));
   const previewTimeoutMs = about.limits.previewTimeoutMs ?? 0;
@@ -141,15 +138,15 @@ export async function readMediaAtEdge(
       storageKey: about.storageKey,
       runDeadlineMs: about.limits.runDeadlineMs,
     });
-    return NOTHING_READ;
+    return UNREAD_ANSWER;
   }
-  if (answered === null) return NOTHING_READ;
+  if (answered === null) return UNREAD_ANSWER;
   if (!answered.ok) {
     noteFailure("ingest_media_read_refused", {
       storageKey: about.storageKey,
       status: answered.status,
     });
-    return NOTHING_READ;
+    return UNREAD_ANSWER;
   }
   return readProbeAnswer(answered);
 }

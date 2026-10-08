@@ -650,6 +650,7 @@ export {
   type IngestMeasurements,
   type MediaLimits,
   type MediaNumbers,
+  PREVIEW_OUTCOMES,
   type PreviewOutcome,
   type StoredMediaRead,
 } from "@shared/upload/ingest-client.js";

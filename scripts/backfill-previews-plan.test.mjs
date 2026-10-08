@@ -52,6 +52,10 @@ test("counts each outcome the Worker names", () => {
   }
 });
 
+test("counts whatever outcome the Worker names", () => {
+  assert.equal(outcomeOf({ preview: "timeout" }), "timeout");
+});
+
 test("counts a read that named no outcome as failed", () => {
   assert.equal(outcomeOf({}), "failed");
 });

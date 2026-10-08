@@ -29,6 +29,7 @@ import {
   type IngestFailureCode,
   type SessionTokenPayload,
   type MediaLimits,
+  type PreviewOutcome,
   type UploadTicketPayload,
 } from "@breatic/shared";
 import * as Sentry from "@sentry/cloudflare";
@@ -1015,14 +1016,6 @@ interface MediaReadBody {
   limits?: MediaLimits;
   wantPreview?: unknown;
 }
-
-/**
- * What became of a preview a read was asked for.
- *
- * `failed` is kept apart from `none`: a run that never started is worth
- * running again, one that ran and had nothing to cut is not.
- */
-type PreviewOutcome = "generated" | "existing" | "none" | "failed";
 
 /**
  * Read the media numbers of an object already in storage (#299).
