@@ -107,10 +107,11 @@ beforeEach(() => {
 });
 
 describe("runContainerJob", () => {
-  it("submits a job its class does not hold, files the output and charges the measured usage", async () => {
+  it("submits a job its class does not hold, then files the output and charges the measured usage", async () => {
     h.readMiniToolJob.mockResolvedValueOnce(null).mockResolvedValueOnce({ state: "done", outputs: [MEASURED], usage: USAGE });
     h.submitMiniToolJob.mockResolvedValueOnce({ state: "starting" });
 
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(ContainerJobPending);
     const [result, credits] = await runContainerJob(CUT, "cut", INPUT);
 
     expect(h.submitMiniToolJob.mock.calls[0]![2]).toMatchObject({
@@ -131,10 +132,10 @@ describe("runContainerJob", () => {
 
   // Every task has one ceiling, the one its rows on the canvas count down.
   it("gives the job the deadline its task rows run out at", async () => {
-    h.readMiniToolJob.mockResolvedValueOnce(null).mockResolvedValueOnce({ state: "done", outputs: [MEASURED], usage: USAGE });
+    h.readMiniToolJob.mockResolvedValueOnce(null);
     h.submitMiniToolJob.mockResolvedValueOnce({ state: "starting" });
 
-    await runContainerJob(CUT, "cut", INPUT);
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(ContainerJobPending);
 
     expect(h.deadlineFor).toHaveBeenCalledWith("t1");
     expect(h.submitMiniToolJob.mock.calls[0]![2]).toMatchObject({ deadlineAt: DEADLINE });
@@ -147,13 +148,23 @@ describe("runContainerJob", () => {
     expect(h.openContainerOutputs).not.toHaveBeenCalled();
   });
 
-  // The slot goes back to the queue between rounds; the run comes back for the same job.
-  it("hands the slot back when a round of waiting ends with the job still running", async () => {
+  // One read per pickup: the job sits delayed in the queue between reads, not in a worker slot.
+  it("reads a running job once and asks to come back one poll interval later", async () => {
     h.steps[0]!.output = { jobId: "task:t1", containerClass: "Std1", deadlineAt: DEADLINE, outputs: [OUT] };
-    h.readMiniToolJob.mockResolvedValue({ state: "running" });
+    h.readMiniToolJob.mockResolvedValueOnce({ state: "running" });
 
-    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(ContainerJobPending);
-    expect(h.readMiniToolJob).toHaveBeenCalledTimes(300);
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toMatchObject({ resumeAt: h.now.value + 1000 });
+    expect(h.readMiniToolJob).toHaveBeenCalledTimes(1);
+  });
+
+  // A pickup that arrives after the deadline still takes a report the job left before it.
+  it("files a job that ended even when it is read after the deadline", async () => {
+    h.steps[0]!.output = { jobId: "task:t1", containerClass: "Std1", deadlineAt: h.now.value - 60_000, outputs: [OUT] };
+    h.readMiniToolJob.mockResolvedValueOnce({ state: "done", outputs: [MEASURED], usage: USAGE });
+
+    const [result] = await runContainerJob(CUT, "cut", INPUT);
+
+    expect(result).toMatchObject({ outputs: [{ url: "https://cdn/out.mp4" }] });
   });
 
   // A retried attempt after a failed step tells the row what the job said, not a generic cause.
@@ -174,13 +185,15 @@ describe("runContainerJob", () => {
     expect(h.submitMiniToolJob).not.toHaveBeenCalled();
   });
 
-  it("submits again on the next poll when the container could not start", async () => {
+  it("submits again on the next pickup when the container could not start", async () => {
     h.readMiniToolJob
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ state: "done", outputs: [MEASURED], usage: USAGE });
     h.submitMiniToolJob.mockRejectedValueOnce(new UploadHttpError(503, null)).mockResolvedValueOnce({ state: "starting" });
 
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(ContainerJobPending);
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(ContainerJobPending);
     await runContainerJob(CUT, "cut", INPUT);
 
     expect(h.submitMiniToolJob).toHaveBeenCalledTimes(2);
@@ -211,8 +224,10 @@ describe("runContainerJob", () => {
   });
 
   it("fails as the tool's failure when the deadline passes with the job still running", async () => {
-    h.steps[0]!.output = { jobId: "task:t1", containerClass: "Std1", deadlineAt: Date.now() - 10_000, outputs: [OUT] };
+    h.steps[0]!.output = { jobId: "task:t1", containerClass: "Std1", deadlineAt: h.now.value - 10_000, outputs: [OUT] };
+    h.readMiniToolJob.mockResolvedValueOnce({ state: "running" });
 
     await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toMatchObject({ reason: "tool_failed" });
+    expect(h.readMiniToolJob).toHaveBeenCalledTimes(1);
   });
 });

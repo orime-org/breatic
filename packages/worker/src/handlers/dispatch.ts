@@ -441,6 +441,9 @@ async function runTaskBody(
     return { failed: true, reason: "no_retry_after_provider" };
   }
 
+  // A run picked up again (a retry, or a container job coming back for its
+  // next read) is still the same run: its duration counts from the first start.
+  const startedAt = existing?.startedAt ?? new Date();
   await taskService.markRunning(taskId, job.id ?? "");
 
 
@@ -453,7 +456,6 @@ async function runTaskBody(
   let providerResult: Record<string, unknown>;
   let creditsUsed = 0;
   let resolvedSkills: string[] = [];
-  const startTime = performance.now();
 
   // #1628: threaded into async transports via provider.generateAsync.
   const resume: ResumeContext = {
@@ -462,12 +464,14 @@ async function runTaskBody(
       taskService.recordProviderTaskId(taskId, id),
     externalTaskId: `breatic-${taskId}`,
   };
+  // A container job keeps its id from the first submit, so a pickup never submits it twice.
+  const containerRun = source === "mini_tool" && toolId !== undefined && miniToolById(toolId)?.run.kind === "container";
   if (resume.storedTaskId) {
     logger.info(
       { taskId, providerTaskId: resume.storedTaskId, attempt: job.attemptsMade + 1 },
       "async_resume_stored_provider_task",
     );
-  } else if (job.attemptsMade > 0) {
+  } else if (job.attemptsMade > 0 && !containerRun) {
     // #1628 monitoring: a retry with no stored vendor task id re-invokes the
     // provider from scratch. For SYNC providers the previous attempt may have
     // already generated + charged upstream (timeout-after-generation window)
@@ -542,11 +546,11 @@ async function runTaskBody(
       );
     }
   } catch (err) {
-    // A container job outlasting one round of waiting is not a failure: the
-    // slot goes back to the queue and the run returns for the same job, and
-    // a delayed job spends none of its attempts.
+    // A container job still going is not a failure: the run goes back to the
+    // queue and returns for the same job, and a delayed job spends none of its
+    // attempts.
     if (err instanceof ContainerJobPending && token !== undefined) {
-      await job.moveToDelayed(Date.now() + getWorkerConfig().poll_interval, token);
+      await job.moveToDelayed(err.resumeAt, token);
       throw new DelayedError();
     }
     // Provider call failed. Safe to retry via BullMQ — no charge yet,
@@ -641,7 +645,7 @@ async function runTaskBody(
     outputs: persistedOutputs,
   };
 
-  const durationMs = Math.round(performance.now() - startTime);
+  const durationMs = Date.now() - startedAt.getTime();
 
   // #1580 zombie fence: prove we still exclusively own this job BEFORE
   // touching money. A revived stalled handler reads 0 here (BullMQ already
@@ -921,7 +925,7 @@ const NO_RESULT: TaskFailureReason = "no_result";
  * @param ctx.metadata.model - Model identifier that produced the result.
  * @param ctx.metadata.credits - Credits charged for the generation. Not the
  *   dollars the service charged us: the row's chip is labelled in credits.
- * @param ctx.metadata.durationMs - Provider call duration in milliseconds.
+ * @param ctx.metadata.durationMs - How long the run took from its first start, in milliseconds.
  * @param ctx.metadata.params - Provider/tool parameters used for the generation.
  * @param outputs - Per-node results; one with no url settles its row as
  *   failed rather than leaving it for the expiry sweep (#196).

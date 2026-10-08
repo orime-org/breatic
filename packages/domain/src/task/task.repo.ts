@@ -177,8 +177,9 @@ export async function updateTaskStatus(
     updatedAt: now,
   };
 
+  // A run started once keeps its first start, however many times it is picked up.
   if (status === "running") {
-    updates.startedAt = now;
+    updates.startedAt = sql`coalesce(${tasks.startedAt}, now())`;
   }
   if (["completed", "failed", "cancelled"].includes(status)) {
     updates.completedAt = now;

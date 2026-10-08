@@ -12,9 +12,7 @@
  * charged for the seconds the report says it used.
  */
 
-import { setTimeout as sleep } from "node:timers/promises";
-
-import { env, getMiniToolsConfig, getWorkerConfig, logger } from "@breatic/core";
+import { env, getMiniToolsConfig, logger } from "@breatic/core";
 import {
   assetService,
   containerCostUsd,
@@ -54,15 +52,19 @@ export class ContainerJobFailed extends Error {
 }
 
 /**
- * A round of waiting ended with the job still going: the worker slot goes
- * back to the queue and the run comes back for the same job later.
+ * The job is still going: the run goes back to the queue and comes back for
+ * the same job at `resumeAt`, holding no worker slot in between.
  */
 export class ContainerJobPending extends Error {
   /**
-   * A job that outlasted one round of waiting.
+   * A job read while it was still going.
    * @param jobId - The job still going.
+   * @param resumeAt - When to read it again, in epoch milliseconds.
    */
-  constructor(jobId: string) {
+  constructor(
+    jobId: string,
+    readonly resumeAt: number,
+  ) {
     super(`container job ${jobId} is still running`);
     this.name = "ContainerJobPending";
   }
@@ -142,44 +144,40 @@ async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunIn
 }
 
 /**
- * Submit the job when its class holds none, then wait one round for it to end.
+ * Read the job once, submitting it when its class holds none.
  * @param op - The operation.
  * @param input - The run.
  * @param job - The job.
  * @returns The ending report.
- * @throws {ContainerJobPending} When the round ends with the job still going.
- * @throws {ContainerJobFailed} When the deadline passes with the job still going.
+ * @throws {ContainerJobPending} When the job is still going.
+ * @throws {ContainerJobFailed} When the deadline has passed with the job still going.
  */
-async function awaitJob(op: ContainerOp, input: ContainerRunInput, job: StoredJob): Promise<MiniToolJobReport> {
+async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJob): Promise<MiniToolJobReport> {
   const { poll_interval_ms: poll } = getMiniToolsConfig();
-  const giveUpAt = job.deadlineAt + poll * 2;
-  const roundEndsAt = Date.now() + getWorkerConfig().poll_max_wait;
-  while (Date.now() < giveUpAt) {
-    if (Date.now() >= roundEndsAt) throw new ContainerJobPending(job.jobId);
-    let report = await readMiniToolJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, job.containerClass, job.jobId);
-    if (report === null) {
-      try {
-        report = await submitMiniToolJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
-          jobId: job.jobId,
-          containerClass: job.containerClass,
-          deadlineAt: job.deadlineAt,
-          op,
-          params: input.params,
-          input: { storageKey: input.sourceKey },
-          outputs: job.outputs,
-          limits: assetService.mediaLimits(),
-        });
-      } catch (err) {
-        // The container could not start; the next poll submits again.
-        if (!(err instanceof UploadHttpError && err.status === 503)) throw err;
-        logger.warn({ taskId: input.taskId, jobId: job.jobId }, "mini_tool_container_start_refused");
-        report = null;
-      }
+  let report = await readMiniToolJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, job.containerClass, job.jobId);
+  if (report === null) {
+    try {
+      report = await submitMiniToolJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
+        jobId: job.jobId,
+        containerClass: job.containerClass,
+        deadlineAt: job.deadlineAt,
+        op,
+        params: input.params,
+        input: { storageKey: input.sourceKey },
+        outputs: job.outputs,
+        limits: assetService.mediaLimits(),
+      });
+    } catch (err) {
+      // The container could not start; the next pickup submits again.
+      if (!(err instanceof UploadHttpError && err.status === 503)) throw err;
+      logger.warn({ taskId: input.taskId, jobId: job.jobId }, "mini_tool_container_start_refused");
+      report = null;
     }
-    if (report !== null && (report.state === "done" || report.state === "failed")) return report;
-    await sleep(poll);
   }
-  throw new ContainerJobFailed("tool_failed");
+  if (report !== null && (report.state === "done" || report.state === "failed")) return report;
+  // The Durable Object ends the job at its deadline; two polls leave room for its report to land.
+  if (Date.now() >= job.deadlineAt + poll * 2) throw new ContainerJobFailed("tool_failed");
+  throw new ContainerJobPending(job.jobId, Date.now() + poll);
 }
 
 /**
@@ -228,7 +226,7 @@ export async function runContainerJob(
   input: ContainerRunInput,
 ): Promise<[Record<string, unknown>, number]> {
   const { stepId, job } = await jobFor(spec, op, input);
-  const report = await awaitJob(op, input, job);
+  const report = await checkJob(op, input, job);
   if (report.state === "failed") {
     // A failed run is not charged; its row is still written, to reconcile the bill.
     if (report.usage) await charge(input, op, job.containerClass, report.usage);

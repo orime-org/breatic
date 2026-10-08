@@ -15,12 +15,19 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 
 const h = vi.hoisted(() => {
   /** Stand-in for the real class, matched by `instanceof` in the dispatcher. */
-  class ContainerJobPending extends Error {}
+  class ContainerJobPending extends Error {
+    constructor(readonly resumeAt: number) {
+      super("still running");
+    }
+  }
   return {
     ContainerJobPending,
+    warn: vi.fn(),
     runContainerJob: vi.fn(),
     markFailed: vi.fn(),
     moveToDelayed: vi.fn(),
+    getByIdInternal: vi.fn(),
+    markCompletedAndBill: vi.fn(),
   };
 });
 
@@ -30,20 +37,20 @@ vi.mock("@worker/handlers/container/run-container-job.js", () => ({
 }));
 vi.mock("@breatic/core", () => ({
   getStreamRedis: vi.fn(() => ({})),
-  getWorkerConfig: vi.fn(() => ({ poll_interval: 3000 })),
+  getWorkerConfig: vi.fn(() => ({})),
   getAgentConfig: vi.fn(() => ({})),
   projectActivitiesRepo: {
     insertGenerationFailedIfAbsent: vi.fn(),
     upsertGenerationSucceeded: vi.fn(),
   },
   publishActivityNew: vi.fn(),
-  getStorageAdapter: vi.fn(),
+  getStorageAdapter: vi.fn(async () => ({ keyFromUrl: () => "video/out.mp4" })),
   getRawEnvVar: vi.fn(),
   getUnderstandConfig: vi.fn(() => ({})),
   storageKey: vi.fn(),
   env: {},
   NotFoundError: class extends Error {},
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  logger: { info: vi.fn(), warn: h.warn, error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", () => ({
   buildAgentConfig: vi.fn(),
@@ -52,7 +59,10 @@ vi.mock("@breatic/domain", () => ({
   taskService: {
     markFailed: h.markFailed,
     markRunning: vi.fn(),
-    getByIdInternal: vi.fn(async () => null),
+    getByIdInternal: h.getByIdInternal,
+    recordProviderResult: vi.fn(),
+    setResolvedSkills: vi.fn(),
+    markCompletedAndBill: h.markCompletedAndBill,
   },
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: {},
@@ -73,12 +83,13 @@ import { runTask } from "@worker/handlers/dispatch.js";
  * A container mini-tool job as the queue hands it over.
  * @returns The job.
  */
-function containerJob(): Job {
+function containerJob(attemptsMade = 0): Job {
   return {
     id: "job-1",
-    attemptsMade: 0,
+    attemptsMade,
     opts: { attempts: 3 },
     moveToDelayed: h.moveToDelayed,
+    extendLock: async () => 1,
     data: {
       taskId: "task-1",
       taskType: "video",
@@ -97,22 +108,38 @@ function containerJob(): Job {
 describe("a container job still running when a round of waiting ends", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    h.runContainerJob.mockRejectedValue(new h.ContainerJobPending("still running"));
+    h.getByIdInternal.mockResolvedValue(null);
+    h.runContainerJob.mockRejectedValue(new h.ContainerJobPending(1_800_000_000_000));
   });
 
-  it("comes back after one poll interval without spending an attempt", async () => {
-    const before = Date.now();
-
+  it("comes back at the time the container run named, without spending an attempt", async () => {
     await expect(runTask(containerJob(), "lock-token")).rejects.toBeInstanceOf(DelayedError);
 
-    expect(h.moveToDelayed).toHaveBeenCalledWith(expect.any(Number), "lock-token");
-    const [at] = h.moveToDelayed.mock.calls[0]! as [number];
-    expect(at).toBeGreaterThanOrEqual(before + 3000);
+    expect(h.moveToDelayed).toHaveBeenCalledWith(1_800_000_000_000, "lock-token");
+  });
+
+  // A container job keeps its id across pickups, so no pickup can bill the upstream twice.
+  it("raises no duplicate-cost warning when a retried container job comes back", async () => {
+    await expect(runTask(containerJob(1), "lock-token")).rejects.toBeInstanceOf(DelayedError);
+
+    expect(h.warn).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
   });
 
   it("leaves the task running, not failed", async () => {
     await expect(runTask(containerJob(), "lock-token")).rejects.toBeInstanceOf(DelayedError);
 
     expect(h.markFailed).not.toHaveBeenCalled();
+  });
+
+  // A run picked up many times is one run: its duration starts at the first pickup.
+  it("bills the duration from the task's first start, not from the last pickup", async () => {
+    const startedAt = new Date(Date.now() - 600_000);
+    h.getByIdInternal.mockResolvedValue({ startedAt, billedAt: null, providerResultUrl: null, providerTaskId: null });
+    h.runContainerJob.mockResolvedValue([{ outputs: [{ url: "https://cdn/out.mp4" }], cost: 0 }, 1]);
+
+    await runTask(containerJob(), "lock-token").catch(() => undefined);
+
+    const [, , , durationMs] = h.markCompletedAndBill.mock.calls[0]! as [string, unknown, number, number];
+    expect(durationMs).toBeGreaterThanOrEqual(600_000);
   });
 });
