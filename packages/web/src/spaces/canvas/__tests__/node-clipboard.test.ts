@@ -17,8 +17,8 @@ import {
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
 
-/** No body text for this case — the parameter is required so omitting it cannot be an accident. */
-const NO_TEXT: ReadonlyMap<string, string> = new Map();
+/** Nothing read out of the document for this case — the parameter is required so omitting it cannot be an accident. */
+const NO_TEXT = { text: new Map<string, string>(), media: new Map() };
 
 /** The Space the captured nodes are copied on. */
 const SPACE = 'space-a';
@@ -84,9 +84,9 @@ describe('node-clipboard', () => {
   });
 
   it('captureClipboard: a video node carries all six media fields (#1816, inner#888)', () => {
-    // The media fields describe the content itself, so a copy carries them —
-    // without `duration` a pasted video cannot be cut, without the cover it
-    // loses its instant poster.
+    // The media fields describe the content itself, so a copy carries them as
+    // the document holds them — without `duration` a pasted video cannot be
+    // cut, without the cover it loses its instant poster.
     const out = captureClipboard(
       ['v'],
       [
@@ -94,10 +94,10 @@ describe('node-clipboard', () => {
           id: 'v',
           type: 'video',
           position: { x: 5, y: 6 },
-          data: { name: 'Clip', content: 'clip.mp4', ...VIDEO_MEDIA, locked: false },
+          data: { name: 'Clip', content: 'clip.mp4', width: 1280, locked: false },
         },
       ],
-      NO_TEXT,
+      { text: new Map(), media: new Map([['v', VIDEO_MEDIA]]) },
       SPACE,
     );
     expect(out).toEqual([
@@ -162,7 +162,7 @@ describe('node-clipboard', () => {
     // member is captured alone (group not selected) → abs = group(100,100)+rel(20,30).
     // A text node's words live in a shared body now, so they reach the
     // clipboard through this map rather than off the node's data (#1774).
-    expect(captureClipboard(['m'], nodes, new Map([['m', 'hi']]), SPACE)).toEqual([
+    expect(captureClipboard(['m'], nodes, { text: new Map([['m', 'hi']]), media: new Map() }, SPACE)).toEqual([
       { type: 'text', position: { x: 120, y: 130 }, content: 'hi', id: 'm', parentId: 'g', space: SPACE },
     ]);
   });
@@ -180,7 +180,7 @@ describe('node-clipboard', () => {
     ];
     // Selecting the group AND a member must not emit the member twice; the
     // group's name is carried (R2-B — a duplicated group keeps its name).
-    const out = captureClipboard(['g', 'm1'], nodes, new Map([['m1', 'a']]), SPACE);
+    const out = captureClipboard(['g', 'm1'], nodes, { text: new Map([['m1', 'a']]), media: new Map() }, SPACE);
     expect(out).toEqual([
       {
         type: 'group',

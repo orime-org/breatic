@@ -104,6 +104,7 @@ import {
   type CanvasNodeView,
   type CanvasUndoStep,
   readCanvasGraph,
+  readNodeMediaFields,
   readTextBodies,
 } from '@web/data/yjs/canvas-space';
 import { handToAgent } from '@web/spaces/canvas/pick-for-agent';
@@ -1439,11 +1440,14 @@ function CanvasSpaceInner({
       captureClipboard(
         targetIds,
         allNodes,
-        readTextBodies(
-          projectId,
-          spaceId,
-          allNodes.filter((n) => n.type === 'text').map((n) => n.id),
-        ),
+        {
+          text: readTextBodies(
+            projectId,
+            spaceId,
+            allNodes.filter((n) => n.type === 'text').map((n) => n.id),
+          ),
+          media: readNodeMediaFields(projectId, spaceId, allNodes.map((n) => n.id)),
+        },
         spaceId,
       ),
     [projectId, spaceId],

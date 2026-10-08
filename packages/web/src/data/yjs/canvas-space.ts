@@ -20,7 +20,13 @@ import {
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import { usableUrls, writeNodeMedia, type NodeMediaFields } from '@breatic/shared';
+import {
+  readNodeMedia,
+  usableUrls,
+  writeNodeMedia,
+  type NodeMediaData,
+  type NodeMediaFields,
+} from '@breatic/shared';
 import { bodyFromText, bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import type { NodeKind, NodeView } from '@web/data/yjs/node-view';
 import { toNodeView } from '@web/data/yjs/node-view';
@@ -1386,6 +1392,33 @@ export function readTextBodies(
   for (const id of nodeIds) {
     const body = getTextBody(projectId, spaceId, id);
     if (body) out.set(id, bodyToPlainText(body));
+  }
+  return out;
+}
+
+/**
+ * Read several nodes' media fields as the document holds them, right now.
+ *
+ * For the copy path, alongside {@link readTextBodies}: the canvas nodes carry a
+ * view of the data with the media fields renamed, and the copy carries the
+ * document's own keys.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the nodes.
+ * @param nodeIds - Ids of the nodes to read.
+ * @returns Node id to media fields, for the ids that hold any.
+ */
+export function readNodeMediaFields(
+  projectId: string,
+  spaceId: string,
+  nodeIds: ReadonlyArray<string>,
+): ReadonlyMap<string, NodeMediaData> {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const out = new Map<string, NodeMediaData>();
+  for (const id of nodeIds) {
+    const data = nodeDataMap(doc, id);
+    if (data === null) continue;
+    const media = readNodeMedia(Object.fromEntries(data.entries()));
+    if (Object.keys(media).length > 0) out.set(id, media);
   }
   return out;
 }
