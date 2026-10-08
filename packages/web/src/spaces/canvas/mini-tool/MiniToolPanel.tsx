@@ -466,7 +466,7 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
       return (
         <div className='flex flex-col gap-1.5'>
           {/* The band shows what stays: the cut-away ends dimmed, the kept span framed. */}
-          <div data-testid='mini-tool-range-band' className='relative h-9 overflow-hidden rounded-content-xs bg-muted'>
+          <div data-testid='mini-tool-range-band' className='relative h-9 overflow-hidden rounded-chrome-sm bg-muted'>
             {source.url !== undefined && source.width !== undefined && source.height !== undefined ? (
               <FilmStrip src={source.url} duration={duration} aspect={source.width / source.height} />
             ) : null}
@@ -474,7 +474,7 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
             <div data-part='after' className='absolute inset-y-0 right-0 bg-background/70' style={{ left: `${to}%` }} />
             <div
               data-part='kept'
-              className='absolute inset-y-0 rounded-content-xs border border-foreground'
+              className='absolute inset-y-0 rounded-chrome-sm border border-foreground'
               style={{ left: `${from}%`, width: `${to - from}%` }}
             />
             <Slider
