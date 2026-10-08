@@ -152,6 +152,31 @@ describe('how tall a node is taken to be', () => {
     expect(estimateHeight(generates('Result'))).toBe(EMPTY_NODE_SIZE.height);
   });
 
+  it('gives a node holding a picture the height the picture draws at (inner#1315)', () => {
+    // The picture fills the node's width inside the 4px inset on each side,
+    // so a 4:3 one is three quarters of 280 tall plus the inset.
+    const photo: ProposalNode = {
+      ...empty('Yours'),
+      material: 'https://ours.example/a.png',
+      materialMedia: { coverUrl: null, width: 800, height: 600, duration: null, mimeType: 'image/png', size: 1 },
+    };
+    const tall: ProposalNode = { ...photo, type: 'video', materialMedia: { ...photo.materialMedia!, width: 720, height: 1280 } };
+
+    expect(estimateHeight(photo)).toBe(280 * 0.75 + 8);
+    expect(estimateHeight(tall)).toBeCloseTo((280 * 1280) / 720 + 8);
+  });
+
+  it('keeps the standard footprint for material it has no numbers for', () => {
+    const sound: ProposalNode = {
+      ...empty('Voice'),
+      type: 'audio',
+      material: 'https://ours.example/a.mp3',
+      materialMedia: { coverUrl: null, width: null, height: null, duration: 3, mimeType: 'audio/mpeg', size: 1 },
+    };
+
+    expect(estimateHeight(sound)).toBe(EMPTY_NODE_SIZE.height);
+  });
+
   it('cuts a block on each break, not the two an editor writes', () => {
     // Thirteen short lines: thirteen 20px lines of `text-sm` plus the 12px of
     // padding `p-3` puts above and below. Counted the way a prompt box counts

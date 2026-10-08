@@ -104,6 +104,23 @@ describe('the little diagram of what gets built', () => {
     ]);
   });
 
+  it('draws a node holding the reader\'s material as filled, beside the generation it fills (inner#1315)', () => {
+    // A fill draws no edge, yet the portrait is part of the talking head it
+    // fills: one run, two layers, and nothing left for the reader to drop in.
+    const proposal: CanvasProposal = {
+      ...flow([
+        { ...empty('Your portrait'), material: 'https://ours.example/a.png' },
+        { ...generates('Talking head'), fills: { image: [0] } },
+      ]),
+    };
+
+    const groups = shapeOf(proposal);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.[0]?.[0]).toEqual({ label: 'Your portrait', empty: false });
+    expect(groups[0]?.[1]?.[0]?.label).toBe('Talking head');
+  });
+
   it('marks the node the reader fills in, wherever it sits', () => {
     const proposal = flow([empty('Your photo'), generates('On white')], [[0, 1]]);
 

@@ -10,7 +10,7 @@
  * display name.
  */
 
-import { layersOf, modelLabel, proposalMarkSegments } from '@breatic/shared';
+import { feedsOf, layersOf, modelLabel, proposalMarkSegments } from '@breatic/shared';
 import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
 
 /** What one node contributes to the little shape drawn on the card. */
@@ -110,7 +110,7 @@ export function shapeOf(proposal: CanvasProposal): ShapeGroup[] {
   const run = runsOf(proposal);
   const groups = new Map<number, Map<number, ShapeChip[]>>();
   proposal.nodes.forEach((node, at) => {
-    const chip = { label: node.name, empty: node.role === 'source' };
+    const chip = { label: node.name, empty: node.role === 'source' && node.material === undefined };
     const depth = layer[at] ?? 0;
     const home = groups.get(run[at] ?? at) ?? new Map<number, ShapeChip[]>();
     home.set(depth, [...(home.get(depth) ?? []), chip]);
@@ -124,9 +124,9 @@ export function shapeOf(proposal: CanvasProposal): ShapeGroup[] {
 /**
  * Which run of the flow each node belongs to.
  *
- * Every node an edge touches is in the same run as the node at its other end,
- * whichever way the edge points: what matters for drawing is that they are one
- * piece of work, not which of them came first.
+ * Every node an edge or a slot fill touches is in the same run as the node at
+ * its other end, whichever way it points: what matters for drawing is that
+ * they are one piece of work, not which of them came first.
  * @param proposal - The proposal the card draws.
  * @returns One run number per node, in the proposal's own order.
  * @throws {never} Never.
@@ -135,7 +135,7 @@ function runsOf(proposal: CanvasProposal): number[] {
   const run = proposal.nodes.map((_, at) => at);
   for (let pass = 0; pass < proposal.nodes.length; pass += 1) {
     let moved = false;
-    for (const edge of proposal.edges) {
+    for (const edge of feedsOf(proposal)) {
       const a = run[edge.fromIndex];
       const b = run[edge.toIndex];
       if (a === undefined || b === undefined || a === b) continue;
