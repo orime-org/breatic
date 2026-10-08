@@ -622,7 +622,13 @@ export {
 export { assetNameFromUrl } from "@shared/media/asset-name.js";
 // The media fields a result puts on a node, written the same way by collab
 // when a task settles and by the canvas when a reader restores one.
-export { writeNodeMedia, type NodeMediaFields } from "@shared/canvas/node-media.js";
+export {
+  NODE_MEDIA_KEYS,
+  readNodeMedia,
+  writeNodeMedia,
+  type NodeMediaData,
+  type NodeMediaFields,
+} from "@shared/canvas/node-media.js";
 export {
   GENERATION_TEMPLATES,
   findTemplate,

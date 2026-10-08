@@ -11,8 +11,8 @@
  * the serialize / parse / clone logic is unit-testable in isolation.
  */
 
-import type { CanvasNodeFields } from '@breatic/shared';
-import { newId } from '@breatic/shared';
+import type { CanvasNodeFields, NodeMediaData } from '@breatic/shared';
+import { newId, readNodeMedia } from '@breatic/shared';
 import { regionOf, regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 
 import {
@@ -67,11 +67,11 @@ export interface ClipboardNode {
   /** Content payload (text body / asset url), when present. */
   content?: string;
   /**
-   * Video cover poster URL (#1816) — carried so a copy / duplicate keeps its
-   * instant poster. Intrinsic to the video content (like `content`), unlike
-   * generation config (params / model / prompt) which a fresh clone drops.
+   * The media fields that describe `content` (cover, pixel size, duration,
+   * type, byte count). They belong to the content the way the content does, so
+   * a copy carries them; generation config (params / model / prompt) does not.
    */
-  coverUrl?: string;
+  media?: NodeMediaData;
   /** Group authoritative width (Group entries only). */
   width?: number;
   /** Group authoritative height (Group entries only). */
@@ -103,10 +103,9 @@ export interface CaptureNode {
   position: { x: number; y: number };
   /** Rendered size (content nodes) — recorded so a paste can centre the payload. */
   measured?: { width?: number; height?: number };
-  data?: {
+  data?: Record<string, unknown> & {
     name?: unknown;
     content?: unknown;
-    coverUrl?: unknown;
     width?: unknown;
     height?: unknown;
     backgroundColor?: unknown;
@@ -166,6 +165,7 @@ export function captureClipboard(
     if (emitted.has(node.id)) return;
     emitted.add(node.id);
     const data = node.data ?? {};
+    const media = readNodeMedia(data);
     result.push({
       type: node.type,
       position: absPos(node),
@@ -175,9 +175,7 @@ export function captureClipboard(
         : typeof data.content === 'string'
           ? { content: data.content }
           : {}),
-      // The video cover travels with the content (#1816); only video carries
-      // one, so this is naturally absent for image / audio / text.
-      ...(typeof data.coverUrl === 'string' ? { coverUrl: data.coverUrl } : {}),
+      ...(Object.keys(media).length > 0 ? { media } : {}),
       // Record the rendered size so a viewport-center paste can centre the
       // payload's bounding box (R2-H); absent until ReactFlow measures the node.
       ...(typeof node.measured?.width === 'number' ? { width: node.measured.width } : {}),
@@ -403,9 +401,8 @@ export function cloneForPaste(
         ...fresh.data,
         name: isFollowingMember ? baseName : COPY_PREFIX + baseName,
         ...(node.content !== undefined ? { content: node.content } : {}),
-        // Keep the video cover on the duplicate (#1816) — a posterless clone
-        // would lose its instant poster (asset-GC keeps the shared URL alive).
-        ...(node.coverUrl !== undefined ? { coverUrl: node.coverUrl } : {}),
+        // A pasted payload is outside input, so each field is checked again.
+        ...(node.media !== undefined ? readNodeMedia(node.media as Record<string, unknown>) : {}),
       },
     };
   });

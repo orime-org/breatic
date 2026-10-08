@@ -25,6 +25,9 @@ import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 /** A public JPEG served with CORS, so the browser can draw it onto a canvas and export it. */
 const IMAGE = 'https://picsum.photos/id/237/400/300.jpg';
 
+/** A stored video on the dev resource host: 1280×720, 5.038 s. */
+const VIDEO = 'https://resource-dev.breatic.cc/video/2026-10-08/1791458288343_3baa41ff-9f1b-4f24-b997-28d1c0520055.mp4';
+
 let page: Page;
 let projectId = '';
 let spaceId = '';
@@ -309,4 +312,31 @@ test('a source that takes new content resets the crop to the new picture @needs-
 
   await expect.poll(async () => page.getByTestId('mini-tool-rect-w').inputValue(), { timeout: 20_000 }).toBe('600');
   expect(await page.getByTestId('mini-tool-rect-h').inputValue()).toBe('300');
+});
+
+// A pasted video holds the media fields of its source, so the cut panel can
+// lay out its frames on the copy too (inner#888).
+test('the cut panel shows the frames of a pasted video @needs-internet', async () => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const source = randomUUID();
+  await seedNode(source, 'video', 600, {
+    content: VIDEO,
+    mediaWidth: 1280,
+    mediaHeight: 720,
+    duration: 5.038,
+    mimeType: 'video/mp4',
+    size: 5_469_707,
+  });
+  const nodes = visibleSpace(page).locator('.react-flow__node');
+  const before = await nodes.count();
+  await visibleSpace(page).locator(`.react-flow__node[data-id="${source}"]`).click();
+  await page.keyboard.press('ControlOrMeta+c');
+  await page.keyboard.press('ControlOrMeta+v');
+  await expect(nodes).toHaveCount(before + 1);
+
+  const copy = visibleSpace(page).locator('.react-flow__node').filter({ hasText: 'COPY-SEED' });
+  const copyId = await copy.getAttribute('data-id');
+  expect(copyId).not.toBeNull();
+  await openTool(copyId!, 'video.cut');
+  await expect(page.getByTestId('mini-tool-filmstrip')).toBeVisible({ timeout: 15_000 });
 });
