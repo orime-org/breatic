@@ -77,6 +77,7 @@ import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-tab
 import { endTableDrag, startTableDrag } from '@web/spaces/document/document-table-drag';
 import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
+import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 
 /** What the library's handle state carries, as far as these read it. */
 interface HandlesState {
@@ -360,7 +361,12 @@ export function DocumentTableHandle({
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <div className='doc-table-handle relative flex' style={placeStyle}>
+      <div
+        className='doc-table-handle relative flex'
+        style={placeStyle}
+        // A layer of the body, belonging on its table (inner#1127).
+        {...bodyLayerMark(editor, { block: state.block.id })}
+      >
         {/* The anchor, and nothing else, as on the block handle: it answers
             no pointer events, so Radix's trigger handlers never run on the
             button beside it. */}

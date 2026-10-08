@@ -26,6 +26,7 @@ import { clearDocument } from '@web/spaces/document/document-select-all-guard';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { DocumentProjectProvider } from '@web/spaces/document/document-project-context';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
+import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 
 /**
  * Document space body — a collaborative rich-text document.
@@ -243,6 +244,11 @@ export function DocumentSpace({
       <AlertDialog open={clearAsked} onOpenChange={setClearAsked}>
         <AlertDialogContent
           data-testid='document-clear-confirm'
+          // A layer of the body, belonging on the whole document it asks
+          // about (inner#1127).
+          {...(clearAsked && shown
+            ? bodyLayerMark(shown.editor, { from: 0, to: shown.editor.prosemirrorState.doc.content.size })
+            : {})}
           aria-describedby={undefined}
           onCloseAutoFocus={onClearCloseAutoFocus}
         >

@@ -12,9 +12,8 @@ import { SideMenuExtension } from '@blocknote/core/extensions';
 
 import { rowHasLanded, rowIsFlying } from '@web/spaces/document/document-drag-drop';
 import {
-  caretAtStartOf,
   readerPlace,
-  restoreReaderPlace,
+  restoreAfterRowDrag,
 } from '@web/spaces/document/document-drag-selection';
 
 /** The editor, as far as moving a row needs it. */
@@ -62,7 +61,7 @@ export function startRowDrag(
     // A text selection goes back to whatever the reader had: the node
     // selection the library put on the row at dragstart is still there, and
     // the bubble bar comes up for any selection that is not empty.
-    restoreReaderPlace(view, held ?? caretAtStartOf(blockId));
+    restoreAfterRowDrag(view, held, blockId);
     // A key pressed after the drag has to land in the document.
     editor.focus();
   };

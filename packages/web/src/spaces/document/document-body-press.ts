@@ -22,11 +22,10 @@ import { DOCUMENT_COMMENT_SELECTION, selectedThreadsIn } from '@web/spaces/docum
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import { MEDIA_BLOCK_TYPES } from '@web/spaces/document/document-media-types';
 import { DIVIDER } from '@web/spaces/document/document-divider';
+import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
 
 /** The attribute on the layout elements beside the body column that count as blank. */
 export const BODY_BLANK = 'data-document-body-blank';
-/** The attribute every scrollbar of a scroll area carries. */
-export const SCROLLBAR = 'data-scroll-area-scrollbar';
 
 /** What a press is on. */
 export type PressKind =
@@ -84,7 +83,7 @@ function onEdgeStrip(view: EditorView, x: number, y: number): boolean {
 export function pressTargetOf(view: EditorView, event: MouseEvent): PressTarget {
   const target = event.target instanceof Element ? event.target : null;
   if (target === null) return { kind: 'none', element: null };
-  const scrollbar = target.closest(`[${SCROLLBAR}]`);
+  const scrollbar = target.closest(`[${SCROLLBAR_MARK}]`);
   if (scrollbar !== null) return { kind: 'scrollbar', element: scrollbar };
   const layer = layerOf(view, target);
   if (layer !== null) return { kind: 'layer', element: layer };

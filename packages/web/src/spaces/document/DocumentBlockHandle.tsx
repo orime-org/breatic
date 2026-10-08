@@ -73,6 +73,7 @@ import type { PressedBlock } from '@web/spaces/document/document-handle-commands
 import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useRowNow } from '@web/spaces/document/use-row-now';
+import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 
 /**
  * The handle: 24 square, which is the smallest a pointer target may be
@@ -277,6 +278,8 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
       // is not always the row a pointer was aimed at (a heading's top margin
       // answers for the row above it).
       data-row-id={block.id}
+      // A layer of the body, belonging on its row (inner#1127).
+      {...bodyLayerMark(editor, { block: block.id })}
       // `select-none`: the strip is chrome standing in the gutter, and a
       // selection that reaches a selectable element OUTSIDE the body takes
       // everything in between with it — measured 2026-09-18, a pointer over a
