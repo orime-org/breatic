@@ -95,9 +95,11 @@ export {
   GET_CANVAS_CAPABILITIES,
   LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION,
+  SAVE_IMAGE,
 } from "@domain/agent/tools/index.js";
 export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
+export { SaveRefused, type SavedMaterial, type SaveToStorage } from "@domain/agent/tools/save-image.js";
 // The model's half of what `web_search` answers with. The panel reads the
 // structured object; the request assembler renders it, and only it knows how
 // many sources the turn has already numbered.

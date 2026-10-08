@@ -314,7 +314,8 @@ export class ReaderUrlTransferError extends Error {
  * @param who.projectId - The project; it decides the owner studio.
  * @param who.actingUserId - Who the asset is attributed to.
  * @param signal - Raised when nobody wants the answer any more.
- * @returns The registered asset, as the report handler filed it.
+ * @returns The registered asset, as the report handler filed it, with the key
+ *   it was stored under for the caller's log lines.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  * @throws {ReaderUrlTransferError} When the link did not land, with the reason
  *   its grant was settled with.
@@ -324,7 +325,7 @@ export async function transferReaderUrlToStorage(
   sourceUrl: string,
   who: { projectId: string; actingUserId: string },
   signal?: AbortSignal,
-): Promise<StoredAsset> {
+): Promise<StoredAsset & { storageKey: string }> {
   const { upload, ingest } = getStorageConfig();
   const opened = await openBackendUpload(
     {
@@ -368,7 +369,7 @@ export async function transferReaderUrlToStorage(
     throw new ReaderUrlTransferError(INGEST_TYPE_NOT_REPORTED);
   }
 
-  return landed(
+  const stored = landed(
     await applyIngestReport({
       storageKey: opened.storageKey,
       outcome: "completed",
@@ -377,4 +378,5 @@ export async function transferReaderUrlToStorage(
     }),
     `the transfer of ${sourceUrl}`,
   );
+  return { ...stored, storageKey: opened.storageKey };
 }

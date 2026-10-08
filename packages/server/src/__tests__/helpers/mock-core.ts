@@ -24,8 +24,18 @@ import {
   GET_CANVAS_CAPABILITIES as REAL_GET_CANVAS_CAPABILITIES,
   LIST_GENERATION_MODELS as REAL_LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
+  SAVE_IMAGE as REAL_SAVE_IMAGE,
 } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
+// Pure rules about an address a caller hands over, which the routes read off
+// the barrel since they moved there (inner#1315); real, so a route checks an
+// address the way it does in production.
+import {
+  extFromUrl as REAL_EXT_FROM_URL,
+  labelForUrl as REAL_LABEL_FOR_URL,
+  readerUrlSchema as REAL_READER_URL_SCHEMA,
+  safeExt as REAL_SAFE_EXT,
+} from "../../../../domain/src/asset/source-url.js";
 // The reading's pinned model, passed through rather than typed out: the
 // route names it on the row, on the job and against the charge, and a copy
 // here would let all three drift from it while the suite stayed green.
@@ -596,6 +606,12 @@ export const domainMock = () => ({
   GET_CANVAS_CAPABILITIES: REAL_GET_CANVAS_CAPABILITIES,
   LIST_GENERATION_MODELS: REAL_LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION: REAL_PROPOSE_CANVAS_ACTION,
+  // Read by the turn when it hands the save its context (inner#1315).
+  SAVE_IMAGE: REAL_SAVE_IMAGE,
+  extFromUrl: REAL_EXT_FROM_URL,
+  labelForUrl: REAL_LABEL_FOR_URL,
+  readerUrlSchema: REAL_READER_URL_SCHEMA,
+  safeExt: REAL_SAFE_EXT,
   // Real so that a turn built on this stub throws the same detail the real
   // one does when a tool reports the stop itself.
   STOPPED_BY_USER: REAL_STOPPED_BY_USER,
