@@ -12,6 +12,7 @@ import {
   cameraCommandBracket,
   formatCredits,
   GENERATION_NODE_MODES,
+  PANEL_EDITOR_PARAM,
   STATIC_SHOT,
   type GenerationNodeType,
 } from "@breatic/shared";
@@ -22,6 +23,8 @@ import {
   waysIn,
   type ModelInfo,
   type ModelsForMode,
+  type WayIn,
+  type WayKind,
 } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
@@ -99,6 +102,23 @@ function renderCameraCommands(model: PricedModelInfo): string {
 }
 
 /**
+ * What one way in says about itself: where the node lands, how many it takes,
+ * and what the prompt carries for each.
+ * @param kind - The kind of node going this way.
+ * @param way - The way.
+ * @returns The words inside the brackets after its name.
+ */
+function wayWords(kind: WayKind, way: WayIn): string {
+  const where =
+    way.into === "pool"
+      ? kind === "text" ? "@'d into the prompt" : "the reference pool"
+      : way.into === PANEL_EDITOR_PARAM ? "@'d into the lyrics box" : "a slot";
+  const room = Number.isFinite(way.room) ? `, at most ${String(way.room)}` : "";
+  const mark = way.mark === "asset" ? "an asset mark each" : way.mark === "note" ? "a note each" : "nothing to write: the panel asks for it";
+  return `${where}${room}, ${mark}`;
+}
+
+/**
  * One model rendered for the model to read.
  * @param model - The model to describe.
  * @returns Its name, what it is for, what it costs, and its parameters.
@@ -129,23 +149,27 @@ function renderModel(model: PricedModelInfo): string {
     model.alsoServes && model.alsoServes.length > 0
       ? ` Also serves ${model.alsoServes.join(", ")} on this node, which is what parts of the line above describe.`
       : "";
-  // Where a node wired in goes is said on its edge whenever the model takes
-  // its kind more than one way; the same ways the proposal check reads.
-  const routing = [...waysIn(model)]
-    .map(([kind, ways]) => {
-      const each = ways.map((way) =>
-        way.slot
-          ? `"${way.into}" (a slot, at most ${String(way.room)}${way.optional ? ", a note each" : ""})`
-          : `"pool" (the reference pool, at most ${String(way.room)}, an asset mark each)`,
-      );
-      return ways.length > 1
-        ? ` Each ${String(kind)} node wired in goes one of ${String(ways.length)} ways; say which on its edge with into: ${each.join(" or ")}.`
-        : ways[0]?.slot === true
-          ? ` Each ${String(kind)} node wired in goes into ${each[0] ?? ""}.`
+  // Where a node wired in goes and what the prompt carries for it, read off
+  // the same ways the proposal check reads (design 5.7 tables A and D).
+  const ways = waysIn(model);
+  const routing = [...ways]
+    .map(([kind, list]) => {
+      const each = list.map((way) => `"${way.into}" (${wayWords(kind, way)})`);
+      return list.length > 1
+        ? ` Each ${kind} node wired in goes one of ${String(list.length)} ways; say which on its edge with into: ${each.join(" or ")}.`
+        : list[0] !== undefined && list[0].into !== "pool"
+          ? ` Each ${kind} node wired in goes into ${each[0] ?? ""}.`
           : "";
     })
     .join("");
-  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderStoryboard(model)}${renderCameraCommands(model)}`;
+  // Words wired in can always be @'d into a box that is drawn, so an asset
+  // mark on a model whose material arrives only by slot can ask for nothing else.
+  const mediaToAt = [...ways].some(([kind, list]) => kind !== "text" && list.some((way) => way.mark === "asset"));
+  const wordsOnly =
+    model.takesPrompt && !mediaToAt
+      ? " Nothing wired in but a text node can be @'d here, so an asset mark can only ask for words."
+      : "";
+  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${wordsOnly}${renderStoryboard(model)}${renderCameraCommands(model)}`;
   const params = Object.entries(model.params).filter(([, spec]) => !spec.fromStoryboard).map(([name, spec]) => {
     // Shape and cap belong to the parameter, so they are stated whatever else
     // it says about itself -- including for a slot, where together they are

@@ -91,9 +91,9 @@ const promptSegment = z.union([
             kind: z
               .enum(["asset", "tweak"])
               .describe(
-                "asset: a node wired in that the reader @s by hand to use it -- empty for their " +
-                  "material, generated, or a text node; the label says which (uploaded, generated, " +
-                  "the words you wrote). tweak: words only the reader can write",
+                "asset: a node wired in that the reader @s by hand to use it, going into the pool -- " +
+                  "empty for their material, generated, or a text node; never a node going into a slot; " +
+                  "the label says which (uploaded, generated, the words you wrote). tweak: words only the reader can write",
               ),
             label: z
               .string()
@@ -163,8 +163,9 @@ const proposalNode = z
         "What to generate, or a written node's words, in the language the reader " +
           "writes in. A mark is a segment of its own ({\"slot\": …}), never typed into a text " +
           "segment; it is words shown to the reader, nothing more: no mention is written for it, " +
-          "and the reader @s every reference by hand, so give every node wired in that they could @ " +
-          "an asset mark, or, for one that goes into an optional slot instead, a note of its own saying so",
+          "and the reader @s every reference by hand, so give every node going into the pool an asset " +
+          "mark; a node going into a slot takes no asset mark: a note of its own for an optional slot " +
+          "or the lyrics box, nothing for a required slot",
       ),
     shots: z
       .array(
@@ -209,9 +210,10 @@ export const inputSchema = z
               .min(1)
               .optional()
               .describe(
-                "Where the node wired in goes: \"pool\" (the reader @s it; an asset mark each) or the " +
-                  "name of a slot the model has (the reader picks it in the panel; a note each when the slot is optional). Needed " +
-                  "when the model takes that kind more than one way; leave it off an edge from a text node",
+                "Where the node wired in goes: \"pool\" (the reader @s it into the prompt; an asset mark each), " +
+                  "the name of a slot the model has (the reader picks it in the panel; a note each when the slot is optional), " +
+                  "or \"lyrics\" for words the reader @s into a song model's lyrics box (a note each). Needed " +
+                  "when the model takes that kind more than one way",
               ),
           })
           .strict(),
@@ -525,28 +527,15 @@ function checkGenerateNode(
       reason: `"${model}" draws no prompt box, so words and tweak or asset marks written there reach nobody. Keep only notes saying what the reader picks in the panel.`,
     };
   }
-  // Where each wired node goes is said on its edge: the agent knows, and the
-  // marks it writes are words that name no node, so nothing here can work it
-  // out from them. Text nodes are words the reader @s into the prompt.
+  // Where each wired node goes is said on its edge (design 5.7): the agent
+  // knows, and the marks it writes are words that name no node, so nothing
+  // here can work it out from them. Words go the same way: into the prompt,
+  // or into the lyrics box where the model has one.
   const ways = waysIn(chosen);
   const routed: { node: ProposalNode; way: WayIn }[] = [];
-  const scripts: ProposalNode[] = [];
   for (const edge of proposal.edges.filter((e) => e.toIndex === index)) {
     const from = proposal.nodes[edge.fromIndex];
     if (!from) continue;
-    if (from.type === "text") {
-      if (edge.into !== undefined) {
-        return {
-          ok: false,
-          reason: chosen.takesPrompt
-            ? `"${from.name}" is words the reader @s into the prompt; leave into off its edge.`
-            : `"${model}" takes no text node, so the edge from "${from.name}" goes nowhere in it; leave into off that edge.`,
-        };
-      }
-      // A text row only asks whether there is a prompt to @ it into.
-      if (chosen.takesPrompt) scripts.push(from);
-      continue;
-    }
     const options = ways.get(from.type) ?? [];
     // An edge the model takes nothing from still carries the creative link
     // (user 2026-08-13); saying where it goes is a claim the model refutes.
@@ -568,16 +557,15 @@ function checkGenerateNode(
   for (const option of new Set(routed.map(({ way }) => way))) {
     const going = routed.filter(({ way }) => way === option).map(({ node: n }) => n);
     if (going.length > option.room) {
+      const elsewhere = (ways.get(going[0]?.type ?? "text")?.length ?? 0) > 1;
       return {
         ok: false,
-        reason: `"${model}" takes ${String(option.room)} ${going[0]?.type ?? ""} node(s) by "${option.into}", and ${String(going.length)} are wired that way (${going.map((n) => `"${n.name}"`).join(", ")}).${option.slot ? "" : " Send the rest another way it takes, or wire fewer."}`,
+        reason: `"${model}" takes ${String(option.room)} ${going[0]?.type ?? ""} node(s) by "${option.into}", and ${String(going.length)} are wired that way (${going.map((n) => `"${n.name}"`).join(", ")}).${elsewhere ? " Send the rest another way it takes, or wire fewer." : " Wire fewer."}`,
       };
     }
   }
-  const pooled = routed.filter(({ way }) => !way.slot).map(({ node: n }) => n);
-  const slotted = routed.filter(({ way }) => way.slot);
-  // The reader @s each pooled picture and each script; counted, never paired.
-  const asked = [...pooled, ...scripts];
+  // Counted, never paired: each way says what the prompt carries per node.
+  const asked = routed.filter(({ way }) => way.mark === "asset").map(({ node: n }) => n);
   const marked = prompt.filter((segment) => segment.slot?.kind === "asset").length;
   if (marked < asked.length) {
     return {
@@ -585,16 +573,18 @@ function checkGenerateNode(
       reason: `"${node.name}" has ${String(asked.length)} node(s) the reader @s to use (${asked.map((n) => `"${n.name}"`).join(", ")}) and ${String(marked)} asset mark(s). Give each one an asset mark saying what to @; a node not @'d is not used.`,
     };
   }
-  // An optional slot is one the panel never asks the reader to fill, so a
-  // node meant for it reaches the run only if a note says so.
-  const optional = slotted.filter(({ way }) => way.optional);
+  // An optional slot is one the panel never asks the reader to fill, and the
+  // lyrics box is one the prompt says nothing about: a node meant for either
+  // reaches the run only if a note says so.
+  const noted = routed.filter(({ way }) => way.mark === "note");
   const notes = prompt.filter((segment) => segment.slot?.kind === "note").length;
-  if (notes < optional.length) {
+  if (notes < noted.length) {
     return {
       ok: false,
-      reason: `"${node.name}" has ${String(optional.length)} node(s) going into an optional slot (${optional.map(({ node: n, way }) => `"${n.name}" into ${way.into}`).join(", ")}) and ${String(notes)} note(s). Give each one a note saying which slot to pick it into.`,
+      reason: `"${node.name}" has ${String(noted.length)} node(s) going into an optional slot or the lyrics box (${noted.map(({ node: n, way }) => `"${n.name}" into ${way.into}`).join(", ")}) and ${String(notes)} note(s). Give each one a note saying where to pick or @ it.`,
     };
   }
+  const scripts = routed.filter(({ node: n, way }) => n.type === "text" && way.into === "pool").map(({ node: n }) => n);
   // The words of a wired text node go in where the reader @s it, so they
   // count once against what is sent. Measured as nothing, a script past the
   // model's cap is placed and the reader meets the refusal at a button they
@@ -1056,7 +1046,7 @@ function templateGuide(): string {
     "you keep. To put the reader's own story or detail in, send the template's prompt rewritten in the " +
     "language they write in, as segments: fill a tweak segment with words or keep it for them, and keep each " +
     "asset segment, saying in its label whether the picture is uploaded or generated, and its note field is the card's line; " +
-    "the reader @s it by hand. A reference sent into a slot instead takes a note in place of its asset segment."
+    "the reader @s it by hand."
   );
 }
 

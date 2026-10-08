@@ -9,6 +9,7 @@ import {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   modelLabel,
+  PANEL_EDITOR_PARAM,
   paramValues,
   storyboardSpec,
   type ControlGate,
@@ -433,36 +434,56 @@ function isReferenceKind(accepts: string | undefined): accepts is ReferenceKind 
   return accepts === "image" || accepts === "video" || accepts === "audio";
 }
 
+/** What the reader writes in the prompt for a node going one way in. */
+export type WayMark = "asset" | "note" | "none";
+
 /** One way a node wired in reaches a generation, as the model declares it. */
 export interface WayIn {
-  /** What an edge says to take this way: "pool", or the slot's parameter name. */
+  /** What an edge says to take this way: "pool", a slot's parameter name, or the lyrics box. */
   into: string;
   /** How many nodes this way takes. */
   room: number;
-  /** Whether the reader picks the node in the panel rather than @'ing it. */
-  slot: boolean;
-  /** Whether the run can go without it: a slot the panel does not ask the reader to fill. */
-  optional: boolean;
+  /**
+   * What the prompt carries for each node going this way: an asset mark to
+   * mention it, a note saying where to pick or mention it, or nothing where the panel
+   * itself asks for it (a required slot).
+   */
+  mark: WayMark;
 }
 
+/** The kinds of node a way in is listed for: the three a pool carries, and words. */
+export type WayKind = ReferenceKind | "text";
+
 /**
- * Every way a model takes each kind of node wired into it: its pool, which
- * the reader mentions in the prompt (only where a prompt box is drawn), and
- * each slot, which the reader picks into in the panel.
+ * Every way a model takes each kind of node wired into it (design 5.7 table
+ * A): its pool, which the reader mentions from in the prompt box; each slot,
+ * which the reader picks into in the panel; and for words, the prompt box and
+ * the lyrics box, both of which the reader mentions them into.
  * @param chosen - The model, as the catalog projects it.
  * @returns Per kind, its ways in declaration order.
  * @throws {never} Never.
  */
-export function waysIn(chosen: ModelInfo): Map<ReferenceKind, WayIn[]> {
-  const ways = new Map<ReferenceKind, WayIn[]>();
+export function waysIn(chosen: ModelInfo): Map<WayKind, WayIn[]> {
+  const ways = new Map<WayKind, WayIn[]>();
+  /**
+   * List one more way for a kind.
+   * @param kind - The kind of node.
+   * @param way - The way.
+   */
+  const add = (kind: WayKind, way: WayIn): void => {
+    ways.set(kind, [...(ways.get(kind) ?? []), way]);
+  };
   for (const [name, info] of Object.entries(chosen.params)) {
     if (info.filledBySource !== true || !isReferenceKind(info.accepts)) continue;
-    const pool = info.fromReferencePool === true;
-    if (pool && !chosen.takesPrompt) continue;
-    const way = pool
-      ? { into: "pool", room: info.maxItems ?? Number.POSITIVE_INFINITY, slot: false, optional: info.optional === true }
-      : { into: name, room: info.maxItems ?? 1, slot: true, optional: info.optional === true };
-    ways.set(info.accepts, [...(ways.get(info.accepts) ?? []), way]);
+    if (info.fromReferencePool === true) {
+      if (chosen.takesPrompt) add(info.accepts, { into: "pool", room: info.maxItems ?? Number.POSITIVE_INFINITY, mark: "asset" });
+    } else {
+      add(info.accepts, { into: name, room: info.maxItems ?? 1, mark: info.optional === true ? "note" : "none" });
+    }
+  }
+  if (chosen.takesPrompt) add("text", { into: "pool", room: Number.POSITIVE_INFINITY, mark: "asset" });
+  if (chosen.params[PANEL_EDITOR_PARAM] !== undefined) {
+    add("text", { into: PANEL_EDITOR_PARAM, room: Number.POSITIVE_INFINITY, mark: "note" });
   }
   return ways;
 }
