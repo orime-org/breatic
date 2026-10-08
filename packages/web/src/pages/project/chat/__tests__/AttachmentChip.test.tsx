@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChatAttachedChip } from '@breatic/shared';
+import { resetPreviewFailures } from '@web/lib/preview-src';
 import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
 import { PREVIEW_ROWS } from '@web/pages/project/chat/attachment-preview';
 import { HOVER_OPEN_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
@@ -143,3 +144,31 @@ describe('AttachmentChip hover preview', () => {
   });
 });
 
+
+describe('AttachmentChip canvas rows — the thumbnail shows the stored preview (inner#1320)', () => {
+  beforeEach(() => {
+    resetPreviewFailures();
+  });
+
+  it('a stored image node renders its preview address in the row thumbnail', () => {
+    vi.useFakeTimers();
+    const stored =
+      'https://resource-dev.breatic.cc/image/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679.png';
+    const chip: ChatAttachedChip = {
+      id: 'c',
+      type: 'canvas',
+      name: '',
+      data_snapshot: {
+        nodes: [
+          { id: 'n0', type: 'image', position: { x: 0, y: 0 }, data: { kind: 'image', name: 'Node 0', content: stored } },
+          { id: 'n1', type: 'text', position: { x: 0, y: 0 }, data: { kind: 'text', name: 'Node 1', content: 'words' } },
+        ],
+        edges: [],
+      },
+    };
+    render(<AttachmentChip id='c' type='canvas' name='' chip={chip} testId='card' />);
+    hover(label());
+    const row = screen.getAllByTestId('attachment-preview-row')[0];
+    expect(row?.querySelector('img')?.getAttribute('src')).toBe(`${stored}.preview.webp`);
+  });
+});

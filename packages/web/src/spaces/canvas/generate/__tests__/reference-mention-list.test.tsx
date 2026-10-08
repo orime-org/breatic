@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render } from '@testing-library/react';
 import * as React from 'react';
 
 import { MentionList, type MentionListRef } from '@web/features/reference-mention/mention-list';
 import { referenceKey, renderReferenceRow } from '@web/spaces/canvas/generate/reference-mention-list';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { resetPreviewFailures } from '@web/lib/preview-src';
 
 const row = (id: string): ReferenceRailItem => ({
   refId: `${id}->me`,
@@ -380,5 +381,32 @@ describe('ReferenceMentionList — video reference thumbnail (#1824 consumer ⑥
     expect(container.querySelector('.lucide-video')).not.toBeNull();
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('.lucide-image-off')).toBeNull();
+  });
+});
+
+describe('ReferenceMentionList — the thumbnail shows the stored preview (inner#1320)', () => {
+  beforeEach(() => {
+    resetPreviewFailures();
+  });
+
+  it('a stored video cover renders its preview address in the row thumbnail', () => {
+    const stored =
+      'https://resource-dev.breatic.cc/video/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679_cover.png';
+    const { container } = render(
+      <MentionList<ReferenceRailItem> itemKey={referenceKey} renderItem={renderReferenceRow}
+        items={[
+          {
+            refId: 'v->me',
+            sourceNodeId: 'v',
+            sourceNodeType: 'video',
+            sourceNodeName: 'Clip',
+            thumbnail: stored,
+          },
+        ]}
+        command={vi.fn()}
+        emptyLabel='none' query=''
+      />,
+    );
+    expect(container.querySelector('img')?.getAttribute('src')).toBe(`${stored}.preview.webp`);
   });
 });
