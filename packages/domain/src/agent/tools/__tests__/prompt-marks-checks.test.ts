@@ -58,7 +58,7 @@ function edit(feeders: ProposalNode[], prompt: NonNullable<ProposalNode["prompt"
       ...feeders,
       { role: "generate", type: "image", name: "Night", mode: "i2i", model: "nano-banana-pro-edit-ultra", prompt },
     ],
-    edges: feeders.map((_, i) => ({ fromIndex: i, toIndex: feeders.length })),
+    edges: feeders.map((_, i) => ({ fromIndex: i, toIndex: feeders.length, into: "pool" })),
     rationale: "A night version of the character.",
     groupName: "Night",
   };
@@ -104,7 +104,7 @@ describe("every node the reader could @ has a bracket", () => {
           prompt: [{ slot: { kind: "note", label: "Pick the first frame in the panel" } }, { text: "She walks forward." }],
         },
       ],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "image" }],
       rationale: "",
       groupName: "Clip",
     };
@@ -191,7 +191,7 @@ describe("where each wired node goes, said on its edge", () => {
    */
   function routed(into: readonly (string | undefined)[], prompt: NonNullable<ProposalNode["prompt"]>): CanvasProposal {
     const base = edit(into.map((_, i) => picture(`Picture ${String(i + 1)}`)), prompt);
-    return { ...base, edges: base.edges.map((edge, i) => (into[i] === undefined ? edge : { ...edge, into: into[i] })) };
+    return { ...base, edges: base.edges.map(({ fromIndex, toIndex }, i) => (into[i] === undefined ? { fromIndex, toIndex } : { fromIndex, toIndex, into: into[i] })) };
   }
 
   const marks = (n: number): NonNullable<ProposalNode["prompt"]> =>

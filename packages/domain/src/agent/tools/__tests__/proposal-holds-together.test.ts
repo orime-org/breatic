@@ -45,7 +45,6 @@ import {
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
 import {
-  answerFor,
   checkProposal,
   inputSchema,
   theirsToFill,
@@ -157,6 +156,22 @@ const manySlotted = (): Reachable =>
     "mode offering two slots",
   );
 
+/**
+ * The first panel slot of a mode that takes a node of one kind: the name an
+ * edge into it carries in `into`.
+ * @param at - The mode.
+ * @param kind - The kind of node wired in.
+ * @returns The slot's parameter name.
+ * @throws {Error} When the mode has no such slot.
+ */
+function slotFor(at: Reachable, kind: string): string {
+  const name = Object.entries(at.params).find(
+    ([, p]) => p.filledBySource === true && p.fromReferencePool !== true && p.accepts === kind,
+  )?.[0];
+  if (name === undefined) throw new Error(`the mode has no ${kind} slot`);
+  return name;
+}
+
 /** A mode asking nothing of the reader. */
 const sourceless = (): Reachable => pick((at) => at.needs.length === 0, "mode needing no source");
 
@@ -222,7 +237,8 @@ function propose(at: Reachable, built: Built = {}): CanvasProposal {
   });
   return {
     nodes,
-    edges: wired ? sources.map((_, i) => ({ fromIndex: i, toIndex: sources.length })) : [],
+    // Wired material goes into the pool, which is what a reference mode reads.
+    edges: wired ? sources.map((_, i) => ({ fromIndex: i, toIndex: sources.length, into: "pool" })) : [],
     modelNote: "",
     rationale: "",
     // A group forms once there are two nodes, and it carries a name.
@@ -345,13 +361,13 @@ describe("a mode whose material arrives through the reference pool", () => {
           prompt: [{ text: "an opening shot" }],
         },
       ],
-      edges: [...filled.edges, { fromIndex: filled.nodes.length, toIndex: generation }],
+      edges: [...filled.edges, { fromIndex: filled.nodes.length, toIndex: generation, into: "pool" }],
       groupName: "One clip more than it holds",
     });
 
     expect(verdict).toEqual({
       ok: false,
-      reason: expect.stringContaining(`${String(cap)} video reference(s) at a time`),
+      reason: expect.stringContaining(`takes ${String(cap)} video node(s) by "pool"`),
     });
   });
 
@@ -362,7 +378,7 @@ describe("a mode whose material arrives through the reference pool", () => {
     const cap = at.poolCap ?? 0;
     const tooMany = Array.from({ length: cap + 1 }, () => at.needs[0] as GenerationNodeType);
 
-    expect(checkProposal(propose(at, { sources: tooMany }))).toEqual({ ok: false, reason: expect.stringContaining("reference(s) at a time") });
+    expect(checkProposal(propose(at, { sources: tooMany }))).toEqual({ ok: false, reason: expect.stringContaining('by "pool"') });
   });
 
   it("stands at exactly what the pool holds", () => {
@@ -410,13 +426,13 @@ describe("a mode whose material arrives through the reference pool", () => {
           prompt: [{ text: "an opening shot" }],
         },
       ],
-      edges: [...filled.edges, { fromIndex: filled.nodes.length, toIndex: generation }],
+      edges: [...filled.edges, { fromIndex: filled.nodes.length, toIndex: generation, into: "pool" }],
       groupName: "One more than it holds",
     });
 
     expect(verdict).toEqual({
       ok: false,
-      reason: expect.stringContaining("reference(s) at a time"),
+      reason: expect.stringContaining('by "pool"'),
     });
   });
 
@@ -940,32 +956,20 @@ describe("what the catalog does not offer", () => {
   });
 });
 
-describe("what the answer tells the canvas", () => {
+describe("a mode taking one kind both by a slot and by its pool", () => {
   /**
-   * The answer the tool hands back for a sound proposal.
-   * @param proposal - What the model sent.
-   * @returns The nodes of the answer.
-   * @throws {Error} When the proposal was refused.
+   * The name of the required slot a mixed mode has beside its pool.
+   * @param at - The mode.
+   * @returns The slot's parameter name.
+   * @throws {Error} When it has none.
    */
-  function answered(proposal: CanvasProposal): ProposalNode[] {
-    const answer = answerFor(proposal);
-    if (!answer.placed) throw new Error(`refused: ${answer.reason}`);
-    return answer.nodes;
-  }
-
-  it("says how each generation takes the reader's material", () => {
-    // The canvas writes an @-mention for a mark only where a mention is what
-    // picks the material, and the reader may press Use before the model
-    // catalog has loaded. So the answer carries what the check just read off
-    // the catalog rather than leaving the canvas to ask again.
-    const pool = pooled();
-    const slot = slotted();
-
-    const pooledNodes = answered(propose(pool));
-    expect(pooledNodes[0]?.poolKinds).toBeUndefined();
-    expect(pooledNodes[1]?.poolKinds).toContain(pool.needs[0]);
-    expect(answered(propose(slot)).map((n) => n.poolKinds)).toEqual([undefined, []]);
-  });
+  const requiredSlotOf = (at: Reachable): string => {
+    const name = Object.entries(at.params).find(
+      ([, p]) => p.filledBySource === true && p.fromReferencePool !== true && p.optional !== true,
+    )?.[0];
+    if (name === undefined) throw new Error("the mode has no required slot");
+    return name;
+  };
 
   /**
    * The mode whose model takes one kind both ways: a required slot and a pool.
@@ -982,33 +986,15 @@ describe("what the answer tells the canvas", () => {
       "mode with a required slot beside its pool",
     );
 
-  it("names the slots a run cannot go without, apart from its pool", () => {
-    // The reader's material fills the slot first, so the canvas and the card
-    // must know the slot is there even though the pool takes the same kind.
-    const nodes = answered(propose(mixed()));
-    expect(nodes[nodes.length - 1]?.slotKinds).toEqual(["image"]);
-  });
-
-  it("names no slot for material the model can go without", () => {
-    // Every canvas place here is optional, so none of them is a slot a run
-    // cannot go without.
-    const optionalOnly = pick(
-      (at) =>
-        Object.values(at.params).some((p) => p.filledBySource === true && p.fromReferencePool !== true) &&
-        Object.values(at.params).every(
-          (p) => p.filledBySource !== true || p.fromReferencePool === true || p.optional === true,
-        ),
-      "mode whose canvas places are all optional",
-    );
-    expect(answered(propose(optionalOnly, { sources: [] })).at(-1)?.slotKinds).toEqual([]);
-  });
-
   it("counts the pool's cap without the picture the required slot takes", () => {
     const at = mixed();
     const cap = Object.values(at.params).find((p) => p.fromReferencePool === true)?.maxItems ?? 0;
     const sources = Array.from({ length: cap + 1 }, () => "image" as const);
+    const slot = requiredSlotOf(at);
+    const proposal = propose(at, { sources, marks: cap });
+    proposal.edges = proposal.edges.map((edge, i) => (i === 0 ? { ...edge, into: slot } : edge));
 
-    expect(checkProposal(propose(at, { sources, marks: sources.length })).ok).toBe(true);
+    expect(checkProposal(proposal)).toEqual({ ok: true });
   });
 
   it("lets a mark name the generated work wired in past the one that fills the slot", () => {
@@ -1038,8 +1024,8 @@ describe("what the answer tells the canvas", () => {
         },
       ],
       edges: [
-        { fromIndex: 0, toIndex: 2 },
-        { fromIndex: 1, toIndex: 2 },
+        { fromIndex: 0, toIndex: 2, into: requiredSlotOf(at) },
+        { fromIndex: 1, toIndex: 2, into: "pool" },
       ],
       rationale: "",
       groupName: "Knight clip",
@@ -1258,6 +1244,7 @@ describe("a flow of any shape", () => {
       ...one,
       nodes: [written(), ...one.nodes],
       edges: one.edges.map((edge) => ({
+        ...edge,
         fromIndex: edge.fromIndex + 1,
         toIndex: edge.toIndex + 1,
       })),
@@ -1277,9 +1264,9 @@ describe("a flow of any shape", () => {
     const verdict = checkProposal({
       nodes: [...sources, generate, { ...generate }, { ...generate }],
       edges: sources.flatMap((_, i) => [
-        { fromIndex: i, toIndex: sources.length },
-        { fromIndex: i, toIndex: sources.length + 1 },
-        { fromIndex: i, toIndex: sources.length + 2 },
+        { fromIndex: i, toIndex: sources.length, into: "pool" },
+        { fromIndex: i, toIndex: sources.length + 1, into: "pool" },
+        { fromIndex: i, toIndex: sources.length + 2, into: "pool" },
       ]),
       modelNote: "",
       rationale: "Three angles off the one photo.",
@@ -1479,7 +1466,7 @@ describe("a flow of any shape", () => {
             { slot: { kind: "asset", label: "the one made", note: "Pick it in the panel" } },
             { slot: { kind: "asset", label: "yours", note: "Pick it in the panel" } }] },
       ],
-      edges: [{ fromIndex: 0, toIndex: 2 }],
+      edges: [{ fromIndex: 0, toIndex: 2, into: slotFor(at, made) }],
       rationale: "Make one, you bring the other.",
       groupName: "Both halves",
     });
@@ -1504,7 +1491,7 @@ describe("a flow of any shape", () => {
               slot: { kind: "asset" as const, label: `frame ${String(i + 1)}`, note: "Pick it" },
             }))] },
       ],
-      edges: [{ fromIndex: 0, toIndex: 2 }],
+      edges: [{ fromIndex: 0, toIndex: 2, into: slotFor(at, kind) }],
       rationale: "x", groupName: "g",
     });
 
@@ -1691,7 +1678,7 @@ describe("edges the canvas itself would refuse", () => {
 
     const verdict = checkProposal({
       nodes: [generation(first), generation(at, 0, 1)],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
       modelNote: "",
       rationale: "The second works on what the first made.",
       groupName: "Two steps",
@@ -1713,8 +1700,8 @@ describe("edges the canvas itself would refuse", () => {
         generation(at, 1),
       ],
       edges: [
-        { fromIndex: 0, toIndex: 2 },
-        { fromIndex: 1, toIndex: 3 },
+        { fromIndex: 0, toIndex: 2, into: "pool" },
+        { fromIndex: 1, toIndex: 3, into: "pool" },
       ],
       modelNote: "",
       rationale: "One each.",
@@ -1737,8 +1724,8 @@ describe("edges the canvas itself would refuse", () => {
         generation(at, 1, 1),
       ],
       edges: [
-        { fromIndex: 0, toIndex: 2 },
-        { fromIndex: 1, toIndex: 2 },
+        { fromIndex: 0, toIndex: 2, into: "pool" },
+        { fromIndex: 1, toIndex: 2, into: "pool" },
       ],
       modelNote: "",
       rationale: "One we make, one they bring.",
@@ -1769,7 +1756,7 @@ describe("a mark pointing at an upstream node", () => {
 
     const verdict = checkProposal({
       nodes: [generation(first), generation(at, 0, 1)],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
       modelNote: "",
       rationale: "The second works on what the first made.",
       groupName: "Two steps",
@@ -1911,7 +1898,7 @@ describe("what the model itself settles", () => {
       ],
       edges: [
         { fromIndex: 0, toIndex: cap + 1 },
-        ...Array.from({ length: cap }, (_, i) => ({ fromIndex: i + 1, toIndex: cap + 1 })),
+        ...Array.from({ length: cap }, (_, i) => ({ fromIndex: i + 1, toIndex: cap + 1, into: "pool" })),
       ],
       rationale: "x",
       groupName: "g",

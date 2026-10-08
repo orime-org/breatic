@@ -844,7 +844,8 @@ export function renderProductGuide(): string {
     "How work reaches a node depends on where it goes:",
     "- Into the reference list: the reader @s it in the prompt or a shot where a 📎 mark asks for it. Nothing " +
       "is @'d for them, and a node wired in that is not @'d is not used.",
-    "- Into one of the mode's source slots: it is not @'d; an orange note says which slot. Once that node holds " +
+    "- Into one of the mode's source slots: it is not @'d; for an optional slot an orange note says which slot, " +
+      "and a required slot left empty stops the run. Once that node holds " +
       "its file or its generated result, the reader opens the panel of the node it feeds, presses that slot's " +
       "button and clicks the node.",
     "",

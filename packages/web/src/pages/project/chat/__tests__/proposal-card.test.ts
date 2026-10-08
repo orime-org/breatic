@@ -31,7 +31,6 @@ const generates = (name: string, model = 'flat-model', notes: string[] = []): Pr
   // catalog: an i2i model takes its material through the reference pool and
   // draws a prompt box. A fixture without them is a proposal the check never
   // produced.
-  poolKinds: ['image'],
   takesPrompt: true,
   prompt: [
     { text: 'white ground' },
@@ -161,7 +160,6 @@ describe('what is left for the reader', () => {
         empty('Your photo'),
         {
           ...generates('The clip'),
-          poolKinds: [],
           prompt: [
             { text: 'pan across' },
             { slot: { kind: 'asset', label: 'your photo', note: 'Pick it in the first slot' } },
@@ -183,7 +181,6 @@ describe('what is left for the reader', () => {
     const proposal = flow([
       {
         ...generates('The tween'),
-        poolKinds: [],
         prompt: [{ text: 'morph' }, { slot: same }, { slot: same }],
       },
     ]);

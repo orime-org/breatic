@@ -266,7 +266,6 @@ describe('useNodeCreation', () => {
           name: 'On white',
           mode: 'i2i',
           model: 'some-model',
-          poolKinds: ['image'],
           takesPrompt: true,
           params: { ratio: '1:1' },
           prompt: [{ text: 'white ground' }],
@@ -346,7 +345,7 @@ describe('useNodeCreation', () => {
           PAIR.nodes[0]!,
           {
             ...PAIR.nodes[1]!,
-            poolKinds: [], takesPrompt: true,
+            takesPrompt: true,
             prompt: [
               { text: 'animate ' },
               { slot: { kind: 'asset', label: 'your photo', note: 'pick it in the panel' } },
@@ -396,7 +395,7 @@ describe('useNodeCreation', () => {
           { role: 'source', type: 'image', name: 'Extra' },
           {
             role: 'generate', type: 'video', name: 'Clip', mode: 'multi_shot', model: 'some-model',
-            poolKinds: ['image'], takesPrompt: true,
+            takesPrompt: true,
             shots: [
               { prompt: [{ text: 'first ' }, { slot: { kind: 'asset', label: 'hero', note: '' } }], duration: 2 },
               { prompt: [{ text: 'then ' }, { slot: { kind: 'asset', label: 'extra', note: '' } }], duration: 3 },
@@ -441,7 +440,7 @@ describe('useNodeCreation', () => {
           nodes: [
             {
               role: 'generate', type: 'video', name: 'Clip', mode: 'multi_shot', model: 'some-model',
-              poolKinds: ['image'], takesPrompt: true,
+              takesPrompt: true,
               shots: [{ prompt: [{ text: 'a ' }, { slot: { kind: 'tweak', label: 'scene', note: '' } }], duration: 2 }],
             },
           ],

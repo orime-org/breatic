@@ -115,12 +115,10 @@ export type {
   ProposalAnswer,
 } from "@shared/types/canvas-proposal.js";
 export {
-  feedersOf,
   layersOf,
   markText,
   markedSegments,
   proposalMarkSegments,
-  nameableFeeders,
   promptPlainText,
   promptTextOf,
 } from "@shared/types/canvas-proposal.js";

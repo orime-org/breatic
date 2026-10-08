@@ -228,7 +228,7 @@ describe("what the guide says", () => {
     // The placing mentions a feeder only where a mention is what picks it; a
     // node feeding one of the mode's slots, empty or generated, gets none.
     const proposals = section("Proposal cards");
-    expect(proposals).toMatch(/source slots: it is not @'d; an orange note says which slot/i);
+    expect(proposals).toMatch(/source slots: it is not @'d; for an optional slot an orange note says which slot, and a required slot left empty stops the run/i);
     expect(proposals).toMatch(/file or its generated result/i);
     expect(proposals).toMatch(/presses that slot's button and clicks the node/i);
   });

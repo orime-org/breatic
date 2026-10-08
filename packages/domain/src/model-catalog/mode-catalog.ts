@@ -451,36 +451,38 @@ function isReferenceKind(accepts: string | undefined): accepts is ReferenceKind 
   return accepts === "image" || accepts === "video" || accepts === "audio";
 }
 
-/**
- * The kinds a model takes by a required slot: one entry per canvas place a
- * run cannot go without, so a kind with two such places appears twice.
- *
- * The agent's catalog text and the proposal's routing both read this, so the
- * sentence the model is told and the place a node lands agree.
- * @param chosen - The model, as the catalog projects it.
- * @returns The slot kinds, in declaration order.
- * @throws {never} Never.
- */
-export function requiredSlotKinds(chosen: ModelInfo): ReferenceKind[] {
-  return Object.values(chosen.params).flatMap((info) =>
-    info.filledBySource === true && info.fromReferencePool !== true && info.optional !== true && isReferenceKind(info.accepts)
-      ? [info.accepts]
-      : [],
-  );
+/** One way a node wired in reaches a generation, as the model declares it. */
+export interface WayIn {
+  /** What an edge says to take this way: "pool", or the slot's parameter name. */
+  into: string;
+  /** How many nodes this way takes. */
+  room: number;
+  /** Whether the reader picks the node in the panel rather than @'ing it. */
+  slot: boolean;
+  /** Whether the run can go without it: a slot the panel does not ask the reader to fill. */
+  optional: boolean;
 }
 
 /**
- * The optional slots a model takes material through, with how many nodes each holds.
+ * Every way a model takes each kind of node wired into it: its pool, which
+ * the reader mentions in the prompt (only where a prompt box is drawn), and
+ * each slot, which the reader picks into in the panel.
  * @param chosen - The model, as the catalog projects it.
- * @returns Each optional slot's name, kind and room, in declaration order.
+ * @returns Per kind, its ways in declaration order.
  * @throws {never} Never.
  */
-export function optionalSlots(chosen: ModelInfo): { name: string; kind: ReferenceKind; room: number }[] {
-  return Object.entries(chosen.params).flatMap(([name, info]) =>
-    info.filledBySource === true && info.fromReferencePool !== true && info.optional === true && isReferenceKind(info.accepts)
-      ? [{ name, kind: info.accepts, room: info.maxItems ?? 1 }]
-      : [],
-  );
+export function waysIn(chosen: ModelInfo): Map<ReferenceKind, WayIn[]> {
+  const ways = new Map<ReferenceKind, WayIn[]>();
+  for (const [name, info] of Object.entries(chosen.params)) {
+    if (info.filledBySource !== true || !isReferenceKind(info.accepts)) continue;
+    const pool = info.fromReferencePool === true;
+    if (pool && !chosen.takesPrompt) continue;
+    const way = pool
+      ? { into: "pool", room: info.maxItems ?? Number.POSITIVE_INFINITY, slot: false, optional: info.optional === true }
+      : { into: name, room: info.maxItems ?? 1, slot: true, optional: info.optional === true };
+    ways.set(info.accepts, [...(ways.get(info.accepts) ?? []), way]);
+  }
+  return ways;
 }
 
 /**

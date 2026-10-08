@@ -19,9 +19,7 @@ import type { CreditEstimate } from "@breatic/shared/pricing";
 
 import {
   modelsForMode,
-  poolParams,
-  optionalSlots,
-  requiredSlotKinds,
+  waysIn,
   type ModelInfo,
   type ModelsForMode,
 } from "@domain/model-catalog/mode-catalog.js";
@@ -131,25 +129,22 @@ function renderModel(model: PricedModelInfo): string {
     model.alsoServes && model.alsoServes.length > 0
       ? ` Also serves ${model.alsoServes.join(", ")} on this node, which is what parts of the line above describe.`
       : "";
-  // A kind taken both by a required slot and by the pool is routed by the
-  // order the nodes are listed (`nameableFeeders`), which the model cannot
-  // see from the parameters alone. An optional slot is the reader's to pick
-  // into or leave: where the model also pools that kind, the nodes it can hold
-  // need no asset mark; where it does not, they cannot be @'d at all.
-  const pooled = poolParams(model).map((pool) => pool.kind);
-  const shared = [...new Set(requiredSlotKinds(model).filter((kind) => pooled.includes(kind)))];
-  const routing =
-    shared
-      .map((kind) => ` Of the ${String(kind)} nodes wired in, the first in the order the proposal lists its nodes is the one the reader picks into its ${String(kind)} slot (say so in a note); later ones go to its pool (an asset mark each).`)
-      .join("") +
-    optionalSlots(model)
-      .map(({ name, kind, room }) => {
-        const nodes = `Up to ${String(room)} ${String(kind)} node${room === 1 ? "" : "s"} wired in`;
-        return pooled.includes(kind)
-          ? ` ${nodes} can go into its ${name} slot instead (a note for each, saying so); those need no asset mark.`
-          : ` ${nodes} go into its ${name} slot (a note for each, saying so); they cannot be @'d.`;
-      })
-      .join("");
+  // Where a node wired in goes is said on its edge whenever the model takes
+  // its kind more than one way; the same ways the proposal check reads.
+  const routing = [...waysIn(model)]
+    .map(([kind, ways]) => {
+      const each = ways.map((way) =>
+        way.slot
+          ? `"${way.into}" (a slot, at most ${String(way.room)}, a note each)`
+          : `"pool" (the reference pool, at most ${String(way.room)}, an asset mark each)`,
+      );
+      return ways.length > 1
+        ? ` An ${String(kind)} node wired in goes one of ${String(ways.length)} ways; say which on its edge with into: ${each.join(" or ")}.`
+        : ways[0]?.slot === true
+          ? ` An ${String(kind)} node wired in goes into ${each[0] ?? ""}.`
+          : "";
+    })
+    .join("");
   const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderStoryboard(model)}${renderCameraCommands(model)}`;
   const params = Object.entries(model.params).filter(([, spec]) => !spec.fromStoryboard).map(([name, spec]) => {
     // Shape and cap belong to the parameter, so they are stated whatever else

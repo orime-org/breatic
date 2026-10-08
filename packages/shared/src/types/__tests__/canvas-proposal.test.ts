@@ -2,103 +2,22 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Which feeders a proposed generation's marks may mention (#2156). A model can
- * take the same kind of material two ways -- a required slot the reader
- * clicks a node into, and a pool the prompt picks from -- and the empty node
- * the reader fills belongs in the slot first: a run without it cannot go.
+ * Which segments of a proposed node can carry a mark (#2218).
  */
 import { describe, expect, it } from "vitest";
-import { nameableFeeders, proposalMarkSegments, type CanvasProposal, type ProposalNode } from "@shared/types/canvas-proposal";
-
-const photo = (name: string): ProposalNode => ({ role: "source", type: "image", name });
-
-/** Kling O3 image-to-video: a required first frame and an optional pool of elements. */
-const mixedRun: ProposalNode = {
-  role: "generate",
-  type: "video",
-  name: "The clip",
-  mode: "i2v",
-  model: "kling-video-o3-4k-image-to-video",
-  poolKinds: ["image"],
-  slotKinds: ["image"],
-  takesPrompt: true,
-  prompt: [{ text: "walk forward" }],
-};
-
-/**
- * A proposal of these nodes, every other node wired into the last.
- * @param nodes - The nodes, the generation last.
- * @returns The proposal.
- */
-function into(nodes: ProposalNode[]): CanvasProposal {
-  const last = nodes.length - 1;
-  return {
-    nodes,
-    edges: nodes.slice(0, last).map((_, fromIndex) => ({ fromIndex, toIndex: last })),
-    rationale: "",
-  };
-}
-
-describe("nameableFeeders", () => {
-  it("sends the reader's picture to the required slot before the pool", () => {
-    const proposal = into([photo("First frame"), mixedRun]);
-
-    expect(nameableFeeders(proposal, 1)).toEqual({ mentionable: [], slotted: [0] });
-  });
-
-  it("sends a picture past the required slots to the pool", () => {
-    const proposal = into([photo("First frame"), photo("Hero"), mixedRun]);
-
-    expect(nameableFeeders(proposal, 2)).toEqual({ mentionable: [1], slotted: [0] });
-  });
-
-  it("mentions every picture where the model takes them only by the pool", () => {
-    const proposal = into([photo("A"), photo("B"), { ...mixedRun, slotKinds: [] }]);
-
-    expect(nameableFeeders(proposal, 2)).toEqual({ mentionable: [0, 1], slotted: [] });
-  });
-
-  it("sends generated work to the required slot before the pool too", () => {
-    const work: ProposalNode = { role: "generate", type: "image", name: "Knight", mode: "t2i", model: "m", poolKinds: [], takesPrompt: true };
-    const proposal = into([work, mixedRun]);
-
-    expect(nameableFeeders(proposal, 1)).toEqual({ mentionable: [], slotted: [0] });
-  });
-
-  it("gives the slot to whichever node of that kind is listed first", () => {
-    const work: ProposalNode = { role: "generate", type: "image", name: "Knight", mode: "t2i", model: "m", poolKinds: [], takesPrompt: true };
-    const proposal = into([work, photo("Hero"), mixedRun]);
-
-    expect(nameableFeeders(proposal, 2)).toEqual({ mentionable: [1], slotted: [0] });
-  });
-
-  it("names no feeder of a row stored before the check answered for it", () => {
-    const proposal = into([photo("Hero"), { ...mixedRun, poolKinds: undefined, takesPrompt: undefined }]);
-
-    expect(nameableFeeders(proposal, 1)).toEqual({ mentionable: [], slotted: [] });
-  });
-
-  it("leaves out a feeder the panel would not take an @ of", () => {
-    const clip: ProposalNode = { role: "source", type: "video", name: "Your clip" };
-    const proposal = into([clip, photo("Hero"), { ...mixedRun, slotKinds: [] }]);
-
-    expect(nameableFeeders(proposal, 2)).toEqual({ mentionable: [1], slotted: [] });
-  });
-
-  it("gives two slots of one kind to the first two nodes of that kind", () => {
-    const proposal = into([photo("A"), photo("B"), photo("C"), { ...mixedRun, slotKinds: ["image", "image"] }]);
-
-    expect(nameableFeeders(proposal, 3)).toEqual({ mentionable: [2], slotted: [0, 1] });
-  });
-});
+import { proposalMarkSegments, type ProposalNode } from "@shared/types/canvas-proposal";
 
 describe("the marks of a node with shots (#2218)", () => {
-  const pooled = { ...mixedRun, slotKinds: [] };
   const asset = (label: string) => ({ slot: { kind: "asset" as const, label, note: "" } });
 
   it("reads the main prompt first, then each shot in order", () => {
     const node: ProposalNode = {
-      ...pooled,
+      role: "generate",
+      type: "video",
+      name: "The clip",
+      mode: "multi_shot",
+      model: "kling-v3.0-4k-text-to-video",
+      takesPrompt: true,
       prompt: [{ text: "a " }, asset("a")],
       shots: [
         { prompt: [asset("b")], duration: 2 },

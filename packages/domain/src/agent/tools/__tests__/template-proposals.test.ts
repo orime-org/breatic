@@ -49,7 +49,7 @@ function proposalWith(template: string): Parameters<typeof answerFor>[0] {
       { role: "source", type: "image", name: "Character" },
       { role: "generate", type: "image", name: "Storyboard", template },
     ],
-    edges: [{ fromIndex: 0, toIndex: 1 }],
+    edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
     rationale: "A 25-panel storyboard of the character.",
     groupName: "Storyboard",
   };
@@ -113,7 +113,7 @@ describe("a template drawing on work generated upstream", () => {
         { role: "generate", type: "image", name: "Character", mode: "t2i", model: "nano-banana-2", prompt: [{ text: "A young courier in a red coat." }] },
         { role: "generate", type: "image", name: "Storyboard", template: "storyboard-grid-25", ...(prompt ? { prompt } : {}) },
       ],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
       rationale: "Make the character, then a storyboard of it.",
       groupName: "Storyboard",
     };
@@ -220,8 +220,8 @@ describe("empty nodes counted, a slot's and an unused kind's left out", () => {
         },
       ],
       edges: [
-        { fromIndex: 0, toIndex: 2 },
-        { fromIndex: 1, toIndex: 2 },
+        { fromIndex: 0, toIndex: 2, into: "image" },
+        { fromIndex: 1, toIndex: 2, into: "pool" },
       ],
       rationale: "A clip from a first frame, keeping the character.",
       groupName: "Clip",
@@ -269,12 +269,10 @@ describe("empty nodes counted, a slot's and an unused kind's left out", () => {
           prompt: [mark, { text: " speaks to camera in " }, { slot: { kind: "asset" as const, label: "voice", note: "voice" } }, { text: "." }],
         },
       ],
-      edges: [
-        { fromIndex: 0, toIndex: 2 },
-        { fromIndex: 1, toIndex: 2 },
-        { fromIndex: 0, toIndex: 3 },
-        { fromIndex: 1, toIndex: 3 },
-      ],
+      edges: [2, 3].flatMap((toIndex) => [
+        { fromIndex: voiceFirst ? 0 : 1, toIndex },
+        { fromIndex: voiceFirst ? 1 : 0, toIndex, into: "pool" },
+      ]),
       rationale: "Two clips of the character.",
       groupName: "Clips",
     };

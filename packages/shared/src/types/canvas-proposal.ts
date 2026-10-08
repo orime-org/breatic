@@ -12,9 +12,7 @@
  */
 
 import { t, tInEveryLocale } from "@shared/i18n/index.js";
-import { insertRefusal } from "@shared/types/canvas-reference.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
-import type { ReferenceKind } from "@shared/reference-pool.js";
 
 /**
  * What a marked spot in the prompt asks of the reader (inner#977): `asset`
@@ -187,31 +185,11 @@ export interface ProposalNode {
    */
   shots?: ProposalShot[];
   /**
-   * The kinds this generation's reference pool takes, answered by the check,
-   * not the model (#2156: a model takes pictures, clips and tracks each in a
-   * pool of its own). Empty when its material arrives by a slot the reader
-   * clicks a node into; a pool is fed by an edge and picked by a mention.
-   *
-   * The catalog is the authority and the check has just read it, so the
-   * answer travels with the proposal rather than being asked again on the
-   * canvas -- a reader can press Use before the catalog has loaded there.
-   * Absent on a node that generates nothing.
-   */
-  poolKinds?: ReferenceKind[];
-  /**
-   * One entry per slot the model cannot run without, by the kind it takes,
-   * answered by the check beside {@link ProposalNode.poolKinds}. A model can
-   * take one kind both ways -- Kling O3 wants a first frame in a slot and
-   * builds elements out of mentioned pictures -- and the reader's material
-   * fills the slot first: a run without it cannot go.
-   */
-  slotKinds?: ReferenceKind[];
-  /**
    * Whether the panel will draw a prompt box here, answered by the check.
    *
-   * Beside {@link ProposalNode.poolKinds} and carried for the same reason: the
-   * catalog is the authority, the check has just read it, and a reader can
-   * press Use before the catalog has loaded on the canvas. It decides what a
+   * Carried on the node because the catalog is the authority, the check has
+   * just read it, and a reader can press Use before the catalog has loaded on
+   * the canvas. It decides what a
    * mark may name -- a model drawing no box mounts no editor and forces it
    * empty, so nothing in the prompt reaches the vendor. Absent on a node that
    * generates nothing.
@@ -222,7 +200,11 @@ export interface ProposalNode {
 /** A whole proposal, as the model sends it and the card reads it. */
 export interface CanvasProposal {
   nodes: ProposalNode[];
-  edges: Array<{ fromIndex: number; toIndex: number }>;
+  /**
+   * The wiring. `into` says where the node wired in goes on the generation it
+   * feeds: `"pool"` for the reference pool, or the name of one of its slots.
+   */
+  edges: Array<{ fromIndex: number; toIndex: number; into?: string }>;
   modelNote?: string;
   rationale: string;
   /**
@@ -233,108 +215,6 @@ export interface CanvasProposal {
    * no name.
    */
   groupName?: string;
-}
-
-/** Which feeders the reader could @ in a prompt, and which a slot takes instead. */
-export interface NameableFeederIndices {
-  /** The feeders the panel would take an @ of, past the ones in `slotted`, in node order. */
-  mentionable: number[];
-  /**
-   * The feeders a required slot takes, in node order: the first nodes of each
-   * kind, one per entry in {@link ProposalNode.slotKinds}. The reader picks
-   * each in the panel, so none of them is @'d.
-   */
-  slotted: number[];
-}
-
-/** Which nodes feed one node of a proposal, split by what they carry. */
-export interface ProposalFeederIndices {
-  /** Indices of the empty nodes wired in, for the reader to fill. */
-  sources: number[];
-  /** Indices of the nodes wired in that already carry work of their own. */
-  upstream: number[];
-}
-
-/**
- * What feeds one node of a proposal, in the order the nodes are listed.
- *
- * Node order rather than edge order, so a refusal names the nodes in the
- * order the model wrote them.
- * @param proposal - The proposal being read.
- * @param index - The node being fed.
- * @returns The feeder indices, split by role, each in node order.
- * @throws {never} Never.
- */
-export function feedersOf(proposal: CanvasProposal, index: number): ProposalFeederIndices {
-  const fedFrom = new Set(
-    proposal.edges.filter((edge) => edge.toIndex === index).map((edge) => edge.fromIndex),
-  );
-  const sources: number[] = [];
-  const upstream: number[] = [];
-  proposal.nodes.forEach((node, at) => {
-    if (!fedFrom.has(at)) return;
-    (node.role === "source" ? sources : upstream).push(at);
-  });
-  return { sources, upstream };
-}
-
-/**
- * Which feeders of one node the reader could @ in its prompt.
- *
- * What may be @'d is asked of {@link insertRefusal}, the panel's own picker
- * rule, rather than restated here: a rule spelled out twice is one the two
- * spellings can part company behind. The row it is asked about is the feeder;
- * the mode and model facts it is asked with are the two the check wrote onto
- * this node when it read the catalog.
- *
- * A row stored before the check wrote them names nothing: what the panel
- * accepts turns on both.
- * @param proposal - The proposal being read.
- * @param index - The node being fed.
- * @returns The feeders the reader could @, and those a slot takes.
- * @throws {never} Never.
- */
-export function nameableFeeders(
-  proposal: CanvasProposal,
-  index: number,
-): NameableFeederIndices {
-  const at = proposal.nodes[index];
-  const poolKinds = at?.poolKinds;
-  if (poolKinds === undefined || at?.takesPrompt === undefined) {
-    return { mentionable: [], slotted: [] };
-  }
-  const byPool = poolKinds.length > 0;
-  const held = feedersOf(proposal, index);
-  const ctx = { referenceKinds: poolKinds, takesPrompt: at.takesPrompt };
-  /**
-   * Whether the panel would take an `@`-mention of one feeder.
-   * @param i - The feeder's index in the proposal.
-   * @returns True when a mention of it is one the reader could have made.
-   * @throws {never} Never.
-   */
-  const mentionable = (i: number): boolean => {
-    const node = proposal.nodes[i];
-    return node !== undefined && insertRefusal(node.type, ctx) === null;
-  };
-  // The required slots still open, by kind. Each node of that kind wired in
-  // takes one, in the order the nodes are listed, before any reaches the pool.
-  const open = [...(at.slotKinds ?? [])];
-  const slotted: number[] = [];
-  const wired = [...held.sources, ...held.upstream].sort((a, b) => a - b);
-  for (const i of wired) {
-    const slot = open.indexOf(proposal.nodes[i]?.type as ReferenceKind);
-    if (slot === -1) continue;
-    open.splice(slot, 1);
-    slotted.push(i);
-  }
-  return {
-    // An empty node is @'d only where that mention is what picks the
-    // material; through a slot the reader clicks it in instead.
-    mentionable: wired.filter(
-      (i) => !slotted.includes(i) && (byPool || !held.sources.includes(i)) && mentionable(i),
-    ),
-    slotted,
-  };
 }
 
 /**

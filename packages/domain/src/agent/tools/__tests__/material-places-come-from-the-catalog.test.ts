@@ -126,7 +126,7 @@ function styleGroup(count: number): CanvasProposal {
   return {
     nodes: [
       ...Array.from({ length: count }, (_, i) => ({ role: "source" as const, type: "image" as const, name: `Style ${i + 1}` })),
-      { role: "generate", type: "image", name: "Result", mode: "t2i", model: "style-model", params: {}, prompt: [{ text: "a lighthouse" }] },
+      { role: "generate", type: "image", name: "Result", mode: "t2i", model: "style-model", params: {}, prompt: [{ text: "a lighthouse" }, ...Array.from({ length: count }, (_, i) => ({ slot: { kind: "note" as const, label: `Pick Style ${i + 1} into the style slot` } }))] },
     ],
     edges: Array.from({ length: count }, (_, i) => ({ fromIndex: i, toIndex: count })),
     modelNote: "",
