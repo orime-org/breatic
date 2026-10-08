@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { resetPreviewFailures } from '@web/lib/preview-src';
 import { ImageNode } from '@web/spaces/canvas/nodes/ImageNode';
 
 /**
@@ -267,5 +268,62 @@ describe('ImageNode', () => {
       />,
     );
     expect(screen.getByTestId('node-resolution-badge')).toBeInTheDocument();
+  });
+});
+
+// A node shows the 576-wide preview stored beside its image, and keeps the
+// original's size for its badge and its placeholder (inner#1320).
+describe('ImageNode with a stored image', () => {
+  const UUID = '18f58aed-b802-4243-a8ea-02d377de9679';
+  const STORED = `https://resource-dev.breatic.cc/image/2026-09-30/1_${UUID}.png`;
+
+  it('shows the preview when it knows the image size', () => {
+    resetPreviewFailures();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
+      />,
+    );
+    const img = screen.getByTestId('image-node-img');
+
+    expect(img.getAttribute('src')).toBe(`${STORED}.preview.webp`);
+    // The browser sizes the box off these before a byte arrives.
+    expect(img.getAttribute('width')).toBe('4096');
+    expect(img.getAttribute('height')).toBe('2048');
+  });
+
+  it('keeps the original size on the badge after the preview loads', () => {
+    resetPreviewFailures();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
+      />,
+    );
+    fireImageLoad(screen.getByTestId('image-node-img'), 576, 288);
+
+    expect(screen.getByTestId('node-resolution-badge')).toHaveTextContent('4096');
+  });
+
+  it('shows the original and measures it when it knows no size', () => {
+    resetPreviewFailures();
+    render(<ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />);
+    const img = screen.getByTestId('image-node-img');
+
+    expect(img.getAttribute('src')).toBe(STORED);
+    expect(img.hasAttribute('width')).toBe(false);
+    fireImageLoad(img, 1200, 800);
+    expect(screen.getByTestId('node-resolution-badge')).toHaveTextContent('1200');
+  });
+
+  it('falls back to the original when the preview is missing', () => {
+    resetPreviewFailures();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
+      />,
+    );
+    fireEvent.error(screen.getByTestId('image-node-img'));
+
+    expect(screen.getByTestId('image-node-img').getAttribute('src')).toBe(STORED);
   });
 });

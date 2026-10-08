@@ -4,6 +4,7 @@
 import * as React from 'react';
 
 import type { ImageNodeView } from '@web/data/yjs/node-view';
+import { usePreviewSrc } from '@web/lib/preview-src';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset';
@@ -46,6 +47,11 @@ export const ImageNode = React.memo(function ImageNode({
 }: ImageNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
   const { resolution, setResolution } = useNodeResolution(data.content, data.width, data.height);
+  // The preview stands in only when the image's own size is known: that size
+  // reserves the node's height before anything loads, and it is what the badge
+  // shows. A node without one shows the original and measures it.
+  const knowsSize = typeof data.width === 'number' && typeof data.height === 'number';
+  const shown = usePreviewSrc(data.content, { enabled: knowsSize });
   return (
     <ContentNodeFrame
       modality='image'
@@ -69,8 +75,10 @@ export const ImageNode = React.memo(function ImageNode({
         content={
           <NodeMediaInset>
             <img
-              src={data.content ?? ''}
+              src={shown.src ?? ''}
               alt=''
+              width={knowsSize ? data.width : undefined}
+              height={knowsSize ? data.height : undefined}
               // Offscreen nodes still mount once on canvas load (xyflow #3883,
               // see onlyRenderVisibleElements in CanvasSpace) — lazy defers
               // their fetch to viewport proximity (#1772).
@@ -78,8 +86,11 @@ export const ImageNode = React.memo(function ImageNode({
               decoding='async'
               data-testid='image-node-img'
               className='block h-auto w-full'
+              onError={shown.onError}
               onLoad={(e) => {
                 const img = e.currentTarget;
+                // A preview's pixels are not the image's size.
+                if (!shown.isOriginal) return;
                 if (img.naturalWidth > 0 && img.naturalHeight > 0) {
                   setResolution({
                     width: img.naturalWidth,
