@@ -224,6 +224,14 @@ describe("what the guide says", () => {
     expect(proposals).toMatch(/orange note[^.]*it is never sent to the model/);
   });
 
+  it("says the edit-marks message shows only where the placed node has a prompt box", () => {
+    expect(section("Proposal cards")).toMatch(/When a placed node that has a prompt box carries marks, the message/);
+  });
+
+  it("says words bound for a song's lyrics box are @'d there, as a note asks", () => {
+    expect(section("Proposal cards")).toMatch(/Into a song model's lyrics box: a text node the reader @s in the lyrics box, as an orange note asks/);
+  });
+
   it("says material bound for a source slot is picked in the panel, not mentioned", () => {
     // The placing mentions a feeder only where a mention is what picks it; a
     // node feeding one of the mode's slots, empty or generated, gets none.

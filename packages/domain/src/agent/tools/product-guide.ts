@@ -839,7 +839,7 @@ export function renderProductGuide(): string {
       "note on a line of its own at the top of the box says how to operate the panel, such as which slot to pick " +
       "a node into; it is never sent to the model, and they can delete it. Each mark is also a line on the card; " +
       "where the panel shows no prompt box, the card is the only place it appears. Square-bracket and brace marks " +
-      `left in a prompt are sent as they are. When placed nodes carry marks, the message ${quoted(t("canvas.generatePanel.editMarks"))} ` +
+      `left in a prompt are sent as they are. When a placed node that has a prompt box carries marks, the message ${quoted(t("canvas.generatePanel.editMarks"))} ` +
       "appears; nothing checks whether they were done.",
     "How work reaches a node depends on where it goes:",
     "- Into the reference list: the reader @s it in the prompt or a shot where a 📎 mark asks for it. Nothing " +
@@ -848,6 +848,8 @@ export function renderProductGuide(): string {
       "and a required slot left empty stops the run. Once that node holds " +
       "its file or its generated result, the reader opens the panel of the node it feeds, presses that slot's " +
       "button and clicks the node.",
+    "- Into a song model's lyrics box: a text node the reader @s in the lyrics box, as an orange note asks; it is not " +
+      "@'d in the style prompt above it.",
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +

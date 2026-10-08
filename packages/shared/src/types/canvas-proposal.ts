@@ -59,14 +59,19 @@ export function markText(slot: NonNullable<PromptSegment["slot"]>): string {
   return `${open}${symbol} ${words}${close}`;
 }
 
+/** The kinds in the order {@link MARK_PATTERN} lists them, one capture group each. */
+const MARK_KINDS = Object.keys(MARK_FORM) as SlotKind[];
+
 /**
- * A mark as a template's locale prompt writes it, kind and label captured:
- * the symbol picks the kind, so brackets the reader types stay words.
+ * A mark as a template's locale prompt writes it, its label captured in the
+ * group of its kind: the symbol picks the kind, so brackets the reader types
+ * stay words.
  */
 const MARK_PATTERN = new RegExp(
-  Object.values(MARK_FORM)
-    .map(({ open, symbol, close }) => `\\${open}(${symbol}) ([^\\${close}]+)\\${close}`)
-    .join("|"),
+  MARK_KINDS.map((kind) => {
+    const { open, symbol, close } = MARK_FORM[kind];
+    return `\\${open}${symbol} ([^\\${close}]+)\\${close}`;
+  }).join("|"),
   "gu",
 );
 
@@ -98,14 +103,13 @@ function bareReferenceLabel(label: string): string {
  * @throws {never} Never.
  */
 export function markedSegments(text: string): PromptSegment[] {
-  const kindOf = new Map(Object.entries(MARK_FORM).map(([kind, form]) => [form.symbol, kind as SlotKind]));
   const segments: PromptSegment[] = [];
   let at = 0;
   for (const match of text.matchAll(MARK_PATTERN)) {
     const [whole] = match;
-    const symbol = match.find((group, i) => i > 0 && kindOf.has(group ?? "")) ?? "";
-    const kind = kindOf.get(symbol) ?? "tweak";
-    const read = match[match.indexOf(symbol) + 1] ?? "";
+    const group = match.findIndex((captured, i) => i > 0 && captured !== undefined);
+    const kind = MARK_KINDS[group - 1] ?? "tweak";
+    const read = match[group] ?? "";
     const label = kind === "asset" ? bareReferenceLabel(read) : read;
     if (match.index > at) segments.push({ text: text.slice(at, match.index) });
     segments.push({ slot: kind === "note" ? { kind, label } : { kind, label, note: label } });
@@ -189,9 +193,8 @@ export interface ProposalNode {
    *
    * Carried on the node because the catalog is the authority, the check has
    * just read it, and a reader can press Use before the catalog has loaded on
-   * the canvas. It decides what a
-   * mark may name -- a model drawing no box mounts no editor and forces it
-   * empty, so nothing in the prompt reaches the vendor. Absent on a node that
+   * the canvas. A model drawing no box mounts no editor, so the canvas writes
+   * nothing there and the card lists the marks instead. Absent on a node that
    * generates nothing.
    */
   takesPrompt?: boolean;
