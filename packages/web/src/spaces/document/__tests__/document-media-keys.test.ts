@@ -239,7 +239,7 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
     vi.restoreAllMocks();
   });
 
-  it('stays selected while the focus moves into a part of the body drawn outside it, the full-screen picture', () => {
+  it('stops being selected when the focus moves into the body of another Space', () => {
     const { editor } = open(type);
     const view = editor.prosemirrorView!;
     const part = document.createElement('div');
@@ -250,7 +250,7 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
 
     part.focus();
 
-    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
     part.remove();
     vi.restoreAllMocks();
   });
@@ -304,9 +304,9 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
     const { editor } = open(type);
     const view = editor.prosemirrorView!;
     // The area around the editable element that the row handles stand in.
-    const area = document.createElement('div');
+    let area = view.dom as HTMLElement;
+    while (area.parentElement !== document.body) area = area.parentElement!;
     area.setAttribute(BODY_PART, '');
-    document.body.appendChild(area);
     const strip = document.createElement('div');
     area.appendChild(strip);
     const handle = document.createElement('button');
@@ -326,7 +326,8 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
     expect(view.state.selection).toBeInstanceOf(TextSelection);
     bar.remove();
     menu.layer.remove();
-    area.remove();
+    strip.remove();
+    area.removeAttribute(BODY_PART);
     vi.restoreAllMocks();
   });
 

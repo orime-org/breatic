@@ -14,6 +14,8 @@ import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
+import { BODY_PART } from '@web/spaces/document/document-node-selection-focus';
+
 const download = vi.hoisted(() => ({ trigger: vi.fn() }));
 vi.mock('@web/lib/download', () => ({ triggerDownload: download.trigger }));
 
@@ -684,6 +686,21 @@ describe('a media block whose neighbour goes away', () => {
   });
 });
 
+/**
+ * A left press and click beside the media, the way the browser fires them.
+ * @param target - Where both land.
+ * @param detail - How many clicks in a row this one is.
+ * @param keys - Modifier keys held.
+ */
+function clickBeside(target: Element, detail: number, keys: MouseEventInit = {}): void {
+  act(() => {
+    target.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, ...keys }));
+  });
+  act(() => {
+    target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail, ...keys }));
+  });
+}
+
 describe('a press beside a media block', () => {
   it('leaves the press to the browser and answers the click: nothing in the body is selected or focused', () => {
     const editor = open('image', { previewWidth: 200, caption: 'A note' });
@@ -697,25 +714,61 @@ describe('a press beside a media block', () => {
     });
     expect(press.defaultPrevented).toBe(false);
 
-    // A click there — any button, on the empty row or on the caption — is
-    // answered before the block is picked.
     const caption = within(element(editor)).getByTestId('doc-media-caption');
-    for (const [target, button] of [[element(editor), 0], [element(editor), 2], [caption, 0]] as const) {
-      selectMedia(editor);
-      act(() => {
-        view.focus();
-      });
-      const click = new MouseEvent('mouseup', { bubbles: true, button });
-      Object.defineProperty(click, 'target', { value: target });
-      let answered = false;
-      act(() => {
-        answered = view.someProp('handleClick', (f) => f(view, 0, click)) === true;
-      });
-      expect(answered).toBe(true);
-      expect(view.state.selection).toBeInstanceOf(TextSelection);
-      expect(view.state.selection.empty).toBe(true);
-      expect(view.dom.contains(document.activeElement)).toBe(false);
+    for (const target of [element(editor), caption]) {
+      for (const detail of [1, 2, 3]) {
+        selectMedia(editor);
+        act(() => {
+          view.focus();
+        });
+        // ProseMirror's own answers to the click pick nothing here.
+        const up = new MouseEvent('mouseup', { bubbles: true, button: 0 });
+        Object.defineProperty(up, 'target', { value: target });
+        const props = ['handleClick', 'handleDoubleClick', 'handleTripleClick'] as const;
+        for (const prop of props) {
+          expect(view.someProp(prop, (f) => f(view, 0, up))).toBe(true);
+        }
+        expect(view.state.selection).toBeInstanceOf(NodeSelection);
+
+        clickBeside(target, detail);
+
+        expect(view.state.selection).toBeInstanceOf(TextSelection);
+        expect(view.state.selection.empty).toBe(true);
+        expect(view.dom.contains(document.activeElement)).toBe(false);
+      }
     }
+  });
+
+  it('answers a click beside a selected picture whose pointer moved before it was let go', () => {
+    // A selected block's row is draggable while pressed; a pointer that
+    // moves more than 4px makes ProseMirror leave the click to the browser
+    // and never ask handleClick. The click the browser fires is answered.
+    const editor = open('image', { previewWidth: 200 });
+    const view = editor.prosemirrorView!;
+    selectMedia(editor);
+    act(() => {
+      view.focus();
+    });
+
+    clickBeside(element(editor), 1);
+
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    expect(view.dom.contains(document.activeElement)).toBe(false);
+  });
+
+  it('keeps the picture selected when the press landed on it and the pointer was let go beside it', () => {
+    const editor = open('image', { previewWidth: 200 });
+    const view = editor.prosemirrorView!;
+    act(() => {
+      element(editor).querySelector('img')!.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }),
+      );
+    });
+    act(() => {
+      element(editor).dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0, detail: 1 }));
+    });
+
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
   });
 
   it('selects the media as the press on it lands, and gives the body the focus with it selected', () => {
@@ -788,6 +841,7 @@ describe('a press beside a media block', () => {
         view.focus();
       });
       expect(modifierClick(target)).toBe(true);
+      clickBeside(target, 1, { metaKey: true, ctrlKey: true });
       expect(view.state.selection).toBeInstanceOf(TextSelection);
       expect(view.state.selection.$from.parent.textContent).toBe('Below');
       expect(view.dom.contains(document.activeElement)).toBe(false);
@@ -1030,6 +1084,75 @@ describe('a document with no line for text', () => {
     outside.remove();
   });
 
+  /**
+   * Opens the picture alone, selected, then moves the focus out of the body.
+   * @returns The editor and the element now holding the focus.
+   */
+  function letGoOfOnlyPicture(): { editor: Editor; outside: HTMLElement } {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const editor = onlyPicture();
+    selectMedia(editor);
+    act(() => {
+      editor.prosemirrorView!.focus();
+    });
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    act(() => {
+      outside.focus();
+    });
+    expect(box(editor).getAttribute('data-selected')).toBeNull();
+    return { editor, outside };
+  }
+
+  it('keeps the picture drawn as not selected when a collaborator\'s change or an undo sets the same selection again', () => {
+    const { editor, outside } = letGoOfOnlyPicture();
+    const view = editor.prosemirrorView!;
+
+    act(() => {
+      view.dispatch(view.state.tr.setSelection(view.state.selection));
+    });
+
+    expect(box(editor).getAttribute('data-selected')).toBeNull();
+    outside.remove();
+  });
+
+  it('keeps the picture drawn as not selected when the focus moves into the body of another Space', () => {
+    const { editor, outside } = letGoOfOnlyPicture();
+    const other = document.createElement('div');
+    other.setAttribute(BODY_PART, '');
+    const field = document.createElement('button');
+    other.appendChild(field);
+    document.body.appendChild(other);
+
+    act(() => {
+      field.focus();
+    });
+
+    expect(box(editor).getAttribute('data-selected')).toBeNull();
+    other.remove();
+    outside.remove();
+  });
+
+  it('keeps the picture drawn as not selected when the focus moves into a layer the picture opened', () => {
+    const { editor, outside } = letGoOfOnlyPicture();
+    const layer = document.createElement('div');
+    layer.id = 'picture-layer';
+    const inside = document.createElement('button');
+    layer.appendChild(inside);
+    document.body.appendChild(layer);
+    const opener = document.createElement('span');
+    opener.setAttribute('aria-controls', layer.id);
+    editor.prosemirrorView!.dom.querySelector('[data-content-type="image"]')!.appendChild(opener);
+
+    act(() => {
+      inside.focus();
+    });
+
+    expect(box(editor).getAttribute('data-selected')).toBeNull();
+    layer.remove();
+    outside.remove();
+  });
+
   it('draws the picture as not selected after a click beside it', () => {
     const editor = onlyPicture();
     const view = editor.prosemirrorView!;
@@ -1038,16 +1161,79 @@ describe('a document with no line for text', () => {
       view.focus();
     });
     expect(box(editor).getAttribute('data-selected')).toBe('true');
-    const row = view.dom.querySelector('[data-content-type="image"]')!;
-    const click = new MouseEvent('mouseup', { bubbles: true, button: 0 });
-    Object.defineProperty(click, 'target', { value: row });
-
-    act(() => {
-      view.someProp('handleClick', (f) => f(view, 0, click));
-    });
+    clickBeside(view.dom.querySelector('[data-content-type="image"]')!, 1);
 
     expect(box(editor).getAttribute('data-selected')).toBeNull();
     expect(view.dom.contains(document.activeElement)).toBe(false);
+  });
+});
+
+describe('a picture with a table right under it', () => {
+  /**
+   * Opens Above, a selected picture, then a table, with the body focused.
+   * @returns The editor.
+   */
+  function overTable(): Editor {
+    const editor = open('image', { previewWidth: 200 });
+    act(() => {
+      editor.replaceBlocks(editor.document, [
+        { type: 'paragraph', content: 'Above' },
+        { type: 'image', props: { url: URL_OF, name: 'a.png', previewWidth: 200 } },
+        { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['x', 'y'] }] } },
+      ] as never);
+    });
+    selectMedia(editor);
+    act(() => {
+      editor.prosemirrorView!.focus();
+    });
+    return editor;
+  }
+
+  /**
+   * Whether the selection sits in a table cell.
+   * @param editor - The editor.
+   * @returns True inside a cell.
+   */
+  function inCell(editor: Editor): boolean {
+    const { $from } = editor.prosemirrorView!.state.selection;
+    for (let depth = $from.depth; depth > 0; depth -= 1) {
+      if ($from.node(depth).type.spec.tableRole === 'cell') return true;
+    }
+    return false;
+  }
+
+  /**
+   * The picture's box, which carries whether it is drawn as selected.
+   * @param editor - The editor.
+   * @returns It.
+   */
+  function box(editor: Editor): HTMLElement {
+    return within(editor.prosemirrorView!.dom).getByTestId('doc-media-box');
+  }
+
+  it('puts no caret in the table when the focus leaves the body, and draws the picture as not selected', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const editor = overTable();
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+
+    act(() => {
+      outside.focus();
+    });
+
+    expect(inCell(editor)).toBe(false);
+    expect(box(editor).getAttribute('data-selected')).toBeNull();
+    outside.remove();
+  });
+
+  it('puts no caret in the table after a click beside the picture', () => {
+    const editor = overTable();
+
+    clickBeside(editor.prosemirrorView!.dom.querySelector('[data-content-type="image"]')!, 1);
+
+    expect(inCell(editor)).toBe(false);
+    expect(box(editor).getAttribute('data-selected')).toBeNull();
+    expect(editor.prosemirrorView!.dom.contains(document.activeElement)).toBe(false);
   });
 });
 
