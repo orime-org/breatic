@@ -17,16 +17,23 @@ import {
   NOBODY,
 } from '@web/spaces/canvas/nodes/_shared/node-occupants-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
+import { useDevicePixelRatio } from '@web/lib/device-pixel-ratio';
+import { usePreviewWidth } from '@web/lib/preview-src';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
+import {
+  NodeZoomedPastPreviewContext,
+  nodePicture,
+  zoomedPastPreview,
+} from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
 import {
   cellMeetsTargetSize,
   overlayCounterScale,
 } from '@web/spaces/canvas/overlay-scale';
+import { NodeCropLayer } from '@web/spaces/canvas/crop/NodeCropLayer';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import type { NodeView } from '@web/data/yjs/node-view';
-import { failedTaskListToOpen } from '@web/data/yjs/node-view';
 
 /**
  * What a node whose document carries no counts yet reads as. It is the four
@@ -47,13 +54,6 @@ interface InnerNodeProps {
    * file picker and fills this node (media nodes). Text handles its own edit.
    */
   onActivate?: () => void;
-  /**
-   * Open this node's task list on its failures, pre-bound to this node
-   * (#186 §3.7.2). The node's error box carries one sentence; this is the way
-   * from it to the row that says which task failed and why.
-   */
-  onViewTasks?: () => void;
-  tasksPanelOpen?: boolean;
 }
 
 /**
@@ -104,6 +104,13 @@ function makeFlowNode(
     // uses the same shared factor.
     const zoom = useStore((s) => s.transform[2]);
     const headerScale = overlayCounterScale(zoom);
+    // A boolean, so the body re-renders only when the node crosses its
+    // preview's width, not on every zoom step (inner#1320).
+    const pixelRatio = useDevicePixelRatio();
+    const previewWidth = usePreviewWidth(
+      nodePicture(props.data as { content?: unknown; coverUrl?: unknown }),
+    );
+    const pastPreview = zoomedPastPreview(props.width ?? 0, zoom, pixelRatio, previewWidth);
     const onRename = React.useCallback(
       (name: string): void => renameNode(props.id, name),
       [renameNode, props.id],
@@ -128,6 +135,9 @@ function makeFlowNode(
     // is an edge endpoint, so neither gets a handle. With no handle there is
     // nothing for xyflow to start or land a connection on (#1881 §8.5).
     const takesEdges = !isGroup && data.kind !== 'annotation';
+    // The crop box positions itself inside this wrapper; an element in state
+    // rather than a ref, so a node shown again hands it the element anew.
+    const [wrapper, setWrapper] = React.useState<HTMLDivElement | null>(null);
     // Per-control resize bounds (from groupResizeBounds, attached in renderNodes)
     // — each edge / corner carries its own min so ReactFlow's native clamp
     // hard-stops it at "members + padding" (see GroupResizer). Empty for a
@@ -187,31 +197,24 @@ function makeFlowNode(
       },
       [closeActivePanel, openTaskPanel, props.id],
     );
-    // Absent when no task on this node failed, which is what keeps the error
-    // box from offering a way into a list with nothing in it: the counts that
-    // put that box on screen also say which of the two failure states to show.
-    const failedList = failedTaskListToOpen(taskCounts);
-    const onViewTasks = React.useCallback((): void => {
-      if (failedList !== null) openTaskPanel(props.id, failedList);
-    }, [failedList, openTaskPanel, props.id]);
     return (
       <NodeIdContext.Provider value={props.id}>
         <NodeScaleContext.Provider value={headerScale}>
-          <NodeOccupantsContext.Provider value={occupants}>
-            <div
-              className={isGroup ? 'relative size-full' : 'relative'}
-              onDoubleClickCapture={onDoubleClickCapture}
-            >
-              <Inner
-                data={data}
-                selected={props.selected}
-                locked={data.locked}
-                onRename={onRename}
-                onActivate={onActivate}
-                {...(failedList !== null && { onViewTasks })}
-                tasksPanelOpen={taskPanelOpenHere !== null}
-              />
-              {/* The resize controls render AFTER the body for the same reason
+          <NodeZoomedPastPreviewContext.Provider value={pastPreview}>
+            <NodeOccupantsContext.Provider value={occupants}>
+              <div
+                ref={setWrapper}
+                className={isGroup ? 'relative size-full' : 'relative'}
+                onDoubleClickCapture={onDoubleClickCapture}
+              >
+                <Inner
+                  data={data}
+                  selected={props.selected}
+                  locked={data.locked}
+                  onRename={onRename}
+                  onActivate={onActivate}
+                />
+                {/* The resize controls render AFTER the body for the same reason
                 the connection handles below do: absolutely-positioned siblings
                 paint in DOM order, and a Group's body fills the whole rect. An
                 edge line is 1px wide and centred on the border, so its inner
@@ -221,18 +224,18 @@ function makeFlowNode(
                 and the grab reads as a drag of the whole Group; `right` and
                 `bottom` centre on w / h, one pixel past the body, which is why
                 only they ever answered. */}
-              {isGroup &&
+                {isGroup &&
             Boolean(props.selected) &&
             !data.locked &&
             resizeBounds.length > 0 ? (
-                  <GroupResizer
-                    bounds={resizeBounds}
-                    onResizeStart={onResizeStart}
-                    onResize={reportGroupResize}
-                    onResizeEnd={onResizeEnd}
-                  />
-                ) : null}
-              {/* Connection handles are for content nodes only — a Group is a
+                    <GroupResizer
+                      bounds={resizeBounds}
+                      onResizeStart={onResizeStart}
+                      onResize={reportGroupResize}
+                      onResizeEnd={onResizeEnd}
+                    />
+                  ) : null}
+                {/* Connection handles are for content nodes only — a Group is a
                 container (Figma-Frame-style) and a sticky is a remark, neither an
                 edge endpoint, so neither renders any (Bug 7: the Left handle also sat on the group's left edge and
                 interfered with the left resize grab). Both handles render AFTER
@@ -240,60 +243,65 @@ function makeFlowNode(
                 handle placed BEFORE the body has its inner half covered by the
                 body's surface and reads as a half-circle (the left-handle bug);
                 painting both on top of the body shows each as a full dot. */}
-              {/* Magnetic handles (user 2026-07-11): a 36px outside-the-border
+                {/* Magnetic handles (user 2026-07-11): a 36px outside-the-border
                 hit zone whose visible dot spring-follows the cursor, while
                 the 8px anchor keeps the wire attachment on the border.
                 MagneticHandle forwards all three connectable flags — the
                 gesture gates sit on Start/End, so a viewer / pick session
                 that drops them keeps handles live (adversarial round-1). See
                 MagneticHandle for the three-layer decoupling. */}
-              {takesEdges ? (
-                <>
-                  <MagneticHandle
-                    type='target'
-                    isConnectable={props.isConnectable}
-                  />
-                  <MagneticHandle
-                    type='source'
-                    isConnectable={props.isConnectable}
-                  />
-                </>
-              ) : null}
-              {/* Outside the node's own box, so it never covers content and
+                {takesEdges ? (
+                  <>
+                    <MagneticHandle
+                      type='target'
+                      isConnectable={props.isConnectable}
+                    />
+                    <MagneticHandle
+                      type='source'
+                      isConnectable={props.isConnectable}
+                    />
+                  </>
+                ) : null}
+                {/* The crop box (inner#888 §7.4.1) sits on this wrapper, outside
+                  the card's clip so the handles on the picture's edge are whole,
+                  and after the connection handles so a press on it is its own. */}
+                {takesEdges ? <NodeCropLayer nodeId={props.id} wrapper={wrapper} /> : null}
+                {/* Outside the node's own box, so it never covers content and
                 never changes what the body is sized to. It counter-scales on
                 the same factor as the name header. Once the canvas has taken
                 the cells below the size a target may be
                 (`cellMeetsTargetSize`), the three ended states give theirs
                 up; the running one is drawn at every zoom. */}
-              {taskCounts !== null ? (
-                <div
-                  data-testid='node-task-counts-anchor'
-                  // `nodrag` keeps a press on a count from starting a node
-                  // drag: xyflow's threshold is one pixel, so opening the list
-                  // would otherwise slide the node under the cursor and write
-                  // a new position into the shared document.
-                  className='nodrag absolute left-full top-0'
-                  style={{
-                    transform: `scale(${headerScale})`,
-                    transformOrigin: 'top left',
-                  }}
-                >
-                  {/* The gap sits inside the counter-scaled box so it holds
+                {taskCounts !== null ? (
+                  <div
+                    data-testid='node-task-counts-anchor'
+                    // `nodrag` keeps a press on a count from starting a node
+                    // drag: xyflow's threshold is one pixel, so opening the list
+                    // would otherwise slide the node under the cursor and write
+                    // a new position into the shared document.
+                    className='nodrag absolute left-full top-0'
+                    style={{
+                      transform: `scale(${headerScale})`,
+                      transformOrigin: 'top left',
+                    }}
+                  >
+                    {/* The gap sits inside the counter-scaled box so it holds
                       the same screen distance the column does. As a margin on
                       the box it was a flow-unit measure against a screen-unit
                       column, and zooming in pulled the two apart. */}
-                  <div className='pl-2'>
-                    <TaskCountColumn
-                      counts={taskCounts}
-                      endedShown={cellMeetsTargetSize(zoom)}
-                      openFor={taskPanelOpenHere}
-                      onOpen={onOpenTasks}
-                    />
+                    <div className='pl-2'>
+                      <TaskCountColumn
+                        counts={taskCounts}
+                        endedShown={cellMeetsTargetSize(zoom)}
+                        openFor={taskPanelOpenHere}
+                        onOpen={onOpenTasks}
+                      />
+                    </div>
                   </div>
-                </div>
-              ) : null}
-            </div>
-          </NodeOccupantsContext.Provider>
+                ) : null}
+              </div>
+            </NodeOccupantsContext.Provider>
+          </NodeZoomedPastPreviewContext.Provider>
         </NodeScaleContext.Provider>
       </NodeIdContext.Provider>
     );

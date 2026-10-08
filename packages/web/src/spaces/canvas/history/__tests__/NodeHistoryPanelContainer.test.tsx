@@ -540,3 +540,62 @@ describe('what makes the panel ask the server again (#2175)', () => {
     );
   });
 });
+
+// inner#888 §7.7: a late result lives only in the node's history, and the
+// task row's View opens that history at it. History pages twenty at a time,
+// newest first, so the entry may sit on a page that has not loaded.
+describe('NodeHistoryPanelContainer focus from a task row’s View', () => {
+  beforeEach(() => {
+    onlineManager.setOnline(true);
+    vi.clearAllMocks();
+    vi.mocked(canvasApi.fetchLimits).mockResolvedValue({
+      nodeHistoryPageSize: 2,
+    } as never);
+    canvasSessions.of('').setState({
+      panelHostId: null,
+      panelKind: null,
+      pickSession: null,
+    });
+  });
+
+  it('loads page after page until the focused entry appears, then marks it', async () => {
+    vi.mocked(canvasApi.listNodeHistory)
+      .mockResolvedValueOnce({ entries: [entry('a'), entry('b')], total: 5 })
+      .mockResolvedValueOnce({ entries: [entry('c'), entry('late')], total: 5 })
+      .mockResolvedValueOnce({ entries: [entry('e')], total: 5 });
+    mount();
+    act(() => {
+      canvasSessions.of('').getState().openHistoryPanel('target', 'late');
+    });
+
+    await waitFor(() => {
+      const focused = screen
+        .getAllByTestId('node-history-row')
+        .filter((row) => row.dataset.focused === 'true');
+      expect(focused).toHaveLength(1);
+      expect(focused[0]?.dataset.entryId).toBe('late');
+    });
+    // Found on the second page; the third is never asked for.
+    expect(vi.mocked(canvasApi.listNodeHistory)).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops at the last page and marks nothing when the entry is not there', async () => {
+    vi.mocked(canvasApi.listNodeHistory)
+      .mockResolvedValueOnce({ entries: [entry('a'), entry('b')], total: 3 })
+      .mockResolvedValueOnce({ entries: [entry('c')], total: 3 });
+    mount();
+    act(() => {
+      canvasSessions.of('').getState().openHistoryPanel('target', 'gone');
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('node-history-row')).toHaveLength(3);
+    });
+    expect(
+      screen
+        .getAllByTestId('node-history-row')
+        .some((row) => row.dataset.focused === 'true'),
+    ).toBe(false);
+    expect(vi.mocked(canvasApi.listNodeHistory)).toHaveBeenCalledTimes(2);
+  });
+});

@@ -21,10 +21,12 @@
  * the miss above happening a second time.
  */
 
+import { miniToolById } from '@breatic/shared/mini-tools';
+
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { STYLE_SLOT } from '@web/spaces/canvas/generate/style-slot';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import type { PickPurpose } from '@web/stores/canvas-session';
+import type { PickPurpose, PickSession } from '@web/stores/canvas-session';
 
 /** The panel kinds that own pick tools (the other panel kinds start none). */
 type PickingPanelKind = 'generate' | 'generateVideo' | 'generateAudio';
@@ -125,4 +127,45 @@ export const PICK_PURPOSE_UI = {
     banner: 'canvas.generatePanel.selectStyleFromCanvas',
     trigger: { generate: STYLE_SLOT.testId, generateVideo: STYLE_SLOT.testId },
   },
-} as const satisfies Record<PickPurpose, PickPurposeUi>;
+} as const satisfies Record<Exclude<PickPurpose, 'miniToolSlot'>, PickPurposeUi>;
+
+/** What a running pick shows and where focus goes back to when it ends. */
+export interface PickSessionUi {
+  /** Translation key for the pick banner's instruction. */
+  banner: string;
+  /** Test ids of the tools that may have started it. */
+  triggers: string[];
+}
+
+/**
+ * Test id of a mini-tool slot's pick button (inner#888 §7.3).
+ * @param toolId - The tool.
+ * @param slotKey - The slot.
+ * @returns The id.
+ */
+export function miniToolSlotTestId(toolId: string, slotKey: string): string {
+  return `mini-tool-slot-${toolId}-${slotKey}`;
+}
+
+/**
+ * The banner and triggers of a running pick. A mini-tool slot pick reads both
+ * off the tool's slot, since the table above has one row per purpose and a
+ * mini-tool has a slot per tool.
+ * @param session - The pick.
+ * @param miniToolId - The open mini-tool panel's tool, if one is open.
+ * @returns Its banner key and trigger ids; the generic reference banner when
+ *   a slot pick has lost its tool (the panel closed under it).
+ */
+export function pickSessionUi(session: PickSession, miniToolId: string | undefined): PickSessionUi {
+  if (session.purpose !== 'miniToolSlot') {
+    const row = PICK_PURPOSE_UI[session.purpose];
+    return { banner: row.banner, triggers: Object.values(row.trigger) };
+  }
+  const slot = miniToolId === undefined
+    ? undefined
+    : miniToolById(miniToolId)?.slots.find((candidate) => candidate.key === session.slotKey);
+  if (miniToolId === undefined || slot === undefined) {
+    return { banner: PICK_PURPOSE_UI.reference.banner, triggers: [] };
+  }
+  return { banner: slot.bannerKey, triggers: [miniToolSlotTestId(miniToolId, slot.key)] };
+}

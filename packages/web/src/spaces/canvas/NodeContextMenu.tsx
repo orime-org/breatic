@@ -27,10 +27,31 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
+import type { MiniToolIcon } from '@breatic/shared/mini-tools';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
+import { MINI_TOOL_ICONS } from '@web/spaces/canvas/mini-tool/tool-icons';
+
+/**
+ * The tools submenu stands 4px off the menu's edge. `sideOffset` measures
+ * from the trigger row, which sits inside the menu's 4px padding and 1px
+ * border, so those 5px are added back.
+ */
+const SUBMENU_SIDE_OFFSET = 4 + 5;
+
+/** One row of the tools submenu. */
+export interface NodeMenuTool {
+  id: string;
+  labelKey: string;
+  icon: MiniToolIcon;
+  /** Runs on a model and spends credits; these follow a separator, after the edits. */
+  model: boolean;
+}
 
 interface NodeContextMenuProps {
   /** Whether the menu is open (driven by the canvas's node right-click handler). */
@@ -92,16 +113,16 @@ interface NodeContextMenuProps {
   onSnapshot?: () => void;
 
   /**
-   * Whether this node holds an asset at all, which is what Download,
-   * Understand and Tools each act on. A text node holds words and never an
-   * asset, so the three are left out of its menu entirely: an item greyed on
-   * every text node forever says "not right now" about something that is
-   * never going to be offered (user 2026-09-20). Defaults to true, because
-   * every other content kind shows one.
+   * Whether this node holds an asset at all, which is what Download and
+   * Understand act on. A text node holds words and never an asset, so the two
+   * are left out of its menu entirely: an item greyed on every text node
+   * forever says "not right now" about something that is never going to be
+   * offered (user 2026-09-20). Defaults to true, because every other content
+   * kind shows one.
    *
-   * Separate from the three handlers below, which answer the other question:
+   * Separate from the two handlers below, which answer the other question:
    * whether THIS node can act right now. A node offering an asset it has not
-   * finished loading keeps all three items, greyed.
+   * finished loading keeps both items, greyed.
    */
   assetActionsOffered?: boolean;
   /**
@@ -112,6 +133,18 @@ interface NodeContextMenuProps {
   onDownload?: () => void;
   /** Read what this node is showing into a text node downstream; absent disables the item rather than hiding it. */
   onUnderstand?: () => void;
+  /**
+   * Whether this node's kind has mini-tools at all (inner#888 §7.1). A kind
+   * with none leaves the Tools row out.
+   */
+  toolsOffered?: boolean;
+  /**
+   * The tools this node can run now, in menu order. Absent or empty greys
+   * the row: the node holds nothing for a tool to work on yet.
+   */
+  tools?: readonly NodeMenuTool[];
+  /** Open the chosen tool's panel. */
+  onTool?: (toolId: string) => void;
   /** Copy the node / group (with its members) to the clipboard. */
   onCopy?: () => void;
   /** Duplicate the node / group (with its members) in place. */
@@ -130,15 +163,16 @@ interface NodeContextMenuProps {
  * (ReactFlow's `onNodeContextMenu` gives a point, not an element Radix can
  * anchor to). A node offers generate / upload / tools (top block) then copy /
  * duplicate / rename / lock / delete; a group offers copy / duplicate (with its
- * members) / ungroup / rename / lock / delete. Tools is a disabled placeholder
- * (coming soon). Two different questions decide what a reader sees. Whether
- * this KIND of node is ever offered an item is answered by leaving it out:
- * `snapshotOffered` and `assetActionsOffered` drop Snapshot and the three
- * asset items whole, and Generate is dropped with its handler, because an
- * item greyed on every text node forever says "not right now" about something
- * never on offer. Whether THIS node can act on an item it is offered is
- * answered by greying it: Snapshot, Download, Understand and Tools render
- * without their handler and disable, the work being built and only the
+ * members) / ungroup / rename / lock / delete. Tools is a submenu of the
+ * mini-tools this node's kind offers. Two different questions decide what a
+ * reader sees. Whether this KIND of node is ever offered an item is answered
+ * by leaving it out: `snapshotOffered`, `assetActionsOffered` and
+ * `toolsOffered` drop Snapshot, the two asset items and Tools whole, and
+ * Generate is dropped with its handler, because an item greyed on every text
+ * node forever says "not right now" about something never on offer. Whether
+ * THIS node can act on an item it is offered is answered by greying it:
+ * Snapshot, Download, Understand and Tools render without their handler and
+ * disable, the work being built and only the
  * material missing, which is also why their cursor refuses rather than saying
  * nothing. The rest — generate, reset, history, copy, duplicate, rename,
  * delete — render only when their handler is supplied.
@@ -160,9 +194,12 @@ interface NodeContextMenuProps {
  * @param root0.onOpenHistory - Open the node-history panel (content nodes only).
  * @param root0.snapshotOffered - Whether this node has a Snapshot item (text nodes only).
  * @param root0.onSnapshot - Keep a copy of what this node says right now; absent disables the item.
- * @param root0.assetActionsOffered - Whether this node holds an asset, which Download / Understand / Tools act on (text nodes hold words).
+ * @param root0.assetActionsOffered - Whether this node holds an asset, which Download / Understand act on (text nodes hold words).
  * @param root0.onDownload - Download what this node is showing; absent disables the item rather than hiding it.
  * @param root0.onUnderstand - Read what this node is showing into a text node downstream; absent disables the item rather than hiding it.
+ * @param root0.toolsOffered - Whether this node's kind has mini-tools; absent leaves the Tools row out.
+ * @param root0.tools - The tools this node can run now; absent or empty greys the Tools row.
+ * @param root0.onTool - Open the chosen tool's panel.
  * @param root0.onCopy - Copy the node / group (with its members).
  * @param root0.onDuplicate - Duplicate the node / group (with its members).
  * @param root0.onUngroup - Ungroup the group (group target only).
@@ -189,6 +226,9 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
   onSnapshot,
   onDownload,
   onUnderstand,
+  toolsOffered = false,
+  tools,
+  onTool,
   onCopy,
   onDuplicate,
   onUngroup,
@@ -269,8 +309,8 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                 {t('canvas.nodeMenu.snapshot')}
               </DropdownMenuItem>
             ) : null}
-            {/* The three that act on the asset a node is showing. A node
-                that holds words instead leaves all three out: greying an
+            {/* The two that act on the asset a node is showing. A node
+                that holds words instead leaves both out: greying an
                 item on every text node forever says "not right now" about
                 something never going to be offered.
                 On a node that does hold one, each is greyed while this
@@ -304,15 +344,36 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                   <ScanText className='mr-2 h-4 w-4' aria-hidden='true' />
                   {t('canvas.nodeMenu.understand')}
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled
+              </>
+            ) : null}
+            {toolsOffered ? (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger
+                  disabled={!onTool || !tools || tools.length === 0}
                   data-testid='node-menu-tools'
                   className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
                 >
                   <Wrench className='mr-2 h-4 w-4' aria-hidden='true' />
                   {t('canvas.nodeMenu.tools')}
-                </DropdownMenuItem>
-              </>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent sideOffset={SUBMENU_SIDE_OFFSET}>
+                  {tools?.map((tool, index) => {
+                    const Icon = MINI_TOOL_ICONS[tool.icon];
+                    return (
+                      <React.Fragment key={tool.id}>
+                        {tool.model && index > 0 && !tools[index - 1]!.model ? <DropdownMenuSeparator /> : null}
+                        <DropdownMenuItem
+                          data-testid={`node-menu-tool-${tool.id}`}
+                          onSelect={() => onTool?.(tool.id)}
+                        >
+                          <Icon className='mr-2 h-4 w-4' aria-hidden='true' />
+                          {t(tool.labelKey)}
+                        </DropdownMenuItem>
+                      </React.Fragment>
+                    );
+                  })}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
             ) : null}
             <DropdownMenuSeparator />
           </>

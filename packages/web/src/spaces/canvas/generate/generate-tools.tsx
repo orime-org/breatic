@@ -28,6 +28,7 @@ import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { STYLE_SLOT } from '@web/spaces/canvas/generate/style-slot';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { HoverPreviewKind } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
+import { PreviewImg } from '@web/components/preview-img';
 
 /**
  * The params pill every Generate panel draws in its footer (image, video,
@@ -336,7 +337,7 @@ export function SlotTool({
         {label}
       </span>
       {painting === undefined ? null : (
-        <img
+        <PreviewImg
           src={painting}
           alt=''
           data-testid={thumbnailTestId}

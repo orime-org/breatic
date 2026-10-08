@@ -108,6 +108,7 @@ async function openOn(nodeId: string, label: string): Promise<string> {
     spaceId: crypto.randomUUID(),
     nodeId,
     kind: "upload",
+    action: "upload",
     startedByUserId: userId,
     budgetMs: BUDGET_MS,
     label,
@@ -252,5 +253,44 @@ describe("reading a node's task list", () => {
     expect(running).toBe(counts.running);
     expect(expired).toBe(counts.expired);
     expect(tasks[0]).toMatchObject({ id: taskId, status: "expired" });
+  });
+});
+
+describe("when a job's time runs out", () => {
+  // A container job is given this moment as its deadline, so it ends with the
+  // row the harvest judges rather than on a clock of its own.
+  it("is the earliest end any of the job's rows allows", async () => {
+    const [task] = await sql<{ id: string }[]>`
+      INSERT INTO tasks (user_id, project_id, space_id, task_type, mode)
+      VALUES (${userId}, ${projectId}, ${crypto.randomUUID()}, 'video', 'overwrite')
+      RETURNING id
+    `;
+    const job = task!.id;
+    const rows = await Promise.all(
+      ["first.mp4", "second.mp4"].map((label) =>
+        nodeTaskService.open({
+          projectId,
+          spaceId: crypto.randomUUID(),
+          nodeId: crypto.randomUUID(),
+          kind: "generation",
+          action: "mini_tool",
+          startedByUserId: userId,
+          budgetMs: BUDGET_MS,
+          label,
+          taskId: job,
+        }),
+      ),
+    );
+    await sql`UPDATE node_tasks SET started_at = now() - interval '1 minute' WHERE id = ${rows[1]!.id}`;
+    const [aged] = await sql<{ ends: string }[]>`
+      SELECT floor(extract(epoch FROM started_at) * 1000)::bigint + budget_ms AS ends
+      FROM node_tasks WHERE id = ${rows[1]!.id}
+    `;
+
+    expect(await nodeTaskService.deadlineFor(job)).toBe(Number(aged!.ends));
+  });
+
+  it("is unknown for a job that opened no row", async () => {
+    expect(await nodeTaskService.deadlineFor(crypto.randomUUID())).toBeNull();
   });
 });

@@ -3,110 +3,29 @@
 
 import * as React from 'react';
 
-import { Button } from '@web/components/ui/button';
-import { useTranslation } from '@web/i18n/use-translation';
-import type { DisplayStatus } from '@web/data/yjs/node-view';
-
 interface NodeContentProps {
-  status: DisplayStatus;
-  errorMessage?: string;
   hasContent: boolean;
   placeholder: React.ReactNode;
   content: React.ReactNode;
-  /**
-   * Open this node's task list. Present when the failure is a task's, which
-   * is where the reason for it lives; absent for text extracted in the
-   * browser, which never reaches the task table (#186 §3.7.4).
-   */
-  onViewTasks?: () => void;
-  /**
-   * Whether this node's task list is already open beside it.
-   *
-   * The panel carries the same failure in more detail and with the buttons,
-   * so while it is open the body steps back to what it holds — the count
-   * badge stays either way, and it is the only clue once the panel closes.
-   */
-  tasksPanelOpen?: boolean;
 }
 
 /**
- * Whether the body shows an error box instead of what the node holds.
- *
- * Exported because the answer decides more than what is painted: whatever
- * else asks "is this node showing its content" has to ask it the same way, and
- * a second copy of the condition would drift the moment one of them changes.
- * @param status - The node's display status.
- * @param tasksPanelOpen - Whether this node's task list is open beside it, which carries the failure in more detail and gives the body back.
- * @returns True when the error box is what the reader sees.
- */
-export function showsErrorBox(
-  status: DisplayStatus,
-  tasksPanelOpen: boolean,
-): boolean {
-  return status === 'error' && !tasksPanelOpen;
-}
-
-/**
- * Switches between placeholder / error / content based on the node's
- * `status` and whether a content payload exists. A node with a task running
- * keeps showing whatever it already holds — the counts beside it are what
- * says something is running (user 2026-09-06).
- * Type-node bodies pass their modality-specific renderers; this atom
- * owns the state-machine wiring.
+ * Switches between placeholder and content on whether a content payload
+ * exists. A node shows no task state (inner#888 §7.8): what its tasks did is
+ * the counts column beside it and the task list, so a running task leaves the
+ * body on whatever it already holds and a failed one leaves it empty.
+ * Type-node bodies pass their modality-specific renderers.
  * @param root0 - Node content props.
- * @param root0.status - Node status that selects the branch (error / content).
- * @param root0.errorMessage - Message shown in the error branch when status is `error`.
- * @param root0.hasContent - Whether a content payload exists, choosing content vs placeholder outside the error branch.
- * @param root0.placeholder - Empty-state node rendered when the node is not in error and holds nothing.
- * @param root0.content - Modality-specific body rendered when the node is not in error and holds something.
- * @param root0.onViewTasks - Open this node's task list; when present the error branch offers it.
- * @param root0.tasksPanelOpen - Whether that list is already open beside the node.
+ * @param root0.hasContent - Whether a content payload exists.
+ * @param root0.placeholder - Empty-state node rendered when the node holds nothing.
+ * @param root0.content - Modality-specific body rendered when the node holds something.
  * @returns The branch element for the current node state.
  */
 export function NodeContent({
-  status,
-  errorMessage,
   hasContent,
   placeholder,
   content,
-  onViewTasks,
-  tasksPanelOpen = false,
 }: NodeContentProps): React.JSX.Element {
-  const t = useTranslation();
-  if (showsErrorBox(status, tasksPanelOpen)) {
-    // Fixed h-48 box like the empty branch (#1632): both of a node's "nothing
-    // displayable" states (empty / error) keep the same 288×192 footprint.
-    // h-full would let the height collapse to a
-    // single line of error text, making the node a flat wide bar. Shared by
-    // all 6 content modalities (image/video/audio/text/3d/web).
-    return (
-      <div
-        data-testid='node-content-error'
-        className='flex h-48 w-full flex-col items-center justify-center gap-2 p-3 text-xs text-status-error-foreground'
-      >
-        {/* A task's own reason — which task, who started it, why it failed —
-            is a row in the task list, said in the reader's own language. The
-            node carries one sentence. The other branch is the text this
-            browser could not extract, which has no row anywhere. */}
-        <span>{errorMessage ?? t('canvas.task.someFailed')}</span>
-        {onViewTasks ? (
-          <Button
-            type='button'
-            variant={null}
-            size={null}
-            data-testid='node-content-view-tasks'
-            className='nodrag rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-muted focus-visible:outline-2'
-            onClick={(event) => {
-              event.stopPropagation();
-              onViewTasks();
-            }}
-          >
-            {t('canvas.task.view')}
-          </Button>
-        ) : null}
-      </div>
-    );
-  }
   // An empty node fills a fixed h-48 box so every empty node is the same size
   // regardless of modality; a filled node grows to its content's real height.
   return hasContent ? (

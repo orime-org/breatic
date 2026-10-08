@@ -20,7 +20,7 @@ vi.mock('@web/data/api/canvas', () => ({
   getCachedUnderstandMaxBytes: vi.fn(() => null),
 }));
 
-import type { NodeTaskEntry } from '@web/data/api/canvas';
+import type { NodeTaskEntry } from '@breatic/shared';
 import { getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
@@ -43,6 +43,7 @@ function entry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
     spaceId: 's-1',
     nodeId: 'n-1',
     kind: 'upload',
+    action: 'upload',
     status: 'running',
     startedByUserId: 'u-1',
     startedAt: OPENED,
@@ -68,7 +69,7 @@ function entry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
  * @param props - Row props beyond the entry.
  * @param props.hasRetryFile - Whether this session holds the File.
  * @param props.readOnly - Whether this reader may write.
- * @param props.onReplace - Write the result onto the node.
+ * @param props.onView - Open the node's history at this task's result.
  * @param props.onRetry - Send the stashed File again.
  * @param props.onDismiss - Drop the row.
  * @param props.medium - What the host node holds, for a refusal's format list.
@@ -79,7 +80,7 @@ function renderRow(
   props: {
     hasRetryFile?: boolean;
     readOnly?: boolean;
-    onReplace?: (id: string) => void;
+    onView?: (id: string) => void;
     onRetry?: (id: string) => void;
     onDismiss?: (id: string) => void;
     medium?: 'image' | 'video' | 'audio';
@@ -95,7 +96,7 @@ function renderRow(
         now={NOW}
         hasRetryFile={props.hasRetryFile ?? false}
         readOnly={props.readOnly ?? false}
-        onReplace={props.onReplace ?? ((): void => {})}
+        onView={props.onView ?? ((): void => {})}
         onRetry={props.onRetry ?? ((): void => {})}
         onDismiss={props.onDismiss ?? ((): void => {})}
         {...(props.medium !== undefined && { medium: props.medium })}
@@ -111,6 +112,18 @@ describe('TaskRow', () => {
     const row = screen.getByTestId('node-task-row');
     expect(row).toHaveTextContent('holiday.mp4');
     expect(row).toHaveTextContent('Ada');
+  });
+
+  it('opens its first line with the action, in every state', () => {
+    // inner#888 §7.7: the reader tells an upload from a generation from a
+    // tool run by the first line alone, whatever state the row is in.
+    for (const status of ['running', 'done', 'failed', 'expired'] as const) {
+      renderRow({ status, settledAt: status === 'running' ? null : OPENED });
+      expect(screen.getByTestId('task-title')).toHaveTextContent(
+        'Upload · holiday.mp4',
+      );
+      cleanup();
+    }
   });
 
   it('still renders a row whose starter the roster cannot name', () => {
@@ -138,8 +151,7 @@ describe('TaskRow', () => {
     expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
 
-  it('offers writing the result and finishing when it is done', async () => {
-    const onReplace = vi.fn();
+  it('offers only marking a done task read, its result already on the node', async () => {
     const onDismiss = vi.fn();
     renderRow(
       {
@@ -148,13 +160,14 @@ describe('TaskRow', () => {
         nodeHistoryId: 'h-1',
         content: 'https://cdn.example/holiday.mp4',
       },
-      { onReplace, onDismiss },
+      { onDismiss },
     );
 
-    await userEvent.click(screen.getByTestId('task-action-replace'));
-    await userEvent.click(screen.getByTestId('task-action-finish'));
+    expect(screen.queryByTestId('task-action-replace')).toBeNull();
+    const finish = screen.getByTestId('task-action-finish');
+    expect(finish).toHaveTextContent('Mark read');
+    await userEvent.click(finish);
 
-    expect(onReplace).toHaveBeenCalledWith('t-1');
     expect(onDismiss).toHaveBeenCalledWith('t-1');
   });
 
@@ -270,7 +283,24 @@ describe('TaskRow', () => {
 
     const row = screen.getByTestId('node-task-row');
     expect(row).toHaveTextContent('after');
-    expect(screen.getByTestId('task-action-replace')).toBeInTheDocument();
+    expect(screen.queryByTestId('task-action-replace')).toBeNull();
+  });
+
+  it('opens the late result in history from View', async () => {
+    const onView = vi.fn();
+    renderRow(
+      {
+        status: 'expired',
+        settledAt: '2026-09-04T10:30:00.000Z',
+        nodeHistoryId: 'h-1',
+        content: 'https://cdn.example/late.mp4',
+      },
+      { onView },
+    );
+
+    await userEvent.click(screen.getByTestId('task-action-view'));
+    expect(onView).toHaveBeenCalledWith('t-1');
+    expect(screen.getByTestId('task-action-clear')).toHaveTextContent('Mark read');
   });
 
   it('shows a running task’s start instant', () => {

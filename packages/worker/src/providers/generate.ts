@@ -24,7 +24,8 @@ export type CatalogModality = "image" | "video" | "audio" | "tts";
 
 /** What one generation produced. */
 export interface GenerationResult {
-  url: string;
+  /** What the run produced, in upstream order, up to the count asked for. */
+  outputs: { url: string }[];
   model: string;
   /** What WaveSpeed billed, in USD; 0 when there was no prediction to bill. */
   cost: number;

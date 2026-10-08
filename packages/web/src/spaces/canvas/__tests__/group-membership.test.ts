@@ -113,7 +113,7 @@ describe('filterGatedDeletion — locked + handling structure survives delete', 
 
   it('keeps a HANDLING node (node veto); its edges to REMOVED nodes still go', () => {
     const nodes = [
-      { id: 'h', type: 'image', data: { status: 'handling' } },
+      { id: 'h', type: 'image', data: { handling: true } },
       { id: 'b', type: 'text', data: {} },
     ];
     const out = filterGatedDeletion(
@@ -131,7 +131,7 @@ describe('filterGatedDeletion — locked + handling structure survives delete', 
 
   it('an idle (state absent / not handling) node deletes freely', () => {
     const nodes = [
-      { id: 'a', type: 'text', data: { status: 'idle' } },
+      { id: 'a', type: 'text', data: { handling: false } },
       { id: 'b', type: 'image', data: {} },
     ];
     const out = filterGatedDeletion([{ id: 'a' }, { id: 'b' }], [], nodes, ANYONE);
@@ -153,7 +153,7 @@ describe('gateBlockedDeletion — flags when a gate vetoed part of the deletion 
 
   it('handling node: blocked=true, reason=handling, survivors exclude it', () => {
     const allNodes = [
-      { id: 'h', type: 'image', data: { status: 'handling' } },
+      { id: 'h', type: 'image', data: { handling: true } },
       { id: 'b', type: 'text', data: {} },
     ];
     const out = gateBlockedDeletion([{ id: 'h' }, { id: 'b' }], [], allNodes, ANYONE);
@@ -165,7 +165,7 @@ describe('gateBlockedDeletion — flags when a gate vetoed part of the deletion 
   it('mixed locked + handling: reason=locked (the harder freeze wins)', () => {
     const allNodes = [
       { id: 'a', type: 'text', data: { locked: true } },
-      { id: 'h', type: 'image', data: { status: 'handling' } },
+      { id: 'h', type: 'image', data: { handling: true } },
     ];
     const out = gateBlockedDeletion([{ id: 'a' }, { id: 'h' }], [], allNodes, ANYONE);
     expect(out.blocked).toBe(true);
@@ -182,7 +182,7 @@ describe('gateBlockedDeletion — flags when a gate vetoed part of the deletion 
   });
 
   it('does NOT block an explicit edge delete touching a handling node (edges are relations)', () => {
-    const allNodes = [{ id: 'h', type: 'image', data: { status: 'handling' } }];
+    const allNodes = [{ id: 'h', type: 'image', data: { handling: true } }];
     const out = gateBlockedDeletion(
       [],
       [{ id: 'e1', source: 'h', target: 'b' }],
@@ -210,21 +210,21 @@ describe('gateBlockedDeletion — flags when a gate vetoed part of the deletion 
 
 describe('handlingNodeIds — nodes with a running task', () => {
   // The delete guards feed VIEW data (the ReactFlow render buffer, a NodeView)
-  // whose derived field is `status` — NOT the wire `state`. Fixtures MUST use
-  // the view shape or they silently test a dead path (adversarial round: a
-  // `data:{state:'handling'}` fixture masked the delete gate being inert).
-  it('returns only nodes whose derived view data.status is handling', () => {
+  // whose derived field is `handling` (inner#888 §7.8) — NOT the wire counts.
+  // Fixtures MUST use the view shape or they silently test a dead path
+  // (adversarial round: a wire-shaped fixture masked the delete gate being
+  // inert).
+  it('returns only nodes whose view says a task is running', () => {
     const nodes = [
-      { id: 'h1', data: { status: 'handling' } },
-      { id: 'h2', data: { status: 'handling' } },
-      { id: 'i', data: { status: 'idle' } },
-      { id: 'e', data: { status: 'error' } },
+      { id: 'h1', data: { handling: true } },
+      { id: 'h2', data: { handling: true } },
+      { id: 'i', data: { handling: false } },
       { id: 'n', data: {} },
     ];
     expect(handlingNodeIds(nodes)).toEqual(new Set(['h1', 'h2']));
   });
 
-  it('IGNORES the raw counts (only the derived view `status` counts)', () => {
+  it('IGNORES the raw counts (only the derived view flag counts)', () => {
     // A node carrying the document shape rather than the view shape must NOT
     // match — the guard reads the field the render buffer actually carries.
     // Pins the exact regression the adversarial pass caught.
@@ -432,7 +432,7 @@ describe('filterGatedDeletion — a Group outlives a deletion its members surviv
   // still handling its upload and so cannot be deleted.
   const allNodes = [
     { id: 'g', type: 'group', data: {} },
-    { id: 'busy', type: 'image', parentId: 'g', data: { status: 'handling' } },
+    { id: 'busy', type: 'image', parentId: 'g', data: { handling: true } },
     { id: 'done', type: 'image', parentId: 'g', data: {} },
   ];
 

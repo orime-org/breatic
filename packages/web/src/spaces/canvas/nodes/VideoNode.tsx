@@ -9,6 +9,7 @@ import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import { useZoomedPastPreview } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/useNodeResolution';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 
@@ -17,10 +18,6 @@ interface VideoNodeProps {
   selected?: boolean;
   locked?: boolean;
   onActivate?: () => void;
-  /** Open this node's task list on its failures (#186 §3.7.2). */
-  onViewTasks?: () => void;
-  /** Whether that list is already open beside this node. */
-  tasksPanelOpen?: boolean;
   onRename?: (name: string) => void;
 }
 
@@ -29,12 +26,11 @@ interface VideoNodeProps {
  * cover poster + a scrubber, volume and fullscreen control bar, zero
  * third-party player dependency).
  * @param root0 - Video node props.
- * @param root0.data - Video node payload (asset URL, cover poster, status, optional error message).
+ * @param root0.data - Video node payload (asset URL, cover poster).
  * @param root0.selected - Whether the node is selected, driving the selection ring.
  * @param root0.locked - Whether the node is locked, showing the lock indicator.
  * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
- * @param root0.onViewTasks - Open this node's task list on its failures.
  * @returns The video node element (placeholder or native video player).
  */
 export const VideoNode = React.memo(function VideoNode({
@@ -42,12 +38,11 @@ export const VideoNode = React.memo(function VideoNode({
   selected,
   locked,
   onActivate,
-  onViewTasks,
-  tasksPanelOpen,
   onRename,
 }: VideoNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
   const { resolution, setResolution } = useNodeResolution(data.content, data.width, data.height);
+  const fullPoster = useZoomedPastPreview(data.coverUrl);
   // Subscribe to the BOOLEAN, not the session object: this node re-renders
   // only when the answer flips, not on every change to an unrelated pick.
   const focusPicking = useCanvasSession(
@@ -57,7 +52,6 @@ export const VideoNode = React.memo(function VideoNode({
     <ContentNodeFrame
       modality='video'
       name={data.name}
-      status={data.status}
       selected={selected}
       locked={locked}
       onRename={onRename}
@@ -65,10 +59,6 @@ export const VideoNode = React.memo(function VideoNode({
       resolution={resolution}
     >
       <NodeContent
-        onViewTasks={onViewTasks}
-        tasksPanelOpen={tasksPanelOpen}
-        status={data.status}
-        errorMessage={data.errorMessage}
         hasContent={hasContent}
         placeholder={
           <NodePlaceholder modality='video' onActivate={onActivate} />
@@ -79,6 +69,12 @@ export const VideoNode = React.memo(function VideoNode({
               modality='video'
               src={data.content ?? ''}
               poster={data.coverUrl}
+              fullPoster={fullPoster}
+              size={
+                typeof data.width === 'number' && typeof data.height === 'number'
+                  ? { width: data.width, height: data.height }
+                  : undefined
+              }
               duration={data.duration}
               onDimensions={setResolution}
               controlsHidden={focusPicking}

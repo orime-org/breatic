@@ -10,12 +10,24 @@
  * at once now. Keyed by node, two failures on one node left only the last
  * File, and either one succeeding cleared the other's.
  *
+ * A browser mini-tool's export keeps its tag with the File, so a retry comes
+ * back as that tool rather than as a plain upload (inner#888 §7.5).
+ *
  * In-memory only by design — the browser cannot re-read a picked file after a
  * refresh (platform ceiling, plan §6), so a reload drops the stash and the
  * user re-picks the file.
  */
 
-const retryFiles = new Map<string, File>();
+import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
+
+/** What a retry re-sends. */
+export interface RetryUpload {
+  file: File;
+  /** Present when a browser mini-tool made the file. */
+  context?: MiniToolUploadTag;
+}
+
+const retryFiles = new Map<string, RetryUpload>();
 
 /**
  * The composite stash key — task ids come from one table, and the project and
@@ -35,28 +47,33 @@ function keyOf(projectId: string, spaceId: string, taskId: string): string {
  * @param spaceId - Space the task's node lives in.
  * @param taskId - The failed task.
  * @param file - The original picked/dropped File.
+ * @param context - The mini-tool tag the upload carried, if any.
  */
 export function stashRetryFile(
   projectId: string,
   spaceId: string,
   taskId: string,
   file: File,
+  context?: MiniToolUploadTag,
 ): void {
-  retryFiles.set(keyOf(projectId, spaceId, taskId), file);
+  retryFiles.set(
+    keyOf(projectId, spaceId, taskId),
+    context === undefined ? { file } : { file, context },
+  );
 }
 
 /**
- * The stashed File for a failed task, if this session still holds one.
+ * What a failed task's retry re-sends, if this session still holds it.
  * @param projectId - Owning project.
  * @param spaceId - Space the task's node lives in.
  * @param taskId - The failed task.
- * @returns The File, or undefined (no stash → no Retry button).
+ * @returns The File and its tag, or undefined (no stash → no Retry button).
  */
-export function getRetryFile(
+export function getRetryUpload(
   projectId: string,
   spaceId: string,
   taskId: string,
-): File | undefined {
+): RetryUpload | undefined {
   return retryFiles.get(keyOf(projectId, spaceId, taskId));
 }
 

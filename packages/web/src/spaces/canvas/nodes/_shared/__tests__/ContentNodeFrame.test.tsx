@@ -40,7 +40,6 @@ describe('ContentNodeFrame', () => {
       <ContentNodeFrame
         modality='image'
         name='Hero'
-        status='idle'
         resolution={{ width: 1920, height: 1080 }}
       >
         <div />
@@ -57,7 +56,7 @@ describe('ContentNodeFrame', () => {
 
   it('no resolution: no badge is rendered (empty / unloaded state)', () => {
     render(
-      <ContentNodeFrame modality='image' name='Hero' status='idle'>
+      <ContentNodeFrame modality='image' name='Hero'>
         <div />
       </ContentNodeFrame>,
     );
@@ -73,7 +72,6 @@ describe('ContentNodeFrame', () => {
       <ContentNodeFrame
         modality='image'
         name='Hero'
-        status='idle'
         resolution={{ width: 1920, height: 1080 }}
       >
         <div />
@@ -84,7 +82,7 @@ describe('ContentNodeFrame', () => {
 
   it('gives the name the whole line when nothing else is on it', () => {
     render(
-      <ContentNodeFrame modality='text' name='Hero' status='idle'>
+      <ContentNodeFrame modality='text' name='Hero'>
         <div />
       </ContentNodeFrame>,
     );
@@ -97,7 +95,6 @@ describe('ContentNodeFrame', () => {
         modality='image'
         name='Hero'
         selected
-        status='idle'
         resolution={{ width: 1920, height: 1080 }}
       >
         <div />
@@ -106,37 +103,5 @@ describe('ContentNodeFrame', () => {
     expect(screen.getByTestId('node-resolution-badge')).toHaveClass(
       'text-foreground',
     );
-  });
-
-  // The badge describes the CURRENTLY DISPLAYED media, so it hides whenever
-  // the media element is unmounted — which is the error state. A task running
-  // on the node no longer unmounts anything (user 2026-09-06): the media stays
-  // on screen and the badge stays with it.
-  it('handling: keeps the badge on the media it is describing', () => {
-    render(
-      <ContentNodeFrame
-        modality='image'
-        name='Hero'
-        status='handling'
-        resolution={{ width: 1920, height: 1080 }}
-      >
-        <div />
-      </ContentNodeFrame>,
-    );
-    expect(screen.getByTestId('node-resolution-badge')).toBeInTheDocument();
-  });
-
-  it('error: hides the badge even when a resolution is known', () => {
-    render(
-      <ContentNodeFrame
-        modality='image'
-        name='Hero'
-        status='error'
-        resolution={{ width: 1920, height: 1080 }}
-      >
-        <div />
-      </ContentNodeFrame>,
-    );
-    expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
   });
 });

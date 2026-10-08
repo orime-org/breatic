@@ -206,10 +206,10 @@ describe("nothing in the schema caps how many tasks a node may run", () => {
 
     const insert = (label: string) => sql`
       INSERT INTO node_tasks
-        (project_id, space_id, node_id, kind, status,
+        (project_id, space_id, node_id, kind, action, status,
          started_by_user_id, started_at, budget_ms, label)
       VALUES
-        (${projectId}, ${spaceId}, ${nodeId}, 'upload', 'running',
+        (${projectId}, ${spaceId}, ${nodeId}, 'upload', 'upload', 'running',
          ${userId}, now(), 600000, ${label})
       RETURNING id
     `;

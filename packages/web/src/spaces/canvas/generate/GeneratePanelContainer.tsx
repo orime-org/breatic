@@ -354,7 +354,7 @@ function GeneratePanelBody({
     evaluateExecute({
       promptText,
       model: vm.model,
-      nodeStatus: vm.nodeStatus,
+      nodeExists: vm.nodeExists,
       isSubmitting,
       // The model states it (#1966). This was a literal `true` until the field
       // existed, because the only derivation available then read a `prompt`
@@ -601,7 +601,7 @@ function GeneratePanelBody({
     const verdict = evaluateExecute({
       promptText: freshPrompt,
       model: fresh.model,
-      nodeStatus: fresh.nodeStatus,
+      nodeExists: fresh.nodeExists,
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
       maxInputChars,

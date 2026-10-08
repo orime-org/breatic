@@ -61,7 +61,7 @@ function nodes(
       id: 'n1',
       // `status` is what marks a node view as a CONTENT one; a fixture without
       // it reads as a node that carries no model, no params and no voice.
-      data: { kind: 'audio', status: 'idle', ...data } as CanvasNodeView['data'],
+      data: { kind: 'audio', handling: false, ...data } as CanvasNodeView['data'],
     },
   ];
 }
@@ -168,7 +168,7 @@ describe('buildAudioPanelViewModel — whether a voice has been chosen', () => {
     // hand-built record can never carry `Alice`, so a test that writes its own
     // fixture cannot see this.
     const { paramsByModel } = resolveModelSwitch(
-      { kind: 'audio', status: 'idle' } as never,
+      { kind: 'audio', handling: false } as never,
       ELEVEN,
     );
     const vm = buildAudioPanelViewModel({
@@ -261,12 +261,9 @@ describe('withListDefaultVoice — the first voice stands in when none is held',
 });
 
 describe('buildAudioPanelViewModel — what execute needs to know', () => {
-  it('reports the node status the execute gate reads', () => {
-    const vm = buildAudioPanelViewModel({
-      ...BASE,
-      nodes: nodes({ status: 'handling' }),
-    });
-    expect(vm.nodeStatus).toBe('handling');
+  it('reports that the node is on the board, which the execute gate reads', () => {
+    const vm = buildAudioPanelViewModel({ ...BASE, nodes: nodes() });
+    expect(vm.nodeExists).toBe(true);
   });
 
   it('says the prompt is required for a model that consumes one', () => {

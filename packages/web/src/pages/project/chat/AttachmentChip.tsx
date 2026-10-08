@@ -12,6 +12,7 @@ import { previewOf, type PreviewRow } from '@web/pages/project/chat/attachment-p
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { TrayFailure, TrayStatus } from '@web/stores/chat-attachments';
+import { PreviewImg } from '@web/components/preview-img';
 
 interface AttachmentChipProps {
   /** Which item this is, handed back to `onRemove`. */
@@ -180,7 +181,7 @@ function NodeRows({ rows, more }: { rows: PreviewRow[]; more: number }): React.J
         return (
           <div key={row.id} data-testid='attachment-preview-row' className='flex items-center gap-1.5'>
             {row.thumbnail ? (
-              <img src={row.thumbnail} alt='' className='h-6 w-6 shrink-0 rounded object-cover' />
+              <PreviewImg src={row.thumbnail} alt='' className='h-6 w-6 shrink-0 rounded object-cover' />
             ) : (
               <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground'>
                 <Icon className='h-3.5 w-3.5' aria-hidden='true' />

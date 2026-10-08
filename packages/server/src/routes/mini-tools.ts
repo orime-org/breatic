@@ -2,28 +2,25 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Mini-tool routes — lightweight AIGC operations.
- *
- * Each endpoint accepts a discriminated union body (keyed by `tool`),
- * creates a task record, and enqueues a BullMQ job. Audio tools with
- * `tts` or `voice-clone` map to `task_type="tts"`. Task results are
- * delivered via Yjs document sync through the Hocuspocus collab server.
+ * `POST /mini-tools` — the one entry every server-run mini-tool shares
+ * (inner#888 §6.1). The body is validated against the registry, the run is
+ * prepared, and the result nodes' rows open before the credit gate so a
+ * refusal has somewhere to be said. Browser tools never come here: their
+ * export uploads like any other file.
  */
 
 import { Hono } from "hono";
-import { validate } from "@server/middleware/validate.js";
+import { createQueue, defaultJobOpts } from "@breatic/core";
+import { taskService } from "@breatic/domain";
+import { miniToolById, miniToolRequestSchema } from "@breatic/shared/mini-tools";
 
-import {
-  imageToolSchema,
-  videoToolSchema,
-  audioToolSchema,
-} from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { taskService, MIN_TASK_CREDIT_COST } from "@breatic/domain";
-import { createQueue, defaultJobOpts } from "@breatic/core";
-import { precheckCredits, projectService } from "@server/modules";
-import { openGenerationTasks } from "@server/modules/task/generation-task.js";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
+import { validate } from "@server/middleware/validate.js";
+import { projectService } from "@server/modules";
+import { prepareRun } from "@server/modules/mini-tool/mini-tool.service.js";
+import { startRowedRun } from "@server/modules/task/generation-task.js";
 
 const miniTools = new Hono<{ Variables: AuthVariables }>();
 
@@ -31,184 +28,65 @@ miniTools.use("*", requireAuth);
 
 const tasksQueue = createQueue("tasks");
 
-/** TTS-class tool names that use task_type="tts" instead of "audio". */
-const TTS_TOOLS = new Set(["tts", "voice-clone"]);
-
-
 /**
- * Shared helper — create task and enqueue BullMQ job.
- *
- * `params.node_ids: string[]` (optional, 1..N) identifies the result
- * nodes the Worker will update when the task completes. Absent for
- * tasks that don't bind to canvas nodes (rare for mini-tools).
- * @param toolName - The specific mini-tool name (e.g. "remove-bg", "upscale")
- * @param taskType - High-level task type (e.g. "image", "video", "audio", "tts")
- * @param params - Tool-specific parameters from the validated body
- * @param userId - Authenticated user ID
- * @param projectId - Optional project ID
- * @param spaceId - The space (canvas) the task belongs to
- * @param targetNodeIds - UUIDs of the canvas nodes to update on completion
- * @returns Object with `task_id` and `status: "pending"`
+ * Run one mini-tool onto the result nodes the browser built.
+ * @param c - Hono context with the validated request.
+ * @returns `201` with `{ task_id, status }` — `"pending"` once queued,
+ * `"failed"` when the run was refused after its rows opened (the rows hold
+ * the cause).
+ * @throws {AppError} The refusal itself, when no row was opened to carry it.
  */
-async function enqueueMiniTool(
-  toolName: string,
-  taskType: string,
-  params: Record<string, unknown>,
-  userId: string,
-  projectId: string,
-  spaceId: string,
-  targetNodeIds: string[],
-): Promise<{ task_id: string; status: string }> {
-  // Mini-tools always create a new sibling result node (the caller
-  // pre-allocates `target_node_id` as a fresh UUID), so mode is
-  // unconditionally 'append'. No SETNX lock — fresh nodeId can't conflict.
+miniTools.post("/", rateLimitFor("mini_tool", "user"), validate("json", miniToolRequestSchema), async (c) => {
+  const user = c.get("user");
+  const body = c.req.valid("json");
+  const spec = miniToolById(body.tool)!;
+
+  await projectService.assertAccess(body.project_id, user.id, "editor");
+  const run = await prepareRun(spec, body);
+
+  const taskType = spec.outputs[0]!.modality;
   const task = await taskService.create(
-    userId,
-    projectId,
-    spaceId,
+    user.id,
+    body.project_id,
+    body.space_id,
     taskType,
     "append",
-    params,
-    undefined,
+    run.params,
+    run.model,
     "mini_tool",
   );
 
-  // One task row per node this run will write to (#186, design §4.2), opened
-  // before anything is queued: the row is the only path this run's result
-  // takes back to its node. All three mini-tool endpoints come through here,
-  // so one call covers them.
-  await openGenerationTasks({
-    projectId,
-    spaceId,
-    nodeIds: targetNodeIds,
-    startedByUserId: userId,
+  const status = await startRowedRun({
     taskId: task.id,
-    label: toolName,
+    projectId: body.project_id,
+    spaceId: body.space_id,
+    nodeIds: body.node_ids,
+    userId: user.id,
+    action: "mini_tool",
+    label: spec.id,
+    credits: () => Promise.resolve(run.credits),
+    enqueue: () =>
+      tasksQueue.add(
+        "execute-mini-tool",
+        {
+          taskId: task.id,
+          userId: user.id,
+          projectId: body.project_id,
+          spaceId: body.space_id,
+          source: "mini_tool",
+          toolId: spec.id,
+          taskType,
+          params: run.params,
+          ...(run.sourceKey !== undefined && { sourceKey: run.sourceKey }),
+          targetNodeIds: body.node_ids,
+          mode: "append" as const,
+        },
+        defaultJobOpts(),
+      ),
+    logTag: "mini_tool",
+    logContext: { tool: spec.id },
   });
-
-  // Worker dispatcher reads `source: "mini_tool"` to route to runMiniTool.
-  // Without it, the job falls through to the AIGC direct path which expects
-  // a `model` field that mini-tool requests don't provide. `spaceId` lets
-  // the worker compute the canvas-{spaceId} doc name for the counts it
-  // publishes when a task settles.
-  const job = await tasksQueue.add(
-    "execute-mini-tool",
-    {
-      taskId: task.id,
-      userId,
-      projectId,
-      spaceId,
-      toolName,
-      taskType,
-      params,
-      source: "mini_tool",
-      targetNodeIds,
-      mode: "append" as const,
-    },
-    defaultJobOpts(),
-  );
-
-  await taskService.setJobId(task.id, job.id ?? "");
-
-  return { task_id: task.id, status: "pending" };
-}
-
-/**
- * `POST /mini-tools/image` — run an image mini-tool.
- *
- * Accepts discriminated union body keyed by `tool` field (e.g.
- * "remove-bg", "upscale", "relight", "edit").
- * @param c - Hono context with validated `imageToolSchema` body
- * @returns `201` with `{ task_id, status: "pending" }`
- */
-miniTools.post("/image", validate("json", imageToolSchema), async (c) => {
-  const user = c.get("user");
-  const body = c.req.valid("json");
-  // A run writes its result into the project: editor or above, as on the
-  // canvas (an archived project reads every member as viewer).
-  await projectService.assertAccess(body.project_id, user.id, "editor");
-  // The pool belongs to the studio owning the project, so the body has to be
-  // read before the check can name one.
-  await precheckCredits(body.project_id, user.id, MIN_TASK_CREDIT_COST);
-
-  const { tool, project_id, space_id, target_node_id, ...params } = body;
-
-  const result = await enqueueMiniTool(
-    tool,
-    "image",
-    params,
-    user.id,
-    project_id,
-    space_id,
-    [target_node_id],
-  );
-  return c.json({ data: result }, 201);
-});
-
-/**
- * `POST /mini-tools/video` — run a video mini-tool.
- *
- * Accepts discriminated union body keyed by `tool` field (e.g.
- * "upscale", "interpolate", "extend", "edit").
- * @param c - Hono context with validated `videoToolSchema` body
- * @returns `201` with `{ task_id, status: "pending" }`
- */
-miniTools.post("/video", validate("json", videoToolSchema), async (c) => {
-  const user = c.get("user");
-  const body = c.req.valid("json");
-  // A run writes its result into the project: editor or above, as on the
-  // canvas (an archived project reads every member as viewer).
-  await projectService.assertAccess(body.project_id, user.id, "editor");
-  // The pool belongs to the studio owning the project, so the body has to be
-  // read before the check can name one.
-  await precheckCredits(body.project_id, user.id, MIN_TASK_CREDIT_COST);
-
-  const { tool, project_id, space_id, target_node_id, ...params } = body;
-
-  const result = await enqueueMiniTool(
-    tool,
-    "video",
-    params,
-    user.id,
-    project_id,
-    space_id,
-    [target_node_id],
-  );
-  return c.json({ data: result }, 201);
-});
-
-/**
- * `POST /mini-tools/audio` — run an audio mini-tool.
- *
- * Accepts discriminated union body keyed by `tool` field (e.g.
- * "sfx", "tts", "voice-clone", "separate"). Tools "tts" and
- * "voice-clone" are mapped to `task_type="tts"`.
- * @param c - Hono context with validated `audioToolSchema` body
- * @returns `201` with `{ task_id, status: "pending" }`
- */
-miniTools.post("/audio", validate("json", audioToolSchema), async (c) => {
-  const user = c.get("user");
-  const body = c.req.valid("json");
-  // A run writes its result into the project: editor or above, as on the
-  // canvas (an archived project reads every member as viewer).
-  await projectService.assertAccess(body.project_id, user.id, "editor");
-  // The pool belongs to the studio owning the project, so the body has to be
-  // read before the check can name one.
-  await precheckCredits(body.project_id, user.id, MIN_TASK_CREDIT_COST);
-
-  const { tool, project_id, space_id, target_node_id, ...params } = body;
-
-  const taskType = TTS_TOOLS.has(tool) ? "tts" : "audio";
-  const result = await enqueueMiniTool(
-    tool,
-    taskType,
-    params,
-    user.id,
-    project_id,
-    space_id,
-    [target_node_id],
-  );
-  return c.json({ data: result }, 201);
+  return c.json({ data: { task_id: task.id, status } }, 201);
 });
 
 export { miniTools as miniToolsRoute };

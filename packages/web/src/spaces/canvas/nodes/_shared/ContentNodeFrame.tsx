@@ -13,17 +13,13 @@ import {
 } from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 import { ZoomCounterScaled } from '@web/spaces/canvas/nodes/_shared/ZoomCounterScaled';
-import type {
-  DisplayStatus,
-  Modality,
-} from '@web/data/yjs/node-view';
+import type { Modality } from '@web/data/yjs/node-view';
 
 interface ContentNodeFrameProps {
   /** Modality, selecting the header icon + fixed-English label fallback. */
   modality: Modality;
   /** Current node name (blank → modality label). */
   name?: string;
-  status?: DisplayStatus;
   selected?: boolean;
   locked?: boolean;
   /** Commit a rename — pre-bound to this node's id by the ReactFlow wrapper. */
@@ -57,7 +53,6 @@ interface ContentNodeFrameProps {
  * @param root0 - Content node frame props.
  * @param root0.modality - Node modality, selecting the header icon + label.
  * @param root0.name - Current node name (blank → modality label fallback).
- * @param root0.status - Node status, tinting the shell's 1px state border.
  * @param root0.selected - Whether the node is selected, tinting the shell border.
  * @param root0.locked - Whether the node is locked; drives the shell lock indicator AND freezes the name.
  * @param root0.onRename - Commit a rename, pre-bound to this node's id.
@@ -70,7 +65,6 @@ interface ContentNodeFrameProps {
 export function ContentNodeFrame({
   modality,
   name,
-  status,
   selected,
   locked,
   onRename,
@@ -91,20 +85,14 @@ export function ContentNodeFrame({
   // corner-pinned anchor, NOT a right item in a full-width row: a full-width row
   // has a constant screen width while the card's screen width scales with zoom,
   // so at >100% the badge would land mid-card and at <100% it would spill past
-  // the right edge (#1616). It is gated on the media actually being displayed:
-  // an error node gives that slot to its message and unmounts the media, so a
-  // previously-read resolution must not linger there.
+  // the right edge (#1616).
   // At 100% the name is stopped short of the badge (`sharesLine` below). Below
   // 100% the two constant-size labels can still overlap, because the card
   // shrinks under them while they do not; that is accepted (user, 2026-07-06)
   // — low zoom is for overview / moving nodes, not editing, so a corner-pinned
   // badge matters more than the overlap.
   const occupants = React.useContext(NodeOccupantsContext);
-  // A node with a task running keeps showing what it holds: the counts beside
-  // it already say something is working, and covering the content took away
-  // the thing the reader came for (user 2026-09-06).
-  const mediaShown = status !== 'error';
-  const badgeShown = mediaShown && resolution !== undefined;
+  const badgeShown = resolution !== undefined;
   return (
     <div className='relative'>
       <ZoomCounterScaled
@@ -138,7 +126,6 @@ export function ContentNodeFrame({
         </ZoomCounterScaled>
       )}
       <NodeShell
-        status={status}
         selected={selected}
         locked={locked}
         className={cn('w-72', className)}

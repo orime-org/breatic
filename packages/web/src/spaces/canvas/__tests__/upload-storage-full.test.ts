@@ -116,7 +116,7 @@ describe('filling an existing node hands the failure to the one exit', () => {
       extractText: async () => '',
       onTypeMismatch: () => {},
       setContent: () => true,
-      setError: () => true,
+      onExtractionFailure: () => {},
       onUploadFailure: () => {},
       ...extra,
     } as unknown as FillNodeDeps;
@@ -124,16 +124,16 @@ describe('filling an existing node hands the failure to the one exit', () => {
 
   it('hands storage over and writes nothing onto the node itself', async () => {
     const onUploadFailure = vi.fn((_outcome: UploadFailure) => {});
-    const setError = vi.fn(() => true);
+    const onExtractionFailure = vi.fn();
     await fillNodeFromFile('n1', pngFile(), 'image', 'p1', fillDeps({
       onUploadFailure,
-      setError,
+      onExtractionFailure,
     }));
     expect(onUploadFailure).toHaveBeenCalledOnce();
     expect(onUploadFailure.mock.calls[0]?.[0]).toEqual({ reason: 'storage' });
     // The sentence the user reads is written by that one exit. Keeping a
     // second copy here would mean changing one of them leaves what the user
     // sees untouched.
-    expect(setError).not.toHaveBeenCalled();
+    expect(onExtractionFailure).not.toHaveBeenCalled();
   });
 });

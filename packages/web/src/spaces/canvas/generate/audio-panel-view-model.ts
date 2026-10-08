@@ -55,8 +55,8 @@ export interface AudioPanelViewModel {
   modelEntry: ModelEntry | undefined;
   /** Effective params, resolved against the current model's own record. */
   params: Record<string, unknown>;
-  /** The target node's display status — gates execute (no submit while handling). */
-  nodeStatus: string | undefined;
+  /** Whether the target node is still on the board — gates execute. */
+  nodeExists: boolean;
   /** Whether the active model consumes the prompt. */
   promptRequired: boolean;
   /**
@@ -127,7 +127,7 @@ export function buildAudioPanelViewModel(input: {
     model,
     modelEntry: current,
     params,
-    nodeStatus: content?.status,
+    nodeExists: content !== undefined,
     promptRequired: current?.takes_prompt ?? true,
     voiceRequired: voiceParam !== null && voiceParam !== replacedVoice,
     speakersShort: speakersShort(current, params),

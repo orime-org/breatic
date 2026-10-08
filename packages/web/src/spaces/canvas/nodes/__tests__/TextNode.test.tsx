@@ -129,7 +129,7 @@ function tree(
     locked?: boolean;
   } = {},
 ): React.JSX.Element {
-  const view = { kind: 'text', status: 'idle', ...opts.view } as TextNodeView;
+  const view = { kind: 'text', handling: false, ...opts.view } as TextNodeView;
   return (
     <CanvasContext.Provider value={canvasValue(opts.canvas)}>
       <NodeIdContext.Provider value={NODE}>
@@ -206,17 +206,22 @@ describe('TextNode', () => {
       // The counts beside the node say something is working; covering the
       // text took away the thing the reader came for (user 2026-09-06).
       seedNode('x');
-      renderNode({ view: { status: 'handling' } });
+      renderNode({ view: { handling: true } });
       expect(
         screen.queryByTestId('node-content-handling'),
       ).not.toBeInTheDocument();
       expect(screen.getByTestId('text-node-body')).toBeInTheDocument();
     });
 
-    it('surfaces the error message', () => {
+    it('keeps its body after a task on it failed', () => {
+      // A node shows no task state (inner#888 §7.8): the failure is a count
+      // beside the node and a row in its task list.
       seedNode('x');
-      renderNode({ view: { status: 'error', errorMessage: 'Boom' } });
-      expect(screen.getByTestId('node-content-error')).toHaveTextContent('Boom');
+      renderNode({
+        view: { taskCounts: { running: 0, done: 0, failed: 1, expired: 0 } },
+      });
+      expect(screen.queryByTestId('node-content-error')).toBeNull();
+      expect(screen.getByTestId('text-node-body')).toBeInTheDocument();
     });
 
     it('advertises no editable affordances, so Delete still removes the node', () => {
@@ -238,7 +243,7 @@ describe('TextNode', () => {
       render(
         <CanvasContext.Provider value={canvasValue()}>
           <NodeIdContext.Provider value={NODE}>
-            <TextNode data={{ kind: 'text', status: 'idle' } as TextNodeView} selected />
+            <TextNode data={{ kind: 'text', handling: false } as TextNodeView} selected />
           </NodeIdContext.Provider>
         </CanvasContext.Provider>,
       );
@@ -619,26 +624,20 @@ describe('TextNode', () => {
       expect(editor()).toBeNull();
     });
 
-    it('closes when the node fails mid-edit, and does not spring back when it recovers', () => {
-      // Asserted across the recovery, because that is the only place the bug
-      // shows. While the status is `error` the renderer gives the content slot
-      // to the error message, so the editor is off screen either way and a
-      // check there proves nothing — the same shape of empty test this round
-      // is fixing elsewhere. If edit state was never cleared it is still set
-      // when the node goes back to idle, and the editor reappears over
-      // whatever just arrived, without anybody asking for it.
+    it('stays open when a task on the node fails mid-edit', () => {
+      // A failed task leaves the body where it was (inner#888 §7.8), so the
+      // reader typing into it keeps typing.
       seedNode('typed so far');
       const { rerender } = renderNode();
       enterByDoubleClick();
       expect(editor()).not.toBeNull();
 
-      rerender(tree({ view: { status: 'error', errorMessage: 'upload failed' } }));
-      expect(editor()).toBeNull();
-
-      rerender(tree({ view: { status: 'idle' } }));
-
-      expect(editor()).toBeNull();
-      expect(screen.getByTestId('text-node-body')).toHaveTextContent('typed so far');
+      rerender(
+        tree({
+          view: { taskCounts: { running: 0, done: 0, failed: 1, expired: 0 } },
+        }),
+      );
+      expect(editor()).not.toBeNull();
     });
 
     it('stays open when a task starts writing the node mid-edit', () => {
@@ -653,7 +652,7 @@ describe('TextNode', () => {
       enterByDoubleClick();
       expect(editor()).not.toBeNull();
 
-      rerender(tree({ view: { status: 'handling' } }));
+      rerender(tree({ view: { handling: true } }));
       expect(editor()).not.toBeNull();
     });
   });

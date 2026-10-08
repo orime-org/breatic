@@ -4,9 +4,10 @@
 /**
  * The wire between the media container and the Worker (#209 + #210, §4.2).
  *
- * Two things travel together and one of them is binary, so the answer is
+ * Three things travel together and two of them are binary, so the answer is
  * `multipart/form-data`: a `meta` part naming the streams and the duration,
- * and a `cover` part carrying the PNG when a frame was lifted.
+ * a `cover` part carrying the PNG when a frame was lifted, and a `preview` part
+ * carrying the WebP when one was cut.
  *
  * Both halves live in one file because they are one agreement. The container
  * imports the writer, the Worker imports the reader, and a change to either
@@ -20,7 +21,10 @@
 
 import { NOTHING_FOUND } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
-import { COVER_CONTENT_TYPE } from "@ingest/probe-command.js";
+import {
+  COVER_CONTENT_TYPE,
+  PREVIEW_CONTENT_TYPE,
+} from "@ingest/probe-command.js";
 
 /**
  * The port the container listens on and the Worker connects to.
@@ -46,6 +50,17 @@ export interface ProbeRequest {
    * holds the whole run to.
    */
   toolTimeoutMs: number;
+  /**
+   * Whether to cut a preview: of the cover for a video, of the object else.
+   * It runs on whatever is left before `deadlineAt`.
+   */
+  wantPreview: boolean;
+  /**
+   * When the Worker stops waiting for this answer, in epoch ms. An instant
+   * rather than a span, so time a cold start spent before the request arrived
+   * is counted.
+   */
+  deadlineAt: number;
 }
 
 /** What the Worker got back from one container run. */
@@ -53,17 +68,23 @@ export interface ProbeAnswer {
   report: ProbeReport;
   /** The cover frame, when one was lifted. */
   cover: Uint8Array | null;
+  /** The preview, when one was cut. */
+  preview: Uint8Array | null;
+  /** Whether a container answered at all, which an empty report cannot say. */
+  answered: boolean;
 }
 
 /**
  * Write one container answer.
  * @param report - What ffprobe found.
  * @param cover - The PNG frame, or null when none was lifted.
+ * @param preview - The WebP preview, or null when none was cut.
  * @returns The response the container sends.
  */
 export function buildProbeAnswer(
   report: ProbeReport,
   cover: Uint8Array | null,
+  preview: Uint8Array | null = null,
 ): Response {
   const form = new FormData();
   form.set("meta", JSON.stringify(report));
@@ -73,6 +94,12 @@ export function buildProbeAnswer(
     form.set(
       "cover",
       new File([cover], "cover.png", { type: COVER_CONTENT_TYPE }),
+    );
+  }
+  if (preview !== null) {
+    form.set(
+      "preview",
+      new File([preview], "preview.webp", { type: PREVIEW_CONTENT_TYPE }),
     );
   }
   return new Response(form);
@@ -91,10 +118,30 @@ function isProbeReport(parsed: unknown): parsed is ProbeReport {
   );
 }
 
+/** An answer that could not be read, which is what no answer reads as. */
+export const UNREAD_ANSWER: ProbeAnswer = Object.freeze({
+  report: NOTHING_FOUND,
+  cover: null,
+  preview: null,
+  answered: false,
+});
+
+/**
+ * One binary part of an answer, when it is there.
+ * @param form - The answer's parts.
+ * @param name - Which part.
+ * @returns Its bytes, or null.
+ */
+async function bytesOf(form: FormData, name: string): Promise<Uint8Array | null> {
+  const part = form.get(name);
+  return part instanceof File ? new Uint8Array(await part.arrayBuffer()) : null;
+}
+
 /**
  * Read one container answer.
  * @param response - What the container sent.
- * @returns The report and the cover, each empty when it could not be read.
+ * @returns The report, the cover and the preview, each empty when it could not
+ *   be read.
  * @throws {never} Anything unreadable answers as nothing found.
  */
 export async function readProbeAnswer(
@@ -104,23 +151,25 @@ export async function readProbeAnswer(
   try {
     form = await response.formData();
   } catch {
-    return { report: NOTHING_FOUND, cover: null };
+    return UNREAD_ANSWER;
   }
 
   const meta = form.get("meta");
-  if (typeof meta !== "string") return { report: NOTHING_FOUND, cover: null };
+  if (typeof meta !== "string") return UNREAD_ANSWER;
   let parsed: unknown;
   try {
     parsed = JSON.parse(meta);
   } catch {
-    return { report: NOTHING_FOUND, cover: null };
+    return UNREAD_ANSWER;
   }
   // Parsing says the text was JSON, nothing more. What the caller does with
   // this is index `streams`, so the shape is what has to hold.
-  if (!isProbeReport(parsed)) return { report: NOTHING_FOUND, cover: null };
-  const report = parsed;
+  if (!isProbeReport(parsed)) return UNREAD_ANSWER;
 
-  const cover = form.get("cover");
-  if (!(cover instanceof File)) return { report, cover: null };
-  return { report, cover: new Uint8Array(await cover.arrayBuffer()) };
+  return {
+    report: parsed,
+    cover: await bytesOf(form, "cover"),
+    preview: await bytesOf(form, "preview"),
+    answered: true,
+  };
 }

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import {
   render,
   screen,
@@ -12,6 +12,7 @@ import {
 } from '@testing-library/react';
 
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 import {
   NodeHistoryRow,
   type HistoryModality,
@@ -95,6 +96,7 @@ function renderRow(
       entry={e}
       modality={modality}
       isCurrent={false}
+      isFocused={false}
       onRestore={() => {}}
     />,
   );
@@ -108,6 +110,14 @@ describe('NodeHistoryRow (#1619)', () => {
   it('failed generation row: the type chip states the TYPE, not the failure', () => {
     renderRow(entry({ entryType: 'generation', status: 'failed' }));
     expect(screen.getByText('canvas.history.typeGeneration')).toBeTruthy();
+  });
+
+  // A20: a mini-tool result is named by its tool, as its task row is, whichever
+  // way its bytes reached the node (a browser export lands as an upload).
+  it('names the mini-tool that made the result instead of the way it landed', () => {
+    renderRow(entry({ entryType: 'upload', status: 'success', metadata: { toolId: 'image.crop', filename: 'CROP.png' } }));
+    expect(screen.getByText('canvas.miniTool.image.crop.label')).toBeTruthy();
+    expect(screen.queryByText('canvas.history.typeUpload')).toBeNull();
   });
 
   it('upload row: the type chip states Upload', () => {
@@ -142,12 +152,14 @@ describe('NodeHistoryRow (#1619)', () => {
           entry={entry()}
           modality='image'
           isCurrent
+          isFocused={false}
           onRestore={() => {}}
         />
         <NodeHistoryRow
           entry={entry({ id: 'h2' })}
           modality='image'
           isCurrent={false}
+          isFocused={false}
           onRestore={() => {}}
         />
       </>,
@@ -321,6 +333,7 @@ describe('reading a row against its fill (#2186)', () => {
         entry={entry({ entryType: 'snapshot', status: 'success', content: 'kept', operatorName: 'Lin' })}
         modality='text'
         isCurrent
+        isFocused={false}
         onRestore={() => {}}
       />,
     );
@@ -339,6 +352,7 @@ describe('reading a row against its fill (#2186)', () => {
         entry={entry({ entryType: 'snapshot', status: 'success', content: 'kept', operatorName: 'Lin' })}
         modality='text'
         isCurrent={false}
+        isFocused={false}
         onRestore={() => {}}
       />,
     );
@@ -374,5 +388,19 @@ describe('a snapshot row names its words (#2186)', () => {
     );
     const row = screen.getByTestId('node-history-row');
     expect(within(row).getByText('Dawn, two boats in the harbour.').className).toContain('truncate');
+  });
+});
+
+describe('NodeHistoryRow — the thumbnail shows the stored preview (inner#1320)', () => {
+  beforeEach(() => {
+    resetPreviewRecords();
+  });
+
+  it('a stored image renders its preview address in the 46px thumbnail', () => {
+    const stored =
+      'https://resource-dev.breatic.cc/image/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679.png';
+    renderRow(entry({ status: 'success', content: stored }));
+    const thumb = screen.getByTestId('node-history-row').firstElementChild as HTMLElement;
+    expect(thumb.querySelector('img')?.getAttribute('src')).toBe(`${stored}.preview.webp`);
   });
 });

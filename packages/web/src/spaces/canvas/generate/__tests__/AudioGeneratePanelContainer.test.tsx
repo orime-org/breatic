@@ -346,7 +346,7 @@ function textSource(id: string, body: string): BoardExtras {
     nodes: [
       {
         id,
-        data: { kind: 'text', status: 'idle', name: 'Lines' },
+        data: { kind: 'text', handling: false, name: 'Lines' },
       } as Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'][number],
     ],
     edges: [{ id: `e-${id}`, source: id, target: 'target' }],
@@ -389,7 +389,7 @@ function panelTree(
             nodes={[
               {
                 id: 'target',
-                data: { kind: 'audio', status: 'idle', ...nodeData } as Parameters<
+                data: { kind: 'audio', handling: false, ...nodeData } as Parameters<
                   typeof AudioGeneratePanelContainer
                 >[0]['nodes'][number]['data'],
               },

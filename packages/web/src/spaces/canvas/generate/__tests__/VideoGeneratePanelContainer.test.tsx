@@ -319,13 +319,13 @@ function panelTree(
             nodes={[
               {
                 id: 'target',
-                data: { kind, status: 'idle', ...reactNodeData } as Parameters<
+                data: { kind, handling: false, ...reactNodeData } as Parameters<
                   typeof VideoGeneratePanelContainer
                 >[0]['nodes'][number]['data'],
               },
               // A second node on the board, so a case that moves the panel
               // elsewhere does not trip the node-is-gone close first.
-              { id: 'other', data: { kind: 'video', status: 'idle' } },
+              { id: 'other', data: { kind: 'video', handling: false } },
               ...(board.nodes ?? []),
             ]}
             getLastWriteWasLocal={author}
@@ -892,7 +892,7 @@ describe('VideoGeneratePanelContainer', () => {
       id: 'src',
       data: {
         kind: 'image' as const,
-        status: 'idle' as const,
+        handling: false as const,
         name: 'A still',
         content: 'https://cdn/a.png',
       },
@@ -1248,7 +1248,7 @@ describe('VideoGeneratePanelContainer', () => {
         id: 'ref-a',
         data: {
           kind: 'image' as const,
-          status: 'idle' as const,
+          handling: false as const,
           name: 'A',
           content: 'https://cdn/a.png',
         },
@@ -1257,7 +1257,7 @@ describe('VideoGeneratePanelContainer', () => {
         id: 'ref-b',
         data: {
           kind: 'image' as const,
-          status: 'idle' as const,
+          handling: false as const,
           name: 'B',
           content: 'https://cdn/b.png',
         },
@@ -1266,7 +1266,7 @@ describe('VideoGeneratePanelContainer', () => {
         id: 'ref-c',
         data: {
           kind: 'image' as const,
-          status: 'idle' as const,
+          handling: false as const,
           name: 'C',
           content: 'https://cdn/c.png',
         },
@@ -1633,7 +1633,7 @@ describe('VideoGeneratePanelContainer', () => {
             id: 'src',
             // 正文不进这个投影（node-view.ts:149），轨道那行的预览靠
             // `textById` 单独取，这一条不需要它。
-            data: { kind: 'text', status: 'idle' },
+            data: { kind: 'text', handling: false },
           },
         ],
         edges: [{ id: 'e1', source: 'src', target: 'target' }],
@@ -1775,7 +1775,7 @@ describe('VideoGeneratePanelContainer', () => {
       // 留着它是因为编辑器在这一档不挂载了，那句吞掉的代码从此没有别的
       // 东西挡在前面。
       await openMode('talking_head', 'omnihuman-1.5', {
-        nodes: [{ id: 'src', data: { kind: 'image', status: 'idle', content: 'https://cdn/a.png' } }],
+        nodes: [{ id: 'src', data: { kind: 'image', handling: false, content: 'https://cdn/a.png' } }],
         edges: [{ id: 'e1', source: 'src', target: 'target' }],
       });
       const row = await screen.findByTestId('generate-ref-insert-e1');
@@ -1927,7 +1927,7 @@ describe('VideoGeneratePanelContainer — what the @ list says when it has nothi
     id: 'src',
     data: {
       kind: 'image' as const,
-      status: 'idle' as const,
+      handling: false as const,
       name: 'Alpha',
       content: 'https://cdn/a.png',
     },

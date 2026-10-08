@@ -25,7 +25,7 @@
  */
 
 import { ConflictError } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { t, type NodeTaskAction } from "@breatic/shared";
 import * as repo from "@domain/node-task/node-task.repo.js";
 import type {
   NodeTaskCounts,
@@ -73,6 +73,7 @@ export interface DismissResult {
  * @param opts.spaceId - The space, so an event can name the document.
  * @param opts.nodeId - The node this task runs on.
  * @param opts.kind - `upload` or `generation`.
+ * @param opts.action - What the row's first line names.
  * @param opts.startedByUserId - Who started it.
  * @param opts.budgetMs - The conservative allowance the timer is set from.
  * @param opts.label - Filename or model name, what the user reads.
@@ -85,6 +86,7 @@ export async function open(opts: {
   spaceId: string;
   nodeId: string;
   kind: "upload" | "generation";
+  action: NodeTaskAction;
   startedByUserId: string;
   budgetMs: number;
   label: string;
@@ -94,6 +96,15 @@ export async function open(opts: {
   const id = await repo.insertRunning(opts);
   const counts = await repo.countsFor(opts.projectId, opts.nodeId);
   return { id, counts };
+}
+
+/**
+ * When a job's time runs out, as its rows on the canvas count it.
+ * @param taskId - The job.
+ * @returns The epoch milliseconds, or null when the job opened no row.
+ */
+export async function deadlineFor(taskId: string): Promise<number | null> {
+  return repo.deadlineFor(taskId);
 }
 
 /**

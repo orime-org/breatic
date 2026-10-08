@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, cleanup, fireEvent } from '@testing-library/react';
 
+import { resetPreviewRecords } from '@web/lib/preview-src';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import {
   HOVER_OPEN_DELAY_MS,
@@ -275,3 +276,22 @@ describe('HoverPreview — one width for every form', () => {
   });
 });
 
+
+describe('HoverPreview — a stored image shows its preview (inner#1320)', () => {
+  beforeEach(() => {
+    resetPreviewRecords();
+  });
+
+  it('kind=image with a stored address renders the preview address', () => {
+    vi.useFakeTimers();
+    const stored =
+      'https://resource-dev.breatic.cc/image/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679.png';
+    render(
+      <HoverPreview kind='image' src={stored} alt='a picture'>
+        <span data-testid='trigger'>chip</span>
+      </HoverPreview>,
+    );
+    openCard(screen.getByTestId('trigger'));
+    expect(screen.getByAltText('a picture').getAttribute('src')).toBe(`${stored}.preview.webp`);
+  });
+});

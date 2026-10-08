@@ -141,15 +141,14 @@ export const storageConfigSchema = z
 
     // A run can use both tools, so the Worker has to be willing to wait for
     // two of them. Set the other way round it cuts off a container that is
-    // working, and the upload it was measuring loses its numbers for no
-    // reason either end can see.
-    if (
-      cfg.ingest.container_run_deadline_ms <
-      cfg.ingest.container_tool_timeout_ms * 2
-    ) {
+    // working, and the upload it was measuring loses its numbers for no reason
+    // either end can see. The preview runs on whatever is left after them.
+    const { container_run_deadline_ms: run, container_tool_timeout_ms: tool } =
+      cfg.ingest;
+    if (run < tool * 2) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `container_run_deadline_ms (${cfg.ingest.container_run_deadline_ms}) must be at least twice container_tool_timeout_ms (${cfg.ingest.container_tool_timeout_ms}) — one run may use both tools.`,
+        message: `container_run_deadline_ms (${run}) must be at least twice container_tool_timeout_ms (${tool}) — one run may use both tools.`,
         path: ["ingest", "container_run_deadline_ms"],
       });
     }

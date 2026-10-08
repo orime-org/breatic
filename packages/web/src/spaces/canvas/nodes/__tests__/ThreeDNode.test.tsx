@@ -8,7 +8,7 @@ import { ThreeDNode } from '@web/spaces/canvas/nodes/ThreeDNode';
 
 describe('ThreeDNode', () => {
   it('renders placeholder when no url', () => {
-    render(<ThreeDNode data={{ kind: '3d', status: 'idle' }} />);
+    render(<ThreeDNode data={{ kind: '3d', handling: false }} />);
     expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
   });
 
@@ -18,7 +18,7 @@ describe('ThreeDNode', () => {
         data={{
           kind: '3d',
           content: 'https://e.com/x.glb',
-          status: 'idle',
+          handling: false,
         }}
       />,
     );
@@ -32,7 +32,7 @@ describe('ThreeDNode', () => {
     // counts beside the node already say something is working
     // (user 2026-09-06).
     render(
-      <ThreeDNode data={{ kind: '3d', status: 'handling', content: 'x' }} />,
+      <ThreeDNode data={{ kind: '3d', handling: true, content: 'x' }} />,
     );
     expect(screen.queryByTestId('node-content-handling')).not.toBeInTheDocument();
   });

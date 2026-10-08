@@ -7,7 +7,7 @@ import {
   useCanvasStore,
   isProposalIntent,
 } from '@web/stores/canvas';
-import { canvasSessions, createCanvasSessionStore, taskPanelStatusFor, taskPanelOpenFor } from '@web/stores/canvas-session';
+import { canvasSessions, createCanvasSessionStore, taskPanelStatusFor } from '@web/stores/canvas-session';
 
 /** A proposal of two wired nodes, as a card posts it. */
 const PAIR: CanvasProposal = {
@@ -246,19 +246,6 @@ describe('useCanvasStore', () => {
     canvasSessions.of('s').getState().openTaskPanel('other', 'failed');
 
     expect(taskPanelStatusFor('n-9')(canvasSessions.of('s').getState())).toBeNull();
-  });
-
-  // What a subscriber gets is compared by identity to decide whether to render
-  // again, so answering the status itself would re-render everyone reading
-  // this on every switch between one node's own tabs.
-  it('answers the same value while the list stays open on another tab', () => {
-    canvasSessions.of('s').getState().openTaskPanel('n-9', 'failed');
-    const whileFailed = taskPanelOpenFor('n-9')(canvasSessions.of('s').getState());
-    canvasSessions.of('s').getState().openTaskPanel('n-9', 'running');
-    const whileRunning = taskPanelOpenFor('n-9')(canvasSessions.of('s').getState());
-
-    expect(whileFailed).toBe(true);
-    expect(Object.is(whileFailed, whileRunning)).toBe(true);
   });
 
   // A canvas node-pick is a single session (only one active at a time) that

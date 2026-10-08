@@ -5,8 +5,9 @@
  * Canvas node types shared between frontend, Collab, and server.
  *
  * Each project has one Yjs document containing nodesMap (Y.Map<nodeId, Y.Map>)
- * + edgesMap (Y.Map<edgeId, Y.Map>). A node carries no state of its own: what
- * it shows is derived from its four task counts and `errorMessage` (#186).
+ * + edgesMap (Y.Map<edgeId, Y.Map>). A node carries no task state of its own:
+ * its four task counts are the whole of what the document says about its
+ * tasks (#186).
  */
 
 /**
@@ -287,8 +288,6 @@ export interface CanvasNodeFields {
     locked: boolean;
 
     // ─── Tasks (all node types) ─────────────────────────────
-    /** Last failure message from whatever wrote this node's content. */
-    errorMessage?: string;
     /**
      * How many tasks this node carries in each state (#186) — the whole of
      * what the document says about them. The server recounts after every

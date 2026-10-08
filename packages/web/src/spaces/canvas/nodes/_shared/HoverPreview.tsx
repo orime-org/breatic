@@ -14,6 +14,7 @@ import {
   HOVER_CLOSE_DELAY_MS,
 } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
+import { PreviewImg } from '@web/components/preview-img';
 
 /** How far the preview stays from the viewport edge when pushed against it, in px. */
 const HOVER_PREVIEW_EDGE_GAP = 6;
@@ -146,7 +147,7 @@ export function HoverPreview({
   } else if (kind === 'image' && src) {
     // Filling the preview's width, height following its aspect, sharp corners
     // like video / audio (user 2026-07-23, decisions A and B).
-    content = <img src={src} alt={alt} draggable={false} className='block w-full' />;
+    content = <PreviewImg src={src} alt={alt} draggable={false} className='block w-full' />;
   } else if (previewText) {
     content = (
       <div className='max-h-[220px] overflow-hidden whitespace-pre-wrap p-1 text-xs text-popover-foreground'>

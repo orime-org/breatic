@@ -27,7 +27,6 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 import type * as sharedModule from "@breatic/shared";
 
 const mockGenerateAsync = vi.hoisted(() => vi.fn());
-const mockResolveMiniToolEntry = vi.hoisted(() => vi.fn());
 
 vi.mock("@breatic/core", () => ({
   env: { ENV: "test", CREDIT_MULTIPLIER: 1 },
@@ -64,14 +63,6 @@ vi.mock("@breatic/domain", async () => ({
 vi.mock("@breatic/shared", async (importOriginal) => ({
   ...(await importOriginal<typeof sharedModule>()),
   canvasSpaceDocName: (pid: string, sid: string) => `project-${pid}/canvas-${sid}`,
-}));
-
-vi.mock("@worker/mini-tool-registry.js", () => ({
-  resolveMiniToolEntry: mockResolveMiniToolEntry,
-}));
-
-vi.mock("@worker/handlers/local/index.js", () => ({
-  runLocalHandler: vi.fn(),
 }));
 
 vi.mock("ai", () => ({
@@ -115,26 +106,18 @@ const RUN = { resume: {}, taskId: "task-1", projectId: "p1" } as Parameters<type
 beforeEach(() => {
   mockGenerateAsync.mockReset();
   mockGenerateAsync.mockResolvedValue({ cost: 0 });
-  mockResolveMiniToolEntry.mockReset();
 });
 
 describe("both validating execution paths carry the prompt to the provider", () => {
   it("runMiniTool: the provider gets the prompt even though the model declares none", async () => {
-    mockResolveMiniToolEntry.mockReturnValue({
-      kind: "provider",
-      model: "kling-o3-pro",
-    });
-
     await runMiniTool({
-      toolName: "extend",
-      taskType: "video",
+      toolId: "video.extend",
       params: {
         prompt: "a drone shot over a canyon",
         image: "https://cdn/x.png",
         node_ids: ["n1"],
         project_id: "p1",
       },
-      jobId: "job-1",
       userId: "u1",
       projectId: "p1",
       taskId: RUN.taskId,
@@ -144,7 +127,7 @@ describe("both validating execution paths carry the prompt to the provider", () 
     expect(mockGenerateAsync).toHaveBeenCalledTimes(1);
     const [prompt, model, params] = mockGenerateAsync.mock.calls[0]!;
     expect(prompt).toBe("a drone shot over a canyon");
-    expect(model).toBe("kling-o3-pro");
+    expect(model).toBe("seedance-2.5-video-extend");
     // The validator dropped everything undeclared, and that is exactly why the
     // prompt had to leave `params` before it ran.
     expect(params).toEqual({ image: "https://cdn/x.png" });
@@ -170,16 +153,9 @@ describe("both validating execution paths carry the prompt to the provider", () 
   });
 
   it("runMiniTool: the prompt arrives stripped, like every AIGC prompt must", async () => {
-    mockResolveMiniToolEntry.mockReturnValue({
-      kind: "provider",
-      model: "kling-o3-pro",
-    });
-
     await runMiniTool({
-      toolName: "extend",
-      taskType: "video",
+      toolId: "video.extend",
       params: { prompt: "<b>bold</b> plan" },
-      jobId: "job-1",
       userId: "u1",
       projectId: "p1",
       taskId: RUN.taskId,
@@ -190,15 +166,9 @@ describe("both validating execution paths carry the prompt to the provider", () 
   });
 
   it("both validating paths read `text` too — the key TTS models carry the same argument under", async () => {
-    mockResolveMiniToolEntry.mockReturnValue({
-      kind: "provider",
-      model: "kling-o3-pro",
-    });
     await runMiniTool({
-      toolName: "extend",
-      taskType: "video",
+      toolId: "video.extend",
       params: { text: "spoken line" },
-      jobId: "job-1",
       userId: "u1",
       projectId: "p1",
       taskId: RUN.taskId,
@@ -209,5 +179,22 @@ describe("both validating execution paths carry the prompt to the provider", () 
     mockGenerateAsync.mockClear();
     await runAigcDirect("video", "kling-o3-pro", { text: "spoken line" }, RUN);
     expect(mockGenerateAsync.mock.calls[0]![0]).toBe("spoken line");
+  });
+});
+
+// inner#888 A11: a mini-tool runs on the model its registry entry pins, so a
+// request that names another one changes nothing.
+describe("a mini-tool's pinned model", () => {
+  it("runs on the pinned model whatever model the params name", async () => {
+    await runMiniTool({
+      toolId: "video.extend",
+      params: { prompt: "keep going", model: "some-other-model" },
+      userId: "u1",
+      projectId: "p1",
+      taskId: RUN.taskId,
+      resume: RUN.resume,
+    });
+
+    expect(mockGenerateAsync.mock.calls[0]![1]).toBe("seedance-2.5-video-extend");
   });
 });

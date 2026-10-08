@@ -764,6 +764,11 @@ models:
         default: null
         accepts: "video"
         fill: "canvas"
+      motion_prompt:
+        description: "The movement in the driving video; the prompt describes looks and setting"
+        default: ""
+        type: "text"
+        fill: "tool"
     providers:
       - name: "wavespeed"
         model_id: "wavespeed-ai/wan-2.2/animate-2"
@@ -1210,25 +1215,24 @@ models:
       duration:
         description: "Length in seconds"
         default: 5
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        min: 4
+        max: 30
+        fill: "tool"
       generate_audio:
         description: "Generate a soundtrack with the video"
         default: true
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        values: [true, false]
+        fill: "tool"
       resolution:
         description: "Output resolution"
         default: "720p"
         values: ["480p", "720p", "1080p", "4k"]
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        fill: "tool"
       video:
         description: "Source video"
         default: null
         accepts: "video"
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        fill: "tool"
     providers:
       - name: "wavespeed"
         model_id: "bytedance/seedance-2.5/video-extend"
@@ -1252,20 +1256,45 @@ models:
         description: "Reference audios"
         default: null
         type: "list"
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        accepts: "audio"
+        max_items: 5
+        max_total_duration: 15
+        optional: true
+        fill: "tool"
       reference_images:
         description: "Reference images"
         default: null
         type: "list"
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        accepts: "image"
+        max_items: 10
+        optional: true
+        fill: "tool"
       video:
         description: "Source video"
         default: null
         accepts: "video"
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        fill: "tool"
+      duration:
+        description: "Output length in seconds"
+        default: 5
+        min: 2
+        max: 15
+        fill: "tool"
+      enable_prompt_expansion:
+        description: "Let the model expand the prompt"
+        default: false
+        values: [true, false]
+        fill: "tool"
+      generate_audio:
+        description: "Generate new audio; off keeps the source's soundtrack"
+        default: true
+        values: [true, false]
+        fill: "tool"
+      resolution:
+        description: "Output resolution"
+        default: "720p"
+        values: ["480p", "720p", "1080p"]
+        fill: "tool"
     providers:
       - name: "wavespeed"
         model_id: "alibaba/wan-3.0/video-edit"
@@ -1289,21 +1318,34 @@ models:
         description: "Source image"
         default: null
         accepts: "image"
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        fill: "tool"
       video:
         description: "Source video"
         default: null
         accepts: "video"
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        fill: "tool"
+      character_orientation:
+        description: "Whether the character faces as in the image or as in the video"
+        default: "video"
+        values: ["image", "video"]
+        fill: "tool"
+      keep_original_sound:
+        description: "Keep the driving video's soundtrack"
+        default: true
+        values: [true, false]
+        fill: "tool"
+      negative_prompt:
+        description: "What to keep out of the result"
+        default: ""
+        type: "text"
+        fill: "tool"
     providers:
       - name: "wavespeed"
         model_id: "kwaivgi/kling-v3.0-pro/motion-control"
         priority: 1
         pricing:
           base_price: 840000
-          formula: "{\"total_price\": $max([3, $min([$ceil(get_duration(video)), 30])]) / 5 * base_price}"
+          formula: "{\"total_price\": $max([3, $min([$ceil(get_duration(video)), character_orientation = \"image\" ? 10 : 30])]) / 5 * base_price}"
           discount_rate: 100
 
   - name: "omnihuman-1.5"
@@ -1333,6 +1375,40 @@ models:
         pricing:
           base_price: 160000
           formula: "{\"total_price\": $min([$ceil(get_duration(audio)), 600]) * base_price}"
+          discount_rate: 100
+
+  - name: "seedance-2.5-talking-avatar"
+    display_name: "Seedance 2.5 Talking Avatar"
+    mode: "talking_head"
+    takes_prompt: true
+    tier: "recommended"
+    description: "A portrait that talks the audio, up to two minutes"
+    guide: "Turn a portrait and a voice recording into a presenter clip; the prompt steers expression and movement."
+    generation_time: 180
+    icon: "seedream"
+    params:
+      audio:
+        description: "Source audio"
+        default: null
+        accepts: "audio"
+        fill: "canvas"
+      image:
+        description: "Source image"
+        default: null
+        accepts: "image"
+        fill: "canvas"
+      resolution:
+        description: "Output resolution"
+        default: "720p"
+        values: ["480p", "720p"]
+        fill: "panel"
+    providers:
+      - name: "wavespeed"
+        model_id: "bytedance/seedance-2.5/talking-avatar"
+        priority: 1
+        pricing:
+          base_price: 1100000
+          formula: "{\"total_price\": $max([4, $min([$ceil(get_duration(audio)), 120])]) / 5 * base_price * (resolution = \"480p\" ? 1 : 2)}"
           discount_rate: 100
 
   - name: "sync-lipsync-3"
@@ -1536,14 +1612,12 @@ models:
         description: "Output resolution"
         default: "1080p"
         values: ["720p", "1080p", "2k", "4k"]
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        fill: "tool"
       video:
         description: "Source video"
         default: null
         accepts: "video"
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        fill: "tool"
     providers:
       - name: "wavespeed"
         model_id: "wavespeed-ai/seedvr2/video"
@@ -1567,8 +1641,7 @@ models:
         description: "Source video"
         default: null
         accepts: "video"
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        fill: "tool"
     providers:
       - name: "wavespeed"
         model_id: "wavespeed-ai/rife"

@@ -28,6 +28,7 @@ import { AudioLines, UserRound } from 'lucide-react';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { SlotTool, ToggleTool } from '@web/spaces/canvas/generate/generate-tools';
 import * as overlayFocus from '@web/lib/overlay-focus';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 import * as nodeIcon from '@web/spaces/canvas/lib/node-icon';
 
 vi.mock('@web/spaces/canvas/nodes/_shared/HoverPreview', () => ({
@@ -425,5 +426,18 @@ describe('SlotTool / ToggleTool — the toolbar buttons carry a 1px border', () 
     const c = classes(screen.getByTestId('toggle'));
     expect(c).toContain('border');
     expect(c).toContain('border-border');
+  });
+});
+
+describe('SlotTool — the thumbnail shows the stored preview (inner#1320)', () => {
+  beforeEach(() => {
+    resetPreviewRecords();
+  });
+
+  it('a stored image pick renders its preview address in the slot thumbnail', () => {
+    const stored =
+      'https://resource-dev.breatic.cc/image/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679.png';
+    slot({ pick: { ...IMAGE_PICK, url: stored, thumbnail: stored } });
+    expect(screen.getByTestId('slot-thumb')).toHaveAttribute('src', `${stored}.preview.webp`);
   });
 });

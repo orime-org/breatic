@@ -8,7 +8,7 @@ import { WebNode } from '@web/spaces/canvas/nodes/WebNode';
 
 describe('WebNode', () => {
   it('renders placeholder when no url', () => {
-    render(<WebNode data={{ kind: 'web', status: 'idle' }} />);
+    render(<WebNode data={{ kind: 'web', handling: false }} />);
     expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
   });
 
@@ -18,7 +18,7 @@ describe('WebNode', () => {
         data={{
           kind: 'web',
           content: 'https://example.com',
-          status: 'idle',
+          handling: false,
         }}
       />,
     );
@@ -37,7 +37,7 @@ describe('WebNode', () => {
         data={{
           kind: 'web',
           content: 'https://example.com',
-          status: 'idle',
+          handling: false,
         }}
       />,
     );
@@ -46,18 +46,4 @@ describe('WebNode', () => {
     ).toBe('lazy');
   });
 
-  it('error status surfaces the error message', () => {
-    render(
-      <WebNode
-        data={{
-          kind: 'web',
-          status: 'error',
-          errorMessage: 'X-Frame-Options blocked the page',
-        }}
-      />,
-    );
-    expect(screen.getByTestId('node-content-error')).toHaveTextContent(
-      /X-Frame-Options/,
-    );
-  });
 });

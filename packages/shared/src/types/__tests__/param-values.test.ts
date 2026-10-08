@@ -25,7 +25,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { paramValues } from "@shared/types/param-values.js";
+import { paramValueAllowed, paramValues } from "@shared/types/param-values.js";
 import type { ModelEntry } from "@shared/types/model-catalog.js";
 
 /**
@@ -154,5 +154,32 @@ describe('paramValues', () => {
     // Asserting the list path still wins is what keeps that true.
     const model = modelWith('resolution', { values: ['1K', '2K', '4K'] });
     expect(paramValues(model, 'resolution')).toEqual(['1K', '2K', '4K']);
+  });
+});
+
+// inner#888 §6.1: a mini-tool request names the values its panel set, and the
+// server holds them to the pinned model's declaration before any row opens.
+describe('paramValueAllowed', () => {
+  it('takes one of the values a choice offers, and nothing else', () => {
+    const choice = { values: ['720p', '1080p'] };
+    expect(paramValueAllowed(choice, '720p')).toBe(true);
+    expect(paramValueAllowed(choice, '4k')).toBe(false);
+  });
+
+  it('takes a number inside a range, the bounds included', () => {
+    const range = { min: 0, max: 10 };
+    expect(paramValueAllowed(range, 0)).toBe(true);
+    expect(paramValueAllowed(range, 10)).toBe(true);
+    expect(paramValueAllowed(range, 10.5)).toBe(false);
+    expect(paramValueAllowed(range, '5')).toBe(false);
+  });
+
+  it('takes text for a text param', () => {
+    expect(paramValueAllowed({ type: 'text' }, 'no blur')).toBe(true);
+    expect(paramValueAllowed({ type: 'text' }, 3)).toBe(false);
+  });
+
+  it('takes an absent value, which the run fills with the default', () => {
+    expect(paramValueAllowed({ values: ['a'] }, undefined)).toBe(true);
   });
 });

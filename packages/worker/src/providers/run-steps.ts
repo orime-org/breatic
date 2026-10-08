@@ -84,7 +84,8 @@ interface Carried {
   /** Prediction ids to bill. */
   predictions: string[];
   inlineCostUsd: number;
-  url?: string;
+  /** What the run produced, in upstream order. */
+  urls?: string[];
 }
 
 /**
@@ -249,7 +250,7 @@ async function runStep(
     case "speak": {
       if (carried.voiceId === undefined) throw new Error("No cloned voice to speak with");
       const run = await predict(deps, resolved, step, { text: prompt, voice_id: carried.voiceId }, ctx.taskId);
-      return { url: firstUrl(run), prediction: run.taskId };
+      return { urls: [outputUrls(run)[0]!], prediction: run.taskId };
     }
     case "generate": {
       const family = FAMILIES.get(entry.name);
@@ -258,7 +259,7 @@ async function runStep(
       const prepared = family ? await family.prepare(prompt, withIds) : { prompt, fields: {} };
       const body = { ...upstreamBody(entry, withIds, prepared.prompt, family?.CONSUMES), ...prepared.fields };
       const run = await predict(deps, resolved, step, body, ctx.taskId);
-      return { url: firstUrl(run), prediction: run.taskId };
+      return { urls: outputUrls(run), prediction: run.taskId };
     }
     case "element": {
       const index = step.itemIndex ?? 0;
@@ -289,19 +290,24 @@ async function runStep(
       });
       return { index, elementId: id, cached, prediction };
     }
+    case "container_job":
+      // A container run is driven by its own executor, never by a catalog plan.
+      throw new Error("A container job is not a catalog step");
   }
 }
 
 /**
- * The first output as a url.
+ * Every output as a url, in upstream order.
  * @param run - The prediction.
- * @returns The url.
- * @throws {Error} when the prediction answered no url.
+ * @returns The urls, at least one.
+ * @throws {Error} when the prediction answered no output, or one that is not a url.
  */
-function firstUrl(run: PredictionRun): string {
-  const url = run.outputs[0];
-  if (typeof url !== "string" || url === "") throw new Error("No output URL after WaveSpeed polling");
-  return url;
+function outputUrls(run: PredictionRun): string[] {
+  const urls = run.outputs;
+  if (urls.length === 0 || !urls.every((url): url is string => typeof url === "string" && url !== "")) {
+    throw new Error("No output URL after WaveSpeed polling");
+  }
+  return [...urls];
 }
 
 /**
@@ -318,7 +324,9 @@ function carry(carried: Carried, step: Step, output: Record<string, unknown>): v
   if (typeof output.index === "number" && typeof output.elementId === "string") {
     carried.elementIds[output.index] = output.elementId;
   }
-  if (typeof output.url === "string") carried.url = output.url;
+  // A step finished before outputs were kept as a list stored one url.
+  if (Array.isArray(output.urls)) carried.urls = output.urls as string[];
+  else if (typeof output.url === "string") carried.urls = [output.url];
   if (output.cached === true) {
     const id = (output.id ?? output.voiceId ?? output.elementId) as string;
     const kind: CloneKind = step.kind === "voice" ? "voice" : step.kind === "element" ? "element" : "vocal";
@@ -351,7 +359,9 @@ async function retireGone(deps: StepDeps, ctx: RunTaskContext, carried: Carried,
  * @param prompt - The reader's prompt.
  * @param modelName - Model name (required).
  * @param params - Validated params.
- * @returns The output url, the model and the billed cost in USD.
+ * @param outputCount - How many outputs the caller writes to nodes: 1 for a
+ *   canvas generation, the tool's declared outputs for a mini-tool.
+ * @returns The outputs, the model and the billed cost in USD.
  * @throws {UpstreamTaskFailed} when the upstream failed a step.
  * @throws {Error} when a step already failed, cannot run, or the run answered no output.
  */
@@ -362,6 +372,7 @@ export async function runCatalogTask(
   prompt: string,
   modelName: string | undefined,
   params: Readonly<Record<string, unknown>>,
+  outputCount: number,
 ): Promise<GenerationResult> {
   const resolved = resolveModel(modality, modelName);
   const entry = entryOf(modality, resolved.modelName);
@@ -386,8 +397,9 @@ export async function runCatalogTask(
     carry(carried, step, output);
   }
 
-  if (carried.url === undefined) throw new Error("No output URL after WaveSpeed polling");
+  if (carried.urls === undefined) throw new Error("No output URL after WaveSpeed polling");
   let cost = carried.inlineCostUsd;
   for (const prediction of carried.predictions) cost += await queryBilling(resolved, prediction);
-  return { url: carried.url, model: resolved.modelName, cost };
+  const outputs = carried.urls.slice(0, outputCount).map((url) => ({ url }));
+  return { outputs, model: resolved.modelName, cost };
 }

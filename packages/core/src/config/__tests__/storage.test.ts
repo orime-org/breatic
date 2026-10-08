@@ -251,10 +251,25 @@ describe("the container's two deadlines", () => {
           container_tool_timeout_ms: 60_000,
         },
       }),
-    ).toThrow(/at least twice/);
+    ).toThrow(/at least/);
   });
 
   it("takes one that can", () => {
+    const cfg = storageConfigSchema.parse({
+      ingest: {
+        container_run_deadline_ms: 130_000,
+        container_tool_timeout_ms: 60_000,
+      },
+    });
+
+    expect(cfg.ingest.container_run_deadline_ms).toBe(130_000);
+  });
+});
+
+// The preview runs on whatever the run has left (inner#1339), so the run
+// deadline only has to hold the two tool runs.
+describe("the preview in the run deadline", () => {
+  it("takes a run deadline of exactly two tool runs", () => {
     const cfg = storageConfigSchema.parse({
       ingest: {
         container_run_deadline_ms: 120_000,
@@ -263,5 +278,6 @@ describe("the container's two deadlines", () => {
     });
 
     expect(cfg.ingest.container_run_deadline_ms).toBe(120_000);
+    expect(cfg.ingest).not.toHaveProperty("container_preview_timeout_ms");
   });
 });

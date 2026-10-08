@@ -4,8 +4,11 @@
 /**
  * The media container's whole service (#209 + #210, design §4.2).
  *
- * One endpoint. It runs ffprobe over the object it was handed, lifts a cover
- * frame when asked for one, and answers with both. It decides nothing about
+ * Two endpoints. The probe runs ffprobe over the object it was handed, lifts
+ * a cover frame with ffmpeg when asked for one, cuts a preview with vips when
+ * asked for one and there is still time, and answers with all three. The run
+ * takes one mini-tool job (inner#888), answers 202, and reports on its own
+ * when the job ends. It decides nothing about
  * what the media is: which stream carries the dimensions and whether a cover
  * is wanted are the caller's judgements, made where the stored bytes have
  * already been read.
@@ -20,17 +23,25 @@
  */
 
 import { createServer } from "node:http";
-import { execFile } from "node:child_process";
 import { Readable } from "node:stream";
 import {
   buildProbeAnswer,
   PROBE_PATH,
   PROBE_PORT,
 } from "@ingest/probe-answer.js";
-import { probeArgs, coverArgs, readProbeOutput } from "@ingest/probe-command.js";
+import {
+  probeArgs,
+  coverArgs,
+  previewArgs,
+  readProbeOutput,
+} from "@ingest/probe-command.js";
+import { previewSource, previewTimeLeft } from "@ingest/preview-step.js";
+import { openObject, runTool } from "./run-tool.js";
 import { NOTHING_FOUND, pickMediaMetadata } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import type { ProbeRequest } from "@ingest/probe-answer.js";
+import { RUN_PATH } from "@ingest/jobs/op-args.js";
+import { runJob, type RunBody } from "./mini-tool-run.js";
 
 /**
  * The most a cover frame may weigh.
@@ -41,55 +52,15 @@ import type { ProbeRequest } from "@ingest/probe-answer.js";
  */
 const COVER_MAX_BYTES = 10 * 1024 * 1024;
 
+/**
+ * The most a preview may weigh. The largest preview is 576x16383, and that
+ * size cut from pure noise came to 5,176,264 bytes (inner#1320 round 5); an
+ * ordinary 576-wide frame is around 100 KB.
+ */
+const PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
+
 /** One run's request as it arrives: read before it is believed. */
 type IncomingRequest = Partial<Record<keyof ProbeRequest, unknown>>;
-
-/**
- * Run one tool and collect what it wrote.
- * @param program - `ffprobe` or `ffmpeg`.
- * @param args - Its argument list.
- * @param maxBytes - The most stdout may hold.
- * @param timeoutMs - How long it may run. It covers reading the object as well
- *   as the work, since both tools read over the network.
- * @returns What it wrote, or null when it failed or produced nothing.
- */
-async function run(
-  program: string,
-  args: string[],
-  maxBytes: number,
-  timeoutMs: number,
-): Promise<Buffer | null> {
-  return new Promise((resolve) => {
-    execFile(
-      program,
-      args,
-      { encoding: "buffer", maxBuffer: maxBytes, timeout: timeoutMs },
-      (error, stdout) => {
-        if (error !== null) {
-          // The upload succeeds either way, so this is the only place the
-          // reason exists: without it a video with no cover and a video whose
-          // ffmpeg was killed look the same from outside. `signal` names a
-          // deadline the tool was cut off at, `code` a refusal it decided on
-          // its own, and neither is on the Worker's side of the wire.
-          console.error("media_tool_failed", {
-            program,
-            signal: error.signal ?? null,
-            code: error.code ?? null,
-            err: error.message,
-          });
-          resolve(null);
-          return;
-        }
-        if (stdout.length === 0) {
-          console.error("media_tool_wrote_nothing", { program });
-          resolve(null);
-          return;
-        }
-        resolve(stdout);
-      },
-    );
-  });
-}
 
 /**
  * Probe one object, and lift a cover frame when one is wanted and there is a
@@ -104,12 +75,10 @@ async function probe(
   wantCover: boolean,
   timeoutMs: number,
 ): Promise<{ report: ProbeReport; cover: Uint8Array | null }> {
-  const probed = await run(
-    "ffprobe",
-    probeArgs(objectUrl),
-    4 * 1024 * 1024,
-    timeoutMs,
-  );
+  const probed = await runTool("ffprobe", probeArgs(objectUrl), {
+    maxBytes: 4 * 1024 * 1024,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
   const report =
     probed === null
       ? NOTHING_FOUND
@@ -124,16 +93,76 @@ async function probe(
   const hasFrame = pickMediaMetadata(report).width !== null;
   if (!wantCover || !hasFrame) return { report, cover: null };
 
-  const cut = await run(
-    "ffmpeg",
-    coverArgs(objectUrl),
-    COVER_MAX_BYTES,
-    timeoutMs,
-  );
+  const cut = await runTool("ffmpeg", coverArgs(objectUrl), {
+    maxBytes: COVER_MAX_BYTES,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
   return { report, cover: cut === null ? null : new Uint8Array(cut) };
 }
 
+/**
+ * Cut a preview, when `previewSource` says what from.
+ * @param asked - What this run was asked.
+ * @param found - What the probe and the cover call produced.
+ * @param found.report - What ffprobe found.
+ * @param found.cover - The cover frame, when one was cut.
+ * @returns The WebP bytes, or null when none was cut.
+ */
+async function cutPreview(
+  asked: ProbeRequest,
+  found: { report: ProbeReport; cover: Uint8Array | null },
+): Promise<Uint8Array | null> {
+  // One reading of the clock decides both whether there is time and how much.
+  const clock = { deadlineAt: asked.deadlineAt, now: Date.now() };
+  const source = previewSource({
+    wantPreview: asked.wantPreview,
+    wantCover: asked.wantCover,
+    cover: found.cover,
+    report: found.report,
+    ...clock,
+  });
+  if (source === "late") {
+    // The Worker drops the whole answer at its deadline, so this run keeps
+    // the size and the cover and leaves the preview to the backfill.
+    console.error("media_preview_skipped_deadline", {
+      leftMs: clock.deadlineAt - clock.now,
+    });
+    return null;
+  }
+  if (source === null) return null;
+  // The read and vips share this signal, so a read cut off by it never hands
+  // vips a short picture.
+  const signal = AbortSignal.timeout(previewTimeLeft(clock));
+  const input =
+    source === "cover" ? found.cover : await openObject(asked.objectUrl, signal);
+  if (input === null) return null;
+  const cut = await runTool("vips", previewArgs(), {
+    maxBytes: PREVIEW_MAX_BYTES,
+    signal,
+    input,
+  });
+  return cut === null ? null : new Uint8Array(cut);
+}
+
 createServer((req, res) => {
+  if (req.method === "POST" && req.url === RUN_PATH) {
+    void (async () => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk);
+      let job: RunBody;
+      try {
+        job = JSON.parse(Buffer.concat(chunks).toString("utf8")) as RunBody;
+      } catch {
+        res.writeHead(400).end();
+        return;
+      }
+      // Taken before it runs: the object that sent it marks the job running
+      // on this answer, and the run reports on its own when it ends.
+      res.writeHead(202).end();
+      await runJob(job);
+    })();
+    return;
+  }
   if (req.method !== "POST" || req.url !== PROBE_PATH) {
     res.writeHead(404).end();
     return;
@@ -157,13 +186,21 @@ createServer((req, res) => {
       res.writeHead(400).end();
       return;
     }
+    const request: ProbeRequest = {
+      objectUrl: asked.objectUrl,
+      wantCover: asked.wantCover === true,
+      toolTimeoutMs: asked.toolTimeoutMs,
+      wantPreview: asked.wantPreview === true,
+      deadlineAt: typeof asked.deadlineAt === "number" ? asked.deadlineAt : 0,
+    };
 
     const found = await probe(
-      asked.objectUrl,
-      asked.wantCover === true,
-      asked.toolTimeoutMs,
+      request.objectUrl,
+      request.wantCover,
+      request.toolTimeoutMs,
     );
-    const answer = buildProbeAnswer(found.report, found.cover);
+    const preview = await cutPreview(request, found);
+    const answer = buildProbeAnswer(found.report, found.cover, preview);
     res.writeHead(200, {
       "content-type": answer.headers.get("content-type") ?? "",
     });

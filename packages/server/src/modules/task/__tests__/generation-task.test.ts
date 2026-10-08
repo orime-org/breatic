@@ -73,6 +73,7 @@ describe("opening a generation's task rows", () => {
       nodeIds: [NODE_A, NODE_B],
       startedByUserId: "user-1",
       taskId: "job-1",
+      action: "generate",
       label: "seedream-4",
     });
 
@@ -86,6 +87,7 @@ describe("opening a generation's task rows", () => {
         projectId: PROJECT,
         spaceId: SPACE,
         kind: "generation",
+        action: "generate",
         startedByUserId: "user-1",
         taskId: "job-1",
         label: "seedream-4",
@@ -100,6 +102,7 @@ describe("opening a generation's task rows", () => {
       nodeIds: [NODE_A],
       startedByUserId: "user-1",
       taskId: "job-1",
+      action: "generate",
       label: "seedream-4",
     });
 
@@ -113,6 +116,7 @@ describe("opening a generation's task rows", () => {
       nodeIds: [NODE_A, NODE_B],
       startedByUserId: "user-1",
       taskId: "job-1",
+      action: "generate",
       label: "seedream-4",
     });
 
@@ -128,6 +132,7 @@ describe("opening a generation's task rows", () => {
       nodeIds: [],
       startedByUserId: "user-1",
       taskId: "job-1",
+      action: "generate",
       label: "seedream-4",
     });
 
@@ -149,6 +154,7 @@ describe("opening a generation's task rows", () => {
         nodeIds: [NODE_A, NODE_B],
         startedByUserId: "user-1",
         taskId: "job-1",
+        action: "generate",
         label: "seedream-4",
       }),
       // Answered the way the upload leg answers an unarmed timer: to the

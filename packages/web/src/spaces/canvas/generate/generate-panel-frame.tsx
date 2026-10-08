@@ -11,7 +11,6 @@
  * be two chances to lose one of them.
  */
 
-import { NodeToolbar, Position } from '@xyflow/react';
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 
@@ -20,6 +19,7 @@ import type { GenerationNodeType } from '@breatic/shared';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
+import { NodePanelMount } from '@web/spaces/canvas/_shared/NodePanelMount';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { filterAvailableModes } from '@web/spaces/canvas/generate/mode-selection';
@@ -186,9 +186,5 @@ export function CatalogGatedFrame({
   if (catalogError || catalogOffline || catalogPending || noServableMode) {
     return null;
   }
-  return (
-    <NodeToolbar nodeId={nodeId} isVisible position={Position.Bottom}>
-      {children}
-    </NodeToolbar>
-  );
+  return <NodePanelMount nodeId={nodeId}>{children}</NodePanelMount>;
 }

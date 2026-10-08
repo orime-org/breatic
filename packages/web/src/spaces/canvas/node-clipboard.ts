@@ -11,8 +11,8 @@
  * the serialize / parse / clone logic is unit-testable in isolation.
  */
 
-import type { CanvasNodeFields } from '@breatic/shared';
-import { newId } from '@breatic/shared';
+import type { CanvasNodeFields, NodeMediaData } from '@breatic/shared';
+import { newId, readNodeMedia } from '@breatic/shared';
 import { regionOf, regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 
 import {
@@ -67,11 +67,11 @@ export interface ClipboardNode {
   /** Content payload (text body / asset url), when present. */
   content?: string;
   /**
-   * Video cover poster URL (#1816) — carried so a copy / duplicate keeps its
-   * instant poster. Intrinsic to the video content (like `content`), unlike
-   * generation config (params / model / prompt) which a fresh clone drops.
+   * The media fields that describe `content` (cover, pixel size, duration,
+   * type, byte count). They belong to the content the way the content does, so
+   * a copy carries them; generation config (params / model / prompt) does not.
    */
-  coverUrl?: string;
+  media?: NodeMediaData;
   /** Group authoritative width (Group entries only). */
   width?: number;
   /** Group authoritative height (Group entries only). */
@@ -106,7 +106,6 @@ export interface CaptureNode {
   data?: {
     name?: unknown;
     content?: unknown;
-    coverUrl?: unknown;
     width?: unknown;
     height?: unknown;
     backgroundColor?: unknown;
@@ -124,22 +123,23 @@ export interface CaptureNode {
  * are skipped. DOM/ReactFlow-free so the capture logic is unit-tested in isolation.
  * @param targetIds - The ids of the nodes the user selected / right-clicked to copy.
  * @param allNodes - All canvas nodes (to resolve members + absolute coordinates).
- * @param textById - Body text per text node (#1774). A clipboard entry is plain
- *   data, so a shared body cannot travel in it; the text is read out here and
- *   the paste writes it into the new node's own body. Without this a copied
- *   text node arrives empty, which is what it used to do for a while and what
- *   nobody would notice until they pasted their notes and got a blank card.
- *   REQUIRED, deliberately: it used to default to an empty map, which made
- *   exactly that blank-card regression a silent one — a caller that forgot to
- *   thread the text compiled clean and copied nothing. A caller that genuinely
- *   has no text passes an empty map and says so at the call site.
+ * @param fromDoc - What the copy reads out of the document rather than off the
+ *   canvas nodes, whose `data` is a view of the document with fields renamed.
+ * @param fromDoc.text - Body text per text node (#1774). A clipboard entry is
+ *   plain data, so a shared body cannot travel in it; the text is read out here
+ *   and the paste writes it into the new node's own body. Without this a copied
+ *   text node arrives empty.
+ * @param fromDoc.media - The media fields per node, as the document holds them.
+ *   Both maps are REQUIRED, deliberately: a caller that forgot to thread one
+ *   would compile clean and copy nothing. A caller that genuinely has none
+ *   passes an empty map and says so at the call site.
  * @param space - The Space the nodes are copied on.
  * @returns The clipboard payload (Groups first, then their members, then loose nodes).
  */
 export function captureClipboard(
   targetIds: ReadonlyArray<string>,
   allNodes: ReadonlyArray<CaptureNode>,
-  textById: ReadonlyMap<string, string>,
+  fromDoc: { text: ReadonlyMap<string, string>; media: ReadonlyMap<string, NodeMediaData> },
   space: string,
 ): ClipboardNode[] {
   const byId = new Map(allNodes.map((node) => [node.id, node]));
@@ -166,18 +166,17 @@ export function captureClipboard(
     if (emitted.has(node.id)) return;
     emitted.add(node.id);
     const data = node.data ?? {};
+    const media = fromDoc.media.get(node.id);
     result.push({
       type: node.type,
       position: absPos(node),
       ...(typeof data.name === 'string' ? { name: data.name } : {}),
       ...(node.type === 'text'
-        ? { content: textById.get(node.id) ?? '' }
+        ? { content: fromDoc.text.get(node.id) ?? '' }
         : typeof data.content === 'string'
           ? { content: data.content }
           : {}),
-      // The video cover travels with the content (#1816); only video carries
-      // one, so this is naturally absent for image / audio / text.
-      ...(typeof data.coverUrl === 'string' ? { coverUrl: data.coverUrl } : {}),
+      ...(media !== undefined && Object.keys(media).length > 0 ? { media } : {}),
       // Record the rendered size so a viewport-center paste can centre the
       // payload's bounding box (R2-H); absent until ReactFlow measures the node.
       ...(typeof node.measured?.width === 'number' ? { width: node.measured.width } : {}),
@@ -403,9 +402,8 @@ export function cloneForPaste(
         ...fresh.data,
         name: isFollowingMember ? baseName : COPY_PREFIX + baseName,
         ...(node.content !== undefined ? { content: node.content } : {}),
-        // Keep the video cover on the duplicate (#1816) — a posterless clone
-        // would lose its instant poster (asset-GC keeps the shared URL alive).
-        ...(node.coverUrl !== undefined ? { coverUrl: node.coverUrl } : {}),
+        // A pasted payload is outside input, so each field is checked again.
+        ...(node.media !== undefined ? readNodeMedia(node.media as Record<string, unknown>) : {}),
       },
     };
   });

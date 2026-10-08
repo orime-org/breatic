@@ -37,6 +37,8 @@ interface ParamSliderRowProps {
   step: number;
   /** Positions on the range with a name, ascending; absent when none have one. */
   stops?: readonly SliderStop[];
+  /** The neutral point of a value that runs both ways; the fill starts here. */
+  origin?: number;
   value: number | undefined;
   /** A value to show in place of `value` without writing it: the pose another input has on screen. */
   draft?: number;
@@ -68,6 +70,7 @@ interface ParamSliderRowProps {
  * @param root0.max - The range's ceiling.
  * @param root0.step - The range's increment.
  * @param root0.stops - Named positions on the range, if any.
+ * @param root0.origin - The neutral point the fill starts from, if any.
  * @param root0.value - The stored value.
  * @param root0.draft - A value to show without writing it.
  * @param root0.onDraft - Called with the value the thumb is moved to.
@@ -85,6 +88,7 @@ export function ParamSliderRow({
   max,
   step,
   stops,
+  origin,
   value,
   draft,
   onDraft,
@@ -180,6 +184,7 @@ export function ParamSliderRow({
         min={min}
         max={max}
         step={step}
+        origin={origin}
         value={shown === undefined ? [min] : [shown]}
         // Radix reports a value already rounded to the step's decimal count
         // (`roundValue(…, getDecimalCount(step))` in its own snapping), so the

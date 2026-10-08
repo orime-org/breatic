@@ -25,12 +25,12 @@ describe('attachOccupants', () => {
 
   it('keeps everything else in data', () => {
     const attached = attachOccupants(
-      node('n1', { name: 'poster', status: 'idle' }),
+      node('n1', { name: 'poster', handling: false }),
       new Map([['n1', ['alice']]]),
     );
 
     expect(attached.data.name).toBe('poster');
-    expect(attached.data.status).toBe('idle');
+    expect(attached.data.handling).toBe(false);
   });
 
   it('hands back the same node when nobody is holding it', () => {

@@ -102,13 +102,15 @@ export async function softDelete(taskId: string): Promise<void> {
 }
 
 /**
- * Mark a task as running and record the job ID.
+ * Mark a task as running, record the job ID and keep the run's first start.
  * @param taskId - Task UUID
- * @param jobId - ARQ/BullMQ job ID
+ * @param jobId - BullMQ job ID
+ * @param now - The worker's clock, the one the run's end and duration are read on
+ * @returns When the run first started.
+ * @throws {Error} When the task row does not exist.
  */
-export async function markRunning(taskId: string, jobId: string): Promise<void> {
-  await taskRepo.setJobId(taskId, jobId);
-  await taskRepo.updateTaskStatus(taskId, "running");
+export async function markRunning(taskId: string, jobId: string, now: Date): Promise<Date> {
+  return taskRepo.markRunning(taskId, jobId, now);
 }
 
 /**
@@ -116,7 +118,7 @@ export async function markRunning(taskId: string, jobId: string): Promise<void> 
  * @param taskId - Task UUID
  * @param result - Task output data
  * @param creditsUsed - Optional credits consumed
- * @param durationMs - AIGC model call duration in milliseconds
+ * @param durationMs - How long the run took from its first start, in milliseconds
  */
 export async function markCompleted(
   taskId: string,

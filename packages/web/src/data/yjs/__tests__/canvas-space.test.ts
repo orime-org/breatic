@@ -37,7 +37,6 @@ import {
   setNodePosition,
   getTextBody,
   setNodeExtractedText,
-  setNodeExtractionError,
 } from '@web/data/yjs/canvas-space';
 import {
   bodyToPlainText,
@@ -115,8 +114,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
           kind: 'image',
           name: 'N',
           content: 'x.png',
-          status: 'idle',
-          errorMessage: undefined,
+          handling: false,
           locked: false,
           // Eager-seeded at birth (concurrent-first-crop safety) — the
           // wire carries an empty array, inert for every reader.
@@ -167,15 +165,14 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       kind: 'image',
       name: 'N',
       content: 'result.png',
-      status: 'idle',
+      handling: false,
       taskCounts: { running: 0, done: 1, failed: 0, expired: 0 },
-      errorMessage: undefined,
       locked: false,
       focusImages: [],
     });
   });
 
-  it('derives the error display status from a settled node carrying an errorMessage', () => {
+  it('derives handling from a running task, and only from that', () => {
     addNode(
       PID,
       SID,
@@ -184,17 +181,14 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       }),
     );
     const d = doc();
+    expect(readNodes(d)[0].data).toMatchObject({ handling: true });
     const dataMap = (d.getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
       'data',
     ) as Y.Map<unknown>;
     d.transact(() => {
       dataMap.set('taskCounts', { running: 0, done: 0, failed: 1, expired: 0 });
-      dataMap.set('errorMessage', 'provider 500');
     });
-    expect(readNodes(d)[0].data).toMatchObject({
-      status: 'error',
-      errorMessage: 'provider 500',
-    });
+    expect(readNodes(d)[0].data).toMatchObject({ handling: false });
   });
 
   it('includes group nodes now that they have a view (only dirty types skip)', () => {
@@ -1179,21 +1173,7 @@ describe('setNodeExtractedText (#186 §3.7.4 local text extraction)', () => {
     expect(bodyToPlainText(data.get('body') as Y.XmlFragment)).toBe('rescued');
   });
 
-  it('clears a prior error, so a retried extraction stops showing the old one', () => {
-    addNode(PID, SID, sampleFields('text'));
-    setNodeExtractionError(PID, SID, 'n1', 'Extraction failed: weird.bin');
-    setNodeExtractedText(PID, SID, 'n1', 'second time lucky');
-
-    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
-      'data',
-    ) as Y.Map<unknown>;
-    expect(data.has('errorMessage')).toBe(false);
-  });
-
   it('is a no-op on a missing node', () => {
     expect(() => setNodeExtractedText(PID, SID, 'ghost', 'x')).not.toThrow();
-    expect(() =>
-      setNodeExtractionError(PID, SID, 'ghost', 'y'),
-    ).not.toThrow();
   });
 });

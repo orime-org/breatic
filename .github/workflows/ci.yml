@@ -107,14 +107,6 @@ jobs:
         with:
           version: 9.15.0
 
-      - name: Install ffmpeg (worker video-handler tests)
-        # Worker `src/__tests__/handlers/local/video-*.test.ts` spawn
-        # ffmpeg for fixture generation + assertion. ubuntu-latest does
-        # not bundle it, so install via apt-get explicitly. The ~30s
-        # install is the cost of actually running the video-processing
-        # unit tests in CI.
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
       - name: Get pnpm store directory
         id: pnpm-cache
         shell: bash
@@ -296,7 +288,7 @@ jobs:
           REF: ${{ github.ref }}
           REVISION: ${{ github.sha }}
         run: |
-          node --test scripts/release.test.mjs scripts/backend-sourcemaps.test.mjs scripts/publish-images.test.mjs
+          node --test scripts/release.test.mjs scripts/backend-sourcemaps.test.mjs scripts/publish-images.test.mjs scripts/backfill-previews-plan.test.mjs
           node scripts/release.mjs ci "$REF" "$REVISION" >> "$GITHUB_OUTPUT"
           if [[ "$REF" == refs/tags/* ]]; then
             git merge-base --is-ancestor "$REVISION" origin/main

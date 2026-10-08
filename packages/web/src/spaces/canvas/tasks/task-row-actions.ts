@@ -15,17 +15,17 @@ import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 /**
  * A button a task row can carry.
  *
- * `finish` and `clear` are the same request (§7.4) and differ only in the
- * word: one ends something that worked, the other files away something that
- * did not.
+ * `finish` and `clear` are the same request (§7.4), both shown as Mark read.
+ * `view` opens the node's history at a result that arrived after the task was
+ * judged expired (inner#888 §7.7): a result on time is already on the node.
  */
-export type TaskRowAction = 'replace' | 'retry' | 'finish' | 'clear';
+export type TaskRowAction = 'view' | 'retry' | 'finish' | 'clear';
 
 /** Everything the rule needs to know about one row. */
 export interface TaskRowSituation {
   /** Which of the four states the task is in. */
   status: TaskStatus;
-  /** Whether it left content behind that could be written onto the node. */
+  /** Whether it left a result in the node's history. */
   hasResult: boolean;
   /** Whether this session still holds the File this upload was carrying. */
   hasRetryFile: boolean;
@@ -62,15 +62,18 @@ export function taskRowActions({
     // target.
     case 'running':
       return [];
+    // Its result is already on the node, and the node's history keeps what it
+    // replaced.
     case 'done':
-      return hasResult ? ['replace', 'finish'] : ['finish'];
+      return ['finish'];
     // A failure produced nothing to write, whatever the row happens to
     // carry; the way forward is to run it again, not to keep anything.
     case 'failed':
       return hasRetryFile ? ['retry', 'clear'] : ['clear'];
-    // §4.5: a report can arrive after the verdict. The bytes are real, so
-    // the reader gets to put them on the node.
+    // §4.5: a report can arrive after the verdict. It went into the node's
+    // history only, since the node may hold a newer result by then; the
+    // reader decides there whether to restore it.
     case 'expired':
-      return hasResult ? ['replace', 'clear'] : ['clear'];
+      return hasResult ? ['view', 'clear'] : ['clear'];
   }
 }

@@ -230,6 +230,9 @@ describe("what a read job does with its row", () => {
       storageKey: "image/2026-10-01/1_cover.jpg",
       contentType: "image/jpeg",
       limits: LIMITS,
+      // Every stored image gets a preview, a cover or an avatar included
+      // (inner#1320); this read is where they get theirs.
+      wantPreview: true,
     });
     expect(fillMediaNumbers).toHaveBeenCalledWith("asset-1", {
       width: 800,

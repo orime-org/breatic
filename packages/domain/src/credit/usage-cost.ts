@@ -12,7 +12,8 @@
 import type { UsagePricing } from "@breatic/core";
 
 /** Where a recorded cost came from. */
-export type CostSource = "provider" | "price_table" | "generation_lookup" | "missing";
+/** `computed` is a cost we price ourselves from a measured usage, such as a container run's seconds. */
+export type CostSource = "provider" | "price_table" | "generation_lookup" | "computed" | "missing";
 
 /** The token buckets one model call used. Reasoning is part of output. */
 export interface TokenBuckets {

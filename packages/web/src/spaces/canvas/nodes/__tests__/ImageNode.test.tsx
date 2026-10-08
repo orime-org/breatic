@@ -1,11 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { render, renderHook, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { resetPreviewRecords, usePreviewWidth } from '@web/lib/preview-src';
 import { ImageNode } from '@web/spaces/canvas/nodes/ImageNode';
+import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
+import { canvasSessions } from '@web/stores/canvas-session';
+import { NodeZoomedPastPreviewContext } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 
 /**
  * jsdom never decodes images, so `naturalWidth`/`naturalHeight` stay 0. Stub
@@ -26,14 +30,14 @@ function fireImageLoad(img: HTMLElement, width: number, height: number): void {
 
 describe('ImageNode', () => {
   it('renders placeholder when no url', () => {
-    render(<ImageNode data={{ kind: 'image', status: 'idle' }} />);
+    render(<ImageNode data={{ kind: 'image', handling: false }} />);
     expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
   });
 
   it('renders the image when url is present', () => {
     render(
       <ImageNode
-        data={{ kind: 'image', content: 'https://e.com/x.jpg', status: 'idle' }}
+        data={{ kind: 'image', content: 'https://e.com/x.jpg', handling: false }}
       />,
     );
     expect(
@@ -48,7 +52,7 @@ describe('ImageNode', () => {
   it('insets the image from the shell border', () => {
     render(
       <ImageNode
-        data={{ kind: 'image', content: 'https://e.com/x.jpg', status: 'idle' }}
+        data={{ kind: 'image', content: 'https://e.com/x.jpg', handling: false }}
       />,
     );
     const media = screen.getByTestId('node-media-inset');
@@ -59,23 +63,10 @@ describe('ImageNode', () => {
   it('keeps showing its image while a task runs on it', () => {
     render(
       <ImageNode
-        data={{ kind: 'image', content: 'https://e.com/x', status: 'handling' }}
+        data={{ kind: 'image', content: 'https://e.com/x', handling: true }}
       />,
     );
     expect(screen.getByTestId('image-node-img')).toBeInTheDocument();
-  });
-
-  it('error status shows the error message', () => {
-    render(
-      <ImageNode
-        data={{
-          kind: 'image',
-          status: 'error',
-          errorMessage: '404',
-        }}
-      />,
-    );
-    expect(screen.getByTestId('node-content-error')).toHaveTextContent('404');
   });
 
   it('DOUBLE-clicking placeholder fires onActivate (opens upload); a single click does not', async () => {
@@ -83,7 +74,7 @@ describe('ImageNode', () => {
     const onActivate = vi.fn();
     render(
       <ImageNode
-        data={{ kind: 'image', status: 'idle' }}
+        data={{ kind: 'image', handling: false }}
         onActivate={onActivate}
       />,
     );
@@ -101,7 +92,7 @@ describe('ImageNode', () => {
   it('the image is viewport-lazy and decodes off the main thread (#1772)', () => {
     render(
       <ImageNode
-        data={{ kind: 'image', status: 'idle', content: 'https://e.com/x.jpg' }}
+        data={{ kind: 'image', handling: false, content: 'https://e.com/x.jpg' }}
       />,
     );
     const img = screen.getByTestId('image-node-img');
@@ -112,7 +103,7 @@ describe('ImageNode', () => {
   it('the shell clips the filled image - no corner gap (#1550 follow-up)', () => {
     render(
       <ImageNode
-        data={{ kind: 'image', status: 'idle', content: 'blob:img' }}
+        data={{ kind: 'image', handling: false, content: 'blob:img' }}
       />,
     );
     // Concentric-radius geometry: the shell is rounded-sm (6px) + 1px border,
@@ -137,7 +128,7 @@ describe('ImageNode', () => {
   it('shows the resolution badge after the image loads (#1616)', () => {
     render(
       <ImageNode
-        data={{ kind: 'image', status: 'idle', content: 'https://e.com/x.jpg' }}
+        data={{ kind: 'image', handling: false, content: 'https://e.com/x.jpg' }}
       />,
     );
     fireImageLoad(screen.getByTestId('image-node-img'), 1920, 1080);
@@ -147,14 +138,14 @@ describe('ImageNode', () => {
   });
 
   it('empty image node shows no resolution badge (#1616)', () => {
-    render(<ImageNode data={{ kind: 'image', status: 'idle' }} />);
+    render(<ImageNode data={{ kind: 'image', handling: false }} />);
     expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
   });
 
   it('no badge before the image loads — broken/loading src (#1616)', () => {
     render(
       <ImageNode
-        data={{ kind: 'image', status: 'idle', content: 'https://e.com/x.jpg' }}
+        data={{ kind: 'image', handling: false, content: 'https://e.com/x.jpg' }}
       />,
     );
     // No load event fired (still loading, or onError for a broken src).
@@ -169,7 +160,7 @@ describe('ImageNode', () => {
       <ImageNode
         data={{
           kind: 'image',
-          status: 'idle',
+          handling: false,
           content: 'https://e.com/x.jpg',
           width: 1920,
           height: 1080,
@@ -184,7 +175,7 @@ describe('ImageNode', () => {
   it('still measures the DOM when the node carries no numbers (#209)', () => {
     render(
       <ImageNode
-        data={{ kind: 'image', status: 'idle', content: 'https://e.com/x.jpg' }}
+        data={{ kind: 'image', handling: false, content: 'https://e.com/x.jpg' }}
       />,
     );
     expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
@@ -199,7 +190,7 @@ describe('ImageNode', () => {
       <ImageNode
         data={{
           kind: 'image',
-          status: 'idle',
+          handling: false,
           content: 'https://e.com/x.jpg',
           width: 1920,
         }}
@@ -213,7 +204,7 @@ describe('ImageNode', () => {
       <ImageNode
         data={{
           kind: 'image',
-          status: 'idle',
+          handling: false,
           content: 'https://e.com/x.jpg',
           width: 1920,
           height: 1080,
@@ -232,7 +223,7 @@ describe('ImageNode', () => {
   it('resets the badge when the content URL changes (no stale value) (#1616)', () => {
     const { rerender } = render(
       <ImageNode
-        data={{ kind: 'image', status: 'idle', content: 'https://e.com/a.jpg' }}
+        data={{ kind: 'image', handling: false, content: 'https://e.com/a.jpg' }}
       />,
     );
     fireImageLoad(screen.getByTestId('image-node-img'), 1920, 1080);
@@ -243,7 +234,7 @@ describe('ImageNode', () => {
     // showing the previous image's dimensions.
     rerender(
       <ImageNode
-        data={{ kind: 'image', status: 'idle', content: 'https://e.com/b.jpg' }}
+        data={{ kind: 'image', handling: false, content: 'https://e.com/b.jpg' }}
       />,
     );
     expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
@@ -256,16 +247,246 @@ describe('ImageNode', () => {
   it('keeps the badge on the image it is describing through a task (#1616)', () => {
     const { rerender } = render(
       <ImageNode
-        data={{ kind: 'image', status: 'idle', content: 'https://e.com/x.jpg' }}
+        data={{ kind: 'image', handling: false, content: 'https://e.com/x.jpg' }}
       />,
     );
     fireImageLoad(screen.getByTestId('image-node-img'), 1920, 1080);
     expect(screen.getByTestId('node-resolution-badge')).toBeInTheDocument();
     rerender(
       <ImageNode
-        data={{ kind: 'image', status: 'handling', content: 'https://e.com/x.jpg' }}
+        data={{ kind: 'image', handling: true, content: 'https://e.com/x.jpg' }}
       />,
     );
     expect(screen.getByTestId('node-resolution-badge')).toBeInTheDocument();
+  });
+});
+
+// inner#888 A10: a rotate & flip panel open on the node previews its result
+// on the picture, and only on that node.
+describe('ImageNode orientation preview', () => {
+  afterEach(() => canvasSessions.of('').getState().closeActivePanel());
+
+  /**
+   * The node inside its id context, holding a 1600×1000 picture.
+   * @param id - The node's id.
+   */
+  function mountNode(id: string): void {
+    render(
+      <NodeIdContext.Provider value={id}>
+        <ImageNode data={{ kind: 'image', handling: false, content: 'https://e.com/x.jpg', width: 1600, height: 1000 }} />
+      </NodeIdContext.Provider>,
+    );
+  }
+
+  it('turns the picture while the panel holds a turn', () => {
+    canvasSessions.of('').getState().openMiniTool('n1', 'image.rotate', {
+      sourceContent: 'https://e.com/x.jpg',
+      params: { orient: { turns: 1, flipX: false, flipY: false } },
+    });
+    mountNode('n1');
+    expect(screen.getByTestId('image-node-img').parentElement?.style.transform).toBe('scale(1, 1) rotate(90deg) scale(0.625)');
+  });
+
+  it('leaves another node alone', () => {
+    canvasSessions.of('').getState().openMiniTool('n1', 'image.rotate', {
+      sourceContent: 'https://e.com/x.jpg',
+      params: { orient: { turns: 1, flipX: false, flipY: false } },
+    });
+    mountNode('n2');
+    expect(screen.getByTestId('image-node-img').parentElement?.style.transform).toBe('');
+  });
+});
+
+// A node shows the preview (at most 576 wide) stored beside its image, and keeps the
+// original's size for its badge and its placeholder (inner#1320).
+describe('ImageNode with a stored image', () => {
+  const UUID = '18f58aed-b802-4243-a8ea-02d377de9679';
+  const STORED = `https://resource-dev.breatic.cc/image/2026-09-30/1_${UUID}.png`;
+
+  it('shows the preview when it knows the image size', () => {
+    resetPreviewRecords();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, handling: false }}
+      />,
+    );
+    const img = screen.getByTestId('image-node-img');
+
+    expect(img.getAttribute('src')).toBe(`${STORED}.preview.webp`);
+    // The browser sizes the box off these before a byte arrives.
+    expect(img.getAttribute('width')).toBe('4096');
+    expect(img.getAttribute('height')).toBe('2048');
+  });
+
+  // The canvas compares the node against this, so the switch to the original
+  // follows the preview the container actually wrote (inner#1320 round 5).
+  it('records how wide its preview is once the preview loads', () => {
+    resetPreviewRecords();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 1080, height: 64800, handling: false }}
+      />,
+    );
+    const width = renderHook(() => usePreviewWidth(STORED));
+
+    fireImageLoad(screen.getByTestId('image-node-img'), 273, 16383);
+
+    expect(width.result.current).toBe(273);
+  });
+
+  it('keeps the original size on the badge after the preview loads', () => {
+    resetPreviewRecords();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, handling: false }}
+      />,
+    );
+    fireImageLoad(screen.getByTestId('image-node-img'), 576, 288);
+
+    expect(screen.getByTestId('node-resolution-badge')).toHaveTextContent('4096');
+  });
+
+  it('shows the original and measures it when it knows no size', () => {
+    resetPreviewRecords();
+    render(<ImageNode data={{ kind: 'image', content: STORED, handling: false }} />);
+    const img = screen.getByTestId('image-node-img');
+
+    expect(img.getAttribute('src')).toBe(STORED);
+    expect(img.hasAttribute('width')).toBe(false);
+    fireImageLoad(img, 1200, 800);
+    expect(screen.getByTestId('node-resolution-badge')).toHaveTextContent('1200');
+  });
+
+  it('falls back to the original when the preview is missing', () => {
+    resetPreviewRecords();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, handling: false }}
+      />,
+    );
+    fireEvent.error(screen.getByTestId('image-node-img'));
+
+    expect(screen.getByTestId('image-node-img').getAttribute('src')).toBe(STORED);
+  });
+});
+
+describe('ImageNode zoomed past its preview (inner#1320)', () => {
+  const UUID = '18f58aed-b802-4243-a8ea-02d377de9679';
+  const STORED = `https://resource-dev.breatic.cc/image/2026-09-30/1_${UUID}.png`;
+  const DATA = { kind: 'image', content: STORED, width: 4096, height: 2048, handling: false } as const;
+
+  /**
+   * The node under a given zoom answer from the canvas.
+   * @param past - Whether the canvas says the node is past its preview.
+   * @returns The element tree.
+   */
+  function zoomed(past: boolean): React.JSX.Element {
+    return (
+      <NodeZoomedPastPreviewContext.Provider value={past}>
+        <ImageNode data={DATA} />
+      </NodeZoomedPastPreviewContext.Provider>
+    );
+  }
+
+  it('shows only the preview while the canvas is not zoomed past it', () => {
+    resetPreviewRecords();
+    render(zoomed(false));
+
+    expect(screen.queryByTestId('image-node-original')).toBeNull();
+  });
+
+  it('lays the original over the preview and shows it once it loads', () => {
+    resetPreviewRecords();
+    render(zoomed(true));
+    const original = screen.getByTestId('image-node-original');
+
+    expect(original.getAttribute('src')).toBe(STORED);
+    expect(original.className).toContain('opacity-0');
+    // The preview stays underneath until the original is ready.
+    expect(screen.getByTestId('image-node-img').getAttribute('src')).toBe(`${STORED}.preview.webp`);
+
+    fireImageLoad(original, 4096, 2048);
+    expect(screen.getByTestId('image-node-original').className).not.toContain('opacity-0');
+  });
+
+  it('keeps the original after the canvas zooms back out', () => {
+    resetPreviewRecords();
+    const { rerender } = render(zoomed(true));
+    rerender(zoomed(false));
+
+    expect(screen.getByTestId('image-node-original').getAttribute('src')).toBe(STORED);
+  });
+
+  it('shows the preview of a new image after zooming back out', () => {
+    resetPreviewRecords();
+    const { rerender } = render(zoomed(true));
+    rerender(zoomed(false));
+    const next = `https://resource-dev.breatic.cc/image/2026-09-30/2_${UUID}.png`;
+    rerender(
+      <NodeZoomedPastPreviewContext.Provider value={false}>
+        <ImageNode data={{ ...DATA, content: next }} />
+      </NodeZoomedPastPreviewContext.Provider>,
+    );
+
+    expect(screen.queryByTestId('image-node-original')).toBeNull();
+    expect(screen.getByTestId('image-node-img').getAttribute('src')).toBe(`${next}.preview.webp`);
+  });
+
+  it('lays nothing over an image already showing its original', () => {
+    resetPreviewRecords();
+    render(
+      <NodeZoomedPastPreviewContext.Provider value>
+        <ImageNode data={{ kind: 'image', content: STORED, handling: false }} />
+      </NodeZoomedPastPreviewContext.Provider>,
+    );
+
+    expect(screen.queryByTestId('image-node-original')).toBeNull();
+  });
+});
+
+describe('ImageNode while its picture loads (inner#1320)', () => {
+  const UUID = '18f58aed-b802-4243-a8ea-02d377de9679';
+  const STORED = `https://resource-dev.breatic.cc/image/2026-09-30/1_${UUID}.png`;
+
+  it('covers the reserved box with a skeleton until the picture loads', () => {
+    resetPreviewRecords();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, handling: false }}
+      />,
+    );
+    expect(screen.getByTestId('image-node-skeleton')).toBeInTheDocument();
+
+    fireImageLoad(screen.getByTestId('image-node-img'), 576, 288);
+    expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
+  });
+
+  it('keeps the skeleton through a missing preview and drops it when the original loads', () => {
+    resetPreviewRecords();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, handling: false }}
+      />,
+    );
+    fireEvent.error(screen.getByTestId('image-node-img'));
+    expect(screen.getByTestId('image-node-skeleton')).toBeInTheDocument();
+
+    fireImageLoad(screen.getByTestId('image-node-img'), 4096, 2048);
+    expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
+  });
+
+  it('drops the skeleton when the original itself fails', () => {
+    resetPreviewRecords();
+    render(<ImageNode data={{ kind: 'image', content: STORED, handling: false }} />);
+    fireEvent.error(screen.getByTestId('image-node-img'));
+
+    expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
+  });
+
+  it('gives a node of unknown size the empty node footprint while it loads', () => {
+    resetPreviewRecords();
+    render(<ImageNode data={{ kind: 'image', content: STORED, handling: false }} />);
+
+    expect(screen.getByTestId('image-node-skeleton').className).toContain('aspect-[3/2]');
   });
 });

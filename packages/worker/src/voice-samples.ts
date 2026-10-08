@@ -24,8 +24,8 @@ import { runPrediction } from "@worker/providers/wavespeed.js";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { spawnCollected } from "@worker/handlers/local/runtime/spawn.js";
-import { cleanupJobTempDir, createJobTempDir } from "@worker/handlers/local/runtime/tempdir.js";
+import { spawnCollected } from "@worker/runtime/spawn.js";
+import { cleanupJobTempDir, createJobTempDir } from "@worker/runtime/tempdir.js";
 import { planCameraPreviews, previewTranscodeArgs } from "@worker/voice-samples/camera-previews.js";
 import { planVoiceSamples, type VoiceSampleJob } from "@worker/voice-samples/plan.js";
 import {

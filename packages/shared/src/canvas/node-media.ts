@@ -17,6 +17,39 @@ import type { NodeTaskResult } from '@shared/types/canvas-node.js';
 /** A result's media fields, everything it carries besides the content. */
 export type NodeMediaFields = Omit<NodeTaskResult, 'content'>;
 
+/** The node-data keys {@link writeNodeMedia} owns, which describe the content itself. */
+export const NODE_MEDIA_KEYS = ['coverUrl', 'mediaWidth', 'mediaHeight', 'duration', 'mimeType', 'size'] as const;
+
+/** The six media fields as a node holds them. */
+export interface NodeMediaData {
+  coverUrl?: string;
+  mediaWidth?: number;
+  mediaHeight?: number;
+  duration?: number;
+  mimeType?: string;
+  size?: number;
+}
+
+/** Which of {@link NodeMediaData}'s fields hold text; the rest hold numbers. */
+const TEXT_MEDIA_KEYS: ReadonlySet<string> = new Set(['coverUrl', 'mimeType']);
+
+/**
+ * Read the media fields off an untyped record, keeping each one only when it
+ * holds the type the node declares for it.
+ * @param source - A node's data, or a payload that claims to carry one.
+ * @returns The fields that passed.
+ */
+export function readNodeMedia(source: Readonly<Record<string, unknown>>): NodeMediaData {
+  const out: Record<string, string | number> = {};
+  for (const key of NODE_MEDIA_KEYS) {
+    const value = source[key];
+    if (TEXT_MEDIA_KEYS.has(key) ? typeof value === 'string' : typeof value === 'number' && Number.isFinite(value)) {
+      out[key] = value as string | number;
+    }
+  }
+  return out;
+}
+
 /**
  * Write a result's media fields onto a node, removing each one it has no value
  * for.

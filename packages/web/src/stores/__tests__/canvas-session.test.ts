@@ -104,3 +104,245 @@ describe('canvas session store', () => {
     expect(store.getState().editingTextNode).toBeNull();
   });
 });
+
+describe('mini-tool draft (inner#888 §7.2)', () => {
+  const OPEN = { sourceContent: 'https://cdn.example/a.png', params: { creativity: 0 } };
+
+  it('opens the tool panel with a fresh draft built from what the caller resolved', () => {
+    const store = createCanvasSessionStore();
+
+    store.getState().openMiniTool('node-a', 'image.upscale', OPEN);
+
+    expect(store.getState().panelHostId).toBe('node-a');
+    expect(store.getState().panelKind).toBe('miniTool');
+    expect(store.getState().miniTool).toEqual({
+      toolId: 'image.upscale',
+      sourceContent: 'https://cdn.example/a.png',
+      prompt: '',
+      params: { creativity: 0 },
+      slots: {},
+      sourceSize: null,
+    });
+  });
+
+  it('keeps the draft and the opening when the same tool is chosen again on its node', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('node-a', 'image.upscale', OPEN);
+    store.getState().setMiniToolParam('creativity', 4);
+    const session = store.getState().panelSession;
+
+    store.getState().openMiniTool('node-a', 'image.upscale', OPEN);
+
+    expect(store.getState().panelSession).toBe(session);
+    expect(store.getState().miniTool?.params).toEqual({ creativity: 4 });
+  });
+
+  it('starts a new opening with a fresh draft when the tool changes', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('node-a', 'image.upscale', OPEN);
+    store.getState().setMiniToolPrompt('sharper');
+    const session = store.getState().panelSession;
+
+    store.getState().openMiniTool('node-a', 'image.remove-bg', {
+      sourceContent: OPEN.sourceContent,
+      params: {},
+    });
+
+    expect(store.getState().panelSession).not.toBe(session);
+    expect(store.getState().miniTool).toMatchObject({
+      toolId: 'image.remove-bg',
+      prompt: '',
+      params: {},
+    });
+  });
+
+  it('starts a new opening when the same tool opens on another node', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('node-a', 'image.upscale', OPEN);
+    store.getState().setMiniToolParam('creativity', 4);
+    const session = store.getState().panelSession;
+
+    store.getState().openMiniTool('node-b', 'image.upscale', OPEN);
+
+    expect(store.getState().panelSession).not.toBe(session);
+    expect(store.getState().miniTool?.params).toEqual({ creativity: 0 });
+  });
+
+  it('drops the draft when another panel takes the slot or the panel closes', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('node-a', 'image.upscale', OPEN);
+    store.getState().openGeneratePanel('node-a', 'image');
+    expect(store.getState().miniTool).toBeNull();
+
+    store.getState().openMiniTool('node-a', 'image.upscale', OPEN);
+    store.getState().closeActivePanel();
+    expect(store.getState().miniTool).toBeNull();
+    expect(store.getState().panelKind).toBeNull();
+  });
+
+  it('replaces a single slot and appends to a many slot', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('node-a', 'image.digital-human', OPEN);
+
+    store.getState().fillMiniToolSlot('audio', { url: 'a1.mp3', duration: 3 }, false);
+    store.getState().fillMiniToolSlot('audio', { url: 'a2.mp3', duration: 5 }, false);
+    store.getState().fillMiniToolSlot('refs', { url: 'r1.png' }, true);
+    store.getState().fillMiniToolSlot('refs', { url: 'r2.png' }, true);
+
+    expect(store.getState().miniTool?.slots).toEqual({
+      audio: { url: 'a2.mp3', duration: 5 },
+      refs: [{ url: 'r1.png' }, { url: 'r2.png' }],
+    });
+  });
+
+  it('picks for a tool slot under its own purpose, carrying the slot and its cap', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('node-a', 'image.digital-human', OPEN);
+
+    store.getState().startMiniToolSlotPick('node-a', 'audio', 1);
+
+    expect(store.getState().pickSession).toEqual({
+      nodeId: 'node-a',
+      purpose: 'miniToolSlot',
+      slotKey: 'audio',
+      capacity: 1,
+    });
+    expect(store.getState().panelKind).toBe('miniTool');
+  });
+});
+
+describe('history focus (inner#888 §7.7)', () => {
+  it('opens history focused on the entry View asked for', () => {
+    const store = createCanvasSessionStore();
+
+    store.getState().openHistoryPanel('node-a', 'h-1');
+
+    expect(store.getState().panelKind).toBe('history');
+    expect(store.getState().historyFocus).toBe('h-1');
+  });
+
+  it('holds no focus when history is opened without one', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openHistoryPanel('node-a', 'h-1');
+
+    store.getState().openHistoryPanel('node-b');
+
+    expect(store.getState().historyFocus).toBeNull();
+  });
+
+  it('drops the focus when another panel opens or the panel closes', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openHistoryPanel('node-a', 'h-1');
+    store.getState().openGeneratePanel('node-a', 'image');
+    expect(store.getState().historyFocus).toBeNull();
+
+    store.getState().openHistoryPanel('node-a', 'h-1');
+    store.getState().closeActivePanel();
+    expect(store.getState().historyFocus).toBeNull();
+  });
+});
+
+describe('focus crop (inner#888 §7.4.1)', () => {
+  const RECT = { x: 0.1, y: 0.2, width: 0.3, height: 0.4 };
+  const FRAME = { width: 400, height: 300, natural: { width: 800, height: 600 } };
+
+  /**
+   * A store with a focus pick running on `host`.
+   * @returns The store.
+   */
+  function focusing(): ReturnType<typeof createCanvasSessionStore> {
+    const store = createCanvasSessionStore();
+    store.getState().startFocusPick('host');
+    return store;
+  }
+
+  it('starts a target with no marquee and nothing shown', () => {
+    const store = focusing();
+    store.getState().setFocusTarget({ nodeId: 'n1', content: 'https://cdn/a.png' });
+    expect(store.getState().focusCrop).toEqual({
+      nodeId: 'n1',
+      content: 'https://cdn/a.png',
+      rect: null,
+      preset: null,
+      frame: null,
+    });
+  });
+
+  it('keeps the marquee when the same node is set as the target again', () => {
+    const store = focusing();
+    store.getState().setFocusTarget({ nodeId: 'n1', content: 'https://cdn/a.png' });
+    store.getState().setFocusMarquee(RECT, { kind: 'ratio', value: 1 });
+    store.getState().setFocusFrame('n1', FRAME);
+    const before = store.getState().focusCrop;
+    store.getState().setFocusTarget({ nodeId: 'n1', content: 'https://cdn/a.png' });
+    expect(store.getState().focusCrop).toBe(before);
+  });
+
+  it('starts over when another node becomes the target', () => {
+    const store = focusing();
+    store.getState().setFocusTarget({ nodeId: 'n1', content: 'https://cdn/a.png' });
+    store.getState().setFocusMarquee(RECT, null);
+    store.getState().setFocusTarget({ nodeId: 'n2', content: 'https://cdn/b.png' });
+    expect(store.getState().focusCrop).toEqual({
+      nodeId: 'n2',
+      content: 'https://cdn/b.png',
+      rect: null,
+      preset: null,
+      frame: null,
+    });
+  });
+
+  it('writes the frame only for the node that is the target', () => {
+    const store = focusing();
+    store.getState().setFocusFrame('n1', FRAME);
+    expect(store.getState().focusCrop).toBeNull();
+    store.getState().setFocusTarget({ nodeId: 'n1', content: 'https://cdn/a.png' });
+    store.getState().setFocusFrame('n2', FRAME);
+    expect(store.getState().focusCrop?.frame).toBeNull();
+    store.getState().setFocusFrame('n1', FRAME);
+    expect(store.getState().focusCrop?.frame).toEqual(FRAME);
+    store.getState().setFocusFrame('n1', null);
+    expect(store.getState().focusCrop?.frame).toBeNull();
+  });
+
+  it('ignores a marquee write with no target', () => {
+    const store = focusing();
+    store.getState().setFocusMarquee(RECT, null);
+    expect(store.getState().focusCrop).toBeNull();
+  });
+
+  it('ends the target with the focus pick', () => {
+    const ends: Array<(store: ReturnType<typeof createCanvasSessionStore>) => void> = [
+      (store) => store.getState().endPick(),
+      (store) => store.getState().closeActivePanel(),
+      (store) => store.getState().openGeneratePanel('other', 'image'),
+      (store) => store.getState().startReferencePick('host'),
+      (store) => store.getState().startAnnotationPlacement(),
+      (store) => store.getState().startFocusPick('host'),
+    ];
+    for (const end of ends) {
+      const store = focusing();
+      store.getState().setFocusTarget({ nodeId: 'n1', content: 'https://cdn/a.png' });
+      end(store);
+      expect(store.getState().focusCrop).toBeNull();
+    }
+  });
+});
+
+describe('mini-tool source size (inner#888 §7.4.1)', () => {
+  it('holds the size the crop box reads off the element, and starts empty', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('n1', 'image.crop', { sourceContent: 'a', params: {} });
+    expect(store.getState().miniTool?.sourceSize).toBeNull();
+    store.getState().setMiniToolSourceSize({ width: 800, height: 600 });
+    expect(store.getState().miniTool?.sourceSize).toEqual({ width: 800, height: 600 });
+  });
+
+  it('forgets the size when the source changes', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('n1', 'image.crop', { sourceContent: 'a', params: {} });
+    store.getState().setMiniToolSourceSize({ width: 800, height: 600 });
+    store.getState().resetMiniToolSource('b', {});
+    expect(store.getState().miniTool?.sourceSize).toBeNull();
+  });
+});

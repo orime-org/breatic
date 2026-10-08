@@ -120,11 +120,11 @@ describe("runCatalogTask", () => {
     const { deps, steps } = stores();
     answers(["https://cdn/out.mp3"]);
 
-    const result = await runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" });
+    const result = await runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }, 1);
 
     expect(call(0)).toMatchObject({ endpoint: "minimax/speech-2.8-hd", body: { text: "hello", voice_id: "Wise_Woman" } });
     expect(steps.map((s) => s.status)).toEqual(["done"]);
-    expect(result).toEqual({ url: "https://cdn/out.mp3", model: "minimax-speech-2.8-hd", cost: 0.01 });
+    expect(result).toEqual({ outputs: [{ url: "https://cdn/out.mp3" }], model: "minimax-speech-2.8-hd", cost: 0.01 });
   });
 
   it("resumes a submitted step by its stored prediction id", async () => {
@@ -133,7 +133,7 @@ describe("runCatalogTask", () => {
     ]);
     answers(["https://cdn/out.mp3"]);
 
-    await runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" });
+    await runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }, 1);
 
     expect((runPredictionMock.mock.calls[0]![3] as { storedTaskId: string }).storedTaskId).toBe("pred-old");
   });
@@ -150,7 +150,7 @@ describe("runCatalogTask", () => {
       lyrics: "la la",
       song: "https://a/song.mp3",
       vocal: "https://a/vocal.mp3",
-    });
+    }, 1);
 
     expect(call(0)).toEqual({ endpoint: "mureka-ai/create-upload-id", body: { audio: "https://a/song.mp3", purpose: "reference" } });
     expect(call(1)).toEqual({ endpoint: "mureka-ai/vocal-clone", body: { audio: "https://a/vocal.mp3" } });
@@ -167,7 +167,7 @@ describe("runCatalogTask", () => {
     await runCatalogTask(deps, CTX, "audio", "pop", "mureka-v9.5-generate-song", {
       lyrics: "la la",
       vocal: "https://a/vocal.mp3",
-    });
+    }, 1);
 
     expect(runPredictionMock).toHaveBeenCalledTimes(1);
     expect(call(0).body).toMatchObject({ vocal_id: "voc-cached" });
@@ -178,7 +178,7 @@ describe("runCatalogTask", () => {
     answers([], ["https://cdn/speech.mp3"]);
 
     const [, params] = validateModelParams("tts", "minimax-voice-clone", { audio: "https://a/me.mp3" });
-    const result = await runCatalogTask(deps, CTX, "tts", "read this", "minimax-voice-clone", params);
+    const result = await runCatalogTask(deps, CTX, "tts", "read this", "minimax-voice-clone", params, 1);
 
     const clone = call(0);
     expect(clone.endpoint).toBe("minimax/voice-clone");
@@ -189,7 +189,7 @@ describe("runCatalogTask", () => {
     expect(voiceId).toMatch(/\d/);
     expect(call(1)).toEqual({ endpoint: "minimax/speech-2.8-hd", body: { text: "read this", voice_id: voiceId } });
     expect(clones.get("voice:sha-of-https://a/me.mp3")).toBe(voiceId);
-    expect(result.url).toBe("https://cdn/speech.mp3");
+    expect(result.outputs).toEqual([{ url: "https://cdn/speech.mp3" }]);
   });
 
   it("skips the steps a previous delivery finished and uses what they answered", async () => {
@@ -199,7 +199,7 @@ describe("runCatalogTask", () => {
     ]);
     answers(["https://cdn/speech.mp3"]);
 
-    const result = await runCatalogTask(deps, CTX, "tts", "read this", "minimax-voice-clone", { audio: "https://a/me.mp3" });
+    const result = await runCatalogTask(deps, CTX, "tts", "read this", "minimax-voice-clone", { audio: "https://a/me.mp3" }, 1);
 
     expect(runPredictionMock).toHaveBeenCalledTimes(1);
     expect(call(0).body).toEqual({ text: "read this", voice_id: "Breatic0f5c" });
@@ -211,14 +211,14 @@ describe("runCatalogTask", () => {
     const failed = stores();
     runPredictionMock.mockRejectedValueOnce(new UpstreamTaskFailed("wavespeed", "bad input"));
     await expect(
-      runCatalogTask(failed.deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }),
+      runCatalogTask(failed.deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }, 1),
     ).rejects.toThrow("wavespeed task failed: bad input");
     expect(failed.steps[0]!.status).toBe("failed");
 
     const refused = stores();
     runPredictionMock.mockRejectedValueOnce(new Error("socket hang up"));
     await expect(
-      runCatalogTask(refused.deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }),
+      runCatalogTask(refused.deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }, 1),
     ).rejects.toThrow("socket hang up");
     expect(refused.steps[0]!.status).toBe("pending");
   });
@@ -228,7 +228,7 @@ describe("runCatalogTask", () => {
     runPredictionMock.mockRejectedValueOnce(new UpstreamTaskFailed("wavespeed", "prompt refused"));
 
     await expect(
-      runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }),
+      runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }, 1),
     ).rejects.toThrow(UpstreamTaskFailed);
     expect(steps[0]).toMatchObject({ status: "failed", output: { error: "prompt refused" } });
   });
@@ -238,7 +238,7 @@ describe("runCatalogTask", () => {
       { id: "s0", position: 0, kind: "generate", endpoint: "minimax/speech-2.8-hd", itemIndex: null, status: "failed", predictionId: "p", output: { error: "prompt refused" }, inlineCostUsd: 0 },
     ]);
 
-    const run = runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" });
+    const run = runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }, 1);
     await expect(run).rejects.toBeInstanceOf(UpstreamTaskFailed);
     await expect(run).rejects.toThrow("prompt refused");
     expect(runPredictionMock).not.toHaveBeenCalled();
@@ -252,7 +252,7 @@ describe("runCatalogTask", () => {
     clones.set("voice:sha-of-https://a/me.mp3", "BreaticOther");
     answers([], ["https://cdn/said.mp3"]);
 
-    const result = await runCatalogTask(deps, CTX, "tts", "read this", "minimax-voice-clone", { audio: "https://a/me.mp3" });
+    const result = await runCatalogTask(deps, CTX, "tts", "read this", "minimax-voice-clone", { audio: "https://a/me.mp3" }, 1);
 
     expect((runPredictionMock.mock.calls[0]![3] as { storedTaskId: unknown }).storedTaskId).toBe("pred-clone");
     expect(call(1).body).toMatchObject({ voice_id: `Breatic${CTX.taskId.replace(/-/g, "")}` });
@@ -267,7 +267,7 @@ describe("runCatalogTask", () => {
     );
 
     await expect(
-      runCatalogTask(deps, CTX, "tts", "read this", "minimax-voice-clone", { audio: "https://a/me.mp3" }),
+      runCatalogTask(deps, CTX, "tts", "read this", "minimax-voice-clone", { audio: "https://a/me.mp3" }, 1),
     ).rejects.toThrow(/Voice ID does not exist/);
     expect(retired).toEqual(["voice:BreaticGone1"]);
   });
@@ -283,7 +283,7 @@ describe("runCatalogTask", () => {
         image: "https://a/first.png",
         elements: ["https://a/cat.png"],
         duration: 5,
-      }),
+      }, 1),
     ).rejects.toThrow(/Element id not found/);
     expect(retired).toEqual(["element:el-gone"]);
   });
@@ -299,7 +299,7 @@ describe("runCatalogTask", () => {
         image: "https://a/first.png",
         elements: ["https://a/cat.png", "https://a/dog.png"],
         duration: 5,
-      }),
+      }, 1),
     ).rejects.toThrow(/Element id not found/);
     expect(retired).toEqual(["element:el-gone"]);
   });
@@ -314,7 +314,7 @@ describe("runCatalogTask", () => {
     );
 
     await expect(
-      runCatalogTask(deps, CTX, "audio", "a song", "mureka-v9.5-generate-song", { vocal: "https://a/voice.mp3" }),
+      runCatalogTask(deps, CTX, "audio", "a song", "mureka-v9.5-generate-song", { vocal: "https://a/voice.mp3" }, 1),
     ).rejects.toThrow(/provider rejected/);
     expect(call(0)).toMatchObject({ endpoint: "mureka-ai/mureka-v9.5/generate-song", body: { vocal_id: "163346152292353" } });
     expect(retired).toEqual([]);
@@ -328,7 +328,7 @@ describe("runCatalogTask", () => {
       image: "https://a/first.png",
       elements: ["https://a/cat.png", "https://a/dog.png"],
       duration: 5,
-    });
+    }, 1);
 
     expect(call(0)).toEqual({
       endpoint: "kwaivgi/kling-elements",
@@ -356,7 +356,7 @@ describe("runCatalogTask", () => {
       image: "https://a/first.png",
       elements: ["https://a/cat.png"],
       duration: 5,
-    });
+    }, 1);
 
     expect(describe).not.toHaveBeenCalled();
     expect(call(0).body).toMatchObject({ element_list: [{ element_id: "el-cached" }] });
@@ -366,7 +366,7 @@ describe("runCatalogTask", () => {
     const { deps } = stores();
     runPredictionMock.mockResolvedValueOnce({ outputs: ["https://cdn/out.mp3"], taskId: "" });
 
-    const result = await runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" });
+    const result = await runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }, 1);
 
     expect(queryBillingMock).not.toHaveBeenCalled();
     expect(result.cost).toBe(0);
@@ -377,7 +377,50 @@ describe("runCatalogTask", () => {
     answers([]);
 
     await expect(
-      runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }),
+      runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }, 1),
     ).rejects.toThrow("No output URL after WaveSpeed polling");
   });
 });
+
+describe("runCatalogTask outputs", () => {
+  it("keeps every upstream output up to the count asked for, in upstream order", async () => {
+    const { deps, steps } = stores();
+    answers(["https://cdn/vocals.mp3", "https://cdn/backing.mp3"]);
+
+    const result = await runCatalogTask(deps, CTX, "audio", "", "vocal-remover", { audio: "https://a/song.mp3" }, 2);
+
+    expect(result.outputs).toEqual([{ url: "https://cdn/vocals.mp3" }, { url: "https://cdn/backing.mp3" }]);
+    expect(steps[0]!.output.urls).toEqual(["https://cdn/vocals.mp3", "https://cdn/backing.mp3"]);
+  });
+
+  it("hands on only the first output when one is asked for", async () => {
+    const { deps } = stores();
+    answers(["https://cdn/vocals.mp3", "https://cdn/backing.mp3"]);
+
+    const result = await runCatalogTask(deps, CTX, "audio", "", "vocal-remover", { audio: "https://a/song.mp3" }, 1);
+
+    expect(result.outputs).toEqual([{ url: "https://cdn/vocals.mp3" }]);
+  });
+
+  it("answers both outputs again when it resumes after the generate step finished", async () => {
+    const { deps } = stores([
+      { id: "s0", position: 0, kind: "generate", endpoint: "wavespeed-ai/audio-vocal-isolator", itemIndex: null, status: "done", predictionId: "pred-a", output: { urls: ["https://cdn/v.mp3", "https://cdn/b.mp3"], prediction: "pred-a" }, inlineCostUsd: 0 },
+    ]);
+
+    const result = await runCatalogTask(deps, CTX, "audio", "", "vocal-remover", { audio: "https://a/song.mp3" }, 2);
+
+    expect(runPredictionMock).not.toHaveBeenCalled();
+    expect(result.outputs).toEqual([{ url: "https://cdn/v.mp3" }, { url: "https://cdn/b.mp3" }]);
+  });
+
+  it("reads a step finished before outputs were stored as a list as one output", async () => {
+    const { deps } = stores([
+      { id: "s0", position: 0, kind: "generate", endpoint: "minimax/speech-2.8-hd", itemIndex: null, status: "done", predictionId: "pred-a", output: { url: "https://cdn/old.mp3", prediction: "pred-a" }, inlineCostUsd: 0 },
+    ]);
+
+    const result = await runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }, 1);
+
+    expect(result.outputs).toEqual([{ url: "https://cdn/old.mp3" }]);
+  });
+});
+

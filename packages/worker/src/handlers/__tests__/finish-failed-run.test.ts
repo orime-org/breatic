@@ -81,7 +81,7 @@ const END = {
   // One word from the lane vocabulary. Widened to `string` by inference, this
   // fixture would stop saying which lane it stands for.
   source: "task" as const,
-  toolName: undefined,
+  toolId: undefined,
   errorMessage: "it broke",
   settles: true,
 };

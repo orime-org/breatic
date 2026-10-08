@@ -87,14 +87,6 @@ describe('restoreNodeMedia (#1619 history restore, critical path)', () => {
     expect(nodeData().get('coverUrl')).toBeUndefined();
   });
 
-  it('clears a prior errorMessage (restoring a good result over an error state)', () => {
-    // A node whose last generation failed: no content, an error message
-    // (state stays 'idle', deriveStatus → error).
-    addNode(PID, SID, fields('image', { errorMessage: 'gen failed' }));
-    restoreNodeMedia(PID, SID, 'n1', { content: 'restored.png', media: NONE });
-    expect(nodeData().get('errorMessage')).toBeUndefined();
-  });
-
   it('is a no-op on a missing node (no throw)', () => {
     expect(() =>
       restoreNodeMedia(PID, SID, 'ghost', { content: 'x.png', media: NONE }),

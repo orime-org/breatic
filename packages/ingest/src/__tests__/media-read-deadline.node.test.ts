@@ -80,7 +80,12 @@ describe("a container run that outlasts the deadline", () => {
       },
     );
 
-    expect(read).toEqual({ report: NOTHING_FOUND, cover: null });
+    expect(read).toEqual({
+      report: NOTHING_FOUND,
+      cover: null,
+      preview: null,
+      answered: false,
+    });
     expect(noted).toHaveBeenCalledWith(
       "ingest_media_read_unfinished",
       expect.objectContaining({ storageKey: KEY, runDeadlineMs: 20 }),

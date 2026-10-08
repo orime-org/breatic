@@ -60,8 +60,8 @@ const QWEN: ModelEntry = {
 const CATALOG: ModelCatalog = { image: [QWEN], video: [], audio: [], tts: [], three_d: [], total: 1, credit_multiplier: 1 };
 
 const SOURCES = [
-  { id: 'ref-a', data: { kind: 'image' as const, status: 'idle' as const, name: 'A', content: 'https://cdn.test/a.png' } },
-  { id: 'ref-b', data: { kind: 'image' as const, status: 'idle' as const, name: 'B', content: 'https://cdn.test/b.png' } },
+  { id: 'ref-a', data: { kind: 'image' as const, handling: false as const, name: 'A', content: 'https://cdn.test/a.png' } },
+  { id: 'ref-b', data: { kind: 'image' as const, handling: false as const, name: 'B', content: 'https://cdn.test/b.png' } },
 ];
 const WIRES = [
   { id: 'r-a', source: 'ref-a', target: 'target' },
@@ -120,7 +120,7 @@ async function openSphere(mentioned: string[]): Promise<HTMLElement> {
           <GeneratePanelContainer
             projectId='p'
             spaceId='s'
-            nodes={[{ id: 'target', data: { kind: 'image', status: 'idle' } }, ...SOURCES]}
+            nodes={[{ id: 'target', data: { kind: 'image', handling: false } }, ...SOURCES]}
             edges={WIRES}
             getLastWriteWasLocal={() => true}
           />

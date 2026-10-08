@@ -31,6 +31,11 @@ interface ModelParamControlsProps {
   include?: (control: ModelControl) => boolean;
   /** The first image the model is sent, which a camera-angle control puts on its card. */
   subjectUrl?: string;
+  /**
+   * The controls to draw, in place of the model's own: a mini-tool's panel
+   * passes the params its tool lists (inner#888 §5).
+   */
+  controls?: readonly ModelControl[];
 }
 
 /**
@@ -45,6 +50,7 @@ interface ModelParamControlsProps {
  * @param root0.className - Spacing above the block.
  * @param root0.include - Which controls to draw.
  * @param root0.subjectUrl - The first image the model is sent.
+ * @param root0.controls - The controls to draw in place of the model's own.
  * @returns The controls, or null when the model has none of its own.
  */
 export const ModelParamControls = React.memo(function ModelParamControls({
@@ -55,11 +61,12 @@ export const ModelParamControls = React.memo(function ModelParamControls({
   className,
   include,
   subjectUrl,
+  controls: given,
 }: ModelParamControlsProps): React.JSX.Element | null {
   const t = useTranslation();
   const controls = React.useMemo(
-    () => modelControls(model, mode).filter((control) => include?.(control) ?? true),
-    [model, mode, include],
+    () => (given ?? modelControls(model, mode)).filter((control) => include?.(control) ?? true),
+    [given, model, mode, include],
   );
   if (controls.length === 0) return null;
   return (

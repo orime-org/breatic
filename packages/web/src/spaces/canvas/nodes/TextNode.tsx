@@ -50,10 +50,6 @@ interface TextNodeProps {
   selected?: boolean;
   locked?: boolean;
   onRename?: (name: string) => void;
-  /** Open this node's task list on its failures (#186 §3.7.2). */
-  onViewTasks?: () => void;
-  /** Whether that list is already open beside this node. */
-  tasksPanelOpen?: boolean;
 }
 
 /**
@@ -70,11 +66,10 @@ interface TextNodeProps {
  * value, then swallows Delete) nor a tabindex that would steal click focus from
  * node selection. Both would make a filled node undeletable (#260).
  * @param root0 - Text node props.
- * @param root0.data - The node view: name, status, error message.
+ * @param root0.data - The node view.
  * @param root0.selected - Whether the node is selected, driving the selection ring.
  * @param root0.locked - Whether the node is locked, which blocks writing.
  * @param root0.onRename - Commit a rename, pre-bound to this node's id.
- * @param root0.onViewTasks - Open this node's task list on its failures.
  * @returns The text node element.
  */
 export const TextNode = React.memo(function TextNode({
@@ -82,8 +77,6 @@ export const TextNode = React.memo(function TextNode({
   selected,
   locked,
   onRename,
-  onViewTasks,
-  tasksPanelOpen,
 }: TextNodeProps): React.JSX.Element {
   const t = useTranslation();
   const nodeId = React.useContext(NodeIdContext);
@@ -149,20 +142,10 @@ export const TextNode = React.memo(function TextNode({
   );
 
   // Whether this node can be written in, worked out ONCE and read by both the
-  // way in and the way back out. Two hand-written conditions drift, and these
-  // had: entry asked the shared gate — which then read `locked` and whether a
-  // task was running — while the exit closed on any status other than `idle`. On a
-  // failed node they disagreed, so opening one repaired a missing body (a real
-  // write into the shared document) and set edit state, both of which the exit
-  // undid on the same tick. None of it was visible: the renderer gives a failed
-  // node's content slot to the error message, so no editor is mounted there
-  // either way. The write is what actually went away.
-  //
-  // The error state is required on top of the gate because the renderer says
-  // so: a failed node gives its content slot to the error message, so an
-  // editor opened there would be state with nothing on screen. A task running
-  // no longer covers anything (user 2026-09-06) and the mandate freezes only
-  // deletion while one does, so typing goes through and the last write wins.
+  // way in and the way back out — two hand-written conditions drift. A task
+  // running does not block typing: the mandate freezes only deletion while one
+  // does, and the last write wins. A node shows no task state (inner#888
+  // §7.8), so a failed task leaves the body as editable as any other.
   //
   // Memoized for the ordinary reason: a blocked verdict is a fresh object on
   // every call, `startEdit` closes over it, and `startEdit` is handed to child
@@ -178,15 +161,14 @@ export const TextNode = React.memo(function TextNode({
   // and when the first cut left it out, the exit below never closed on a
   // downgrade, leaving a viewer's ghost editor publishing their caret into
   // shared awareness.
-  const canEdit = !readOnly && editBlock === null && data.status !== 'error';
+  const canEdit = !readOnly && editBlock === null;
 
   /**
    * Open the editor on this node's body, unless something says no.
    *
    * A viewer may not write at all, and a locked node is frozen by its owner —
    * both say why, because a double-click that silently does nothing reads as a
-   * bug. A failed node is the one refusal with nothing to say: it is already
-   * showing the user its error where the body would be.
+   * bug.
    *
    * A node with no body is repaired here rather than at render: repair is a
    * write, so it happens when somebody actually intends to write, and never
@@ -282,17 +264,12 @@ export const TextNode = React.memo(function TextNode({
     <ContentNodeFrame
       modality='text'
       name={data.name}
-      status={data.status}
       selected={selected}
       locked={locked}
       onRename={onRename}
       testId='text-node'
     >
       <NodeContent
-        onViewTasks={onViewTasks}
-        tasksPanelOpen={tasksPanelOpen}
-        status={data.status}
-        errorMessage={data.errorMessage}
         // While editing, show the editor even for an empty body — a fresh node
         // entered from the placeholder has nothing written yet.
         hasContent={hasContent || editing}

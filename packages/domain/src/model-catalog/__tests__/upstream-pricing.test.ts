@@ -62,10 +62,17 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
     { input: { resolution: "4k", duration: 5 }, usd: 9 },
     { input: { resolution: "720p", duration: 30 }, usd: 10.8 },
   ],
+  "bytedance/seedance-2.5/talking-avatar": [
+    { input: { resolution: "480p", audio: "a" }, durations: { audio: [10] }, usd: 2.2 },
+    { input: { resolution: "720p", audio: "a" }, durations: { audio: [10] }, usd: 4.4 },
+    { input: { resolution: "720p", audio: "a" }, durations: { audio: [2] }, usd: 1.76 },
+    { input: { resolution: "720p", audio: "a" }, durations: { audio: [200] }, usd: 52.8 },
+  ],
   "bytedance/seedance-2.5/video-extend": [{ input: { resolution: "480p", video: "v" }, durations: { video: [5] }, usd: 1.1 }],
-  "clarity-ai/crystal-upscaler": [
-    { input: { target_megapixels: 4 }, usd: 0.05 },
-    { input: { target_megapixels: 16 }, usd: 0.2 },
+  "clarity-ai/pro-upscaler": [
+    { input: { target_megapixels: 4 }, usd: 0.12 },
+    { input: { target_megapixels: 16 }, usd: 0.48 },
+    { input: { target_megapixels: 64 }, usd: 1.92 },
   ],
   "elevenlabs/eleven-v3": [{ input: { text: text(1000) }, usd: 0.2 }],
   "elevenlabs/voice-changer": [{ input: { audio: "a" }, durations: { audio: [30] }, usd: 0.12 }],
@@ -199,7 +206,7 @@ function wavespeedEndpoints(): Map<string, FullProviderEndpoint> {
 describe("WaveSpeed pricing contracts in the catalog", () => {
   const endpoints = wavespeedEndpoints();
 
-  it("covers exactly the 59 endpoints of the finalized catalog", () => {
+  it("covers exactly the 60 endpoints of the finalized catalog", () => {
     expect([...endpoints.keys()].sort()).toEqual(Object.keys(CASES).sort());
   });
 

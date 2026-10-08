@@ -29,7 +29,7 @@ import type { NodeHistoryEntity, NodeMediaNumbers } from "@breatic/shared";
  * @param opts.metadata.model - Model identifier that produced the result.
  * @param opts.metadata.credits - Credits charged for the generation. Not the
  *   dollars the service charged us: the row's chip is labelled in credits.
- * @param opts.metadata.durationMs - Provider call duration in milliseconds.
+ * @param opts.metadata.durationMs - How long the run took from its first start, in milliseconds.
  * @param opts.metadata.params - Provider/tool parameters used for the generation.
  * @param opts.media - The media numbers the result landed on the node with
  *   (#2184).

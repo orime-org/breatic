@@ -8,6 +8,7 @@
  * NOT here — it reuses the shared `@web/lib/format-relative-time`.
  */
 
+import { miniToolById, type MiniToolSpec } from '@breatic/shared/mini-tools';
 import { formatCredits } from '@web/lib/format-credits';
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
 
@@ -82,4 +83,16 @@ export function entryCredits(entry: NodeHistoryEntry): number | undefined {
 export function entryFilename(entry: NodeHistoryEntry): string | undefined {
   const f = entry.metadata.filename;
   return typeof f === 'string' && f.length > 0 ? f : undefined;
+}
+
+/**
+ * The mini-tool that made a history row's result, when one did. The row is
+ * named by it, as its task row is (inner#888 A20), whether the result landed
+ * as an upload (a browser export) or as a generation.
+ * @param entry - The history row.
+ * @returns The tool, or undefined for a row no mini-tool made.
+ */
+export function entryTool(entry: NodeHistoryEntry): MiniToolSpec | undefined {
+  const id = entry.metadata.toolId;
+  return typeof id === 'string' ? miniToolById(id) : undefined;
 }

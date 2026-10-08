@@ -14,10 +14,6 @@ interface AudioNodeProps {
   selected?: boolean;
   locked?: boolean;
   onActivate?: () => void;
-  /** Open this node's task list on its failures (#186 §3.7.2). */
-  onViewTasks?: () => void;
-  /** Whether that list is already open beside this node. */
-  tasksPanelOpen?: boolean;
   onRename?: (name: string) => void;
 }
 
@@ -26,12 +22,11 @@ interface AudioNodeProps {
  * a decorative waveform that doubles as the scrubber + transport controls,
  * zero third-party player dependency).
  * @param root0 - Audio node props.
- * @param root0.data - Audio node payload (asset URL, status, optional error message).
+ * @param root0.data - Audio node payload (asset URL).
  * @param root0.selected - Whether the node is selected, driving the selection ring.
  * @param root0.locked - Whether the node is locked, showing the lock indicator.
  * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
- * @param root0.onViewTasks - Open this node's task list on its failures.
  * @returns The audio node element (placeholder or native audio player).
  */
 export const AudioNode = React.memo(function AudioNode({
@@ -39,8 +34,6 @@ export const AudioNode = React.memo(function AudioNode({
   selected,
   locked,
   onActivate,
-  onViewTasks,
-  tasksPanelOpen,
   onRename,
 }: AudioNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
@@ -48,17 +41,12 @@ export const AudioNode = React.memo(function AudioNode({
     <ContentNodeFrame
       modality='audio'
       name={data.name}
-      status={data.status}
       selected={selected}
       locked={locked}
       onRename={onRename}
       testId='audio-node'
     >
       <NodeContent
-        onViewTasks={onViewTasks}
-        tasksPanelOpen={tasksPanelOpen}
-        status={data.status}
-        errorMessage={data.errorMessage}
         hasContent={hasContent}
         placeholder={
           <NodePlaceholder modality='audio' onActivate={onActivate} />

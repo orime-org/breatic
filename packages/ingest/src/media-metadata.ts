@@ -26,12 +26,17 @@ export interface ProbeStream {
    */
   attachedPic: boolean;
   /**
-   * ffprobe's `stream_side_data=rotation`, in degrees, when the stream carries
-   * a display matrix. The stored dimensions are what the codec holds; this is
+   * The rotation the stream is shown at, in degrees: its first frame's
+   * `frame_side_data=rotation` when that reports one (a JPEG's EXIF
+   * orientation appears only there), otherwise the stream's display matrix. The stored dimensions are what the codec holds; this is
    * what says how they are to be shown, and ffmpeg applies it on decode — so a
    * cover cut from the same run comes out already turned.
    */
   rotation?: number;
+  /** ffprobe's colour tags, when the stream carries them; HDR reads the source as they say. */
+  colorTransfer?: string;
+  colorPrimaries?: string;
+  colorSpace?: string;
 }
 
 /** One /probe answer, minus the cover bytes. */
@@ -94,6 +99,25 @@ function turnsTheFrame(rotation: number | undefined): boolean {
 export function realVideoStream(report: ProbeReport): ProbeStream | undefined {
   return report.streams.find(
     (stream) => stream.codecType === "video" && !stream.attachedPic,
+  );
+}
+
+/**
+ * Whether a stored picture gets a preview cut from it.
+ *
+ * Only a still frame does. An APNG probes as `apng` and an animated WebP
+ * probes 0x0, since the container's ffprobe cannot decode one; vips would cut
+ * the first frame of either and show an animation as a still.
+ * @param report - What the container answered.
+ * @returns Whether to cut a preview.
+ */
+export function hasPreviewableFrame(report: ProbeReport): boolean {
+  const media = realVideoStream(report);
+  return (
+    media !== undefined &&
+    media.width != null &&
+    media.width > 0 &&
+    media.codecName !== "apng"
   );
 }
 

@@ -432,7 +432,7 @@ describe('mergeCanvasNodes reference stability (#1647 — React.memo needs stabl
         id: 'a',
         type: 'text',
         position: { x: 0, y: 0 },
-        data: { content: 'hi', status: 'idle' },
+        data: { content: 'hi', handling: false },
         selected: false,
       },
     ] as Node[];
@@ -443,7 +443,7 @@ describe('mergeCanvasNodes reference stability (#1647 — React.memo needs stabl
         id: 'a',
         type: 'text',
         position: { x: 0, y: 0 },
-        data: { content: 'hi', status: 'idle' },
+        data: { content: 'hi', handling: false },
       },
     ] as Node[];
 
@@ -451,32 +451,27 @@ describe('mergeCanvasNodes reference stability (#1647 — React.memo needs stabl
     expect(merged[0]).toBe(prev[0]); // SAME reference → memo bails, `a` not re-rendered
   });
 
-  it('sees a field change that the derived status hides', () => {
-    // Several fields ride in `data` alongside the derived status, and a change
-    // to one of them can leave that status where it was — so the status
-    // compare says nothing changed and only the field itself can catch it.
-    // Reuse the previous reference here and the node keeps showing the stale
-    // one.
+  it('sees a field change that the derived handling flag hides', () => {
+    // Several fields ride in `data` alongside the derived flag, and a change
+    // to one of them can leave the flag where it was — so the flag compare
+    // says nothing changed and only the field itself can catch it. Reuse the
+    // previous reference here and the node keeps showing the stale one.
     //
     // The comparison is by own keys, so a flat field on `data` is covered the
     // moment it exists; this pins that the projection keeps putting it there.
-    const at = (errorMessage: string): Node[] =>
+    const at = (name: string): Node[] =>
       [
         {
           id: 'a',
           type: 'image',
           position: { x: 0, y: 0 },
-          data: { status: 'error', errorMessage },
+          data: { handling: false, name },
           selected: false,
         },
       ] as Node[];
-    const prev = at('could not read the file');
-    expect(mergeCanvasNodes(prev, at('not a text file'), QUIET)[0]).not.toBe(
-      prev[0],
-    );
-    expect(
-      mergeCanvasNodes(prev, at('could not read the file'), QUIET)[0],
-    ).toBe(prev[0]);
+    const prev = at('IMAGE-1');
+    expect(mergeCanvasNodes(prev, at('IMAGE-2'), QUIET)[0]).not.toBe(prev[0]);
+    expect(mergeCanvasNodes(prev, at('IMAGE-1'), QUIET)[0]).toBe(prev[0]);
   });
 
   it('carries the holders the occupant table brings with it', () => {
@@ -489,7 +484,7 @@ describe('mergeCanvasNodes reference stability (#1647 — React.memo needs stabl
           id: 'a',
           type: 'image',
           position: { x: 0, y: 0 },
-          data: { status: 'idle' },
+          data: { handling: false },
           selected: false,
         },
       ] as Node[];
@@ -518,7 +513,7 @@ describe('mergeCanvasNodes reference stability (#1647 — React.memo needs stabl
         id: 'a',
         type: 'image',
         position: { x: 0, y: 0 },
-        data: { content: 'x.png', status: 'idle', focusImages: [cropRef] },
+        data: { content: 'x.png', handling: false, focusImages: [cropRef] },
         selected: false,
       },
     ] as Node[];
@@ -529,7 +524,7 @@ describe('mergeCanvasNodes reference stability (#1647 — React.memo needs stabl
         position: { x: 0, y: 0 },
         // A fresh array wrapper around the SAME element references —
         // exactly what toJSON hands the mirror when nothing changed.
-        data: { content: 'x.png', status: 'idle', focusImages: [cropRef] },
+        data: { content: 'x.png', handling: false, focusImages: [cropRef] },
       },
     ] as Node[];
     const merged = mergeCanvasNodes(prev, fresh, QUIET);
@@ -729,7 +724,7 @@ describe('mergeCanvasNodes, a node carrying task counts (#186 E6)', () => {
       id: 'a',
       type: 'image',
       position: { x: 0, y: 0 },
-      data: { content: 'x.png', status: 'handling', taskCounts: held },
+      data: { content: 'x.png', handling: true, taskCounts: held },
       selected: false,
     } as Node,
   ];
@@ -749,9 +744,8 @@ describe('mergeCanvasNodes, a node carrying task counts (#186 E6)', () => {
 describe('mergeCanvasNodes, a node this browser is already working on', () => {
   // A dropped file gets its node before the server knows anything: the hash
   // runs here and the ticket has not been asked for, so the document carries
-  // no counts yet. Left alone the node renders as an empty one inviting
-  // another upload, and the delete gate — which reads this same status — lets
-  // it go while the bytes are on their way.
+  // no counts yet. Left alone the delete gate — which reads this same flag —
+  // lets it go while the bytes are on their way.
   const busy = (ids: string[]): MergeInput => ({
     ...QUIET,
     locallyBusyIds: new Set(ids),
@@ -759,32 +753,32 @@ describe('mergeCanvasNodes, a node this browser is already working on', () => {
 
   it('shows it as handling while the document still has nothing', () => {
     const fresh = [
-      { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: { status: 'idle' } },
+      { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: { handling: false } },
     ] as Node[];
 
     const [merged] = mergeCanvasNodes([], fresh, busy(['a']));
 
-    expect((merged?.data as { status?: string }).status).toBe('handling');
+    expect((merged?.data as { handling?: boolean }).handling).toBe(true);
   });
 
   it('leaves a node nobody is working on as the document has it', () => {
     const fresh = [
-      { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: { status: 'idle' } },
+      { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: { handling: false } },
     ] as Node[];
 
     const [merged] = mergeCanvasNodes([], fresh, busy(['other']));
 
-    expect((merged?.data as { status?: string }).status).toBe('idle');
+    expect((merged?.data as { handling?: boolean }).handling).toBe(false);
   });
 
   it('stops saying so once the work is over', () => {
     const fresh = [
-      { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: { status: 'idle' } },
+      { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: { handling: false } },
     ] as Node[];
     const held = mergeCanvasNodes([], fresh, busy(['a']));
 
     const [after] = mergeCanvasNodes(held, fresh, QUIET);
 
-    expect((after?.data as { status?: string }).status).toBe('idle');
+    expect((after?.data as { handling?: boolean }).handling).toBe(false);
   });
 });

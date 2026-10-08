@@ -375,8 +375,10 @@ if (projectChunk !== undefined) {
 // 1,176,403 bytes with all five of them still green. The budget leaves room to
 // grow and none to grow by a library; raising it is a decision to make on
 // purpose. The closure's size on any build is the number this prints when it
-// trips, so it is not repeated here to drift.
-const ENTRY_BUDGET = 1_200_000;
+// trips, so it is not repeated here to drift. Raised from 1,200,000 to
+// 1,500,000 on purpose: the entry carries the strings of all five locales, so
+// every new feature's copy lands here five times.
+const ENTRY_BUDGET = 1_500_000;
 const entryBytes = [...entryDownloads].reduce(
   (n, f) => n + statSync(path.join(ASSETS, f)).size,
   0,

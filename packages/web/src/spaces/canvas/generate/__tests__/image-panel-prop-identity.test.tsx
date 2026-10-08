@@ -117,7 +117,7 @@ function catalog(): ModelCatalog {
  */
 function nodes(): Parameters<typeof GeneratePanelContainer>[0]['nodes'] {
   return [
-    { id: 'target', data: { kind: 'image', status: 'idle' } },
+    { id: 'target', data: { kind: 'image', handling: false } },
   ] as Parameters<typeof GeneratePanelContainer>[0]['nodes'];
 }
 

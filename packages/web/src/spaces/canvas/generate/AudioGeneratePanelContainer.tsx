@@ -480,7 +480,7 @@ function AudioGeneratePanelBody({
     const verdict = evaluateExecute({
       promptText: freshPrompt,
       model: fresh.model,
-      nodeStatus: fresh.nodeStatus,
+      nodeExists: fresh.nodeExists,
       // The synchronous latch above already answered this, and earlier than a
       // state flag can.
       isSubmitting: false,
@@ -685,7 +685,7 @@ function AudioGeneratePanelBody({
       executeRefusal={evaluateExecute({
         promptText,
         model: vm.model,
-        nodeStatus: vm.nodeStatus,
+        nodeExists: vm.nodeExists,
         isSubmitting,
         promptRequired: vm.promptRequired,
         maxInputChars: vm.modelEntry?.max_input_chars,

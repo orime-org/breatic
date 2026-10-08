@@ -422,19 +422,16 @@ export const MIN_TASK_CREDIT_COST = 5;
  * no contract fall back to {@link MIN_TASK_CREDIT_COST}, which is also the
  * floor.
  * @param model - Model name from the request body, if any.
- * @param params - The task params, keyed by the catalog's param names.
- * @param prompt - The prompt text, for models priced by it.
+ * @param input - The run as the request describes it: params keyed by the
+ *   catalog's names, the prompt, and the source lengths the caller knows.
  * @returns The credits the caller must at least hold to enqueue.
  * @throws {Error} When a pricing formula does not produce a finite price.
  */
 export async function estimateTaskCredits(
   model: string | undefined,
-  params: Readonly<Record<string, unknown>>,
-  prompt?: string,
+  input: EstimateInput,
 ): Promise<number> {
-  const estimate = model
-    ? await estimateModelCredits(model, { params, ...(prompt !== undefined ? { prompt } : {}) })
-    : undefined;
+  const estimate = model ? await estimateModelCredits(model, input) : undefined;
   return Math.max(estimate?.credits ?? 0, MIN_TASK_CREDIT_COST);
 }
 

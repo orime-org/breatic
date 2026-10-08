@@ -25,7 +25,7 @@ import {
 } from "@breatic/domain";
 import { getStreamRedis, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
-import type { NodeTaskResult } from "@breatic/shared";
+import type { NodeTaskAction, NodeTaskResult } from "@breatic/shared";
 
 /** A dedup hit: the canonical asset the client should reuse. */
 export interface DedupHit {
@@ -115,6 +115,9 @@ export async function checkUploadDedup(params: {
  * @param params.metadata.filename - The name the file was picked under.
  * @param params.metadata.size - The file's byte size as the browser declared it.
  * @param params.metadata.mimeType - The file's content type.
+ * @param params.row - What the row's first line names, and its label.
+ * @param params.row.action - The row's action.
+ * @param params.row.label - The row's label.
  * @param params.nodeId - The node, when this upload has one.
  * @param params.spaceId - The space that node lives in.
  * @throws {unknown} When the event cannot be published.
@@ -124,6 +127,8 @@ export async function settleDedupHit(params: {
   hit: DedupHit;
   userId: string;
   metadata: { filename: string; size: number; mimeType: string };
+  /** What the row's first line names, and the label beside it. */
+  row: { action: NodeTaskAction; label: string };
   nodeId?: string | undefined;
   spaceId?: string | undefined;
 }): Promise<void> {
@@ -189,9 +194,10 @@ export async function settleDedupHit(params: {
     spaceId: params.spaceId,
     nodeId: params.nodeId,
     kind: "upload",
+    action: params.row.action,
     startedByUserId: params.userId,
     budgetMs: 0,
-    label: params.metadata.filename,
+    label: params.row.label,
   });
   const settled = await nodeTaskService.settle({
     taskId: opened.id,

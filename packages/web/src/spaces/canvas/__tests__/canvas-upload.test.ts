@@ -209,7 +209,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       extractText: vi.fn().mockResolvedValue('extracted body'),
       onTypeMismatch: vi.fn(),
       setContent: vi.fn(),
-      setError: vi.fn(),
+      onExtractionFailure: vi.fn(),
       // The only exit for a failed upload. It is required: this module keeps
       // no copy of the sentences a user reads, so every failure hands its
       // reason out and CanvasSpace decides how to present it.
@@ -234,7 +234,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
 
     expect(deps.onUploadFailure).toHaveBeenCalledOnce();
     expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.setError).not.toHaveBeenCalled();
+    expect(deps.onExtractionFailure).not.toHaveBeenCalled();
   });
 
   // The node opens handling and stays there. What it ends up holding comes
@@ -251,8 +251,24 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     );
     expect(deps.sendToIngest).toHaveBeenCalledOnce();
     expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.setError).not.toHaveBeenCalled();
+    expect(deps.onExtractionFailure).not.toHaveBeenCalled();
     expect(deps.extractText).not.toHaveBeenCalled();
+  });
+
+  // inner#888 §7.5: a browser tool's export names the tool on its ticket, so
+  // its task row reads as that tool.
+  it('media file: puts the mini-tool tag on the ticket', async () => {
+    const deps = makeDeps({ tag: { source: 'mini_tool', toolName: 'image-rotate' } });
+    await fillNodeFromFile(
+      'n1',
+      new File(['x'], 'p.png', { type: 'image/png' }),
+      'image',
+      'p1',
+      deps,
+    );
+    expect(deps.requestTicket).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'mini_tool', toolName: 'image-rotate', nodeId: 'n1' }),
+    );
   });
 
   it('media upload failure: reports the reason, and does not write the node itself', async () => {
@@ -268,7 +284,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       { reason: 'upload' },
       file,
     );
-    expect(deps.setError).not.toHaveBeenCalled();
+    expect(deps.onExtractionFailure).not.toHaveBeenCalled();
   });
 
   it('non-media file: extract text locally → fill content (no upload)', async () => {
@@ -284,19 +300,17 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     expect(deps.setContent).toHaveBeenCalledExactlyOnceWith('n1', 'extracted body');
   });
 
-  it('extraction failure: writes a fixed-English error', async () => {
+  // inner#888 §7.8: a failure that never reached the server has no task row,
+  // so it is told to the person who caused it and the node is left as it was
+  // (decisions 2026-09-19: nodes are never deleted, row-less failures toast).
+  it('extraction failure: hands the file to the toast and leaves the node untouched', async () => {
     const deps = makeDeps({
       extractText: vi.fn().mockRejectedValue(new Error('no parser')),
     });
-    await fillNodeFromFile(
-      'n1',
-      new File(['x'], 'weird.bin', { type: 'application/octet-stream' }),
-      'text',
-      'p1',
-      deps,
-    );
+    const file = new File(['x'], 'weird.bin', { type: 'application/octet-stream' });
+    await fillNodeFromFile('n1', file, 'text', 'p1', deps);
     expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.setError).toHaveBeenCalledExactlyOnceWith('n1', 'Extraction failed: weird.bin');
+    expect(deps.onExtractionFailure).toHaveBeenCalledExactlyOnceWith(file);
   });
 
   it('type gate: an mp4 VIDEO picked into an AUDIO node is refused - nothing runs (user bug 2026-07-03: macOS lets audio/* pickers select .mp4)', async () => {
@@ -311,7 +325,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     expect(deps.onTypeMismatch).toHaveBeenCalledExactlyOnceWith('n1');
     expect(deps.requestTicket).not.toHaveBeenCalled();
     expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.setError).not.toHaveBeenCalled();
+    expect(deps.onExtractionFailure).not.toHaveBeenCalled();
   });
 
   it('type gate: an audio-only mp4 container (audio/mp4, .m4a) into an AUDIO node is ACCEPTED', async () => {

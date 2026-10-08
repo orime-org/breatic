@@ -15,7 +15,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import type { NodeTaskEntry } from '@web/data/api/canvas';
+import type { NodeTaskEntry } from '@breatic/shared';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
 
@@ -36,6 +36,7 @@ function entry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
     spaceId: 's-1',
     nodeId: 'n-1',
     kind: 'upload',
+    action: 'upload',
     status: 'running',
     startedByUserId: 'u-1',
     startedAt: OPENED,
@@ -76,7 +77,7 @@ function renderPanel(
         readOnly={false}
         onReload={(): void => {}}
         onClose={(): void => {}}
-        onReplace={(): void => {}}
+        onView={(): void => {}}
         onRetry={(): void => {}}
         onDismiss={(): void => {}}
         {...props}
