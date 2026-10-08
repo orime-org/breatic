@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 
 import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js";
-import { inputRefusal, opRuns } from "@ingest/jobs/op-args.js";
+import { inputRefusal, opRuns, outputRefusal } from "@ingest/jobs/op-args.js";
 import { pickMediaMetadata, NOTHING_FOUND } from "@ingest/media-metadata.js";
 import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pngSize } from "@ingest/png-size.js";
@@ -99,8 +99,8 @@ export async function runJob(job: RunBody): Promise<void> {
   let ok = false;
   let reason: ContainerFailure | undefined;
   try {
-    const source = await runTool("ffprobe", probeArgs(job.input), job.toolTimeoutMs);
-    const refused = inputRefusal(job.op, readProbeOutput(source.toString("utf8")));
+    const source = readProbeOutput((await runTool("ffprobe", probeArgs(job.input), job.toolTimeoutMs)).toString("utf8"));
+    const refused = inputRefusal(job.op, source);
     if (refused !== null) {
       reason = refused;
       throw new Error(`source refused: ${refused}`);
@@ -109,13 +109,18 @@ export async function runJob(job: RunBody): Promise<void> {
       const file = join(dir, "out.mp4");
       // An operation runs as long as its job's deadline allows; the Durable
       // Object destroys the container when that passes.
-      for (const args of opRuns(job.op, job.params, job.input, file, dir)) {
+      for (const args of opRuns(job.op, job.params, job.input, file, dir, source)) {
         await runTool("ffmpeg", args, 0);
       }
-      await put(output.url, file);
-
       const probed = await runTool("ffprobe", probeArgs(file, "own-file"), job.toolTimeoutMs).catch(() => null);
-      const numbers = pickMediaMetadata(probed === null ? NOTHING_FOUND : readProbeOutput(probed.toString("utf8")));
+      const report = probed === null ? NOTHING_FOUND : readProbeOutput(probed.toString("utf8"));
+      const empty = outputRefusal(report);
+      if (empty !== null) {
+        reason = empty;
+        throw new Error(`output refused: ${empty}`);
+      }
+      await put(output.url, file);
+      const numbers = pickMediaMetadata(report);
       let cover: { width: number | null; height: number | null } | null = null;
       if (output.coverUrl !== undefined && numbers.width !== null) {
         const frame = await runTool("ffmpeg", coverArgs(file, "own-file"), job.toolTimeoutMs, COVER_MAX_BYTES).catch(() => null);

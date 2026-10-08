@@ -11,12 +11,13 @@
 import { describe, expect, it } from "vitest";
 import { buildAdjustVideoFilter, defaultAdjustValue } from "@breatic/shared";
 
-import { inputRefusal, opRuns } from "@ingest/jobs/op-args.js";
+import { inputRefusal, opRuns, outputRefusal } from "@ingest/jobs/op-args.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 
 const IN = "http://r2.local/video/in.mp4";
 const OUT = "/tmp/job/out.mp4";
 const WORK = "/tmp/job";
+const EVEN = "scale=trunc(iw/2)*2:trunc(ih/2)*2";
 
 /**
  * The value after a flag in one run.
@@ -39,7 +40,7 @@ describe("opRuns", () => {
 
   it("changes speed on both tracks, chaining atempo past its range", () => {
     const [fast] = opRuns("speed", { rate: 2 }, IN, OUT, WORK);
-    expect(after(fast!, "-filter:v")).toBe("setpts=PTS/2.000000");
+    expect(after(fast!, "-filter:v")).toBe(`${EVEN},setpts=PTS/2.000000`);
     expect(after(fast!, "-filter:a")).toBe("atempo=2.000000");
     const [slow] = opRuns("speed", { rate: 0.25 }, IN, OUT, WORK);
     expect(after(slow!, "-filter:a")).toBe("atempo=0.500000,atempo=0.500000");
@@ -54,7 +55,7 @@ describe("opRuns", () => {
   it("adjusts with the filter the panel's sliders describe", () => {
     const value = { ...defaultAdjustValue, contrast: 20 };
     const [run] = opRuns("adjust", { value }, IN, OUT, WORK);
-    expect(after(run!, "-vf")).toBe(buildAdjustVideoFilter(value));
+    expect(after(run!, "-vf")).toBe(`${EVEN},${buildAdjustVideoFilter(value)}`);
   });
 
   it("denoises the sound and copies the picture", () => {
@@ -66,8 +67,8 @@ describe("opRuns", () => {
   it("stabilises in two passes over one transform file", () => {
     const runs = opRuns("stabilize", { shakiness: 7, smoothing: 15 }, IN, OUT, WORK);
     expect(runs).toHaveLength(2);
-    expect(after(runs[0]!, "-vf")).toBe("vidstabdetect=shakiness=7:result=/tmp/job/transforms.trf");
-    expect(after(runs[1]!, "-vf")).toBe("vidstabtransform=smoothing=15:input=/tmp/job/transforms.trf");
+    expect(after(runs[0]!, "-vf")).toBe(`${EVEN},vidstabdetect=shakiness=7:result=/tmp/job/transforms.trf`);
+    expect(after(runs[1]!, "-vf")).toBe(`${EVEN},vidstabtransform=smoothing=15:input=/tmp/job/transforms.trf`);
     expect(runs[1]!.at(-1)).toBe(OUT);
   });
 
@@ -88,7 +89,7 @@ describe("opRuns", () => {
   // zimg then finds no path between colorspaces ("code 3074").
   it("names the primaries the linear step writes", () => {
     const [pq] = opRuns("hdr", { transfer: "pq" }, IN, OUT, WORK);
-    const linear = after(pq!, "-vf")!.split(",")[0]!;
+    const linear = after(pq!, "-vf")!.split(",")[1]!;
     expect(linear.split(":")).toContain("p=bt709");
   });
 });
@@ -114,5 +115,71 @@ describe("inputRefusal", () => {
     for (const op of ["crop", "speed", "cut", "adjust", "stabilize", "hdr"] as const) {
       expect(inputRefusal(op, probe("video"))).toBeNull();
     }
+  });
+});
+
+/** A probe of one video stream, with the colour tags given. */
+function videoProbe(tags: { colorTransfer?: string; colorPrimaries?: string; colorSpace?: string } = {}): ProbeReport {
+  return {
+    streams: [{ index: 0, codecType: "video", codecName: "h264", width: 640, height: 360, attachedPic: false, ...tags }],
+    durationSeconds: 8,
+  };
+}
+
+describe("the runs every encoding operation shares", () => {
+  const encoding = [
+    ["speed", { rate: 2 }],
+    ["cut", { range: { start: 1, end: 2 } }],
+    ["adjust", { value: defaultAdjustValue }],
+    ["stabilize", { shakiness: 5, smoothing: 10 }],
+    ["hdr", { transfer: "pq" }],
+  ] as const;
+
+  // An odd-sized source is legal, and the encoders, vidstab and zscale all
+  // refuse odd sides, so the rounding comes before every other filter.
+  it("rounds the frame to even sides before any other filter", () => {
+    for (const [op, params] of encoding) {
+      for (const run of opRuns(op, params, IN, OUT, WORK, videoProbe())) {
+        const filter = after(run, "-vf") ?? after(run, "-filter:v") ?? "";
+        expect(filter.startsWith(`${EVEN},`) || filter === EVEN, `${op}: ${filter}`).toBe(true);
+      }
+    }
+  });
+
+  // The source is read through the protocols the object is served over and no other.
+  it("reads the source through http alone", () => {
+    for (const [op, params] of [...encoding, ["crop", { rect: null }], ["audio_denoise", { intensity: 50 }]] as const) {
+      for (const run of opRuns(op, params as Record<string, unknown>, IN, OUT, WORK, videoProbe())) {
+        if (!run.includes(IN)) continue;
+        expect(run.indexOf("-protocol_whitelist"), op).toBeGreaterThanOrEqual(0);
+        expect(after(run, "-protocol_whitelist"), op).toBe("http,tcp");
+        expect(run.indexOf("-protocol_whitelist"), op).toBeLessThan(run.indexOf(IN));
+      }
+    }
+  });
+});
+
+describe("HDR colour", () => {
+  it("reads the source as its own tags say", () => {
+    const [run] = opRuns("hdr", { transfer: "pq" }, IN, OUT, WORK, videoProbe({ colorTransfer: "arib-std-b67", colorPrimaries: "bt2020", colorSpace: "bt2020nc" }));
+    expect(after(run!, "-vf")).toContain(`${EVEN},zscale=tin=arib-std-b67:pin=bt2020:min=bt2020nc:`);
+  });
+
+  it("reads a tag it lacks, or one zscale does not know, as BT.709", () => {
+    const [run] = opRuns("hdr", { transfer: "pq" }, IN, OUT, WORK, videoProbe({ colorTransfer: "gamma22" }));
+    expect(after(run!, "-vf")).toContain(`${EVEN},zscale=tin=bt709:pin=bt709:min=bt709:`);
+  });
+
+  // SDR white lands at 203 nits; the HDR step is where zimg uses the peak.
+  it("names the nominal peak on the step that writes the HDR transfer", () => {
+    const [run] = opRuns("hdr", { transfer: "pq" }, IN, OUT, WORK, videoProbe());
+    expect(after(run!, "-vf")).toContain("zscale=p=bt2020:t=smpte2084:m=bt2020nc:r=tv:npl=203");
+  });
+});
+
+describe("outputRefusal", () => {
+  it("fails an output with no picture", () => {
+    expect(outputRefusal({ streams: [{ index: 0, codecType: "audio", codecName: "aac", width: null, height: null, attachedPic: false }], durationSeconds: 1 })).toBe("tool_failed");
+    expect(outputRefusal(videoProbe())).toBeNull();
   });
 });

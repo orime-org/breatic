@@ -56,7 +56,7 @@ export function probeArgs(objectUrl: string, from: ReadFrom = "object"): string[
     "-protocol_whitelist",
     protocolsFor(from),
     "-show_entries",
-    "stream=index,codec_type,codec_name,width,height:stream_side_data=rotation:stream_disposition=attached_pic:format=duration",
+    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space:stream_side_data=rotation:stream_disposition=attached_pic:format=duration",
     "-of",
     "json",
     objectUrl,
@@ -131,6 +131,9 @@ interface RawStream {
   height?: number;
   disposition?: { attached_pic?: number };
   side_data_list?: { rotation?: unknown }[];
+  color_transfer?: string;
+  color_primaries?: string;
+  color_space?: string;
 }
 
 /**
@@ -187,6 +190,9 @@ export function readProbeOutput(stdout: string): ProbeReport {
     height: raw.height ?? null,
     attachedPic: raw.disposition?.attached_pic === 1,
     ...spreadRotation(raw),
+    ...(raw.color_transfer === undefined ? {} : { colorTransfer: raw.color_transfer }),
+    ...(raw.color_primaries === undefined ? {} : { colorPrimaries: raw.color_primaries }),
+    ...(raw.color_space === undefined ? {} : { colorSpace: raw.color_space }),
   }));
   return {
     streams,

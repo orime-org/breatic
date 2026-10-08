@@ -249,3 +249,23 @@ describe("what the display matrix reads as", () => {
     expect(read.streams[0]).not.toHaveProperty("rotation");
   });
 });
+
+// HDR reads the source as its own colour tags describe it.
+describe("what the colour tags read as", () => {
+  it("asks for them and carries the ones a stream names", () => {
+    const entries = probeArgs(URL_FOR_KEY)[probeArgs(URL_FOR_KEY).indexOf("-show_entries") + 1];
+    expect(entries).toContain("color_transfer,color_primaries,color_space");
+
+    const read = readProbeOutput(
+      JSON.stringify({
+        streams: [
+          { index: 0, codec_type: "video", color_transfer: "arib-std-b67", color_primaries: "bt2020", color_space: "bt2020nc" },
+          { index: 1, codec_type: "audio" },
+        ],
+        format: {},
+      }),
+    );
+    expect(read.streams[0]).toMatchObject({ colorTransfer: "arib-std-b67", colorPrimaries: "bt2020", colorSpace: "bt2020nc" });
+    expect(read.streams[1]).not.toHaveProperty("colorTransfer");
+  });
+});
