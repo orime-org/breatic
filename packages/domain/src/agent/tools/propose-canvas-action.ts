@@ -42,6 +42,7 @@ import {
   GENERATION_TEMPLATES,
   extractPromptText,
   markedSegments,
+  markReadsBack,
   GENERATION_NODE_MODES,
   MAX_NODE_NAME_LEN,
   PANEL_EDITOR_PARAM,
@@ -81,6 +82,9 @@ export type ProposalVerdict = { ok: true } | { ok: false; reason: string };
 // with nothing beside it, or a mark naming nothing. The prompt's own text is
 // the exception and is left alone -- a segment of one space is how two marks
 // are kept apart, and trimming it would run them together.
+/** Why a label holding its own closing bracket is refused: written out, it would read back cut short. */
+const LABEL_BRACKET = "A label may not hold the bracket that closes its mark: ] for asset, } for tweak, ) for note.";
+
 const promptSegment = z.union([
   z.object({ text: z.string().min(1) }).strict(),
   z
@@ -109,18 +113,20 @@ const promptSegment = z.union([
               .min(1)
               .describe("The line this puts on the card"),
           })
-          .strict(),
+          .strict()
+          .refine(markReadsBack, { message: LABEL_BRACKET }),
         z
           .object({
             kind: z
               .literal("note")
               .describe(
                 "How to operate the panel, never sent to the model: e.g. which slot to pick a node " +
-                  "into, for material a model takes through a slot rather than an @",
+                  "into, or that a text node is @'d in the lyrics box",
               ),
             label: z.string().trim().min(1).describe("The note, which is also the card's line"),
           })
-          .strict(),
+          .strict()
+          .refine(markReadsBack, { message: LABEL_BRACKET }),
       ]),
     })
     .strict(),
@@ -212,7 +218,7 @@ export const inputSchema = z
               .describe(
                 "Where the node wired in goes: \"pool\" (the reader @s it into the prompt; an asset mark each), " +
                   "the name of a slot the model has (the reader picks it in the panel; a note each when the slot is optional), " +
-                  "or \"lyrics\" for words the reader @s into a song model's lyrics box (a note each). Needed " +
+                  `or "${PANEL_EDITOR_PARAM}" for words the reader @s into a song model's lyrics box (a note each). Needed ` +
                   "when the model takes that kind more than one way",
               ),
           })
@@ -374,7 +380,7 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
         ok: false,
         reason: info.valuesFrom !== undefined
           ? `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here. Leave it out and add a note saying which one to pick.`
-          : `"${key}" is written in a box of its own on the panel, and nothing set here reaches it. Leave it out and add a note saying what to write in that box.`,
+          : `"${key}" is written in a box of its own on the panel, and nothing set here reaches it. Leave it out: send words you wrote as a written text node wired in with into: "${key}" and a note, or add a note saying what to write in that box.`,
       };
     }
     if (info.filledBySource === true) {
@@ -536,7 +542,9 @@ function checkGenerateNode(
   for (const edge of proposal.edges.filter((e) => e.toIndex === index)) {
     const from = proposal.nodes[edge.fromIndex];
     if (!from) continue;
-    const options = ways.get(from.type) ?? [];
+    // A slot of a kind the canvas will not wire in is filled by picking, and
+    // the edge itself is refused with the rest of the wiring.
+    const options = (ways.get(from.type) ?? []).filter((way) => way.byEdge);
     // An edge the model takes nothing from still carries the creative link
     // (user 2026-08-13); saying where it goes is a claim the model refutes.
     if (options.length === 0) {
@@ -554,14 +562,15 @@ function checkGenerateNode(
   }
   // Over a way's room is said first: the fix there is fewer nodes, and every
   // count below would otherwise ask for a mark or note for a node to remove.
-  for (const option of new Set(routed.map(({ way }) => way))) {
-    const going = routed.filter(({ way }) => way === option).map(({ node: n }) => n);
-    if (going.length > option.room) {
-      const elsewhere = (ways.get(going[0]?.type ?? "text")?.length ?? 0) > 1;
-      return {
-        ok: false,
-        reason: `"${model}" takes ${String(option.room)} ${going[0]?.type ?? ""} node(s) by "${option.into}", and ${String(going.length)} are wired that way (${going.map((n) => `"${n.name}"`).join(", ")}).${elsewhere ? " Send the rest another way it takes, or wire fewer." : " Wire fewer."}`,
-      };
+  for (const [kind, list] of ways) {
+    for (const option of list) {
+      const going = routed.filter(({ way }) => way === option).map(({ node: n }) => n);
+      if (going.length > option.room) {
+        return {
+          ok: false,
+          reason: `"${model}" takes ${String(option.room)} ${kind} node(s) by "${option.into}", and ${String(going.length)} are wired that way (${going.map((n) => `"${n.name}"`).join(", ")}).${list.length > 1 ? " Send the rest another way it takes, or wire fewer." : " Wire fewer."}`,
+        };
+      }
     }
   }
   // Counted, never paired: each way says what the prompt carries per node.

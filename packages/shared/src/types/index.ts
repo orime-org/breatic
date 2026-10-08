@@ -116,7 +116,9 @@ export type {
 } from "@shared/types/canvas-proposal.js";
 export {
   layersOf,
+  markReadsBack,
   markText,
+  writtenMark,
   markedSegments,
   proposalMarkSegments,
   promptPlainText,

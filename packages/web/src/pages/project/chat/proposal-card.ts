@@ -168,8 +168,8 @@ function runsOf(proposal: CanvasProposal): number[] {
  * @throws {never} Never.
  */
 export function todosOf(proposal: CanvasProposal, lines: PanelLines): NodeTodos[] {
-  // Every mark is done in the panel of the generation whose prompt carries
-  // it -- the reader @s by hand there -- so its line goes under that node.
+  // Each mark's line goes under the node whose words carry it: the reader
+  // acts on it there, by hand.
   const notes = new Map<number, string[]>();
   proposal.nodes.forEach((node, at) => {
     const held: string[] = [];

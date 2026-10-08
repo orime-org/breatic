@@ -39,6 +39,21 @@ const MARK_FORM: Readonly<Record<SlotKind, { open: string; symbol: string; close
 };
 
 /**
+ * A mark as words: the bracket, symbol and label of its kind, the label of a
+ * reference wrapped in the words asking the reader to @ it. A template's
+ * locale prompt writes marks this way, and so does the prompt handed to the
+ * agent; {@link markedSegments} reads them back.
+ * @param slot - The spot the reader acts on.
+ * @returns The bracketed text.
+ * @throws {never} Never.
+ */
+export function writtenMark(slot: NonNullable<PromptSegment["slot"]>): string {
+  const { open, symbol, close } = MARK_FORM[slot.kind];
+  const words = slot.kind === "asset" ? t("canvas.promptMark.reference", { label: slot.label }) : slot.label;
+  return `${open}${symbol} ${words}${close}`;
+}
+
+/**
  * What one marked spot puts in the prompt text.
  *
  * Written here because two sides need the same answer: the canvas writes this
@@ -53,10 +68,19 @@ const MARK_FORM: Readonly<Record<SlotKind, { open: string; symbol: string; close
  * @throws {never} Never.
  */
 export function markText(slot: NonNullable<PromptSegment["slot"]>): string {
-  if (slot.kind === "note") return "";
-  const { open, symbol, close } = MARK_FORM[slot.kind];
-  const words = slot.kind === "asset" ? t("canvas.promptMark.reference", { label: slot.label }) : slot.label;
-  return `${open}${symbol} ${words}${close}`;
+  return slot.kind === "note" ? "" : writtenMark(slot);
+}
+
+/**
+ * Whether a mark written as words reads back as the same mark: a label
+ * holding the bracket that closes its kind would read back cut short.
+ * @param slot - The spot the reader acts on.
+ * @returns True when {@link markedSegments} gives the same kind and label back.
+ * @throws {never} Never.
+ */
+export function markReadsBack(slot: NonNullable<PromptSegment["slot"]>): boolean {
+  const [only, ...rest] = markedSegments(writtenMark(slot));
+  return rest.length === 0 && only?.slot?.kind === slot.kind && only.slot.label === slot.label;
 }
 
 /** The kinds in the order {@link MARK_PATTERN} lists them, one capture group each. */
@@ -96,8 +120,8 @@ function bareReferenceLabel(label: string): string {
 /**
  * Read a prompt into segments: each `[📎 …]`, `{✏️ …}` and `(💡 …)` becomes
  * the mark it stands for, the label doubling as the card's line where the
- * kind has one. The inverse of {@link markText}: a template's locale prompt
- * and a prompt copied out of a box read back to the same label.
+ * kind has one. The inverse of {@link writtenMark}: a template's locale
+ * prompt and a prompt copied out of a box read back to the same label.
  * @param text - The prompt as a locale file or a box writes it.
  * @returns Its segments.
  * @throws {never} Never.

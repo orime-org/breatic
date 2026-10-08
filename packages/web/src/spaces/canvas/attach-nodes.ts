@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { isGenerationNodeType, type ChatAttachedChip, type ModelCatalog } from '@breatic/shared';
+import { isGenerationNodeType, writtenMark, type ChatAttachedChip, type ModelCatalog } from '@breatic/shared';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import * as Y from 'yjs';
 
@@ -39,7 +39,7 @@ export interface NodeReaders {
  */
 function mentionText(element: Y.XmlElement): string | undefined {
   // A note is handed over too: the agent is given everything the node holds.
-  if (element.nodeName === PROMPT_NOTE_NODE) return `(💡 ${String(element.getAttribute(PROMPT_NOTE_LABEL_ATTR) ?? '')})`;
+  if (element.nodeName === PROMPT_NOTE_NODE) return writtenMark({ kind: 'note', label: String(element.getAttribute(PROMPT_NOTE_LABEL_ATTR) ?? '') });
   if (element.nodeName !== REFERENCE_MENTION_NODE) return undefined;
   const label = element.getAttribute(MENTION_LABEL_ATTR) ?? element.getAttribute(MENTION_KIND_ATTR);
   return `@${String(label ?? '')}`;
