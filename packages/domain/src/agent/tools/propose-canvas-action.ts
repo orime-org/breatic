@@ -458,11 +458,16 @@ interface Routed {
  * @param proposal - The whole proposal.
  * @param index - The generation's index.
  * @param chosen - Its model.
+ * @param ways - Its ways in, as `waysIn` gives them.
  * @returns Each routed node, or the refusal for the first edge that says no way the model has.
  * @throws {never} Never.
  */
-function routeEdges(proposal: CanvasProposal, index: number, chosen: ModelInfo): { routed: Routed[] } | { reason: string } {
-  const ways = waysIn(chosen);
+function routeEdges(
+  proposal: CanvasProposal,
+  index: number,
+  chosen: ModelInfo,
+  ways: Map<WayKind, WayIn[]>,
+): { routed: Routed[] } | { reason: string } {
   const routed: Routed[] = [];
   for (const edge of proposal.edges.filter((e) => e.toIndex === index)) {
     const from = proposal.nodes[edge.fromIndex];
@@ -576,14 +581,14 @@ function checkGenerateNode(
     };
   }
   const ways = waysIn(chosen);
-  const routing = routeEdges(proposal, index, chosen);
+  const routing = routeEdges(proposal, index, chosen, ways);
   if ("reason" in routing) return { ok: false, reason: routing.reason };
   const { routed } = routing;
   // Over a way's room is said first: the fix there is fewer nodes, and every
   // count below would otherwise ask for a mark or note for a node to remove.
   for (const [kind, list] of ways) {
     for (const option of list) {
-      const going = routed.filter(({ node: n, way }) => n.type === kind && way.into === option.into).map(({ node: n }) => n);
+      const going = routed.filter(({ way }) => way === option).map(({ node: n }) => n);
       if (going.length > option.room) {
         return {
           ok: false,
@@ -777,8 +782,10 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
  * @throws {never} Never.
  */
 function markTypedAsWords(node: ProposalNode): ProposalVerdict {
-  // Each prompt is read as one string, a slot standing in as a character no
-  // label holds, so a mark typed across two text segments is caught too.
+  // Each prompt is read as one string, so a mark typed across two text
+  // segments is caught too. A slot stands in as one character: brackets typed
+  // around a mark read back as one mark that swallows it, as they would once
+  // written out.
   const typed = [node.prompt ?? [], ...(node.shots ?? []).map((shot) => shot.prompt)].flatMap((segments) =>
     markedSegments(segments.map((segment) => segment.text ?? "\u0000").join("")).flatMap((part) => (part.slot ? [part.slot] : [])),
   );
@@ -919,9 +926,10 @@ function checkEmptyNodesFit(proposal: CanvasProposal): ProposalVerdict {
 }
 
 /**
- * Whether every empty node left unwired for a slot has a note (design 5.7
- * table C). Such a node reaches a generation only by the reader picking it
- * into a slot, and the panel never says which node goes there.
+ * Whether every empty node no edge sends into a generation has a note (design
+ * 5.7 table C): unwired, or wired only as a creative link to a model that
+ * takes nothing from it. Such a node reaches a generation only by the reader
+ * picking it into a slot, and the panel never says which node goes there.
  *
  * Counted over the group, never paired: a slot is filled by clicking any node
  * of its kind, so the notes the group's generations carry beyond those their
@@ -931,24 +939,27 @@ function checkEmptyNodesFit(proposal: CanvasProposal): ProposalVerdict {
  * @throws {never} Never.
  */
 function checkUnwiredNotes(proposal: CanvasProposal): ProposalVerdict {
-  const wired = new Set(proposal.edges.map((edge) => edge.fromIndex));
+  const sent = new Set<ProposalNode>();
   const slotKinds = new Set<string>();
   let spare = 0;
   for (const [index, node] of proposal.nodes.entries()) {
     const chosen = chosenModelOf(node);
     if (!chosen) continue;
-    for (const [kind, list] of waysIn(chosen)) {
+    const ways = waysIn(chosen);
+    for (const [kind, list] of ways) {
       if (list.some((way) => way.into !== "pool")) slotKinds.add(kind);
     }
-    const routing = routeEdges(proposal, index, chosen);
-    const used = "routed" in routing ? routing.routed.filter(({ way }) => way.mark === "note").length : 0;
-    spare += notesIn(node) - used;
+    // Every generation passed checkGenerateNode, so its edges route.
+    const routing = routeEdges(proposal, index, chosen, ways);
+    if ("reason" in routing) continue;
+    for (const { node: from } of routing.routed) sent.add(from);
+    spare += notesIn(node) - routing.routed.filter(({ way }) => way.mark === "note").length;
   }
-  const loose = proposal.nodes.filter((node, i) => node.role === "source" && !wired.has(i) && slotKinds.has(node.type));
+  const loose = proposal.nodes.filter((node) => node.role === "source" && !sent.has(node) && slotKinds.has(node.type));
   if (loose.length <= spare) return { ok: true };
   return {
     ok: false,
-    reason: `${loose.map((n) => `"${n.name}"`).join(", ")} ${loose.length === 1 ? "is" : "are"} left unwired, so the reader picks ${loose.length === 1 ? "it" : "each"} into a slot in the panel, and the generations here carry ${String(Math.max(spare, 0))} note(s) beyond those their wired nodes use. Give each one a note saying which slot to pick it into.`,
+    reason: `${loose.map((n) => `"${n.name}"`).join(", ")} ${loose.length === 1 ? "goes" : "go"} into no generation by its edges, so the reader picks ${loose.length === 1 ? "it" : "each"} into a slot in the panel, and the generations here carry ${String(spare)} note(s) beyond those their wired nodes use. Give each one a note saying which slot to pick it into.`,
   };
 }
 

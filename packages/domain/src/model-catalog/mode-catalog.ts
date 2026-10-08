@@ -431,9 +431,9 @@ function isReferenceKind(accepts: string | undefined): accepts is ReferenceKind 
 /** What the reader writes in the prompt for a node going one way in. */
 export type WayMark = "asset" | "note";
 
-/** One way a node wired in reaches a generation, as the model declares it. */
+/** One way a node reaches a generation, as the model declares it. */
 export interface WayIn {
-  /** What an edge says to take this way: "pool", a slot's parameter name, or the lyrics box. */
+  /** "pool", a slot's parameter name, or the lyrics box; an edge names it where the node is wired in. */
   into: string;
   /** How many nodes this way takes. */
   room: number;
@@ -450,7 +450,7 @@ export interface WayIn {
 export type WayKind = ReferenceKind | "text";
 
 /**
- * Every way a model takes each kind of node wired into it (design 5.7 table
+ * Every way a model takes each kind of node reaching it (design 5.7 table
  * A): its pool, which the reader mentions from in the prompt box; each slot,
  * which the reader picks into in the panel; and for words, the prompt box and
  * the lyrics box, both of which the reader mentions them into.

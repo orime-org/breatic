@@ -150,7 +150,7 @@ function renderModel(model: PricedModelInfo): string {
     model.alsoServes && model.alsoServes.length > 0
       ? ` Also serves ${model.alsoServes.join(", ")} on this node, which is what parts of the line above describe.`
       : "";
-  // Where a node wired in goes and what the prompt carries for it, read off
+  // Where a node reaching the model goes and what the prompt carries for it, read off
   // the same ways the proposal check reads (design 5.7 tables A and D).
   const ways = waysIn(model);
   const routing = [...ways]
