@@ -121,16 +121,19 @@ test('a note at the top of a prompt shows in orange, and generation does not get
   );
 
   const note = page.getByTestId('generate-prompt-editor').locator('[data-prompt-note]');
-  await expect(note).toHaveText('Pick a picture in the panel');
-  const [color, warning] = await note.evaluate((el) => {
+  // It names itself before its words, in body text on the warning ground.
+  await expect(note.locator('[data-prompt-note-prefix]')).not.toBeEmpty();
+  await expect(note).toHaveText(/Pick a picture in the panel$/);
+  const [color, ground, want] = await note.evaluate((el) => {
     const probe = document.createElement('span');
-    probe.style.color = 'var(--color-status-warning-foreground)';
+    probe.style.color = 'var(--color-foreground)';
+    probe.style.backgroundColor = 'var(--color-status-warning-bg)';
     document.body.append(probe);
-    const want = getComputedStyle(probe).color;
+    const expected = [getComputedStyle(probe).color, getComputedStyle(probe).backgroundColor];
     probe.remove();
-    return [getComputedStyle(el).color, want];
+    return [getComputedStyle(el).color, getComputedStyle(el).backgroundColor, expected];
   });
-  expect(color).toBe(warning);
+  expect([color, ground]).toEqual(want);
 
   let sent: { params?: { prompt?: string } } | null = null;
   await page.route('**/canvas/tasks', async (route) => {

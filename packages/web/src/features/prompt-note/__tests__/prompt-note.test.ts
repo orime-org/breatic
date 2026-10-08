@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * A note in the prompt box (inner#977): orange, on a line of its own at the
- * top, deletable, never something the reader can type or paste into being,
- * and drawn as selected the way a selected mention is.
+ * A note in the prompt box (inner#977): on an orange ground and named as a
+ * note, on a line of its own at the top, deletable, never something the
+ * reader can type or paste into being, and drawn as selected the way a
+ * selected mention is.
  */
 
 import { readFileSync } from 'node:fs';

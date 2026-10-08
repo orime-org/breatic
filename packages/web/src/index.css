@@ -554,7 +554,7 @@ body {
    above draws the box's sentence on the line under the notes, which is not
    the editor's first child and so never gets `is-editor-empty`. */
 .prompt-note {
-  color: var(--color-status-warning-foreground);
+  color: var(--color-foreground);
   background-color: var(--color-status-warning-bg);
   border-radius: var(--radius-content-xs);
   padding: 0 4px;

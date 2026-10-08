@@ -18,6 +18,8 @@ import { mergeAttributes, Node } from '@tiptap/core';
 import { Plugin } from '@tiptap/pm/state';
 import { DecorationSet } from '@tiptap/pm/view';
 
+import { t } from '@breatic/shared';
+
 import { coveredNodeDecorations } from '@web/features/reference-mention/reference-mention-range-decoration';
 
 /** The node name a note is stored under, in the editor and in Yjs. */
@@ -55,6 +57,8 @@ export const PromptNote = Node.create({
     return [
       'div',
       mergeAttributes(HTMLAttributes, { 'data-prompt-note': '', class: 'prompt-note', contenteditable: 'false' }),
+      // The colour alone does not say what this line is, so it names itself.
+      ['span', { 'data-prompt-note-prefix': '' }, t('canvas.generatePanel.notePrefix')],
       String(node.attrs[PROMPT_NOTE_LABEL_ATTR] ?? ''),
     ];
   },
