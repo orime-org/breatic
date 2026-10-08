@@ -142,7 +142,7 @@ describe('MiniToolPanel', () => {
         },
       ],
     });
-    expect(screen.getByTestId('mini-tool-size-target_megapixels-4K')).toHaveTextContent('3072×4096');
+    expect(screen.getByTestId('mini-tool-size-target_megapixels-4K')).toHaveTextContent('≈3072×4096');
     expect(screen.getByTestId('mini-tool-size-target_megapixels-4K')).toHaveAttribute('aria-current', 'true');
     expect(screen.getByTestId('mini-tool-size-target_megapixels-2K')).toBeDisabled();
     fireEvent.click(screen.getByTestId('mini-tool-size-target_megapixels-8K'));

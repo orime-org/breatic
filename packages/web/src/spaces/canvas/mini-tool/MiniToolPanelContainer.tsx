@@ -10,6 +10,7 @@ import {
   isModelTool,
   miniToolById,
   miniToolEstimateInput,
+  tieredParamKeys,
   toolParamKeys,
   type MiniToolSnapshot,
   type MiniToolSpec,
@@ -179,14 +180,22 @@ function OpenMiniToolPanel({
   const crops = !isModelTool(spec) && spec.params.some((param) => param.kind === 'rect');
   const measured = draft?.sourceSize ?? null;
   const { spaceId } = useCanvasContext();
-  const shown = useShownSize(spaceId, nodeId, content, isModelTool(spec) && spec.params.some((p) => p.sizeTiers !== undefined));
+  const dataWidth = view !== undefined && 'width' in view ? view.width : undefined;
+  const dataHeight = view !== undefined && 'height' in view ? view.height : undefined;
+  // The picture is read off the node only when its data does not carry the size.
+  const shown = useShownSize(
+    spaceId,
+    nodeId,
+    content,
+    tieredParamKeys(spec).length > 0 && (dataWidth === undefined || dataHeight === undefined),
+  );
   const source = React.useMemo<MiniToolSourceInfo>(
     () => ({
-      width: crops ? measured?.width : ((view !== undefined && 'width' in view ? view.width : undefined) ?? shown?.width),
-      height: crops ? measured?.height : ((view !== undefined && 'height' in view ? view.height : undefined) ?? shown?.height),
+      width: crops ? measured?.width : (dataWidth ?? shown?.width),
+      height: crops ? measured?.height : (dataHeight ?? shown?.height),
       duration: view !== undefined && 'duration' in view ? view.duration : undefined,
     }),
-    [crops, measured, view, shown],
+    [crops, measured, dataWidth, dataHeight, view, shown],
   );
 
   // The source took new content while the panel was open: whatever was
@@ -208,18 +217,18 @@ function OpenMiniToolPanel({
   }, [content, sourceContent, pickSession, endPick, spec, resetMiniToolSource, getLastWriteWasLocal, t]);
 
   const draftParams = draft?.params;
-  const params = React.useMemo(
-    () => resolvedParams(spec, entry, draftParams ?? {}, source),
-    [spec, entry, draftParams, source],
-  );
   const sizeTiers = React.useMemo(
     () => sizeTierChoices(spec, entry, draftParams ?? {}, source),
     [spec, entry, draftParams, source],
   );
+  const params = React.useMemo(
+    () => resolvedParams(spec, entry, draftParams ?? {}, source, sizeTiers),
+    [spec, entry, draftParams, source, sizeTiers],
+  );
   // A param chosen as an output size draws as tiers; the rest as the model's controls.
   const modelControls = React.useMemo(() => {
     if (entry === undefined) return undefined;
-    const tiered = new Set(isModelTool(spec) ? spec.params.filter((p) => p.sizeTiers !== undefined).map((p) => p.key) : []);
+    const tiered = new Set(tieredParamKeys(spec));
     return controlsForKeys(entry, toolParamKeys(spec).filter((key) => !tiered.has(key)));
   }, [entry, spec]);
   const slots = draft?.slots ?? NO_SLOTS;
@@ -254,6 +263,7 @@ function OpenMiniToolPanel({
     slots,
     sourceShown: content !== '' && (!crops || measured !== null),
     source,
+    tiers: sizeTiers,
     exporting,
   });
   const pickingSlot = pickSession?.purpose === 'miniToolSlot' ? (pickSession.slotKey ?? null) : null;

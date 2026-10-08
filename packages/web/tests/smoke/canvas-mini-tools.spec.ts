@@ -203,7 +203,7 @@ test('the upscale panel offers sizes measured on the picture @needs-internet', a
   await openTool(imageNode, 'image.upscale');
   const fourK = page.getByTestId('mini-tool-size-target_megapixels-4K');
   await expect(fourK).toHaveAttribute('aria-current', 'true');
-  await expect(fourK).toHaveText(/4K\s*\d+×4096|4K\s*4096×\d+/);
+  await expect(fourK).toHaveText(/4K\s*≈(\d+×4096|4096×\d+)/);
   await expect(page.getByTestId('generate-param-creativity-stop--10')).toHaveText('Closer to source');
   await expect(page.getByTestId('generate-param-creativity-stop-10')).toHaveText('More detail');
   const eightK = (await page.getByTestId('mini-tool-size-target_megapixels-8K').boundingBox())!;

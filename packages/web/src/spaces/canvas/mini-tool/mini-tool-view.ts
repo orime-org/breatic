@@ -13,6 +13,7 @@ import {
   defaultSizeTier,
   isModelTool,
   sizeTierOptions,
+  tieredParamKeys,
   type MiniToolSlotValue,
   type MiniToolSpec,
   type SizeTierOption,
@@ -80,7 +81,7 @@ export function sizeTierChoices(
   const size = { width: source.width, height: source.height };
   return spec.params.flatMap((param) => {
     if (param.sizeTiers === undefined) return [];
-    const options = sizeTierOptions(param.sizeTiers, size, entry?.params[param.key]?.max);
+    const options = sizeTierOptions(param.sizeTiers, size, entry?.params[param.key]);
     const picked = draft[param.key];
     const usable = options.some((option) => option.usable && option.label === picked);
     return [{ key: param.key, options, selected: usable ? (picked as string) : defaultSizeTier(options) }];
@@ -96,6 +97,7 @@ export function sizeTierChoices(
  * @param entry - The pinned model's catalog entry, for a model tool.
  * @param draft - The panel's draft params.
  * @param source - The source as the panel knows it.
+ * @param tiers - The size tiers as they fall on the source.
  * @returns The params by key.
  */
 export function resolvedParams(
@@ -103,6 +105,7 @@ export function resolvedParams(
   entry: ModelEntry | undefined,
   draft: Readonly<Record<string, unknown>>,
   source: MiniToolSourceInfo = {},
+  tiers: readonly SizeTierChoice[] = sizeTierChoices(spec, entry, draft, source),
 ): Record<string, unknown> {
   if (!isModelTool(spec)) {
     const out: Record<string, unknown> = { ...draft };
@@ -113,11 +116,11 @@ export function resolvedParams(
     }
     return out;
   }
-  const tiers = new Map(sizeTierChoices(spec, entry, draft, source).map((choice) => [choice.key, choice]));
+  const tierOf = new Map(tiers.map((choice) => [choice.key, choice]));
   const out: Record<string, unknown> = {};
   for (const param of spec.params) {
     if (param.sizeTiers !== undefined) {
-      const choice = tiers.get(param.key);
+      const choice = tierOf.get(param.key);
       const tier = choice?.options.find((option) => option.label === choice.selected);
       if (tier !== undefined) out[param.key] = tier.megapixels;
       continue;
@@ -182,6 +185,7 @@ export function slotLengthCap(
  * @param input.slots - The draft slots.
  * @param input.sourceShown - Whether the source node is showing its media.
  * @param input.source - The source as the panel knows it.
+ * @param input.tiers - The size tiers as they fall on the source.
  * @param input.exporting - Whether a browser tool's export is under way.
  * @returns The first reason in the order the reader would fix them, or null.
  */
@@ -192,6 +196,7 @@ export function miniToolRefusal(input: {
   slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined>>;
   sourceShown: boolean;
   source?: MiniToolSourceInfo;
+  tiers?: readonly SizeTierChoice[];
   exporting: boolean;
 }): MiniToolRefusal {
   const { spec, entry, prompt, slots, sourceShown, source = {}, exporting } = input;
@@ -201,9 +206,8 @@ export function miniToolRefusal(input: {
   const measuresLength = !isModelTool(spec) && spec.params.some((param) => param.kind === 'range');
   if (measuresLength && source.duration === undefined) return 'sourceMissing';
   // A size tier is measured on the source's pixel size, which arrives the same way.
-  const measuresSize = isModelTool(spec) && spec.params.some((param) => param.sizeTiers !== undefined);
-  if (measuresSize) {
-    const choices = sizeTierChoices(spec, entry, {}, source);
+  if (tieredParamKeys(spec).length > 0) {
+    const choices = input.tiers ?? sizeTierChoices(spec, entry, {}, source);
     if (choices.length === 0) return 'sourceMissing';
     if (choices.some((choice) => choice.selected === undefined)) return 'alreadyLargest';
   }

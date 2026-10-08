@@ -11,7 +11,8 @@ import { defaultAdjustValue } from "@shared/adjust-value.js";
 import { MINI_TOOLS } from "@shared/mini-tools/tools.js";
 import type { MiniToolParam, MiniToolSpec, ModelToolSpec, SizeTier } from "@shared/mini-tools/types.js";
 import type { EstimateInput } from "@shared/pricing/estimate.js";
-import type { ModelCatalog, ModelEntry } from "@shared/types/model-catalog.js";
+import type { ModelCatalog, ModelEntry, ParamDescriptor } from "@shared/types/model-catalog.js";
+import { paramValueAllowed } from "@shared/types/param-values.js";
 
 /** One piece of media picked into a slot. */
 export interface MiniToolSlotValue {
@@ -174,13 +175,14 @@ const DEFAULT_SIZE_TIER = "4K";
  * @param source - The source's pixel size.
  * @param source.width - Its width.
  * @param source.height - Its height.
- * @param maxMegapixels - The model's ceiling on the param, if it declares one.
+ * @param declared - The pinned model's declaration of the param, whose range the
+ * server holds every run to.
  * @returns One option per tier, in order.
  */
 export function sizeTierOptions(
   tiers: readonly SizeTier[],
   source: { width: number; height: number },
-  maxMegapixels: number | undefined,
+  declared: Pick<ParamDescriptor, "values" | "min" | "max" | "type"> | undefined,
 ): SizeTierOption[] {
   const long = Math.max(source.width, source.height);
   return tiers.map((tier) => {
@@ -188,9 +190,18 @@ export function sizeTierOptions(
     const width = Math.round(source.width * scale);
     const height = Math.round(source.height * scale);
     const megapixels = Math.round((width * height) / 10_000) / 100;
-    const usable = tier.longEdge > long && (maxMegapixels === undefined || megapixels <= maxMegapixels);
+    const usable = tier.longEdge > long && paramValueAllowed(declared ?? {}, megapixels);
     return { label: tier.label, width, height, megapixels, usable };
   });
+}
+
+/**
+ * The params a tool measures as output sizes on its source.
+ * @param spec - The tool.
+ * @returns Their keys; empty for a tool with none.
+ */
+export function tieredParamKeys(spec: MiniToolSpec): string[] {
+  return isModelTool(spec) ? spec.params.filter((param) => param.sizeTiers !== undefined).map((param) => param.key) : [];
 }
 
 /**

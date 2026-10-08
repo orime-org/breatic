@@ -144,7 +144,8 @@ const SizeTierGroup = React.memo(function SizeTierGroup({
           >
             <span>{option.label}</span>
             <span className='text-2xs tabular-nums text-muted-foreground'>
-              {option.width}×{option.height}
+              {/* The model settles the exact size on its own rounding. */}
+              ≈{option.width}×{option.height}
             </span>
           </Button>
         ))}
