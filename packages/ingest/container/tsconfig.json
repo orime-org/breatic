@@ -21,6 +21,7 @@
     "*.ts",
     "../src/probe-answer.ts",
     "../src/probe-command.ts",
-    "../src/media-metadata.ts"
+    "../src/media-metadata.ts",
+    "../src/preview-step.ts"
   ]
 }

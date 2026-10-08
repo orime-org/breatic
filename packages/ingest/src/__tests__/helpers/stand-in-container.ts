@@ -11,7 +11,11 @@
  */
 
 import { buildProbeAnswer, type ProbeRequest } from "@ingest/probe-answer.js";
-import { pickMediaMetadata, type ProbeReport } from "@ingest/media-metadata.js";
+import {
+  hasPreviewableFrame,
+  pickMediaMetadata,
+  type ProbeReport,
+} from "@ingest/media-metadata.js";
 import type { Env } from "@ingest/index.js";
 
 /** What a stand-in container was asked, and the namespace to pass in. */
@@ -29,11 +33,15 @@ export interface StandInRun {
  * @param cover - The frame there is to cut, or null when there is none. Handed
  *   back only where a real run would hand it back, so a suite cannot pin
  *   behaviour on an answer the container never gives.
+ * @param preview - The preview there is to write, or null when there is none.
+ *   Handed back under the same gate a real run applies: asked for, and cut
+ *   from the cover when a cover was asked for, otherwise from a still frame.
  * @returns The namespace and what it was asked.
  */
 export function containerAnswering(
   report: ProbeReport,
   cover: Uint8Array | null,
+  preview: Uint8Array | null = null,
 ): StandInRun {
   const run: StandInRun = {
     media: null as unknown as Env["MEDIA"],
@@ -60,7 +68,11 @@ export function containerAnswering(
         // behaviour on bytes no container ever hands back.
         const lifts =
           asked.wantCover && pickMediaMetadata(report).width !== null;
-        return buildProbeAnswer(report, lifts ? cover : null);
+        const cut = lifts ? cover : null;
+        const previews =
+          asked.wantPreview &&
+          (asked.wantCover ? cut !== null : hasPreviewableFrame(report));
+        return buildProbeAnswer(report, cut, previews ? preview : null);
       },
     }),
   } as unknown as Env["MEDIA"];

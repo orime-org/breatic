@@ -15,7 +15,7 @@ import {
   waitOnExecutionContext,
 } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import type { MediaLimits } from "@breatic/shared";
+import { previewKeyFor, type MediaLimits } from "@breatic/shared";
 import worker, { type Env } from "@ingest/index.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import { containerAnswering } from "./helpers/stand-in-container.js";
@@ -197,5 +197,81 @@ describe("a read of a stored object", () => {
       height: null,
       durationSeconds: null,
     });
+  });
+});
+
+// The deferred read of a project cover or avatar, and the backfill of objects
+// stored before previews existed, both ask for a preview here (inner#1320). The
+// answer says which of four things happened, so a run that could not start is
+// told apart from one that ran and had nothing to cut.
+describe("a read that asks for a preview", () => {
+  const PREVIEW_LIMITS: MediaLimits = { ...LIMITS, previewTimeoutMs: 10_000 };
+  const PREVIEW_BYTES = new Uint8Array([0x52, 0x49, 0x46, 0x46, 1, 2, 3]);
+
+  it("cuts and stores one when none stands", async () => {
+    const storageKey = await storedPicture();
+    const run = containerAnswering(PICTURE, null, PREVIEW_BYTES);
+
+    const response = await read(
+      { storageKey, contentType: "image/jpeg", limits: PREVIEW_LIMITS, wantPreview: true },
+      env.INGEST_SHARED_SECRET,
+      run.media,
+    );
+
+    expect(await response.json()).toEqual({
+      width: 800,
+      height: 450,
+      durationSeconds: null,
+      preview: "generated",
+    });
+    const stored = await env.BUCKET.get(previewKeyFor(storageKey));
+    expect(stored?.httpMetadata?.contentType).toBe("image/webp");
+    expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(PREVIEW_BYTES);
+  });
+
+  it("leaves a standing preview alone and still measures", async () => {
+    const storageKey = await storedPicture();
+    await env.BUCKET.put(previewKeyFor(storageKey), new Uint8Array([7]), {
+      httpMetadata: { contentType: "image/webp" },
+    });
+    const run = containerAnswering(PICTURE, null, PREVIEW_BYTES);
+
+    const response = await read(
+      { storageKey, contentType: "image/jpeg", limits: PREVIEW_LIMITS, wantPreview: true },
+      env.INGEST_SHARED_SECRET,
+      run.media,
+    );
+
+    expect(await response.json()).toMatchObject({ width: 800, preview: "existing" });
+    expect(run.asked).toMatchObject({ wantPreview: false });
+    const stored = await env.BUCKET.get(previewKeyFor(storageKey));
+    expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(new Uint8Array([7]));
+  });
+
+  it("answers none when the run finished without one", async () => {
+    const storageKey = await storedPicture();
+    const run = containerAnswering(PICTURE, null, null);
+
+    const response = await read(
+      { storageKey, contentType: "image/jpeg", limits: PREVIEW_LIMITS, wantPreview: true },
+      env.INGEST_SHARED_SECRET,
+      run.media,
+    );
+
+    expect(await response.json()).toMatchObject({ preview: "none" });
+    expect(await env.BUCKET.head(previewKeyFor(storageKey))).toBeNull();
+  });
+
+  it("answers failed when no container ran", async () => {
+    const storageKey = await storedPicture();
+
+    const response = await read({
+      storageKey,
+      contentType: "image/jpeg",
+      limits: PREVIEW_LIMITS,
+      wantPreview: true,
+    });
+
+    expect(await response.json()).toMatchObject({ preview: "failed" });
   });
 });

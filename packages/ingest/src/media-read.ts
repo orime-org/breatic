@@ -22,10 +22,10 @@ import { mediaObjectUrl, MEDIA_OBJECT_HOST } from "@ingest/media-object-route.js
 import {
   PROBE_PATH,
   readProbeAnswer,
+  UNREAD_ANSWER,
   type ProbeAnswer,
   type ProbeRequest,
 } from "@ingest/probe-answer.js";
-import { NOTHING_FOUND } from "@ingest/media-metadata.js";
 import { noted, noteFailure } from "@ingest/error-monitoring.js";
 import type { MediaContainer } from "@ingest/media-container.js";
 import type { MediaLimits } from "@breatic/shared";
@@ -53,10 +53,7 @@ export const SERVE_OBJECT = "serveObject";
 const PROBEABLE = /^(?:image|video|audio)\//;
 
 /** What one read answered, or nothing when it could not be run. */
-const NOTHING_READ: ProbeAnswer = Object.freeze({
-  report: NOTHING_FOUND,
-  cover: null,
-});
+const NOTHING_READ: ProbeAnswer = UNREAD_ANSWER;
 
 /** What the deadline resolves with, telling it apart from what a run answers. */
 const UNFINISHED = Symbol("unfinished");
@@ -75,6 +72,8 @@ const UNFINISHED = Symbol("unfinished");
  * @param about.contentType - What the stored bytes read as, which says whether
  *   ffmpeg has anything to say about it.
  * @param about.wantCover - Whether to ask for a frame as well.
+ * @param about.wantPreview - Whether to ask for a preview as well. Only
+ *   honoured when the limits name how long one may take.
  * @param about.limits - How long this run gets, and how long one tool inside
  *   it may take. Both come off `config/storage.yaml` by way of the caller; the
  *   Worker reads no configuration of its own.
@@ -86,16 +85,24 @@ export async function readMediaAtEdge(
     storageKey: string;
     contentType: string;
     wantCover: boolean;
+    wantPreview?: boolean;
     limits: MediaLimits;
   },
 ): Promise<ProbeAnswer> {
   if (!PROBEABLE.test(about.contentType)) return NOTHING_READ;
 
   const instance = env.MEDIA.get(env.MEDIA.idFromName(about.storageKey));
+  const previewTimeoutMs = about.limits.previewTimeoutMs ?? 0;
+  // Taken just before the timer below starts, so it is the instant that timer
+  // fires at.
+  const deadlineAt = Date.now() + about.limits.runDeadlineMs;
   const asked: ProbeRequest = {
     objectUrl: mediaObjectUrl(about.storageKey),
     wantCover: about.wantCover,
     toolTimeoutMs: about.limits.toolTimeoutMs,
+    wantPreview: about.wantPreview === true && previewTimeoutMs > 0,
+    previewTimeoutMs,
+    deadlineAt,
   };
 
   const answered = await Promise.race([

@@ -5,7 +5,8 @@
  * The media container's whole service (#209 + #210, design §4.2).
  *
  * One endpoint. It runs ffprobe over the object it was handed, lifts a cover
- * frame when asked for one, and answers with both. It decides nothing about
+ * frame when asked for one, cuts a preview when asked for one and there is
+ * still time, and answers with all three. It decides nothing about
  * what the media is: which stream carries the dimensions and whether a cover
  * is wanted are the caller's judgements, made where the stored bytes have
  * already been read.
@@ -27,7 +28,13 @@ import {
   PROBE_PATH,
   PROBE_PORT,
 } from "@ingest/probe-answer.js";
-import { probeArgs, coverArgs, readProbeOutput } from "@ingest/probe-command.js";
+import {
+  probeArgs,
+  coverArgs,
+  previewArgs,
+  readProbeOutput,
+} from "@ingest/probe-command.js";
+import { previewSource } from "@ingest/preview-step.js";
 import { NOTHING_FOUND, pickMediaMetadata } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import type { ProbeRequest } from "@ingest/probe-answer.js";
@@ -41,6 +48,12 @@ import type { ProbeRequest } from "@ingest/probe-answer.js";
  */
 const COVER_MAX_BYTES = 10 * 1024 * 1024;
 
+/**
+ * The most a preview may weigh. A 576-wide WebP of the noisiest frame measured
+ * on this ffmpeg came to 111,560 bytes (inner#1320 design §5.1).
+ */
+const PREVIEW_MAX_BYTES = 2 * 1024 * 1024;
+
 /** One run's request as it arrives: read before it is believed. */
 type IncomingRequest = Partial<Record<keyof ProbeRequest, unknown>>;
 
@@ -51,6 +64,7 @@ type IncomingRequest = Partial<Record<keyof ProbeRequest, unknown>>;
  * @param maxBytes - The most stdout may hold.
  * @param timeoutMs - How long it may run. It covers reading the object as well
  *   as the work, since both tools read over the network.
+ * @param stdin - Bytes to hand the tool on stdin, when it reads from there.
  * @returns What it wrote, or null when it failed or produced nothing.
  */
 async function run(
@@ -58,9 +72,10 @@ async function run(
   args: string[],
   maxBytes: number,
   timeoutMs: number,
+  stdin?: Uint8Array,
 ): Promise<Buffer | null> {
   return new Promise((resolve) => {
-    execFile(
+    const child = execFile(
       program,
       args,
       { encoding: "buffer", maxBuffer: maxBytes, timeout: timeoutMs },
@@ -88,6 +103,7 @@ async function run(
         resolve(stdout);
       },
     );
+    if (stdin !== undefined) child.stdin?.end(stdin);
   });
 }
 
@@ -133,6 +149,39 @@ async function probe(
   return { report, cover: cut === null ? null : new Uint8Array(cut) };
 }
 
+/**
+ * Cut a preview, when `previewSource` says what from.
+ * @param asked - What this run was asked.
+ * @param found - What the probe and the cover call produced.
+ * @param found.report - What ffprobe found.
+ * @param found.cover - The cover frame, when one was cut.
+ * @returns The WebP bytes, or null when none was cut.
+ */
+async function cutPreview(
+  asked: ProbeRequest,
+  found: { report: ProbeReport; cover: Uint8Array | null },
+): Promise<Uint8Array | null> {
+  const source = previewSource({
+    wantPreview: asked.wantPreview,
+    wantCover: asked.wantCover,
+    cover: found.cover,
+    report: found.report,
+    deadlineAt: asked.deadlineAt,
+    previewTimeoutMs: asked.previewTimeoutMs,
+    now: Date.now(),
+  });
+  if (source === null) return null;
+  const fromCover = source === "cover" ? found.cover : null;
+  const cut = await run(
+    "ffmpeg",
+    previewArgs(fromCover === null ? asked.objectUrl : "pipe:0"),
+    PREVIEW_MAX_BYTES,
+    asked.previewTimeoutMs,
+    fromCover ?? undefined,
+  );
+  return cut === null ? null : new Uint8Array(cut);
+}
+
 createServer((req, res) => {
   if (req.method !== "POST" || req.url !== PROBE_PATH) {
     res.writeHead(404).end();
@@ -157,13 +206,23 @@ createServer((req, res) => {
       res.writeHead(400).end();
       return;
     }
+    const request: ProbeRequest = {
+      objectUrl: asked.objectUrl,
+      wantCover: asked.wantCover === true,
+      toolTimeoutMs: asked.toolTimeoutMs,
+      wantPreview: asked.wantPreview === true,
+      previewTimeoutMs:
+        typeof asked.previewTimeoutMs === "number" ? asked.previewTimeoutMs : 0,
+      deadlineAt: typeof asked.deadlineAt === "number" ? asked.deadlineAt : 0,
+    };
 
     const found = await probe(
-      asked.objectUrl,
-      asked.wantCover === true,
-      asked.toolTimeoutMs,
+      request.objectUrl,
+      request.wantCover,
+      request.toolTimeoutMs,
     );
-    const answer = buildProbeAnswer(found.report, found.cover);
+    const preview = await cutPreview(request, found);
+    const answer = buildProbeAnswer(found.report, found.cover, preview);
     res.writeHead(200, {
       "content-type": answer.headers.get("content-type") ?? "",
     });

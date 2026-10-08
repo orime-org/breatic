@@ -132,10 +132,14 @@ export interface IngestOutcome {
  * file reaches it the way the session token's window does: on the request.
  */
 export interface MediaLimits {
-  /** The whole run: starting the container and both tools. */
+  /** The whole run: starting the container and every tool. */
   runDeadlineMs: number;
   /** One tool inside it, reads included. */
   toolTimeoutMs: number;
+  /**
+   * How long cutting a preview may take. Absent, no preview is asked for.
+   */
+  previewTimeoutMs?: number;
 }
 
 
