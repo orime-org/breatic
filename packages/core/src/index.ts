@@ -155,6 +155,7 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // @breatic/domain — collab never touches it.
 export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
 export * as projectsRepo from "@core/project/projects.repo.js";
+export * as projectEditsRepo from "@core/project/project-edits.repo.js";
 export {
   projectActivitiesRepo,
   encodeActivityCursor,

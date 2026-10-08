@@ -1056,6 +1056,7 @@
       "description": "{count, plural, one {# space · click to open or use the right menu} other {# spaces · click to open or use the right menu}}",
       "empty": "No spaces yet",
       "openAria": "Open {name}",
+      "rowActions": "View, lock or delete this Space",
       "status": {
         "editing": "Editing",
         "open": "Open"
@@ -1302,10 +1303,6 @@
     "inviteSent": "Invite sent.",
     "inviteFailed": "Could not send the invite. Please try again.",
     "invalidEmail": "Please enter a valid email address.",
-    "inviteLinkLabel": "Invite link",
-    "copyInviteLink": "Copy invite link",
-    "inviteLinkCopied": "Invite link copied.",
-    "inviteLinkCopyFailed": "Could not copy the link.",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
@@ -1460,7 +1457,11 @@
         "archived": "Archived",
         "archiveFailed": "Couldn't archive",
         "restored": "Restored",
-        "restoreFailed": "Couldn't restore"
+        "restoreFailed": "Couldn't restore",
+        "openedAt": "Opened {time}",
+        "editedAt": "Edited {time}",
+        "archivedAt": "Archived {time}",
+        "neverOpened": "Never opened"
       },
       "projects": {
         "new": "New project",
@@ -1620,7 +1621,18 @@
       },
       "toolbar": {
         "sortLabel": "Sort",
-        "sortValue": "Recently opened"
+        "sortValue": "Last opened",
+        "sort": {
+          "opened": "Last opened",
+          "edited": "Last edited",
+          "name": "Name",
+          "created": "Created",
+          "archived": "Archived"
+        },
+        "view": {
+          "grid": "Grid view",
+          "list": "List view"
+        }
       },
       "imageError": {
         "too_large": "That file is over 20 MB — pick a smaller image.",
@@ -1646,6 +1658,20 @@
       "archived": {
         "emptyTitle": "No archived projects",
         "emptyHint": "Archived projects show up here, and can be restored at any time."
+      },
+      "list": {
+        "columns": {
+          "name": "Name",
+          "opened": "Last opened",
+          "edited": "Last edited",
+          "created": "Created",
+          "archived": "Archived",
+          "role": "My role"
+        },
+        "loadFailed": "Projects did not load",
+        "pageFailed": "The rest of the projects did not load",
+        "retry": "Retry",
+        "end": "{count, plural, one {# project} other {# projects}}"
       }
     },
     "rail": {

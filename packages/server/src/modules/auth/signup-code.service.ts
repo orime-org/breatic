@@ -31,7 +31,7 @@ import {
   logger,
   sendMail,
 } from "@breatic/core";
-import { normalizeEmail, t } from "@breatic/shared";
+import { getActiveLocale, normalizeEmail, t } from "@breatic/shared";
 import type { UserEntity } from "@breatic/shared";
 
 const CODE_SPACE = 1_000_000;
@@ -140,7 +140,7 @@ return 1
  * deleted.
  *
  * KEYS[1] pending sign-up · ARGV[1] normalized address · ARGV[2] password
- * hash · ARGV[3] language.
+ * hash.
  * Returns the milliseconds the sign-up has left · 0 no such sign-up or another address.
  */
 const UPDATE_PENDING_SCRIPT = `
@@ -151,7 +151,7 @@ if held ~= ARGV[1] then
 end
 local left = redis.call('PTTL', KEYS[1])
 if left <= 0 then return 0 end
-redis.call('HSET', KEYS[1], 'passwordHash', ARGV[2], 'locale', ARGV[3])
+redis.call('HSET', KEYS[1], 'passwordHash', ARGV[2])
 return left
 `;
 
@@ -228,7 +228,6 @@ export async function startSignup(input: {
         signupKey(input.ticket),
         email,
         passwordHash,
-        input.locale,
       ),
     );
     if (leftMs > 0) {
@@ -251,7 +250,7 @@ export async function startSignup(input: {
   const { ttlSeconds } = getSignupCodeConfig();
   await redis
     .multi()
-    .hset(key, { email, passwordHash, locale: input.locale })
+    .hset(key, { email, passwordHash })
     .expire(key, ttlSeconds)
     .exec();
   try {
@@ -264,7 +263,9 @@ export async function startSignup(input: {
 
 /**
  * Mail a new code for the browser's pending sign-up; the old code stops
- * working and the count starts again.
+ * working and the count starts again. The mail is written in the language
+ * this request is made in, which follows the reader if they switched it on
+ * the code step.
  * @param ticket - The browser's ticket, or `null` when it has none.
  * @returns The ticket and the two timings the page shows.
  * @throws {AppError} 410 when there is no such pending sign-up.
@@ -272,14 +273,12 @@ export async function startSignup(input: {
  * @throws {AppError} 503 when the mail was not sent.
  */
 export async function resendSignupCode(ticket: string | null): Promise<SignupCodeSent> {
-  const pending =
-    ticket === null ? null : await getRedis().hmget(signupKey(ticket), "email", "locale");
-  const [email, locale] = pending ?? [null, null];
-  if (ticket === null || email == null || locale == null) {
+  const email = ticket === null ? null : await getRedis().hget(signupKey(ticket), "email");
+  if (ticket === null || email === null) {
     throw new AppError(HTTP_GONE, t("server.auth.signup_expired"));
   }
   await takeCooldown(email);
-  return sendCode(ticket, email, locale);
+  return sendCode(ticket, email, getActiveLocale());
 }
 
 /**
@@ -288,7 +287,7 @@ export async function resendSignupCode(ticket: string | null): Promise<SignupCod
  * account.
  *
  * KEYS[1] pending sign-up · ARGV[1] sha256 of the submitted code · ARGV[2] comparisons allowed.
- * Returns {-1} missing · {-2} code used up · {0} wrong · {1, email, passwordHash, locale} match.
+ * Returns {-1} missing · {-2} code used up · {0} wrong · {1, email, passwordHash} match.
  */
 const COMPARE_SCRIPT = `
 if redis.call('EXISTS', KEYS[1]) == 0 then return {-1} end
@@ -296,9 +295,9 @@ local limit = tonumber(ARGV[2])
 local n = redis.call('HINCRBY', KEYS[1], 'attempts', 1)
 if n > limit then return {-2} end
 if redis.call('HGET', KEYS[1], 'codeHash') == ARGV[1] then
-  local fields = redis.call('HMGET', KEYS[1], 'email', 'passwordHash', 'locale')
+  local fields = redis.call('HMGET', KEYS[1], 'email', 'passwordHash')
   redis.call('DEL', KEYS[1])
-  return {1, fields[1], fields[2], fields[3]}
+  return {1, fields[1], fields[2]}
 end
 if n == limit then return {-2} end
 return {0}
@@ -306,7 +305,10 @@ return {0}
 
 /**
  * Compare a code with the browser's pending sign-up and, on a match, write
- * the account with the address marked verified.
+ * the account with the address marked verified. The account takes the
+ * language this request is made in: the reader may have switched it on the
+ * code step after the sign-up started, and the account keeps what they read
+ * when it was made, the same as the other two ways an account is created.
  * @param ticket - The browser's ticket, or `null` when it has none.
  * @param code - The code the reader typed.
  * @returns The new account.
@@ -324,7 +326,7 @@ export async function verifySignupCode(ticket: string | null, code: string): Pro
     signupKey(ticket),
     sha256(code),
     String(maxAttemptsPerCode),
-  )) as [number, string?, string?, string?];
+  )) as [number, string?, string?];
 
   switch (reply[0]) {
     case -1:
@@ -335,12 +337,12 @@ export async function verifySignupCode(ticket: string | null, code: string): Pro
       throw new AppError(HTTP_BAD_REQUEST, t("server.auth.signup_code_invalid"));
   }
 
-  const [, email, hashedPassword, locale] = reply;
-  if (email === undefined || hashedPassword === undefined || locale === undefined) {
+  const [, email, hashedPassword] = reply;
+  if (email === undefined || hashedPassword === undefined) {
     throw new AppError(HTTP_GONE, t("server.auth.signup_expired"));
   }
   if (await userRepo.getUserByEmail(email)) {
     throw new ConflictError(t("server.auth.email_taken"));
   }
-  return createAccount({ email, hashedPassword, locale, emailVerified: true });
+  return createAccount({ email, hashedPassword, locale: getActiveLocale(), emailVerified: true });
 }

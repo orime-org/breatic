@@ -6,10 +6,11 @@ import * as React from 'react';
 import { render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-vi.mock('@web/data/api/projects', () => ({
+vi.mock('@web/data/api/projects', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/projects')>()),
   projectsApi: { recordOpen: vi.fn() },
 }));
-import { projectsApi } from '@web/data/api/projects';
+import { projectsApi, studioProjectsListKey } from '@web/data/api/projects';
 import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open';
 
 function Harness({
@@ -75,6 +76,25 @@ describe('useRecordProjectOpen (critical path: StrictMode-safe one-shot)', () =>
         queryKey: ['studios', 'recent'],
       }),
     );
+  });
+
+  it('refreshes every studio projects list after a successful record, so last-opened order is current', async () => {
+    vi.mocked(projectsApi.recordOpen).mockResolvedValue({ ok: true });
+    const client = new QueryClient();
+    client.setQueryData(studioProjectsListKey('acme', { archived: false, sort: 'opened', locale: 'en' }), {
+      pages: [],
+      pageParams: [],
+    });
+    client.setQueryData(['project', 'proj-4'], { id: 'proj-4' });
+    setup('proj-4', true, client);
+
+    await waitFor(() =>
+      expect(
+        client.getQueryState(studioProjectsListKey('acme', { archived: false, sort: 'opened', locale: 'en' }))
+          ?.isInvalidated,
+      ).toBe(true),
+    );
+    expect(client.getQueryState(['project', 'proj-4'])?.isInvalidated).toBe(false);
   });
 
   it('swallows a failed record (best-effort, render never throws)', async () => {

@@ -258,7 +258,7 @@ async function scene(): Promise<{
 describe("seeing and opening (A1 A4 A11)", () => {
   it("a studio member sees every project in the studio, including ones they are not on", async () => {
     const { fx, requester, project } = await scene();
-    const listed = await projectService.listByStudioForViewer(fx.studioId, requester.id, { archived: false });
+    const { items: listed } = await projectService.listByStudioForViewer(fx.studioId, requester.id, { archived: false, locale: "en" });
     expect(listed.map((p) => p.id)).toContain(project.id);
   });
 

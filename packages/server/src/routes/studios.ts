@@ -24,9 +24,9 @@ import { Hono } from "hono";
 import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { z } from "zod";
 import { validate } from "@server/middleware/validate.js";
-import { t } from "@breatic/shared";
+import { getActiveLocale, t } from "@breatic/shared";
 import { createTeamStudioSchema, emailSchema, updateStudioSchema } from "@breatic/shared";
-import { creditPageQuerySchema } from "@server/routes/schemas.js";
+import { creditPageQuerySchema, projectListQuerySchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireStudioRole } from "@server/middleware/studio-role.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -37,7 +37,7 @@ import {
   recentService,
   creditViewService,
 } from "@server/modules";
-import { NotFoundError, ValidationError } from "@breatic/core";
+import { logger, NotFoundError, ValidationError } from "@breatic/core";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
 import * as studioAvatarService from "@server/modules/studio/studioAvatar.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
@@ -238,21 +238,31 @@ studio.delete("/:slug/avatar", requireStudioRole("admin"), async (c) => {
 /**
  * `GET /api/v1/studio/:slug/projects` — the studio's projects.
  *
- * `projectService.listByStudioSlug`: a studio member sees every project, each
- * tagged with their own role on it; a non-member gets `[]` (the non-member
- * shell shows no projects). A slug with no
- * active studio surfaces as `404`. `?archived=true` lists the archived
- * projects instead, which only the studio's admin may read (`403` otherwise).
- * @returns `200` with `{ data: ProjectSummary[] }`
+ * `projectService.listByStudioSlug`: a studio member pages through every
+ * project, each tagged with their own role on it; a non-member gets an empty
+ * page (the non-member shell shows no projects). A slug with no active studio
+ * surfaces as `404`. `?archived=true` lists the archived projects instead,
+ * which only the studio's admin may read (`403` otherwise). `?sort`,
+ * `?cursor` and `?limit` pick the order and the page (`422` for a sort the
+ * list does not offer); names compare by the request's language.
+ * @returns `200` with `{ data: StudioProjectPage }`
  */
 studio.get(
   "/:slug/projects",
-  validate("query", z.object({ archived: z.enum(["true", "false"]).optional() })),
+  validate("query", projectListQuerySchema),
   async (c) => {
     const user = c.get("user");
     const slug = c.req.param("slug");
-    const archived = c.req.valid("query").archived === "true";
-    const data = await projectService.listByStudioSlug(slug, user.id, { archived });
+    const query = c.req.valid("query");
+    const data = await projectService.listByStudioSlug(slug, user.id, {
+      archived: query.archived === "true",
+      sort: query.sort,
+      cursor: query.cursor,
+      limit: query.limit,
+      locale: getActiveLocale(),
+      onRejectedCursor: () =>
+        logger.warn({ userId: user.id, slug, sort: query.sort ?? null }, "studio_project_list_cursor_rejected"),
+    });
     return c.json({ data });
   },
 );

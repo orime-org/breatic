@@ -2,16 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-  render as rtlRender,
-  screen,
-  type RenderOptions,
-} from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type * as React from 'react';
 
 import { SpaceDrawer } from '@web/pages/project/chrome/tab-bar/SpaceDrawer';
-import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useUIStore } from '@web/stores/ui';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import {
@@ -23,11 +18,19 @@ import {
   expectStandaloneRow,
 } from '@web/test-utils/list-rows';
 
-// SpaceDrawer's trigger and the row's delete action both wrap their
-// buttons in shadcn `Tooltip`, which throws without a `TooltipProvider`
-// up the tree. App.tsx supplies one at runtime — tests add it here.
-const render = (ui: React.ReactElement, options?: RenderOptions) =>
-  rtlRender(ui, { wrapper: TooltipProvider, ...options });
+
+/**
+ * Open a row's actions menu.
+ * @param user - The user-event instance.
+ * @param spaceId - The row's Space id.
+ */
+async function openRowMenu(
+  user: ReturnType<typeof userEvent.setup>,
+  spaceId: string,
+): Promise<void> {
+  await user.click(screen.getByTestId(`space-drawer-menu-${spaceId}`));
+  await screen.findByRole('menu');
+}
 
 beforeEach(() => {
   // The drawer's open state goes through `useExclusiveOverlay`, which
@@ -79,88 +82,93 @@ describe('SpaceDrawer', () => {
     expect(screen.getByTestId('space-drawer-row-sp-1')).toBeInTheDocument();
   });
 
-  it('opens the delete-confirm AlertDialog from the row delete action', async () => {
+  it('opens the delete-confirm AlertDialog from the row menu', async () => {
     const user = userEvent.setup();
     setup();
     await user.click(screen.getByTestId('space-drawer-trigger'));
+    await openRowMenu(user, 'sp-1');
     await user.click(screen.getByTestId('space-drawer-delete-sp-1'));
     expect(
       await screen.findByTestId('space-drawer-delete-confirm-sp-1'),
     ).toBeInTheDocument();
   });
 
-  it('closing the delete-confirm dialog does not re-pop the delete action tooltip', async () => {
-    // C mechanism, AlertDialog family — the only AlertDialog site and the
-    // only one wired via RowAction's indirect `onFocusCapture` prop. The
-    // guarantee this PR makes is "no stray tooltip after the overlay
-    // closes", which holds here.
-    //
-    // NOTE on focus: unlike the other 8 sites, this modal AlertDialog is
-    // nested inside the non-modal Sheet (drawer) AND its trigger is an
-    // `opacity-0` hover-action. On close, Radix lands focus on <body>
-    // rather than the (invisible) trigger button — verified in a real
-    // browser, and PRE-EXISTING (this PR only adds `onFocusCapture`; it
-    // never touched the AlertDialog's focus restoration). Because focus
-    // never reaches the trigger, the tooltip can't re-pop anyway; the
-    // `onFocusCapture` here is defensive. We therefore assert the real
-    // guarantee (no tooltip) and do NOT assert focus-returns-to-trigger
-    // — returning focus to an invisible button is a separate, design-laden
-    // a11y question tracked outside this tooltip PR.
+  it('puts view, lock and delete in the row menu', async () => {
     const user = userEvent.setup();
     setup();
     await user.click(screen.getByTestId('space-drawer-trigger'));
-    const deleteBtn = screen.getByTestId('space-drawer-delete-sp-1');
-    await user.click(deleteBtn);
-    await screen.findByTestId('space-drawer-delete-confirm-sp-1');
-    await user.keyboard('{Escape}');
-    expect(
-      screen.queryByTestId('space-drawer-delete-confirm-sp-1'),
-    ).not.toBeInTheDocument();
-    expect(
-      document.querySelector(
-        '[data-state="instant-open"],[data-state="delayed-open"]',
-      ),
-    ).toBeNull();
+    await openRowMenu(user, 'sp-1');
+    const items = screen.getAllByRole('menuitem').map((item) => item.textContent);
+    expect(items).toEqual(['View', 'Lock', 'Delete']);
+    // Delete is red, as every delete is (docs/ARCHITECTURE.md, design tokens).
+    expect(screen.getByTestId('space-drawer-delete-sp-1').className).toContain(
+      'text-status-error-foreground',
+    );
+    expect(screen.getByTestId('space-drawer-lock-sp-1').className).not.toContain(
+      'text-status-error-foreground',
+    );
   });
 
-  // The list scrolls inside a clipping viewport; a tooltip rendered inside it
-  // loses whatever part pokes above the viewport's top edge.
-  it('renders a row action tooltip outside the scrolling list', async () => {
+  it('views the Space from the row menu', async () => {
+    const user = userEvent.setup();
+    const onView = vi.fn();
+    setup({ onView });
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    await openRowMenu(user, 'sp-1');
+    await user.click(screen.getByTestId('space-drawer-view-sp-1'));
+    expect(onView).toHaveBeenCalledWith('sp-1');
+  });
+
+  it('locks an unlocked Space and offers Unlock on a locked one', async () => {
+    const user = userEvent.setup();
+    const onSetSpaceLocked = vi.fn();
+    setup({ spaces: [SPACE, { ...SIBLING, locked: true }], onSetSpaceLocked });
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    await openRowMenu(user, 'sp-1');
+    await user.click(screen.getByTestId('space-drawer-lock-sp-1'));
+    expect(onSetSpaceLocked).toHaveBeenCalledWith('sp-1', true);
+    await openRowMenu(user, 'sp-2');
+    expect(screen.getByTestId('space-drawer-lock-sp-2')).toHaveTextContent('Unlock');
+  });
+
+  it('renders the row menu outside the scrolling list', async () => {
     const user = userEvent.setup();
     setup();
     await user.click(screen.getByTestId('space-drawer-trigger'));
-    await user.hover(screen.getByTestId('space-drawer-view-sp-1'));
-    const tooltip = await screen.findByRole('tooltip');
+    await openRowMenu(user, 'sp-1');
     const viewport = screen
       .getByTestId('space-drawer-list')
       .closest('[data-radix-scroll-area-viewport]');
     expect(viewport).not.toBeNull();
-    expect(viewport?.contains(tooltip)).toBe(false);
+    expect(viewport?.contains(screen.getByRole('menu'))).toBe(false);
   });
 
-  it('locked spaces show a disabled delete action with no AlertDialog', async () => {
+  it('a locked Space offers delete greyed, says why, and opens no AlertDialog', async () => {
     const user = userEvent.setup();
     // Two spaces so the disabled state is due to LOCK, not last-space.
     setup({ spaces: [{ ...SPACE, locked: true }, SIBLING] });
     await user.click(screen.getByTestId('space-drawer-trigger'));
-    const deleteBtn = screen.getByTestId('space-drawer-delete-sp-1');
-    expect(deleteBtn).toBeDisabled();
-    await user.click(deleteBtn);
+    await openRowMenu(user, 'sp-1');
+    const item = screen.getByTestId('space-drawer-delete-sp-1');
+    expect(item).toHaveAttribute('data-disabled');
+    expect(item).toHaveTextContent('Locked spaces can\'t be deleted');
+    // Greyed, not red: the action is not on offer.
+    expect(item.className).not.toContain('text-status-error-foreground');
+    await user.click(item);
     expect(
       screen.queryByTestId('space-drawer-delete-confirm-sp-1'),
     ).not.toBeInTheDocument();
   });
 
-  it('the LAST remaining space has a disabled delete action (project keeps >=1)', async () => {
-    // Only one space — its delete must be disabled (you cannot delete the last
-    // one). Backend refuses too; this is the UI gate so the affordance is never
-    // offered.
+  it('the LAST remaining space offers delete greyed and says why (project keeps >=1)', async () => {
     const user = userEvent.setup();
     setup({ spaces: [SPACE] });
     await user.click(screen.getByTestId('space-drawer-trigger'));
-    const deleteBtn = screen.getByTestId('space-drawer-delete-sp-1');
-    expect(deleteBtn).toBeDisabled();
-    await user.click(deleteBtn);
+    await openRowMenu(user, 'sp-1');
+    const item = screen.getByTestId('space-drawer-delete-sp-1');
+    expect(item).toHaveAttribute('data-disabled');
+    expect(item).toHaveTextContent('A Project must keep at least one Space');
+    await user.click(item);
     expect(
       screen.queryByTestId('space-drawer-delete-confirm-sp-1'),
     ).not.toBeInTheDocument();
@@ -193,6 +201,7 @@ describe('SpaceDrawer', () => {
     const user = userEvent.setup();
     setup();
     await user.click(screen.getByTestId('space-drawer-trigger'));
+    await openRowMenu(user, 'sp-1');
     await user.click(screen.getByTestId('space-drawer-delete-sp-1'));
     await screen.findByTestId('space-drawer-delete-confirm-sp-1');
     await user.click(screen.getAllByRole('button', { name: 'Cancel' })[0]);
@@ -261,15 +270,15 @@ describe('SpaceDrawer', () => {
     expectStandaloneRow(screen.getByTestId('space-drawer-row-sp-2'));
   });
 
-  it('keeps the row actions out of the flow so the name gets the width', async () => {
-    // They are invisible until the pointer arrives, and holding their width
-    // open the rest of the time takes it from the only thing on the row that
-    // identifies the Space.
+  it('keeps room on the row for the menu button so the name never runs under it', async () => {
     const user = userEvent.setup();
     setup();
     await user.click(screen.getByTestId('space-drawer-trigger'));
     expect(
       screen.getByTestId('space-drawer-actions-sp-1').className,
     ).toMatch(/(^|\s)absolute(\s|$)/);
+    expect(
+      screen.getByRole('button', { name: 'Open Reel' }).className,
+    ).toMatch(/(^|\s)pr-12(\s|$)/);
   });
 });

@@ -28,21 +28,19 @@ export const projectInvitationsApi = {
    * `POST /api/v1/projects/:pid/invitations` — invite a registered user (by
    * email) to the project with an `editor` / `viewer` role. Owner-only; creates
    * a PENDING invite + an actionable bell notification (and best-effort an email
-   * link). The invitee becomes a member only on confirm. Returns the
-   * `/decision?token=` URL so the owner can copy it directly (the third
-   * channel alongside the bell + email — all three funnel through the same
-   * landing page). Rejects: `404` unregistered email, `409` already a member /
-   * already invited, `403` not owner, `422` body.
+   * link). The invitee becomes a member only on confirm. Rejects: `404`
+   * unregistered email, `409` already a member / already invited, `403` not
+   * owner, `422` body.
    * @param projectId - The project to invite into.
    * @param body - The invitee's email + the granted role.
-   * @returns The copyable `/decision?token=` invite URL.
+   * @returns once the invite has been created.
    * @throws {ApiException} `404` / `409` / `403` / `422` per the endpoint.
    */
-  inviteMember(
+  async inviteMember(
     projectId: string,
     body: InviteProjectMemberBody,
-  ): Promise<{ inviteLink: string }> {
-    return apiPost<{ inviteLink: string }, InviteProjectMemberBody>(
+  ): Promise<void> {
+    await apiPost<{ ok: true }, InviteProjectMemberBody>(
       `/projects/${projectId}/invitations`,
       body,
     );

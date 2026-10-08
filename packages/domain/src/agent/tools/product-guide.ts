@@ -65,12 +65,12 @@ function generatingLine(): string {
 }
 
 /**
- * Where the generate row is greyed, read off the same rule.
+ * Where the generate row is left off the menu, read off the same rule.
  * @returns A parenthetical naming the node types that do not generate, or nothing when all do.
  */
-function greyedGenerate(): string {
+function generateNotOffered(): string {
   const idle = CREATABLE.filter((type) => !canGenerate(type)).map(typeLabel);
-  return idle.length === 0 ? "" : ` (greyed on ${idle.join(", ")})`;
+  return idle.length === 0 ? "" : ` (not on ${idle.join(", ")})`;
 }
 
 /**
@@ -134,9 +134,8 @@ export function renderProductGuide(): string {
       `${quoted(t("share.inviteSection"))}: type an address in ${quoted(t("share.invitePlaceholder"))}, pick ` +
       `${quoted(t("share.role.view"))} or ${quoted(t("share.role.edit"))} and press ` +
       `${quoted(t("share.inviteButton"))}; an address that is not one shows ${quoted(t("share.invalidEmail"))} ` +
-      `After sending, ${quoted(t("share.inviteLinkLabel"))} shows a link with a copy icon beside it. Only ` +
-      "someone who already has an account can be invited, and they join only once they accept, from their " +
-      "bell, the email or that link. Otherwise the invitation is refused with a message such as " +
+      "Only someone who already has an account can be invited, and they join only once they accept, from " +
+      "their bell or the email. Otherwise the invitation is refused with a message such as " +
       `${quoted(t("server.project.email_not_registered"))} ${quoted(t("server.project.already_member"))} or ` +
       `${quoted(t("server.project.already_invited"))} (a full project says how many collaborators its plan ` +
       "allows: the plan of the studio's admin, so only their upgrade raises it). Last is a " +
@@ -181,13 +180,14 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.drawer.title"))}: every space in the project, newest first, each with its type icon, ` +
       `name and when it was made; the one open now is marked ${quoted(t("spaces.drawer.status.editing"))} and ` +
       `others open as tabs ${quoted(t("spaces.drawer.status.open"))}. Clicking a row opens that space as a tab. ` +
-      `Hovering a row shows three icons: an eye (${quoted(t("spaces.drawer.action.view"))}), a padlock ` +
-      `(${quoted(t("spaces.drawer.action.lock"))} or ${quoted(t("spaces.drawer.action.unlock"))}) and a bin ` +
-      `(${quoted(t("spaces.drawer.action.delete"))}), which asks whether to delete the space by name, says the ` +
+      `Hovering a row shows three dots at its right end, which open a menu: ${quoted(t("spaces.drawer.action.view"))}, ` +
+      `${quoted(t("spaces.drawer.action.lock"))} (${quoted(t("spaces.drawer.action.unlock"))} on a locked space) and ` +
+      `${quoted(t("spaces.drawer.action.delete"))}, which asks whether to delete the space by name, says the ` +
       `owner can restore it (from ${quoted(t("activity.header"))}, below), with ` +
-      `${quoted(t("common.cancel"))} and ${quoted(t("spaces.drawer.action.delete"))}. The bin is greyed on a ` +
-      `locked space, hovering it saying ${quoted(t("spaces.drawer.action.deleteLocked"))}, and on the project's ` +
-      `only space, saying ${quoted(t("spaces.drawer.action.deleteLastSpace"))}. The eye switches to a space ` +
+      `${quoted(t("common.cancel"))} and ${quoted(t("spaces.drawer.action.delete"))}. ` +
+      `${quoted(t("spaces.drawer.action.delete"))} is greyed on a locked space, with ` +
+      `${quoted(t("spaces.drawer.action.deleteLocked"))} written under it, and on the project's only space, with ` +
+      `${quoted(t("spaces.drawer.action.deleteLastSpace"))}. ${quoted(t("spaces.drawer.action.view"))} switches to a space ` +
       "already open as a tab; on any other " +
       "space it opens a read-only panel that does not show the space's content yet, so open the space itself to " +
       "see it.",
@@ -362,7 +362,7 @@ export function renderProductGuide(): string {
     "## Node menus",
     "Right-clicking a node opens its menu (right-clicking inside text being typed opens the browser's own menu). " +
       "On a picture, video, sound or text node the rows are, top to bottom:",
-    `- ${quoted(t("canvas.nodeMenu.generate"))}${greyedGenerate()} and ` +
+    `- ${quoted(t("canvas.nodeMenu.generate"))}${generateNotOffered()} and ` +
       `${quoted(t("canvas.nodeMenu.upload"))}.`,
     `- On a picture node, ${quoted(t("canvas.nodeMenu.resetEmpty"))}: a panel under the node, headed ` +
       `${quoted(t("canvas.emptyImage.title"))}, has ${quoted(t("canvas.emptyImage.sections.ratio"))}, ` +
@@ -480,7 +480,7 @@ export function renderProductGuide(): string {
     "",
     "## Generating",
     generatingLine(),
-    `Right-click such a node and choose ${quoted(t("canvas.nodeMenu.generate"))}${greyedGenerate()}: the ` +
+    `Right-click such a node and choose ${quoted(t("canvas.nodeMenu.generate"))}: the ` +
       "generation panel opens just below the node. Clicking a node selects it without opening the " +
       "panel. The panel closes with the X at its top-right, once a run you started is accepted, when another " +
       "panel opens on the canvas, or when the node stops being selected; while you are picking nodes for it, " +

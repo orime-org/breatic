@@ -123,6 +123,7 @@ export const mocks = {
       createdByUserId: "u-1", studioId: "studio-1",
     }),
     list: vi.fn(),
+    listByStudioSlug: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     duplicate: vi.fn(),

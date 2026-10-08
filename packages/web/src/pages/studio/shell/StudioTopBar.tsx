@@ -1,15 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { OFFICIAL_HOME_URL } from '@web/lib/official-home';
 import type * as React from 'react';
 
 import { BellMenu } from '@web/features/notifications/BellMenu';
 import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
 import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
-import { useTranslation } from '@web/i18n/use-translation';
 import { StudioAccountMenu } from '@web/pages/studio/shell/StudioAccountMenu';
-import { BrandMark } from '@web/ui/BrandMark';
+import { BrandHomeLink } from '@web/ui/BrandHomeLink';
+import { TopBar } from '@web/ui/TopBar';
 
 interface StudioTopBarProps {
   /**
@@ -32,24 +31,11 @@ interface StudioTopBarProps {
  * @returns the studio top bar header.
  */
 export function StudioTopBar({ leading }: StudioTopBarProps): React.JSX.Element {
-  const t = useTranslation();
   return (
-    <header
-      role='banner'
-      className='flex h-10 shrink-0 items-center justify-between border-b border-border bg-background px-4'
-    >
+    <TopBar>
       <div className='flex items-center gap-1'>
         {leading}
-        <a
-          href={OFFICIAL_HOME_URL}
-          target='_blank'
-          rel='noopener noreferrer'
-          aria-label={t('chrome.aria.home')}
-          className='flex items-center gap-[7px]'
-        >
-          <BrandMark size={24} />
-          <span className='text-sm font-semibold text-foreground'>Breatic</span>
-        </a>
+        <BrandHomeLink />
       </div>
       <div className='flex items-center gap-1'>
         <LangSwitcher />
@@ -57,6 +43,6 @@ export function StudioTopBar({ leading }: StudioTopBarProps): React.JSX.Element 
         <BellMenu />
         <StudioAccountMenu />
       </div>
-    </header>
+    </TopBar>
   );
 }

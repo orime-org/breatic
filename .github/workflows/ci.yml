@@ -268,132 +268,137 @@ jobs:
         run: pnpm turbo run test:integration
 
   docker:
-    name: Docker Build
-    runs-on: ubuntu-latest
+    name: Docker Build (${{ matrix.image }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     needs: [lint-typecheck-test, integration-tests, dev-proxy-guard, auth-bypass-residue]
-
-    # PRs and branch pushes build only. Version tags publish exact-tag images.
-    # Serialize each tag and never cancel a publication halfway through.
-    concurrency:
-      group: docker-${{ github.ref }}
-      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {image: backend, arch: amd64, runner: ubuntu-24.04, file: Dockerfile, suffix: ''}
+          - {image: backend, arch: arm64, runner: ubuntu-24.04-arm, file: Dockerfile, suffix: ''}
+          - {image: web, arch: amd64, runner: ubuntu-24.04, file: Dockerfile.web, suffix: '-web'}
+          - {image: web, arch: arm64, runner: ubuntu-24.04-arm, file: Dockerfile.web, suffix: '-web'}
+          - {image: ingestMedia, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/Dockerfile, suffix: '-ingest-media'}
     permissions:
-      contents: write
+      contents: read
       packages: write
-
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-
       - name: Validate release identity
         id: release
         env:
           REF: ${{ github.ref }}
           REVISION: ${{ github.sha }}
         run: |
-          node --test scripts/release.test.mjs scripts/backend-sourcemaps.test.mjs
+          node --test scripts/release.test.mjs scripts/backend-sourcemaps.test.mjs scripts/publish-images.test.mjs
           node scripts/release.mjs ci "$REF" "$REVISION" >> "$GITHUB_OUTPUT"
           if [[ "$REF" == refs/tags/* ]]; then
             git merge-base --is-ancestor "$REVISION" origin/main
             node scripts/release.mjs compose-tag "${REF#refs/tags/}" docker-compose.yml
           fi
-
       - uses: docker/setup-buildx-action@v4
-
-      - name: Build backend
+      - name: Log in to GHCR
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Branch/PR builds stay local. Tag builds upload only untagged content;
+      # the version tag and completed Release are published after every test.
+      - name: Build native image
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: ghcr.io/${{ github.repository }}:${{ steps.release.outputs.image_tag }}
+          file: ${{ matrix.file }}
+          platforms: linux/${{ matrix.arch }}
+          load: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          tags: ${{ !startsWith(github.ref, 'refs/tags/') && 'breatic-ci:check' || '' }}
+          outputs: ${{ startsWith(github.ref, 'refs/tags/') && format('type=image,name=ghcr.io/{0}{1},push-by-digest=true,name-canonical=true,push=true', github.repository, matrix.suffix) || '' }}
+          provenance: false
           build-args: |
             RELEASE_VERSION=${{ steps.release.outputs.version }}
             VCS_REF=${{ github.sha }}
-          labels: |
-            org.opencontainers.image.version=${{ steps.release.outputs.version }}
-            org.opencontainers.image.revision=${{ github.sha }}
-          cache-from: type=gha,scope=breatic
-          cache-to: type=gha,mode=max,scope=breatic
-
-      - name: Build web
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile.web
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: ghcr.io/${{ github.repository }}-web:${{ steps.release.outputs.image_tag }}
-          build-args: |
             VITE_RELEASE_VERSION=${{ steps.release.outputs.version }}
             VITE_APP_VERSION=${{ github.sha }}
           labels: |
             org.opencontainers.image.version=${{ steps.release.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
-          cache-from: type=gha,scope=breatic-web
-          cache-to: type=gha,mode=max,scope=breatic-web
-
-      - name: Check embedded version metadata
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.arch }}
+      - name: Select the exact built image
         env:
-          BACKEND: ghcr.io/${{ github.repository }}:${{ steps.release.outputs.image_tag }}
-          WEB: ghcr.io/${{ github.repository }}-web:${{ steps.release.outputs.image_tag }}
+          REF: ${{ github.ref }}
+          IMAGE: ghcr.io/${{ github.repository }}${{ matrix.suffix }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          if [[ "$REF" == refs/tags/* ]]; then
+            docker pull --platform "linux/$ARCH" "$IMAGE@$DIGEST"
+            echo "TEST_IMAGE=$IMAGE@$DIGEST" >> "$GITHUB_ENV"
+          else
+            echo 'TEST_IMAGE=breatic-ci:check' >> "$GITHUB_ENV"
+          fi
+      - name: Check native runtime, metadata and image contents
+        env:
+          IMAGE_KIND: ${{ matrix.image }}
+          ARCH: ${{ matrix.arch }}
           VERSION: ${{ steps.release.outputs.version }}
           REVISION: ${{ github.sha }}
-        run: |
-          docker run --rm --entrypoint cat "$BACKEND" /app/build-info.json > backend-info.json
-          docker run --rm -v "$PWD/scripts/backend-sourcemaps.mjs:/tmp/verify-maps.mjs:ro" --entrypoint node "$BACKEND" /tmp/verify-maps.mjs /app --installed
-          docker run --rm --entrypoint cat "$WEB" /usr/share/nginx/html/app-version.json > web-info.json
-          node --input-type=module <<'JS'
-          import { readFileSync } from 'node:fs';
-          import assert from 'node:assert/strict';
-          for (const file of ['backend-info.json', 'web-info.json']) {
-            const info = JSON.parse(readFileSync(file, 'utf8'));
-            assert.equal(info.releaseVersion, process.env.VERSION);
-            assert.equal(info.revision, process.env.REVISION);
-          }
-          JS
-
-      # The media container is deployed by wrangler rather than pushed to GHCR,
-      # so nothing here needs its image — but nothing else builds it either, and
-      # the first thing that would run this Dockerfile is a production deploy.
-      # Building it here is what puts its esbuild bundling stage, its apk pins
-      # and the GPL artefacts ffmpeg's licence requires under a check.
-      - name: Build the media container
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: packages/ingest/Dockerfile
-          push: false
-          load: true
-          tags: breatic-ingest-media:ci
-          cache-from: type=gha,scope=ingest-media
-          cache-to: type=gha,mode=max,scope=ingest-media
-
-      # What the licence requires has to be in the image, not in the repo: the
-      # image is what is distributed. The overview rides along on the same
-      # check — this image is the one that is loaded locally on every event,
-      # so it is the one a `docker run` can reach without a pull.
-      - name: Check the media container carries what GPL requires
-        run: |
-          docker run --rm --entrypoint sh breatic-ingest-media:ci -c \
-            'test -s /usr/share/ffmpeg-source/COPYING.GPLv2 \
-             && test -s /usr/share/ffmpeg-source/COPYING.LGPLv2.1 \
-             && test -s /usr/share/ffmpeg-source/SOURCE \
-             && test -s /usr/share/doc/breatic/THIRD-PARTY.md \
-             && cat /usr/share/ffmpeg-source/SOURCE'
-
-      # Reserve the release before the first push. Existing releases (including
-      # interrupted drafts) fail rather than silently replacing version images.
-      - name: Reserve release
+        run: bash scripts/image-smoke.sh
+      - name: Record the tested digest
         if: startsWith(github.ref, 'refs/tags/')
+        env:
+          IMAGE_KIND: ${{ matrix.image }}
+          ARCH: ${{ matrix.arch }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p digests
+          printf '%s' "$DIGEST" > "digests/$IMAGE_KIND-$ARCH"
+      - uses: actions/upload-artifact@v6
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: tested-digest-${{ matrix.image }}-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-images:
+    name: Publish tested multi-platform images
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: docker
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: docker-publish-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: tested-digest-*
+          path: digests
+          merge-multiple: true
+      # Existing releases, including interrupted drafts, are never overwritten.
+      - name: Reserve release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
@@ -405,29 +410,10 @@ jobs:
           args=()
           if [[ "$TAG" == *-rc.* ]]; then args+=(--prerelease); fi
           gh release create "$TAG" --verify-tag --draft --title "$TAG" --generate-notes "${args[@]}"
-
-      - name: Log in to GHCR
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish tested images and release manifest
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Publish indexes and release manifest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
           REVISION: ${{ github.sha }}
           REPOSITORY: ${{ github.repository }}
-        run: |
-          backend="ghcr.io/$REPOSITORY:$TAG"
-          web="ghcr.io/$REPOSITORY-web:$TAG"
-          docker push "$backend"
-          docker push "$web"
-          backend_digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$backend")
-          web_digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$web")
-          node scripts/release.mjs manifest "$TAG" "$REVISION" "$REPOSITORY" "$backend_digest" "$web_digest" release.json
-          gh release upload "$TAG" release.json
-          gh release edit "$TAG" --draft=false --latest=false
+        run: bash scripts/publish-images.sh

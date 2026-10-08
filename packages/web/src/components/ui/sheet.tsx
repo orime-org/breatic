@@ -58,8 +58,12 @@ SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 // the inherited `gap-4` injected an unwanted 16px gap between the
 // header and the list. Consumers that genuinely want spacing between
 // children can add `gap-N` themselves.
+//
+// Motion follows Fluent 2's small drawer and Primer's side sheet: 250ms in on
+// a decelerating curve, so the panel moves from its first frame, and 200ms out
+// on an accelerating one (inner#1322).
 const sheetVariants = cva(
-  'fixed z-50 bg-card p-6 shadow transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500',
+  'fixed z-50 bg-card p-6 shadow transition data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:duration-250 data-[state=open]:ease-[cubic-bezier(0,0,0,1)] data-[state=closed]:duration-200 data-[state=closed]:ease-[cubic-bezier(0.8,0,0.78,1)]',
   {
     variants: {
       side: {

@@ -7,10 +7,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildInfo, checkComposeTag, composeImageTags, releaseManifest } from './release.mjs';
+import { buildInfo, checkComposeTag, composeImageTags, releaseManifest, checkImageIndex } from './release.mjs';
 const sha = 'a'.repeat(40);
 const backend = `ghcr.io/orime-org/breatic@sha256:${'b'.repeat(64)}`;
 const web = `ghcr.io/orime-org/breatic-web@sha256:${'c'.repeat(64)}`;
+const media = `ghcr.io/orime-org/breatic-ingest-media@sha256:${'d'.repeat(64)}`;
 test('stable and candidate releases preserve full source identity', () => {
   for (const version of ['0.2.0', '1.0.0-rc.1']) {
     assert.deepEqual(buildInfo(version, sha), { releaseVersion: version, revision: sha });
@@ -24,19 +25,25 @@ test('invalid or incomplete release identities fail closed', () => {
   assert.throws(() => buildInfo('0.2.0', 'unknown'));
   assert.throws(() => buildInfo('0.2.0', sha.slice(0, 7)));
 });
-test('release manifests pin both images to digest and one source revision', () => {
-  const result = releaseManifest('v0.2.0', sha, 'orime-org/breatic', backend, web);
+test('release manifests pin all three images to digest and one source revision', () => {
+  const result = releaseManifest('v0.2.0', sha, 'orime-org/breatic', backend, web, media);
   assert.equal(result.tag, 'v0.2.0');
   assert.equal(result.revision, sha);
   assert.equal(result.images.backend, backend);
-  assert.equal(result.platform, 'linux/amd64');
+  assert.equal(result.images.ingestMedia, media);
+  assert.equal(result.schemaVersion, 2);
+  assert.equal(result.platform, undefined);
+  assert.deepEqual(result.imagePlatforms, { backend: ['linux/amd64', 'linux/arm64'], web: ['linux/amd64', 'linux/arm64'], ingestMedia: ['linux/amd64'] });
 });
 test('moving tags, wrong repositories, truncated digests cannot become a release', () => {
   for (const ref of ['ghcr.io/orime-org/breatic:latest', backend.slice(0, -1), web, backend.replace('orime-org', 'other')]) {
-    assert.throws(() => releaseManifest('v0.2.0', sha, 'orime-org/breatic', ref, web));
+    assert.throws(() => releaseManifest('v0.2.0', sha, 'orime-org/breatic', ref, web, media));
   }
-  assert.throws(() => releaseManifest('v0.0.0-dev', sha, 'orime-org/breatic', backend, web));
-  assert.throws(() => releaseManifest('0.2.0', sha, 'orime-org/breatic', backend, web));
+  for (const ref of [undefined, media.replace('@sha256:', ':v'), media.slice(0, -1), backend, media.replace('orime-org', 'other')]) {
+    assert.throws(() => releaseManifest('v0.2.0', sha, 'orime-org/breatic', backend, web, ref));
+  }
+  assert.throws(() => releaseManifest('v0.0.0-dev', sha, 'orime-org/breatic', backend, web, media));
+  assert.throws(() => releaseManifest('0.2.0', sha, 'orime-org/breatic', backend, web, media));
 });
 
 test('CLI emits build metadata and validates tag versus branch identities', () => {
@@ -46,6 +53,9 @@ test('CLI emits build metadata and validates tag versus branch identities', () =
     const output = join(directory, 'build-info.json');
     execFileSync(process.execPath, [script, 'build-info', '0.2.0', sha, output]);
     assert.deepEqual(JSON.parse(readFileSync(output, 'utf8')), buildInfo('0.2.0', sha));
+    execFileSync(process.execPath, [script, 'manifest', 'v0.2.0', sha, 'orime-org/breatic', backend, web, media, output]);
+    assert.equal(JSON.parse(readFileSync(output, 'utf8')).images.ingestMedia, media);
+    assert.notEqual(spawnSync(process.execPath, [script, 'manifest', 'v0.2.0', sha, 'orime-org/breatic', backend, web, output]).status, 0);
     assert.match(execFileSync(process.execPath, [script, 'ci', 'refs/tags/v0.2.0', sha], { encoding: 'utf8' }), /version=0.2.0\nimage_tag=v0.2.0/);
     assert.match(execFileSync(process.execPath, [script, 'ci', 'refs/heads/main', sha], { encoding: 'utf8' }), /version=0.0.0-dev\nimage_tag=ci/);
     assert.notEqual(spawnSync(process.execPath, [script, 'ci', 'refs/tags/vlatest', sha]).status, 0);
@@ -104,4 +114,15 @@ test('the repository compose file pins one stable release for every product imag
   const [tag] = composeImageTags(text);
   assert.doesNotMatch(tag, /-rc\./);
   checkComposeTag(tag, text);
+});
+
+const descriptor = (arch, hash) => ({ digest: 'sha256:' + hash.repeat(64), platform: { os: 'linux', architecture: arch } });
+test('indexes must contain exactly the two tested native image digests', () => {
+  const amd = descriptor('amd64', 'b'); const arm = descriptor('arm64', 'c');
+  const index = { manifests: [amd, arm] };
+  assert.doesNotThrow(() => checkImageIndex(index, amd.digest, arm.digest));
+  for (const manifests of [[amd], [arm], [amd, amd], [amd, descriptor('arm64', 'd')], [amd, arm, descriptor('s390x', 'e')]]) {
+    assert.throws(() => checkImageIndex({ manifests }, amd.digest, arm.digest));
+  }
+  assert.throws(() => checkImageIndex({ ...index, manifests: [amd, { ...arm, platform: { os: 'windows', architecture: 'arm64' } }] }, amd.digest, arm.digest));
 });

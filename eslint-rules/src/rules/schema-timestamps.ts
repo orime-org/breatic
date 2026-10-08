@@ -51,6 +51,10 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "per-user upsert tracker behind the Recent feed: a row for a deleted project is filtered out by the query's join, so a leftover row is harmless. Its mutable column is last_opened_at; there is no updated_at either",
   ],
   [
+    "projectEdits",
+    "one row per project saying when it was last edited, moved forward in place: a row for a deleted project is filtered out by the studio list's join, so a leftover row is harmless. The same carve-out as projectLastOpened; its mutable column is last_edited_at, so there is no updated_at either",
+  ],
+  [
     "purchaseConsents",
     "legal evidence of what a buyer agreed to at checkout (0066): it is kept for as long as the payment it describes, and soft-deleting it is the evidence disappearing — which is the one thing this table exists to prevent",
   ],

@@ -1056,6 +1056,7 @@
       "description": "{count, plural, other {# 个 · 点击切换或右侧操作}}",
       "empty": "暂无 Spaces",
       "openAria": "打开 {name}",
+      "rowActions": "查看、加锁或删除这个 Space",
       "status": {
         "editing": "编辑中",
         "open": "已打开"
@@ -1302,10 +1303,6 @@
     "inviteSent": "邀请已发送。",
     "inviteFailed": "邀请发送失败,请重试。",
     "invalidEmail": "请输入有效的邮箱地址。",
-    "inviteLinkLabel": "邀请链接",
-    "copyInviteLink": "复制邀请链接",
-    "inviteLinkCopied": "邀请链接已复制。",
-    "inviteLinkCopyFailed": "无法复制链接。",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
@@ -1460,7 +1457,11 @@
         "archived": "已归档",
         "archiveFailed": "归档失败",
         "restored": "已恢复",
-        "restoreFailed": "恢复失败"
+        "restoreFailed": "恢复失败",
+        "openedAt": "打开于 {time}",
+        "editedAt": "修改于 {time}",
+        "archivedAt": "归档于 {time}",
+        "neverOpened": "从未打开"
       },
       "projects": {
         "new": "新建 Project",
@@ -1620,7 +1621,18 @@
       },
       "toolbar": {
         "sortLabel": "排序",
-        "sortValue": "最近打开"
+        "sortValue": "最近打开",
+        "sort": {
+          "opened": "最近打开",
+          "edited": "最近修改",
+          "name": "名称",
+          "created": "创建时间",
+          "archived": "归档时间"
+        },
+        "view": {
+          "grid": "网格视图",
+          "list": "列表视图"
+        }
       },
       "imageError": {
         "too_large": "这个文件超过 20 MB，请换一张小一点的图片。",
@@ -1646,6 +1658,20 @@
       "archived": {
         "emptyTitle": "没有已归档的 Project",
         "emptyHint": "归档的 Project 会出现在这里，可以随时恢复。"
+      },
+      "list": {
+        "columns": {
+          "name": "名称",
+          "opened": "最近打开",
+          "edited": "最近修改",
+          "created": "创建时间",
+          "archived": "归档时间",
+          "role": "我的角色"
+        },
+        "loadFailed": "Projects 没加载出来",
+        "pageFailed": "后面的 Projects 没加载出来",
+        "retry": "重试",
+        "end": "共 {count} 个 Project"
       }
     },
     "rail": {

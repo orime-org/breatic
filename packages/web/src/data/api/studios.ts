@@ -15,11 +15,12 @@ import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@web/data/api/requ
 // a studio differ in what changes hands, not in what the offer looks like.
 import type { LiveTransfer } from '@web/data/api/projects';
 import type {
-  ProjectSummary,
   RecentItem,
   Studio,
   StudioDetail,
   StudioMembersView,
+  StudioProjectPage,
+  StudioProjectSort,
   StudioSummary,
   UpdateStudioInput,
 } from '@breatic/shared';
@@ -123,17 +124,26 @@ export const studiosApi = {
     return apiGet<StudioDetail>(`/studio/${slug}`);
   },
   /**
-   * `GET /api/v1/studio/:slug/projects` — the studio's projects: a member sees
-   * all of them, a non-member gets an empty list. Each row carries the viewer's
-   * `myRole` (`null` for a project they are not a member of) and what the
-   * card menu may offer. `archived` lists the archived ones instead, which
-   * only a studio admin may read.
+   * `GET /api/v1/studio/:slug/projects` — one page of the studio's projects: a
+   * member pages through all of them, a non-member gets an empty page. Each row
+   * carries the viewer's `myRole` (`null` for a project they are not a member
+   * of) and what the card menu may offer. `archived` lists the archived ones
+   * instead, which only a studio admin may read. Names sort by the language the
+   * request is sent in.
    * @param slug the studio's URL handle.
-   * @param archived list archived projects rather than live ones.
-   * @returns the visible project summaries.
+   * @param query which list, its sort, and where the previous page stopped.
+   * @param query.archived list archived projects rather than live ones.
+   * @param query.sort how the list is sorted.
+   * @param query.cursor the previous page's `nextCursor`; omit for the first page.
+   * @returns the page.
    */
-  listProjects(slug: string, archived = false): Promise<ProjectSummary[]> {
-    return apiGet<ProjectSummary[]>(`/studio/${slug}/projects?archived=${archived}`);
+  listProjects(
+    slug: string,
+    query: { archived: boolean; sort: StudioProjectSort; cursor: string | undefined },
+  ): Promise<StudioProjectPage> {
+    const params = new URLSearchParams({ archived: String(query.archived), sort: query.sort });
+    if (query.cursor !== undefined) params.set('cursor', query.cursor);
+    return apiGet<StudioProjectPage>(`/studio/${slug}/projects?${params.toString()}`);
   },
   /**
    * `GET /api/v1/studio/:slug/members` — the Members tab view: active members

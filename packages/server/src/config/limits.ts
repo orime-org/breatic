@@ -31,6 +31,8 @@ export const limitsConfigSchema = z.object({
   activity_feed_page_max: z.number().int().positive().default(100),
   canvas_reference_pool_cap: z.number().int().positive().default(50),
   node_history_page_size: z.number().int().positive().default(20),
+  studio_project_page_default: z.number().int().positive().default(50),
+  studio_project_page_max: z.number().int().positive().default(100),
   credit_page_default: z.number().int().positive().default(30),
   credit_page_max: z.number().int().positive().default(100),
   decision_window_days: z.number().int().positive().default(7),
@@ -63,6 +65,16 @@ function loadConfig(): z.infer<typeof limitsConfigSchema> {
 export function getActivityFeedPageLimits(): { default: number; max: number } {
   const c = loadConfig();
   return { default: c.activity_feed_page_default, max: c.activity_feed_page_max };
+}
+
+/**
+ * Studio project list paging bounds (default when no `?limit`, and the
+ * ceiling a client `?limit` is clamped to).
+ * @returns `{ default: number, max: number }` page-size bounds.
+ */
+export function getStudioProjectPageLimits(): { default: number; max: number } {
+  const c = loadConfig();
+  return { default: c.studio_project_page_default, max: c.studio_project_page_max };
 }
 
 /**

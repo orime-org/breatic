@@ -22,6 +22,10 @@ WORKDIR /src
 COPY packages/ingest/tsconfig.json ./
 COPY packages/ingest/src ./src
 COPY packages/ingest/container ./container
+COPY scripts/release.mjs ./scripts/release.mjs
+ARG RELEASE_VERSION=0.0.0-dev
+ARG VCS_REF=unknown
+RUN mkdir -p /out && node scripts/release.mjs build-info "$RELEASE_VERSION" "$VCS_REF" /out/build-info.json
 # esbuild is pinned so this image builds the same way on every machine. No
 # manifest in this repository declares esbuild — it arrives seven times over as
 # a transitive dependency, at seven different versions — so there is no "the
@@ -39,6 +43,10 @@ RUN npm install --no-audit --no-fund --global esbuild@0.25.12 \
 # so npm and the rest of a Node distribution would be weight with no reader,
 # and image size is what the cold start is paid in.
 FROM alpine:3.23
+ARG RELEASE_VERSION=0.0.0-dev
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.version=$RELEASE_VERSION \
+      org.opencontainers.image.revision=$VCS_REF
 RUN apk add --no-cache nodejs=~24 ffmpeg=~8.0
 
 # ── ffmpeg is GPL-licensed (#178) ────────────────────────────────────────
@@ -108,6 +116,7 @@ RUN set -eu; \
   } > /usr/share/ffmpeg-source/SOURCE
 
 COPY --from=build /out/server.mjs /app/server.mjs
+COPY --from=build /out/build-info.json /app/build-info.json
 
 # Listening starts immediately: nothing is prepared at startup, because every
 # second before the port answers is a second the request that woke this

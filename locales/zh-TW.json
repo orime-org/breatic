@@ -1056,6 +1056,7 @@
       "description": "{count, plural, other {# 個 · 點擊切換或使用右側操作}}",
       "empty": "尚無 Spaces",
       "openAria": "開啟 {name}",
+      "rowActions": "檢視、鎖定或刪除這個 Space",
       "status": {
         "editing": "編輯中",
         "open": "已開啟"
@@ -1302,10 +1303,6 @@
     "inviteSent": "邀請已傳送。",
     "inviteFailed": "邀請傳送失敗,請重試。",
     "invalidEmail": "請輸入有效的電子郵件地址。",
-    "inviteLinkLabel": "邀請連結",
-    "copyInviteLink": "複製邀請連結",
-    "inviteLinkCopied": "邀請連結已複製。",
-    "inviteLinkCopyFailed": "無法複製連結。",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
@@ -1460,7 +1457,11 @@
         "archived": "已封存",
         "archiveFailed": "封存失敗",
         "restored": "已還原",
-        "restoreFailed": "還原失敗"
+        "restoreFailed": "還原失敗",
+        "openedAt": "開啟於 {time}",
+        "editedAt": "修改於 {time}",
+        "archivedAt": "封存於 {time}",
+        "neverOpened": "從未開啟"
       },
       "projects": {
         "new": "新增 Project",
@@ -1620,7 +1621,18 @@
       },
       "toolbar": {
         "sortLabel": "排序",
-        "sortValue": "最近開啟"
+        "sortValue": "最近開啟",
+        "sort": {
+          "opened": "最近開啟",
+          "edited": "最近修改",
+          "name": "名稱",
+          "created": "建立時間",
+          "archived": "封存時間"
+        },
+        "view": {
+          "grid": "網格檢視",
+          "list": "清單檢視"
+        }
       },
       "imageError": {
         "too_large": "這個檔案超過 20 MB，請換一張小一點的圖片。",
@@ -1646,6 +1658,20 @@
       "archived": {
         "emptyTitle": "沒有已封存的 Project",
         "emptyHint": "封存的 Project 會出現在這裡，可以隨時還原。"
+      },
+      "list": {
+        "columns": {
+          "name": "名稱",
+          "opened": "最近開啟",
+          "edited": "最近修改",
+          "created": "建立時間",
+          "archived": "封存時間",
+          "role": "我的角色"
+        },
+        "loadFailed": "Projects 沒有載入",
+        "pageFailed": "後面的 Projects 沒有載入",
+        "retry": "重試",
+        "end": "共 {count} 個 Project"
       }
     },
     "rail": {
