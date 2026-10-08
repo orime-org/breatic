@@ -14,7 +14,7 @@ import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js"
 // file: the container's bundle is built without shared's dependencies, and
 // this file has none.
 import { buildAdjustVideoFilter, parseAdjustValue } from "@shared/adjust-value.js";
-import { NOTHING_FOUND, type ProbeReport } from "@ingest/media-metadata.js";
+import { realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
 
 /** The container's run endpoint, which the Durable Object posts a job to. */
 export const RUN_PATH = "/run";
@@ -24,6 +24,15 @@ const QUIET = ["-hide_banner", "-loglevel", "error", "-y"];
 
 /** H.264 at the settings the worker's handlers used. */
 const H264 = ["-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p"];
+
+/** AAC at the settings the worker's handlers used. */
+const AAC = ["-c:a", "aac", "-b:a", "128k"];
+
+// The output is an .mp4 a browser opens. A stream is copied only when that file
+// carries it and Chrome and Safari both play it there; ProRes and VP8 do not
+// go into an mp4, and Vorbis or PCM in one plays without sound in Safari.
+const MP4_VIDEO: ReadonlySet<string> = new Set(["h264", "hevc", "av1", "vp9"]);
+const MP4_AUDIO: ReadonlySet<string> = new Set(["aac", "mp3", "opus"]);
 
 /** Lets a player start before the whole file has arrived. */
 const FASTSTART = ["-movflags", "+faststart"];
@@ -108,7 +117,7 @@ function zscaleName(tag: string | undefined, known: ReadonlySet<string>): string
  * @returns The filter chain.
  */
 function hdrFilter(transfer: string, source: ProbeReport): string {
-  const video = source.streams.find((stream) => stream.codecType === "video" && !stream.attachedPic);
+  const video = realVideoStream(source);
   const tin = zscaleName(video?.colorTransfer, ZSCALE_TRANSFERS);
   const pin = zscaleName(video?.colorPrimaries, ZSCALE_PRIMARIES);
   const min = zscaleName(video?.colorSpace, ZSCALE_MATRICES);
@@ -119,6 +128,30 @@ function hdrFilter(transfer: string, source: ProbeReport): string {
     `${EVEN},zscale=tin=${tin}:pin=${pin}:min=${min}:t=linear:npl=203:p=bt709,format=gbrpf32le,` +
     `zscale=p=bt2020:t=${transfer}:m=bt2020nc:r=tv:npl=203,format=yuv420p10le`
   );
+}
+
+/**
+ * The source's picture into the output: copied when an mp4 plays it as it is,
+ * otherwise encoded as H.264 on even sides.
+ * @param source - The source's probe.
+ * @returns The video arguments.
+ */
+function videoOut(source: ProbeReport): string[] {
+  const codec = realVideoStream(source)?.codecName ?? "";
+  if (!MP4_VIDEO.has(codec)) return ["-vf", EVEN, ...H264];
+  // An HEVC stream copied into mp4 is tagged hev1 by default, which Safari does not open.
+  return codec === "hevc" ? ["-c:v", "copy", "-tag:v", "hvc1"] : ["-c:v", "copy"];
+}
+
+/**
+ * The source's sound into the output: copied when an mp4 plays it as it is,
+ * otherwise encoded as AAC.
+ * @param source - The source's probe.
+ * @returns The audio arguments.
+ */
+function audioOut(source: ProbeReport): string[] {
+  const audio = source.streams.find((stream) => stream.codecType === "audio");
+  return audio === undefined || MP4_AUDIO.has(audio.codecName ?? "") ? ["-c:a", "copy"] : AAC;
 }
 
 /** The operations that work on the source's sound. */
@@ -143,7 +176,7 @@ export function inputRefusal(op: ContainerOp, probe: ProbeReport): ContainerFail
  * @returns The failure to report, or null when the output will do.
  */
 export function outputRefusal(probe: ProbeReport): ContainerFailure | null {
-  return probe.streams.some((stream) => stream.codecType === "video" && !stream.attachedPic) ? null : "tool_failed";
+  return realVideoStream(probe) === undefined ? "tool_failed" : null;
 }
 
 /**
@@ -153,7 +186,7 @@ export function outputRefusal(probe: ProbeReport): ContainerFailure | null {
  * @param input - Where ffmpeg reads the source.
  * @param output - The file the last run writes.
  * @param workDir - A directory the runs may write between them.
- * @param source - The source's probe, which HDR reads the colour tags off.
+ * @param source - The source's probe: which streams are copied, and the colour tags HDR reads.
  * @returns One argument list per ffmpeg run.
  * @throws {Error} When a param the operation needs is missing.
  */
@@ -163,15 +196,15 @@ export function opRuns(
   input: string,
   output: string,
   workDir: string,
-  source: ProbeReport = NOTHING_FOUND,
+  source: ProbeReport,
 ): string[][] {
   const head = [...QUIET, ...SOURCE, "-i", input];
   switch (op) {
     case "crop": {
       const rect = params.rect as { x: number; y: number; w: number; h: number } | null;
-      if (rect === null) return [[...head, "-c", "copy", ...FASTSTART, output]];
+      if (rect === null) return [[...head, ...videoOut(source), ...audioOut(source), ...FASTSTART, output]];
       const crop = `crop=${even(rect.w)}:${even(rect.h)}:${Math.floor(rect.x)}:${Math.floor(rect.y)}`;
-      return [[...head, "-vf", crop, "-c:a", "copy", ...FASTSTART, output]];
+      return [[...head, "-vf", crop, ...audioOut(source), ...FASTSTART, output]];
     }
     case "speed": {
       const rate = numberOf(params, "rate");
@@ -183,10 +216,7 @@ export function opRuns(
           "-filter:a",
           atempoChain(rate),
           ...H264,
-          "-c:a",
-          "aac",
-          "-b:a",
-          "128k",
+          ...AAC,
           ...FASTSTART,
           output,
         ],
@@ -207,17 +237,14 @@ export function opRuns(
           "-vf",
           EVEN,
           ...H264,
-          "-c:a",
-          "aac",
-          "-b:a",
-          "128k",
+          ...AAC,
           ...FASTSTART,
           output,
         ],
       ];
     }
     case "adjust":
-      return [[...head, "-vf", `${EVEN},${buildAdjustVideoFilter(parseAdjustValue(params.value))}`, ...H264, "-c:a", "copy", ...FASTSTART, output]];
+      return [[...head, "-vf", `${EVEN},${buildAdjustVideoFilter(parseAdjustValue(params.value))}`, ...H264, ...audioOut(source), ...FASTSTART, output]];
     case "audio_denoise": {
       // One slider onto afftdn: the noise floor from -80 dB to -40 dB and the
       // reduction from 3 dB to 36 dB as the slider goes from 0 to 100.
@@ -225,7 +252,7 @@ export function opRuns(
       const nf = -80 + (intensity / 100) * 40;
       const nr = 3 + (intensity / 100) * 33;
       return [
-        [...head, "-c:v", "copy", "-af", `afftdn=nf=${nf.toFixed(2)}:nr=${nr.toFixed(2)}`, "-c:a", "aac", "-b:a", "128k", ...FASTSTART, output],
+        [...head, ...videoOut(source), "-af", `afftdn=nf=${nf.toFixed(2)}:nr=${nr.toFixed(2)}`, ...AAC, ...FASTSTART, output],
       ];
     }
     case "stabilize": {
@@ -237,8 +264,7 @@ export function opRuns(
           "-vf",
           `${EVEN},vidstabtransform=smoothing=${numberOf(params, "smoothing")}:input=${transforms}`,
           ...H264,
-          "-c:a",
-          "copy",
+          ...audioOut(source),
           ...FASTSTART,
           output,
         ],
@@ -267,8 +293,7 @@ export function opRuns(
           "bt2020nc",
           "-tag:v",
           "hvc1",
-          "-c:a",
-          "copy",
+          ...audioOut(source),
           ...FASTSTART,
           output,
         ],
