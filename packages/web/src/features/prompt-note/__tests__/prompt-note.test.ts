@@ -17,6 +17,8 @@ import { Placeholder } from '@tiptap/extension-placeholder';
 import { Text } from '@tiptap/extension-text';
 import { NodeSelection } from '@tiptap/pm/state';
 
+import { t } from '@breatic/shared';
+
 import {
   NOTE_SELECTED_CLASS,
   PROMPT_NOTE_NODE,
@@ -119,6 +121,24 @@ describe('deleting a note', () => {
     e.commands.keyboardShortcut('Backspace');
     e.commands.keyboardShortcut('Delete');
     expect(blocks(e).at(-1)).toBe('paragraph');
+  });
+});
+
+describe('how a note reads', () => {
+  it('says it is a note before its words, and keeps its words as they were', () => {
+    const e = withNote('She walks.');
+    const prefix = t('canvas.generatePanel.notePrefix');
+    expect(prefix).not.toBe('canvas.generatePanel.notePrefix');
+    expect(noteElement(e).querySelector('[data-prompt-note-prefix]')?.textContent).toBe(prefix);
+    expect(noteElement(e).textContent).toBe(`${prefix}Pick the first frame in the panel`);
+    expect(e.state.doc.child(0).attrs.label).toBe('Pick the first frame in the panel');
+  });
+
+  it('is drawn in the body text colour on the warning ground, which reads at 4.5:1', () => {
+    const css = readFileSync(resolve(import.meta.dirname, '../../../index.css'), 'utf-8');
+    const rule = /\.prompt-note \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(rule).toMatch(/color: var\(--color-foreground\)/);
+    expect(rule).toMatch(/background-color: var\(--color-status-warning-bg\)/);
   });
 });
 
