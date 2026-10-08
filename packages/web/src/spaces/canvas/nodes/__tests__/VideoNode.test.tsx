@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 import { VideoNode } from '@web/spaces/canvas/nodes/VideoNode';
-import { resetPreviewFailures } from '@web/lib/preview-src';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 import { NodeZoomedPastPreviewContext } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 import { canvasSessions } from '@web/stores/canvas-session';
 
@@ -154,14 +154,14 @@ describe('VideoNode zoomed past its cover preview (inner#1320)', () => {
   }
 
   it('shows the cover preview while the canvas is not zoomed past it', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     render(zoomed(false));
 
     expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(`${COVER}.preview.webp`);
   });
 
   it('shows the full cover once zoomed past it, and keeps it after zooming out', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     const { rerender } = render(zoomed(true));
     expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(COVER);
 

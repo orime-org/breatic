@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChatAttachedChip } from '@breatic/shared';
-import { resetPreviewFailures } from '@web/lib/preview-src';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
 import { PREVIEW_ROWS } from '@web/pages/project/chat/attachment-preview';
 import { HOVER_OPEN_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
@@ -147,7 +147,7 @@ describe('AttachmentChip hover preview', () => {
 
 describe('AttachmentChip canvas rows — the thumbnail shows the stored preview (inner#1320)', () => {
   beforeEach(() => {
-    resetPreviewFailures();
+    resetPreviewRecords();
   });
 
   it('a stored image node renders its preview address in the row thumbnail', () => {

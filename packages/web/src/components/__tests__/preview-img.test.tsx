@@ -5,13 +5,13 @@ import { fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PreviewImg } from '@web/components/preview-img';
-import { resetPreviewFailures, usePreviewWidth } from '@web/lib/preview-src';
+import { resetPreviewRecords, usePreviewWidth } from '@web/lib/preview-src';
 
 const UUID = '18f58aed-b802-4243-a8ea-02d377de9679';
 const STORED = `https://resource-dev.breatic.cc/video/2026-09-30/1_${UUID}_cover.png`;
 
 beforeEach(() => {
-  resetPreviewFailures();
+  resetPreviewRecords();
 });
 
 describe('PreviewImg', () => {

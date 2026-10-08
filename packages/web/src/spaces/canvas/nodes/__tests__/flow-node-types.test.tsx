@@ -12,7 +12,7 @@ import { _resetForTests } from '@web/data/yjs/manager';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import { TooltipProvider } from '@web/components/ui/tooltip';
-import { resetPreviewFailures } from '@web/lib/preview-src';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 import { CanvasActionsContext } from '@web/spaces/canvas/canvas-actions';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
@@ -556,7 +556,7 @@ describe('a stored image zoomed past its preview', () => {
     'https://resource-dev.breatic.cc/image/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679.png';
 
   beforeEach(() => {
-    resetPreviewFailures();
+    resetPreviewRecords();
   });
 
   afterEach(() => {

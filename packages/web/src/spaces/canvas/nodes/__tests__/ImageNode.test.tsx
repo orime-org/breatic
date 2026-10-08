@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, renderHook, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { resetPreviewFailures, usePreviewWidth } from '@web/lib/preview-src';
+import { resetPreviewRecords, usePreviewWidth } from '@web/lib/preview-src';
 import { ImageNode } from '@web/spaces/canvas/nodes/ImageNode';
 import { NodeZoomedPastPreviewContext } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 
@@ -279,7 +279,7 @@ describe('ImageNode with a stored image', () => {
   const STORED = `https://resource-dev.breatic.cc/image/2026-09-30/1_${UUID}.png`;
 
   it('shows the preview when it knows the image size', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     render(
       <ImageNode
         data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
@@ -296,7 +296,7 @@ describe('ImageNode with a stored image', () => {
   // The canvas compares the node against this, so the switch to the original
   // follows the preview the container actually wrote (inner#1320 round 5).
   it('records how wide its preview is once the preview loads', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     render(
       <ImageNode
         data={{ kind: 'image', content: STORED, width: 1080, height: 64800, status: 'idle' }}
@@ -310,7 +310,7 @@ describe('ImageNode with a stored image', () => {
   });
 
   it('keeps the original size on the badge after the preview loads', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     render(
       <ImageNode
         data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
@@ -322,7 +322,7 @@ describe('ImageNode with a stored image', () => {
   });
 
   it('shows the original and measures it when it knows no size', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     render(<ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />);
     const img = screen.getByTestId('image-node-img');
 
@@ -333,7 +333,7 @@ describe('ImageNode with a stored image', () => {
   });
 
   it('falls back to the original when the preview is missing', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     render(
       <ImageNode
         data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
@@ -364,14 +364,14 @@ describe('ImageNode zoomed past its preview (inner#1320)', () => {
   }
 
   it('shows only the preview while the canvas is not zoomed past it', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     render(zoomed(false));
 
     expect(screen.queryByTestId('image-node-original')).toBeNull();
   });
 
   it('lays the original over the preview and shows it once it loads', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     render(zoomed(true));
     const original = screen.getByTestId('image-node-original');
 
@@ -385,7 +385,7 @@ describe('ImageNode zoomed past its preview (inner#1320)', () => {
   });
 
   it('keeps the original after the canvas zooms back out', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     const { rerender } = render(zoomed(true));
     rerender(zoomed(false));
 
@@ -393,7 +393,7 @@ describe('ImageNode zoomed past its preview (inner#1320)', () => {
   });
 
   it('shows the preview of a new image after zooming back out', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     const { rerender } = render(zoomed(true));
     rerender(zoomed(false));
     const next = `https://resource-dev.breatic.cc/image/2026-09-30/2_${UUID}.png`;
@@ -408,7 +408,7 @@ describe('ImageNode zoomed past its preview (inner#1320)', () => {
   });
 
   it('lays nothing over an image already showing its original', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     render(
       <NodeZoomedPastPreviewContext.Provider value>
         <ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />
@@ -424,7 +424,7 @@ describe('ImageNode while its picture loads (inner#1320)', () => {
   const STORED = `https://resource-dev.breatic.cc/image/2026-09-30/1_${UUID}.png`;
 
   it('covers the reserved box with a skeleton until the picture loads', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     render(
       <ImageNode
         data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
@@ -437,7 +437,7 @@ describe('ImageNode while its picture loads (inner#1320)', () => {
   });
 
   it('keeps the skeleton through a missing preview and drops it when the original loads', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     render(
       <ImageNode
         data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
@@ -451,7 +451,7 @@ describe('ImageNode while its picture loads (inner#1320)', () => {
   });
 
   it('drops the skeleton when the original itself fails', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     render(<ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />);
     fireEvent.error(screen.getByTestId('image-node-img'));
 
@@ -459,7 +459,7 @@ describe('ImageNode while its picture loads (inner#1320)', () => {
   });
 
   it('gives a node of unknown size the empty node footprint while it loads', () => {
-    resetPreviewFailures();
+    resetPreviewRecords();
     render(<ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />);
 
     expect(screen.getByTestId('image-node-skeleton').className).toContain('aspect-[3/2]');

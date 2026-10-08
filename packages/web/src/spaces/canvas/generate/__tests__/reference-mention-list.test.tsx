@@ -8,7 +8,7 @@ import * as React from 'react';
 import { MentionList, type MentionListRef } from '@web/features/reference-mention/mention-list';
 import { referenceKey, renderReferenceRow } from '@web/spaces/canvas/generate/reference-mention-list';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import { resetPreviewFailures } from '@web/lib/preview-src';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 
 const row = (id: string): ReferenceRailItem => ({
   refId: `${id}->me`,
@@ -386,7 +386,7 @@ describe('ReferenceMentionList — video reference thumbnail (#1824 consumer ⑥
 
 describe('ReferenceMentionList — the thumbnail shows the stored preview (inner#1320)', () => {
   beforeEach(() => {
-    resetPreviewFailures();
+    resetPreviewRecords();
   });
 
   it('a stored video cover renders its preview address in the row thumbnail', () => {

@@ -65,3 +65,32 @@ describe("a deadline that has already passed", () => {
     await expect(runTool("cat", [], { maxBytes: 1024, signal: AbortSignal.abort(), input: BYTES })).resolves.toBeNull();
   });
 });
+
+describe("a deadline that fires mid-read", () => {
+  // The signal aborts the read and kills the tool together: one cause, so one
+  // line, and it names the deadline rather than the read.
+  it("logs the tool's abort once and nothing about the read", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const controller = new AbortController();
+    const source = new ReadableStream<Uint8Array>({
+      start(stream) {
+        stream.enqueue(BYTES);
+        controller.signal.addEventListener("abort", () => {
+          stream.error(new DOMException("The operation was aborted due to timeout", "TimeoutError"));
+        });
+      },
+    });
+    setTimeout(() => controller.abort(), 50);
+
+    const out = await runTool("cat", [], {
+      maxBytes: 1024,
+      signal: controller.signal,
+      input: source,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(out).toBeNull();
+    expect(errors).toHaveBeenCalledTimes(1);
+    expect(errors.mock.calls[0]?.[0]).toBe("media_tool_failed");
+  });
+});

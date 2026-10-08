@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, cleanup, fireEvent } from '@testing-library/react';
 
-import { resetPreviewFailures } from '@web/lib/preview-src';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import {
   HOVER_OPEN_DELAY_MS,
@@ -279,7 +279,7 @@ describe('HoverPreview — one width for every form', () => {
 
 describe('HoverPreview — a stored image shows its preview (inner#1320)', () => {
   beforeEach(() => {
-    resetPreviewFailures();
+    resetPreviewRecords();
   });
 
   it('kind=image with a stored address renders the preview address', () => {

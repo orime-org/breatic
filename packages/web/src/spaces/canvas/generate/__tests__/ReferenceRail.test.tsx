@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
-import { resetPreviewFailures } from '@web/lib/preview-src';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 
@@ -360,7 +360,7 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
 
 describe('ReferenceRail — the thumbnail shows the stored preview (inner#1320)', () => {
   beforeEach(() => {
-    resetPreviewFailures();
+    resetPreviewRecords();
   });
 
   it('a stored image renders its preview address in the 24px thumbnail', () => {

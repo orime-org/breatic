@@ -12,7 +12,7 @@ import {
 } from '@testing-library/react';
 
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
-import { resetPreviewFailures } from '@web/lib/preview-src';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 import {
   NodeHistoryRow,
   type HistoryModality,
@@ -380,7 +380,7 @@ describe('a snapshot row names its words (#2186)', () => {
 
 describe('NodeHistoryRow — the thumbnail shows the stored preview (inner#1320)', () => {
   beforeEach(() => {
-    resetPreviewFailures();
+    resetPreviewRecords();
   });
 
   it('a stored image renders its preview address in the 46px thumbnail', () => {

@@ -19,7 +19,7 @@ import { previewUrlFor } from '@breatic/shared';
 const failed = new Set<string>();
 /** The natural width of each preview that loaded this session. */
 const widths = new Map<string, number>();
-/** Components to re-render when a preview is found missing. */
+/** Components to re-render when a preview fails or loads. */
 const listeners = new Set<() => void>();
 
 /**
@@ -59,7 +59,7 @@ function subscribe(listener: () => void): () => void {
  * Forget every failure and every width. For tests, which share the module
  * across cases.
  */
-export function resetPreviewFailures(): void {
+export function resetPreviewRecords(): void {
   failed.clear();
   widths.clear();
 }

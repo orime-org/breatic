@@ -4,14 +4,14 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { resetPreviewFailures, usePreviewSrc, usePreviewWidth } from '@web/lib/preview-src';
+import { resetPreviewRecords, usePreviewSrc, usePreviewWidth } from '@web/lib/preview-src';
 
 const UUID = '18f58aed-b802-4243-a8ea-02d377de9679';
 const STORED = `https://resource-dev.breatic.cc/image/2026-09-30/1_${UUID}.png`;
 const PREVIEW = `${STORED}.preview.webp`;
 
 beforeEach(() => {
-  resetPreviewFailures();
+  resetPreviewRecords();
 });
 
 describe('usePreviewSrc', () => {

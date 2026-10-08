@@ -19,6 +19,15 @@ import { moduleSourceVisitors } from "#rules/source-visitors";
  * judge.
  */
 
+/** What the config passes: the Worker modules bundled into the service. */
+interface Options {
+  /** Module names under `packages/ingest/src`, as the container's tsconfig includes them. */
+  bundledIngestModules: string[];
+}
+
+/** The prefix the container reaches the Worker's modules by. */
+const INGEST_PREFIX = "@ingest/";
+
 /**
  * Whether a specifier stays inside Node and this repository.
  * @param specifier The string a module was reached by.
@@ -27,35 +36,58 @@ import { moduleSourceVisitors } from "#rules/source-visitors";
 function isOwnCode(specifier: string): boolean {
   return (
     specifier.startsWith("node:") ||
-    specifier.startsWith("@ingest/") ||
+    specifier.startsWith(INGEST_PREFIX) ||
     specifier.startsWith(".")
   );
 }
 
-export const mediaContainerOwnCodeOnly = createRule<[], "notOwnCode">({
+/**
+ * The module name an `@ingest/` specifier reaches, without its extension.
+ * @param specifier An `@ingest/` specifier.
+ * @returns The name, as the tsconfig's include entries give it.
+ */
+function ingestModule(specifier: string): string {
+  return specifier.slice(INGEST_PREFIX.length).replace(/\.(js|ts)$/, "");
+}
+
+export const mediaContainerOwnCodeOnly = createRule<[Options], "notOwnCode" | "notBundled">({
   name: "media-container-own-code-only",
   meta: {
     type: "problem",
     docs: {
       description:
-        "The media container's service imports only Node builtins and our own modules",
+        "The media container's service imports only Node builtins and the Worker modules its tsconfig names",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: {
+          bundledIngestModules: { type: "array", items: { type: "string" } },
+        },
+        required: ["bundledIngestModules"],
+        additionalProperties: false,
+      },
+    ],
     messages: {
       notOwnCode:
         "'{{specifier}}' is not a node: builtin or an @ingest/ module. The media container runs vips and ffmpeg as separate programs (inner#1339), and its service loads no other code into its process.",
+      notBundled:
+        "'{{specifier}}' is not in packages/ingest/container/tsconfig.json's include. tsc and esbuild follow this import anyway, so the module would be bundled into the media container without this rule reading it: add it to that include.",
     },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{ bundledIngestModules: [] }],
+  create(context, [{ bundledIngestModules }]) {
+    const bundled = new Set(bundledIngestModules);
     return moduleSourceVisitors(
       (node: TSESTree.Node, source: TSESTree.StringLiteral): void => {
-        if (isOwnCode(source.value)) return;
-        context.report({
-          node,
-          messageId: "notOwnCode",
-          data: { specifier: source.value },
-        });
+        const specifier = source.value;
+        if (!isOwnCode(specifier)) {
+          context.report({ node, messageId: "notOwnCode", data: { specifier } });
+          return;
+        }
+        if (specifier.startsWith(INGEST_PREFIX) && !bundled.has(ingestModule(specifier))) {
+          context.report({ node, messageId: "notBundled", data: { specifier } });
+        }
       },
     );
   },

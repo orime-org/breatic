@@ -88,7 +88,9 @@ export async function runTool(
     child.stdin.once("error", stopped);
     child.stdin.once("close", stopped);
     source.once("error", (err) => {
-      if (toolStoppedReading) return;
+      // The signal aborts the read as it kills the tool, and the tool's exit
+      // above already names that.
+      if (toolStoppedReading || run.signal.aborted) return;
       inputBroke = true;
       console.error("media_tool_input_failed", { program, err: err.message });
       child.kill();

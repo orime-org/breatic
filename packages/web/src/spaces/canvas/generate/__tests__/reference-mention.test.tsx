@@ -30,7 +30,7 @@ import {
 } from '@web/features/reference-mention/reference-mention-local-input';
 import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import { resetPreviewFailures } from '@web/lib/preview-src';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 
 /**
  * Mounts a bare editor carrying the ReferenceMention extension configured with
@@ -1226,7 +1226,7 @@ describe('stripForeignReferenceChips — cross-node paste', () => {
 
 describe('ReferenceMention chip — the thumbnail shows the stored preview (inner#1320)', () => {
   beforeEach(() => {
-    resetPreviewFailures();
+    resetPreviewRecords();
   });
 
   it('a stored image chip renders its preview address in the chip thumbnail', async () => {

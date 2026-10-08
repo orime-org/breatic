@@ -4,7 +4,8 @@
 /**
  * Cuts the previews for images stored before previews existed (inner#1320).
  *
- * Every stored image has a 576-wide WebP beside it, cut when it is uploaded.
+ * Every stored image has a WebP of at most 576 wide beside it, cut when it is
+ * uploaded.
  * This asks the ingest Worker to cut the ones that are missing, through the
  * same read the deferred cover and avatar reads use. A preview already there
  * is left alone, so running it twice is a no-op.

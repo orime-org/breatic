@@ -37,7 +37,7 @@ import {
 import { expectEveryLocaleRenders } from '@web/test-utils/i18n-keys';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useUIStore } from '@web/stores/ui';
-import { resetPreviewFailures } from '@web/lib/preview-src';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 
 const { listMock } = vi.hoisted(() => ({ listMock: vi.fn() }));
 vi.mock('@web/data/api/activities', () => ({
@@ -507,7 +507,7 @@ describe('how the feed draws a row', () => {
 
 describe('activity feed row: the thumbnail shows the stored preview (inner#1320)', () => {
   beforeEach(() => {
-    resetPreviewFailures();
+    resetPreviewRecords();
   });
 
   it('a stored image renders its preview address in the row thumbnail', async () => {
