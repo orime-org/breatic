@@ -12,7 +12,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { GENERATION_TEMPLATES, t, templatePrompt, type CanvasProposal, type ProposalNode } from "@breatic/shared";
+import { GENERATION_TEMPLATES, markText, t, templatePrompt, type CanvasProposal, type ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
@@ -210,6 +210,54 @@ describe("a node wired into an optional slot", () => {
   });
 });
 
+describe("an optional slot and the reference pool", () => {
+  /**
+   * Empty pictures wired into the model both templates use: a pool of 11 and a style slot of 3.
+   * @param count - How many pictures.
+   * @param marks - How many asset marks.
+   * @param notes - How many notes.
+   * @returns The proposal.
+   */
+  function crowd(count: number, marks: number, notes: number): CanvasProposal {
+    const pictures = Array.from({ length: count }, (_, i): ProposalNode => ({ role: "source", type: "image", name: `Picture ${String(i + 1)}` }));
+    const prompt: NonNullable<ProposalNode["prompt"]> = [
+      ...Array.from({ length: notes }, () => ({ slot: { kind: "note" as const, label: "Pick this one into the style slot" } })),
+      ...Array.from({ length: marks }, (_, i) => reference(`picture ${String(i + 1)}`)),
+      { text: " at night" },
+    ];
+    return edit(pictures, prompt);
+  }
+
+  it("leaves the pictures a note sends to the slot out of the pool's ceiling", () => {
+    expect(checkProposal(crowd(13, 11, 2))).toEqual({ ok: true });
+    expect(checkProposal(crowd(14, 11, 3))).toEqual({ ok: true });
+  });
+
+  it("still refuses a pool past its ceiling once the slot is full", () => {
+    expect(checkProposal(crowd(15, 12, 3))).toMatchObject({ ok: false, reason: expect.stringContaining("holds 11 image") });
+  });
+
+  it("names only a slot that takes the kind wired in", () => {
+    const clips: ProposalNode[] = [
+      { role: "source", type: "video", name: "Clip 1" },
+      { role: "source", type: "video", name: "Clip 2" },
+    ];
+    const proposal: CanvasProposal = {
+      nodes: [...clips, { role: "generate", type: "video", name: "Cut", mode: "t2v", model: "seedance-2.5-text-to-video", prompt: [{ text: "A city at dusk." }] }],
+      edges: [{ fromIndex: 0, toIndex: 2 }, { fromIndex: 1, toIndex: 2 }],
+      rationale: "",
+      groupName: "Cut",
+    };
+    const answer = checkProposal(proposal);
+    expect(answer).toMatchObject({ ok: false });
+    expect(answer.ok ? "" : answer.reason).not.toContain("style_images");
+  });
+
+  it("asks in the prompt's description for a note for each node an optional slot takes", () => {
+    expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/a note of its own/);
+  });
+});
+
 describe("a mark the agent writes as words", () => {
   const written = [
     ["a reference", "[📎 the uploaded photo]"],
@@ -244,6 +292,30 @@ describe("a mark the agent writes as words", () => {
     expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringContaining('"Clip"') });
   });
 
+  it("hands back a mark copied from a box with its label alone, and every mark at once", () => {
+    const copied = `${markText({ kind: "asset", label: "the character photo", note: "x" })} in the rain, {✏️ the weather}`;
+    const answer = checkProposal(edit([CHARACTER], [reference("the generated character"), { text: ` ${copied}` }]));
+    expect(answer).toMatchObject({ ok: false });
+    const reason = answer.ok ? "" : answer.reason;
+    expect(reason).toContain('"label":"the character photo"');
+    expect(reason).toContain('"label":"the weather"');
+    expect(reason).not.toContain(t("canvas.promptMark.reference", { label: "" }).trim());
+    expect(reason).not.toContain('"note":"…"');
+  });
+
+  it("tells a written node to take a reference or note out, the way the role check does", () => {
+    const proposal: CanvasProposal = {
+      nodes: [
+        { role: "written", type: "text", name: "Script", prompt: [{ text: "Scene 1: [📎 the hero photo] walks in" }] },
+        { role: "generate", type: "audio", name: "Voice", mode: "tts", model: "realtime-tts-2", prompt: [reference("the script the Agent wrote")] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      rationale: "",
+      groupName: "Voice",
+    };
+    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringContaining("takes no reference or note mark") });
+  });
+
   it("leaves plain brackets the prompt means as words alone", () => {
     expect(checkProposal(edit([CHARACTER], [reference("the generated character"), { text: " at night [cinematic] {wide}" }]))).toEqual({ ok: true });
   });
@@ -254,7 +326,7 @@ describe("the templates as the agent is shown them", () => {
     const said = makeProposeCanvasAction().description ?? "";
     for (const template of GENERATION_TEMPLATES) {
       for (const segment of templatePrompt(template)) {
-        if (segment.slot) expect(said).toContain(JSON.stringify({ slot: { kind: segment.slot.kind, label: segment.slot.label } }));
+        if (segment.slot) expect(said).toContain(JSON.stringify({ slot: segment.slot }));
       }
     }
     expect(said).not.toContain(t("canvas.promptMark.reference", { label: "" }).trim());

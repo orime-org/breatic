@@ -24,6 +24,16 @@ afterEach(() => {
   setLocale("en");
 });
 
+describe("a reference mark read back", () => {
+  it("gives the label without the words markText asked the reader with, in every language", () => {
+    const slot = { kind: "asset" as const, label: "the character photo", note: "the character photo" };
+    expect(markedSegments(`Use ${markText(slot)} now`)).toEqual([{ text: "Use " }, { slot }, { text: " now" }]);
+    setLocale("zh-CN");
+    const zh = { kind: "asset" as const, label: "角色参考图", note: "角色参考图" };
+    expect(markedSegments(markText(zh))).toEqual([{ slot: zh }]);
+  });
+});
+
 describe("markText", () => {
   it("asks the reader to @ a reference, in their language", () => {
     expect(markText({ kind: "asset", label: "character photo", note: "x" })).toBe("[📎 Use @ to pick character photo]");

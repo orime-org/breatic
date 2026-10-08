@@ -237,7 +237,14 @@ describe("what the rendered answer tells the model", () => {
   it("says how many wired nodes an optional slot can take instead of the pool", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /\(nano-banana-pro-edit-ultra\)[^\n]*Up to 3 image nodes wired in can go into its style_images slot instead \(say so in a note\); those need no asset mark\./,
+      /\(nano-banana-pro-edit-ultra\)[^\n]*Up to 3 image nodes wired in can go into its style_images slot instead \(a note for each, saying so\); those need no asset mark\./,
+    );
+  });
+
+  it("says nodes for an optional slot cannot be @'d where the model has no pool of their kind", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /\(krea-v2-large-text-to-image\)[^\n]*Up to 3 image nodes wired in go into its style_images slot \(a note for each, saying so\); they cannot be @'d\./,
     );
   });
 
