@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { useStore } from '@xyflow/react';
+import { originalUrlFor } from '@breatic/shared';
 import { toast } from '@web/lib/toast';
 
 import { Button } from '@web/components/ui/button';
@@ -75,6 +76,38 @@ function intrinsicSize(el: CropSourceEl): { width: number; height: number } {
   return el instanceof HTMLImageElement
     ? { width: el.naturalWidth, height: el.naturalHeight }
     : { width: el.videoWidth, height: el.videoHeight };
+}
+
+/**
+ * The original image's pixel size, read off the same element as its address.
+ *
+ * An image node showing its preview declares the original's size in its
+ * `width` / `height` attributes (inner#1320); the preview's own pixels are not
+ * the space the crop is cut in. Read off the element rather than the node's
+ * data, because the data can lead the element by a commit after a
+ * collaborator's regenerate and the size must describe the image the marquee
+ * was drawn on. An element with no declared size shows the original, whose
+ * natural size is its own.
+ * @param el - The crop source, already decodable.
+ * @returns The original's size.
+ */
+function originalSize(el: CropSourceEl): { width: number; height: number } {
+  if (el instanceof HTMLImageElement) {
+    const width = Number(el.getAttribute('width'));
+    const height = Number(el.getAttribute('height'));
+    if (width > 0 && height > 0) return { width, height };
+  }
+  return intrinsicSize(el);
+}
+
+/**
+ * The original image's address for the element's current one.
+ * @param el - The crop source.
+ * @returns The address with any preview suffix removed, or null.
+ */
+function originalSrc(el: CropSourceEl): string | null {
+  const src = el.getAttribute('src');
+  return src === null ? null : originalUrlFor(src);
 }
 
 /**
@@ -352,7 +385,9 @@ export function FocusCropOverlay({
       setBox(null);
       return;
     }
-    const src = el.getAttribute('src');
+    // The original's address: a preview falling back to the original is the
+    // same picture, not a swap.
+    const src = originalSrc(el);
     const prev = prevBoxRef.current;
     if (measuredSrcRef.current !== null && measuredSrcRef.current !== src) {
       // Content swap under the marquee (adversarial 2026-07-16): the old
@@ -410,12 +445,13 @@ export function FocusCropOverlay({
     prevBoxRef.current = next;
     const intrinsic = intrinsicSize(el);
     if (intrinsic.width > 0 && intrinsic.height > 0) {
+      const original = originalSize(el);
       setNaturalSize((prevNat) =>
         prevNat &&
-        prevNat.width === intrinsic.width &&
-        prevNat.height === intrinsic.height
+        prevNat.width === original.width &&
+        prevNat.height === original.height
           ? prevNat
-          : intrinsic,
+          : original,
       );
     }
     setBox(next);
@@ -838,7 +874,7 @@ export function FocusCropOverlay({
     if (
       isCropSource(el) &&
       measuredSrcRef.current !== null &&
-      el.getAttribute('src') !== measuredSrcRef.current
+      originalSrc(el) !== measuredSrcRef.current
     ) {
       clearMarquee();
       toast.warning(t('canvas.generatePanel.focusSourceChanged'));
@@ -859,7 +895,7 @@ export function FocusCropOverlay({
       toast.error(t('canvas.generatePanel.focusExportFailed'));
       return;
     }
-    const natural = intrinsicSize(el);
+    const natural = originalSize(el);
     const accepted = onConfirm({
       crop: toNaturalCrop(rect, box, natural),
       natural,
