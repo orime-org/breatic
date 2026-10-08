@@ -171,7 +171,8 @@ const proposalNode = z
           "segment; it is words shown to the reader, nothing more: no mention is written for it, " +
           "and the reader @s every reference by hand, so give every node going into the pool an asset " +
           "mark; a node going into a slot or the lyrics box takes a note of its own instead, and so does " +
-          "an empty node left unwired for the reader to pick into a slot",
+          "an empty node no edge sends into a generation (unwired, or wired only as a link to a model that " +
+          "takes nothing from it), for the reader to pick into a slot",
       ),
     shots: z
       .array(
@@ -938,7 +939,7 @@ function checkEmptyNodesFit(proposal: CanvasProposal): ProposalVerdict {
  * @returns Whether it stands, and which nodes lack a note when it does not.
  * @throws {never} Never.
  */
-function checkUnwiredNotes(proposal: CanvasProposal): ProposalVerdict {
+function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
   const sent = new Set<ProposalNode>();
   const slotKinds = new Set<string>();
   let spare = 0;
@@ -959,7 +960,7 @@ function checkUnwiredNotes(proposal: CanvasProposal): ProposalVerdict {
   if (loose.length <= spare) return { ok: true };
   return {
     ok: false,
-    reason: `${loose.map((n) => `"${n.name}"`).join(", ")} ${loose.length === 1 ? "goes" : "go"} into no generation by its edges, so the reader picks ${loose.length === 1 ? "it" : "each"} into a slot in the panel, and the generations here carry ${String(spare)} note(s) beyond those their wired nodes use. Give each one a note saying which slot to pick it into.`,
+    reason: `${loose.map((n) => `"${n.name}"`).join(", ")} ${loose.length === 1 ? "goes" : "go"} into no generation, so the reader picks ${loose.length === 1 ? "it" : "each"} into a slot in the panel, and the generations here carry ${String(spare)} note(s) beyond those their wired nodes use. Give each one a note saying which slot to pick it into.`,
   };
 }
 
@@ -1055,7 +1056,7 @@ function checkResolved(proposal: CanvasProposal): ProposalVerdict {
   // proposal naming a model that does not exist would be answered about its
   // empty nodes rather than about the name it got wrong.
   const fit = checkEmptyNodesFit(proposal);
-  return fit.ok ? checkUnwiredNotes(proposal) : fit;
+  return fit.ok ? checkUnsentNotes(proposal) : fit;
 }
 
 /**
