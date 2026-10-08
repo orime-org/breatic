@@ -864,7 +864,7 @@
           "slot": {
             "audio": "Pick an audio node for the voice"
           },
-          "prompt": "Describe the expression and movement (optional)"
+          "prompt": "Describe the expression and movement"
         },
         "crop": {
           "label": "Crop"
@@ -982,8 +982,8 @@
         "noUsableTier": "This image can't be upscaled.",
         "exportFailed": "Couldn't make the file.",
         "sourceGone": "The source node was deleted.",
-        "sourceChanged": "The source changed. The crop, range and orientation were reset.",
-        "sourceChangedByPeer": "A collaborator changed the source. The crop, range and orientation were reset.",
+        "sourceChanged": "The source changed.",
+        "sourceChangedByPeer": "A collaborator changed the source.",
         "couldNotStart": "Couldn't start the tool. Try again."
       },
       "adjust": {

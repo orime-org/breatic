@@ -864,7 +864,7 @@
           "slot": {
             "audio": "選一個音訊節點作為聲音"
           },
-          "prompt": "描述表情和動作（可選）"
+          "prompt": "描述表情和動作"
         },
         "crop": {
           "label": "裁切"
@@ -982,8 +982,8 @@
         "noUsableTier": "這張圖無法放大。",
         "exportFailed": "無法產生檔案。",
         "sourceGone": "來源節點已被刪除。",
-        "sourceChanged": "素材已更換，裁切框、區間和方向已重設。",
-        "sourceChangedByPeer": "協作者更換了素材，裁切框、區間和方向已重設。",
+        "sourceChanged": "素材已更換。",
+        "sourceChangedByPeer": "協作者更換了素材。",
         "couldNotStart": "工具沒能啟動，請重試。"
       },
       "adjust": {

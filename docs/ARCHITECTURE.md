@@ -67,7 +67,7 @@ config/ skills/ locales/ (git-tracked)
 ### Canvas collaboration
 
 - 节点 create/delete + position 由**前端独占**;后端只能改 `data` 字段(taskCounts/content 等)
-- 画布走 Yjs,Agent 聊天走 SSE。无锁:每次 mini-tool 操作产生新兄弟节点(edge 连接),不覆盖源节点
+- 画布走 Yjs,Agent 聊天走 SSE。无锁:每次 mini-tool 操作在源节点下游新建结果节点(edge 连接),不覆盖源节点
 - 事件总线:Redis Streams,key 由 core 的 `taskEventsStreamKey()` 单一来源给出(`${env}:stream:task-events`);载荷是一次一个节点的四个计数,走到 done 那次另带内容字段,Collab 消费后写 Yjs
 - 文档命名 v10 multi-doc:`project-{id}/meta`(含 spaces 列表)+ `project-{id}/canvas-{spaceId}`(每个 Canvas Space 一个)
 - 节点显示状态由 `deriveStatus` 从四个计数和 `errorMessage` 折出:有 running 是 handling,有 failed 或 expired 且没内容是 error,其余 idle
@@ -179,7 +179,7 @@ config/ skills/ locales/ (git-tracked)
 
 | | 服务端工具(模型 / 容器) | Text |
 |---|---|---|
-| Endpoint | `POST /mini-tools`(浏览器工具不调它:裁剪、旋转翻转在浏览器里出文件、按普通上传落盘) | `POST /mini-tools/text` |
+| Endpoint | `POST /mini-tools`(浏览器工具不调它:图片裁剪和图片旋转翻转在浏览器里出文件、按普通上传落盘;视频裁剪是容器工具,走这个端点) | `POST /mini-tools/text` |
 | 执行 | BullMQ Worker(异步) | API 直接 streamText(同步 SSE) |
 | 结果交付 | Redis → Hocuspocus → Yjs(协作者可见) | SSE 流给请求者(私有,接受后才写 Yjs) |
 | 用户交互 | 等待 → 结果出现 | 打字机效果,可随时 abort |

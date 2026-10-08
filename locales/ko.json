@@ -864,7 +864,7 @@
           "slot": {
             "audio": "목소리로 쓸 오디오 노드를 선택하세요"
           },
-          "prompt": "표정과 움직임을 입력하세요 (선택)"
+          "prompt": "표정과 움직임을 입력하세요"
         },
         "crop": {
           "label": "자르기"
@@ -982,8 +982,8 @@
         "noUsableTier": "이 이미지는 확대할 수 없습니다.",
         "exportFailed": "파일을 만들 수 없습니다.",
         "sourceGone": "원본 노드가 삭제되었습니다.",
-        "sourceChanged": "소재가 바뀌어 자르기, 구간, 방향을 초기화했습니다.",
-        "sourceChangedByPeer": "공동 작업자가 소재를 바꿔 자르기, 구간, 방향을 초기화했습니다.",
+        "sourceChanged": "소재가 바뀌었습니다.",
+        "sourceChangedByPeer": "공동 작업자가 소재를 바꿨습니다.",
         "couldNotStart": "도구를 시작하지 못했습니다. 다시 시도하세요."
       },
       "adjust": {

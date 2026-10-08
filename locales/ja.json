@@ -864,7 +864,7 @@
           "slot": {
             "audio": "声に使う音声ノードを選んでください"
           },
-          "prompt": "表情や動きを入力（任意）"
+          "prompt": "表情や動きを入力"
         },
         "crop": {
           "label": "トリミング"
@@ -982,8 +982,8 @@
         "noUsableTier": "この画像は拡大できません。",
         "exportFailed": "ファイルを作成できませんでした。",
         "sourceGone": "元のノードが削除されました。",
-        "sourceChanged": "素材が変わったため、トリミング・範囲・向きをリセットしました。",
-        "sourceChangedByPeer": "コラボレーターが素材を変えたため、トリミング・範囲・向きをリセットしました。",
+        "sourceChanged": "素材が変わりました。",
+        "sourceChangedByPeer": "コラボレーターが素材を変えました。",
         "couldNotStart": "ツールを開始できませんでした。もう一度お試しください。"
       },
       "adjust": {
