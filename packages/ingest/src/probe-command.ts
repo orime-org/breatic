@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What the media container asks ffprobe and ffmpeg (#209 + #210, design §3.1).
+ * What the media container asks ffprobe, ffmpeg and vips (#209 + #210, design
+ * §3.1; inner#1339).
  *
  * The argument lists live here, beside the Worker that starts the container,
  * because they are the whole of what happens to a user's bytes and they are

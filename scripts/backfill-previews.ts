@@ -110,8 +110,8 @@ await Promise.all(Array.from({ length: concurrency }, () => work()));
 
 console.log(Object.fromEntries(counts), `sizes corrected: ${resized}`);
 if (failedKeys.length > 0) {
-  // A container that ran out of time fails the same way as an image ffmpeg
-  // cannot decode; a second run tells the two apart.
+  // A container that ran out of time fails the same way as one that could not
+  // be read; a second run tells the two apart.
   console.log("no preview was cut for these:");
   for (const key of failedKeys) console.log(" ", key);
 }

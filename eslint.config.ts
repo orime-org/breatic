@@ -5,6 +5,9 @@ import jsdoc from "eslint-plugin-jsdoc";
 import importPlugin from "eslint-plugin-import";
 import drizzle from "eslint-plugin-drizzle";
 import { breaticPlugin } from "@breatic/eslint-rules";
+import ts from "typescript";
+import { posix } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // eslint-plugin-jsdoc TypeScript preset (error level): enforces TSDoc-style
 // doc comments. no-types stays on (TS already provides param/return/yield
@@ -17,6 +20,23 @@ import { breaticPlugin } from "@breatic/eslint-rules";
 // spec (docs/ARCHITECTURE.md → Coding standards): type info → signature; exception type →
 // comment. Replaces eslint-plugin-tsdoc's all-or-nothing tsdoc/syntax warn (#850).
 const jsdocTs = jsdoc.configs["flat/recommended-typescript-error"];
+
+/** Where the media container's tsconfig sits, from the repository root. */
+const MEDIA_CONTAINER_DIR = "packages/ingest/container";
+
+/**
+ * The media container service's own sources: what its tsconfig includes,
+ * from the repository root, less its tests.
+ */
+const MEDIA_CONTAINER_FILES: string[] = (
+  ts.readConfigFile(
+    fileURLToPath(new URL(`./${MEDIA_CONTAINER_DIR}/tsconfig.json`, import.meta.url)),
+    ts.sys.readFile,
+  )
+    .config as { include: string[] }
+).include
+  .filter((entry) => !entry.startsWith("__tests__"))
+  .map((entry) => posix.join(MEDIA_CONTAINER_DIR, entry));
 
 // Every glob here names the packages it governs, and never `packages/*`. Which
 // packages that is differs per rule — most name the same six, and
@@ -318,8 +338,10 @@ export default tseslint.config(
   {
     // The media container's service: Node and our own modules only, so the
     // GPL-linked vips and ffmpeg in its image stay separate programs it
-    // spawns (inner#1339).
-    files: ["packages/ingest/container/**/*.ts"],
+    // spawns (inner#1339). The files are the ones the container's tsconfig
+    // names, which include the Worker modules bundled into the service, less
+    // its tests.
+    files: MEDIA_CONTAINER_FILES,
     rules: {
       "breatic/media-container-own-code-only": "error",
     },

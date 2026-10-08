@@ -21,7 +21,6 @@
  */
 
 import { createServer } from "node:http";
-import { execFile } from "node:child_process";
 import { Readable } from "node:stream";
 import {
   buildProbeAnswer,
@@ -35,6 +34,7 @@ import {
   readProbeOutput,
 } from "@ingest/probe-command.js";
 import { previewSource, previewTimeLeft } from "@ingest/preview-step.js";
+import { openObject, runTool } from "./run-tool.js";
 import { NOTHING_FOUND, pickMediaMetadata } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import type { ProbeRequest } from "@ingest/probe-answer.js";
@@ -49,104 +49,14 @@ import type { ProbeRequest } from "@ingest/probe-answer.js";
 const COVER_MAX_BYTES = 10 * 1024 * 1024;
 
 /**
- * The most a preview may weigh. A 576-wide WebP of the noisiest frame measured
- * came to 111,560 bytes (inner#1320 design §5.1).
+ * The most a preview may weigh. The largest preview is 576x16383, and that
+ * size cut from pure noise came to 5,176,264 bytes (inner#1320 round 5); an
+ * ordinary 576-wide frame is around 100 KB.
  */
-const PREVIEW_MAX_BYTES = 2 * 1024 * 1024;
+const PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
 
 /** One run's request as it arrives: read before it is believed. */
 type IncomingRequest = Partial<Record<keyof ProbeRequest, unknown>>;
-
-/**
- * Run one tool and collect what it wrote.
- * @param program - `ffprobe`, `ffmpeg` or `vips`.
- * @param args - Its argument list.
- * @param maxBytes - The most stdout may hold.
- * @param timeoutMs - How long it may run. It covers reading the object as well
- *   as the work, since every tool reads the object over the network.
- * @param stdin - Bytes or a stream to hand the tool on stdin, when it reads
- *   from there.
- * @returns What it wrote, or null when it failed or produced nothing.
- */
-async function run(
-  program: string,
-  args: string[],
-  maxBytes: number,
-  timeoutMs: number,
-  stdin?: Uint8Array | ReadableStream<Uint8Array>,
-): Promise<Buffer | null> {
-  return new Promise((resolve) => {
-    const child = execFile(
-      program,
-      args,
-      { encoding: "buffer", maxBuffer: maxBytes, timeout: timeoutMs },
-      (error, stdout) => {
-        if (error !== null) {
-          // The upload succeeds either way, so this is the only place the
-          // reason exists: without it a video with no cover and a video whose
-          // ffmpeg was killed look the same from outside. `signal` names a
-          // deadline the tool was cut off at, `code` a refusal it decided on
-          // its own, and neither is on the Worker's side of the wire.
-          console.error("media_tool_failed", {
-            program,
-            signal: error.signal ?? null,
-            code: error.code ?? null,
-            err: error.message,
-          });
-          resolve(null);
-          return;
-        }
-        if (stdout.length === 0) {
-          console.error("media_tool_wrote_nothing", { program });
-          resolve(null);
-          return;
-        }
-        resolve(stdout);
-      },
-    );
-    if (stdin === undefined || child.stdin === null) return;
-    // A tool that stops reading early closes its stdin, and a source that
-    // breaks off ends the input short. Either way the tool's own exit says
-    // what came of it, above; these keep the reason.
-    child.stdin.on("error", (err) => {
-      console.error("media_tool_stdin_failed", { program, err: err.message });
-    });
-    if (stdin instanceof Uint8Array) {
-      child.stdin.end(stdin);
-      return;
-    }
-    const source = Readable.fromWeb(stdin);
-    source.on("error", (err) => {
-      console.error("media_tool_input_failed", { program, err: err.message });
-      child.stdin?.end();
-    });
-    source.pipe(child.stdin);
-  });
-}
-
-/**
- * Open the stored object as a stream, for a tool that reads stdin.
- * @param objectUrl - Where to read it.
- * @param timeoutMs - How long the read may take, the tool's own time.
- * @returns The body, or null when it could not be opened.
- */
-async function openObject(
-  objectUrl: string,
-  timeoutMs: number,
-): Promise<ReadableStream<Uint8Array> | null> {
-  try {
-    const res = await fetch(objectUrl, { signal: AbortSignal.timeout(timeoutMs) });
-    if (res.ok && res.body !== null) return res.body;
-    console.error("media_object_open_failed", { status: res.status });
-    await res.body?.cancel();
-    return null;
-  } catch (err) {
-    console.error("media_object_open_failed", {
-      err: err instanceof Error ? err.message : String(err),
-    });
-    return null;
-  }
-}
 
 /**
  * Probe one object, and lift a cover frame when one is wanted and there is a
@@ -161,12 +71,10 @@ async function probe(
   wantCover: boolean,
   timeoutMs: number,
 ): Promise<{ report: ProbeReport; cover: Uint8Array | null }> {
-  const probed = await run(
-    "ffprobe",
-    probeArgs(objectUrl),
-    4 * 1024 * 1024,
-    timeoutMs,
-  );
+  const probed = await runTool("ffprobe", probeArgs(objectUrl), {
+    maxBytes: 4 * 1024 * 1024,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
   const report =
     probed === null
       ? NOTHING_FOUND
@@ -181,12 +89,10 @@ async function probe(
   const hasFrame = pickMediaMetadata(report).width !== null;
   if (!wantCover || !hasFrame) return { report, cover: null };
 
-  const cut = await run(
-    "ffmpeg",
-    coverArgs(objectUrl),
-    COVER_MAX_BYTES,
-    timeoutMs,
-  );
+  const cut = await runTool("ffmpeg", coverArgs(objectUrl), {
+    maxBytes: COVER_MAX_BYTES,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
   return { report, cover: cut === null ? null : new Uint8Array(cut) };
 }
 
@@ -202,28 +108,35 @@ async function cutPreview(
   asked: ProbeRequest,
   found: { report: ProbeReport; cover: Uint8Array | null },
 ): Promise<Uint8Array | null> {
+  // One reading of the clock decides both whether there is time and how much.
+  const clock = { deadlineAt: asked.deadlineAt, now: Date.now() };
   const source = previewSource({
     wantPreview: asked.wantPreview,
     wantCover: asked.wantCover,
     cover: found.cover,
     report: found.report,
-    deadlineAt: asked.deadlineAt,
-    now: Date.now(),
+    ...clock,
   });
   if (source === "late") {
     // The Worker drops the whole answer at its deadline, so this run keeps
     // the size and the cover and leaves the preview to the backfill.
     console.error("media_preview_skipped_deadline", {
-      leftMs: asked.deadlineAt - Date.now(),
+      leftMs: clock.deadlineAt - clock.now,
     });
     return null;
   }
   if (source === null) return null;
-  const timeoutMs = previewTimeLeft({ deadlineAt: asked.deadlineAt, now: Date.now() });
+  // The read and vips share this signal, so a read cut off by it never hands
+  // vips a short picture.
+  const signal = AbortSignal.timeout(previewTimeLeft(clock));
   const input =
-    source === "cover" ? found.cover : await openObject(asked.objectUrl, timeoutMs);
+    source === "cover" ? found.cover : await openObject(asked.objectUrl, signal);
   if (input === null) return null;
-  const cut = await run("vips", previewArgs(), PREVIEW_MAX_BYTES, timeoutMs, input);
+  const cut = await runTool("vips", previewArgs(), {
+    maxBytes: PREVIEW_MAX_BYTES,
+    signal,
+    input,
+  });
   return cut === null ? null : new Uint8Array(cut);
 }
 
