@@ -115,8 +115,9 @@ const COVER_SCALE =
 export const PREVIEW_CONTENT_TYPE = "image/webp";
 
 /**
- * How wide a preview is: a canvas node is 288 CSS px wide, and this covers it
- * on a 2x screen. Narrower pictures keep their own width.
+ * How wide a preview is: `PREVIEW_WIDTH` in `@breatic/shared`, which the page
+ * compares against. The container cannot import it, so the test holds the two
+ * together. Narrower pictures keep their own width.
  */
 const PREVIEW_SCALE = "scale='min(576,iw)':-2";
 

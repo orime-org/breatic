@@ -685,6 +685,7 @@ export {
 // and every page that shows it.
 export {
   PREVIEW_SUFFIX,
+  PREVIEW_WIDTH,
   previewKeyFor,
   previewUrlFor,
   originalUrlFor,

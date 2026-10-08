@@ -10,6 +10,13 @@
  * every page that shows it read the same rule here.
  */
 
+/**
+ * How wide a preview is, in pixels. A canvas node is 288 CSS px wide, so this
+ * covers it on a 2x screen; past that the page shows the original. The
+ * container writes previews at this width too, held to it by its own test.
+ */
+export const PREVIEW_WIDTH = 576;
+
 /** What a preview's key adds to the key of the image it was cut from. */
 export const PREVIEW_SUFFIX = ".preview.webp";
 
