@@ -650,6 +650,8 @@ export {
   type IngestMeasurements,
   type MediaLimits,
   type MediaNumbers,
+  type PreviewOutcome,
+  type StoredMediaRead,
 } from "@shared/upload/ingest-client.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,

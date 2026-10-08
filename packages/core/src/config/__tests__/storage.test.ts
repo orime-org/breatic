@@ -251,17 +251,52 @@ describe("the container's two deadlines", () => {
           container_tool_timeout_ms: 60_000,
         },
       }),
-    ).toThrow(/at least twice/);
+    ).toThrow(/at least/);
   });
 
   it("takes one that can", () => {
     const cfg = storageConfigSchema.parse({
       ingest: {
-        container_run_deadline_ms: 120_000,
+        container_run_deadline_ms: 130_000,
         container_tool_timeout_ms: 60_000,
       },
     });
 
-    expect(cfg.ingest.container_run_deadline_ms).toBe(120_000);
+    expect(cfg.ingest.container_run_deadline_ms).toBe(130_000);
+  });
+});
+
+// A video's run can use three steps: ffprobe, the cover and the preview. The
+// preview has its own short limit so the other two are never cut off for it
+// (inner#1320).
+describe("the preview's place in the run deadline", () => {
+  it("gives the preview ten seconds by default", () => {
+    const cfg = storageConfigSchema.parse({});
+
+    expect(cfg.ingest.container_preview_timeout_ms).toBe(10_000);
+  });
+
+  it("refuses a run deadline that cannot hold two tool runs and a preview", () => {
+    expect(() =>
+      storageConfigSchema.parse({
+        ingest: {
+          container_run_deadline_ms: 120_000,
+          container_tool_timeout_ms: 60_000,
+          container_preview_timeout_ms: 10_000,
+        },
+      }),
+    ).toThrow(/container_preview_timeout_ms/);
+  });
+
+  it("takes one that can", () => {
+    const cfg = storageConfigSchema.parse({
+      ingest: {
+        container_run_deadline_ms: 130_000,
+        container_tool_timeout_ms: 60_000,
+        container_preview_timeout_ms: 10_000,
+      },
+    });
+
+    expect(cfg.ingest.container_preview_timeout_ms).toBe(10_000);
   });
 });

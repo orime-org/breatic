@@ -104,6 +104,12 @@ export const storageConfigSchema = z
        */
       container_tool_timeout_ms: z.number().int().positive().default(60_000),
       /**
+       * How long cutting one preview may take, in milliseconds (inner#1320).
+       * A video's run uses three steps, so the run deadline has to hold this
+       * on top of two tool runs.
+       */
+      container_preview_timeout_ms: z.number().int().positive().default(10_000),
+      /**
        * How long ONE call asking the Worker to pull a source URL may take, in
        * milliseconds. It bounds the whole transfer, because the answer only
        * arrives once the Worker has finished writing R2.
@@ -139,17 +145,17 @@ export const storageConfigSchema = z
       });
     }
 
-    // A run can use both tools, so the Worker has to be willing to wait for
-    // two of them. Set the other way round it cuts off a container that is
-    // working, and the upload it was measuring loses its numbers for no
-    // reason either end can see.
-    if (
-      cfg.ingest.container_run_deadline_ms <
-      cfg.ingest.container_tool_timeout_ms * 2
-    ) {
+    // A run can use both tools and then cut a preview, so the Worker has to be
+    // willing to wait for all three. Set the other way round it cuts off a
+    // container that is working, and the upload it was measuring loses its
+    // numbers for no reason either end can see.
+    const { container_run_deadline_ms: run, container_tool_timeout_ms: tool } =
+      cfg.ingest;
+    const preview = cfg.ingest.container_preview_timeout_ms;
+    if (run < tool * 2 + preview) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `container_run_deadline_ms (${cfg.ingest.container_run_deadline_ms}) must be at least twice container_tool_timeout_ms (${cfg.ingest.container_tool_timeout_ms}) — one run may use both tools.`,
+        message: `container_run_deadline_ms (${run}) must be at least twice container_tool_timeout_ms (${tool}) plus container_preview_timeout_ms (${preview}) — one run may use both tools and cut a preview.`,
         path: ["ingest", "container_run_deadline_ms"],
       });
     }
