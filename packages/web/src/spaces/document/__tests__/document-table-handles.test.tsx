@@ -40,6 +40,7 @@ vi.mock('@blocknote/react', () => ({
   useExtensionState: () => side.state,
 }));
 
+const { setBubbleBarUp } = await import('@web/spaces/document/document-bars');
 const { DocumentTableHandle } = await import(
   '@web/spaces/document/DocumentTableHandles'
 );
@@ -238,13 +239,23 @@ describe('the row handle (A6)', () => {
     expect(side.unfrozen).toBe(1);
   });
 
-  it('is not there while the reader holds a selection', () => {
+  it('is not there while the bubble bar is up (inner#1127)', () => {
+    const editor = openOver(0, 0);
+    act(() => {
+      setBubbleBarUp(editor, true);
+    });
+    render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
+
+    expect(screen.queryByTestId('doc-table-row-handle')).toBeNull();
+  });
+
+  it('is there over a selection the body let go of, with no bubble bar up (inner#1127)', () => {
     const editor = openOver(0, 0);
     const pm = editor.prosemirrorView!;
     pm.dispatch(pm.state.tr.setSelection(TextSelection.create(pm.state.doc, 2, 4)));
     render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
 
-    expect(screen.queryByTestId('doc-table-row-handle')).toBeNull();
+    expect(screen.queryByTestId('doc-table-row-handle')).not.toBeNull();
   });
 });
 

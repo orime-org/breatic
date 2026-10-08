@@ -18,7 +18,10 @@ import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
 
+import { TextSelection } from '@tiptap/pm/state';
+
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { setBubbleBarUp } from '@web/spaces/document/document-bars';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -256,5 +259,30 @@ describe('the strip beside a selected block (inner#1127)', () => {
     render(<DocumentBlockHandle />);
 
     expect(screen.getByTestId('doc-block-handle')).toBeTruthy();
+  });
+});
+
+describe('the strip and the bubble bar (inner#1127)', () => {
+  it('is there over a selection the body let go of, with no bubble bar up', () => {
+    const editor = openOver([{ type: 'paragraph', content: 'words here' }, { type: 'paragraph', content: 'more' }], 1);
+    const pm = editor.prosemirrorView!;
+    act(() => {
+      pm.dispatch(pm.state.tr.setSelection(TextSelection.create(pm.state.doc, 2, 6)));
+    });
+    render(<DocumentBlockHandle />);
+
+    expect(screen.queryByTestId('doc-block-handle')).not.toBeNull();
+  });
+
+  it('stands aside while the bubble bar is up', () => {
+    const editor = openOver([{ type: 'paragraph', content: 'words here' }, { type: 'paragraph', content: 'more' }], 1);
+    render(<DocumentBlockHandle />);
+    expect(screen.queryByTestId('doc-block-handle')).not.toBeNull();
+
+    act(() => {
+      setBubbleBarUp(editor, true);
+    });
+
+    expect(screen.queryByTestId('doc-block-handle')).toBeNull();
   });
 });
