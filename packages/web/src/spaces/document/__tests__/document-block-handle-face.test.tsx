@@ -22,6 +22,7 @@ import { TextSelection } from '@tiptap/pm/state';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { setBubbleBarUp } from '@web/spaces/document/document-bars';
+import { BODY_ANCHOR, BODY_LAYER } from '@web/spaces/document/document-body-focus';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -284,5 +285,16 @@ describe('the strip and the bubble bar (inner#1127)', () => {
     });
 
     expect(screen.queryByTestId('doc-block-handle')).toBeNull();
+  });
+});
+
+describe('the strip as a layer of the body (inner#1127)', () => {
+  it('carries the body layer mark, belonging on the row it is for', () => {
+    const editor = openOver([{ type: 'paragraph', content: 'words' }], 0);
+    render(<DocumentBlockHandle />);
+
+    const layer = screen.getByTestId('doc-block-handle').closest(`[${BODY_LAYER}]`);
+    const id = (editor.document[0] as { id: string }).id;
+    expect(layer?.getAttribute(BODY_ANCHOR)).toBe(`block:${id}`);
   });
 });
