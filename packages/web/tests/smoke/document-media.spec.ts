@@ -796,6 +796,108 @@ test('the keyboard stays with the body through the toolbar and the caption; a pr
   await expect(knob).toBeVisible();
 });
 
+test('a click held with Cmd or Ctrl in a media row does what the plain click does (A10)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('alpha');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('omega');
+  await page.keyboard.press('ArrowUp');
+  await pastePicture(page, 'modifier.png');
+  const picture = page.locator(IMAGE);
+  const img = picture.locator('img');
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const knob = picture.locator('[data-testid="doc-media-resize-se"]');
+  await img.click();
+  await picture.getByTestId('doc-media-caption-button').click();
+  await page.keyboard.type('Dusk');
+  await page.keyboard.press('Enter');
+  const rowsNow = (): Promise<string[]> =>
+    page.locator(`${EDITOR} .bn-block-content`).evaluateAll((all) =>
+      all.map((row) => (row.getAttribute('data-content-type') === 'image' ? 'image' : (row.textContent ?? ''))),
+    );
+  const before = await rowsNow();
+  /**
+   * Clicks at a point with the platform's node modifier held.
+   * @param x - Where, across.
+   * @param y - Where, down.
+   */
+  const modifierClick = async (x: number, y: number): Promise<void> => {
+    await page.keyboard.down('ControlOrMeta');
+    await page.mouse.click(x, y);
+    await page.keyboard.up('ControlOrMeta');
+  };
+
+  // On the picture: it is selected, as a plain click selects it, selected or not.
+  const at = (await img.boundingBox())!;
+  for (let i = 0; i < 2; i += 1) {
+    await modifierClick(at.x + at.width / 2, at.y + at.height / 2);
+    await expect(knob).toBeVisible();
+  }
+
+  // Beside it and on its caption: nothing selected and no focus in the body.
+  const frame = (await picture.locator('[data-media-frame]').boundingBox())!;
+  const caption = (await picture.getByTestId('doc-media-caption').boundingBox())!;
+  for (const [x, y] of [
+    [frame.x + frame.width + 40, frame.y + frame.height / 2],
+    [caption.x + caption.width / 2, caption.y + caption.height / 2],
+  ] as const) {
+    await img.click();
+    await expect(knob).toBeVisible();
+    await modifierClick(x, y);
+    await expect(knob).toHaveCount(0);
+    expect(await page.evaluate(() => document.activeElement?.closest('.ProseMirror') ?? null)).toBeNull();
+    await page.keyboard.type('z');
+    expect(await rowsNow()).toEqual(before);
+  }
+});
+
+for (const opening of ['toolbar', 'double click'] as const) {
+  test(`a picture shown full screen from the ${opening} is selected again when it closes (A10, A17)`, async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('alpha');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('omega');
+    await page.keyboard.press('ArrowUp');
+    await pastePicture(page, 'full.png');
+    const picture = page.locator(IMAGE);
+    const img = picture.locator('img');
+    await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+    const knob = picture.locator('[data-testid="doc-media-resize-se"]');
+    await img.click();
+    await expect(knob).toBeVisible();
+    const rowsNow = (): Promise<string[]> =>
+      page.locator(`${EDITOR} .bn-block-content`).evaluateAll((all) =>
+        all.map((row) => (row.getAttribute('data-content-type') === 'image' ? 'image' : (row.textContent ?? ''))),
+      );
+    const before = await rowsNow();
+
+    if (opening === 'toolbar') await picture.getByTestId('doc-media-fullscreen').click();
+    else await img.dblclick();
+    await expect(page.getByTestId('doc-media-fullscreen-image')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('doc-media-fullscreen-image')).toHaveCount(0);
+    await page.mouse.move(5, 5);
+
+    await expect(knob).toBeVisible();
+    // No caret is drawn, and a key typed now leaves the words as they were.
+    expect(
+      await page.evaluate(() => {
+        const selection = getSelection();
+        const at = selection?.anchorNode;
+        const holder = at instanceof Element ? at : at?.parentElement;
+        return (
+          selection?.isCollapsed === true &&
+          holder instanceof HTMLElement &&
+          holder.isContentEditable &&
+          getComputedStyle(holder).caretColor !== 'rgba(0, 0, 0, 0)'
+        );
+      }),
+    ).toBe(false);
+    await page.keyboard.type('z');
+    expect(await rowsNow()).toEqual(before);
+  });
+}
+
 test('a picture dragged by itself moves like a row dragged by its handle (A10)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('alpha');

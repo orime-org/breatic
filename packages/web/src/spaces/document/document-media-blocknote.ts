@@ -37,6 +37,7 @@ import {
 } from '@blocknote/core';
 import type { NodeViewRendererProps } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { NodeSelection } from '@tiptap/pm/state';
 
 import { downloadHref } from '@web/data/api/download-href';
 import { triggerDownload } from '@web/lib/download';
@@ -182,6 +183,15 @@ function mediaNodeView(
     },
     focusBody: () => {
       editor.focus();
+    },
+    selectInBody: () => {
+      const pos = typeof viewProps.getPos === 'function' ? viewProps.getPos() : undefined;
+      const { view } = viewProps;
+      if (pos !== undefined) view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
+      // Focusing through the view writes the selection to the page as the
+      // body takes the keyboard; a selection set while it had none is kept in
+      // the state only.
+      view.focus();
     },
   };
 

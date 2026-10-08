@@ -28,6 +28,10 @@
  * link handler is registered on too — whichever plugin answers true first gets
  * `preventDefault` called and the rest are never asked. So a press over a link
  * anchor is declined here and BlockNote's own handler takes it.
+ *
+ * A MEDIA ROW IS NOT EITHER. The picture, video or audio and everything else
+ * in its row answer a click — with the modifier or without — in
+ * `document-media-row-press.ts`, whose handler the editor asks after this one.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -35,6 +39,7 @@ import { isMacOS } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 
 import { LINK_ANCHOR_SELECTOR } from '@web/spaces/document/document-link';
+import { inMediaRow } from '@web/spaces/document/document-media-row-press';
 
 /**
  * Whether this press carries the modifier ProseMirror reads as "select the
@@ -79,6 +84,7 @@ export const documentNoNodeClickExtension = createExtension(() => ({
         handleClick: (view, pos, event) => {
           if (!asksForANode(event)) return false;
           if (landedOnALink(event)) return false;
+          if (inMediaRow(event.target)) return false;
           view.dispatch(
             view.state.tr.setSelection(
               TextSelection.create(view.state.doc, pos),

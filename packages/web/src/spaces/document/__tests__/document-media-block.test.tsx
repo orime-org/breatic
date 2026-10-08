@@ -741,6 +741,45 @@ describe('a press beside a media block', () => {
     expect(press.defaultPrevented).toBe(false);
   });
 
+  it('answers a click held with the node modifier the way it answers a plain one', () => {
+    const editor = open('image', { previewWidth: 200, caption: 'A note' });
+    const view = editor.prosemirrorView!;
+    const caption = within(element(editor)).getByTestId('doc-media-caption');
+    const img = element(editor).querySelector('img')!;
+    /**
+     * Clicks with Cmd and Ctrl held, through every handler the editor asks.
+     * @param target - Where the click lands.
+     * @returns Whether a handler answered it.
+     */
+    const modifierClick = (target: Element): boolean => {
+      const click = new MouseEvent('mouseup', { bubbles: true, button: 0, metaKey: true, ctrlKey: true });
+      Object.defineProperty(click, 'target', { value: target });
+      let answered = false;
+      act(() => {
+        answered = view.someProp('handleClick', (f) => f(view, view.posAtDOM(element(editor), 0), click)) === true;
+      });
+      return answered;
+    };
+
+    // Beside the media and on its caption: nothing selected, no focus.
+    for (const target of [element(editor), caption]) {
+      selectMedia(editor);
+      act(() => {
+        view.focus();
+      });
+      expect(modifierClick(target)).toBe(true);
+      expect(view.state.selection).toBeInstanceOf(TextSelection);
+      expect(view.state.selection.$from.parent.textContent).toBe('Below');
+      expect(view.dom.contains(document.activeElement)).toBe(false);
+    }
+
+    // On the media the press selected: it stays the media that is selected.
+    selectMedia(editor);
+    expect(modifierClick(img)).toBe(true);
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect((view.state.selection as NodeSelection).node.type.name).toBe('image');
+  });
+
   it('leaves a Shift press on the media to the editor, which extends the selection', () => {
     const editor = open('image', { previewWidth: 200 });
     const view = editor.prosemirrorView!;
@@ -817,19 +856,35 @@ describe('the focus around a media block', () => {
     outside.remove();
   });
 
-  it('goes back to the body when the full-screen picture closes', async () => {
-    const editor = open('image', { previewWidth: 200 });
-    selectMedia(editor);
-    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-fullscreen'));
-    const picture = await screen.findByTestId('doc-media-fullscreen-image');
+  it.each(['toolbar', 'double click'] as const)(
+    'comes back to the picture, selected, when the full-screen picture opened from the %s closes',
+    async (from) => {
+      // The focus moving into the dialog is the focus leaving the body, which
+      // lets go of a selected block only while the window itself is focused.
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      const editor = open('image', { previewWidth: 200 });
+      const view = editor.prosemirrorView!;
+      selectMedia(editor);
+      act(() => {
+        view.focus();
+      });
+      if (from === 'toolbar') {
+        fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-fullscreen'));
+      } else {
+        fireEvent.doubleClick(element(editor).querySelector('img')!);
+      }
+      const picture = await screen.findByTestId('doc-media-fullscreen-image');
 
-    fireEvent.keyDown(picture, { key: 'Escape' });
+      fireEvent.keyDown(picture, { key: 'Escape' });
 
-    await waitFor(() => {
-      expect(screen.queryByTestId('doc-media-fullscreen-image')).toBeNull();
-    });
-    expect(document.activeElement).toBe(editor.prosemirrorView!.dom);
-  });
+      await waitFor(() => {
+        expect(screen.queryByTestId('doc-media-fullscreen-image')).toBeNull();
+      });
+      expect(document.activeElement).toBe(view.dom);
+      expect(view.state.selection).toBeInstanceOf(NodeSelection);
+      expect((view.state.selection as NodeSelection).node.type.name).toBe('image');
+    },
+  );
 });
 
 describe('the caption field and the keyboard', () => {

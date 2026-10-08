@@ -30,6 +30,12 @@
  * `EditorView.focus` writes the state's selection to the page as it focuses,
  * so the block is what the page has selected from the first frame. The press
  * is not otherwise taken: the drag the media starts is the browser's.
+ *
+ * A click held with the node modifier (Cmd on a Mac, Ctrl elsewhere) is a
+ * plain click in this Space (`document-no-node-click.ts`), and in a media row
+ * this module answers it as one. On the media the press has already selected
+ * it, and the click is answered here so that ProseMirror's own answer to the
+ * modifier — select the node around the one already selected — never runs.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -43,6 +49,16 @@ const KEY = new PluginKey('documentMediaRowPress');
 
 /** A media block's content element. */
 const MEDIA_ROW = MEDIA_BLOCK_TYPES.map((type) => `[data-content-type="${type}"]`).join(', ');
+
+/**
+ * Whether a click landed in a media block's row, whose clicks this module
+ * answers.
+ * @param target - Where it landed.
+ * @returns True inside a media row.
+ */
+export function inMediaRow(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(MEDIA_ROW) !== null;
+}
 
 /**
  * Answers a click on a media block's row that is not on what it shows.
@@ -60,6 +76,23 @@ function clickBesideMedia(view: EditorView, event: MouseEvent): boolean {
   if (caret !== null) view.dispatch(view.state.tr.setSelection(caret).setMeta('addToHistory', false));
   (view.dom as HTMLElement).blur();
   return true;
+}
+
+/**
+ * Answers a click in a media block's row: on what the media shows while the
+ * press has it selected, the click is done; anywhere else in the row it is
+ * {@link clickBesideMedia}.
+ * @param view - The view.
+ * @param event - The click.
+ * @returns True when the click is answered here.
+ */
+function clickInMediaRow(view: EditorView, event: MouseEvent): boolean {
+  if (!(event.target instanceof Element)) return false;
+  const row = event.target.closest(MEDIA_ROW);
+  if (row === null) return false;
+  if (event.target.closest('[data-media-frame]') === null) return clickBesideMedia(view, event);
+  const { selection } = view.state;
+  return selection instanceof NodeSelection && selection.from === view.posAtDOM(row, 0);
 }
 
 /**
@@ -93,7 +126,7 @@ export const documentMediaRowPressExtension = createExtension(() => ({
             return false;
           },
         },
-        handleClick: (view, _pos, event) => clickBesideMedia(view, event),
+        handleClick: (view, _pos, event) => clickInMediaRow(view, event),
         handleDoubleClick: (view, _pos, event) => clickBesideMedia(view, event),
         handleTripleClick: (view, _pos, event) => clickBesideMedia(view, event),
       },

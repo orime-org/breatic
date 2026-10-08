@@ -64,6 +64,8 @@ export interface MediaBlockActions {
   readonly dragEnd: () => void;
   /** Hands the keyboard back to the body, from a control of the block that held it. */
   readonly focusBody: () => void;
+  /** Selects this block and hands the keyboard back to the body with it selected. */
+  readonly selectInBody: () => void;
 }
 
 interface DocumentMediaBlockProps {
@@ -544,16 +546,23 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         <Dialog open={fullscreen} onOpenChange={setFullscreen}>
           <DialogContent
             aria-describedby={undefined}
-            // The dialog has no trigger to return to: the keyboard goes back
-            // where it was when the picture opened, or to the body.
+            // The dialog has no trigger to return to. Opened from the body, it
+            // gives the body back the picture it showed, selected as it was;
+            // opened while the keyboard was elsewhere, the keyboard goes back
+            // there.
             onCloseAutoFocus={(event) => {
               event.preventDefault();
               const opener = fullscreenOpener.current;
               fullscreenOpener.current = null;
-              if (opener instanceof HTMLElement && opener.isConnected && opener !== opener.ownerDocument.body) {
+              if (
+                opener instanceof HTMLElement &&
+                opener.isConnected &&
+                opener !== opener.ownerDocument.body &&
+                opener.closest('[contenteditable="true"]') === null
+              ) {
                 opener.focus();
               } else {
-                actions.focusBody();
+                actions.selectInBody();
               }
             }}
             className='max-w-[min(96vw,1600px)] items-center border-0 bg-transparent shadow-none'
