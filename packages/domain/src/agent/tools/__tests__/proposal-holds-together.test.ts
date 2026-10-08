@@ -1992,6 +1992,27 @@ describe("a model the panel draws no prompt box for", () => {
     });
   });
 
+  it("holds notes alone: a tweak or asset mark asks for what no box can take", () => {
+    const at = promptless();
+    const promptlessWith = (mark: ProposalNode["prompt"]): CanvasProposal => ({
+      nodes: [
+        ...at.needs.map((kind) => generation(makerOf(kind))),
+        { role: "generate", type: at.nodeType, name: "The result", mode: at.mode, model: at.model,
+          params: {}, prompt: [{ slot: { kind: "note", label: "Pick each piece in its slot" } }, ...(mark ?? [])] },
+      ],
+      edges: at.needs.map((_, i) => ({ fromIndex: i, toIndex: at.needs.length })),
+      rationale: "x", groupName: "g",
+    });
+
+    expect(checkProposal(promptlessWith([]))).toEqual({ ok: true });
+    for (const kind of ["tweak", "asset"] as const) {
+      expect(checkProposal(promptlessWith([{ slot: { kind, label: "x", note: "x" } }]))).toEqual({
+        ok: false,
+        reason: expect.stringContaining("reach nobody"),
+      });
+    }
+  });
+
 });
 
 // What `get_canvas_capabilities` now tells the model a text node is for: one

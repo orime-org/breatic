@@ -294,6 +294,43 @@ describe("where each wired node goes, said on its edge", () => {
   });
 });
 
+describe("marks the reader can act on", () => {
+  const char: ProposalNode = { ...CHARACTER, name: "Char" };
+
+  it("refuses into on an edge whose node the model takes no way at all, naming it", () => {
+    const proposal: CanvasProposal = {
+      nodes: [char, { role: "generate", type: "image", name: "Gen", mode: "t2i", model: "nano-banana-2", prompt: [{ text: "a courier at night" }] }],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
+      rationale: "",
+      groupName: "g",
+    };
+    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringMatching(/"nano-banana-2" takes no image node.*"Char"/) });
+  });
+
+  it("still places that edge when it says nothing about where the node goes", () => {
+    const proposal: CanvasProposal = {
+      nodes: [char, { role: "generate", type: "image", name: "Gen", mode: "t2i", model: "nano-banana-2", prompt: [{ text: "a courier at night" }] }],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      rationale: "",
+      groupName: "g",
+    };
+    expect(checkProposal(proposal)).toEqual({ ok: true });
+  });
+
+  it("refuses an asset mark when no wired node can be @'d", () => {
+    const proposal: CanvasProposal = {
+      nodes: [
+        { role: "source", type: "image", name: "Style" },
+        { role: "generate", type: "image", name: "Gen", mode: "t2i", model: "recraft-v4-style-text-to-image", prompt: [{ slot: { kind: "note", label: "Pick Style into the style slot" } }, reference("the style picture"), { text: " a lighthouse" }] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "style_images" }],
+      rationale: "",
+      groupName: "g",
+    };
+    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringMatching(/"Gen" has no node the reader can @.*1 asset mark/) });
+  });
+});
+
 describe("a mark the agent writes as words", () => {
   const written = [
     ["a reference", "[📎 the uploaded photo]"],
