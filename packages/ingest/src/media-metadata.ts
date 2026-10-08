@@ -101,9 +101,9 @@ export function realVideoStream(report: ProbeReport): ProbeStream | undefined {
 /**
  * Whether a stored picture gets a preview cut from it.
  *
- * Only a still frame does. An APNG probes as `apng` and cutting its first
- * frame would show an animation as a still; an animated WebP does not decode
- * in the ffmpeg the container ships, so it never reaches here with a size.
+ * Only a still frame does. An APNG probes as `apng` and an animated WebP
+ * probes 0x0, since the container's ffprobe cannot decode one; vips would cut
+ * the first frame of either and show an animation as a still.
  * @param report - What the container answered.
  * @returns Whether to cut a preview.
  */
@@ -112,6 +112,7 @@ export function hasPreviewableFrame(report: ProbeReport): boolean {
   return (
     media !== undefined &&
     media.width != null &&
+    media.width > 0 &&
     media.codecName !== "apng"
   );
 }

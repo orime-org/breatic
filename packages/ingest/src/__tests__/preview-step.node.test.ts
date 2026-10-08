@@ -59,6 +59,18 @@ describe("what the preview is cut from", () => {
     ).toBeNull();
   });
 
+  // ffprobe 8.0.1 cannot decode an animated WebP and reports it 0x0, while
+  // vips decodes its first frame: a preview would show the animation still.
+  it("cuts nothing for an animated WebP", () => {
+    const animated: ProbeReport = {
+      ...STILL,
+      streams: [{ ...STILL.streams[0]!, codecName: "webp", width: 0, height: 0 }],
+    };
+    expect(
+      previewSource({ wantPreview: true, wantCover: false, cover: null, report: animated, ...PLENTY }),
+    ).toBeNull();
+  });
+
   it("cuts nothing when none was asked for", () => {
     expect(
       previewSource({ wantPreview: false, wantCover: false, cover: null, report: STILL, ...PLENTY }),
