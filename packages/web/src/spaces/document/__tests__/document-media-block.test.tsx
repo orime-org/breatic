@@ -742,6 +742,20 @@ describe('a press beside a media block', () => {
     }
   });
 
+  it('leaves a Shift click beside a selected picture to the browser, which extends the selection', () => {
+    const editor = open('image', { previewWidth: 200 });
+    const view = editor.prosemirrorView!;
+    selectMedia(editor);
+    act(() => {
+      view.focus();
+    });
+
+    clickBeside(element(editor), 1, { shiftKey: true });
+
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(view.dom.contains(document.activeElement)).toBe(true);
+  });
+
   it.each([1, 2])('answers a click with button %i beside a selected picture the way it answers the main one', (button) => {
     const editor = open('image', { previewWidth: 200 });
     const view = editor.prosemirrorView!;
