@@ -233,6 +233,11 @@ describe("an optional slot and the reference pool", () => {
     expect(checkProposal(crowd(14, 11, 3))).toEqual({ ok: true });
   });
 
+  it("lets a note take a picture out of the pool only where no bracket covers it", () => {
+    expect(checkProposal(crowd(12, 12, 1))).toMatchObject({ ok: false, reason: expect.stringContaining("holds 11 image") });
+    expect(checkProposal(crowd(12, 11, 1))).toEqual({ ok: true });
+  });
+
   it("still refuses a pool past its ceiling once the slot is full", () => {
     expect(checkProposal(crowd(15, 12, 3))).toMatchObject({ ok: false, reason: expect.stringContaining("holds 11 image") });
   });

@@ -32,6 +32,13 @@ describe("a reference mark read back", () => {
     const zh = { kind: "asset" as const, label: "角色参考图", note: "角色参考图" };
     expect(markedSegments(markText(zh))).toEqual([{ slot: zh }]);
   });
+
+  it("gives the label alone when the box was written in another language than the one reading it", () => {
+    setLocale("zh-CN");
+    const written = markText({ kind: "asset", label: "角色参考图", note: "x" });
+    setLocale("en");
+    expect(markedSegments(written)).toEqual([{ slot: { kind: "asset", label: "角色参考图", note: "角色参考图" } }]);
+  });
 });
 
 describe("markText", () => {
