@@ -25,14 +25,17 @@ export function zoomedPastPreview(
   nodeWidth: number,
   zoom: number,
   devicePixelRatio: number,
-  previewWidth: number = PREVIEW_WIDTH,
+  previewWidth: number,
 ): boolean {
   return nodeWidth * zoom * devicePixelRatio > previewWidth;
 }
 
 /**
- * How wide a node's preview is, from the picture size it carries. A node with
- * no size shows its original and never reaches the comparison.
+ * How wide a node's preview is, from the picture size it carries; the full
+ * preview width when it carries none. A video's preview is cut from a cover
+ * fitted inside 1920, and below 576 wide that cover's width is its preview's,
+ * so the video's own size gives the same answer wherever the two can differ in
+ * what the reader sees.
  * @param size - The picture's size, when the node carries one.
  * @param size.width - The picture's width.
  * @param size.height - The picture's height.

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { PREVIEW_WIDTH } from '@breatic/shared';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -12,13 +13,13 @@ import {
 
 describe('zoomedPastPreview', () => {
   it('keeps the preview while the node covers at most 576 device pixels', () => {
-    expect(zoomedPastPreview(288, 1, 2)).toBe(false);
-    expect(zoomedPastPreview(288, 2, 1)).toBe(false);
+    expect(zoomedPastPreview(288, 1, 2, PREVIEW_WIDTH)).toBe(false);
+    expect(zoomedPastPreview(288, 2, 1, PREVIEW_WIDTH)).toBe(false);
   });
 
   it('asks for the original once the node covers more than 576 device pixels', () => {
-    expect(zoomedPastPreview(288, 1.01, 2)).toBe(true);
-    expect(zoomedPastPreview(288, 2.5, 1)).toBe(true);
+    expect(zoomedPastPreview(288, 1.01, 2, PREVIEW_WIDTH)).toBe(true);
+    expect(zoomedPastPreview(288, 2.5, 1, PREVIEW_WIDTH)).toBe(true);
   });
 
   it('measures against a narrower preview when the picture has one', () => {
@@ -29,7 +30,7 @@ describe('zoomedPastPreview', () => {
   });
 
   it('says nothing about a node it has no width for', () => {
-    expect(zoomedPastPreview(0, 8, 2)).toBe(false);
+    expect(zoomedPastPreview(0, 8, 2, PREVIEW_WIDTH)).toBe(false);
   });
 });
 
