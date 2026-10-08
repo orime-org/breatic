@@ -148,6 +148,61 @@ describe('whether the body holds the focus', () => {
     outside.remove();
   });
 
+  it('puts its own selection back when the focus returns after the page selection left the body', () => {
+    const { editor } = open(TEXT);
+    const view = editor.prosemirrorView!;
+    selectWords(editor);
+    const outside = document.createElement('div');
+    outside.textContent = 'elsewhere';
+    document.body.appendChild(outside);
+    const button = document.createElement('button');
+    document.body.appendChild(button);
+    act(() => {
+      button.focus();
+      const away = document.createRange();
+      away.selectNodeContents(outside);
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(away);
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+    // What the browser does as the focus comes back to an editable element
+    // whose page selection left it: a caret at its very start.
+    const first = view.dom.querySelector('p')!.firstChild as Text;
+    const caret = document.createRange();
+    caret.setStart(first, 0);
+
+    const writes = vi.spyOn(view, 'focus');
+
+    act(() => {
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(caret);
+      view.dom.focus();
+    });
+
+    // `view.focus()` is what writes the editor's selection onto the page.
+    expect(writes).toHaveBeenCalled();
+    expect([view.state.selection.from, view.state.selection.to]).toEqual([3, 8]);
+    outside.remove();
+    button.remove();
+  });
+
+  it('leaves the page selection alone when the focus returns and it never left the body', () => {
+    const { editor, scroller } = open(TEXT);
+    const view = editor.prosemirrorView!;
+    selectWords(editor);
+    act(() => {
+      scroller.focus();
+    });
+    const writes = vi.spyOn(view, 'focus');
+
+    act(() => {
+      view.dom.focus();
+    });
+
+    expect(focus.bodyHolds(view.state)).toBe(true);
+    expect(writes).not.toHaveBeenCalled();
+  });
+
   it('keeps holding while the window itself is in the background', () => {
     const { editor } = open(TEXT);
     const view = editor.prosemirrorView!;

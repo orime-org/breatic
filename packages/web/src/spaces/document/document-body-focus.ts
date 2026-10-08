@@ -315,15 +315,28 @@ export function watchBodyScroll(view: EditorView, scroller: HTMLElement): () => 
 }
 
 /**
- * Puts the editor's selection back on the page when the focus came into the
- * editable element and the page's selection is somewhere else, and puts the
- * scroller back where it stood.
+ * Whether a node is in the body's own text, which a control a node view draws
+ * inside the editable element (a caption field, a player button) is not.
+ * @param view - The view.
+ * @param node - The node.
+ * @returns True when it is.
+ */
+function inBodyText(view: EditorView, node: Node | null): boolean {
+  const element = node instanceof Element ? node : (node?.parentElement ?? null);
+  if (element === null || !view.dom.contains(element)) return false;
+  const shut = element.closest('[contenteditable="false"]');
+  return shut === null || !view.dom.contains(shut);
+}
+
+/**
+ * Puts the editor's selection back on the page and the scroller back where it
+ * stood, as the focus comes into the editable element after the page's
+ * selection left the body's text. By then the browser has already put a
+ * caret at the start of the editable element and scrolled to it, before any
+ * focus handler runs (design 3.5.1, measured on Chrome).
  * @param view - The view.
  */
 function restoreOnReturn(view: EditorView): void {
-  const page = view.dom.ownerDocument.getSelection();
-  const anchor = page?.anchorNode ?? null;
-  if (anchor !== null && view.dom.contains(anchor)) return;
   const record = scrollers.get(view);
   const top = record?.top;
   view.focus();
@@ -375,6 +388,15 @@ export const documentBodyFocusExtension = createExtension(({ editor }) => {
           let later: ReturnType<typeof setTimeout> | undefined;
           let leaving: MutationObserver | undefined;
           let editable = view.editable;
+          // Whether the page's selection left the body's text while the body
+          // did not hold: the browser moves it back on its own as the focus
+          // returns, so the moment of return cannot tell.
+          let pageLeft = false;
+          /** Notes the page's selection leaving the body's text. */
+          const onSelection = (): void => {
+            if (bodyHolds(view.state) || view.isDestroyed) return;
+            if (!inBodyText(view, page.getSelection()?.anchorNode ?? null)) pageLeft = true;
+          };
           /** Publishes the state for the page. */
           const publish = (): void => {
             bodyFocusStore.set(editor, { holds: bodyHolds(view.state), focused });
@@ -400,7 +422,8 @@ export const documentBodyFocusExtension = createExtension(({ editor }) => {
             leaving?.disconnect();
             leaving = undefined;
             focused = event.target instanceof Element ? event.target : null;
-            if (focused === view.dom && view.editable) restoreOnReturn(view);
+            if (focused === view.dom && view.editable && pageLeft) restoreOnReturn(view);
+            pageLeft = false;
             judgeFocus(view, focused);
             publish();
           };
@@ -431,6 +454,7 @@ export const documentBodyFocusExtension = createExtension(({ editor }) => {
             leaving.observe(page.body, { childList: true, subtree: true });
           };
           page.addEventListener('focusin', onFocusIn, true);
+          page.addEventListener('selectionchange', onSelection);
           page.addEventListener('focusout', onFocusOut, true);
           // The first decision is the mount's (`DocumentEditor` recomputes as
           // it attaches the scroller): ProseMirror builds plugin views again
@@ -450,6 +474,7 @@ export const documentBodyFocusExtension = createExtension(({ editor }) => {
               leaving?.disconnect();
               page.removeEventListener('focusin', onFocusIn, true);
               page.removeEventListener('focusout', onFocusOut, true);
+              page.removeEventListener('selectionchange', onSelection);
             },
           };
         },
