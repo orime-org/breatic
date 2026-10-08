@@ -63,6 +63,8 @@ function open(blocks: unknown[], lastBottom = 100): Editor {
   mounted.push(editor);
   editor.replaceBlocks(editor.document, blocks as never);
   layOut(editor.prosemirrorView!, lastBottom);
+  // A press, a paste or a key in the body lands while it holds the focus.
+  editor.prosemirrorView!.focus();
   return editor;
 }
 
@@ -499,17 +501,17 @@ describe('Shift+click on the body, and past either end of it', () => {
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, bodyEdgePos(view.state.doc, 'end')]);
   });
 
-  it('gives the body the focus when a Shift+click past the end lands while it has none', () => {
+  it('takes a Shift+click as a plain press while the body does not hold the focus: nothing extends from a selection it let go (inner#1127)', () => {
     const view = open(ABOVE_DIVIDER).prosemirrorView!;
     select(view, textStart(view, 'Above') + 1);
     const other = document.createElement('input');
     document.body.appendChild(other);
     other.focus();
 
-    press(view, 150, { shiftKey: true });
+    const event = press(view, 150, { shiftKey: true });
 
-    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
-    expect(view.hasFocus()).toBe(true);
+    expect(event.defaultPrevented).toBe(false);
+    expect(view.state.selection).not.toBeInstanceOf(BodyEdgeSelection);
     other.remove();
   });
 

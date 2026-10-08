@@ -41,6 +41,7 @@ import {
   emptyEdgeLinePos,
   type BodyEdge,
 } from '@web/spaces/document/document-body-edge-selection';
+import { bodyHolds } from '@web/spaces/document/document-body-focus';
 import { UNSUPPORTED_BLOCK } from '@web/spaces/document/document-unsupported-blocknote';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 import { MEDIA_BLOCK_TYPES, isMediaBlockType } from '@web/spaces/document/document-media-types';
@@ -175,7 +176,9 @@ export const documentSelectionPaintExtension = createExtension(({ editor }) => {
    * @returns True while the band belongs on screen.
    */
   const visible = (view: EditorView): boolean => {
-    if (view.editable) return view.hasFocus();
+    // An editable body draws what is selected while it holds the focus, which
+    // counts its own layers (a menu, a confirm dialog) as the body.
+    if (view.editable) return bodyHolds(view.state);
     const selection = view.dom.ownerDocument.getSelection();
     return (
       selection !== null &&

@@ -377,7 +377,9 @@ describe('resting on a card in the panel', () => {
 });
 
 describe('a click beside a picture', () => {
-  it('still closes the comment that was open, before it puts the caret under the picture', async () => {
+  it('closes the comment that was open, and lets the body go with its selection where it was (inner#1127 A20)', async () => {
+    const { attachBodyScroller } = await import('@web/spaces/document/document-body-press');
+    const { bodyHolds } = await import('@web/spaces/document/document-body-focus');
     const editor = open();
     const threadId = await comment(editor, 0, 5);
     press(editor, 2);
@@ -391,17 +393,23 @@ describe('a click beside a picture', () => {
       'after',
     );
     const view = editor.prosemirrorView!;
+    // The body scroller the editor sits in, where a blank press leaves the focus.
+    const scroller = document.createElement('div');
+    const host = view.dom.parentElement === document.body ? view.dom : view.dom.parentElement!;
+    host.parentElement!.insertBefore(scroller, host);
+    scroller.appendChild(host);
+    const detach = attachBodyScroller(view, scroller, editor);
+    view.focus();
+    const before = view.state.selection;
     const row = view.dom.querySelector('[data-content-type="image"]')!;
-    // The press, ProseMirror's answer to the click, then the browser's click.
-    row.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
-    const click = new MouseEvent('mouseup', { button: 0 });
-    Object.defineProperty(click, 'target', { value: row });
-    view.someProp('handleClick', (handler) => handler(view, view.posAtDOM(row, 0), click));
-    row.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0, detail: 1 }));
+
+    row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    row.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
 
     expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([]);
-    expect(view.state.selection.empty).toBe(true);
-    expect(view.state.selection.$from.parent.textContent).toBe('delta');
-    expect(view.state.selection.$from.parentOffset).toBe(0);
+    expect(view.state.selection.eq(before)).toBe(true);
+    expect(bodyHolds(view.state)).toBe(false);
+    detach();
   });
 });
+

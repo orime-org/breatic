@@ -47,6 +47,8 @@ function open(blocks: unknown[], sink?: (arrival: FilesArrival) => void): Editor
   editor.mount(root);
   mounted.push(editor);
   editor.replaceBlocks(editor.document, blocks as never);
+  // A press, a paste or a key in the body lands while it holds the focus.
+  editor.prosemirrorView!.focus();
   return editor;
 }
 

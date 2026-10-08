@@ -18,6 +18,7 @@ import type { EditorView } from '@tiptap/pm/view';
 
 import { bodyHolds, layerOf, placeAtLayerAnchor, watchBodyScroll } from '@web/spaces/document/document-body-focus';
 import { extendFromPress, followFromPoint } from '@web/spaces/document/document-body-edge-pointer';
+import { DOCUMENT_COMMENT_SELECTION, selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import { MEDIA_BLOCK_TYPES } from '@web/spaces/document/document-media-types';
 import { DIVIDER } from '@web/spaces/document/document-divider';
@@ -248,6 +249,11 @@ export function attachBodyScroller(
     // would select the block and focus the body on the release.
     event.preventDefault();
     blankPresses.add(event);
+    // A press that is not on a comment closes the one that was open, the same
+    // as a press on plain text (`document-comment-selection.ts`).
+    if (selectedThreadsIn(view.state).length > 0) {
+      view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_SELECTION, []).setMeta('addToHistory', false));
+    }
     if (contextPress(event)) {
       leaveBody();
       return;

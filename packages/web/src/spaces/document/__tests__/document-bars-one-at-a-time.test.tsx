@@ -95,6 +95,8 @@ function selectPicture(editor: HarnessEditor, index: number): void {
   });
   act(() => {
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at[index]!)));
+    // A press on the picture gives the body the focus as it selects it.
+    view.focus();
   });
 }
 

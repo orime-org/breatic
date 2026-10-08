@@ -1021,6 +1021,16 @@ body {
   background-color: var(--color-selection);
 }
 
+/* An editable body that does not hold the focus shows nothing as selected
+   (inner#1127 A20, A21): the selection stays where it is, it is only not
+   drawn. `data-body-holds` is written by `document-body-focus.ts`; a
+   read-only body never carries it and draws its selection the browser's
+   way, so the rule reaches editable bodies only. */
+.doc-body .ProseMirror[contenteditable='true']:not([data-body-holds]) ::selection,
+.doc-body .ProseMirror[contenteditable='true']:not([data-body-holds])::selection {
+  background-color: transparent;
+}
+
 /* BlockNote's rule is `[data-show-selection] { background-color: highlight;
    padding: 2px 0 }` (`@blocknote/core/src/editor/editor.css:194-197`) — adding
    a property does not remove the ones already there, so all three are answered:
@@ -1946,6 +1956,13 @@ body {
   z-index: 2;
   pointer-events: none;
   background: var(--color-selection);
+}
+
+/* A cell selection is the selection too: not drawn while the body does not
+   hold the focus. A row or column an open menu acts on is drawn — the menu is
+   the body's own layer, and the body holds while it is open. */
+.doc-body .ProseMirror[contenteditable='true']:not([data-body-holds]) .selectedCell::after {
+  content: none;
 }
 
 /* The tint above is a layer over the whole cell, at z-index 2; the cell's

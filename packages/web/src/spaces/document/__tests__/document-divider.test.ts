@@ -12,7 +12,7 @@
  * lists the divider.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { vi, describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
 import { ShowSelectionExtension } from '@blocknote/core/extensions';
 import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
@@ -32,6 +32,7 @@ afterEach(() => {
   mounted.splice(0).forEach((editor) => {
     editor.unmount();
   });
+  vi.restoreAllMocks();
 });
 
 /**
@@ -117,6 +118,12 @@ function caretAtStartOf(editor: Editor, text: string): void {
     (b) => (b.content ?? []).map((c) => c.text ?? '').join('') === text,
   )!;
   editor.setTextCursorPosition(block.id, 'start');
+}
+
+/** Lets the tasks already queued run, and the ones they queue. */
+async function settle(): Promise<void> {
+  await new Promise((done) => setTimeout(done, 0));
+  await new Promise((done) => setTimeout(done, 0));
 }
 
 describe('--- at the head of a line (A1)', () => {
@@ -346,20 +353,26 @@ describe('a no-text block inside the reader selection (A3 · A6)', () => {
     expect(painted(editor, DIVIDER_EL)).toEqual([false]);
   });
 
-  it('is not painted while the editor does not hold the focus', () => {
+  it('is not painted while the editor does not hold the focus', async () => {
     const editor = sandwich();
     const view = editor.prosemirrorView!;
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, dividerPos(editor))));
+    // The window keeps the focus (jsdom answers no once nothing is focused).
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     (view.dom as HTMLElement).blur();
+    // Focus that falls to nothing is judged once a closing layer could have handed it back.
+    await settle();
 
     expect(painted(editor, DIVIDER_EL)).toEqual([false]);
   });
 
-  it('is painted while a panel stands in for the selection', () => {
+  it('is painted while a panel stands in for the selection', async () => {
     const editor = sandwich();
     const view = editor.prosemirrorView!;
     view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     (view.dom as HTMLElement).blur();
+    await settle();
     expect(painted(editor, DIVIDER_EL)).toEqual([false]);
 
     editor.getExtension(ShowSelectionExtension)!.showSelection(true, 'test-panel');

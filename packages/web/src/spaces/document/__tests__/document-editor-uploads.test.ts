@@ -56,6 +56,8 @@ describe('a body built for a Space (A15)', () => {
     document.body.appendChild(container);
     containers.push(container);
     adoptDocumentEditor(handle, container);
+    // A paste lands while the body holds the focus.
+    handle.editor.prosemirrorView!.focus();
 
     const file = new File([new Uint8Array(8)], 'shot.png', { type: 'image/png' });
     const event = new Event('paste', { bubbles: true, cancelable: true });
