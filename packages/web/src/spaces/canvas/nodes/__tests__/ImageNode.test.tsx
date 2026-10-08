@@ -282,7 +282,7 @@ describe('ImageNode orientation preview', () => {
       params: { orient: { turns: 1, flipX: false, flipY: false } },
     });
     mountNode('n1');
-    expect(screen.getByTestId('image-node-img').style.transform).toBe('rotate(90deg) scale(0.625) scale(1, 1)');
+    expect(screen.getByTestId('image-node-img').style.transform).toBe('scale(1, 1) rotate(90deg) scale(0.625)');
   });
 
   it('leaves another node alone', () => {
