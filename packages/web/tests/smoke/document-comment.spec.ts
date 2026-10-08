@@ -82,7 +82,7 @@ async function selectChars(
 ): Promise<void> {
   await p.evaluate(
     ({ sel, at, index }) => {
-      (document.querySelector(sel) as HTMLElement).focus();
+      (document.querySelector(sel) as HTMLElement).focus({ preventScroll: true });
       const para = document.querySelectorAll(`${sel} p`)[index]!;
       const walker = document.createTreeWalker(para, NodeFilter.SHOW_TEXT);
       let seen = 0;

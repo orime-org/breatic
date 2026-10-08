@@ -56,7 +56,8 @@ async function openWithLine(p: Page): Promise<void> {
 async function blankPoint(p: Page): Promise<{ x: number; y: number }> {
   const point = await p.evaluate((selector) => {
     const editor = document.querySelector(selector)!.getBoundingClientRect();
-    return { x: editor.left - 40, y: editor.top + 12 };
+    const line = document.querySelector(`${selector} p`)!.getBoundingClientRect();
+    return { x: editor.left - 40, y: line.top + line.height / 2 };
   }, EDITOR);
   const blank = await p.evaluate(
     ({ x, y }) => document.elementFromPoint(x, y)?.hasAttribute('data-document-body-blank') ?? false,
@@ -71,7 +72,7 @@ async function blankPoint(p: Page): Promise<{ x: number; y: number }> {
  * @param p - The page.
  */
 async function selectHello(p: Page): Promise<void> {
-  await p.locator(EDITOR).click();
+  await p.locator(`${EDITOR} p`).first().click({ position: { x: 2, y: 8 } });
   await p.keyboard.press('Home');
   for (let i = 0; i < 5; i += 1) await p.keyboard.press('Shift+ArrowRight');
   await expect(p.locator(BUBBLE_BAR)).toBeVisible();
@@ -115,8 +116,8 @@ test('a drag that starts on blank space selects from the press point and takes t
   const { x, y } = await blankPoint(page);
   await page.mouse.click(x, y);
   const end = await page.evaluate((selector) => {
-    const box = document.querySelector(selector)!.getBoundingClientRect();
-    return { x: box.left + 200, y: box.top + 12 };
+    const line = document.querySelector(`${selector} p`)!.getBoundingClientRect();
+    return { x: line.left + 40, y: line.top + line.height / 2 };
   }, EDITOR);
 
   await page.mouse.move(x, y);
