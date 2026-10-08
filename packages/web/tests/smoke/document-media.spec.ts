@@ -758,18 +758,22 @@ test('the keyboard stays with the body through the toolbar and the caption; a pr
   await expect(knob).toHaveCount(0);
   await page.keyboard.press('Escape');
 
-  // A right or middle press beside the picture selects nothing, and lets go
-  // of the picture when it was selected, as a left one does.
+  // A right press beside the picture selects nothing, and lets go of the
+  // picture when it was selected, as a left one does.
   const frame = (await picture.locator('[data-media-frame]').boundingBox())!;
   await page.mouse.click(frame.x + frame.width + 40, frame.y + frame.height / 2, { button: 'right' });
   await expect(knob).toHaveCount(0);
-  for (const button of ['right', 'middle'] as const) {
-    await img.click();
-    await expect(knob).toBeVisible();
-    await page.mouse.click(frame.x + frame.width + 40, frame.y + frame.height / 2, { button });
-    await expect(knob).toHaveCount(0);
-    expect(await page.evaluate(() => document.activeElement?.closest('.ProseMirror') ?? null)).toBeNull();
-  }
+  await img.click();
+  await expect(knob).toBeVisible();
+  await page.mouse.click(frame.x + frame.width + 40, frame.y + frame.height / 2, { button: 'right' });
+  await expect(knob).toHaveCount(0);
+  expect(await page.evaluate(() => document.activeElement?.closest('.ProseMirror') ?? null)).toBeNull();
+  // A middle press anywhere in the body is the browser's own (inner#1127
+  // A20): it moves neither the focus nor the selection.
+  await img.click();
+  await expect(knob).toBeVisible();
+  await page.mouse.click(frame.x + frame.width + 40, frame.y + frame.height / 2, { button: 'middle' });
+  await expect(knob).toBeVisible();
 
   // A click there, or on the caption, leaves the body with no focus and
   // nothing selected: a key typed afterwards writes nothing.
@@ -793,8 +797,9 @@ test('the keyboard stays with the body through the toolbar and the caption; a pr
     expect(await rowsNow()).toEqual(before);
   }
 
-  // The same when the pointer moves a few pixels before it is let go: the
-  // selected picture's row is draggable while pressed, and that drag is refused.
+  // When the pointer moves a few pixels before it is let go, the selected
+  // picture's row is not dragged: a drag from blank space selects from the
+  // press point and gives the body the focus (inner#1127 A20).
   for (const drift of [6, 20]) {
     await img.click();
     await expect(knob).toBeVisible();
@@ -805,10 +810,15 @@ test('the keyboard stays with the body through the toolbar and the caption; a pr
     await page.mouse.move(x + drift, y, { steps: 3 });
     await page.mouse.up();
     await expect(knob).toHaveCount(0);
-    expect(await page.evaluate(() => document.activeElement?.closest('.ProseMirror') ?? null)).toBeNull();
+    expect(await rowsNow()).toEqual(before);
+    await expect(page.locator(EDITOR)).toHaveAttribute('data-body-holds', /.*/);
   }
 
-  // The pointer on the caption does not frame the picture; on the picture it does.
+  // The pointer on the caption does not frame the picture; on the picture it
+  // does. From a body that let go, so no selection frames it first: the drag
+  // above left one running across the picture.
+  await page.mouse.click(frame.x + frame.width + 40, frame.y + frame.height / 2);
+  await expect(page.locator(EDITOR)).not.toHaveAttribute('data-body-holds', /.*/);
   const outline = (): Promise<string> =>
     picture.locator('[data-media-frame]').evaluate((el) => getComputedStyle(el).outlineStyle);
   await page.mouse.move(captionBox.x + captionBox.width / 2, captionBox.y + captionBox.height / 2);
