@@ -9,27 +9,42 @@
 
 import * as React from 'react';
 
+/** Components to re-render when the ratio changes. */
+const listeners = new Set<() => void>();
+/** The one query the page listens on, for the ratio the screen has now. */
+let query: MediaQueryList | null = null;
+
+/** The ratio left its value: listen for the new one, then tell everyone. */
+function handle(): void {
+  arm();
+  for (const listener of listeners) listener();
+}
+
 /**
- * Listen for the ratio leaving its current value. A resolution query matches
- * one value only, so the query is re-armed for the new value on every change.
- * @param onChange - Called when the ratio changes.
+ * Listen on the query for the current ratio. A resolution query matches one
+ * value only, so it is replaced on every change.
+ */
+function arm(): void {
+  query?.removeEventListener('change', handle);
+  query = window.matchMedia(`(resolution: ${String(window.devicePixelRatio)}dppx)`);
+  query.addEventListener('change', handle);
+}
+
+/**
+ * Follow the ratio. The query is armed by the first follower and removed
+ * when the last one leaves.
+ * @param listener - Called when the ratio changes.
  * @returns The unsubscribe call.
  */
-function subscribe(onChange: () => void): () => void {
-  let query: MediaQueryList | null = null;
-  /** Listen on the query for the ratio the screen has now. */
-  const arm = (): void => {
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  if (listeners.size === 1) arm();
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size > 0) return;
     query?.removeEventListener('change', handle);
-    query = window.matchMedia(`(resolution: ${String(window.devicePixelRatio)}dppx)`);
-    query.addEventListener('change', handle);
+    query = null;
   };
-  /** Re-arm for the new ratio, then tell React. */
-  function handle(): void {
-    arm();
-    onChange();
-  }
-  arm();
-  return () => query?.removeEventListener('change', handle);
 }
 
 /**

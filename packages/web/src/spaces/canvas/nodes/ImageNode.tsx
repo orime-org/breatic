@@ -63,8 +63,8 @@ export const ImageNode = React.memo(function ImageNode({
   // Zoomed past the preview, the original is laid over it and shown once it
   // has loaded, so the picture never blanks while it sharpens.
   const zoomedPast = useZoomedPastPreview(data.content);
-  const laysOriginal = zoomedPast && !shown.isOriginal && Boolean(data.content);
-  const [originalLoaded, setOriginalLoaded] = React.useState<string | null>(null);
+  const laysOriginal = zoomedPast && !shown.isOriginal;
+  const [originalLoaded, setOriginalLoaded] = React.useState<string | undefined>(undefined);
   const { onError: fallBack, isOriginal } = shown;
   const onError = React.useCallback((): void => {
     // A missing preview falls back to the original, which then loads in its
@@ -95,14 +95,6 @@ export const ImageNode = React.memo(function ImageNode({
         content={
           <NodeMediaInset>
             <div className='relative'>
-              {/* No size to reserve a box with: the empty node's 288x192
-                holds the place until the picture brings its own height. */}
-              {loading && !knowsSize ? (
-                <Skeleton
-                  data-testid='image-node-skeleton'
-                  className='aspect-[3/2] w-full rounded-none'
-                />
-              ) : null}
               <img
                 src={src}
                 alt=''
@@ -129,10 +121,17 @@ export const ImageNode = React.memo(function ImageNode({
                   }
                 }}
               />
-              {loading && knowsSize ? (
+              {/* With a size the skeleton covers the box the img reserves.
+                Without one the unloaded img has no height, and the empty
+                node's 288x192 holds the place until the picture brings its
+                own. */}
+              {loading ? (
                 <Skeleton
                   data-testid='image-node-skeleton'
-                  className='pointer-events-none absolute inset-0 rounded-none'
+                  className={cn(
+                    'rounded-none',
+                    knowsSize ? 'pointer-events-none absolute inset-0' : 'aspect-[3/2] w-full',
+                  )}
                 />
               ) : null}
               {laysOriginal ? (
@@ -145,7 +144,7 @@ export const ImageNode = React.memo(function ImageNode({
                     'pointer-events-none absolute inset-0 block size-full',
                     originalLoaded !== data.content && 'opacity-0',
                   )}
-                  onLoad={() => setOriginalLoaded(data.content ?? null)}
+                  onLoad={() => setOriginalLoaded(data.content)}
                 />
               ) : null}
             </div>
