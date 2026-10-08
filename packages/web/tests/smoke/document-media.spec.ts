@@ -739,6 +739,21 @@ test('the keyboard stays with the body through the toolbar and the caption; a pr
     expect(await rowsNow()).toEqual(before);
   }
 
+  // The same when the pointer moves a few pixels before it is let go: the
+  // selected picture's row is draggable while pressed, and that drag is refused.
+  for (const drift of [6, 20]) {
+    await img.click();
+    await expect(knob).toBeVisible();
+    const x = frame.x + frame.width + 40;
+    const y = frame.y + frame.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + drift, y, { steps: 3 });
+    await page.mouse.up();
+    await expect(knob).toHaveCount(0);
+    expect(await page.evaluate(() => document.activeElement?.closest('.ProseMirror') ?? null)).toBeNull();
+  }
+
   // The pointer on the caption does not frame the picture; on the picture it does.
   const outline = (): Promise<string> =>
     picture.locator('[data-media-frame]').evaluate((el) => getComputedStyle(el).outlineStyle);

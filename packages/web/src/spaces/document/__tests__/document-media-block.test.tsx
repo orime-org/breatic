@@ -756,6 +756,20 @@ describe('a press beside a media block', () => {
     expect(view.dom.contains(document.activeElement)).toBe(false);
   });
 
+  it('keeps the picture selected through a press and click on its own controls, a toolbar button and a corner', () => {
+    const editor = open('image', { previewWidth: 200 });
+    const view = editor.prosemirrorView!;
+    selectMedia(editor);
+    act(() => {
+      view.focus();
+    });
+
+    for (const control of [within(toolbar(editor)).getByTestId('doc-media-download'), within(element(editor)).getByTestId('doc-media-resize-se')]) {
+      clickBeside(control, 1);
+      expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    }
+  });
+
   it('keeps the picture selected when the press landed on it and the pointer was let go beside it', () => {
     const editor = open('image', { previewWidth: 200 });
     const view = editor.prosemirrorView!;

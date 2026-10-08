@@ -50,6 +50,7 @@ import { createExtension } from '@blocknote/core';
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
+import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import { MEDIA_BLOCK_TYPES } from '@web/spaces/document/document-media-types';
 import { letGoOfBlock } from '@web/spaces/document/document-node-selection-focus';
 
@@ -75,7 +76,10 @@ interface RowHit {
  * @returns The row and whether the media itself was hit, or null outside a media row.
  */
 function rowHit(target: EventTarget | null): RowHit | null {
-  if (!(target instanceof Element)) return null;
+  // The block's own controls answer their events themselves. ProseMirror
+  // hands a handler for an event type it has none of (`pointerdown`, `click`)
+  // every event of that type, without asking the node view's `stopEvent`.
+  if (!(target instanceof Element) || target.closest(MEDIA_CHROME) !== null) return null;
   const row = target.closest(MEDIA_ROW);
   return row === null ? null : { row, onMedia: target.closest('[data-media-frame]') !== null };
 }
