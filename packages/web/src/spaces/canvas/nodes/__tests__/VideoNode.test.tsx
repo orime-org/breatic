@@ -169,3 +169,26 @@ describe('VideoNode zoomed past its cover preview (inner#1320)', () => {
     expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(COVER);
   });
 });
+
+// inner#1320: the node hands the player its own size, so the box is reserved
+// before the poster arrives, as an image node's is.
+describe('VideoNode while its poster loads', () => {
+  it('reserves the box from the size it carries and shows the skeleton', () => {
+    render(
+      <VideoNode
+        data={{ kind: 'video', status: 'idle', content: '/v.mp4', coverUrl: '/v_cover.png', width: 1080, height: 3840 }}
+      />,
+    );
+
+    expect(screen.getByTestId('media-element').getAttribute('width')).toBe('1080');
+    expect(screen.getByTestId('media-element').getAttribute('height')).toBe('3840');
+    expect(screen.getByTestId('media-skeleton')).toBeInTheDocument();
+  });
+
+  it('reserves nothing for a node of unknown size', () => {
+    render(<VideoNode data={{ kind: 'video', status: 'idle', content: '/v.mp4', coverUrl: '/v_cover.png' }} />);
+
+    expect(screen.getByTestId('media-element').getAttribute('width')).toBeNull();
+    expect(screen.queryByTestId('media-skeleton')).toBeNull();
+  });
+});

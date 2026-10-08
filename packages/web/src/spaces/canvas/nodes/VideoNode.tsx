@@ -82,6 +82,11 @@ export const VideoNode = React.memo(function VideoNode({
               src={data.content ?? ''}
               poster={data.coverUrl}
               fullPoster={fullPoster}
+              size={
+                typeof data.width === 'number' && typeof data.height === 'number'
+                  ? { width: data.width, height: data.height }
+                  : undefined
+              }
               duration={data.duration}
               onDimensions={setResolution}
               controlsHidden={focusPicking}

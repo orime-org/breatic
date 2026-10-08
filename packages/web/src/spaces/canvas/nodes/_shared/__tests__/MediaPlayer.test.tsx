@@ -190,3 +190,32 @@ describe('MediaPlayer poster', () => {
     );
   });
 });
+
+// inner#1320: a video node with a known size reserves its box before the
+// poster arrives and covers it with the skeleton, as an image node does.
+describe('MediaPlayer video with a known size', () => {
+  it('reserves the box from the size and shows the skeleton', () => {
+    render(<MediaPlayer modality='video' src='/v.mp4' poster='/p.jpg' size={{ width: 1080, height: 3840 }} />);
+    const video = screen.getByTestId('media-element');
+
+    expect(video.getAttribute('width')).toBe('1080');
+    expect(video.getAttribute('height')).toBe('3840');
+    expect(video).toHaveClass('h-auto');
+    expect(screen.getByTestId('media-skeleton')).toBeInTheDocument();
+  });
+
+  it('drops the skeleton once the video has its first frame', () => {
+    render(<MediaPlayer modality='video' src='/v.mp4' poster='/p.jpg' size={{ width: 1080, height: 3840 }} />);
+
+    fireEvent.loadedData(screen.getByTestId('media-element'));
+
+    expect(screen.queryByTestId('media-skeleton')).toBeNull();
+  });
+
+  it('reserves nothing and shows no skeleton without a size', () => {
+    render(<MediaPlayer modality='video' src='/v.mp4' poster='/p.jpg' variant='preview' />);
+
+    expect(screen.getByTestId('media-element').getAttribute('width')).toBeNull();
+    expect(screen.queryByTestId('media-skeleton')).toBeNull();
+  });
+});
