@@ -316,6 +316,15 @@ export default tseslint.config(
     },
   },
   {
+    // The media container's service: Node and our own modules only, so the
+    // GPL-linked vips and ffmpeg in its image stay separate programs it
+    // spawns (inner#1339).
+    files: ["packages/ingest/container/**/*.ts"],
+    rules: {
+      "breatic/media-container-own-code-only": "error",
+    },
+  },
+  {
     // Every package, because a leaked row type is a problem wherever it
     // surfaces. Repos get their own block for the one exemption they need —
     // mapping the row is their job — because `ignores` applies to every rule
