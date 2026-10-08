@@ -81,6 +81,8 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         executeRefusal={null}
         promptSlot={<div data-testid='prompt-slot' />}
         onExit={onExit}
+        catalogModels={MODELS}
+        onPickTemplate={() => {}}
         onSelectModel={() => {}}
         onChangeParams={() => {}}
         onExecute={onExecute}
@@ -288,5 +290,14 @@ describe('VideoGeneratePanel — the style area (inner#828)', () => {
     expect(onStylePick).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByTestId('generate-style-clear-1'));
     expect(onRemoveStyle).toHaveBeenCalledWith('https://cdn/b.png');
+  });
+});
+
+describe('VideoGeneratePanel — the template button (inner#977)', () => {
+  it('sits right before the exit button', () => {
+    renderPanel();
+    expect(screen.getByTestId('generate-video-exit').previousElementSibling).toBe(
+      screen.getByTestId('generate-template-trigger'),
+    );
   });
 });

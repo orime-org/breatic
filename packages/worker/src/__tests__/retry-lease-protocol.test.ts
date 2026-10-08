@@ -33,7 +33,6 @@ vi.mock("@breatic/domain", () => ({
   nodeHistoryService: {},
   getModel: vi.fn(),
   buildToolSet: vi.fn(),
-  getSkillRegistry: vi.fn(),
   extractPromptText: vi.fn(),
 }));
 vi.mock("@breatic/shared", () => ({

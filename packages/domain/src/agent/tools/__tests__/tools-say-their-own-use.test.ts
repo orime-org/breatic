@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 
 import { makeAskUserTool } from "@domain/agent/tools/ask-user.js";
 import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
-import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
+import { makeProposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
 
 /**
@@ -92,7 +92,7 @@ describe("web_search says how to cite what it found", () => {
 });
 
 describe("propose_canvas_action says what the canvas is for", () => {
-  const said = (): string => flat(proposeCanvasAction.description);
+  const said = (): string => flat(makeProposeCanvasAction().description);
 
   it("says what the canvas is", () => {
     expect(said()).toMatch(/canvas is where models are run/i);

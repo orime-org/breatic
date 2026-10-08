@@ -27,7 +27,6 @@ export type {
   StudioProjectPage,
   RecentItem,
   MemoryContext,
-  SkillMeta,
   StoredMessageMetadata,
 } from "@shared/types/entities.js";
 
@@ -120,11 +119,12 @@ export type {
   ProposalAnswer,
 } from "@shared/types/canvas-proposal.js";
 export {
-  feedersOf,
   layersOf,
+  markReadsBack,
   markText,
+  writtenMark,
+  markedSegments,
   proposalMarkSegments,
-  nameableFeeders,
   promptPlainText,
   promptTextOf,
 } from "@shared/types/canvas-proposal.js";

@@ -315,10 +315,8 @@ export interface ModelCatalog {
 // image), as opposed to a pure utility tool (`remove_bg` / `upscale`) that
 // belongs in the mini-tool system.
 //
-// Two consumers: the agent's image-plan skill
-// (`domain/agent/skills-loader.ts`), and `GENERATION_NODE_MODES` below, out
-// of which the agent's capability tools answer which modes an image node
-// can be set to.
+// Its consumer is `GENERATION_NODE_MODES` below, out of which the agent's
+// capability tools answer which modes an image node can be set to.
 // The Generate panel does NOT read this — its picker narrows the catalog to the
 // mode the user is on (`filterModelsByMode`), and since #1951 it offers only the
 // modes this deployment has a model for. It used to be a shared predicate; the
@@ -362,8 +360,7 @@ export const IMAGE_GENERATION_MODES = ["t2i", "i2i"] as const;
  * This is a separate list from `IMAGE_GENERATION_MODES` on purpose, not a
  * duplication to be merged: the two are independent product decisions that
  * happen to share a shape. Changing which image modes are generatable says
- * nothing about video, and the agent's image-plan skill reads the image list
- * without wanting a video decision attached to it.
+ * nothing about video.
  */
 export const VIDEO_GENERATION_MODES = [
   "t2v",

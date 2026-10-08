@@ -15,7 +15,6 @@ import { serve } from "@hono/node-server";
 import { createApp } from "@server/app.js";
 import { env,
   getAgentConfig,
-  getSkillRouting,
   getSubscriptionPlans,
 } from "@breatic/core";
 import { getPricingTiers } from "@server/config/pricing.js";
@@ -54,17 +53,6 @@ globalThis.AI_SDK_LOG_WARNINGS = ({ warnings, provider, model }) => {
   logger.warn({ warnings, provider, model }, "ai_sdk_warning");
 };
 
-// Read the skill routing config now rather than on the first request. It is
-// lazy like every other config reader, and lazy here means a typo surfaces
-// mid-SSE-stream — the user's message already saved, the stream already
-// open, and no way left to send them an error. Same handling as the storage
-// config below: the library throws, this layer decides the process's fate.
-try {
-  getSkillRouting();
-} catch (err) {
-  logger.error({ err }, "skill_routing_config_invalid");
-  await exitProcess(1);
-}
 
 // Health probe port from the validated config (default 3001).
 const HEALTH_PORT = env.SERVER_HEALTH_PORT;

@@ -126,7 +126,7 @@ function styleGroup(count: number): CanvasProposal {
   return {
     nodes: [
       ...Array.from({ length: count }, (_, i) => ({ role: "source" as const, type: "image" as const, name: `Style ${i + 1}` })),
-      { role: "generate", type: "image", name: "Result", mode: "t2i", model: "style-model", params: {}, prompt: [{ text: "a lighthouse" }] },
+      { role: "generate", type: "image", name: "Result", mode: "t2i", model: "style-model", params: {}, prompt: [{ text: "a lighthouse" }, ...Array.from({ length: count }, (_, i) => ({ slot: { kind: "note" as const, label: `Pick Style ${i + 1} into the style slot` } }))] },
     ],
     edges: Array.from({ length: count }, (_, i) => ({ fromIndex: i, toIndex: count })),
     modelNote: "",
@@ -148,5 +148,28 @@ describe("a slot holding several files (inner#826)", () => {
     await useFixtureCatalog({ modes: IMAGE_MODES, buckets: { image: IMAGE } });
     const { checkProposal } = await import("../propose-canvas-action.js");
     expect(checkProposal(styleGroup(4))).toMatchObject({ ok: false });
+  });
+});
+
+const IMAGE_EDIT_MODES = ["image:", "  modes:", "    i2i:", "      label: Image to Image"].join("\n");
+
+const IMAGE_EDIT = IMAGE.replace('mode: "t2i"', 'mode: "i2i"');
+
+describe("a template whose model this deployment does not serve (inner#977)", () => {
+  afterEach(restoreRealCatalog);
+
+  it("is refused once expanded, naming the models that do back the mode", async () => {
+    await useFixtureCatalog({ modes: IMAGE_EDIT_MODES, buckets: { image: IMAGE_EDIT } });
+    const { answerFor } = await import("../propose-canvas-action.js");
+    const answer = answerFor({
+      nodes: [
+        { role: "source", type: "image", name: "Character" },
+        { role: "generate", type: "image", name: "Grid", template: "storyboard-grid-25" },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
+      rationale: "",
+      groupName: "Grid",
+    });
+    expect(answer).toMatchObject({ placed: false, reason: expect.stringMatching(/"nano-banana-pro-edit-ultra" does not back "i2i"\. Those that do: style-model/) });
   });
 });

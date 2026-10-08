@@ -6,8 +6,8 @@
  *
  * Holds the business logic both server and worker need but collab never
  * touches: the credit "spend" side (credit + `markCompletedAndBill`
- * atomic deduction) / tasks / node history / agent (model · tools ·
- * skill loading) / model-catalog.
+ * atomic deduction) / tasks / node history / agent (model · tools) /
+ * model-catalog.
  *
  * Dependency direction `shared ← core ← domain ← {server, worker}`:
  * domain may only import `@breatic/core` + `@breatic/shared`, never any
@@ -82,7 +82,7 @@ export type {
   FinalizeRefusal,
 } from "@domain/asset/upload-grant.repo.js";
 
-// ── Agent (AIGC execution kernel: model / tools / skill loading / prompt extraction) ──
+// ── Agent (AIGC execution kernel: model / tools / prompt extraction) ──
 export { getModel, resolveProvider, reasoningFor } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
 export {
@@ -109,22 +109,15 @@ export type { ModelsForMode } from "@domain/model-catalog/mode-catalog.js";
 export type { ImageResult, ImageSearchAnswer } from "@domain/agent/tools/image-search.js";
 export type { SearchAnswer, SearchSource } from "@domain/agent/tools/web-search.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";
-export { assertSkillUsable } from "@domain/agent/skill-gate.js";
-export {
-  assertSkillModelRunnable,
-  checkSkillModelRunnable,
-} from "@domain/agent/skill-availability.js";
-export type { SkillModelCheck } from "@domain/agent/skill-availability.js";
 export { finalizeTurn } from "@domain/agent/turn-finalizer.js";
 export type { TurnSteps, TurnStepFailure } from "@domain/agent/turn-finalizer.js";
 export type { AgentConfigRequest, ResolvedAgentConfig } from "@domain/agent/agent-config.js";
-export { getSkillRegistry, SkillRegistry } from "@domain/agent/skills-loader.js";
 
 // ── Model catalog (incl. per-call credit cost: cost_per_call) ────
 export * as modelCatalog from "@domain/model-catalog/model-catalog.js";
-export { listAvailableModels, estimateTaskCredits, violatesSourceRequirementForModel, violatesReferenceCountForModel, MIN_TASK_CREDIT_COST, getFullModelConfig } from "@domain/model-catalog/model-catalog.js";
+export { estimateTaskCredits, violatesSourceRequirementForModel, violatesReferenceCountForModel, MIN_TASK_CREDIT_COST, getFullModelConfig } from "@domain/model-catalog/model-catalog.js";
 export type { ReferenceCountViolation } from "@domain/model-catalog/reference-count.js";
-export type { SkillModelInfo, FullModalityConfig, FullModelEntry, FullProviderEndpoint, FullParamSpec, ProviderConnectionConfig } from "@domain/model-catalog/model-catalog.js";
+export type { FullModalityConfig, FullModelEntry, FullProviderEndpoint, FullParamSpec, ProviderConnectionConfig } from "@domain/model-catalog/model-catalog.js";
 // Which upstream a model runs on in this deployment. One rule, two callers:
 // the worker sends the generation, the voice endpoint lists voices in that
 // same upstream's value domain.

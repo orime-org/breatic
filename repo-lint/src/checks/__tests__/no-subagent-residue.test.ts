@@ -12,6 +12,7 @@ import { fakeContext } from "#repo-lint/__tests__/fake-context";
 const DISPATCH_TOOL = ["spawn", "Tool"].join("");
 const SCRIPT_TOOL = ["run", "script"].join("_");
 const DELETED_SKILL = ["skill", "creator"].join("_");
+const SKILL_LOADER = ["get", "Skill", "Registry"].join("");
 
 describe("no-subagent-residue", () => {
   it("passes a repo that names none of them", () => {
@@ -29,6 +30,12 @@ describe("no-subagent-residue", () => {
       "c.md": `The ${DELETED_SKILL} skill lets users author skills.`,
     });
     expect(noSubagentResidue.run(context)).toHaveLength(3);
+  });
+
+  it("names the change that deleted what it found", () => {
+    const context = fakeContext({ "a.ts": `import { ${SKILL_LOADER} } from "x";` });
+    const [finding] = noSubagentResidue.run(context);
+    expect(finding?.message).toContain("inner#977");
   });
 
   // Reading the list rather than a sample of it, so a name added to the check

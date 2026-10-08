@@ -14,7 +14,6 @@
 import { describe, it, expect } from 'vitest';
 import type { CanvasProposal, ModelCatalog, ModelEntry, ProposalNode } from '@breatic/shared';
 
-import { nameableFeeders } from '@breatic/shared';
 
 import { nameOf, shapeOf, todosOf } from '@web/pages/project/chat/proposal-card';
 
@@ -32,7 +31,6 @@ const generates = (name: string, model = 'flat-model', notes: string[] = []): Pr
   // catalog: an i2i model takes its material through the reference pool and
   // draws a prompt box. A fixture without them is a proposal the check never
   // produced.
-  poolKinds: ['image'],
   takesPrompt: true,
   prompt: [
     { text: 'white ground' },
@@ -162,7 +160,6 @@ describe('what is left for the reader', () => {
         empty('Your photo'),
         {
           ...generates('The clip'),
-          poolKinds: [],
           prompt: [
             { text: 'pan across' },
             { slot: { kind: 'asset', label: 'your photo', note: 'Pick it in the first slot' } },
@@ -184,7 +181,6 @@ describe('what is left for the reader', () => {
     const proposal = flow([
       {
         ...generates('The tween'),
-        poolKinds: [],
         prompt: [{ text: 'morph' }, { slot: same }, { slot: same }],
       },
     ]);
@@ -194,9 +190,10 @@ describe('what is left for the reader', () => {
     ]);
   });
 
-  it('says once what goes in an empty node three generations share', () => {
-    // Every one of the three marks the same empty node, so the note about it
-    // is one note -- written three times it reads as three photos to find.
+  it('files what goes in a shared empty node under each generation, said once for the three', () => {
+    // The reader @s the node in each generation's own panel, so each of them
+    // lists it; three that ask for the same thing in the same words share one
+    // group.
     const drop = { kind: 'asset' as const, label: 'your photo', note: 'Drop your photo in' };
     const angle = (name: string): ProposalNode => ({
       ...generates(name),
@@ -212,21 +209,15 @@ describe('what is left for the reader', () => {
     );
 
     expect(todosOf(proposal, LINES)).toEqual([
-      { nodes: ['Your photo'], notes: ['Drop your photo in'] },
-      { nodes: ['Front', 'At 45', 'Overhead'], notes: ['PROMPT READY'] },
+      { nodes: ['Front', 'At 45', 'Overhead'], notes: ['Drop your photo in', 'PROMPT READY'] },
     ]);
   });
 
-  it('files each mark under the node the canvas will point it at', () => {
-    // The k-th mark belongs to the k-th empty node in NODE order, which is
-    // what the canvas writes the mention against. Reading the edge list
-    // instead files the notes under whichever node the model happened to
-    // wire first, and the reader puts their material in the wrong box.
+  it('files every mark under the generation whose prompt carries it, in prompt order', () => {
+    // No mark is paired with a node: the reader @s by hand in that panel.
     const drop = (label: string): ProposalNode['prompt'] => [
       { slot: { kind: 'asset', label, note: `Drop the ${label} in` } },
     ];
-    // Both generations read both empty nodes, so the notes hang under the
-    // nodes themselves and the pairing is on screen to be got wrong.
     const proposal = flow(
       [
         empty('Your photo'),
@@ -240,8 +231,6 @@ describe('what is left for the reader', () => {
           prompt: [...(drop('photo') ?? []), ...(drop('logo') ?? [])],
         },
       ],
-      // Listed back to front: nothing makes a model list its edges in the
-      // order it listed its nodes.
       [
         [1, 2],
         [0, 2],
@@ -251,9 +240,7 @@ describe('what is left for the reader', () => {
     );
 
     expect(todosOf(proposal, LINES)).toEqual([
-      { nodes: ['Your photo'], notes: ['Drop the photo in'] },
-      { nodes: ['Your logo'], notes: ['Drop the logo in'] },
-      { nodes: ['The banner', 'The square'], notes: ['PROMPT READY'] },
+      { nodes: ['The banner', 'The square'], notes: ['Drop the photo in', 'Drop the logo in', 'PROMPT READY'] },
     ]);
   });
 
@@ -269,21 +256,17 @@ describe('what is left for the reader', () => {
     ]);
   });
 
-  it('leaves a mark pointing upstream out of the to-dos: it asks the reader for nothing', () => {
-    // It names the node this sentence means, which is already true the moment
-    // the flow lands. A line under "what is left" would be a job with nothing
-    // in it.
-    const points: ProposalNode = {
-      ...generates('At 45'),
-      prompt: [
-        { text: 'in the light of ' },
-        { slot: { kind: 'ref', label: 'the first', note: 'Nothing to do' } },
-      ],
+  it('lists a note by its own words, under its generation', () => {
+    // A note has no card line of its own: what it says is the to-do. On a
+    // model drawing no prompt box, this line is the only place it appears.
+    const noted: ProposalNode = {
+      ...generates('The clip'),
+      takesPrompt: false,
+      prompt: [{ slot: { kind: 'note', label: 'Pick the first frame in the panel' } }],
     };
-    const proposal = flow([generates('Front'), points], [[0, 1]]);
 
-    expect(todosOf(proposal, LINES)).toEqual([
-      { nodes: ['Front', 'At 45'], notes: ['PROMPT READY'] },
+    expect(todosOf(flow([noted]), LINES)).toEqual([
+      { nodes: ['The clip'], notes: ['Pick the first frame in the panel', 'SETTINGS READY'] },
     ]);
   });
 
@@ -345,39 +328,6 @@ describe('where each generation\'s prompt is found (#289)', () => {
     const proposal = flow([empty('Your photo'), written('Your copy')]);
 
     expect(todosOf(proposal, LINES)).toEqual([]);
-  });
-});
-
-describe('a proposal stored before the check answered these questions', () => {
-  it('names no feeder at all, rather than guessing which way it took', () => {
-    // A row stored before the two catalog facts travelled on the node. What
-    // the panel would accept turns on them, so a guess either writes a
-    // mention it refuses or drops one the pool needs.
-    const proposal = flow(
-      [
-        generates('The first take'),
-        { ...generates('On white'), poolKinds: undefined, takesPrompt: undefined },
-      ],
-      [[0, 1]],
-    );
-
-    expect(nameableFeeders(proposal, 1)).toEqual({ sources: [], upstream: [], slotted: [] });
-  });
-
-  it('holds the place of a feeder the panel cannot mention', () => {
-    // The k-th mark is about the k-th node wired in, and the marks are written
-    // against the whole run. Dropping the one that cannot be mentioned would
-    // slide every mark after it onto the wrong node.
-    const proposal = flow(
-      [
-        { role: 'source', type: 'video', name: 'Your clip' },
-        { role: 'source', type: 'image', name: 'Your still' },
-        generates('The cut'),
-      ],
-      [[0, 2], [1, 2]],
-    );
-
-    expect(nameableFeeders(proposal, 2)).toEqual({ sources: [null, 1], upstream: [], slotted: [] });
   });
 });
 

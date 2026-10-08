@@ -13,6 +13,7 @@
 
 import * as Y from 'yjs';
 
+import { PROMPT_NOTE_NODE } from '@web/features/prompt-note/prompt-note';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { chipWordsReader, MENTION_KIND_ATTR } from '@web/spaces/canvas/generate/reference-mention';
@@ -80,8 +81,10 @@ export function serializePromptFragment(
   tokens: MentionTokens,
 ): string {
   const words = chipWordsReader(pool, tokens);
+  // Notes are never sent; skipped before joining, so none leaves a separator.
   return fragment
     .toArray()
+    .filter((block) => !(block instanceof Y.XmlElement && block.nodeName === PROMPT_NOTE_NODE))
     .map((block) => pieceText(block, words))
     .join(BLOCK_SEPARATOR);
 }

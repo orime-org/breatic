@@ -225,12 +225,6 @@ export const mocks = {
     getUserById: vi.fn().mockResolvedValue({ id: "user-1", email: "u@x.com" }),
     getUsersByIds: vi.fn().mockResolvedValue([]),
   },
-  skillService: {
-    listBuiltin: vi.fn().mockReturnValue([
-      { name: "creative_research", description: "Research", scope: ["agent"] },
-    ]),
-    listUserSkills: vi.fn().mockResolvedValue([]),
-  },
   textToolService: {
     execute: vi.fn(),
   },
@@ -577,7 +571,6 @@ export const domainMock = () => ({
   nodeHistoryService: mocks.nodeHistoryService,
   nodeHistoryRepo: mocks.nodeHistoryRepo,
   modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
-  listAvailableModels: vi.fn().mockReturnValue([]),
   // #1580 #7 credit pre-check inputs (canvas + mini-tools routes).
   MIN_TASK_CREDIT_COST: 5,
   estimateTaskCredits: vi.fn().mockResolvedValue(5),
@@ -606,43 +599,6 @@ export const domainMock = () => ({
   // Real so that a turn built on this stub throws the same detail the real
   // one does when a tool reports the stop itself.
   STOPPED_BY_USER: REAL_STOPPED_BY_USER,
-  getSkillRegistry: () => ({
-    get: (name: string) =>
-      ["gated_fixture", "creative_research", "canvas_fixture", "canvas_gated"].includes(name)
-        ? { name, description: "...", tools: [] }
-        : undefined,
-  }),
-  // The gate both entry points call. Mirrors the real one's two outcomes:
-  // 404 for a skill that does not exist, 403 for one the routing config
-  // does not let a user fire from here.
-  // Throws the real AppError, because the error handler identifies errors
-  // with `instanceof` — a look-alike carrying the same `.status` comes back
-  // as a 500. `mocks.appError` is set by coreMock, which does have it.
-  // Mirrors the real gate's SHAPE, both parameters included. An earlier
-  // version took only the name, which made every call site's surface
-  // argument unobservable: swapping "chat" for "canvas" at a route changed
-  // nothing any test could see, on the one axis this PR introduced.
-  assertSkillUsable: (name: string, surface: string) => {
-    const AppErrorClass = mocks.appError;
-    const routes: Record<string, { surfaces: string[]; userInvocable: boolean }> = {
-      creative_research: { surfaces: ["chat"], userInvocable: true },
-      gated_fixture: { surfaces: ["chat"], userInvocable: false },
-      canvas_fixture: { surfaces: ["canvas"], userInvocable: true },
-      // Canvas serves it, but no user may fire it. Without this, a canvas
-      // test aimed at the authorization axis is stopped by the surface axis
-      // first and passes for the wrong reason.
-      canvas_gated: { surfaces: ["canvas"], userInvocable: false },
-    };
-    const route = routes[name];
-    if (!route) throw new AppErrorClass(404, `Skill '${name}' not found`);
-    if (!route.surfaces.includes(surface)) {
-      throw new AppErrorClass(403, `Skill '${name}' is not available here`);
-    }
-    if (!route.userInvocable) {
-      throw new AppErrorClass(403, `Skill '${name}' is not user-invocable`);
-    }
-  },
-  SkillRegistry: class {},
   extractPromptText: vi.fn((s: string) => s),
 });
 
@@ -688,7 +644,6 @@ export const serverModulesMock = async (importOriginal: () => Promise<Record<str
     conversationRepo: mocks.conversationRepo,
     attachmentService: mocks.attachmentService,
     memoryService: mocks.memoryService,
-    skillService: mocks.skillService,
     textToolService: mocks.textToolService,
     // projectAuthService + projectMembersRepo moved to @breatic/core
     // (auth-unification PR) — they now live in coreMock, not here.

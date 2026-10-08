@@ -34,7 +34,6 @@ export { canvasApi, type CanvasTask } from '@web/data/api/canvas';
 export { miniToolsApi } from '@web/data/api/mini-tools';
 export { textToolsApi, type TextStreamEvent } from '@web/data/api/text-tools';
 export { tasksApi } from '@web/data/api/tasks';
-export { skillsApi, type Skill } from '@web/data/api/skills';
 export { paymentApi, type CreditPack, type PackList } from '@web/data/api/payment';
 export { assetsApi } from '@web/data/api/assets';
 export { modelsApi } from '@web/data/api/models';

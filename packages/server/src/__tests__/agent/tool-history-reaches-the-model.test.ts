@@ -49,9 +49,7 @@ vi.mock("@breatic/domain", async () => {
   return {
     ...base,
     // Which model and which tools a turn gets is decided elsewhere and tested
-    // there. Using the real factory here would pull in the skill registry, and
-    // the skill entry point would fail for want of a registered skill rather
-    // than for anything this suite is about.
+    // there.
     buildAgentConfig: () => ({ modelId: "test", instructions: "system", tools: {} }),
     finalizeTurn: async () => [],
     streamTextRetry,
@@ -78,8 +76,8 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
 
 vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
 
-// What the system prompt says is settled elsewhere and has its own tests; here
-// it would only drag the skill registry in for a suite that asserts on history.
+// What the system prompt says is settled elsewhere and has its own tests; this
+// suite asserts on history.
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");

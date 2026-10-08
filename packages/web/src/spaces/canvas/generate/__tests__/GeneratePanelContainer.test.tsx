@@ -18,7 +18,7 @@ import type { ModelCatalog, ModelEntry } from '@breatic/shared';
 import { Activity, type ReactNode } from 'react';
 
 vi.mock('sonner', () => ({
-  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }));
 
 // Pass through the tooltip primitives: real Radix Tooltip throws without the
@@ -75,6 +75,7 @@ import { canvasApi, modelsApi } from '@web/data/api';
 import * as Y from 'yjs';
 
 import {
+  addEdge,
   addNode,
   getPromptFragment,
   readCanvasGraph,
@@ -1494,5 +1495,76 @@ describe('a model that states how much text it takes', () => {
     expect(createSpy).not.toHaveBeenCalled();
     listSpy.mockRestore();
     createSpy.mockRestore();
+  });
+});
+
+/** The model both first templates run on (inner#977). */
+const TEMPLATE_MODEL: ModelEntry = {
+  ...I2I_MODEL,
+  name: 'nano-banana-pro-edit-ultra',
+  display_name: 'Nano Banana Pro Ultra',
+  params: {
+    ...I2I_MODEL.params,
+    aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '16:9' },
+    resolution: { description: '', values: ['1k', '4k'], default: '1k' },
+  },
+};
+
+describe('GeneratePanelContainer — picking a template (inner#977)', () => {
+  beforeEach(() => {
+    _resetForTests();
+    vi.mocked(toast.info).mockClear();
+    canvasSessions.of('s').setState({ panelHostId: null, panelKind: null, pickSession: null });
+  });
+
+  it('writes the template mode, model, params and prompt, mentioning the wired-in image, and reminds the reader', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([T2I_MODEL, TEMPLATE_MODEL]));
+    seedImageNode({ paramsByModel: { 'nano-banana': { aspect_ratio: '16:9' } } });
+    // The pick reads the board fresh from Yjs, like every panel write.
+    addNode('p', 's', {
+      id: 'src',
+      type: 'image',
+      position: { x: -400, y: 0 },
+      data: { name: 'Hero', createdAt: 1000, createdBy: 'u1', locked: false, attachments: [] },
+    } as Parameters<typeof addNode>[2]);
+    addEdge('p', 's', { id: 'e1', source: 'src', target: 'target' });
+    mountContainer({
+      nodes: [
+        { id: 'target', data: { kind: 'image', status: 'idle' } },
+        { id: 'src', data: { kind: 'image', status: 'idle' } },
+      ],
+      edges: [{ id: 'e1', source: 'src', target: 'target' }],
+    });
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+    });
+    fireEvent.keyDown(await screen.findByTestId('generate-template-trigger'), { key: 'Enter' });
+    fireEvent.click(await screen.findByTestId('generate-template-storyboard-grid-25'));
+    await waitFor(() => {
+      const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')?.data as {
+        mode?: string;
+        model?: string;
+        modelByMode?: Record<string, string>;
+        paramsByModel?: Record<string, Record<string, unknown>>;
+      };
+      expect(d.mode).toBe('i2i');
+      expect(d.model).toBe('nano-banana-pro-edit-ultra');
+      expect(d.modelByMode?.i2i).toBe('nano-banana-pro-edit-ultra');
+      expect(d.paramsByModel?.['nano-banana']).toEqual({ aspect_ratio: '16:9' });
+      expect(d.paramsByModel?.['nano-banana-pro-edit-ultra']).toMatchObject({
+        aspect_ratio: '1:1',
+        resolution: '4k',
+      });
+    });
+    const prompt = getPromptFragment('p', 's', 'target', 'i2i')?.toString() ?? '';
+    expect(prompt).toContain('storyboard grid of exactly 5 rows');
+    // The picture wired in is left for the reader to @ by hand.
+    expect(prompt).not.toContain('sourceNodeId');
+    expect(prompt).toContain('[📎 Use @ to pick character or scene reference]');
+    expect(prompt).toContain('{✏️ the story}');
+    expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editMarks, expect.anything());
+    listSpy.mockRestore();
   });
 });

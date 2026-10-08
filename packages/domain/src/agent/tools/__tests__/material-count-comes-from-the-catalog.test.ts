@@ -117,7 +117,7 @@ function onePiece(
         prompt: [
           { text: "warm and unhurried" },
           {
-            slot: { kind: "asset", label: "your material", note: "Put it in the empty node" },
+            slot: { kind: "note", label: "Put your material in the empty node, then pick it into the slot" },
           },
         ],
       },

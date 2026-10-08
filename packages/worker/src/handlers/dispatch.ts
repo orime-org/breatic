@@ -4,29 +4,22 @@
 /**
  * BullMQ job handlers for task execution.
  *
- * Four execution paths:
+ * Three execution paths:
  * 1. Mini-tool → direct provider call
  * 2. Understand → media analysis / ASR
  * 3. AIGC Direct → provider call with explicit params
- * 4. Skill (explicit) → AI SDK agent loop
  *
- * Anything else throws. There used to be a fifth path that picked skills by
- * category and merged them, which cannot hold "a skill's three things are
- * fixed" — merged, whose model wins?
+ * Anything else throws.
  */
 
 import type { Job } from "bullmq";
-import { stepCountIs } from "ai";
-import { generateTextRetry } from "@breatic/domain";
 import { resolveMiniToolEntry } from "@worker/mini-tool-registry.js";
 import type { ResumeContext } from "@worker/providers/shared.js";
 import { runLocalHandler } from "@worker/handlers/local/index.js";
-import { getModel, resolveProvider } from "@breatic/domain";
-import { buildAgentConfig } from "@breatic/domain";
-import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, getAgentConfig } from "@breatic/core";
+import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
 import { taskService, upstreamStepRepo } from "@breatic/domain";
-import { creditLotService, creditsForUsd, handOffLookups, resolveActiveProvider } from "@breatic/domain";
+import { creditLotService, creditsForUsd, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import {
   assetService,
@@ -34,7 +27,6 @@ import {
   settleTaskForNode,
   understandMediaAt,
   UNDERSTAND_PINS,
-  usageContextFor,
 } from "@breatic/domain";
 import type { UsageRecorder } from "@breatic/domain";
 import {
@@ -99,7 +91,6 @@ export interface TaskJobData {
   spaceId?: string;
   params: Record<string, unknown>;
   model?: string;
-  skillName?: string;
   /** Which lane queued this run, as the activity feed files it. */
   source?: GenerationSource;
   toolName?: string;
@@ -107,7 +98,7 @@ export interface TaskJobData {
    * Target canvas node IDs whose task rows this run settles.
    * Length === 1 for single-output ops; length === N for multi-output ops
    * (e.g., split image → 4 nodes). Absent for tasks not bound to any canvas
-   * node (understand, skill agents without node bindings).
+   * node (understand).
    */
   targetNodeIds?: string[];
   /**
@@ -313,7 +304,7 @@ async function runTaskBody(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolName, targetNodeIds } = job.data;
+  const { taskId, taskType, userId, projectId, spaceId, params, model, source, toolName, targetNodeIds } = job.data;
   const canvasDocName = resolveCanvasDocName(projectId, spaceId);
 
   const streamRedis = getStreamRedis();
@@ -448,7 +439,6 @@ async function runTaskBody(
   // after submit, and a retried job resumes by polling the stored id.
   let providerResult: Record<string, unknown>;
   let creditsUsed = 0;
-  let resolvedSkills: string[] = [];
   const startTime = performance.now();
 
   // #1628: threaded into async transports via provider.generateAsync.
@@ -476,14 +466,14 @@ async function runTaskBody(
   }
 
   /**
-   * A recorder for one of the two agent-run paths (#296). A retried job opens
+   * A recorder for the agent run a reading makes (#296). A retried job opens
    * a fresh one under the same key: each attempt's calls were paid for, and
    * the task is charged once, by `markCompletedAndBill`, plus a separate
    * charge for each call of the successful attempt that is looked up later.
    * @param feature - Which path this task runs.
    * @returns The recorder.
    */
-  const recorderFor = (feature: "canvas_understand" | "skill_task"): UsageRecorder =>
+  const recorderFor = (feature: "canvas_understand"): UsageRecorder =>
     createUsageRecorder({
       operationKey: `task:${taskId}`,
       feature,
@@ -514,29 +504,10 @@ async function runTaskBody(
         throw new Error("understand: a reading must name the node it writes to");
       }
       [providerResult, creditsUsed] = await runUnderstand(params, recorderFor("canvas_understand"));
-    } else if (taskType in AIGC_TASK_TYPES && !skillName) {
+    } else if (taskType in AIGC_TASK_TYPES) {
       [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, { resume, taskId, projectId: projectId ?? undefined });
-    } else if (skillName) {
-      const [text, skills, credits] = await runSkillAgent(
-        skillName,
-        params,
-        recorderFor("skill_task"),
-      );
-      resolvedSkills = skills;
-      creditsUsed = credits;
-      try {
-        providerResult = JSON.parse(text) as Record<string, unknown>;
-      } catch {
-        providerResult = { content: text };
-      }
     } else {
-      // No explicit skill and not an AIGC task type: there is nothing to run.
-      // This used to fall through to picking skills by category and merging
-      // them, which cannot hold "a skill's three things are fixed" — merged,
-      // whose model wins? Saying so beats guessing.
-      throw new Error(
-        `Task type '${taskType}' needs an explicit skill_name to run`,
-      );
+      throw new Error(`Task type '${taskType}' has no runner`);
     }
   } catch (err) {
     // Provider call failed. Safe to retry via BullMQ — no charge yet,
@@ -656,7 +627,6 @@ async function runTaskBody(
   // the first Worker to reach this step wins the charge. Any subsequent
   // retry (shouldn't happen given the re-entry guard above, but defense
   // in depth) reads `wasFirst = false` and skips the deduct step.
-  await taskService.setResolvedSkills(taskId, resolvedSkills);
   const wasFirst = await taskService.markCompletedAndBill(taskId, result, creditsUsed, durationMs);
 
   const usedModel = (result.model as string | undefined) ?? model;
@@ -779,7 +749,7 @@ async function runTaskBody(
   }
 
   logger.info(
-    { taskId, taskType, skillName, resolvedSkills, creditsUsed, durationMs, billed: wasFirst },
+    { taskId, taskType, creditsUsed, durationMs, billed: wasFirst },
     "task_completed",
   );
   return result;
@@ -1566,8 +1536,8 @@ export async function runUnderstand(
 }
 
 /**
- * Execution path 3: run an AIGC provider directly with explicit params
- * (no skill agent loop). Strips and sanitises the prompt before sending.
+ * Execution path 3: run an AIGC provider directly with explicit params.
+ * Strips and sanitises the prompt before sending.
  * @param taskType - AIGC task type (image / audio / video / tts / three_d)
  * @param model - Model name to invoke; required for this path
  * @param params - Task params, including the raw prompt/text to sanitise
@@ -1605,89 +1575,6 @@ export async function runAigcDirect(
 
   return [result, credits];
 }
-
-/**
- * Run an AI SDK agent loop driven by one named skill.
- *
- * Model, instructions and tools all come from `buildAgentConfig`, the same
- * factory the chat path uses. This function used to resolve all three itself
- * and disagreed with chat on every one of them.
- * Exported for its tests, like the other internals of this file: the branch
- * that reaches it needs a whole job, a database and a queue, and none of that
- * is what these assertions are about.
- * @param skillName - The skill to run; the caller has already checked it is set
- * @param params - Task params serialised into the user message for the agent
- * @param usage - The task's recorder; every model call and paying tool call
- *   the run makes is recorded on it
- * @returns A `[text, resolvedSkills, credits]` tuple: the agent's final text,
- *   the skill it ran, and the credits its calls add up to
- * @throws {Error} when the registry has no such skill
- */
-export async function runSkillAgent(
-  skillName: string,
-  params: Record<string, unknown>,
-  usage: UsageRecorder,
-): Promise<[string, string[], number]> {
-  const agentConfig = buildAgentConfig({ skillName });
-
-  let result: Awaited<ReturnType<typeof generateTextRetry>>;
-  try {
-    result = await generateTextRetry({
-      model: getModel(agentConfig.modelId),
-      system: agentConfig.instructions,
-      messages: [{ role: "user" as const, content: JSON.stringify(params) }],
-      tools: agentConfig.tools,
-      // Cast for the reason the chat turn gives: the tool set is a plain
-      // record, and each paying tool's `contextSchema` checks this at run time.
-      toolsContext: usageContextFor(agentConfig.tools, usage) as never,
-      stopWhen: stepCountIs(getAgentConfig().skill_agent_max_steps),
-      // Per model call, and this job makes up to `skill_agent_max_steps` of
-      // them. The key is named for the call rather than for the caller: chat
-      // and a skill job bound the same thing.
-      maxOutputTokens: getAgentConfig().max_output_tokens,
-      onLanguageModelCallEnd: ({ responseId, usage: spent, providerMetadata }) =>
-        usage.recordModelCall({
-          source: "model",
-          model: agentConfig.modelId,
-          provider: resolveProvider(agentConfig.modelId),
-          usage: spent,
-          providerMetadata,
-          generationId: responseId,
-        }),
-    });
-  } catch (err) {
-    // The calls that finished before the failure were paid for; their rows
-    // land before the failure goes on. The run fails and is not charged.
-    await usage.settle().catch((recordErr: unknown) =>
-      logger.error({ err: recordErr }, "agent_usage_record_failed"),
-    );
-    await handOff(usage, agentConfig.modelId, skillName, false);
-    throw err;
-  }
-
-  const credits = await usage.settle();
-  await handOff(usage, agentConfig.modelId, skillName, true);
-  return [result.text || "Task completed.", [skillName], credits];
-}
-
-/**
- * Queue the later lookup of the calls a skill run could not price. A failure
- * to queue is logged and does not fail the run.
- * @param usage - The run's recorder.
- * @param model - The model the run called.
- * @param skillName - The skill it ran, for the ledger row.
- * @param charge - Whether the run is charged; a failed run is recorded only.
- * @returns Nothing once the calls are queued or the failure is logged.
- */
-async function handOff(usage: UsageRecorder, model: string, skillName: string, charge: boolean): Promise<void> {
-  await handOffLookups(usage.awaitingLookup(), usage.operation, {
-    model,
-    description: `Skill: ${skillName}`,
-    charge,
-  }).catch((err: unknown) => logger.error({ err, skillName }, "usage_lookup_enqueue_failed"));
-}
-
-
 
 /**
  * Dynamic provider import by task type.
