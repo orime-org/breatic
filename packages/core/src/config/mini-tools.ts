@@ -23,13 +23,12 @@ const classSchema = z.object({
   disk_gb: z.number().positive(),
 });
 
-const opSchema = z.object({
+const opSchema = z.strictObject({
   container_class: z.string().min(1),
-  job_deadline_ms: z.number().int().positive(),
   precheck_seconds: z.number().positive(),
 });
 
-const miniToolsConfigSchema = z
+export const miniToolsConfigSchema = z
   .object({
     poll_interval_ms: z.number().int().positive(),
     prices: z.object({

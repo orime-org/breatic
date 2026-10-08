@@ -14,7 +14,7 @@
 
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { env, getMiniToolsConfig, logger } from "@breatic/core";
+import { env, getMiniToolsConfig, getNodeTaskConfig, logger } from "@breatic/core";
 import {
   assetService,
   containerCostUsd,
@@ -101,7 +101,7 @@ async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunIn
   if (step.status === "failed") throw new ContainerJobFailed("tool_failed");
   const held = storedJob(step.output);
   if (held) return { stepId: step.id, job: held };
-  const deadlineAt = Date.now() + plan.job_deadline_ms;
+  const deadlineAt = Date.now() + getNodeTaskConfig().default_budget_ms;
   const job: StoredJob = {
     jobId: `task:${input.taskId}`,
     containerClass: plan.container_class,

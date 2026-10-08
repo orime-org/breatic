@@ -28,11 +28,12 @@ vi.mock("node:timers/promises", () => ({ setTimeout: async (): Promise<void> => 
 vi.mock("@breatic/core", () => ({
   env: { INGEST_BASE_URL: "https://ingest.test", INGEST_SHARED_SECRET: "s", CREDIT_MULTIPLIER: 2 },
   logger: { warn: vi.fn(), error: vi.fn() },
+  getNodeTaskConfig: () => ({ default_budget_ms: 7_200_000 }),
   getMiniToolsConfig: () => ({
     poll_interval_ms: 1000,
     prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
     classes: { Std1: { instance_type: "standard-1", vcpu: 0.5, memory_gib: 4, disk_gb: 8 } },
-    ops: { cut: { container_class: "Std1", job_deadline_ms: 600_000, precheck_seconds: 300 } },
+    ops: { cut: { container_class: "Std1", precheck_seconds: 300 } },
   }),
 }));
 
@@ -113,6 +114,19 @@ describe("runContainerJob", () => {
       expect.objectContaining({ source: "container", costSource: "computed", costUsd: expect.closeTo(usd, 10) }),
     );
     expect(h.markDone).toHaveBeenCalledWith("s1", { state: "done" });
+  });
+
+  // Every task has one ceiling, the node task budget; the container gets no other.
+  it("gives the job the node task budget as its deadline", async () => {
+    h.readMiniToolJob.mockResolvedValueOnce(null).mockResolvedValueOnce({ state: "done", outputs: [MEASURED], usage: USAGE });
+    h.submitMiniToolJob.mockResolvedValueOnce({ state: "starting" });
+    const before = Date.now();
+
+    await runContainerJob(CUT, "cut", INPUT);
+
+    const { deadlineAt } = h.submitMiniToolJob.mock.calls[0]![2] as { deadlineAt: number };
+    expect(deadlineAt).toBeGreaterThanOrEqual(before + 7_200_000);
+    expect(deadlineAt).toBeLessThanOrEqual(Date.now() + 7_200_000);
   });
 
   it("reads the job a previous attempt opened, without opening new outputs or submitting again", async () => {

@@ -1,9 +1,10 @@
 # Mini-tools that run in the media container (inner#888 §8, §9).
 #
-# Each container operation names the container class it runs in, how long one
-# run may take, and the seconds the credit precheck holds the reader to. The
-# precheck is a floor, not the bill: a run is charged for the seconds it
-# actually used, priced below.
+# Each container operation names the container class it runs in and the
+# seconds the credit precheck holds the reader to. The precheck is a floor, not
+# the bill: a run is charged for the seconds it actually used, priced below.
+# How long a run may take is the node task budget (config/node-tasks.yaml),
+# the one ceiling every task has.
 
 # How often the worker asks the ingest Worker how a job is doing.
 poll_interval_ms: 5000
@@ -31,32 +32,22 @@ classes:
 ops:
   crop:
     container_class: "MiniToolContainerStd1"
-    job_deadline_ms: 600000
     precheck_seconds: 300
   speed:
     container_class: "MiniToolContainerStd1"
-    job_deadline_ms: 600000
     precheck_seconds: 300
   cut:
     container_class: "MiniToolContainerStd1"
-    job_deadline_ms: 600000
     precheck_seconds: 300
   adjust:
     container_class: "MiniToolContainerStd1"
-    job_deadline_ms: 600000
     precheck_seconds: 300
   audio_denoise:
     container_class: "MiniToolContainerStd1"
-    job_deadline_ms: 600000
     precheck_seconds: 300
-  # Temporary: the class and deadline of these two are set before a real 1080p
-  # run has been timed in the container. Replace them with the measured values
-  # (inner#888 §8.3) before this ships.
   stabilize:
     container_class: "MiniToolContainerStd4"
-    job_deadline_ms: 1800000
     precheck_seconds: 900
   hdr:
     container_class: "MiniToolContainerStd4"
-    job_deadline_ms: 1800000
     precheck_seconds: 900
