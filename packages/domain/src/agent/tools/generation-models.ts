@@ -142,7 +142,12 @@ function renderModel(model: PricedModelInfo): string {
       .map((kind) => ` Of the ${String(kind)} nodes wired in, the first in the order the proposal lists its nodes is the one the reader picks into its ${String(kind)} slot (say so in a note); later ones go to its pool (an asset mark each).`)
       .join("") +
     optionalSlots(model)
-      .map(({ name, kind, room }) => ` Up to ${String(room)} ${String(kind)} node${room === 1 ? "" : "s"} wired in can go into its ${name} slot instead (say so in a note); those need no asset mark.`)
+      .map(({ name, kind, room }) => {
+        const nodes = `Up to ${String(room)} ${String(kind)} node${room === 1 ? "" : "s"} wired in`;
+        return pooled.includes(kind)
+          ? ` ${nodes} can go into its ${name} slot instead (a note for each, saying so); those need no asset mark.`
+          : ` ${nodes} go into its ${name} slot (a note for each, saying so); they cannot be @'d.`;
+      })
       .join("");
   const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderStoryboard(model)}${renderCameraCommands(model)}`;
   const params = Object.entries(model.params).filter(([, spec]) => !spec.fromStoryboard).map(([name, spec]) => {

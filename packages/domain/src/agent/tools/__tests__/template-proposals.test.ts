@@ -17,14 +17,14 @@ import { answerFor, inputSchema, makeProposeCanvasAction } from "../propose-canv
 
 /**
  * A template's prompt in the shape a proposal sends it: words as text
- * segments, each mark as a slot segment with its label and nothing added.
+ * segments, each mark as the slot segment it reads back to.
  * @param template - The template.
  * @returns The segments, as JSON.
  */
 function shown(template: GenerationTemplate): string {
   return JSON.stringify(
     templatePrompt(template).map((segment) =>
-      segment.slot === undefined ? { text: segment.text } : { slot: { kind: segment.slot.kind, label: segment.slot.label } },
+      segment.slot === undefined ? { text: segment.text } : { slot: segment.slot },
     ),
   );
 }
@@ -155,7 +155,7 @@ describe("an empty node wired into a reference pool", () => {
 
   it("is refused when the prompt names it only in words, since the picture put there would not be sent", () => {
     const answer = answerFor(withPrompt([{ text: "Use [📎 character reference] as the reference. A 5x5 storyboard." }]));
-    expect(answer).toMatchObject({ placed: false, reason: expect.stringMatching(/a mark into its words \("character reference"\)/) });
+    expect(answer).toMatchObject({ placed: false, reason: expect.stringMatching(/types 1 mark\(s\) into its words.*"label":"character reference"/) });
   });
 
   it("is placed when a material mark mentions it", () => {

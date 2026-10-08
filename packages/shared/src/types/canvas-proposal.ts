@@ -73,10 +73,24 @@ const MARK_PATTERN = new RegExp(
 );
 
 /**
- * Read a template's prompt, as the locale files keep it, into segments: each
- * `[📎 …]`, `{✏️ …}` and `(💡 …)` becomes the mark it stands for, the label
- * doubling as the card's line where the kind has one.
- * @param text - The prompt as the locale file writes it.
+ * A reference mark's label with the words {@link markText} asks the reader
+ * with taken back off, in the language they were put on in.
+ * @param label - What sits between `[📎 ` and `]`.
+ * @returns The label alone.
+ * @throws {never} Never.
+ */
+function bareReferenceLabel(label: string): string {
+  const [before = "", after = ""] = t("canvas.promptMark.reference", { label: "\u0000" }).split("\u0000");
+  const wrapped = label.length > before.length + after.length && label.startsWith(before) && label.endsWith(after);
+  return wrapped ? label.slice(before.length, label.length - after.length) : label;
+}
+
+/**
+ * Read a prompt into segments: each `[📎 …]`, `{✏️ …}` and `(💡 …)` becomes
+ * the mark it stands for, the label doubling as the card's line where the
+ * kind has one. The inverse of {@link markText}: a template's locale prompt
+ * and a prompt copied out of a box read back to the same label.
+ * @param text - The prompt as a locale file or a box writes it.
  * @returns Its segments.
  * @throws {never} Never.
  */
@@ -87,8 +101,9 @@ export function markedSegments(text: string): PromptSegment[] {
   for (const match of text.matchAll(MARK_PATTERN)) {
     const [whole] = match;
     const symbol = match.find((group, i) => i > 0 && kindOf.has(group ?? "")) ?? "";
-    const label = match[match.indexOf(symbol) + 1] ?? "";
     const kind = kindOf.get(symbol) ?? "tweak";
+    const read = match[match.indexOf(symbol) + 1] ?? "";
+    const label = kind === "asset" ? bareReferenceLabel(read) : read;
     if (match.index > at) segments.push({ text: text.slice(at, match.index) });
     segments.push({ slot: kind === "note" ? { kind, label } : { kind, label, note: label } });
     at = match.index + whole.length;

@@ -169,7 +169,7 @@ const proposalNode = z
           "writes in. A mark is a segment of its own ({\"slot\": …}), never typed into a text " +
           "segment; it is words shown to the reader, nothing more: no mention is written for it, " +
           "and the reader @s every reference by hand, so give every node wired in that they could @ " +
-          "an asset mark",
+          "an asset mark, or, for one that goes into an optional slot instead, a note of its own saying so",
       ),
     shots: z
       .array(
@@ -425,6 +425,35 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
 }
 
 /**
+ * How many wired nodes of each kind the notes send into optional slots.
+ *
+ * A node can go into an optional slot rather than the pool: the reader picks
+ * it in, as a note says, so each note stands in for one bracket -- as many
+ * times as the slots hold nodes of a kind wired in. Asked once, so the count
+ * of brackets and the pool's ceiling read the same nodes as gone.
+ * @param slots - The model's optional slots that take a kind wired in.
+ * @param mentionable - The wired nodes the reader could @.
+ * @param notes - How many notes the prompt carries.
+ * @returns Per kind, how many nodes the notes send into a slot.
+ * @throws {never} Never.
+ */
+function notedIntoSlots(
+  slots: readonly { kind: ReferenceKind; room: number }[],
+  mentionable: readonly ProposalNode[],
+  notes: number,
+): Map<ReferenceKind, number> {
+  const taken = new Map<ReferenceKind, number>();
+  let left = notes;
+  for (const slot of slots) {
+    const have = mentionable.filter((n) => n.type === slot.kind).length - (taken.get(slot.kind) ?? 0);
+    const take = Math.min(slot.room, have, left);
+    taken.set(slot.kind, (taken.get(slot.kind) ?? 0) + take);
+    left -= take;
+  }
+  return taken;
+}
+
+/**
  * Judge one generation node against the catalog and its own group.
  * @param proposal - The whole proposal, for reading the group around it.
  * @param node - The node being judged.
@@ -527,17 +556,11 @@ function checkGenerateNode(
   // them to. Counted, never paired: the reader does the @.
   const mentionable = nodesAt(canName.mentionable);
   const marked = prompt.filter((segment) => segment.slot?.kind === "asset").length;
-  // A node can instead go into an optional slot, which the reader picks it
-  // into as a note says, so a note stands in for a bracket -- as many times as
-  // those slots hold nodes of the kinds wired in.
-  const slots = optionalSlots(chosen);
-  const slotRoom = slots.reduce(
-    (room, slot) => room + Math.min(slot.room, mentionable.filter((n) => n.type === slot.kind).length),
-    0,
-  );
-  const noted = Math.min(prompt.filter((segment) => segment.slot?.kind === "note").length, slotRoom);
+  const slots = optionalSlots(chosen).filter((slot) => mentionable.some((n) => n.type === slot.kind));
+  const slotted = notedIntoSlots(slots, mentionable, prompt.filter((segment) => segment.slot?.kind === "note").length);
+  const noted = [...slotted.values()].reduce((sum, count) => sum + count, 0);
   if (marked + noted < mentionable.length) {
-    const slotWay = slots.length > 0 ? `, or a note saying which goes into its ${slots.map((slot) => slot.name).join(" or ")} slot` : "";
+    const slotWay = slots.length > 0 ? `, or a note of its own saying it goes into the ${slots.map((slot) => slot.name).join(" or ")} slot` : "";
     return {
       ok: false,
       reason: `"${node.name}" has ${String(mentionable.length)} node(s) wired in that the reader @s to use (${mentionable.map((n) => `"${n.name}"`).join(", ")}) and ${String(marked)} asset mark(s). Give each one an asset mark saying what to @${slotWay}; a node the reader is not told about is not used.`,
@@ -620,11 +643,11 @@ function checkGenerateNode(
   // Counted per kind over the nodes of that kind wired in and not taken by a
   // slot, which is the most the reader's @s can put in that pool: the panel
   // sends each mentioned row in the list of its own kind
-  // (`mentionedReferenceUrls`). A node a slot takes is picked there, not in
-  // the pool.
+  // (`mentionedReferenceUrls`). A node a required slot takes, or one a note
+  // sends into an optional slot, is picked there, not in the pool.
   const wired = nodesAt([...held.sources, ...held.upstream].filter((i) => !canName.slotted.includes(i)));
   for (const { kind, info } of pools) {
-    const pooled = wired.filter((n) => n.type === kind).length;
+    const pooled = wired.filter((n) => n.type === kind).length - (slotted.get(kind) ?? 0);
     const over = referenceCapExceeded(pooled, info.maxItems);
     if (over) {
       return {
@@ -635,6 +658,24 @@ function checkGenerateNode(
   }
 
   return { ok: true };
+}
+
+/**
+ * The refusal for a reference or note on a written node.
+ *
+ * A text node's body holds words and nothing else: a reference would ask for
+ * material nothing here reads, and a note would vanish from words that are
+ * kept as written. Said one way wherever it is caught, so a node is never
+ * told to send the very segment the next check refuses.
+ * @param node - The written node.
+ * @returns The refusal.
+ * @throws {never} Never.
+ */
+function writtenTakesNoMark(node: ProposalNode): ProposalVerdict {
+  return {
+    ok: false,
+    reason: `"${node.name}" holds words the reader keeps as they are, so it takes no reference or note mark. Take the mark out and say what you meant in your own message.`,
+  };
 }
 
 /**
@@ -693,12 +734,7 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
   const reaching = (node.prompt ?? []).find(
     (segment) => segment.slot?.kind === "asset" || segment.slot?.kind === "note",
   );
-  if (reaching) {
-    return {
-      ok: false,
-      reason: `"${node.name}" holds words the reader keeps as they are, so it takes no reference or note mark. Take the mark out and say what you meant in your own message.`,
-    };
-  }
+  if (reaching) return writtenTakesNoMark(node);
   // Without them it lands as an empty text node, which is the thing a reader
   // makes in a click and has no use for in a proposal.
   if (promptPlainText(node.prompt ?? []).trim() === "") {
@@ -717,19 +753,15 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
  * @throws {never} Never.
  */
 function markTypedAsWords(node: ProposalNode): ProposalVerdict {
-  for (const segment of proposalMarkSegments(node)) {
-    if (segment.text === undefined) continue;
-    const typed = markedSegments(segment.text).find((part) => part.slot !== undefined)?.slot;
-    if (typed === undefined) continue;
-    const shape = typed.kind === "note"
-      ? { slot: { kind: typed.kind, label: typed.label } }
-      : { slot: { kind: typed.kind, label: typed.label, note: "…" } };
-    return {
-      ok: false,
-      reason: `"${node.name}" types a mark into its words ("${typed.label}"). Send it as a segment of its own, ${JSON.stringify(shape)}, and keep the text segments to plain words.`,
-    };
-  }
-  return { ok: true };
+  const typed = proposalMarkSegments(node).flatMap((segment) =>
+    segment.text === undefined ? [] : markedSegments(segment.text).flatMap((part) => (part.slot ? [part.slot] : [])),
+  );
+  if (typed.length === 0) return { ok: true };
+  if (node.role === "written" && typed.some((slot) => slot.kind !== "tweak")) return writtenTakesNoMark(node);
+  return {
+    ok: false,
+    reason: `"${node.name}" types ${String(typed.length)} mark(s) into its words. Send each as a segment of its own and keep the text segments to plain words: ${typed.map((slot) => JSON.stringify({ slot })).join(", ")}.`,
+  };
 }
 
 /**
@@ -1015,14 +1047,14 @@ function templateGuide(): string {
       const segments = templatePrompt(template).map((segment) =>
         segment.slot === undefined
           ? { text: segment.text }
-          : { slot: { kind: segment.slot.kind, label: segment.slot.label } },
+          : { slot: segment.slot },
       );
       return `${template.id} (${template.nodeType}, ${template.mode}, ${template.model}, ${references} reference${references === 1 ? "" : "s"}): ${template.agentNote}. Its prompt, as segments: ${JSON.stringify(segments)}`;
     }).join("; ") +
     ". Each reference is a node wired in, as with any proposal. Name the template on the node and leave out what " +
     "you keep. To put the reader's own story or detail in, send the template's prompt rewritten in the " +
     "language they write in, as segments: fill a tweak segment with words or keep it for them, and keep each " +
-    "asset segment, saying in its label whether the picture is uploaded or generated and giving it a note. " +
+    "asset segment, saying in its label whether the picture is uploaded or generated; a note is the card's line. " +
     "The reader @s it by hand."
   );
 }
