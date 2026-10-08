@@ -106,7 +106,9 @@ describe("what ffmpeg is asked for the preview", () => {
 
     expect(args[args.indexOf("-i") + 1]).toBe(URL_FOR_KEY);
     expect(args[args.indexOf("-frames:v") + 1]).toBe("1");
-    expect(args[args.indexOf("-vf") + 1]).toBe(`scale='min(${PREVIEW_WIDTH},iw)':-1`);
+    expect(args[args.indexOf("-vf") + 1]).toBe(
+      `scale=w='min(${PREVIEW_WIDTH},min(iw,trunc(iw*16383/ih)))':h=-1`,
+    );
     expect(args[args.indexOf("-c:v") + 1]).toBe("libwebp");
     expect(args[args.indexOf("-f") + 1]).toBe("webp");
     expect(args.at(-1)).toBe("pipe:1");
