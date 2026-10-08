@@ -578,6 +578,41 @@ describe('useNodeCreation', () => {
         expect(contentAt(nodes, ids[2]).styleImageUrls).toEqual([PORTRAIT, 'https://ours.example/image/b.png']);
       });
 
+      it('fills a sound effect from a clip, carrying its poster and length the way a pick does', () => {
+        const CLIP = 'https://ours.example/video/clip.mp4';
+        const POSTER = 'https://ours.example/image/clip-cover.png';
+        const scored: CanvasProposal = {
+          nodes: [
+            {
+              role: 'source',
+              type: 'video',
+              name: 'Your clip',
+              material: CLIP,
+              materialMedia: { coverUrl: POSTER, width: 1280, height: 720, duration: 6, mimeType: 'video/mp4', size: 30 },
+            },
+            {
+              role: 'generate',
+              type: 'audio',
+              name: 'Its sound',
+              mode: 'sfx',
+              model: 'a-sounder',
+              takesPrompt: true,
+              prompt: [{ text: 'footsteps' }],
+              fills: { video: [0] },
+            },
+          ],
+          edges: [],
+          rationale: '',
+        };
+        const { result } = renderHook(() => useNodeCreation('p-sfx', 's-sfx'));
+
+        const { nodeIds: ids } = result.current.placeProposalAt(scored, { x: 0, y: 0 });
+
+        const { nodes } = canvasSpace.readCanvasGraph('p-sfx', 's-sfx');
+        expect(contentAt(nodes, ids[0])).toMatchObject({ kind: 'video', content: CLIP, coverUrl: POSTER });
+        expect(contentAt(nodes, ids[1]).soundVideo).toEqual({ url: CLIP, cover: POSTER, duration: 6 });
+      });
+
       it('goes down as one undo entry with the material and the fills in it', () => {
         const undo = canvasSpace.createCanvasUndoManager(
           getDoc(docName.canvasSpace('p-mundo', 's-mundo')),
