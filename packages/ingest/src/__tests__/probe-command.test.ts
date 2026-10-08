@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { PREVIEW_WIDTH } from "@breatic/shared";
+import { PREVIEW_MAX_SIDE, PREVIEW_WIDTH } from "@breatic/shared";
 import {
   probeArgs,
   coverArgs,
@@ -107,7 +107,7 @@ describe("what ffmpeg is asked for the preview", () => {
     expect(args[args.indexOf("-i") + 1]).toBe(URL_FOR_KEY);
     expect(args[args.indexOf("-frames:v") + 1]).toBe("1");
     expect(args[args.indexOf("-vf") + 1]).toBe(
-      `scale=w='min(${PREVIEW_WIDTH},min(iw,trunc(iw*16383/ih)))':h=-1`,
+      `scale=w='min(${PREVIEW_WIDTH},min(iw,trunc(iw*${PREVIEW_MAX_SIDE}/ih)))':h='max(1,round(ow*ih/iw))'`,
     );
     expect(args[args.indexOf("-c:v") + 1]).toBe("libwebp");
     expect(args[args.indexOf("-f") + 1]).toBe("webp");

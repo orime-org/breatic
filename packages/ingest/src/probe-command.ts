@@ -115,13 +115,14 @@ const COVER_SCALE =
 export const PREVIEW_CONTENT_TYPE = "image/webp";
 
 /**
- * How wide a preview is: `PREVIEW_WIDTH` in `@breatic/shared`, which the page
- * compares against. The container cannot import it, so the test holds the two
- * together. Narrower pictures keep their own width, and a picture taller than
- * about 28 times its width comes out narrower still, because WebP holds at
- * most 16383 pixels on a side.
+ * How a preview is sized: the width `previewWidthFor` in `@breatic/shared`
+ * gives, which the page compares against. The container cannot import it, so
+ * the test holds the two together. The height follows the picture's own
+ * aspect and is never less than one row, which a very wide strip would
+ * otherwise round down to.
  */
-const PREVIEW_SCALE = "scale=w='min(576,min(iw,trunc(iw*16383/ih)))':h=-1";
+const PREVIEW_SCALE =
+  "scale=w='min(576,min(iw,trunc(iw*16383/ih)))':h='max(1,round(ow*ih/iw))'";
 
 /**
  * The one ffmpeg call that writes a preview.
