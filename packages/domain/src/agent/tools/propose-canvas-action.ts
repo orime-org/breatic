@@ -150,7 +150,8 @@ const proposalNode = z
       .optional()
       .describe(
         "role generate only: start this node from a template; it fills the mode, " +
-          "model, params and prompt you leave out, and what you write wins",
+          "model and prompt you leave out, and its params while you keep its mode and model; " +
+          "what you write wins",
       ),
     mode: z.string().min(1).optional().describe("role generate only"),
     model: z.string().min(1).optional().describe("role generate only"),
@@ -927,10 +928,11 @@ function checkEmptyNodesFit(proposal: CanvasProposal): ProposalVerdict {
 }
 
 /**
- * Whether every empty node no edge sends into a generation has a note (design
- * 5.7 table C): unwired, or wired only as a creative link to a model that
- * takes nothing from it. Such a node reaches a generation only by the reader
- * picking it into a slot, and the panel never says which node goes there.
+ * Whether every empty node no edge sends into a generation has a note, where
+ * some generation in the group has a slot of its kind (design 5.7 table C):
+ * unwired, or wired only as a creative link to a model that takes nothing from
+ * it. Such a node reaches a generation only by the reader picking it into a
+ * slot, and the panel never says which node goes there.
  *
  * Counted over the group, never paired: a slot is filled by clicking any node
  * of its kind, so the notes the group's generations carry beyond those their

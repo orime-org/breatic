@@ -14,7 +14,7 @@
  *     validated config at access time);
  *   - {@link getConfig} - the explicit typed accessor;
  *   - {@link getRawEnvVar} - for dynamic lookups that aren't part of
- *     the typed schema (a provider's `api_key_env`).
+ *     the typed schema.
  *
  * Accessing config before {@link initCore} runs throws a clear error
  * rather than silently using `undefined` - the composition root must
@@ -55,7 +55,7 @@ let _config: CoreConfig | null = null;
 
 /**
  * The raw env map the application injected - kept for dynamic lookups
- * (a provider's `api_key_env`) that aren't part of the typed schema. Null until {@link initCore} runs.
+ * that aren't part of the typed schema. Null until {@link initCore} runs.
  */
 let _rawEnv: Record<string, string | undefined> | null = null;
 
@@ -95,8 +95,7 @@ export function getConfig(): CoreConfig {
 
 /**
  * Read a single raw environment variable by name - for dynamic
- * lookups that aren't in the typed schema (a provider's
- * `api_key_env`). Returns `undefined` if not set or before
+ * lookups that aren't in the typed schema. Returns `undefined` if not set or before
  * {@link initCore} runs (callers treat absence as "not configured").
  * @param name - The environment variable name.
  * @returns the raw value, or `undefined` if unset or before {@link initCore} ran

@@ -230,7 +230,8 @@ export interface CanvasProposal {
   nodes: ProposalNode[];
   /**
    * The wiring. `into` says where the node wired in goes on the generation it
-   * feeds: `"pool"` for the reference pool, or the name of one of its slots.
+   * feeds: `"pool"` for the reference pool, the name of one of its slots, or
+   * `PANEL_EDITOR_PARAM` for a song model's lyrics box.
    */
   edges: Array<{ fromIndex: number; toIndex: number; into?: string }>;
   modelNote?: string;

@@ -836,7 +836,7 @@ export function renderProductGuide(): string {
       "asks the reader to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
       "their own file in (double-click it to pick one), a generated result, or a text node -- then delete the " +
       "bracket. A ✏️ mark in braces is words only the reader can write; they replace it with their own. An orange " +
-      "note on a line of its own at the top of the box says how to operate the panel, such as which slot to pick " +
+      `note, starting ${quoted(t("canvas.generatePanel.notePrefix").trim())}, on a line of its own at the top of the box says how to operate the panel, such as which slot to pick ` +
       "a node into; it is never sent to the model, and they can delete it. Each mark is also a line on the card; " +
       "where the panel shows no prompt box, the card is the only place it appears. Read back as text, as in an " +
       "attached node's prompt, a note is (💡 …) on a line of its own and is not sent, a 📎 mark is [📎 …] and a " +

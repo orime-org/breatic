@@ -155,8 +155,8 @@ function runsOf(proposal: CanvasProposal): number[] {
  *
  * One per marked spot, which is what makes them line up with the marks in the
  * prompt itself: the mark says what goes in that place, the line here says
- * what to do about it before pressing. Filed under the generation whose panel
- * it is done in, and nodes asking for the same things in the same words share
+ * what to do about it before pressing. Filed under the node whose words carry
+ * the mark, and nodes asking for the same things in the same words share
  * one group.
  *
  * Every generation ends with one more line saying where its setup is found:
