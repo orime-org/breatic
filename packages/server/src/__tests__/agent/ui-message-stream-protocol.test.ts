@@ -87,8 +87,8 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
 
 vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
 
-// 系统提示词怎么拼不是这个文件要钉的东西，而拼它要走 skill 注册表，
-// 共享的 mock 里那份只有 `get`。这里给一句现成的，把话题留在协议上。
+// How the system prompt is assembled is not what this file pins. A ready
+// sentence keeps the subject on the protocol.
 vi.mock("@server/agent/context.js", () => ({
   buildSystemPrompt: () => "系统提示词",
 }));

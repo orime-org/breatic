@@ -31,14 +31,6 @@
  * and the answer used to live in the video container, which refused the insert
  * itself. It moved in here so that "can this row act" has ONE home (#1962).
  *
- * It lives in this package rather than beside the panel because the agent
- * proposes prompts too (#263), and the tool that judges a proposal sits in a
- * library package that cannot reach into the frontend: it has to know which of
- * a proposed node's feeders the prompt may name, and that is this question
- * asked of a row the reader has not seen yet. Two copies of it drift apart the
- * first time either side changes — the check carried one for three rounds and
- * it was missing the prompt question the whole time.
- *
  * Only ONE control asks anything now (#1952): the ✕ removes a row in every
  * state, so there is nothing left for it to refuse. What the user can no
  * longer USE and what they can no longer GET RID OF stopped being the same

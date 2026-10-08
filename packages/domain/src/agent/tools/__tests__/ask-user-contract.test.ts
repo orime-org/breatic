@@ -20,7 +20,7 @@ import { makeAskUserTool } from "@domain/agent/tools/ask-user.js";
 
 /** One turn's tool; the schema is the same on every one. */
 const askUser = makeAskUserTool();
-import { TOOL_MAP, BASELINE_TOOLS, INTERACTION_TOOLS } from "@domain/agent/tools/index.js";
+import { TOOL_MAP, BASELINE_TOOLS } from "@domain/agent/tools/index.js";
 
 /** The schema, in the one shape a test can call. */
 const schema = askUser.inputSchema as unknown as {
@@ -43,17 +43,14 @@ describe("the one name this tool has", () => {
     expect(Object.keys(TOOL_MAP)).not.toContain("ask_user_choice");
   });
 
-  it("is in every list a caller is offered", () => {
-    // A caller that declares no tools gets `BASELINE_TOOLS`, and one with no
-    // reader is refused `INTERACTION_TOOLS`. Missing from either, the model
-    // is never handed the tool at all.
+  it("is in the list a chat turn is offered", () => {
+    // Missing from it, the model is never handed the tool at all.
     expect(BASELINE_TOOLS).toContain("ask_user");
-    expect(INTERACTION_TOOLS).toContain("ask_user");
   });
 
   it("leaves no list naming a tool the registry does not hold", () => {
     const registered = Object.keys(TOOL_MAP);
-    for (const name of [...BASELINE_TOOLS, ...INTERACTION_TOOLS]) {
+    for (const name of BASELINE_TOOLS) {
       expect(registered).toContain(name);
     }
   });

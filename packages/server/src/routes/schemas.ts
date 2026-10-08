@@ -4,8 +4,8 @@
 /**
  * API request schemas — re-exported from `@breatic/shared`.
  *
- * Server-only schemas (mini-tool discriminated unions, skill market)
- * remain defined here. Shared schemas are the single source of truth.
+ * Server-only schemas (mini-tool discriminated unions) remain defined
+ * here. Shared schemas are the single source of truth.
  */
 
 // ── Re-export shared schemas ────────────────────────────────────────
@@ -91,9 +91,7 @@ export const imageToolSchema = z.discriminatedUnion("tool", [
   // will land once its overlay-driven param UI is designed. B5 (this
   // PR) removed the previous over-broad schema (sharpen / denoise /
   // restore / upscale-creative / adjust / relight / multi-angle / edit
-  // / graffiti); none had frontend callers and none were reachable via
-  // agent paths (skills never POST `/mini-tools/image` — they invoke
-  // models directly through the provider layer).
+  // / graffiti); none had frontend callers.
   //
   // Earlier note from t3-phase4c kept for context: `crop` / `flipRotate`
   // / `manual-adjust` belong in the browser (see
@@ -288,13 +286,6 @@ export const idempotencyKeyHeaderSchema = z.object({
     .string()
     .regex(creditLotService.REFKEY_PATTERN)
     .optional(),
-});
-
-// Skill Market
-export const skillMarketQuerySchema = z.object({
-  tags: z.string().transform((s) => s.split(",").filter(Boolean)).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  offset: z.coerce.number().int().min(0).default(0),
 });
 
 /**

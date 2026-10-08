@@ -30,11 +30,8 @@ import {
   startHealthServer,
   runGracefulShutdown,
   getAgentConfig,
-  getSkillRouting,
 } from "@breatic/core";
 import {
-  agentModelIds,
-  assertModelsPriced,
   modelCatalog,
   USAGE_LOOKUP_QUEUE,
   MEDIA_READ_QUEUE,
@@ -51,10 +48,8 @@ const monitoring = initSentry();
 initLogger("worker");
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
 // i18n: register the catalogs before anything can throw. `t()` echoes the key
-// back when no catalog is loaded, so without this a failed node reads
-// `server.skill.not_available_on_deployment` where a sentence belongs —
-// `dispatch.ts` reaches that throw through `buildAgentConfig` ->
-// `assertSkillModelRunnable`.
+// back when no catalog is loaded, so without this a failed node reads a
+// message key where a sentence belongs.
 //
 // The sentence is English whoever is looking, and deliberately so. A job has
 // no request behind it, so nothing pins a locale the way `localeMiddleware`
@@ -74,22 +69,10 @@ globalThis.AI_SDK_LOG_WARNINGS = ({ warnings, provider, model }) => {
   logger.warn({ warnings, provider, model }, "ai_sdk_warning");
 };
 
-// Read the skill routing config now rather than on the first job. It is lazy
-// like every other config reader, and lazy here means a typo surfaces halfway
-// through a job that has already been claimed off the queue — the failure
-// lands on whatever task happened to be first, and BullMQ retries it into the
-// same wall. The library throws and this layer decides the process's fate.
-try {
-  getSkillRouting();
-} catch (err) {
-  logger.error({ err }, "skill_routing_config_invalid");
-  await exitProcess(1);
-}
-
-// And config/agent.yaml, read here for the same reason: this process takes
-// its step cap and output ceiling from it, both on the path a claimed job
-// already walks. A file that no longer parses would otherwise surface as a
-// job failure BullMQ retries into the same wall.
+// Read config/agent.yaml now rather than on the first job: the model calls a
+// job makes read their retry count from it (`llm_max_retries`). A file that no
+// longer parses would otherwise surface as a job failure BullMQ retries into
+// the same wall.
 try {
   getAgentConfig();
 } catch (err) {
@@ -97,19 +80,8 @@ try {
   await exitProcess(1);
 }
 
-// Every model the agent runs on has to be priceable (#296). One reached
-// directly reports tokens but no cost, and is priced from
-// config/usage-pricing.yaml; lazily, a missing price would surface as the
-// first call that spent money failing to record what it spent.
-try {
-  assertModelsPriced(agentModelIds());
-} catch (err) {
-  logger.error({ err }, "usage_pricing_incomplete");
-  await exitProcess(1);
-}
-
 // Same preflight for config/models/*.yaml (#1966). Every model must declare
-// `takes_prompt`, and the catalog is as lazy as the routing config above —
+// `takes_prompt`, and the catalog is lazy like agent.yaml above —
 // lazy here means a missing declaration surfaces inside whichever job first
 // resolves a model, which BullMQ then retries into the same wall. Loading it
 // here puts that in front of whoever edited the file.

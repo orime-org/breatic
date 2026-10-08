@@ -10,7 +10,7 @@
  * display name.
  */
 
-import { layersOf, modelLabel, nameableFeeders, proposalMarkSegments } from '@breatic/shared';
+import { layersOf, modelLabel, proposalMarkSegments } from '@breatic/shared';
 import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
 
 /** What one node contributes to the little shape drawn on the card. */
@@ -155,8 +155,9 @@ function runsOf(proposal: CanvasProposal): number[] {
  *
  * One per marked spot, which is what makes them line up with the marks in the
  * prompt itself: the mark says what goes in that place, the line here says
- * what to do about it before pressing. Filed under the node they are about,
- * and nodes asking for the same things in the same words share one group.
+ * what to do about it before pressing. Filed under the node whose words carry
+ * the mark, and nodes asking for the same things in the same words share
+ * one group.
  *
  * Every generation ends with one more line saying where its setup is found:
  * what the agent wrote lives in the generation panel, and a reader new to the
@@ -167,71 +168,26 @@ function runsOf(proposal: CanvasProposal): number[] {
  * @throws {never} Never.
  */
 export function todosOf(proposal: CanvasProposal, lines: PanelLines): NodeTodos[] {
-  // A mark asking for material is about the empty node it points at, and
-  // several generations may point at the same one. Named under that node, it
-  // is said once; named under each generation, the reader reads three photos
-  // to find where there is one.
+  // Each mark's line goes under the node whose words carry it: the reader
+  // acts on it there, by hand.
   const notes = new Map<number, string[]>();
-  /**
-   * Add one note under the node it belongs to.
-   *
-   * The same words arriving about one empty node from several generations is
-   * one job, and said three times it reads as three photos to find. Two marks
-   * in one prompt are two places even when they read the same, so a note
-   * filed under the node whose prompt it came from is kept as written.
-   * @param at - The node the note is about.
-   * @param from - The node whose prompt marked it.
-   * @param note - The line the card draws.
-   */
-  const add = (at: number, from: number, note: string): void => {
-    const held = notes.get(at) ?? [];
-    if (at !== from && held.includes(note)) return;
-    notes.set(at, [...held, note]);
-  };
-  // The same reading the canvas writes its mentions from, so a to-do names
-  // the node the bracket beside it will point at -- and where no mention is
-  // written, the to-do falls under the generation whose panel it is done in.
-  const empties = proposal.nodes.map((_, at) => nameableFeeders(proposal, at).sources);
-  // How many generations would point at each empty node. Read once here
-  // because it decides where the note goes: under the generation while it is
-  // the only one reading that node, which is where the demo draws it and
-  // where the reader is standing when they do it.
-  const readers = new Map<number, number>();
-  for (const list of empties) {
-    for (const i of list) {
-      if (i !== null) readers.set(i, (readers.get(i) ?? 0) + 1);
-    }
-  }
   proposal.nodes.forEach((node, at) => {
-    let assetsSeen = 0;
-    const mine = empties[at] ?? [];
-    // The main prompt and then each shot, in the one order the marks are read
-    // in (#2218), so the k-th asset mark still points at the k-th empty node.
+    const held: string[] = [];
+    // The main prompt and then each shot, in the order the reader reads them.
     for (const segment of proposalMarkSegments(node)) {
       const slot = segment.slot;
       if (!slot) continue;
-      if (slot.kind === 'ref') continue;
-      if (slot.kind === 'tweak') {
-        add(at, at, slot.note);
-        continue;
-      }
-      const empty = mine[assetsSeen];
-      assetsSeen += 1;
-      // Shared, the note belongs to the node itself: said under each of three
-      // generations it reads as three photos to find. Read by this one alone,
-      // it belongs here, beside the button the reader presses after doing it.
-      add(
-        empty !== undefined && empty !== null && (readers.get(empty) ?? 0) > 1 ? empty : at,
-        at,
-        slot.note,
-      );
+      // A note is its own line; the other marks carry the line to draw.
+      held.push(slot.kind === 'note' ? slot.label : slot.note);
     }
-    if (node.role !== 'generate') return;
-    // A model drawing no prompt box shows nothing the agent wrote, so saying
-    // the prompt is written would send the reader looking for a box that is
-    // not there. The check has already answered which kind this is.
-    const writtenPrompt = node.takesPrompt !== false && proposalMarkSegments(node).length > 0;
-    add(at, at, writtenPrompt ? lines.prompt : lines.settings);
+    if (node.role === 'generate') {
+      // A model drawing no prompt box shows nothing the agent wrote, so saying
+      // the prompt is written would send the reader looking for a box that is
+      // not there. The check has already answered which kind this is.
+      const writtenPrompt = node.takesPrompt !== false && proposalMarkSegments(node).length > 0;
+      held.push(writtenPrompt ? lines.prompt : lines.settings);
+    }
+    if (held.length > 0) notes.set(at, held);
   });
   const groups: NodeTodos[] = [];
   proposal.nodes.forEach((node, at) => {

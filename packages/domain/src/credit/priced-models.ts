@@ -13,7 +13,6 @@
 
 import { getAgentConfig, getUsagePricing, type UsagePricing } from "@breatic/core";
 import { resolveProvider } from "@domain/agent/llm.js";
-import { getSkillRegistry } from "@domain/agent/skills-loader.js";
 
 /** What the check reads; injected in tests. */
 export interface PriceCheckSources {
@@ -22,18 +21,13 @@ export interface PriceCheckSources {
 }
 
 /**
- * The models the agent's own paths run on: the chat default, memory
- * consolidation, and every model a skill pins.
+ * The models the agent's own paths run on: the chat default and memory
+ * consolidation.
  * @returns Each model id once.
  */
 export function agentModelIds(): string[] {
   const config = getAgentConfig();
-  const registry = getSkillRegistry();
-  const pinned = registry
-    .list()
-    .map((skill) => registry.getInternal(skill.name)?.model)
-    .filter((model): model is string => typeof model === "string");
-  return [...new Set([config.default_model, config.consolidation_model, ...pinned])];
+  return [...new Set([config.default_model, config.consolidation_model])];
 }
 
 /**

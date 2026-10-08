@@ -39,8 +39,6 @@ export interface ModeDeclaration {
 export interface BucketDeclaration {
   /** Its modes, by mode code. */
   readonly modes: Readonly<Record<string, ModeDeclaration>>;
-  /** Prose the skill prompt prints under the mode list; empty when none. */
-  readonly selectionGuide: string;
 }
 
 /** Every declared mode, by catalog bucket. */
@@ -55,8 +53,6 @@ const modeSchema = z.strictObject({
 
 const bucketSchema = z.strictObject({
   modes: z.record(z.string(), modeSchema).default({}),
-  /** Prose for the skill prompt; the only other key a bucket carries. */
-  selection_guide: z.string().default(""),
 });
 
 const configSchema = z.record(z.string(), bucketSchema);
@@ -72,7 +68,7 @@ export function parseModeConfig(raw: unknown): ModeConfig {
   if (!parsed.success) throw new Error(faultLine(parsed.error, raw));
 
   const config: Record<string, BucketDeclaration> = {};
-  for (const [bucket, { modes, selection_guide }] of Object.entries(parsed.data)) {
+  for (const [bucket, { modes }] of Object.entries(parsed.data)) {
     config[bucket] = {
       modes: Object.fromEntries(
         Object.entries(modes).map(([mode, row]) => [
@@ -83,7 +79,6 @@ export function parseModeConfig(raw: unknown): ModeConfig {
           },
         ]),
       ),
-      selectionGuide: selection_guide,
     };
   }
   return config;

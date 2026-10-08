@@ -488,6 +488,17 @@ export function renderProductGuide(): string {
       "was clicked, Esc deselects the node and the panel closes with it. When the model list cannot be loaded, the panel " +
       `does not open and a message says why: ${quoted(t("canvas.generatePanel.catalogUnavailable"))}, or ` +
       `${quoted(t("canvas.generatePanel.catalogOffline"))}`,
+    `Left of the X is a button with a layout icon whose tip reads ${quoted(t("canvas.template.title"))}. It ` +
+      `opens a list under that heading of the templates for this kind of node, each a name with a line under ` +
+      `it. A picture node lists ${quoted(t("canvas.template.storyboard-grid-25.name"))} ` +
+      `(${quoted(t("canvas.template.storyboard-grid-25.description"))}) and ` +
+      `${quoted(t("canvas.template.costume-sheet.name"))} (${quoted(t("canvas.template.costume-sheet.description"))}); ` +
+      `video and sound nodes list none and show ${quoted(t("canvas.template.empty"))}. A template whose model this ` +
+      `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
+      "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
+      "template's; nothing asks first, and " +
+      `the message ${quoted(t("canvas.generatePanel.editMarks"))} appears. Its marks work the way a ` +
+      "proposal's do (see below): the reader @s the pictures it asks for by hand, and can change anything after.",
     "Fill in what the panel asks for, then press the round button with an upward arrow at the right end of the " +
       "panel's bottom row. Usually that is the prompt; some modes also need a source slot filled, a voice or " +
       "speakers picked, or a connected node mentioned in the prompt (see Mentions). If something is missing, " +
@@ -817,23 +828,30 @@ export function renderProductGuide(): string {
       "shots, each with its words and seconds written, and its panel opens on them. The prompt goes into the " +
       "proposal's mode only, so switching mode shows that mode's own box. Where the model has no prompt box, a picture or video " +
       `panel shows ${quoted(t("canvas.generatePanel.promptNotUsed"))} in place of the box, and a sound panel ` +
-      "still shows a box that holds only the proposal's bracketed spots, if any; nothing typed there is sent. " +
+      "still shows an empty box; nothing typed there is sent. The card lists the proposal's marks for that node. " +
       "The reader generates the nodes in the order the card's arrows run, and waits for each to show its result " +
       "before generating the node it feeds: a node still generating lends nothing, or its previous result, and " +
       "where that source is optional the run goes ahead without it.",
-    "Spots left for the reader are in square brackets, in a prompt, a shot or a finished text node's words. A ✏️ spot " +
-      "is a phrase to replace with their own words, or a setting to pick in the panel. A 📎 spot is material only " +
-      "the reader has; it usually goes in an empty node the proposal placed, which they double-click to pick a " +
-      "file. Each spot's note is also a line on the card; where the panel shows no prompt box, that line is the " +
-      "only place the spot appears. Whatever is left in a prompt is sent as it is, brackets included: once a spot " +
-      "is done -- the words replaced, the setting picked, the file in its node -- the reader deletes its bracket " +
-      "from the prompt or shot.",
+    "A prompt or shot from a proposal or a template carries three kinds of mark. A 📎 mark in square brackets " +
+      "asks the reader to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
+      "their own file in (double-click it to pick one), a generated result, or a text node -- then delete the " +
+      "bracket. A ✏️ mark in braces is words only the reader can write; they replace it with their own. An orange " +
+      `note, starting ${quoted(t("canvas.generatePanel.notePrefix").trim())}, on a line of its own at the top of the box says how to operate the panel, such as which slot to pick ` +
+      "a node into; it is never sent to the model, and they can delete it. Each mark is also a line on the card; " +
+      "where the panel shows no prompt box, the card is the only place it appears. Read back as text, as in an " +
+      "attached node's prompt, a note is (💡 …) on a line of its own and is not sent, a 📎 mark is [📎 …] and a " +
+      "✏️ mark {✏️ …}. Square-bracket and brace marks " +
+      `left in a prompt are sent as they are. When a placed node that has a prompt box carries marks, the message ${quoted(t("canvas.generatePanel.editMarks"))} ` +
+      "appears; nothing checks whether they were done.",
     "How work reaches a node depends on where it goes:",
-    "- Into the reference list: the prompt, or a shot, mentions it where the proposal points at it, and a 📎 spot already " +
-      "mentions its empty node.",
-    "- Into one of the mode's source slots: it is not mentioned. The reader's own material still has its 📎 " +
-      "note on the card; a generated result has no line. Once that node holds its file or its generated result, " +
-      "the reader opens the panel of the node it feeds, presses that slot's button and clicks the node.",
+    "- Into the reference list: the reader @s it in the prompt or a shot where a 📎 mark asks for it. Nothing " +
+      "is @'d for them, and a node wired in that is not @'d is not used.",
+    "- Into one of the mode's source slots: it is not @'d; an orange note says which slot to pick it into, " +
+      "and a required slot left empty stops the run. Once that node holds " +
+      "its file or its generated result, the reader opens the panel of the node it feeds, presses that slot's " +
+      "button and clicks the node.",
+    "- Into a song model's lyrics box: a text node the reader @s in the lyrics box, as an orange note asks; it is not " +
+      "@'d in the style prompt above it.",
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +

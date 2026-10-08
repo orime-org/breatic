@@ -9,9 +9,11 @@ import { z } from "zod";
 
 import {
   CAMERA_COMMANDS_PER_BRACKET,
+  canConnect,
   cameraCommandBracket,
   formatCredits,
   GENERATION_NODE_MODES,
+  PANEL_EDITOR_PARAM,
   STATIC_SHOT,
   type GenerationNodeType,
 } from "@breatic/shared";
@@ -19,10 +21,11 @@ import type { CreditEstimate } from "@breatic/shared/pricing";
 
 import {
   modelsForMode,
-  poolParams,
-  requiredSlotKinds,
+  waysIn,
   type ModelInfo,
   type ModelsForMode,
+  type WayIn,
+  type WayKind,
 } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
@@ -100,6 +103,23 @@ function renderCameraCommands(model: PricedModelInfo): string {
 }
 
 /**
+ * What one way in says about itself: where the node lands, how many it takes,
+ * and what the prompt carries for each.
+ * @param kind - The kind of node going this way.
+ * @param way - The way.
+ * @returns The words inside the brackets after its name.
+ */
+function wayWords(kind: WayKind, way: WayIn): string {
+  const where =
+    way.into === "pool"
+      ? kind === "text" ? "@'d into the prompt" : "the reference pool"
+      : way.into === PANEL_EDITOR_PARAM ? "@'d into the lyrics box" : "a slot";
+  const room = Number.isFinite(way.room) ? `, at most ${String(way.room)}` : "";
+  const mark = way.mark === "asset" ? "an asset mark each" : "a note each";
+  return `${where}${room}, ${mark}`;
+}
+
+/**
  * One model rendered for the model to read.
  * @param model - The model to describe.
  * @returns Its name, what it is for, what it costs, and its parameters.
@@ -130,15 +150,33 @@ function renderModel(model: PricedModelInfo): string {
     model.alsoServes && model.alsoServes.length > 0
       ? ` Also serves ${model.alsoServes.join(", ")} on this node, which is what parts of the line above describe.`
       : "";
-  // A kind taken both by a required slot and by the pool is routed by the
-  // order the nodes are listed (`nameableFeeders`), which the model cannot
-  // see from the parameters alone.
-  const pooled = poolParams(model).map((pool) => pool.kind);
-  const shared = [...new Set(requiredSlotKinds(model).filter((kind) => pooled.includes(kind)))];
-  const routing = shared
-    .map((kind) => ` Of the ${String(kind)} nodes wired in, the first in the order the proposal lists its nodes is the one the reader picks into its ${String(kind)} slot; later ones go to its pool.`)
+  // Where a node reaching the model goes and what the prompt carries for it, read off
+  // the same ways the proposal check reads (design 5.7 tables A and D).
+  const ways = waysIn(model);
+  const routing = [...ways]
+    .map(([kind, list]) => {
+      const each = list.map((way) => `"${way.into}" (${wayWords(kind, way)})`);
+      // The canvas will not wire this kind into the node: its slots are
+      // filled by picking a node in the panel.
+      if (!canConnect(kind, model.nodeType)) {
+        const into = list.map((way) => `"${way.into}"`).join(" or ");
+        return ` Each ${kind} node is picked into ${into} in the panel, not wired in (${list.map((way) => wayWords(kind, way)).join("; ")}).`;
+      }
+      return list.length > 1
+        ? ` Each ${kind} node wired in goes one of ${String(list.length)} ways; say which on its edge with into: ${each.join(" or ")}.`
+        : list[0] !== undefined && list[0].into !== "pool"
+          ? ` Each ${kind} node wired in goes into ${each[0] ?? ""}.`
+          : "";
+    })
     .join("");
-  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderStoryboard(model)}${renderCameraCommands(model)}`;
+  // Words wired in can always be @'d into a box that is drawn, so an asset
+  // mark on a model whose material arrives only by slot can ask for nothing else.
+  const mediaToAt = [...ways].some(([kind, list]) => kind !== "text" && list.some((way) => way.mark === "asset"));
+  const wordsOnly =
+    model.takesPrompt && !mediaToAt
+      ? " Nothing wired in but a text node can be @'d here, so an asset mark can only ask for words."
+      : "";
+  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${wordsOnly}${renderStoryboard(model)}${renderCameraCommands(model)}`;
   const params = Object.entries(model.params).filter(([, spec]) => !spec.fromStoryboard).map(([name, spec]) => {
     // Shape and cap belong to the parameter, so they are stated whatever else
     // it says about itself -- including for a slot, where together they are
@@ -152,6 +190,11 @@ function renderModel(model: PricedModelInfo): string {
     // then a node, and the reference list is the node's incoming edges. Named
     // for neither, because the reader does neither -- it is the person at the
     // canvas who fills both.
+    // The lyrics box is a box of its own on the panel: words reach it as a
+    // text node the reader @s there, the lyrics way of the routing line.
+    if (name === PANEL_EDITOR_PARAM) {
+      return `    ${name}: the lyrics box on the panel, not set here; send words you wrote as a text node wired in with into: "${name}" and a note. ${spec.what}`;
+    }
     if (spec.filledBySource) {
       // Which gesture fills it is said here, since the shape a proposal takes
       // depends on it; how to click through that gesture is said once, in the
