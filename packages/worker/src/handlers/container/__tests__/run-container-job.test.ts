@@ -67,6 +67,7 @@ vi.mock("@breatic/shared", async (importOriginal) => ({
   submitMiniToolJob: h.submitMiniToolJob,
 }));
 
+import { logger } from "@breatic/core";
 import { UploadHttpError } from "@breatic/shared";
 import { miniToolById, type MiniToolSpec } from "@breatic/shared/mini-tools";
 
@@ -128,6 +129,18 @@ describe("runContainerJob", () => {
       expect.objectContaining({ source: "container", costSource: "computed", costUsd: expect.closeTo(usd, 10) }),
     );
     expect(h.markDone).toHaveBeenCalledWith("s1", { state: "done" });
+  });
+
+  // A run billed on its wall time instead of its measured CPU is an estimate ops has to see.
+  it("logs an error when the container could not read its CPU usage", async () => {
+    h.readMiniToolJob.mockResolvedValueOnce({ state: "done", outputs: [MEASURED], usage: { wallMs: 10_000, cpuUsec: null } });
+
+    await runContainerJob(CUT, "cut", INPUT);
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: "t1", op: "cut" }),
+      "container_cpu_usage_missing",
+    );
   });
 
   // Every task has one ceiling, the one its rows on the canvas count down.

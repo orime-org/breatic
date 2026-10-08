@@ -194,6 +194,10 @@ async function recordUsage(input: ContainerRunInput, op: ContainerOp, containerC
   const config = getMiniToolsConfig();
   const size = config.classes[containerClass];
   if (!size) throw new Error(`container class ${containerClass} is not in config/mini-tools.yaml`);
+  // Without its CPU time the run is billed on wall time times the class's vCPUs: an estimate.
+  if (usage.cpuUsec === null) {
+    logger.error({ taskId: input.taskId, op, containerClass, wallMs: usage.wallMs }, "container_cpu_usage_missing");
+  }
   const costUsd = containerCostUsd(usage, size, config.prices);
   const recorder = createUsageRecorder({
     operationKey: `task:${input.taskId}`,
