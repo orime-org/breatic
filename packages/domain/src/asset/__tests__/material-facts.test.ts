@@ -46,7 +46,7 @@ function row(kind: StudioAssetEntity["kind"], extra: Partial<StudioAssetEntity> 
     createdAt: new Date(0),
     deletedAt: null,
     ...extra,
-  } as StudioAssetEntity;
+  };
 }
 
 beforeEach(() => {

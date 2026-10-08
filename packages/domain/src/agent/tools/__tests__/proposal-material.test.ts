@@ -13,6 +13,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadLocales } from "@breatic/core";
 import type { CanvasProposal, GenerationNodeType, ProposalNode } from "@breatic/shared";
+import type { MaterialFacts } from "../propose-canvas-action.js";
 
 import { modelsForMode } from "@domain/model-catalog/mode-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
@@ -21,7 +22,6 @@ const materialFacts = vi.fn();
 vi.mock("@domain/asset/material-facts.js", () => ({ materialFacts }));
 
 const { answerFor, checkProposal, inputSchema, makeProposeCanvasAction } = await import("../propose-canvas-action.js");
-type MaterialFacts = import("../propose-canvas-action.js").MaterialFacts;
 
 beforeEach(() => {
   loadLocales();
@@ -311,7 +311,7 @@ describe("the tool reads the registration for the studio it runs in", () => {
     const execute = makeProposeCanvasAction().execute;
     if (!execute) throw new Error("no execute");
 
-    const answer = await execute(proposal as never, { toolCallId: "t", messages: [], context: { studioId: "s1" } } as never);
+    const answer = await execute(proposal, { toolCallId: "t", messages: [], context: { studioId: "s1" } });
 
     expect(materialFacts).toHaveBeenCalledWith("s1", [PORTRAIT, VOICE]);
     expect(answer).toMatchObject({ placed: true });
@@ -323,7 +323,7 @@ describe("the tool reads the registration for the studio it runs in", () => {
     const execute = makeProposeCanvasAction().execute;
     if (!execute) throw new Error("no execute");
 
-    await execute(proposal as never, { toolCallId: "t", messages: [] } as never);
+    await execute(proposal, { toolCallId: "t", messages: [] } as never);
 
     expect(materialFacts).not.toHaveBeenCalled();
   });
