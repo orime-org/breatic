@@ -546,3 +546,56 @@ describe('which counts survive the canvas zooming out', () => {
     );
   });
 });
+
+// The wrapper is the layer that reads the zoom, so it is the one that tells
+// the body when the node covers more device pixels than its preview has
+// (inner#1320).
+describe('a stored image zoomed past its preview', () => {
+  const STORED =
+    'https://resource-dev.breatic.cc/image/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679.png';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * Render a 288-wide stored image node at a zoom on a 2x screen.
+   * @param zoom - The canvas zoom.
+   */
+  function renderAt(zoom: number): void {
+    vi.stubGlobal('devicePixelRatio', 2);
+    const Image = FLOW_NODE_TYPES.image;
+    render(
+      <TooltipProvider>
+        <ReactFlowProvider>
+          <StoreGrabber />
+          <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: () => undefined,
+            deleteNode: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
+            reportGroupResize: () => undefined, beginGroupResize: () => undefined, }}>
+            <Image
+              {...({
+                id: 'n1',
+                width: 288,
+                data: { kind: 'image', status: 'idle', name: 'N', content: STORED, width: 4096, height: 2048 },
+                selected: false,
+              } as unknown as NodeProps)}
+            />
+          </CanvasActionsContext.Provider>
+        </ReactFlowProvider>
+      </TooltipProvider>,
+    );
+    act(() => {
+      storeApi?.setState({ transform: [0, 0, zoom] });
+    });
+  }
+
+  it('keeps the preview at 100% on a 2x screen', () => {
+    renderAt(1);
+    expect(screen.queryByTestId('image-node-original')).toBeNull();
+  });
+
+  it('lays the original over it past 100% on a 2x screen', () => {
+    renderAt(1.5);
+    expect(screen.getByTestId('image-node-original').getAttribute('src')).toBe(STORED);
+  });
+});

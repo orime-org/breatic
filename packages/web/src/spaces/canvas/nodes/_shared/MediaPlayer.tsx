@@ -24,6 +24,8 @@ interface MediaPlayerProps {
   src: string;
   /** Poster image (video only). */
   poster?: string;
+  /** Show the poster's original, not its preview: the canvas has zoomed this node past it. */
+  fullPoster?: boolean;
   /**
    * The running time the ledger measured when this file was stored, if any.
    * It is on the node before the media is fetched, so the scrubber reads the
@@ -85,6 +87,7 @@ const BUTTON_SIZE = 'h-[var(--btn-inline)] w-[var(--btn-inline)]';
  * @param root0.modality - `'audio'` or `'video'`.
  * @param root0.src - Media source URL.
  * @param root0.poster - Poster image (video only).
+ * @param root0.fullPoster - Show the poster's original, not its preview.
  * @param root0.duration - The running time the ledger measured, if any.
  * @param root0.variant - `'full'` (node player, default) or `'preview'` (hover preview: no volume / fullscreen).
  * @param root0.onDimensions - Reports the video's intrinsic pixel size on metadata load (video only).
@@ -95,6 +98,7 @@ export function MediaPlayer({
   modality,
   src,
   poster,
+  fullPoster = false,
   duration,
   onDimensions,
   variant = 'full',
@@ -105,7 +109,7 @@ export function MediaPlayer({
   const isVideo = modality === 'video';
   // A poster has no error event of its own, so the cover's preview is tried
   // off-screen and the original stands in when it is missing (inner#1320).
-  const shownPoster = usePreviewSrc(poster, { probe: true }).src ?? undefined;
+  const shownPoster = usePreviewSrc(poster, { probe: true, enabled: !fullPoster }).src ?? undefined;
   // #1622: the hover-preview variant drops volume (a portaled Popover) and
   // fullscreen so it can live inside an auto-close HoverCard.
   const showVolume = variant !== 'preview';

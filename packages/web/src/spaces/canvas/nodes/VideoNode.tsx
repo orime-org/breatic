@@ -9,6 +9,7 @@ import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import { useZoomedPastPreview } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/useNodeResolution';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 
@@ -48,6 +49,7 @@ export const VideoNode = React.memo(function VideoNode({
 }: VideoNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
   const { resolution, setResolution } = useNodeResolution(data.content, data.width, data.height);
+  const fullPoster = useZoomedPastPreview();
   // Subscribe to the BOOLEAN, not the session object: this node re-renders
   // only when the answer flips, not on every change to an unrelated pick.
   const focusPicking = useCanvasSession(
@@ -79,6 +81,7 @@ export const VideoNode = React.memo(function VideoNode({
               modality='video'
               src={data.content ?? ''}
               poster={data.coverUrl}
+              fullPoster={fullPoster}
               duration={data.duration}
               onDimensions={setResolution}
               controlsHidden={focusPicking}

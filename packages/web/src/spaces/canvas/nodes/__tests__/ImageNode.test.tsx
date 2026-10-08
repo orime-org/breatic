@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event';
 
 import { resetPreviewFailures } from '@web/lib/preview-src';
 import { ImageNode } from '@web/spaces/canvas/nodes/ImageNode';
+import { NodeZoomedPastPreviewContext } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 
 /**
  * jsdom never decodes images, so `naturalWidth`/`naturalHeight` stay 0. Stub
@@ -325,5 +326,111 @@ describe('ImageNode with a stored image', () => {
     fireEvent.error(screen.getByTestId('image-node-img'));
 
     expect(screen.getByTestId('image-node-img').getAttribute('src')).toBe(STORED);
+  });
+});
+
+describe('ImageNode zoomed past its preview (inner#1320)', () => {
+  const UUID = '18f58aed-b802-4243-a8ea-02d377de9679';
+  const STORED = `https://resource-dev.breatic.cc/image/2026-09-30/1_${UUID}.png`;
+  const DATA = { kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' } as const;
+
+  /**
+   * The node under a given zoom answer from the canvas.
+   * @param past - Whether the canvas says the node is past its preview.
+   * @returns The element tree.
+   */
+  function zoomed(past: boolean): React.JSX.Element {
+    return (
+      <NodeZoomedPastPreviewContext.Provider value={past}>
+        <ImageNode data={DATA} />
+      </NodeZoomedPastPreviewContext.Provider>
+    );
+  }
+
+  it('shows only the preview while the canvas is not zoomed past it', () => {
+    resetPreviewFailures();
+    render(zoomed(false));
+
+    expect(screen.queryByTestId('image-node-original')).toBeNull();
+  });
+
+  it('lays the original over the preview and shows it once it loads', () => {
+    resetPreviewFailures();
+    render(zoomed(true));
+    const original = screen.getByTestId('image-node-original');
+
+    expect(original.getAttribute('src')).toBe(STORED);
+    expect(original.className).toContain('opacity-0');
+    // The preview stays underneath until the original is ready.
+    expect(screen.getByTestId('image-node-img').getAttribute('src')).toBe(`${STORED}.preview.webp`);
+
+    fireImageLoad(original, 4096, 2048);
+    expect(screen.getByTestId('image-node-original').className).not.toContain('opacity-0');
+  });
+
+  it('keeps the original after the canvas zooms back out', () => {
+    resetPreviewFailures();
+    const { rerender } = render(zoomed(true));
+    rerender(zoomed(false));
+
+    expect(screen.getByTestId('image-node-original').getAttribute('src')).toBe(STORED);
+  });
+
+  it('lays nothing over an image already showing its original', () => {
+    resetPreviewFailures();
+    render(
+      <NodeZoomedPastPreviewContext.Provider value>
+        <ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />
+      </NodeZoomedPastPreviewContext.Provider>,
+    );
+
+    expect(screen.queryByTestId('image-node-original')).toBeNull();
+  });
+});
+
+describe('ImageNode while its picture loads (inner#1320)', () => {
+  const UUID = '18f58aed-b802-4243-a8ea-02d377de9679';
+  const STORED = `https://resource-dev.breatic.cc/image/2026-09-30/1_${UUID}.png`;
+
+  it('covers the reserved box with a skeleton until the picture loads', () => {
+    resetPreviewFailures();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
+      />,
+    );
+    expect(screen.getByTestId('image-node-skeleton')).toBeInTheDocument();
+
+    fireImageLoad(screen.getByTestId('image-node-img'), 576, 288);
+    expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
+  });
+
+  it('keeps the skeleton through a missing preview and drops it when the original loads', () => {
+    resetPreviewFailures();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
+      />,
+    );
+    fireEvent.error(screen.getByTestId('image-node-img'));
+    expect(screen.getByTestId('image-node-skeleton')).toBeInTheDocument();
+
+    fireImageLoad(screen.getByTestId('image-node-img'), 4096, 2048);
+    expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
+  });
+
+  it('drops the skeleton when the original itself fails', () => {
+    resetPreviewFailures();
+    render(<ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />);
+    fireEvent.error(screen.getByTestId('image-node-img'));
+
+    expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
+  });
+
+  it('gives a node of unknown size the empty node footprint while it loads', () => {
+    resetPreviewFailures();
+    render(<ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />);
+
+    expect(screen.getByTestId('image-node-skeleton').className).toContain('aspect-[3/2]');
   });
 });

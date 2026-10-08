@@ -5,6 +5,8 @@ import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 import { VideoNode } from '@web/spaces/canvas/nodes/VideoNode';
+import { resetPreviewFailures } from '@web/lib/preview-src';
+import { NodeZoomedPastPreviewContext } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 import { canvasSessions } from '@web/stores/canvas-session';
 
 beforeAll(() => {
@@ -129,5 +131,41 @@ describe('VideoNode', () => {
       canvasSessions.of('').setState({ pickSession: null });
     });
     expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(false);
+  });
+});
+
+describe('VideoNode zoomed past its cover preview (inner#1320)', () => {
+  const COVER =
+    'https://resource-dev.breatic.cc/video/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679_cover.png';
+
+  /**
+   * The node under a given zoom answer from the canvas.
+   * @param past - Whether the canvas says the node is past its preview.
+   * @returns The element tree.
+   */
+  function zoomed(past: boolean): React.JSX.Element {
+    return (
+      <NodeZoomedPastPreviewContext.Provider value={past}>
+        <VideoNode
+          data={{ kind: 'video', content: 'https://e.com/v.mp4', coverUrl: COVER, status: 'idle' }}
+        />
+      </NodeZoomedPastPreviewContext.Provider>
+    );
+  }
+
+  it('shows the cover preview while the canvas is not zoomed past it', () => {
+    resetPreviewFailures();
+    render(zoomed(false));
+
+    expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(`${COVER}.preview.webp`);
+  });
+
+  it('shows the full cover once zoomed past it, and keeps it after zooming out', () => {
+    resetPreviewFailures();
+    const { rerender } = render(zoomed(true));
+    expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(COVER);
+
+    rerender(zoomed(false));
+    expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(COVER);
   });
 });

@@ -18,6 +18,10 @@ import {
 } from '@web/spaces/canvas/nodes/_shared/node-occupants-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
+import {
+  NodeZoomedPastPreviewContext,
+  zoomedPastPreview,
+} from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
 import {
   cellMeetsTargetSize,
@@ -104,6 +108,9 @@ function makeFlowNode(
     // uses the same shared factor.
     const zoom = useStore((s) => s.transform[2]);
     const headerScale = overlayCounterScale(zoom);
+    // A boolean, so the body re-renders only when the node crosses its
+    // preview's width, not on every zoom step (inner#1320).
+    const pastPreview = zoomedPastPreview(props.width ?? 0, zoom, window.devicePixelRatio);
     const onRename = React.useCallback(
       (name: string): void => renameNode(props.id, name),
       [renameNode, props.id],
@@ -197,21 +204,22 @@ function makeFlowNode(
     return (
       <NodeIdContext.Provider value={props.id}>
         <NodeScaleContext.Provider value={headerScale}>
-          <NodeOccupantsContext.Provider value={occupants}>
-            <div
-              className={isGroup ? 'relative size-full' : 'relative'}
-              onDoubleClickCapture={onDoubleClickCapture}
-            >
-              <Inner
-                data={data}
-                selected={props.selected}
-                locked={data.locked}
-                onRename={onRename}
-                onActivate={onActivate}
-                {...(failedList !== null && { onViewTasks })}
-                tasksPanelOpen={taskPanelOpenHere !== null}
-              />
-              {/* The resize controls render AFTER the body for the same reason
+          <NodeZoomedPastPreviewContext.Provider value={pastPreview}>
+            <NodeOccupantsContext.Provider value={occupants}>
+              <div
+                className={isGroup ? 'relative size-full' : 'relative'}
+                onDoubleClickCapture={onDoubleClickCapture}
+              >
+                <Inner
+                  data={data}
+                  selected={props.selected}
+                  locked={data.locked}
+                  onRename={onRename}
+                  onActivate={onActivate}
+                  {...(failedList !== null && { onViewTasks })}
+                  tasksPanelOpen={taskPanelOpenHere !== null}
+                />
+                {/* The resize controls render AFTER the body for the same reason
                 the connection handles below do: absolutely-positioned siblings
                 paint in DOM order, and a Group's body fills the whole rect. An
                 edge line is 1px wide and centred on the border, so its inner
@@ -221,18 +229,18 @@ function makeFlowNode(
                 and the grab reads as a drag of the whole Group; `right` and
                 `bottom` centre on w / h, one pixel past the body, which is why
                 only they ever answered. */}
-              {isGroup &&
+                {isGroup &&
             Boolean(props.selected) &&
             !data.locked &&
             resizeBounds.length > 0 ? (
-                  <GroupResizer
-                    bounds={resizeBounds}
-                    onResizeStart={onResizeStart}
-                    onResize={reportGroupResize}
-                    onResizeEnd={onResizeEnd}
-                  />
-                ) : null}
-              {/* Connection handles are for content nodes only — a Group is a
+                    <GroupResizer
+                      bounds={resizeBounds}
+                      onResizeStart={onResizeStart}
+                      onResize={reportGroupResize}
+                      onResizeEnd={onResizeEnd}
+                    />
+                  ) : null}
+                {/* Connection handles are for content nodes only — a Group is a
                 container (Figma-Frame-style) and a sticky is a remark, neither an
                 edge endpoint, so neither renders any (Bug 7: the Left handle also sat on the group's left edge and
                 interfered with the left resize grab). Both handles render AFTER
@@ -240,60 +248,61 @@ function makeFlowNode(
                 handle placed BEFORE the body has its inner half covered by the
                 body's surface and reads as a half-circle (the left-handle bug);
                 painting both on top of the body shows each as a full dot. */}
-              {/* Magnetic handles (user 2026-07-11): a 36px outside-the-border
+                {/* Magnetic handles (user 2026-07-11): a 36px outside-the-border
                 hit zone whose visible dot spring-follows the cursor, while
                 the 8px anchor keeps the wire attachment on the border.
                 MagneticHandle forwards all three connectable flags — the
                 gesture gates sit on Start/End, so a viewer / pick session
                 that drops them keeps handles live (adversarial round-1). See
                 MagneticHandle for the three-layer decoupling. */}
-              {takesEdges ? (
-                <>
-                  <MagneticHandle
-                    type='target'
-                    isConnectable={props.isConnectable}
-                  />
-                  <MagneticHandle
-                    type='source'
-                    isConnectable={props.isConnectable}
-                  />
-                </>
-              ) : null}
-              {/* Outside the node's own box, so it never covers content and
+                {takesEdges ? (
+                  <>
+                    <MagneticHandle
+                      type='target'
+                      isConnectable={props.isConnectable}
+                    />
+                    <MagneticHandle
+                      type='source'
+                      isConnectable={props.isConnectable}
+                    />
+                  </>
+                ) : null}
+                {/* Outside the node's own box, so it never covers content and
                 never changes what the body is sized to. It counter-scales on
                 the same factor as the name header. Once the canvas has taken
                 the cells below the size a target may be
                 (`cellMeetsTargetSize`), the three ended states give theirs
                 up; the running one is drawn at every zoom. */}
-              {taskCounts !== null ? (
-                <div
-                  data-testid='node-task-counts-anchor'
-                  // `nodrag` keeps a press on a count from starting a node
-                  // drag: xyflow's threshold is one pixel, so opening the list
-                  // would otherwise slide the node under the cursor and write
-                  // a new position into the shared document.
-                  className='nodrag absolute left-full top-0'
-                  style={{
-                    transform: `scale(${headerScale})`,
-                    transformOrigin: 'top left',
-                  }}
-                >
-                  {/* The gap sits inside the counter-scaled box so it holds
+                {taskCounts !== null ? (
+                  <div
+                    data-testid='node-task-counts-anchor'
+                    // `nodrag` keeps a press on a count from starting a node
+                    // drag: xyflow's threshold is one pixel, so opening the list
+                    // would otherwise slide the node under the cursor and write
+                    // a new position into the shared document.
+                    className='nodrag absolute left-full top-0'
+                    style={{
+                      transform: `scale(${headerScale})`,
+                      transformOrigin: 'top left',
+                    }}
+                  >
+                    {/* The gap sits inside the counter-scaled box so it holds
                       the same screen distance the column does. As a margin on
                       the box it was a flow-unit measure against a screen-unit
                       column, and zooming in pulled the two apart. */}
-                  <div className='pl-2'>
-                    <TaskCountColumn
-                      counts={taskCounts}
-                      endedShown={cellMeetsTargetSize(zoom)}
-                      openFor={taskPanelOpenHere}
-                      onOpen={onOpenTasks}
-                    />
+                    <div className='pl-2'>
+                      <TaskCountColumn
+                        counts={taskCounts}
+                        endedShown={cellMeetsTargetSize(zoom)}
+                        openFor={taskPanelOpenHere}
+                        onOpen={onOpenTasks}
+                      />
+                    </div>
                   </div>
-                </div>
-              ) : null}
-            </div>
-          </NodeOccupantsContext.Provider>
+                ) : null}
+              </div>
+            </NodeOccupantsContext.Provider>
+          </NodeZoomedPastPreviewContext.Provider>
         </NodeScaleContext.Provider>
       </NodeIdContext.Provider>
     );
