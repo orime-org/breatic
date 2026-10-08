@@ -16,7 +16,7 @@ import { GENERATION_TEMPLATES, markText, t, templatePrompt, type CanvasProposal,
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-import { checkProposal, inputSchema, makeProposeCanvasAction } from "../propose-canvas-action.js";
+import { answerFor, checkProposal, inputSchema, makeProposeCanvasAction } from "../propose-canvas-action.js";
 
 beforeEach(() => {
   loadLocales();
@@ -317,17 +317,29 @@ describe("marks the reader can act on", () => {
     expect(checkProposal(proposal)).toEqual({ ok: true });
   });
 
-  it("refuses an asset mark when no wired node can be @'d", () => {
+  it("places a lone generation whose asset mark the reader fills by wiring a node of their own", () => {
+    // The reader said they already have the material: the proposal places the
+    // generation only, and the reader wires their node in and @s it.
+    const answer = answerFor({ nodes: [{ role: "generate", type: "image", name: "Grid", template: "storyboard-grid-25" }], edges: [], rationale: "" });
+    expect(answer.placed).toBe(true);
+  });
+
+  it("tells a text node wired into a model drawing no prompt box that its edge goes nowhere", () => {
     const proposal: CanvasProposal = {
       nodes: [
-        { role: "source", type: "image", name: "Style" },
-        { role: "generate", type: "image", name: "Gen", mode: "t2i", model: "recraft-v4-style-text-to-image", prompt: [{ slot: { kind: "note", label: "Pick Style into the style slot" } }, reference("the style picture"), { text: " a lighthouse" }] },
+        { role: "written", type: "text", name: "Line", prompt: [{ text: "hello there" }] },
+        { role: "generate", type: "video", name: "Talk", mode: "talking_head", model: "omnihuman-1.5", prompt: [{ slot: { kind: "note", label: "Pick the face and the voice" } }] },
       ],
-      edges: [{ fromIndex: 0, toIndex: 1, into: "style_images" }],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
       rationale: "",
       groupName: "g",
     };
-    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringMatching(/"Gen" has no node the reader can @.*1 asset mark/) });
+    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringMatching(/"omnihuman-1.5" takes no text node, so the edge from "Line" goes nowhere/) });
+  });
+
+  it("tells the agent to leave into off an edge from a text node", () => {
+    const edge = inputSchema.shape.edges.element.shape.into.description ?? "";
+    expect(edge).toMatch(/leave it off an edge from a text node/);
   });
 });
 
