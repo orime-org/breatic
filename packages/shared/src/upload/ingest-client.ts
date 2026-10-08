@@ -452,8 +452,10 @@ const mediaNumbers = z.object({
  * What became of a preview a read asked for (inner#1320). The Worker answers
  * one of these, and this list is the only place they are written.
  *
- * `failed` is kept apart from `none`: a run that never started is worth
- * running again, one that ran and had nothing to cut is not.
+ * `failed` is kept apart from `none`: a picture with a frame that came back
+ * without a stored preview (no container answer, vips failed or ran out of
+ * time, or the write failed) is worth running again; one with no frame to cut
+ * is not.
  */
 export const PREVIEW_OUTCOMES = ["generated", "existing", "none", "failed"] as const;
 

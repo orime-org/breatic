@@ -23,7 +23,7 @@ export const PREVIEW_MARGIN_MS = 5_000;
  *
  * The preview is the last thing a run does, and nothing waits on it but the
  * answer, so it has no figure of its own (inner#1339: a 1080x64800 PNG takes
- * vips about a minute on the smallest container).
+ * vips about 22 seconds on the lite type and about 5 on basic).
  * @param run - The deadline and the clock.
  * @param run.deadlineAt - When the Worker stops waiting, in epoch ms.
  * @param run.now - The container's clock now, in epoch ms.

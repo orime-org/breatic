@@ -161,7 +161,7 @@ export async function readAndFillMedia(assetId: string): Promise<MediaReadResult
       storageKey: row.storageKey,
       contentType: row.mimeType,
       limits: mediaLimits(),
-      // Every stored image gets a preview (inner#1320); the rows read here
+      // Every stored still image gets a preview (inner#1320); the rows read here
       // were finished without a container run, so this is where theirs is cut.
       wantPreview: row.mimeType.startsWith("image/"),
     },

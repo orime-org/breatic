@@ -4,8 +4,9 @@
 /**
  * Cuts the previews for images stored before previews existed (inner#1320).
  *
- * Every stored image has a WebP of at most 576 wide beside it, cut when it is
- * uploaded.
+ * Every stored still image has a WebP of at most 576 wide beside it, cut when
+ * it is uploaded. Images stored before that, and uploads whose container run
+ * had no time left for it, are missing theirs.
  * This asks the ingest Worker to cut the ones that are missing, through the
  * same read the deferred cover and avatar reads use. A preview already there
  * is left alone, so running it twice is a no-op.

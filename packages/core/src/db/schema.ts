@@ -2507,7 +2507,7 @@ export const uploadGrants = pgTable(
 // explicit list instead of scanning the whole bucket guessing what is an
 // orphan.
 //
-// Every stored image also has a preview at previewKeyFor(key) (inner#1320),
+// A stored still image also has a preview at previewKeyFor(key) (inner#1320),
 // which nothing registers: reclaiming a key here reclaims that preview too.
 //
 // Nothing live ever references these keys: every consumer URL comes from the

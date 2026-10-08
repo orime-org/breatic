@@ -4,8 +4,8 @@
 /**
  * Where a stored image's preview lives (inner#1320, inner#832).
  *
- * Every stored image gets one WebP of at most 576 wide beside it, at a key derived from
- * its own. The derivation is the whole record: nothing in the ledger names the
+ * Every stored still image (an animated PNG or WebP has none) gets one WebP of
+ * at most 576 wide beside it, at a key derived from its own. The derivation is the whole record: nothing in the ledger names the
  * preview, so the Worker that writes it, the backfill that fills it in and
  * every page that shows it read the same rule here.
  */

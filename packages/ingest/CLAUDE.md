@@ -28,7 +28,7 @@
 
 **手上已经有一份 `wrangler.toml` 的，要补两行**（2026-09-13 起）：容器镜像改成从仓库根构建，`Dockerfile` 里每一条 COPY 的源都按仓库根写。构建上下文由 `image_build_context` 定，wrangler 相对这个配置文件所在目录解析它、不填时取 Dockerfile 自己那个目录（`wrangler-dist/cli.js:36584-36586`）。所以**两个 `[[containers]]` 块各补一行 `image_build_context = "../.."`** —— `[[containers]]`（`wrangler dev` 用）和 `[[env.production.containers]]`（`deploy:worker` 用）。**`containers` 不继承进 environment**（`cli.js:35941` 注册成 `notInheritable`），只补顶层那个，`wrangler dev` 正常而部署会在第一条 COPY 上失败。模板里两个块都已经有了，照抄即可；漏了当场报错、补上就好。
 
-**两个 `[[containers]]` 块还要各补一行 `instance_type = "basic"`**（1/4 vCPU、1 GiB，inner#1320）：缩略图要解码整张图，48 MP 的图实测峰值 171 MiB，默认的 lite 只有 256 MiB。模板里两个块都已经有了。
+**两个 `[[containers]]` 块还要各补一行 `instance_type = "basic"`**（1/4 vCPU、1 GiB，inner#1320）：缩略图在默认的 lite（1/16 vCPU、256 MiB）上也做得完，但 1080×64800 的 PNG 本机模拟要约 22 秒，basic 约 5 秒（inner#1339）。模板里两个块都已经有了。
 
 **接入错误上报之后，顶层还要补一行 `compatibility_flags = ["nodejs_compat"]`**，放在 `compatibility_date` 旁边，它会继承进 `[env.production]`。Sentry SDK 不管填没填 DSN 都会被 import，缺这个 flag 时打包只出警告，运行时 workerd 拒绝加载 Worker：`wrangler dev` 实测报 `No such module "node:async_hooks"` 起不来。
 
