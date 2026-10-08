@@ -424,24 +424,6 @@ function projectParam(
 }
 
 /**
- * The parameters a model fills from nodes wired into it, one per kind it
- * takes that way (#2156: pictures, clips and tracks each have a pool).
- *
- * Two gates turn on this answer -- whether an empty node has to be wired in
- * at all, and what a mark in the prompt lands as once the group is placed --
- * so it is given once.
- * @param chosen - The model the proposal picked, as the catalog projects it.
- * @returns Each pool parameter with the kind it takes; empty when material
- *   arrives by slot.
- * @throws {never} Never.
- */
-export function poolParams(chosen: ModelInfo): Array<{ kind: ReferenceKind; info: ParamInfo }> {
-  return Object.values(chosen.params).flatMap((info) =>
-    info.fromReferencePool === true && isReferenceKind(info.accepts) ? [{ kind: info.accepts, info }] : [],
-  );
-}
-
-/**
  * Whether a declared `accepts` names a kind a pool carries.
  * @param accepts - What the param says it takes.
  * @returns True for a picture, clip or track.

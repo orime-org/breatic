@@ -150,7 +150,7 @@ describe("a catalog that differs from this repository's", () => {
             params: {},
             prompt: [
               { text: "a slow pan" },
-              { slot: { kind: "asset", label: "your picture", note: "Put it in the empty node" } },
+              { slot: { kind: "note", label: "Put your picture in the empty node, then pick it into the slot" } },
             ],
           },
         ],

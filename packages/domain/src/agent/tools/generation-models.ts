@@ -135,13 +135,13 @@ function renderModel(model: PricedModelInfo): string {
     .map(([kind, ways]) => {
       const each = ways.map((way) =>
         way.slot
-          ? `"${way.into}" (a slot, at most ${String(way.room)}, a note each)`
+          ? `"${way.into}" (a slot, at most ${String(way.room)}${way.optional ? ", a note each" : ""})`
           : `"pool" (the reference pool, at most ${String(way.room)}, an asset mark each)`,
       );
       return ways.length > 1
-        ? ` An ${String(kind)} node wired in goes one of ${String(ways.length)} ways; say which on its edge with into: ${each.join(" or ")}.`
+        ? ` Each ${String(kind)} node wired in goes one of ${String(ways.length)} ways; say which on its edge with into: ${each.join(" or ")}.`
         : ways[0]?.slot === true
-          ? ` An ${String(kind)} node wired in goes into ${each[0] ?? ""}.`
+          ? ` Each ${String(kind)} node wired in goes into ${each[0] ?? ""}.`
           : "";
     })
     .join("");

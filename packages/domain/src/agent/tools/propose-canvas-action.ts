@@ -62,7 +62,6 @@ import { expandTemplate } from "@domain/agent/tools/template-expansion.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
 import {
   modelsForMode,
-  poolParams,
   waysIn,
   type WayIn,
   type ModelInfo,
@@ -212,7 +211,7 @@ export const inputSchema = z
               .optional()
               .describe(
                 "Where the node wired in goes: \"pool\" (the reader @s it; an asset mark each) or the " +
-                  "name of a slot the model has (the reader picks it in the panel; a note each). Needed " +
+                  "name of a slot the model has (the reader picks it in the panel; a note each when the slot is optional). Needed " +
                   "when the model takes that kind more than one way",
               ),
           })
@@ -444,7 +443,7 @@ function wayRefusal(from: ProposalNode, model: string, options: readonly WayIn[]
   const listed = options.map((option) => `"${option.into}"`).join(" or ");
   return into === undefined
     ? `"${from.name}" can go into "${model}" ${String(options.length)} ways; say which on its edge with into: ${listed}.`
-    : `"${model}" takes no ${from.type} by "${into}"; the edge from "${from.name}" says into: ${listed}.`;
+    : `"${model}" takes no ${from.type} by "${into}"; set into on the edge from "${from.name}" to ${listed}.`;
 }
 
 /**
@@ -518,28 +517,23 @@ function checkGenerateNode(
 
   // Every segment that can carry a mark: the main prompt, then each shot.
   const prompt = proposalMarkSegments(node);
-  // Two ways the reader's material reaches a generation: the reference pool,
-  // which an edge feeds, and a slot on the panel's toolbar, which the reader
-  // fills by clicking any node of that kind anywhere on the canvas. Which one
-  // this model uses is what it declares, carried here by the same projection
-  // the agent is answered out of.
-  const pools = poolParams(chosen);
-  // A model drawing no box mounts no editor and forces the box empty, so
-  // words written there reach nobody. Marks stay: they are what the card
-  // lists for the reader to do in the panel.
-  if (!chosen.takesPrompt && prompt.some((segment) => segment.slot === undefined)) {
+  // A model drawing no box mounts no editor and forces the box empty: only a
+  // note, which the reader reads on the card and which is never sent, has a
+  // place there. Words, a tweak and an @ all need a box.
+  if (!chosen.takesPrompt && prompt.some((segment) => segment.slot?.kind !== "note")) {
     return {
       ok: false,
-      reason: `"${model}" draws no prompt box, so words written there reach nobody. Keep the marks naming what the reader supplies or picks, and take the rest out.`,
+      reason: `"${model}" draws no prompt box, so words and tweak or asset marks written there reach nobody. Keep only notes saying what the reader picks in the panel.`,
     };
   }
   // Where each wired node goes is said on its edge: the agent knows, and the
   // marks it writes are words that name no node, so nothing here can work it
   // out from them. Text nodes are words the reader @s into the prompt.
   const ways = waysIn(chosen);
+  const poolKinds = [...ways].flatMap(([kind, list]) => (list.some((way) => !way.slot) ? [kind] : []));
   const routed: { node: ProposalNode; way: WayIn }[] = [];
   const scripts: ProposalNode[] = [];
-  for (const edge of proposal.edges.filter((e) => e.toIndex === index).sort((a, b) => a.fromIndex - b.fromIndex)) {
+  for (const edge of proposal.edges.filter((e) => e.toIndex === index)) {
     const from = proposal.nodes[edge.fromIndex];
     if (!from) continue;
     if (from.type === "text") {
@@ -549,24 +543,51 @@ function checkGenerateNode(
           reason: `"${from.name}" is words the reader @s into the prompt; leave into off its edge.`,
         };
       }
-      if (insertRefusal("text", { referenceKinds: pools.map((pool) => pool.kind), takesPrompt: chosen.takesPrompt }) === null) {
+      if (insertRefusal("text", { referenceKinds: poolKinds, takesPrompt: chosen.takesPrompt }) === null) {
         scripts.push(from);
       }
       continue;
     }
     const options = ways.get(from.type) ?? [];
-    if (options.length === 0) continue;
+    // An edge the model takes nothing from still carries the creative link
+    // (user 2026-08-13); saying where it goes is a claim the model refutes.
+    if (options.length === 0) {
+      if (edge.into === undefined) continue;
+      return {
+        ok: false,
+        reason: `"${model}" takes no ${from.type} node, so the edge from "${from.name}" goes nowhere in it; leave into off that edge, or propose a model that takes it.`,
+      };
+    }
     const way = edge.into === undefined
       ? options.length === 1 ? options[0] : undefined
       : options.find((option) => option.into === edge.into);
     if (way === undefined) return { ok: false, reason: wayRefusal(from, model, options, edge.into) };
     routed.push({ node: from, way });
   }
+  // Over a way's room is said first: the fix there is fewer nodes, and every
+  // count below would otherwise ask for a mark or note for a node to remove.
+  for (const option of new Set(routed.map(({ way }) => way))) {
+    const going = routed.filter(({ way }) => way === option).map(({ node: n }) => n);
+    if (going.length > option.room) {
+      return {
+        ok: false,
+        reason: `"${model}" takes ${String(option.room)} ${going[0]?.type ?? ""} node(s) by "${option.into}", and ${String(going.length)} are wired that way (${going.map((n) => `"${n.name}"`).join(", ")}).${option.slot ? "" : " Send the rest another way it takes, or wire fewer."}`,
+      };
+    }
+  }
   const pooled = routed.filter(({ way }) => !way.slot).map(({ node: n }) => n);
   const slotted = routed.filter(({ way }) => way.slot);
   // The reader @s each pooled picture and each script; counted, never paired.
   const asked = [...pooled, ...scripts];
   const marked = prompt.filter((segment) => segment.slot?.kind === "asset").length;
+  // An asset mark asks for an @, and the @ list holds only wired nodes the
+  // model takes that way: with none, no asset mark can be done.
+  if (asked.length === 0 && marked > 0) {
+    return {
+      ok: false,
+      reason: `"${node.name}" has no node the reader can @ and ${String(marked)} asset mark(s). Turn each into a note saying which slot to pick the node into, or take it out.`,
+    };
+  }
   if (marked < asked.length) {
     return {
       ok: false,
@@ -582,15 +603,6 @@ function checkGenerateNode(
       ok: false,
       reason: `"${node.name}" has ${String(optional.length)} node(s) going into an optional slot (${optional.map(({ node: n, way }) => `"${n.name}" into ${way.into}`).join(", ")}) and ${String(notes)} note(s). Give each one a note saying which slot to pick it into.`,
     };
-  }
-  for (const option of new Set(routed.map(({ way }) => way))) {
-    const going = routed.filter(({ way }) => way === option).map(({ node: n }) => n);
-    if (going.length > option.room) {
-      return {
-        ok: false,
-        reason: `"${model}" takes ${String(option.room)} ${going[0]?.type ?? ""} node(s) by "${option.into}", and ${String(going.length)} are wired that way (${going.map((n) => `"${n.name}"`).join(", ")}).${option.slot ? "" : " Send the rest another way it takes, or wire fewer."}`,
-      };
-    }
   }
   // The words of a wired text node go in where the reader @s it, so they
   // count once against what is sent. Measured as nothing, a script past the
@@ -847,14 +859,8 @@ function placesByKind(proposal: CanvasProposal): Map<string, number> {
     if (!reachable.available) continue;
     const chosen = reachable.models.find((m) => m.name === model);
     if (!chosen) continue;
-    for (const info of Object.values(chosen.params)) {
-      if (info.filledBySource !== true || info.accepts === undefined) continue;
-      // The pool holds several of its kind and says how many; a slot holds the
-      // one node the reader picks into it, or as many as it declares when it
-      // holds several (inner#826: style images).
-      const takes =
-        info.fromReferencePool === true ? (info.maxItems ?? Number.MAX_SAFE_INTEGER) : (info.maxItems ?? 1);
-      room.set(info.accepts, (room.get(info.accepts) ?? 0) + takes);
+    for (const [kind, list] of waysIn(chosen)) {
+      room.set(kind, (room.get(kind) ?? 0) + list.reduce((sum, way) => sum + way.room, 0));
     }
   }
   return room;

@@ -223,12 +223,11 @@ describe("what the rendered answer tells the model", () => {
   });
 
   // Kling O3 image-to-video takes pictures two ways: its first frame in a slot
-  // and elements from the pool. Which wired picture goes where is decided by
-  // the order the nodes are listed, so the answer says so.
+  // and elements from the pool. The edge says which, so the answer names both.
   it("says which wired node fills a slot the pool shares a kind with", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /\(kling-video-o3-4k-image-to-video\)[^\n]*An image node wired in goes one of 2 ways; say which on its edge with into: "pool" \(the reference pool, at most \d+, an asset mark each\) or "\w+" \(a slot, at most 1, a note each\)\./,
+      /\(kling-video-o3-4k-image-to-video\)[^\n]*Each image node wired in goes one of 2 ways; say which on its edge with into: "pool" \(the reference pool, at most \d+, an asset mark each\) or "\w+" \(a slot, at most 1\)\./,
     );
   });
 
@@ -237,14 +236,14 @@ describe("what the rendered answer tells the model", () => {
   it("says how many wired nodes an optional slot can take instead of the pool", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /\(nano-banana-pro-edit-ultra\)[^\n]*An image node wired in goes one of 2 ways; say which on its edge with into: "pool" \(the reference pool, at most 11, an asset mark each\) or "style_images" \(a slot, at most 3, a note each\)\./,
+      /\(nano-banana-pro-edit-ultra\)[^\n]*Each image node wired in goes one of 2 ways; say which on its edge with into: "pool" \(the reference pool, at most 11, an asset mark each\) or "style_images" \(a slot, at most 3, a note each\)\./,
     );
   });
 
   it("says nodes for an optional slot cannot be @'d where the model has no pool of their kind", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /\(krea-v2-large-text-to-image\)[^\n]*An image node wired in goes into "style_images" \(a slot, at most 3, a note each\)\./,
+      /\(krea-v2-large-text-to-image\)[^\n]*Each image node wired in goes into "style_images" \(a slot, at most 3, a note each\)\./,
     );
   });
 

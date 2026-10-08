@@ -34,6 +34,7 @@ import {
   type CanvasProposal,
   type GenerationNodeType,
   type ProposalNode,
+  type PromptSegment,
 } from "@breatic/shared";
 
 import {
@@ -223,13 +224,8 @@ function propose(at: Reachable, built: Built = {}): CanvasProposal {
     params: built.params ?? {},
     prompt: [
       ...(text === "" ? [] : [{ text }]),
-      ...Array.from({ length: marks }, (_, i) => ({
-        slot: {
-          kind: "asset" as const,
-          label: `your material ${String(i + 1)}`,
-          note: "Put it in the empty node",
-        },
-      })),
+      ...Array.from({ length: marks }, (_, i) =>
+        materialMark(at, `your material ${String(i + 1)}`, "Put it in the empty node")),
       ...Array.from({ length: tweaks }, () => ({
         slot: { kind: "tweak" as const, label: "the voice", note: "Pick one in the panel" },
       })),
@@ -254,6 +250,20 @@ const sourcelessOn = (nodeType: GenerationNodeType): Reachable =>
   );
 
 /**
+ * What tells the reader where one piece of their material goes: an asset mark
+ * to @ it where the mode reads the reference pool, a note naming the slot
+ * where the mode reads slots.
+ * @param at - The mode the material is for.
+ * @param label - What the piece is.
+ * @param note - The line the card shows for it.
+ * @returns The segment.
+ * @throws {never} Never.
+ */
+function materialMark(at: Reachable, label: string, note: string): PromptSegment {
+  return at.byReference ? { slot: { kind: "asset", label, note } } : { slot: { kind: "note", label: note } };
+}
+
+/**
  * One generation node, configured, with as many marks of each kind as asked.
  * @param at - The node type, mode and model to propose.
  * @param marks - How many places say the reader puts material there.
@@ -271,13 +281,8 @@ function generation(at: Reachable, marks = 0, refs = 0): ProposalNode {
     params: {},
     prompt: [
       { text: "white ground, centred" },
-      ...Array.from({ length: marks }, (_, i) => ({
-        slot: {
-          kind: "asset" as const,
-          label: `your material ${String(i + 1)}`,
-          note: "Put it in the empty node",
-        },
-      })),
+      ...Array.from({ length: marks }, (_, i) =>
+        materialMark(at, `your material ${String(i + 1)}`, "Put it in the empty node")),
       ...Array.from({ length: refs }, () => ({ slot: { kind: "asset" as const, label: "the step before", note: "@ the step before" } })),
       ...Array.from({ length: at.choices.length > 0 ? 1 : 0 }, () => ({
         slot: { kind: "tweak" as const, label: "the voice", note: "Pick one in the panel" },
@@ -1342,7 +1347,7 @@ describe("a flow of any shape", () => {
         { role: "generate", type: taker.nodeType, name: "It turns", mode: taker.mode,
           model: taker.model, params: {}, prompt: [
             { text: "slow turntable" },
-            { slot: { kind: "asset", label: "the shoe", note: "Pick it in the first slot" } },
+            { slot: { kind: "note", label: "Pick it in the first slot" } },
           ] },
       ],
       edges: [{ fromIndex: 0, toIndex: 1 }],
@@ -1369,9 +1374,9 @@ describe("a flow of any shape", () => {
         { role: "generate", type: at.nodeType, name: "The clip", mode: at.mode,
           model: at.model, params: {}, prompt: [
             { text: "in the words of " },
-            { slot: { kind: "asset", label: "the step before", note: "@ the step before" } },
+            { slot: { kind: "asset", label: "the slogan", note: "@ the step before" } },
             { text: ", using " },
-            { slot: { kind: "asset", label: "yours", note: "Put it in" } },
+            { slot: { kind: "note", label: "Put it in" } },
           ] },
       ],
       edges: [{ fromIndex: 0, toIndex: 2 }, { fromIndex: 1, toIndex: 2 }],
@@ -1398,9 +1403,9 @@ describe("a flow of any shape", () => {
         { role: "generate", type: at.nodeType, name: "The clip", mode: at.mode,
           model: at.model, params: {}, prompt: [
             { text: "in the words of " },
-            { slot: { kind: "asset", label: "the step before", note: "@ the step before" } },
+            { slot: { kind: "asset", label: "the slogan", note: "@ the step before" } },
             { text: ", using " },
-            { slot: { kind: "asset", label: "yours", note: "Put it in" } },
+            { slot: { kind: "note", label: "Put it in" } },
           ] },
       ],
       edges: [{ fromIndex: 0, toIndex: 2 }],
@@ -1422,7 +1427,7 @@ describe("a flow of any shape", () => {
     const one = (name: string): ProposalNode => ({
       role: "generate", type: at.nodeType, name, mode: at.mode, model: at.model,
       params: {}, prompt: [{ text: "make it" },
-        { slot: { kind: "asset", label: "yours", note: "Pick it in the panel" } }],
+        { slot: { kind: "note", label: "Pick it in the panel" } }],
     });
 
     const verdict = checkProposal({
@@ -1463,8 +1468,8 @@ describe("a flow of any shape", () => {
         { role: "source", type: theirs, name: "Yours" },
         { role: "generate", type: at.nodeType, name: "The result", mode: at.mode,
           model: at.model, params: {}, prompt: [{ text: "put them together" },
-            { slot: { kind: "asset", label: "the one made", note: "Pick it in the panel" } },
-            { slot: { kind: "asset", label: "yours", note: "Pick it in the panel" } }] },
+            { slot: { kind: "note", label: "Pick it in the panel" } },
+            { slot: { kind: "note", label: "Pick it in the panel" } }] },
       ],
       edges: [{ fromIndex: 0, toIndex: 2, into: slotFor(at, made) }],
       rationale: "Make one, you bring the other.",
@@ -1487,9 +1492,7 @@ describe("a flow of any shape", () => {
         { role: "source", type: kind, name: "Last frame" },
         { role: "generate", type: at.nodeType, name: "The tween", mode: at.mode,
           model: at.model, params: {}, prompt: [{ text: "morph" },
-            ...Array.from({ length: at.pieces }, (_, i) => ({
-              slot: { kind: "asset" as const, label: `frame ${String(i + 1)}`, note: "Pick it" },
-            }))] },
+            ...Array.from({ length: at.pieces }, (_, i) => materialMark(at, `frame ${String(i + 1)}`, "Pick it"))] },
       ],
       edges: [{ fromIndex: 0, toIndex: 2, into: slotFor(at, kind) }],
       rationale: "x", groupName: "g",
@@ -1534,7 +1537,7 @@ describe("a flow of any shape", () => {
     const one = (name: string): ProposalNode => ({
       role: "generate", type: at.nodeType, name, mode: at.mode, model: at.model,
       params: {}, prompt: [{ text: "make it" },
-        { slot: { kind: "asset", label: "yours", note: "Put it in" } }],
+        { slot: { kind: "note", label: "Put it in" } }],
     });
 
     const verdict = checkProposal({
@@ -1575,10 +1578,10 @@ describe("a flow of any shape", () => {
         { role: "source", type: kindOf(two), name: "Yours for the second" },
         { role: "generate", type: one.nodeType, name: "First", mode: one.mode, model: one.model,
           params: {}, prompt: [{ text: "make it" },
-            { slot: { kind: "asset", label: "yours", note: "Put it in" } }] },
+            { slot: { kind: "note", label: "Put it in" } }] },
         { role: "generate", type: two.nodeType, name: "Second", mode: two.mode, model: two.model,
           params: {}, prompt: [{ text: "make it" },
-            { slot: { kind: "asset", label: "yours", note: "Put it in" } }] },
+            { slot: { kind: "note", label: "Put it in" } }] },
       ],
       edges: [],
       rationale: "Both halves of one listing.",
@@ -1938,9 +1941,7 @@ describe("what an edge into a generation is worth", () => {
         { role: "generate", type: at.nodeType, name: "The result", mode: at.mode, model: at.model,
           params: {}, prompt: [
             { text: "make it move" },
-            ...Array.from({ length: at.pieces }, (_, i) => ({
-              slot: { kind: "asset" as const, label: `piece ${String(i + 1)}`, note: "Pick it in the slot" },
-            })),
+            ...Array.from({ length: at.pieces }, (_, i) => materialMark(at, `piece ${String(i + 1)}`, "Pick it in the slot")),
             ...Array.from({ length: at.choices.length > 0 ? 1 : 0 }, () => ({
               slot: { kind: "tweak" as const, label: "the voice", note: "Pick one in the panel" },
             })),
