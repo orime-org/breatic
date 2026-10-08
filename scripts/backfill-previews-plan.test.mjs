@@ -35,7 +35,15 @@ test("leaves a row alone when the read measured nothing", () => {
 });
 
 test("counts a read that threw as failed", () => {
-  assert.equal(outcomeOf(null), "failed");
+  assert.equal(outcomeOf(null, new Error("socket hang up")), "failed");
+});
+
+test("counts a read the Worker answered 404 as missing", () => {
+  assert.equal(outcomeOf(null, Object.assign(new Error("gone"), { status: 404 })), "missing");
+});
+
+test("counts a read that threw with another status as failed", () => {
+  assert.equal(outcomeOf(null, Object.assign(new Error("busy"), { status: 503 })), "failed");
 });
 
 test("counts each outcome the Worker names", () => {

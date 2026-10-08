@@ -23,15 +23,22 @@ export function sizeCorrection(row, read) {
   return { width: read.width, height: read.height };
 }
 
-/** The outcomes a read can report, plus one for a read that threw. */
-export const OUTCOMES = ["generated", "existing", "none", "failed"];
+/**
+ * The outcomes a read can report, plus `missing` for a key whose original is
+ * no longer in the bucket: the Worker answers 404, and no rerun changes that.
+ */
+export const OUTCOMES = ["generated", "existing", "none", "failed", "missing"];
 
 /**
  * The outcome to count for one read.
  * @param {{ preview?: string } | null} read - What the read answered, or null when it threw.
+ * @param {unknown} [error] - What the read threw, when it threw.
  * @returns {string} One of {@link OUTCOMES}.
  */
-export function outcomeOf(read) {
-  if (read === null) return "failed";
+export function outcomeOf(read, error) {
+  if (read === null) {
+    const status = typeof error === "object" && error !== null ? error.status : undefined;
+    return status === 404 ? "missing" : "failed";
+  }
   return OUTCOMES.includes(read.preview ?? "") ? read.preview : "failed";
 }

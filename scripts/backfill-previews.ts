@@ -75,6 +75,7 @@ let next = 0;
 async function work(): Promise<void> {
   while (next < rows.length) {
     const row = rows[next++]!;
+    let thrown: unknown;
     const read = await shared
       .readStoredMediaAtIngest(core.env.INGEST_BASE_URL, core.env.INGEST_SHARED_SECRET, {
         storageKey: row.storage_key,
@@ -83,10 +84,11 @@ async function work(): Promise<void> {
         wantPreview: true,
       })
       .catch((err: unknown) => {
-        console.error("read failed", row.storage_key, err);
+        thrown = err;
         return null;
       });
-    const outcome = outcomeOf(read);
+    const outcome = outcomeOf(read, thrown);
+    if (outcome === "failed" && read === null) console.error("read failed", row.storage_key, thrown);
     counts.set(outcome, (counts.get(outcome) ?? 0) + 1);
     if (outcome === "failed") failedKeys.push(row.storage_key);
     const size = read === null ? null : sizeCorrection(row, read);
@@ -105,7 +107,9 @@ await Promise.all(Array.from({ length: concurrency }, () => work()));
 
 console.log(Object.fromEntries(counts), `sizes corrected: ${resized}`);
 if (failedKeys.length > 0) {
-  console.log("run again for these:");
+  // A container that ran out of time fails the same way as an image ffmpeg
+  // cannot decode; a second run tells the two apart.
+  console.log("no preview was cut for these:");
   for (const key of failedKeys) console.log(" ", key);
 }
 process.exit(0);
