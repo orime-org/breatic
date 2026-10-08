@@ -184,6 +184,22 @@ export async function findHashByStorageKey(storageKey: string): Promise<string |
 }
 
 /**
+ * The kind of the bytes stored under a key, from any studio's live asset row.
+ * The kind is read off the stored bytes, so every row under one key holds the
+ * same one.
+ * @param storageKey - The object's storage key.
+ * @returns The kind, or null when no live asset is stored under it.
+ */
+export async function findKindByStorageKey(storageKey: string): Promise<string | null> {
+  const [row] = await db
+    .select({ kind: studioAssets.kind })
+    .from(studioAssets)
+    .where(and(eq(studioAssets.storageKey, storageKey), isNull(studioAssets.deletedAt)))
+    .limit(1);
+  return row?.kind ?? null;
+}
+
+/**
  * Register a physical asset with WITHIN-STUDIO dedup. If the studio
  * already has a live asset with this content hash, nothing new is stored
  * and the existing row is returned (`deduped: true`); otherwise the new

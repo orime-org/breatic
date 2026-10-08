@@ -7,7 +7,7 @@
  * Handles task lifecycle tracking with conditional timestamp updates.
  */
 
-import { and, eq, desc, isNull } from "drizzle-orm";
+import { and, eq, desc, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { tasks } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
@@ -144,12 +144,9 @@ export async function createTask(data: {
 }
 
 /**
- * Update task status with conditional timestamp handling.
- *
- * - RUNNING → sets started_at
- * - COMPLETED/FAILED/CANCELLED → sets completed_at
+ * Move a task to an end state and set its completed_at.
  * @param id - UUID of the task to update.
- * @param status - New status string (e.g. `"running"`, `"completed"`, `"failed"`, `"cancelled"`).
+ * @param status - The end state.
  * @param options - Optional result/error and usage metrics to persist alongside the status.
  * @param options.result - Provider/tool result payload to store.
  * @param options.error - Error message to store on failure.
@@ -158,7 +155,7 @@ export async function createTask(data: {
  */
 export async function updateTaskStatus(
   id: string,
-  status: string,
+  status: "completed" | "failed" | "cancelled",
   options?: {
     result?: Record<string, unknown>;
     error?: string;
@@ -170,14 +167,8 @@ export async function updateTaskStatus(
   const updates: Record<string, unknown> = {
     status,
     updatedAt: now,
+    completedAt: now,
   };
-
-  if (status === "running") {
-    updates.startedAt = now;
-  }
-  if (["completed", "failed", "cancelled"].includes(status)) {
-    updates.completedAt = now;
-  }
   if (options?.result !== undefined) updates.result = options.result;
   if (options?.error !== undefined) updates.errorMessage = options.error;
   if (options?.creditsUsed !== undefined) updates.creditsUsed = options.creditsUsed;
@@ -196,6 +187,29 @@ export async function setJobId(id: string, jobId: string): Promise<void> {
     .update(tasks)
     .set({ arqJobId: jobId, updatedAt: new Date() })
     .where(eq(tasks.id, id));
+}
+
+/**
+ * Mark a task running on a job and keep its first start.
+ * @param id - UUID of the task.
+ * @param jobId - The BullMQ job running it.
+ * @param now - The start to keep when the row has none yet.
+ * @returns The start the row holds after the write.
+ * @throws {Error} When the task row does not exist.
+ */
+export async function markRunning(id: string, jobId: string, now: Date): Promise<Date> {
+  const [row] = await db
+    .update(tasks)
+    .set({
+      arqJobId: jobId,
+      status: "running",
+      startedAt: sql`coalesce(${tasks.startedAt}, ${now.toISOString()}::timestamptz)`,
+      updatedAt: now,
+    })
+    .where(eq(tasks.id, id))
+    .returning({ startedAt: tasks.startedAt });
+  if (!row?.startedAt) throw new Error(`task ${id} has no row to mark running`);
+  return row.startedAt;
 }
 
 /**

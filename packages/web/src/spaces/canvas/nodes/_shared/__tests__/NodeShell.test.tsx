@@ -16,37 +16,21 @@ describe('NodeShell', () => {
     expect(screen.getByText('inside')).toBeInTheDocument();
   });
 
-  it('idle tints the node with the neutral 1px border (no status color, no ring)', () => {
-    render(<NodeShell status='idle'>x</NodeShell>);
-    const cls = screen.getByTestId('node-shell').className;
-    expect(cls).toMatch(/border-border/);
-    expect(cls).not.toMatch(/border-status-/);
-    expect(cls).not.toMatch(/ring-/);
+  it('draws the neutral 1px border whatever its tasks did (no status color, no ring)', () => {
+    // A node shows no task state (inner#888 §7.8).
+    render(<NodeShell>x</NodeShell>);
+    const shell = screen.getByTestId('node-shell');
+    expect(shell.className).toMatch(/border-border/);
+    expect(shell.className).not.toMatch(/border-status-(info|error)/);
+    expect(shell.className).not.toMatch(/ring-/);
+    expect(shell).not.toHaveAttribute('data-status');
   });
 
-  it('handling tints the 1px border with the info status (no ring / offset glow)', () => {
-    render(<NodeShell status='handling'>x</NodeShell>);
-    const cls = screen.getByTestId('node-shell').className;
-    expect(cls).toMatch(/border-status-info/);
-    expect(cls).not.toMatch(/ring-/);
-  });
-
-  it('error tints the 1px border with the error status (when not selected)', () => {
-    render(<NodeShell status='error'>x</NodeShell>);
-    const cls = screen.getByTestId('node-shell').className;
-    expect(cls).toMatch(/border-status-error/);
-    expect(cls).not.toMatch(/ring-/);
-  });
-
-  it('selected tints its own 1px border with the selected status, overriding any status border, no ring or offset glow', () => {
-    render(
-      <NodeShell selected status='error'>
-        x
-      </NodeShell>,
-    );
+  it('selected tints its own 1px border with the selected status, no ring or offset glow', () => {
+    render(<NodeShell selected>x</NodeShell>);
     const cls = screen.getByTestId('node-shell').className;
     expect(cls).toMatch(/border-status-selected/);
-    expect(cls).not.toMatch(/border-status-error/);
+    expect(cls).not.toMatch(/border-border/);
     expect(cls).not.toMatch(/ring-/);
   });
 
@@ -89,7 +73,7 @@ describe('NodeShell visual contract', () => {
 
   it('an idle node hovers its BORDER, never its background', () => {
     render(
-      <NodeShell status='idle'>
+      <NodeShell>
         <div />
       </NodeShell>,
     );

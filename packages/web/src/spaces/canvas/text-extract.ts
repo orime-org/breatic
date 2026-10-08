@@ -7,7 +7,7 @@
  * `text/*` is read directly; pdf / docx / xlsx are parsed in the browser
  * (pdf.js / mammoth / SheetJS) — all dynamically imported so these heavy
  * libraries stay out of the initial bundle. Anything with no extractor
- * throws, and the caller writes an "Extraction failed" error onto the node.
+ * throws, and the caller tells the person who picked the file.
  *
  * Extraction runs entirely in the uploader's own browser tab: the libraries
  * are browser-native, no credits / queue are involved, and parsing an

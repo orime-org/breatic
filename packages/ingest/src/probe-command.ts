@@ -25,6 +25,22 @@ import type { ProbeReport, ProbeStream } from "@ingest/media-metadata.js";
 const PROTOCOLS = "http,tcp";
 
 /**
+ * What a command reads: an object the Worker serves, or a file the container's
+ * own ffmpeg just wrote. The second is opened through the file protocol and
+ * nothing else; it never names a network address.
+ */
+export type ReadFrom = "object" | "own-file";
+
+/**
+ * The protocols a command may open for what it reads.
+ * @param from - What it reads.
+ * @returns The whitelist.
+ */
+function protocolsFor(from: ReadFrom): string {
+  return from === "object" ? PROTOCOLS : "file";
+}
+
+/**
  * The one ffprobe call that covers image, video and audio.
  *
  * `stream_disposition` is a section name of its own: asked for inside
@@ -36,18 +52,19 @@ const PROTOCOLS = "http,tcp";
  * reports the sensor's landscape pair and no rotation. `%+#1` stops after one
  * packet, so a long video costs no more than a photo.
  * @param objectUrl - Where the container reads the object.
+ * @param from - Whether that is a served object or the container's own file.
  * @returns The argument list, without the program name.
  */
-export function probeArgs(objectUrl: string): string[] {
+export function probeArgs(objectUrl: string, from: ReadFrom = "object"): string[] {
   return [
     "-v",
     "error",
     "-protocol_whitelist",
-    PROTOCOLS,
+    protocolsFor(from),
     "-read_intervals",
     "%+#1",
     "-show_entries",
-    "stream=index,codec_type,codec_name,width,height:stream_side_data=rotation:stream_disposition=attached_pic:format=duration:frame=stream_index:frame_side_data=rotation",
+    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space:stream_side_data=rotation:stream_disposition=attached_pic:format=duration:frame=stream_index:frame_side_data=rotation",
     "-of",
     "json",
     objectUrl,
@@ -68,14 +85,15 @@ export const COVER_CONTENT_TYPE = "image/png";
  * PNG straight out, so the frame never passes through a lossy encode on its
  * way to becoming one (the earlier worker path went MJPEG then re-encoded).
  * @param objectUrl - Where the container reads the object.
+ * @param from - Whether that is a served object or the container's own file.
  * @returns The argument list, without the program name.
  */
-export function coverArgs(objectUrl: string): string[] {
+export function coverArgs(objectUrl: string, from: ReadFrom = "object"): string[] {
   return [
     "-v",
     "error",
     "-protocol_whitelist",
-    PROTOCOLS,
+    protocolsFor(from),
     "-i",
     objectUrl,
     "-vframes",
@@ -153,6 +171,9 @@ interface RawStream {
   height?: number;
   disposition?: { attached_pic?: number };
   side_data_list?: { rotation?: unknown }[];
+  color_transfer?: string;
+  color_primaries?: string;
+  color_space?: string;
 }
 
 /**
@@ -239,6 +260,9 @@ export function readProbeOutput(stdout: string): ProbeReport {
     height: raw.height ?? null,
     attachedPic: raw.disposition?.attached_pic === 1,
     ...rotationOf(raw, frames),
+    ...(raw.color_transfer === undefined ? {} : { colorTransfer: raw.color_transfer }),
+    ...(raw.color_primaries === undefined ? {} : { colorPrimaries: raw.color_primaries }),
+    ...(raw.color_space === undefined ? {} : { colorSpace: raw.color_space }),
   }));
   return {
     streams,

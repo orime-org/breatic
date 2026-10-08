@@ -7,6 +7,7 @@
  */
 
 import type { ChatAttachedChip } from '@breatic/shared';
+import { readNodeMedia } from '@breatic/shared';
 
 import { hashOf } from '@web/lib/attachment-naming';
 import { nodeNameOf, pickId } from '@web/spaces/canvas/attach-nodes';
@@ -67,7 +68,7 @@ function entryOf(node: ClipboardNode): { data: Record<string, unknown> } & Recor
       kind: node.type,
       ...(node.name === undefined ? {} : { name: node.name }),
       ...words,
-      ...(node.coverUrl === undefined ? {} : { coverUrl: node.coverUrl }),
+      ...(node.media === undefined ? {} : readNodeMedia(node.media as Record<string, unknown>)),
     },
   };
 }

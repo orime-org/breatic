@@ -23,6 +23,9 @@ WORKDIR /src
 COPY packages/ingest/tsconfig.json ./
 COPY packages/ingest/src ./src
 COPY packages/ingest/container ./container
+# The mini-tool runs build their colour filter from this one file of shared
+# (src/jobs/op-args.ts), resolved through tsconfig's @shared/* path.
+COPY packages/shared/src/adjust-value.ts /shared/src/adjust-value.ts
 COPY scripts/release.mjs ./scripts/release.mjs
 ARG RELEASE_VERSION=0.0.0-dev
 ARG VCS_REF=unknown

@@ -16,8 +16,8 @@ export interface ExecuteGateInput {
   promptText: string;
   /** The effective model id; empty when the catalog is unavailable. */
   model: string;
-  /** The target node's display status (`idle` / `handling` / `error`). */
-  nodeStatus: string | undefined;
+  /** Whether the target node is still on the board. */
+  nodeExists: boolean;
   /** Whether a submission is already in flight (front-end idempotency). */
   isSubmitting: boolean;
   /**
@@ -194,19 +194,18 @@ export interface ExecuteVerdict {
  * it would swap the spinner back to a clickable arrow whose click dies silently
  * on the submitting latch.
  *
- * `handling` and `locked` are NOT weighed here (user 2026-07-18): the button
- * stays clickable and the node-state gate in the execute handler surfaces a
- * `warnNodeGate` toast on click — the same feedback pattern as a locked node,
- * instead of a silently-greyed button. The gate still blocks the actual submit.
- * A prior failure (`error`) stays executable so a user can retry.
- * @param input - The current prompt, model, node status, submitting flag, and whether the model consumes a prompt.
+ * `locked` is NOT weighed here (user 2026-07-18): the button stays clickable
+ * and the node gate in the execute handler surfaces a `warnNodeGate` toast on
+ * click instead of a silently-greyed button. Tasks running on the node do not
+ * stop a new run.
+ * @param input - The current prompt, model, whether the node exists, submitting flag, and whether the model consumes a prompt.
  * @returns The failing condition, or null when every precondition holds.
  */
 export function evaluateExecute(
   input: ExecuteGateInput,
 ): ExecuteVerdict | null {
   // Nothing else is worth saying about a node that is gone.
-  if (input.nodeStatus == null) return { refusal: 'node-gone' };
+  if (!input.nodeExists) return { refusal: 'node-gone' };
   // An empty catalog leaves no model, so submitting would send an invalid task.
   if (input.model.length === 0) return { refusal: 'no-model' };
   // Front-end idempotency. The backend lock is the airtight guard, but the

@@ -229,6 +229,11 @@
         "lead": "登録ページで次のコードを入力して、アカウントの作成を完了してください。",
         "footer": "このコードは {minutes, plural, other {# 分}}後に無効になります。心当たりがない場合は、このメールを無視してください。"
       }
+    },
+    "mini_tool": {
+      "unavailable": "このツールは現在利用できません。",
+      "invalidParam": "「{name}」の値はこのツールでは使えません。",
+      "foreignSource": "このファイルは処理できません。"
     }
   },
   "chat": {
@@ -516,7 +521,6 @@
       "focusSourceDeleted": "素材が削除されました。",
       "focusSourceReplaced": "素材が差し替えられました。",
       "focusSourceBusy": "素材を処理中です。",
-      "focusSourceFailed": "素材の処理に失敗しました。",
       "focusSourceDeletedByPeer": "コラボレーターが素材を削除しました。",
       "focusSourceReplacedByPeer": "コラボレーターが素材を差し替えました。",
       "pickEnded": "選択を終了しました。",
@@ -637,7 +641,19 @@
         "model_mode": "範囲",
         "creativity": "創造性",
         "rendering": "レンダリング",
-        "style_match": "スタイル一致度"
+        "style_match": "スタイル一致度",
+        "target_megapixels": "出力サイズ",
+        "target_resolution": "目標解像度",
+        "resolution": "解像度",
+        "duration": "長さ",
+        "generate_audio": "音声を生成",
+        "enable_prompt_expansion": "プロンプトを拡張",
+        "character_orientation": "向きの基準",
+        "keep_original_sound": "元の音声を保持",
+        "motion_prompt": "動きの説明",
+        "append_duration": "延長する長さ",
+        "ambience": "環境音",
+        "double_output": "2 パターン生成"
       },
       "paramField": {
         "speaker": "名前",
@@ -707,7 +723,8 @@
       "empty": "{filename} は空のファイルです。追加できる内容がありません。",
       "hashUnavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。",
       "storageFull": "Studio のストレージがいっぱいです。アップロードできません。",
-      "failed": "アップロードに失敗しました。"
+      "failed": "アップロードに失敗しました。",
+      "extractionFailed": "{filename} のテキストを読み取れません。"
     },
     "minimap": {
       "label": "キャンバスのミニマップ"
@@ -781,13 +798,11 @@
         "expired": "時間切れ"
       },
       "countTip": "{status} · {count}",
-      "someFailed": "このノードで完了しなかったタスクがあります。",
-      "view": "表示",
       "action": {
-        "replace": "置き換える",
         "retry": "再試行",
-        "finish": "片付ける",
-        "clear": "削除"
+        "finish": "既読にする",
+        "clear": "既読にする",
+        "view": "表示"
       },
       "elapsed": "実行時間 {duration}",
       "remaining": "残り {duration}",
@@ -811,14 +826,174 @@
         "source_too_slow": "このアドレスの取得が時間切れになりました。",
         "unsupported_type": "{kind, select, image {対応していない形式です。画像は {formats} に対応しています。} video {対応していない形式です。動画は {formats} に対応しています。} audio {対応していない形式です。音声は {formats} に対応しています。} other {対応していない形式です。}}",
         "empty": "何も取得できませんでした。",
-        "internal": "こちら側で問題が起きました。もう一度お試しください。",
+        "internal": "こちら側で問題が起きました。",
         "no_credits": "利用できるクレジットがありません。",
         "declined": "モデルがこのリクエストを拒否しました。",
-        "media_refused": "モデルがこのファイルを受け付けませんでした。"
+        "media_refused": "モデルがこのファイルを受け付けませんでした。",
+        "tool_failed": "ツールでこのファイルを処理できませんでした。",
+        "no_audio_track": "この動画には音声トラックがありません。"
+      },
+      "title": {
+        "upload": "アップロード · {name}",
+        "generate": "生成 · {name}",
+        "understand": "内容を読み取る · {name}"
       }
     },
     "panel": {
       "hostDeletedByPeer": "コラボレーターがノードを削除しました。"
+    },
+    "miniTool": {
+      "image": {
+        "remove-bg": {
+          "label": "背景を削除"
+        },
+        "upscale": {
+          "label": "アップスケール"
+        },
+        "digital-human": {
+          "label": "デジタルヒューマン",
+          "slot": {
+            "audio": "声に使う音声ノードを選んでください"
+          },
+          "prompt": "表情や動きを入力"
+        },
+        "crop": {
+          "label": "トリミング"
+        },
+        "rotate": {
+          "label": "回転・反転"
+        }
+      },
+      "video": {
+        "upscale": {
+          "label": "アップスケール"
+        },
+        "interpolate": {
+          "label": "フレーム補間"
+        },
+        "extend": {
+          "label": "延長",
+          "prompt": "続きの内容を説明"
+        },
+        "edit": {
+          "label": "編集",
+          "slot": {
+            "images": "参考にする画像を選んでください",
+            "audios": "参考にする音声を選んでください"
+          },
+          "prompt": "変更内容を説明"
+        },
+        "motion": {
+          "label": "モーション転写",
+          "slot": {
+            "character": "キャラクターにする画像を選んでください"
+          },
+          "prompt": "動きを説明"
+        },
+        "animate": {
+          "label": "アニメート",
+          "slot": {
+            "character": "キャラクターにする画像を選んでください"
+          },
+          "prompt": "見た目と背景を説明"
+        },
+        "crop": {
+          "label": "トリミング"
+        },
+        "speed": {
+          "label": "速度変更"
+        },
+        "cut": {
+          "label": "カット"
+        },
+        "adjust": {
+          "label": "色調整"
+        },
+        "audio-denoise": {
+          "label": "音声ノイズ除去"
+        },
+        "stabilize": {
+          "label": "手ぶれ補正"
+        },
+        "hdr": {
+          "label": "HDR"
+        }
+      },
+      "audio": {
+        "separate": {
+          "label": "ボーカル分離"
+        },
+        "extend": {
+          "label": "延長",
+          "prompt": "続ける音を説明"
+        }
+      },
+      "param": {
+        "aspect": {
+          "label": "比率"
+        },
+        "rect": {
+          "label": "サイズ（px）"
+        },
+        "orient": {
+          "label": "向き"
+        },
+        "rate": {
+          "label": "速度"
+        },
+        "range": {
+          "label": "範囲"
+        },
+        "value": {
+          "label": "色"
+        },
+        "intensity": {
+          "label": "強さ"
+        },
+        "shakiness": {
+          "label": "揺れの大きさ"
+        },
+        "smoothing": {
+          "label": "滑らかさ"
+        },
+        "transfer": {
+          "label": "伝達特性"
+        }
+      },
+      "panel": {
+        "close": "閉じる",
+        "run": "実行",
+        "free": "無料",
+        "usage": "実際の使用量で課金",
+        "slot": "{kind, select, image {画像} audio {音声} other {動画}}{required, select, yes {（必須）} other {}}",
+        "clearSlot": "削除",
+        "rangeLength": "長さ {seconds} 秒",
+        "sourceMissing": "素材の読み込みが終わっていません。読み込み後にもう一度お試しください。",
+        "slotTooLong": "選んだ素材の合計が {limit} 秒を超えています。",
+        "noUsableTier": "この画像は拡大できません。",
+        "exportFailed": "ファイルを作成できませんでした。",
+        "sourceGone": "元のノードが削除されました。",
+        "sourceChanged": "素材が変わりました。",
+        "sourceChangedByPeer": "コラボレーターが素材を変えました。",
+        "couldNotStart": "ツールを開始できませんでした。もう一度お試しください。"
+      },
+      "adjust": {
+        "exposure": "露出",
+        "highlights": "ハイライト",
+        "shadows": "シャドウ",
+        "contrast": "コントラスト",
+        "saturation": "彩度",
+        "vibrance": "自然な彩度",
+        "temperature": "色温度",
+        "tint": "色かぶり補正",
+        "hue": "色相",
+        "sharpness": "シャープネス",
+        "noiseReduction": "ノイズ除去",
+        "clarity": "明瞭度",
+        "vignette": "周辺減光",
+        "grain": "粒子",
+        "fade": "フェード"
+      }
     },
     "template": {
       "title": "テンプレート",

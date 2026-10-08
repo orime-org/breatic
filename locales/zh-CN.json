@@ -229,6 +229,11 @@
         "lead": "在注册页面输入下面的验证码，完成创建账号。",
         "footer": "验证码将在 {minutes, plural, other {# 分钟}}后失效。如果不是你本人操作，可以忽略这封邮件。"
       }
+    },
+    "mini_tool": {
+      "unavailable": "这个工具暂时不可用。",
+      "invalidParam": "“{name}”的值这个工具不支持。",
+      "foreignSource": "这个文件无法处理。"
     }
   },
   "chat": {
@@ -516,7 +521,6 @@
       "focusSourceDeleted": "素材已被删除。",
       "focusSourceReplaced": "素材已更换。",
       "focusSourceBusy": "素材正在处理。",
-      "focusSourceFailed": "素材处理失败。",
       "focusSourceDeletedByPeer": "协作者删除了素材。",
       "focusSourceReplacedByPeer": "协作者更换了素材。",
       "pickEnded": "已退出选择。",
@@ -637,7 +641,19 @@
         "model_mode": "区域",
         "creativity": "创造力",
         "rendering": "渲染类型",
-        "style_match": "风格贴合"
+        "style_match": "风格贴合",
+        "target_megapixels": "输出大小",
+        "target_resolution": "目标分辨率",
+        "resolution": "分辨率",
+        "duration": "时长",
+        "generate_audio": "生成音频",
+        "enable_prompt_expansion": "扩写提示词",
+        "character_orientation": "朝向依据",
+        "keep_original_sound": "保留原声",
+        "motion_prompt": "动作描述",
+        "append_duration": "延长时长",
+        "ambience": "环境音",
+        "double_output": "生成两版"
       },
       "paramField": {
         "speaker": "名字",
@@ -707,7 +723,8 @@
       "empty": "{filename} 是空文件，没有内容可以添加。",
       "hashUnavailable": "无法校验此文件，请刷新页面后重试。",
       "storageFull": "Studio 存储已满，当前无法上传。",
-      "failed": "上传失败。"
+      "failed": "上传失败。",
+      "extractionFailed": "无法读取 {filename} 中的文字。"
     },
     "minimap": {
       "label": "画布缩略图"
@@ -781,13 +798,11 @@
         "expired": "超时"
       },
       "countTip": "{status} · {count}",
-      "someFailed": "这个节点上有任务没能完成。",
-      "view": "查看",
       "action": {
-        "replace": "替换",
         "retry": "重试",
-        "finish": "移除",
-        "clear": "清除"
+        "finish": "已读",
+        "clear": "已读",
+        "view": "查看"
       },
       "elapsed": "已运行 {duration}",
       "remaining": "剩余 {duration}",
@@ -811,14 +826,174 @@
         "source_too_slow": "取这个地址的内容超时了。",
         "unsupported_type": "{kind, select, image {不是支持的格式，图片只收 {formats}。} video {不是支持的格式，视频只收 {formats}。} audio {不是支持的格式，音频只收 {formats}。} other {不是支持的格式。}}",
         "empty": "没有拿到任何内容。",
-        "internal": "我们这边出错了，可以重试。",
+        "internal": "我们这边出错了。",
         "no_credits": "没有可用积分。",
         "declined": "模型拒绝了这次请求。",
-        "media_refused": "模型不接受这个文件。"
+        "media_refused": "模型不接受这个文件。",
+        "tool_failed": "工具没能处理这个文件。",
+        "no_audio_track": "这个视频没有音轨。"
+      },
+      "title": {
+        "upload": "上传 · {name}",
+        "generate": "生成 · {name}",
+        "understand": "理解 · {name}"
       }
     },
     "panel": {
       "hostDeletedByPeer": "协作者删除了节点。"
+    },
+    "miniTool": {
+      "image": {
+        "remove-bg": {
+          "label": "去背景"
+        },
+        "upscale": {
+          "label": "放大"
+        },
+        "digital-human": {
+          "label": "数字人",
+          "slot": {
+            "audio": "选一个音频节点作为声音"
+          },
+          "prompt": "描述表情和动作"
+        },
+        "crop": {
+          "label": "裁剪"
+        },
+        "rotate": {
+          "label": "旋转/翻转"
+        }
+      },
+      "video": {
+        "upscale": {
+          "label": "放大"
+        },
+        "interpolate": {
+          "label": "补帧"
+        },
+        "extend": {
+          "label": "延长",
+          "prompt": "描述接下来发生什么"
+        },
+        "edit": {
+          "label": "编辑",
+          "slot": {
+            "images": "选图片作为参考",
+            "audios": "选音频作为参考"
+          },
+          "prompt": "描述要怎么改"
+        },
+        "motion": {
+          "label": "动作迁移",
+          "slot": {
+            "character": "选一张图片作为角色参考"
+          },
+          "prompt": "描述动作"
+        },
+        "animate": {
+          "label": "动画化",
+          "slot": {
+            "character": "选一张图片作为角色参考"
+          },
+          "prompt": "描述外观和背景"
+        },
+        "crop": {
+          "label": "裁剪"
+        },
+        "speed": {
+          "label": "变速"
+        },
+        "cut": {
+          "label": "剪切"
+        },
+        "adjust": {
+          "label": "调色"
+        },
+        "audio-denoise": {
+          "label": "音频降噪"
+        },
+        "stabilize": {
+          "label": "稳定"
+        },
+        "hdr": {
+          "label": "HDR"
+        }
+      },
+      "audio": {
+        "separate": {
+          "label": "人声分离"
+        },
+        "extend": {
+          "label": "延长",
+          "prompt": "描述要接上的声音"
+        }
+      },
+      "param": {
+        "aspect": {
+          "label": "比例"
+        },
+        "rect": {
+          "label": "尺寸（px）"
+        },
+        "orient": {
+          "label": "朝向"
+        },
+        "rate": {
+          "label": "速度"
+        },
+        "range": {
+          "label": "区间"
+        },
+        "value": {
+          "label": "颜色"
+        },
+        "intensity": {
+          "label": "强度"
+        },
+        "shakiness": {
+          "label": "抖动程度"
+        },
+        "smoothing": {
+          "label": "平滑度"
+        },
+        "transfer": {
+          "label": "传输特性"
+        }
+      },
+      "panel": {
+        "close": "关闭",
+        "run": "执行",
+        "free": "免费",
+        "usage": "按实际用量计",
+        "slot": "{kind, select, image {图片} audio {音频} other {视频}}{required, select, yes {（必填）} other {}}",
+        "clearSlot": "移除",
+        "rangeLength": "时长 {seconds} s",
+        "sourceMissing": "素材还没加载完，等它加载好再试。",
+        "slotTooLong": "所选素材总时长超过 {limit} 秒。",
+        "noUsableTier": "这张图无法放大。",
+        "exportFailed": "无法生成文件。",
+        "sourceGone": "源节点已被删除。",
+        "sourceChanged": "素材已更换。",
+        "sourceChangedByPeer": "协作者更换了素材。",
+        "couldNotStart": "工具没能启动，请重试。"
+      },
+      "adjust": {
+        "exposure": "曝光",
+        "highlights": "高光",
+        "shadows": "阴影",
+        "contrast": "对比度",
+        "saturation": "饱和度",
+        "vibrance": "自然饱和度",
+        "temperature": "色温",
+        "tint": "色调",
+        "hue": "色相",
+        "sharpness": "锐化",
+        "noiseReduction": "降噪",
+        "clarity": "清晰度",
+        "vignette": "暗角",
+        "grain": "颗粒",
+        "fade": "褪色"
+      }
     },
     "template": {
       "title": "模板",

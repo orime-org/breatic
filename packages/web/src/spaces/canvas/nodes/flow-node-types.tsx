@@ -30,10 +30,10 @@ import {
   cellMeetsTargetSize,
   overlayCounterScale,
 } from '@web/spaces/canvas/overlay-scale';
+import { NodeCropLayer } from '@web/spaces/canvas/crop/NodeCropLayer';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import type { NodeView } from '@web/data/yjs/node-view';
-import { failedTaskListToOpen } from '@web/data/yjs/node-view';
 
 /**
  * What a node whose document carries no counts yet reads as. It is the four
@@ -54,13 +54,6 @@ interface InnerNodeProps {
    * file picker and fills this node (media nodes). Text handles its own edit.
    */
   onActivate?: () => void;
-  /**
-   * Open this node's task list on its failures, pre-bound to this node
-   * (#186 §3.7.2). The node's error box carries one sentence; this is the way
-   * from it to the row that says which task failed and why.
-   */
-  onViewTasks?: () => void;
-  tasksPanelOpen?: boolean;
 }
 
 /**
@@ -142,6 +135,9 @@ function makeFlowNode(
     // is an edge endpoint, so neither gets a handle. With no handle there is
     // nothing for xyflow to start or land a connection on (#1881 §8.5).
     const takesEdges = !isGroup && data.kind !== 'annotation';
+    // The crop box positions itself inside this wrapper; an element in state
+    // rather than a ref, so a node shown again hands it the element anew.
+    const [wrapper, setWrapper] = React.useState<HTMLDivElement | null>(null);
     // Per-control resize bounds (from groupResizeBounds, attached in renderNodes)
     // — each edge / corner carries its own min so ReactFlow's native clamp
     // hard-stops it at "members + padding" (see GroupResizer). Empty for a
@@ -201,19 +197,13 @@ function makeFlowNode(
       },
       [closeActivePanel, openTaskPanel, props.id],
     );
-    // Absent when no task on this node failed, which is what keeps the error
-    // box from offering a way into a list with nothing in it: the counts that
-    // put that box on screen also say which of the two failure states to show.
-    const failedList = failedTaskListToOpen(taskCounts);
-    const onViewTasks = React.useCallback((): void => {
-      if (failedList !== null) openTaskPanel(props.id, failedList);
-    }, [failedList, openTaskPanel, props.id]);
     return (
       <NodeIdContext.Provider value={props.id}>
         <NodeScaleContext.Provider value={headerScale}>
           <NodeZoomedPastPreviewContext.Provider value={pastPreview}>
             <NodeOccupantsContext.Provider value={occupants}>
               <div
+                ref={setWrapper}
                 className={isGroup ? 'relative size-full' : 'relative'}
                 onDoubleClickCapture={onDoubleClickCapture}
               >
@@ -223,8 +213,6 @@ function makeFlowNode(
                   locked={data.locked}
                   onRename={onRename}
                   onActivate={onActivate}
-                  {...(failedList !== null && { onViewTasks })}
-                  tasksPanelOpen={taskPanelOpenHere !== null}
                 />
                 {/* The resize controls render AFTER the body for the same reason
                 the connection handles below do: absolutely-positioned siblings
@@ -274,6 +262,10 @@ function makeFlowNode(
                     />
                   </>
                 ) : null}
+                {/* The crop box (inner#888 §7.4.1) sits on this wrapper, outside
+                  the card's clip so the handles on the picture's edge are whole,
+                  and after the connection handles so a press on it is its own. */}
+                {takesEdges ? <NodeCropLayer nodeId={props.id} wrapper={wrapper} /> : null}
                 {/* Outside the node's own box, so it never covers content and
                 never changes what the body is sized to. It counter-scales on
                 the same factor as the name header. Once the canvas has taken

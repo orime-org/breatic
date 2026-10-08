@@ -3,7 +3,7 @@
 
 import type { NodeMediaFields } from '@breatic/shared';
 
-import type { NodeHistoryEntry, NodeTaskEntry } from '@web/data/api/canvas';
+import type { NodeHistoryEntry } from '@web/data/api/canvas';
 import {
   evaluateNodeGate,
   type NodeGateState,
@@ -72,47 +72,4 @@ export function resolveRestore(opts: {
       size: opts.entry.size,
     },
   };
-}
-
-/**
- * Decide what the task list's Replace should do (#186 §7.4).
- *
- * A task's result and a history row's result are the same thing reached two
- * ways, so the rules are the same and are decided in one place. In particular
- * INV-8: a video whose result carries no cover clears the node's poster, which
- * is what keeps the previous clip's thumbnail off the new clip.
- * @param opts - The replace inputs.
- * @param opts.readOnly - Whether the viewer is read-only.
- * @param opts.task - The row the user picked, as the list holds it.
- * @param opts.modality - The host node's modality.
- * @param opts.gateState - The node's fresh locked state.
- * @returns The same decision a restore resolves to.
- */
-export function resolveTaskReplace(opts: {
-  readOnly: boolean;
-  task: Pick<
-    NodeTaskEntry,
-    'content' | 'coverUrl' | 'mediaWidth' | 'mediaHeight' | 'duration' | 'mimeType' | 'size'
-  >;
-  modality: HistoryModality;
-  gateState: NodeGateState;
-}): RestoreDecision {
-  return resolveRestore({
-    readOnly: opts.readOnly,
-    // A row the list offers Replace on has already finished with a result;
-    // `resolveRestore` refuses anything else, which is the guard for a row
-    // whose content the server sent as null.
-    entry: {
-      status: 'success',
-      content: opts.task.content,
-      thumbnailUrl: opts.task.coverUrl,
-      mediaWidth: opts.task.mediaWidth,
-      mediaHeight: opts.task.mediaHeight,
-      duration: opts.task.duration,
-      mimeType: opts.task.mimeType,
-      size: opts.task.size,
-    },
-    modality: opts.modality,
-    gateState: opts.gateState,
-  });
 }

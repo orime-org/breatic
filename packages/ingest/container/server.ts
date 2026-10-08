@@ -4,9 +4,11 @@
 /**
  * The media container's whole service (#209 + #210, design §4.2).
  *
- * One endpoint. It runs ffprobe over the object it was handed, lifts a cover
- * frame with ffmpeg when asked for one, cuts a preview with vips when asked
- * for one and there is still time, and answers with all three. It decides nothing about
+ * Two endpoints. The probe runs ffprobe over the object it was handed, lifts
+ * a cover frame with ffmpeg when asked for one, cuts a preview with vips when
+ * asked for one and there is still time, and answers with all three. The run
+ * takes one mini-tool job (inner#888), answers 202, and reports on its own
+ * when the job ends. It decides nothing about
  * what the media is: which stream carries the dimensions and whether a cover
  * is wanted are the caller's judgements, made where the stored bytes have
  * already been read.
@@ -38,6 +40,8 @@ import { openObject, runTool } from "./run-tool.js";
 import { NOTHING_FOUND, pickMediaMetadata } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import type { ProbeRequest } from "@ingest/probe-answer.js";
+import { RUN_PATH } from "@ingest/jobs/op-args.js";
+import { runJob, type RunBody } from "./mini-tool-run.js";
 
 /**
  * The most a cover frame may weigh.
@@ -141,6 +145,24 @@ async function cutPreview(
 }
 
 createServer((req, res) => {
+  if (req.method === "POST" && req.url === RUN_PATH) {
+    void (async () => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk);
+      let job: RunBody;
+      try {
+        job = JSON.parse(Buffer.concat(chunks).toString("utf8")) as RunBody;
+      } catch {
+        res.writeHead(400).end();
+        return;
+      }
+      // Taken before it runs: the object that sent it marks the job running
+      // on this answer, and the run reports on its own when it ends.
+      res.writeHead(202).end();
+      await runJob(job);
+    })();
+    return;
+  }
   if (req.method !== "POST" || req.url !== PROBE_PATH) {
     res.writeHead(404).end();
     return;

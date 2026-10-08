@@ -37,10 +37,17 @@ const MEDIA_CONTAINER_FILES: string[] = MEDIA_CONTAINER_INCLUDE.map((entry) =>
   posix.join(MEDIA_CONTAINER_DIR, entry),
 );
 
-/** The Worker modules bundled into the service, by name. */
-const MEDIA_CONTAINER_INGEST_MODULES: string[] = MEDIA_CONTAINER_INCLUDE.filter((entry) =>
-  entry.startsWith("../src/"),
-).map((entry) => posix.basename(entry, ".ts"));
+/** Where each package the service reaches sits, from the container's directory, by its alias. */
+const MEDIA_CONTAINER_ALIASES: ReadonlyArray<readonly [string, string]> = [
+  ["../src/", "@ingest/"],
+  ["../../shared/src/", "@shared/"],
+];
+
+/** This repository's modules bundled into the service, as alias and path without extension. */
+const MEDIA_CONTAINER_BUNDLED_MODULES: string[] = MEDIA_CONTAINER_INCLUDE.flatMap((entry) => {
+  const alias = MEDIA_CONTAINER_ALIASES.find(([dir]) => entry.startsWith(dir));
+  return alias === undefined ? [] : [alias[1] + entry.slice(alias[0].length).replace(/\.ts$/, "")];
+});
 
 // Every glob here names the packages it governs, and never `packages/*`. Which
 // packages that is differs per rule — most name the same six, and
@@ -349,7 +356,7 @@ export default tseslint.config(
     rules: {
       "breatic/media-container-own-code-only": [
         "error",
-        { bundledIngestModules: MEDIA_CONTAINER_INGEST_MODULES },
+        { bundledModules: MEDIA_CONTAINER_BUNDLED_MODULES },
       ],
     },
   },

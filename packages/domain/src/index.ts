@@ -25,6 +25,11 @@ export * as creditLotService from "@domain/credit/creditLot.service.js";
 export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 export { SMALLEST_CREDIT } from "@domain/credit/credit-math.js";
 export {
+  containerCostUsd,
+  type ContainerPrices,
+  type ContainerSize,
+} from "@domain/credit/container-cost.js";
+export {
   createUsageRecorder,
   type RecordedOperation,
   type UsageRecorder,
@@ -66,6 +71,7 @@ export * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 export * as uploadGrantService from "@domain/asset/upload-grant.service.js";
 export * as uploadTicketService from "@domain/asset/upload-ticket.service.js";
 export * as backendUploadService from "@domain/asset/backend-upload.service.js";
+export { openContainerOutputs } from "@domain/asset/container-outputs.service.js";
 export * as mediaReadService from "@domain/asset/media-read.service.js";
 export {
   MEDIA_READ_QUEUE,

@@ -146,6 +146,7 @@ function OpenNodeHistoryPanel({
   onRestore,
 }: OpenNodeHistoryPanelProps): React.JSX.Element | null {
   const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
+  const focus = useCanvasSession((s) => s.historyFocus);
   // A deleted host closes the panel in `CanvasSpaceInner`.
   const hostNode = nodes.find((n) => n.id === nodeId);
 
@@ -190,6 +191,15 @@ function OpenNodeHistoryPanel({
     () => currentEntryId(history.entries, currentContent),
     [history.entries, currentContent],
   );
+  // A task row's View names an entry that may sit on a page not loaded yet
+  // (inner#888 §7.7): pages are fetched until it shows up or none are left.
+  const focusLoaded =
+    focus !== null && history.entries.some((entry) => entry.id === focus);
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = history;
+  React.useEffect(() => {
+    if (focus === null || focusLoaded) return;
+    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+  }, [focus, focusLoaded, hasNextPage, isFetchingNextPage, fetchNextPage]);
   const handleRestore = React.useCallback(
     (entry: NodeHistoryEntry): void => {
       if (modality != null) onRestore(nodeId, entry, modality);
@@ -244,6 +254,7 @@ function OpenNodeHistoryPanel({
         total={history.total}
         modality={modality}
         currentEntryId={currentId}
+        focusedEntryId={focusLoaded ? focus : null}
         isLoading={isPending}
         isError={isLoadingError}
         onRetry={handleRetry}

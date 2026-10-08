@@ -67,7 +67,7 @@ function node(id: string, data: NodeView): CanvasNodeView {
 function videoView(
   over: Partial<Extract<NodeView, { kind: 'video' }>> = {},
 ): NodeView {
-  return { kind: 'video', status: 'idle', ...over };
+  return { kind: 'video', handling: false, ...over };
 }
 
 /** No edges, which is what a case about models / params / slots wants. */
@@ -337,15 +337,15 @@ describe('buildVideoPanelViewModel', () => {
     expect(vm.params.duration).toBe(12);
   });
 
-  it('reports the node status so the panel can block submitting mid-generation', () => {
-    const nodes = [node('n1', videoView({ status: 'handling' }))];
+  it('reports that the node is on the board, which the execute gate reads', () => {
+    const nodes = [node('n1', videoView({}))];
     const vm = buildVm({
       nodeId: 'n1',
       nodes,
       models,
       mode: 't2v',
     });
-    expect(vm.nodeStatus).toBe('handling');
+    expect(vm.nodeExists).toBe(true);
   });
 
   it('resolves a default model for a node that is not on the canvas', () => {
@@ -355,7 +355,7 @@ describe('buildVideoPanelViewModel', () => {
       models,
       mode: 't2v',
     });
-    expect(vm.nodeStatus).toBeUndefined();
+    expect(vm.nodeExists).toBe(false);
     expect(vm.model).toBe('veo-3.1');
   });
 
@@ -766,8 +766,8 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
     return {
       nodes: [
         node('n1', videoView({ mode: 'ref', model: 'kling-o3-pro-ref' })),
-        node('src-a', { kind: 'image', status: 'idle', content: 'https://cdn/a.png' }),
-        node('src-b', { kind: 'image', status: 'idle', content: 'https://cdn/b.png' }),
+        node('src-a', { kind: 'image', handling: false, content: 'https://cdn/a.png' }),
+        node('src-b', { kind: 'image', handling: false, content: 'https://cdn/b.png' }),
       ],
       edges: [
         { id: 'e-a', source: 'src-a', target: 'n1' },
@@ -790,8 +790,8 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
       nodeId: 'n1',
       nodes: [
         node('n1', videoView({ mode: 'ref', model: 'wan-3.0-reference-to-video' })),
-        node('src-a', { kind: 'image', status: 'idle', content: 'https://cdn/a.png' }),
-        node('src-v', { kind: 'video', status: 'idle', content: 'https://cdn/v.mp4' }),
+        node('src-a', { kind: 'image', handling: false, content: 'https://cdn/a.png' }),
+        node('src-v', { kind: 'video', handling: false, content: 'https://cdn/v.mp4' }),
       ],
       edges: [
         { id: 'e-a', source: 'src-a', target: 'n1' },
@@ -823,8 +823,8 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
       nodeId: 'n1',
       nodes: [
         node('n1', videoView({ mode: 'ref', model: 'wan-3.0-reference-to-video' })),
-        node('src-a', { kind: 'image', status: 'idle', content: 'https://cdn/a.png' }),
-        node('src-v', { kind: 'video', status: 'idle', content: 'https://cdn/v.mp4' }),
+        node('src-a', { kind: 'image', handling: false, content: 'https://cdn/a.png' }),
+        node('src-v', { kind: 'video', handling: false, content: 'https://cdn/v.mp4' }),
       ],
       edges: [
         { id: 'e-a', source: 'src-a', target: 'n1' },
@@ -850,7 +850,7 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
       nodeId: 'n1',
       nodes: [
         node('n1', videoView({ mode: 'ref', model: 'wan-3.0-reference-to-video' })),
-        node('src-v', { kind: 'video', status: 'idle', content: 'https://cdn/v.mp4', duration: 8 }),
+        node('src-v', { kind: 'video', handling: false, content: 'https://cdn/v.mp4', duration: 8 }),
       ],
       edges: [{ id: 'e-v', source: 'src-v', target: 'n1' }],
       models: wan,
@@ -940,7 +940,7 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
     // expects an image.
     const nodes: CanvasNodeView[] = [
       node('n1', videoView({ mode: 'ref' })),
-      node('src-t', { kind: 'text', status: 'idle' }),
+      node('src-t', { kind: 'text', handling: false }),
     ];
     const edges: CanvasEdge[] = [{ id: 'e-t', source: 'src-t', target: 'n1' }];
     const vm = buildVm({
@@ -1080,7 +1080,7 @@ describe('被 @ 引用的裁剪随提交上路（#1978）', () => {
       nodeId: 'n1',
       nodes: [
         node('n1', videoView({ focusImages: [crop] })),
-        node('src-a', { kind: 'image', status: 'idle', content: 'https://cdn/a.png' }),
+        node('src-a', { kind: 'image', handling: false, content: 'https://cdn/a.png' }),
       ],
       edges: [{ id: 'e-a', source: 'src-a', target: 'n1' }],
       models,

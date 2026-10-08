@@ -65,6 +65,15 @@ export type UploadContext = UploadTargetParams & {
   derived?: true;
 };
 
+/**
+ * What a browser mini-tool's export carries on its ticket, so the task row
+ * reads as that tool (inner#888 §7.5).
+ */
+export interface MiniToolUploadTag {
+  source: 'mini_tool';
+  toolName: string;
+}
+
 /** A ticket request: where the upload lands, and the file it is for. */
 export type UploadTicketRequest = UploadContext & {
   filename: string;

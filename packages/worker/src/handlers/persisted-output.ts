@@ -118,8 +118,9 @@ export function nodeResultsFrom(
  * @param run.reportedModel - The model the stored result named, when it did.
  * @param run.jobModel - The model the job asked for.
  * @param run.credits - What this run was billed, in credits.
- * @param run.durationMs - How long the provider call took.
+ * @param run.durationMs - How long the run took from its first start, in milliseconds.
  * @param run.params - What the run was given.
+ * @param run.toolId - The mini-tool that made the result; the row is named by it.
  * @returns The metadata, in the shape the history row holds.
  */
 export function generationMetadata(run: {
@@ -128,16 +129,19 @@ export function generationMetadata(run: {
   credits: number | undefined;
   durationMs: number | undefined;
   params: Record<string, unknown> | undefined;
+  toolId: string | undefined;
 }): {
   model?: string;
   credits?: number;
   durationMs?: number;
   params?: Record<string, unknown>;
+  toolId?: string;
 } {
   return {
     model: run.reportedModel ?? run.jobModel,
     credits: run.credits,
     durationMs: run.durationMs,
     params: run.params,
+    ...(run.toolId !== undefined && { toolId: run.toolId }),
   };
 }

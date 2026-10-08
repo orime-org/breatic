@@ -229,6 +229,11 @@
         "lead": "Enter this code on the sign-up page to finish creating your account.",
         "footer": "This code expires in {minutes, plural, one {# minute} other {# minutes}}. If you didn't try to sign up, you can ignore this email."
       }
+    },
+    "mini_tool": {
+      "unavailable": "This tool is unavailable right now.",
+      "invalidParam": "\"{name}\" has a value this tool does not take.",
+      "foreignSource": "This file cannot be processed."
     }
   },
   "chat": {
@@ -528,7 +533,6 @@
       "focusSourceDeleted": "Source deleted.",
       "focusSourceReplaced": "Source replaced.",
       "focusSourceBusy": "Source is processing.",
-      "focusSourceFailed": "Source processing failed.",
       "focusSourceDeletedByPeer": "A collaborator deleted the source.",
       "focusSourceReplacedByPeer": "A collaborator replaced the source.",
       "pickEnded": "Selection ended.",
@@ -649,7 +653,19 @@
         "model_mode": "Region",
         "creativity": "Creativity",
         "rendering": "Rendering",
-        "style_match": "Style match"
+        "style_match": "Style match",
+        "target_megapixels": "Output size",
+        "target_resolution": "Target resolution",
+        "resolution": "Resolution",
+        "duration": "Duration",
+        "generate_audio": "Generate audio",
+        "enable_prompt_expansion": "Expand prompt",
+        "character_orientation": "Orientation from",
+        "keep_original_sound": "Keep original sound",
+        "motion_prompt": "Motion",
+        "append_duration": "Added length",
+        "ambience": "Ambience",
+        "double_output": "Two takes"
       },
       "paramField": {
         "speaker": "Name",
@@ -707,7 +723,8 @@
       "empty": "{filename} is empty — there's nothing to add.",
       "hashUnavailable": "Couldn't verify this file. Reload the page and try again.",
       "storageFull": "Studio storage is full. Uploading is unavailable.",
-      "failed": "Upload failed."
+      "failed": "Upload failed.",
+      "extractionFailed": "Couldn't read the text in {filename}."
     },
     "minimap": {
       "label": "Canvas minimap"
@@ -781,13 +798,11 @@
         "expired": "Expired"
       },
       "countTip": "{status} · {count}",
-      "someFailed": "A task on this node did not finish.",
-      "view": "View",
       "action": {
-        "replace": "Replace",
         "retry": "Retry",
-        "finish": "Dismiss",
-        "clear": "Clear"
+        "finish": "Mark read",
+        "clear": "Mark read",
+        "view": "View"
       },
       "elapsed": "Running {duration}",
       "remaining": "{duration} left",
@@ -811,14 +826,174 @@
         "source_too_slow": "This address was still sending when the time ran out.",
         "unsupported_type": "{kind, select, image {Not a supported format. Images take {formats}.} video {Not a supported format. Video takes {formats}.} audio {Not a supported format. Audio takes {formats}.} other {Not a supported format.}}",
         "empty": "Nothing came back.",
-        "internal": "Something on our side went wrong. Try again.",
+        "internal": "Something on our side went wrong.",
         "no_credits": "No credits available.",
         "declined": "The model declined this request.",
-        "media_refused": "The model would not take this file."
+        "media_refused": "The model would not take this file.",
+        "tool_failed": "The tool could not process this file.",
+        "no_audio_track": "This video has no audio track."
+      },
+      "title": {
+        "upload": "Upload · {name}",
+        "generate": "Generate · {name}",
+        "understand": "Understand · {name}"
       }
     },
     "panel": {
       "hostDeletedByPeer": "A collaborator deleted the node."
+    },
+    "miniTool": {
+      "image": {
+        "remove-bg": {
+          "label": "Remove background"
+        },
+        "upscale": {
+          "label": "Upscale"
+        },
+        "digital-human": {
+          "label": "Talking head",
+          "slot": {
+            "audio": "Pick an audio node for the voice"
+          },
+          "prompt": "Describe the expression and movement"
+        },
+        "crop": {
+          "label": "Crop"
+        },
+        "rotate": {
+          "label": "Rotate & flip"
+        }
+      },
+      "video": {
+        "upscale": {
+          "label": "Upscale"
+        },
+        "interpolate": {
+          "label": "Interpolate"
+        },
+        "extend": {
+          "label": "Extend",
+          "prompt": "Describe what happens next"
+        },
+        "edit": {
+          "label": "Edit",
+          "slot": {
+            "images": "Pick images as references",
+            "audios": "Pick audio as references"
+          },
+          "prompt": "Describe the change"
+        },
+        "motion": {
+          "label": "Motion transfer",
+          "slot": {
+            "character": "Pick an image for the character"
+          },
+          "prompt": "Describe the motion"
+        },
+        "animate": {
+          "label": "Animate",
+          "slot": {
+            "character": "Pick an image for the character"
+          },
+          "prompt": "Describe the look and background"
+        },
+        "crop": {
+          "label": "Crop"
+        },
+        "speed": {
+          "label": "Speed"
+        },
+        "cut": {
+          "label": "Cut"
+        },
+        "adjust": {
+          "label": "Adjust"
+        },
+        "audio-denoise": {
+          "label": "Audio denoise"
+        },
+        "stabilize": {
+          "label": "Stabilize"
+        },
+        "hdr": {
+          "label": "HDR"
+        }
+      },
+      "audio": {
+        "separate": {
+          "label": "Separate vocals"
+        },
+        "extend": {
+          "label": "Extend",
+          "prompt": "Describe the sound to add"
+        }
+      },
+      "param": {
+        "aspect": {
+          "label": "Ratio"
+        },
+        "rect": {
+          "label": "Size (px)"
+        },
+        "orient": {
+          "label": "Orientation"
+        },
+        "rate": {
+          "label": "Speed"
+        },
+        "range": {
+          "label": "Range"
+        },
+        "value": {
+          "label": "Color"
+        },
+        "intensity": {
+          "label": "Strength"
+        },
+        "shakiness": {
+          "label": "Shakiness"
+        },
+        "smoothing": {
+          "label": "Smoothing"
+        },
+        "transfer": {
+          "label": "Transfer"
+        }
+      },
+      "panel": {
+        "close": "Close",
+        "run": "Run",
+        "free": "Free",
+        "usage": "Billed by usage",
+        "slot": "{kind, select, image {Image} audio {Audio} other {Video}}{required, select, yes { (required)} other {}}",
+        "clearSlot": "Remove",
+        "rangeLength": "Length {seconds} s",
+        "sourceMissing": "The source hasn't loaded yet. Try again once it has.",
+        "slotTooLong": "The picked media run longer than {limit} s in total.",
+        "noUsableTier": "This image can't be upscaled.",
+        "exportFailed": "Couldn't make the file.",
+        "sourceGone": "The source node was deleted.",
+        "sourceChanged": "The source changed.",
+        "sourceChangedByPeer": "A collaborator changed the source.",
+        "couldNotStart": "Couldn't start the tool. Try again."
+      },
+      "adjust": {
+        "exposure": "Exposure",
+        "highlights": "Highlights",
+        "shadows": "Shadows",
+        "contrast": "Contrast",
+        "saturation": "Saturation",
+        "vibrance": "Vibrance",
+        "temperature": "Temperature",
+        "tint": "Tint",
+        "hue": "Hue",
+        "sharpness": "Sharpness",
+        "noiseReduction": "Noise reduction",
+        "clarity": "Clarity",
+        "vignette": "Vignette",
+        "grain": "Grain",
+        "fade": "Fade"
+      }
     },
     "template": {
       "title": "Templates",

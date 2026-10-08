@@ -12,7 +12,7 @@
 import * as Y from 'yjs';
 import { describe, expect, it } from 'vitest';
 
-import { writeNodeMedia } from '@shared/canvas/node-media.js';
+import { NODE_MEDIA_KEYS, writeNodeMedia } from '@shared/canvas/node-media.js';
 
 /**
  * A node's data map, attached to a document so writes behave as in the app.
@@ -49,6 +49,14 @@ describe('writeNodeMedia', () => {
       mimeType: 'video/mp4',
       size: 734_003,
     });
+  });
+
+  it('writes exactly the keys NODE_MEDIA_KEYS names', () => {
+    const data = nodeData();
+
+    writeNodeMedia(data, VIDEO);
+
+    expect(Object.keys(data.toJSON()).sort()).toEqual([...NODE_MEDIA_KEYS].sort());
   });
 
   it('takes away a field the result has no value for', () => {

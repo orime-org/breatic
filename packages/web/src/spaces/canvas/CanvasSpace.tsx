@@ -37,7 +37,18 @@ import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 import { claimRegion } from '@web/features/active-region/use-track-active-region';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { useKeyboardNudge } from '@web/spaces/canvas/use-keyboard-nudge';
-import { canGenerate, newId } from '@breatic/shared';
+import {
+  canGenerate,
+  newId,
+} from '@breatic/shared';
+import {
+  defaultParamsOf,
+  miniToolById,
+  miniToolsFor,
+  servedMiniToolsFor,
+  type MiniToolSnapshot,
+  type MiniToolSpec,
+} from '@breatic/shared/mini-tools';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 
 import { Button } from '@web/components/ui/button';
@@ -50,18 +61,18 @@ import {
 import {
   getCachedReferencePoolCap,
   type NodeHistoryEntry,
-  type NodeTaskEntry,
 } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { historyKey } from '@web/spaces/canvas/history/use-node-history';
 import { usePrefetchModelCatalog } from '@web/spaces/canvas/generate/use-prefetch-model-catalog';
 import {
-  FocusCropOverlay,
+  FocusCropControls,
   handOffFocusToPickBanner,
   type FocusCropConfirm,
-} from '@web/spaces/canvas/focus/FocusCropOverlay';
+} from '@web/spaces/canvas/focus/FocusCropControls';
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
@@ -84,7 +95,6 @@ import {
   isNodeLocked,
   restoreNodeMedia,
   setNodeExtractedText,
-  setNodeExtractionError,
   setNodeLocked,
   setNodeName,
   setNodeParent,
@@ -94,6 +104,7 @@ import {
   type CanvasNodeView,
   type CanvasUndoStep,
   readCanvasGraph,
+  readNodeMediaFields,
   readTextBodies,
 } from '@web/data/yjs/canvas-space';
 import { handToAgent } from '@web/spaces/canvas/pick-for-agent';
@@ -131,9 +142,10 @@ import {
   UploadFailedError,
 } from '@web/data/upload/media-upload';
 import { hashFile } from '@web/data/upload/hash';
+import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import {
   stashRetryFile,
-  getRetryFile,
+  getRetryUpload,
 } from '@web/spaces/canvas/upload-retry-files';
 import { extractText } from '@web/spaces/canvas/text-extract';
 import {
@@ -145,10 +157,7 @@ import {
   type PanelSelectionSnapshot,
 } from '@web/spaces/canvas/lib/generate-panel-selection';
 import { asContentView } from '@web/data/yjs/node-view';
-import type {
-  DisplayStatus,
-  Modality,
-} from '@web/data/yjs/node-view';
+import type { Modality } from '@web/data/yjs/node-view';
 import {
   planGroupCreation,
   type GroupCreationPlan,
@@ -184,7 +193,16 @@ import { keepSnapshot } from '@web/spaces/canvas/keep-snapshot';
 import { startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
 import { downloadHref } from '@web/data/api/download-href';
 import { triggerDownload } from '@web/lib/download';
-import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
+import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
+import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
+import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
+import { startMiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
+import {
+  activeMiniToolSlot,
+  heldSlotUrls,
+  miniToolSlotCandidate,
+  miniToolSlotValue,
+} from '@web/spaces/canvas/mini-tool/mini-tool-slot-pick';
 import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
 import { readSlotPicks, slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
@@ -238,10 +256,7 @@ import {
   HISTORY_MODALITIES,
   type HistoryModality,
 } from '@web/spaces/canvas/history/NodeHistoryRow';
-import {
-  resolveRestore,
-  resolveTaskReplace,
-} from '@web/spaces/canvas/history/restore-node-content';
+import { resolveRestore } from '@web/spaces/canvas/history/restore-node-content';
 import type { EmptyImageExecuteOpts } from '@web/spaces/canvas/empty-image/EmptyImagePanel';
 import { generateBlankPng } from '@web/spaces/canvas/empty-image/generate-blank-png';
 import { EdgeContextMenu } from '@web/spaces/canvas/EdgeContextMenu';
@@ -281,7 +296,7 @@ import { canvasGraphs } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { readSpaceViewport, writeSpaceViewport } from '@web/lib/project-tabs-storage';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
-import { taskPanelOpenFor, type CanvasSessionStore } from '@web/stores/canvas-session';
+import type { CanvasSessionStore } from '@web/stores/canvas-session';
 
 /** Node types a focus pick can crop (#1782 images, #1987 video frames). */
 const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
@@ -327,19 +342,7 @@ const FOCUS_TARGET_Z = 1002;
 const ANNOTATION_PIN_Z = 1001;
 
 /** What became of the node a focus crop is open on (#2000). */
-type FocusTargetVerdict = 'ok' | 'gone' | 'replaced' | 'busy' | 'failed';
-
-/**
- * Which verdict a node that stopped being croppable lands on.
- *
- * Stated as a total map over the non-idle statuses so that a new member of
- * `DisplayStatus` fails typecheck here instead of falling into whichever
- * branch happened to be last (#2000, second adversarial round).
- */
-const STATUS_VERDICT: Record<
-  Exclude<DisplayStatus, 'idle'>,
-  Extract<FocusTargetVerdict, 'busy' | 'failed'>
-> = { handling: 'busy', error: 'failed' };
+type FocusTargetVerdict = 'ok' | 'gone' | 'replaced' | 'busy';
 
 /**
  * The toast each ending verdict shows, by who made the write.
@@ -352,12 +355,9 @@ const STATUS_VERDICT: Record<
  * undo, a redo and a plain delete all land here — so it states what happened
  * and stops (user 2026-08-23).
  *
- * `busy` / `failed` say "processing" rather than "generating": an upload
- * opens a task row on the node just as a generation does, so naming the cause
- * would be wrong half the time.
- *
- * A failure has no author to name — the upload or the generation failed on
- * its own — so both columns share one line for it.
+ * `busy` says "processing" rather than "generating": an upload opens a task
+ * row on the node just as a generation does, so naming the cause would be
+ * wrong half the time.
  */
 const FOCUS_EXIT_TOAST_KEY: Record<
   'local' | 'peer',
@@ -367,13 +367,11 @@ const FOCUS_EXIT_TOAST_KEY: Record<
     gone: 'canvas.generatePanel.focusSourceDeleted',
     replaced: 'canvas.generatePanel.focusSourceReplaced',
     busy: 'canvas.generatePanel.focusSourceBusy',
-    failed: 'canvas.generatePanel.focusSourceFailed',
   },
   peer: {
     gone: 'canvas.generatePanel.focusSourceDeletedByPeer',
     replaced: 'canvas.generatePanel.focusSourceReplacedByPeer',
     busy: 'canvas.generatePanel.focusSourceBusyByPeer',
-    failed: 'canvas.generatePanel.focusSourceFailed',
   },
 };
 
@@ -385,22 +383,21 @@ const FOCUS_EXIT_TOAST_KEY: Record<
  * copies of the same conditions, and round-4 already fixed one drifting from
  * the other into "looks selectable, click does nothing".
  *
- * `idle` is load-bearing rather than tidiness: the crop overlay anchors its
- * marquee to a RENDERED element, and an error node renders its message box
- * where the media would be.
+ * Not `handling` because a task writing to the node may replace the media the
+ * crop is anchored to.
  * @param node - The node being judged.
  * @param targetId - The node whose panel started the pick (never a source).
  * @returns Whether a focus pick accepts this node.
  */
 function isFocusCandidate(node: Node, targetId: string): boolean {
-  const data = node.data as { content?: unknown; status?: unknown };
+  const data = node.data as { content?: unknown; handling?: unknown };
   return (
     node.id !== targetId &&
     typeof node.type === 'string' &&
     FOCUS_SOURCE_TYPES.has(node.type) &&
     typeof data.content === 'string' &&
     data.content.length > 0 &&
-    data.status === 'idle'
+    data.handling !== true
   );
 }
 
@@ -853,6 +850,7 @@ function CanvasSpaceInner({
   const panelHostId = useCanvasSession((s) => s.panelHostId);
   const panelKind = useCanvasSession((s) => s.panelKind);
   const pickSession = useCanvasSession((s) => s.pickSession);
+  const miniToolDraft = useCanvasSession((s) => s.miniTool);
   // The node a pick is running for, or null — stands in
   // for the mechanical "is a pick active / which node" checks that don't care
   // about the purpose. The purpose is read separately where completion /
@@ -873,15 +871,15 @@ function CanvasSpaceInner({
   // after a pick ends is #125.
   const sessionStore = useCanvasSessionStore();
   const onExitPick = React.useCallback((): void => {
-    const purpose = sessionStore.getState().pickSession?.purpose;
+    const { pickSession: session, miniTool } = sessionStore.getState();
     endPick();
-    if (purpose === undefined) return;
+    if (session === null) return;
     // A caret mid-sentence is a live surface: Escape reaches here from the
     // prompt editor, where ending the pick is what the reader asked for and
     // moving the caret is not. Focus resting anywhere else goes to the
     // trigger below.
     if (isEditableTarget(document.activeElement)) return;
-    for (const testId of Object.values(PICK_PURPOSE_UI[purpose].trigger)) {
+    for (const testId of pickSessionUi(session, miniTool?.toolId).triggers) {
       const trigger = canvasRootOf(spaceId).querySelector<HTMLElement>(
         `[data-testid="${testId}"]`,
       );
@@ -891,33 +889,22 @@ function CanvasSpaceInner({
       }
     }
   }, [sessionStore, endPick, spaceId]);
+  // The image or video node a focus crop is open on (#1782, video #1987), with
+  // the content it carried when picked and the marquee on it (inner#888
+  // §7.4.1). It lives in the session store, which ends it with the focus pick,
+  // so the node's crop box and the controls bar read the same one.
+  const focusTarget = useCanvasSession((s) => s.focusCrop);
+  const setFocusTarget = useCanvasSession((s) => s.setFocusTarget);
+  const focusCropTargetId = focusTarget?.nodeId ?? null;
   /**
    * Return the focus session to its PICK state (user 2026-07-17 A): drop
-   * the crop target so the overlay unmounts, but keep the session — the
-   * banner stays and another node can be picked. Cancel and the overlay's
-   * bare Esc land here; a further Esc then exits via the pick Esc handler.
+   * the crop target, but keep the session — the banner stays and another
+   * node can be picked. Cancel and the bare Esc land here; a further Esc
+   * then exits via the pick Esc handler.
    */
   const onFocusBackToPick = React.useCallback((): void => {
     setFocusTarget(null);
-  }, []);
-  // The image or video node a focus crop marquee is open on (#1782, video
-  // #1987), or null, together with the content it carried when the crop
-  // opened. Local React state — it only exists while THIS user's focus pick
-  // runs; the effect clears it whenever the session ends or changes purpose
-  // (Exit, zombie guards, another pick replacing it).
-  //
-  // The id and the snapshot live in ONE object so they cannot describe
-  // different nodes: the verdict below compares the snapshot against the
-  // node the id names, and a split pair would let a switch of target leave
-  // the previous node's content behind.
-  const [focusTarget, setFocusTarget] = React.useState<{
-    id: string;
-    content: string;
-  } | null>(null);
-  const focusCropTargetId = focusTarget?.id ?? null;
-  React.useEffect(() => {
-    if (pickSession?.purpose !== 'focus') setFocusTarget(null);
-  }, [pickSession]);
+  }, [setFocusTarget]);
   // What became of the crop target (#2000). Four things end a crop: the node
   // is gone, its content was swapped, it entered handling, or it failed. Any
   // of them can come from this client or from a peer — this selector reads
@@ -931,44 +918,39 @@ function CanvasSpaceInner({
   // eating careful selections on every pan).
   const focusTargetVerdict = useStoreOf(graphStore, (st): FocusTargetVerdict => {
     if (focusTarget === null) return 'ok';
-    const node = st.flowNodes.find((n) => n.id === focusTarget.id);
+    const node = st.flowNodes.find((n) => n.id === focusTarget.nodeId);
     if (!node) return 'gone';
     if ((node.data as { content?: unknown }).content !== focusTarget.content) {
       return 'replaced';
     }
     // The pick's own admission test, reapplied: it already states every
-    // condition a croppable source must hold (type, non-empty content, idle),
+    // condition a croppable source must hold (type, non-empty content, not
+    // handling),
     // so a target that stops satisfying it has stopped being croppable. The
     // host id it wants can be anything but this node's own id.
-    if (isFocusCandidate(node, '')) return 'ok';
-    // Reaching here means `status` left 'idle' — the predicate's other three
-    // conditions cannot fail at this point. The host check gets '' (always
+    // Reaching past it means a task is writing to the node — the predicate's
+    // other three conditions cannot fail here. The host check gets '' (always
     // true), a node's type never changes, and an emptied `content` is caught
     // by `replaced` above (the snapshot is non-empty).
-    const status = (node.data as { status?: DisplayStatus }).status;
-    if (status === undefined || status === 'idle') return 'ok';
-    return STATUS_VERDICT[status];
+    return isFocusCandidate(node, '') ? 'ok' : 'busy';
   });
   React.useEffect(() => {
     if (focusTargetVerdict === 'ok') return;
     // Keyboard-focus rescue (adversarial round-2 of #1782): a collaborator
     // ending the crop must not orphan focus to <body>. It only fires when
-    // focus actually sits INSIDE the dying overlay — a remote write must
-    // never grab focus from elsewhere. The effect runs while the overlay DOM
-    // is still mounted (unmount lands next render), so the containment check
-    // still sees it.
-    const overlay = canvasRootOf(spaceId).querySelector(
-      '[data-testid="focus-crop-overlay"]',
-    );
-    if (overlay?.contains(document.activeElement)) {
-      handOffFocusToPickBanner(overlay, canvasRootOf(spaceId));
+    // focus actually sits INSIDE the dying controls bar — a remote write must
+    // never grab focus from elsewhere. The effect runs while the bar is still
+    // mounted (unmount lands next render), so the containment check sees it.
+    const bar = canvasRootOf(spaceId).querySelector('[data-testid="focus-crop-controls"]');
+    if (bar?.contains(document.activeElement)) {
+      handOffFocusToPickBanner(bar, canvasRootOf(spaceId));
     }
     // Who wrote it decides which column speaks: a peer's delete is news, a
     // local undo is the user's own keystroke coming back to him.
     const author = getLastWriteWasLocal() ? 'local' : 'peer';
     toast.warning(t(FOCUS_EXIT_TOAST_KEY[author][focusTargetVerdict]));
     setFocusTarget(null);
-  }, [focusTargetVerdict, getLastWriteWasLocal, t, spaceId]);
+  }, [focusTargetVerdict, getLastWriteWasLocal, t, spaceId, setFocusTarget]);
   // Esc during a focus session with NO crop target yet (round-4): the
   // overlay owns the two-stage Esc but is unmounted until the first image
   // is clicked, leaving Esc silently dead in the banner-only state. Same
@@ -1458,11 +1440,14 @@ function CanvasSpaceInner({
       captureClipboard(
         targetIds,
         allNodes,
-        readTextBodies(
-          projectId,
-          spaceId,
-          allNodes.filter((n) => n.type === 'text').map((n) => n.id),
-        ),
+        {
+          text: readTextBodies(
+            projectId,
+            spaceId,
+            allNodes.filter((n) => n.type === 'text').map((n) => n.id),
+          ),
+          media: readNodeMediaFields(projectId, spaceId, allNodes.map((n) => n.id)),
+        },
         spaceId,
       ),
     [projectId, spaceId],
@@ -2004,7 +1989,25 @@ function CanvasSpaceInner({
         }
         // The predicate already established this is a non-empty string.
         const { content } = fresh.data as { content: string };
-        setFocusTarget({ id: node.id, content });
+        // The target itself again (a click on its own crop box bubbles here)
+        // keeps its marquee; the store makes that a no-op.
+        setFocusTarget({ nodeId: node.id, content });
+        return;
+      }
+
+      if (session.purpose === 'miniToolSlot') {
+        // A mini-tool slot (inner#888 §7.3): the pick writes into the panel's
+        // draft, never into a node. A list slot takes one per click until it
+        // is full; a one-item slot ends on the first.
+        const { miniTool, fillMiniToolSlot } = sessionStore.getState();
+        const slot = activeMiniToolSlot(session, miniTool);
+        if (slot === undefined || miniTool === null) return;
+        const held = heldSlotUrls(miniTool, slot);
+        if (!miniToolSlotCandidate(node, target, slot, held)) return;
+        const value = miniToolSlotValue(node);
+        if (value === null) return;
+        fillMiniToolSlot(slot.key, value, slot.many);
+        if (!slot.many || (session.capacity !== undefined && held.size + 1 >= session.capacity)) endPick();
         return;
       }
 
@@ -2100,7 +2103,7 @@ function CanvasSpaceInner({
       // Stay in pick mode either way; Exit is the only way out (item 7).
       if (!added) toast.error(t('canvas.generatePanel.referenceAddFailed'));
     },
-    [graphStore, sessionStore, projectId, spaceId, flowEdges, t, kindLabel, endPick],
+    [graphStore, sessionStore, projectId, spaceId, flowEdges, t, kindLabel, endPick, setFocusTarget],
   );
 
   // Where the new note goes, in canvas coordinates, while its box is open.
@@ -2351,9 +2354,11 @@ function CanvasSpaceInner({
     isGroup: false,
     isAnnotation: false,
     // A text node holds words; every other content kind holds an asset. The
-    // menu's Download / Understand / Tools act on that asset, so they are
-    // left off a text node's menu entirely.
+    // menu's Download / Understand act on that asset, so they are left off a
+    // text node's menu entirely.
     isText: false,
+    // Which mini-tools the Tools submenu lists (inner#888 §7.1).
+    type: '',
   });
   const [selectionMenu, setSelectionMenu] = React.useState({
     open: false,
@@ -2426,7 +2431,7 @@ function CanvasSpaceInner({
   // directly; pdf/docx/xlsx parsed in-browser). A failure is told to the person
   // who tried, in their language, and never written into the shared document —
   // the media path's ending comes from the task row (#186 §3.7.3) and the local
-  // extraction, which has no row, keeps its own `data.errorMessage` (§3.7.4).
+  // extraction, which has no row, is a toast (inner#888 §7.8).
   // No file is rejected. Created nodes are batch-selected once mirrored back.
 
   // Whoever is at this browser: stamped on everything created here, which is
@@ -2445,13 +2450,6 @@ function CanvasSpaceInner({
   // sink further up. It reads the same reason vocabulary and reaches for the
   // same two toast keys, which is what keeps the two consistent.
   //
-  // Fixed-English wire string — like AIGC failure messages and the group
-  // default name: errorMessage goes into Yjs and renders raw to every
-  // collaborator, so it must not freeze the uploader's locale into the shared
-  // doc; the filename is the locale-free part telling the user WHICH file
-  // failed. For a retryable failure the File is stashed BEFORE the error lands
-  // so the error re-render already sees the Retry stash (#1609 P4).
-  //
   // Two reasons are different in kind and neither is stashed. A `hash` failure
   // means the browser could not fingerprint the file, so no retry of THIS page
   // can succeed (the hashing worker's code is what broke) and the remedy is a
@@ -2459,7 +2457,7 @@ function CanvasSpaceInner({
   // nobody frees any in the seconds a retry takes. Both remedies can only be
   // said in a localized toast.
   const failUploadNode = React.useCallback(
-    (outcome: UploadFailure, file: File): void => {
+    (outcome: UploadFailure, file: File, tag?: MiniToolUploadTag): void => {
       const plan = resolveUploadFailure(outcome);
       if (plan.kind === 'reportToServer') {
         // Nobody else can end this row: the bytes never reached the edge, so
@@ -2467,7 +2465,7 @@ function CanvasSpaceInner({
         // failure under the node's failed count, where somebody who started
         // this upload and looked away still finds it — which a toast, and a
         // node now running several uploads at once, cannot do.
-        stashRetryFile(projectId, spaceId, plan.taskId, file);
+        stashRetryFile(projectId, spaceId, plan.taskId, file, tag);
         void canvasApi.reportNodeTaskFailure(plan.taskId).catch((err: unknown) => {
           // Nothing on screen: this report is itself a request, and one reason
           // it fails is that the network would not take one — saying so twice
@@ -2493,10 +2491,20 @@ function CanvasSpaceInner({
       // either way — a node that exists is the reader's to remove, and only
       // theirs (#2177).
       if (plan.keepFileFor !== undefined) {
-        stashRetryFile(projectId, spaceId, plan.keepFileFor, file);
+        stashRetryFile(projectId, spaceId, plan.keepFileFor, file, tag);
       }
     },
     [projectId, spaceId, t],
+  );
+
+  // Text this browser could not extract never reached the server, so no task
+  // row tells of it: the person who picked the file is told, and the node is
+  // left as it was (inner#888 §7.8).
+  const failExtraction = React.useCallback(
+    (file: File): void => {
+      toast.error(t('canvas.upload.extractionFailed', { filename: file.name }));
+    },
+    [t],
   );
 
   const processFiles = React.useCallback(
@@ -2646,14 +2654,7 @@ function CanvasSpaceInner({
                 .then((text) =>
                   setNodeExtractedText(projectId, spaceId, nodeId, text),
                 )
-                .catch(() =>
-                  setNodeExtractionError(
-                    projectId,
-                    spaceId,
-                    nodeId,
-                    `Extraction failed: ${file.name}`,
-                  ),
-                ),
+                .catch(() => failExtraction(file)),
             );
           }
         }
@@ -2666,6 +2667,7 @@ function CanvasSpaceInner({
       spaceId,
       userId,
       failUploadNode,
+      failExtraction,
       createUploadNodeAt,
       stepPaste,
       t,
@@ -2853,6 +2855,7 @@ function CanvasSpaceInner({
         isGroup: node.type === 'group',
         isAnnotation: node.type === 'annotation',
         isText: node.type === 'text',
+        type: node.type ?? '',
       });
     },
     [sessionStore, readOnly],
@@ -3629,6 +3632,7 @@ function CanvasSpaceInner({
       nodeId: string,
       file: File,
       modality: UploadNodeSpec['nodeType'],
+      tag?: MiniToolUploadTag,
     ): void => {
       // Re-gate at fill time (adversarial round): activateNodeUpload gates at
       // picker-OPEN, but the OS picker then stays open for seconds — a
@@ -3671,6 +3675,7 @@ function CanvasSpaceInner({
           requestTicket: assetsApi.requestUploadTicket,
           sendToIngest: sendFileAndFinish,
           spaceId,
+          ...(tag !== undefined && { tag }),
           extractText,
           // Type gate: the picker's accept is advisory (macOS lets audio/*
           // select .mp4) — a file that doesn't classify to the node's modality
@@ -3684,16 +3689,15 @@ function CanvasSpaceInner({
           // Also the text path only, and a text-extraction failure has nothing
           // to re-upload — every upload failure goes through `onUploadFailure`
           // below, where the Retry stash is decided per reason.
-          setError: (id, message) =>
-            setNodeExtractionError(projectId, spaceId, id, message),
+          onExtractionFailure: failExtraction,
           // The same outcome as the drop path, reason for reason: one place
           // decides the stash and says the remedy in the reader's language.
-          onUploadFailure: (outcome, f) => failUploadNode(outcome, f),
+          onUploadFailure: (outcome, f) => failUploadNode(outcome, f, tag),
         });
       })();
       trackOperation(nodeId, work);
     },
-    [projectId, spaceId, t, failUploadNode, trackOperation],
+    [projectId, spaceId, t, failUploadNode, failExtraction, trackOperation],
   );
   // Reset an image node to a fresh blank PNG (#1623): the panel's Execute. reset
   // ≡ "upload a new image" (user 2026-07-20), so it rasterises the blank canvas
@@ -3785,18 +3789,12 @@ function CanvasSpaceInner({
   // Node menu "download": the asset the menu's node is showing, or null when
   // it shows none — which is also what decides whether the item is offered at
   // all, so the item and its target come from one answer (#2108).
-  // The same question the node body asks itself, asked the same way: a failed
-  // node shows its content again while its own task list is open beside it.
-  const menuHostTasksOpen = useCanvasSession(taskPanelOpenFor(nodeMenu.nodeId));
   const menuDownloadUrl = React.useMemo(
     () =>
       readOnly
         ? null
-        : downloadableAsset(
-          nodes.find((n) => n.id === nodeMenu.nodeId)?.data,
-          menuHostTasksOpen,
-        ),
-    [readOnly, nodes, nodeMenu.nodeId, menuHostTasksOpen],
+        : downloadableAsset(nodes.find((n) => n.id === nodeMenu.nodeId)?.data),
+    [readOnly, nodes, nodeMenu.nodeId],
   );
   // A read, like history browsing: no node gate, a locked node downloads too.
   // The role term above is what its three neighbours state, and what keeps it
@@ -3839,6 +3837,37 @@ function CanvasSpaceInner({
       },
     });
   }, [nodeMenu.nodeId, projectId, spaceId, queryClient]);
+  // Tools act on the asset the node is showing, so they are listed exactly
+  // when Download is offered (inner#888 §7.1).
+  // A model tool whose pinned model the catalog does not serve is left off,
+  // as the generation panel leaves such models off its list.
+  const menuCatalog = useQuery(modelCatalogQuery()).data;
+  const menuTools = React.useMemo(
+    () =>
+      menuDownloadUrl === null
+        ? undefined
+        : servedMiniToolsFor(nodeMenu.type, menuCatalog).map((tool) => ({
+          id: tool.id,
+          labelKey: tool.labelKey,
+          icon: tool.icon,
+          model: tool.run.kind === 'model',
+        })),
+    [menuDownloadUrl, nodeMenu.type, menuCatalog],
+  );
+  const openMiniTool = useCanvasSession((s) => s.openMiniTool);
+  const openToolFromMenu = React.useCallback(
+    (toolId: string): void => {
+      const spec = miniToolById(toolId);
+      if (spec === undefined || menuDownloadUrl === null) return;
+      const nodeId = nodeMenu.nodeId;
+      openMiniTool(nodeId, toolId, {
+        sourceContent: menuDownloadUrl,
+        params: defaultParamsOf(spec),
+      });
+      selectOnlyNode(nodeId);
+    },
+    [menuDownloadUrl, nodeMenu.nodeId, openMiniTool, selectOnlyNode],
+  );
   // Understand is offered on exactly what Download is offered on — the asset
   // the node's body is showing — so it reads the same answer. What happens
   // after the press is `startUnderstandRun`'s: it settles what the browser
@@ -3893,6 +3922,47 @@ function CanvasSpaceInner({
     spaceId,
     viewerId,
   ]);
+  // A mini-tool's Run (inner#888 §7.5): the snapshot was taken by the panel.
+  // A browser tool's export, build and upload are one tracked operation, so a
+  // tab close in the middle is held back as an upload's is.
+  const runMiniTool = React.useCallback(
+    (nodeId: string, spec: MiniToolSpec, snapshot: MiniToolSnapshot): Promise<void> => {
+      const host = nodes.find((n) => n.id === nodeId);
+      const view = asContentView(host?.data);
+      if (host === undefined || view === undefined) return Promise.resolve();
+      const group =
+        host.parentId === undefined
+          ? undefined
+          : nodes.find((n) => n.id === host.parentId);
+      const work = startMiniToolRun({
+        projectId,
+        spaceId,
+        userId: viewerId ?? '',
+        spec,
+        snapshot,
+        source: {
+          id: host.id,
+          name: view.name,
+          position: host.position,
+          groupOrigin: group?.position ?? null,
+          mimeType: view.mimeType,
+          width: 'width' in view ? view.width : undefined,
+          height: 'height' in view ? view.height : undefined,
+        },
+        sourceExists: () => buffer.settled().some((n) => n.id === nodeId),
+        exportFile: exportMiniToolFile,
+        fillUpload,
+        onBuilt: (built) => {
+          setSelectAfterCreate(built.map((node) => node.id));
+          const [first] = built;
+          if (first !== undefined) frameNewNode(first.position, nodeId);
+        },
+      });
+      if (spec.run.kind === 'browser') trackOperation(newId(), work);
+      return work;
+    },
+    [nodes, projectId, spaceId, viewerId, buffer, fillUpload, frameNewNode, trackOperation],
+  );
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
       const file = event.target.files?.[0];
@@ -3902,38 +3972,6 @@ function CanvasSpaceInner({
       fillUpload(target.nodeId, file, target.modality);
     },
     [fillUpload],
-  );
-  // Task list "Replace" (#186 §7.4): put one task's result on the node. A
-  // direct write with no lock — the conflict rule is that the later write
-  // wins, and every task's own result stays on its row for the user to pick
-  // again. Only the node's own lock refuses it.
-  const replaceNodeFromTask = React.useCallback(
-    (nodeId: string, task: NodeTaskEntry): void => {
-      const host = buffer.settled().find((node) => node.id === nodeId);
-      if (host === undefined || !HISTORY_MODALITIES.has(host.type ?? '')) return;
-
-      // The same decision the history panel resolves, because a task's result
-      // and a history row's result are the same thing reached two ways — in
-      // particular a video result with no cover clears the node's poster
-      // rather than leaving the previous clip's on it.
-      const decision = resolveTaskReplace({
-        readOnly,
-        task,
-        modality: host.type as HistoryModality,
-        gateState: { locked: isNodeLocked(projectId, spaceId, nodeId) },
-      });
-      if (decision.kind === 'blocked') {
-        warnNodeGate(t(decision.toastKey));
-        return;
-      }
-      if (decision.kind === 'write') {
-        restoreNodeMedia(projectId, spaceId, nodeId, {
-          content: decision.content,
-          media: decision.media,
-        });
-      }
-    },
-    [readOnly, projectId, spaceId, t, buffer],
   );
   // Error-state Retry (#1609 P4): re-run the upload from the session stash.
   // The stash survives repeated failures and is dropped when the reader
@@ -3954,9 +3992,9 @@ function CanvasSpaceInner({
       // upload onto the same node has its own (#186 §3.7.2). The failed row
       // stays where it is: re-sending is a new task, and removing the record
       // of the old one is the user's call.
-      const file = getRetryFile(projectId, spaceId, taskId);
-      if (!file) return;
-      fillUpload(nodeId, file, fileToNodeSpec(file).nodeType);
+      const upload = getRetryUpload(projectId, spaceId, taskId);
+      if (!upload) return;
+      fillUpload(nodeId, upload.file, fileToNodeSpec(upload.file).nodeType, upload.context);
     },
     [readOnly, projectId, spaceId, t, fillUpload],
   );
@@ -4255,6 +4293,14 @@ function CanvasSpaceInner({
       return paint((node) => !isFocusCandidate(node, target));
     }
 
+    if (pickSession.purpose === 'miniToolSlot') {
+      // Judged by the same predicate the click uses (inner#888 §7.3).
+      const slot = activeMiniToolSlot(pickSession, miniToolDraft);
+      if (slot === undefined || miniToolDraft === null) return paint(() => true);
+      const held = heldSlotUrls(miniToolDraft, slot);
+      return paint((node) => !miniToolSlotCandidate(node, target, slot, held));
+    }
+
     const paintingSlot = slotSpec(slotForPurpose(pickSession.purpose) ?? '');
     if (paintingSlot) {
       // Every source slot shares the candidate rule: any non-empty node of
@@ -4270,7 +4316,7 @@ function CanvasSpaceInner({
         paintingSlot.multiple ? readSlotPicks(paintingSlot, targetData?.[paintingSlot.field]).map((p) => p.url) : [],
       );
       return paint((node) => {
-        const data = node.data as { content?: unknown; status?: unknown };
+        const data = node.data as { content?: unknown; handling?: unknown };
         return (
           node.id === target ||
           node.type !== accepts ||
@@ -4296,7 +4342,7 @@ function CanvasSpaceInner({
         alreadyReferenced.has(node.id) ||
         !canConnect(node.type ?? '', targetKind),
     );
-  }, [renderNodes, pickSession, flowEdges]);
+  }, [renderNodes, pickSession, flowEdges, miniToolDraft]);
 
   // Arrow keys move the selected nodes through xyflow; this writes each
   // nudge the way a drag release would.
@@ -4630,6 +4676,13 @@ function CanvasSpaceInner({
             spaceId={spaceId}
             getLastWriteWasLocal={getLastWriteWasLocal}
           />
+          {/* A mini-tool's parameter panel: the same slot under the node,
+              so it and the Generate panels never show together. */}
+          <MiniToolPanelContainer
+            nodes={nodes}
+            getLastWriteWasLocal={getLastWriteWasLocal}
+            onRun={runMiniTool}
+          />
           {/* An expanded annotation: the fifth panel in that same host +
               lifecycle, floating beside its pin. */}
           <AnnotationPanelContainer nodes={nodes} deletedByPeer={deletedByPeer} />
@@ -4656,9 +4709,11 @@ function CanvasSpaceInner({
             projectId={projectId}
             spaceId={spaceId}
             readOnly={readOnly}
-            onReplace={replaceNodeFromTask}
             onRetry={retryNodeUpload}
           />
+          {/* The focus crop's bar under its node; the marquee is drawn inside
+              the node by the node's own crop box (inner#888 §7.4.1). */}
+          <FocusCropControls onConfirm={onFocusCropConfirm} onBackToPick={onFocusBackToPick} />
         </ReactFlow>
         {pickForNodeId ? (
           <div
@@ -4686,7 +4741,7 @@ function CanvasSpaceInner({
             <span>
               {t(
                 pickSession
-                  ? PICK_PURPOSE_UI[pickSession.purpose].banner
+                  ? pickSessionUi(pickSession, miniToolDraft?.toolId).banner
                   : 'canvas.generatePanel.selectFromCanvas',
               )}
             </span>
@@ -4712,20 +4767,6 @@ function CanvasSpaceInner({
               {t('canvas.generatePanel.exitSelect')}
             </Button>
           </div>
-        ) : null}
-        {pickSession?.purpose === 'focus' && focusCropTargetId !== null ? (
-          <FocusCropOverlay
-            nodeId={focusCropTargetId}
-            // ABSOLUTE position (member + ancestor group offsets): a member
-            // node's own position is parent-relative, so a GROUP drag moves
-            // the image without touching it — the overlay's re-measure
-            // signal must follow the composed coordinates (adversarial
-            // round-2). The overlay deps on the x/y primitives, so the
-            // fresh object identity per render is harmless.
-            nodePosition={absoluteNodePosition(renderNodes, focusCropTargetId)}
-            onConfirm={onFocusCropConfirm}
-            onBackToPick={onFocusBackToPick}
-          />
         ) : null}
         {flowNodes.length === 0 ? (
           <div
@@ -4846,14 +4887,17 @@ function CanvasSpaceInner({
           assetActionsOffered={!nodeMenu.isText}
           // Download is offered exactly when the node's body is showing an
           // asset (user 2026-09-18). `downloadableAsset` is that judgement:
-          // it says which three modalities carry one, and it asks what
-          // `NodeContent` asks before rendering the body.
+          // it says which three modalities carry one and whether the node
+          // holds one.
           onDownload={menuDownloadUrl === null ? undefined : downloadFromMenu}
           // The same answer Download reads: both act on the asset the node's
           // body is showing, and a node showing none disables both.
           onUnderstand={
             menuDownloadUrl === null ? undefined : understandFromMenu
           }
+          toolsOffered={miniToolsFor(nodeMenu.type).length > 0}
+          tools={menuTools}
+          onTool={openToolFromMenu}
           // Rename is frozen on a locked node / group (the name is on-canvas
           // content); hide it rather than offer a silent no-op. A sticky has
           // no name header to rename into (`node-name-header.test.tsx` pins
@@ -4910,38 +4954,6 @@ function pendingFocusCount(session: CanvasSessionStore, nodeId: string): number 
   return session
     .getState()
     .pendingFocusUploads.filter((p) => p.nodeId === nodeId).length;
-}
-
-/**
- * Composes a node's ABSOLUTE flow position by walking its parentId chain —
- * a Group member's own position is parent-relative, so a group drag moves
- * the node on screen without changing it (adversarial round-2: the focus
- * overlay re-measures off this signal). Cycle-guarded like ReactFlow's own
- * resolver; missing nodes contribute nothing.
- * @param nodes - The current render nodes (position + parentId).
- * @param nodeId - The node whose absolute position to compose.
- * @returns The absolute { x, y } flow position (0,0 for a missing node).
- */
-function absoluteNodePosition(
-  nodes: ReadonlyArray<{
-    id: string;
-    position: { x: number; y: number };
-    parentId?: string;
-  }>,
-  nodeId: string,
-): { x: number; y: number } {
-  let x = 0;
-  let y = 0;
-  const seen = new Set<string>();
-  let current = nodes.find((n) => n.id === nodeId);
-  while (current && !seen.has(current.id)) {
-    seen.add(current.id);
-    x += current.position.x;
-    y += current.position.y;
-    const parentId = current.parentId;
-    current = parentId ? nodes.find((n) => n.id === parentId) : undefined;
-  }
-  return { x, y };
 }
 
 /**

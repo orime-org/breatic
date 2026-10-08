@@ -13,6 +13,7 @@
 
 import { MediaUnavailable, UnderstandRefused } from "@breatic/domain";
 import type { RefusalKind, UnavailableKind } from "@breatic/domain";
+import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import {
   assetNameFromUrl,
@@ -101,6 +102,8 @@ const REFUSAL_ANSWER_STANDS: Readonly<Record<RefusalKind, boolean>> = {
 export function verdictStands(err: unknown): boolean {
   // A redelivery resumes the same prediction and reads the same failure.
   if (err instanceof UpstreamTaskFailed) return true;
+  // A redelivery reads the same job, which has already ended.
+  if (err instanceof ContainerJobFailed) return true;
   if (err instanceof MediaUnavailable) return MEDIA_ANSWER_STANDS[err.kind];
   if (err instanceof UnderstandRefused) return REFUSAL_ANSWER_STANDS[err.kind];
   return false;
@@ -145,6 +148,8 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
   no_credits: false,
   declined: false,
   media_refused: false,
+  tool_failed: false,
+  no_audio_track: false,
 };
 
 /**

@@ -273,6 +273,26 @@ describe('entryMessage specificity (#1622)', () => {
     ).toBe('activity.type.generationSucceeded');
   });
 
+  // inner#888 §7.7: the action follows the payload's own source, and a tool
+  // the registry knows is named as its menu row names it.
+  it('names a registered tool by its label, an unknown one as stored', () => {
+    const msg = entryMessage(
+      entry({ type: 'generation:succeeded', payload: { source: 'mini_tool', toolName: 'image.upscale' } }),
+    );
+    expect(msg).toMatchObject({ key: 'activity.type.generationSucceededTool', params: { toolName: 'Upscale' } });
+    expect(
+      entryMessage(entry({ type: 'generation:succeeded', payload: { source: 'mini_tool', toolName: 'crop' } })).params
+        .toolName,
+    ).toBe('crop');
+  });
+
+  it('describes a browser tool upload as the tool, not as an upload', () => {
+    const msg = entryMessage(
+      entry({ type: 'asset:uploaded', payload: { source: 'mini_tool', toolName: 'image.rotate', kind: 'image' } }),
+    );
+    expect(msg).toMatchObject({ key: 'activity.type.generationSucceededTool', params: { toolName: 'Rotate & flip' } });
+  });
+
   it('specific keys keep the {actor} param', () => {
     expect(
       entryMessage(

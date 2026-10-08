@@ -6,9 +6,9 @@ import type { Check, CheckContext, Finding } from "#repo-lint/check";
 /**
  * FFmpeg's libraries stay out of our process (#178, action 1).
  *
- * We run ffmpeg as a separate program: ten call sites, every one of them a
- * subprocess — eight `spawnCollected` in the worker's video mini-tools, two
- * `execFile` in the media container. That is what lets us take a GPL binary
+ * We run ffmpeg as a separate program: every call site is a subprocess, in
+ * the media container and in the worker's voice-sample script maintainers run
+ * by hand. That is what lets us take a GPL binary
  * without the licence reaching our own code, and it holds only while nothing
  * links the libraries in. In JavaScript there is one way to link a native
  * library: install a package that binds it, then import it. Both ends are

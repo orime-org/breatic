@@ -154,6 +154,7 @@ describe("what a history row says about the run behind it", () => {
         credits: 12,
         durationMs: 4200,
         params: { source_type: "image" },
+        toolId: undefined,
       }).model,
     ).toBe("google/gemini-3.8-flash-002");
   });
@@ -168,7 +169,15 @@ describe("what a history row says about the run behind it", () => {
         credits: undefined,
         durationMs: undefined,
         params: undefined,
+        toolId: undefined,
       }).model,
     ).toBe("google/gemini-3.8-flash");
+  });
+
+  // A20: the history row is named by the tool, as the task row is.
+  it("names the mini-tool a run was made by, and nothing for a generation", () => {
+    const run = { reportedModel: undefined, jobModel: undefined, credits: undefined, durationMs: undefined, params: undefined };
+    expect(generationMetadata({ ...run, toolId: "video.cut" })).toMatchObject({ toolId: "video.cut" });
+    expect(generationMetadata({ ...run, toolId: undefined })).not.toHaveProperty("toolId");
   });
 });
