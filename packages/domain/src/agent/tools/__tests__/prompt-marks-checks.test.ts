@@ -359,7 +359,7 @@ describe("marks the reader can act on", () => {
     const shape = inputSchema.shape.nodes.element.shape;
     expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/never a node going into a slot/);
     expect(shape.prompt.description ?? "").toMatch(/a node going into a slot or the lyrics box takes a note of its own instead/);
-    expect(shape.prompt.description ?? "").toMatch(/an empty node left unwired/);
+    expect(shape.prompt.description ?? "").toMatch(/an empty node no edge sends into a generation \(unwired, or wired only as a link to a model that takes nothing from it\)/);
   });
 
 });
@@ -631,9 +631,23 @@ describe("a note for every node going into a slot (design 5.7, user 2026-10-08)"
     });
     expect(checkProposal(proposal([{ text: "she walks" }]))).toMatchObject({
       ok: false,
-      reason: expect.stringContaining('"Photo" goes into no generation by its edges'),
+      reason: expect.stringContaining('"Photo" goes into no generation, so the reader picks it into a slot'),
     });
     expect(checkProposal(proposal([{ slot: { kind: "note", label: "Pick Photo into the image slot" } }, { text: "she walks" }]))).toEqual({ ok: true });
+  });
+
+  it("names every empty node no edge sends in, in a sentence that reads right for two", () => {
+    const pictures = ["Front", "Back"].map((name): ProposalNode => ({ role: "source", type: "image", name }));
+    const proposal: CanvasProposal = {
+      nodes: [...pictures, { role: "generate", type: "image", name: "Poster", mode: "t2i", model: "krea-v2-large-text-to-image", prompt: [{ text: "A poster." }] }],
+      edges: [],
+      rationale: "",
+      groupName: "Poster",
+    };
+    expect(checkProposal(proposal)).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('"Front", "Back" go into no generation, so the reader picks each into a slot'),
+    });
   });
 
   it("does not count a note a wired slot node already uses toward an unwired one", () => {
