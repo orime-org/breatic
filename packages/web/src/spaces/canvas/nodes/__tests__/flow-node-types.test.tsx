@@ -599,6 +599,34 @@ describe('a stored image zoomed past its preview', () => {
     expect(screen.getByTestId('image-node-original').getAttribute('src')).toBe(STORED);
   });
 
+  it('lays the original over a very tall image at 100% on a 2x screen', () => {
+    vi.stubGlobal('devicePixelRatio', 2);
+    const Image = FLOW_NODE_TYPES.image;
+    render(
+      <TooltipProvider>
+        <ReactFlowProvider>
+          <StoreGrabber />
+          <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: () => undefined,
+            deleteNode: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
+            reportGroupResize: () => undefined, beginGroupResize: () => undefined, }}>
+            <Image
+              {...({
+                id: 'n1',
+                width: 288,
+                data: { kind: 'image', status: 'idle', name: 'N', content: STORED, width: 1080, height: 64800 },
+                selected: false,
+              } as unknown as NodeProps)}
+            />
+          </CanvasActionsContext.Provider>
+        </ReactFlowProvider>
+      </TooltipProvider>,
+    );
+    act(() => {
+      storeApi?.setState({ transform: [0, 0, 1] });
+    });
+    expect(screen.getByTestId('image-node-original').getAttribute('src')).toBe(STORED);
+  });
+
   it('lays the original over it when the window moves to a denser screen', () => {
     const listeners: (() => void)[] = [];
     vi.stubGlobal('matchMedia', (query: string) => ({

@@ -4,18 +4,33 @@
 /**
  * Where a stored image's preview lives (inner#1320, inner#832).
  *
- * Every stored image gets one 576-wide WebP beside it, at a key derived from
+ * Every stored image gets one WebP of at most 576 wide beside it, at a key derived from
  * its own. The derivation is the whole record: nothing in the ledger names the
  * preview, so the Worker that writes it, the backfill that fills it in and
  * every page that shows it read the same rule here.
  */
 
 /**
- * How wide a preview is, in pixels. A canvas node is 288 CSS px wide, so this
- * covers it on a 2x screen; past that the page shows the original. The
- * container writes previews at this width too, held to it by its own test.
+ * The widest a preview is, in pixels. A canvas node is 288 CSS px wide, so this
+ * covers it on a 2x screen. The container writes previews to this rule too,
+ * held to it by its own test.
  */
 export const PREVIEW_WIDTH = 576;
+
+/** The longest side a WebP holds, which caps a very tall picture's preview. */
+export const PREVIEW_MAX_SIDE = 16383;
+
+/**
+ * How wide a picture's preview comes out. A picture narrower than
+ * {@link PREVIEW_WIDTH} keeps its width, and one taller than about 28 times its
+ * width comes out narrower still, so its height fits in a WebP.
+ * @param width - The picture's width.
+ * @param height - The picture's height.
+ * @returns The preview's width in pixels.
+ */
+export function previewWidthFor(width: number, height: number): number {
+  return Math.min(PREVIEW_WIDTH, width, Math.trunc((width * PREVIEW_MAX_SIDE) / height));
+}
 
 /** What a preview's key adds to the key of the image it was cut from. */
 export const PREVIEW_SUFFIX = ".preview.webp";

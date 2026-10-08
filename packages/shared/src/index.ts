@@ -687,6 +687,8 @@ export {
 export {
   PREVIEW_SUFFIX,
   PREVIEW_WIDTH,
+  PREVIEW_MAX_SIDE,
+  previewWidthFor,
   previewKeyFor,
   previewUrlFor,
   originalUrlFor,

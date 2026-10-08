@@ -4,9 +4,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  PREVIEW_WIDTH,
   originalUrlFor,
   previewKeyFor,
   previewUrlFor,
+  previewWidthFor,
 } from "@shared/upload/preview.js";
 
 const BASE = "https://resource-dev.breatic.cc";
@@ -79,5 +81,20 @@ describe("originalUrlFor", () => {
     const preview = previewUrlFor(original);
     expect(preview).not.toBeNull();
     expect(originalUrlFor(preview ?? "")).toBe(original);
+  });
+});
+
+describe("previewWidthFor", () => {
+  it("is 576 for a picture wider than that", () => {
+    expect(previewWidthFor(4000, 3000)).toBe(PREVIEW_WIDTH);
+  });
+
+  it("keeps a narrower picture's own width", () => {
+    expect(previewWidthFor(301, 151)).toBe(301);
+  });
+
+  it("narrows a picture taller than WebP's side limit allows at 576", () => {
+    expect(previewWidthFor(1080, 36000)).toBe(491);
+    expect(previewWidthFor(1080, 64800)).toBe(273);
   });
 });

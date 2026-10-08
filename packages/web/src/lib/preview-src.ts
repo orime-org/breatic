@@ -4,7 +4,7 @@
 /**
  * Which address a page shows a stored image at (inner#1320, inner#832).
  *
- * Every stored image has a 576-wide preview beside it, and anywhere a picture
+ * Every stored image has a preview at most 576 wide beside it, and anywhere a picture
  * is only looked at shows that. Older images, animations and the odd failed
  * cut have none, so a preview that does not load is remembered for the rest of
  * the session and every place showing that image falls back to the original.

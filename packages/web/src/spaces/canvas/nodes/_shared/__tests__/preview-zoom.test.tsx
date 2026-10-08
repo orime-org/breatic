@@ -21,6 +21,13 @@ describe('zoomedPastPreview', () => {
     expect(zoomedPastPreview(288, 2.5, 1)).toBe(true);
   });
 
+  it('measures against a narrower preview when the picture has one', () => {
+    // A 1080x64800 strip gets a 273-wide preview: at 100% on a 2x screen the
+    // node already stretches it.
+    expect(zoomedPastPreview(288, 1, 2, 273)).toBe(true);
+    expect(zoomedPastPreview(288, 0.4, 2, 273)).toBe(false);
+  });
+
   it('says nothing about a node it has no width for', () => {
     expect(zoomedPastPreview(0, 8, 2)).toBe(false);
   });
