@@ -1047,6 +1047,7 @@
       "description": "{count, plural, other {# 個 · 點擊切換或使用右側操作}}",
       "empty": "尚無 Spaces",
       "openAria": "開啟 {name}",
+      "rowActions": "檢視、鎖定或刪除這個 Space",
       "status": {
         "editing": "編輯中",
         "open": "已開啟"
