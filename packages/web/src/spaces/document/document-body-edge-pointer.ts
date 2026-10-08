@@ -44,6 +44,7 @@ import {
   type BodyEdge,
   type PointerZone,
 } from '@web/spaces/document/document-body-edge-selection';
+import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 
 /**
  * How far the pointer can travel before a press is a drag rather than a click:
@@ -173,14 +174,14 @@ function isPlainPress(event: MouseEvent): boolean {
 }
 
 /**
- * Whether a press lands on a control a block draws, a check-list checkbox or a
- * toggle heading's button: the press is the control's, and the text selection
- * stays as it is.
+ * Whether a press lands on a control a block draws — a check-list checkbox, a
+ * toggle heading's button, a media block's toolbar, resize knob or caption
+ * field: the press is the control's, and the text selection stays as it is.
  * @param event - The press.
  * @returns True for a press on such a control.
  */
 function onControl(event: MouseEvent): boolean {
-  return event.target instanceof Element && event.target.closest('input, button') !== null;
+  return event.target instanceof Element && event.target.closest(`input, button, ${MEDIA_CHROME}`) !== null;
 }
 
 /**

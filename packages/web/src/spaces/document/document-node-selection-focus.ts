@@ -12,11 +12,11 @@
  * left. The selection becomes the caret nearest the block, which shows
  * nothing while the body has no focus; when the reader clicks back in, the
  * old block is not drawn as selected for the moment between the press and the
- * new selection. Where that caret would land in a table cell, or where there
- * is no place for text, the selection stays where it is and is marked let go
- * ({@link isLetGo}): a block draws itself as not selected until the focus
- * comes back to the editable element or the selection moves to something
- * else. The full table of states and events is in the design (inner#1127,
+ * new selection. The caret goes to the nearest place for text after the
+ * block, or before it; where both are in a table cell or missing, the
+ * selection becomes the block itself, marked let go ({@link isLetGo}): the
+ * block draws itself as not selected until the focus lands on the editable
+ * element or the selection moves to something else. The full table of states and events is in the design (inner#1127,
  * 3.5.1).
  *
  * What belongs to the body (`belongsToBody`): the editable element, the area
@@ -60,16 +60,19 @@ function inTableCell(caret: Selection): boolean {
 }
 
 /**
- * Where the caret goes when a block is not to be selected: the first place
- * for text after it, or before it when nothing follows.
+ * Where the caret goes when a block is not to be selected: the nearest place
+ * for text after it, or before it when that one is missing or in a table
+ * cell.
  * @param doc - The document.
- * @param end - Where the block ends.
- * @returns The caret, or null when there is no place for text or the place is in a table cell.
+ * @param from - Where the block starts.
+ * @returns The caret, or null when neither side has a place for text outside a table cell.
  */
-export function caretUnder(doc: PMNode, end: number): Selection | null {
-  const $end = doc.resolve(end);
-  const caret = Selection.findFrom($end, 1, true) ?? Selection.findFrom($end, -1, true);
-  return caret === null || inTableCell(caret) ? null : caret;
+export function caretBeside(doc: PMNode, from: number): Selection | null {
+  const node = doc.nodeAt(from);
+  const $end = doc.resolve(from + (node?.nodeSize ?? 0));
+  const $start = doc.resolve(from);
+  const candidates = [Selection.findFrom($end, 1, true), Selection.findFrom($start, -1, true)];
+  return candidates.find((caret) => caret !== null && !inTableCell(caret)) ?? null;
 }
 
 /**
@@ -83,17 +86,25 @@ const LET_GO = 'documentLetGo';
 
 const KEY = new PluginKey<boolean>('documentNodeSelectionFocus');
 
+/** A layer an element is in, with the element that opened it. */
+interface OpenedLayer {
+  /** The layer: the element an opener's `aria-controls` names. */
+  readonly layer: Element;
+  /** What opened it. */
+  readonly opener: Element;
+}
+
 /**
- * The element that opened the layer an element is in, read off the opener's
- * `aria-controls`.
- * @param element - An element inside a layer.
- * @returns The opener, or null when no element names a layer around it.
+ * The nearest layer around an element that something opened, read off the
+ * opener's `aria-controls`.
+ * @param element - An element.
+ * @returns The layer and its opener, or null when no element names a layer around it.
  */
-function openerOf(element: Element): Element | null {
+function layerAround(element: Element): OpenedLayer | null {
   for (let layer = element.closest('[id]'); layer !== null; layer = layer.parentElement?.closest('[id]') ?? null) {
     // Radix ids carry colons, which a quoted attribute value takes as they are.
     const opener = element.ownerDocument.querySelector(`[aria-controls~="${layer.id}"]`);
-    if (opener !== null) return opener;
+    if (opener !== null) return { layer, opener };
   }
   return null;
 }
@@ -108,7 +119,7 @@ function openerOf(element: Element): Element | null {
 function belongsToBody(view: EditorView, target: EventTarget | null): boolean {
   const body = view.dom.closest(`[${BODY_PART}]`) ?? view.dom;
   const seen = new Set<Element>();
-  for (let at = target instanceof Element ? target : null; at !== null && !seen.has(at); at = openerOf(at)) {
+  for (let at = target instanceof Element ? target : null; at !== null && !seen.has(at); at = layerAround(at)?.opener ?? null) {
     seen.add(at);
     if (body.contains(at)) return true;
   }
@@ -127,15 +138,17 @@ function selectedBlock(selection: Selection): string | null {
 }
 
 /**
- * Lets go of the selected block: the caret goes under the given place, or,
- * with no place for text, the selection is marked let go.
+ * Lets go of a block: whatever the body had selected becomes the caret beside
+ * the block, or, with no place for that caret, the block itself selected and
+ * marked let go.
  * @param view - The view.
- * @param end - Where the block the caret goes under ends.
+ * @param from - Where the block starts.
  */
-export function letGoOfBlock(view: EditorView, end: number): void {
-  const caret = caretUnder(view.state.doc, end);
+export function letGoOfBlock(view: EditorView, from: number): void {
+  const { doc } = view.state;
+  const caret = caretBeside(doc, from);
   const tr = view.state.tr.setMeta('addToHistory', false);
-  view.dispatch(caret === null ? tr.setMeta(KEY, true) : tr.setSelection(caret));
+  view.dispatch(caret === null ? tr.setSelection(NodeSelection.create(doc, from)).setMeta(KEY, true) : tr.setSelection(caret));
 }
 
 /**
@@ -158,7 +171,7 @@ function dropUnlessInBody(view: EditorView, now: EventTarget | null): void {
   if (selectedBlock(selection) === null || belongsToBody(view, now)) return;
   // The window itself lost the focus: the body still holds it within the page.
   if (!view.dom.ownerDocument.hasFocus()) return;
-  letGoOfBlock(view, selection.to);
+  letGoOfBlock(view, selection.from);
 }
 
 /**
@@ -194,6 +207,16 @@ export const documentNodeSelectionFocusExtension = createExtension(() => ({
       view: (view) => {
         const page = view.dom.ownerDocument;
         let later: ReturnType<typeof setTimeout> | undefined;
+        let leaving: MutationObserver | undefined;
+        /** Decides by where the focus is once the tasks already queued have run. */
+        const decideSoon = (): void => {
+          clearTimeout(later);
+          later = setTimeout(() => {
+            later = setTimeout(() => {
+              if (!view.isDestroyed) dropUnlessInBody(view, page.activeElement);
+            }, 0);
+          }, 0);
+        };
         /**
          * Lets go of the selected block when the focus leaves the body.
          * @param event - A focusout anywhere on the page.
@@ -204,17 +227,26 @@ export const documentNodeSelectionFocusExtension = createExtension(() => ({
             dropUnlessInBody(view, event.relatedTarget);
             return;
           }
-          // The focus fell to nothing: the reader clicked the page around the
-          // body, or a layer of the body closed, which hands the focus back a
-          // task later (Radix FocusScope does it in a timeout queued as it
-          // unmounts, after this). Decided once that has run, by where the
-          // focus is then.
-          clearTimeout(later);
-          later = setTimeout(() => {
-            later = setTimeout(() => {
-              if (!view.isDestroyed) dropUnlessInBody(view, page.activeElement);
-            }, 0);
-          }, 0);
+          // The focus fell to nothing. From a layer of the body — its overlay
+          // pressed, or the layer closing — the layer hands the keyboard back
+          // as it leaves the page, after any exit it plays (Radix FocusScope,
+          // in a timeout queued as it unmounts): decided once it is gone.
+          // From the body itself the reader clicked the page around it.
+          leaving?.disconnect();
+          leaving = undefined;
+          const opened = event.target instanceof Element ? layerAround(event.target) : null;
+          if (opened === null || !opened.layer.isConnected) {
+            decideSoon();
+            return;
+          }
+          const { layer } = opened;
+          leaving = new MutationObserver(() => {
+            if (layer.isConnected) return;
+            leaving?.disconnect();
+            leaving = undefined;
+            decideSoon();
+          });
+          leaving.observe(page.body, { childList: true, subtree: true });
         };
         /**
          * Takes the let-go mark off when the focus comes back to the editable
@@ -222,7 +254,7 @@ export const documentNodeSelectionFocusExtension = createExtension(() => ({
          * @param event - A focusin anywhere on the page.
          */
         const onFocusIn = (event: FocusEvent): void => {
-          if (KEY.getState(view.state) === true && event.target instanceof Node && view.dom.contains(event.target)) {
+          if (KEY.getState(view.state) === true && event.target === view.dom) {
             view.dispatch(view.state.tr.setMeta(KEY, false).setMeta('addToHistory', false));
           }
         };
@@ -231,6 +263,7 @@ export const documentNodeSelectionFocusExtension = createExtension(() => ({
         return {
           destroy: () => {
             clearTimeout(later);
+            leaving?.disconnect();
             page.removeEventListener('focusout', onFocusOut, true);
             page.removeEventListener('focusin', onFocusIn, true);
           },

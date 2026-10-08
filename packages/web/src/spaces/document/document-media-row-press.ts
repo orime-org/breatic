@@ -111,9 +111,8 @@ function selectMedia(view: EditorView, row: Element): void {
  * @param row - The row.
  */
 function leaveBesideMedia(view: EditorView, row: Element): void {
-  // The row is the block's content element and starts where the block does;
-  // a media block is an atom, so it ends one further on.
-  letGoOfBlock(view, view.posAtDOM(row, 0) + 1);
+  // The row is the block's content element and starts where the block does.
+  letGoOfBlock(view, view.posAtDOM(row, 0));
   (view.dom as HTMLElement).blur();
 }
 
@@ -145,9 +144,9 @@ function repeatClickBesideMedia(event: MouseEvent): boolean {
 }
 
 /**
- * A press in a media block's row: a left one on what the media shows selects
- * the media as it lands; one with any button beside it is noted for the click
- * that follows.
+ * A press in a media block's row, with any button: on what the media shows it
+ * selects the media as it lands; beside it, it is noted for the click that
+ * follows.
  * @param view - The view.
  * @param event - The press.
  */
@@ -160,7 +159,6 @@ function pressInMediaRow(view: EditorView, event: MouseEvent): void {
     pressedBeside.set(view, hit.row);
     return;
   }
-  if (event.button !== 0) return;
   selectMedia(view, hit.row);
   if (!view.hasFocus()) view.focus();
 }

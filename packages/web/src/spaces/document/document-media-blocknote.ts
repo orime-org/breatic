@@ -105,6 +105,17 @@ function propsOf(node: PMNode): MediaBlockProps {
   };
 }
 
+/** The key events a control inside the block answers itself. */
+const CONTROL_KEY_EVENTS = new Set([
+  'keydown',
+  'keyup',
+  'keypress',
+  'beforeinput',
+  'compositionstart',
+  'compositionupdate',
+  'compositionend',
+]);
+
 /**
  * The node view for one media block.
  * @param viewProps - What Tiptap hands a node view.
@@ -235,9 +246,13 @@ function mediaNodeView(
     },
     // A file dragged onto the controls is the body's drop like anywhere else.
     // A drag from the media moves the row through `startRowDrag`, which
-    // sets up what ProseMirror's own dragstart would.
+    // sets up what ProseMirror's own dragstart would. A key reaches the node
+    // view only from a control inside it that holds the keyboard — the
+    // body's own keys come from the editable element — so it is the
+    // control's: a player button, the seek bar, the caption field.
     stopEvent: (event) =>
       event.type === 'dragstart' ||
+      CONTROL_KEY_EVENTS.has(event.type) ||
       (!carriesFiles(event) &&
       event.target instanceof Element &&
       event.target.closest(MEDIA_CHROME) !== null),
