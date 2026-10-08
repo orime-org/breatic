@@ -398,6 +398,24 @@ describe("the lyrics box a song model draws, a second way for words (table B)", 
   });
 });
 
+describe("a kind the canvas will not wire into the node (table A, first row)", () => {
+  it("is refused with the way it does reach the node: picked into its slot, the edge left off", () => {
+    const answer = checkProposal({
+      nodes: [
+        { role: "source", type: "video", name: "Clip" },
+        { role: "generate", type: "audio", name: "Sfx", mode: "sfx", model: "hunyuan-video-foley", prompt: [{ text: "rain on glass" }] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "video" }],
+      rationale: "",
+      groupName: "g",
+    });
+    expect(answer).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('"hunyuan-video-foley" takes a video node in its "video" slot, picked in the panel: leave this edge off'),
+    });
+  });
+});
+
 describe("the lyrics set as a parameter (table D)", () => {
   it("is refused with the way words reach the lyrics box", () => {
     const answer = checkProposal({
