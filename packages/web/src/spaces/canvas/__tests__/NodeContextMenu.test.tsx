@@ -244,8 +244,8 @@ describe('NodeContextMenu', () => {
   // asset actions; a node of such a kind with nothing in it greys the row.
   describe('tools submenu', () => {
     const TOOLS = [
-      { id: 'image.upscale', labelKey: 'canvas.miniTool.image.upscale.label', icon: 'Maximize2' as const },
-      { id: 'image.remove-bg', labelKey: 'canvas.miniTool.image.remove-bg.label', icon: 'Eraser' as const },
+      { id: 'image.upscale', labelKey: 'canvas.miniTool.image.upscale.label', icon: 'Maximize2' as const, model: true },
+      { id: 'image.remove-bg', labelKey: 'canvas.miniTool.image.remove-bg.label', icon: 'Eraser' as const, model: true },
     ];
 
     it('leaves Tools out for a kind that offers no tools', () => {
@@ -283,6 +283,30 @@ describe('NodeContextMenu', () => {
       expect(items.every((item) => item.querySelector('svg') !== null)).toBe(true);
       fireEvent.click(screen.getByTestId('node-menu-tool-image.remove-bg'));
       expect(onTool).toHaveBeenCalledWith('image.remove-bg');
+    });
+
+    it('puts a separator before the model tools, and only there', () => {
+      setup({
+        target: 'node',
+        onUpload: () => {},
+        toolsOffered: true,
+        tools: [
+          { id: 'image.crop', labelKey: 'canvas.miniTool.image.crop.label', icon: 'Crop' as const, model: false },
+          { id: 'image.rotate', labelKey: 'canvas.miniTool.image.rotate.label', icon: 'RotateCw' as const, model: false },
+          ...TOOLS,
+        ],
+        onTool: () => {},
+      });
+      fireEvent.keyDown(screen.getByTestId('node-menu-tools'), { key: 'ArrowRight' });
+
+      const rows = [...screen.getByTestId('node-menu-tool-image.crop').parentElement!.children];
+      expect(rows.map((row) => row.getAttribute('data-testid') ?? row.getAttribute('role'))).toEqual([
+        'node-menu-tool-image.crop',
+        'node-menu-tool-image.rotate',
+        'separator',
+        'node-menu-tool-image.upscale',
+        'node-menu-tool-image.remove-bg',
+      ]);
     });
 
     it('keeps Tools apart from the asset actions', () => {

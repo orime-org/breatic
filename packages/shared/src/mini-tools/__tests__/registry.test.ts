@@ -17,21 +17,22 @@ import {
 } from "@shared/mini-tools/index.js";
 
 const BATCH_ONE = {
-  image: ["image.remove-bg", "image.upscale", "image.digital-human", "image.crop", "image.rotate"],
+  // The confirmed demo's order: the free and usage-billed edits first, the model tools after.
+  image: ["image.crop", "image.rotate", "image.remove-bg", "image.upscale", "image.digital-human"],
   video: [
+    "video.cut",
+    "video.crop",
+    "video.speed",
+    "video.adjust",
+    "video.audio-denoise",
+    "video.stabilize",
+    "video.hdr",
     "video.upscale",
     "video.interpolate",
     "video.extend",
     "video.edit",
     "video.motion",
     "video.animate",
-    "video.crop",
-    "video.speed",
-    "video.cut",
-    "video.adjust",
-    "video.audio-denoise",
-    "video.stabilize",
-    "video.hdr",
   ],
   audio: ["audio.separate", "audio.extend"],
 } as const;
@@ -117,9 +118,9 @@ describe("servedMiniToolsFor", () => {
 
   it("keeps browser tools and the model tools the catalog serves, in order", () => {
     expect(servedMiniToolsFor("image", catalog).map((tool) => tool.id)).toEqual([
-      "image.upscale",
       "image.crop",
       "image.rotate",
+      "image.upscale",
     ]);
   });
 

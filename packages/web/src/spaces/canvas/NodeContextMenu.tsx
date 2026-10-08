@@ -49,6 +49,8 @@ export interface NodeMenuTool {
   id: string;
   labelKey: string;
   icon: MiniToolIcon;
+  /** Runs on a model and spends credits; these follow a separator, after the edits. */
+  model: boolean;
 }
 
 interface NodeContextMenuProps {
@@ -355,17 +357,19 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                   {t('canvas.nodeMenu.tools')}
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent sideOffset={SUBMENU_SIDE_OFFSET}>
-                  {tools?.map((tool) => {
+                  {tools?.map((tool, index) => {
                     const Icon = MINI_TOOL_ICONS[tool.icon];
                     return (
-                      <DropdownMenuItem
-                        key={tool.id}
-                        data-testid={`node-menu-tool-${tool.id}`}
-                        onSelect={() => onTool?.(tool.id)}
-                      >
-                        <Icon className='mr-2 h-4 w-4' aria-hidden='true' />
-                        {t(tool.labelKey)}
-                      </DropdownMenuItem>
+                      <React.Fragment key={tool.id}>
+                        {tool.model && index > 0 && !tools[index - 1]!.model ? <DropdownMenuSeparator /> : null}
+                        <DropdownMenuItem
+                          data-testid={`node-menu-tool-${tool.id}`}
+                          onSelect={() => onTool?.(tool.id)}
+                        >
+                          <Icon className='mr-2 h-4 w-4' aria-hidden='true' />
+                          {t(tool.labelKey)}
+                        </DropdownMenuItem>
+                      </React.Fragment>
                     );
                   })}
                 </DropdownMenuSubContent>

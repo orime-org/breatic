@@ -3846,6 +3846,7 @@ function CanvasSpaceInner({
           id: tool.id,
           labelKey: tool.labelKey,
           icon: tool.icon,
+          model: tool.run.kind === 'model',
         })),
     [menuDownloadUrl, nodeMenu.type, menuCatalog],
   );
