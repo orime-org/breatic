@@ -383,7 +383,10 @@ describe('a click beside a picture', () => {
     press(editor, 2);
     expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([threadId]);
     editor.insertBlocks(
-      [{ type: 'image', props: { url: 'https://cdn.example/a.png', name: 'a.png' } }] as never,
+      [
+        { type: 'image', props: { url: 'https://cdn.example/a.png', name: 'a.png' } },
+        { type: 'paragraph', content: 'delta' },
+      ] as never,
       (editor.document as { id: string }[])[0]!.id,
       'after',
     );
@@ -395,7 +398,8 @@ describe('a click beside a picture', () => {
     view.someProp('handleClick', (handler) => handler(view, view.posAtDOM(row, 0), click));
 
     expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([]);
-    expect(view.state.selection.$from.parent.type.name).not.toBe('image');
     expect(view.state.selection.empty).toBe(true);
+    expect(view.state.selection.$from.parent.textContent).toBe('delta');
+    expect(view.state.selection.$from.parentOffset).toBe(0);
   });
 });
