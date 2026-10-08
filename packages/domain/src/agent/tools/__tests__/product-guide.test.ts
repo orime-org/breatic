@@ -232,10 +232,14 @@ describe("what the guide says", () => {
     expect(section("Proposal cards")).toMatch(/Into a song model's lyrics box: a text node the reader @s in the lyrics box, as an orange note asks/);
   });
 
+  it("says how each mark reads in text read back from a box, and that the note is not sent", () => {
+    expect(section("Proposal cards")).toMatch(/read back as text[^\n]*\(💡 …\)[^\n]*not sent[^\n]*\[📎 …\][^\n]*\{✏️ …\}/i);
+  });
+
   it("says material bound for a source slot is picked in the panel, not mentioned", () => {
     // Nothing is @'d at placing; a node feeding a slot is picked in the panel.
     const proposals = section("Proposal cards");
-    expect(proposals).toMatch(/source slots: it is not @'d; for an optional slot an orange note says which slot, and a required slot left empty stops the run/i);
+    expect(proposals).toMatch(/source slots: it is not @'d; an orange note says which slot to pick it into/i);
     expect(proposals).toMatch(/file or its generated result/i);
     expect(proposals).toMatch(/presses that slot's button and clicks the node/i);
   });

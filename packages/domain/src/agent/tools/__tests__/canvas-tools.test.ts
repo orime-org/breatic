@@ -228,7 +228,7 @@ describe("what the rendered answer tells the model", () => {
   it("says which wired node fills a slot the pool shares a kind with", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /\(kling-video-o3-4k-image-to-video\)[^\n]*Each image node wired in goes one of 2 ways; say which on its edge with into: "pool" \(the reference pool, at most \d+, an asset mark each\) or "\w+" \(a slot, at most 1, nothing to write: the panel asks for it\)\./,
+      /\(kling-video-o3-4k-image-to-video\)[^\n]*Each image node wired in goes one of 2 ways; say which on its edge with into: "pool" \(the reference pool, at most \d+, an asset mark each\) or "\w+" \(a slot, at most 1, a note each\)\./,
     );
   });
 
@@ -250,7 +250,7 @@ describe("what the rendered answer tells the model", () => {
   it("says a kind the canvas will not wire into the node is picked into its slot in the panel", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "sfx" });
     const line = renderGenerationModelsForModel(answer).split("\n").find((l) => l.includes("(hunyuan-video-foley)")) ?? "";
-    expect(line).toMatch(/Each video node is picked into "video" in the panel, not wired in \(a slot, at most 1, nothing to write: the panel asks for it\)\./);
+    expect(line).toMatch(/Each video node is picked into "video" in the panel, not wired in \(a slot, at most 1, a note each\)\./);
     expect(line).not.toMatch(/video node wired in/);
   });
 
@@ -272,7 +272,7 @@ describe("what the rendered answer tells the model", () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
     const said = renderGenerationModelsForModel(answer);
     expect(said).toMatch(
-      /\(seedance-2\.5-image-to-video\)[^\n]*Each image node wired in goes into "image" \(a slot, at most 1, nothing to write: the panel asks for it\)\.[^\n]*Nothing wired in but a text node can be @'d here, so an asset mark can only ask for words\./,
+      /\(seedance-2\.5-image-to-video\)[^\n]*Each image node wired in goes into "image" \(a slot, at most 1, a note each\)\.[^\n]*Nothing wired in but a text node can be @'d here, so an asset mark can only ask for words\./,
     );
     expect(said).not.toMatch(/\(kling-video-o3-4k-image-to-video\)[^\n]*Nothing wired in but a text node/);
   });

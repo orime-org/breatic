@@ -355,10 +355,11 @@ describe("marks the reader can act on", () => {
     expect(edge).toMatch(/"lyrics"/);
   });
 
-  it("keeps asset marks for nodes going into the pool, and none for a node going into a slot", () => {
+  it("keeps asset marks for nodes going into the pool, and a note for every node going into a slot", () => {
     const shape = inputSchema.shape.nodes.element.shape;
     expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/never a node going into a slot/);
-    expect(shape.prompt.description ?? "").toMatch(/a node going into a slot takes no asset mark/);
+    expect(shape.prompt.description ?? "").toMatch(/a node going into a slot or the lyrics box takes a note of its own instead/);
+    expect(shape.prompt.description ?? "").toMatch(/an empty node left unwired/);
   });
 
 });
@@ -557,5 +558,108 @@ describe("what the agent is told about marks", () => {
 
   it("asks for the prompt in the language the reader writes in", () => {
     expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/language the reader/);
+  });
+});
+
+describe("a note for every node going into a slot (design 5.7, user 2026-10-08)", () => {
+  const pick = { slot: { kind: "note" as const, label: "Pick the picture into the slot" } };
+
+  it("asks for a note for a node wired into a required slot", () => {
+    const proposal: CanvasProposal = {
+      nodes: [
+        { role: "source", type: "image", name: "First frame" },
+        { role: "generate", type: "video", name: "Clip", mode: "i2v", model: "seedance-2.5-image-to-video", prompt: [{ text: "She walks forward." }] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      rationale: "",
+      groupName: "Clip",
+    };
+    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringMatching(/"First frame" into image.*0 note/s) });
+  });
+
+  /**
+   * An unwired empty node beside one generation, the way a kind the canvas
+   * will not wire in reaches it: picked into a slot in the panel.
+   * @param source - The empty node.
+   * @param generation - The generation.
+   * @returns The proposal.
+   */
+  function unwired(source: ProposalNode, generation: ProposalNode): CanvasProposal {
+    return { nodes: [source, generation], edges: [], rationale: "", groupName: "g" };
+  }
+  const mood: ProposalNode = { role: "source", type: "image", name: "Mood picture" };
+  const music = (prompt: NonNullable<ProposalNode["prompt"]>): ProposalNode => ({
+    role: "generate", type: "audio", name: "Music", mode: "t2m", model: "lyria-3-pro-music", prompt,
+  });
+
+  it("asks for a note for an unwired empty node an optional slot takes", () => {
+    expect(checkProposal(unwired(mood, music([{ text: "calm piano music" }])))).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/"Mood picture".*note/s),
+    });
+    expect(checkProposal(unwired(mood, music([pick, { text: "calm piano music" }])))).toEqual({ ok: true });
+  });
+
+  it("asks for a note for an unwired empty node a required slot takes", () => {
+    const clip: ProposalNode = { role: "source", type: "video", name: "Clip" };
+    const sfx = (prompt: NonNullable<ProposalNode["prompt"]>): ProposalNode => ({
+      role: "generate", type: "audio", name: "Sfx", mode: "sfx", model: "hunyuan-video-foley", prompt,
+    });
+    expect(checkProposal(unwired(clip, sfx([{ text: "rain on glass" }])))).toMatchObject({ ok: false, reason: expect.stringContaining('"Clip"') });
+    expect(checkProposal(unwired(clip, sfx([{ slot: { kind: "note", label: "Pick the clip into the video slot" } }, { text: "rain on glass" }])))).toEqual({ ok: true });
+  });
+
+  it("asks no note for an unwired empty node no slot in the group takes", () => {
+    const picture: ProposalNode = { role: "source", type: "image", name: "Photo" };
+    const proposal = unwired(picture, {
+      role: "generate", type: "image", name: "Edit", mode: "i2i", model: "qwen-image-edit-multiple-angles",
+      prompt: [{ text: "turn " }, reference("the photo")],
+    });
+    expect(checkProposal(proposal)).toEqual({ ok: true });
+  });
+
+  it("does not count a note a wired slot node already uses toward an unwired one", () => {
+    const wired: ProposalNode = { role: "source", type: "image", name: "Style" };
+    const loose: ProposalNode = { role: "source", type: "image", name: "Loose" };
+    const proposal: CanvasProposal = {
+      nodes: [wired, loose, { role: "generate", type: "image", name: "Poster", mode: "t2i", model: "krea-v2-large-text-to-image", prompt: [pick, { text: "A poster." }] }],
+      edges: [{ fromIndex: 0, toIndex: 2 }],
+      rationale: "",
+      groupName: "Poster",
+    };
+    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringContaining('"Loose"') });
+  });
+});
+
+describe("notes in a multi-shot node", () => {
+  it("are sent in a shot, and the refusal for a main prompt holding them says so", () => {
+    const proposal: CanvasProposal = {
+      nodes: [
+        { role: "source", type: "image", name: "Style" },
+        {
+          role: "generate", type: "video", name: "Clip", mode: "multi_shot", model: "seedance-2.5-text-to-video", params: { duration: 5 },
+          prompt: [{ slot: { kind: "note", label: "Pick the style picture into the style slot" } }],
+          shots: [{ prompt: [{ text: "a boat" }], duration: 2 }, { prompt: [{ text: "the pond" }], duration: 3 }],
+        },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "style_images" }],
+      rationale: "",
+      groupName: "Clip",
+    };
+    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringContaining("notes into the shots") });
+    expect(inputSchema.shape.nodes.element.shape.shots.description ?? "").toMatch(/notes go in a shot too/);
+  });
+});
+
+describe("a label that would not read back", () => {
+  it("refuses a line break, which the box splits into two paragraphs", () => {
+    expect(inputSchema.safeParse(edit([CHARACTER], [reference("the\nhero"), { text: " at night" }])).success).toBe(false);
+  });
+});
+
+describe("a mark typed across two text segments", () => {
+  it("is still read as a mark typed into the words", () => {
+    const answer = checkProposal(edit([CHARACTER], [reference("the generated character"), { text: " Use [📎 the " }, { text: "photo] at night." }]));
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringContaining("types 1 mark") });
   });
 });

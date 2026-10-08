@@ -45,13 +45,11 @@ function model(nodeType: GenerationNodeType, mode: string, name: string): ModelI
 }
 
 describe("the ways a model takes each kind of node", () => {
-  it("asks for an asset mark only on the pool, a note on an optional slot and the lyrics box, nothing on a required slot", () => {
+  it("asks for an asset mark on the pool and a note on every slot and the lyrics box", () => {
     for (const chosen of everyModel()) {
       for (const [, ways] of waysIn(chosen)) {
         for (const way of ways) {
-          const declared = chosen.params[way.into];
-          const expected =
-            way.into === "pool" ? "asset" : way.into === PANEL_EDITOR_PARAM || declared?.optional === true ? "note" : "none";
+          const expected = way.into === "pool" ? "asset" : "note";
           expect({ model: chosen.name, into: way.into, mark: way.mark }).toEqual({ model: chosen.name, into: way.into, mark: expected });
         }
       }
@@ -69,13 +67,11 @@ describe("the ways a model takes each kind of node", () => {
     }
   });
 
-  it("takes by an edge only the kinds the canvas lets feed the node, and gives those it does not no pool", () => {
+  it("gives no pool to a kind the canvas will not let feed the node", () => {
     for (const chosen of everyModel()) {
       for (const [kind, ways] of waysIn(chosen)) {
-        for (const way of ways) {
-          expect({ model: chosen.name, kind, byEdge: way.byEdge }).toEqual({ model: chosen.name, kind, byEdge: canConnect(kind, chosen.nodeType) });
-          if (!way.byEdge) expect({ model: chosen.name, into: way.into }).not.toEqual({ model: chosen.name, into: "pool" });
-        }
+        if (canConnect(kind, chosen.nodeType)) continue;
+        expect({ model: chosen.name, kind, pool: ways.some((way) => way.into === "pool") }).toEqual({ model: chosen.name, kind, pool: false });
       }
     }
   });
@@ -90,18 +86,18 @@ describe("the ways a model takes each kind of node", () => {
 
   it("reads the rows of the table off real models", () => {
     expect(waysIn(model("image", "i2i", "nano-banana-pro-edit-ultra")).get("image")).toEqual([
-      { into: "pool", room: 11, mark: "asset", byEdge: true },
-      { into: "style_images", room: 3, mark: "note", byEdge: true },
+      { into: "pool", room: 11, mark: "asset" },
+      { into: "style_images", room: 3, mark: "note" },
     ]);
     expect(waysIn(model("audio", "t2m", "mureka-v9.5-generate-song")).get("text")).toEqual([
-      { into: "pool", room: Number.POSITIVE_INFINITY, mark: "asset", byEdge: true },
-      { into: "lyrics", room: Number.POSITIVE_INFINITY, mark: "note", byEdge: true },
+      { into: "pool", room: Number.POSITIVE_INFINITY, mark: "asset" },
+      { into: "lyrics", room: Number.POSITIVE_INFINITY, mark: "note" },
     ]);
     expect(waysIn(model("video", "i2v", "seedance-2.5-image-to-video")).get("image")).toEqual([
-      { into: "image", room: 1, mark: "none", byEdge: true },
+      { into: "image", room: 1, mark: "note" },
     ]);
     expect(waysIn(model("audio", "sfx", "hunyuan-video-foley")).get("video")).toEqual([
-      { into: "video", room: 1, mark: "none", byEdge: false },
+      { into: "video", room: 1, mark: "note" },
     ]);
     expect(waysIn(model("video", "talking_head", "omnihuman-1.5")).get("text")).toBeUndefined();
   });
