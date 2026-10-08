@@ -97,4 +97,13 @@ describe("previewWidthFor", () => {
     expect(previewWidthFor(1080, 36000)).toBe(491);
     expect(previewWidthFor(1080, 64800)).toBe(273);
   });
+
+  // What vipsthumbnail 8.17.3 wrote for these sizes: it rounds the narrowed
+  // width to the nearest pixel.
+  it("rounds a narrowed width to the nearest pixel, as the container does", () => {
+    expect(previewWidthFor(1082, 64800)).toBe(274);
+    expect(previewWidthFor(1093, 64800)).toBe(276);
+    expect(previewWidthFor(1000, 50000)).toBe(328);
+    expect(previewWidthFor(700, 30000)).toBe(382);
+  });
 });

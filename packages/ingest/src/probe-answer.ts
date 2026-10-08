@@ -50,10 +50,11 @@ export interface ProbeRequest {
    * holds the whole run to.
    */
   toolTimeoutMs: number;
-  /** Whether to cut a preview: of the cover for a video, of the object else. */
+  /**
+   * Whether to cut a preview: of the cover for a video, of the object else.
+   * It runs on whatever is left before `deadlineAt`.
+   */
   wantPreview: boolean;
-  /** How long the preview tool may run. */
-  previewTimeoutMs: number;
   /**
    * When the Worker stops waiting for this answer, in epoch ms. An instant
    * rather than a span, so time a cold start spent before the request arrived

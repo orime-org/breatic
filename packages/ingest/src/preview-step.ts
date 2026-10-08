@@ -19,10 +19,25 @@ import type { ProbeReport } from "@ingest/media-metadata.js";
 export const PREVIEW_MARGIN_MS = 5_000;
 
 /**
+ * How long the preview tool may run: the rest of the run but the margin.
+ *
+ * The preview is the last thing a run does, and nothing waits on it but the
+ * answer, so it has no figure of its own (inner#1339: a 1080x64800 PNG takes
+ * vips about a minute on the smallest container).
+ * @param run - The deadline and the clock.
+ * @param run.deadlineAt - When the Worker stops waiting, in epoch ms.
+ * @param run.now - The container's clock now, in epoch ms.
+ * @returns Milliseconds, zero or less when nothing is left.
+ */
+export function previewTimeLeft(run: { deadlineAt: number; now: number }): number {
+  return run.deadlineAt - run.now - PREVIEW_MARGIN_MS;
+}
+
+/**
  * What to cut a preview from, when to cut one at all.
  *
  * A video's preview is cut from the cover frame this run produced, a picture's
- * from the object. Nothing is cut once the preview could run past the Worker's
+ * from the object. Nothing is cut once no time is left before the Worker's
  * deadline: the Worker drops the whole answer at that instant, and the width,
  * the height and the cover would go with it.
  * @param run - What this run was asked and has so far.
@@ -32,10 +47,9 @@ export const PREVIEW_MARGIN_MS = 5_000;
  * @param run.cover - The cover this run cut, when it cut one.
  * @param run.report - What ffprobe found.
  * @param run.deadlineAt - When the Worker stops waiting, in epoch ms.
- * @param run.previewTimeoutMs - How long the preview tool may run.
  * @param run.now - The container's clock now, in epoch ms.
  * @returns `cover` or `object` for where to cut it from, `late` when one was
- *   asked for but the deadline is too close, or null for no preview.
+ *   asked for but no time is left, or null for no preview.
  */
 export function previewSource(run: {
   wantPreview: boolean;
@@ -43,7 +57,6 @@ export function previewSource(run: {
   cover: Uint8Array | null;
   report: ProbeReport;
   deadlineAt: number;
-  previewTimeoutMs: number;
   now: number;
 }): "cover" | "object" | "late" | null {
   if (!run.wantPreview) return null;
@@ -55,5 +68,5 @@ export function previewSource(run: {
       ? "object"
       : null;
   if (source === null) return null;
-  return run.deadlineAt - run.now < run.previewTimeoutMs + PREVIEW_MARGIN_MS ? "late" : source;
+  return previewTimeLeft(run) <= 0 ? "late" : source;
 }

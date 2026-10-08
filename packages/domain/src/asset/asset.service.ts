@@ -224,14 +224,12 @@ export function detectAssetKind(
  * pair. How long the caller waits for the whole request is not here: that is
  * the transport's, and naming a second figure for it only copies the one it
  * already applies.
- * @returns The deadlines for the run, for each tool inside it and for the
- *   preview.
+ * @returns The deadlines for the run and for each tool inside it.
  */
 export function mediaLimits(): MediaLimits {
   const { ingest } = getStorageConfig();
   return {
     runDeadlineMs: ingest.container_run_deadline_ms,
     toolTimeoutMs: ingest.container_tool_timeout_ms,
-    previewTimeoutMs: ingest.container_preview_timeout_ms,
   };
 }

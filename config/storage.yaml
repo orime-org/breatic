@@ -60,11 +60,6 @@ ingest:
   # How long one tool inside the container may run. It covers reading the
   # object as well as the work, since both tools read over the network.
   container_tool_timeout_ms: 60000
-  # How long cutting one 576-wide preview may take. A video's run uses ffprobe,
-  # the cover and then the preview, so the deadline above has to hold two tool
-  # runs plus this, which the loader checks. The container skips the preview
-  # when less than this is left before the deadline.
-  container_preview_timeout_ms: 10000
   # How long ONE call asking the Worker to pull a source URL may take. It
   # bounds the whole transfer: the answer only arrives once the Worker has
   # finished writing R2.

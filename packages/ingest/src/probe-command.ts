@@ -111,48 +111,36 @@ export function coverArgs(objectUrl: string): string[] {
 const COVER_SCALE =
   "scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease";
 
-/** What ffmpeg writes a preview as. */
+/** What vips writes a preview as. */
 export const PREVIEW_CONTENT_TYPE = "image/webp";
 
 /**
- * How a preview is sized: the width `previewWidthFor` in `@breatic/shared`
- * gives, which the page compares against. The container cannot import it, so
- * the test holds the two together. The height follows the picture's own
- * aspect and is never less than one row, which a very wide strip would
- * otherwise round down to.
- */
-const PREVIEW_SCALE =
-  "scale=w='min(576,min(iw,trunc(iw*16383/ih)))':h='max(1,round(ow*ih/iw))'";
-
-/**
- * The one ffmpeg call that writes a preview.
+ * The one vips call that writes a preview (inner#1320, inner#1339).
  *
- * It reads either the stored object over the network or a cover frame handed
- * over on stdin, and each source is allowed only the protocol it arrives on.
- * ffmpeg turns a picture by its EXIF orientation as it decodes, so the preview
- * comes out the way the picture is shown.
- * @param input - The object's URL, or `pipe:0` for bytes on stdin.
+ * The picture arrives on stdin — the stored object or a video's cover frame —
+ * and vips decodes it a strip at a time, shrinking as it reads, so a 1080x64800
+ * PNG peaks at 57 MiB where ffmpeg, which decodes the whole frame first, is
+ * killed in a 256 MiB container.
+ *
+ * The box is 576 wide by WebP's side limit, and `--size down` leaves a smaller
+ * picture at its own size; the width that comes out is what `previewWidthFor`
+ * in `@breatic/shared` gives, which the page compares against. The container
+ * cannot import it, so the test holds the two together. vips turns a picture
+ * by its EXIF orientation, so the preview comes out the way the picture is
+ * shown. `keep=icc` carries the colour profile across: a Display P3 picture
+ * without it is shown as sRGB, duller than the original.
  * @returns The argument list, without the program name.
  */
-export function previewArgs(input: string): string[] {
+export function previewArgs(): string[] {
   return [
-    "-v",
-    "error",
-    "-protocol_whitelist",
-    input === "pipe:0" ? "pipe" : PROTOCOLS,
-    "-i",
-    input,
-    "-frames:v",
-    "1",
-    "-vf",
-    PREVIEW_SCALE,
-    "-c:v",
-    "libwebp",
-    "-quality",
-    "80",
-    "-f",
-    "webp",
-    "pipe:1",
+    "thumbnail_source",
+    "[descriptor=0]",
+    ".webp[Q=80,keep=icc]",
+    "576",
+    "--height",
+    "16383",
+    "--size",
+    "down",
   ];
 }
 

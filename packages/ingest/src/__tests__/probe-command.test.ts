@@ -100,31 +100,26 @@ describe("what ffmpeg is asked for the cover", () => {
   });
 });
 
-describe("what ffmpeg is asked for the preview", () => {
-  it("writes one WebP frame at most 576 wide to stdout", () => {
-    const args = previewArgs(URL_FOR_KEY);
+describe("what vips is asked for the preview", () => {
+  it("reads the bytes from stdin and writes a WebP to stdout", () => {
+    const args = previewArgs();
 
-    expect(args[args.indexOf("-i") + 1]).toBe(URL_FOR_KEY);
-    expect(args[args.indexOf("-frames:v") + 1]).toBe("1");
-    expect(args[args.indexOf("-vf") + 1]).toBe(
-      `scale=w='min(${PREVIEW_WIDTH},min(iw,trunc(iw*${PREVIEW_MAX_SIDE}/ih)))':h='max(1,round(ow*ih/iw))'`,
-    );
-    expect(args[args.indexOf("-c:v") + 1]).toBe("libwebp");
-    expect(args[args.indexOf("-f") + 1]).toBe("webp");
-    expect(args.at(-1)).toBe("pipe:1");
+    expect(args[0]).toBe("thumbnail_source");
+    expect(args[1]).toBe("[descriptor=0]");
+    expect(args[2]).toMatch(/^\.webp\[/);
   });
 
-  it("reads a cover handed over on stdin", () => {
-    const args = previewArgs("pipe:0");
+  it("fits the picture in 576 by WebP's side limit and never enlarges it", () => {
+    const args = previewArgs();
 
-    expect(args[args.indexOf("-i") + 1]).toBe("pipe:0");
-    expect(args[args.indexOf("-protocol_whitelist") + 1]).toBe("pipe");
+    expect(args[3]).toBe(String(PREVIEW_WIDTH));
+    expect(args[args.indexOf("--height") + 1]).toBe(String(PREVIEW_MAX_SIDE));
+    expect(args[args.indexOf("--size") + 1]).toBe("down");
   });
 
-  it("carries the object's protocol whitelist when reading the object", () => {
-    const args = previewArgs(URL_FOR_KEY);
-
-    expect(args[args.indexOf("-protocol_whitelist") + 1]).toBe("http,tcp");
+  it("keeps the colour profile and drops the rest of the metadata", () => {
+    // A Display P3 picture shown without its profile reads as sRGB: duller.
+    expect(previewArgs()[2]).toBe(".webp[Q=80,keep=icc]");
   });
 });
 

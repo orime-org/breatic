@@ -136,10 +136,6 @@ export interface MediaLimits {
   runDeadlineMs: number;
   /** One tool inside it, reads included. */
   toolTimeoutMs: number;
-  /**
-   * How long cutting a preview may take. Absent, no preview is asked for.
-   */
-  previewTimeoutMs?: number;
 }
 
 

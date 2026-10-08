@@ -23,13 +23,15 @@ export const PREVIEW_MAX_SIDE = 16383;
 /**
  * How wide a picture's preview comes out. A picture narrower than
  * {@link PREVIEW_WIDTH} keeps its width, and one taller than about 28 times its
- * width comes out narrower still, so its height fits in a WebP.
+ * width comes out narrower still, so its height fits in a WebP. That narrowed
+ * width is rounded to the nearest pixel, the way the container's vipsthumbnail
+ * rounds it.
  * @param width - The picture's width.
  * @param height - The picture's height.
  * @returns The preview's width in pixels.
  */
 export function previewWidthFor(width: number, height: number): number {
-  return Math.min(PREVIEW_WIDTH, width, Math.trunc((width * PREVIEW_MAX_SIDE) / height));
+  return Math.min(PREVIEW_WIDTH, width, Math.round((width * PREVIEW_MAX_SIDE) / height));
 }
 
 /** What a preview's key adds to the key of the image it was cut from. */

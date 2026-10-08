@@ -205,7 +205,6 @@ describe("a read of a stored object", () => {
 // answer says which of four things happened, so a run that could not start is
 // told apart from one that ran and had nothing to cut.
 describe("a read that asks for a preview", () => {
-  const PREVIEW_LIMITS: MediaLimits = { ...LIMITS, previewTimeoutMs: 10_000 };
   const PREVIEW_BYTES = new Uint8Array([0x52, 0x49, 0x46, 0x46, 1, 2, 3]);
 
   it("cuts and stores one when none stands", async () => {
@@ -213,7 +212,7 @@ describe("a read that asks for a preview", () => {
     const run = containerAnswering(PICTURE, null, PREVIEW_BYTES);
 
     const response = await read(
-      { storageKey, contentType: "image/jpeg", limits: PREVIEW_LIMITS, wantPreview: true },
+      { storageKey, contentType: "image/jpeg", limits: LIMITS, wantPreview: true },
       env.INGEST_SHARED_SECRET,
       run.media,
     );
@@ -237,7 +236,7 @@ describe("a read that asks for a preview", () => {
     const run = containerAnswering(PICTURE, null, PREVIEW_BYTES);
 
     const response = await read(
-      { storageKey, contentType: "image/jpeg", limits: PREVIEW_LIMITS, wantPreview: true },
+      { storageKey, contentType: "image/jpeg", limits: LIMITS, wantPreview: true },
       env.INGEST_SHARED_SECRET,
       run.media,
     );
@@ -253,7 +252,7 @@ describe("a read that asks for a preview", () => {
     const run = containerAnswering(PICTURE, null, null);
 
     const response = await read(
-      { storageKey, contentType: "image/jpeg", limits: PREVIEW_LIMITS, wantPreview: true },
+      { storageKey, contentType: "image/jpeg", limits: LIMITS, wantPreview: true },
       env.INGEST_SHARED_SECRET,
       run.media,
     );
@@ -268,7 +267,7 @@ describe("a read that asks for a preview", () => {
     const response = await read({
       storageKey,
       contentType: "image/jpeg",
-      limits: PREVIEW_LIMITS,
+      limits: LIMITS,
       wantPreview: true,
     });
 

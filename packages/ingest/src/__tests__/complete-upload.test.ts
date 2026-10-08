@@ -1183,8 +1183,6 @@ describe("a re-delivered finish", () => {
 // Every stored image gets a preview (at most 576 wide) beside it, and a video's cover gets
 // one too (inner#1320). The preview never decides the finish: the answer the
 // caller files is the same with or without one.
-const PREVIEW_LIMITS: MediaLimits = { ...LIMITS, previewTimeoutMs: 10_000 };
-
 /** One report of a 1200x800 still picture. */
 const STILL: ProbeReport = {
   durationSeconds: null,
@@ -1215,11 +1213,11 @@ describe("an upload whose preview is cut", () => {
       parts,
       env.INGEST_SHARED_SECRET,
       undefined,
-      { limits: PREVIEW_LIMITS, media: run.media },
+      { limits: LIMITS, media: run.media },
     );
 
     expect(response.status).toBe(200);
-    expect(run.asked).toMatchObject({ wantPreview: true, previewTimeoutMs: 10_000 });
+    expect(run.asked).toMatchObject({ wantPreview: true });
     const stored = await env.BUCKET.get(previewKeyFor(storageKey));
     expect(stored?.httpMetadata?.contentType).toBe("image/webp");
     expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(PREVIEW_BYTES);
@@ -1231,7 +1229,7 @@ describe("an upload whose preview is cut", () => {
     const run = containerAnswering(FILM, pngHeader(1920, 1080), PREVIEW_BYTES);
 
     await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, coverKey, {
-      limits: PREVIEW_LIMITS,
+      limits: LIMITS,
       media: run.media,
     });
 
@@ -1249,7 +1247,7 @@ describe("an upload whose preview is cut", () => {
     const before = Date.now();
 
     await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, undefined, {
-      limits: PREVIEW_LIMITS,
+      limits: LIMITS,
       media: run.media,
     });
 
@@ -1258,8 +1256,10 @@ describe("an upload whose preview is cut", () => {
     expect(deadlineAt).toBeLessThanOrEqual(Date.now() + LIMITS.runDeadlineMs);
   });
 
-  it("asks for no preview when the caller named no preview time", async () => {
-    const { storageKey, uploadId, token, parts } = await uploadedThrough(2, {
+  // The preview runs on whatever the run has left (inner#1339): the request
+  // names the deadline and nothing else about time.
+  it("gives the preview no time limit of its own", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {
       contentType: "image/png",
     });
     const run = containerAnswering(STILL, null, PREVIEW_BYTES);
@@ -1269,8 +1269,8 @@ describe("an upload whose preview is cut", () => {
       media: run.media,
     });
 
-    expect(run.asked).toMatchObject({ wantPreview: false });
-    expect(await env.BUCKET.head(previewKeyFor(storageKey))).toBeNull();
+    expect(run.asked).toMatchObject({ wantPreview: true });
+    expect(run.asked).not.toHaveProperty("previewTimeoutMs");
   });
 
   it("answers the same numbers when no preview came back", async () => {
@@ -1285,7 +1285,7 @@ describe("an upload whose preview is cut", () => {
       parts,
       env.INGEST_SHARED_SECRET,
       undefined,
-      { limits: PREVIEW_LIMITS, media: run.media },
+      { limits: LIMITS, media: run.media },
     );
 
     expect(await response.json()).toMatchObject({ width: 1200, height: 800 });

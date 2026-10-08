@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { previewSource, PREVIEW_MARGIN_MS } from "@ingest/preview-step.js";
+import { previewSource, previewTimeLeft, PREVIEW_MARGIN_MS } from "@ingest/preview-step.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 
 const STILL: ProbeReport = {
@@ -22,7 +22,7 @@ const STILL: ProbeReport = {
 };
 
 const NOW = 1_000_000;
-const PLENTY = { deadlineAt: NOW + 60_000, previewTimeoutMs: 10_000, now: NOW };
+const PLENTY = { deadlineAt: NOW + 60_000, now: NOW };
 
 describe("what the preview is cut from", () => {
   it("cuts a still picture's preview from the object", () => {
@@ -69,14 +69,9 @@ describe("what the preview is cut from", () => {
 describe("whether there is time to cut it", () => {
   const ask = { wantPreview: true, wantCover: false, cover: null, report: STILL };
 
-  it("cuts it when the preview time and the margin fit before the deadline", () => {
+  it("cuts it while anything is left before the deadline beyond the margin", () => {
     expect(
-      previewSource({
-        ...ask,
-        previewTimeoutMs: 10_000,
-        now: NOW,
-        deadlineAt: NOW + 10_000 + PREVIEW_MARGIN_MS,
-      }),
+      previewSource({ ...ask, now: NOW, deadlineAt: NOW + PREVIEW_MARGIN_MS + 1 }),
     ).toBe("object");
   });
 
@@ -84,24 +79,29 @@ describe("whether there is time to cut it", () => {
   // the deadline is an instant so that spending shows here.
   it("skips it when a cold start has spent the window", () => {
     expect(
-      previewSource({
-        ...ask,
-        previewTimeoutMs: 10_000,
-        now: NOW,
-        deadlineAt: NOW + 10_000 + PREVIEW_MARGIN_MS - 1,
-      }),
+      previewSource({ ...ask, now: NOW, deadlineAt: NOW + PREVIEW_MARGIN_MS }),
     ).toBe("late");
   });
 
   it("says nothing about time for a video whose cover did not come out", () => {
     expect(
-      previewSource({ ...ask, wantCover: true, cover: null, previewTimeoutMs: 10_000, now: NOW, deadlineAt: NOW }),
+      previewSource({ ...ask, wantCover: true, cover: null, now: NOW, deadlineAt: NOW }),
     ).toBeNull();
   });
 
   it("says nothing about time when no preview was asked for", () => {
     expect(
-      previewSource({ ...ask, wantPreview: false, previewTimeoutMs: 10_000, now: NOW, deadlineAt: NOW }),
+      previewSource({ ...ask, wantPreview: false, now: NOW, deadlineAt: NOW }),
     ).toBeNull();
+  });
+});
+
+describe("how long the preview may run", () => {
+  // inner#1339: a 1080x64800 PNG takes vips about a minute on the smallest
+  // container, so the preview gets the whole rest of the run.
+  it("is everything left before the deadline but the margin", () => {
+    expect(previewTimeLeft({ now: NOW, deadlineAt: NOW + 120_000 })).toBe(
+      120_000 - PREVIEW_MARGIN_MS,
+    );
   });
 });

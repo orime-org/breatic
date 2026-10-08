@@ -69,8 +69,7 @@ const UNFINISHED = Symbol("unfinished");
  * @param about.contentType - What the stored bytes read as, which says whether
  *   ffmpeg has anything to say about it.
  * @param about.wantCover - Whether to ask for a frame as well.
- * @param about.wantPreview - Whether to ask for a preview as well. Only
- *   honoured when the limits name how long one may take.
+ * @param about.wantPreview - Whether to ask for a preview as well.
  * @param about.limits - How long this run gets, and how long one tool inside
  *   it may take. Both come off `config/storage.yaml` by way of the caller; the
  *   Worker reads no configuration of its own.
@@ -89,7 +88,6 @@ export async function readMediaAtEdge(
   if (!PROBEABLE.test(about.contentType)) return UNREAD_ANSWER;
 
   const instance = env.MEDIA.get(env.MEDIA.idFromName(about.storageKey));
-  const previewTimeoutMs = about.limits.previewTimeoutMs ?? 0;
   // Taken just before the timer below starts, so it is the instant that timer
   // fires at.
   const deadlineAt = Date.now() + about.limits.runDeadlineMs;
@@ -97,8 +95,7 @@ export async function readMediaAtEdge(
     objectUrl: mediaObjectUrl(about.storageKey),
     wantCover: about.wantCover,
     toolTimeoutMs: about.limits.toolTimeoutMs,
-    wantPreview: about.wantPreview === true && previewTimeoutMs > 0,
-    previewTimeoutMs,
+    wantPreview: about.wantPreview === true,
     deadlineAt,
   };
 

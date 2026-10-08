@@ -555,12 +555,7 @@ function limitsOf(sent: MediaLimits | undefined): MediaLimits | null {
   const tool = sent?.toolTimeoutMs;
   if (typeof run !== "number" || run <= 0) return null;
   if (typeof tool !== "number" || tool <= 0) return null;
-  // Optional: a caller that names no preview time gets no preview, and its
-  // numbers are read all the same.
-  const preview = sent?.previewTimeoutMs;
-  return typeof preview === "number" && preview > 0
-    ? { runDeadlineMs: run, toolTimeoutMs: tool, previewTimeoutMs: preview }
-    : { runDeadlineMs: run, toolTimeoutMs: tool };
+  return { runDeadlineMs: run, toolTimeoutMs: tool };
 }
 
 /**
