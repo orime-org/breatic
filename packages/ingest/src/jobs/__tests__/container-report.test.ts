@@ -21,6 +21,11 @@ describe("readContainerReport", () => {
     );
   });
 
+  // A source the container could not read through is our failure, not the file's.
+  it("keeps internal as the cause of a source that did not arrive", () => {
+    expect(readContainerReport({ ok: false, cpuUsec: null, media: {}, reason: "internal" })?.reason).toBe("internal");
+  });
+
   it("drops a cause it does not know, leaving the failure unnamed", () => {
     const read = readContainerReport({ ok: false, cpuUsec: null, media: {}, reason: "disk_full" });
     expect(read).not.toBeNull();

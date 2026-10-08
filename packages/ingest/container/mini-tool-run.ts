@@ -13,11 +13,13 @@
  */
 
 import { execFile } from "node:child_process";
-import { createReadStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 
 import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js";
 import { inputRefusal, opRuns, outputRefusal } from "@ingest/jobs/op-args.js";
@@ -78,6 +80,23 @@ async function put(url: string, file: string): Promise<void> {
 }
 
 /**
+ * Download the source into the job's directory, whole, before any run reads it.
+ * @param url - Where the Durable Object serves the source.
+ * @param file - The local copy to write.
+ * @throws {Error} When the answer is not 200 or fewer bytes arrive than it announced.
+ */
+async function download(url: string, file: string): Promise<void> {
+  const answered = await fetch(url);
+  if (!answered.ok || answered.body === null) throw new Error(`the read of ${url} was answered ${answered.status}`);
+  await pipeline(Readable.fromWeb(answered.body as NodeReadableStream<Uint8Array>), createWriteStream(file));
+  const announced = Number(answered.headers.get("content-length"));
+  const arrived = (await stat(file)).size;
+  if (Number.isFinite(announced) && announced > 0 && arrived !== announced) {
+    throw new Error(`the read of ${url} stopped at ${arrived} of ${announced} bytes`);
+  }
+}
+
+/**
  * The CPU time the container's cgroup has counted.
  * @returns Microseconds, or null when the file is not there to read.
  */
@@ -99,7 +118,12 @@ export async function runJob(job: RunBody): Promise<void> {
   let ok = false;
   let reason: ContainerFailure | undefined;
   try {
-    const source = readProbeOutput((await runTool("ffprobe", probeArgs(job.input), job.toolTimeoutMs)).toString("utf8"));
+    // A source that does not arrive whole is our failure, not the file's.
+    const input = join(dir, "source");
+    reason = "internal";
+    await download(job.input, input);
+    reason = undefined;
+    const source = readProbeOutput((await runTool("ffprobe", probeArgs(input, "own-file"), job.toolTimeoutMs)).toString("utf8"));
     const refused = inputRefusal(job.op, source);
     if (refused !== null) {
       reason = refused;
@@ -109,7 +133,7 @@ export async function runJob(job: RunBody): Promise<void> {
       const file = join(dir, "out.mp4");
       // An operation runs as long as its job's deadline allows; the Durable
       // Object destroys the container when that passes.
-      for (const args of opRuns(job.op, job.params, job.input, file, dir, source)) {
+      for (const args of opRuns(job.op, job.params, input, file, dir, source)) {
         await runTool("ffmpeg", args, 0);
       }
       const probed = await runTool("ffprobe", probeArgs(file, "own-file"), job.toolTimeoutMs).catch(() => null);

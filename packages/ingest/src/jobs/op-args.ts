@@ -37,8 +37,11 @@ const MP4_AUDIO: ReadonlySet<string> = new Set(["aac", "mp3", "opus"]);
 /** Lets a player start before the whole file has arrived. */
 const FASTSTART = ["-movflags", "+faststart"];
 
-/** Reads the source over the protocols R2 serves it on and no other. */
-const SOURCE = ["-protocol_whitelist", "http,tcp"];
+/**
+ * The source is the copy the container downloaded before any run, so ffmpeg
+ * opens that one local file and no other protocol.
+ */
+const SOURCE = ["-protocol_whitelist", "file"];
 
 /**
  * An odd-sized source is legal, and the encoders, vidstab and zscale all need
@@ -183,7 +186,7 @@ export function outputRefusal(probe: ProbeReport): ContainerFailure | null {
  * The runs one operation makes, in order; the last writes `output`.
  * @param op - The operation.
  * @param params - Its params, as the request schema validated them.
- * @param input - Where ffmpeg reads the source.
+ * @param input - The local copy of the source.
  * @param output - The file the last run writes.
  * @param workDir - A directory the runs may write between them.
  * @param source - The source's probe: which streams are copied, and the colour tags HDR reads.

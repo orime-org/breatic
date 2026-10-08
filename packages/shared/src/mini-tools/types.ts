@@ -24,7 +24,7 @@ export type ContainerOp = (typeof CONTAINER_OPS)[number];
  * given a source without one; everything else the tool or the run broke on is
  * `tool_failed`.
  */
-export const CONTAINER_FAILURES = ["tool_failed", "no_audio_track"] as const;
+export const CONTAINER_FAILURES = ["tool_failed", "no_audio_track", "internal"] as const;
 
 /** One of {@link CONTAINER_FAILURES}. */
 export type ContainerFailure = (typeof CONTAINER_FAILURES)[number];

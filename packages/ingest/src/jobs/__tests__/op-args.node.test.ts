@@ -14,7 +14,7 @@ import { buildAdjustVideoFilter, defaultAdjustValue } from "@breatic/shared";
 import { inputRefusal, opRuns, outputRefusal } from "@ingest/jobs/op-args.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 
-const IN = "http://r2.local/video/in.mp4";
+const IN = "/tmp/job/source";
 const OUT = "/tmp/job/out.mp4";
 const WORK = "/tmp/job";
 const EVEN = "scale=trunc(iw/2)*2:trunc(ih/2)*2";
@@ -207,13 +207,13 @@ describe("the runs every encoding operation shares", () => {
     }
   });
 
-  // The source is read through the protocols the object is served over and no other.
-  it("reads the source through http alone", () => {
+  // The source is the copy the container downloaded first; nothing else is opened.
+  it("reads the source as a local file alone", () => {
     for (const [op, params] of [...encoding, ["crop", { rect: null }], ["audio_denoise", { intensity: 50 }]] as const) {
       for (const run of opRuns(op, params as Record<string, unknown>, IN, OUT, WORK, videoProbe())) {
         if (!run.includes(IN)) continue;
         expect(run.indexOf("-protocol_whitelist"), op).toBeGreaterThanOrEqual(0);
-        expect(after(run, "-protocol_whitelist"), op).toBe("http,tcp");
+        expect(after(run, "-protocol_whitelist"), op).toBe("file");
         expect(run.indexOf("-protocol_whitelist"), op).toBeLessThan(run.indexOf(IN));
       }
     }
