@@ -47,9 +47,13 @@ export function previewSource(run: {
   now: number;
 }): "cover" | "object" | "late" | null {
   if (!run.wantPreview) return null;
-  if (run.deadlineAt - run.now < run.previewTimeoutMs + PREVIEW_MARGIN_MS) {
-    return "late";
-  }
-  if (run.wantCover) return run.cover === null ? null : "cover";
-  return hasPreviewableFrame(run.report) ? "object" : null;
+  const source = run.wantCover
+    ? run.cover === null
+      ? null
+      : "cover"
+    : hasPreviewableFrame(run.report)
+      ? "object"
+      : null;
+  if (source === null) return null;
+  return run.deadlineAt - run.now < run.previewTimeoutMs + PREVIEW_MARGIN_MS ? "late" : source;
 }

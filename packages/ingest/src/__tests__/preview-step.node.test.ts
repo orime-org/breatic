@@ -93,6 +93,12 @@ describe("whether there is time to cut it", () => {
     ).toBe("late");
   });
 
+  it("says nothing about time for a video whose cover did not come out", () => {
+    expect(
+      previewSource({ ...ask, wantCover: true, cover: null, previewTimeoutMs: 10_000, now: NOW, deadlineAt: NOW }),
+    ).toBeNull();
+  });
+
   it("says nothing about time when no preview was asked for", () => {
     expect(
       previewSource({ ...ask, wantPreview: false, previewTimeoutMs: 10_000, now: NOW, deadlineAt: NOW }),
