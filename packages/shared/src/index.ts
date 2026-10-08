@@ -679,6 +679,14 @@ export {
   uploadableFormatList,
   hasCoverFrame,
 } from "@shared/upload/media-type.js";
+// Where a stored image's preview lives: one rule for the Worker that writes it
+// and every page that shows it.
+export {
+  PREVIEW_SUFFIX,
+  previewKeyFor,
+  previewUrlFor,
+  originalUrlFor,
+} from "@shared/upload/preview.js";
 // The type read off the bytes themselves. It lives beside the lists above
 // because they answer two halves of one question: what these bytes are, and
 // whether we take it.
