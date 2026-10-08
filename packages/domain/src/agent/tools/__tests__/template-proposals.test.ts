@@ -96,7 +96,7 @@ describe("templates in proposals", () => {
 
   it("tells the agent to keep each reference mark and say whether the picture is uploaded or generated", () => {
     expect(makeProposeCanvasAction().description).toMatch(/keep each asset segment, saying in its label whether the picture is uploaded or generated/);
-    expect(makeProposeCanvasAction().description).toMatch(/a reference sent into a slot instead takes a note in place of its asset segment/);
+    expect(makeProposeCanvasAction().description).toMatch(/A reference sent into a slot instead takes a note in place of its asset segment/);
   });
 });
 

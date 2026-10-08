@@ -42,7 +42,6 @@ import {
   GENERATION_TEMPLATES,
   extractPromptText,
   markedSegments,
-  insertRefusal,
   GENERATION_NODE_MODES,
   MAX_NODE_NAME_LEN,
   PANEL_EDITOR_PARAM,
@@ -212,7 +211,7 @@ export const inputSchema = z
               .describe(
                 "Where the node wired in goes: \"pool\" (the reader @s it; an asset mark each) or the " +
                   "name of a slot the model has (the reader picks it in the panel; a note each when the slot is optional). Needed " +
-                  "when the model takes that kind more than one way",
+                  "when the model takes that kind more than one way; leave it off an edge from a text node",
               ),
           })
           .strict(),
@@ -530,7 +529,6 @@ function checkGenerateNode(
   // marks it writes are words that name no node, so nothing here can work it
   // out from them. Text nodes are words the reader @s into the prompt.
   const ways = waysIn(chosen);
-  const poolKinds = [...ways].flatMap(([kind, list]) => (list.some((way) => !way.slot) ? [kind] : []));
   const routed: { node: ProposalNode; way: WayIn }[] = [];
   const scripts: ProposalNode[] = [];
   for (const edge of proposal.edges.filter((e) => e.toIndex === index)) {
@@ -540,12 +538,13 @@ function checkGenerateNode(
       if (edge.into !== undefined) {
         return {
           ok: false,
-          reason: `"${from.name}" is words the reader @s into the prompt; leave into off its edge.`,
+          reason: chosen.takesPrompt
+            ? `"${from.name}" is words the reader @s into the prompt; leave into off its edge.`
+            : `"${model}" takes no text node, so the edge from "${from.name}" goes nowhere in it; leave into off that edge.`,
         };
       }
-      if (insertRefusal("text", { referenceKinds: poolKinds, takesPrompt: chosen.takesPrompt }) === null) {
-        scripts.push(from);
-      }
+      // A text row only asks whether there is a prompt to @ it into.
+      if (chosen.takesPrompt) scripts.push(from);
       continue;
     }
     const options = ways.get(from.type) ?? [];
@@ -580,14 +579,6 @@ function checkGenerateNode(
   // The reader @s each pooled picture and each script; counted, never paired.
   const asked = [...pooled, ...scripts];
   const marked = prompt.filter((segment) => segment.slot?.kind === "asset").length;
-  // An asset mark asks for an @, and the @ list holds only wired nodes the
-  // model takes that way: with none, no asset mark can be done.
-  if (asked.length === 0 && marked > 0) {
-    return {
-      ok: false,
-      reason: `"${node.name}" has no node the reader can @ and ${String(marked)} asset mark(s). Turn each into a note saying which slot to pick the node into, or take it out.`,
-    };
-  }
   if (marked < asked.length) {
     return {
       ok: false,
@@ -1064,8 +1055,8 @@ function templateGuide(): string {
     ". Each reference is a node wired in, as with any proposal, its edge saying into: \"pool\". Name the template on the node and leave out what " +
     "you keep. To put the reader's own story or detail in, send the template's prompt rewritten in the " +
     "language they write in, as segments: fill a tweak segment with words or keep it for them, and keep each " +
-    "asset segment, saying in its label whether the picture is uploaded or generated, and its note field is the card's line. " +
-    "The reader @s it by hand."
+    "asset segment, saying in its label whether the picture is uploaded or generated, and its note field is the card's line; " +
+    "the reader @s it by hand. A reference sent into a slot instead takes a note in place of its asset segment."
   );
 }
 
