@@ -82,7 +82,8 @@ program in this image is carried under GPL-3.0-or-later.
 The container's service runs `vips` as a separate program, handing it the
 picture on stdin and reading the preview from stdout, and loads none of its
 libraries: the `breatic/media-container-own-code-only` ESLint rule allows the
-service only Node builtins and its own modules. The image carries the licence
+service only Node builtins and this repository's modules that the container's
+`tsconfig.json` names. The image carries the licence
 texts and a `SOURCE` file at `/usr/share/vips-source/`, written from the
 installed packages while the image is built, as the FFmpeg one above is, so a
 rebuild that resolves `=~8.17` to a later release writes the later one rather

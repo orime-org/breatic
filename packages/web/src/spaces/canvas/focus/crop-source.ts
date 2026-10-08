@@ -7,6 +7,8 @@
  * mini-tool crop both draw over that element (inner#888 §7.4).
  */
 
+import { originalUrlFor } from '@breatic/shared';
+
 import type { CropHandle } from '@web/lib/crop-math';
 
 /** A node's croppable media, one selector per element kind. */
@@ -50,18 +52,34 @@ export function isCropSource(el: Element | null): el is CropSourceEl {
 }
 
 /**
- * The source's own pixel size — the space crop rects are expressed in.
+ * The source's pixel size — the space crop rects are expressed in.
  *
- * Zero means "not decodable yet": a bitmap still loading, a broken URL, or a
- * video whose metadata has not arrived. Both element kinds report it, under
- * different names.
+ * An image node showing its preview declares the original's size in its
+ * `width` / `height` attributes (inner#1320); the preview's own pixels are not
+ * the space a crop is cut in. An element with no declared size shows the
+ * original, whose natural size is its own. Zero means "not decodable yet": a
+ * bitmap still loading, a broken URL, or a video whose metadata has not
+ * arrived.
  * @param el - The crop source.
- * @returns Its intrinsic size, possibly `0 × 0`.
+ * @returns The original's size, possibly `0 × 0`.
  */
 export function intrinsicSize(el: CropSourceEl): { width: number; height: number } {
-  return el instanceof HTMLImageElement
-    ? { width: el.naturalWidth, height: el.naturalHeight }
-    : { width: el.videoWidth, height: el.videoHeight };
+  if (el instanceof HTMLVideoElement) return { width: el.videoWidth, height: el.videoHeight };
+  const width = Number(el.getAttribute('width'));
+  const height = Number(el.getAttribute('height'));
+  if (width > 0 && height > 0 && el.naturalWidth > 0) return { width, height };
+  return { width: el.naturalWidth, height: el.naturalHeight };
+}
+
+/**
+ * The address of the original the element shows, with any preview suffix
+ * removed: a preview falling back to its original is the same picture.
+ * @param el - The crop source.
+ * @returns The original's address, or null when the element has none.
+ */
+export function originalSrc(el: CropSourceEl): string | null {
+  const src = el.getAttribute('src');
+  return src === null ? null : originalUrlFor(src);
 }
 
 /** The eight resize handles with their anchor classes (compass layout). */

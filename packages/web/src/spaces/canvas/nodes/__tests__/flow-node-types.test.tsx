@@ -534,7 +534,7 @@ describe('a stored image zoomed past its preview', () => {
               {...({
                 id: 'n1',
                 width: 288,
-                data: { kind: 'image', status: 'idle', name: 'N', content: STORED, ...size },
+                data: { kind: 'image', handling: false, name: 'N', content: STORED, ...size },
                 selected: false,
               } as unknown as NodeProps)}
             />

@@ -213,8 +213,6 @@ function makeFlowNode(
                   locked={data.locked}
                   onRename={onRename}
                   onActivate={onActivate}
-                  {...(failedList !== null && { onViewTasks })}
-                  tasksPanelOpen={taskPanelOpenHere !== null}
                 />
                 {/* The resize controls render AFTER the body for the same reason
                 the connection handles below do: absolutely-positioned siblings

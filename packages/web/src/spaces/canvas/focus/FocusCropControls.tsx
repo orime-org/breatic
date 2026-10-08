@@ -20,7 +20,7 @@ import {
 import { toast } from '@web/lib/toast';
 import { canvasRootOf, useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { fromFraction, toFraction } from '@web/spaces/canvas/crop/crop-geometry';
-import { cropSourceSelector, intrinsicSize, isCropSource, type CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
+import { cropSourceSelector, intrinsicSize, isCropSource, originalSrc, type CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
 import { formatSeconds } from '@web/spaces/canvas/lib/duration';
 
 /**
@@ -276,7 +276,7 @@ export function FocusCropControls({ onConfirm, onBackToPick }: FocusCropControls
     const el = canvasRootOf(spaceId).querySelector(cropSourceSelector(focus.nodeId));
     // The content may have changed between the last layout and this click:
     // never crop new content at the old marquee's coordinates (round-2).
-    if (isCropSource(el) && el.getAttribute('src') !== focus.content) {
+    if (isCropSource(el) && originalSrc(el) !== focus.content) {
       clearMarquee();
       toast.warning(t('canvas.generatePanel.focusSourceChanged'));
       return;

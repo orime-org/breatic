@@ -14,40 +14,40 @@ import { moduleSourceVisitors } from "#rules/source-visitors";
  * process, and a binding (`sharp`, `wasm-vips`, `fluent-ffmpeg`) would put one
  * of those libraries there.
  *
+ * Our own packages are reached by their aliases (`@ingest/`, `@shared/`), and
+ * each one the service reaches must be named in the container's tsconfig, so
+ * this rule reads it too.
+ *
  * The service ships as one bundled file with no `node_modules`, so an import
  * is the only way anything gets into it, and the specifier is all there is to
  * judge.
  */
 
-/** What the config passes: the Worker modules bundled into the service. */
+/** What the config passes: this repository's modules bundled into the service. */
 interface Options {
-  /** Module names under `packages/ingest/src`, as the container's tsconfig includes them. */
-  bundledIngestModules: string[];
+  /** Each as its alias and path without extension, e.g. `@ingest/jobs/op-args`, as the container's tsconfig includes them. */
+  bundledModules: string[];
 }
 
-/** The prefix the container reaches the Worker's modules by. */
-const INGEST_PREFIX = "@ingest/";
+/** The aliases the container reaches this repository's modules by: the Worker's own, and the shared package. */
+const REPO_PREFIXES = ["@ingest/", "@shared/"] as const;
+
+/**
+ * Whether a specifier reaches one of this repository's packages by its alias.
+ * @param specifier The string a module was reached by.
+ * @returns True for an `@ingest/` or `@shared/` specifier.
+ */
+function isRepoAlias(specifier: string): boolean {
+  return REPO_PREFIXES.some((prefix) => specifier.startsWith(prefix));
+}
 
 /**
  * Whether a specifier stays inside Node and this repository.
  * @param specifier The string a module was reached by.
- * @returns True for a `node:` builtin, an `@ingest/` module or a relative path.
+ * @returns True for a `node:` builtin, a repository alias or a relative path.
  */
 function isOwnCode(specifier: string): boolean {
-  return (
-    specifier.startsWith("node:") ||
-    specifier.startsWith(INGEST_PREFIX) ||
-    specifier.startsWith(".")
-  );
-}
-
-/**
- * The module name an `@ingest/` specifier reaches, without its extension.
- * @param specifier An `@ingest/` specifier.
- * @returns The name, as the tsconfig's include entries give it.
- */
-function ingestModule(specifier: string): string {
-  return specifier.slice(INGEST_PREFIX.length).replace(/\.(js|ts)$/, "");
+  return specifier.startsWith("node:") || isRepoAlias(specifier) || specifier.startsWith(".");
 }
 
 export const mediaContainerOwnCodeOnly = createRule<[Options], "notOwnCode" | "notBundled">({
@@ -56,28 +56,28 @@ export const mediaContainerOwnCodeOnly = createRule<[Options], "notOwnCode" | "n
     type: "problem",
     docs: {
       description:
-        "The media container's service imports only Node builtins and the Worker modules its tsconfig names",
+        "The media container's service imports only Node builtins and the repository modules its tsconfig names",
     },
     schema: [
       {
         type: "object",
         properties: {
-          bundledIngestModules: { type: "array", items: { type: "string" } },
+          bundledModules: { type: "array", items: { type: "string" } },
         },
-        required: ["bundledIngestModules"],
+        required: ["bundledModules"],
         additionalProperties: false,
       },
     ],
     messages: {
       notOwnCode:
-        "'{{specifier}}' is not a node: builtin or an @ingest/ module. The media container runs vips and ffmpeg as separate programs (inner#1339), and its service loads no other code into its process.",
+        "'{{specifier}}' is not a node: builtin or an @ingest/ or @shared/ module. The media container runs vips and ffmpeg as separate programs (inner#1339), and its service loads no other code into its process.",
       notBundled:
         "'{{specifier}}' is not in packages/ingest/container/tsconfig.json's include. tsc and esbuild follow this import anyway, so the module would be bundled into the media container without this rule reading it: add it to that include.",
     },
   },
-  defaultOptions: [{ bundledIngestModules: [] }],
-  create(context, [{ bundledIngestModules }]) {
-    const bundled = new Set(bundledIngestModules);
+  defaultOptions: [{ bundledModules: [] }],
+  create(context, [{ bundledModules }]) {
+    const bundled = new Set(bundledModules);
     return moduleSourceVisitors(
       (node: TSESTree.Node, source: TSESTree.StringLiteral): void => {
         const specifier = source.value;
@@ -85,7 +85,7 @@ export const mediaContainerOwnCodeOnly = createRule<[Options], "notOwnCode" | "n
           context.report({ node, messageId: "notOwnCode", data: { specifier } });
           return;
         }
-        if (specifier.startsWith(INGEST_PREFIX) && !bundled.has(ingestModule(specifier))) {
+        if (isRepoAlias(specifier) && !bundled.has(specifier.replace(/\.(js|ts)$/, ""))) {
           context.report({ node, messageId: "notBundled", data: { specifier } });
         }
       },

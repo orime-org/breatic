@@ -5,9 +5,16 @@ import { mediaContainerOwnCodeOnly } from "../media-container-own-code-only";
 
 const ruleTester = new RuleTester();
 
-/** The Worker modules the container's tsconfig names, as the config passes them. */
-const options: [{ bundledIngestModules: string[] }] = [
-  { bundledIngestModules: ["probe-command", "probe-answer"] },
+/** The modules the container's tsconfig names, as the config passes them. */
+const options: [{ bundledModules: string[] }] = [
+  {
+    bundledModules: [
+      "@ingest/probe-command",
+      "@ingest/probe-answer",
+      "@ingest/jobs/op-args",
+      "@shared/mini-tools/types",
+    ],
+  },
 ];
 
 ruleTester.run("media-container-own-code-only", mediaContainerOwnCodeOnly, {
@@ -18,6 +25,10 @@ ruleTester.run("media-container-own-code-only", mediaContainerOwnCodeOnly, {
     { code: "import { execFile } from 'node:child_process';\nexport const e = execFile;" },
     { code: "import { previewArgs } from '@ingest/probe-command.js';\nexport const p = previewArgs;", options },
     { code: "import type { ProbeRequest } from '@ingest/probe-answer.js';\nexport type R = ProbeRequest;", options },
+    // A module in a subdirectory, named by its path under the package.
+    { code: "import { RUN_PATH } from '@ingest/jobs/op-args.js';\nexport const r = RUN_PATH;", options },
+    // Our shared package is our own code too, when the tsconfig names it.
+    { code: "import type { MiniToolOp } from '@shared/mini-tools/types.js';\nexport type O = MiniToolOp;", options },
     // The tools are named by string arguments, which are not imports.
     { code: "export const program = 'vips';" },
   ],
@@ -26,6 +37,12 @@ ruleTester.run("media-container-own-code-only", mediaContainerOwnCodeOnly, {
       // tsc and esbuild follow this import past the tsconfig's list, so a
       // module the guard never reads would be bundled into the service.
       code: "import { thumb } from '@ingest/thumb.js';\nexport const t = thumb;",
+      options,
+      errors: [{ messageId: "notBundled" }],
+    },
+    {
+      // A shared module the tsconfig does not name is bundled unread too.
+      code: "import { newId } from '@shared/ids.js';\nexport const n = newId;",
       options,
       errors: [{ messageId: "notBundled" }],
     },

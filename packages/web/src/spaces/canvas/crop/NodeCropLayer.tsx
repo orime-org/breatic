@@ -11,7 +11,7 @@ import { presetRatio } from '@web/lib/crop-math';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { fromFraction, offsetWithin, toFraction, type BoxSize } from '@web/spaces/canvas/crop/crop-geometry';
 import { NodeCropFrame } from '@web/spaces/canvas/crop/NodeCropFrame';
-import { intrinsicSize, isCropSource, MEDIA_SELECTOR, type CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
+import { intrinsicSize, isCropSource, MEDIA_SELECTOR, originalSrc, type CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
 import { aspectRatioOf, type CropRect as SourceRect } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import type { FocusCrop, MiniToolDraft } from '@web/stores/canvas-session';
 
@@ -43,7 +43,7 @@ function readGeometry(wrapper: HTMLElement | null): Geometry | null {
     at,
     box,
     natural: size.width > 0 && size.height > 0 ? size : null,
-    src: el.getAttribute('src'),
+    src: originalSrc(el),
   };
 }
 

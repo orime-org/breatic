@@ -307,7 +307,7 @@ describe('ImageNode with a stored image', () => {
     resetPreviewRecords();
     render(
       <ImageNode
-        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, handling: false }}
       />,
     );
     const img = screen.getByTestId('image-node-img');
@@ -324,7 +324,7 @@ describe('ImageNode with a stored image', () => {
     resetPreviewRecords();
     render(
       <ImageNode
-        data={{ kind: 'image', content: STORED, width: 1080, height: 64800, status: 'idle' }}
+        data={{ kind: 'image', content: STORED, width: 1080, height: 64800, handling: false }}
       />,
     );
     const width = renderHook(() => usePreviewWidth(STORED));
@@ -338,7 +338,7 @@ describe('ImageNode with a stored image', () => {
     resetPreviewRecords();
     render(
       <ImageNode
-        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, handling: false }}
       />,
     );
     fireImageLoad(screen.getByTestId('image-node-img'), 576, 288);
@@ -348,7 +348,7 @@ describe('ImageNode with a stored image', () => {
 
   it('shows the original and measures it when it knows no size', () => {
     resetPreviewRecords();
-    render(<ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />);
+    render(<ImageNode data={{ kind: 'image', content: STORED, handling: false }} />);
     const img = screen.getByTestId('image-node-img');
 
     expect(img.getAttribute('src')).toBe(STORED);
@@ -361,7 +361,7 @@ describe('ImageNode with a stored image', () => {
     resetPreviewRecords();
     render(
       <ImageNode
-        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, handling: false }}
       />,
     );
     fireEvent.error(screen.getByTestId('image-node-img'));
@@ -373,7 +373,7 @@ describe('ImageNode with a stored image', () => {
 describe('ImageNode zoomed past its preview (inner#1320)', () => {
   const UUID = '18f58aed-b802-4243-a8ea-02d377de9679';
   const STORED = `https://resource-dev.breatic.cc/image/2026-09-30/1_${UUID}.png`;
-  const DATA = { kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' } as const;
+  const DATA = { kind: 'image', content: STORED, width: 4096, height: 2048, handling: false } as const;
 
   /**
    * The node under a given zoom answer from the canvas.
@@ -436,7 +436,7 @@ describe('ImageNode zoomed past its preview (inner#1320)', () => {
     resetPreviewRecords();
     render(
       <NodeZoomedPastPreviewContext.Provider value>
-        <ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />
+        <ImageNode data={{ kind: 'image', content: STORED, handling: false }} />
       </NodeZoomedPastPreviewContext.Provider>,
     );
 
@@ -452,7 +452,7 @@ describe('ImageNode while its picture loads (inner#1320)', () => {
     resetPreviewRecords();
     render(
       <ImageNode
-        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, handling: false }}
       />,
     );
     expect(screen.getByTestId('image-node-skeleton')).toBeInTheDocument();
@@ -465,7 +465,7 @@ describe('ImageNode while its picture loads (inner#1320)', () => {
     resetPreviewRecords();
     render(
       <ImageNode
-        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, handling: false }}
       />,
     );
     fireEvent.error(screen.getByTestId('image-node-img'));
@@ -477,7 +477,7 @@ describe('ImageNode while its picture loads (inner#1320)', () => {
 
   it('drops the skeleton when the original itself fails', () => {
     resetPreviewRecords();
-    render(<ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />);
+    render(<ImageNode data={{ kind: 'image', content: STORED, handling: false }} />);
     fireEvent.error(screen.getByTestId('image-node-img'));
 
     expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
@@ -485,7 +485,7 @@ describe('ImageNode while its picture loads (inner#1320)', () => {
 
   it('gives a node of unknown size the empty node footprint while it loads', () => {
     resetPreviewRecords();
-    render(<ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />);
+    render(<ImageNode data={{ kind: 'image', content: STORED, handling: false }} />);
 
     expect(screen.getByTestId('image-node-skeleton').className).toContain('aspect-[3/2]');
   });

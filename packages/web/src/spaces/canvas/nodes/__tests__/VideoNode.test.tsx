@@ -132,7 +132,7 @@ describe('VideoNode zoomed past its cover preview (inner#1320)', () => {
     return (
       <NodeZoomedPastPreviewContext.Provider value={past}>
         <VideoNode
-          data={{ kind: 'video', content: 'https://e.com/v.mp4', coverUrl: COVER, status: 'idle' }}
+          data={{ kind: 'video', content: 'https://e.com/v.mp4', coverUrl: COVER, handling: false }}
         />
       </NodeZoomedPastPreviewContext.Provider>
     );
@@ -161,7 +161,7 @@ describe('VideoNode while its poster loads', () => {
   it('reserves the box from the size it carries and shows the skeleton', () => {
     render(
       <VideoNode
-        data={{ kind: 'video', status: 'idle', content: '/v.mp4', coverUrl: '/v_cover.png', width: 1080, height: 3840 }}
+        data={{ kind: 'video', handling: false, content: '/v.mp4', coverUrl: '/v_cover.png', width: 1080, height: 3840 }}
       />,
     );
 
@@ -171,7 +171,7 @@ describe('VideoNode while its poster loads', () => {
   });
 
   it('reserves nothing for a node of unknown size', () => {
-    render(<VideoNode data={{ kind: 'video', status: 'idle', content: '/v.mp4', coverUrl: '/v_cover.png' }} />);
+    render(<VideoNode data={{ kind: 'video', handling: false, content: '/v.mp4', coverUrl: '/v_cover.png' }} />);
 
     expect(screen.getByTestId('media-element').getAttribute('width')).toBeNull();
     expect(screen.queryByTestId('media-skeleton')).toBeNull();
