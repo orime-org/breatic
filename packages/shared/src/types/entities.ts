@@ -402,10 +402,11 @@ export interface StudioAssetEntity {
    * first-class cover asset — #1826 §4.5: the cover is a normal studio_assets
    * row that counts toward storage, kind judged from the cover itself = image)
    * | 'project_cover' / 'studio_avatar' (a picture uploaded to be a project's
-   * cover or a studio's avatar). A dedup hit keeps the first uploader's value,
+   * cover or a studio's avatar) | 'agent' (a link the agent saved for the
+   * reader, inner#1315). A dedup hit keeps the first uploader's value,
    * so nothing may read this to decide what a row is used as.
    */
-  source: "ai" | "upload" | "cover" | "project_cover" | "studio_avatar";
+  source: "ai" | "upload" | "cover" | "project_cover" | "studio_avatar" | "agent";
   /**
    * Who FIRST brought this content into the studio (#1839). Distinct from
    * `studioId` (who OWNS it): attribution follows the project's studio for

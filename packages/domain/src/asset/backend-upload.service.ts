@@ -27,7 +27,11 @@ import { coverKeyFor, env, getStorageConfig } from "@breatic/core";
 import {
   fetchUrlToIngest,
   finishUploadAtIngest,
+  INGEST_NO_ANSWER,
+  INGEST_REFUSED_UNNAMED,
+  INGEST_TYPE_NOT_REPORTED,
   sendBytesToIngest,
+  UploadHttpError,
   type IngestOutcome,
   type IngestTarget,
   type StudioAssetEntity,
@@ -36,6 +40,8 @@ import {
 import { mediaLimits } from "@domain/asset/asset.service.js";
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
 import { signTicketFor } from "@domain/asset/upload-ticket.service.js";
+import { extFromUrl } from "@domain/asset/source-url.js";
+import { storedTypeOf, TYPE_UNKNOWN } from "@domain/asset/reader-source.js";
 import {
   applyIngestReport,
   type IngestReportOutcome,
@@ -118,8 +124,8 @@ export interface BackendUploadContext {
   projectId: string;
   /** Who this is attributed to. */
   actingUserId: string;
-  /** What the resulting asset is: a generation's output, or a video's cover. */
-  assetSource: Extract<StudioAssetEntity["source"], "ai" | "cover">;
+  /** What the resulting asset is: a generation's output, a video's cover, or a link the agent saved. */
+  assetSource: Extract<StudioAssetEntity["source"], "ai" | "cover" | "agent">;
   /** The generation that produced these bytes, when one did. */
   generationTaskId?: string;
   /** The key's task segment, which also decides its extension. */
@@ -140,6 +146,9 @@ export interface BackendUploadContext {
  * @param ctx - What this upload is and who it belongs to.
  * @param declaredSize - The byte size, when it is known; the ceiling on the
  *   number of parts otherwise.
+ * @param typeFromSource - Whether the Worker takes the type off the source
+ *   rather than storing what the ticket signs; set for a link nobody here has
+ *   seen into.
  * @returns The key this upload writes to, the signed ticket, and where to send
  *   it.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
@@ -147,6 +156,7 @@ export interface BackendUploadContext {
 async function openBackendUpload(
   ctx: BackendUploadContext,
   declaredSize: number,
+  typeFromSource = false,
 ): Promise<{ storageKey: string; target: IngestTarget }> {
   const { ingest } = getStorageConfig();
   const expiresAt = Date.now() + ingest.ticket_expires_seconds * 1000;
@@ -174,6 +184,7 @@ async function openBackendUpload(
       userId: ctx.actingUserId,
       declaredSize,
       contentType: ctx.contentType,
+      ...(typeFromSource && { typeFromSource: true }),
       expiresAt,
     }),
   };
@@ -269,6 +280,100 @@ export async function transferUrlToStorage(
       storageKey: opened.storageKey,
       outcome: "completed",
       ...measured,
+    }),
+    `the transfer of ${sourceUrl}`,
+  );
+}
+
+/** Why a reader's link did not land: the reason the grant was settled with. */
+export class ReaderUrlTransferError extends Error {
+  /**
+   * A refusal carrying the reason its grant was settled with.
+   * @param reason - The failure reason the grant was settled with, one the
+   *   Worker named or one of the ingest failure sentinels.
+   * @throws {never} Never.
+   */
+  constructor(readonly reason: string) {
+    super(`the link did not land: ${reason}`);
+    this.name = "ReaderUrlTransferError";
+  }
+}
+
+/**
+ * Have the Worker pull a link somebody other than a provider handed over into
+ * R2, and wait for it (inner#1315: the agent's save).
+ *
+ * The canvas paste takes the same link through a queue because a node waits
+ * on it; the agent asks for the answer inside its turn, so this runs in the
+ * request. Nobody here knows what the link holds, so the ticket lets the
+ * Worker take the type off the source, and what is registered is the type it
+ * judged. A transfer that does not land settles its grant before it is
+ * reported, the way the queued lane settles its task.
+ * @param sourceUrl - The link, already checked against `readerUrlSchema`.
+ * @param who - The project the bytes are charged to, and who asked.
+ * @param who.projectId - The project; it decides the owner studio.
+ * @param who.actingUserId - Who the asset is attributed to.
+ * @param signal - Raised when nobody wants the answer any more.
+ * @returns The registered asset, as the report handler filed it.
+ * @throws {NotFoundError} When the project does not exist or is soft-deleted.
+ * @throws {ReaderUrlTransferError} When the link did not land, with the reason
+ *   its grant was settled with.
+ * @throws {Error} When the report filed nothing.
+ */
+export async function transferReaderUrlToStorage(
+  sourceUrl: string,
+  who: { projectId: string; actingUserId: string },
+  signal?: AbortSignal,
+): Promise<StoredAsset> {
+  const { upload, ingest } = getStorageConfig();
+  const opened = await openBackendUpload(
+    {
+      ...who,
+      assetSource: "agent",
+      taskType: "url",
+      ext: extFromUrl(sourceUrl),
+      contentType: TYPE_UNKNOWN,
+    },
+    upload.max_upload_bytes,
+    true,
+  );
+
+  let measured;
+  try {
+    measured = await fetchUrlToIngest(
+      sourceUrl,
+      opened.target,
+      env.INGEST_SHARED_SECRET,
+      coverKeyFor(opened.storageKey),
+      mediaLimits(),
+      ingest.url_fetch_deadline_ms,
+      signal,
+    );
+  } catch (err) {
+    // An UploadHttpError exists only because an answer arrived, so a missing
+    // name on it is the Worker refusing without saying why.
+    const reason =
+      err instanceof UploadHttpError ? (err.code ?? INGEST_REFUSED_UNNAMED) : INGEST_NO_ANSWER;
+    await applyIngestReport({ storageKey: opened.storageKey, outcome: "aborted", reason });
+    throw new ReaderUrlTransferError(reason);
+  }
+
+  const storedType = storedTypeOf(measured.contentType);
+  if (storedType === null) {
+    await applyIngestReport({
+      storageKey: opened.storageKey,
+      outcome: "aborted",
+      reason: INGEST_TYPE_NOT_REPORTED,
+    });
+    throw new ReaderUrlTransferError(INGEST_TYPE_NOT_REPORTED);
+  }
+
+  return landed(
+    await applyIngestReport({
+      storageKey: opened.storageKey,
+      outcome: "completed",
+      ...measured,
+      contentType: storedType,
     }),
     `the transfer of ${sourceUrl}`,
   );

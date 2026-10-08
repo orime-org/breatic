@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { INGEST_NO_ANSWER, INGEST_REFUSED_UNNAMED } from "@breatic/shared";
-import { urlIngestFailureLevel } from "@worker/handlers/url-ingest.js";
+import { urlIngestFailureLevel } from "@domain/asset/reader-source.js";
 
 describe("urlIngestFailureLevel", () => {
   it("treats a link the reader handed us that cannot be taken as the reader's input", () => {
