@@ -22,7 +22,9 @@ export function orientPreviewTransform(
   const turns = ((orientation.turns % 4) + 4) % 4;
   if (turns === 0 && !orientation.flipX && !orientation.flipY) return undefined;
   const fit = turns % 2 === 1 ? Math.min(width / height, height / width) : 1;
-  return `rotate(${turns * 90}deg) scale(${fit}) scale(${orientation.flipX ? -1 : 1}, ${orientation.flipY ? -1 : 1})`;
+  // CSS applies the rightmost function first: the picture turns, then mirrors
+  // along the screen axes, so each flip goes the way its button's icon shows.
+  return `scale(${orientation.flipX ? -1 : 1}, ${orientation.flipY ? -1 : 1}) rotate(${turns * 90}deg) scale(${fit})`;
 }
 
 /**

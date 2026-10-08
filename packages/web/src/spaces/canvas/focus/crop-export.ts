@@ -207,8 +207,8 @@ export function orientedSize(width: number, height: number, turns: number): { wi
 
 /**
  * Export a source turned and flipped as a PNG blob at natural resolution
- * (inner#888 §7.4). The flips apply to the picture as it stands and the turn
- * after them, which is the order the node's preview transform draws in.
+ * (inner#888 §7.4). The picture turns first and then mirrors along the output's
+ * own axes, the order the node's preview transform draws in.
  * @param source - The source URL plus, for a video, the frame to draw.
  * @param orientation - The turns and flips.
  * @returns The oriented PNG blob.
@@ -224,8 +224,8 @@ export async function exportOrientedBlob(source: CropSource, orientation: Orient
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('canvas 2d context unavailable');
   ctx.translate(size.width / 2, size.height / 2);
-  ctx.rotate((orientation.turns * Math.PI) / 2);
   ctx.scale(orientation.flipX ? -1 : 1, orientation.flipY ? -1 : 1);
+  ctx.rotate((orientation.turns * Math.PI) / 2);
   ctx.drawImage(el, -width / 2, -height / 2);
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('canvas export produced no blob');
