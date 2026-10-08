@@ -37,6 +37,7 @@ import {
 } from '@blocknote/core';
 import type { NodeViewRendererProps } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Decoration } from '@tiptap/pm/view';
 
 import { downloadHref } from '@web/data/api/download-href';
 import { triggerDownload } from '@web/lib/download';
@@ -47,6 +48,7 @@ import {
 } from '@web/spaces/document/DocumentMediaBlock';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { dropMediaView, putMediaView } from '@web/spaces/document/document-media-views';
+import { isLetGo } from '@web/spaces/document/document-node-selection-focus';
 
 /** A prop declaration in BlockNote's shape, as far as this reads one. */
 interface PropDecl {
@@ -116,7 +118,7 @@ function mediaNodeView(
   spec: MediaSpec,
 ): {
   dom: HTMLElement;
-  update: (node: PMNode) => boolean;
+  update: (node: PMNode, decorations: readonly Decoration[]) => boolean;
   selectNode: () => void;
   deselectNode: () => void;
   stopEvent: (event: Event) => boolean;
@@ -137,6 +139,9 @@ function mediaNodeView(
   );
   let node = viewProps.node as PMNode;
   let selected = false;
+  // Still selected, but let go when the reader left the body with no place
+  // for a caret (`document-node-selection-focus.ts`): drawn as not selected.
+  let letGo = false;
 
   /**
    * The id of the block this view draws, read now.
@@ -203,16 +208,17 @@ function mediaNodeView(
 
   /** Enters what the container shows now. */
   const render = (): void => {
-    putMediaView(editor, host, { type, props: propsOf(node), selected, actions });
+    putMediaView(editor, host, { type, props: propsOf(node), selected: selected && !letGo, actions });
   };
   writeAttributes(dom, node, spec.config.propSchema);
   render();
 
   return {
     dom,
-    update: (next) => {
+    update: (next, decorations) => {
       if (next.type !== node.type) return false;
       node = next;
+      letGo = isLetGo(decorations);
       writeAttributes(dom, node, spec.config.propSchema);
       render();
       return true;

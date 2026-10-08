@@ -36,9 +36,10 @@
  * A click held with the node modifier (Cmd on a Mac, Ctrl elsewhere) is a
  * plain click in this Space (`document-no-node-click.ts`), and in a media row
  * this module answers it as one. A click on the media selects it and is
- * answered here, with any button and any modifier, so that ProseMirror's own
- * answer to the modifier — select the node around the one already selected —
- * never runs.
+ * answered here, with any button and with Cmd or Ctrl held, so that
+ * ProseMirror's own answer to the modifier — select the node around the one
+ * already selected — never runs. A click with Shift held never reaches this
+ * module: ProseMirror leaves it to the browser, which extends the selection.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -46,7 +47,7 @@ import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { MEDIA_BLOCK_TYPES } from '@web/spaces/document/document-media-types';
-import { caretUnder } from '@web/spaces/document/document-node-selection-focus';
+import { letGoOfBlock } from '@web/spaces/document/document-node-selection-focus';
 
 const KEY = new PluginKey('documentMediaRowPress');
 
@@ -101,8 +102,7 @@ function selectMedia(view: EditorView, row: Element): void {
 function leaveBesideMedia(view: EditorView, row: Element): void {
   // The row is the block's content element and starts where the block does;
   // a media block is an atom, so it ends one further on.
-  const caret = caretUnder(view.state.doc, view.posAtDOM(row, 0) + 1);
-  if (caret !== null) view.dispatch(view.state.tr.setSelection(caret).setMeta('addToHistory', false));
+  letGoOfBlock(view, view.posAtDOM(row, 0) + 1);
   (view.dom as HTMLElement).blur();
 }
 
@@ -122,8 +122,9 @@ function clickInMediaRow(view: EditorView, event: MouseEvent): boolean {
 }
 
 /**
- * Answers a double or triple click beside the media or on its caption; one
- * on the media is left to ProseMirror, which selects it.
+ * Answers a double or triple click beside the media or on its caption. One
+ * on the media is not answered here: its press has already selected the
+ * media ({@link pressOnMedia}).
  * @param view - The view.
  * @param event - The click.
  * @returns True when the click landed beside the media or on its caption.
@@ -159,7 +160,9 @@ export const documentMediaRowPressExtension = createExtension(() => ({
       key: KEY,
       props: {
         handleDOMEvents: {
-          mousedown: (view, event) => {
+          // The press, not its mousedown: a slider in the player cancels the
+          // pointerdown, and a cancelled pointerdown fires no mousedown.
+          pointerdown: (view, event) => {
             pressOnMedia(view, event);
             return false;
           },

@@ -726,7 +726,7 @@ describe('a press beside a media block', () => {
     });
     expect(view.dom.contains(document.activeElement)).toBe(false);
 
-    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+    const press = new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 });
     act(() => {
       element(editor).querySelector('img')!.dispatchEvent(press);
     });
@@ -739,6 +739,26 @@ describe('a press beside a media block', () => {
     expect(document.activeElement).toBe(view.dom);
     // The press goes on to the browser, which starts a drag from it.
     expect(press.defaultPrevented).toBe(false);
+  });
+
+  it('selects a video on a press on its seek bar, which keeps the press from becoming a mousedown', () => {
+    const editor = open('video', { previewWidth: 320 });
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(view.state.doc)));
+    });
+    const seek = within(element(editor)).getByTestId('seek');
+    // The slider cancels the press, as Radix does, so no mousedown follows.
+    seek.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+    });
+
+    act(() => {
+      seek.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }));
+    });
+
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect((view.state.selection as NodeSelection).node.type.name).toBe('video');
   });
 
   it('answers a click held with the node modifier the way it answers a plain one', () => {
@@ -790,7 +810,7 @@ describe('a press beside a media block', () => {
     act(() => {
       element(editor)
         .querySelector('img')!
-        .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, shiftKey: true }));
+        .dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, shiftKey: true }));
     });
 
     expect(view.state.selection).toBeInstanceOf(TextSelection);
@@ -924,6 +944,28 @@ describe('the focus around a media block', () => {
     },
   );
 
+  it('leaves the body without the keyboard when what had it outside the body is gone by the time the picture closes', async () => {
+    const editor = open('image', { previewWidth: 200 });
+    const menu = document.createElement('div');
+    const item = document.createElement('button');
+    menu.appendChild(item);
+    document.body.appendChild(menu);
+    act(() => {
+      item.focus();
+    });
+
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-fullscreen'));
+    const picture = await screen.findByTestId('doc-media-fullscreen-image');
+    // The menu the keyboard was in closes while the picture is open.
+    menu.remove();
+    fireEvent.keyDown(picture, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-media-fullscreen-image')).toBeNull();
+    });
+
+    expect(editor.prosemirrorView!.dom.contains(document.activeElement)).toBe(false);
+  });
+
   it('leaves the focus nowhere when nothing had it as the full-screen picture opened', async () => {
     const editor = open('image', { previewWidth: 200 });
     (document.activeElement as HTMLElement | null)?.blur();
@@ -937,6 +979,75 @@ describe('the focus around a media block', () => {
     });
 
     expect(editor.prosemirrorView!.dom.contains(document.activeElement)).toBe(false);
+  });
+});
+
+describe('a document with no line for text', () => {
+  /**
+   * Opens an editor whose only block is a picture.
+   * @returns The editor.
+   */
+  function onlyPicture(): Editor {
+    const editor = open('image', { previewWidth: 200 });
+    act(() => {
+      editor.replaceBlocks(editor.document, [
+        { type: 'image', props: { url: URL_OF, name: 'a.png', previewWidth: 200 } },
+      ] as never);
+    });
+    return editor;
+  }
+
+  /**
+   * The picture's box, which carries whether it is drawn as selected.
+   * @param editor - The editor.
+   * @returns It.
+   */
+  function box(editor: Editor): HTMLElement {
+    return within(editor.prosemirrorView!.dom).getByTestId('doc-media-box');
+  }
+
+  it('draws the picture as not selected once the focus leaves the body, and as selected when it comes back', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const editor = onlyPicture();
+    const view = editor.prosemirrorView!;
+    selectMedia(editor);
+    act(() => {
+      view.focus();
+    });
+    expect(box(editor).getAttribute('data-selected')).toBe('true');
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+
+    act(() => {
+      outside.focus();
+    });
+    expect(box(editor).getAttribute('data-selected')).toBeNull();
+
+    act(() => {
+      view.focus();
+    });
+    expect(box(editor).getAttribute('data-selected')).toBe('true');
+    outside.remove();
+  });
+
+  it('draws the picture as not selected after a click beside it', () => {
+    const editor = onlyPicture();
+    const view = editor.prosemirrorView!;
+    selectMedia(editor);
+    act(() => {
+      view.focus();
+    });
+    expect(box(editor).getAttribute('data-selected')).toBe('true');
+    const row = view.dom.querySelector('[data-content-type="image"]')!;
+    const click = new MouseEvent('mouseup', { bubbles: true, button: 0 });
+    Object.defineProperty(click, 'target', { value: row });
+
+    act(() => {
+      view.someProp('handleClick', (f) => f(view, 0, click));
+    });
+
+    expect(box(editor).getAttribute('data-selected')).toBeNull();
+    expect(view.dom.contains(document.activeElement)).toBe(false);
   });
 });
 

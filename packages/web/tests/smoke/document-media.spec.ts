@@ -1025,6 +1025,109 @@ test('a picture copied with the keyboard pastes back as the same picture (A10, A
   expect(await img.nth(1).getAttribute('src')).toBe(src);
 });
 
+/**
+ * Whether a caret is drawn anywhere: a collapsed selection in text that can be
+ * typed into, in a colour that is not transparent.
+ * @param p - The page.
+ * @returns True when one is drawn.
+ */
+async function caretDrawn(p: Page): Promise<boolean> {
+  return p.evaluate(() => {
+    const selection = getSelection();
+    const at = selection?.anchorNode;
+    const holder = at instanceof Element ? at : at?.parentElement;
+    return (
+      document.activeElement?.closest('.ProseMirror') !== null &&
+      selection?.isCollapsed === true &&
+      holder instanceof HTMLElement &&
+      holder.isContentEditable &&
+      getComputedStyle(holder).caretColor !== 'rgba(0, 0, 0, 0)'
+    );
+  });
+}
+
+test('a media block stays selected while its own controls drawn outside the body have the keyboard (A10)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('alpha');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('omega');
+  await page.keyboard.press('ArrowUp');
+  const wav = wavBytes().toString('base64');
+  await page.locator(EDITOR).evaluate((element, base64) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))], 'own.wav', { type: 'audio/wav' }));
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+  }, wav);
+  const audio = page.locator(AUDIO);
+  await expect(audio.getByTestId('waveform')).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const selected = (): Promise<string | null> => audio.getByTestId('doc-media-box').getAttribute('data-selected');
+
+  // A press on the seek bar selects it, as a press on the waveform does.
+  const first = (await page.locator(`${EDITOR} .bn-block-content`).first().boundingBox())!;
+  await page.mouse.click(first.x + 4, first.y + first.height / 2);
+  expect(await selected()).toBeNull();
+  const seek = (await audio.getByTestId('seek').boundingBox())!;
+  await page.mouse.click(seek.x + seek.width * 0.3, seek.y + seek.height / 2);
+  await expect.poll(selected).toBe('true');
+
+  // Its volume panel is its own control.
+  await audio.getByTestId('volume-button').click();
+  await expect(page.getByTestId('volume')).toBeVisible();
+  await page.mouse.move(5, 5);
+  expect(await selected()).toBe('true');
+  await page.keyboard.press('Escape');
+  expect(await selected()).toBe('true');
+
+  // So is the menu of its row; closing it leaves the block selected and no caret.
+  const row = (await audio.boundingBox())!;
+  await page.mouse.move(row.x + 40, row.y + 11);
+  await page.getByTestId('doc-block-handle').click();
+  await expect(page.getByRole('menu')).toBeVisible();
+  expect(await selected()).toBe('true');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await page.mouse.move(5, 5);
+  expect(await selected()).toBe('true');
+  expect(await caretDrawn(page)).toBe(false);
+
+  // A menu outside the body still lets go of it.
+  await page.getByTestId('theme-toggle').click();
+  await expect(page.getByTestId('theme-popover')).toBeVisible();
+  expect(await selected()).toBeNull();
+  await page.keyboard.press('Escape');
+});
+
+test('in a document of media alone, a picture let go of is drawn as not selected (A10)', async () => {
+  await openFreshDocument(page);
+  await pastePicture(page, 'alone.png');
+  const picture = page.locator(IMAGE);
+  const img = picture.locator('img');
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  // Take the empty line under it away, through its row's menu.
+  const rows = page.locator(`${EDITOR} .bn-block-content`);
+  await expect(rows).toHaveCount(2);
+  const line = (await rows.nth(1).boundingBox())!;
+  await page.mouse.move(line.x + 40, line.y + 11);
+  await page.getByTestId('doc-block-plus').click();
+  await page.getByTestId('doc-block-plus-delete').click();
+  await expect(rows).toHaveCount(1);
+  const selected = (): Promise<string | null> => picture.getByTestId('doc-media-box').getAttribute('data-selected');
+
+  await img.click();
+  expect(await selected()).toBe('true');
+  const frame = (await picture.locator('[data-media-frame]').boundingBox())!;
+  await page.mouse.click(frame.x + frame.width + 60, frame.y + frame.height / 2);
+  expect(await selected()).toBeNull();
+  expect(await page.evaluate(() => document.activeElement?.closest('.ProseMirror') ?? null)).toBeNull();
+
+  await img.click();
+  expect(await selected()).toBe('true');
+  await page.getByTestId('theme-toggle').click();
+  await expect(page.getByTestId('theme-popover')).toBeVisible();
+  expect(await selected()).toBeNull();
+  await page.keyboard.press('Escape');
+});
+
 test('a picture is still there after a reload (A13)', async () => {
   await openFreshDocument(page);
   await pastePicture(page, 'kept.png');

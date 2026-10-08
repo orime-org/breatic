@@ -190,6 +190,44 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
     vi.restoreAllMocks();
   });
 
+  /** Lets the tasks already queued run, and the ones they queue. */
+  async function settle(): Promise<void> {
+    await new Promise((done) => setTimeout(done, 0));
+    await new Promise((done) => setTimeout(done, 0));
+  }
+
+  it('stays selected when a layer of its own closes and the focus comes back to the body a task later', async () => {
+    const { editor } = open(type);
+    const view = editor.prosemirrorView!;
+    const { layer, inside } = layerOpenedFrom(view.dom.querySelector(`[data-content-type="${type}"]`)!);
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    inside.focus();
+
+    // The layer lets go of the focus, and hands it back as Radix does: in a
+    // timeout queued after the focus fell to nothing.
+    inside.blur();
+    setTimeout(() => {
+      view.focus();
+    }, 0);
+    await settle();
+
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    layer.remove();
+    vi.restoreAllMocks();
+  });
+
+  it('stops being selected when the focus falls to nothing and stays there, a click on the page around it', async () => {
+    const { editor } = open(type);
+    const view = editor.prosemirrorView!;
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+    (view.dom as HTMLElement).blur();
+    await settle();
+
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    vi.restoreAllMocks();
+  });
+
   it('stays selected when the window itself loses the focus', () => {
     const { editor } = open(type);
     const view = editor.prosemirrorView!;
@@ -214,6 +252,97 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
 
     expect(view.state.selection).toBeInstanceOf(NodeSelection);
     part.remove();
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * A layer drawn outside the body, as a menu is, with what opened it.
+   * @param trigger - Where the element that opened it sits.
+   * @returns The layer and a focusable element inside it.
+   */
+  function layerOpenedFrom(trigger: Element): { layer: HTMLElement; inside: HTMLElement } {
+    const layer = document.createElement('div');
+    layer.id = `layer-${String(Math.random()).slice(2)}`;
+    const inside = document.createElement('button');
+    layer.appendChild(inside);
+    document.body.appendChild(layer);
+    const opener = document.createElement('span');
+    opener.setAttribute('aria-controls', layer.id);
+    trigger.appendChild(opener);
+    return { layer, inside };
+  }
+
+  it('stays selected while the focus moves into a layer opened from inside the body, the player volume', () => {
+    const { editor } = open(type);
+    const view = editor.prosemirrorView!;
+    const { layer, inside } = layerOpenedFrom(view.dom.querySelector(`[data-content-type="${type}"]`)!);
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+    inside.focus();
+
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    layer.remove();
+    vi.restoreAllMocks();
+  });
+
+  it('stays selected while the focus moves into a submenu of such a layer', () => {
+    const { editor } = open(type);
+    const view = editor.prosemirrorView!;
+    const outer = layerOpenedFrom(view.dom.querySelector(`[data-content-type="${type}"]`)!);
+    const sub = layerOpenedFrom(outer.layer);
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+    sub.inside.focus();
+
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    outer.layer.remove();
+    sub.layer.remove();
+    vi.restoreAllMocks();
+  });
+
+  it('stays selected while the focus moves to the strip beside the body, the row handle and its menu', () => {
+    const { editor } = open(type);
+    const view = editor.prosemirrorView!;
+    // The area around the editable element that the row handles stand in.
+    const area = document.createElement('div');
+    area.setAttribute(BODY_PART, '');
+    document.body.appendChild(area);
+    const strip = document.createElement('div');
+    area.appendChild(strip);
+    const handle = document.createElement('button');
+    strip.appendChild(handle);
+    const menu = layerOpenedFrom(strip);
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+    handle.focus();
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    menu.inside.focus();
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+
+    // From there to the top bar is leaving the body.
+    const bar = document.createElement('button');
+    document.body.appendChild(bar);
+    bar.focus();
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    bar.remove();
+    menu.layer.remove();
+    area.remove();
+    vi.restoreAllMocks();
+  });
+
+  it('stops being selected when the focus moves into a layer opened from outside the body, a top-bar menu', () => {
+    const { editor } = open(type);
+    const view = editor.prosemirrorView!;
+    const bar = document.createElement('div');
+    document.body.appendChild(bar);
+    const { layer, inside } = layerOpenedFrom(bar);
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+    inside.focus();
+
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    layer.remove();
+    bar.remove();
     vi.restoreAllMocks();
   });
 

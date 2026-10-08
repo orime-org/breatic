@@ -35,6 +35,7 @@ import { viewOf } from '@web/spaces/document/document-editor-view';
 import { DocumentMediaPicker } from '@web/spaces/document/DocumentMediaPicker';
 import { DocumentUploadPlaceholders } from '@web/spaces/document/DocumentUploadPlaceholders';
 import { DocumentMediaViews } from '@web/spaces/document/DocumentMediaViews';
+import { BODY_PART } from '@web/spaces/document/document-node-selection-focus';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
 
 interface DocumentEditorProps {
@@ -231,6 +232,9 @@ export const DocumentEditor = React.memo(function DocumentEditor({
               <div
                 ref={body}
                 data-testid='document-editor-content'
+                // The body and the row handles that stand beside it: the
+                // focus on a handle has not left the body.
+                {...{ [BODY_PART]: '' }}
                 className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
               />
             </div>

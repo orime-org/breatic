@@ -230,12 +230,22 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   const closedOnKey = React.useRef(false);
   // An input method confirms and cancels its candidates with Enter and Escape.
   const captionComposition = React.useMemo(compositionEnd, []);
-  // Where the keyboard was when the full-screen picture opened, to go back to.
-  const fullscreenOpener = React.useRef<Element | null>(null);
+  // Where the keyboard was when the full-screen picture opened, to go back
+  // to: the body, an element outside it, or nowhere. Read as it opens, while
+  // whatever held the keyboard is still on the page.
+  const fullscreenOpener = React.useRef<'body' | HTMLElement | null>(null);
   const openFullscreen = React.useCallback((): void => {
-    fullscreenOpener.current = document.activeElement;
+    const held = document.activeElement;
+    fullscreenOpener.current =
+      held === null || held === held.ownerDocument.body
+        ? null
+        : actions.bodyHolds(held)
+          ? 'body'
+          : held instanceof HTMLElement
+            ? held
+            : null;
     setFullscreen(true);
-  }, []);
+  }, [actions]);
   // Above the media, unless the scroller has no room there — then on the
   // media itself, along its top. Never under it: below the media sit its
   // caption and the next block, and a bar there reads as theirs.
@@ -557,13 +567,8 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
               event.preventDefault();
               const opener = fullscreenOpener.current;
               fullscreenOpener.current = null;
-              // Nothing had the keyboard when the picture opened.
-              if (opener === null || opener === opener.ownerDocument.body) return;
-              if (opener instanceof HTMLElement && opener.isConnected && !actions.bodyHolds(opener)) {
-                opener.focus();
-              } else {
-                actions.focusBody();
-              }
+              if (opener === 'body') actions.focusBody();
+              else if (opener?.isConnected === true) opener.focus();
             }}
             className='max-w-[min(96vw,1600px)] items-center border-0 bg-transparent shadow-none'
           >
