@@ -392,10 +392,12 @@ describe('a click beside a picture', () => {
     );
     const view = editor.prosemirrorView!;
     const row = view.dom.querySelector('[data-content-type="image"]')!;
+    // The press, ProseMirror's answer to the click, then the browser's click.
+    row.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
     const click = new MouseEvent('mouseup', { button: 0 });
     Object.defineProperty(click, 'target', { value: row });
-
     view.someProp('handleClick', (handler) => handler(view, view.posAtDOM(row, 0), click));
+    row.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0, detail: 1 }));
 
     expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([]);
     expect(view.state.selection.empty).toBe(true);

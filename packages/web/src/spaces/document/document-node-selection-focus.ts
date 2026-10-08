@@ -12,19 +12,20 @@
  * left. The selection becomes the caret nearest the block, which shows
  * nothing while the body has no focus; when the reader clicks back in, the
  * old block is not drawn as selected for the moment between the press and the
- * new selection. In a document with no place for text the selection stays
- * where it is and is marked let go ({@link isLetGo}): a media block draws
- * itself as not selected until the focus comes back to the body or the
- * selection moves.
+ * new selection. Where that caret would land in a table cell, or where there
+ * is no place for text, the selection stays where it is and is marked let go
+ * ({@link isLetGo}): a block draws itself as not selected until the focus
+ * comes back to the editable element or the selection moves to something
+ * else. The full table of states and events is in the design (inner#1127,
+ * 3.5.1).
  *
- * What belongs to the body (`belongsToBody`): the editable element and
- * whatever carries {@link BODY_PART} — the area around it that holds the row
- * handles, and a picture's full-screen view — and every layer drawn outside
- * it that an element of the body opened: a player's volume panel, a row's
- * menu and its submenus. A layer names its opener through the opener's
- * `aria-controls`, which every Radix trigger sets while its content is open.
- * The window losing the focus is not leaving either; the reader comes back to
- * the document as they left it.
+ * What belongs to the body (`belongsToBody`): the editable element, the area
+ * around it that carries {@link BODY_PART} and holds the row handles, and
+ * every layer drawn outside them that an element of the body opened: a
+ * player's volume panel, a row's menu and its submenus, a picture's full-
+ * screen view. A layer names its opener through the opener's `aria-controls`.
+ * The body of another Space is not this body. The window losing the focus is
+ * not leaving either; the reader comes back to the document as they left it.
  *
  * Watched on the page, not on the editable element: the focus can go from the
  * body to one of its own layers and from there out of the body, and that last
@@ -44,21 +45,36 @@ import { MEDIA_BLOCK_TYPES } from '@web/spaces/document/document-media-types';
 const READER_SELECTED = new Set<string>([DIVIDER, ...MEDIA_BLOCK_TYPES]);
 
 /**
+ * Whether a caret sits in a table cell, where it brings up the cell's own
+ * button.
+ * @param caret - The caret.
+ * @returns True inside a cell.
+ */
+function inTableCell(caret: Selection): boolean {
+  const { $from } = caret;
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const role: unknown = $from.node(depth).type.spec.tableRole;
+    if (role === 'cell' || role === 'header_cell') return true;
+  }
+  return false;
+}
+
+/**
  * Where the caret goes when a block is not to be selected: the first place
  * for text after it, or before it when nothing follows.
  * @param doc - The document.
  * @param end - Where the block ends.
- * @returns The caret, or null in a document with no place for text.
+ * @returns The caret, or null when there is no place for text or the place is in a table cell.
  */
 export function caretUnder(doc: PMNode, end: number): Selection | null {
   const $end = doc.resolve(end);
-  return Selection.findFrom($end, 1, true) ?? Selection.findFrom($end, -1, true);
+  const caret = Selection.findFrom($end, 1, true) ?? Selection.findFrom($end, -1, true);
+  return caret === null || inTableCell(caret) ? null : caret;
 }
 
 /**
- * The attribute an element carries when it belongs to the body without being
- * inside the editable element: the focus moving into it does not leave the
- * body.
+ * The attribute the area around the editable element carries, where the row
+ * handles stand: the focus moving into it does not leave the body.
  */
 export const BODY_PART = 'data-document-body-part';
 
@@ -74,11 +90,10 @@ const KEY = new PluginKey<boolean>('documentNodeSelectionFocus');
  * @returns The opener, or null when no element names a layer around it.
  */
 function openerOf(element: Element): Element | null {
-  const openers = [...element.ownerDocument.querySelectorAll('[aria-controls]')];
   for (let layer = element.closest('[id]'); layer !== null; layer = layer.parentElement?.closest('[id]') ?? null) {
-    const { id } = layer;
-    const opener = openers.find((candidate) => candidate.getAttribute('aria-controls')?.split(/\s+/).includes(id));
-    if (opener !== undefined) return opener;
+    // Radix ids carry colons, which a quoted attribute value takes as they are.
+    const opener = element.ownerDocument.querySelector(`[aria-controls~="${layer.id}"]`);
+    if (opener !== null) return opener;
   }
   return null;
 }
@@ -91,12 +106,24 @@ function openerOf(element: Element): Element | null {
  * @returns True when it belongs to the body.
  */
 function belongsToBody(view: EditorView, target: EventTarget | null): boolean {
+  const body = view.dom.closest(`[${BODY_PART}]`) ?? view.dom;
   const seen = new Set<Element>();
   for (let at = target instanceof Element ? target : null; at !== null && !seen.has(at); at = openerOf(at)) {
     seen.add(at);
-    if (view.dom.contains(at) || at.closest(`[${BODY_PART}]`) !== null) return true;
+    if (body.contains(at)) return true;
   }
   return false;
+}
+
+/**
+ * The block a reader-selected block selection is on.
+ * @param selection - The selection.
+ * @returns The block's id, or null when the selection is not on such a block.
+ */
+function selectedBlock(selection: Selection): string | null {
+  if (!(selection instanceof NodeSelection) || !READER_SELECTED.has(selection.node.type.name)) return null;
+  const id: unknown = selection.$from.parent.attrs.id;
+  return typeof id === 'string' ? id : null;
 }
 
 /**
@@ -128,8 +155,7 @@ export function isLetGo(decorations: readonly Decoration[]): boolean {
  */
 function dropUnlessInBody(view: EditorView, now: EventTarget | null): void {
   const { selection } = view.state;
-  if (!(selection instanceof NodeSelection) || !READER_SELECTED.has(selection.node.type.name)) return;
-  if (belongsToBody(view, now)) return;
+  if (selectedBlock(selection) === null || belongsToBody(view, now)) return;
   // The window itself lost the focus: the body still holds it within the page.
   if (!view.dom.ownerDocument.hasFocus()) return;
   letGoOfBlock(view, selection.to);
@@ -157,10 +183,11 @@ export const documentNodeSelectionFocusExtension = createExtension(() => ({
       key: KEY,
       state: {
         init: () => false,
-        apply: (tr, letGo) => {
+        apply: (tr, letGo, before, after) => {
           const meta: unknown = tr.getMeta(KEY);
           if (typeof meta === 'boolean') return meta;
-          return tr.selectionSet ? false : letGo;
+          // A sync or an undo sets the selection again on the same block.
+          return letGo && selectedBlock(after.selection) !== null && selectedBlock(after.selection) === selectedBlock(before.selection);
         },
       },
       props: { decorations: letGoDecorations },
@@ -172,7 +199,7 @@ export const documentNodeSelectionFocusExtension = createExtension(() => ({
          * @param event - A focusout anywhere on the page.
          */
         const onFocusOut = (event: FocusEvent): void => {
-          if (!belongsToBody(view, event.target)) return;
+          if (selectedBlock(view.state.selection) === null || !belongsToBody(view, event.target)) return;
           if (event.relatedTarget !== null) {
             dropUnlessInBody(view, event.relatedTarget);
             return;
@@ -190,11 +217,12 @@ export const documentNodeSelectionFocusExtension = createExtension(() => ({
           }, 0);
         };
         /**
-         * Takes the let-go mark off when the focus comes back to the body.
+         * Takes the let-go mark off when the focus comes back to the editable
+         * element.
          * @param event - A focusin anywhere on the page.
          */
         const onFocusIn = (event: FocusEvent): void => {
-          if (KEY.getState(view.state) === true && belongsToBody(view, event.target)) {
+          if (KEY.getState(view.state) === true && event.target instanceof Node && view.dom.contains(event.target)) {
             view.dispatch(view.state.tr.setMeta(KEY, false).setMeta('addToHistory', false));
           }
         };

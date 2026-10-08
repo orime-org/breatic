@@ -41,7 +41,6 @@ import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 
 /** The media block types. */
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
-import { BODY_PART } from '@web/spaces/document/document-node-selection-focus';
 
 /** The block's props, as far as this view reads them. */
 export interface MediaBlockProps {
@@ -215,6 +214,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   const [dragWidth, setDragWidth] = React.useState<number | null>(null);
   const [editingCaption, setEditingCaption] = React.useState(false);
   const [fullscreen, setFullscreen] = React.useState(false);
+  const fullscreenId = React.useId();
   const [narrower, setNarrower] = React.useState(false);
   const toolbarRef = React.useRef<HTMLDivElement | null>(null);
   // The toolbar floats over the body like the selection bubble bar, and the
@@ -387,6 +387,9 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   return (
     <div
       data-testid='doc-media-row'
+      // The full-screen picture is a layer this block opened: the body keeps
+      // its selection while the focus is in it.
+      aria-controls={fullscreen ? fullscreenId : undefined}
       className={`flex w-full ${sized ? (JUSTIFY[alignment] ?? 'justify-center') : ''}`}
     >
       <div
@@ -556,13 +559,11 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       {type === 'image' && (
         <Dialog open={fullscreen} onOpenChange={setFullscreen}>
           <DialogContent
+            id={fullscreenId}
             aria-describedby={undefined}
-            // The full-screen picture is the block's own view: the body
-            // keeps its selection while it is open (`BODY_PART`), and the
-            // keyboard goes back where it was when it opened. Back in the body
-            // it goes through the editor, which writes the kept selection to
-            // the page as the body takes the focus.
-            {...{ [BODY_PART]: '' }}
+            // The keyboard goes back where it was when the picture opened.
+            // Back in the body it goes through the editor, which writes the
+            // kept selection to the page as the body takes the focus.
             onCloseAutoFocus={(event) => {
               event.preventDefault();
               const opener = fullscreenOpener.current;

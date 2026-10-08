@@ -15,11 +15,15 @@
  * caret, which shows nothing while the body has no focus. The pointer frames
  * the same part on hover (`DocumentMediaBlock.tsx`).
  *
- * A click beside the media is answered at the click, where ProseMirror
- * decides what a click selects. The press before it is left alone, so a drag
- * or a shift-click starting there is the browser's, and the comments' click
- * handlers, which the editor asks first, still close a thread the reader had
- * open.
+ * A click beside the media is answered at the browser's `click`, after a
+ * press that landed beside it; ProseMirror's own answers to a click there
+ * (`handleClick`, `handleDoubleClick`, `handleTripleClick`) pick nothing.
+ * ProseMirror cannot be the one to answer it: while the block is selected its
+ * row is draggable, and a pointer that moves more than 4px before it is let
+ * go makes ProseMirror leave the click to the browser without asking
+ * `handleClick`. The press is left alone, so a drag or a shift-click starting
+ * there is the browser's, and the comments' click handlers, which the editor
+ * asks first, still close a thread the reader had open.
  *
  * A press on the media selects it as it lands, and only then gives the body
  * the focus. While the body has no focus ProseMirror keeps a selection in its
@@ -50,6 +54,9 @@ import { MEDIA_BLOCK_TYPES } from '@web/spaces/document/document-media-types';
 import { letGoOfBlock } from '@web/spaces/document/document-node-selection-focus';
 
 const KEY = new PluginKey('documentMediaRowPress');
+
+/** The row a view's last left press landed beside the media of, until its click. */
+const pressedBeside = new WeakMap<EditorView, Element>();
 
 /** A media block's content element. */
 const MEDIA_ROW = MEDIA_BLOCK_TYPES.map((type) => `[data-content-type="${type}"]`).join(', ');
@@ -107,8 +114,9 @@ function leaveBesideMedia(view: EditorView, row: Element): void {
 }
 
 /**
- * Answers a single click in a media block's row: on what the media shows it
- * selects the media, anywhere else in the row it leaves the body.
+ * ProseMirror's single click in a media block's row: on what the media shows
+ * it selects the media; beside it, it picks nothing, the browser's click
+ * answers it ({@link clickAfterPressBeside}).
  * @param view - The view.
  * @param event - The click.
  * @returns True when the click landed in a media row.
@@ -117,36 +125,52 @@ function clickInMediaRow(view: EditorView, event: MouseEvent): boolean {
   const hit = rowHit(event.target);
   if (hit === null) return false;
   if (hit.onMedia) selectMedia(view, hit.row);
-  else leaveBesideMedia(view, hit.row);
   return true;
 }
 
 /**
- * Answers a double or triple click beside the media or on its caption. One
- * on the media is not answered here: its press has already selected the
- * media ({@link pressOnMedia}).
- * @param view - The view.
+ * ProseMirror's double or triple click beside the media or on its caption:
+ * picks nothing, the browser's click answers it. One on the media is not
+ * taken: its press has already selected the media ({@link pressInMediaRow}).
  * @param event - The click.
  * @returns True when the click landed beside the media or on its caption.
  */
-function repeatClickBesideMedia(view: EditorView, event: MouseEvent): boolean {
+function repeatClickBesideMedia(event: MouseEvent): boolean {
   const hit = rowHit(event.target);
-  if (hit === null || hit.onMedia) return false;
-  leaveBesideMedia(view, hit.row);
-  return true;
+  return hit !== null && !hit.onMedia;
 }
 
 /**
- * Selects a media block as a press on what it shows lands.
+ * A left press in a media block's row: on what the media shows it selects the
+ * media as it lands; beside it, it is noted for the click that follows.
  * @param view - The view.
  * @param event - The press.
  */
-function pressOnMedia(view: EditorView, event: MouseEvent): void {
+function pressInMediaRow(view: EditorView, event: MouseEvent): void {
+  pressedBeside.delete(view);
   if (event.button !== 0 || event.shiftKey) return;
   const hit = rowHit(event.target);
-  if (hit === null || !hit.onMedia) return;
+  if (hit === null) return;
+  if (!hit.onMedia) {
+    pressedBeside.set(view, hit.row);
+    return;
+  }
   selectMedia(view, hit.row);
   if (!view.hasFocus()) view.focus();
+}
+
+/**
+ * Answers the browser's click after a press beside the media or on its
+ * caption, however far the pointer moved: nothing in the body selected, no
+ * focus.
+ * @param view - The view.
+ * @param event - The click.
+ */
+function clickAfterPressBeside(view: EditorView, event: MouseEvent): void {
+  const row = pressedBeside.get(view);
+  pressedBeside.delete(view);
+  if (row === undefined || event.button !== 0 || event.shiftKey || !row.isConnected) return;
+  leaveBesideMedia(view, row);
 }
 
 /**
@@ -163,13 +187,17 @@ export const documentMediaRowPressExtension = createExtension(() => ({
           // The press, not its mousedown: a slider in the player cancels the
           // pointerdown, and a cancelled pointerdown fires no mousedown.
           pointerdown: (view, event) => {
-            pressOnMedia(view, event);
+            pressInMediaRow(view, event);
+            return false;
+          },
+          click: (view, event) => {
+            clickAfterPressBeside(view, event);
             return false;
           },
         },
         handleClick: (view, _pos, event) => clickInMediaRow(view, event),
-        handleDoubleClick: (view, _pos, event) => repeatClickBesideMedia(view, event),
-        handleTripleClick: (view, _pos, event) => repeatClickBesideMedia(view, event),
+        handleDoubleClick: (_view, _pos, event) => repeatClickBesideMedia(event),
+        handleTripleClick: (_view, _pos, event) => repeatClickBesideMedia(event),
       },
     }),
   ],
