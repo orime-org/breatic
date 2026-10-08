@@ -67,6 +67,7 @@ export * as uploadGrantService from "@domain/asset/upload-grant.service.js";
 export * as uploadTicketService from "@domain/asset/upload-ticket.service.js";
 export * as backendUploadService from "@domain/asset/backend-upload.service.js";
 export * as mediaReadService from "@domain/asset/media-read.service.js";
+export { extFromUrl, labelForUrl, readerUrlSchema, safeExt } from "@domain/asset/source-url.js";
 export {
   MEDIA_READ_QUEUE,
   type MediaReadJob,

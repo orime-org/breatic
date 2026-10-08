@@ -25,7 +25,8 @@ import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import {
   extFromUrl,
   labelForUrl,
-} from "@server/modules/asset/sourceUrl.js";
+  readerUrlSchema,
+} from "@breatic/domain";
 import {
   getCanvasReferencePoolCap,
   getNodeHistoryPageSize,
@@ -128,8 +129,7 @@ canvas.get("/limits", (c) => {
  * read at the edge, and the size is bounded by what the ticket signs.
  */
 const ingestUrlSchema = z.object({
-  // 2kB is the ceiling Google Docs publishes for the same kind of input.
-  url: z.string().url().max(2048).startsWith("https://"),
+  url: readerUrlSchema,
   project_id: z.string().uuid(),
   space_id: z.string().uuid(),
   // Required, unlike the browser's lane. The outcome of this one is read back
