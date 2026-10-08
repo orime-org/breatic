@@ -583,3 +583,32 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
     expect(rows[0]!.source).toBe("ai");
   });
 });
+
+// The agent's proposal names material by address, and the check reads the
+// registration behind it (inner#1315): only a live row of this studio counts.
+describe("asset repo — a live row by its storage key (inner#1315)", () => {
+  it("finds the studio's live row for the key", async () => {
+    const { personalStudioId } = await insertUserWithPersonalStudio();
+    const { asset } = await assetRepo.registerWithDedup(baseAsset(personalStudioId, fakeHash(), 10));
+
+    const found = await assetRepo.findLiveByKeyInStudio(personalStudioId, asset.storageKey);
+
+    expect(found?.id).toBe(asset.id);
+  });
+
+  it("finds nothing for another studio's key", async () => {
+    const { personalStudioId } = await insertUserWithPersonalStudio();
+    const other = await insertUserWithPersonalStudio();
+    const { asset } = await assetRepo.registerWithDedup(baseAsset(other.personalStudioId, fakeHash(), 10));
+
+    expect(await assetRepo.findLiveByKeyInStudio(personalStudioId, asset.storageKey)).toBeNull();
+  });
+
+  it("finds nothing once the row is deleted", async () => {
+    const { personalStudioId } = await insertUserWithPersonalStudio();
+    const { asset } = await assetRepo.registerWithDedup(baseAsset(personalStudioId, fakeHash(), 10));
+    await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ${asset.id}`;
+
+    expect(await assetRepo.findLiveByKeyInStudio(personalStudioId, asset.storageKey)).toBeNull();
+  });
+});
