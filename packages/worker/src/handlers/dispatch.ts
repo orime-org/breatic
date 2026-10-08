@@ -130,15 +130,15 @@ export interface TaskJobData {
 }
 
 /**
- * Whether the currently-running attempt is the job's LAST allowed one
+ * Whether a failure in the currently-running attempt leaves no retry
  * (#1580 adversarial fix: retryable close self-fences the retry). BullMQ
- * 5.30 semantics (source-verified): `attemptsStarted` increments when
- * processing starts, so attempt N observes attemptsStarted === N;
- * `opts.attempts` is the total allowance (absent = 1). A terminal outcome may
+ * retries while `attemptsMade + 1 < opts.attempts` (bullmq 5.81.3 job.js
+ * shouldRetryJob), and `attemptsMade` counts failed attempts only: a job
+ * moved back to delayed and picked up again keeps it. A terminal outcome may
  * only be settled on a terminal attempt: settling a retryable failure marks
  * the row failed while the retry is still to come, and the reader sees that
  * failure sitting on a task the next attempt goes on to finish. Defensive: a
- * missing attemptsStarted counts as terminal — settling a possibly-early
+ * missing attemptsMade counts as terminal — settling a possibly-early
  * failure is the safer failure mode, since a row this settles is one `settle`
  * refuses to move again, while suppressing the only settle leaves the row
  * running until its budget is judged.
@@ -146,10 +146,10 @@ export interface TaskJobData {
  * @returns true when no further retries will follow this attempt.
  */
 export function isTerminalAttempt(
-  job: Pick<Job<TaskJobData>, "attemptsStarted" | "opts">,
+  job: Pick<Job<TaskJobData>, "attemptsMade" | "opts">,
 ): boolean {
-  const started = job.attemptsStarted ?? Number.MAX_SAFE_INTEGER;
-  return started >= (job.opts?.attempts ?? 1);
+  const failed = job.attemptsMade ?? Number.MAX_SAFE_INTEGER;
+  return failed + 1 >= (job.opts?.attempts ?? 1);
 }
 
 /**
