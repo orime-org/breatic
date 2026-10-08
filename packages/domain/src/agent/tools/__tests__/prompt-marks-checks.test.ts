@@ -398,6 +398,43 @@ describe("the lyrics box a song model draws, a second way for words (table B)", 
   });
 });
 
+describe("the lyrics set as a parameter (table D)", () => {
+  it("is refused with the way words reach the lyrics box", () => {
+    const answer = checkProposal({
+      nodes: [{ role: "generate", type: "audio", name: "Song", mode: "t2m", model: "mureka-v9.5-generate-song", params: { lyrics: "la la" }, prompt: [{ text: "pop" }] }],
+      edges: [],
+      rationale: "",
+    });
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringContaining('wired in with into: "lyrics"') });
+  });
+});
+
+describe("a mark's label", () => {
+  it.each([
+    ["asset", "the hero ]"],
+    ["tweak", "the {hero}'s line"],
+  ] as const)("refuses a %s label holding the bracket that closes it, which would not read back", (kind, label) => {
+    const proposal = edit([CHARACTER], [{ slot: { kind, label, note: "x" } }, { text: " at night" }]);
+    expect(inputSchema.safeParse(proposal).success).toBe(false);
+  });
+
+  it("refuses a note label holding the bracket that closes it", () => {
+    const proposal = edit([CHARACTER], [reference("the character"), { slot: { kind: "note", label: "Pick the photo (front) in the slot" } }]);
+    expect(inputSchema.safeParse(proposal).success).toBe(false);
+  });
+
+  it("takes a label holding another kind's bracket", () => {
+    const proposal = edit([CHARACTER], [{ slot: { kind: "asset", label: "the hero (front)", note: "x" } }, { text: " at night" }]);
+    expect(inputSchema.safeParse(proposal).success).toBe(true);
+  });
+});
+
+describe("what the note and the capabilities say", () => {
+  it("says a note can ask for a text node @'d in the lyrics box", () => {
+    expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/or that a text node is @'d in the lyrics box/);
+  });
+});
+
 describe("a way over its room (table C)", () => {
   it("says to wire fewer, and nothing about another way, when the kind has one way", () => {
     const pictures = Array.from({ length: 4 }, (_, i): ProposalNode => ({ role: "source", type: "image", name: `P${String(i + 1)}` }));

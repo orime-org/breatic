@@ -240,6 +240,26 @@ describe("what the rendered answer tells the model", () => {
     );
   });
 
+  it("says a mention of an image, video or audio node puts it in as reference material where the pool takes that kind", () => {
+    expect(renderCapabilitiesForModel({ nodes: [] })).toMatch(
+      /Mentioning an image, video or audio node puts it in as reference material instead, for a model whose reference pool takes that kind\./,
+    );
+  });
+
+  it("says a kind the canvas will not wire into the node is picked into its slot in the panel", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "sfx" });
+    const line = renderGenerationModelsForModel(answer).split("\n").find((l) => l.includes("(hunyuan-video-foley)")) ?? "";
+    expect(line).toMatch(/Each video node is picked into "video" in the panel, not wired in \(a slot, at most 1, nothing to write: the panel asks for it\)\./);
+    expect(line).not.toMatch(/video node wired in/);
+  });
+
+  it("says the lyrics box is filled by a text node wired in, not set as a parameter", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "t2m" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /lyrics: the lyrics box on the panel, not set here; send words you wrote as a text node wired in with into: "lyrics" and a note\./,
+    );
+  });
+
   it("names both boxes a song model's words can go into, and the mark each asks for", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "t2m" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
