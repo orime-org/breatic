@@ -201,6 +201,7 @@ describe("empty nodes counted, a slot's and an unused kind's left out", () => {
       slot: { kind: "asset", label, note: label },
     });
     const prompt = [
+      { slot: { kind: "note" as const, label: "Pick the first frame into the image slot" } },
       { text: "She walks forward. " },
       ...(marks >= 2 ? [asset("first frame"), { text: " opens it. " }] : []),
       asset("character"),
@@ -228,7 +229,7 @@ describe("empty nodes counted, a slot's and an unused kind's left out", () => {
     };
   }
 
-  it("places one mark for the pool node, the slot's node needing none", () => {
+  it("places one mark for the pool node and a note for the slot's node", () => {
     expect(answerFor(slotThenPool(1))).toMatchObject({ placed: true });
   });
 

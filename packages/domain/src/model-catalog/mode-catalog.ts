@@ -122,11 +122,6 @@ export interface ParamInfo {
    */
   fromReferencePool?: true;
   /**
-   * Whether a run can go without this source: the panel never asks for an
-   * optional slot, so a node going into one needs a note (`waysIn`).
-   */
-  optional?: true;
-  /**
    * Filled from the node's shots: a proposal reaches it through its `shots`,
    * never through `params`.
    */
@@ -415,7 +410,6 @@ function projectParam(
     // this says. It comes off `fill` rather than the name the pool travels
     // under, so the answer holds for a model spelling its pool differently.
     ...(by === "canvas" && spec.fill === "pool" ? { fromReferencePool: true as const } : {}),
-    ...(by === "canvas" && spec.optional === true ? { optional: true as const } : {}),
     ...(by === "nothing" ? { noControl: true as const } : {}),
     ...(spec.fill === "storyboard" ? { fromStoryboard: true as const } : {}),
     ...(gate !== undefined ? { gate } : {}),
@@ -435,7 +429,7 @@ function isReferenceKind(accepts: string | undefined): accepts is ReferenceKind 
 }
 
 /** What the reader writes in the prompt for a node going one way in. */
-export type WayMark = "asset" | "note" | "none";
+export type WayMark = "asset" | "note";
 
 /** One way a node wired in reaches a generation, as the model declares it. */
 export interface WayIn {
@@ -445,16 +439,11 @@ export interface WayIn {
   room: number;
   /**
    * What the prompt carries for each node going this way: an asset mark to
-   * mention it, a note saying where to pick or mention it, or nothing where the panel
-   * itself asks for it (a required slot).
+   * mention it from the pool, or a note saying which slot to pick it into or
+   * that it is mentioned in the lyrics box. A required slot gets a note too:
+   * the panel says the slot is empty, not which node goes there.
    */
   mark: WayMark;
-  /**
-   * Whether an edge carries the node this way. The canvas lets only some kinds
-   * feed a node type (`canConnect`); a slot of another kind is filled by
-   * picking a node in the panel, which needs no edge.
-   */
-  byEdge: boolean;
 }
 
 /** The kinds of node a way in is listed for: the three a pool carries, and words. */
@@ -474,21 +463,20 @@ export function waysIn(chosen: ModelInfo): Map<WayKind, WayIn[]> {
   /**
    * List one more way for a kind.
    * @param kind - The kind of node.
-   * @param way - The way, short of whether an edge carries it.
+   * @param way - The way.
    */
-  const add = (kind: WayKind, way: Omit<WayIn, "byEdge">): void => {
-    const byEdge = canConnect(kind, chosen.nodeType);
+  const add = (kind: WayKind, way: WayIn): void => {
     // A pool is read through mentions of wired nodes, so a kind no edge can
-    // carry has no pool way at all.
-    if (way.into === "pool" && !byEdge) return;
-    ways.set(kind, [...(ways.get(kind) ?? []), { ...way, byEdge }]);
+    // carry has no pool way at all. A slot is picked in the panel and needs no edge.
+    if (way.into === "pool" && !canConnect(kind, chosen.nodeType)) return;
+    ways.set(kind, [...(ways.get(kind) ?? []), way]);
   };
   for (const [name, info] of Object.entries(chosen.params)) {
     if (info.filledBySource !== true || !isReferenceKind(info.accepts)) continue;
     if (info.fromReferencePool === true) {
       if (chosen.takesPrompt) add(info.accepts, { into: "pool", room: info.maxItems ?? Number.POSITIVE_INFINITY, mark: "asset" });
     } else {
-      add(info.accepts, { into: name, room: info.maxItems ?? 1, mark: info.optional === true ? "note" : "none" });
+      add(info.accepts, { into: name, room: info.maxItems ?? 1, mark: "note" });
     }
   }
   if (chosen.takesPrompt) add("text", { into: "pool", room: Number.POSITIVE_INFINITY, mark: "asset" });

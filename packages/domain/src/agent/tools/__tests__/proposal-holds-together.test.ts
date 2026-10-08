@@ -963,21 +963,21 @@ describe("what the catalog does not offer", () => {
 
 describe("a mode taking one kind both by a slot and by its pool", () => {
   /**
-   * The name of the required slot a mixed mode has beside its pool.
+   * The name of the slot a mixed mode has beside its pool.
    * @param at - The mode.
    * @returns The slot's parameter name.
    * @throws {Error} When it has none.
    */
-  const requiredSlotOf = (at: Reachable): string => {
+  const slotOf = (at: Reachable): string => {
     const name = Object.entries(at.params).find(
-      ([, p]) => p.filledBySource === true && p.fromReferencePool !== true && p.optional !== true,
+      ([, p]) => p.filledBySource === true && p.fromReferencePool !== true,
     )?.[0];
-    if (name === undefined) throw new Error("the mode has no required slot");
+    if (name === undefined) throw new Error("the mode has no slot");
     return name;
   };
 
   /**
-   * The mode whose model takes one kind both ways: a required slot and a pool.
+   * The mode whose model takes one kind both ways: a slot and a pool.
    * @returns That mode.
    * @throws {Error} When the catalog offers none.
    */
@@ -986,18 +986,20 @@ describe("a mode taking one kind both by a slot and by its pool", () => {
       (at) =>
         at.byReference &&
         Object.values(at.params).some(
-          (p) => p.filledBySource === true && p.fromReferencePool !== true && p.optional !== true,
+          (p) => p.filledBySource === true && p.fromReferencePool !== true,
         ),
-      "mode with a required slot beside its pool",
+      "mode with a slot beside its pool",
     );
 
-  it("counts the pool's cap without the picture the required slot takes", () => {
+  it("counts the pool's cap without the picture the slot takes", () => {
     const at = mixed();
     const cap = Object.values(at.params).find((p) => p.fromReferencePool === true)?.maxItems ?? 0;
     const sources = Array.from({ length: cap + 1 }, () => "image" as const);
-    const slot = requiredSlotOf(at);
+    const slot = slotOf(at);
     const proposal = propose(at, { sources, marks: cap });
     proposal.edges = proposal.edges.map((edge, i) => (i === 0 ? { ...edge, into: slot } : edge));
+    const made = proposal.nodes[proposal.nodes.length - 1];
+    if (made) made.prompt = [{ slot: { kind: "note", label: "Pick the first picture in its slot" } }, ...(made.prompt ?? [])];
 
     expect(checkProposal(proposal)).toEqual({ ok: true });
   });
@@ -1025,11 +1027,11 @@ describe("a mode taking one kind both by a slot and by its pool", () => {
           mode: at.mode,
           model: at.model,
           params: {},
-          prompt: [{ text: "walk to " }, { slot: { kind: "asset", label: "castle", note: "" } }],
+          prompt: [{ slot: { kind: "note", label: "Pick Knight in its slot" } }, { text: "walk to " }, { slot: { kind: "asset", label: "castle", note: "" } }],
         },
       ],
       edges: [
-        { fromIndex: 0, toIndex: 2, into: requiredSlotOf(at) },
+        { fromIndex: 0, toIndex: 2, into: slotOf(at) },
         { fromIndex: 1, toIndex: 2, into: "pool" },
       ],
       rationale: "",
@@ -1832,7 +1834,7 @@ describe("a mark pointing at an upstream node", () => {
     });
   });
 
-  it("pairs a mark with the node past the one the required slot takes", () => {
+  it("pairs a mark with the node past the one the slot takes", () => {
     // The reader picks the slot's node in the panel, so the canvas writes no
     // mention of it and the one mark is about the caption wired in after it.
     const at = pick(
@@ -1846,7 +1848,7 @@ describe("a mark pointing at an upstream node", () => {
       nodes: [
         generation(feeder),
         { role: "written", type: "text", name: "The caption", prompt: [{ text: "slow and warm" }] },
-        { ...pointing, prompt: (pointing.prompt ?? []).filter((seg) => seg.slot) },
+        { ...pointing, prompt: [{ slot: { kind: "note", label: "Pick the step before in its slot" } }, ...(pointing.prompt ?? []).filter((seg) => seg.slot)] },
       ],
       edges: [{ fromIndex: 0, toIndex: 2 }, { fromIndex: 1, toIndex: 2 }],
       modelNote: "",
@@ -1999,7 +2001,7 @@ describe("a model the panel draws no prompt box for", () => {
       nodes: [
         ...at.needs.map((kind) => generation(makerOf(kind))),
         { role: "generate", type: at.nodeType, name: "The result", mode: at.mode, model: at.model,
-          params: {}, prompt: [{ slot: { kind: "note", label: "Pick each piece in its slot" } }, ...(mark ?? [])] },
+          params: {}, prompt: [...at.needs.map((kind) => ({ slot: { kind: "note" as const, label: `Pick the ${kind} in its slot` } })), ...(mark ?? [])] },
       ],
       edges: at.needs.map((_, i) => ({ fromIndex: i, toIndex: at.needs.length })),
       rationale: "x", groupName: "g",

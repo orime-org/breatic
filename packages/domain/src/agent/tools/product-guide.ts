@@ -838,13 +838,15 @@ export function renderProductGuide(): string {
       "bracket. A ✏️ mark in braces is words only the reader can write; they replace it with their own. An orange " +
       "note on a line of its own at the top of the box says how to operate the panel, such as which slot to pick " +
       "a node into; it is never sent to the model, and they can delete it. Each mark is also a line on the card; " +
-      "where the panel shows no prompt box, the card is the only place it appears. Square-bracket and brace marks " +
+      "where the panel shows no prompt box, the card is the only place it appears. Read back as text, as in an " +
+      "attached node's prompt, a note is (💡 …) on a line of its own and is not sent, a 📎 mark is [📎 …] and a " +
+      "✏️ mark {✏️ …}. Square-bracket and brace marks " +
       `left in a prompt are sent as they are. When a placed node that has a prompt box carries marks, the message ${quoted(t("canvas.generatePanel.editMarks"))} ` +
       "appears; nothing checks whether they were done.",
     "How work reaches a node depends on where it goes:",
     "- Into the reference list: the reader @s it in the prompt or a shot where a 📎 mark asks for it. Nothing " +
       "is @'d for them, and a node wired in that is not @'d is not used.",
-    "- Into one of the mode's source slots: it is not @'d; for an optional slot an orange note says which slot, " +
+    "- Into one of the mode's source slots: it is not @'d; an orange note says which slot to pick it into, " +
       "and a required slot left empty stops the run. Once that node holds " +
       "its file or its generated result, the reader opens the panel of the node it feeds, presses that slot's " +
       "button and clicks the node.",

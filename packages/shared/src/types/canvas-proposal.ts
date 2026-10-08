@@ -73,14 +73,15 @@ export function markText(slot: NonNullable<PromptSegment["slot"]>): string {
 
 /**
  * Whether a mark written as words reads back as the same mark: a label
- * holding the bracket that closes its kind would read back cut short.
+ * holding the bracket that closes its kind would read back cut short, and one
+ * holding a line break is split across two paragraphs by the box.
  * @param slot - The spot the reader acts on.
  * @returns True when {@link markedSegments} gives the same kind and label back.
  * @throws {never} Never.
  */
 export function markReadsBack(slot: NonNullable<PromptSegment["slot"]>): boolean {
   const [only, ...rest] = markedSegments(writtenMark(slot));
-  return rest.length === 0 && only?.slot?.kind === slot.kind && only.slot.label === slot.label;
+  return !slot.label.includes("\n") && rest.length === 0 && only?.slot?.kind === slot.kind && only.slot.label === slot.label;
 }
 
 /** The kinds in the order {@link MARK_PATTERN} lists them, one capture group each. */

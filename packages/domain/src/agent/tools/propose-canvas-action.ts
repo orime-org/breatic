@@ -11,13 +11,11 @@
  * models a mode can reach, and whether that mode needs material only the
  * reader has.
  *
- * A mode that needs material is proposed with an empty node to put it in, and
- * the reply says what goes where. How that material reaches the generation
- * differs by model: the reference
- * pool is fed by an edge and picked by a mention in the prompt, a slot on the
- * panel's toolbar is picked by the reader clicking a node on the canvas.
- * Which of the two this model uses is read off the catalog here and travels
- * with the proposal.
+ * A mode that needs material is proposed with an empty node to put it in.
+ * Every way a node reaches a generation is read off the catalog (`waysIn`,
+ * design 5.7): the reference pool, which the reader mentions it from in the
+ * prompt; a slot on the panel, which the reader picks it into; or a song
+ * model's lyrics box. Each edge says which on `into`.
  *
  * Every character of this tool's description and its field descriptions goes
  * out with every turn of every conversation, and is measured against the same
@@ -27,11 +25,12 @@
  *
  * What this check answers is what the catalog and the product rules settle:
  * this mode exists, this model backs it, this value is one the control
- * offers, these characters fit, this line is one the canvas allows, this
- * panel can carry an upstream mention. How many nodes a shape takes, what
- * they are called, how many marks a prompt holds and how the nodes are wired
- * is the agent's to decide: a scene has more than one good answer, and a
- * check that picked one of them would be the rules written out in code.
+ * offers, these characters fit, this line is one the canvas allows, each node
+ * goes a way the model has, and the prompt carries a mark or note for each.
+ * Marks are counted, never paired with nodes. How many nodes a shape takes,
+ * what they are called and how they are wired is the agent's to decide: a
+ * scene has more than one good answer, and a check that picked one of them
+ * would be the rules written out in code.
  */
 import { tool, type Tool } from "ai";
 import { z } from "zod";
@@ -83,8 +82,8 @@ export type ProposalVerdict = { ok: true } | { ok: false; reason: string };
 // with nothing beside it, or a mark naming nothing. The prompt's own text is
 // the exception and is left alone -- a segment of one space is how two marks
 // are kept apart, and trimming it would run them together.
-/** Why a label holding its own closing bracket is refused: written out, it would read back cut short. */
-const LABEL_BRACKET = "A label may not hold the bracket that closes its mark: ] for asset, } for tweak, ) for note.";
+/** Why a label holding its own closing bracket or a line break is refused: written out, it would not read back. */
+const LABEL_BRACKET = "A label may not hold the bracket that closes its mark (] for asset, } for tweak, ) for note) or a line break.";
 
 const promptSegment = z.union([
   z.object({ text: z.string().min(1) }).strict(),
@@ -171,8 +170,8 @@ const proposalNode = z
           "writes in. A mark is a segment of its own ({\"slot\": …}), never typed into a text " +
           "segment; it is words shown to the reader, nothing more: no mention is written for it, " +
           "and the reader @s every reference by hand, so give every node going into the pool an asset " +
-          "mark; a node going into a slot takes no asset mark: a note of its own for an optional slot " +
-          "or the lyrics box, nothing for a required slot",
+          "mark; a node going into a slot or the lyrics box takes a note of its own instead, and so does " +
+          "an empty node left unwired for the reader to pick into a slot",
       ),
     shots: z
       .array(
@@ -188,7 +187,7 @@ const proposalNode = z
       .describe(
         "role generate only, in mode multi_shot and nowhere else: each " +
           "shot's own prompt and whole seconds, which add up to the duration. " +
-          "The main prompt is not sent then, so leave it out",
+          "The main prompt is not sent then, so leave it out; notes go in a shot too",
       ),
   })
   .strict();
@@ -218,7 +217,7 @@ export const inputSchema = z
               .optional()
               .describe(
                 "Where the node wired in goes: \"pool\" (the reader @s it into the prompt; an asset mark each), " +
-                  "the name of a slot the model has (the reader picks it in the panel; a note each when the slot is optional), " +
+                  "the name of a slot the model has (the reader picks it in the panel; a note each), " +
                   `or "${PANEL_EDITOR_PARAM}" for words the reader @s into a song model's lyrics box (a note each). Needed ` +
                   "when the model takes that kind more than one way",
               ),
@@ -244,27 +243,19 @@ export const inputSchema = z
   .strict();
 
 /**
- * What the catalog says about one proposed node, for everyone downstream.
+ * The model a generation node names, as the catalog serves it.
  *
- * Answered here because the catalog is the authority and this file is the
- * only place that reads it. A node the catalog cannot place -- no mode, no
- * model, a model it does not carry -- is left unanswered, and the
- * per-generation check says what is wrong with it in its own words.
+ * A node the catalog cannot place -- no mode, no model, a model it does not
+ * carry -- has none, and the per-generation check says what is wrong with it
+ * in its own words.
  * @param node - The proposed node.
- * @returns What it says, or undefined when the node generates nothing.
+ * @returns The model, or undefined when the node generates nothing the catalog serves.
  * @throws {never} Never.
  */
-function catalogFactsOf(
-  node: ProposalNode,
-): { takesPrompt: boolean } | undefined {
-  if (node.role !== "generate" || node.type === "text") return undefined;
-  const { mode, model } = node;
-  if (!mode || !model) return undefined;
-  const reachable = modelsForMode(node.type, mode);
-  if (!reachable.available) return undefined;
-  const chosen = reachable.models.find((m) => m.name === model);
-  if (!chosen) return undefined;
-  return { takesPrompt: chosen.takesPrompt };
+function chosenModelOf(node: ProposalNode): ModelInfo | undefined {
+  if (node.role !== "generate" || node.type === "text" || !node.mode || !node.model) return undefined;
+  const reachable = modelsForMode(node.type, node.mode);
+  return reachable.available ? reachable.models.find((m) => m.name === node.model) : undefined;
 }
 
 /**
@@ -281,8 +272,8 @@ function withCatalogFacts(proposal: CanvasProposal): CanvasProposal {
   return {
     ...proposal,
     nodes: proposal.nodes.map((node) => {
-      const facts = catalogFactsOf(node);
-      return facts === undefined ? node : { ...node, ...facts };
+      const chosen = chosenModelOf(node);
+      return chosen === undefined ? node : { ...node, takesPrompt: chosen.takesPrompt };
     }),
   };
 }
@@ -454,6 +445,56 @@ function wayRefusal(from: ProposalNode, model: string, options: readonly WayIn[]
     : `"${model}" takes no ${from.type} by "${into}"; set into on the edge from "${from.name}" to ${listed}.`;
 }
 
+/** A node wired into a generation, and the way it goes in. */
+interface Routed {
+  node: ProposalNode;
+  way: WayIn;
+}
+
+/**
+ * Where each node wired into one generation goes, as its edge says (design
+ * 5.7). The agent knows, and the marks it writes are words that name no node,
+ * so nothing here can work it out from them.
+ * @param proposal - The whole proposal.
+ * @param index - The generation's index.
+ * @param chosen - Its model.
+ * @returns Each routed node, or the refusal for the first edge that says no way the model has.
+ * @throws {never} Never.
+ */
+function routeEdges(proposal: CanvasProposal, index: number, chosen: ModelInfo): { routed: Routed[] } | { reason: string } {
+  const ways = waysIn(chosen);
+  const routed: Routed[] = [];
+  for (const edge of proposal.edges.filter((e) => e.toIndex === index)) {
+    const from = proposal.nodes[edge.fromIndex];
+    if (!from) continue;
+    // A slot of a kind the canvas will not wire in is filled by picking, and
+    // the edge itself is refused with the rest of the wiring.
+    const options = canConnect(from.type, chosen.nodeType) ? (ways.get(from.type) ?? []) : [];
+    // An edge the model takes nothing from still carries the creative link
+    // (user 2026-08-13); saying where it goes is a claim the model refutes.
+    if (options.length === 0) {
+      if (edge.into === undefined) continue;
+      return { reason: `"${chosen.name}" takes no ${from.type} node, so the edge from "${from.name}" goes nowhere in it; leave into off that edge, or propose a model that takes it.` };
+    }
+    const way = edge.into === undefined
+      ? options.length === 1 ? options[0] : undefined
+      : options.find((option) => option.into === edge.into);
+    if (way === undefined) return { reason: wayRefusal(from, chosen.name, options, edge.into) };
+    routed.push({ node: from, way });
+  }
+  return { routed };
+}
+
+/**
+ * How many notes a node carries, in its prompt and every shot.
+ * @param node - The node.
+ * @returns The count.
+ * @throws {never} Never.
+ */
+function notesIn(node: ProposalNode): number {
+  return proposalMarkSegments(node).filter((segment) => segment.slot?.kind === "note").length;
+}
+
 /**
  * Judge one generation node against the catalog and its own group.
  * @param proposal - The whole proposal, for reading the group around it.
@@ -519,7 +560,7 @@ function checkGenerateNode(
   if (node.shots !== undefined && (node.prompt?.length ?? 0) > 0) {
     return {
       ok: false,
-      reason: `With shots the main prompt is not sent. Put its words into the shots and leave prompt out.`,
+      reason: `With shots the main prompt is not sent. Put its words and notes into the shots and leave prompt out.`,
     };
   }
 
@@ -534,38 +575,15 @@ function checkGenerateNode(
       reason: `"${model}" draws no prompt box, so words and tweak or asset marks written there reach nobody. Keep only notes saying what the reader picks in the panel.`,
     };
   }
-  // Where each wired node goes is said on its edge (design 5.7): the agent
-  // knows, and the marks it writes are words that name no node, so nothing
-  // here can work it out from them. Words go the same way: into the prompt,
-  // or into the lyrics box where the model has one.
   const ways = waysIn(chosen);
-  const routed: { node: ProposalNode; way: WayIn }[] = [];
-  for (const edge of proposal.edges.filter((e) => e.toIndex === index)) {
-    const from = proposal.nodes[edge.fromIndex];
-    if (!from) continue;
-    // A slot of a kind the canvas will not wire in is filled by picking, and
-    // the edge itself is refused with the rest of the wiring.
-    const options = (ways.get(from.type) ?? []).filter((way) => way.byEdge);
-    // An edge the model takes nothing from still carries the creative link
-    // (user 2026-08-13); saying where it goes is a claim the model refutes.
-    if (options.length === 0) {
-      if (edge.into === undefined) continue;
-      return {
-        ok: false,
-        reason: `"${model}" takes no ${from.type} node, so the edge from "${from.name}" goes nowhere in it; leave into off that edge, or propose a model that takes it.`,
-      };
-    }
-    const way = edge.into === undefined
-      ? options.length === 1 ? options[0] : undefined
-      : options.find((option) => option.into === edge.into);
-    if (way === undefined) return { ok: false, reason: wayRefusal(from, model, options, edge.into) };
-    routed.push({ node: from, way });
-  }
+  const routing = routeEdges(proposal, index, chosen);
+  if ("reason" in routing) return { ok: false, reason: routing.reason };
+  const { routed } = routing;
   // Over a way's room is said first: the fix there is fewer nodes, and every
   // count below would otherwise ask for a mark or note for a node to remove.
   for (const [kind, list] of ways) {
     for (const option of list) {
-      const going = routed.filter(({ way }) => way === option).map(({ node: n }) => n);
+      const going = routed.filter(({ node: n, way }) => n.type === kind && way.into === option.into).map(({ node: n }) => n);
       if (going.length > option.room) {
         return {
           ok: false,
@@ -583,15 +601,14 @@ function checkGenerateNode(
       reason: `"${node.name}" has ${String(asked.length)} node(s) the reader @s to use (${asked.map((n) => `"${n.name}"`).join(", ")}) and ${String(marked)} asset mark(s). Give each one an asset mark saying what to @; a node not @'d is not used.`,
     };
   }
-  // An optional slot is one the panel never asks the reader to fill, and the
-  // lyrics box is one the prompt says nothing about: a node meant for either
-  // reaches the run only if a note says so.
+  // The panel says a slot is empty, never which node goes there, and the
+  // lyrics box is one the prompt says nothing about: a note says so.
   const noted = routed.filter(({ way }) => way.mark === "note");
-  const notes = prompt.filter((segment) => segment.slot?.kind === "note").length;
+  const notes = notesIn(node);
   if (notes < noted.length) {
     return {
       ok: false,
-      reason: `"${node.name}" has ${String(noted.length)} node(s) going into an optional slot or the lyrics box (${noted.map(({ node: n, way }) => `"${n.name}" into ${way.into}`).join(", ")}) and ${String(notes)} note(s). Give each one a note saying where to pick or @ it.`,
+      reason: `"${node.name}" has ${String(noted.length)} node(s) going into a slot or the lyrics box (${noted.map(({ node: n, way }) => `"${n.name}" into ${way.into}`).join(", ")}) and ${String(notes)} note(s). Give each one a note saying where to pick or @ it.`,
     };
   }
   const scripts = routed.filter(({ node: n, way }) => n.type === "text" && way.into === "pool").map(({ node: n }) => n);
@@ -760,8 +777,10 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
  * @throws {never} Never.
  */
 function markTypedAsWords(node: ProposalNode): ProposalVerdict {
-  const typed = proposalMarkSegments(node).flatMap((segment) =>
-    segment.text === undefined ? [] : markedSegments(segment.text).flatMap((part) => (part.slot ? [part.slot] : [])),
+  // Each prompt is read as one string, a slot standing in as a character no
+  // label holds, so a mark typed across two text segments is caught too.
+  const typed = [node.prompt ?? [], ...(node.shots ?? []).map((shot) => shot.prompt)].flatMap((segments) =>
+    markedSegments(segments.map((segment) => segment.text ?? "\u0000").join("")).flatMap((part) => (part.slot ? [part.slot] : [])),
   );
   if (typed.length === 0) return { ok: true };
   if (node.role === "written" && typed.some((slot) => slot.kind !== "tweak")) return writtenTakesNoMark(node);
@@ -843,12 +862,7 @@ export function checkProposal(sent: CanvasProposal): ProposalVerdict {
 function placesByKind(proposal: CanvasProposal): Map<string, number> {
   const room = new Map<string, number>();
   for (const node of proposal.nodes) {
-    if (node.role !== "generate" || node.type === "text") continue;
-    const { mode, model } = node;
-    if (!mode || !model) continue;
-    const reachable = modelsForMode(node.type, mode);
-    if (!reachable.available) continue;
-    const chosen = reachable.models.find((m) => m.name === model);
+    const chosen = chosenModelOf(node);
     if (!chosen) continue;
     for (const [kind, list] of waysIn(chosen)) {
       room.set(kind, (room.get(kind) ?? 0) + list.reduce((sum, way) => sum + way.room, 0));
@@ -866,13 +880,11 @@ function placesByKind(proposal: CanvasProposal): Map<string, number> {
  * @throws {never} Never.
  */
 function pickedInstead(into: ProposalNode, kind: string): string {
-  if (into.type === "text" || !into.mode || !into.model) return "";
-  const reachable = modelsForMode(into.type, into.mode);
-  const chosen = reachable.available ? reachable.models.find((m) => m.name === into.model) : undefined;
-  const slots = chosen ? (waysIn(chosen).get(kind as WayKind) ?? []).filter((way) => !way.byEdge) : [];
+  const chosen = chosenModelOf(into);
+  const slots = chosen ? (waysIn(chosen).get(kind as WayKind) ?? []) : [];
   if (slots.length === 0) return "";
   const names = slots.map((way) => `"${way.into}"`).join(" or ");
-  return ` "${into.model}" takes a ${kind} node in its ${names} slot, picked in the panel: leave this edge off and place the node unwired.`;
+  return ` "${into.model}" takes a ${kind} node in its ${names} slot, picked in the panel: leave this edge off, place the node unwired and add a note saying which slot.`;
 }
 
 /**
@@ -904,6 +916,40 @@ function checkEmptyNodesFit(proposal: CanvasProposal): ProposalVerdict {
     }
   }
   return { ok: true };
+}
+
+/**
+ * Whether every empty node left unwired for a slot has a note (design 5.7
+ * table C). Such a node reaches a generation only by the reader picking it
+ * into a slot, and the panel never says which node goes there.
+ *
+ * Counted over the group, never paired: a slot is filled by clicking any node
+ * of its kind, so the notes the group's generations carry beyond those their
+ * wired nodes use have to cover every such node.
+ * @param proposal - The proposal, its generations already judged.
+ * @returns Whether it stands, and which nodes lack a note when it does not.
+ * @throws {never} Never.
+ */
+function checkUnwiredNotes(proposal: CanvasProposal): ProposalVerdict {
+  const wired = new Set(proposal.edges.map((edge) => edge.fromIndex));
+  const slotKinds = new Set<string>();
+  let spare = 0;
+  for (const [index, node] of proposal.nodes.entries()) {
+    const chosen = chosenModelOf(node);
+    if (!chosen) continue;
+    for (const [kind, list] of waysIn(chosen)) {
+      if (list.some((way) => way.into !== "pool")) slotKinds.add(kind);
+    }
+    const routing = routeEdges(proposal, index, chosen);
+    const used = "routed" in routing ? routing.routed.filter(({ way }) => way.mark === "note").length : 0;
+    spare += notesIn(node) - used;
+  }
+  const loose = proposal.nodes.filter((node, i) => node.role === "source" && !wired.has(i) && slotKinds.has(node.type));
+  if (loose.length <= spare) return { ok: true };
+  return {
+    ok: false,
+    reason: `${loose.map((n) => `"${n.name}"`).join(", ")} ${loose.length === 1 ? "is" : "are"} left unwired, so the reader picks ${loose.length === 1 ? "it" : "each"} into a slot in the panel, and the generations here carry ${String(Math.max(spare, 0))} note(s) beyond those their wired nodes use. Give each one a note saying which slot to pick it into.`,
+  };
 }
 
 /**
@@ -993,11 +1039,12 @@ function checkResolved(proposal: CanvasProposal): ProposalVerdict {
     if (!verdict.ok) return verdict;
   }
 
-  // Last, because it reads every generation's places at once and a node the
+  // Last, because they read every generation's places at once and a node the
   // catalog cannot resolve contributes none: asked before the loop above, a
   // proposal naming a model that does not exist would be answered about its
   // empty nodes rather than about the name it got wrong.
-  return checkEmptyNodesFit(proposal);
+  const fit = checkEmptyNodesFit(proposal);
+  return fit.ok ? checkUnwiredNotes(proposal) : fit;
 }
 
 /**

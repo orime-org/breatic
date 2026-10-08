@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import {
   CAMERA_COMMANDS_PER_BRACKET,
+  canConnect,
   cameraCommandBracket,
   formatCredits,
   GENERATION_NODE_MODES,
@@ -114,7 +115,7 @@ function wayWords(kind: WayKind, way: WayIn): string {
       ? kind === "text" ? "@'d into the prompt" : "the reference pool"
       : way.into === PANEL_EDITOR_PARAM ? "@'d into the lyrics box" : "a slot";
   const room = Number.isFinite(way.room) ? `, at most ${String(way.room)}` : "";
-  const mark = way.mark === "asset" ? "an asset mark each" : way.mark === "note" ? "a note each" : "nothing to write: the panel asks for it";
+  const mark = way.mark === "asset" ? "an asset mark each" : "a note each";
   return `${where}${room}, ${mark}`;
 }
 
@@ -157,7 +158,7 @@ function renderModel(model: PricedModelInfo): string {
       const each = list.map((way) => `"${way.into}" (${wayWords(kind, way)})`);
       // The canvas will not wire this kind into the node: its slots are
       // filled by picking a node in the panel.
-      if (list.every((way) => !way.byEdge)) {
+      if (!canConnect(kind, model.nodeType)) {
         const into = list.map((way) => `"${way.into}"`).join(" or ");
         return ` Each ${kind} node is picked into ${into} in the panel, not wired in (${list.map((way) => wayWords(kind, way)).join("; ")}).`;
       }
