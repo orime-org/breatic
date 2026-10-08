@@ -119,7 +119,7 @@ export const PREVIEW_CONTENT_TYPE = "image/webp";
  * compares against. The container cannot import it, so the test holds the two
  * together. Narrower pictures keep their own width.
  */
-const PREVIEW_SCALE = "scale='min(576,iw)':-2";
+const PREVIEW_SCALE = "scale='min(576,iw)':-1";
 
 /**
  * The one ffmpeg call that writes a preview.
