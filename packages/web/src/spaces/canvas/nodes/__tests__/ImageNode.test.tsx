@@ -376,6 +376,21 @@ describe('ImageNode zoomed past its preview (inner#1320)', () => {
     expect(screen.getByTestId('image-node-original').getAttribute('src')).toBe(STORED);
   });
 
+  it('shows the preview of a new image after zooming back out', () => {
+    resetPreviewFailures();
+    const { rerender } = render(zoomed(true));
+    rerender(zoomed(false));
+    const next = `https://resource-dev.breatic.cc/image/2026-09-30/2_${UUID}.png`;
+    rerender(
+      <NodeZoomedPastPreviewContext.Provider value={false}>
+        <ImageNode data={{ ...DATA, content: next }} />
+      </NodeZoomedPastPreviewContext.Provider>,
+    );
+
+    expect(screen.queryByTestId('image-node-original')).toBeNull();
+    expect(screen.getByTestId('image-node-img').getAttribute('src')).toBe(`${next}.preview.webp`);
+  });
+
   it('lays nothing over an image already showing its original', () => {
     resetPreviewFailures();
     render(

@@ -35,14 +35,16 @@ export const NodeZoomedPastPreviewContext: React.Context<boolean> =
   React.createContext(false);
 
 /**
- * Whether this node should show its original. Once true it stays true while
- * the node is mounted: the original is already in the browser, and switching
- * back to the preview would gain nothing.
- * @returns True once the canvas has zoomed this node past its preview.
+ * Whether this node should show its original. Once true it stays true for that
+ * image while the node is mounted: its original is already in the browser, and
+ * switching back to the preview would gain nothing. A new image in the node is
+ * judged afresh, since nothing of it has loaded.
+ * @param image - The address of the image the node shows.
+ * @returns True once the canvas has zoomed this image past its preview.
  */
-export function useZoomedPastPreview(): boolean {
+export function useZoomedPastPreview(image: string | undefined): boolean {
   const past = React.useContext(NodeZoomedPastPreviewContext);
-  const [seen, setSeen] = React.useState(past);
-  if (past && !seen) setSeen(true);
-  return past || seen;
+  const [seenFor, setSeenFor] = React.useState(past ? image : undefined);
+  if (past && seenFor !== image) setSeenFor(image);
+  return past || (seenFor !== undefined && seenFor === image);
 }

@@ -26,20 +26,26 @@ describe('zoomedPastPreview', () => {
   });
 });
 
-/** Shows what the hook answers. */
-function Probe(): React.JSX.Element {
-  return <span data-testid='probe'>{String(useZoomedPastPreview())}</span>;
+/**
+ * Shows what the hook answers.
+ * @param props - The probe's props.
+ * @param props.image - The image the node shows.
+ * @returns The probe.
+ */
+function Probe({ image = 'a' }: { image?: string }): React.JSX.Element {
+  return <span data-testid='probe'>{String(useZoomedPastPreview(image))}</span>;
 }
 
 /**
  * Render the probe under a given context value.
  * @param past - The value the canvas provides.
+ * @param image - The image the node shows.
  * @returns The element tree.
  */
-function tree(past: boolean): React.JSX.Element {
+function tree(past: boolean, image = 'a'): React.JSX.Element {
   return (
     <NodeZoomedPastPreviewContext.Provider value={past}>
-      <Probe />
+      <Probe image={image} />
     </NodeZoomedPastPreviewContext.Provider>
   );
 }
@@ -59,5 +65,13 @@ describe('useZoomedPastPreview', () => {
 
     rerender(tree(false));
     expect(screen.getByTestId('probe')).toHaveTextContent('true');
+  });
+
+  it('starts over for a new image in the same node', () => {
+    const { rerender } = render(tree(true, 'a'));
+    rerender(tree(false, 'a'));
+    rerender(tree(false, 'b'));
+
+    expect(screen.getByTestId('probe')).toHaveTextContent('false');
   });
 });

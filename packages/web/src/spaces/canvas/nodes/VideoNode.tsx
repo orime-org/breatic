@@ -49,7 +49,7 @@ export const VideoNode = React.memo(function VideoNode({
 }: VideoNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
   const { resolution, setResolution } = useNodeResolution(data.content, data.width, data.height);
-  const fullPoster = useZoomedPastPreview();
+  const fullPoster = useZoomedPastPreview(data.coverUrl);
   // Subscribe to the BOOLEAN, not the session object: this node re-renders
   // only when the answer flips, not on every change to an unrelated pick.
   const focusPicking = useCanvasSession(

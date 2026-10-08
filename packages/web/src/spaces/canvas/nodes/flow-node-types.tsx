@@ -17,6 +17,7 @@ import {
   NOBODY,
 } from '@web/spaces/canvas/nodes/_shared/node-occupants-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
+import { useDevicePixelRatio } from '@web/lib/device-pixel-ratio';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import {
   NodeZoomedPastPreviewContext,
@@ -110,7 +111,8 @@ function makeFlowNode(
     const headerScale = overlayCounterScale(zoom);
     // A boolean, so the body re-renders only when the node crosses its
     // preview's width, not on every zoom step (inner#1320).
-    const pastPreview = zoomedPastPreview(props.width ?? 0, zoom, window.devicePixelRatio);
+    const pixelRatio = useDevicePixelRatio();
+    const pastPreview = zoomedPastPreview(props.width ?? 0, zoom, pixelRatio);
     const onRename = React.useCallback(
       (name: string): void => renameNode(props.id, name),
       [renameNode, props.id],

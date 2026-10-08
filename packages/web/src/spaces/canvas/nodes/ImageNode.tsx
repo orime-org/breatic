@@ -62,7 +62,7 @@ export const ImageNode = React.memo(function ImageNode({
   const loading = settled !== src;
   // Zoomed past the preview, the original is laid over it and shown once it
   // has loaded, so the picture never blanks while it sharpens.
-  const zoomedPast = useZoomedPastPreview();
+  const zoomedPast = useZoomedPastPreview(data.content);
   const laysOriginal = zoomedPast && !shown.isOriginal && Boolean(data.content);
   const [originalLoaded, setOriginalLoaded] = React.useState<string | null>(null);
   const { onError: fallBack, isOriginal } = shown;

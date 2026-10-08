@@ -598,4 +598,22 @@ describe('a stored image zoomed past its preview', () => {
     renderAt(1.5);
     expect(screen.getByTestId('image-node-original').getAttribute('src')).toBe(STORED);
   });
+
+  it('lays the original over it when the window moves to a denser screen', () => {
+    const listeners: (() => void)[] = [];
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: (_: string, cb: () => void) => listeners.push(cb),
+      removeEventListener: () => undefined,
+    }));
+    renderAt(1);
+    expect(screen.queryByTestId('image-node-original')).toBeNull();
+
+    act(() => {
+      vi.stubGlobal('devicePixelRatio', 3);
+      for (const l of [...listeners]) l();
+    });
+    expect(screen.getByTestId('image-node-original').getAttribute('src')).toBe(STORED);
+  });
 });
