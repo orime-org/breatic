@@ -601,7 +601,8 @@ describe("in the reader's language", () => {
     // translations; a name written out in English instead shows up as a
     // fragment no id accounts for.
     const text = runWithLocale("zh-CN", renderProductGuide);
-    const shown = new Set(messageCalls().map(([id, values]) => runWithLocale("zh-CN", () => `"${t(id, values)}"`)));
+    const ids: MessageCall[] = [...messageCalls(), ...MINI_TOOLS.map((tool): MessageCall => [tool.labelKey, undefined])];
+    const shown = new Set(ids.map(([id, values]) => runWithLocale("zh-CN", () => `"${t(id, values)}"`)));
     const quotedFragments = text.match(/"[^"\n]+"/g) ?? [];
     expect(quotedFragments.length).toBeGreaterThan(0);
     for (const fragment of quotedFragments) expect(shown, fragment).toContain(fragment);
@@ -645,7 +646,11 @@ describe("messages the guide borrows", () => {
 
 describe("the guide's source", () => {
   it("spells every message id out, where the missing-key check can read it", () => {
-    const calls = source.match(/\bt\([^)]*\)/g) ?? [];
+    // The one id read off a value is each mini-tool's name, whose keys the
+    // registry's own copy check holds against every locale.
+    const registry = "t(tool.labelKey)";
+    expect(source.split(registry)).toHaveLength(2);
+    const calls = (source.match(/\bt\([^)]*\)/g) ?? []).filter((call) => call !== registry);
     expect(calls.length).toBeGreaterThan(0);
     // A sample number may fill a message that carries one; nothing else goes in.
     for (const call of calls) expect(call).toMatch(/^t\("[\w.-]+"(?:, \{(?: ?\w+: \d+,?)+ ?\})?\)$/);
@@ -799,6 +804,14 @@ describe("mini-tools and the task rows", () => {
     expect(tools).toContain(`"${t("canvas.nodeMenu.tools")}"`);
     for (const tool of MINI_TOOLS) {
       expect(tools).toContain(`"${t(tool.labelKey)}"`);
+    }
+  });
+
+  // Each tool says what it is for, so the agent can match a need to a tool.
+  it("says what every tool is for, next to its name", () => {
+    const tools = section("Mini-tools");
+    for (const tool of MINI_TOOLS) {
+      expect(tools).toContain(`"${t(tool.labelKey)}": ${tool.guide}`);
     }
   });
 

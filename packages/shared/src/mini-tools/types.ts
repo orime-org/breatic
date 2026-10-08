@@ -156,6 +156,11 @@ interface MiniToolBase {
   readonly id: string;
   readonly source: MiniToolMedium;
   readonly labelKey: string;
+  /**
+   * What the tool is for, in one English clause the product guide sets after
+   * its name, so the agent can match a reader's need to the tool.
+   */
+  readonly guide: string;
   readonly icon: MiniToolIcon;
   readonly slots: readonly MiniToolSlot[];
   readonly outputs: readonly MiniToolOutput[];

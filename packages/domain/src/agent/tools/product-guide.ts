@@ -21,6 +21,7 @@ import { z } from "zod";
 
 import { getAgentConfig } from "@breatic/core";
 import { CHAT_MESSAGE_MAX_CHARS, canConnect, canGenerate, t, type NodeType } from "@breatic/shared";
+import { MINI_TOOLS, type MiniToolMedium } from "@breatic/shared/mini-tools";
 
 const inputSchema = z.object({}).strict();
 
@@ -82,6 +83,27 @@ function connectionLines(): string[] {
     const from = CREATABLE.filter((source) => canConnect(source, target));
     return `- into ${typeLabel(target)}: ${from.map(typeLabel).join(", ")}`;
   });
+}
+
+/** How the guide names the media a tool's node holds. */
+const MINI_TOOL_SOURCES: readonly [MiniToolMedium, string][] = [
+  ["image", "Picture"],
+  ["video", "Video"],
+  ["audio", "Sound"],
+];
+
+/**
+ * The Mini-tools list, read off the registry: each tool by the name its menu
+ * row shows, and what it is for.
+ * @returns One line per kind of node, then one per tool.
+ */
+function miniToolLines(): string[] {
+  return MINI_TOOL_SOURCES.flatMap(([source, name]) => [
+    `- ${name}:`,
+    ...MINI_TOOLS.filter((tool) => tool.source === source).map(
+      (tool) => `  - ${quoted(t(tool.labelKey))}: ${tool.guide}.`,
+    ),
+  ]);
 }
 
 /**
@@ -720,18 +742,7 @@ export function renderProductGuide(): string {
     `Right-click a picture, video or sound node and point at ${quoted(t("canvas.nodeMenu.tools"))}: a list opens to ` +
       "its right with every tool for that kind of node, each an icon and a name. Text, 3D and web nodes, groups and " +
       "notes have no such row. The tools are:",
-    `- Picture: ${quoted(t("canvas.miniTool.image.remove-bg.label"))}, ${quoted(t("canvas.miniTool.image.upscale.label"))}, ` +
-      `${quoted(t("canvas.miniTool.image.digital-human.label"))} (makes a video of the person speaking a sound you pick), ` +
-      `${quoted(t("canvas.miniTool.image.crop.label"))} and ${quoted(t("canvas.miniTool.image.rotate.label"))}.`,
-    `- Video: ${quoted(t("canvas.miniTool.video.upscale.label"))}, ${quoted(t("canvas.miniTool.video.interpolate.label"))}, ` +
-      `${quoted(t("canvas.miniTool.video.extend.label"))}, ${quoted(t("canvas.miniTool.video.edit.label"))}, ` +
-      `${quoted(t("canvas.miniTool.video.motion.label"))}, ${quoted(t("canvas.miniTool.video.animate.label"))}, ` +
-      `${quoted(t("canvas.miniTool.video.crop.label"))}, ${quoted(t("canvas.miniTool.video.speed.label"))}, ` +
-      `${quoted(t("canvas.miniTool.video.cut.label"))}, ${quoted(t("canvas.miniTool.video.adjust.label"))}, ` +
-      `${quoted(t("canvas.miniTool.video.audio-denoise.label"))}, ${quoted(t("canvas.miniTool.video.stabilize.label"))} ` +
-      `and ${quoted(t("canvas.miniTool.video.hdr.label"))}.`,
-    `- Sound: ${quoted(t("canvas.miniTool.audio.separate.label"))} (makes two sound nodes, the voice and the backing) ` +
-      `and ${quoted(t("canvas.miniTool.audio.extend.label"))}.`,
+    ...miniToolLines(),
     "Choosing a tool opens its panel under the node, in the place the generation panel opens; the two never show " +
       "together. The panel is headed with the tool's name and holds that tool's settings, a box to pick a second " +
       "piece of media from the canvas when the tool needs one (picking works as in the generation panel, and a " +
