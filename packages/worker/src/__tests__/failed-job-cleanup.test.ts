@@ -54,7 +54,6 @@ vi.mock("@breatic/domain", async () => ({
     markFailed: vi.fn(),
     markCompletedAndBill: vi.fn(),
     recordProviderResult: vi.fn(),
-    setResolvedSkills: vi.fn(),
   },
   nodeHistoryService: {
     recordGenerationSuccess: vi.fn(),

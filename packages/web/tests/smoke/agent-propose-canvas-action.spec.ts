@@ -233,3 +233,128 @@ test('proposes a multi-shot video, and the panel opens on its shots @needs-model
     expect(words.trim().length, `shot ${String(shot)} is empty`).toBeGreaterThan(0);
   }
 });
+
+/**
+ * The templates the newest stored conversation's proposals named (inner#977).
+ * @param p - The signed-in page.
+ * @returns Each template id a proposed node carried.
+ */
+async function templatesProposed(p: Page): Promise<string[]> {
+  return p.evaluate(async () => {
+    const list = await (
+      await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })
+    ).json();
+    const id = list?.data?.conversations?.[0]?.id as string;
+    const read = await (
+      await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })
+    ).json();
+    const messages = (read?.data?.messages ?? []) as {
+      parts?: { type?: string; input?: { nodes?: { template?: string }[] } }[];
+    }[];
+    return messages
+      .flatMap((m) => m.parts ?? [])
+      .filter((part) => part.type === 'tool-propose_canvas_action')
+      .flatMap((part) => part.input?.nodes ?? [])
+      .flatMap((node) => (node.template ? [node.template] : []));
+  });
+}
+
+test('starts a storyboard from its template, and reminds the reader to fill it in @needs-model', async () => {
+  test.setTimeout(240_000);
+  const composer = page.getByTestId('chat-composer-box');
+  await expect(composer).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('new-conversation').click();
+  await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
+
+  await composer.fill(
+    'I have a photo of my character. Make me one 25-panel storyboard image of her walking through a night market, to turn into a video later. Do not ask me anything, just propose it.',
+  );
+  await composer.press('Enter');
+
+  await expect(page.getByTestId('message-bubble')).toHaveCount(2, { timeout: 200_000 });
+  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 200_000 });
+  const named = await templatesProposed(page);
+  expect(named, `the proposal started from the storyboard template. Named: ${named.join(', ')}`).toContain(
+    'storyboard-grid-25',
+  );
+
+  const card = page.getByTestId('proposal-card').last();
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  await card.getByTestId('proposal-use').click();
+  await expect(page.getByText('Replace the text in square brackets and braces.', { exact: false })).toBeVisible({ timeout: 20_000 });
+
+  const prompt = page.getByTestId('generate-prompt-editor');
+  await expect(prompt).toBeVisible({ timeout: 20_000 });
+  await expect(prompt).toContainText('5 rows and 5 columns');
+  // The reference spot survives the rewrite as a bracket telling the reader to
+  // @ the photo; nothing is @'d for them.
+  await expect(prompt).toContainText('[📎');
+  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(0);
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Nano Banana Pro');
+});
+
+test('chains a generated character into a template storyboard, a reference mark asking for it @needs-model', async () => {
+  test.setTimeout(240_000);
+  const composer = page.getByTestId('chat-composer-box');
+  await expect(composer).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('new-conversation').click();
+  await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
+
+  await composer.fill(
+    'I have no picture of my character yet. Generate her first (a young courier in a red coat), then make one 25-panel storyboard image of her crossing a rainy city, drawn from that generated picture. Do not ask me anything, just propose both, wired together.',
+  );
+  await composer.press('Enter');
+
+  await expect(page.getByTestId('message-bubble')).toHaveCount(2, { timeout: 200_000 });
+  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 200_000 });
+  const marks = await page.evaluate(async () => {
+    const list = await (await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })).json();
+    const id = list?.data?.conversations?.[0]?.id as string;
+    const read = await (await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })).json();
+    const messages = (read?.data?.messages ?? []) as {
+      parts?: {
+        type?: string;
+        output?: { placed?: boolean };
+        input?: { nodes?: { template?: string; prompt?: { slot?: { kind?: string } }[] }[] };
+      }[];
+    }[];
+    const placed = messages
+      .flatMap((m) => m.parts ?? [])
+      .filter((part) => part.type === 'tool-propose_canvas_action' && part.output?.placed === true);
+    const grid = placed.flatMap((part) => part.input?.nodes ?? []).find((n) => n.template === 'storyboard-grid-25');
+    return grid?.prompt?.flatMap((s) => (s.slot?.kind ? [s.slot.kind] : [])) ?? null;
+  });
+  expect(marks, 'a placed proposal carried the storyboard template').not.toBeNull();
+  expect(marks).toContain('asset');
+});
+
+test('writes the proposal prompt in the language the reader asked in @needs-model', async () => {
+  test.setTimeout(240_000);
+  const composer = page.getByTestId('chat-composer-box');
+  await expect(composer).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('new-conversation').click();
+  await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
+
+  await composer.fill('帮我在画布上生成一张图：一只在雨夜城市里奔跑的橘猫，电影感。不要问我任何问题，直接提议。');
+  await composer.press('Enter');
+
+  await expect(page.getByTestId('message-bubble')).toHaveCount(2, { timeout: 200_000 });
+  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 200_000 });
+  const words = await page.evaluate(async () => {
+    const list = await (await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })).json();
+    const id = list?.data?.conversations?.[0]?.id as string;
+    const read = await (await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })).json();
+    const messages = (read?.data?.messages ?? []) as {
+      parts?: { type?: string; input?: { nodes?: { prompt?: { text?: string }[] }[] } }[];
+    }[];
+    return messages
+      .flatMap((m) => m.parts ?? [])
+      .filter((part) => part.type === 'tool-propose_canvas_action')
+      .flatMap((part) => part.input?.nodes ?? [])
+      .flatMap((node) => node.prompt ?? [])
+      .map((segment) => segment.text ?? '')
+      .join('');
+  });
+  expect(words, 'a proposal was made').not.toBe('');
+  expect(words, `the prompt is in Chinese. Read: "${words}"`).toMatch(/[\u4e00-\u9fff]/);
+});

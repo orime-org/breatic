@@ -6,9 +6,11 @@
  */
 import {
   appliesInMode,
+  canConnect,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   modelLabel,
+  PANEL_EDITOR_PARAM,
   paramValues,
   storyboardSpec,
   type ControlGate,
@@ -120,14 +122,6 @@ export interface ParamInfo {
    */
   fromReferencePool?: true;
   /**
-   * Whether a run can go without this source, for a place material goes.
-   *
-   * A required slot and a pool can take the same kind; the reader's material
-   * fills the slot first, which is only knowable when the slot says it is
-   * required.
-   */
-  optional?: true;
-  /**
    * Filled from the node's shots: a proposal reaches it through its `shots`,
    * never through `params`.
    */
@@ -159,6 +153,8 @@ export interface ParamInfo {
 export interface ModelInfo {
   /** The name a node stores and a proposal names. */
   name: string;
+  /** The kind of generation node it runs on, which decides what the canvas lets wire into it. */
+  nodeType: GenerationNodeType;
   /**
    * The name the picker puts on screen.
    *
@@ -414,31 +410,12 @@ function projectParam(
     // this says. It comes off `fill` rather than the name the pool travels
     // under, so the answer holds for a model spelling its pool differently.
     ...(by === "canvas" && spec.fill === "pool" ? { fromReferencePool: true as const } : {}),
-    ...(by === "canvas" && spec.optional === true ? { optional: true as const } : {}),
     ...(by === "nothing" ? { noControl: true as const } : {}),
     ...(spec.fill === "storyboard" ? { fromStoryboard: true as const } : {}),
     ...(gate !== undefined ? { gate } : {}),
     default: spec.default,
     what: oneLine(spec.description ?? ""),
   };
-}
-
-/**
- * The parameters a model fills from nodes wired into it, one per kind it
- * takes that way (#2156: pictures, clips and tracks each have a pool).
- *
- * Two gates turn on this answer -- whether an empty node has to be wired in
- * at all, and what a mark in the prompt lands as once the group is placed --
- * so it is given once.
- * @param chosen - The model the proposal picked, as the catalog projects it.
- * @returns Each pool parameter with the kind it takes; empty when material
- *   arrives by slot.
- * @throws {never} Never.
- */
-export function poolParams(chosen: ModelInfo): Array<{ kind: ReferenceKind; info: ParamInfo }> {
-  return Object.values(chosen.params).flatMap((info) =>
-    info.fromReferencePool === true && isReferenceKind(info.accepts) ? [{ kind: info.accepts, info }] : [],
-  );
 }
 
 /**
@@ -451,22 +428,62 @@ function isReferenceKind(accepts: string | undefined): accepts is ReferenceKind 
   return accepts === "image" || accepts === "video" || accepts === "audio";
 }
 
+/** What the reader writes in the prompt for a node going one way in. */
+export type WayMark = "asset" | "note";
+
+/** One way a node reaches a generation, as the model declares it. */
+export interface WayIn {
+  /** "pool", a slot's parameter name, or the lyrics box; an edge names it where the node is wired in. */
+  into: string;
+  /** How many nodes this way takes. */
+  room: number;
+  /**
+   * What the prompt carries for each node going this way: an asset mark to
+   * mention it from the pool, or a note saying which slot to pick it into or
+   * that it is mentioned in the lyrics box. A required slot gets a note too:
+   * the panel says the slot is empty, not which node goes there.
+   */
+  mark: WayMark;
+}
+
+/** The kinds of node a way in is listed for: the three a pool carries, and words. */
+export type WayKind = ReferenceKind | "text";
+
 /**
- * The kinds a model takes by a required slot: one entry per canvas place a
- * run cannot go without, so a kind with two such places appears twice.
- *
- * The agent's catalog text and the proposal's routing both read this, so the
- * sentence the model is told and the place a node lands agree.
+ * Every way a model takes each kind of node reaching it (design 5.7 table
+ * A): its pool, which the reader mentions from in the prompt box; each slot,
+ * which the reader picks into in the panel; and for words, the prompt box and
+ * the lyrics box, both of which the reader mentions them into.
  * @param chosen - The model, as the catalog projects it.
- * @returns The slot kinds, in declaration order.
+ * @returns Per kind, its ways in declaration order.
  * @throws {never} Never.
  */
-export function requiredSlotKinds(chosen: ModelInfo): ReferenceKind[] {
-  return Object.values(chosen.params).flatMap((info) =>
-    info.filledBySource === true && info.fromReferencePool !== true && info.optional !== true && isReferenceKind(info.accepts)
-      ? [info.accepts]
-      : [],
-  );
+export function waysIn(chosen: ModelInfo): Map<WayKind, WayIn[]> {
+  const ways = new Map<WayKind, WayIn[]>();
+  /**
+   * List one more way for a kind.
+   * @param kind - The kind of node.
+   * @param way - The way.
+   */
+  const add = (kind: WayKind, way: WayIn): void => {
+    // A pool is read through mentions of wired nodes, so a kind no edge can
+    // carry has no pool way at all. A slot is picked in the panel and needs no edge.
+    if (way.into === "pool" && !canConnect(kind, chosen.nodeType)) return;
+    ways.set(kind, [...(ways.get(kind) ?? []), way]);
+  };
+  for (const [name, info] of Object.entries(chosen.params)) {
+    if (info.filledBySource !== true || !isReferenceKind(info.accepts)) continue;
+    if (info.fromReferencePool === true) {
+      if (chosen.takesPrompt) add(info.accepts, { into: "pool", room: info.maxItems ?? Number.POSITIVE_INFINITY, mark: "asset" });
+    } else {
+      add(info.accepts, { into: name, room: info.maxItems ?? 1, mark: "note" });
+    }
+  }
+  if (chosen.takesPrompt) add("text", { into: "pool", room: Number.POSITIVE_INFINITY, mark: "asset" });
+  if (chosen.params[PANEL_EDITOR_PARAM] !== undefined) {
+    add("text", { into: PANEL_EDITOR_PARAM, room: Number.POSITIVE_INFINITY, mark: "note" });
+  }
+  return ways;
 }
 
 /**
@@ -502,6 +519,7 @@ export function modelsForMode(
       const storyboard = storyboardSpec(entry.params, mode);
       return {
       name: entry.name,
+      nodeType,
       // The name this mode's picker shows, so the agent and the reader say the same one.
       displayName: modelLabel(entry, inMode),
       // The guide is written for a model to read and says what the thing is

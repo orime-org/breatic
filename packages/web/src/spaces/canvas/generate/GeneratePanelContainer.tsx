@@ -81,6 +81,7 @@ import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
+import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 
 /**
  * For the two derivations below that deliberately want no body text. Shared so
@@ -334,6 +335,8 @@ function GeneratePanelBody({
     },
     [projectId, spaceId, nodeId, models],
   );
+
+  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId, models);
 
   /**
    * The node's live content view, or undefined when the node is gone or is not
@@ -750,6 +753,8 @@ function GeneratePanelBody({
   return (
     <GeneratePanel
       models={stableModels}
+      catalogModels={models}
+      onPickTemplate={onPickTemplate}
       model={vm.model}
       mode={vm.mode}
       modeOptions={availableModes}

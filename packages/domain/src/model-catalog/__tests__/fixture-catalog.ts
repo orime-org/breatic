@@ -24,11 +24,6 @@ export interface FixtureCatalog {
   readonly modes: string;
   /** Modality directory name → the whole of the one model yaml it serves. */
   readonly buckets: Readonly<Record<string, string>>;
-  /**
-   * Skill name → the whole of its `SKILL.md`, for a test driving the prompt
-   * these declarations are injected into.
-   */
-  readonly skills?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -56,19 +51,14 @@ let mounted: FixtureCatalog = { modes: "", buckets: {} };
 
 /**
  * A `node:fs` that answers for the mounted fixture and nothing else.
- * @returns The calls the catalog and skill loaders make.
+ * @returns The calls the catalog loaders make.
  */
 function fsDouble(): Record<string, unknown> {
   const fixture = (): FixtureCatalog => mounted;
-  const skills = (): Readonly<Record<string, string>> => fixture().skills ?? {};
   const bucketOf = (path: string): string | undefined =>
     Object.keys(fixture().buckets).find((bucket) => new RegExp(`/${bucket}(/|$)`).test(path));
-  const skillOf = (path: string): string | undefined =>
-    Object.keys(skills()).find((name) => new RegExp(`/skills/${name}(/|$)`).test(path));
-  const isSkillsDir = (path: string): boolean => /\/skills$/.test(path);
   return {
     readdirSync: (path: string): string[] => {
-      if (isSkillsDir(String(path))) return Object.keys(skills());
       // The loader reads a failed directory listing as "no such modality",
       // which is the right answer for the modalities a fixture leaves out.
       if (!bucketOf(String(path))) throw new Error("no such modality");
@@ -79,17 +69,12 @@ function fsDouble(): Record<string, unknown> {
     }),
     existsSync: (path: string): boolean => {
       const at = String(path);
-      if (at.endsWith("metadata.json")) return false;
-      if (isSkillsDir(at)) return Object.keys(skills()).length > 0;
-      if (skillOf(at)) return at.endsWith("SKILL.md") || !at.includes(".");
       return at.endsWith("modes.yaml") || bucketOf(at) !== undefined;
     },
     readFileSync: (path: string): string => {
       const at = String(path);
       if (at.endsWith("modes.yaml")) return fixture().modes;
       if (at.endsWith("providers.yaml")) return PROVIDERS;
-      const skill = skillOf(at);
-      if (skill !== undefined && at.endsWith("SKILL.md")) return skills()[skill] ?? "";
       return fixture().buckets[bucketOf(at) ?? ""] ?? "";
     },
   };

@@ -17,7 +17,8 @@
  */
 
 import { eq, and, isNull, isNotNull, desc, inArray, count, sql } from "drizzle-orm";
-import type { PgTransaction } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
+import type { AnyPgColumn, PgTransaction } from "drizzle-orm/pg-core";
 import { db, projectMembersRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
@@ -30,13 +31,20 @@ import {
   projectTransfers,
   roleUpgradeRequests,
   projectJoinRequests,
+  projectLastOpened,
+  projectEdits,
 } from "@breatic/core";
 import type {
   ProjectEntity,
   ProjectRole,
   ProjectSummary,
   SpaceType,
+  StudioProjectSort,
 } from "@breatic/shared";
+import type {
+  NameCollation,
+  ProjectListCursor,
+} from "@server/modules/project/project-list-cursor.js";
 
 /**
  * Map a raw `projects` table row to a `ProjectEntity` domain object.
@@ -335,32 +343,67 @@ export type StudioProjectRow = Omit<
   "canManageMeta" | "canDuplicate" | "canArchive" | "canRestore" | "canLeave"
 >;
 
+/** What one page of a studio's projects list is asked for with. */
+export interface StudioProjectPageQuery {
+  studioId: string;
+  /** Resolves `myRole` and whose open times count. */
+  viewerUserId: string;
+  /** The archived list instead of the live one. */
+  archived: boolean;
+  sort: StudioProjectSort;
+  /** Where the previous page stopped; null for the first page. */
+  cursor: ProjectListCursor | null;
+  limit: number;
+  /** How names compare, for the name sort. */
+  collation: NameCollation;
+}
+
+/** One page of rows, the cursor after its last row, and on the first page the list's size. */
+export interface StudioProjectRowPage {
+  rows: StudioProjectRow[];
+  next: ProjectListCursor | null;
+  /** Counted on the first page only; null on the pages after it. */
+  total: number | null;
+}
+
 /**
- * List every active project of a studio, each tagged with the viewer's role
- * (the studio container's "projects" tab).
+ * One page of a studio's projects, in the requested sort, each tagged with
+ * the viewer's role (the studio container's "projects" and "archived" tabs).
  *
- * Every studio member sees every project; entering one needs a member row,
- * which only the project's owner grants (`project-join-request`). Non-members
- * of the studio are handled one layer up (`project.service.listByStudioForViewer`
- * short-circuits to `[]`), so this query is only reached for studio members.
+ * Every studio member sees every project; non-members are handled one layer
+ * up (`project.service.listByStudioForViewer` answers an empty page), so this
+ * is only reached for studio members. `myRole` comes from a LEFT JOIN on the
+ * viewer's active membership row, `lastOpenedAt` from the viewer's own
+ * `project_last_opened` row, and the edit time from `project_edits`, falling
+ * back to the creation time for a project never edited.
  *
- * `myRole` comes from a LEFT JOIN on the viewer's ACTIVE membership row
- * (`deleted_at IS NULL` lives in the JOIN's ON clause, not the WHERE, so a
- * soft-deleted row simply yields no join → `myRole = null` rather than
- * dropping the project).
- * @param studioId - Studio UUID whose projects to list
- * @param viewerUserId - The viewing user's UUID (resolves `myRole`)
- * @param archived - List the archived projects instead of the live ones
- * @returns The live projects newest-CREATED first (the studio container is a
- *   catalog: a stable creation order, not a last-activity order — canvas edits
- *   live in Yjs and never bump the project row), or the archived ones
- *   most-recently-archived first
+ * Each sort ends on `id`, so rows sharing a sort value still have one order
+ * and a page boundary between them loses or repeats nothing. One row more than
+ * the page is read to know whether another page follows. The list is counted
+ * on the first page only; the pages after it carry no count.
+ * @param q - What to list; see {@link StudioProjectPageQuery}
+ * @returns The page's rows, the cursor for the next page, and on the first page the list's size
  */
-export async function listProjectsByStudioForViewer(
-  studioId: string,
-  viewerUserId: string,
-  archived: boolean,
-): Promise<StudioProjectRow[]> {
+export async function listStudioProjectPage(
+  q: StudioProjectPageQuery,
+): Promise<StudioProjectRowPage> {
+  const openedAt = projectLastOpened.lastOpenedAt;
+  const editedAt = sql<Date>`COALESCE(${projectEdits.lastEditedAt}, ${projects.createdAt})`;
+  const name = sql`${projects.name} COLLATE ${sql.raw(`"${q.collation}"`)}`;
+  const listFilter = and(
+    eq(projects.studioId, q.studioId),
+    isNull(projects.deletedAt),
+    q.archived ? isNotNull(projects.archivedAt) : isNull(projects.archivedAt),
+  );
+
+  const order: SQL[] = {
+    opened: [sql`${openedAt} IS NULL`, sql`${openedAt} DESC`, desc(projects.createdAt), desc(projects.id)],
+    edited: [sql`${editedAt} DESC`, desc(projects.id)],
+    name: [sql`${name} ASC`, sql`${projects.id} ASC`],
+    created: [desc(projects.createdAt), desc(projects.id)],
+    archived: [desc(projects.archivedAt), desc(projects.id)],
+  }[q.sort];
+
   const rows = await db
     .select({
       id: projects.id,
@@ -372,36 +415,143 @@ export async function listProjectsByStudioForViewer(
       createdAt: projects.createdAt,
       updatedAt: projects.updatedAt,
       archivedAt: projects.archivedAt,
+      lastOpenedAt: openedAt,
+      lastEditedAt: editedAt,
+      createdAtMicros: epochMicros<string>(projects.createdAt),
+      openedAtMicros: epochMicros<string | null>(openedAt),
+      editedAtMicros: epochMicros<string>(editedAt),
+      archivedAtMicros: epochMicros<string | null>(projects.archivedAt),
     })
     .from(projects)
     .leftJoin(
       projectMembers,
       and(
         eq(projectMembers.projectId, projects.id),
-        eq(projectMembers.userId, viewerUserId),
+        eq(projectMembers.userId, q.viewerUserId),
         isNull(projectMembers.deletedAt),
       ),
     )
-    .where(
-      and(
-        eq(projects.studioId, studioId),
-        isNull(projects.deletedAt),
-        archived ? isNotNull(projects.archivedAt) : isNull(projects.archivedAt),
-      ),
+    .leftJoin(
+      projectLastOpened,
+      and(eq(projectLastOpened.projectId, projects.id), eq(projectLastOpened.userId, q.viewerUserId)),
     )
-    .orderBy(desc(archived ? projects.archivedAt : projects.createdAt));
+    .leftJoin(projectEdits, eq(projectEdits.projectId, projects.id))
+    .where(q.cursor ? and(listFilter, afterCursor(q.cursor, { openedAt, editedAt, name })) : listFilter)
+    .orderBy(...order)
+    .limit(q.limit + 1);
 
-  return rows.map((row) => ({
-    id: row.id,
-    studioId: row.studioId,
-    name: row.name,
-    slug: row.slug,
-    thumbnailUrl: row.thumbnailUrl,
-    myRole: (row.myRole as ProjectRole | null) ?? null,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    archivedAt: row.archivedAt,
-  }));
+  const counted = q.cursor
+    ? null
+    : (await db.select({ total: count() }).from(projects).where(listFilter))[0];
+
+  const page = rows.slice(0, q.limit);
+  const last = page[page.length - 1];
+  const next = rows.length > q.limit && last ? cursorAt(q.sort, q.collation, last) : null;
+  return {
+    rows: page.map((row) => ({
+      id: row.id,
+      studioId: row.studioId,
+      name: row.name,
+      slug: row.slug,
+      thumbnailUrl: row.thumbnailUrl,
+      myRole: (row.myRole as ProjectRole | null) ?? null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      archivedAt: row.archivedAt,
+      lastOpenedAt: row.lastOpenedAt,
+      lastEditedAt: new Date(row.lastEditedAt),
+    })),
+    next,
+    total: q.cursor ? null : Number(counted?.total ?? 0),
+  };
+}
+
+/**
+ * A time as whole microseconds since the Unix epoch, in decimal text: the
+ * full precision Postgres stores, in a form a cursor check can validate.
+ * @param col - The time; `T` is `string | null` where it may be null
+ * @returns The SQL value, null where the time is null
+ */
+function epochMicros<T extends string | null>(col: SQL | AnyPgColumn): SQL<T> {
+  return sql<T>`(extract(epoch from ${col}) * 1000000)::bigint::text`;
+}
+
+/**
+ * The condition "after this cursor" for the cursor's sort, written out as
+ * AND/OR so each column keeps its own direction.
+ * @param c - Where the previous page stopped
+ * @param cols - The computed sort columns
+ * @param cols.openedAt - The viewer's open time
+ * @param cols.editedAt - The edit time, falling back to creation
+ * @param cols.name - The name under the request's collation
+ * @returns The WHERE fragment
+ */
+function afterCursor(
+  c: ProjectListCursor,
+  cols: { openedAt: SQL | typeof projectLastOpened.lastOpenedAt; editedAt: SQL; name: SQL },
+): SQL {
+  /**
+   * A cursor time, whole microseconds since the epoch, as a timestamptz.
+   * @param v - The microseconds, in decimal
+   * @returns The SQL value
+   */
+  const ts = (v: string): SQL => sql`(timestamptz 'epoch' + ${v}::bigint * interval '1 microsecond')`;
+  /**
+   * "After" on a time sorted newest first, ties broken by id descending.
+   * @param col - The time column
+   * @param v - The cursor's microseconds
+   * @returns The WHERE fragment
+   */
+  const before = (col: SQL | AnyPgColumn, v: string): SQL =>
+    sql`(${col} < ${ts(v)} OR (${col} = ${ts(v)} AND ${projects.id} < ${c.id}))`;
+  switch (c.s) {
+    case "opened": {
+      const createdAfter = before(projects.createdAt, c.createdAt);
+      if (c.openedAt === null) return sql`(${cols.openedAt} IS NULL AND ${createdAfter})`;
+      return sql`((${cols.openedAt} IS NOT NULL AND (${cols.openedAt} < ${ts(c.openedAt)} OR (${cols.openedAt} = ${ts(c.openedAt)} AND ${createdAfter}))) OR ${cols.openedAt} IS NULL)`;
+    }
+    case "edited":
+      return before(cols.editedAt, c.editedAt);
+    case "name":
+      return sql`(${cols.name} > ${c.name} OR (${cols.name} = ${c.name} AND ${projects.id} > ${c.id}))`;
+    case "created":
+      return before(projects.createdAt, c.createdAt);
+    case "archived":
+      return before(projects.archivedAt, c.archivedAt);
+  }
+}
+
+/** A row's sort values as a cursor carries them: times in epoch microseconds. */
+interface CursorSource {
+  id: string;
+  name: string;
+  createdAtMicros: string;
+  openedAtMicros: string | null;
+  editedAtMicros: string;
+  archivedAtMicros: string | null;
+}
+
+/**
+ * The cursor that continues after a row.
+ * @param sort - The page's sort
+ * @param collation - The page's name collation
+ * @param row - The page's last row
+ * @returns The cursor
+ */
+function cursorAt(sort: StudioProjectSort, collation: NameCollation, row: CursorSource): ProjectListCursor {
+  switch (sort) {
+    case "opened":
+      return { s: "opened", openedAt: row.openedAtMicros, createdAt: row.createdAtMicros, id: row.id };
+    case "edited":
+      return { s: "edited", editedAt: row.editedAtMicros, id: row.id };
+    case "name":
+      return { s: "name", collation, name: row.name, id: row.id };
+    case "created":
+      return { s: "created", createdAt: row.createdAtMicros, id: row.id };
+    case "archived":
+      // Only the archived list sorts by it, where every row carries the time.
+      return { s: "archived", archivedAt: row.archivedAtMicros ?? "", id: row.id };
+  }
 }
 
 /**
@@ -477,6 +627,7 @@ export async function createProject(
  * @param patch.name - New project name
  * @param patch.description - New description; `null` clears it
  * @param patch.thumbnailUrl - New thumbnail URL; `null` clears it
+ * @param tx - The transaction to write in; the shared pool when omitted
  * The write carries `archived_at IS NULL`, so it lands only on a live project
  * and serialises with an archive on the same row.
  * @returns The updated project, or `null` if no live, unarchived row matched
@@ -488,13 +639,14 @@ export async function updateProjectMeta(
     description?: string | null;
     thumbnailUrl?: string | null;
   },
+  tx?: DbTx,
 ): Promise<ProjectEntity | null> {
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (patch.name !== undefined) set.name = patch.name;
   if (patch.description !== undefined) set.description = patch.description;
   if (patch.thumbnailUrl !== undefined) set.thumbnailUrl = patch.thumbnailUrl;
 
-  const rows = await db
+  const rows = await (tx ?? db)
     .update(projects)
     .set(set)
     .where(and(eq(projects.id, id), isNull(projects.deletedAt), isNull(projects.archivedAt)))

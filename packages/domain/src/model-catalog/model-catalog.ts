@@ -55,9 +55,8 @@ export type Modality = (typeof MODALITIES)[number];
 // ModelTier / ParamDescriptor / ModelProvider / ModelEntry / ModelCatalog are
 // the GET /models wire contract — they live in @breatic/shared (imported
 // above) because the catalog RESPONSE is consumed by server (which builds it
-// here) + web (which renders it). The worker never touches these heavy types:
-// it calls listAvailableModels() below, which returns the lighter
-// SkillModelInfo. This module owns the YAML-loading + the runtime MODALITIES.
+// here) + web (which renders it). This module owns the YAML-loading + the
+// runtime MODALITIES.
 
 // ── Full config (backend-only, #1672) ────────────────────────────────
 
@@ -401,64 +400,9 @@ export function getModelCatalog(): ModelCatalog {
 }
 
 /**
- * List available models for a single modality, formatted for skill
- * prompt injection.
- *
- * Returns a lighter shape than `ModelEntry` — just the fields that
- * skill prompts need: name, mode, guide, description, params, and
- * voices (for TTS models).
- * @param modality - e.g. "image", "video", "audio", "tts", "three_d"
- */
-export interface SkillModelInfo {
-  name: string;
-  mode: string | string[];
-  guide?: string;
-  description?: string;
-  languages?: string[];
-  params?: Record<string, { type?: string; values?: unknown[]; default?: unknown; description?: string }>;
-  voices?: Array<{ id: string; name?: string; gender?: string; description?: string }>;
-}
-
-/**
- * List available models for one modality in the lighter
- * {@link SkillModelInfo} shape used for skill prompt injection.
- * @param modality - Modality name (e.g. "image", "video", "audio", "tts", "three_d"); unknown values yield an empty list.
- * @returns The modality's models projected to the skill-prompt shape.
- */
-export function listAvailableModels(modality: string): SkillModelInfo[] {
-  const catalog = getModelCatalog();
-  const entries = catalog[modality as Modality] ?? [];
-  // The inline voice table is not on the wire shape — the panel reads it off
-  // `GET /models/:name/voices` instead — so it comes from the yaml directly.
-  // `buildTtsModelsSection` renders it for the plan skill, and the ids are
-  // opaque strings: a model that never sees this list can only copy ids out
-  // of the skill's own examples (#2086).
-  const declared = new Map(
-    getFullModelConfig(modality).models.map((m) => [m.name, m.voices]),
-  );
-  return entries.map((m) => ({
-    name: m.name,
-    mode: m.mode,
-    guide: m.guide || undefined,
-    description: m.description || undefined,
-    voices: declared.get(m.name)?.length ? declared.get(m.name) : undefined,
-    params: Object.keys(m.params).length > 0
-      ? Object.fromEntries(
-          Object.entries(m.params).map(([k, v]) => [k, {
-            type: v.type,
-            values: v.values as unknown[] | undefined,
-            default: v.default,
-            description: v.description,
-          }]),
-        )
-      : undefined,
-  }));
-}
-
-/**
  * Floor a task's pre-check estimate never goes below. Also the flat
  * requirement for tasks whose model (and therefore `cost_per_call`) is
- * unknown at enqueue time — mini-tools, skill-auto flows. One shared
+ * unknown at enqueue time — mini-tools. One shared
  * number so the /canvas/tasks and /mini-tools pre-checks can never drift.
  */
 export const MIN_TASK_CREDIT_COST = 5;

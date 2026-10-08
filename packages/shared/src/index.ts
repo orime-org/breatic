@@ -46,9 +46,10 @@ export type {
   ProjectEntity,
   ProjectDetail,
   ProjectSummary,
+  StudioProjectSort,
+  StudioProjectPage,
   RecentItem,
   MemoryContext,
-  SkillMeta,
   NodeType,
   AttachRef,
   FocusImage,
@@ -121,6 +122,8 @@ export type {
 } from "@shared/types/index.js";
 
 export {
+  LIVE_PROJECT_SORTS,
+  ARCHIVED_PROJECT_SORTS,
   ROLE_RANK,
   STUDIO_ROLE_RANK,
   MEMBERSHIP_TIERS,
@@ -214,13 +217,14 @@ export {
   paramValueAllowed,
   paramValues,
   PANEL_EDITOR_PARAM,
-  feedersOf,
   insertRefusal,
   isReferenceMaterial,
   layersOf,
   proposalMarkSegments,
-  nameableFeeders,
+  markReadsBack,
   markText,
+  writtenMark,
+  markedSegments,
   promptPlainText,
   promptTextOf,
   sanitizeVoicePage,
@@ -290,6 +294,7 @@ export {
   CHAT_MESSAGE_MAX_CHARS,
   CONVERSATION_TITLE_MAX_CHARS,
   PROJECT_NAME_MAX_CHARS,
+  projectNameSchema,
 } from "@shared/schemas/index.js";
 
 export type {
@@ -618,6 +623,13 @@ export { assetNameFromUrl } from "@shared/media/asset-name.js";
 // The media fields a result puts on a node, written the same way by collab
 // when a task settles and by the canvas when a reader restores one.
 export { writeNodeMedia, type NodeMediaFields } from "@shared/canvas/node-media.js";
+export {
+  GENERATION_TEMPLATES,
+  findTemplate,
+  templatePrompt,
+  templatesFor,
+  type GenerationTemplate,
+} from "@shared/canvas/generation-templates.js";
 // Plain text in and out of a text node's body ships at
 // `@breatic/shared/canvas/text-body` — that file says why it is not here.
 

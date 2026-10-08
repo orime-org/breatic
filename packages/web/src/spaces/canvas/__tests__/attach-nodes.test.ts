@@ -64,6 +64,17 @@ function mention(label: string): Y.XmlElement {
 }
 
 /**
+ * A note, as a proposal or a template writes one at the top of a prompt.
+ * @param label - What it says.
+ * @returns The block.
+ */
+function note(label: string): Y.XmlElement {
+  const element = new Y.XmlElement('promptNote');
+  element.setAttribute('label', label);
+  return element;
+}
+
+/**
  * A fragment holding some blocks.
  * @param blocks - What it holds.
  * @returns The fragment, not yet attached.
@@ -95,7 +106,7 @@ function dataMaps(): (id: string) => Y.Map<unknown> | null {
   const styled = paragraph('Use ');
   styled.insert(1, [mention('Image 1'), new Y.XmlText(' as the style')]);
   root.set('i1', ymap({
-    prompts: ymap({ t2i: fragment(paragraph('a red car at dusk')), i2i: fragment(paragraph('make it blue')) }),
+    prompts: ymap({ t2i: fragment(paragraph('a red car at dusk')), i2i: fragment(note('Pick the photo in the panel'), paragraph('make it blue')) }),
   }));
   root.set('t1', ymap({ body: fragment(paragraph('Line one'), paragraph('Line two')) }));
   const shots = new Y.Array<Y.Map<unknown>>();
@@ -210,7 +221,13 @@ describe('a piece of the canvas handed to the agent', () => {
   it('gives the prompt of every mode, not only the one in use', () => {
     const [image] = snapshot(['i1']).nodes;
 
-    expect(image?.data).toMatchObject({ prompts: { t2i: 'a red car at dusk', i2i: 'make it blue' } });
+    expect(image?.data).toMatchObject({ prompts: { t2i: 'a red car at dusk', i2i: expect.stringContaining('make it blue') } });
+  });
+
+  it('gives the agent the notes at the top of a prompt too', () => {
+    const [image] = snapshot(['i1']).nodes;
+
+    expect(image?.data).toMatchObject({ prompts: { i2i: '(💡 Pick the photo in the panel)\nmake it blue' } });
   });
 
   it('gives the node its shots', () => {

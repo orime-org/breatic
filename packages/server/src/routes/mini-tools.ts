@@ -53,7 +53,6 @@ miniTools.post("/", rateLimitFor("mini_tool", "user"), validate("json", miniTool
     "append",
     run.params,
     run.model,
-    undefined,
     "mini_tool",
   );
 

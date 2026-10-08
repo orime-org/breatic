@@ -703,6 +703,9 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     // Content fields
     expect(data!["content"]).toBe("https://oss/result-t1.png");
     expect(data!["coverUrl"]).toBe("https://oss/thumb-t1.png");
+    // Completing is billing: the row is marked billed in the same step that
+    // marks it completed (inner#977 removed the write that sat just before it).
+    expect((await taskService.getByIdInternal(taskId))?.billedAt).not.toBeNull();
   });
 
   /**

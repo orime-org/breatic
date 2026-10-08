@@ -26,7 +26,6 @@ function toEntity(row: typeof tasks.$inferSelect): TaskEntity {
     taskType: row.taskType,
     mode: row.mode as "append" | "overwrite",
     model: row.model,
-    skillName: row.skillName,
     status: row.status,
     params: (row.params ?? {}),
     result: row.result,
@@ -36,7 +35,6 @@ function toEntity(row: typeof tasks.$inferSelect): TaskEntity {
     completedAt: row.completedAt,
     creditsUsed: row.creditsUsed,
     durationMs: row.durationMs,
-    resolvedSkills: (row.resolvedSkills ?? []),
     source: row.source,
     providerResultUrl: row.providerResultUrl,
     providerTaskId: row.providerTaskId,
@@ -110,7 +108,6 @@ export async function softDeleteTask(id: string): Promise<void> {
  *   before reaching here).
  * @param data.params - Provider/tool parameters for the task.
  * @param data.model - Model identifier to run the task with, if applicable.
- * @param data.skillName - Skill name driving the task, if applicable.
  * @param data.source - Which lane opened this task; defaults to `"task"`.
  * @returns The created `TaskEntity`.
  */
@@ -122,7 +119,6 @@ export async function createTask(data: {
   mode: "append" | "overwrite";
   params: Record<string, unknown>;
   model?: string;
-  skillName?: string;
   /**
    * One word from the vocabulary, so a lane outside it cannot be written.
    * The column carries an older default (`"canvas"`), and this is the sole
@@ -141,7 +137,6 @@ export async function createTask(data: {
       mode: data.mode,
       params: data.params,
       model: data.model,
-      skillName: data.skillName,
       source: data.source ?? "task",
     })
     .returning();
@@ -215,18 +210,6 @@ export async function markRunning(id: string, jobId: string, now: Date): Promise
     .returning({ startedAt: tasks.startedAt });
   if (!row?.startedAt) throw new Error(`task ${id} has no row to mark running`);
   return row.startedAt;
-}
-
-/**
- * Backfill the resolved skills list after execution.
- * @param id - UUID of the task to update.
- * @param skills - The fully-resolved skill names used during execution.
- */
-export async function setResolvedSkills(id: string, skills: string[]): Promise<void> {
-  await db.execute(
-    sql`UPDATE tasks SET resolved_skills = ${JSON.stringify(skills)}::jsonb, updated_at = NOW()
-        WHERE id = ${id}`,
-  );
 }
 
 /**

@@ -7,7 +7,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-vi.mock('@web/data/api/projects', () => ({
+vi.mock('@web/data/api/projects', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/projects')>()),
   projectsApi: { create: vi.fn() },
 }));
 import { projectsApi } from '@web/data/api/projects';

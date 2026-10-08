@@ -90,8 +90,6 @@ export type {
 } from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
 export { getAgentConfig, effectiveKeepChars } from "@core/config/loader.js";
-export { getSkillRouting, resetSkillRouting, SKILL_SURFACES } from "@core/config/skill-routing.js";
-export type { SkillRoute, SkillRouting, SkillSurface } from "@core/config/skill-routing.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
 export {
@@ -158,6 +156,7 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // @breatic/domain — collab never touches it.
 export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
 export * as projectsRepo from "@core/project/projects.repo.js";
+export * as projectEditsRepo from "@core/project/project-edits.repo.js";
 export {
   projectActivitiesRepo,
   encodeActivityCursor,

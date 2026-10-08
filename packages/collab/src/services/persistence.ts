@@ -28,6 +28,8 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import { encodeStateAsUpdate } from "yjs";
 import { applyUpdate } from "yjs";
 import { createLogger } from "@breatic/core";
+import { parseDocName } from "@breatic/shared";
+import { recordProjectEdit } from "@collab/services/project-edit-recorder.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 import { lazySeedMeta } from "@collab/services/lazy-seed.js";
 import {
@@ -167,6 +169,8 @@ export interface PersistenceDeps {
   store(args: { documentName: string; state: Uint8Array }): Promise<void>;
   /** Turn a live document into the bytes to store. */
   encode(document: Y.Doc): Uint8Array;
+  /** Note that a project was edited; not awaited. */
+  recordEdit(projectId: string): void;
 }
 
 /** The two hooks hocuspocus drives persistence through. */
@@ -186,6 +190,7 @@ export function createPersistenceExtension(
   const fetch = deps.fetch ?? fetchDoc;
   const store = deps.store ?? storeDoc;
   const encode = deps.encode ?? ((document: Y.Doc): Uint8Array => encodeStateAsUpdate(document));
+  const recordEdit = deps.recordEdit ?? recordProjectEdit;
 
   return {
     onLoadDocument: async ({ documentName, document }): Promise<void> => {
@@ -212,6 +217,12 @@ export function createPersistenceExtension(
         // different questions, and they disagree whenever an edit arrives
         // while the write is in flight.
         noteStoreOutcome(documentName, "stored");
+        // A Space's content changed and landed: the project was edited. The
+        // meta document is left out because the server writes it on its own
+        // (presence, the editor vocabulary); a Space change on meta is
+        // recorded where it is published (`space-rpc.ts`).
+        const parsed = parseDocName(documentName);
+        if (parsed !== null && parsed.kind !== "meta") recordEdit(parsed.projectId);
       } catch (err) {
         // Deliberately not rethrown. Letting it escape makes hocuspocus skip
         // `afterStoreDocument`, which leaves the cross-instance lock held

@@ -80,9 +80,8 @@ COPY --from=builder /app/packages/shared/package.json ./packages/shared/
 
 COPY --from=builder /app/build-info.json ./build-info.json
 
-# Runtime config, skills, locales
+# Runtime config, locales
 COPY config/ ./config/
-COPY skills/ ./skills/
 COPY locales/ ./locales/
 COPY package.json pnpm-workspace.yaml ./
 

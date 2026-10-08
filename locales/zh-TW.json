@@ -109,17 +109,6 @@
     "text_tool": {
       "already_running": "另一個文字工具正在執行,請稍候。"
     },
-    "skill": {
-      "not_found": "找不到這個 Skill",
-      "name_taken": "你已經有一個同名的 Skill",
-      "not_published": "這個 Skill 還沒有發佈",
-      "cannot_install_own": "不能安裝自己的 Skill",
-      "already_installed": "這個 Skill 已經安裝過了",
-      "not_available_here": "Skill「{skill}」在這裡不可用",
-      "not_user_invocable": "Skill「{skill}」不能直接呼叫",
-      "not_available_on_deployment": "Skill「{skill}」在目前的伺服器上不可用",
-      "not_found_named": "找不到 Skill「{skill}」"
-    },
     "conversation": {
       "not_found": "找不到這個對話",
       "attachment_not_found": "找不到這個附件",
@@ -705,7 +694,9 @@
         "title": "機位",
         "reset": "重設",
         "loadFailed": "3D 視圖載入失敗，重新整理頁面後可用"
-      }
+      },
+      "editMarks": "請替換中括號和大括號裡的內容。橘色的注意事項不會傳給模型。",
+      "notePrefix": "注意事項："
     },
     "nodeMenu": {
       "generate": "生成",
@@ -1003,6 +994,24 @@
         "grain": "顆粒",
         "fade": "褪色"
       }
+    },
+    "template": {
+      "title": "範本",
+      "empty": "暫無範本",
+      "unavailable": "目前無法使用",
+      "storyboard-grid-25": {
+        "name": "25 宮格時序圖",
+        "description": "一張 5×5 的連續畫面，用來生成影片",
+        "prompt": "以 [📎 角色或場景參考圖] 為參考，生成一張圖：正好 5 行 5 列、共 25 格的時序分鏡圖，格子之間用細白線隔開，從左到右、從上到下按時間順序連續發生。故事：{✏️ 故事內容}。每一格的人物、服裝、場景和光線都與參考圖一致。景別和機位逐格變化，像電影分鏡。不出現文字和編號。"
+      },
+      "costume-sheet": {
+        "name": "三視圖定妝照",
+        "description": "正面、側面、背面三視圖，加局部特寫",
+        "prompt": "以 [📎 角色參考圖] 為角色參考，生成一張圖：淺灰純色背景的角色定妝照。左邊是同一角色的正面、側面、背面全身三視圖，並排站立；右邊是{✏️ 手部或身體某個部位}的局部特寫小圖。與參考圖同樣的寫實攝影風格，不是插畫。每一個視圖裡，臉、髮型、服裝、顏色和身材比例都與參考圖一致。均勻的棚拍光線。不出現文字。"
+      }
+    },
+    "promptMark": {
+      "reference": "請用 @ 選擇 {label}"
     }
   },
   "auth": {
@@ -1222,6 +1231,7 @@
       "description": "{count, plural, other {# 個 · 點擊切換或使用右側操作}}",
       "empty": "尚無 Spaces",
       "openAria": "開啟 {name}",
+      "rowActions": "檢視、鎖定或刪除這個 Space",
       "status": {
         "editing": "編輯中",
         "open": "已開啟"
@@ -1468,10 +1478,6 @@
     "inviteSent": "邀請已傳送。",
     "inviteFailed": "邀請傳送失敗,請重試。",
     "invalidEmail": "請輸入有效的電子郵件地址。",
-    "inviteLinkLabel": "邀請連結",
-    "copyInviteLink": "複製邀請連結",
-    "inviteLinkCopied": "邀請連結已複製。",
-    "inviteLinkCopyFailed": "無法複製連結。",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
@@ -1626,7 +1632,11 @@
         "archived": "已封存",
         "archiveFailed": "封存失敗",
         "restored": "已還原",
-        "restoreFailed": "還原失敗"
+        "restoreFailed": "還原失敗",
+        "openedAt": "開啟於 {time}",
+        "editedAt": "修改於 {time}",
+        "archivedAt": "封存於 {time}",
+        "neverOpened": "從未開啟"
       },
       "projects": {
         "new": "新增 Project",
@@ -1786,7 +1796,18 @@
       },
       "toolbar": {
         "sortLabel": "排序",
-        "sortValue": "最近開啟"
+        "sortValue": "最近開啟",
+        "sort": {
+          "opened": "最近開啟",
+          "edited": "最近修改",
+          "name": "名稱",
+          "created": "建立時間",
+          "archived": "封存時間"
+        },
+        "view": {
+          "grid": "網格檢視",
+          "list": "清單檢視"
+        }
       },
       "imageError": {
         "too_large": "這個檔案超過 20 MB，請換一張小一點的圖片。",
@@ -1812,6 +1833,20 @@
       "archived": {
         "emptyTitle": "沒有已封存的 Project",
         "emptyHint": "封存的 Project 會出現在這裡，可以隨時還原。"
+      },
+      "list": {
+        "columns": {
+          "name": "名稱",
+          "opened": "最近開啟",
+          "edited": "最近修改",
+          "created": "建立時間",
+          "archived": "封存時間",
+          "role": "我的角色"
+        },
+        "loadFailed": "Projects 沒有載入",
+        "pageFailed": "後面的 Projects 沒有載入",
+        "retry": "重試",
+        "end": "共 {count} 個 Project"
       }
     },
     "rail": {

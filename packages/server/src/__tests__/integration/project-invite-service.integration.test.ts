@@ -232,21 +232,20 @@ describe("createInvite", () => {
     expect(linked[0]?.notificationId).toBe(notices[0]?.id);
   });
 
-  it("returns a usable email-link token + carries it in the bell payload (single token, three channels)", async () => {
-    // The project invite diverges from studio: all three channels (copy URL,
-    // bell, email) funnel through the SAME landing page, so the token is minted
-    // inside createInvite — returned to the caller (the route surfaces it as the
-    // copyable URL + the email link) AND embedded in the notification payload
-    // (so the bell can build the same `/decision?token=` link).
-    const result = await inviteService.createInvite(
+  it("mints one share token and carries it in the bell payload", async () => {
+    // The bell and the email both build the `/decision?token=` link from the
+    // token on the invitation row, so the bell payload must carry that token.
+    const { invitationId } = await inviteService.createInvite(
       PROJECT,
       OWNER,
       INVITEE_EMAIL,
       "viewer",
     );
-
-    // The token the owner's copyable link is built from.
-    expect(result.shareToken).toMatch(/^[0-9a-f]{64}$/);
+    const [row] = await db
+      .select({ shareToken: schema.projectInvitations.shareToken })
+      .from(schema.projectInvitations)
+      .where(eq(schema.projectInvitations.id, invitationId));
+    expect(row?.shareToken).toMatch(/^[0-9a-f]{64}$/);
 
     // The bell payload carries the SAME token.
     const notices = await db
@@ -254,7 +253,7 @@ describe("createInvite", () => {
       .from(schema.notifications)
       .where(eq(schema.notifications.userId, INVITEE));
     const payload = notices[0]?.payload as Record<string, unknown>;
-    expect(payload.shareToken).toBe(result.shareToken);
+    expect(payload.shareToken).toBe(row?.shareToken);
     // …and the inviter's identity (name + @handle) for the actor-first bell row
     // ("[Owner] invited you to [Test Project]", the name clickable to the studio).
     expect(payload).toMatchObject({ inviterName: "Owner" });

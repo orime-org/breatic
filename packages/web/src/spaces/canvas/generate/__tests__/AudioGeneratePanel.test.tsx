@@ -112,6 +112,8 @@ const BASE = {
   onVoicePick: (): void => {},
   onVoiceLoadMore: (): void => {},
   onExit: (): void => {},
+  catalogModels: [],
+  onPickTemplate: (): void => {},
   onExecute: (): void => {},
 };
 
@@ -466,5 +468,14 @@ describe('PromptEditor — where each box starts', () => {
     const cls = viewportClass('half');
     expect(cls).toContain('[&_.ProseMirror]:min-h-[2.25rem]');
     expect(cls).not.toContain('min-h-[6.5rem]');
+  });
+});
+
+describe('AudioGeneratePanel — the template button (inner#977)', () => {
+  it('sits right before the exit button', () => {
+    renderPanel(<AudioGeneratePanel {...BASE} />);
+    expect(screen.getByTestId('generate-audio-exit').previousElementSibling).toBe(
+      screen.getByTestId('generate-template-trigger'),
+    );
   });
 });

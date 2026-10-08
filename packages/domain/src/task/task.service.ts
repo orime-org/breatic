@@ -25,7 +25,6 @@ import type { GenerationSource, TaskEntity } from "@breatic/shared";
  *   caller must hold the canvas-node Redis lock first).
  * @param params - Task parameters
  * @param model - Optional model name
- * @param skillName - Optional skill to execute
  * @param source - Which lane opened this task; defaults to `"task"`
  * @returns The newly created task entity
  */
@@ -37,7 +36,6 @@ export async function create(
   mode: "append" | "overwrite",
   params: Record<string, unknown>,
   model?: string,
-  skillName?: string,
   source?: GenerationSource,
 ): Promise<TaskEntity> {
   return taskRepo.createTask({
@@ -48,7 +46,6 @@ export async function create(
     mode,
     params,
     model,
-    skillName,
     source,
   });
 }
@@ -139,15 +136,6 @@ export async function markCompleted(
  */
 export async function markFailed(taskId: string, error: string): Promise<void> {
   await taskRepo.updateTaskStatus(taskId, "failed", { error });
-}
-
-/**
- * Backfill the resolved skills list after execution.
- * @param taskId - Task UUID
- * @param skills - Array of skill names used
- */
-export async function setResolvedSkills(taskId: string, skills: string[]): Promise<void> {
-  await taskRepo.setResolvedSkills(taskId, skills);
 }
 
 /**

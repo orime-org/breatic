@@ -58,12 +58,10 @@ vi.mock("@breatic/domain", async (importOriginal) => ({
     markFailed: vi.fn(),
     markCompletedAndBill: vi.fn(),
     recordProviderResult: vi.fn(),
-    setResolvedSkills: vi.fn(),
   },
   nodeHistoryService: { recordGenerationSuccess: vi.fn(), recordGenerationFailure: vi.fn() },
   getModel: vi.fn(),
   buildToolSet: vi.fn(),
-  getSkillRegistry: vi.fn(),
   extractPromptText: vi.fn(),
 }));
 vi.mock("ai", () => ({

@@ -27,7 +27,14 @@ import { checkPickedFile } from '@web/pages/studio/container/dialogs/crop-image'
 
 interface ProjectCardMenuProps {
   project: ContainerProject;
+  /** Where the trigger sits: over a card's cover, or at the end of a list row. */
+  placement?: 'card' | 'row';
 }
+
+const TRIGGER_CLASS = {
+  card: 'absolute right-[7px] top-[7px] z-10 flex h-[var(--btn-compact)] w-[var(--btn-compact)] items-center justify-center rounded-chrome bg-black/45 text-white opacity-0 transition-opacity hover:bg-black/70 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100 data-[state=open]:opacity-100',
+  row: 'relative z-[1] inline-flex h-7 w-7 items-center justify-center rounded-content-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+} as const;
 
 /**
  * Whether the card has anything to put behind its `⋯`.
@@ -59,9 +66,10 @@ export function hasCardMenu(project: ContainerProject): boolean {
  * The menu entry drives it.
  * @param props - The card's project.
  * @param props.project - The card's project.
+ * @param props.placement - Where the trigger sits (default over a card's cover).
  * @returns The menu with its file picker and dialogs.
  */
-export function ProjectCardMenu({ project }: ProjectCardMenuProps): React.JSX.Element {
+export function ProjectCardMenu({ project, placement = 'card' }: ProjectCardMenuProps): React.JSX.Element {
   const t = useTranslation();
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const [picked, setPicked] = React.useState<File | null>(null);
@@ -122,7 +130,7 @@ export function ProjectCardMenu({ project }: ProjectCardMenuProps): React.JSX.El
             aria-label={t('studio.container.card.more')}
             variant={null}
             size={null}
-            className='absolute right-[7px] top-[7px] z-10 flex h-[var(--btn-compact)] w-[var(--btn-compact)] items-center justify-center rounded-chrome bg-black/45 text-white opacity-0 transition-opacity hover:bg-black/70 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100 data-[state=open]:opacity-100'
+            className={TRIGGER_CLASS[placement]}
           >
             <MoreHorizontal className='h-3.5 w-3.5' />
           </Button>

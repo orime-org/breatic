@@ -36,6 +36,7 @@ export {
   chatRenameConversationSchema,
   CHAT_MESSAGE_MAX_CHARS,
   PROJECT_NAME_MAX_CHARS,
+  projectNameSchema,
   CONVERSATION_TITLE_MAX_CHARS,
 } from "@shared/schemas/api.js";
 

@@ -8,9 +8,8 @@
 #                          the row does not already show). Also read by the
 #                          canvas capability answer, which takes it when guide
 #                          is empty.
-#   model.guide          — what this model is for, in prose. The Skill prompt
-#                          quotes it whole, to help the model choose; so does
-#                          the canvas capability answer, for the models a canvas
+#   model.guide          — what this model is for, in prose. The canvas
+#                          capability answer quotes it whole, for the models a canvas
 #                          generation mode can reach, beside a parameter list
 #                          built from the declarations. So a sentence
 #                          here the catalog or the panel can prove wrong is a

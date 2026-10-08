@@ -17,6 +17,7 @@ vi.mock('@web/components/ui/tooltip', () => ({
 }));
 
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 
 const MODEL: ModelEntry = {
@@ -45,36 +46,40 @@ function setup(
   overrides: Partial<React.ComponentProps<typeof GeneratePanel>> = {},
 ): ReturnType<typeof render> {
   return render(
-    <GeneratePanel
-      models={[MODEL]}
-      model='nano_banana_pro'
-      mode='t2i'
-      referenceKinds={[]}
-      promptRequired
-      modeOptions={IMAGE_MODE_OPTIONS}
-      params={{ aspect_ratio: '16:9', resolution: '2K' }}
-      references={[]}
-      styleCap={undefined}
-      styleImages={[]}
-      onStylePick={() => {}}
-      stylePicking={false}
-      onRemoveStyle={() => {}}
-      creditText='7'
-      executeRefusal={null}
-      promptSlot={<div data-testid='prompt-slot'>prompt</div>}
-      onExit={() => {}}
-      onInsertReference={() => {}}
-      onSelectModel={() => {}}
-      onToggleMode={() => {}}
-      onChangeParams={() => {}}
-      onAddReference={() => {}}
-      referencePicking={false}
-      onRemoveReference={() => {}}
-      onFocus={() => {}}
-      focusPicking={false}
-      onExecute={() => {}}
-      {...overrides}
-    />,
+    <TooltipProvider>
+      <GeneratePanel
+        models={[MODEL]}
+        model='nano_banana_pro'
+        mode='t2i'
+        referenceKinds={[]}
+        promptRequired
+        modeOptions={IMAGE_MODE_OPTIONS}
+        params={{ aspect_ratio: '16:9', resolution: '2K' }}
+        references={[]}
+        styleCap={undefined}
+        styleImages={[]}
+        onStylePick={() => {}}
+        stylePicking={false}
+        onRemoveStyle={() => {}}
+        creditText='7'
+        executeRefusal={null}
+        promptSlot={<div data-testid='prompt-slot'>prompt</div>}
+        onExit={() => {}}
+        catalogModels={[MODEL]}
+        onPickTemplate={() => {}}
+        onInsertReference={() => {}}
+        onSelectModel={() => {}}
+        onToggleMode={() => {}}
+        onChangeParams={() => {}}
+        onAddReference={() => {}}
+        referencePicking={false}
+        onRemoveReference={() => {}}
+        onFocus={() => {}}
+        focusPicking={false}
+        onExecute={() => {}}
+        {...overrides}
+      />
+    </TooltipProvider>,
   );
 }
 
@@ -226,6 +231,15 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(screen.getByTestId('generate-ref-insert-e2')).not.toHaveAttribute(
       'aria-disabled',
       'true',
+    );
+  });
+});
+
+describe('GeneratePanel — the template button (inner#977)', () => {
+  it('sits right before the exit button', () => {
+    setup();
+    expect(screen.getByTestId('generate-exit').previousElementSibling).toBe(
+      screen.getByTestId('generate-template-trigger'),
     );
   });
 });

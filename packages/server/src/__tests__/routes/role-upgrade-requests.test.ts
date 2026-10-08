@@ -97,10 +97,9 @@ describe("POST /projects/:pid/role-upgrade-requests", () => {
   });
 
   it("does not hand the requester the token that answers their own request", async () => {
-    // The token names the request to whoever holds it, and the only two
-    // responses meant to carry one are the sender's copyable link and the
-    // recipient's bell row. The requester is neither: they cannot answer
-    // their own upgrade, and there is no share box on this flow.
+    // The token names the request to whoever holds it, and the only response
+    // meant to carry one is the recipient's bell row. The requester is not the
+    // recipient: they cannot answer their own upgrade.
     //
     // It leaked by shape rather than by intent — the route returned the whole
     // notification it had just written for the OWNER, and `shareToken` rides

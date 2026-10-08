@@ -45,7 +45,7 @@ import {
 import { openUpload } from "@server/modules/asset/upload-opening.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
-import { assertSkillUsable, UNDERSTAND_PINS } from "@breatic/domain";
+import { UNDERSTAND_PINS } from "@breatic/domain";
 import {
   assertStorageAllowance,
   precheckCredits,
@@ -323,12 +323,6 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
   // mail about storage.
   await assertStorageAllowance(projectId, "generate");
 
-  // Same gate the chat entry uses. This path had none: a skill_name went
-  // from the request body into the task row and the queue untouched.
-  if (body.skill_name) {
-    assertSkillUsable(body.skill_name, "canvas");
-  }
-
   const task = await taskService.create(
     user.id,
     projectId,
@@ -337,7 +331,6 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
     mode,
     body.params,
     body.model,
-    body.skill_name,
     body.source,
   );
 
@@ -367,9 +360,9 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
     startedByUserId: user.id,
     taskId: task.id,
     // What the list shows for this row. The model names it when there is
-    // one; a skill run names the skill, and the rest name what they are.
+    // one; the rest name what they are.
     action: "generate",
-    label: body.model ?? body.skill_name ?? body.task_type,
+    label: body.model ?? body.task_type,
   });
 
   // Per spec §4.2: the worker reads targetNodeIds to settle each node's task
@@ -385,7 +378,6 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
       spaceId,
       taskType: body.task_type,
       model: body.model,
-      skillName: body.skill_name,
       params: body.params,
       source: body.source,
       targetNodeIds: targetNodeId ? [targetNodeId] : [],
@@ -481,7 +473,6 @@ canvas.post(
       "append",
       params,
       model,
-      undefined,
       // The column every lane names itself in. Left unsaid it falls to the
       // column's own default, which predates this vocabulary — these rows
       // would then be the only ones it cannot account for.

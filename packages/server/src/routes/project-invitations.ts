@@ -19,7 +19,6 @@ import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { z } from "zod";
 import { emailSchema } from "@breatic/shared";
 import { validate } from "@server/middleware/validate.js";
-import { decisionLink } from "@server/utils/decision-link.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireRole, getProjectId } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";
@@ -39,14 +38,10 @@ projectInvites.use(requireAuth);
  * `POST /api/v1/projects/:pid/invitations` — invite a registered user (by
  * email) to the project. Owner-only; creates a PENDING invite + an actionable
  * bell notification, and (best-effort) sends an email link. The invitee becomes
- * a member only on confirm (invite-confirm handshake).
- *
- * Returns the `/decision?token=` URL so the owner can copy it directly. All
- * three channels that can reach this invite — the copyable URL, the bell row
- * and the email — carry the same token to the same landing page.
- * `createInvite` mints it; the route reuses it for both the email link and the
- * returned URL.
- * @returns `201` with `{ data: { inviteLink } }`; `404` unregistered email,
+ * a member only on confirm (invite-confirm handshake). The invitee reaches it
+ * through the bell row and the email, which carry the same `/decision?token=`
+ * link; the owner's response carries neither the link nor the token.
+ * @returns `201` with `{ data: { ok: true } }`; `404` unregistered email,
  *   `403` caller not owner, `409` already has access or already invited
  */
 projectInvites.post(
@@ -57,19 +52,16 @@ projectInvites.post(
     const user = c.get("user");
     const projectId = getProjectId(c);
     const body = c.req.valid("json");
-    const origin = frontendOrigin(c.req.header("Origin"));
     // The optional best-effort invite email is sent inside the service (the bell
-    // notification is the always-delivered path); the route passes the Origin and
-    // reuses the returned token to build the copyable invite URL.
-    const invite = await projectInviteService.createInvite(
+    // notification is the always-delivered path); the route only passes the Origin.
+    await projectInviteService.createInvite(
       projectId,
       user.id,
       body.email,
       body.role,
-      origin,
+      frontendOrigin(c.req.header("Origin")),
     );
-    const inviteLink = decisionLink(origin, invite.shareToken);
-    return c.json({ data: { inviteLink } }, 201);
+    return c.json({ data: { ok: true } }, 201);
   },
 );
 

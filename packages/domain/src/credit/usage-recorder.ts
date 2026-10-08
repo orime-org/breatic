@@ -30,7 +30,6 @@ export type UsageFeature =
   | "memory_consolidation"
   | "text_tool"
   | "canvas_understand"
-  | "skill_task"
   | "mini_tool";
 
 /** What inside the operation made the call. */

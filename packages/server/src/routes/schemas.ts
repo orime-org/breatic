@@ -4,8 +4,8 @@
 /**
  * API request schemas — re-exported from `@breatic/shared`.
  *
- * Server-only schemas (mini-tool discriminated unions, skill market)
- * remain defined here. Shared schemas are the single source of truth.
+ * Server-only schemas (mini-tool discriminated unions) remain defined
+ * here. Shared schemas are the single source of truth.
  */
 
 // ── Re-export shared schemas ────────────────────────────────────────
@@ -34,6 +34,7 @@ export {
 // ── Server-only schemas (complex discriminated unions) ───────────────
 
 import { z } from "zod";
+import { ARCHIVED_PROJECT_SORTS, LIVE_PROJECT_SORTS } from "@breatic/shared";
 import { creditLotService } from "@breatic/domain";
 
 // Mini-Tools: Text
@@ -78,13 +79,6 @@ export const idempotencyKeyHeaderSchema = z.object({
     .optional(),
 });
 
-// Skill Market
-export const skillMarketQuerySchema = z.object({
-  tags: z.string().transform((s) => s.split(",").filter(Boolean)).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  offset: z.coerce.number().int().min(0).default(0),
-});
-
 /**
  * Both ids in the attachment path.
  *
@@ -110,6 +104,30 @@ export const creditPageQuerySchema = z.object({
   limit: z.string().optional(),
   cursor: z.string().optional(),
 });
+
+/**
+ * `GET /studio/:slug/projects`: which list, how it is sorted, and the page.
+ *
+ * A sort the list does not offer is refused, so the live list cannot be asked
+ * for the archive order and the other way round. `limit` is clamped by the
+ * service against `config/limits.yaml`; a malformed cursor reads as the first
+ * page there.
+ */
+export const projectListQuerySchema = z
+  .object({
+    archived: z.enum(["true", "false"]).optional(),
+    sort: z.enum([...LIVE_PROJECT_SORTS, ...ARCHIVED_PROJECT_SORTS]).optional(),
+    cursor: z.string().optional(),
+    limit: z.coerce.number().int().positive().optional(),
+  })
+  .refine(
+    (q) =>
+      q.sort === undefined ||
+      (q.archived === "true"
+        ? (ARCHIVED_PROJECT_SORTS as readonly string[]).includes(q.sort)
+        : (LIVE_PROJECT_SORTS as readonly string[]).includes(q.sort)),
+    { path: ["sort"] },
+  );
 
 /**
  * Purchases, optionally narrowed to one lifecycle. Three sections read the

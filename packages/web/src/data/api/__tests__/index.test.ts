@@ -21,7 +21,6 @@ describe('data/api barrel', () => {
     expect(api.miniToolsApi).toBeDefined();
     expect(api.textToolsApi).toBeDefined();
     expect(api.tasksApi).toBeDefined();
-    expect(api.skillsApi).toBeDefined();
     expect(api.paymentApi).toBeDefined();
     expect(api.assetsApi).toBeDefined();
     expect(api.modelsApi).toBeDefined();

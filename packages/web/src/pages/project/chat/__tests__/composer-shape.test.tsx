@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import type { TrayItem } from '@web/stores/chat-attachments';
@@ -71,10 +71,13 @@ describe('the row of controls under the box', () => {
   it('holds only attach and send', () => {
     render(<ChatComposer {...BASICS} />);
 
-    expect(screen.queryByTestId('chat-composer-select-mode')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('chat-composer-skill')).not.toBeInTheDocument();
-    expect(screen.getByTestId('chat-composer-attach')).toBeInTheDocument();
-    expect(screen.getByTestId('chat-composer-send')).toBeInTheDocument();
+    // Only these two: the reader picks no template, mode or model here
+    // (inner#977), the agent does.
+    const buttons = within(screen.getByTestId('chat-composer')).getAllByRole('button');
+    expect(buttons.map((b) => b.getAttribute('data-testid'))).toEqual([
+      'chat-composer-attach',
+      'chat-composer-send',
+    ]);
   });
 });
 

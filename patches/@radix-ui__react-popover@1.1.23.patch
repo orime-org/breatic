@@ -1,0 +1,26 @@
+diff --git a/dist/index.js b/dist/index.js
+index 4a48d912a544afa0f223a84586d071a92f28fb54..c9ec271e2559d18ff8af173e147992b45f6147e2 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -285,7 +285,7 @@ var PopoverContentImpl = /* @__PURE__ */ React.forwardRef(
+             onPointerDownOutside,
+             onFocusOutside,
+             onDismiss: () => context.onOpenChange(false),
+-            deferPointerDownOutside: true,
++            deferPointerDownOutside: false,
+             children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+               PopperPrimitive.Content,
+               {
+diff --git a/dist/index.mjs b/dist/index.mjs
+index f90341b0b502ed8695ca6bbdbc420be5c187c521..5d3c31ce5f6a2c9929f51d6a1398994f56fd7498 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -237,7 +237,7 @@ var PopoverContentImpl = /* @__PURE__ */ React.forwardRef(
+             onPointerDownOutside,
+             onFocusOutside,
+             onDismiss: () => context.onOpenChange(false),
+-            deferPointerDownOutside: true,
++            deferPointerDownOutside: false,
+             children: /* @__PURE__ */ jsx(
+               PopperPrimitive.Content,
+               {

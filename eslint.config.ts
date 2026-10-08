@@ -355,7 +355,7 @@ export default tseslint.config(
   {
     // Backend only — web has no event loop shared across requests. The
     // exemptions are the paths that run before traffic arrives: startup
-    // config, infrastructure wiring, catalogue and skill loaders, and the
+    // config, infrastructure wiring, catalogue loaders, and the
     // agent's own filesystem sandbox, whose whole job is synchronous access.
     files: [
       "packages/{core,domain,server,worker,collab}/src/**/*.ts",

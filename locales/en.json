@@ -109,17 +109,6 @@
       "not_found": "That purchase could not be found.",
       "unavailable": "This deployment does not sell credits."
     },
-    "skill": {
-      "not_found": "Skill not found",
-      "name_taken": "You already have a skill with this name",
-      "not_published": "This skill has not been published",
-      "cannot_install_own": "You cannot install your own skill",
-      "already_installed": "This skill is already installed",
-      "not_available_here": "Skill ‘{skill}’ is not available here",
-      "not_user_invocable": "Skill ‘{skill}’ cannot be invoked directly",
-      "not_available_on_deployment": "Skill ‘{skill}’ is not available on this server",
-      "not_found_named": "Skill ‘{skill}’ not found"
-    },
     "conversation": {
       "not_found": "Conversation not found",
       "attachment_not_found": "Attachment not found",
@@ -717,7 +706,9 @@
         "title": "Camera angle",
         "reset": "Reset",
         "loadFailed": "The 3D view could not load. Refresh the page to use it."
-      }
+      },
+      "editMarks": "Replace the text in square brackets and braces. Orange notes are not sent to the model.",
+      "notePrefix": "Note: "
     },
     "edge": {
       "delete": "Delete connection"
@@ -1003,6 +994,24 @@
         "grain": "Grain",
         "fade": "Fade"
       }
+    },
+    "template": {
+      "title": "Templates",
+      "empty": "No templates",
+      "unavailable": "Unavailable",
+      "storyboard-grid-25": {
+        "name": "25-panel storyboard",
+        "description": "A 5×5 sequence of one story, for turning into a video",
+        "prompt": "Use [📎 character or scene reference] as the reference. Create ONE image: a storyboard grid of exactly 5 rows and 5 columns, 25 equal panels in total, separated by thin white gutters, read left to right and top to bottom as one continuous sequence in time. Story: {✏️ the story}. Every panel keeps the same people, outfits, location and lighting as the reference. Vary shot size and camera angle from panel to panel like a film storyboard. No text, no numbers."
+      },
+      "costume-sheet": {
+        "name": "Character turnaround",
+        "description": "Front, side and back views plus a close-up of a detail",
+        "prompt": "Use [📎 character reference] as the character reference. Create ONE image: a character costume sheet on a plain light grey background. On the left, full-body front, side and back views of the same character standing side by side; on the right, smaller close-up frames of {✏️ the hands or another body part}. The same photorealistic photographic style as the reference, not an illustration. The face, hairstyle, outfit, colours and body proportions match the reference in every view. Even studio lighting. No text."
+      }
+    },
+    "promptMark": {
+      "reference": "Use @ to pick {label}"
     }
   },
   "auth": {
@@ -1222,6 +1231,7 @@
       "description": "{count, plural, one {# space · click to open or use the right menu} other {# spaces · click to open or use the right menu}}",
       "empty": "No spaces yet",
       "openAria": "Open {name}",
+      "rowActions": "View, lock or delete this Space",
       "status": {
         "editing": "Editing",
         "open": "Open"
@@ -1468,10 +1478,6 @@
     "inviteSent": "Invite sent.",
     "inviteFailed": "Could not send the invite. Please try again.",
     "invalidEmail": "Please enter a valid email address.",
-    "inviteLinkLabel": "Invite link",
-    "copyInviteLink": "Copy invite link",
-    "inviteLinkCopied": "Invite link copied.",
-    "inviteLinkCopyFailed": "Could not copy the link.",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
@@ -1626,7 +1632,11 @@
         "archived": "Archived",
         "archiveFailed": "Couldn't archive",
         "restored": "Restored",
-        "restoreFailed": "Couldn't restore"
+        "restoreFailed": "Couldn't restore",
+        "openedAt": "Opened {time}",
+        "editedAt": "Edited {time}",
+        "archivedAt": "Archived {time}",
+        "neverOpened": "Never opened"
       },
       "projects": {
         "new": "New project",
@@ -1786,7 +1796,18 @@
       },
       "toolbar": {
         "sortLabel": "Sort",
-        "sortValue": "Recently opened"
+        "sortValue": "Last opened",
+        "sort": {
+          "opened": "Last opened",
+          "edited": "Last edited",
+          "name": "Name",
+          "created": "Created",
+          "archived": "Archived"
+        },
+        "view": {
+          "grid": "Grid view",
+          "list": "List view"
+        }
       },
       "imageError": {
         "too_large": "That file is over 20 MB — pick a smaller image.",
@@ -1812,6 +1833,20 @@
       "archived": {
         "emptyTitle": "No archived projects",
         "emptyHint": "Archived projects show up here, and can be restored at any time."
+      },
+      "list": {
+        "columns": {
+          "name": "Name",
+          "opened": "Last opened",
+          "edited": "Last edited",
+          "created": "Created",
+          "archived": "Archived",
+          "role": "My role"
+        },
+        "loadFailed": "Projects did not load",
+        "pageFailed": "The rest of the projects did not load",
+        "retry": "Retry",
+        "end": "{count, plural, one {# project} other {# projects}}"
       }
     },
     "rail": {

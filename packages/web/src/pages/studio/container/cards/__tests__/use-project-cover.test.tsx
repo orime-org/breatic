@@ -22,6 +22,7 @@ vi.mock('@web/data/api/projects', async (importOriginal) => ({
   projectsApi: { setCover },
 }));
 
+import { studioProjectsListKey } from '@web/data/api/projects';
 import { useProjectCover } from '@web/pages/studio/container/cards/use-project-cover';
 import { UploadFailedError } from '@web/data/upload/media-upload';
 
@@ -63,7 +64,7 @@ describe('useProjectCover', () => {
     await waitFor(() => expect(result.current.done).toBe(true));
     const studioList = invalidate.mock.calls.find(([filters]) => filters?.predicate);
     expect(
-      studioList?.[0]?.predicate?.({ queryKey: ['studio', 'acme', 'projects'] } as never),
+      studioList?.[0]?.predicate?.({ queryKey: studioProjectsListKey('acme', { archived: false, sort: 'opened', locale: 'en' }) } as never),
     ).toBe(true);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['studios', 'recent'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'p1'] });

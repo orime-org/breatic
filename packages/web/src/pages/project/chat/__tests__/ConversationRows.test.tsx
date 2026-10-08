@@ -414,14 +414,15 @@ describe('what asks for the page again after one failed', () => {
     expect(onReachEnd).toHaveBeenCalledTimes(asked);
   });
 
-  it('asks again once the reader scrolls', () => {
-    // 这是「接着滑就再拉一次」的字面实现:失败之后盯的不再是「末尾在不在
-    // 视野里」(那是个失败改不动的状态),而是一次滚动 —— 只有读者做得出来。
+  it('asks again once the reader scrolls toward the end', () => {
+    // After a failure the sheet stops watching whether the end is in view (a
+    // state the failure leaves as it was) and waits for a scroll toward it.
     const onReachEnd = vi.fn();
     renderSheetFor({ hasMore: true, onReachEnd, nextPageFailed: true });
     const asked = onReachEnd.mock.calls.length;
 
     const viewport = document.querySelector('[data-radix-scroll-area-viewport]');
+    viewport!.scrollTop = 40;
     viewport!.dispatchEvent(new Event('scroll'));
 
     expect(onReachEnd).toHaveBeenCalledTimes(asked + 1);

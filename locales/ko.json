@@ -109,17 +109,6 @@
       "not_found": "해당 구매를 찾을 수 없습니다.",
       "unavailable": "이 배포에서는 크레딧을 판매하지 않습니다."
     },
-    "skill": {
-      "not_found": "Skill을 찾을 수 없습니다",
-      "name_taken": "같은 이름의 Skill이 이미 있습니다",
-      "not_published": "이 Skill은 아직 게시되지 않았습니다",
-      "cannot_install_own": "자신의 Skill은 설치할 수 없습니다",
-      "already_installed": "이 Skill은 이미 설치되어 있습니다",
-      "not_available_here": "Skill ‘{skill}’은(는) 여기에서 사용할 수 없습니다",
-      "not_user_invocable": "Skill ‘{skill}’은(는) 직접 호출할 수 없습니다",
-      "not_available_on_deployment": "Skill ‘{skill}’은(는) 이 서버에서 사용할 수 없습니다",
-      "not_found_named": "Skill ‘{skill}’을(를) 찾을 수 없습니다"
-    },
     "conversation": {
       "not_found": "대화를 찾을 수 없습니다",
       "attachment_not_found": "첨부 파일을 찾을 수 없습니다",
@@ -705,7 +694,9 @@
         "title": "카메라 앵글",
         "reset": "초기화",
         "loadFailed": "3D 보기를 불러오지 못했습니다. 페이지를 새로고침하면 사용할 수 있습니다"
-      }
+      },
+      "editMarks": "대괄호와 중괄호 안의 내용을 바꿔 주세요. 주황색 안내는 모델에 전달되지 않습니다.",
+      "notePrefix": "안내: "
     },
     "nodeMenu": {
       "generate": "생성",
@@ -1003,6 +994,24 @@
         "grain": "그레인",
         "fade": "페이드"
       }
+    },
+    "template": {
+      "title": "템플릿",
+      "empty": "템플릿 없음",
+      "unavailable": "사용할 수 없음",
+      "storyboard-grid-25": {
+        "name": "25칸 스토리보드",
+        "description": "한 이야기를 5×5로 담은 연속 장면, 영상 생성용",
+        "prompt": "[📎 캐릭터 또는 장면 참고 이미지] 를 참고로 삼아 이미지 한 장을 만들어 주세요: 정확히 5행 5열, 총 25칸의 시간 순서 스토리보드. 칸 사이는 얇은 흰 선으로 나누고, 왼쪽에서 오른쪽, 위에서 아래로 시간 순서대로 이어집니다. 스토리: {✏️ 스토리}. 모든 칸에서 인물, 의상, 장소, 조명을 참고 이미지와 똑같이 유지하세요. 칸마다 샷 크기와 카메라 앵글을 바꿔 영화 스토리보드처럼 만드세요. 글자와 번호는 넣지 마세요."
+      },
+      "costume-sheet": {
+        "name": "삼면도 캐릭터 시트",
+        "description": "정면·측면·후면 삼면도와 부분 클로즈업",
+        "prompt": "[📎 캐릭터 참고 이미지] 를 캐릭터 참고로 삼아 이미지 한 장을 만들어 주세요: 단색 밝은 회색 배경의 캐릭터 의상 설정 시트. 왼쪽에는 같은 캐릭터의 정면, 측면, 후면 전신 삼면도를 나란히 세우고, 오른쪽에는 {✏️ 손 또는 신체 일부} 클로즈업을 작게 배치하세요. 참고 이미지와 같은 사실적인 사진 스타일이며 일러스트가 아닙니다. 모든 뷰에서 얼굴, 헤어스타일, 의상, 색상, 체형을 참고 이미지와 일치시키세요. 균일한 촬영 조명. 글자는 넣지 마세요."
+      }
+    },
+    "promptMark": {
+      "reference": "@로 {label} 선택"
     }
   },
   "auth": {
@@ -1222,6 +1231,7 @@
       "description": "{count, plural, one {# Space · 클릭하여 열거나 우측 메뉴 사용} other {# Space · 클릭하여 열거나 우측 메뉴 사용}}",
       "empty": "아직 Spaces가 없습니다",
       "openAria": "{name} 열기",
+      "rowActions": "이 Space 보기, 잠금 또는 삭제",
       "status": {
         "editing": "편집 중",
         "open": "열림"
@@ -1468,10 +1478,6 @@
     "inviteSent": "초대를 보냈습니다.",
     "inviteFailed": "초대를 보낼 수 없습니다. 다시 시도해 주세요.",
     "invalidEmail": "유효한 이메일 주소를 입력해 주세요.",
-    "inviteLinkLabel": "초대 링크",
-    "copyInviteLink": "초대 링크 복사",
-    "inviteLinkCopied": "초대 링크를 복사했습니다.",
-    "inviteLinkCopyFailed": "링크를 복사할 수 없습니다.",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
@@ -1626,7 +1632,11 @@
         "archived": "보관했습니다",
         "archiveFailed": "보관하지 못했습니다",
         "restored": "복원했습니다",
-        "restoreFailed": "복원하지 못했습니다"
+        "restoreFailed": "복원하지 못했습니다",
+        "openedAt": "{time}에 열람",
+        "editedAt": "{time}에 수정",
+        "archivedAt": "{time}에 보관",
+        "neverOpened": "열지 않음"
       },
       "projects": {
         "new": "새 Project",
@@ -1786,7 +1796,18 @@
       },
       "toolbar": {
         "sortLabel": "정렬",
-        "sortValue": "최근 연 순"
+        "sortValue": "최근 연 순",
+        "sort": {
+          "opened": "최근 연 순",
+          "edited": "최근 수정 순",
+          "name": "이름",
+          "created": "생성일",
+          "archived": "보관일"
+        },
+        "view": {
+          "grid": "그리드 보기",
+          "list": "목록 보기"
+        }
       },
       "imageError": {
         "too_large": "파일이 20 MB를 넘습니다. 더 작은 이미지를 선택하세요.",
@@ -1812,6 +1833,20 @@
       "archived": {
         "emptyTitle": "보관된 Project가 없습니다",
         "emptyHint": "보관한 Project는 여기에 표시되며 언제든 복원할 수 있습니다."
+      },
+      "list": {
+        "columns": {
+          "name": "이름",
+          "opened": "최근 열람",
+          "edited": "최근 수정",
+          "created": "생성일",
+          "archived": "보관일",
+          "role": "내 역할"
+        },
+        "loadFailed": "Projects를 불러오지 못했습니다",
+        "pageFailed": "나머지 Projects를 불러오지 못했습니다",
+        "retry": "다시 시도",
+        "end": "Project {count}개"
       }
     },
     "rail": {

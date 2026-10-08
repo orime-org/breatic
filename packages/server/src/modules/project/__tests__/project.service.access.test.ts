@@ -24,7 +24,7 @@ vi.mock("ai", () => ({
 
 vi.mock("@server/modules/project/project.repo.js", () => ({
   getProjectById: vi.fn(),
-  listProjectsByStudioForViewer: vi.fn(),
+  listStudioProjectPage: vi.fn(),
 }));
 
 vi.mock("@server/modules/studio/studio.service.js", () => ({
@@ -76,7 +76,7 @@ function makeProject(over: Partial<ProjectEntity> = {}): ProjectEntity {
 const loadProjectAccess = vi.mocked(projectAuthService.loadProjectAccess);
 const loadStudioRole = vi.mocked(studioAuthService.loadStudioRole);
 const getProjectById = vi.mocked(projectRepo.getProjectById);
-const listRepo = vi.mocked(projectRepo.listProjectsByStudioForViewer);
+const listRepo = vi.mocked(projectRepo.listStudioProjectPage);
 const getStudioBySlug = vi.mocked(studioService.getStudioBySlug);
 
 beforeEach(() => {
@@ -131,22 +131,24 @@ describe("project.service.loadForViewer — members enter, studio members are re
 });
 
 describe("project.service.listByStudioForViewer — studio members see every project", () => {
-  it("returns [] for a non-studio-member without touching the repo", async () => {
+  it("returns an empty page for a non-studio-member without touching the repo", async () => {
     loadStudioRole.mockResolvedValue(null);
 
-    const result = await listByStudioForViewer("s-1", "u-1", { archived: false });
+    const result = await listByStudioForViewer("s-1", "u-1", { archived: false, locale: "en" });
 
-    expect(result).toEqual([]);
+    expect(result).toEqual({ items: [], nextCursor: null, total: 0 });
     expect(listRepo).not.toHaveBeenCalled();
   });
 
   it("lists for any studio member", async () => {
     loadStudioRole.mockResolvedValue("guest");
-    listRepo.mockResolvedValue([]);
+    listRepo.mockResolvedValue({ rows: [], next: null, total: 0 });
 
-    await listByStudioForViewer("s-1", "u-1", { archived: false });
+    await listByStudioForViewer("s-1", "u-1", { archived: false, locale: "en" });
 
-    expect(listRepo).toHaveBeenCalledWith("s-1", "u-1", false);
+    expect(listRepo).toHaveBeenCalledWith(
+      expect.objectContaining({ studioId: "s-1", viewerUserId: "u-1", archived: false, sort: "opened" }),
+    );
   });
 });
 
@@ -154,18 +156,20 @@ describe("project.service.listByStudioSlug — slug resolution", () => {
   it("resolves the slug then lists for the viewer", async () => {
     getStudioBySlug.mockResolvedValue({ id: "s-7" } as never);
     loadStudioRole.mockResolvedValue("guest");
-    listRepo.mockResolvedValue([]);
+    listRepo.mockResolvedValue({ rows: [], next: null, total: 0 });
 
-    await listByStudioSlug("acme", "u-1", { archived: false });
+    await listByStudioSlug("acme", "u-1", { archived: false, locale: "en" });
 
     expect(getStudioBySlug).toHaveBeenCalledWith("acme");
-    expect(listRepo).toHaveBeenCalledWith("s-7", "u-1", false);
+    expect(listRepo).toHaveBeenCalledWith(
+      expect.objectContaining({ studioId: "s-7", viewerUserId: "u-1", archived: false }),
+    );
   });
 
   it("throws NotFound for an unknown slug", async () => {
     getStudioBySlug.mockResolvedValue(null);
 
-    await expect(listByStudioSlug("nope", "u-1", { archived: false })).rejects.toBeInstanceOf(NotFoundError);
+    await expect(listByStudioSlug("nope", "u-1", { archived: false, locale: "en" })).rejects.toBeInstanceOf(NotFoundError);
     expect(listRepo).not.toHaveBeenCalled();
   });
 });

@@ -123,7 +123,6 @@ describe("a consolidation that lands", () => {
     const { instructions } = buildAgentConfig({
       basePrompt: "system",
       memoryContext: context,
-      interactive: true,
     });
     expect(instructions).toContain("noir look");
     expect(instructions).toContain("noir short");

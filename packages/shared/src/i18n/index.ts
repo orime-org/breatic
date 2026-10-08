@@ -144,11 +144,24 @@ export function t(
 ): string {
   const message = resolveMessage(key);
   if (message === undefined) return key;
-  if (params === undefined || Object.keys(params).length === 0) {
-    return message;
-  }
+  return formatIn(activeLocale(), key, message, params);
+}
 
-  const locale = activeLocale();
+/**
+ * One message formatted in one locale, the formatter cached per locale and key.
+ * @param locale - The locale the message is formatted in.
+ * @param key - The key it was looked up by, for the cache.
+ * @param message - The raw ICU message.
+ * @param params - Optional parameter map for ICU placeholders.
+ * @returns The formatted string, or the raw message when it takes no params or is malformed.
+ */
+function formatIn(
+  locale: Locale,
+  key: string,
+  message: string,
+  params?: Record<string, string | number | Date>,
+): string {
+  if (params === undefined || Object.keys(params).length === 0) return message;
   const cacheKey = `${locale}|${key}`;
   let formatter = _formatterCache.get(cacheKey);
   if (!formatter) {
@@ -162,7 +175,6 @@ export function t(
       return message;
     }
   }
-
   const formatted = formatter.format(params);
   return typeof formatted === "string" ? formatted : String(formatted);
 }
@@ -220,6 +232,30 @@ function resolveKey(obj: Record<string, unknown>, key: string): string | undefin
     current = (current as Record<string, unknown>)[part];
   }
   return typeof current === "string" ? current : undefined;
+}
+
+/**
+ * A key formatted in every registered locale, the active one first.
+ *
+ * For reading back text that may have been written in another language than
+ * the one active now -- a prompt filled in by a collaborator, or before the
+ * reader switched language.
+ * @param key - Dot-notation translation key
+ * @param params - Optional parameter map for ICU placeholders
+ * @returns One formatted string per locale that has the key, without repeats
+ */
+export function tInEveryLocale(
+  key: string,
+  params?: Record<string, string | number | Date>,
+): string[] {
+  const active = activeLocale();
+  const order = [active, ...[..._locales.keys()].filter((locale) => locale !== active)];
+  const found = order.flatMap((locale) => {
+    const messages = _locales.get(locale);
+    const message = messages ? resolveKey(messages, key) : undefined;
+    return message === undefined ? [] : [formatIn(locale, key, message, params)];
+  });
+  return [...new Set(found)];
 }
 
 /** Reset loaded locales (for testing). */

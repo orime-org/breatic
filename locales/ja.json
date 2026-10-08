@@ -109,17 +109,6 @@
     "text_tool": {
       "already_running": "別のテキストツールが実行中です。お待ちください。"
     },
-    "skill": {
-      "not_found": "Skill が見つかりません",
-      "name_taken": "同じ名前の Skill がすでにあります",
-      "not_published": "この Skill はまだ公開されていません",
-      "cannot_install_own": "自分の Skill はインストールできません",
-      "already_installed": "この Skill はインストール済みです",
-      "not_available_here": "Skill「{skill}」はここでは利用できません",
-      "not_user_invocable": "Skill「{skill}」は直接呼び出せません",
-      "not_available_on_deployment": "Skill「{skill}」はこのサーバーでは利用できません",
-      "not_found_named": "Skill「{skill}」が見つかりません"
-    },
     "conversation": {
       "not_found": "会話が見つかりません",
       "attachment_not_found": "添付ファイルが見つかりません",
@@ -705,7 +694,9 @@
         "title": "カメラアングル",
         "reset": "リセット",
         "loadFailed": "3D ビューを読み込めませんでした。ページを再読み込みすると使えます"
-      }
+      },
+      "editMarks": "角括弧と波括弧の中身を書き換えてください。オレンジ色の注意事項はモデルに送られません。",
+      "notePrefix": "注意事項："
     },
     "nodeMenu": {
       "generate": "生成",
@@ -1003,6 +994,24 @@
         "grain": "粒子",
         "fade": "フェード"
       }
+    },
+    "template": {
+      "title": "テンプレート",
+      "empty": "テンプレートはありません",
+      "unavailable": "利用できません",
+      "storyboard-grid-25": {
+        "name": "25コマ絵コンテ",
+        "description": "1つの物語を5×5で並べた連続画面。動画の素材に",
+        "prompt": "[📎 キャラクターまたはシーンの参照画像] を参照として、1枚の画像を作成してください：ちょうど5行5列、合計25コマの時系列ストーリーボード。コマの間は細い白線で区切り、左から右、上から下へ時間の順に続きます。ストーリー：{✏️ ストーリー}。すべてのコマで人物、服装、場所、光を参照画像と同じに保つこと。コマごとにショットサイズとカメラアングルを変え、映画の絵コンテのようにする。文字や番号は入れない。"
+      },
+      "costume-sheet": {
+        "name": "三面図キャラクター設定",
+        "description": "正面・側面・背面の三面図と部分のクローズアップ",
+        "prompt": "[📎 キャラクターの参照画像] をキャラクターの参照として、1枚の画像を作成してください：無地の明るいグレー背景のキャラクター衣装設定シート。左側に同じキャラクターの正面・側面・背面の全身三面図を並べて立たせ、右側に{✏️ 手や体の一部}のクローズアップを小さく配置。参照画像と同じ写実的な写真のスタイルで、イラストではない。どのビューでも顔、髪型、服装、色、体型を参照画像と一致させる。均一な撮影照明。文字は入れない。"
+      }
+    },
+    "promptMark": {
+      "reference": "@ で {label} を選択"
     }
   },
   "auth": {
@@ -1222,6 +1231,7 @@
       "description": "{count, plural, other {# 件 · クリックで切替、右側で操作}}",
       "empty": "Spaces はまだありません",
       "openAria": "{name} を開く",
+      "rowActions": "この Space を表示、ロック、または削除",
       "status": {
         "editing": "編集中",
         "open": "開いています"
@@ -1468,10 +1478,6 @@
     "inviteSent": "招待を送信しました。",
     "inviteFailed": "招待を送信できませんでした。再試行してください。",
     "invalidEmail": "有効なメールアドレスを入力してください。",
-    "inviteLinkLabel": "招待リンク",
-    "copyInviteLink": "招待リンクをコピー",
-    "inviteLinkCopied": "招待リンクをコピーしました。",
-    "inviteLinkCopyFailed": "リンクをコピーできませんでした。",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
@@ -1555,7 +1561,7 @@
       "emptyTitle": "最近のコンテンツはまだありません",
       "emptyHint": "まだ Project を作成・参加していません。最初の Project を作成するか、Studio を開いて始めましょう —— 編集した内容がここに表示されます。",
       "loadError": "最近の Projects を読み込めませんでした。ページを再読み込みしてください。",
-      "openedAt": "{time}に開いた"
+      "openedAt": "最後に開いた：{time}"
     },
     "topBar": {
       "home": "Studio ホーム",
@@ -1609,7 +1615,7 @@
       "card": {
         "assetCount": "アセット {count} 個",
         "more": "その他の操作",
-        "createdAt": "{time}に作成",
+        "createdAt": "作成：{time}",
         "rename": "名前を変更",
         "duplicate": "複製",
         "archive": "アーカイブ",
@@ -1626,7 +1632,11 @@
         "archived": "アーカイブしました",
         "archiveFailed": "アーカイブできませんでした",
         "restored": "復元しました",
-        "restoreFailed": "復元できませんでした"
+        "restoreFailed": "復元できませんでした",
+        "openedAt": "最後に開いた：{time}",
+        "editedAt": "最終編集：{time}",
+        "archivedAt": "アーカイブ：{time}",
+        "neverOpened": "未オープン"
       },
       "projects": {
         "new": "Project を新規作成",
@@ -1786,7 +1796,18 @@
       },
       "toolbar": {
         "sortLabel": "並び替え",
-        "sortValue": "最近開いた順"
+        "sortValue": "最近開いた順",
+        "sort": {
+          "opened": "最近開いた順",
+          "edited": "最近編集した順",
+          "name": "名前",
+          "created": "作成日",
+          "archived": "アーカイブ日"
+        },
+        "view": {
+          "grid": "グリッド表示",
+          "list": "リスト表示"
+        }
       },
       "imageError": {
         "too_large": "そのファイルは 20 MB を超えています。もっと小さい画像を選んでください。",
@@ -1812,6 +1833,20 @@
       "archived": {
         "emptyTitle": "アーカイブ済みの Project はありません",
         "emptyHint": "アーカイブした Project はここに表示され、いつでも復元できます。"
+      },
+      "list": {
+        "columns": {
+          "name": "名前",
+          "opened": "最近開いた日時",
+          "edited": "最終編集",
+          "created": "作成日",
+          "archived": "アーカイブ日",
+          "role": "自分の役割"
+        },
+        "loadFailed": "Projects を読み込めませんでした",
+        "pageFailed": "残りの Projects を読み込めませんでした",
+        "retry": "再試行",
+        "end": "Project {count} 件"
       }
     },
     "rail": {

@@ -316,3 +316,30 @@ describe("a text node holds what it is told in its body", () => {
     expect(bodyToPlainText(data.get("body") as Y.XmlFragment)).toBe("Second.");
   });
 });
+
+describe("applyNodeTaskCounts — nothing new, nothing written", () => {
+  const counts = { running: 1, done: 2, failed: 0, expired: 0 };
+
+  it("writes nothing when the counts are the ones the node holds and no result rides along", () => {
+    const { doc } = docWithNode("n-1");
+    applyNodeTaskCounts(doc, { nodeId: "n-1", counts });
+    const updates: Uint8Array[] = [];
+    doc.on("update", (u: Uint8Array) => updates.push(u));
+
+    applyNodeTaskCounts(doc, { nodeId: "n-1", counts: { ...counts } });
+
+    expect(updates).toHaveLength(0);
+  });
+
+  it("writes when one count moved", () => {
+    const { doc, data } = docWithNode("n-1");
+    applyNodeTaskCounts(doc, { nodeId: "n-1", counts });
+    const updates: Uint8Array[] = [];
+    doc.on("update", (u: Uint8Array) => updates.push(u));
+
+    applyNodeTaskCounts(doc, { nodeId: "n-1", counts: { ...counts, running: 0, done: 3 } });
+
+    expect(updates.length).toBeGreaterThan(0);
+    expect(data.get("taskCounts")).toEqual({ ...counts, running: 0, done: 3 });
+  });
+});
