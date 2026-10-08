@@ -874,6 +874,8 @@ describe('the focus around a media block', () => {
         fireEvent.doubleClick(element(editor).querySelector('img')!);
       }
       const picture = await screen.findByTestId('doc-media-fullscreen-image');
+      // The full-screen picture is the block's own: the body is not left.
+      expect(view.state.selection).toBeInstanceOf(NodeSelection);
 
       fireEvent.keyDown(picture, { key: 'Escape' });
 
@@ -885,6 +887,49 @@ describe('the focus around a media block', () => {
       expect((view.state.selection as NodeSelection).node.type.name).toBe('image');
     },
   );
+
+  it.each([
+    ['a caret', 2, 2],
+    ['a range of words', 1, 4],
+  ] as const)(
+    'gives the body back %s it held when the full-screen picture opened from the toolbar of an unselected picture',
+    async (_what, from, to) => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      const editor = open('image', { previewWidth: 200 });
+      const view = editor.prosemirrorView!;
+      const below = view.state.doc.content.size - 'Below'.length - 2;
+      act(() => {
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, below + from, below + to)));
+        view.focus();
+      });
+
+      fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-fullscreen'));
+      const picture = await screen.findByTestId('doc-media-fullscreen-image');
+      fireEvent.keyDown(picture, { key: 'Escape' });
+      await waitFor(() => {
+        expect(screen.queryByTestId('doc-media-fullscreen-image')).toBeNull();
+      });
+
+      expect(document.activeElement).toBe(view.dom);
+      expect(view.state.selection).toBeInstanceOf(TextSelection);
+      expect([view.state.selection.from, view.state.selection.to]).toEqual([below + from, below + to]);
+    },
+  );
+
+  it('leaves the focus nowhere when nothing had it as the full-screen picture opened', async () => {
+    const editor = open('image', { previewWidth: 200 });
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-fullscreen'));
+    const picture = await screen.findByTestId('doc-media-fullscreen-image');
+    fireEvent.keyDown(picture, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-media-fullscreen-image')).toBeNull();
+    });
+
+    expect(editor.prosemirrorView!.dom.contains(document.activeElement)).toBe(false);
+  });
 });
 
 describe('the caption field and the keyboard', () => {

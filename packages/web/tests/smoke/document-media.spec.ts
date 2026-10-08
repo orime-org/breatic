@@ -851,6 +851,37 @@ test('a click held with Cmd or Ctrl in a media row does what the plain click doe
   }
 });
 
+test('a picture shown full screen from its hover toolbar gives the caret back where it was when it closes (A10, A17)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('alpha');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('omega');
+  await page.keyboard.press('ArrowUp');
+  await pastePicture(page, 'hover-full.png');
+  const picture = page.locator(IMAGE);
+  const img = picture.locator('img');
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const knob = picture.locator('[data-testid="doc-media-resize-se"]');
+  // The caret at the end of the line under the picture; the picture is not selected.
+  await page.locator(`${EDITOR} .bn-block-content`).last().click();
+  await page.keyboard.press('End');
+  await expect(knob).toHaveCount(0);
+
+  await img.hover();
+  await picture.getByTestId('doc-media-fullscreen').click();
+  await expect(page.getByTestId('doc-media-fullscreen-image')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('doc-media-fullscreen-image')).toHaveCount(0);
+  await page.mouse.move(5, 5);
+
+  await expect(knob).toHaveCount(0);
+  await page.keyboard.type('Z');
+  const rows = await page.locator(`${EDITOR} .bn-block-content`).evaluateAll((all) =>
+    all.map((row) => (row.getAttribute('data-content-type') === 'image' ? 'image' : (row.textContent ?? ''))),
+  );
+  expect(rows[rows.indexOf('image') + 1]).toBe('omegaZ');
+});
+
 for (const opening of ['toolbar', 'double click'] as const) {
   test(`a picture shown full screen from the ${opening} is selected again when it closes (A10, A17)`, async () => {
     await openFreshDocument(page);

@@ -41,6 +41,7 @@ import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 
 /** The media block types. */
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
+import { BODY_PART } from '@web/spaces/document/document-node-selection-focus';
 
 /** The block's props, as far as this view reads them. */
 export interface MediaBlockProps {
@@ -64,8 +65,8 @@ export interface MediaBlockActions {
   readonly dragEnd: () => void;
   /** Hands the keyboard back to the body, from a control of the block that held it. */
   readonly focusBody: () => void;
-  /** Selects this block and hands the keyboard back to the body with it selected. */
-  readonly selectInBody: () => void;
+  /** Whether an element is inside the body this block is in. */
+  readonly bodyHolds: (element: Element) => boolean;
 }
 
 interface DocumentMediaBlockProps {
@@ -546,23 +547,22 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         <Dialog open={fullscreen} onOpenChange={setFullscreen}>
           <DialogContent
             aria-describedby={undefined}
-            // The dialog has no trigger to return to. Opened from the body, it
-            // gives the body back the picture it showed, selected as it was;
-            // opened while the keyboard was elsewhere, the keyboard goes back
-            // there.
+            // The full-screen picture is the block's own view: the body
+            // keeps its selection while it is open (`BODY_PART`), and the
+            // keyboard goes back where it was when it opened. Back in the body
+            // it goes through the editor, which writes the kept selection to
+            // the page as the body takes the focus.
+            {...{ [BODY_PART]: '' }}
             onCloseAutoFocus={(event) => {
               event.preventDefault();
               const opener = fullscreenOpener.current;
               fullscreenOpener.current = null;
-              if (
-                opener instanceof HTMLElement &&
-                opener.isConnected &&
-                opener !== opener.ownerDocument.body &&
-                opener.closest('[contenteditable="true"]') === null
-              ) {
+              // Nothing had the keyboard when the picture opened.
+              if (opener === null || opener === opener.ownerDocument.body) return;
+              if (opener instanceof HTMLElement && opener.isConnected && !actions.bodyHolds(opener)) {
                 opener.focus();
               } else {
-                actions.selectInBody();
+                actions.focusBody();
               }
             }}
             className='max-w-[min(96vw,1600px)] items-center border-0 bg-transparent shadow-none'

@@ -16,6 +16,7 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
+import { BODY_PART } from '@web/spaces/document/document-node-selection-focus';
 import {
   IN_SELECTION_CLASS,
   MEDIA_IN_SELECTION_CLASS,
@@ -197,6 +198,22 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
     view.dom.blur();
 
     expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    vi.restoreAllMocks();
+  });
+
+  it('stays selected while the focus moves into a part of the body drawn outside it, the full-screen picture', () => {
+    const { editor } = open(type);
+    const view = editor.prosemirrorView!;
+    const part = document.createElement('div');
+    part.setAttribute(BODY_PART, '');
+    part.tabIndex = -1;
+    document.body.appendChild(part);
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+    part.focus();
+
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    part.remove();
     vi.restoreAllMocks();
   });
 

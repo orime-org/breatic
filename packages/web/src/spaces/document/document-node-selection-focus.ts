@@ -15,7 +15,9 @@
  * new selection.
  *
  * Focus moving to something inside the body is not leaving it: a media
- * block's toolbar and caption are part of the block. The window losing the
+ * block's toolbar and caption are part of the block. Neither is focus moving
+ * to a part of the body drawn outside it, such as a picture's full-screen
+ * view, which marks itself with {@link BODY_PART}. The window losing the
  * focus is not either; the reader comes back to the document as they left it.
  */
 
@@ -42,6 +44,12 @@ export function caretUnder(doc: PMNode, end: number): Selection | null {
   return Selection.findFrom($end, 1, true) ?? Selection.findFrom($end, -1, true);
 }
 
+/**
+ * The attribute an element carries when it belongs to the body but is drawn
+ * outside it, in a portal: the focus moving into it does not leave the body.
+ */
+export const BODY_PART = 'data-document-body-part';
+
 const KEY = new PluginKey('documentNodeSelectionFocus');
 
 /**
@@ -54,6 +62,7 @@ function dropWhenFocusLeft(view: EditorView, next: EventTarget | null): void {
   const { selection, doc } = view.state;
   if (!(selection instanceof NodeSelection) || !READER_SELECTED.has(selection.node.type.name)) return;
   if (next instanceof Node && view.dom.contains(next)) return;
+  if (next instanceof Element && next.closest(`[${BODY_PART}]`) !== null) return;
   const page = view.dom.ownerDocument;
   // The window itself lost the focus: the body still holds it within the page.
   if (!page.hasFocus()) return;
