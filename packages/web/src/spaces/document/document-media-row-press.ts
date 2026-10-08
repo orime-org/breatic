@@ -23,19 +23,22 @@
  *
  * A press on the media selects it as it lands, and only then gives the body
  * the focus. While the body has no focus ProseMirror keeps a selection in its
- * state without writing it to the page, and on taking the focus back it does
- * not write it either: the page keeps the caret it was left with — the line
- * under the block, after a click beside it or after the focus left — and the
- * click that follows finds the block already selected and writes nothing.
- * `EditorView.focus` writes the state's selection to the page as it focuses,
- * so the block is what the page has selected from the first frame. The press
- * is not otherwise taken: the drag the media starts is the browser's.
+ * state without writing it to the page. On taking the focus back it writes it
+ * only when the page's selection changed since it last read it
+ * (`prosemirror-view` `input.ts`, `handlers.focus`), and after a click beside
+ * the block or the focus leaving it has not: the page keeps the caret on the
+ * line under the block, and the click that follows finds the block already
+ * selected and writes nothing. `EditorView.focus` writes the state's
+ * selection to the page as it focuses, so the block is what the page has
+ * selected from the first frame. The press is not otherwise taken: the drag
+ * the media starts is the browser's.
  *
  * A click held with the node modifier (Cmd on a Mac, Ctrl elsewhere) is a
  * plain click in this Space (`document-no-node-click.ts`), and in a media row
- * this module answers it as one. On the media the press has already selected
- * it, and the click is answered here so that ProseMirror's own answer to the
- * modifier — select the node around the one already selected — never runs.
+ * this module answers it as one. A click on the media selects it and is
+ * answered here, with any button and any modifier, so that ProseMirror's own
+ * answer to the modifier — select the node around the one already selected —
+ * never runs.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -50,6 +53,25 @@ const KEY = new PluginKey('documentMediaRowPress');
 /** A media block's content element. */
 const MEDIA_ROW = MEDIA_BLOCK_TYPES.map((type) => `[data-content-type="${type}"]`).join(', ');
 
+/** Where in a media block's row a press or a click landed. */
+interface RowHit {
+  /** The row, the block's content element. */
+  readonly row: Element;
+  /** Whether it landed on what the media shows. */
+  readonly onMedia: boolean;
+}
+
+/**
+ * Where in a media row an event landed.
+ * @param target - The event's target.
+ * @returns The row and whether the media itself was hit, or null outside a media row.
+ */
+function rowHit(target: EventTarget | null): RowHit | null {
+  if (!(target instanceof Element)) return null;
+  const row = target.closest(MEDIA_ROW);
+  return row === null ? null : { row, onMedia: target.closest('[data-media-frame]') !== null };
+}
+
 /**
  * Whether a click landed in a media block's row, whose clicks this module
  * answers.
@@ -57,42 +79,60 @@ const MEDIA_ROW = MEDIA_BLOCK_TYPES.map((type) => `[data-content-type="${type}"]
  * @returns True inside a media row.
  */
 export function inMediaRow(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest(MEDIA_ROW) !== null;
+  return rowHit(target) !== null;
 }
 
 /**
- * Answers a click on a media block's row that is not on what it shows.
+ * Node-selects the media block whose row this is.
  * @param view - The view.
- * @param event - The click.
- * @returns True when the click was beside the media or on its caption, and is answered here.
+ * @param row - The row.
  */
-function clickBesideMedia(view: EditorView, event: MouseEvent): boolean {
-  if (!(event.target instanceof Element)) return false;
-  const row = event.target.closest(MEDIA_ROW);
-  if (row === null || event.target.closest('[data-media-frame]') !== null) return false;
+function selectMedia(view: EditorView, row: Element): void {
+  const selection = NodeSelection.create(view.state.doc, view.posAtDOM(row, 0));
+  if (!view.state.selection.eq(selection)) view.dispatch(view.state.tr.setSelection(selection));
+}
+
+/**
+ * Answers a click beside the media or on its caption: nothing selected, no
+ * focus.
+ * @param view - The view.
+ * @param row - The row.
+ */
+function leaveBesideMedia(view: EditorView, row: Element): void {
   // The row is the block's content element and starts where the block does;
   // a media block is an atom, so it ends one further on.
   const caret = caretUnder(view.state.doc, view.posAtDOM(row, 0) + 1);
   if (caret !== null) view.dispatch(view.state.tr.setSelection(caret).setMeta('addToHistory', false));
   (view.dom as HTMLElement).blur();
+}
+
+/**
+ * Answers a single click in a media block's row: on what the media shows it
+ * selects the media, anywhere else in the row it leaves the body.
+ * @param view - The view.
+ * @param event - The click.
+ * @returns True when the click landed in a media row.
+ */
+function clickInMediaRow(view: EditorView, event: MouseEvent): boolean {
+  const hit = rowHit(event.target);
+  if (hit === null) return false;
+  if (hit.onMedia) selectMedia(view, hit.row);
+  else leaveBesideMedia(view, hit.row);
   return true;
 }
 
 /**
- * Answers a click in a media block's row: on what the media shows while the
- * press has it selected, the click is done; anywhere else in the row it is
- * {@link clickBesideMedia}.
+ * Answers a double or triple click beside the media or on its caption; one
+ * on the media is left to ProseMirror, which selects it.
  * @param view - The view.
  * @param event - The click.
- * @returns True when the click is answered here.
+ * @returns True when the click landed beside the media or on its caption.
  */
-function clickInMediaRow(view: EditorView, event: MouseEvent): boolean {
-  if (!(event.target instanceof Element)) return false;
-  const row = event.target.closest(MEDIA_ROW);
-  if (row === null) return false;
-  if (event.target.closest('[data-media-frame]') === null) return clickBesideMedia(view, event);
-  const { selection } = view.state;
-  return selection instanceof NodeSelection && selection.from === view.posAtDOM(row, 0);
+function repeatClickBesideMedia(view: EditorView, event: MouseEvent): boolean {
+  const hit = rowHit(event.target);
+  if (hit === null || hit.onMedia) return false;
+  leaveBesideMedia(view, hit.row);
+  return true;
 }
 
 /**
@@ -101,12 +141,10 @@ function clickInMediaRow(view: EditorView, event: MouseEvent): boolean {
  * @param event - The press.
  */
 function pressOnMedia(view: EditorView, event: MouseEvent): void {
-  if (event.button !== 0 || event.shiftKey || !(event.target instanceof Element)) return;
-  if (event.target.closest('[data-media-frame]') === null) return;
-  const row = event.target.closest(MEDIA_ROW);
-  if (row === null) return;
-  const selection = NodeSelection.create(view.state.doc, view.posAtDOM(row, 0));
-  if (!view.state.selection.eq(selection)) view.dispatch(view.state.tr.setSelection(selection));
+  if (event.button !== 0 || event.shiftKey) return;
+  const hit = rowHit(event.target);
+  if (hit === null || !hit.onMedia) return;
+  selectMedia(view, hit.row);
   if (!view.hasFocus()) view.focus();
 }
 
@@ -127,8 +165,8 @@ export const documentMediaRowPressExtension = createExtension(() => ({
           },
         },
         handleClick: (view, _pos, event) => clickInMediaRow(view, event),
-        handleDoubleClick: (view, _pos, event) => clickBesideMedia(view, event),
-        handleTripleClick: (view, _pos, event) => clickBesideMedia(view, event),
+        handleDoubleClick: (view, _pos, event) => repeatClickBesideMedia(view, event),
+        handleTripleClick: (view, _pos, event) => repeatClickBesideMedia(view, event),
       },
     }),
   ],

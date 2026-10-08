@@ -796,13 +796,21 @@ describe('a press beside a media block', () => {
     expect(view.state.selection).toBeInstanceOf(TextSelection);
   });
 
-  it('leaves a click on the media itself to the editor, which selects it', () => {
+  it.each([0, 1, 2])('selects the media on a click on it with button %i', (button) => {
     const editor = open('image', { previewWidth: 200 });
     const view = editor.prosemirrorView!;
-    const click = new MouseEvent('mouseup', { bubbles: true, button: 0 });
+    act(() => {
+      view.dispatch(view.state.tr.setSelection(TextSelection.atStart(view.state.doc)));
+    });
+    const click = new MouseEvent('mouseup', { bubbles: true, button });
     Object.defineProperty(click, 'target', { value: element(editor).querySelector('img') });
 
-    expect(view.someProp('handleClick', (f) => f(view, 0, click)) === true).toBe(false);
+    act(() => {
+      view.someProp('handleClick', (f) => f(view, 0, click));
+    });
+
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect((view.state.selection as NodeSelection).node.type.name).toBe('image');
   });
 });
 
