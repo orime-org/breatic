@@ -56,7 +56,7 @@ import { letGoOfBlock } from '@web/spaces/document/document-node-selection-focus
 
 const KEY = new PluginKey('documentMediaRowPress');
 
-/** The row a view's last left press landed beside the media of, until its click. */
+/** The row a view's last press landed beside the media of, until its click. */
 const pressedBeside = new WeakMap<EditorView, Element>();
 
 /** A media block's content element. */
@@ -145,35 +145,38 @@ function repeatClickBesideMedia(event: MouseEvent): boolean {
 }
 
 /**
- * A left press in a media block's row: on what the media shows it selects the
- * media as it lands; beside it, it is noted for the click that follows.
+ * A press in a media block's row: a left one on what the media shows selects
+ * the media as it lands; one with any button beside it is noted for the click
+ * that follows.
  * @param view - The view.
  * @param event - The press.
  */
 function pressInMediaRow(view: EditorView, event: MouseEvent): void {
   pressedBeside.delete(view);
-  if (event.button !== 0 || event.shiftKey) return;
+  if (event.shiftKey) return;
   const hit = rowHit(event.target);
   if (hit === null) return;
   if (!hit.onMedia) {
     pressedBeside.set(view, hit.row);
     return;
   }
+  if (event.button !== 0) return;
   selectMedia(view, hit.row);
   if (!view.hasFocus()) view.focus();
 }
 
 /**
  * Answers the browser's click after a press beside the media or on its
- * caption, however far the pointer moved: nothing in the body selected, no
- * focus.
+ * caption, with any button and however far the pointer moved: nothing in the
+ * body selected, no focus. The browser fires `click` for the main button and
+ * `auxclick` for the others.
  * @param view - The view.
  * @param event - The click.
  */
 function clickAfterPressBeside(view: EditorView, event: MouseEvent): void {
   const row = pressedBeside.get(view);
   pressedBeside.delete(view);
-  if (row === undefined || event.button !== 0 || event.shiftKey || !row.isConnected) return;
+  if (row === undefined || event.shiftKey || !row.isConnected) return;
   leaveBesideMedia(view, row);
 }
 
@@ -195,6 +198,10 @@ export const documentMediaRowPressExtension = createExtension(() => ({
             return false;
           },
           click: (view, event) => {
+            clickAfterPressBeside(view, event);
+            return false;
+          },
+          auxclick: (view, event) => {
             clickAfterPressBeside(view, event);
             return false;
           },

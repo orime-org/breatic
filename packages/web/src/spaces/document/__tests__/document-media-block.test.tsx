@@ -692,12 +692,15 @@ describe('a media block whose neighbour goes away', () => {
  * @param detail - How many clicks in a row this one is.
  * @param keys - Modifier keys held.
  */
-function clickBeside(target: Element, detail: number, keys: MouseEventInit = {}): void {
+function clickBeside(target: Element, detail: number, keys: MouseEventInit = {}, button = 0): void {
   act(() => {
-    target.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, ...keys }));
+    target.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button, ...keys }));
   });
+  // The browser fires `click` for the main button and `auxclick` for the others.
   act(() => {
-    target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail, ...keys }));
+    target.dispatchEvent(
+      new MouseEvent(button === 0 ? 'click' : 'auxclick', { bubbles: true, cancelable: true, button, detail, ...keys }),
+    );
   });
 }
 
@@ -737,6 +740,20 @@ describe('a press beside a media block', () => {
         expect(view.dom.contains(document.activeElement)).toBe(false);
       }
     }
+  });
+
+  it.each([1, 2])('answers a click with button %i beside a selected picture the way it answers the main one', (button) => {
+    const editor = open('image', { previewWidth: 200 });
+    const view = editor.prosemirrorView!;
+    selectMedia(editor);
+    act(() => {
+      view.focus();
+    });
+
+    clickBeside(element(editor), 1, {}, button);
+
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    expect(view.dom.contains(document.activeElement)).toBe(false);
   });
 
   it('answers a click beside a selected picture whose pointer moved before it was let go', () => {

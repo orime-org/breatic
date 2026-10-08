@@ -712,10 +712,18 @@ test('the keyboard stays with the body through the toolbar and the caption; a pr
   await expect(knob).toHaveCount(0);
   await page.keyboard.press('Escape');
 
-  // A right press beside the picture selects nothing.
+  // A right or middle press beside the picture selects nothing, and lets go
+  // of the picture when it was selected, as a left one does.
   const frame = (await picture.locator('[data-media-frame]').boundingBox())!;
   await page.mouse.click(frame.x + frame.width + 40, frame.y + frame.height / 2, { button: 'right' });
   await expect(knob).toHaveCount(0);
+  for (const button of ['right', 'middle'] as const) {
+    await img.click();
+    await expect(knob).toBeVisible();
+    await page.mouse.click(frame.x + frame.width + 40, frame.y + frame.height / 2, { button });
+    await expect(knob).toHaveCount(0);
+    expect(await page.evaluate(() => document.activeElement?.closest('.ProseMirror') ?? null)).toBeNull();
+  }
 
   // A click there, or on the caption, leaves the body with no focus and
   // nothing selected: a key typed afterwards writes nothing.
