@@ -134,7 +134,8 @@ function renderModel(model: PricedModelInfo): string {
   // A kind taken both by a required slot and by the pool is routed by the
   // order the nodes are listed (`nameableFeeders`), which the model cannot
   // see from the parameters alone. An optional slot is the reader's to pick
-  // into or leave, so the nodes it can hold are said to need no asset mark.
+  // into or leave: where the model also pools that kind, the nodes it can hold
+  // need no asset mark; where it does not, they cannot be @'d at all.
   const pooled = poolParams(model).map((pool) => pool.kind);
   const shared = [...new Set(requiredSlotKinds(model).filter((kind) => pooled.includes(kind)))];
   const routing =

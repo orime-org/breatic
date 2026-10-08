@@ -222,6 +222,43 @@ function resolveKey(obj: Record<string, unknown>, key: string): string | undefin
   return typeof current === "string" ? current : undefined;
 }
 
+/**
+ * A key formatted in every registered locale, the active one first.
+ *
+ * For reading back text that may have been written in another language than
+ * the one active now -- a prompt filled in by a collaborator, or before the
+ * reader switched language.
+ * @param key - Dot-notation translation key
+ * @param params - Optional parameter map for ICU placeholders
+ * @returns One formatted string per locale that has the key, without repeats
+ */
+export function tInEveryLocale(
+  key: string,
+  params?: Record<string, string | number | Date>,
+): string[] {
+  const active = activeLocale();
+  const order = [active, ...[..._locales.keys()].filter((locale) => locale !== active)];
+  const found = order.flatMap((locale) => {
+    const messages = _locales.get(locale);
+    const message = messages ? resolveKey(messages, key) : undefined;
+    if (message === undefined) return [];
+    if (params === undefined) return [message];
+    const cacheKey = `${locale}|${key}`;
+    let formatter = _formatterCache.get(cacheKey);
+    if (!formatter) {
+      try {
+        formatter = new IntlMessageFormat(message, locale);
+        _formatterCache.set(cacheKey, formatter);
+      } catch {
+        return [message];
+      }
+    }
+    const formatted = formatter.format(params);
+    return [typeof formatted === "string" ? formatted : String(formatted)];
+  });
+  return [...new Set(found)];
+}
+
 /** Reset loaded locales (for testing). */
 export function resetLocales(): void {
   _locales.clear();

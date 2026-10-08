@@ -11,7 +11,7 @@
  * model catalog.
  */
 
-import { t } from "@shared/i18n/index.js";
+import { t, tInEveryLocale } from "@shared/i18n/index.js";
 import { insertRefusal } from "@shared/types/canvas-reference.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 import type { ReferenceKind } from "@shared/reference-pool.js";
@@ -74,15 +74,20 @@ const MARK_PATTERN = new RegExp(
 
 /**
  * A reference mark's label with the words {@link markText} asks the reader
- * with taken back off, in the language they were put on in.
+ * with taken back off. Tried in every language, since the box may have been
+ * filled in another one than the language reading it now.
  * @param label - What sits between `[📎 ` and `]`.
  * @returns The label alone.
  * @throws {never} Never.
  */
 function bareReferenceLabel(label: string): string {
-  const [before = "", after = ""] = t("canvas.promptMark.reference", { label: "\u0000" }).split("\u0000");
-  const wrapped = label.length > before.length + after.length && label.startsWith(before) && label.endsWith(after);
-  return wrapped ? label.slice(before.length, label.length - after.length) : label;
+  for (const wording of tInEveryLocale("canvas.promptMark.reference", { label: "\u0000" })) {
+    const [before = "", after = ""] = wording.split("\u0000");
+    if (label.length > before.length + after.length && label.startsWith(before) && label.endsWith(after)) {
+      return label.slice(before.length, label.length - after.length);
+    }
+  }
+  return label;
 }
 
 /**

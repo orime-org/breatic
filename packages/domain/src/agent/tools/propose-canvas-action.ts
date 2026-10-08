@@ -557,7 +557,10 @@ function checkGenerateNode(
   const mentionable = nodesAt(canName.mentionable);
   const marked = prompt.filter((segment) => segment.slot?.kind === "asset").length;
   const slots = optionalSlots(chosen).filter((slot) => mentionable.some((n) => n.type === slot.kind));
-  const slotted = notedIntoSlots(slots, mentionable, prompt.filter((segment) => segment.slot?.kind === "note").length);
+  // A note stands in only for a node no bracket covers: a note beside a full
+  // set of brackets sends nothing into a slot, and the pool keeps every node.
+  const notes = prompt.filter((segment) => segment.slot?.kind === "note").length;
+  const slotted = notedIntoSlots(slots, mentionable, Math.min(notes, Math.max(0, mentionable.length - marked)));
   const noted = [...slotted.values()].reduce((sum, count) => sum + count, 0);
   if (marked + noted < mentionable.length) {
     const slotWay = slots.length > 0 ? `, or a note of its own saying it goes into the ${slots.map((slot) => slot.name).join(" or ")} slot` : "";
@@ -1054,7 +1057,7 @@ function templateGuide(): string {
     ". Each reference is a node wired in, as with any proposal. Name the template on the node and leave out what " +
     "you keep. To put the reader's own story or detail in, send the template's prompt rewritten in the " +
     "language they write in, as segments: fill a tweak segment with words or keep it for them, and keep each " +
-    "asset segment, saying in its label whether the picture is uploaded or generated; a note is the card's line. " +
+    "asset segment, saying in its label whether the picture is uploaded or generated, and its note field is the card's line. " +
     "The reader @s it by hand."
   );
 }
