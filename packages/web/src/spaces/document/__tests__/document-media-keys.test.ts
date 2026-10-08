@@ -216,6 +216,26 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
     vi.restoreAllMocks();
   });
 
+  it('stays selected when a layer of its own loses the keyboard and hands it back only as it leaves the page', async () => {
+    const { editor } = open(type);
+    const view = editor.prosemirrorView!;
+    const { layer, inside } = layerOpenedFrom(view.dom.querySelector(`[data-content-type="${type}"]`)!);
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    inside.focus();
+
+    // A press on the layer's overlay drops the keyboard; the layer plays its
+    // exit, and only once it is gone is the keyboard handed back.
+    inside.blur();
+    await new Promise((done) => setTimeout(done, 50));
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    layer.remove();
+    view.focus();
+    await settle();
+
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    vi.restoreAllMocks();
+  });
+
   it('stops being selected when the focus falls to nothing and stays there, a click on the page around it', async () => {
     const { editor } = open(type);
     const view = editor.prosemirrorView!;

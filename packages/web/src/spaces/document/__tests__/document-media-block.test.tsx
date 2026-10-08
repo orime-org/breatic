@@ -11,6 +11,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import * as React from 'react';
 import * as Y from 'yjs';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -899,6 +900,23 @@ describe('a press beside a media block', () => {
     expect((view.state.selection as NodeSelection).node.type.name).toBe('image');
   });
 
+  it.each([1, 2])('selects the media as a press with button %i on it lands, with no caret before', (button) => {
+    const editor = open('image', { previewWidth: 200 });
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.dispatch(view.state.tr.setSelection(TextSelection.atStart(view.state.doc)));
+    });
+
+    act(() => {
+      element(editor)
+        .querySelector('img')!
+        .dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button }));
+    });
+
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(view.dom.contains(document.activeElement)).toBe(true);
+  });
+
   it('leaves a Shift press on the media to the editor, which extends the selection', () => {
     const editor = open('image', { previewWidth: 200 });
     const view = editor.prosemirrorView!;
@@ -1198,6 +1216,20 @@ describe('a document with no line for text', () => {
     outside.remove();
   });
 
+  it('keeps the picture drawn as not selected while its caption field has the keyboard', () => {
+    const { editor, outside } = letGoOfOnlyPicture();
+    const view = editor.prosemirrorView!;
+    const row = view.dom.querySelector<HTMLElement>('[data-content-type="image"]')!;
+
+    act(() => {
+      fireEvent.click(within(row).getByTestId('doc-media-caption-button'));
+    });
+
+    expect(document.activeElement).toBe(within(row).getByTestId('doc-media-caption-input'));
+    expect(box(editor).getAttribute('data-selected')).toBeNull();
+    outside.remove();
+  });
+
   it('draws the picture as not selected after a click beside it', () => {
     const editor = onlyPicture();
     const view = editor.prosemirrorView!;
@@ -1279,6 +1311,88 @@ describe('a picture with a table right under it', () => {
     expect(inCell(editor)).toBe(false);
     expect(box(editor).getAttribute('data-selected')).toBeNull();
     expect(editor.prosemirrorView!.dom.contains(document.activeElement)).toBe(false);
+  });
+});
+
+describe('keys pressed on a control inside a media block', () => {
+  it.each(['Enter', ' ', 'Tab', 'ArrowRight', 'z'])('leave %j to the control, not to the body', (key) => {
+    const editor = open('video');
+    const view = editor.prosemirrorView!;
+    selectMedia(editor);
+    const control = element(editor).querySelector<HTMLElement>('[data-media-frame] button')!;
+    act(() => {
+      control.focus();
+    });
+    const before = view.state.doc.toJSON();
+
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    act(() => {
+      control.dispatchEvent(event);
+    });
+
+    expect(view.state.doc.toJSON()).toEqual(before);
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(event.defaultPrevented).toBe(false);
+  });
+});
+
+describe('a click beside a picture when another kind of selection is in the body', () => {
+  /**
+   * Opens Above, a picture, then a two-cell table.
+   * @param withAbove - Whether a line of text sits above the picture.
+   * @returns The editor.
+   */
+  function overTable(withAbove: boolean): Editor {
+    const editor = open('image', { previewWidth: 200 });
+    act(() => {
+      editor.replaceBlocks(editor.document, [
+        ...(withAbove ? [{ type: 'paragraph', content: 'Above' }] : []),
+        { type: 'image', props: { url: URL_OF, name: 'a.png', previewWidth: 200 } },
+        { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['x', 'y'] }] } },
+      ] as never);
+    });
+    return editor;
+  }
+
+  /**
+   * Selects both cells of the table.
+   * @param editor - The editor.
+   */
+  function selectCells(editor: Editor): void {
+    const view = editor.prosemirrorView!;
+    const cells: number[] = [];
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.spec.tableRole === 'cell') cells.push(pos);
+      return true;
+    });
+    act(() => {
+      view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[1]!)));
+      view.focus();
+    });
+    expect(view.state.selection).toBeInstanceOf(CellSelection);
+  }
+
+  it('puts the caret on the line above the picture when a table follows it', () => {
+    const editor = overTable(true);
+    selectCells(editor);
+    const view = editor.prosemirrorView!;
+
+    clickBeside(view.dom.querySelector('[data-content-type="image"]')!, 1);
+
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    expect(view.state.selection.$from.parent.textContent).toBe('Above');
+    expect(view.dom.contains(document.activeElement)).toBe(false);
+  });
+
+  it('lets go of the picture itself when no line of text is outside the table', () => {
+    const editor = overTable(false);
+    selectCells(editor);
+    const view = editor.prosemirrorView!;
+
+    clickBeside(view.dom.querySelector('[data-content-type="image"]')!, 1);
+
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(within(view.dom).getByTestId('doc-media-box').getAttribute('data-selected')).toBeNull();
   });
 });
 

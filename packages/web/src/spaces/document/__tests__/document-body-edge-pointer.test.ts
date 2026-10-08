@@ -622,6 +622,22 @@ describe('Shift+click on the body, and past either end of it', () => {
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, at]);
   });
 
+  it('does not follow a drag that starts on a control a media block draws, a resize knob', () => {
+    const view = open(ABOVE_DIVIDER).prosemirrorView!;
+    const at = textStart(view, 'Above') + 1;
+    select(view, at);
+    const knob = document.createElement('span');
+    knob.setAttribute('data-media-chrome', '');
+    view.dom.querySelector('.bn-block-content')!.appendChild(knob);
+
+    knob.dispatchEvent(new MouseEvent('mousedown', {
+      clientX: 50, clientY: 50, button: 0, buttons: 1, bubbles: true, cancelable: true,
+    }));
+    move(150);
+
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, at]);
+  });
+
   it('does not follow a drag that starts on a check-list checkbox', () => {
     const view = open(WITH_CHECKBOX).prosemirrorView!;
     const at = textStart(view, 'Alpha') + 1;
