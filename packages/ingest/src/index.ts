@@ -42,8 +42,10 @@ import {
 } from "@ingest/error-monitoring.js";
 import { readMediaAtEdge, type MediaEnv } from "@ingest/media-read.js";
 import {
+  hasPreviewableFrame,
   mediaNumbersFor,
   type MediaMetadata,
+  type ProbeReport,
 } from "@ingest/media-metadata.js";
 import { typeCorrectedByReport } from "@ingest/stored-media.js";
 import { pngSize } from "@ingest/png-size.js";
@@ -1079,18 +1081,20 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
  * @param standing - Whether one already stood.
  * @param read - What the container answered.
  * @param read.answered - Whether a container answered at all.
+ * @param read.report - What ffprobe found.
  * @param read.preview - The preview it cut, when it cut one.
- * @returns What became of it.
+ * @returns What became of it: `none` only for a picture with no frame to cut
+ *   from, `failed` for one that had a frame and came back without a preview.
  */
 async function previewOutcome(
   env: Env,
   storageKey: string,
   standing: boolean,
-  read: { answered: boolean; preview: Uint8Array | null },
+  read: { answered: boolean; report: ProbeReport; preview: Uint8Array | null },
 ): Promise<PreviewOutcome> {
   if (standing) return "existing";
   if (!read.answered) return "failed";
-  if (read.preview === null) return "none";
+  if (read.preview === null) return hasPreviewableFrame(read.report) ? "failed" : "none";
   return (await storePreview(env, storageKey, read.preview)) ? "generated" : "failed";
 }
 

@@ -247,7 +247,9 @@ describe("a read that asks for a preview", () => {
     expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(new Uint8Array([7]));
   });
 
-  it("answers none when the run finished without one", async () => {
+  // The picture had a frame to cut from, so a run with no preview is one that
+  // ran out of time or failed: the backfill lists it to run again.
+  it("answers failed when a picture with a frame came back with no preview", async () => {
     const storageKey = await storedPicture();
     const run = containerAnswering(PICTURE, null, null);
 
@@ -257,8 +259,26 @@ describe("a read that asks for a preview", () => {
       run.media,
     );
 
-    expect(await response.json()).toMatchObject({ preview: "none" });
+    expect(await response.json()).toMatchObject({ preview: "failed" });
     expect(await env.BUCKET.head(previewKeyFor(storageKey))).toBeNull();
+  });
+
+  // An animated WebP probes 0x0 and by design gets no preview.
+  it("answers none for a picture with no frame to cut from", async () => {
+    const storageKey = await storedPicture();
+    const animated: ProbeReport = {
+      ...PICTURE,
+      streams: [{ ...PICTURE.streams[0]!, codecName: "webp", width: 0, height: 0 }],
+    };
+    const run = containerAnswering(animated, null, null);
+
+    const response = await read(
+      { storageKey, contentType: "image/webp", limits: LIMITS, wantPreview: true },
+      env.INGEST_SHARED_SECRET,
+      run.media,
+    );
+
+    expect(await response.json()).toMatchObject({ preview: "none" });
   });
 
   it("answers failed when no container ran", async () => {
