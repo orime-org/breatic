@@ -8,6 +8,7 @@ import {
   promptPlainText,
   proposalMarkSegments,
   type CanvasProposal,
+  type NodeMediaFields,
 } from '@breatic/shared';
 
 import {
@@ -17,6 +18,7 @@ import {
   getPromptFragment,
   getTextBody,
   readNodeCorners,
+  restoreNodeMedia,
   runCanvasUndoBatch,
   setGroupBackground,
   setNodeMode,
@@ -25,6 +27,7 @@ import {
 } from '@web/data/yjs/canvas-space';
 import { setStoryboardShots } from '@web/data/yjs/node-storyboard';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
+import { writeProposalFills } from '@web/spaces/canvas/generate/proposal-fills';
 import { writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
 import { planFlowLayout, type Spot } from '@web/spaces/canvas/lib/place-flow';
 import {
@@ -51,6 +54,16 @@ import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { ingestRefusalToastKey } from '@web/spaces/canvas/upload-failure';
+
+/** No numbers for a material whose registration the check could not read. */
+const NO_MEDIA: NodeMediaFields = {
+  coverUrl: null,
+  width: null,
+  height: null,
+  duration: null,
+  mimeType: null,
+  size: null,
+};
 
 /** A node an upload just created: its id and the top-left it was written at. */
 export interface CreatedUploadNode {
@@ -248,6 +261,14 @@ export function useNodeCreation(
           });
           nodeIds.push(id);
           setNodeName(projectId, spaceId, id, node.name);
+          // The reader's material, with the numbers its registration holds,
+          // the same write a restored result goes through (inner#1315).
+          if (node.material) {
+            restoreNodeMedia(projectId, spaceId, id, {
+              content: node.material,
+              media: node.materialMedia ?? NO_MEDIA,
+            });
+          }
           // Mode and model go together in one write, so a collaborator never
           // sees the proposed mode paired with whatever model the node
           // defaulted to. A source node carries neither -- it is the empty
@@ -301,6 +322,7 @@ export function useNodeCreation(
         proposal.nodes.forEach((node, i) => {
           const id = nodeIds[i];
           if (!id) return;
+          writeProposalFills(projectId, spaceId, id, node, proposal.nodes);
           if (node.role === 'written') {
             // A written node's words are its body, not a prompt: nothing
             // generates there, and the body is what the reader reads and edits.

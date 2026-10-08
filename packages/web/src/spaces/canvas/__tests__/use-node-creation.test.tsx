@@ -491,6 +491,111 @@ describe('useNodeCreation', () => {
       });
     });
 
+    describe('the material a reader gave, landed and filled into slots (inner#1315)', () => {
+      const PORTRAIT = 'https://ours.example/image/face.png';
+      const VOICE = 'https://ours.example/audio/voice.mp3';
+      const TALKING: CanvasProposal = {
+        nodes: [
+          {
+            role: 'source',
+            type: 'image',
+            name: 'Your portrait',
+            material: PORTRAIT,
+            materialMedia: { coverUrl: null, width: 800, height: 600, duration: null, mimeType: 'image/png', size: 10 },
+          },
+          {
+            role: 'source',
+            type: 'audio',
+            name: 'Your voice',
+            material: VOICE,
+            materialMedia: { coverUrl: null, width: null, height: null, duration: 3, mimeType: 'audio/mpeg', size: 20 },
+          },
+          {
+            role: 'generate',
+            type: 'video',
+            name: 'Talking head',
+            mode: 'talking_head',
+            model: 'a-talker',
+            takesPrompt: false,
+            fills: { image: [0], audio: [1] },
+          },
+        ],
+        edges: [],
+        rationale: '',
+      };
+
+      it('lands each material node holding the file and the numbers an upload gives it', () => {
+        const { result } = renderHook(() => useNodeCreation('p-mat', 's-mat'));
+
+        const { nodeIds: ids } = result.current.placeProposalAt(TALKING, { x: 0, y: 0 });
+
+        const { nodes } = canvasSpace.readCanvasGraph('p-mat', 's-mat');
+        const portrait = contentAt(nodes, ids[0]);
+        const voice = contentAt(nodes, ids[1]);
+        expect(portrait).toMatchObject({ kind: 'image', content: PORTRAIT, width: 800, height: 600 });
+        expect(voice).toMatchObject({ kind: 'audio', content: VOICE, duration: 3 });
+      });
+
+      it('fills the talking head the way picks in its panel would, with no wire drawn', () => {
+        const { result } = renderHook(() => useNodeCreation('p-fill', 's-fill'));
+
+        const { nodeIds: ids } = result.current.placeProposalAt(TALKING, { x: 0, y: 0 });
+
+        const { nodes, edges } = canvasSpace.readCanvasGraph('p-fill', 's-fill');
+        const head = contentAt(nodes, ids[2]);
+        // The portrait is the character, not a first frame: both slots send
+        // `image`, and only the mode's row says which one this is.
+        expect(head.characterImageUrl).toBe(PORTRAIT);
+        expect(head.firstFrameUrl).toBeUndefined();
+        expect(head.drivingAudio).toEqual({ url: VOICE, duration: 3 });
+        expect(edges).toHaveLength(0);
+      });
+
+      it('lists every picture filling a slot that holds several', () => {
+        const styled: CanvasProposal = {
+          nodes: [
+            { ...TALKING.nodes[0]! },
+            { ...TALKING.nodes[0]!, name: 'Second look', material: 'https://ours.example/image/b.png' },
+            {
+              role: 'generate',
+              type: 'image',
+              name: 'In that style',
+              mode: 't2i',
+              model: 'a-painter',
+              takesPrompt: true,
+              prompt: [{ text: 'a teapot' }],
+              fills: { style_images: [0, 1] },
+            },
+          ],
+          edges: [],
+          rationale: '',
+        };
+        const { result } = renderHook(() => useNodeCreation('p-style', 's-style'));
+
+        const { nodeIds: ids } = result.current.placeProposalAt(styled, { x: 0, y: 0 });
+
+        const { nodes } = canvasSpace.readCanvasGraph('p-style', 's-style');
+        expect(contentAt(nodes, ids[2]).styleImageUrls).toEqual([PORTRAIT, 'https://ours.example/image/b.png']);
+      });
+
+      it('goes down as one undo entry with the material and the fills in it', () => {
+        const undo = canvasSpace.createCanvasUndoManager(
+          getDoc(docName.canvasSpace('p-mundo', 's-mundo')),
+        );
+        const { result } = renderHook(() => useNodeCreation('p-mundo', 's-mundo'));
+
+        const { nodeIds: ids } = result.current.placeProposalAt(TALKING, { x: 0, y: 0 });
+        expect(undo.undoStack).toHaveLength(1);
+        undo.undo();
+        undo.redo();
+
+        // Redone, the nodes come back holding what they were placed with.
+        const { nodes } = canvasSpace.readCanvasGraph('p-mundo', 's-mundo');
+        expect(contentAt(nodes, ids[0])).toMatchObject({ content: PORTRAIT });
+        expect(contentAt(nodes, ids[2]).characterImageUrl).toBe(PORTRAIT);
+      });
+    });
+
     it('leaves the source node without a mode or a model', () => {
       const { result } = renderHook(() => useNodeCreation('p-src', 's-src'));
 
