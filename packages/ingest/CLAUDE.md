@@ -6,8 +6,8 @@
 **部署在 Cloudflare 的 ingest Worker**。浏览器把文件字节直接发给它，它写进 R2、算出内容 hash，**把算出来的东西放在收尾那次请求的响应里答回去**。**它不主动请求任何地址，也不持有我们任何一个端点的地址**（#206）——收尾由我们自己的 server 发起，所以它答给谁、后果落在哪，全由发起方决定。**它是这个仓库里唯一跑在 workerd 上的包**，而它有两个运行时：`src/` 是 Worker 本身，跑在 workerd 上，没有 `node:*`、没有数据库、没有 Redis；`container/` 是它起的媒体容器（`Dockerfile` 里的 alpine + Node 24），跑 ffmpeg，用 `node:*` 起 HTTP 服务并 spawn 进程。**写 `node:*` 只在 `container/` 里成立**。
 
 ## 分层(包内)
-- `src/index.ts` = fetch handler，六个端点的路由 + CORS。前四个是上传那条链路（`POST /uploads` · `POST /fetch` · `PUT` 分片 · `POST` 收尾）；第五个 `GET|HEAD /download/{key}` 是读，它把 R2 上的对象带着 `Content-Disposition: attachment` 答出去，这是浏览器把跨域响应收进自己下载列表的唯一途径（#2108）；第六个 `POST /media` 读一个已经落盘的对象的宽高和时长，给收尾时跳过了这一步的项目封面和 Studio 头像补读（#299）。收尾那次请求带 `deferMediaRead: true` 时不起容器
-- **本包只绑一个 Durable Object：媒体容器 `MediaContainer`**（容器只能经 DO 到达），按 storage key 一实例、答完即闲置停机。**上传这条路本身零常驻状态**：一次上传要记住的两样东西（R2 的 `uploadId`、每片的 etag）由发起方持有、每次请求带回来，跟 Cloudflare 自己的多段上传示例一致（「the state of the multipart upload is tracked in the client application which sends requests to the Worker」）。判上传死活的也不在这儿：任务行的时限由 server 在有人读节点任务列表时算（#186 设计 §4.6）
+- `src/index.ts` = fetch handler，六个端点的路由 + CORS。前四个是上传那条链路（`POST /uploads` · `POST /fetch` · `PUT` 分片 · `POST` 收尾）；第五个 `GET|HEAD /download/{key}` 是读，它把 R2 上的对象带着 `Content-Disposition: attachment` 答出去，这是浏览器把跨域响应收进自己下载列表的唯一途径（#2108）；第六个 `POST /media` 读一个已经落盘的对象的宽高和时长，给收尾时跳过了这一步的项目封面和 Studio 头像补读（#299）。容器还给图片和视频封面写一张缩略图（`<key>.preview.webp`，最宽 576，inner#1320）：收尾时 Worker 按落盘类型自己决定要不要，`POST /media` 由调用方带 `wantPreview: true` 要，缩略图已经在的不再写。所以 `/media` 也可能写一个对象。收尾那次请求带 `deferMediaRead: true` 时不起容器
+- **本包只绑一个 Durable Object：媒体容器 `MediaContainer`**（容器只能经 DO 到达），按 storage key 一实例、答完即闲置停机。容器里的服务把 ffmpeg 和 vips 当单独进程调用，它自己的进程只加载 Node 内置模块和本包的代码（`breatic/media-container-own-code-only` 守着，vips 链接的两个 GPL 库因此不进我们的进程，见 `THIRD-PARTY.md`）。**上传这条路本身零常驻状态**：一次上传要记住的两样东西（R2 的 `uploadId`、每片的 etag）由发起方持有、每次请求带回来，跟 Cloudflare 自己的多段上传示例一致（「the state of the multipart upload is tracked in the client application which sends requests to the Worker」）。判上传死活的也不在这儿：任务行的时限由 server 在有人读节点任务列表时算（#186 设计 §4.6）
 - `src/stored-object.ts` = Worker 对 R2 上那个对象做的两件事：拼装、算哈希
 - `src/part-layout.ts` = 一片合不合票据签的布局。写 R2 之前判一次（唯一拦得住字节的时刻），收尾时对交回的清单逐项再判一次，然后数片数够不够
 - 本包内部用 `@ingest/*` 前缀
@@ -27,6 +27,8 @@
 **配置文件不进仓库，进仓库的是它的模板**（user 2026-08-31 拍定）：`wrangler.toml.template` 和 `.dev.vars.template` 进，`wrangler.toml` 和 `.dev.vars` 不进（`.gitignore` 挡住）。需要配的人各自复制一份、去掉 `.template` 后缀、把值改成自己的。模板里的值是占位说明，不是任何人的真实取值——**wrangler 不做 `${VAR}` 插值**（实测 4.127.1，`[vars]` 里的 `${X}` 原样当字面量），所以占位符只是给人读的。
 
 **手上已经有一份 `wrangler.toml` 的，要补两行**（2026-09-13 起）：容器镜像改成从仓库根构建，`Dockerfile` 里每一条 COPY 的源都按仓库根写。构建上下文由 `image_build_context` 定，wrangler 相对这个配置文件所在目录解析它、不填时取 Dockerfile 自己那个目录（`wrangler-dist/cli.js:36584-36586`）。所以**两个 `[[containers]]` 块各补一行 `image_build_context = "../.."`** —— `[[containers]]`（`wrangler dev` 用）和 `[[env.production.containers]]`（`deploy:worker` 用）。**`containers` 不继承进 environment**（`cli.js:35941` 注册成 `notInheritable`），只补顶层那个，`wrangler dev` 正常而部署会在第一条 COPY 上失败。模板里两个块都已经有了，照抄即可；漏了当场报错、补上就好。
+
+**两个 `[[containers]]` 块还要各补一行 `instance_type = "basic"`**（1/4 vCPU、1 GiB，inner#1320）：缩略图要解码整张图，48 MP 的图实测峰值 171 MiB，默认的 lite 只有 256 MiB。模板里两个块都已经有了。
 
 **接入错误上报之后，顶层还要补一行 `compatibility_flags = ["nodejs_compat"]`**，放在 `compatibility_date` 旁边，它会继承进 `[env.production]`。Sentry SDK 不管填没填 DSN 都会被 import，缺这个 flag 时打包只出警告，运行时 workerd 拒绝加载 Worker：`wrangler dev` 实测报 `No such module "node:async_hooks"` 起不来。
 
