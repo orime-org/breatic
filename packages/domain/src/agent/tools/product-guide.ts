@@ -21,6 +21,7 @@ import { z } from "zod";
 
 import { getAgentConfig } from "@breatic/core";
 import { CHAT_MESSAGE_MAX_CHARS, canConnect, canGenerate, t, type NodeType } from "@breatic/shared";
+import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 
 const inputSchema = z.object({}).strict();
 
@@ -829,6 +830,9 @@ export function renderProductGuide(): string {
       "proposal's mode only, so switching mode shows that mode's own box. Where the model has no prompt box, a picture or video " +
       `panel shows ${quoted(t("canvas.generatePanel.promptNotUsed"))} in place of the box, and a sound panel ` +
       "still shows an empty box; nothing typed there is sent. The card lists the proposal's marks for that node. " +
+      "A node holding material the reader gave -- a file uploaded in this chat, or a picture saved with " +
+      `${SAVE_IMAGE} -- arrives with it in, and a slot the proposal filled from such a node already holds it in ` +
+      "the panel, so there is nothing to pick there; one wired into the reference pool still has a 📎 mark to @. " +
       "The reader generates the nodes in the order the card's arrows run, and waits for each to show its result " +
       "before generating the node it feeds: a node still generating lends nothing, or its previous result, and " +
       "where that source is optional the run goes ahead without it.",

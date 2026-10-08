@@ -358,7 +358,7 @@ describe("marks the reader can act on", () => {
   it("keeps asset marks for nodes going into the pool, and a note for every node going into a slot", () => {
     const shape = inputSchema.shape.nodes.element.shape;
     expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/never a node going into a slot/);
-    expect(shape.prompt.description ?? "").toMatch(/a node going into a slot or the lyrics box takes a note of its own instead/);
+    expect(shape.prompt.description ?? "").toMatch(/a node going into a slot or the lyrics box by an edge takes a note of its own instead \(a slot filled through fills takes none\)/);
     expect(shape.prompt.description ?? "").toMatch(/an empty node no edge sends into a generation \(unwired, or wired only as a link to a model that takes nothing from it\)/);
   });
 
@@ -412,7 +412,7 @@ describe("a kind the canvas will not wire into the node (table A, first row)", (
     });
     expect(answer).toMatchObject({
       ok: false,
-      reason: expect.stringContaining('"hunyuan-video-foley" takes a video node in its "video" slot, picked in the panel: leave this edge off'),
+      reason: expect.stringContaining('"hunyuan-video-foley" takes a video node in its "video" slot, without an edge: leave this edge off'),
     });
   });
 });
@@ -464,7 +464,7 @@ describe("a way over its room (table C)", () => {
       groupName: "g",
     };
     const answer = checkProposal(proposal);
-    expect(answer).toMatchObject({ ok: false, reason: expect.stringContaining("Wire fewer.") });
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringContaining("Send fewer.") });
     expect(answer).not.toMatchObject({ reason: expect.stringContaining("another way") });
   });
 });

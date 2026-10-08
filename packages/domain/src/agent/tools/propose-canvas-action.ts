@@ -58,7 +58,8 @@ import {
 } from "@breatic/shared";
 
 import { expandTemplate } from "@domain/agent/tools/template-expansion.js";
-import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
+import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
+import { GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import {
   modelsForMode,
   waysIn,
@@ -76,6 +77,14 @@ const NODE_TYPES = Object.keys(GENERATION_NODE_MODES) as [
 
 /** Whether a proposal holds together, and what is missing when it does not. */
 export type ProposalVerdict = { ok: true } | { ok: false; reason: string };
+
+export type { MaterialFacts, MaterialTable } from "@domain/asset/material-facts.js";
+
+/** The node kinds that hold material. */
+const MATERIAL_KINDS: ReadonlySet<string> = new Set(["image", "video", "audio"]);
+
+/** The table for a proposal that names no material. */
+const NO_MATERIAL: MaterialTable = new Map();
 
 // Every string below that a card puts on screen is trimmed before it is
 // measured: one made of spaces passes a length check and then draws a bullet
@@ -96,7 +105,7 @@ const promptSegment = z.union([
               .enum(["asset", "tweak"])
               .describe(
                 "asset: a node wired in that the reader @s by hand to use it, going into the pool -- " +
-                  "empty for their material, generated, or a text node; never a node going into a slot; " +
+                  "empty for their material, holding material, generated, or a text node; never a node going into a slot; " +
                   "the label says which (uploaded, generated, the words you wrote). tweak: words only the reader can write",
               ),
             label: z
@@ -136,7 +145,7 @@ const proposalNode = z
   .object({
     role: z
       .enum(["source", "generate", "written"])
-      .describe("written holds finished words; source is empty for the reader to fill"),
+      .describe("written holds finished words; source holds material, or stands empty for the reader to fill"),
     type: z.enum([...NODE_TYPES, "text"]),
     name: z
       .string()
@@ -144,6 +153,21 @@ const proposalNode = z
       .min(1)
       .max(MAX_NODE_NAME_LEN)
       .describe("What the reader sees on the node"),
+    material: z
+      .string()
+      .url()
+      .optional()
+      .describe(
+        `role source only: the address of material in the user's storage -- a file uploaded in the chat, ` +
+          `or a picture saved with ${SAVE_IMAGE}. Leave it out for an empty node`,
+      ),
+    fills: z
+      .record(z.string(), z.array(z.number().int()).min(1))
+      .optional()
+      .describe(
+        "role generate only: slots of this model filled straight from nodes holding material, as slot " +
+          "name to their indices. No edge and no note for these; the reference pool is never filled here",
+      ),
     template: z
       .string()
       .min(1)
@@ -171,7 +195,8 @@ const proposalNode = z
           "writes in. A mark is a segment of its own ({\"slot\": …}), never typed into a text " +
           "segment; it is words shown to the reader, nothing more: no mention is written for it, " +
           "and the reader @s every reference by hand, so give every node going into the pool an asset " +
-          "mark; a node going into a slot or the lyrics box takes a note of its own instead, and so does " +
+          "mark; a node going into a slot or the lyrics box by an edge takes a note of its own instead (a slot " +
+          "filled through fills takes none), and so does " +
           "an empty node no edge sends into a generation (unwired, or wired only as a link to a model that " +
           "takes nothing from it), for the reader to pick into a slot",
       ),
@@ -219,7 +244,8 @@ export const inputSchema = z
               .optional()
               .describe(
                 "Where the node wired in goes: \"pool\" (the reader @s it into the prompt; an asset mark each), " +
-                  "the name of a slot the model has (the reader picks it in the panel; a note each), " +
+                  "the name of a slot the model has (an empty node the reader picks in the panel; a note each; " +
+                  "material fills a slot through fills instead), " +
                   `or "${PANEL_EDITOR_PARAM}" for words the reader @s into a song model's lyrics box (a note each). Needed ` +
                   "when the model takes that kind more than one way",
               ),
@@ -385,8 +411,8 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
       return {
         ok: false,
         reason: info.fromReferencePool === true
-          ? `"${key}" carries the reader's own material, which arrives by wiring an empty node in. Leave it out.`
-          : `"${key}" carries the reader's own material, which they put in a slot on the panel. Leave it out.`,
+          ? `"${key}" is the reference pool, which a node reaches by an edge with into: "pool". Leave it out.`
+          : `"${key}" carries the reader's own material: a node holding it fills the slot through fills, and an empty node goes in by an edge with a note. Leave it out.`,
       };
     }
     if (info.fromStoryboard === true) {
@@ -492,6 +518,66 @@ function routeEdges(
   return { routed };
 }
 
+/** A material node a generation fills one of its slots with. */
+interface Filled {
+  node: ProposalNode;
+  way: WayIn;
+}
+
+/**
+ * The slots one generation fills straight from material nodes (inner#1315),
+ * or the refusal for the first entry that cannot stand.
+ *
+ * A slot filled this way is what a pick in the panel would leave: a snapshot
+ * of the node, with no edge. So it is any way in that is neither the pool,
+ * which an edge carries, nor the lyrics box, which holds words.
+ * @param proposal - The whole proposal.
+ * @param node - The generation.
+ * @param chosen - Its model.
+ * @param ways - Its ways in, as `waysIn` gives them.
+ * @returns Each filled node with its slot, or the refusal.
+ * @throws {never} Never.
+ */
+function fillsOf(
+  proposal: CanvasProposal,
+  node: ProposalNode,
+  chosen: ModelInfo,
+  ways: Map<WayKind, WayIn[]>,
+): { filled: Filled[] } | { reason: string } {
+  const slots = [...ways.values()].flat().filter((way) => way.into !== "pool" && way.into !== PANEL_EDITOR_PARAM);
+  const filled: Filled[] = [];
+  for (const [param, indices] of Object.entries(node.fills ?? {})) {
+    const way = slots.find((option) => option.into === param);
+    if (way === undefined) {
+      const pool = chosen.params[param]?.fromReferencePool === true;
+      return {
+        reason: pool
+          ? `"${param}" is the reference pool of "${chosen.name}", which a node reaches through an edge with into: "pool", not through fills.`
+          : `"${chosen.name}" has no slot "${param}"${slots.length > 0 ? `; its slots are ${slots.map((option) => `"${option.into}"`).join(", ")}` : ""}.`,
+      };
+    }
+    const kind = [...ways].find(([, list]) => list.includes(way))?.[0];
+    const seen = new Set<string>();
+    for (const at of indices) {
+      const from = proposal.nodes[at];
+      if (from?.role !== "source" || from.material === undefined) {
+        return {
+          reason: `fills "${param}" on "${node.name}" points at ${from ? `"${from.name}", which is empty` : `node ${String(at)}, which is not in the group`}. Only a node holding material fills a slot here; an empty node goes in by an edge with into: "${param}" and a note.`,
+        };
+      }
+      if (from.type !== kind) {
+        return { reason: `"${chosen.name}" takes ${String(kind)} in "${param}", and "${from.name}" is ${from.type}.` };
+      }
+      if (seen.has(from.material)) {
+        return { reason: `fills "${param}" on "${node.name}" holds the same material twice; the slot keeps one copy of it.` };
+      }
+      seen.add(from.material);
+      filled.push({ node: from, way });
+    }
+  }
+  return { filled };
+}
+
 /**
  * How many notes a node carries, in its prompt and every shot.
  * @param node - The node.
@@ -586,15 +672,28 @@ function checkGenerateNode(
   const routing = routeEdges(proposal, index, chosen, ways);
   if ("reason" in routing) return { ok: false, reason: routing.reason };
   const { routed } = routing;
+  // Material reaches a slot through fills, which leaves the snapshot a pick
+  // would; an edge into a slot asks the reader to pick a node that is already
+  // what goes there.
+  const wiredMaterial = routed.find(({ node: n, way }) => n.material !== undefined && way.into !== "pool");
+  if (wiredMaterial) {
+    return {
+      ok: false,
+      reason: `"${wiredMaterial.node.name}" holds material, so it fills "${wiredMaterial.way.into}" through fills on "${node.name}" rather than by an edge.`,
+    };
+  }
+  const filling = fillsOf(proposal, node, chosen, ways);
+  if ("reason" in filling) return { ok: false, reason: filling.reason };
+  const arriving = [...routed, ...filling.filled];
   // Over a way's room is said first: the fix there is fewer nodes, and every
   // count below would otherwise ask for a mark or note for a node to remove.
   for (const [kind, list] of ways) {
     for (const option of list) {
-      const going = routed.filter(({ way }) => way === option).map(({ node: n }) => n);
+      const going = arriving.filter(({ way }) => way === option).map(({ node: n }) => n);
       if (going.length > option.room) {
         return {
           ok: false,
-          reason: `"${model}" takes ${String(option.room)} ${kind} node(s) by "${option.into}", and ${String(going.length)} are wired that way (${going.map((n) => `"${n.name}"`).join(", ")}).${list.length > 1 ? " Send the rest another way it takes, or wire fewer." : " Wire fewer."}`,
+          reason: `"${model}" takes ${String(option.room)} ${kind} node(s) by "${option.into}", and ${String(going.length)} are going that way (${going.map((n) => `"${n.name}"`).join(", ")}).${list.length > 1 ? " Send the rest another way it takes, or send fewer." : " Send fewer."}`,
         };
       }
     }
@@ -710,6 +809,38 @@ function writtenTakesNoMark(node: ProposalNode): ProposalVerdict {
 }
 
 /**
+ * Whether the material a node names is this studio's, and of the node's kind.
+ *
+ * An address the registration table does not hold is either somewhere else on
+ * the web or not this studio's; both are put right the same way, by saving
+ * the picture first.
+ * @param node - The node being judged.
+ * @param materials - The registration behind each address.
+ * @returns Whether it stands, and what is wrong with it when it does not.
+ * @throws {never} Never.
+ */
+function checkMaterial(node: ProposalNode, materials: MaterialTable): ProposalVerdict {
+  if (node.material === undefined) return { ok: true };
+  if (node.role !== "source" || !MATERIAL_KINDS.has(node.type)) {
+    return {
+      ok: false,
+      reason: `"${node.name}" carries material, which only a source image, video or audio node holds.`,
+    };
+  }
+  const facts = materials.get(node.material);
+  if (facts === undefined) {
+    return {
+      ok: false,
+      reason: `"${node.name}" holds an address that is not in the user's storage. Save a picture found on the web with ${SAVE_IMAGE} first and use the address it answers with; a file uploaded in the chat is already stored, so use its address as given.`,
+    };
+  }
+  if (facts.kind !== node.type) {
+    return { ok: false, reason: `"${node.name}" is a ${node.type} node and its material is ${facts.kind}.` };
+  }
+  return { ok: true };
+}
+
+/**
  * Whether one node is the thing its role says it is.
  *
  * The three roles differ in what they carry, not only in what they are called:
@@ -725,6 +856,7 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
     node.mode !== undefined ||
     node.model !== undefined ||
     node.params !== undefined ||
+    node.fills !== undefined ||
     node.shots !== undefined;
   if (node.role === "source") {
     // Words are the one kind of material nobody has to go and find: an empty
@@ -739,7 +871,7 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
     if (configured || node.prompt !== undefined) {
       return {
         ok: false,
-        reason: `"${node.name}" is an empty node for the reader to fill, so it takes no mode, model, parameters, shots or prompt.`,
+        reason: `"${node.name}" is a source node: it holds material or stands empty for the reader, so it takes no mode, model, parameters, fills, shots or prompt.`,
       };
     }
     return { ok: true };
@@ -755,7 +887,7 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
   if (configured) {
     return {
       ok: false,
-      reason: `"${node.name}" already holds its words, so it takes no mode, model or shots -- nothing is generated there.`,
+      reason: `"${node.name}" already holds its words, so it takes no mode, model, fills or shots -- nothing is generated there.`,
     };
   }
   // A text node's body holds words and nothing else: a reference would ask
@@ -844,11 +976,13 @@ function hasRing(proposal: CanvasProposal): boolean {
  * node is what its role says, each edge stands for one node drawing on
  * another, and a group of two or more says what it is for.
  * @param sent - What the model proposed.
+ * @param materials - The registration behind each material address it names;
+ *   an address with no entry is not in the user's storage.
  * @returns Whether it stands, and what is missing when it does not.
  * @throws {never} Never.
  */
-export function checkProposal(sent: CanvasProposal): ProposalVerdict {
-  return checkResolved(withCatalogFacts(sent));
+export function checkProposal(sent: CanvasProposal, materials: MaterialTable = NO_MATERIAL): ProposalVerdict {
+  return checkResolved(withCatalogFacts(sent), materials);
 }
 
 /**
@@ -893,7 +1027,7 @@ function pickedInstead(into: ProposalNode, kind: string): string {
   const slots = chosen ? (waysIn(chosen).get(kind as WayKind) ?? []) : [];
   if (slots.length === 0) return "";
   const names = slots.map((way) => `"${way.into}"`).join(" or ");
-  return ` "${into.model}" takes a ${kind} node in its ${names} slot, picked in the panel: leave this edge off, place the node unwired and add a note saying which slot.`;
+  return ` "${into.model}" takes a ${kind} node in its ${names} slot, without an edge: leave this edge off. A node holding material fills it through fills; an empty node is placed unwired with a note saying which slot.`;
 }
 
 /**
@@ -919,8 +1053,8 @@ function checkEmptyNodesFit(proposal: CanvasProposal): ProposalVerdict {
       return {
         ok: false,
         reason: takes === 0
-          ? `This group places ${String(count)} empty ${kind} node(s), and nothing in it takes ${kind} material.`
-          : `This group places ${String(count)} empty ${kind} node(s), and the panels in it hold ${String(takes)} at a time.`,
+          ? `This group places ${String(count)} ${kind} source node(s), and nothing in it takes ${kind} material.`
+          : `This group places ${String(count)} ${kind} source node(s), and the panels in it hold ${String(takes)} at a time.`,
       };
     }
   }
@@ -956,7 +1090,20 @@ function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
     const routing = routeEdges(proposal, index, chosen, ways);
     if ("reason" in routing) continue;
     for (const { node: from } of routing.routed) sent.add(from);
+    for (const at of Object.values(node.fills ?? {}).flat()) {
+      const from = proposal.nodes[at];
+      if (from) sent.add(from);
+    }
     spare += notesIn(node) - routing.routed.filter(({ way }) => way.mark === "note").length;
+  }
+  // Material reaches a generation only through fills or an edge into the
+  // pool; held anywhere else it lands beside the work with nothing using it.
+  const unused = proposal.nodes.find((node) => node.material !== undefined && !sent.has(node));
+  if (unused) {
+    return {
+      ok: false,
+      reason: `"${unused.name}" holds material that nothing here uses. Fill a slot with it through fills on a generation, or wire it in with into: "pool".`,
+    };
   }
   const loose = proposal.nodes.filter((node) => node.role === "source" && !sent.has(node) && slotKinds.has(node.type));
   if (loose.length <= spare) return { ok: true };
@@ -973,11 +1120,14 @@ function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
  * hands back is the thing that was judged rather than a second reading of the
  * catalog taken after the verdict.
  * @param proposal - The proposal, carrying its catalog facts.
+ * @param materials - The registration behind each material address.
  * @returns Whether it stands, and what is missing when it does not.
  * @throws {never} Never.
  */
-function checkResolved(proposal: CanvasProposal): ProposalVerdict {
+function checkResolved(proposal: CanvasProposal, materials: MaterialTable): ProposalVerdict {
   for (const node of proposal.nodes) {
+    const held = checkMaterial(node, materials);
+    if (!held.ok) return held;
     const verdict = checkNodeRole(node);
     if (!verdict.ok) return verdict;
     const typed = markTypedAsWords(node);
@@ -1070,10 +1220,11 @@ function checkResolved(proposal: CanvasProposal): ProposalVerdict {
  * Nodes naming a template are expanded first, so the check judges the node
  * that will be placed.
  * @param sent - What the model sent.
+ * @param materials - The registration behind each material address it names.
  * @returns The answer the card and the canvas read.
  * @throws {never} Never.
  */
-export function answerFor(sent: z.infer<typeof inputSchema>): ProposalAnswer {
+export function answerFor(sent: z.infer<typeof inputSchema>, materials: MaterialTable = NO_MATERIAL): ProposalAnswer {
   const nodes: ProposalNode[] = [];
   for (const node of sent.nodes) {
     if (node.template === undefined) {
@@ -1087,12 +1238,21 @@ export function answerFor(sent: z.infer<typeof inputSchema>): ProposalAnswer {
   }
   const proposal: CanvasProposal = { ...sent, nodes };
   const resolved = withCatalogFacts(proposal);
-  const verdict = checkResolved(resolved);
+  const verdict = checkResolved(resolved, materials);
   if (!verdict.ok) return { placed: false, reason: verdict.reason };
   // The same resolution the check just judged against, so what the canvas
   // places is the thing that was judged. Asked again over there the catalog
-  // could be absent -- the reader may press Use before it loads.
-  return { ...resolved, placed: true };
+  // could be absent -- the reader may press Use before it loads. Each node
+  // holding material carries the numbers its registration holds, so it lands
+  // the way an upload would.
+  return {
+    ...resolved,
+    nodes: resolved.nodes.map((node) => {
+      const facts = node.material === undefined ? undefined : materials.get(node.material);
+      return facts === undefined ? node : { ...node, materialMedia: facts.media };
+    }),
+    placed: true,
+  };
 }
 
 /**
@@ -1139,12 +1299,19 @@ function templateGuide(): string {
   );
 }
 
+/** What this tool is handed in its context: the studio whose material counts. */
+export interface ProposeContext extends Record<string, unknown> {
+  studioId: string;
+}
+
+const proposeContextSchema: z.ZodType<ProposeContext> = z.object({ studioId: z.string().min(1) });
+
 /**
  * The proposal tool, built per turn: its description carries the template
  * prompts in the reader's language, which only a turn knows.
  * @returns The tool.
  */
-export function makeProposeCanvasAction(): Tool<z.infer<typeof inputSchema>, ProposalAnswer> {
+export function makeProposeCanvasAction(): Tool<z.infer<typeof inputSchema>, ProposalAnswer, ProposeContext> {
   return tool({
   description:
     "The canvas is where models are run and where the pieces of one job are " +
@@ -1158,6 +1325,9 @@ export function makeProposeCanvasAction(): Tool<z.infer<typeof inputSchema>, Pro
     "shape: an empty node and a generation for a picture; the copy for the " +
     "same job as a written node beside them; one " +
     "empty node feeding several generations for several takes on one thing. " +
+    "A source node can hold material the user gave: a file uploaded in the chat, " +
+    `or a picture found on the web and saved with ${SAVE_IMAGE}. Give its address as material, and ` +
+    "fill a generation's slot with it through fills, or wire it into the pool. " +
     "Before proposing any shape with an empty node in it, ask_user once " +
     "whether they have that material -- you cannot see their canvas, and the " +
     "answer decides the shape. Wire an edge where a node draws on another's " +
@@ -1170,15 +1340,20 @@ export function makeProposeCanvasAction(): Tool<z.infer<typeof inputSchema>, Pro
     "is placed -- what to put in, what to pick, what to press. " +
     templateGuide(),
   inputSchema,
+  contextSchema: proposeContextSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
   toModelOutput: ({ output }) => ({ type: "text", value: renderProposalForModel(output) }),
   execute: async (
     proposal: z.infer<typeof inputSchema>,
-    // Unused: reads a cached catalog and returns, so there is nothing to
-    // abandon. Declared so every tool has the same shape.
-    _options: { abortSignal?: AbortSignal },
+    // The signal is unused: a cached catalog and at most a few ledger rows,
+    // so there is nothing worth abandoning. Declared so every tool has the
+    // same shape.
+    { context }: { abortSignal?: AbortSignal; context?: ProposeContext },
   ): Promise<ProposalAnswer> => {
-    return answerFor(proposal);
+    const urls = proposal.nodes.flatMap((node) => (node.material === undefined ? [] : [node.material]));
+    // A proposal with no material asks the ledger nothing.
+    const materials = urls.length === 0 || context === undefined ? NO_MATERIAL : await materialFacts(context.studioId, urls);
+    return answerFor(proposal, materials);
   },
 });
 }

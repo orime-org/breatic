@@ -910,7 +910,7 @@ describe("wiring that could not be placed", () => {
     source.mode = at.mode;
     source.model = at.model;
 
-    expect(checkProposal(wrong)).toEqual({ ok: false, reason: expect.stringContaining("takes no mode, model, parameters, shots or prompt") });
+    expect(checkProposal(wrong)).toEqual({ ok: false, reason: expect.stringContaining("takes no mode, model, parameters, fills, shots or prompt") });
   });
 
   it("refuses a group with nothing in it that generates", () => {
@@ -1513,8 +1513,8 @@ describe("a flow of any shape", () => {
     const verdict = checkProposal(propose(at, { params: { [key]: "https://example.com/a.png" } }));
 
     if (verdict.ok) throw new Error("expected a refusal");
-    expect(verdict.reason).toContain("slot on the panel");
-    expect(verdict.reason).not.toContain("wiring an empty node in");
+    expect(verdict.reason).toContain("fills the slot through fills");
+    expect(verdict.reason).not.toContain("reference pool");
   });
 
   it("names the pool when that is where the reader's material goes", () => {
@@ -1525,7 +1525,8 @@ describe("a flow of any shape", () => {
     const verdict = checkProposal(propose(at, { params: { [key]: ["https://example.com/a.png"] } }));
 
     if (verdict.ok) throw new Error("expected a refusal");
-    expect(verdict.reason).toContain("wiring an empty node in");
+    expect(verdict.reason).toContain("reference pool");
+    expect(verdict.reason).not.toContain("through fills");
   });
 
   it("places two slot-fed generations wired one empty node each", () => {
