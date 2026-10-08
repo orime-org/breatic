@@ -452,14 +452,16 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
     }
     case 'orient': {
       const held = (params[param.key] as typeof UPRIGHT | undefined) ?? UPRIGHT;
+      // Each button is one value the orientation can take, and value names are
+      // English in every language; the control's own name is the localized one.
       const buttons = [
-        { id: 'left', Icon: RotateCcw, key: 'rotateLeft', next: { ...held, turns: (held.turns + 3) % 4 } },
-        { id: 'right', Icon: RotateCw, key: 'rotateRight', next: { ...held, turns: (held.turns + 1) % 4 } },
-        { id: 'flipX', Icon: FlipHorizontal2, key: 'flipX', next: { ...held, flipX: !held.flipX } },
-        { id: 'flipY', Icon: FlipVertical2, key: 'flipY', next: { ...held, flipY: !held.flipY } },
+        { id: 'left', Icon: RotateCcw, label: '−90°', next: { ...held, turns: (held.turns + 3) % 4 } },
+        { id: 'right', Icon: RotateCw, label: '90°', next: { ...held, turns: (held.turns + 1) % 4 } },
+        { id: 'flipX', Icon: FlipHorizontal2, label: 'Flip', next: { ...held, flipX: !held.flipX } },
+        { id: 'flipY', Icon: FlipVertical2, label: 'Flip', next: { ...held, flipY: !held.flipY } },
       ] as const;
       return (
-        <div className='flex gap-1.5'>
+        <div className='grid grid-cols-4 gap-1.5'>
           {buttons.map((button) => (
             <Button
               key={button.id}
@@ -469,10 +471,10 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
               data-testid={`mini-tool-orient-${button.id}`}
               aria-pressed={button.id === 'flipX' ? held.flipX : button.id === 'flipY' ? held.flipY : undefined}
               onClick={() => onParams({ [param.key]: button.next })}
-              className='flex-1 gap-1 text-xs aria-pressed:bg-accent-strong'
+              className='min-w-0 gap-1 text-xs aria-pressed:bg-accent-strong'
             >
               <button.Icon className='h-3.5 w-3.5' aria-hidden='true' />
-              {t(`canvas.miniTool.panel.${button.key}`)}
+              {button.label}
             </Button>
           ))}
         </div>

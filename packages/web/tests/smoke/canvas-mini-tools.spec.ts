@@ -199,6 +199,11 @@ test('a drawn crop sets the size in the panel, and Run fills a new node downstre
 
 test('Run on the rotate tool fills a new node downstream @needs-internet', async () => {
   await openTool(imageNode, 'image.rotate');
+  // The four buttons share the panel's width: the last one ends no further
+  // right than the close button, which sits inside the panel's right padding.
+  const last = (await page.getByTestId('mini-tool-orient-flipY').boundingBox())!;
+  const close = (await page.getByTestId('mini-tool-panel-close').boundingBox())!;
+  expect(last.x + last.width).toBeLessThanOrEqual(close.x + close.width + 0.5);
   await page.getByTestId('mini-tool-orient-right').click();
   await page.getByTestId('mini-tool-run').click();
   const made = visibleSpace(page).locator(`.react-flow__node:not([data-id="${imageNode}"])`);

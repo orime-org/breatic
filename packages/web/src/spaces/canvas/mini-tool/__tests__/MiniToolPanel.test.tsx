@@ -3,6 +3,7 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
+import { setLocale } from '@breatic/shared';
 import { miniToolById, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -69,6 +70,18 @@ describe('MiniToolPanel', () => {
     expect(props.onParams).toHaveBeenLastCalledWith({ orient: { turns: 3, flipX: false, flipY: false } });
     fireEvent.click(screen.getByTestId('mini-tool-orient-flipX'));
     expect(props.onParams).toHaveBeenLastCalledWith({ orient: { turns: 0, flipX: true, flipY: false } });
+  });
+
+  // Each orientation button names a value, and value names stay English.
+  it('names the orientation buttons in English whatever the language', () => {
+    setLocale('zh-CN');
+    try {
+      mount();
+      expect(screen.getByTestId('mini-tool-orient-flipX')).toHaveTextContent('Flip');
+      expect(screen.getByTestId('mini-tool-orient-left')).toHaveTextContent('−90°');
+    } finally {
+      setLocale('en');
+    }
   });
 
   // A9: a locked ratio puts the largest rectangle of it on the source.
