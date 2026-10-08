@@ -194,8 +194,9 @@ function OpenMiniToolPanel({
       width: crops ? measured?.width : (dataWidth ?? shown?.width),
       height: crops ? measured?.height : (dataHeight ?? shown?.height),
       duration: view !== undefined && 'duration' in view ? view.duration : undefined,
+      url: content === '' ? undefined : content,
     }),
-    [crops, measured, dataWidth, dataHeight, view, shown],
+    [crops, measured, dataWidth, dataHeight, view, shown, content],
   );
 
   // The source took new content while the panel was open: whatever was

@@ -147,9 +147,8 @@ describe('MiniToolPanel', () => {
     expect(screen.getByTestId('mini-tool-size-target_megapixels-4K')).toHaveTextContent('≈3072×4096');
     expect(screen.getByTestId('mini-tool-size-target_megapixels-4K')).toHaveAttribute('aria-current', 'true');
     expect(screen.getByTestId('mini-tool-size-target_megapixels-2K')).toBeDisabled();
-    // The size the reader is choosing reads in full on the selected tier's fill (WCAG 1.4.3).
-    expect(screen.getByText('≈3072×4096')).toHaveClass('text-foreground');
-    expect(screen.getByText('≈6144×8192')).toHaveClass('text-muted-foreground');
+    // The pixel size is a note under the tier name: it stays muted on the selected tier too.
+    expect(screen.getByText('≈3072×4096')).toHaveClass('text-muted-foreground');
     fireEvent.click(screen.getByTestId('mini-tool-size-target_megapixels-8K'));
     expect(props.onParams).toHaveBeenCalledWith({ target_megapixels: '8K' });
   });
@@ -210,6 +209,16 @@ describe('MiniToolPanel', () => {
     expect(part('after').style.left).toBe('75%');
     expect(part('kept').style.left).toBe('25%');
     expect(part('kept').style.width).toBe('50%');
+  });
+
+  // The cut's band is a filmstrip of the source, so the reader sees what each moment shows.
+  it('lays the source out as a filmstrip on the cut band', () => {
+    mount({
+      spec: tool('video.cut'),
+      params: { range: { start: 2, end: 6 } },
+      source: { width: 1280, height: 720, duration: 8, url: 'https://cdn/v.mp4' },
+    });
+    expect(screen.getByTestId('mini-tool-range-band').querySelector('[data-testid="mini-tool-filmstrip"]')).not.toBeNull();
   });
 
   it('draws a prompt box for a tool that takes one', () => {

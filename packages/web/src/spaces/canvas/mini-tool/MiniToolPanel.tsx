@@ -27,13 +27,13 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Slider } from '@web/components/ui/slider';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
-import { cn } from '@web/lib/utils';
 import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
 import { SlotTool, type SlotPick } from '@web/spaces/canvas/generate/generate-tools';
 import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
+import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
 import {
   aspectRatioOf,
   rectForAspect,
@@ -144,12 +144,7 @@ const SizeTierGroup = React.memo(function SizeTierGroup({
             className={SIZE_TIER_CLASS}
           >
             <span>{option.label}</span>
-            <span
-              className={cn(
-                'text-2xs tabular-nums',
-                option.label === choice.selected ? 'text-foreground' : 'text-muted-foreground',
-              )}
-            >
+            <span className='text-2xs tabular-nums text-muted-foreground'>
               {/* The model settles the exact size on its own rounding. */}
               ≈{option.width}×{option.height}
             </span>
@@ -472,6 +467,9 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
         <div className='flex flex-col gap-1.5'>
           {/* The band shows what stays: the cut-away ends dimmed, the kept span framed. */}
           <div data-testid='mini-tool-range-band' className='relative h-9 overflow-hidden rounded-chrome bg-muted'>
+            {source.url !== undefined && source.width !== undefined && source.height !== undefined ? (
+              <FilmStrip src={source.url} duration={duration} aspect={source.width / source.height} />
+            ) : null}
             <div data-part='before' className='absolute inset-y-0 left-0 bg-background/70' style={{ width: `${from}%` }} />
             <div data-part='after' className='absolute inset-y-0 right-0 bg-background/70' style={{ left: `${to}%` }} />
             <div

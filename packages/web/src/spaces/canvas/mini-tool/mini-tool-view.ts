@@ -39,6 +39,8 @@ export interface MiniToolSourceInfo {
   height?: number | undefined;
   /** Seconds. */
   duration?: number | undefined;
+  /** Where the source plays from. */
+  url?: string | undefined;
 }
 
 /** A param chosen as an output size: its tiers on the source and the one in use. */
