@@ -510,6 +510,7 @@ const modelsAnswer: ModelsForMode = {
       displayName: "Some Model",
       what: "does things",
       seconds: 18,
+      nodeType: "image",
       takesPrompt: true,
       params: {},
     },

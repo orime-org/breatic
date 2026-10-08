@@ -155,6 +155,12 @@ function renderModel(model: PricedModelInfo): string {
   const routing = [...ways]
     .map(([kind, list]) => {
       const each = list.map((way) => `"${way.into}" (${wayWords(kind, way)})`);
+      // The canvas will not wire this kind into the node: its slots are
+      // filled by picking a node in the panel.
+      if (list.every((way) => !way.byEdge)) {
+        const into = list.map((way) => `"${way.into}"`).join(" or ");
+        return ` Each ${kind} node is picked into ${into} in the panel, not wired in (${list.map((way) => wayWords(kind, way)).join("; ")}).`;
+      }
       return list.length > 1
         ? ` Each ${kind} node wired in goes one of ${String(list.length)} ways; say which on its edge with into: ${each.join(" or ")}.`
         : list[0] !== undefined && list[0].into !== "pool"
@@ -183,6 +189,11 @@ function renderModel(model: PricedModelInfo): string {
     // then a node, and the reference list is the node's incoming edges. Named
     // for neither, because the reader does neither -- it is the person at the
     // canvas who fills both.
+    // The lyrics box is a box of its own on the panel: words reach it as a
+    // text node the reader @s there, the lyrics way of the routing line.
+    if (name === PANEL_EDITOR_PARAM) {
+      return `    ${name}: the lyrics box on the panel, not set here; send words you wrote as a text node wired in with into: "${name}" and a note. ${spec.what}`;
+    }
     if (spec.filledBySource) {
       // Which gesture fills it is said here, since the shape a proposal takes
       // depends on it; how to click through that gesture is said once, in the

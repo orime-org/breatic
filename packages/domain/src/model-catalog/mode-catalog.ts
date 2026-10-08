@@ -6,6 +6,7 @@
  */
 import {
   appliesInMode,
+  canConnect,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   modelLabel,
@@ -121,11 +122,8 @@ export interface ParamInfo {
    */
   fromReferencePool?: true;
   /**
-   * Whether a run can go without this source, for a place material goes.
-   *
-   * A required slot and a pool can take the same kind; the reader's material
-   * fills the slot first, which is only knowable when the slot says it is
-   * required.
+   * Whether a run can go without this source: the panel never asks for an
+   * optional slot, so a node going into one needs a note (`waysIn`).
    */
   optional?: true;
   /**
@@ -160,6 +158,8 @@ export interface ParamInfo {
 export interface ModelInfo {
   /** The name a node stores and a proposal names. */
   name: string;
+  /** The kind of generation node it runs on, which decides what the canvas lets wire into it. */
+  nodeType: GenerationNodeType;
   /**
    * The name the picker puts on screen.
    *
@@ -449,6 +449,12 @@ export interface WayIn {
    * itself asks for it (a required slot).
    */
   mark: WayMark;
+  /**
+   * Whether an edge carries the node this way. The canvas lets only some kinds
+   * feed a node type (`canConnect`); a slot of another kind is filled by
+   * picking a node in the panel, which needs no edge.
+   */
+  byEdge: boolean;
 }
 
 /** The kinds of node a way in is listed for: the three a pool carries, and words. */
@@ -468,10 +474,14 @@ export function waysIn(chosen: ModelInfo): Map<WayKind, WayIn[]> {
   /**
    * List one more way for a kind.
    * @param kind - The kind of node.
-   * @param way - The way.
+   * @param way - The way, short of whether an edge carries it.
    */
-  const add = (kind: WayKind, way: WayIn): void => {
-    ways.set(kind, [...(ways.get(kind) ?? []), way]);
+  const add = (kind: WayKind, way: Omit<WayIn, "byEdge">): void => {
+    const byEdge = canConnect(kind, chosen.nodeType);
+    // A pool is read through mentions of wired nodes, so a kind no edge can
+    // carry has no pool way at all.
+    if (way.into === "pool" && !byEdge) return;
+    ways.set(kind, [...(ways.get(kind) ?? []), { ...way, byEdge }]);
   };
   for (const [name, info] of Object.entries(chosen.params)) {
     if (info.filledBySource !== true || !isReferenceKind(info.accepts)) continue;
@@ -521,6 +531,7 @@ export function modelsForMode(
       const storyboard = storyboardSpec(entry.params, mode);
       return {
       name: entry.name,
+      nodeType,
       // The name this mode's picker shows, so the agent and the reader say the same one.
       displayName: modelLabel(entry, inMode),
       // The guide is written for a model to read and says what the thing is

@@ -61,6 +61,7 @@ function withUnreachableSeed(): PricedModelsForMode {
         displayName: "Fixture Model",
         what: "A fixture.",
         seconds: 60,
+        nodeType: "image",
         takesPrompt: true,
         params: { seed: { noControl: true, default: 7, what: "Random seed" } },
       },
