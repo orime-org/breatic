@@ -176,7 +176,7 @@ describe('MediaPlayer', () => {
   });
 });
 
-// A video's poster is its cover, and the cover has a 576-wide preview beside
+// A video's poster is its cover, and the cover has a preview (at most 576 wide) beside
 // it (inner#1320).
 describe('MediaPlayer poster', () => {
   const COVER =

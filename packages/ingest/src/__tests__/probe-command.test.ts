@@ -101,7 +101,7 @@ describe("what ffmpeg is asked for the cover", () => {
 });
 
 describe("what ffmpeg is asked for the preview", () => {
-  it("writes one 576-wide WebP frame to stdout", () => {
+  it("writes one WebP frame at most 576 wide to stdout", () => {
     const args = previewArgs(URL_FOR_KEY);
 
     expect(args[args.indexOf("-i") + 1]).toBe(URL_FOR_KEY);

@@ -1180,7 +1180,7 @@ describe("a re-delivered finish", () => {
   });
 });
 
-// Every stored image gets a 576-wide preview beside it, and a video's cover gets
+// Every stored image gets a preview (at most 576 wide) beside it, and a video's cover gets
 // one too (inner#1320). The preview never decides the finish: the answer the
 // caller files is the same with or without one.
 const PREVIEW_LIMITS: MediaLimits = { ...LIMITS, previewTimeoutMs: 10_000 };

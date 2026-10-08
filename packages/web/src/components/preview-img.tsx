@@ -13,7 +13,7 @@ export interface PreviewImgProps
 }
 
 /**
- * An image that is only looked at: it loads the 576-wide preview stored beside
+ * An image that is only looked at: it loads the preview (at most 576 wide) stored beside
  * the image and falls back to the original when there is none (inner#1320).
  * Anything that needs the original's pixels — a crop, a download, a model's
  * input — reads the original address, never this element.

@@ -272,7 +272,7 @@ describe('ImageNode', () => {
   });
 });
 
-// A node shows the 576-wide preview stored beside its image, and keeps the
+// A node shows the preview (at most 576 wide) stored beside its image, and keeps the
 // original's size for its badge and its placeholder (inner#1320).
 describe('ImageNode with a stored image', () => {
   const UUID = '18f58aed-b802-4243-a8ea-02d377de9679';
