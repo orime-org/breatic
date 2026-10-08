@@ -4,7 +4,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { resetPreviewFailures, usePreviewSrc } from '@web/lib/preview-src';
+import { resetPreviewFailures, usePreviewSrc, usePreviewWidth } from '@web/lib/preview-src';
 
 const UUID = '18f58aed-b802-4243-a8ea-02d377de9679';
 const STORED = `https://resource-dev.breatic.cc/image/2026-09-30/1_${UUID}.png`;
@@ -72,7 +72,12 @@ describe('usePreviewSrc', () => {
 });
 
 describe('usePreviewSrc probing for a poster', () => {
-  const created: { src: string; onerror: (() => void) | null }[] = [];
+  const created: {
+    src: string;
+    naturalWidth: number;
+    onerror: (() => void) | null;
+    onload: (() => void) | null;
+  }[] = [];
 
   beforeEach(() => {
     created.length = 0;
@@ -80,7 +85,9 @@ describe('usePreviewSrc probing for a poster', () => {
       'Image',
       class {
         src = '';
+        naturalWidth = 0;
         onerror: (() => void) | null = null;
+        onload: (() => void) | null = null;
         constructor() {
           created.push(this);
         }
@@ -101,6 +108,54 @@ describe('usePreviewSrc probing for a poster', () => {
     act(() => created[0]?.onerror?.());
 
     expect(result.current.src).toBe(STORED);
+  });
+
+  it('records how wide the preview it loaded is', () => {
+    renderHook(() => usePreviewSrc(STORED, { probe: true }));
+    const width = renderHook(() => usePreviewWidth(STORED));
+
+    act(() => {
+      const image = created[0]!;
+      image.naturalWidth = 384;
+      image.onload?.();
+    });
+
+    expect(width.result.current).toBe(384);
+  });
+});
+
+// The canvas switches a node to its original once it covers more device
+// pixels than its preview has; the preview's own width is read off the
+// loaded image, so nothing on the page predicts how the container sized it.
+describe('usePreviewWidth', () => {
+  it('knows nothing before the preview has loaded', () => {
+    const { result } = renderHook(() => usePreviewWidth(STORED));
+
+    expect(result.current).toBeNull();
+  });
+
+  it('gives the natural width of the preview an element loaded', () => {
+    const shown = renderHook(() => usePreviewSrc(STORED));
+    const width = renderHook(() => usePreviewWidth(STORED));
+
+    act(() => shown.result.current.onLoad({ currentTarget: { naturalWidth: 273 } }));
+
+    expect(width.result.current).toBe(273);
+  });
+
+  it('records nothing when the element showed the original', () => {
+    const shown = renderHook(() => usePreviewSrc(STORED, { enabled: false }));
+    const width = renderHook(() => usePreviewWidth(STORED));
+
+    act(() => shown.result.current.onLoad({ currentTarget: { naturalWidth: 4000 } }));
+
+    expect(width.result.current).toBeNull();
+  });
+
+  it('knows nothing for an address with no preview', () => {
+    const { result } = renderHook(() => usePreviewWidth('https://images.example.com/a.png'));
+
+    expect(result.current).toBeNull();
   });
 });
 

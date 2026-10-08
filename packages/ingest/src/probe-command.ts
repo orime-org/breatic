@@ -123,10 +123,9 @@ export const PREVIEW_CONTENT_TYPE = "image/webp";
  * PNG peaks at 57 MiB where ffmpeg, which decodes the whole frame first, is
  * killed in a 256 MiB container.
  *
- * The box is 576 wide by WebP's side limit, and `--size down` leaves a smaller
- * picture at its own size; the width that comes out is what `previewWidthFor`
- * in `@breatic/shared` gives, which the page compares against. The container
- * cannot import it, so the test holds the two together. vips turns a picture
+ * The box is 576 wide by WebP's side limit of 16383, and `--size down` leaves a
+ * smaller picture at its own size. The page reads the width that comes out off
+ * the loaded preview, so nothing elsewhere repeats this rule. vips turns a picture
  * by its EXIF orientation, so the preview comes out the way the picture is
  * shown. `keep=icc` carries the colour profile across: a Display P3 picture
  * without it is shown as sRGB, duller than the original.

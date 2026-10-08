@@ -12,7 +12,6 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { PREVIEW_MAX_SIDE, PREVIEW_WIDTH } from "@breatic/shared";
 import {
   probeArgs,
   coverArgs,
@@ -112,8 +111,9 @@ describe("what vips is asked for the preview", () => {
   it("fits the picture in 576 by WebP's side limit and never enlarges it", () => {
     const args = previewArgs();
 
-    expect(args[3]).toBe(String(PREVIEW_WIDTH));
-    expect(args[args.indexOf("--height") + 1]).toBe(String(PREVIEW_MAX_SIDE));
+    expect(args[3]).toBe("576");
+    // WebP holds at most 16383 pixels a side.
+    expect(args[args.indexOf("--height") + 1]).toBe("16383");
     expect(args[args.indexOf("--size") + 1]).toBe("down");
   });
 

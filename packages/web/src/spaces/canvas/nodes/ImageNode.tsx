@@ -111,6 +111,7 @@ export const ImageNode = React.memo(function ImageNode({
                 onLoad={(e) => {
                   const img = e.currentTarget;
                   setSettled(src);
+                  shown.onLoad(e);
                   // A preview's pixels are not the image's size.
                   if (!shown.isOriginal) return;
                   if (img.naturalWidth > 0 && img.naturalHeight > 0) {

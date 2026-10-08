@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, renderHook, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { resetPreviewFailures } from '@web/lib/preview-src';
+import { resetPreviewFailures, usePreviewWidth } from '@web/lib/preview-src';
 import { ImageNode } from '@web/spaces/canvas/nodes/ImageNode';
 import { NodeZoomedPastPreviewContext } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 
@@ -291,6 +291,22 @@ describe('ImageNode with a stored image', () => {
     // The browser sizes the box off these before a byte arrives.
     expect(img.getAttribute('width')).toBe('4096');
     expect(img.getAttribute('height')).toBe('2048');
+  });
+
+  // The canvas compares the node against this, so the switch to the original
+  // follows the preview the container actually wrote (inner#1320 round 5).
+  it('records how wide its preview is once the preview loads', () => {
+    resetPreviewFailures();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 1080, height: 64800, status: 'idle' }}
+      />,
+    );
+    const width = renderHook(() => usePreviewWidth(STORED));
+
+    fireImageLoad(screen.getByTestId('image-node-img'), 273, 16383);
+
+    expect(width.result.current).toBe(273);
   });
 
   it('keeps the original size on the badge after the preview loads', () => {

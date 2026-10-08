@@ -20,15 +20,17 @@ export interface PreviewImgProps
  * @param props - The image's props.
  * @param props.src - The original's address.
  * @param props.onError - Called after the fallback has been taken.
+ * @param props.onLoad - Called after the preview's width has been recorded.
  * @returns The image.
  */
 export const PreviewImg = React.memo(function PreviewImg({
   src,
   onError,
+  onLoad,
   ...rest
 }: PreviewImgProps): React.JSX.Element {
   const shown = usePreviewSrc(src);
-  const { onError: fallBack } = shown;
+  const { onError: fallBack, onLoad: recordWidth } = shown;
   const handleError = React.useCallback(
     (event: React.SyntheticEvent<HTMLImageElement>): void => {
       fallBack();
@@ -36,6 +38,15 @@ export const PreviewImg = React.memo(function PreviewImg({
     },
     [fallBack, onError],
   );
-  // eslint-disable-next-line jsx-a11y/alt-text -- alt arrives in `rest` from the caller.
-  return <img {...rest} src={shown.src ?? src} onError={handleError} />;
+  const handleLoad = React.useCallback(
+    (event: React.SyntheticEvent<HTMLImageElement>): void => {
+      recordWidth(event);
+      onLoad?.(event);
+    },
+    [recordWidth, onLoad],
+  );
+  return (
+    // eslint-disable-next-line jsx-a11y/alt-text -- alt arrives in `rest` from the caller.
+    <img {...rest} src={shown.src ?? src} onError={handleError} onLoad={handleLoad} />
+  );
 });

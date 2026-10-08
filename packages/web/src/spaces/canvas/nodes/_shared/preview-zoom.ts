@@ -7,44 +7,40 @@
  * A preview is at most 576 pixels wide, narrower for a narrow or very tall
  * picture. Once a node covers more device pixels than its preview has, the
  * preview is being stretched and two pictures can no longer be told apart by
- * their quality, so the node shows its original instead.
+ * their quality, so the node shows its original instead. The preview's width
+ * is the one its loaded image reports (`usePreviewWidth`).
  */
 
 import * as React from 'react';
-import { PREVIEW_WIDTH, previewWidthFor } from '@breatic/shared';
 
 /**
  * Whether a node of this width covers more device pixels than its preview has.
  * @param nodeWidth - The node's width in canvas (CSS) pixels.
  * @param zoom - The canvas zoom.
  * @param devicePixelRatio - Device pixels per CSS pixel.
- * @param previewWidth - How wide this picture's preview is.
+ * @param previewWidth - How wide this picture's preview is, null until it has
+ *   loaded.
  * @returns True when the original should be shown.
  */
 export function zoomedPastPreview(
   nodeWidth: number,
   zoom: number,
   devicePixelRatio: number,
-  previewWidth: number,
+  previewWidth: number | null,
 ): boolean {
-  return nodeWidth * zoom * devicePixelRatio > previewWidth;
+  return previewWidth !== null && nodeWidth * zoom * devicePixelRatio > previewWidth;
 }
 
 /**
- * How wide a node's preview is, from the picture size it carries; the full
- * preview width when it carries none. A video's preview is cut from a cover
- * fitted inside 1920, and below 576 wide that cover's width is its preview's,
- * so the video's own size gives the same answer wherever the two can differ in
- * what the reader sees.
- * @param size - The picture's size, when the node carries one.
- * @param size.width - The picture's width.
- * @param size.height - The picture's height.
- * @returns The preview's width in pixels.
+ * The picture a node shows: a video's cover, any other node's content.
+ * @param data - The node's data.
+ * @param data.content - What it holds.
+ * @param data.coverUrl - A video's cover, when it has one.
+ * @returns The picture's address, or nothing.
  */
-export function nodePreviewWidth(size: { width?: unknown; height?: unknown }): number {
-  return typeof size.width === 'number' && typeof size.height === 'number'
-    ? previewWidthFor(size.width, size.height)
-    : PREVIEW_WIDTH;
+export function nodePicture(data: { content?: unknown; coverUrl?: unknown }): string | undefined {
+  if (typeof data.coverUrl === 'string') return data.coverUrl;
+  return typeof data.content === 'string' ? data.content : undefined;
 }
 
 /**

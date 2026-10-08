@@ -10,30 +10,6 @@
  * every page that shows it read the same rule here.
  */
 
-/**
- * The widest a preview is, in pixels. A canvas node is 288 CSS px wide, so this
- * covers it on a 2x screen. The container writes previews to this rule too,
- * held to it by its own test.
- */
-export const PREVIEW_WIDTH = 576;
-
-/** The longest side a WebP holds, which caps a very tall picture's preview. */
-export const PREVIEW_MAX_SIDE = 16383;
-
-/**
- * How wide a picture's preview comes out. A picture narrower than
- * {@link PREVIEW_WIDTH} keeps its width, and one taller than about 28 times its
- * width comes out narrower still, so its height fits in a WebP. That narrowed
- * width is rounded to the nearest pixel, the way the container's vipsthumbnail
- * rounds it.
- * @param width - The picture's width.
- * @param height - The picture's height.
- * @returns The preview's width in pixels.
- */
-export function previewWidthFor(width: number, height: number): number {
-  return Math.min(PREVIEW_WIDTH, width, Math.round((width * PREVIEW_MAX_SIDE) / height));
-}
-
 /** What a preview's key adds to the key of the image it was cut from. */
 export const PREVIEW_SUFFIX = ".preview.webp";
 

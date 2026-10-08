@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { ReactFlowProvider, useStoreApi, type NodeProps } from '@xyflow/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -12,6 +12,7 @@ import { _resetForTests } from '@web/data/yjs/manager';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { resetPreviewFailures } from '@web/lib/preview-src';
 import { CanvasActionsContext } from '@web/spaces/canvas/canvas-actions';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
@@ -554,15 +555,21 @@ describe('a stored image zoomed past its preview', () => {
   const STORED =
     'https://resource-dev.breatic.cc/image/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679.png';
 
+  beforeEach(() => {
+    resetPreviewFailures();
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
   /**
-   * Render a 288-wide stored image node at a zoom on a 2x screen.
-   * @param zoom - The canvas zoom.
+   * Render a 288-wide stored image node on a 2x screen.
+   * @param size - The picture's own size.
+   * @param size.width - Its width.
+   * @param size.height - Its height.
    */
-  function renderAt(zoom: number): void {
+  function renderNode(size = { width: 4096, height: 2048 }): void {
     vi.stubGlobal('devicePixelRatio', 2);
     const Image = FLOW_NODE_TYPES.image;
     render(
@@ -576,7 +583,7 @@ describe('a stored image zoomed past its preview', () => {
               {...({
                 id: 'n1',
                 width: 288,
-                data: { kind: 'image', status: 'idle', name: 'N', content: STORED, width: 4096, height: 2048 },
+                data: { kind: 'image', status: 'idle', name: 'N', content: STORED, ...size },
                 selected: false,
               } as unknown as NodeProps)}
             />
@@ -584,46 +591,58 @@ describe('a stored image zoomed past its preview', () => {
         </ReactFlowProvider>
       </TooltipProvider>,
     );
+  }
+
+  /**
+   * Let the node's preview load at a width, as the browser reports it.
+   * @param width - The preview's natural width.
+   */
+  function loadPreview(width: number): void {
+    const img = screen.getByTestId('image-node-img');
+    Object.defineProperty(img, 'naturalWidth', { value: width, configurable: true });
+    Object.defineProperty(img, 'naturalHeight', { value: 1, configurable: true });
+    fireEvent.load(img);
+  }
+
+  /**
+   * Set the canvas zoom.
+   * @param zoom - The zoom.
+   */
+  function zoomTo(zoom: number): void {
     act(() => {
       storeApi?.setState({ transform: [0, 0, zoom] });
     });
   }
 
   it('keeps the preview at 100% on a 2x screen', () => {
-    renderAt(1);
+    renderNode();
+    loadPreview(576);
+    zoomTo(1);
     expect(screen.queryByTestId('image-node-original')).toBeNull();
   });
 
   it('lays the original over it past 100% on a 2x screen', () => {
-    renderAt(1.5);
+    renderNode();
+    loadPreview(576);
+    zoomTo(1.5);
     expect(screen.getByTestId('image-node-original').getAttribute('src')).toBe(STORED);
   });
 
+  it('keeps the preview past 100% until the preview has loaded', () => {
+    renderNode();
+    zoomTo(1.5);
+    expect(screen.queryByTestId('image-node-original')).toBeNull();
+
+    loadPreview(576);
+    expect(screen.getByTestId('image-node-original').getAttribute('src')).toBe(STORED);
+  });
+
+  // A 1080x64800 strip's preview came out 273 wide (vips, WebP's 16383 side
+  // limit); the node is measured against that, not against 576.
   it('lays the original over a very tall image at 100% on a 2x screen', () => {
-    vi.stubGlobal('devicePixelRatio', 2);
-    const Image = FLOW_NODE_TYPES.image;
-    render(
-      <TooltipProvider>
-        <ReactFlowProvider>
-          <StoreGrabber />
-          <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: () => undefined,
-            deleteNode: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
-            reportGroupResize: () => undefined, beginGroupResize: () => undefined, }}>
-            <Image
-              {...({
-                id: 'n1',
-                width: 288,
-                data: { kind: 'image', status: 'idle', name: 'N', content: STORED, width: 1080, height: 64800 },
-                selected: false,
-              } as unknown as NodeProps)}
-            />
-          </CanvasActionsContext.Provider>
-        </ReactFlowProvider>
-      </TooltipProvider>,
-    );
-    act(() => {
-      storeApi?.setState({ transform: [0, 0, 1] });
-    });
+    renderNode({ width: 1080, height: 64800 });
+    loadPreview(273);
+    zoomTo(1);
     expect(screen.getByTestId('image-node-original').getAttribute('src')).toBe(STORED);
   });
 
@@ -635,7 +654,9 @@ describe('a stored image zoomed past its preview', () => {
       addEventListener: (_: string, cb: () => void) => listeners.push(cb),
       removeEventListener: () => undefined,
     }));
-    renderAt(1);
+    renderNode();
+    loadPreview(576);
+    zoomTo(1);
     expect(screen.queryByTestId('image-node-original')).toBeNull();
 
     act(() => {
