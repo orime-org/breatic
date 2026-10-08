@@ -355,6 +355,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "chat.tool.proposingNodes": { described: /a line may name what it is doing/ },
   "chat.tool.running": { described: /a line may name what it is doing/ },
   "chat.tool.searching": { described: /a line may name what it is doing/ },
+  "chat.tool.savingImage": { described: /a line may name what it is doing/ },
   "chat.tool.searchingImages": { described: /a line may name what it is doing/ },
   "chat.tool.understanding": { described: /a line may name what it is doing/ },
   "chat.tool.unfinished": { excluded: REASONS.NOT_DRAWN },

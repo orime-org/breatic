@@ -302,6 +302,7 @@
       "searchingImages": "“{query}” 이미지 검색 중",
       "checkingCanvas": "캔버스로 만들 수 있는 것 확인 중",
       "proposingNodes": "제안을 정리하는 중",
+      "savingImage": "이미지 저장 중",
       "checkingModels": "사용할 수 있는 모델 확인 중",
       "readingGuide": "제품 사용법 확인 중",
       "understanding": "미디어 확인 중",
