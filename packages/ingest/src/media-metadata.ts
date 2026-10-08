@@ -26,8 +26,9 @@ export interface ProbeStream {
    */
   attachedPic: boolean;
   /**
-   * ffprobe's `stream_side_data=rotation`, in degrees, when the stream carries
-   * a display matrix. The stored dimensions are what the codec holds; this is
+   * The rotation the stream is shown at, in degrees: its first frame's
+   * `frame_side_data=rotation` when that reports one (a JPEG's EXIF
+   * orientation appears only there), otherwise the stream's display matrix. The stored dimensions are what the codec holds; this is
    * what says how they are to be shown, and ffmpeg applies it on decode — so a
    * cover cut from the same run comes out already turned.
    */
@@ -94,6 +95,24 @@ function turnsTheFrame(rotation: number | undefined): boolean {
 export function realVideoStream(report: ProbeReport): ProbeStream | undefined {
   return report.streams.find(
     (stream) => stream.codecType === "video" && !stream.attachedPic,
+  );
+}
+
+/**
+ * Whether a stored picture gets a preview cut from it.
+ *
+ * Only a still frame does. An APNG probes as `apng` and cutting its first
+ * frame would show an animation as a still; an animated WebP does not decode
+ * in the ffmpeg the container ships, so it never reaches here with a size.
+ * @param report - What the container answered.
+ * @returns Whether to cut a preview.
+ */
+export function hasPreviewableFrame(report: ProbeReport): boolean {
+  const media = realVideoStream(report);
+  return (
+    media !== undefined &&
+    media.width != null &&
+    media.codecName !== "apng"
   );
 }
 
