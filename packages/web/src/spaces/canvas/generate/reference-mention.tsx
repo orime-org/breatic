@@ -31,6 +31,7 @@ import { createReferenceMentionRangeHighlight } from '@web/features/reference-me
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { NodeKind } from '@web/data/yjs/node-view';
+import { PreviewImg } from '@web/components/preview-img';
 
 /** Options for the {@link ReferenceMention} node. */
 export interface ReferenceMentionOptions {
@@ -297,7 +298,7 @@ function ReferenceMentionChip({
         contentEditable={false}
       >
         {typeof thumbnail === 'string' && thumbnail.length > 0 ? (
-          <img
+          <PreviewImg
             src={thumbnail}
             alt={label}
             className='h-3 w-3 shrink-0 rounded-content-xs object-cover'

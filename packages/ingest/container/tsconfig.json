@@ -14,13 +14,16 @@
     }
   },
   // Named one by one: this is the whole of what the container shares with the
-  // Worker, and adding an import that reaches further stops compiling here
-  // rather than at image build time. The Worker's own entry is not in the
-  // list — it describes workerd, which this environment is not.
+  // Worker. tsc and esbuild follow an import past this list on their own, so
+  // the list is held by breatic/media-container-own-code-only, which reports
+  // any @ingest/ import of a module not named here. The Worker's own entry is
+  // not in the list — it describes workerd, which this environment is not.
   "include": [
     "*.ts",
     "../src/probe-answer.ts",
     "../src/probe-command.ts",
-    "../src/media-metadata.ts"
+    "../src/media-metadata.ts",
+    "../src/preview-step.ts",
+    "__tests__/*.ts"
   ]
 }

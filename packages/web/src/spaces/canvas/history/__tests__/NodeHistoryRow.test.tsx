@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import {
   render,
   screen,
@@ -12,6 +12,7 @@ import {
 } from '@testing-library/react';
 
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 import {
   NodeHistoryRow,
   type HistoryModality,
@@ -374,5 +375,19 @@ describe('a snapshot row names its words (#2186)', () => {
     );
     const row = screen.getByTestId('node-history-row');
     expect(within(row).getByText('Dawn, two boats in the harbour.').className).toContain('truncate');
+  });
+});
+
+describe('NodeHistoryRow — the thumbnail shows the stored preview (inner#1320)', () => {
+  beforeEach(() => {
+    resetPreviewRecords();
+  });
+
+  it('a stored image renders its preview address in the 46px thumbnail', () => {
+    const stored =
+      'https://resource-dev.breatic.cc/image/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679.png';
+    renderRow(entry({ status: 'success', content: stored }));
+    const thumb = screen.getByTestId('node-history-row').firstElementChild as HTMLElement;
+    expect(thumb.querySelector('img')?.getAttribute('src')).toBe(`${stored}.preview.webp`);
   });
 });

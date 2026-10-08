@@ -107,6 +107,19 @@ describe("a meta part that parses to the wrong thing", () => {
     expect(read).toEqual({
       report: { streams: [], durationSeconds: null },
       cover: null,
+      preview: null,
+      answered: false,
     });
+  });
+});
+
+describe("an answer carrying a preview", () => {
+  it("comes back with the exact preview bytes, marked as answered", async () => {
+    const preview = new Uint8Array([0x52, 0x49, 0x46, 0x46, 5, 6]);
+    const report = { streams: [], durationSeconds: null };
+
+    const read = await readProbeAnswer(buildProbeAnswer(report, null, preview));
+
+    expect(read).toEqual({ report, cover: null, preview, answered: true });
   });
 });

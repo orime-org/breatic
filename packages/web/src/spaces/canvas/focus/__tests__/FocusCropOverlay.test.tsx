@@ -47,12 +47,18 @@ beforeEach(() => {
  * @param onConfirm - Confirm spy.
  * @param onBackToPick - Back-to-pick spy (the overlay's only way out).
  * @param mode - Whether the Space is shown.
+ * @param img - The node image's address and declared size, when a case needs
+ *   other than the plain original.
+ * @param img.src - Its address.
+ * @param img.width - Its declared width.
+ * @param img.height - Its declared height.
  * @returns The tree.
  */
 function overlayTree(
   onConfirm: () => boolean,
   onBackToPick: () => void,
   mode: 'visible' | 'hidden' = 'visible',
+  img: { src?: string; width?: number; height?: number } = {},
 ): React.JSX.Element {
   return (
     <ReactFlowProvider>
@@ -61,7 +67,13 @@ function overlayTree(
           it on the page, which is what makes its keys the space's. */}
         <div data-region='space'>
           <div className='react-flow__node' data-id='n1'>
-            <img data-testid='image-node-img' src='https://cdn/original.png' alt='' />
+            <img
+              data-testid='image-node-img'
+              src={img.src ?? 'https://cdn/original.png'}
+              width={img.width}
+              height={img.height}
+              alt=''
+            />
           </div>
           {/* The pick banner CanvasSpace renders during a session — the overlay
             hands keyboard focus to it on back-to-pick. */}
@@ -1794,5 +1806,58 @@ describe('FocusCropOverlay — an item that cannot draw is disabled (#1991)', ()
     expect(original).toBeEnabled();
     fireEvent.click(original);
     expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
+  });
+});
+
+// A node shows the stored preview and declares the original's size on the
+// element (inner#1320). The crop is still cut from the original, at its size.
+describe('cropping a node that shows its preview', () => {
+  const ORIGINAL = 'https://cdn/original.png';
+  const PREVIEW = `${ORIGINAL}.preview.webp`;
+
+  /**
+   * Draw a marquee on the stubbed box, inside the crop layer.
+   * @param from - Where the press lands.
+   * @param to - Where it is released.
+   */
+  function drawOn(from: { x: number; y: number }, to: { x: number; y: number }): void {
+    const layer = screen.getByTestId('focus-crop-layer');
+    fireEvent.pointerDown(layer, { clientX: from.x, clientY: from.y, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(layer, { clientX: to.x, clientY: to.y, pointerId: 1 });
+    fireEvent.pointerUp(layer, { pointerId: 1 });
+  }
+
+  it('maps the marquee to the original size and hands over the original', () => {
+    const onConfirm = vi.fn(() => true);
+    render(
+      overlayTree(onConfirm, vi.fn(), 'visible', { src: PREVIEW, width: 4096, height: 3072 }),
+    );
+    const img = screen.getByTestId('image-node-img');
+    Object.defineProperty(img, 'naturalWidth', { value: 576 });
+    Object.defineProperty(img, 'naturalHeight', { value: 432 });
+    drawOn({ x: 150, y: 100 }, { x: 250, y: 180 });
+    fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+
+    expect(onConfirm).toHaveBeenCalledWith({
+      crop: { x: 512, y: 512, width: 1024, height: 819 },
+      natural: { width: 4096, height: 3072 },
+      sourceSrc: ORIGINAL,
+      sourceTimeSeconds: null,
+    });
+  });
+
+  it('keeps the marquee when the preview falls back to the original', () => {
+    const onConfirm = vi.fn(() => true);
+    render(
+      overlayTree(onConfirm, vi.fn(), 'visible', { src: PREVIEW, width: 4096, height: 3072 }),
+    );
+    const img = screen.getByTestId('image-node-img');
+    Object.defineProperty(img, 'naturalWidth', { value: 576 });
+    Object.defineProperty(img, 'naturalHeight', { value: 432 });
+    drawOn({ x: 150, y: 100 }, { x: 250, y: 180 });
+    img.setAttribute('src', ORIGINAL);
+    fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });

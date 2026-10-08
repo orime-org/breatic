@@ -28,6 +28,7 @@ import {
   entryModel,
   isRestorable,
 } from '@web/spaces/canvas/history/history-format';
+import { PreviewImg } from '@web/components/preview-img';
 
 /** The host node's modality — picks the thumbnail treatment. */
 export type HistoryModality = 'image' | 'video' | 'audio' | 'text';
@@ -192,7 +193,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
       }
     >
       {src ? (
-        <img
+        <PreviewImg
           src={src}
           alt=''
           className='h-full w-full object-cover'

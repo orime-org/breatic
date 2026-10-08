@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, renderHook, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { resetPreviewRecords, usePreviewWidth } from '@web/lib/preview-src';
 import { ImageNode } from '@web/spaces/canvas/nodes/ImageNode';
+import { NodeZoomedPastPreviewContext } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 
 /**
  * jsdom never decodes images, so `naturalWidth`/`naturalHeight` stay 0. Stub
@@ -267,5 +269,199 @@ describe('ImageNode', () => {
       />,
     );
     expect(screen.getByTestId('node-resolution-badge')).toBeInTheDocument();
+  });
+});
+
+// A node shows the preview (at most 576 wide) stored beside its image, and keeps the
+// original's size for its badge and its placeholder (inner#1320).
+describe('ImageNode with a stored image', () => {
+  const UUID = '18f58aed-b802-4243-a8ea-02d377de9679';
+  const STORED = `https://resource-dev.breatic.cc/image/2026-09-30/1_${UUID}.png`;
+
+  it('shows the preview when it knows the image size', () => {
+    resetPreviewRecords();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
+      />,
+    );
+    const img = screen.getByTestId('image-node-img');
+
+    expect(img.getAttribute('src')).toBe(`${STORED}.preview.webp`);
+    // The browser sizes the box off these before a byte arrives.
+    expect(img.getAttribute('width')).toBe('4096');
+    expect(img.getAttribute('height')).toBe('2048');
+  });
+
+  // The canvas compares the node against this, so the switch to the original
+  // follows the preview the container actually wrote (inner#1320 round 5).
+  it('records how wide its preview is once the preview loads', () => {
+    resetPreviewRecords();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 1080, height: 64800, status: 'idle' }}
+      />,
+    );
+    const width = renderHook(() => usePreviewWidth(STORED));
+
+    fireImageLoad(screen.getByTestId('image-node-img'), 273, 16383);
+
+    expect(width.result.current).toBe(273);
+  });
+
+  it('keeps the original size on the badge after the preview loads', () => {
+    resetPreviewRecords();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
+      />,
+    );
+    fireImageLoad(screen.getByTestId('image-node-img'), 576, 288);
+
+    expect(screen.getByTestId('node-resolution-badge')).toHaveTextContent('4096');
+  });
+
+  it('shows the original and measures it when it knows no size', () => {
+    resetPreviewRecords();
+    render(<ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />);
+    const img = screen.getByTestId('image-node-img');
+
+    expect(img.getAttribute('src')).toBe(STORED);
+    expect(img.hasAttribute('width')).toBe(false);
+    fireImageLoad(img, 1200, 800);
+    expect(screen.getByTestId('node-resolution-badge')).toHaveTextContent('1200');
+  });
+
+  it('falls back to the original when the preview is missing', () => {
+    resetPreviewRecords();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
+      />,
+    );
+    fireEvent.error(screen.getByTestId('image-node-img'));
+
+    expect(screen.getByTestId('image-node-img').getAttribute('src')).toBe(STORED);
+  });
+});
+
+describe('ImageNode zoomed past its preview (inner#1320)', () => {
+  const UUID = '18f58aed-b802-4243-a8ea-02d377de9679';
+  const STORED = `https://resource-dev.breatic.cc/image/2026-09-30/1_${UUID}.png`;
+  const DATA = { kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' } as const;
+
+  /**
+   * The node under a given zoom answer from the canvas.
+   * @param past - Whether the canvas says the node is past its preview.
+   * @returns The element tree.
+   */
+  function zoomed(past: boolean): React.JSX.Element {
+    return (
+      <NodeZoomedPastPreviewContext.Provider value={past}>
+        <ImageNode data={DATA} />
+      </NodeZoomedPastPreviewContext.Provider>
+    );
+  }
+
+  it('shows only the preview while the canvas is not zoomed past it', () => {
+    resetPreviewRecords();
+    render(zoomed(false));
+
+    expect(screen.queryByTestId('image-node-original')).toBeNull();
+  });
+
+  it('lays the original over the preview and shows it once it loads', () => {
+    resetPreviewRecords();
+    render(zoomed(true));
+    const original = screen.getByTestId('image-node-original');
+
+    expect(original.getAttribute('src')).toBe(STORED);
+    expect(original.className).toContain('opacity-0');
+    // The preview stays underneath until the original is ready.
+    expect(screen.getByTestId('image-node-img').getAttribute('src')).toBe(`${STORED}.preview.webp`);
+
+    fireImageLoad(original, 4096, 2048);
+    expect(screen.getByTestId('image-node-original').className).not.toContain('opacity-0');
+  });
+
+  it('keeps the original after the canvas zooms back out', () => {
+    resetPreviewRecords();
+    const { rerender } = render(zoomed(true));
+    rerender(zoomed(false));
+
+    expect(screen.getByTestId('image-node-original').getAttribute('src')).toBe(STORED);
+  });
+
+  it('shows the preview of a new image after zooming back out', () => {
+    resetPreviewRecords();
+    const { rerender } = render(zoomed(true));
+    rerender(zoomed(false));
+    const next = `https://resource-dev.breatic.cc/image/2026-09-30/2_${UUID}.png`;
+    rerender(
+      <NodeZoomedPastPreviewContext.Provider value={false}>
+        <ImageNode data={{ ...DATA, content: next }} />
+      </NodeZoomedPastPreviewContext.Provider>,
+    );
+
+    expect(screen.queryByTestId('image-node-original')).toBeNull();
+    expect(screen.getByTestId('image-node-img').getAttribute('src')).toBe(`${next}.preview.webp`);
+  });
+
+  it('lays nothing over an image already showing its original', () => {
+    resetPreviewRecords();
+    render(
+      <NodeZoomedPastPreviewContext.Provider value>
+        <ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />
+      </NodeZoomedPastPreviewContext.Provider>,
+    );
+
+    expect(screen.queryByTestId('image-node-original')).toBeNull();
+  });
+});
+
+describe('ImageNode while its picture loads (inner#1320)', () => {
+  const UUID = '18f58aed-b802-4243-a8ea-02d377de9679';
+  const STORED = `https://resource-dev.breatic.cc/image/2026-09-30/1_${UUID}.png`;
+
+  it('covers the reserved box with a skeleton until the picture loads', () => {
+    resetPreviewRecords();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
+      />,
+    );
+    expect(screen.getByTestId('image-node-skeleton')).toBeInTheDocument();
+
+    fireImageLoad(screen.getByTestId('image-node-img'), 576, 288);
+    expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
+  });
+
+  it('keeps the skeleton through a missing preview and drops it when the original loads', () => {
+    resetPreviewRecords();
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: STORED, width: 4096, height: 2048, status: 'idle' }}
+      />,
+    );
+    fireEvent.error(screen.getByTestId('image-node-img'));
+    expect(screen.getByTestId('image-node-skeleton')).toBeInTheDocument();
+
+    fireImageLoad(screen.getByTestId('image-node-img'), 4096, 2048);
+    expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
+  });
+
+  it('drops the skeleton when the original itself fails', () => {
+    resetPreviewRecords();
+    render(<ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />);
+    fireEvent.error(screen.getByTestId('image-node-img'));
+
+    expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
+  });
+
+  it('gives a node of unknown size the empty node footprint while it loads', () => {
+    resetPreviewRecords();
+    render(<ImageNode data={{ kind: 'image', content: STORED, status: 'idle' }} />);
+
+    expect(screen.getByTestId('image-node-skeleton').className).toContain('aspect-[3/2]');
   });
 });

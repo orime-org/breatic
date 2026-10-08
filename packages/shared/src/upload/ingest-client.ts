@@ -132,7 +132,7 @@ export interface IngestOutcome {
  * file reaches it the way the session token's window does: on the request.
  */
 export interface MediaLimits {
-  /** The whole run: starting the container and both tools. */
+  /** The whole run: starting the container and every tool. */
   runDeadlineMs: number;
   /** One tool inside it, reads included. */
   toolTimeoutMs: number;
@@ -449,12 +449,39 @@ const mediaNumbers = z.object({
 });
 
 /**
+ * What became of a preview a read asked for (inner#1320). The Worker answers
+ * one of these, and this list is the only place they are written.
+ *
+ * `failed` is kept apart from `none`: a picture with a frame that came back
+ * without a stored preview (no container answer, vips failed or ran out of
+ * time, or the write failed) is worth running again; one with no frame to cut
+ * is not.
+ */
+export const PREVIEW_OUTCOMES = ["generated", "existing", "none", "failed"] as const;
+
+/** One of {@link PREVIEW_OUTCOMES}. */
+export type PreviewOutcome = (typeof PREVIEW_OUTCOMES)[number];
+
+/** What a read of a stored object answers. */
+export interface StoredMediaRead extends MediaNumbers {
+  /** Present when a preview was asked for and the answer named a known one. */
+  preview?: PreviewOutcome;
+}
+
+const previewOutcome = z
+  .enum(PREVIEW_OUTCOMES)
+  .optional()
+  .catch(undefined);
+
+/**
  * Ask the Worker what an object already in storage measures (#299).
  *
  * The read a cover or an avatar skipped when it was finished, asked for by our
- * worker once the upload has returned. Nothing is written, so a repeat costs
- * one more container run and nothing else. No deadline of its own: the wait is
- * the container's, and the Worker bounds it by `limits`.
+ * worker once the upload has returned, and the backfill of previews. The only
+ * thing it may write is a preview at a key derived from the object's own, and
+ * one standing there is left alone, so a repeat costs one more container run
+ * and nothing else. No deadline of its own: the wait is the container's, and
+ * the Worker bounds it by `limits`.
  * @param uploadUrl - The ingest Worker's base address.
  * @param secret - The secret the Worker also holds.
  * @param about - The object to read.
@@ -463,7 +490,9 @@ const mediaNumbers = z.object({
  *   whether there is anything for the container to read.
  * @param about.limits - How long the run and each tool inside it get, out of
  *   `config/storage.yaml`.
- * @returns The three numbers, each unusable one as none.
+ * @param about.wantPreview - Whether to cut a preview when none stands.
+ * @returns The three numbers, each unusable one as none, and what became of
+ *   the preview when one was asked for.
  * @throws {UploadHttpError} When the Worker refuses.
  * @throws {unknown} The transport's own failure when no delivery produced a
  *   response.
@@ -471,8 +500,13 @@ const mediaNumbers = z.object({
 export async function readStoredMediaAtIngest(
   uploadUrl: string,
   secret: string,
-  about: { storageKey: string; contentType: string; limits: MediaLimits },
-): Promise<MediaNumbers> {
+  about: {
+    storageKey: string;
+    contentType: string;
+    limits: MediaLimits;
+    wantPreview?: boolean;
+  },
+): Promise<StoredMediaRead> {
   const answered = await askWorker<unknown>(
     `${uploadUrl}/media`,
     {
@@ -485,7 +519,11 @@ export async function readStoredMediaAtIngest(
     },
     { replaySafe: true },
   );
-  return mediaNumbers.parse(answered ?? {});
+  const numbers = mediaNumbers.parse(answered ?? {});
+  const preview = previewOutcome.parse(
+    (answered as { preview?: unknown } | null)?.preview,
+  );
+  return preview === undefined ? numbers : { ...numbers, preview };
 }
 
 /**

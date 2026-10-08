@@ -27,6 +27,7 @@
     "db:journal-add": "tsx scripts/db-journal-add.ts",
     "db:journal-repair": "tsx scripts/db-journal-repair.ts",
     "db:check-watermark": "tsx scripts/db-check-watermark.ts",
+    "db:backfill-previews": "tsx scripts/backfill-previews.ts",
     "voice-samples": "pnpm --filter @breatic/worker voice-samples"
   },
   "devDependencies": {
