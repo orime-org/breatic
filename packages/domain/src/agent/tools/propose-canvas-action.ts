@@ -161,13 +161,6 @@ const proposalNode = z
         `role source only: the address of material in the user's storage -- a file uploaded in the chat, ` +
           `or a picture saved with ${SAVE_IMAGE}. Leave it out for an empty node`,
       ),
-    fills: z
-      .record(z.string(), z.array(z.number().int()).min(1))
-      .optional()
-      .describe(
-        "role generate only: slots of this model filled straight from nodes holding material, as slot " +
-          "name to their indices. No edge and no note for these; the reference pool is never filled here",
-      ),
     template: z
       .string()
       .min(1)
@@ -215,6 +208,18 @@ const proposalNode = z
         "role generate only, in mode multi_shot and nowhere else: each " +
           "shot's own prompt and whole seconds, which add up to the duration. " +
           "The main prompt is not sent then, so leave it out; notes go in a shot too",
+      ),
+    // Last on purpose. While this sat before mode and model the default model
+    // never wrote it: asked to copy an input holding it character for
+    // character, it wrote params, prompt and shots in its place, and 62
+    // proposals over two real runs that reasoned about filling a slot carried
+    // none. Listed last, the same copy came back whole (inner#1315).
+    fills: z
+      .record(z.string(), z.array(z.number().int()).min(1))
+      .optional()
+      .describe(
+        "role generate only: slots of this model filled straight from nodes holding material, as slot " +
+          "name to their indices. No edge and no note for these; the reference pool is never filled here",
       ),
   })
   .strict();

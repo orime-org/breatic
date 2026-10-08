@@ -267,6 +267,13 @@ describe("what the model may send", () => {
     expect(inputSchema.safeParse(sent).success).toBe(true);
   });
 
+  it("lists fills last among a node's fields, where the default model writes it", () => {
+    // Listed before mode and model, the default model never wrote it in a real
+    // run, even when told to copy an input holding it (inner#1315).
+    const node = inputSchema.shape.nodes.element;
+    expect(Object.keys(node.shape).at(-1)).toBe("fills");
+  });
+
   it("refuses the media numbers, which the check writes", () => {
     const sent = {
       nodes: [{ role: "source", type: "image", name: "Portrait", material: PORTRAIT, materialMedia: { width: 1 } }],
