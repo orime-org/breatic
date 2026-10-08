@@ -48,7 +48,7 @@ import {
 } from '@web/spaces/document/DocumentMediaBlock';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { dropMediaView, putMediaView } from '@web/spaces/document/document-media-views';
-import { isLetGo } from '@web/spaces/document/document-node-selection-focus';
+import { drawnSelected } from '@web/spaces/document/document-body-focus';
 
 /** A prop declaration in BlockNote's shape, as far as this reads one. */
 interface PropDecl {
@@ -150,9 +150,10 @@ function mediaNodeView(
   );
   let node = viewProps.node as PMNode;
   let selected = false;
-  // Still selected, but let go when the reader left the body with no place
-  // for a caret (`document-node-selection-focus.ts`): drawn as not selected.
-  let letGo = false;
+  // Drawn as selected only while the body holds the focus
+  // (`document-body-focus.ts`); a selected block in a body that let go is
+  // still the selection, just not shown.
+  let held = drawnSelected(viewProps.decorations as readonly Decoration[]);
 
   /**
    * The id of the block this view draws, read now.
@@ -219,7 +220,7 @@ function mediaNodeView(
 
   /** Enters what the container shows now. */
   const render = (): void => {
-    putMediaView(editor, host, { type, props: propsOf(node), selected: selected && !letGo, actions });
+    putMediaView(editor, host, { type, props: propsOf(node), selected: selected && held, actions });
   };
   writeAttributes(dom, node, spec.config.propSchema);
   render();
@@ -229,7 +230,7 @@ function mediaNodeView(
     update: (next, decorations) => {
       if (next.type !== node.type) return false;
       node = next;
-      letGo = isLetGo(decorations);
+      held = drawnSelected(decorations);
       writeAttributes(dom, node, spec.config.propSchema);
       render();
       return true;

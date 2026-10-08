@@ -35,7 +35,8 @@ import { viewOf } from '@web/spaces/document/document-editor-view';
 import { DocumentMediaPicker } from '@web/spaces/document/DocumentMediaPicker';
 import { DocumentUploadPlaceholders } from '@web/spaces/document/DocumentUploadPlaceholders';
 import { DocumentMediaViews } from '@web/spaces/document/DocumentMediaViews';
-import { BODY_PART } from '@web/spaces/document/document-node-selection-focus';
+import { bodyPartMark, recomputeBodyFocus, releaseBodyFocus } from '@web/spaces/document/document-body-focus';
+import { attachBodyScroller, BODY_BLANK } from '@web/spaces/document/document-body-press';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
 
 interface DocumentEditorProps {
@@ -168,6 +169,22 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     );
   }, [handle]);
 
+  // The scroller is where a press on blank space leaves the focus, and where
+  // every press in the body is first read (inner#1127 A20). A Space hidden
+  // lets go of the focus at once: its layers stay on the page, so nothing
+  // waits for them to leave. Shown again, the body decides from where the
+  // focus is.
+  React.useEffect(() => {
+    const view = handle.editor.prosemirrorView;
+    if (viewport === null || view === null || readOnly) return;
+    const detach = attachBodyScroller(view, viewport, handle.editor);
+    recomputeBodyFocus(view);
+    return () => {
+      detach();
+      releaseBodyFocus(view);
+    };
+  }, [handle, viewport, readOnly]);
+
   // Back on screen after a switch of Space, the caret goes back in if it was
   // here when the Space was hidden (inner#1235 A1): hiding takes focus out of
   // the editor, and the editor still holds the selection to put it back at.
@@ -217,13 +234,16 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           // caret that opens a document is `absolute` with no offsets and so
           // stays at its static position, and a remote caret's label is measured
           // against the caret itself.
-          viewportClassName='relative'
+          viewportClassName='relative outline-none'
         >
           {/* Both a flex item of the wrapper `index.css` grows, so the row
               takes that height, and a flex container, so the text column and
               the panel beside it each take it in turn. */}
-          <div className='flex flex-1'>
-            <div className='flex min-w-0 flex-1 flex-col px-[var(--doc-body-gutter)]'>
+          <div {...{ [BODY_BLANK]: '' }} className='flex flex-1'>
+            <div
+              {...{ [BODY_BLANK]: '' }}
+              className='flex min-w-0 flex-1 flex-col px-[var(--doc-body-gutter)]'
+            >
               <DocumentMenuEntry
                 commentsOpen={railOpen}
                 onOpenComments={openRail}
@@ -234,7 +254,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
                 data-testid='document-editor-content'
                 // The body and the row handles that stand beside it: the
                 // focus on a handle has not left the body.
-                {...{ [BODY_PART]: '' }}
+                {...bodyPartMark(handle.editor)}
                 className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
               />
             </div>

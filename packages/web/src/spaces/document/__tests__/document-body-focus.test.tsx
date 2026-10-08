@@ -352,7 +352,31 @@ describe('the focus going into a body layer from a body that does not hold it', 
     expect(focus.bodyHolds(view.state)).toBe(true);
     expect(view.state.selection.empty).toBe(true);
     expect(view.state.selection.$from.parent.textContent).toBe('Below words');
-    expect(document.getSelection()?.rangeCount ?? 0).toBe(0);
+  });
+
+  it('takes the old range off the page as it puts the selection, which the editor does not do while the focus is elsewhere', () => {
+    const { editor, scroller } = open(TEXT);
+    const view = editor.prosemirrorView!;
+    const layer = document.createElement('div');
+    Object.entries(focus.bodyLayerMark(view, { block: idAt(editor, 1) })).forEach(([name, value]) => {
+      layer.setAttribute(name, value);
+    });
+    const button = document.createElement('button');
+    layer.appendChild(button);
+    scroller.appendChild(layer);
+    const words = view.dom.querySelector('p')!.firstChild!;
+    const range = document.createRange();
+    range.setStart(words, 0);
+    range.setEnd(words, 4);
+    document.getSelection()!.removeAllRanges();
+    document.getSelection()!.addRange(range);
+
+    act(() => {
+      focus.placeAtLayerAnchor(view, button);
+    });
+
+    const anchor = document.getSelection()?.anchorNode ?? null;
+    expect(anchor !== null && view.dom.contains(anchor)).toBe(false);
   });
 
   it('puts the selection at the layer’s block when it is pressed, even with no focus following', () => {

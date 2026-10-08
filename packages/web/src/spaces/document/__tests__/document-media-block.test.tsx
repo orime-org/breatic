@@ -15,7 +15,7 @@ import { CellSelection } from '@tiptap/pm/tables';
 
 import { documentBodyFragment } from '@breatic/shared';
 
-import { BODY_PART } from '@web/spaces/document/document-node-selection-focus';
+import { BODY_PART } from '@web/spaces/document/document-body-focus';
 
 const download = vi.hoisted(() => ({ trigger: vi.fn() }));
 vi.mock('@web/lib/download', () => ({ triggerDownload: download.trigger }));
@@ -23,11 +23,14 @@ vi.mock('@web/lib/download', () => ({ triggerDownload: download.trigger }));
 const { buildDocumentEditor } = await import('@web/spaces/document/build-document-editor');
 const { DocumentMediaViews } = await import('@web/spaces/document/DocumentMediaViews');
 const { TooltipProvider } = await import('@web/components/ui/tooltip');
+const { attachBodyScroller } = await import('@web/spaces/document/document-body-press');
+const { bodyHolds } = await import('@web/spaces/document/document-body-focus');
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
 const roots: HTMLElement[] = [];
+const detach: (() => void)[] = [];
 
 beforeEach(() => {
   download.trigger.mockReset();
@@ -36,6 +39,9 @@ beforeEach(() => {
 afterEach(() => {
   // React takes its own portals down first; only then the editors go.
   cleanup();
+  detach.splice(0).forEach((stop) => {
+    stop();
+  });
   mounted.splice(0).forEach((editor) => {
     editor.unmount();
   });
@@ -64,9 +70,13 @@ interface Seen {
  */
 function open(type: 'image' | 'video' | 'audio', props: Record<string, unknown> = {}): Editor {
   const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+  // The body scroller, where a press on blank space leaves the focus, around
+  // the element the editor mounts on.
+  const scroller = document.createElement('div');
   const root = document.createElement('div');
-  document.body.appendChild(root);
-  roots.push(root);
+  scroller.appendChild(root);
+  document.body.appendChild(scroller);
+  roots.push(scroller);
   act(() => {
     editor.mount(root);
   });
@@ -84,6 +94,7 @@ function open(type: 'image' | 'video' | 'audio', props: Record<string, unknown> 
       { type: 'paragraph', content: 'Below' },
     ] as never);
   });
+  detach.push(attachBodyScroller(editor.prosemirrorView!, scroller, editor));
   return editor;
 }
 
@@ -362,7 +373,8 @@ describe('where the toolbar goes', () => {
 });
 
 /**
- * Node-selects the media block, the way a click on it does.
+ * Node-selects the media block and gives the body the focus, the way a
+ * press on it does.
  * @param editor - The editor.
  */
 function selectMedia(editor: Editor): void {
@@ -374,6 +386,9 @@ function selectMedia(editor: Editor): void {
   });
   act(() => {
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)));
+    // A press on the media gives the body the focus as it selects it; the
+    // block is drawn selected only while the body holds the focus.
+    view.focus();
   });
 }
 
@@ -688,14 +703,19 @@ describe('a media block whose neighbour goes away', () => {
 });
 
 /**
- * A left press and click beside the media, the way the browser fires them.
+ * A press and release beside the media, the way the browser fires them.
  * @param target - Where both land.
  * @param detail - How many clicks in a row this one is.
  * @param keys - Modifier keys held.
+ * @param button - Which button.
+ * @returns The press.
  */
-function clickBeside(target: Element, detail: number, keys: MouseEventInit = {}, button = 0): void {
+function clickBeside(target: Element, detail: number, keys: MouseEventInit = {}, button = 0): MouseEvent {
+  const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button, detail, ...keys });
   act(() => {
     target.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button, ...keys }));
+    target.dispatchEvent(press);
+    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button, detail, ...keys }));
   });
   // The browser fires `click` for the main button and `auxclick` for the others.
   act(() => {
@@ -703,28 +723,26 @@ function clickBeside(target: Element, detail: number, keys: MouseEventInit = {},
       new MouseEvent(button === 0 ? 'click' : 'auxclick', { bubbles: true, cancelable: true, button, detail, ...keys }),
     );
   });
+  return press;
+}
+
+/**
+ * The body scroller an open editor sits in.
+ * @param editor - The editor.
+ * @returns It.
+ */
+function scrollerOf(editor: Editor): HTMLElement {
+  return roots.find((root) => root.contains(editor.prosemirrorView!.dom))!;
 }
 
 describe('a press beside a media block', () => {
-  it('leaves the press to the browser and answers the click: nothing in the body is selected or focused', () => {
+  it('lets the body go on a press beside the media or on its caption: the media stays the selection, drawn as not selected', () => {
     const editor = open('image', { previewWidth: 200, caption: 'A note' });
     const view = editor.prosemirrorView!;
-
-    // The press itself goes on: a drag or a shift-press from here is the
-    // browser's, as it is anywhere else.
-    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
-    act(() => {
-      element(editor).dispatchEvent(press);
-    });
-    expect(press.defaultPrevented).toBe(false);
-
     const caption = within(element(editor)).getByTestId('doc-media-caption');
     for (const target of [element(editor), caption]) {
       for (const detail of [1, 2, 3]) {
         selectMedia(editor);
-        act(() => {
-          view.focus();
-        });
         // ProseMirror's own answers to the click pick nothing here.
         const up = new MouseEvent('mouseup', { bubbles: true, button: 0 });
         Object.defineProperty(up, 'target', { value: target });
@@ -732,60 +750,51 @@ describe('a press beside a media block', () => {
         for (const prop of props) {
           expect(view.someProp(prop, (f) => f(view, 0, up))).toBe(true);
         }
+
+        const press = clickBeside(target, detail);
+
+        expect(press.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(scrollerOf(editor));
+        expect(bodyHolds(view.state)).toBe(false);
         expect(view.state.selection).toBeInstanceOf(NodeSelection);
-
-        clickBeside(target, detail);
-
-        expect(view.state.selection).toBeInstanceOf(TextSelection);
-        expect(view.state.selection.empty).toBe(true);
-        expect(view.dom.contains(document.activeElement)).toBe(false);
+        expect(within(element(editor)).getByTestId('doc-media-box').getAttribute('data-selected')).toBeNull();
       }
     }
   });
 
-  it('leaves a Shift click beside a selected picture to the browser, which extends the selection', () => {
+  it('extends the selection from a Shift press beside a selected picture, the body keeping the focus', () => {
     const editor = open('image', { previewWidth: 200 });
     const view = editor.prosemirrorView!;
     selectMedia(editor);
-    act(() => {
-      view.focus();
-    });
 
-    clickBeside(element(editor), 1, { shiftKey: true });
+    const press = clickBeside(element(editor), 1, { shiftKey: true });
 
-    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(press.defaultPrevented).toBe(true);
+    expect(bodyHolds(view.state)).toBe(true);
     expect(view.dom.contains(document.activeElement)).toBe(true);
   });
 
-  it.each([1, 2])('answers a click with button %i beside a selected picture the way it answers the main one', (button) => {
+  it('answers a right press beside a selected picture the way it answers the main one, as it goes down', () => {
     const editor = open('image', { previewWidth: 200 });
     const view = editor.prosemirrorView!;
     selectMedia(editor);
-    act(() => {
-      view.focus();
-    });
 
-    clickBeside(element(editor), 1, {}, button);
+    const press = clickBeside(element(editor), 1, {}, 2);
 
-    expect(view.state.selection).toBeInstanceOf(TextSelection);
-    expect(view.dom.contains(document.activeElement)).toBe(false);
+    expect(press.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(scrollerOf(editor));
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
   });
 
-  it('answers a click beside a selected picture whose pointer moved before it was let go', () => {
-    // A selected block's row is draggable while pressed; a pointer that
-    // moves more than 4px makes ProseMirror leave the click to the browser
-    // and never ask handleClick. The click the browser fires is answered.
+  it('leaves a middle press beside a selected picture to the browser', () => {
     const editor = open('image', { previewWidth: 200 });
     const view = editor.prosemirrorView!;
     selectMedia(editor);
-    act(() => {
-      view.focus();
-    });
 
-    clickBeside(element(editor), 1);
+    const press = clickBeside(element(editor), 1, {}, 1);
 
-    expect(view.state.selection).toBeInstanceOf(TextSelection);
-    expect(view.dom.contains(document.activeElement)).toBe(false);
+    expect(press.defaultPrevented).toBe(false);
+    expect(bodyHolds(view.state)).toBe(true);
   });
 
   it('keeps the picture selected through a press and click on its own controls, a toolbar button and a corner', () => {
@@ -880,17 +889,14 @@ describe('a press beside a media block', () => {
       return answered;
     };
 
-    // Beside the media and on its caption: nothing selected, no focus.
+    // Beside the media and on its caption: the body lets go, as on a plain click.
     for (const target of [element(editor), caption]) {
       selectMedia(editor);
-      act(() => {
-        view.focus();
-      });
       expect(modifierClick(target)).toBe(true);
-      clickBeside(target, 1, { metaKey: true, ctrlKey: true });
-      expect(view.state.selection).toBeInstanceOf(TextSelection);
-      expect(view.state.selection.$from.parent.textContent).toBe('Below');
-      expect(view.dom.contains(document.activeElement)).toBe(false);
+      clickBeside(target, 1, { metaKey: true });
+      expect(view.state.selection).toBeInstanceOf(NodeSelection);
+      expect(bodyHolds(view.state)).toBe(false);
+      expect(document.activeElement).toBe(scrollerOf(editor));
     }
 
     // On the media the press selected: it stays the media that is selected.
@@ -980,7 +986,7 @@ describe('the focus around a media block', () => {
     expect(document.activeElement).toBe(editor.prosemirrorView!.dom);
   });
 
-  it('lets go of the block when it leaves the body from the caption field', () => {
+  it('lets the body go, the block still selected but not drawn so, when the focus leaves from the caption field', () => {
     const editor = open('image', { previewWidth: 200 });
     const view = editor.prosemirrorView!;
     selectMedia(editor);
@@ -997,7 +1003,9 @@ describe('the focus around a media block', () => {
       outside.focus();
     });
 
-    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    expect(bodyHolds(view.state)).toBe(false);
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(within(element(editor)).getByTestId('doc-media-box').getAttribute('data-selected')).toBeNull();
     outside.remove();
   });
 
@@ -1196,7 +1204,7 @@ describe('a document with no line for text', () => {
     outside.remove();
   });
 
-  it('keeps the picture drawn as not selected when the focus moves into a layer the picture opened', () => {
+  it('draws the picture selected again when the focus moves into a layer the picture opened, which is the body\'s own', () => {
     const { editor, outside } = letGoOfOnlyPicture();
     const layer = document.createElement('div');
     layer.id = 'picture-layer';
@@ -1211,12 +1219,12 @@ describe('a document with no line for text', () => {
       inside.focus();
     });
 
-    expect(box(editor).getAttribute('data-selected')).toBeNull();
+    expect(box(editor).getAttribute('data-selected')).toBe('true');
     layer.remove();
     outside.remove();
   });
 
-  it('keeps the picture drawn as not selected while its caption field has the keyboard', () => {
+  it('draws the picture selected while its caption field, opened from the toolbar, has the keyboard', () => {
     const { editor, outside } = letGoOfOnlyPicture();
     const view = editor.prosemirrorView!;
     const row = view.dom.querySelector<HTMLElement>('[data-content-type="image"]')!;
@@ -1226,7 +1234,7 @@ describe('a document with no line for text', () => {
     });
 
     expect(document.activeElement).toBe(within(row).getByTestId('doc-media-caption-input'));
-    expect(box(editor).getAttribute('data-selected')).toBeNull();
+    expect(box(editor).getAttribute('data-selected')).toBe('true');
     outside.remove();
   });
 
@@ -1372,28 +1380,20 @@ describe('a click beside a picture when another kind of selection is in the body
     expect(view.state.selection).toBeInstanceOf(CellSelection);
   }
 
-  it('puts the caret on the line above the picture when a table follows it', () => {
-    const editor = overTable(true);
-    selectCells(editor);
-    const view = editor.prosemirrorView!;
+  it.each([true, false])(
+    'leaves the cell selection where it was and lets the body go (a line above the picture: %s)',
+    (withAbove) => {
+      const editor = overTable(withAbove);
+      selectCells(editor);
+      const view = editor.prosemirrorView!;
 
-    clickBeside(view.dom.querySelector('[data-content-type="image"]')!, 1);
+      clickBeside(view.dom.querySelector('[data-content-type="image"]')!, 1);
 
-    expect(view.state.selection).toBeInstanceOf(TextSelection);
-    expect(view.state.selection.$from.parent.textContent).toBe('Above');
-    expect(view.dom.contains(document.activeElement)).toBe(false);
-  });
-
-  it('lets go of the picture itself when no line of text is outside the table', () => {
-    const editor = overTable(false);
-    selectCells(editor);
-    const view = editor.prosemirrorView!;
-
-    clickBeside(view.dom.querySelector('[data-content-type="image"]')!, 1);
-
-    expect(view.state.selection).toBeInstanceOf(NodeSelection);
-    expect(within(view.dom).getByTestId('doc-media-box').getAttribute('data-selected')).toBeNull();
-  });
+      expect(view.state.selection).toBeInstanceOf(CellSelection);
+      expect(bodyHolds(view.state)).toBe(false);
+      expect(view.dom.contains(document.activeElement)).toBe(false);
+    },
+  );
 });
 
 describe('the caption field and the keyboard', () => {

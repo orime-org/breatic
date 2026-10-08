@@ -16,7 +16,7 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
-import { BODY_PART } from '@web/spaces/document/document-node-selection-focus';
+import { BODY_PART, bodyHolds, bodyPartMark } from '@web/spaces/document/document-body-focus';
 import {
   IN_SELECTION_CLASS,
   MEDIA_IN_SELECTION_CLASS,
@@ -184,8 +184,8 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
 
     outside.focus();
 
-    expect(view.state.selection).toBeInstanceOf(TextSelection);
-    expect(view.state.selection.$from.parent.textContent).toBe('Below');
+    expect(bodyHolds(view.state)).toBe(false);
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
     outside.remove();
     vi.restoreAllMocks();
   });
@@ -211,7 +211,7 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
     }, 0);
     await settle();
 
-    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(bodyHolds(view.state)).toBe(true);
     layer.remove();
     vi.restoreAllMocks();
   });
@@ -227,12 +227,12 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
     // exit, and only once it is gone is the keyboard handed back.
     inside.blur();
     await new Promise((done) => setTimeout(done, 50));
-    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(bodyHolds(view.state)).toBe(true);
     layer.remove();
     view.focus();
     await settle();
 
-    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(bodyHolds(view.state)).toBe(true);
     vi.restoreAllMocks();
   });
 
@@ -244,7 +244,8 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
     (view.dom as HTMLElement).blur();
     await settle();
 
-    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    expect(bodyHolds(view.state)).toBe(false);
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
     vi.restoreAllMocks();
   });
 
@@ -255,7 +256,7 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
 
     view.dom.blur();
 
-    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(bodyHolds(view.state)).toBe(true);
     vi.restoreAllMocks();
   });
 
@@ -270,7 +271,8 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
 
     part.focus();
 
-    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    expect(bodyHolds(view.state)).toBe(false);
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
     part.remove();
     vi.restoreAllMocks();
   });
@@ -300,7 +302,7 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
 
     inside.focus();
 
-    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(bodyHolds(view.state)).toBe(true);
     layer.remove();
     vi.restoreAllMocks();
   });
@@ -314,7 +316,7 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
 
     sub.inside.focus();
 
-    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(bodyHolds(view.state)).toBe(true);
     outer.layer.remove();
     sub.layer.remove();
     vi.restoreAllMocks();
@@ -326,7 +328,9 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
     // The area around the editable element that the row handles stand in.
     let area = view.dom as HTMLElement;
     while (area.parentElement !== document.body) area = area.parentElement!;
-    area.setAttribute(BODY_PART, '');
+    Object.entries(bodyPartMark(editor)).forEach(([name, value]) => {
+      area.setAttribute(name, value);
+    });
     const strip = document.createElement('div');
     area.appendChild(strip);
     const handle = document.createElement('button');
@@ -335,15 +339,16 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
 
     handle.focus();
-    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(bodyHolds(view.state)).toBe(true);
     menu.inside.focus();
-    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(bodyHolds(view.state)).toBe(true);
 
     // From there to the top bar is leaving the body.
     const bar = document.createElement('button');
     document.body.appendChild(bar);
     bar.focus();
-    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    expect(bodyHolds(view.state)).toBe(false);
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
     bar.remove();
     menu.layer.remove();
     strip.remove();
@@ -361,7 +366,8 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
 
     inside.focus();
 
-    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    expect(bodyHolds(view.state)).toBe(false);
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
     layer.remove();
     bar.remove();
     vi.restoreAllMocks();
@@ -375,7 +381,7 @@ describe.each(MEDIA)('a selected %s block when the focus moves', (type) => {
 
     inside.focus();
 
-    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(bodyHolds(view.state)).toBe(true);
     inside.remove();
   });
 });

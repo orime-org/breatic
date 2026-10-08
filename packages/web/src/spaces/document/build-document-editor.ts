@@ -43,7 +43,8 @@ import { documentDividerInputExtension } from '@web/spaces/document/document-div
 import { documentBodyEdgePointerExtension } from '@web/spaces/document/document-body-edge-pointer';
 import { documentBodyEdgeExtension } from '@web/spaces/document/document-body-edge-selection';
 import { documentMediaRowPressExtension } from '@web/spaces/document/document-media-row-press';
-import { documentNodeSelectionFocusExtension } from '@web/spaces/document/document-node-selection-focus';
+import { documentBodyFocusExtension } from '@web/spaces/document/document-body-focus';
+import { documentBlankPressExtension } from '@web/spaces/document/document-body-press';
 import { documentSelectionPaintExtension } from '@web/spaces/document/document-selection-paint';
 import { documentEnterExtension } from '@web/spaces/document/document-enter';
 import { documentKeyboardMoveExtension } from '@web/spaces/document/document-keyboard-move';
@@ -169,7 +170,8 @@ export function buildDocumentEditor(
       documentBodyEdgePointerExtension(),
       documentBodyEdgeExtension(),
       documentSelectionPaintExtension(),
-      documentNodeSelectionFocusExtension(),
+      documentBodyFocusExtension(),
+      documentBlankPressExtension(),
       documentMediaRowPressExtension(),
       documentLinkEditMarkExtension(),
       documentDragDropExtension(),
