@@ -618,6 +618,24 @@ describe("a note for every node going into a slot (design 5.7, user 2026-10-08)"
     expect(checkProposal(proposal)).toEqual({ ok: true });
   });
 
+  it("asks for a note for an empty node whose only edge goes into a model that takes nothing from it", () => {
+    const photo: ProposalNode = { role: "source", type: "image", name: "Photo" };
+    const clip = (prompt: NonNullable<ProposalNode["prompt"]>): ProposalNode => ({
+      role: "generate", type: "video", name: "Clip", mode: "i2v", model: "seedance-2.5-image-to-video", prompt,
+    });
+    const proposal = (prompt: NonNullable<ProposalNode["prompt"]>): CanvasProposal => ({
+      nodes: [photo, { ...CHARACTER, name: "Char" }, clip(prompt)],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      rationale: "",
+      groupName: "g",
+    });
+    expect(checkProposal(proposal([{ text: "she walks" }]))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('"Photo" goes into no generation by its edges'),
+    });
+    expect(checkProposal(proposal([{ slot: { kind: "note", label: "Pick Photo into the image slot" } }, { text: "she walks" }]))).toEqual({ ok: true });
+  });
+
   it("does not count a note a wired slot node already uses toward an unwired one", () => {
     const wired: ProposalNode = { role: "source", type: "image", name: "Style" };
     const loose: ProposalNode = { role: "source", type: "image", name: "Loose" };
