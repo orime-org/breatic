@@ -78,7 +78,9 @@ describe('MiniToolPanel', () => {
     setLocale('zh-CN');
     try {
       mount();
-      expect(screen.getByTestId('mini-tool-orient-flipX')).toHaveTextContent('Flip');
+      // The two flips name their axis, so the reader tells them apart without the icon.
+      expect(screen.getByTestId('mini-tool-orient-flipX').textContent).toBe('Flip H');
+      expect(screen.getByTestId('mini-tool-orient-flipY').textContent).toBe('Flip V');
       expect(screen.getByTestId('mini-tool-orient-left')).toHaveTextContent('−90°');
     } finally {
       setLocale('en');
@@ -145,6 +147,9 @@ describe('MiniToolPanel', () => {
     expect(screen.getByTestId('mini-tool-size-target_megapixels-4K')).toHaveTextContent('≈3072×4096');
     expect(screen.getByTestId('mini-tool-size-target_megapixels-4K')).toHaveAttribute('aria-current', 'true');
     expect(screen.getByTestId('mini-tool-size-target_megapixels-2K')).toBeDisabled();
+    // The size the reader is choosing reads in full on the selected tier's fill (WCAG 1.4.3).
+    expect(screen.getByText('≈3072×4096')).toHaveClass('text-foreground');
+    expect(screen.getByText('≈6144×8192')).toHaveClass('text-muted-foreground');
     fireEvent.click(screen.getByTestId('mini-tool-size-target_megapixels-8K'));
     expect(props.onParams).toHaveBeenCalledWith({ target_megapixels: '8K' });
   });
@@ -172,6 +177,39 @@ describe('MiniToolPanel', () => {
   it('states the cost beside Run', () => {
     mount({ creditText: 'Billed by usage' });
     expect(screen.getByTestId('mini-tool-credit')).toHaveTextContent('Billed by usage');
+  });
+
+  // The prompt is the tool's main input: it comes straight after the slots, before the params.
+  it('puts the prompt before the params', () => {
+    mount({
+      spec: tool('video.motion'),
+      params: {},
+      sizeTiers: [{ key: 'target_megapixels', selected: '4K', options: [{ label: '4K', width: 1, height: 1, megapixels: 1, usable: true }] }],
+    });
+    const prompt = screen.getByTestId('mini-tool-prompt');
+    const slot = screen.getByTestId('mini-tool-slot-video.motion-character');
+    const param = screen.getByTestId('mini-tool-size-target_megapixels-4K');
+    expect(slot.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(prompt.compareDocumentPosition(param) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // The adjust values run both ways from 0, so an untouched one shows no fill.
+  it('fills each adjust slider from its middle', () => {
+    mount({ spec: tool('video.adjust'), params: {}, source: { width: 1600, height: 1000, duration: 8 } });
+    const fills = [...document.querySelectorAll<HTMLElement>('[data-slot="slider-origin-fill"]')];
+    expect(fills).toHaveLength(15);
+    expect(fills.every((fill) => fill.style.left === '50%' && fill.style.width === '0%')).toBe(true);
+  });
+
+  // The cut's band shows what stays: the cut-away ends dimmed, the kept span framed.
+  it('draws the kept span of a cut on a band', () => {
+    mount({ spec: tool('video.cut'), params: { range: { start: 2, end: 6 } }, source: { width: 1280, height: 720, duration: 8 } });
+    const band = screen.getByTestId('mini-tool-range-band');
+    const part = (name: string): HTMLElement => band.querySelector<HTMLElement>(`[data-part="${name}"]`)!;
+    expect(part('before').style.width).toBe('25%');
+    expect(part('after').style.left).toBe('75%');
+    expect(part('kept').style.left).toBe('25%');
+    expect(part('kept').style.width).toBe('50%');
   });
 
   it('draws a prompt box for a tool that takes one', () => {

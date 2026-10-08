@@ -27,6 +27,7 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Slider } from '@web/components/ui/slider';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
 import { SlotTool, type SlotPick } from '@web/spaces/canvas/generate/generate-tools';
 import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
@@ -143,7 +144,12 @@ const SizeTierGroup = React.memo(function SizeTierGroup({
             className={SIZE_TIER_CLASS}
           >
             <span>{option.label}</span>
-            <span className='text-2xs tabular-nums text-muted-foreground'>
+            <span
+              className={cn(
+                'text-2xs tabular-nums',
+                option.label === choice.selected ? 'text-foreground' : 'text-muted-foreground',
+              )}
+            >
               {/* The model settles the exact size on its own rounding. */}
               ≈{option.width}×{option.height}
             </span>
@@ -256,6 +262,16 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
             })}
           </div>
         ) : null}
+        {spec.prompt !== undefined ? (
+          <Textarea
+            data-testid='mini-tool-prompt'
+            value={prompt}
+            placeholder={t(spec.prompt.placeholderKey)}
+            onChange={(event) => onPrompt(event.target.value)}
+            rows={3}
+            className='resize-none text-sm'
+          />
+        ) : null}
         {sizeTiers.map((choice) => (
           <SizeTierGroup
             key={choice.key}
@@ -286,16 +302,6 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
             />
           ))
         )}
-        {spec.prompt !== undefined ? (
-          <Textarea
-            data-testid='mini-tool-prompt'
-            value={prompt}
-            placeholder={t(spec.prompt.placeholderKey)}
-            onChange={(event) => onPrompt(event.target.value)}
-            rows={3}
-            className='resize-none text-sm'
-          />
-        ) : null}
       </div>
       <div className='flex items-center justify-end gap-1.5 border-t border-border px-3 py-2'>
         <span
@@ -373,7 +379,7 @@ function RectSideInput({ side, value, onCommit }: RectSideInputProps): React.JSX
       onKeyDown={(event) => {
         if (event.key === 'Enter') commit();
       }}
-      className='h-8 w-24 text-xs tabular-nums'
+      className='h-8 w-24 text-xs tabular-nums md:text-xs'
     />
   );
 }
@@ -460,20 +466,34 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
       if (duration === undefined || duration <= 0) return null;
       const held = params[param.key] as { start: number; end: number } | null | undefined;
       const range = held ?? { start: 0, end: duration };
+      const from = (range.start / duration) * 100;
+      const to = (range.end / duration) * 100;
       return (
         <div className='flex flex-col gap-1.5'>
-          <Slider
-            data-testid='mini-tool-range'
-            aria-label={label}
-            min={0}
-            max={duration}
-            step={0.1}
-            minStepsBetweenThumbs={1}
-            value={[range.start, range.end]}
-            onValueChange={([start, end]) => {
-              if (start !== undefined && end !== undefined) onParams({ [param.key]: { start, end } });
-            }}
-          />
+          {/* The band shows what stays: the cut-away ends dimmed, the kept span framed. */}
+          <div data-testid='mini-tool-range-band' className='relative h-9 overflow-hidden rounded-chrome bg-muted'>
+            <div data-part='before' className='absolute inset-y-0 left-0 bg-background/70' style={{ width: `${from}%` }} />
+            <div data-part='after' className='absolute inset-y-0 right-0 bg-background/70' style={{ left: `${to}%` }} />
+            <div
+              data-part='kept'
+              className='absolute inset-y-0 rounded-chrome border border-foreground'
+              style={{ left: `${from}%`, width: `${to - from}%` }}
+            />
+            <Slider
+              data-testid='mini-tool-range'
+              aria-label={label}
+              min={0}
+              max={duration}
+              step={0.1}
+              minStepsBetweenThumbs={1}
+              value={[range.start, range.end]}
+              onValueChange={([start, end]) => {
+                if (start !== undefined && end !== undefined) onParams({ [param.key]: { start, end } });
+              }}
+              className='absolute inset-0 h-full py-0 text-foreground'
+              trackClassName='opacity-0'
+            />
+          </div>
           <div className='flex justify-between text-xs tabular-nums text-muted-foreground'>
             <span>
               {clock(range.start)} – {clock(range.end)}
@@ -486,7 +506,8 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
     case 'adjust': {
       const value = parseAdjustValue(params[param.key]);
       return (
-        <ScrollArea viewportClassName='max-h-64 pr-2'>
+        // The height cuts a row in half, which says the list goes on below.
+        <ScrollArea viewportClassName='max-h-72 pr-2'>
           <div className='flex flex-col gap-2'>
             {ADJUST_FIELDS.map((field) => (
               <ParamSliderRow
@@ -496,6 +517,7 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
                 min={-100}
                 max={100}
                 step={1}
+                origin={0}
                 value={value[field]}
                 format={String}
                 onChange={(partial) => onParams({ [param.key]: { ...value, ...partial } })}
@@ -514,8 +536,8 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
       const buttons = [
         { id: 'left', Icon: RotateCcw, label: '−90°', next: { ...held, turns: (held.turns + 3) % 4 } },
         { id: 'right', Icon: RotateCw, label: '90°', next: { ...held, turns: (held.turns + 1) % 4 } },
-        { id: 'flipX', Icon: FlipHorizontal2, label: 'Flip', next: { ...held, flipX: !held.flipX } },
-        { id: 'flipY', Icon: FlipVertical2, label: 'Flip', next: { ...held, flipY: !held.flipY } },
+        { id: 'flipX', Icon: FlipHorizontal2, label: 'Flip H', next: { ...held, flipX: !held.flipX } },
+        { id: 'flipY', Icon: FlipVertical2, label: 'Flip V', next: { ...held, flipY: !held.flipY } },
       ] as const;
       return (
         <div className='grid grid-cols-4 gap-1.5'>
@@ -528,7 +550,7 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
               data-testid={`mini-tool-orient-${button.id}`}
               aria-pressed={button.id === 'flipX' ? held.flipX : button.id === 'flipY' ? held.flipY : undefined}
               onClick={() => onParams({ [param.key]: button.next })}
-              className='min-w-0 gap-1 text-xs aria-pressed:bg-accent-strong'
+              className='min-w-0 gap-1 text-xs aria-pressed:border-active-border aria-pressed:bg-accent-strong aria-pressed:hover:bg-accent-strong'
             >
               <button.Icon className='h-3.5 w-3.5' aria-hidden='true' />
               {button.label}
