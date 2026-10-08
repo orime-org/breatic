@@ -103,3 +103,23 @@ describe('usePreviewSrc probing for a poster', () => {
     expect(result.current.src).toBe(STORED);
   });
 });
+
+describe('usePreviewSrc when another image fails', () => {
+  it('does not re-render a consumer showing a different image', () => {
+    const other = `https://resource-dev.breatic.cc/image/2026-09-30/2_${UUID}.png`;
+    let renders = 0;
+    renderHook(() => {
+      renders += 1;
+      return usePreviewSrc(other);
+    });
+    const failing = renderHook(() => usePreviewSrc(STORED));
+    const before = renders;
+
+    act(() => {
+      failing.result.current.onError();
+    });
+
+    expect(failing.result.current.src).toBe(STORED);
+    expect(renders).toBe(before);
+  });
+});

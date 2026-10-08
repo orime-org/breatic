@@ -41,14 +41,6 @@ function subscribe(listener: () => void): () => void {
 }
 
 /**
- * How many previews have failed, which is what changes when one does.
- * @returns The count.
- */
-function failedCount(): number {
-  return failed.size;
-}
-
-/**
  * Forget every failure. For tests, which share the module across cases.
  */
 export function resetPreviewFailures(): void {
@@ -80,9 +72,11 @@ export function usePreviewSrc(
   options: { enabled?: boolean; probe?: boolean } = {},
 ): PreviewSrc {
   const { enabled = true, probe = false } = options;
-  React.useSyncExternalStore(subscribe, failedCount, failedCount);
   const preview = enabled && url ? previewUrlFor(url) : null;
-  const showsPreview = preview !== null && !failed.has(preview);
+  // Only this image's own failure re-renders the caller.
+  const isMissing = React.useCallback((): boolean => preview !== null && failed.has(preview), [preview]);
+  const missing = React.useSyncExternalStore(subscribe, isMissing, isMissing);
+  const showsPreview = preview !== null && !missing;
 
   React.useEffect(() => {
     if (!probe || !showsPreview || preview === null) return undefined;
