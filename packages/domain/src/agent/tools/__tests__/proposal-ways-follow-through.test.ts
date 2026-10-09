@@ -239,6 +239,15 @@ describe("each refusal tells the agent a way that is there", () => {
     expect(verdict.ok ? "" : verdict.reason).not.toContain('into: "pool"');
   });
 
+  it("tells a generation filling a slot from itself that it cannot, rather than how it goes into itself", () => {
+    const setting = settingWhere("video", (s) => s.nodeType === "audio" && marks(s, "video").includes("note"));
+    const slot = (waysIn(setting.chosen).get("video") ?? []).find((way) => way.mark === "note")?.into ?? "";
+    const proposal = follow(setting, probe("video", "material"), undefined);
+    proposal.nodes[1] = { ...(proposal.nodes[1] as ProposalNode), fills: { [slot]: [1] } };
+    const verdict = checkProposal(proposal, MATERIALS);
+    expect(verdict).toMatchObject({ ok: false, reason: `fills "${slot}" on "Gen" points at "Gen" itself, and a node cannot fill its own slot. Check the index the fill means.` });
+  });
+
   it("sends words to the lyrics box only where the panel draws it", () => {
     const setting = settings().find((s) => s.chosen.params[PANEL_EDITOR_PARAM] !== undefined);
     if (setting === undefined) throw new Error("the catalog serves no song model");

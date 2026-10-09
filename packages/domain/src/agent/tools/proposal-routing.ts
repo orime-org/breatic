@@ -246,6 +246,9 @@ export function fillsOf(
       return { reason: `fills "${param}" on "${node.name}" points at node ${String(outside)}, which is not in the group.` };
     }
     const named = indices.map((at) => proposal.nodes[at] as ProposalNode);
+    if (named.includes(node)) {
+      return { reason: `fills "${param}" on "${node.name}" points at "${node.name}" itself, and a node cannot fill its own slot. Check the index the fill means.` };
+    }
     const told = named.map((from) => nodeWaysSentence(from, node, chosen)).join(" ");
     const way = slots.find((option) => option.into === param);
     if (way === undefined) {
