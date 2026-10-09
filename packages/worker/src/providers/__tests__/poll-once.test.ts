@@ -102,6 +102,14 @@ describe("pollOnce", () => {
     await expect(pollOnce("https://ws/predictions/p1/result", OPTIONS)).rejects.toBeInstanceOf(StillRunning);
   });
 
+  it("throws a 200 answer that is not JSON as an error of its own", async () => {
+    httpRequestMock.mockResolvedValue(new Response("<html>gateway</html>", { status: 200 }));
+
+    const err = await pollOnce("https://ws/predictions/p1/result", OPTIONS).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SyntaxError);
+    expect(err).not.toBeInstanceOf(StillRunning);
+  });
+
   it.each([401, 403, 404])("throws the upstream's %i as an error of its own", async (status) => {
     httpRequestMock.mockResolvedValue(answer(status, { message: "prediction not found" }));
 

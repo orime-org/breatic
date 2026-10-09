@@ -238,6 +238,7 @@ describe("an upstream prediction still running when a pickup ends", () => {
     vi.spyOn(Date, "now").mockReturnValue(DEADLINE + 1);
 
     await expect(runTask(containerJob(), "lock-token")).rejects.toBeInstanceOf(DelayedError);
+    expect(h.taskDeadline).not.toHaveBeenCalled();
   });
 
   it("fails a run whose task row is gone, without putting it back on the queue", async () => {
@@ -365,6 +366,30 @@ describe("the retry log lines", () => {
 
     expect(h.warn).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
     expect(h.updateData).not.toHaveBeenCalled();
+  });
+
+  it("warns again on the pickup that starts the next retry", async () => {
+    const job = jobOf({}, 2);
+    (job.data as Record<string, unknown>).retryReported = 1;
+
+    await runTask(job, "lock-token").catch(() => undefined);
+
+    expect(h.warn).toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
+    expect(h.updateData).toHaveBeenCalledWith(expect.objectContaining({ retryReported: 2 }));
+  });
+
+  it("logs the stored upstream id on the pickup that starts a retry", async () => {
+    h.getByIdInternal.mockResolvedValue({
+      createdAt: CREATED,
+      billedAt: null,
+      providerResultUrl: null,
+      providerTaskId: "ws-1",
+    });
+
+    await runTask(retried(), "lock-token").catch(() => undefined);
+
+    expect(h.info).toHaveBeenCalledWith(expect.anything(), "async_resume_stored_provider_task");
+    expect(h.warn).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
   });
 
   it("logs a stored upstream id once per attempt, not on every pickup", async () => {

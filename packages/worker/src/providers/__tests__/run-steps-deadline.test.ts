@@ -145,6 +145,22 @@ describe("a step with no upstream id", () => {
     expect(runPredictionMock).not.toHaveBeenCalled();
   });
 
+  it("does not submit when describing an element image runs past the deadline", async () => {
+    const { deps } = stores();
+    deps.describeImage = vi.fn(async (url: string) => {
+      vi.spyOn(Date, "now").mockReturnValue(NOW + 10_000);
+      return { text: `a picture at ${url}`, costUsd: 0.002 };
+    });
+
+    await expect(
+      runCatalogTask(deps, ctx(5_000), "video", "Element 1 waves", "kling-video-o3-4k-image-to-video", {
+        elements: ["https://a/cat.png"],
+      }, 1),
+    ).rejects.toBeInstanceOf(TaskDeadlinePassed);
+    expect(deps.describeImage).toHaveBeenCalledTimes(1);
+    expect(runPredictionMock).not.toHaveBeenCalled();
+  });
+
   it("does not rewrite a prompt with the LLM once the deadline has passed", async () => {
     const prepare = vi.spyOn(FAMILIES.get("nano-banana-2")!, "prepare");
     const { deps } = stores();
@@ -210,6 +226,10 @@ describe("a step already submitted", () => {
 });
 
 describe("a step submitted on this pickup", () => {
+  beforeEach(() => {
+    vi.spyOn(FAMILIES.get("nano-banana-2")!, "prepare").mockResolvedValue({ prompt: "a cat", fields: {} });
+  });
+
   /**
    * The upstream takes the submit, then answers the first question with `err`.
    * @param err - What the first question throws.

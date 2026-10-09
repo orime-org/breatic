@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 
 import { getUnderstandConfig } from "@core/config/understand.js";
-import { getWorkerConfig, workerConcurrencyFor } from "@core/config/worker.js";
+import { assertKnownQueues, getWorkerConfig, workerConcurrencyFor } from "@core/config/worker.js";
 
 // A task waiting on an upstream is back on the queue between questions, so
 // the tasks queue holds a worker slot only while it asks (inner#1337).
@@ -24,5 +24,16 @@ describe("worker concurrency", () => {
 
   it("holds at most five media readings in memory at once", () => {
     expect(getUnderstandConfig().max_concurrent).toBe(5);
+  });
+});
+
+// A misspelt queue name would leave that queue at the default without a word.
+describe("assertKnownQueues", () => {
+  it("accepts per-queue figures that name the queues the worker runs", () => {
+    expect(() => assertKnownQueues(["tasks", "url-ingest", "mail"])).not.toThrow();
+  });
+
+  it("refuses a per-queue figure for a queue the worker does not run", () => {
+    expect(() => assertKnownQueues(["url-ingest", "mail"])).toThrow(/tasks/);
   });
 });
