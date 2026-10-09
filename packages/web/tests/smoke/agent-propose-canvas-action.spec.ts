@@ -258,7 +258,37 @@ async function templatesProposed(p: Page): Promise<string[]> {
   });
 }
 
-test('starts a storyboard from its template, and reminds the reader to fill it in @needs-model', async () => {
+/**
+ * Whether a placed proposal in the newest stored conversation left a ✏️ mark
+ * for the reader to fill.
+ * @param p - The signed-in page.
+ * @returns True when one did.
+ */
+async function tweaksProposed(p: Page): Promise<boolean> {
+  return p.evaluate(async () => {
+    const list = await (
+      await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })
+    ).json();
+    const id = list?.data?.conversations?.[0]?.id as string;
+    const read = await (
+      await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })
+    ).json();
+    const messages = (read?.data?.messages ?? []) as {
+      parts?: {
+        type?: string;
+        output?: { placed?: boolean };
+        input?: { nodes?: { prompt?: { slot?: { kind?: string } }[] }[] };
+      }[];
+    }[];
+    return messages
+      .flatMap((m) => m.parts ?? [])
+      .filter((part) => part.type === 'tool-propose_canvas_action' && part.output?.placed === true)
+      .flatMap((part) => part.input?.nodes ?? [])
+      .some((node) => (node.prompt ?? []).some((segment) => segment.slot?.kind === 'tweak'));
+  });
+}
+
+test('starts a storyboard from its template, and reminds the reader of what is theirs to fill @needs-model', async () => {
   test.setTimeout(240_000);
   const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
@@ -279,8 +309,12 @@ test('starts a storyboard from its template, and reminds the reader to fill it i
 
   const card = page.getByTestId('proposal-card').last();
   await expect(card).toBeVisible({ timeout: 20_000 });
+  const toFill = await tweaksProposed(page);
   await card.getByTestId('proposal-use').click();
-  await expect(page.getByText('Replace the text in square brackets and braces.', { exact: false })).toBeVisible({ timeout: 20_000 });
+  // A proposal lands no square brackets, so the reminder speaks of braces
+  // alone, and only when one is left to fill (inner#1315).
+  const reminder = page.getByText('Replace the text in braces.', { exact: false });
+  if (toFill) await expect(reminder).toBeVisible({ timeout: 20_000 });
 
   const prompt = page.getByTestId('generate-prompt-editor');
   await expect(prompt).toBeVisible({ timeout: 20_000 });
@@ -289,6 +323,7 @@ test('starts a storyboard from its template, and reminds the reader to fill it i
   await expect(prompt.locator('[data-reference-mention]')).toHaveCount(1);
   await expect(prompt).not.toContainText('[📎');
   await expect(page.getByTestId('generate-model-trigger')).toContainText('Nano Banana Pro');
+  await expect(page.getByText('square brackets', { exact: false })).toHaveCount(0);
 });
 
 test('chains a generated character into a template storyboard, a ref @-ing it @needs-model', async () => {
