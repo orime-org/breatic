@@ -10,6 +10,7 @@
 
 import type { HistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
 import type { CanvasSessionState } from '@web/stores/canvas-session';
+import type { DrawingDraft } from '@web/stores/drawing-draft';
 
 /**
  * Act on an undo or redo: on the drawing while a drawing tool is open, where
@@ -31,21 +32,22 @@ export function routeHistoryCommand(session: CanvasSessionState, action: History
 /**
  * Whether the view bar's undo and redo can act: on the drawing while a drawing
  * tool is open, on the canvas otherwise.
- * @param session - The canvas session.
+ * @param drawing - The open tool's drawing, or null without one.
+ * @param exporting - Whether the run is exporting.
  * @param canvasUndo - Whether the canvas has something to undo.
  * @param canvasRedo - Whether the canvas has something to redo.
  * @returns The two availabilities.
  */
 export function historyAvailability(
-  session: CanvasSessionState,
+  drawing: DrawingDraft | null,
+  exporting: boolean,
   canvasUndo: boolean,
   canvasRedo: boolean,
 ): { canUndo: boolean; canRedo: boolean } {
-  const draft = session.miniTool;
-  if (draft?.drawing == null) return { canUndo: canvasUndo, canRedo: canvasRedo };
+  if (drawing === null) return { canUndo: canvasUndo, canRedo: canvasRedo };
   return {
-    canUndo: !draft.exporting && draft.drawing.steps.length > 0,
-    canRedo: !draft.exporting && draft.drawing.undone.length > 0,
+    canUndo: !exporting && drawing.steps.length > 0,
+    canRedo: !exporting && drawing.undone.length > 0,
   };
 }
 

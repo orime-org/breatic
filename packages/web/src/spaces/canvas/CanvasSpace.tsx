@@ -1380,9 +1380,9 @@ function CanvasSpaceInner({
   const drawingHistory = useCanvasSession((s) => s.miniTool?.drawing ?? null);
   const drawingExporting = useCanvasSession((s) => s.miniTool?.exporting ?? false);
   React.useEffect(() => {
-    const shown = historyAvailability(sessionStore.getState(), canUndo, canRedo);
+    const shown = historyAvailability(drawingHistory, drawingExporting, canUndo, canRedo);
     setHistoryAvailability(shown.canUndo, shown.canRedo);
-  }, [canUndo, canRedo, setHistoryAvailability, sessionStore, drawingHistory, drawingExporting]);
+  }, [canUndo, canRedo, setHistoryAvailability, drawingHistory, drawingExporting]);
 
   const pendingHistoryCommand = useCanvasStore((s) => s.pendingHistoryCommand);
   const consumeHistoryCommand = useCanvasStore(

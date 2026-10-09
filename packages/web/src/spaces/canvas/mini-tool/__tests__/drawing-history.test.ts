@@ -14,7 +14,7 @@ import {
   routeHistoryCommand,
 } from '@web/spaces/canvas/mini-tool/drawing-history';
 import { createCanvasSessionStore } from '@web/stores/canvas-session';
-import type { DrawOp } from '@web/stores/drawing-draft';
+import { EMPTY_DRAWING, type DrawingDraft, type DrawOp } from '@web/stores/drawing-draft';
 
 const STROKE: DrawOp = { kind: 'stroke', erase: false, size: 5, color: '#FF3B30', points: [[0.1, 0.1]] };
 const OPEN = { sourceContent: 'a.png', params: {} };
@@ -59,22 +59,24 @@ describe('routeHistoryCommand', () => {
 });
 
 describe('historyAvailability', () => {
+  const drawing = (steps: number, undone: number): DrawingDraft => ({
+    ...EMPTY_DRAWING,
+    steps: Array.from({ length: steps }, () => STROKE),
+    undone: Array.from({ length: undone }, () => STROKE),
+  });
+
   it('follows the canvas without a drawing tool', () => {
-    expect(historyAvailability(createCanvasSessionStore().getState(), true, false)).toEqual({
-      canUndo: true,
-      canRedo: false,
-    });
+    expect(historyAvailability(null, false, true, false)).toEqual({ canUndo: true, canRedo: false });
   });
 
   it('follows the drawing while a drawing tool is open', () => {
-    const store = withTool('image.inpaint');
-    expect(historyAvailability(store.getState(), true, true)).toEqual({ canUndo: false, canRedo: false });
-    store.getState().addDrawingStep(STROKE);
-    store.getState().undoDrawing();
-    expect(historyAvailability(store.getState(), true, true)).toEqual({ canUndo: false, canRedo: true });
-    store.getState().redoDrawing();
-    store.getState().setMiniToolExporting(true, store.getState().panelSession);
-    expect(historyAvailability(store.getState(), true, true)).toEqual({ canUndo: false, canRedo: false });
+    expect(historyAvailability(drawing(0, 0), false, true, true)).toEqual({ canUndo: false, canRedo: false });
+    expect(historyAvailability(drawing(0, 1), false, true, true)).toEqual({ canUndo: false, canRedo: true });
+    expect(historyAvailability(drawing(1, 0), false, false, false)).toEqual({ canUndo: true, canRedo: false });
+  });
+
+  it('offers neither while the run is exporting', () => {
+    expect(historyAvailability(drawing(1, 1), true, true, true)).toEqual({ canUndo: false, canRedo: false });
   });
 });
 
