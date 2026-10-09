@@ -91,21 +91,43 @@ async function pngBytes(p: Page, width = 480, height = 270): Promise<Buffer> {
 }
 
 /**
- * The stored address of each picture in the body, read from the document;
- * what the page shows may be the picture's preview.
+ * The stored address of each block of a kind in the body, read from the
+ * document; what the page shows of a picture may be its preview.
  * @param p - The page.
- * @returns One per picture, in order.
+ * @param kind - Which blocks.
+ * @returns One per block, in order.
  */
-async function storedPictures(p: Page): Promise<string[]> {
+async function storedMedia(p: Page, kind: 'image' | 'video' | 'audio' = 'image'): Promise<string[]> {
+  return p.evaluate(
+    ([selector, wanted]) => {
+      const el = document.querySelector(selector) as unknown as {
+        editor: { state: { doc: { descendants: (f: (node: { type: { name: string }; attrs: { url: string } }) => void) => void } } };
+      };
+      const urls: string[] = [];
+      el.editor.state.doc.descendants((node) => {
+        if (node.type.name === wanted) urls.push(node.attrs.url);
+      });
+      return urls;
+    },
+    [EDITOR, kind] as const,
+  );
+}
+
+/**
+ * The file name of each media block in the body, in order.
+ * @param p - The page.
+ * @returns One per media block.
+ */
+async function mediaNames(p: Page): Promise<string[]> {
   return p.evaluate((selector) => {
     const el = document.querySelector(selector) as unknown as {
-      editor: { state: { doc: { descendants: (f: (node: { type: { name: string }; attrs: { url: string } }) => void) => void } } };
+      editor: { state: { doc: { descendants: (f: (node: { type: { name: string }; attrs: { name?: string } }) => void) => void } } };
     };
-    const urls: string[] = [];
+    const names: string[] = [];
     el.editor.state.doc.descendants((node) => {
-      if (node.type.name === 'image') urls.push(node.attrs.url);
+      if (['image', 'video', 'audio'].includes(node.type.name)) names.push(node.attrs.name ?? '');
     });
-    return urls;
+    return names;
   }, EDITOR);
 }
 
@@ -224,23 +246,54 @@ test('the plus menu offers image, audio and video after the table, and a picked 
   expect(await types(page)).toEqual(['image', 'paragraph']);
 });
 
-test('dropped files land in the order they came in, at the drop (A2)', async () => {
+test('three files dropped together land in the order they came in, at the line shown during the drag (A2)', async () => {
   await openFreshDocument(page);
-  await page.keyboard.type('Above');
+  await page.keyboard.type('Above, a line long enough that the middle of it is words');
   await page.keyboard.press('Enter');
   await page.keyboard.type('Below');
-  const png = (await pngBytes(page, 320, 180)).toString('base64');
+  const first = (await pngBytes(page, 320, 180)).toString('base64');
+  const third = (await pngBytes(page, 200, 100)).toString('base64');
   const wav = wavBytes().toString('base64');
 
+  // Over the middle of the words, the line stands between the blocks, where the files land.
+  const line = await page.locator(`${EDITOR} .bn-block-content >> nth=0`).evaluate((element) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([new Uint8Array(4)], 'x.png', { type: 'image/png' }));
+    const box = element.getBoundingClientRect();
+    const at = { clientX: box.left + box.width / 2, clientY: box.bottom - 2 };
+    element.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer, ...at }));
+    const cursor = document.querySelector('.prosemirror-dropcursor-block, .prosemirror-dropcursor-inline');
+    const top = cursor?.getBoundingClientRect().top ?? NaN;
+    element.dispatchEvent(new DragEvent('dragleave', { bubbles: true, dataTransfer: transfer, ...at }));
+    return { kind: cursor?.className ?? null, top, rowBottom: box.bottom };
+  });
+  expect(line.kind).toContain('prosemirror-dropcursor-block');
+  expect(Math.abs(line.top - line.rowBottom)).toBeLessThan(8);
+
+  // The first file is held back so it finishes last.
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((done) => {
+    release = done;
+  });
+  await page.route('**/api/v1/assets/upload-ticket', async (route) => {
+    if ((route.request().postData() ?? '').includes('one.png')) await held;
+    await route.continue();
+  });
   await dropFiles(page, `${EDITOR} .bn-block-content >> nth=0`, [
-    { name: 'one.png', type: 'image/png', base64: png },
+    { name: 'one.png', type: 'image/png', base64: first },
     { name: 'two.wav', type: 'audio/wav', base64: wav },
+    { name: 'three.png', type: 'image/png', base64: third },
   ]);
 
-  await expect(page.locator(PLACEHOLDER)).toHaveCount(2);
+  await expect(page.locator(PLACEHOLDER)).toHaveCount(3);
   await expect(page.locator(AUDIO)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
-  await expect(page.locator(IMAGE)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
-  expect(await types(page)).toEqual(['paragraph', 'image', 'audio', 'paragraph']);
+  await expect(page.locator(IMAGE)).toHaveCount(1, { timeout: UPLOAD_TIMEOUT });
+  // The two that finished stand where they belong, the first one's place kept.
+  await expect(page.locator(PLACEHOLDER)).toHaveCount(1);
+  release();
+  await expect(page.locator(IMAGE)).toHaveCount(2, { timeout: UPLOAD_TIMEOUT });
+  expect(await types(page)).toEqual(['paragraph', 'image', 'audio', 'image', 'paragraph']);
+  expect(await mediaNames(page)).toEqual(['one.png', 'two.wav', 'three.png']);
 });
 
 test('a pasted picture lands under the caret\'s line (A3)', async () => {
@@ -342,28 +395,42 @@ test('the toolbar of a first block sits on the picture, never under it, centred,
   await expect(page.getByTestId('doc-media-fullscreen-image')).toHaveCount(0);
 });
 
-test('the toolbar hands the stored file to the browser as a download (A19) @needs-ingest @needs-storage', async () => {
-  await openFreshDocument(page);
-  const bytes = await pngBytes(page, 160, 90);
-  await pickFromPlus(page, 'image', { name: 'keep.png', mimeType: 'image/png', buffer: bytes });
-  const img = page.locator(`${IMAGE} img`);
-  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
-  const [stored] = await storedPictures(page);
+for (const kind of ['image', 'video', 'audio'] as const) {
+  test(`the toolbar hands a stored ${kind} to the browser as a download (A19) @needs-ingest @needs-storage`, async () => {
+    await openFreshDocument(page);
+    const bytes =
+    kind === 'image'
+      ? await pngBytes(page, 160, 90)
+      : kind === 'video'
+        ? readFileSync(resolve(__dirname, '../fixtures/media-history.mp4'))
+        : wavBytes();
+    const file = {
+      image: { name: 'keep.png', mimeType: 'image/png' },
+      video: { name: 'keep.mp4', mimeType: 'video/mp4' },
+      audio: { name: 'keep.wav', mimeType: 'audio/wav' },
+    }[kind];
+    await pickFromPlus(page, kind, { ...file, buffer: bytes });
+    const block = page.locator(`${EDITOR} [data-content-type="${kind}"]`);
+    const frame = block.locator('[data-media-frame]');
+    await expect(frame).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+    const [stored] = await storedMedia(page, kind);
 
-  // The first block's bar sits on the picture's top, so the pointer rests low.
-  await img.hover({ position: { x: 4, y: 86 } });
-  // The same path the canvas node menu takes: a navigation instead of a
-  // download would leave this waiting.
-  const [download] = await Promise.all([
-    page.waitForEvent('download', { timeout: 30_000 }),
-    page.getByTestId('doc-media-download').click(),
-  ]);
+    // The first block's bar sits on the media's top, so the pointer rests low.
+    const box = (await frame.boundingBox())!;
+    await page.mouse.move(box.x + 4, box.y + box.height - 4);
+    // The same path the canvas node menu takes: a navigation instead of a
+    // download would leave this waiting.
+    const [download] = await Promise.all([
+      page.waitForEvent('download', { timeout: 30_000 }),
+      page.getByTestId('doc-media-download').click(),
+    ]);
 
-  expect(download.suggestedFilename()).toBe(
-    decodeURIComponent(new URL(stored!).pathname.split('/').pop() ?? ''),
-  );
-  expect(readFileSync(await download.path()).equals(bytes)).toBe(true);
-});
+    expect(download.suggestedFilename()).toBe(
+      decodeURIComponent(new URL(stored!).pathname.split('/').pop() ?? ''),
+    );
+    expect(readFileSync(await download.path()).equals(bytes)).toBe(true);
+  });
+}
 
 test('the toolbar sits above a picture with lines above it (A9)', async () => {
   await openFreshDocument(page);
@@ -1134,10 +1201,21 @@ test('closing the tab during an upload asks first (A12)', async () => {
       return event.defaultPrevented;
     });
   expect(await leaveIsHeld()).toBe(true);
+  // Closing the Space's tab is refused while the upload is in flight.
+  const spaceId = createdSpaceIds[createdSpaceIds.length - 1]!;
+  const tab = page.getByTestId(`space-tab-${spaceId}`);
+  const close = page.getByTestId(`space-tab-close-${spaceId}`);
+  await tab.hover();
+  await close.click();
+  await expect(page.getByText(/still in progress/)).toBeVisible();
+  await expect(tab).toBeVisible();
 
   release();
   await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
   expect(await leaveIsHeld()).toBe(false);
+  await tab.hover();
+  await close.click();
+  await expect(tab).toHaveCount(0);
 });
 
 test('a picture copied with the keyboard pastes back as the same picture (A10, A18)', async () => {
@@ -1150,7 +1228,7 @@ test('a picture copied with the keyboard pastes back as the same picture (A10, A
   await pastePicture(page, 'copy.png');
   const img = page.locator(`${IMAGE} img`);
   await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
-  const [stored] = await storedPictures(page);
+  const [stored] = await storedMedia(page);
 
   await img.click();
   await page.keyboard.press('ControlOrMeta+c');
@@ -1159,7 +1237,7 @@ test('a picture copied with the keyboard pastes back as the same picture (A10, A
   await page.keyboard.press('ControlOrMeta+v');
 
   await expect(img).toHaveCount(2);
-  expect(await storedPictures(page)).toEqual([stored, stored]);
+  expect(await storedMedia(page)).toEqual([stored, stored]);
 });
 
 /**
@@ -1298,6 +1376,8 @@ test('a picture keeps its size under a skeleton while it loads, then shows the o
   expect(await img.getAttribute('width')).toBe('1600');
   expect(await img.getAttribute('height')).toBe('900');
   await expect(page.locator(`${IMAGE} [data-testid="doc-media-skeleton"]`)).toBeVisible();
+  const next = page.locator(`${EDITOR} .bn-block-content >> nth=1`);
+  const nextTop = (await next.boundingBox())!.y;
   const box = await img.boundingBox();
   expect(box!.height).toBeGreaterThan(0);
   expect(Math.abs(box!.width / box!.height - 16 / 9)).toBeLessThan(0.02);
@@ -1306,9 +1386,37 @@ test('a picture keeps its size under a skeleton while it loads, then shows the o
   await expect(page.locator(`${IMAGE} [data-testid="doc-media-skeleton"]`)).toHaveCount(0);
   await expect.poll(() => img.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(1600);
   expect(await img.getAttribute('src')).not.toContain('.preview.webp');
+  // Loading changed nothing below it (A23).
+  expect((await next.boundingBox())!.y).toBe(nextTop);
 });
 
-test('a picture no wider than its preview is drawn from the preview (A23)', async () => {
+test('a video keeps its size under a skeleton until its first frame, and nothing below it moves (A23)', async () => {
+  await openFreshDocument(page);
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((done) => {
+    release = done;
+  });
+  await page.route(/\.mp4(\?.*)?$/, async (route) => {
+    if (route.request().resourceType() === 'media') await held;
+    await route.continue();
+  });
+  await pickFromPlus(page, 'video', {
+    name: 'held.mp4',
+    mimeType: 'video/mp4',
+    buffer: readFileSync(resolve(__dirname, '../fixtures/media-history.mp4')),
+  });
+
+  const skeleton = page.locator(`${VIDEO} [data-testid="media-skeleton"]`);
+  await expect(skeleton).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const next = page.locator(`${EDITOR} .bn-block-content >> nth=1`);
+  const nextTop = (await next.boundingBox())!.y;
+
+  release();
+  await expect(skeleton).toHaveCount(0, { timeout: 30_000 });
+  expect((await next.boundingBox())!.y).toBe(nextTop);
+});
+
+test('a picture shown no wider than its preview is drawn from the preview (A23)', async () => {
   await openFreshDocument(page);
   // This worktree uploads through the deployed ingest Worker, which does not
   // cut previews yet; the page's side of the rule is what is checked here.
