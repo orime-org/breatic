@@ -12,6 +12,8 @@
 import { corsUrl } from '@web/lib/cors-url';
 import type { CropRect } from '@web/lib/crop-math';
 import { intrinsicSize } from '@web/spaces/canvas/focus/crop-source';
+import { paintDrawing, type DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
+import type { DrawOp } from '@web/stores/drawing-draft';
 
 /**
  * A hair past 0, still inside frame 0 for any real frame rate (shorter than
@@ -230,4 +232,88 @@ export async function exportOrientedBlob(source: CropSource, orientation: Orient
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('canvas export produced no blob');
   return blob;
+}
+
+/** The drawing leaves nothing on the picture: no white in a mask, no ink on a sketch. */
+export class DrawingEmptyError extends Error {
+  /** Name the error. */
+  constructor() {
+    super('the drawing leaves nothing on the picture');
+    this.name = 'DrawingEmptyError';
+  }
+}
+
+/** What a drawing tool's run is sent: the picture, and for a mask the mask beside it. */
+export interface DrawingExport {
+  image: Blob;
+  mask?: Blob;
+}
+
+/**
+ * A canvas the given size, with its 2D context.
+ * @param size - The size.
+ * @param size.width - Its width.
+ * @param size.height - Its height.
+ * @returns The canvas and context.
+ * @throws {Error} When the browser gives no 2D context.
+ */
+function blankCanvas(size: { width: number; height: number }): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+  const canvas = document.createElement('canvas');
+  canvas.width = size.width;
+  canvas.height = size.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('canvas 2d context unavailable');
+  return { canvas, ctx };
+}
+
+/**
+ * A canvas as a PNG blob.
+ * @param canvas - The canvas.
+ * @returns The blob.
+ * @throws {Error} When the canvas cannot export.
+ */
+async function pngOf(canvas: HTMLCanvasElement): Promise<Blob> {
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('canvas export produced no blob');
+  return blob;
+}
+
+/**
+ * Export what a mask or sketch tool sends, at the source's own pixels as the
+ * browser decodes it (turned upright by its EXIF orientation). A mask is the
+ * upright source and a black image of the same size, white where painted; a
+ * sketch is the upright source with the drawing painted over it.
+ * @param url - The source image.
+ * @param kind - Mask or sketch.
+ * @param ops - The visible ops.
+ * @returns The images to upload.
+ * @throws {DrawingEmptyError} When the drawing leaves nothing.
+ * @throws {Error} When the source fails to load CORS-clean, or a canvas cannot export.
+ */
+export async function exportDrawing(url: string, kind: DrawingKind, ops: readonly DrawOp[]): Promise<DrawingExport> {
+  const el = await prepareCropSource({ url, timeSeconds: null });
+  const size = intrinsicSize(el);
+  const layer = blankCanvas(size);
+  paintDrawing(layer.ctx, ops, size, kind, '#fff'); // design-value: allow — mask white, image content
+  const pixels = layer.ctx.getImageData(0, 0, size.width, size.height);
+  const source = blankCanvas(size);
+  source.ctx.drawImage(el, 0, 0);
+  if (kind === 'sketch') {
+    if (!pixels.data.some((value, i) => i % 4 === 3 && value !== 0)) throw new DrawingEmptyError();
+    source.ctx.drawImage(layer.canvas, 0, 0);
+    return { image: await pngOf(source.canvas) };
+  }
+  // White painted over black reads as its alpha; half or more is white.
+  let white = false;
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    const value = (pixels.data[i + 3] ?? 0) >= 128 ? 255 : 0;
+    white ||= value === 255;
+    pixels.data[i] = value;
+    pixels.data[i + 1] = value;
+    pixels.data[i + 2] = value;
+    pixels.data[i + 3] = 255;
+  }
+  if (!white) throw new DrawingEmptyError();
+  layer.ctx.putImageData(pixels, 0, 0);
+  return { image: await pngOf(source.canvas), mask: await pngOf(layer.canvas) };
 }
