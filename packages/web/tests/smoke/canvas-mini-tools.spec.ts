@@ -18,9 +18,8 @@ import { randomUUID } from 'node:crypto';
 
 import { test, expect, type Locator, type Page } from 'playwright/test';
 
-import { CANVAS_SPACE, YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
-import { openTool, seedNode, zoomBy } from '../helpers/mini-tool';
+import { openTool, seedNode, setNodeContent, zoomBy } from '../helpers/mini-tool';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 /** A public JPEG served with CORS, so the browser can draw it onto a canvas and export it. */
@@ -233,22 +232,7 @@ test('a source that takes new content resets the crop to the new picture @needs-
   await page.getByTestId('mini-tool-param-aspect-1:1').click();
   await expect.poll(async () => page.getByTestId('mini-tool-rect-w').inputValue()).toBe('300');
 
-  const managerAt = await liveModuleUrl(page, YJS_MANAGER);
-  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
-  await page.evaluate(
-    async ([pid, sid, nodeId, url, managerUrl, canvasUrl]: string[]) => {
-      const manager = (await import(/* @vite-ignore */ managerUrl!)) as {
-        getDoc: (name: string) => unknown;
-        docName: { canvasSpace: (p: string, s: string) => string };
-      };
-      const canvas = (await import(/* @vite-ignore */ canvasUrl!)) as {
-        nodeDataMap: (doc: unknown, id: string) => { set: (k: string, v: unknown) => void } | null;
-      };
-      const doc = manager.getDoc(manager.docName.canvasSpace(pid!, sid!));
-      canvas.nodeDataMap(doc, nodeId!)!.set('content', url!);
-    },
-    [projectId, spaceId, imageNode, 'https://picsum.photos/id/238/600/300.jpg', managerAt, canvasAt],
-  );
+  await setNodeContent(page, { projectId, spaceId }, imageNode, 'https://picsum.photos/id/238/600/300.jpg');
 
   await expect.poll(async () => page.getByTestId('mini-tool-rect-w').inputValue(), { timeout: 20_000 }).toBe('600');
   expect(await page.getByTestId('mini-tool-rect-h').inputValue()).toBe('300');

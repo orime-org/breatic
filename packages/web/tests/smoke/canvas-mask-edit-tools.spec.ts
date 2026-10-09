@@ -22,7 +22,7 @@ import { join } from 'node:path';
 import { test, expect, type Locator, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
-import { openTool, seedNode, zoomBy } from '../helpers/mini-tool';
+import { openTool, seedNode, setNodeContent, zoomBy } from '../helpers/mini-tool';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
@@ -269,6 +269,19 @@ test('a failed upload of the drawing builds no node @needs-internet', async () =
   await expect(page.locator('[data-sonner-toast]')).toBeVisible({ timeout: 60_000 });
   await expect(visibleSpace(page).locator(`.react-flow__node:not([data-id="${imageNode}"])`)).toHaveCount(0);
   await expect(page.getByTestId('mini-tool-run')).toBeEnabled();
+});
+
+// B11: a drawing made on the old picture is cleared when the node takes new content.
+test('new content on the node clears the drawing and says so @needs-internet', async () => {
+  await openTool(page, imageNode, 'image.erase');
+  const layer = nodeOf(imageNode).getByTestId('mini-tool-draw-layer');
+  await expect(layer).toBeVisible({ timeout: 15_000 });
+  await drawAcross(layer, [0.3, 0.3], [0.6, 0.6]);
+  await expect(page.getByTestId('mini-tool-run')).toBeEnabled();
+  await setNodeContent(page, { projectId, spaceId }, imageNode, 'https://picsum.photos/id/238/600/300.jpg');
+  await expect(page.locator('[data-sonner-toast]')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('mini-tool-run')).toBeDisabled();
+  await expect(page.getByTestId('mini-tool-draw-undo')).toBeDisabled();
 });
 
 // B10: a drawing waits in its Space while another is open.

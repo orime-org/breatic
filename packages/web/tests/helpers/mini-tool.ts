@@ -8,7 +8,7 @@
 
 import { expect, type Page } from 'playwright/test';
 
-import { CANVAS_SPACE, liveModuleUrl } from './live-module';
+import { CANVAS_SPACE, YJS_MANAGER, liveModuleUrl } from './live-module';
 import { visibleSpace } from './space';
 
 /** Where a seeded node goes. */
@@ -93,4 +93,31 @@ export async function zoomBy(page: Page, deltaY: number): Promise<void> {
   await page.keyboard.down('Control');
   await page.mouse.wheel(0, deltaY);
   await page.keyboard.up('Control');
+}
+
+/**
+ * Give a node new content straight in the live canvas document, as a
+ * regenerate or a collaborator would.
+ * @param page - The page.
+ * @param where - The project and Space.
+ * @param nodeId - The node.
+ * @param url - Its new content.
+ */
+export async function setNodeContent(page: Page, where: SeedTarget, nodeId: string, url: string): Promise<void> {
+  const managerAt = await liveModuleUrl(page, YJS_MANAGER);
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  await page.evaluate(
+    async ([pid, sid, id, content, managerUrl, canvasUrl]: string[]) => {
+      const manager = (await import(/* @vite-ignore */ managerUrl!)) as {
+        getDoc: (name: string) => unknown;
+        docName: { canvasSpace: (p: string, s: string) => string };
+      };
+      const canvas = (await import(/* @vite-ignore */ canvasUrl!)) as {
+        nodeDataMap: (doc: unknown, id: string) => { set: (k: string, v: unknown) => void } | null;
+      };
+      const doc = manager.getDoc(manager.docName.canvasSpace(pid!, sid!));
+      canvas.nodeDataMap(doc, id!)!.set('content', content!);
+    },
+    [where.projectId, where.spaceId, nodeId, url, managerAt, canvasAt],
+  );
 }

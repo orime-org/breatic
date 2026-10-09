@@ -212,6 +212,16 @@ describe('MiniToolPanelContainer', () => {
       expect(screen.getByTestId('mini-tool-run')).toBeEnabled();
     });
 
+    // B11: a drawing made on the old picture does not stay on the new one.
+    it('drops what was drawn when the source takes new content, and says so', () => {
+      canvasSessions.of('').getState().addDrawingStep(STROKE);
+      const view = render(tree(source('a.png'), () => Promise.resolve()));
+      view.rerender(tree(source('b.png'), () => Promise.resolve()));
+      expect(canvasSessions.of('').getState().miniTool?.drawing?.steps).toEqual([]);
+      expect(toast.warning).toHaveBeenCalledOnce();
+      expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
+    });
+
     it('hands the run the visible ops at the press', () => {
       const onRun = vi.fn(() => Promise.resolve());
       canvasSessions.of('').getState().addDrawingStep(STROKE);
