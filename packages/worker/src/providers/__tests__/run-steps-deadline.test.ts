@@ -298,12 +298,43 @@ describe("which step a retry hands its duplicate-cost check to", () => {
   }
 
   it("goes to the step a retry pickup starts at when it holds no upstream id", async () => {
+    runPredictionMock.mockResolvedValue({ outputs: ["https://o/a.mp3"], taskId: "pred-1" });
+    const { deps } = stores();
+
+    await runCatalogTask(deps, ctx(60_000, true), "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }, 1);
+
+    expect(flags()).toStrictEqual([true]);
+  });
+
+  // The rewrite is a paid LLM call that runs again before the submit, so the
+  // warning comes ahead of it, once for the retry.
+  it("warns before rewriting a prompt again, and hands the submit no warning", async () => {
     runPredictionMock.mockResolvedValue({ outputs: ["https://o/cat.png"], taskId: "pred-1" });
+    vi.mocked(FAMILIES.get("nano-banana-2")!.prepare).mockImplementation(async () => {
+      expect(duplicateWarnings()).toHaveLength(1);
+      return { prompt: "a cat", fields: {} };
+    });
     const { deps } = stores();
 
     await runCatalogTask(deps, ctx(60_000, true), "image", "a cat", "nano-banana-2", {}, 1);
 
-    expect(flags()).toStrictEqual([true]);
+    expect(duplicateWarnings()).toStrictEqual([{ taskId: TASK, submit: `breatic-${TASK}-0` }]);
+    expect(flags()).toStrictEqual([false]);
+  });
+
+  it("keeps the warning when the rewrite runs past the deadline", async () => {
+    vi.mocked(FAMILIES.get("nano-banana-2")!.prepare).mockImplementation(async () => {
+      vi.spyOn(Date, "now").mockReturnValue(NOW + 10_000);
+      return { prompt: "a cat", fields: {} };
+    });
+    const { deps } = stores();
+
+    await expect(
+      runCatalogTask(deps, ctx(5_000, true), "image", "a cat", "nano-banana-2", {}, 1),
+    ).rejects.toBeInstanceOf(TaskDeadlinePassed);
+
+    expect(duplicateWarnings()).toHaveLength(1);
+    expect(runPredictionMock).not.toHaveBeenCalled();
   });
 
   it("does not go to a step that only asks about its stored id", async () => {
@@ -365,7 +396,7 @@ describe("which step a retry hands its duplicate-cost check to", () => {
     );
 
     expect(deps.describeImage).toHaveBeenCalledTimes(1);
-    expect(duplicateWarnings()).toStrictEqual([expect.objectContaining({ taskId: TASK })]);
+    expect(duplicateWarnings()).toStrictEqual([{ taskId: TASK, submit: `breatic-${TASK}-0` }]);
     expect(flags()[0]).toBe(false);
   });
 
