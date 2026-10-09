@@ -18,6 +18,7 @@ import { resolve } from 'node:path';
 import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { wavBytes } from '../helpers/media-bytes';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
 let page: Page;
@@ -90,69 +91,41 @@ async function pngBytes(p: Page, width = 480, height = 270): Promise<Buffer> {
   return Buffer.from(base64, 'base64');
 }
 
+/** A media block type. */
+type MediaKind = 'image' | 'video' | 'audio';
+
 /**
- * The stored address of each block of a kind in the body, read from the
- * document; what the page shows of a picture may be its preview.
+ * One attribute of each media block in the body, read from the document;
+ * what the page shows of a picture may be its preview.
  * @param p - The page.
- * @param kind - Which blocks.
+ * @param attr - `url` for the stored address, `name` for the file name.
+ * @param kinds - Which blocks.
  * @returns One per block, in order.
  */
-async function storedMedia(p: Page, kind: 'image' | 'video' | 'audio' = 'image'): Promise<string[]> {
+async function mediaAttr(
+  p: Page,
+  attr: 'url' | 'name',
+  kinds: readonly MediaKind[] = ['image', 'video', 'audio'],
+): Promise<string[]> {
   return p.evaluate(
-    ([selector, wanted]) => {
+    ([selector, key, wanted]) => {
       const el = document.querySelector(selector) as unknown as {
-        editor: { state: { doc: { descendants: (f: (node: { type: { name: string }; attrs: { url: string } }) => void) => void } } };
+        editor: {
+          state: {
+            doc: {
+              descendants: (f: (node: { type: { name: string }; attrs: Record<string, string | undefined> }) => void) => void;
+            };
+          };
+        };
       };
-      const urls: string[] = [];
+      const values: string[] = [];
       el.editor.state.doc.descendants((node) => {
-        if (node.type.name === wanted) urls.push(node.attrs.url);
+        if ((wanted as readonly string[]).includes(node.type.name)) values.push(node.attrs[key] ?? '');
       });
-      return urls;
+      return values;
     },
-    [EDITOR, kind] as const,
+    [EDITOR, attr, kinds] as const,
   );
-}
-
-/**
- * The file name of each media block in the body, in order.
- * @param p - The page.
- * @returns One per media block.
- */
-async function mediaNames(p: Page): Promise<string[]> {
-  return p.evaluate((selector) => {
-    const el = document.querySelector(selector) as unknown as {
-      editor: { state: { doc: { descendants: (f: (node: { type: { name: string }; attrs: { name?: string } }) => void) => void } } };
-    };
-    const names: string[] = [];
-    el.editor.state.doc.descendants((node) => {
-      if (['image', 'video', 'audio'].includes(node.type.name)) names.push(node.attrs.name ?? '');
-    });
-    return names;
-  }, EDITOR);
-}
-
-/**
- * A short silent WAV, unique per call.
- * @returns The bytes.
- */
-function wavBytes(): Buffer {
-  const samples = 8000 + (Date.now() % 1000);
-  const data = Buffer.alloc(samples * 2);
-  const header = Buffer.alloc(44);
-  header.write('RIFF', 0);
-  header.writeUInt32LE(36 + data.length, 4);
-  header.write('WAVE', 8);
-  header.write('fmt ', 12);
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(1, 22);
-  header.writeUInt32LE(8000, 24);
-  header.writeUInt32LE(16000, 28);
-  header.writeUInt16LE(2, 32);
-  header.writeUInt16LE(16, 34);
-  header.write('data', 36);
-  header.writeUInt32LE(data.length, 40);
-  return Buffer.concat([header, data]);
 }
 
 /**
@@ -246,6 +219,29 @@ test('the plus menu offers image, audio and video after the table, and a picked 
   expect(await types(page)).toEqual(['image', 'paragraph']);
 });
 
+test('the grip menu inserts the picked files below its row, side by side, one empty line after the last (A1, A4)', async () => {
+  await openFreshDocument(page);
+  await page.locator(EDITOR).click();
+  await page.keyboard.type('a row to act on');
+  await page.locator(`${EDITOR} .bn-block-content`).first().hover();
+  await page.getByTestId('doc-block-handle').click();
+  await page.getByTestId('doc-block-row-insertBelow').hover();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByTestId('doc-block-insert-image').click();
+  await (
+    await chooser
+  ).setFiles([
+    { name: 'g1.png', mimeType: 'image/png', buffer: await pngBytes(page, 120, 80) },
+    { name: 'g2.png', mimeType: 'image/png', buffer: await pngBytes(page, 121, 80) },
+    { name: 'g3.png', mimeType: 'image/png', buffer: await pngBytes(page, 122, 80) },
+  ]);
+
+  await expect(page.locator(`${IMAGE} img`)).toHaveCount(3, { timeout: UPLOAD_TIMEOUT });
+  expect(await types(page)).toEqual(['paragraph', 'image', 'image', 'image', 'paragraph']);
+  expect(await mediaAttr(page, 'name')).toEqual(['g1.png', 'g2.png', 'g3.png']);
+  await expect(page.locator(`${EDITOR} p`).first()).toHaveText('a row to act on');
+});
+
 test('three files dropped together land in the order they came in, at the line shown during the drag (A2)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('Above, a line long enough that the middle of it is words');
@@ -293,7 +289,7 @@ test('three files dropped together land in the order they came in, at the line s
   release();
   await expect(page.locator(IMAGE)).toHaveCount(2, { timeout: UPLOAD_TIMEOUT });
   expect(await types(page)).toEqual(['paragraph', 'image', 'audio', 'image', 'paragraph']);
-  expect(await mediaNames(page)).toEqual(['one.png', 'two.wav', 'three.png']);
+  expect(await mediaAttr(page, 'name')).toEqual(['one.png', 'two.wav', 'three.png']);
 });
 
 test('a pasted picture lands under the caret\'s line (A3)', async () => {
@@ -395,25 +391,27 @@ test('the toolbar of a first block sits on the picture, never under it, centred,
   await expect(page.getByTestId('doc-media-fullscreen-image')).toHaveCount(0);
 });
 
+/** What each download smoke uploads. */
+const DOWNLOADS: Record<MediaKind, { name: string; mimeType: string; bytes: (p: Page) => Promise<Buffer> }> = {
+  image: { name: 'keep.png', mimeType: 'image/png', bytes: (p) => pngBytes(p, 160, 90) },
+  video: {
+    name: 'keep.mp4',
+    mimeType: 'video/mp4',
+    bytes: () => Promise.resolve(readFileSync(resolve(__dirname, '../fixtures/media-history.mp4'))),
+  },
+  audio: { name: 'keep.wav', mimeType: 'audio/wav', bytes: () => Promise.resolve(wavBytes()) },
+};
+
 for (const kind of ['image', 'video', 'audio'] as const) {
   test(`the toolbar hands a stored ${kind} to the browser as a download (A19) @needs-ingest @needs-storage`, async () => {
     await openFreshDocument(page);
-    const bytes =
-    kind === 'image'
-      ? await pngBytes(page, 160, 90)
-      : kind === 'video'
-        ? readFileSync(resolve(__dirname, '../fixtures/media-history.mp4'))
-        : wavBytes();
-    const file = {
-      image: { name: 'keep.png', mimeType: 'image/png' },
-      video: { name: 'keep.mp4', mimeType: 'video/mp4' },
-      audio: { name: 'keep.wav', mimeType: 'audio/wav' },
-    }[kind];
+    const { bytes: make, ...file } = DOWNLOADS[kind];
+    const bytes = await make(page);
     await pickFromPlus(page, kind, { ...file, buffer: bytes });
     const block = page.locator(`${EDITOR} [data-content-type="${kind}"]`);
     const frame = block.locator('[data-media-frame]');
     await expect(frame).toBeVisible({ timeout: UPLOAD_TIMEOUT });
-    const [stored] = await storedMedia(page, kind);
+    const [stored] = await mediaAttr(page, 'url', [kind]);
 
     // The first block's bar sits on the media's top, so the pointer rests low.
     const box = (await frame.boundingBox())!;
@@ -1228,7 +1226,7 @@ test('a picture copied with the keyboard pastes back as the same picture (A10, A
   await pastePicture(page, 'copy.png');
   const img = page.locator(`${IMAGE} img`);
   await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
-  const [stored] = await storedMedia(page);
+  const [stored] = await mediaAttr(page, 'url', ['image']);
 
   await img.click();
   await page.keyboard.press('ControlOrMeta+c');
@@ -1237,7 +1235,7 @@ test('a picture copied with the keyboard pastes back as the same picture (A10, A
   await page.keyboard.press('ControlOrMeta+v');
 
   await expect(img).toHaveCount(2);
-  expect(await storedMedia(page)).toEqual([stored, stored]);
+  expect(await mediaAttr(page, 'url', ['image'])).toEqual([stored, stored]);
 });
 
 /**
@@ -1364,6 +1362,13 @@ test('a picture keeps its size under a skeleton while it loads, then shows the o
   await page.route(/\.(png|webp)(\?.*)?$/, async (route) => {
     if (route.request().resourceType() === 'image') await held;
     await route.continue();
+  });
+  // A preview that loads, so the original can only come from the width rule.
+  // 576 wide is the box the ingest cuts previews to.
+  const preview = await pngBytes(page, 576, 324);
+  await page.route(/\.preview\.webp$/, async (route) => {
+    await held;
+    await route.fulfill({ status: 200, contentType: 'image/webp', body: preview });
   });
   await pickFromPlus(page, 'image', {
     name: 'wide.png',
