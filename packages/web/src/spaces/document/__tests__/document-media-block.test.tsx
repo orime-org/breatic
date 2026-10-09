@@ -148,6 +148,33 @@ describe('the loading state and the preview (A23)', () => {
     expect(within(element(editor)).queryByTestId('doc-media-skeleton')).toBeNull();
   });
 
+  it('holds the width the picture will be shown at before it loads, when no width was set', () => {
+    const editor = open('image', { mediaWidth: 800, mediaHeight: 400 });
+
+    expect(within(element(editor)).getByTestId('doc-media-box').style.width).toBe('800px');
+  });
+
+  it('keeps the width the block was set to over the picture\'s own', () => {
+    const editor = open('image', { mediaWidth: 800, mediaHeight: 400, previewWidth: 300 });
+
+    expect(within(element(editor)).getByTestId('doc-media-box').style.width).toBe('300px');
+  });
+
+  it('draws a 16:9 skeleton across the row for a picture with no size', () => {
+    const editor = open('image', {});
+    const box = within(element(editor)).getByTestId('doc-media-box');
+    const img = box.querySelector('img')!;
+
+    expect(box.className).toContain('w-full');
+    expect(img.style.aspectRatio).toBe('16 / 9');
+
+    act(() => {
+      img.dispatchEvent(new Event('load'));
+    });
+
+    expect(img.style.aspectRatio).toBe('');
+  });
+
   /**
    * Loads the picture as it is drawn now, at a natural width.
    * @param editor - The editor.

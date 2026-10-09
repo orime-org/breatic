@@ -12,6 +12,9 @@ import * as React from 'react';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { usePreviewSrc, usePreviewWidth } from '@web/lib/preview-src';
 
+/** The box a picture of unknown size is drawn in while it loads. */
+const UNKNOWN_SIZE: React.CSSProperties = { aspectRatio: '16 / 9' };
+
 /** What the picture is drawn from. */
 export interface DocumentMediaImageProps {
   /** The original's address. */
@@ -65,6 +68,7 @@ export const DocumentMediaImage = React.memo(function DocumentMediaImage({
   }, [isOriginal, dropPreview, url]);
 
   const waiting = loadedFor !== url && failedFor !== url;
+  const sizeKnown = mediaWidth !== undefined && mediaHeight !== undefined;
   return (
     <>
       <img
@@ -76,6 +80,7 @@ export const DocumentMediaImage = React.memo(function DocumentMediaImage({
         width={mediaWidth}
         height={mediaHeight}
         className='block h-auto w-full'
+        style={waiting && !sizeKnown ? UNKNOWN_SIZE : undefined}
         onDoubleClick={onDoubleClick}
         onLoad={onLoad}
         onError={onError}

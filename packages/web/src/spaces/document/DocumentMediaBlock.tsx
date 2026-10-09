@@ -314,6 +314,9 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
 
   const width = dragWidth ?? props.previewWidth;
   const { mediaWidth, mediaHeight } = props;
+  // Until it loads, a picture or video has no width of its own: the box holds
+  // the one it will be shown at, its own pixel width capped by the row (A23).
+  const boxWidth = width ?? mediaWidth;
   const mediaSize = React.useMemo(
     () =>
       type === 'video' && mediaWidth !== undefined && mediaHeight !== undefined
@@ -408,10 +411,13 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         data-media-box=''
         data-hovered={hovered ? 'true' : undefined}
         data-selected={selected ? 'true' : undefined}
-        className={cn('relative max-w-full', !sized && 'w-full')}
+        className={cn(
+          'relative max-w-full',
+          (!sized || (type === 'image' && boxWidth === undefined)) && 'w-full',
+        )}
         style={{
           ...(type === 'video' && { minWidth: `${MIN_WIDTH.video}px` }),
-          ...(sized && width !== undefined && { width: `${width}px` }),
+          ...(sized && boxWidth !== undefined && { width: `${boxWidth}px` }),
         }}
       >
         {/* Above the media, the gap between it and its bar is padding on this
