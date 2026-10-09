@@ -82,8 +82,12 @@ function repaint(canvas: HTMLCanvasElement | null, ops: readonly DrawOp[], kind:
 function DrawSurface({ kind, drawing, exporting, geometry }: DrawSurfaceProps): React.JSX.Element {
   const store = useCanvasSessionStore();
   const flow = useStoreApi();
-  // The ring follows the zoom live, as the crop frame's lines do.
-  const liveZoom = useStore((s) => s.transform[2]);
+  // The ring follows the canvas live: its lines counter the zoom, as the crop
+  // frame's do, and it is put back under the pointer after a pan.
+  const transform = useStore((s) => s.transform);
+  const liveZoom = transform[2];
+  // Where the pointer last was on screen, while it is over the picture.
+  const pointer = React.useRef<{ x: number; y: number } | null>(null);
   const settledZoom = useCanvasSession((s) => s.settledZoom);
   const [mountZoom] = React.useState(() => flow.getState().transform[2]);
   const zoom = settledZoom ?? mountZoom;
@@ -127,26 +131,44 @@ function DrawSurface({ kind, drawing, exporting, geometry }: DrawSurfaceProps): 
   };
 
   /**
-   * A pointer as fractions of the picture.
-   * @param e - The pointer event.
+   * A screen point as fractions of the picture.
+   * @param clientX - The point's x on screen.
+   * @param clientY - The point's y on screen.
    * @returns The point.
    */
-  const toFraction = (e: React.PointerEvent): [number, number] => {
+  const toFraction = (clientX: number, clientY: number): [number, number] => {
     const shown = geometry.el.getBoundingClientRect();
-    return [(e.clientX - shown.left) / shown.width, (e.clientY - shown.top) / shown.height];
+    return [(clientX - shown.left) / shown.width, (clientY - shown.top) / shown.height];
   };
 
   /**
-   * Keep the brush ring under the pointer, in layout pixels.
-   * @param e - The pointer event.
+   * Put the brush ring under a screen point, in layout pixels.
+   * @param point - The pointer on screen.
+   * @param point.x - Its x.
+   * @param point.y - Its y.
    */
-  const moveRing = (e: React.PointerEvent): void => {
+  const placeRing = (point: { x: number; y: number }): void => {
     const el = ring.current;
     if (el === null) return;
-    const [fx, fy] = toFraction(e);
+    const [fx, fy] = toFraction(point.x, point.y);
     el.style.transform = `translate(${fx * box.width}px, ${fy * box.height}px) translate(-50%, -50%)`;
     el.style.visibility = 'visible';
   };
+
+  /**
+   * Keep the brush ring under the pointer and remember where the pointer is.
+   * @param e - The pointer event.
+   */
+  const moveRing = (e: React.PointerEvent): void => {
+    pointer.current = { x: e.clientX, y: e.clientY };
+    placeRing(pointer.current);
+  };
+
+  // A pan or zoom moves the picture under a still pointer, and sends no pointer
+  // event; the ring is put back under the pointer whenever the canvas moves.
+  React.useLayoutEffect(() => {
+    if (pointer.current !== null) placeRing(pointer.current);
+  });
 
   /**
    * Start a stroke or a shape on a left press.
@@ -155,7 +177,8 @@ function DrawSurface({ kind, drawing, exporting, geometry }: DrawSurfaceProps): 
   const onDown = (e: React.PointerEvent<HTMLDivElement>): void => {
     if (e.button !== 0 || gesture.current !== null) return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    const [x, y] = toFraction(e);
+    moveRing(e);
+    const [x, y] = toFraction(e.clientX, e.clientY);
     anchor.current = [x, y];
     const { size, color, tool } = drawing;
     gesture.current =
@@ -173,7 +196,7 @@ function DrawSurface({ kind, drawing, exporting, geometry }: DrawSurfaceProps): 
     moveRing(e);
     const op = gesture.current;
     if (op === null) return;
-    const [x, y] = toFraction(e);
+    const [x, y] = toFraction(e.clientX, e.clientY);
     const [ax, ay] = anchor.current;
     gesture.current =
       op.kind === 'stroke'
@@ -199,6 +222,7 @@ function DrawSurface({ kind, drawing, exporting, geometry }: DrawSurfaceProps): 
 
   /** Hide the ring once the pointer leaves the picture. */
   const onLeave = (): void => {
+    pointer.current = null;
     if (ring.current !== null) ring.current.style.visibility = 'hidden';
   };
 

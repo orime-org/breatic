@@ -183,6 +183,28 @@ test('the wheel over the drawing pans and zooms the canvas @needs-internet', asy
   await expect.poll(viewportTransform).not.toBe(panned);
 });
 
+// B3: a pan moves the picture under a still pointer; the ring stays under the pointer.
+test('the brush ring stays under a still pointer when the canvas pans @needs-internet', async () => {
+  await openTool(page, imageNode, 'image.inpaint');
+  const layer = nodeOf(imageNode).getByTestId('mini-tool-draw-layer');
+  await expect(layer).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('node-menu-tools')).toBeHidden();
+  const box = (await layer.boundingBox())!;
+  const pointer = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await page.mouse.move(pointer.x - 5, pointer.y);
+  await page.mouse.move(pointer.x, pointer.y);
+  const ring = page.getByTestId('mini-tool-draw-ring');
+  const before = await viewportTransform();
+  await page.mouse.wheel(0, 120);
+  await expect.poll(viewportTransform).not.toBe(before);
+  await expect
+    .poll(async () => {
+      const r = (await ring.boundingBox())!;
+      return Math.round(r.y + r.height / 2 - pointer.y);
+    })
+    .toBe(0);
+});
+
 // B3: the ring is as wide as the stroke it lays down at any zoom, and the
 // bitmap is painted again at the zoom it settles on, up to the picture's own pixels.
 test('the brush ring matches the stroke at 0.5, 1 and 2 times, and zooming in sharpens the ink @needs-internet', async () => {

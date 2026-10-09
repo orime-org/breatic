@@ -10,7 +10,9 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { cropCanvas, installLayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
+import { useReactFlow, type ReactFlowInstance } from '@xyflow/react';
+
+import { IMG_BOX, cropCanvas, installLayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
 import { canvasSessions } from '@web/stores/canvas-session';
 
 const NODE = { id: 'n1', kind: 'img' as const, src: 'https://cdn/a.png' };
@@ -115,6 +117,31 @@ describe('NodeDrawLayer', () => {
     const ring = screen.getByTestId('mini-tool-draw-ring');
     expect(ring.style.borderWidth).toBe('0.5px');
     expect(ring.style.outlineWidth).toBe('0.5px');
+  });
+
+  // B3: a pan moves the picture under a still pointer; the ring stays under the pointer.
+  it('keeps the brush ring under a still pointer when the canvas pans', async () => {
+    let flow: ReactFlowInstance | null = null;
+    /**
+     * Hands the test the canvas instance.
+     * @returns Nothing.
+     */
+    function Grab(): null {
+      flow = useReactFlow();
+      return null;
+    }
+    render(cropCanvas([NODE], <Grab />));
+    act(() => store().openMiniTool('n1', 'image.inpaint', { sourceContent: NODE.src, params: {} }));
+    const layer = screen.getByTestId('mini-tool-draw-layer');
+    fireEvent.pointerMove(layer, { clientX: 300, clientY: 200 });
+    const ring = screen.getByTestId('mini-tool-draw-ring');
+    expect(ring.style.transform).toContain('translate(200px, 150px)');
+    // The picture moves 100px right on screen; the pointer stays at 300.
+    IMG_BOX.left += 100;
+    await act(async () => {
+      await flow!.setViewport({ x: 100, y: 0, zoom: 1 });
+    });
+    expect(ring.style.transform).toContain('translate(100px, 150px)');
   });
 
   it('takes no pointer while the run is exporting', () => {
