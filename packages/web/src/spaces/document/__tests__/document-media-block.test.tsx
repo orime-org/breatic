@@ -161,19 +161,46 @@ describe('the loading state and the preview (A23)', () => {
     for (const l of screens.filter((x) => x.query === `(resolution: ${String(from)}dppx)`)) l.cb();
   }
 
+  let boxWidth = 0;
+  let observed: (() => void)[] = [];
+
   /**
    * Lays the media box out this wide, the width the picture is shown at.
    * @param width - CSS pixels.
    */
   function shownAt(width: number): void {
+    boxWidth = width;
     vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) {
-      return this.dataset.testid === 'doc-media-box' ? width : 0;
+      return this.dataset.testid === 'doc-media-box' ? boxWidth : 0;
+    });
+  }
+
+  /**
+   * Lays the box out at a new width and tells its resize observers.
+   * @param width - CSS pixels.
+   */
+  function resizeTo(width: number): void {
+    boxWidth = width;
+    act(() => {
+      for (const cb of observed) cb();
     });
   }
 
   beforeEach(() => {
     screens = [];
+    observed = [];
     screenAt(1);
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(cb: () => void) {
+          observed.push(cb);
+        }
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      },
+    );
   });
 
   it('reserves the image\'s final size and covers it with a skeleton until it loads', () => {
@@ -271,14 +298,33 @@ describe('the loading state and the preview (A23)', () => {
     expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(STORED);
   });
 
-  it('judges a picture with no stored size by the width it is shown at', () => {
-    screenAt(2);
+  it('shows a stored picture with no stored size from its original, as the canvas does', () => {
     shownAt(720);
     const editor = open('image', { url: STORED });
 
+    expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(STORED);
+  });
+
+  it('keeps the original once it has been shown, when the picture is made narrower', () => {
+    screenAt(2);
+    shownAt(400);
+    const editor = open('image', { url: STORED, mediaWidth: 1600, mediaHeight: 900 });
     loadAt(editor, 576);
+    expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(STORED);
+
+    resizeTo(200);
 
     expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(STORED);
+  });
+
+  it('stays on the preview when the original is no wider than it', () => {
+    screenAt(2);
+    shownAt(400);
+    const editor = open('image', { url: STORED, mediaWidth: 400, mediaHeight: 300 });
+
+    loadAt(editor, 400);
+
+    expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(`${STORED}.preview.webp`);
   });
 
   it('falls back to the original when the preview does not load', () => {
