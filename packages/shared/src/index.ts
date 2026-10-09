@@ -696,6 +696,7 @@ export {
   previewKeyFor,
   previewUrlFor,
   originalUrlFor,
+  isStoredObjectUrl,
 } from "@shared/upload/preview.js";
 // The type read off the bytes themselves. It lives beside the lists above
 // because they answer two halves of one question: what these bytes are, and
