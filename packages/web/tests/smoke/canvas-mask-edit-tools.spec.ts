@@ -331,7 +331,7 @@ test.describe('real runs @needs-internet @billed', () => {
   ] as const) {
     test(`${toolId} runs on a phone photo with an EXIF turn`, async () => {
       const photo = randomUUID();
-      await seedNode(page, { projectId, spaceId }, photo, 'image', 700, { content: EXIF_PHOTO, mimeType: 'image/jpeg' });
+      await seedNode(page, { projectId, spaceId }, photo, 'image', -350, { content: EXIF_PHOTO, mimeType: 'image/jpeg' });
       await expect(await runOn(photo, toolId, prompt, [imageNode, photo])).toContainText('-SEED');
     });
   }
