@@ -45,16 +45,20 @@ interface RefusalCase {
   inTheReply?: string;
   /** The catalog the case is met under, where it is not the full one. */
   catalog?: () => void;
+  /** The words the reason ends on, where advice added after them would be wrong. */
+  endsOn?: string;
 }
 
 const PIC = "https://resource.example/image/2026-10-09/1_pic.png";
 const CLIP = "https://resource.example/video/2026-10-09/1_clip.mp4";
 const ELSEWHERE = "https://elsewhere.example/a.png";
 const MISSING = "https://resource.example/image/2026-10-09/1_typo.png";
+const CLIP_IMAGE = "https://resource.example/image/2026-10-09/2_frame.png";
 
 const MEDIA = { coverUrl: null, width: 640, height: 480, duration: 3, mimeType: "image/png", size: 100 };
 const MATERIALS: MaterialTable = new Map<string, MaterialFacts | "missing">([
   [PIC, { kind: "image", media: MEDIA }],
+  [CLIP_IMAGE, { kind: "image", media: MEDIA }],
   [CLIP, { kind: "video", media: { ...MEDIA, mimeType: "video/mp4" } }],
   [MISSING, "missing"],
 ]);
@@ -68,6 +72,7 @@ const SONG = "mureka-v9.5-generate-song";
 const TTS = "realtime-tts-2";
 const LONG_TTS = "minimax-speech-2.8-hd";
 const SHOTS = "kling-v3.0-4k-text-to-video";
+const VID = "minimax-h3-image-to-video";
 
 /** A note, as every to-do on a card is. */
 const NOTE = { slot: { kind: "note" as const, label: "Put the picture in Pic first" } };
@@ -197,7 +202,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }, {
     meets: group([CLIP_EMPTY, gen("image", "i2i", EDIT)], [{ fromIndex: 0, toIndex: 1 }]),
     followed: [
-      { says: 'leave this edge off. "nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen". No generation here takes a video node; take "Clip" out', proposal: group([gen("image", "i2i", EDIT)]) },
+      { says: 'leave this edge off. "nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen". No generation here has a way left for a video node; take "Clip" out', proposal: group([gen("image", "i2i", EDIT)]) },
       { says: "or propose a model that takes it", proposal: group([CLIP_EMPTY, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }, NOTE] })]) },
     ],
   }],
@@ -251,6 +256,15 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   "material-unused": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Make it." }] })]),
     followed: [{ says: 'Send it into a generation that takes it: "Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }, { says: 'through fills "style_images" on "Gen", with no edge and no ref', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) }],
+  }, {
+    meets: group([{ ...DRAW, name: "Draw" }, gen("video", "i2v", VID, { name: "Vid", prompt: [{ text: "Move it." }, NOTE] }), { ...HELD_PIC, name: "B" }], [{ fromIndex: 0, toIndex: 1, into: "image" }]),
+    followed: [
+      { says: 'take "B" out', proposal: group([{ ...DRAW, name: "Draw" }, gen("video", "i2v", VID, { name: "Vid", prompt: [{ text: "Move it." }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "image" }]) },
+      { says: "or propose a model that takes it", proposal: group([{ ...DRAW, name: "Draw" }, gen("video", "i2v", VID, { name: "Vid", prompt: [{ text: "Move it." }, NOTE] }), { ...HELD_PIC, name: "B" }, gen("image", "i2i", EDIT, { name: "Edit", fills: { style_images: [2] } })], [{ fromIndex: 0, toIndex: 1, into: "image" }]) },
+    ],
+  }, {
+    meets: group([HELD_PIC, { ...HELD_PIC, name: "Pic 2" }, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
+    followed: [{ says: 'Send it into a generation that takes it: "Pic 2" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it.', proposal: group([HELD_PIC, { ...HELD_PIC, name: "Pic 2" }, gen("image", "i2i", EDIT, { fills: { style_images: [0] }, prompt: [{ text: "Edit " }, { ref: 1 }] })], [{ fromIndex: 1, toIndex: 2, into: "pool" }]) }],
   }],
   "loose-without-note": [{
     meets: group([EMPTY_PIC, gen("video", "talking_head", HEAD, { prompt: undefined })]),
@@ -322,7 +336,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   "ref-not-pooled-no-pool": [{
     meets: group([EMPTY_PIC, gen("image", "t2i", T2I, { prompt: [{ text: "Draw " }, { ref: 0 }, NOTE] })]),
     followed: [
-      { says: 'Leave the ref out. "nano-banana-2" takes no image node, so "Pic" has no way into "Gen". No generation here takes an image node; take "Pic" out', proposal: group([gen("image", "t2i", T2I, { prompt: [{ text: "Draw " }, NOTE] })]) },
+      { says: 'Leave the ref out. "nano-banana-2" takes no image node, so "Pic" has no way into "Gen". No generation here has a way left for an image node; take "Pic" out', proposal: group([gen("image", "t2i", T2I, { prompt: [{ text: "Draw " }, NOTE] })]) },
       { says: "or propose a model that takes it", proposal: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) },
     ],
   }, {
@@ -512,9 +526,16 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }, {
     meets: group([EMPTY_PIC, DRAW], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     followed: [
-      { says: 'Take that edge off. No generation here takes an image node; take "Pic" out', proposal: group([DRAW]) },
+      { says: 'Take that edge off. No generation here has a way left for an image node; take "Pic" out', proposal: group([DRAW]) },
       { says: "or propose a model that takes it", proposal: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) },
     ],
+  }, {
+    meets: group([HELD_PIC, DRAW, gen("image", "i2i", EDIT, { name: "E1", prompt: [{ text: "Edit " }, { ref: 0 }] }), gen("image", "i2i", EDIT, { name: "E2" })], [{ fromIndex: 0, toIndex: 1, into: "pool" }, { fromIndex: 0, toIndex: 2, into: "pool" }]),
+    followed: [{ says: "goes nowhere in it. Take that edge off.", proposal: group([HELD_PIC, DRAW, gen("image", "i2i", EDIT, { name: "E1", prompt: [{ text: "Edit " }, { ref: 0 }] }), gen("image", "i2i", EDIT, { name: "E2" })], [{ fromIndex: 0, toIndex: 2, into: "pool" }]) }],
+    endsOn: "goes nowhere in it. Take that edge off.",
+  }, {
+    meets: group([HELD_PIC, { ...DRAW, name: "D1" }, { ...DRAW, name: "D2" }], [{ fromIndex: 0, toIndex: 1, into: "pool" }, { fromIndex: 0, toIndex: 2 }]),
+    followed: [{ says: 'Take that edge off. No generation here has a way left for an image node; take "Pic" out', proposal: group([{ ...DRAW, name: "D1" }, { ...DRAW, name: "D2" }]) }],
   }],
   "edge-kind-not-taken-link": [{
     meets: group([{ ...DRAW, name: "A" }, { ...DRAW, name: "B" }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
@@ -530,6 +551,12 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   "edge-not-an-entry": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT)], [{ fromIndex: 0, toIndex: 1, into: "style_images" }]),
     followed: [{ says: 'by an edge with into: "pool" and a ref @\'ing it', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }, { says: 'through fills "style_images" on "Gen", with no edge and no ref', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) }],
+  }, {
+    meets: group([HELD_PIC, gen("video", "i2v", VID, { name: "Vid", fills: { image: [0] }, prompt: [{ text: "Move it." }] }), { ...HELD_PIC, name: "B", material: CLIP_IMAGE }], [{ fromIndex: 2, toIndex: 1, into: "image" }]),
+    followed: [
+      { says: '"Vid" has no room left for another image node, so "B" has no way into it. No generation here has a way left for an image node; take "B" out', proposal: group([HELD_PIC, gen("video", "i2v", VID, { name: "Vid", fills: { image: [0] }, prompt: [{ text: "Move it." }] })]) },
+      { says: "or propose a model that takes it", proposal: group([HELD_PIC, gen("video", "i2v", VID, { name: "Vid", fills: { image: [0] }, prompt: [{ text: "Move it." }] }), { ...HELD_PIC, name: "B", material: CLIP_IMAGE }, gen("image", "i2i", EDIT, { name: "Edit", fills: { style_images: [2] } })]) },
+    ],
   }],
   "fill-outside": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [5] } })]),
@@ -563,7 +590,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   "fill-wrong-kind": [{
     meets: group([CLIP_HELD, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
     followed: [
-      { says: 'Take "Clip" out of fills "style_images". "nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen". No generation here takes a video node; take "Clip" out', proposal: group([gen("image", "i2i", EDIT)]) },
+      { says: 'Take "Clip" out of fills "style_images". "nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen". No generation here has a way left for a video node; take "Clip" out', proposal: group([gen("image", "i2i", EDIT)]) },
       { says: "or propose a model that takes it", proposal: group([CLIP_HELD, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }], fills: { video: [0] } })]) },
     ],
   }],
@@ -589,6 +616,7 @@ describe("every refusal's advice is a proposal the check takes", () => {
         // the advice followed below.
         expect(reason).toMatchSnapshot();
         if (entry.inTheReply !== undefined) expect(reason).toContain(entry.inTheReply);
+        if (entry.endsOn !== undefined) expect(reason.endsWith(entry.endsOn), `"${reason}" ends on "${entry.endsOn}"`).toBe(true);
         for (const [i, { says, proposal }] of entry.followed.entries()) {
           if (says !== undefined) expect(reason, `the reason gives advice ${String(i)}`).toContain(says);
           expect(verdictFor(proposal, MATERIALS), `advice ${String(i)} of "${reason}"`).toEqual({ ok: true });

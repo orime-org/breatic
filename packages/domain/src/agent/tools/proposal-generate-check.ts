@@ -29,6 +29,7 @@ import {
   entriesFor,
   entryPhrase,
   fillsOf,
+  goingBy,
   holdingOf,
   nodeWaysSentence,
   notesAsked,
@@ -39,7 +40,7 @@ import {
   waysSentence,
   type Arriving,
 } from "@domain/agent/tools/proposal-routing.js";
-import { modelsForMode, waysIn, type ModelInfo } from "@domain/model-catalog/mode-catalog.js";
+import { modelsForMode, waysIn, type ModelInfo, type WayIn } from "@domain/model-catalog/mode-catalog.js";
 import { getModelCatalog } from "@domain/model-catalog/model-catalog.js";
 
 /**
@@ -161,19 +162,25 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
   // Over a way's room is said first: the fix there is fewer nodes, and every
   // count below would otherwise ask for a mark or note for a node to remove.
   for (const [kind, list] of waysIn(chosen)) {
+    /**
+     * How many more nodes of this kind one way takes.
+     * @param way - The way.
+     * @returns The room left.
+     * @throws {never} Never.
+     */
+    const left = (way: WayIn): number => way.room - goingBy(arriving, kind, way.into);
     for (const option of list) {
+      if (left(option) >= 0) continue;
       const going = arriving.filter(({ node: n, entry }) => n.type === kind && entry.way.into === option.into).map(({ node: n }) => n);
-      if (going.length > option.room) {
-        const over = `"${chosen.name}" takes ${String(option.room)} ${kind} node(s) by "${option.into}", and ${String(going.length)} are going that way (${going.map((n) => `"${n.name}"`).join(", ")}).`;
-        // The nodes past the room, each with the other ways it has in.
-        const rest = going.slice(option.room).map((n) => [n, entriesFor(chosen, n.type, holdingOf(n)).filter((entry) => entry.way.into !== option.into)] as const);
-        // Offered only where the other ways have room for all of them.
-        const free = list.filter((other) => other !== option).reduce((sum, other) => sum + other.room - arriving.filter(({ node: n, entry }) => n.type === kind && entry.way.into === other.into).length, 0);
-        if (rest.every(([, entries]) => entries.length > 0) && rest.length <= free) {
-          return refuse("way-over-room-other-way", `${over} Send fewer, or send the rest another way: ${rest.map(([n, entries]) => waysSentence(`"${n.name}"`, node, entries)).join(" ")}`);
-        }
-        return refuse("way-over-room", `${over} Send fewer.`);
+      const over = `"${chosen.name}" takes ${String(option.room)} ${kind} node(s) by "${option.into}", and ${String(going.length)} are going that way (${going.map((n) => `"${n.name}"`).join(", ")}).`;
+      // The nodes past the room, each with the other ways that still have room
+      // for it; offered only where those ways have room for all of them.
+      const rest = going.slice(option.room).map((n) => [n, entriesFor(chosen, n.type, holdingOf(n)).filter((entry) => entry.way.into !== option.into && left(entry.way) > 0)] as const);
+      const free = list.filter((other) => other !== option).reduce((sum, other) => sum + Math.max(0, left(other)), 0);
+      if (rest.every(([, entries]) => entries.length > 0) && rest.length <= free) {
+        return refuse("way-over-room-other-way", `${over} Send fewer, or send the rest another way: ${rest.map(([n, entries]) => waysSentence(`"${n.name}"`, node, entries)).join(" ")}`);
       }
+      return refuse("way-over-room", `${over} Send fewer.`);
     }
   }
   // Every node arriving by an entry with a ref is @'d, and a ref @s only such

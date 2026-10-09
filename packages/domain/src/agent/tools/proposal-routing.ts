@@ -154,9 +154,10 @@ export function waysSentence(subject: string, generation: ProposalNode, entries:
 }
 
 /**
- * How one named node goes into a generation, said for the agent. Where the
- * model takes nothing of its kind, the sentence says so and where else in the
- * group it goes, so the node is never left with nowhere to be.
+ * How one named node goes into a generation as the proposal stands, said for
+ * the agent. Where the model takes nothing of its kind, or every way it has is
+ * taken by other nodes, the sentence says so and where else in the group it
+ * goes, so the node is never left with nowhere to be.
  * @param proposal - The whole proposal.
  * @param node - The node.
  * @param generation - The generation.
@@ -165,9 +166,12 @@ export function waysSentence(subject: string, generation: ProposalNode, entries:
  * @throws {never} Never.
  */
 export function nodeWaysSentence(proposal: CanvasProposal, node: ProposalNode, generation: ProposalNode, chosen: ModelInfo): string {
-  const entries = entriesFor(chosen, node.type, holdingOf(node));
-  if (entries.length > 0) return waysSentence(`"${node.name}"`, generation, entries);
-  return `"${chosen.name}" takes no ${node.type} node, so "${node.name}" has no way into "${generation.name}".${spaced(elsewhereSentence(proposal, node, generation))}`;
+  if (entriesFor(chosen, node.type, holdingOf(node)).length === 0) {
+    return `"${chosen.name}" takes no ${node.type} node, so "${node.name}" has no way into "${generation.name}".${spaced(elsewhereSentence(proposal, node, generation))}`;
+  }
+  const open = openEntries(proposal, node, generation, chosen);
+  if (open.length > 0) return waysSentence(`"${node.name}"`, generation, open);
+  return `"${generation.name}" has no room left for another ${node.type} node, so "${node.name}" has no way into it.${spaced(elsewhereSentence(proposal, node, generation))}`;
 }
 
 /**
@@ -181,25 +185,10 @@ export function spaced(sentence: string): string {
 }
 
 /**
- * Whether a node already goes into a generation, by an edge or its fills.
- * @param proposal - The whole proposal.
- * @param node - The node.
- * @param generation - The generation.
- * @returns True when it does.
- * @throws {never} Never.
- */
-function reaches(proposal: CanvasProposal, node: ProposalNode, generation: ProposalNode): boolean {
-  const from = proposal.nodes.indexOf(node);
-  const to = proposal.nodes.indexOf(generation);
-  return proposal.edges.some((edge) => edge.fromIndex === from && edge.toIndex === to) || Object.values(generation.fills ?? {}).some((indices) => indices.includes(from));
-}
-
-/**
- * Where a source node goes once it does not go into one generation: each
- * other generation here that takes it and it does not reach yet, how; nothing
- * when it already goes into another; else that it comes out. A node that
- * generates or holds words stands on the canvas without going anywhere, so it
- * needs nothing said.
+ * Where a source node goes once it does not go into one generation: nothing
+ * when it already goes into another; else each other generation here with a
+ * way left for it, how; else that it comes out. A node that generates or holds
+ * words stands on the canvas without going anywhere, so it needs nothing said.
  * @param proposal - The whole proposal.
  * @param from - The node.
  * @param away - The generation it does not go into, or none.
@@ -208,16 +197,17 @@ function reaches(proposal: CanvasProposal, node: ProposalNode, generation: Propo
  */
 export function elsewhereSentence(proposal: CanvasProposal, from: ProposalNode, away?: ProposalNode): string {
   if (from.role !== "source") return "";
-  const others = proposal.nodes.filter((generation) => generation !== away);
-  const takers = others.flatMap((generation) => {
+  const others = proposal.nodes.flatMap((generation) => {
     const chosen = chosenModelOf(generation);
-    if (chosen === undefined || reaches(proposal, from, generation)) return [];
-    const entries = entriesFor(chosen, from.type, holdingOf(from));
-    return entries.length > 0 ? [waysSentence(`"${from.name}"`, generation, entries)] : [];
+    return generation === away || chosen === undefined ? [] : [[generation, chosen] as const];
+  });
+  if (others.some(([generation, chosen]) => arrivingInto(proposal, generation, chosen).some(({ node }) => node === from))) return "";
+  const takers = others.flatMap(([generation, chosen]) => {
+    const open = openEntries(proposal, from, generation, chosen);
+    return open.length > 0 ? [waysSentence(`"${from.name}"`, generation, open)] : [];
   });
   if (takers.length > 0) return `Send it into a generation that takes it: ${takers.join(" ")}`;
-  if (others.some((generation) => chosenModelOf(generation) !== undefined && reaches(proposal, from, generation))) return "";
-  return `No generation here takes ${aNode(from.type)}; take "${from.name}" out, or propose a model that takes it.`;
+  return `No generation here has a way left for ${aNode(from.type)}; take "${from.name}" out, or propose a model that takes it.`;
 }
 
 /**
@@ -270,6 +260,39 @@ export interface Arriving {
   entry: Entry;
 }
 
+/** What one edge does for the generation it runs into. */
+type EdgeRoute =
+  | { kind: "entry"; entry: Entry }
+  | { kind: "link" }
+  | { kind: "nowhere" }
+  | { kind: "ambiguous" }
+  | { kind: "no-entry"; into: string | undefined };
+
+/**
+ * What an edge from a node does for a generation, judged without words: the
+ * check refuses from this, and the advice counts what already arrives by it.
+ * @param chosen - The generation's model.
+ * @param from - The node at the edge's other end.
+ * @param into - What the edge says.
+ * @returns The entry it arrives by, or why it arrives by none.
+ * @throws {never} Never.
+ */
+function edgeRoute(chosen: ModelInfo, from: ProposalNode, into: string | undefined): EdgeRoute {
+  // A slot of a kind the canvas will not wire in is filled by picking, and
+  // the edge itself is refused with the rest of the wiring.
+  const options = canConnect(from.type, chosen.nodeType) ? (waysIn(chosen).get(from.type) ?? []) : [];
+  // An edge the model takes nothing from still carries the creative link
+  // (user 2026-08-13); saying where it goes is a claim the model refutes.
+  if (options.length === 0) return into === undefined ? { kind: "link" } : { kind: "nowhere" };
+  if (into === undefined && options.length > 1) return { kind: "ambiguous" };
+  const resolved = into ?? options[0]?.into;
+  // The edge stands only as one of the node's entries: material reaches a
+  // slot through fills, which leaves the snapshot a pick would, so an edge
+  // into a slot is no entry of a node holding material.
+  const entry = entriesFor(chosen, from.type, holdingOf(from)).find((e) => e.by === "edge" && e.way.into === resolved);
+  return entry === undefined ? { kind: "no-entry", into: resolved } : { kind: "entry", entry };
+}
+
 /**
  * Where each node wired into one generation goes, as its edge says (design
  * 5.7). The agent knows, and the marks it writes are words that name no node,
@@ -286,38 +309,104 @@ export function routeEdges(
   chosen: ModelInfo,
 ): { routed: Arriving[] } | Refusal {
   const generation = proposal.nodes[index] as ProposalNode;
-  const ways = waysIn(chosen);
   const routed: Arriving[] = [];
   for (const edge of proposal.edges.filter((e) => e.toIndex === index)) {
     const from = proposal.nodes[edge.fromIndex];
     if (!from) continue;
-    // A slot of a kind the canvas will not wire in is filled by picking, and
-    // the edge itself is refused with the rest of the wiring.
-    const options = canConnect(from.type, chosen.nodeType) ? (ways.get(from.type) ?? []) : [];
-    // An edge the model takes nothing from still carries the creative link
-    // (user 2026-08-13); saying where it goes is a claim the model refutes.
-    if (options.length === 0) {
-      if (edge.into === undefined) continue;
-      const nowhere = `"${chosen.name}" takes no ${from.type} node, so the edge from "${from.name}" goes nowhere in it.`;
-      // A source is there to be used, so it is told where it goes instead;
-      // anything else can stay wired as a creative link.
-      if (from.role !== "source") return refuse("edge-kind-not-taken-link", `${nowhere} Leave into off that edge, or propose a model that takes it.`);
-      return refuse("edge-kind-not-taken", `${nowhere} Take that edge off.${spaced(elsewhereSentence(proposal, from, generation))}`);
+    const route = edgeRoute(chosen, from, edge.into);
+    switch (route.kind) {
+      case "entry":
+        routed.push({ node: from, entry: route.entry });
+        break;
+      case "link":
+        break;
+      case "nowhere": {
+        const nowhere = `"${chosen.name}" takes no ${from.type} node, so the edge from "${from.name}" goes nowhere in it.`;
+        // A source is there to be used, so it is told where it goes instead;
+        // anything else can stay wired as a creative link.
+        if (from.role !== "source") return refuse("edge-kind-not-taken-link", `${nowhere} Leave into off that edge, or propose a model that takes it.`);
+        return refuse("edge-kind-not-taken", `${nowhere} Take that edge off.${spaced(elsewhereSentence(proposal, from, generation))}`);
+      }
+      case "ambiguous":
+        return refuse("edge-into-ambiguous", `The edge from "${from.name}" says no into, and "${chosen.name}" takes ${aNode(from.type)} more than one way. ${nodeWaysSentence(proposal, from, generation, chosen)}`);
+      case "no-entry":
+        return refuse("edge-not-an-entry", `"${from.name}" does not go into "${String(route.into)}" of "${generation.name}" by an edge. ${nodeWaysSentence(proposal, from, generation, chosen)}`);
     }
-    if (edge.into === undefined && options.length > 1) {
-      return refuse("edge-into-ambiguous", `The edge from "${from.name}" says no into, and "${chosen.name}" takes ${aNode(from.type)} more than one way. ${nodeWaysSentence(proposal, from, generation, chosen)}`);
-    }
-    const into = edge.into ?? options[0]?.into;
-    // The edge stands only as one of the node's entries: material reaches a
-    // slot through fills, which leaves the snapshot a pick would, so an edge
-    // into a slot is no entry of a node holding material.
-    const entry = entriesFor(chosen, from.type, holdingOf(from)).find((e) => e.by === "edge" && e.way.into === into);
-    if (entry === undefined) {
-      return refuse("edge-not-an-entry", `"${from.name}" does not go into "${String(into)}" of "${generation.name}" by an edge. ${nodeWaysSentence(proposal, from, generation, chosen)}`);
-    }
-    routed.push({ node: from, entry });
   }
   return { routed };
+}
+
+/**
+ * The slot a fill names and the entry it fills by, when the node can stand
+ * there: the slot exists, the node holds material, and it is the slot's kind.
+ * @param chosen - The generation's model.
+ * @param param - The slot the fill names.
+ * @param from - The node it names.
+ * @returns The entry, or undefined where the fill cannot stand.
+ * @throws {never} Never.
+ */
+function fillEntry(chosen: ModelInfo, param: string, from: ProposalNode): Entry | undefined {
+  const way = waysIn(chosen).get(from.type)?.find((option) => option.mark === "note" && option.into === param);
+  return way !== undefined && from.material !== undefined ? { way, by: "fills", ref: false, note: false } : undefined;
+}
+
+/**
+ * Every node that goes into one generation as the proposal stands, by an edge
+ * that routes or a fill that stands, with the entry it arrives by. Edges and
+ * fills the check would refuse arrive by nothing here.
+ * @param proposal - The whole proposal.
+ * @param generation - The generation.
+ * @param chosen - Its model.
+ * @returns The arriving nodes.
+ * @throws {never} Never.
+ */
+export function arrivingInto(proposal: CanvasProposal, generation: ProposalNode, chosen: ModelInfo): Arriving[] {
+  const index = proposal.nodes.indexOf(generation);
+  const byEdge = proposal.edges.flatMap((edge): Arriving[] => {
+    const from = proposal.nodes[edge.fromIndex];
+    if (edge.toIndex !== index || !from) return [];
+    const route = edgeRoute(chosen, from, edge.into);
+    return route.kind === "entry" ? [{ node: from, entry: route.entry }] : [];
+  });
+  const byFill = Object.entries(generation.fills ?? {}).flatMap(([param, indices]) =>
+    indices.flatMap((at): Arriving[] => {
+      const from = proposal.nodes[at];
+      const entry = from === undefined || from === generation ? undefined : fillEntry(chosen, param, from);
+      return from !== undefined && entry !== undefined ? [{ node: from, entry }] : [];
+    }),
+  );
+  return [...byEdge, ...byFill];
+}
+
+/**
+ * How many of the arriving nodes of one kind go one way.
+ * @param arriving - The nodes going into a generation.
+ * @param kind - The kind.
+ * @param into - The way.
+ * @returns The count.
+ * @throws {never} Never.
+ */
+export function goingBy(arriving: readonly Arriving[], kind: string, into: string): number {
+  return arriving.filter(({ node, entry }) => node.type === kind && entry.way.into === into).length;
+}
+
+/**
+ * The entries by which a node can still go into a generation as the proposal
+ * stands: a way the other arriving nodes have not filled, and no fill into a
+ * slot already holding the same material.
+ * @param proposal - The whole proposal.
+ * @param node - The node.
+ * @param generation - The generation.
+ * @param chosen - Its model.
+ * @returns The entries.
+ * @throws {never} Never.
+ */
+export function openEntries(proposal: CanvasProposal, node: ProposalNode, generation: ProposalNode, chosen: ModelInfo): Entry[] {
+  const others = arrivingInto(proposal, generation, chosen).filter((arrival) => arrival.node !== node);
+  return entriesFor(chosen, node.type, holdingOf(node)).filter((entry) =>
+    goingBy(others, node.type, entry.way.into) < entry.way.room &&
+    !(entry.by === "fills" && others.some((arrival) => arrival.entry.way.into === entry.way.into && arrival.node.material === node.material)),
+  );
 }
 
 /**

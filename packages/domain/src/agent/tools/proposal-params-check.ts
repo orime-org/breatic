@@ -7,7 +7,7 @@
 import { PANEL_EDITOR_PARAM, type ControlGate, type ProposalNode } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
-import { refuse } from "@domain/agent/tools/proposal-refusals.js";
+import { refuse, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { boxReason, slotSentence, spaced } from "@domain/agent/tools/proposal-routing.js";
 import type { ModelInfo, ParamInfo } from "@domain/model-catalog/mode-catalog.js";
 import { onStep } from "@domain/model-catalog/param-declaration.js";
@@ -81,17 +81,42 @@ function offStepReason(key: string, value: number, info: ParamInfo): string | nu
 }
 
 /**
- * Whether a proposal sets this parameter itself: it is no storyboard field, has
- * a control, is not one only the reader fills, and no node fills it. The other
- * parameters are each refused below with what reaches them instead, so the
- * list a refusal offers holds only these.
+ * The refusal for a parameter that something other than a value set here
+ * fills: the node's shots, nothing at all, the reader in the panel, or a node
+ * on the canvas. Undefined for a parameter a proposal sets itself.
+ * @param chosen - The model.
+ * @param node - The node.
  * @param key - The parameter's name.
  * @param info - What the catalog says about it.
- * @returns True when a value set here is what the control shows.
+ * @returns The refusal, or undefined.
  * @throws {never} Never.
  */
-function setHere(key: string, info: ParamInfo): boolean {
-  return info.fromStoryboard !== true && info.noControl !== true && !theirsToFill(key, info) && info.filledBySource !== true;
+function placedElsewhere(chosen: ModelInfo, node: ProposalNode, key: string, info: ParamInfo): Refusal | undefined {
+  if (info.fromStoryboard === true) {
+    return chosen.storyboard === undefined
+      ? refuse("param-storyboard-other-mode", `"${key}" is set by shots, which only the multi_shot mode takes. Leave it out.`)
+      : refuse("param-storyboard", `"${key}" is set by the node's shots. Leave it out of params and give shots.`);
+  }
+  // Asked before anything that tells the agent how the reader fills a
+  // value: a value the panel draws no control for is one nobody fills.
+  if (info.noControl === true) {
+    return refuse("param-no-control", `The panel draws no control for "${key}", so the reader can neither see it nor change it. Leave it out.`);
+  }
+  if (theirsToFill(key, info)) {
+    return info.valuesFrom !== undefined
+      ? refuse("param-from-list", `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here. Leave it out and add a note saying which one to pick.`)
+      : refuse("param-box", boxReason(chosen, node, key));
+  }
+  if (info.filledBySource !== true) return undefined;
+  // Two ways that material arrives, and the sentence names the one this
+  // model uses: through the pool an edge carries it, through a slot the
+  // reader clicks a node on the canvas. Said the other way round, it
+  // sends the model off to wire an edge the panel never reads.
+  // The catalog refuses a place on the canvas that names no kind it takes.
+  const reached = spaced(slotSentence(chosen, node, info.accepts ?? "", info.fromReferencePool === true ? "pool" : key));
+  return info.fromReferencePool === true
+    ? refuse("param-pool", `"${key}" is the reference pool, which nodes reach and nothing set here does. Leave it out.${reached}`)
+    : refuse("param-slot", `"${key}" is a slot for the reader's own material, which nodes reach and nothing set here does. Leave it out.${reached}`);
 }
 
 /**
@@ -106,38 +131,14 @@ function setHere(key: string, info: ParamInfo): boolean {
  * @throws {never} Never.
  */
 export function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
-  const settable = Object.entries(chosen.params).filter(([key, info]) => setHere(key, info)).map(([key]) => key);
+  const settable = Object.entries(chosen.params).filter(([key, info]) => placedElsewhere(chosen, node, key, info) === undefined).map(([key]) => key);
   for (const [key, value] of Object.entries(node.params ?? {})) {
     const info = chosen.params[key];
     if (!info) {
       return refuse("param-undeclared", `"${chosen.name}" declares no ${key}. ${settable.length > 0 ? `The ones set here: ${settable.join(", ")}.` : "Nothing is set here."} Leave "${key}" out.`);
     }
-    if (info.fromStoryboard === true) {
-      return chosen.storyboard === undefined
-        ? refuse("param-storyboard-other-mode", `"${key}" is set by shots, which only the multi_shot mode takes. Leave it out.`)
-        : refuse("param-storyboard", `"${key}" is set by the node's shots. Leave it out of params and give shots.`);
-    }
-    // Asked before anything that tells the agent how the reader fills a
-    // value: a value the panel draws no control for is one nobody fills.
-    if (info.noControl === true) {
-      return refuse("param-no-control", `The panel draws no control for "${key}", so the reader can neither see it nor change it. Leave it out.`);
-    }
-    if (theirsToFill(key, info)) {
-      return info.valuesFrom !== undefined
-        ? refuse("param-from-list", `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here. Leave it out and add a note saying which one to pick.`)
-        : refuse("param-box", boxReason(chosen, node, key));
-    }
-    if (info.filledBySource === true) {
-      // Two ways that material arrives, and the sentence names the one this
-      // model uses: through the pool an edge carries it, through a slot the
-      // reader clicks a node on the canvas. Said the other way round, it
-      // sends the model off to wire an edge the panel never reads.
-      // The catalog refuses a place on the canvas that names no kind it takes.
-      const reached = spaced(slotSentence(chosen, node, info.accepts ?? "", info.fromReferencePool === true ? "pool" : key));
-      return info.fromReferencePool === true
-        ? refuse("param-pool", `"${key}" is the reference pool, which nodes reach and nothing set here does. Leave it out.${reached}`)
-        : refuse("param-slot", `"${key}" is a slot for the reader's own material, which nodes reach and nothing set here does. Leave it out.${reached}`);
-    }
+    const elsewhere = placedElsewhere(chosen, node, key, info);
+    if (elsewhere !== undefined) return elsewhere;
     if (!isDrawn(chosen, node.params ?? {}, info)) {
       const gate = info.gate as ControlGate;
       return refuse("param-gated-off", `"${key}" only counts while "${gate.param}" is on, and this proposal leaves it off. Set that switch or leave "${key}" out.`);
