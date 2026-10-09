@@ -7,11 +7,13 @@
 # Jobs one worker process runs at once, per queue.
 #
 # A task waiting on an upstream goes back to the queue between two questions
-# about it, so a tasks job holds a slot only while it submits or asks once.
-# The figure for tasks bounds how many of those requests are in flight at
-# once. WaveSpeed queues a prediction past an account's concurrency instead
-# of refusing it; its per-minute submit limit answers 429, which is an
-# ordinary submit failure and spends an attempt.
+# about it, so waiting holds no slot: a tasks job holds one while it works —
+# submits, asks once, reads media, rewrites or describes before a submit,
+# stores outputs. The figure for tasks bounds how many of those run at once.
+# WaveSpeed queues a prediction past an account's concurrency instead of
+# refusing it; its per-minute submit limit answers 429, which the transport
+# replays with backoff, and a submit still refused after that is an ordinary
+# submit failure that spends an attempt.
 concurrency:
   default: 5
   per_queue:

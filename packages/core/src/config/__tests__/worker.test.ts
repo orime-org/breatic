@@ -7,7 +7,7 @@ import { getUnderstandConfig } from "@core/config/understand.js";
 import { assertKnownQueues, getWorkerConfig, workerConcurrencyFor } from "@core/config/worker.js";
 
 // A task waiting on an upstream is back on the queue between questions, so
-// the tasks queue holds a worker slot only while it asks (inner#1337).
+// waiting holds no worker slot (inner#1337).
 describe("worker concurrency", () => {
   it("gives the tasks queue the slots config/worker.yaml names for it", () => {
     expect(workerConcurrencyFor("tasks")).toBe(50);

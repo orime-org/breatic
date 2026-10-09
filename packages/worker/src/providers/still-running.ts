@@ -12,16 +12,18 @@
  */
 
 /**
- * The work is still going: the run goes back to the queue and comes back at
- * `resumeAt`, spending none of its attempts.
+ * This pickup cannot finish its work yet — the upstream work is still going,
+ * the question about it got no usable answer, or no reading place was free:
+ * the run goes back to the queue and comes back at `resumeAt`, spending none
+ * of its attempts.
  */
 export class StillRunning extends Error {
   /**
-   * Work read while it was still going.
+   * Work that cannot finish on this pickup.
    * @param resumeAt - When to ask again, in epoch milliseconds.
    */
   constructor(readonly resumeAt: number) {
-    super("the upstream work is still running");
+    super("the work cannot finish on this pickup");
     this.name = "StillRunning";
   }
 }
