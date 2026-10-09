@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Places around the body of a Document Space: the blank beside the column,
- * and the comment rail that narrows it.
+ * Helpers for the body of a Document Space: the blank beside the column, the
+ * comment rail that narrows it, and the selection the editor holds.
  */
 
 import { expect, type Page } from 'playwright/test';

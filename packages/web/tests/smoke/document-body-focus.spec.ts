@@ -211,13 +211,12 @@ test('Cmd/Ctrl+click on a divider selects it whole, the body holding or not (A22
   await page.keyboard.type('---');
   const divider = page.locator(`${EDITOR} [data-content-type="divider"]`);
   await expect(divider).toHaveCount(1);
+  const painted = page.locator(
+    `${EDITOR} [data-content-type="divider"].doc-in-selection, ${EDITOR} .doc-in-selection [data-content-type="divider"]`,
+  );
   const selected = async (): Promise<{ kind: string; painted: number }> => ({
     kind: (await bodySelection(page)).kind,
-    painted: await page.evaluate(
-      (selector) =>
-        document.querySelectorAll(`${selector} [data-content-type="divider"].doc-in-selection, ${selector} .doc-in-selection [data-content-type="divider"]`).length,
-      EDITOR,
-    ),
+    painted: await painted.count(),
   });
 
   await divider.click({ modifiers: [MOD] });
