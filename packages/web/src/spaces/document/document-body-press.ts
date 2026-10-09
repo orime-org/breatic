@@ -8,7 +8,9 @@
  * that act on it run. The entry sits on the body scroller, which is also
  * where a press on blank space leaves the focus (inner#1327): the body lets
  * go, the page keeps scrolling with the keyboard, and Space-level keys such
- * as undo still reach the document.
+ * as undo still reach the document. One more listener sits on the page: a
+ * press on the page itself while one of the body's modal menus is open only
+ * closes the menu.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -156,7 +158,8 @@ function pressWordless(view: EditorView, element: Element, event: MouseEvent): v
 
 /**
  * Attaches the body scroller: the press entry, the Space-level undo keys and
- * the scroll position a Tab back into the body restores.
+ * the scroll position a Tab back into the body restores; and, on the page
+ * itself, the press that only closes a modal menu of the body.
  * @param view - The view.
  * @param scroller - The body scroller, which takes the focus a blank press leaves.
  * @param editor - The editor, for undo and redo.

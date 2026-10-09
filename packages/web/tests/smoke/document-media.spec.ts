@@ -297,14 +297,8 @@ test('three files dropped together land in the order they came in, at the line s
 test('a pasted picture lands under the caret\'s line (A3)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('Line');
-  const png = (await pngBytes(page, 200, 120)).toString('base64');
 
-  await page.locator(EDITOR).evaluate((element, base64) => {
-    const transfer = new DataTransfer();
-    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-    transfer.items.add(new File([bytes], 'pasted.png', { type: 'image/png' }));
-    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
-  }, png);
+  await pasteFile(page, await pngBytes(page, 200, 120), 'pasted.png', 'image/png');
 
   await expect(page.locator(IMAGE)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
   expect(await types(page)).toEqual(['paragraph', 'image']);
@@ -438,13 +432,7 @@ test('the toolbar sits above a picture with lines above it (A9)', async () => {
     await page.keyboard.type(`Line ${line}`);
     await page.keyboard.press('Enter');
   }
-  const png = (await pngBytes(page, 300, 160)).toString('base64');
-  await page.locator(EDITOR).evaluate((element, base64) => {
-    const transfer = new DataTransfer();
-    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-    transfer.items.add(new File([bytes], 'mid.png', { type: 'image/png' }));
-    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
-  }, png);
+  await pasteFile(page, await pngBytes(page, 300, 160), 'mid.png', 'image/png');
   const img = page.locator(`${IMAGE} img`);
   await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
 
@@ -471,13 +459,7 @@ test('a selected picture is framed with a knob on each corner, and its handle st
   await openFreshDocument(page);
   await page.keyboard.type('Above');
   await page.keyboard.press('Enter');
-  const png = (await pngBytes(page, 300, 400)).toString('base64');
-  await page.locator(EDITOR).evaluate((element, base64) => {
-    const transfer = new DataTransfer();
-    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-    transfer.items.add(new File([bytes], 'tall.png', { type: 'image/png' }));
-    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
-  }, png);
+  await pasteFile(page, await pngBytes(page, 300, 400), 'tall.png', 'image/png');
   const img = page.locator(`${IMAGE} img`);
   await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
 
@@ -530,13 +512,7 @@ test('the document shows one bar at a time (inner#1127)', async () => {
   await page.keyboard.type('hello world, a line that runs on past the pictures');
   await page.keyboard.press('Enter');
   for (const [index, name] of ['one.png', 'two.png'].entries()) {
-    const png = (await pngBytes(page, 200, 120)).toString('base64');
-    await page.locator(EDITOR).evaluate((element, [base64, file]) => {
-      const transfer = new DataTransfer();
-      const bytes = Uint8Array.from(atob(base64!), (c) => c.charCodeAt(0));
-      transfer.items.add(new File([bytes], file!, { type: 'image/png' }));
-      element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
-    }, [png, name]);
+    await pasteFile(page, await pngBytes(page, 200, 120), name, 'image/png');
     await expect(page.locator(`${IMAGE} img`)).toHaveCount(index + 1, { timeout: UPLOAD_TIMEOUT });
   }
   const pictures = page.locator(IMAGE);
@@ -693,21 +669,31 @@ async function selectFromBelow(p: Page, block: string): Promise<void> {
 }
 
 /**
+ * Pastes a file into the body, the way the system clipboard hands one over.
+ * @param p - The page.
+ * @param bytes - The file's bytes.
+ * @param name - The file's name.
+ * @param type - Its MIME type.
+ */
+async function pasteFile(p: Page, bytes: Buffer, name: string, type: string): Promise<void> {
+  await p.locator(EDITOR).evaluate(
+    (element, [base64, fileName, mime]) => {
+      const transfer = new DataTransfer();
+      const raw = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      transfer.items.add(new File([raw], fileName, { type: mime }));
+      element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+    },
+    [bytes.toString('base64'), name, type] as const,
+  );
+}
+
+/**
  * Pastes a fresh picture under the caret's line.
  * @param p - The page.
  * @param name - The file's name.
  */
 async function pastePicture(p: Page, name: string): Promise<void> {
-  const png = (await pngBytes(p, 220, 120)).toString('base64');
-  await p.locator(EDITOR).evaluate(
-    (element, [base64, fileName]) => {
-      const transfer = new DataTransfer();
-      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-      transfer.items.add(new File([bytes], fileName, { type: 'image/png' }));
-      element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
-    },
-    [png, name] as const,
-  );
+  await pasteFile(p, await pngBytes(p, 220, 120), name, 'image/png');
 }
 
 test('Shift+click on a picture while the body is let go selects the picture and leaves the old words out (A20)', async () => {
@@ -1073,16 +1059,7 @@ for (const kind of ['image', 'video', 'audio'] as const) {
     await openFreshDocument(page);
     await page.keyboard.type('alpha');
     const file = DOWNLOADS[kind];
-    const bytes = await file.bytes(page);
-    await page.locator(EDITOR).evaluate(
-      (element, [base64, fileName, type]) => {
-        const transfer = new DataTransfer();
-        const raw = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-        transfer.items.add(new File([raw], fileName, { type }));
-        element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
-      },
-      [bytes.toString('base64'), file.name, file.mimeType] as const,
-    );
+    await pasteFile(page, await file.bytes(page), file.name, file.mimeType);
     const frame = page.locator(`${EDITOR} [data-content-type="${kind}"] [data-testid="doc-media-box"]`);
     await expect(frame.locator(kind === 'image' ? 'img' : kind)).toBeAttached({ timeout: UPLOAD_TIMEOUT });
     await expect(frame).toBeVisible();
@@ -1315,12 +1292,7 @@ test('a media block stays selected while its own controls drawn outside the body
   await page.keyboard.press('Enter');
   await page.keyboard.type('omega');
   await page.keyboard.press('ArrowUp');
-  const wav = wavBytes().toString('base64');
-  await page.locator(EDITOR).evaluate((element, base64) => {
-    const transfer = new DataTransfer();
-    transfer.items.add(new File([Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))], 'own.wav', { type: 'audio/wav' }));
-    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
-  }, wav);
+  await pasteFile(page, wavBytes(), 'own.wav', 'audio/wav');
   const audio = page.locator(AUDIO);
   await expect(audio.getByTestId('waveform')).toBeVisible({ timeout: UPLOAD_TIMEOUT });
   const selected = (): Promise<string | null> => audio.getByTestId('doc-media-box').getAttribute('data-selected');
