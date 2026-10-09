@@ -294,10 +294,14 @@ describe("POST /canvas/paste", () => {
     expect(await history(a.projectId, node)).toEqual([]);
   });
 
-  it("answers 403 to someone who cannot edit the project", async () => {
+  it("answers 404 to someone with no role and 403 to a viewer, writing nothing", async () => {
     const a = await seedEditor();
     const b = await seedEditor();
-    const res = await paste(b.cookie, a.projectId, {});
+    expect((await paste(b.cookie, a.projectId, {})).status).toBe(404);
+    await sql`INSERT INTO project_members (project_id, user_id, role, added_by) VALUES (${a.projectId}, ${b.userId}, 'viewer', ${a.userId})`;
+    const node = crypto.randomUUID();
+    const res = await paste(b.cookie, a.projectId, { history: [{ node_id: node, kind: "text", content: "x" }] });
     expect(res.status).toBe(403);
+    expect(await history(a.projectId, node)).toEqual([]);
   });
 });

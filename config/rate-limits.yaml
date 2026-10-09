@@ -57,6 +57,11 @@ ingest-url:     { max: 30,  window_seconds: 60 }
 # edits fits well inside 60/60s.
 node-history-snapshot: { max: 60,  window_seconds: 60 }
 
+# Pasting or duplicating canvas nodes (inner#1349, post-auth, user-keyed).
+# One call registers every resource a copy names and writes a history row per
+# copy; a person pastes a handful of times a minute.
+canvas-paste:   { max: 60,  window_seconds: 60 }
+
 # Reading a node's media into a text node (#2175, post-auth, user-keyed).
 # One call opens a task row per node it names and puts a model call behind it,
 # and the rows open before the credit gate so a refusal has somewhere to be

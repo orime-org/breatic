@@ -50,6 +50,7 @@ import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { UNDERSTAND_PINS } from "@breatic/domain";
 import {
   assertStorageAllowance,
+  pasteAssetsService,
   precheckCredits,
   projectService,
 } from "@server/modules";
@@ -391,6 +392,57 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
 
   return c.json({ data: { task_id: task.id, status: "pending" } }, 201);
 });
+
+const pasteAddress = z.string().url().max(2048);
+const pasteSchema = z.object({
+  project_id: z.string().uuid(),
+  space_id: z.string().uuid(),
+  urls: z.array(pasteAddress).max(1000),
+  pairs: z.array(z.object({ url: pasteAddress, cover: pasteAddress })).max(1000),
+  history: z
+    .array(
+      z.object({
+        node_id: z.string().uuid(),
+        kind: z.enum(["media", "text"]),
+        content: z.string().max(200_000),
+        coverUrl: pasteAddress.optional(),
+        width: z.number().int().nonnegative().optional(),
+        height: z.number().int().nonnegative().optional(),
+        mimeType: z.string().max(100).optional(),
+        size: z.number().int().nonnegative().optional(),
+        duration: z.number().nonnegative().optional(),
+      }),
+    )
+    .max(1000),
+});
+
+/**
+ * `POST /canvas/paste` — a paste or duplicate counts as an upload (inner#1349).
+ *
+ * Registers every resource the copy names in the project's Studio, writes each
+ * copy's history, and answers which address each old one became.
+ * @param c - Hono context with validated `pasteSchema` body.
+ * @returns `200` with `{ data: { map } }`.
+ * @throws {AppError} 403 without edit access, 507 with no storage left.
+ */
+canvas.post(
+  "/paste",
+  rateLimitFor("canvas-paste", "user"),
+  validate("json", pasteSchema),
+  async (c) => {
+    const user = c.get("user");
+    const body = c.req.valid("json");
+    await projectService.assertAccess(body.project_id, user.id, "editor");
+    const map = await pasteAssetsService.pasteAssets({
+      projectId: body.project_id,
+      userId: user.id,
+      urls: body.urls,
+      pairs: body.pairs,
+      history: body.history,
+    });
+    return c.json({ data: { map } }, 200);
+  },
+);
 
 /**
  * `POST /canvas/node-history/snapshot` — keep a copy of what a node holds.
