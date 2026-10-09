@@ -25,6 +25,7 @@ import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { refuse, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
 import {
+  aNode,
   entriesFor,
   fillsOf,
   holdingOf,
@@ -58,8 +59,8 @@ function resolveModel(node: ProposalNode, index: number): { chosen: ModelInfo } 
   const reachable = modelsForMode(node.type, mode);
   if (!reachable.available) {
     return refuse("mode-unbacked", reachable.offered.length > 0
-      ? `No model here backs "${mode}" on a ${node.type} node. It offers: ${reachable.offered.join(", ")}.`
-      : `A ${node.type} node can generate nothing right now.`);
+      ? `No model here backs "${mode}" on ${aNode(node.type)}. It offers: ${reachable.offered.join(", ")}.`
+      : `No ${node.type} model can generate right now.`);
   }
   const chosen = reachable.models.find((m) => m.name === model);
   return chosen

@@ -108,15 +108,15 @@ export function entriesFor(chosen: ModelInfo, kind: string, holding: Holding): E
  */
 function entryPhrase(entry: Entry, generation: string): string {
   const { into } = entry.way;
-  if (entry.by === "fills") return `through fills "${into}" on "${generation}", with no edge`;
-  if (entry.by === "unwired") return `unwired, with a note saying to pick it into "${into}"`;
+  if (entry.by === "fills") return `through fills "${into}" on "${generation}", with no edge and no ref`;
+  if (entry.by === "unwired") return `unwired, with a note saying to pick it into "${into}" and no ref`;
   const marks = [
     ...(entry.ref ? ["a ref @'ing it"] : []),
     ...(entry.note ? [entry.ref ? "a note saying what to do first" : "a note saying to pick it there"] : []),
   ];
   // Every edge entry but the lyrics box carries a ref or a note.
-  if (marks.length > 0) return `by an edge with into: "${into}" and ${marks.join(" and ")}`;
-  return `by an edge with into: "${into}", which landing @s into that box`;
+  if (marks.length === 0) return `by an edge with into: "${into}", which landing @s into that box, and no ref`;
+  return `by an edge with into: "${into}" and ${marks.join(" and ")}${entry.ref ? "" : " and no ref"}`;
 }
 
 /**
