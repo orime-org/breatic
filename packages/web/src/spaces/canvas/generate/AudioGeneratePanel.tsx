@@ -4,7 +4,7 @@
 import { ArrowUp, Loader2, Star, X } from 'lucide-react';
 import * as React from 'react';
 
-import type { ModelEntry, Voice } from '@breatic/shared';
+import type { GenerationTemplate, ModelEntry, Voice } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -27,6 +27,7 @@ import { ModeToggle, type ModeOption } from '@web/spaces/canvas/generate/ModeTog
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 import { NO_REFERENCE_KINDS } from '@web/spaces/canvas/generate/reference-urls';
+import { TemplateMenu } from '@web/spaces/canvas/generate/TemplateMenu';
 
 /**
  * The panel's outer surface: width, corners, border, fill, padding, spacing.
@@ -129,6 +130,10 @@ interface AudioGeneratePanelProps {
   onVoiceLoadMore: () => void;
   /** Close the panel without generating. */
   onExit: () => void;
+  /** Every model served for the node type: the template menu greys out templates it cannot run (inner#977). */
+  catalogModels: readonly ModelEntry[];
+  /** Applies a template picked from the corner menu. */
+  onPickTemplate: (template: GenerationTemplate) => void;
   /** Submit the task. */
   onExecute: () => void;
 }
@@ -178,6 +183,8 @@ interface AudioGeneratePanelProps {
  * @param root0.onVoicePick - Called with the chosen voice.
  * @param root0.onVoiceLoadMore - Called when the voice list reaches its end.
  * @param root0.onExit - Called to close the panel.
+ * @param root0.catalogModels - Every model served for the node type.
+ * @param root0.onPickTemplate - Applies a picked template.
  * @param root0.onExecute - Called to submit.
  * @returns The audio Generate panel.
  */
@@ -216,6 +223,8 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   onVoicePick,
   onVoiceLoadMore,
   onExit,
+  catalogModels,
+  onPickTemplate,
   onExecute,
 }: AudioGeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
@@ -291,7 +300,10 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
           onPickSlot={onPickSlot}
           onClearSlot={onClearSlot}
         />
-        {exitButton}
+        <div className='flex items-center gap-1.5'>
+          <TemplateMenu nodeType='audio' models={catalogModels} onPick={onPickTemplate} />
+          {exitButton}
+        </div>
       </div>
 
       <ReferenceRail

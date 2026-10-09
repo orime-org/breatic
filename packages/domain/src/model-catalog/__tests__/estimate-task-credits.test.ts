@@ -31,30 +31,30 @@ afterAll(() => {
 
 describe("estimateTaskCredits", () => {
   it("falls back to MIN_TASK_CREDIT_COST when no model is specified", async () => {
-    expect(await estimateTaskCredits(undefined, {})).toBe(MIN_TASK_CREDIT_COST);
+    expect(await estimateTaskCredits(undefined, { params: {} })).toBe(MIN_TASK_CREDIT_COST);
   });
 
   it("falls back to MIN_TASK_CREDIT_COST for an unknown model name", async () => {
-    expect(await estimateTaskCredits("no-such-model-xyz", {})).toBe(MIN_TASK_CREDIT_COST);
+    expect(await estimateTaskCredits("no-such-model-xyz", { params: {} })).toBe(MIN_TASK_CREDIT_COST);
   });
 
   it("prices the params the request carries", async () => {
     // wan-3.0 text-to-video: $0.10 a second at 1080p, 95% discount rate.
     expect(
-      await estimateTaskCredits("wan-3.0-text-to-video", { resolution: "1080p", duration: 10 }),
+      await estimateTaskCredits("wan-3.0-text-to-video", { params: { resolution: "1080p", duration: 10 } }),
     ).toBeCloseTo(190, 6);
   });
 
   it("prices the prompt a per-character model reads", async () => {
     // MiniMax Speech 2.8 HD: $0.10 per thousand characters.
     expect(
-      await estimateTaskCredits("minimax-speech-2.8-hd", {}, "x".repeat(10_000)),
+      await estimateTaskCredits("minimax-speech-2.8-hd", { params: {}, prompt: "x".repeat(10_000) }),
     ).toBeCloseTo(100, 6);
   });
 
   it("never asks for less than the floor", async () => {
     // A run priced by a source whose length the server does not know prices at zero.
-    expect(await estimateTaskCredits("dreamactor-v2", { image: "i", video: "v" })).toBe(
+    expect(await estimateTaskCredits("dreamactor-v2", { params: { image: "i", video: "v" } })).toBe(
       MIN_TASK_CREDIT_COST,
     );
   });
@@ -65,7 +65,7 @@ describe("estimateTaskCredits", () => {
     initCore(env);
     resetModelCatalog();
     try {
-      expect(await estimateTaskCredits("grok-imagine-image-v2.0-text-to-image", {})).toBeCloseTo(10, 6);
+      expect(await estimateTaskCredits("grok-imagine-image-v2.0-text-to-image", { params: {} })).toBeCloseTo(10, 6);
     } finally {
       useFullCatalog();
     }

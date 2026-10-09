@@ -109,17 +109,6 @@
       "not_found": "해당 구매를 찾을 수 없습니다.",
       "unavailable": "이 배포에서는 크레딧을 판매하지 않습니다."
     },
-    "skill": {
-      "not_found": "Skill을 찾을 수 없습니다",
-      "name_taken": "같은 이름의 Skill이 이미 있습니다",
-      "not_published": "이 Skill은 아직 게시되지 않았습니다",
-      "cannot_install_own": "자신의 Skill은 설치할 수 없습니다",
-      "already_installed": "이 Skill은 이미 설치되어 있습니다",
-      "not_available_here": "Skill ‘{skill}’은(는) 여기에서 사용할 수 없습니다",
-      "not_user_invocable": "Skill ‘{skill}’은(는) 직접 호출할 수 없습니다",
-      "not_available_on_deployment": "Skill ‘{skill}’은(는) 이 서버에서 사용할 수 없습니다",
-      "not_found_named": "Skill ‘{skill}’을(를) 찾을 수 없습니다"
-    },
     "conversation": {
       "not_found": "대화를 찾을 수 없습니다",
       "attachment_not_found": "첨부 파일을 찾을 수 없습니다",
@@ -240,6 +229,11 @@
         "lead": "가입 페이지에 아래 코드를 입력해 계정 만들기를 완료하세요.",
         "footer": "이 코드는 {minutes, plural, other {#분}} 후에 만료됩니다. 본인이 가입을 시도하지 않았다면 이 메일을 무시해도 됩니다."
       }
+    },
+    "mini_tool": {
+      "unavailable": "이 도구는 지금 사용할 수 없습니다.",
+      "invalidParam": "\"{name}\" 값은 이 도구에서 지원하지 않습니다.",
+      "foreignSource": "이 파일은 처리할 수 없습니다."
     }
   },
   "chat": {
@@ -527,7 +521,6 @@
       "focusSourceDeleted": "소재가 삭제되었습니다.",
       "focusSourceReplaced": "소재가 교체되었습니다.",
       "focusSourceBusy": "소재를 처리 중입니다.",
-      "focusSourceFailed": "소재 처리에 실패했습니다.",
       "focusSourceDeletedByPeer": "공동 작업자가 소재를 삭제했습니다.",
       "focusSourceReplacedByPeer": "공동 작업자가 소재를 교체했습니다.",
       "pickEnded": "선택이 종료되었습니다.",
@@ -648,7 +641,19 @@
         "model_mode": "영역",
         "creativity": "창의성",
         "rendering": "렌더링",
-        "style_match": "스타일 일치도"
+        "style_match": "스타일 일치도",
+        "target_megapixels": "출력 크기",
+        "target_resolution": "목표 해상도",
+        "resolution": "해상도",
+        "duration": "길이",
+        "generate_audio": "오디오 생성",
+        "enable_prompt_expansion": "프롬프트 확장",
+        "character_orientation": "방향 기준",
+        "keep_original_sound": "원본 소리 유지",
+        "motion_prompt": "동작 설명",
+        "append_duration": "늘릴 길이",
+        "ambience": "주변음",
+        "double_output": "두 가지 생성"
       },
       "paramField": {
         "speaker": "이름",
@@ -689,7 +694,9 @@
         "title": "카메라 앵글",
         "reset": "초기화",
         "loadFailed": "3D 보기를 불러오지 못했습니다. 페이지를 새로고침하면 사용할 수 있습니다"
-      }
+      },
+      "editMarks": "대괄호와 중괄호 안의 내용을 바꿔 주세요. 주황색 안내는 모델에 전달되지 않습니다.",
+      "notePrefix": "안내: "
     },
     "nodeMenu": {
       "generate": "생성",
@@ -717,7 +724,8 @@
       "hashUnavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요.",
       "storageFull": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다.",
       "rateLimited": "업로드가 너무 잦습니다. 잠시 후 다시 시도해 주세요.",
-      "failed": "업로드에 실패했습니다."
+      "failed": "업로드에 실패했습니다.",
+      "extractionFailed": "{filename}의 텍스트를 읽을 수 없습니다."
     },
     "minimap": {
       "label": "캔버스 미니맵"
@@ -791,13 +799,11 @@
         "expired": "시간 초과"
       },
       "countTip": "{status} · {count}",
-      "someFailed": "이 노드에서 완료되지 않은 작업이 있습니다.",
-      "view": "보기",
       "action": {
-        "replace": "바꾸기",
         "retry": "다시 시도",
-        "finish": "정리",
-        "clear": "지우기"
+        "finish": "읽음",
+        "clear": "읽음",
+        "view": "보기"
       },
       "elapsed": "실행 {duration}",
       "remaining": "{duration} 남음",
@@ -821,14 +827,192 @@
         "source_too_slow": "이 주소를 가져오는 데 시간이 초과되었습니다.",
         "unsupported_type": "{kind, select, image {지원하지 않는 형식입니다. 이미지는 {formats}을(를) 지원합니다.} video {지원하지 않는 형식입니다. 동영상은 {formats}을(를) 지원합니다.} audio {지원하지 않는 형식입니다. 오디오는 {formats}을(를) 지원합니다.} other {지원하지 않는 형식입니다.}}",
         "empty": "아무것도 받지 못했습니다.",
-        "internal": "저희 쪽에서 문제가 생겼습니다. 다시 시도해 주세요.",
+        "internal": "저희 쪽에서 문제가 생겼습니다.",
         "no_credits": "사용할 수 있는 크레딧이 없습니다.",
         "declined": "모델이 이 요청을 거부했습니다.",
-        "media_refused": "모델이 이 파일을 받지 않았습니다."
+        "media_refused": "모델이 이 파일을 받지 않았습니다.",
+        "tool_failed": "도구가 이 파일을 처리하지 못했습니다.",
+        "no_audio_track": "이 동영상에는 오디오 트랙이 없습니다."
+      },
+      "title": {
+        "upload": "업로드 · {name}",
+        "generate": "생성 · {name}",
+        "understand": "내용 읽기 · {name}"
       }
     },
     "panel": {
       "hostDeletedByPeer": "공동 작업자가 노드를 삭제했습니다."
+    },
+    "miniTool": {
+      "image": {
+        "remove-bg": {
+          "label": "배경 제거"
+        },
+        "upscale": {
+          "label": "업스케일"
+        },
+        "digital-human": {
+          "label": "디지털 휴먼",
+          "slot": {
+            "audio": "목소리로 쓸 오디오 노드를 선택하세요"
+          },
+          "prompt": "표정과 움직임을 입력하세요"
+        },
+        "crop": {
+          "label": "자르기"
+        },
+        "rotate": {
+          "label": "회전/뒤집기"
+        }
+      },
+      "video": {
+        "upscale": {
+          "label": "업스케일"
+        },
+        "interpolate": {
+          "label": "프레임 보간"
+        },
+        "extend": {
+          "label": "연장",
+          "prompt": "이어질 내용을 설명하세요"
+        },
+        "edit": {
+          "label": "편집",
+          "slot": {
+            "images": "참고할 이미지를 선택하세요",
+            "audios": "참고할 오디오를 선택하세요"
+          },
+          "prompt": "바꿀 내용을 설명하세요"
+        },
+        "motion": {
+          "label": "모션 전이",
+          "slot": {
+            "character": "캐릭터로 쓸 이미지를 선택하세요"
+          },
+          "prompt": "동작을 설명하세요"
+        },
+        "animate": {
+          "label": "애니메이트",
+          "slot": {
+            "character": "캐릭터로 쓸 이미지를 선택하세요"
+          },
+          "prompt": "외형과 배경을 설명하세요"
+        },
+        "crop": {
+          "label": "자르기"
+        },
+        "speed": {
+          "label": "속도 변경"
+        },
+        "cut": {
+          "label": "컷"
+        },
+        "adjust": {
+          "label": "색 보정"
+        },
+        "audio-denoise": {
+          "label": "오디오 노이즈 제거"
+        },
+        "stabilize": {
+          "label": "흔들림 보정"
+        },
+        "hdr": {
+          "label": "HDR"
+        }
+      },
+      "audio": {
+        "separate": {
+          "label": "보컬 분리"
+        },
+        "extend": {
+          "label": "연장",
+          "prompt": "이어질 소리를 설명하세요"
+        }
+      },
+      "param": {
+        "aspect": {
+          "label": "비율"
+        },
+        "rect": {
+          "label": "크기(px)"
+        },
+        "orient": {
+          "label": "방향"
+        },
+        "rate": {
+          "label": "속도"
+        },
+        "range": {
+          "label": "구간"
+        },
+        "value": {
+          "label": "색상"
+        },
+        "intensity": {
+          "label": "강도"
+        },
+        "shakiness": {
+          "label": "흔들림 정도"
+        },
+        "smoothing": {
+          "label": "부드러움"
+        },
+        "transfer": {
+          "label": "전송 특성"
+        }
+      },
+      "panel": {
+        "close": "닫기",
+        "run": "실행",
+        "free": "무료",
+        "usage": "사용량만큼 청구",
+        "slot": "{kind, select, image {이미지} audio {오디오} other {동영상}}{required, select, yes { (필수)} other {}}",
+        "clearSlot": "제거",
+        "rangeLength": "길이 {seconds}초",
+        "sourceMissing": "소재를 아직 불러오지 못했습니다. 다 불러온 뒤 다시 시도하세요.",
+        "slotTooLong": "선택한 소재의 총 길이가 {limit}초를 넘습니다.",
+        "noUsableTier": "이 이미지는 확대할 수 없습니다.",
+        "exportFailed": "파일을 만들 수 없습니다.",
+        "sourceGone": "원본 노드가 삭제되었습니다.",
+        "sourceChanged": "소재가 바뀌었습니다.",
+        "sourceChangedByPeer": "공동 작업자가 소재를 바꿨습니다.",
+        "couldNotStart": "도구를 시작하지 못했습니다. 다시 시도하세요."
+      },
+      "adjust": {
+        "exposure": "노출",
+        "highlights": "하이라이트",
+        "shadows": "그림자",
+        "contrast": "대비",
+        "saturation": "채도",
+        "vibrance": "생동감",
+        "temperature": "색온도",
+        "tint": "색조",
+        "hue": "색상",
+        "sharpness": "선명도",
+        "noiseReduction": "노이즈 감소",
+        "clarity": "명료도",
+        "vignette": "비네트",
+        "grain": "그레인",
+        "fade": "페이드"
+      }
+    },
+    "template": {
+      "title": "템플릿",
+      "empty": "템플릿 없음",
+      "unavailable": "사용할 수 없음",
+      "storyboard-grid-25": {
+        "name": "25칸 스토리보드",
+        "description": "한 이야기를 5×5로 담은 연속 장면, 영상 생성용",
+        "prompt": "[📎 캐릭터 또는 장면 참고 이미지] 를 참고로 삼아 이미지 한 장을 만들어 주세요: 정확히 5행 5열, 총 25칸의 시간 순서 스토리보드. 칸 사이는 얇은 흰 선으로 나누고, 왼쪽에서 오른쪽, 위에서 아래로 시간 순서대로 이어집니다. 스토리: {✏️ 스토리}. 모든 칸에서 인물, 의상, 장소, 조명을 참고 이미지와 똑같이 유지하세요. 칸마다 샷 크기와 카메라 앵글을 바꿔 영화 스토리보드처럼 만드세요. 글자와 번호는 넣지 마세요."
+      },
+      "costume-sheet": {
+        "name": "삼면도 캐릭터 시트",
+        "description": "정면·측면·후면 삼면도와 부분 클로즈업",
+        "prompt": "[📎 캐릭터 참고 이미지] 를 캐릭터 참고로 삼아 이미지 한 장을 만들어 주세요: 단색 밝은 회색 배경의 캐릭터 의상 설정 시트. 왼쪽에는 같은 캐릭터의 정면, 측면, 후면 전신 삼면도를 나란히 세우고, 오른쪽에는 {✏️ 손 또는 신체 일부} 클로즈업을 작게 배치하세요. 참고 이미지와 같은 사실적인 사진 스타일이며 일러스트가 아닙니다. 모든 뷰에서 얼굴, 헤어스타일, 의상, 색상, 체형을 참고 이미지와 일치시키세요. 균일한 촬영 조명. 글자는 넣지 마세요."
+      }
+    },
+    "promptMark": {
+      "reference": "@로 {label} 선택"
     }
   },
   "auth": {
@@ -1048,6 +1232,7 @@
       "description": "{count, plural, one {# Space · 클릭하여 열거나 우측 메뉴 사용} other {# Space · 클릭하여 열거나 우측 메뉴 사용}}",
       "empty": "아직 Spaces가 없습니다",
       "openAria": "{name} 열기",
+      "rowActions": "이 Space 보기, 잠금 또는 삭제",
       "status": {
         "editing": "편집 중",
         "open": "열림"
@@ -1311,10 +1496,6 @@
     "inviteSent": "초대를 보냈습니다.",
     "inviteFailed": "초대를 보낼 수 없습니다. 다시 시도해 주세요.",
     "invalidEmail": "유효한 이메일 주소를 입력해 주세요.",
-    "inviteLinkLabel": "초대 링크",
-    "copyInviteLink": "초대 링크 복사",
-    "inviteLinkCopied": "초대 링크를 복사했습니다.",
-    "inviteLinkCopyFailed": "링크를 복사할 수 없습니다.",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
@@ -1469,7 +1650,11 @@
         "archived": "보관했습니다",
         "archiveFailed": "보관하지 못했습니다",
         "restored": "복원했습니다",
-        "restoreFailed": "복원하지 못했습니다"
+        "restoreFailed": "복원하지 못했습니다",
+        "openedAt": "{time}에 열람",
+        "editedAt": "{time}에 수정",
+        "archivedAt": "{time}에 보관",
+        "neverOpened": "열지 않음"
       },
       "projects": {
         "new": "새 Project",
@@ -1629,7 +1814,18 @@
       },
       "toolbar": {
         "sortLabel": "정렬",
-        "sortValue": "최근 연 순"
+        "sortValue": "최근 연 순",
+        "sort": {
+          "opened": "최근 연 순",
+          "edited": "최근 수정 순",
+          "name": "이름",
+          "created": "생성일",
+          "archived": "보관일"
+        },
+        "view": {
+          "grid": "그리드 보기",
+          "list": "목록 보기"
+        }
       },
       "imageError": {
         "too_large": "파일이 20 MB를 넘습니다. 더 작은 이미지를 선택하세요.",
@@ -1656,6 +1852,20 @@
       "archived": {
         "emptyTitle": "보관된 Project가 없습니다",
         "emptyHint": "보관한 Project는 여기에 표시되며 언제든 복원할 수 있습니다."
+      },
+      "list": {
+        "columns": {
+          "name": "이름",
+          "opened": "최근 열람",
+          "edited": "최근 수정",
+          "created": "생성일",
+          "archived": "보관일",
+          "role": "내 역할"
+        },
+        "loadFailed": "Projects를 불러오지 못했습니다",
+        "pageFailed": "나머지 Projects를 불러오지 못했습니다",
+        "retry": "다시 시도",
+        "end": "Project {count}개"
       }
     },
     "rail": {

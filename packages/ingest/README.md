@@ -28,8 +28,11 @@ is decided in exactly one place.
 
 **Docker has to be running on this machine.** The Worker starts a container to
 read an object's media numbers and cut a cover frame, and its image is built
-from the Dockerfile here — locally for `wrangler dev`, and again for a deploy,
-which then pushes it to Cloudflare's registry. Without Docker, `wrangler dev`
+from the Dockerfile here for `wrangler dev` or direct source deployment.
+Official release CI builds and publishes `breatic-ingest-media:<product-tag>`
+to GHCR. The production deployment tools download its immutable digest from
+the product Release manifest, bundle the image, and later push that same image
+to Cloudflare’s registry without rebuilding. See [versioned releases](../../self-host/RELEASE.md). Without Docker, `wrangler dev`
 says which of the two is missing (the CLI, or the daemon) and exits;
 `--enable-containers=false` starts it anyway, and uploads through it carry no
 media numbers and no cover.

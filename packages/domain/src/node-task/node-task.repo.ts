@@ -14,6 +14,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { nodeHistory, nodeTasks } from "@breatic/core";
+import type { NodeTaskAction } from "@breatic/shared";
 
 /** The four states a task can be in, and the four numbers the node shows. */
 export type NodeTaskStatus = "running" | "done" | "failed" | "expired";
@@ -33,6 +34,7 @@ export interface NodeTaskRow {
   spaceId: string;
   nodeId: string;
   kind: string;
+  action: NodeTaskAction;
   status: NodeTaskStatus;
   startedByUserId: string;
   startedAt: Date;
@@ -73,12 +75,37 @@ export interface NodeTaskListRow extends NodeTaskRow {
 }
 
 /**
+ * A stored row as the reads hand it out.
+ * @param row - The row as selected.
+ * @returns The fields every read shares.
+ */
+function rowOf(row: typeof nodeTasks.$inferSelect): NodeTaskRow {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    spaceId: row.spaceId,
+    nodeId: row.nodeId,
+    kind: row.kind,
+    action: row.action as NodeTaskAction,
+    status: row.status as NodeTaskStatus,
+    startedByUserId: row.startedByUserId,
+    startedAt: row.startedAt,
+    settledAt: row.settledAt,
+    budgetMs: row.budgetMs,
+    label: row.label,
+    errorMessage: row.errorMessage,
+    nodeHistoryId: row.nodeHistoryId,
+  };
+}
+
+/**
  * Open a task in `running`.
  * @param data - Everything the row needs at birth.
  * @param data.projectId - Owning project.
  * @param data.spaceId - The space, so an event can name the document.
  * @param data.nodeId - The node this task runs on.
  * @param data.kind - `upload` or `generation`.
+ * @param data.action - What the row's first line names.
  * @param data.startedByUserId - Who started it.
  * @param data.budgetMs - The conservative allowance the timer is set from.
  * @param data.label - Filename or model name, what the user reads.
@@ -91,6 +118,7 @@ export async function insertRunning(data: {
   spaceId: string;
   nodeId: string;
   kind: string;
+  action: NodeTaskAction;
   startedByUserId: string;
   budgetMs: number;
   label: string;
@@ -228,22 +256,7 @@ export async function findById(taskId: string): Promise<
     .limit(1);
   const row = rows[0];
   if (row === undefined) return null;
-  return {
-    id: row.id,
-    projectId: row.projectId,
-    spaceId: row.spaceId,
-    nodeId: row.nodeId,
-    kind: row.kind,
-    status: row.status as NodeTaskStatus,
-    startedByUserId: row.startedByUserId,
-    startedAt: row.startedAt,
-    settledAt: row.settledAt,
-    budgetMs: row.budgetMs,
-    label: row.label,
-    errorMessage: row.errorMessage,
-    nodeHistoryId: row.nodeHistoryId,
-    deletedAt: row.deletedAt,
-  };
+  return { ...rowOf(row), deletedAt: row.deletedAt };
 }
 
 /**
@@ -264,21 +277,24 @@ export async function findByStorageKey(
     .limit(1);
   const row = rows[0];
   if (row === undefined) return null;
-  return {
-    id: row.id,
-    projectId: row.projectId,
-    spaceId: row.spaceId,
-    nodeId: row.nodeId,
-    kind: row.kind,
-    status: row.status as NodeTaskStatus,
-    startedByUserId: row.startedByUserId,
-    startedAt: row.startedAt,
-    settledAt: row.settledAt,
-    budgetMs: row.budgetMs,
-    label: row.label,
-    errorMessage: row.errorMessage,
-    nodeHistoryId: row.nodeHistoryId,
-  };
+  return rowOf(row);
+}
+
+/**
+ * When a job's time runs out: the earliest end any of its rows allows.
+ *
+ * Every row of one run opens with the same budget at nearly the same moment,
+ * and the earliest is the one the harvest judges first.
+ * @param taskId - The job every row of that run points at.
+ * @returns The epoch milliseconds, or null when the job opened no row.
+ */
+export async function deadlineFor(taskId: string): Promise<number | null> {
+  const rows = await db
+    .select({ startedAt: nodeTasks.startedAt, budgetMs: nodeTasks.budgetMs })
+    .from(nodeTasks)
+    .where(eq(nodeTasks.taskId, taskId));
+  if (rows.length === 0) return null;
+  return Math.min(...rows.map((row) => row.startedAt.getTime() + row.budgetMs));
 }
 
 /**
@@ -301,21 +317,7 @@ export async function findByTaskAndNode(
     .limit(1);
   const row = rows[0];
   if (row === undefined) return null;
-  return {
-    id: row.id,
-    projectId: row.projectId,
-    spaceId: row.spaceId,
-    nodeId: row.nodeId,
-    kind: row.kind,
-    status: row.status as NodeTaskStatus,
-    startedByUserId: row.startedByUserId,
-    startedAt: row.startedAt,
-    settledAt: row.settledAt,
-    budgetMs: row.budgetMs,
-    label: row.label,
-    errorMessage: row.errorMessage,
-    nodeHistoryId: row.nodeHistoryId,
-  };
+  return rowOf(row);
 }
 
 /**
@@ -384,19 +386,7 @@ export async function listLive(
     .orderBy(sql`${nodeTasks.startedAt} DESC`);
 
   return rows.map(({ task, history }) => ({
-    id: task.id,
-    projectId: task.projectId,
-    spaceId: task.spaceId,
-    nodeId: task.nodeId,
-    kind: task.kind,
-    status: task.status as NodeTaskStatus,
-    startedByUserId: task.startedByUserId,
-    startedAt: task.startedAt,
-    settledAt: task.settledAt,
-    budgetMs: task.budgetMs,
-    label: task.label,
-    errorMessage: task.errorMessage,
-    nodeHistoryId: task.nodeHistoryId,
+    ...rowOf(task),
     content: history?.content ?? null,
     coverUrl: history?.thumbnailUrl ?? null,
     mediaWidth: history?.mediaWidth ?? null,

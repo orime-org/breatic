@@ -5,12 +5,15 @@ import * as React from 'react';
 import { Play, Pause, Volume2, VolumeX, Maximize } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
+import { Skeleton } from '@web/components/ui/skeleton';
 import { Slider } from '@web/components/ui/slider';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { usePreviewSrc, usePreviewWidth } from '@web/lib/preview-src';
+import { cn } from '@web/lib/utils';
 import { formatSeconds } from '@web/spaces/canvas/lib/duration';
 import type { NodeResolution } from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
 import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/useMediaPlayer';
@@ -23,6 +26,14 @@ interface MediaPlayerProps {
   src: string;
   /** Poster image (video only). */
   poster?: string;
+  /** Show the poster's original, not its preview: the canvas has zoomed this node past it. */
+  fullPoster?: boolean;
+  /**
+   * The video's own size, when the node knows it (inner#1320). The box is
+   * reserved from it before anything loads, and the skeleton covers it until
+   * the poster or the first frame arrives.
+   */
+  size?: { width: number; height: number };
   /**
    * The running time the ledger measured when this file was stored, if any.
    * It is on the node before the media is fetched, so the scrubber reads the
@@ -84,6 +95,8 @@ const BUTTON_SIZE = 'h-[var(--btn-inline)] w-[var(--btn-inline)]';
  * @param root0.modality - `'audio'` or `'video'`.
  * @param root0.src - Media source URL.
  * @param root0.poster - Poster image (video only).
+ * @param root0.fullPoster - Show the poster's original, not its preview.
+ * @param root0.size - The video's own size, which reserves the box.
  * @param root0.duration - The running time the ledger measured, if any.
  * @param root0.variant - `'full'` (node player, default) or `'preview'` (hover preview: no volume / fullscreen).
  * @param root0.onDimensions - Reports the video's intrinsic pixel size on metadata load (video only).
@@ -94,6 +107,8 @@ export function MediaPlayer({
   modality,
   src,
   poster,
+  fullPoster = false,
+  size,
   duration,
   onDimensions,
   variant = 'full',
@@ -102,6 +117,14 @@ export function MediaPlayer({
   const ref = React.useRef<HTMLMediaElement>(null);
   const p = useMediaPlayer(ref, duration);
   const isVideo = modality === 'video';
+  // A poster has no error event of its own, so the cover's preview is tried
+  // off-screen and the original stands in when it is missing (inner#1320).
+  const shownPoster = usePreviewSrc(poster, { probe: true, enabled: !fullPoster }).src ?? undefined;
+  // The poster's preview has loaded once its width is recorded; the video's
+  // own data ends the wait for a poster that has none.
+  const posterLoaded = usePreviewWidth(poster) !== null;
+  const [frameFor, setFrameFor] = React.useState<string | null>(null);
+  const loading = size !== undefined && !posterLoaded && frameFor !== src;
   // #1622: the hover-preview variant drops volume (a portaled Popover) and
   // fullscreen so it can live inside an auto-close HoverCard.
   const showVolume = variant !== 'preview';
@@ -197,21 +220,31 @@ export function MediaPlayer({
         <video
           ref={ref as React.RefObject<HTMLVideoElement>}
           src={src}
-          poster={poster}
+          poster={shownPoster}
           playsInline
           // Explicit contract — the spec leaves the missing-value default to
           // the UA. Metadata covers the duration display + dimension badge
           // without downloading the full file per node (#1772).
           preload='metadata'
           data-testid='media-element'
-          className='block w-full'
+          width={size?.width}
+          height={size?.height}
+          className={cn('block w-full', size !== undefined && 'h-auto')}
+          onLoadedData={() => setFrameFor(src)}
           onLoadedMetadata={(e) => {
+            setFrameFor(src);
             const v = e.currentTarget;
             if (v.videoWidth > 0 && v.videoHeight > 0) {
               onDimensions?.({ width: v.videoWidth, height: v.videoHeight });
             }
           }}
         />
+        {loading ? (
+          <Skeleton
+            data-testid='media-skeleton'
+            className='pointer-events-none absolute inset-0 rounded-none'
+          />
+        ) : null}
         <div
           data-testid='controls'
           inert={controlsHidden}

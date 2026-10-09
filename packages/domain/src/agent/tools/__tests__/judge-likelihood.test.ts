@@ -178,7 +178,7 @@ describe("judge_likelihood is in the agent's hands", () => {
 
   it("is left out of a deployment with no key", () => {
     apiKey = undefined;
-    const config = buildAgentConfig({ basePrompt: "base", interactive: true });
+    const config = buildAgentConfig({ basePrompt: "base" });
     expect(Object.keys(config.tools)).not.toContain(JUDGE_LIKELIHOOD);
   });
 

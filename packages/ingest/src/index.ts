@@ -24,14 +24,18 @@ import {
   canonicalMediaType,
   isUploadableMediaType,
   hasCoverFrame,
+  previewKeyFor,
   INGEST_FAILURE_HEADER,
   type IngestFailureCode,
   type SessionTokenPayload,
   type MediaLimits,
+  type PreviewOutcome,
   type UploadTicketPayload,
 } from "@breatic/shared";
 import * as Sentry from "@sentry/cloudflare";
+import { fromOurBackend } from "@ingest/backend-secret.js";
 import { downloadTarget, serveDownload } from "@ingest/download.js";
+import { JOB_PATH, readJob, submitJob, type JobsEnv } from "@ingest/jobs/routes.js";
 import {
   monitoringOptions,
   noted,
@@ -40,12 +44,17 @@ import {
 } from "@ingest/error-monitoring.js";
 import { readMediaAtEdge, type MediaEnv } from "@ingest/media-read.js";
 import {
+  hasPreviewableFrame,
   mediaNumbersFor,
   type MediaMetadata,
+  type ProbeReport,
 } from "@ingest/media-metadata.js";
 import { typeCorrectedByReport } from "@ingest/stored-media.js";
 import { pngSize } from "@ingest/png-size.js";
-import { COVER_CONTENT_TYPE } from "@ingest/probe-command.js";
+import {
+  COVER_CONTENT_TYPE,
+  PREVIEW_CONTENT_TYPE,
+} from "@ingest/probe-command.js";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
 import { runWindowLeft } from "@ingest/run-window.js";
 import {
@@ -60,6 +69,7 @@ import {
 
 export { ContainerProxy } from "@cloudflare/containers";
 export { MediaContainer } from "@ingest/media-container.js";
+export { MiniToolContainerStd1, MiniToolContainerStd4 } from "@ingest/jobs/mini-tool-container.js";
 
 /**
  * `/uploads/{uploadId}/parts/{n}`. The part number is captured as digits so
@@ -80,7 +90,7 @@ const ALLOWED_METHODS = "POST, PUT, OPTIONS";
 const COMPLETE_PATH = /^\/uploads\/([^/]+)\/complete$/;
 
 /** What wrangler binds into the Worker. */
-export interface Env extends MediaEnv, MonitoringEnv {
+export interface Env extends MediaEnv, MonitoringEnv, JobsEnv {
   BUCKET: R2Bucket;
   /** Signs the ticket we verify, and authenticates what we send back. */
   INGEST_SHARED_SECRET: string;
@@ -104,6 +114,8 @@ const REQUIRED_SETTINGS = [
   "ALLOWED_ORIGINS",
   "BUCKET",
   "MEDIA",
+  "MINI_TOOL_STD1",
+  "MINI_TOOL_STD4",
 ] as const;
 
 /**
@@ -553,6 +565,40 @@ function limitsOf(sent: MediaLimits | undefined): MediaLimits | null {
   return { runDeadlineMs: run, toolTimeoutMs: tool };
 }
 
+/**
+ * Whether a stored object of this type gets a preview: a picture of its own,
+ * a video of the cover cut from it.
+ * @param contentType - What the stored bytes read as.
+ * @param coverKey - Where a cover goes, when the caller asked for one.
+ * @returns Whether to ask the container for a preview.
+ */
+function wantsPreview(contentType: string, coverKey: string | undefined): boolean {
+  if (contentType.startsWith("image/")) return true;
+  return coverKey !== undefined && hasCoverFrame(contentType);
+}
+
+/**
+ * Store a preview the container cut beside what it was cut from.
+ *
+ * Failing to store one is not the upload's failure: the page shows the
+ * original when no preview answers (inner#1320).
+ * @param env - The Worker's bindings.
+ * @param sourceKey - The key of the picture or cover it was cut from.
+ * @param bytes - The WebP.
+ * @returns Whether it was stored.
+ */
+async function storePreview(
+  env: Env,
+  sourceKey: string,
+  bytes: Uint8Array,
+): Promise<boolean> {
+  const previewKey = previewKeyFor(sourceKey);
+  const stored = await env.BUCKET.put(previewKey, bytes, {
+    httpMetadata: { contentType: PREVIEW_CONTENT_TYPE },
+  }).catch(noted("ingest_preview_store_failed", { previewKey }));
+  return stored !== null;
+}
+
 /** What one finish answers about the media it stored. */
 interface MediaAnswer {
   media: MediaMetadata;
@@ -634,6 +680,7 @@ async function measureMedia(
     // What the bytes read as decides whether to ask for a frame at all: a
     // still picture has none, and running the container for one costs a run.
     wantCover: coverKey !== undefined && hasCoverFrame(about.contentType),
+    wantPreview: wantsPreview(about.contentType, coverKey),
     limits: about.limits,
   });
   const contentType = typeCorrectedByReport(about.contentType, read.report);
@@ -642,6 +689,14 @@ async function measureMedia(
     coverKey === undefined || read.cover === null
       ? null
       : await settleCover(env, coverKey, read.cover, media, contentType);
+  if (read.preview !== null) {
+    // A video's preview is cut from its cover and named after it.
+    await storePreview(
+      env,
+      read.cover !== null && coverKey !== undefined ? coverKey : about.storageKey,
+      read.preview,
+    );
+  }
   return { media, cover, contentType };
 }
 
@@ -788,37 +843,6 @@ interface FetchBody {
 }
 
 /**
- * Whether two secrets are the same, without leaking where they diverge.
- * @param a - One secret.
- * @param b - The other.
- * @returns True when they match.
- */
-function secretsMatch(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let differing = 0;
-  for (let i = 0; i < a.length; i += 1) {
-    differing |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return differing === 0;
-}
-
-/**
- * Whether this request comes from our own backend.
- *
- * A ticket and a session token both travel to the browser, so neither says
- * anything about who is asking. The secret is the one thing only our servers
- * hold, and it is what the endpoints that must not be reachable from a page
- * ask for.
- * @param request - The request to judge.
- * @param env - The Worker's bindings.
- * @returns True when the request carries our shared secret.
- */
-function fromOurBackend(request: Request, env: Env): boolean {
-  const secret = request.headers.get("x-ingest-secret");
-  return secret !== null && secretsMatch(secret, env.INGEST_SHARED_SECRET);
-}
-
-/**
  * What this object will be stored and served as, or null when it may not be
  * stored at all.
  *
@@ -961,6 +985,7 @@ interface MediaReadBody {
   storageKey?: unknown;
   contentType?: unknown;
   limits?: MediaLimits;
+  wantPreview?: unknown;
 }
 
 /**
@@ -1001,15 +1026,50 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
   const stored = await env.BUCKET.head(storageKey);
   if (stored === null) return new Response("Not found", { status: 404 });
 
+  const askedForPreview = body?.wantPreview === true;
+  // A preview standing there is left as it is; the numbers are read either way.
+  const standing =
+    askedForPreview && (await env.BUCKET.head(previewKeyFor(storageKey))) !== null;
   const read = await readMediaAtEdge(env, {
     storageKey,
     contentType,
     wantCover: false,
+    wantPreview: askedForPreview && !standing,
     limits,
   });
-  return Response.json(
-    mediaNumbersFor(typeCorrectedByReport(contentType, read.report), read.report),
+  const numbers = mediaNumbersFor(
+    typeCorrectedByReport(contentType, read.report),
+    read.report,
   );
+  if (!askedForPreview) return Response.json(numbers);
+  return Response.json({
+    ...numbers,
+    preview: await previewOutcome(env, storageKey, standing, read),
+  });
+}
+
+/**
+ * Settle a preview a read was asked for.
+ * @param env - The Worker's bindings.
+ * @param storageKey - The object it was cut from.
+ * @param standing - Whether one already stood.
+ * @param read - What the container answered.
+ * @param read.answered - Whether a container answered at all.
+ * @param read.report - What ffprobe found.
+ * @param read.preview - The preview it cut, when it cut one.
+ * @returns What became of it: `none` only for a picture with no frame to cut
+ *   from, `failed` for one that had a frame and came back without a preview.
+ */
+async function previewOutcome(
+  env: Env,
+  storageKey: string,
+  standing: boolean,
+  read: { answered: boolean; report: ProbeReport; preview: Uint8Array | null },
+): Promise<PreviewOutcome> {
+  if (standing) return "existing";
+  if (!read.answered) return "failed";
+  if (read.preview === null) return hasPreviewableFrame(read.report) ? "failed" : "none";
+  return (await storePreview(env, storageKey, read.preview)) ? "generated" : "failed";
 }
 
 /**
@@ -1147,6 +1207,15 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "POST" && pathname === "/media") {
     return readStoredMedia(request, env);
+  }
+
+  if (request.method === "POST" && pathname === "/jobs") {
+    return submitJob(request, env);
+  }
+
+  const job = JOB_PATH.exec(pathname);
+  if (request.method === "GET" && job) {
+    return readJob(request, env, job[1] ?? "", job[2] ?? "");
   }
 
   const part = PART_PATH.exec(pathname);

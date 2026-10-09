@@ -20,11 +20,10 @@
 import { describe, it, expect } from 'vitest';
 
 import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
-import type { PickPurpose } from '@web/stores/canvas-session';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 describe('every pick says what IT is asking for (#1918)', () => {
-  const purposes = Object.keys(PICK_PURPOSE_UI) as PickPurpose[];
+  const purposes = Object.keys(PICK_PURPOSE_UI) as (keyof typeof PICK_PURPOSE_UI)[];
 
   it('gives every purpose its own banner, never a borrowed one', () => {
     // Resolving in all five catalogs (below) only proves a key exists. It
@@ -40,7 +39,7 @@ describe('every pick says what IT is asking for (#1918)', () => {
 });
 
 describe('the pick table names only banners the catalogs answer', () => {
-  const purposes = Object.keys(PICK_PURPOSE_UI) as PickPurpose[];
+  const purposes = Object.keys(PICK_PURPOSE_UI) as (keyof typeof PICK_PURPOSE_UI)[];
 
   it.each(purposes)('%s resolves in every locale', (purpose) => {
     const key = PICK_PURPOSE_UI[purpose].banner;
@@ -85,7 +84,7 @@ describe('聚焦这个挑选在表里两个面板都有触发器（#1978）', ()
   // Counted here so a single-panel purpose does not quietly gain the other
   // panel's trigger.
   it('names exactly the purposes the image and video panels share', () => {
-    const both = (Object.keys(PICK_PURPOSE_UI) as PickPurpose[]).filter((p) => {
+    const both = (Object.keys(PICK_PURPOSE_UI) as (keyof typeof PICK_PURPOSE_UI)[]).filter((p) => {
       // Widened first: each row's trigger is narrowed to the panels it names,
       // so reading a key it lacks is a type error.
       const t: Record<string, string> = PICK_PURPOSE_UI[p].trigger;

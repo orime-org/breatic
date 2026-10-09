@@ -58,6 +58,7 @@ import {
   writeSpaceEntry,
   type NewProjectActivity,
 } from "@breatic/core";
+import { recordProjectEdit } from "@collab/services/project-edit-recorder.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 import {
   withSpaceDeleteLock,
@@ -491,6 +492,7 @@ type PublishOutcome =
  *    facts — a callback can do both, and a caller that undoes earlier
  *    steps must not infer one from the other.
  * @param conn - Direct connection to the project's meta doc.
+ * @param projectId - The project a broadcast change records as edited.
  * @param logCtx - Fields for the line written when either side fails.
  * @param write - The publishing callback. Calls `mark()` right before its
  *   first write, then writes. A guard that decides the operation's answer
@@ -500,6 +502,7 @@ type PublishOutcome =
  */
 async function publishMetaChange(
   conn: MetaDirectConnection,
+  projectId: string,
   logCtx: Record<string, unknown>,
   write: (doc: Y.Doc, mark: () => void) => SpaceRpcResponse | void,
 ): Promise<PublishOutcome> {
@@ -561,6 +564,9 @@ async function publishMetaChange(
       return { kind: "failed-before-broadcast" };
     }
   }
+  // A change that reached the clients is an edit of the project, for the
+  // studio list's "last edited" sort.
+  if (wrote) recordProjectEdit(projectId);
   return decided === undefined
     ? { kind: "published" }
     : { kind: "decided", response: decided, broadcast: wrote };
@@ -684,7 +690,7 @@ async function handleCreate(
     during: "create",
   };
   try {
-    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
+    const outcome = await publishMetaChange(conn, projectId, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
       // Unreachable by any input now that the id is minted here — it would
       // take a uuid v4 collision. Kept because it costs one line and the
@@ -853,7 +859,7 @@ async function runDelete(
     // ── The broadcast ───────────────────────────────────────────────
     let snapshot: Record<string, unknown> | null = null;
     let deletedName: string | undefined;
-    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
+    const outcome = await publishMetaChange(conn, projectId, logCtx, (doc, mark) => {
       const live = doc.getMap("spaces");
       const entry = live.get(spaceId);
       // Only "is the entry still there" is re-checked here. The count is
@@ -932,7 +938,7 @@ async function handleLock(
   const logCtx = { projectId, spaceId, callerId: caller.userId, during: "lock" };
   try {
     let spaceName: string | undefined;
-    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
+    const outcome = await publishMetaChange(conn, projectId, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
       const entry = spaces.get(spaceId);
       if (!(entry instanceof Y.Map)) {
@@ -990,7 +996,7 @@ async function handleRename(
   };
   try {
     let oldName = "";
-    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
+    const outcome = await publishMetaChange(conn, projectId, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
       const entry = spaces.get(spaceId);
       if (!(entry instanceof Y.Map)) {
@@ -1174,7 +1180,7 @@ async function runRestore(
     }
 
     // ── The broadcast ───────────────────────────────────────────────
-    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
+    const outcome = await publishMetaChange(conn, projectId, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
       // Someone else restored it while the content rows were coming back.
       if (spaces.has(spaceId)) {

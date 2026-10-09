@@ -20,9 +20,9 @@ export interface MergeInput {
    * The nodes this browser is already working on, before the server has heard
    * of it. A dropped file is hashed here and its task row is opened when the
    * ticket is issued, so between the two the document carries no counts at
-   * all — and a node with no counts reads as an empty one inviting another
-   * upload, which the delete gate then lets go while the bytes are on their
-   * way. The registry is the same one the tab-close guard reads.
+   * all, and the delete gate would let the node go while the bytes are on
+   * their way. These are marked `handling`. The registry is the same one the
+   * tab-close guard reads.
    */
   locallyBusyIds: ReadonlySet<string>;
 }
@@ -149,10 +149,10 @@ export function mergeCanvasNodes(
           measured: held.measured,
         }),
     };
-    const withStatus = locallyBusyIds.has(node.id)
-      ? { ...merged, data: { ...(merged.data as object), status: 'handling' } }
+    const withHandling = locallyBusyIds.has(node.id)
+      ? { ...merged, data: { ...(merged.data as object), handling: true } }
       : merged;
-    const withHolders = attachOccupants(withStatus, occupants);
+    const withHolders = attachOccupants(withHandling, occupants);
     if (held !== undefined && sameRenderInputs(held, withHolders, sameData)) return held;
     changed = true;
     return withHolders;

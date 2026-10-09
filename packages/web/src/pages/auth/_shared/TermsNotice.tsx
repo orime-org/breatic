@@ -8,7 +8,8 @@ import { PRIVACY_URL, TERMS_URL } from '@web/lib/official-home';
 import { renderSlottedText, slotMarker } from '@web/lib/slotted-text';
 
 /** The same treatment as the card's own footer link (`AuthLink`), at this line's size. */
-const LINK_CLASS = 'font-medium text-foreground underline-offset-4 hover:underline';
+const LINK_CLASS =
+  'rounded-chrome-sm font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 /**
  * The terms line at the foot of the sign-in and sign-up cards (#302).

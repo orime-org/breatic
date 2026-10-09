@@ -21,6 +21,7 @@ import { z } from "zod";
 
 import { getAgentConfig } from "@breatic/core";
 import { CHAT_MESSAGE_MAX_CHARS, canConnect, canGenerate, t, type NodeType } from "@breatic/shared";
+import { MINI_TOOLS, type MiniToolMedium } from "@breatic/shared/mini-tools";
 
 const inputSchema = z.object({}).strict();
 
@@ -84,6 +85,27 @@ function connectionLines(): string[] {
   });
 }
 
+/** How the guide names the media a tool's node holds. */
+const MINI_TOOL_SOURCES: readonly [MiniToolMedium, string][] = [
+  ["image", "Picture"],
+  ["video", "Video"],
+  ["audio", "Sound"],
+];
+
+/**
+ * The Mini-tools list, read off the registry: each tool by the name its menu
+ * row shows, and what it is for.
+ * @returns One line per kind of node, then one per tool.
+ */
+function miniToolLines(): string[] {
+  return MINI_TOOL_SOURCES.flatMap(([source, name]) => [
+    `- ${name}:`,
+    ...MINI_TOOLS.filter((tool) => tool.source === source).map(
+      (tool) => `  - ${quoted(t(tool.labelKey))}: ${tool.guide}.`,
+    ),
+  ]);
+}
+
 /**
  * The guide, in the locale the current request pinned.
  *
@@ -134,9 +156,8 @@ export function renderProductGuide(): string {
       `${quoted(t("share.inviteSection"))}: type an address in ${quoted(t("share.invitePlaceholder"))}, pick ` +
       `${quoted(t("share.role.view"))} or ${quoted(t("share.role.edit"))} and press ` +
       `${quoted(t("share.inviteButton"))}; an address that is not one shows ${quoted(t("share.invalidEmail"))} ` +
-      `After sending, ${quoted(t("share.inviteLinkLabel"))} shows a link with a copy icon beside it. Only ` +
-      "someone who already has an account can be invited, and they join only once they accept, from their " +
-      "bell, the email or that link. Otherwise the invitation is refused with a message such as " +
+      "Only someone who already has an account can be invited, and they join only once they accept, from " +
+      "their bell or the email. Otherwise the invitation is refused with a message such as " +
       `${quoted(t("server.project.email_not_registered"))} ${quoted(t("server.project.already_member"))} or ` +
       `${quoted(t("server.project.already_invited"))} (a full project says how many collaborators its plan ` +
       "allows: the plan of the studio's admin, so only their upgrade raises it). Last is a " +
@@ -181,13 +202,14 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.drawer.title"))}: every space in the project, newest first, each with its type icon, ` +
       `name and when it was made; the one open now is marked ${quoted(t("spaces.drawer.status.editing"))} and ` +
       `others open as tabs ${quoted(t("spaces.drawer.status.open"))}. Clicking a row opens that space as a tab. ` +
-      `Hovering a row shows three icons: an eye (${quoted(t("spaces.drawer.action.view"))}), a padlock ` +
-      `(${quoted(t("spaces.drawer.action.lock"))} or ${quoted(t("spaces.drawer.action.unlock"))}) and a bin ` +
-      `(${quoted(t("spaces.drawer.action.delete"))}), which asks whether to delete the space by name, says the ` +
+      `Hovering a row shows three dots at its right end, which open a menu: ${quoted(t("spaces.drawer.action.view"))}, ` +
+      `${quoted(t("spaces.drawer.action.lock"))} (${quoted(t("spaces.drawer.action.unlock"))} on a locked space) and ` +
+      `${quoted(t("spaces.drawer.action.delete"))}, which asks whether to delete the space by name, says the ` +
       `owner can restore it (from ${quoted(t("activity.header"))}, below), with ` +
-      `${quoted(t("common.cancel"))} and ${quoted(t("spaces.drawer.action.delete"))}. The bin is greyed on a ` +
-      `locked space, hovering it saying ${quoted(t("spaces.drawer.action.deleteLocked"))}, and on the project's ` +
-      `only space, saying ${quoted(t("spaces.drawer.action.deleteLastSpace"))}. The eye switches to a space ` +
+      `${quoted(t("common.cancel"))} and ${quoted(t("spaces.drawer.action.delete"))}. ` +
+      `${quoted(t("spaces.drawer.action.delete"))} is greyed on a locked space, with ` +
+      `${quoted(t("spaces.drawer.action.deleteLocked"))} written under it, and on the project's only space, with ` +
+      `${quoted(t("spaces.drawer.action.deleteLastSpace"))}. ${quoted(t("spaces.drawer.action.view"))} switches to a space ` +
       "already open as a tab; on any other " +
       "space it opens a read-only panel that does not show the space's content yet, so open the space itself to " +
       "see it.",
@@ -335,19 +357,11 @@ export function renderProductGuide(): string {
       "sound node takes a new file of its kind; a file of another kind is refused with " +
       `${quoted(t("canvas.upload.typeMismatch"))} A text node's picker lists text, Markdown, PDF, Word and ` +
       "Excel files: plain text, PDF, .docx and Excel files give their text, which replaces what the node held. " +
-      "Any other file, an older .doc included, leaves the node showing Extraction failed: and the file's name, " +
-      "in English on every screen, in place of its words, with a red border and no button; its words cannot be " +
-      "typed into until a file that reads is put in with Upload.",
-    "An empty picture, video or sound node with a failed or expired task and nothing running shows " +
-      `${quoted(t("canvas.task.someFailed"))} and a ${quoted(t("canvas.task.view"))} button in place of its ` +
-      "content, and a red border; the button opens the failed tasks, or the expired ones when none failed. The " +
-      "box steps aside while that list is open and goes once those rows are cleared with " +
-      `${quoted(t("canvas.task.action.clear"))}; until then double-clicking does not pick a file, so use ` +
-      `${quoted(t("canvas.nodeMenu.upload"))} instead. A node that already holds something keeps showing it ` +
-      "when a later task fails, and a text node whose task failed, such as a reading made with " +
-      `${quoted(t("canvas.nodeMenu.understand"))}, does not show this box either: there the ` +
-      "failure is only in " +
-      "the column of task icons described under Generating. A picture or video node shows its width × " +
+      "Any other file, an older .doc included, leaves the node as it was, and a message names the file it " +
+      "could not read.",
+    "A running, failed or expired task changes nothing on the node, which keeps showing what it holds, or its " +
+      "empty look; what its tasks did is in the column of task icons described under Generating. A picture or " +
+      "video node shows its width × " +
       "height just outside its top-right corner. Video and sound nodes have their own play, time, volume and, " +
       "for video, full-screen controls.",
     "Every picture, video, sound and text node shows its name just above its top-left corner, after a type " +
@@ -372,7 +386,8 @@ export function renderProductGuide(): string {
       "with a blank one of that size and colour, and the X closes the panel without a change.",
     `- ${quoted(t("canvas.nodeMenu.history"))}: a panel listing what the node has held, each content once, ` +
       `whether it came from a generation, an upload or a snapshot, each marked ${quoted(t("canvas.history.typeGeneration"))}, ` +
-      `${quoted(t("canvas.history.typeUpload"))} or ${quoted(t("canvas.history.typeSnapshot"))}; the one it ` +
+      `${quoted(t("canvas.history.typeUpload"))} or ${quoted(t("canvas.history.typeSnapshot"))}, and a result a ` +
+      `mini-tool made marked with the tool's name instead; the one it ` +
       `holds now is marked ${quoted(t("canvas.history.current"))}, ${quoted(t("canvas.history.restore"))} puts ` +
       `an earlier one back, and a failed attempt shows ${quoted(t("canvas.history.failed"))}. The panel is headed ` +
       `${quoted(t("canvas.history.title"))} with the number of entries, closes with its X, and ends with ` +
@@ -384,9 +399,8 @@ export function renderProductGuide(): string {
       `its words) and shows ${quoted(t("canvas.history.snapshotKept"))}`,
     `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.download"))}, which saves the file, then ` +
       `${quoted(t("canvas.nodeMenu.understand"))}, which writes a description of what the node holds into a new ` +
-      `text node connected to it, and ${quoted(t("canvas.nodeMenu.tools"))}, which is always greyed: it is not ` +
-      `open yet. ${quoted(t("canvas.nodeMenu.download"))} and ${quoted(t("canvas.nodeMenu.understand"))} are ` +
-      "greyed while the node holds nothing or shows a failure in place of its content. A reading that cannot " +
+      `text node connected to it, and ${quoted(t("canvas.nodeMenu.tools"))}, described under Mini-tools. All three ` +
+      "are greyed while the node holds nothing. A reading that cannot " +
       `begin says ${quoted(t("canvas.understand.couldNotStart"))} A file it cannot take makes no new node and ` +
       "says why: it is larger than a reading takes, or of a type it cannot read. If the node being read is " +
       "deleted as it starts, " +
@@ -488,6 +502,17 @@ export function renderProductGuide(): string {
       "was clicked, Esc deselects the node and the panel closes with it. When the model list cannot be loaded, the panel " +
       `does not open and a message says why: ${quoted(t("canvas.generatePanel.catalogUnavailable"))}, or ` +
       `${quoted(t("canvas.generatePanel.catalogOffline"))}`,
+    `Left of the X is a button with a layout icon whose tip reads ${quoted(t("canvas.template.title"))}. It ` +
+      `opens a list under that heading of the templates for this kind of node, each a name with a line under ` +
+      `it. A picture node lists ${quoted(t("canvas.template.storyboard-grid-25.name"))} ` +
+      `(${quoted(t("canvas.template.storyboard-grid-25.description"))}) and ` +
+      `${quoted(t("canvas.template.costume-sheet.name"))} (${quoted(t("canvas.template.costume-sheet.description"))}); ` +
+      `video and sound nodes list none and show ${quoted(t("canvas.template.empty"))}. A template whose model this ` +
+      `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
+      "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
+      "template's; nothing asks first, and " +
+      `the message ${quoted(t("canvas.generatePanel.editMarks"))} appears. Its marks work the way a ` +
+      "proposal's do (see below): the reader @s the pictures it asks for by hand, and can change anything after.",
     "Fill in what the panel asks for, then press the round button with an upward arrow at the right end of the " +
       "panel's bottom row. Usually that is the prompt; some modes also need a source slot filled, a voice or " +
       "speakers picked, or a connected node mentioned in the prompt (see Mentions). If something is missing, " +
@@ -513,20 +538,22 @@ export function renderProductGuide(): string {
       "To get another, open the panel again and press the arrow: it can start while an earlier task is still " +
       "running, each finished result replaces what the node holds in turn, and the earlier ones stay in its " +
       `${quoted(t("canvas.nodeMenu.history"))}.`,
-    "A small column of icons appears just past the node's right edge, level with its top, one icon for each " +
+    "The node itself shows no task state; a small column of icons appears just past the node's right edge, " +
+      "level with its top, one icon for each " +
       "state that has tasks, uploads included: a spinning circle (running), a circle with a tick (done), a circle " +
       "with an X (failed), a clock (expired). Hovering one shows how many; clicking it opens a list headed " +
       `${quoted(t("canvas.task.status.running"))}, ${quoted(t("canvas.task.status.done"))}, ` +
       `${quoted(t("canvas.task.status.failed"))} or ${quoted(t("canvas.task.status.expired"))}, each row saying ` +
       "when it started or ended; the list closes with its X. Zoomed far out, only the spinning icon remains. A running task shows how long " +
       "it has run and has left; an expired one says " +
-      `${quoted(t("canvas.task.expired"))} (${quoted(t("canvas.task.lateResult"))} when a result came late); a ` +
-      `done one offers ${quoted(t("canvas.task.action.replace"))}, which puts its result on the node, and ` +
-      `${quoted(t("canvas.task.action.finish"))}; a failed one says why and offers ` +
-      `${quoted(t("canvas.task.action.retry"))} for an upload still at hand, and ` +
-      `${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
-      `${quoted(t("canvas.task.action.replace"))} when a late result came, and ` +
-      `${quoted(t("canvas.task.action.clear"))}.`,
+      `${quoted(t("canvas.task.expired"))} (${quoted(t("canvas.task.lateResult"))} when a result came late). ` +
+      "Each row first says what the task was doing: an upload with the file's name, a generation or a reading " +
+      "with the model's name, or the tool's name. A done row offers " +
+      `${quoted(t("canvas.task.action.finish"))}, which takes the row away (its result is already on the ` +
+      `node); a failed one says why and offers ${quoted(t("canvas.task.action.retry"))} for an upload still at ` +
+      `hand, and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
+      `${quoted(t("canvas.task.action.view"))} when a late result came, which opens the node's history at that ` +
+      `result so you can restore it, and ${quoted(t("canvas.task.action.clear"))}.`,
     "",
     "## Inside the generation panel",
     "The top row holds the tool buttons, each an icon over its name, with an X at the far right that closes the " +
@@ -722,6 +749,30 @@ export function renderProductGuide(): string {
       "at once from the box on screen, and from another mode's prompt or a shot not on screen the next time " +
       "that box is shown.",
     "",
+    "## Mini-tools",
+    `Right-click a picture, video or sound node and point at ${quoted(t("canvas.nodeMenu.tools"))}: a list opens to ` +
+      "its right with every tool for that kind of node, each an icon and a name. Text, 3D and web nodes, groups and " +
+      "notes have no such row. The tools are:",
+    ...miniToolLines(),
+    "Choosing a tool opens its panel under the node, in the place the generation panel opens; the two never show " +
+      "together. The panel is headed with the tool's name and holds that tool's settings, a box to pick a second " +
+      "piece of media from the canvas when the tool needs one (picking works as in the generation panel, and a " +
+      "required one must be filled before the arrow works; a small X on a filled box empties it), and for some " +
+      "tools a text box. A crop shows a box with " +
+      "eight handles on the node and takes a ratio and a size in pixels in the panel; rotating turns and flips the " +
+      `picture on the node as you press. ${quoted(t("canvas.miniTool.image.upscale.label"))} for a picture offers ` +
+      `three output sizes, 2K, 4K and 8K, each showing the pixel size it comes to on that picture (its long edge ` +
+      "becomes 2048, 4096 or 8192); a size no larger than the picture, or past what the model makes, is greyed out, " +
+      `and when none can be used pressing the arrow says ${quoted(t("canvas.miniTool.panel.noUsableTier"))} Below the ` +
+      `sizes, ${quoted(t("canvas.generatePanel.param.creativity"))} runs from staying close to the picture to adding ` +
+      "detail of its own. The bottom line says what it costs: crop and rotate are free, the video " +
+      "tools that work on the file are billed by how long they run, and the others show an estimate. The X, Esc or " +
+      "a click on empty canvas closes the panel. Pressing the arrow puts the result in new nodes to the right of the " +
+      "source, joined to it by a line and named after it (such as CROP- followed by its name); one undo takes them " +
+      "all away, and the source stays as it was. What the run did shows in the new node's column of task icons and " +
+      "its task list, the same as a generation. If the node's picture or video changes while the panel is open, " +
+      "the crop, range and turns go back to their start.",
+    "",
     "## Focus crops",
     `In a picture or video panel, ${quoted(t("canvas.generatePanel.focus"))} takes a region of a picture or ` +
       "video node as a reference: press it, click a picture or video node that holds something and is not still " +
@@ -732,7 +783,7 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.focusConfirm"))}, the crop joins the strip above the prompt as a chip ` +
       "with a crop icon before the source node's name (a spinner shows while it uploads); if it cannot be made, " +
       `a message says so, such as ${quoted(t("canvas.generatePanel.focusExportFailed"))} If the source node ` +
-      "is replaced, starts processing, fails or is deleted while you crop it, the bar under it closes and a " +
+      "is replaced, starts processing or is deleted while you crop it, the bar under it closes and a " +
       `message says what happened, such as ${quoted(t("canvas.generatePanel.focusSourceDeleted"))} Picking goes ` +
       "on: click a source node again. If the picture changed just as you pressed " +
       `${quoted(t("canvas.generatePanel.focusConfirm"))}, only the box is cleared, with ` +
@@ -817,23 +868,30 @@ export function renderProductGuide(): string {
       "shots, each with its words and seconds written, and its panel opens on them. The prompt goes into the " +
       "proposal's mode only, so switching mode shows that mode's own box. Where the model has no prompt box, a picture or video " +
       `panel shows ${quoted(t("canvas.generatePanel.promptNotUsed"))} in place of the box, and a sound panel ` +
-      "still shows a box that holds only the proposal's bracketed spots, if any; nothing typed there is sent. " +
+      "still shows an empty box; nothing typed there is sent. The card lists the proposal's marks for that node. " +
       "The reader generates the nodes in the order the card's arrows run, and waits for each to show its result " +
       "before generating the node it feeds: a node still generating lends nothing, or its previous result, and " +
       "where that source is optional the run goes ahead without it.",
-    "Spots left for the reader are in square brackets, in a prompt, a shot or a finished text node's words. A ✏️ spot " +
-      "is a phrase to replace with their own words, or a setting to pick in the panel. A 📎 spot is material only " +
-      "the reader has; it usually goes in an empty node the proposal placed, which they double-click to pick a " +
-      "file. Each spot's note is also a line on the card; where the panel shows no prompt box, that line is the " +
-      "only place the spot appears. Whatever is left in a prompt is sent as it is, brackets included: once a spot " +
-      "is done -- the words replaced, the setting picked, the file in its node -- the reader deletes its bracket " +
-      "from the prompt or shot.",
+    "A prompt or shot from a proposal or a template carries three kinds of mark. A 📎 mark in square brackets " +
+      "asks the reader to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
+      "their own file in (double-click it to pick one), a generated result, or a text node -- then delete the " +
+      "bracket. A ✏️ mark in braces is words only the reader can write; they replace it with their own. An orange " +
+      `note, starting ${quoted(t("canvas.generatePanel.notePrefix").trim())}, on a line of its own at the top of the box says how to operate the panel, such as which slot to pick ` +
+      "a node into; it is never sent to the model, and they can delete it. Each mark is also a line on the card; " +
+      "where the panel shows no prompt box, the card is the only place it appears. Read back as text, as in an " +
+      "attached node's prompt, a note is (💡 …) on a line of its own and is not sent, a 📎 mark is [📎 …] and a " +
+      "✏️ mark {✏️ …}. Square-bracket and brace marks " +
+      `left in a prompt are sent as they are. When a placed node that has a prompt box carries marks, the message ${quoted(t("canvas.generatePanel.editMarks"))} ` +
+      "appears; nothing checks whether they were done.",
     "How work reaches a node depends on where it goes:",
-    "- Into the reference list: the prompt, or a shot, mentions it where the proposal points at it, and a 📎 spot already " +
-      "mentions its empty node.",
-    "- Into one of the mode's source slots: it is not mentioned. The reader's own material still has its 📎 " +
-      "note on the card; a generated result has no line. Once that node holds its file or its generated result, " +
-      "the reader opens the panel of the node it feeds, presses that slot's button and clicks the node.",
+    "- Into the reference list: the reader @s it in the prompt or a shot where a 📎 mark asks for it. Nothing " +
+      "is @'d for them, and a node wired in that is not @'d is not used.",
+    "- Into one of the mode's source slots: it is not @'d; an orange note says which slot to pick it into, " +
+      "and a required slot left empty stops the run. Once that node holds " +
+      "its file or its generated result, the reader opens the panel of the node it feeds, presses that slot's " +
+      "button and clicks the node.",
+    "- Into a song model's lyrics box: a text node the reader @s in the lyrics box, as an orange note asks; it is not " +
+      "@'d in the style prompt above it.",
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +

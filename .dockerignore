@@ -62,7 +62,7 @@ packages/*/wrangler.toml
 .git
 .gitignore
 
-# Docs (not needed at runtime, but keep skills/ and agents/ .md files)
+# Docs (not needed at runtime)
 README.md
 CLAUDE.md
 CONTRIBUTING.md

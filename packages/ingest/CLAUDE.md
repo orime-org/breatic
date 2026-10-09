@@ -6,8 +6,8 @@
 **部署在 Cloudflare 的 ingest Worker**。浏览器把文件字节直接发给它，它写进 R2、算出内容 hash，**把算出来的东西放在收尾那次请求的响应里答回去**。**它不主动请求任何地址，也不持有我们任何一个端点的地址**（#206）——收尾由我们自己的 server 发起，所以它答给谁、后果落在哪，全由发起方决定。**它是这个仓库里唯一跑在 workerd 上的包**，而它有两个运行时：`src/` 是 Worker 本身，跑在 workerd 上，没有 `node:*`、没有数据库、没有 Redis；`container/` 是它起的媒体容器（`Dockerfile` 里的 alpine + Node 24），跑 ffmpeg，用 `node:*` 起 HTTP 服务并 spawn 进程。**写 `node:*` 只在 `container/` 里成立**。
 
 ## 分层(包内)
-- `src/index.ts` = fetch handler，六个端点的路由 + CORS。前四个是上传那条链路（`POST /uploads` · `POST /fetch` · `PUT` 分片 · `POST` 收尾）；第五个 `GET|HEAD /download/{key}` 是读，它把 R2 上的对象带着 `Content-Disposition: attachment` 答出去，这是浏览器把跨域响应收进自己下载列表的唯一途径（#2108）；第六个 `POST /media` 读一个已经落盘的对象的宽高和时长，给收尾时跳过了这一步的项目封面和 Studio 头像补读（#299）。收尾那次请求带 `deferMediaRead: true` 时不起容器
-- **本包只绑一个 Durable Object：媒体容器 `MediaContainer`**（容器只能经 DO 到达），按 storage key 一实例、答完即闲置停机。**上传这条路本身零常驻状态**：一次上传要记住的两样东西（R2 的 `uploadId`、每片的 etag）由发起方持有、每次请求带回来，跟 Cloudflare 自己的多段上传示例一致（「the state of the multipart upload is tracked in the client application which sends requests to the Worker」）。判上传死活的也不在这儿：任务行的时限由 server 在有人读节点任务列表时算（#186 设计 §4.6）
+- `src/index.ts` = fetch handler，八个端点的路由 + CORS。前四个是上传那条链路（`POST /uploads` · `POST /fetch` · `PUT` 分片 · `POST` 收尾）；第五个 `GET|HEAD /download/{key}` 是读，它把 R2 上的对象带着 `Content-Disposition: attachment` 答出去，这是浏览器把跨域响应收进自己下载列表的唯一途径（#2108）；第六个 `POST /media` 读一个已经落盘的对象的宽高和时长，给收尾时跳过了这一步的项目封面和 Studio 头像补读（#299）。容器还给图片和视频封面写一张缩略图（`<key>.preview.webp`，最宽 576，inner#1320）：收尾时 Worker 按落盘类型自己决定要不要，`POST /media` 由调用方带 `wantPreview: true` 要，缩略图已经在的不再写。所以 `/media` 也可能写一个对象。收尾那次请求带 `deferMediaRead: true` 时不起容器；第七、八个是容器类 mini-tool 的作业：`POST /jobs` 提交、`GET /jobs/{class}/{id}` 查询，只有我们的 worker 调（`src/jobs/`）
+- **本包绑三个 Durable Object 类，都是容器**（容器只能经 DO 到达）：媒体容器 `MediaContainer`，按 storage key 一实例、答完即闲置停机；mini-tool 容器 `MiniToolContainerStd1` / `MiniToolContainerStd4`（`src/jobs/mini-tool-container.ts`，同一个镜像，按实例规格分两类，`config/mini-tools.yaml` 定每个操作用哪一类），按作业 id 一实例，作业状态存在 DO 里、到截止时间销毁容器。容器不能直接上网：它整份下载源对象、写回产物、报告结果，都经 Worker 的出站处理器，只放行作业点名的 key（`container/mini-tool-run.ts`）。容器里的服务把 ffmpeg 和 vips 当单独进程调用，它自己的进程只加载 Node 内置模块和本仓的代码——本包的模块和 `@breatic/shared` 的几个模块，都要逐个列进 `container/tsconfig.json`（`breatic/media-container-own-code-only` 守着，vips 链接的两个 GPL 库因此不进我们的进程，见 `THIRD-PARTY.md`）。**上传这条路本身零常驻状态**：一次上传要记住的两样东西（R2 的 `uploadId`、每片的 etag）由发起方持有、每次请求带回来，跟 Cloudflare 自己的多段上传示例一致（「the state of the multipart upload is tracked in the client application which sends requests to the Worker」）。判上传死活的也不在这儿：任务行的时限由 server 在有人读节点任务列表时算（#186 设计 §4.6）
 - `src/stored-object.ts` = Worker 对 R2 上那个对象做的两件事：拼装、算哈希
 - `src/part-layout.ts` = 一片合不合票据签的布局。写 R2 之前判一次（唯一拦得住字节的时刻），收尾时对交回的清单逐项再判一次，然后数片数够不够
 - 本包内部用 `@ingest/*` 前缀
@@ -28,6 +28,8 @@
 
 **手上已经有一份 `wrangler.toml` 的，要补两行**（2026-09-13 起）：容器镜像改成从仓库根构建，`Dockerfile` 里每一条 COPY 的源都按仓库根写。构建上下文由 `image_build_context` 定，wrangler 相对这个配置文件所在目录解析它、不填时取 Dockerfile 自己那个目录（`wrangler-dist/cli.js:36584-36586`）。所以**两个 `[[containers]]` 块各补一行 `image_build_context = "../.."`** —— `[[containers]]`（`wrangler dev` 用）和 `[[env.production.containers]]`（`deploy:worker` 用）。**`containers` 不继承进 environment**（`cli.js:35941` 注册成 `notInheritable`），只补顶层那个，`wrangler dev` 正常而部署会在第一条 COPY 上失败。模板里两个块都已经有了，照抄即可；漏了当场报错、补上就好。
 
+**两个 `[[containers]]` 块还要各补一行 `instance_type = "basic"`**（1/4 vCPU、1 GiB，inner#1320）：缩略图在默认的 lite（1/16 vCPU、256 MiB）上也做得完，但 1080×64800 的 PNG 本机模拟要约 22 秒，basic 约 5 秒（inner#1339）。模板里两个块都已经有了。
+
 **接入错误上报之后，顶层还要补一行 `compatibility_flags = ["nodejs_compat"]`**，放在 `compatibility_date` 旁边，它会继承进 `[env.production]`。Sentry SDK 不管填没填 DSN 都会被 import，缺这个 flag 时打包只出警告，运行时 workerd 拒绝加载 Worker：`wrangler dev` 实测报 `No such module "node:async_hooks"` 起不来。
 
 **一个变量只在一个文件里定义，没有覆盖**：`wrangler.toml` 装非密钥（桶名、允许的来源、错误上报的 `SENTRY_DSN` 与 `SENTRY_ENVIRONMENT`——DSN 是公开值），`.dev.vars` 只装 `INGEST_SHARED_SECRET`，两边没有同名的东西。**`.dev.vars` 只管本机那个 `wrangler dev`；部署上的那份密钥走 `npx wrangler secret put INGEST_SHARED_SECRET --env production`**，它存在 Cloudflare 上、不落任何文件，设过之后 `wrangler secret list --env production` 只列得出名字。部署输出的绑定表里看不到它是正常的，那张表只列 vars 和 bindings —— 而缺了它每个请求都答 500，所以「表里没有」和「没设」得靠 `secret list` 分辨。**这里不配我们任何一个端点的地址**——Worker 不请求它们。环境的差别只是同一组变量的不同取值——顶层给 `wrangler dev`，`[env.production]` 给部署。
@@ -41,7 +43,7 @@
 细节见 [README.md](./README.md)。
 
 ## 关键路径
-它站在上传链路上，而上传是**用户看得见的**。上传那四个端点的每一次拒绝都要有明确状态码：ticket 或令牌验不过 401，分片长度不合或分片没读完 400，交回的清单还差片数 409，写 R2 或算 hash 没成 502。**收尾、`POST /fetch` 和 `POST /media` 都要共享密钥**（不符 401）——浏览器拿不到它，所以这三步只可能由我们自己的服务发起；`POST /fetch` 另有一条：源地址不是 https 400；`POST /media` 请求体不合 400，key 没有对应对象 404。**「这个 key 有没有人在收尾」不在这儿判**——那道许可在我们的账本上，由发起收尾的 server 在调它之前取（#206）。
+它站在上传链路上，而上传是**用户看得见的**。上传那四个端点的每一次拒绝都要有明确状态码：ticket 或令牌验不过 401，分片长度不合或分片没读完 400，交回的清单还差片数 409，写 R2 或算 hash 没成 502。**收尾、`POST /fetch`、`POST /media` 和两个 `/jobs` 端点都要共享密钥**（不符 401）——浏览器拿不到它，所以这几步只可能由我们自己的服务发起；`POST /fetch` 另有一条：源地址不是 https 400；`POST /media` 请求体不合 400，key 没有对应对象 404。**「这个 key 有没有人在收尾」不在这儿判**——那道许可在我们的账本上，由发起收尾的 server 在调它之前取（#206）。
 
 **`/download/{key}` 是读，拒绝的形状跟上传那四条不同**：key 没有对应对象 404，方法不是 `GET`/`HEAD` 405 并带 `Allow`。R2 自己评四个条件头，它扣下 body 时这里按 RFC 9110 §13.2.2 判这是 412 还是 304 —— 判据要跟 R2 用的那一套一致（它只在存储时刻**早于**命名时刻时才服务），否则一个被它拒绝的请求会被答成「你手上那份是新的」。**不需要共享密钥**：同一个桶本来就在公开域名上答这些对象，这条路径只是给它们加一个头。
 

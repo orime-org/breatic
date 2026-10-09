@@ -42,8 +42,8 @@ function edge(
 describe('deriveReferences — reference rail derived from incoming edges (connection = reference)', () => {
   it('derives one reference from a single incoming edge, with the source node live name + thumbnail', () => {
     const nodes: CanvasNodeView[] = [
-      node('img1', { kind: 'image', name: 'Hero', status: 'idle', content: 'https://cdn/hero.png' }),
-      node('me', { kind: 'image', name: 'Target', status: 'idle' }),
+      node('img1', { kind: 'image', name: 'Hero', handling: false, content: 'https://cdn/hero.png' }),
+      node('me', { kind: 'image', name: 'Target', handling: false }),
     ];
     const edges: CanvasEdge[] = [edge('img1->me', 'img1', 'me')];
 
@@ -61,8 +61,8 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
 
   it('ignores edges that do not target the node (outgoing / unrelated)', () => {
     const nodes: CanvasNodeView[] = [
-      node('me', { kind: 'image', name: 'Target', status: 'idle' }),
-      node('other', { kind: 'image', name: 'Other', status: 'idle' }),
+      node('me', { kind: 'image', name: 'Target', handling: false }),
+      node('other', { kind: 'image', name: 'Other', handling: false }),
     ];
     // me -> other is outgoing from me; other has no incoming to me.
     const edges: CanvasEdge[] = [edge('me->other', 'me', 'other')];
@@ -72,9 +72,9 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
 
   it('derives every incoming edge, preserving edge order', () => {
     const nodes: CanvasNodeView[] = [
-      node('a', { kind: 'image', name: 'A', status: 'idle', content: 'a.png' }),
-      node('b', { kind: 'video', name: 'B', status: 'idle', coverUrl: 'b-cover.png', content: 'b.mp4' }),
-      node('me', { kind: 'image', name: 'Target', status: 'idle' }),
+      node('a', { kind: 'image', name: 'A', handling: false, content: 'a.png' }),
+      node('b', { kind: 'video', name: 'B', handling: false, coverUrl: 'b-cover.png', content: 'b.mp4' }),
+      node('me', { kind: 'image', name: 'Target', handling: false }),
     ];
     const edges: CanvasEdge[] = [edge('a->me', 'a', 'me'), edge('b->me', 'b', 'me')];
 
@@ -99,8 +99,8 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
     // a video URL fed to an <img> is a broken image. It degrades to undefined
     // so the rail / chip fall back to a modality icon.
     const nodes: CanvasNodeView[] = [
-      node('v', { kind: 'video', name: 'Clip', status: 'idle', content: 'clip.mp4' }),
-      node('me', { kind: 'image', name: 'Target', status: 'idle' }),
+      node('v', { kind: 'video', name: 'Clip', handling: false, content: 'clip.mp4' }),
+      node('me', { kind: 'image', name: 'Target', handling: false }),
     ];
     const edges: CanvasEdge[] = [edge('v->me', 'v', 'me')];
 
@@ -111,7 +111,7 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
 
   it('skips a dangling incoming edge whose source node no longer exists', () => {
     const nodes: CanvasNodeView[] = [
-      node('me', { kind: 'image', name: 'Target', status: 'idle' }),
+      node('me', { kind: 'image', name: 'Target', handling: false }),
     ];
     const edges: CanvasEdge[] = [edge('ghost->me', 'ghost', 'me')];
 
@@ -120,8 +120,8 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
 
   it('reads a text source with no body entry as empty, not as a non-text source', () => {
     const nodes: CanvasNodeView[] = [
-      node('txt', { kind: 'text', name: 'Notes', status: 'idle' }),
-      node('me', { kind: 'image', name: 'Target', status: 'idle' }),
+      node('txt', { kind: 'text', name: 'Notes', handling: false }),
+      node('me', { kind: 'image', name: 'Target', handling: false }),
     ];
     const edges: CanvasEdge[] = [edge('txt->me', 'txt', 'me')];
 
@@ -134,8 +134,8 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
 
   it('leaves thumbnail undefined for a source node with no visual payload (text)', () => {
     const nodes: CanvasNodeView[] = [
-      node('txt', { kind: 'text', name: 'Notes', status: 'idle' }),
-      node('me', { kind: 'image', name: 'Target', status: 'idle' }),
+      node('txt', { kind: 'text', name: 'Notes', handling: false }),
+      node('me', { kind: 'image', name: 'Target', handling: false }),
     ];
     const edges: CanvasEdge[] = [edge('txt->me', 'txt', 'me')];
 
@@ -152,9 +152,9 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
   // as "not a text node".
   it('carries the text body for a text source (textContent), nothing for other kinds', () => {
     const nodes: CanvasNodeView[] = [
-      node('txt', { kind: 'text', name: 'Notes', status: 'idle' }),
-      node('img1', { kind: 'image', name: 'Pic', status: 'idle', content: 'x.png' }),
-      node('me', { kind: 'image', name: 'Target', status: 'idle' }),
+      node('txt', { kind: 'text', name: 'Notes', handling: false }),
+      node('img1', { kind: 'image', name: 'Pic', handling: false, content: 'x.png' }),
+      node('me', { kind: 'image', name: 'Target', handling: false }),
     ];
     const edges: CanvasEdge[] = [
       edge('txt->me', 'txt', 'me', 1000),
@@ -178,10 +178,10 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
   // ordering must come from the createdAt stamp, never from array position.
   describe('ordering by createdAt (connection time)', () => {
     const nodes: CanvasNodeView[] = [
-      node('a', { kind: 'image', name: 'A', status: 'idle', content: 'a.png' }),
-      node('b', { kind: 'image', name: 'B', status: 'idle', content: 'b.png' }),
-      node('c', { kind: 'image', name: 'C', status: 'idle', content: 'c.png' }),
-      node('me', { kind: 'image', name: 'Target', status: 'idle' }),
+      node('a', { kind: 'image', name: 'A', handling: false, content: 'a.png' }),
+      node('b', { kind: 'image', name: 'B', handling: false, content: 'b.png' }),
+      node('c', { kind: 'image', name: 'C', handling: false, content: 'c.png' }),
+      node('me', { kind: 'image', name: 'Target', handling: false }),
     ];
 
     it('sorts rows by createdAt ascending regardless of the edges-array order (Y.Map order independence)', () => {
@@ -254,12 +254,12 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
 
   it('reflects a live rename of the source node (display fields are live, not frozen)', () => {
     const before: CanvasNodeView[] = [
-      node('img1', { kind: 'image', name: 'Old', status: 'idle', content: 'x.png' }),
-      node('me', { kind: 'image', name: 'Target', status: 'idle' }),
+      node('img1', { kind: 'image', name: 'Old', handling: false, content: 'x.png' }),
+      node('me', { kind: 'image', name: 'Target', handling: false }),
     ];
     const after: CanvasNodeView[] = [
-      node('img1', { kind: 'image', name: 'Renamed', status: 'idle', content: 'x.png' }),
-      node('me', { kind: 'image', name: 'Target', status: 'idle' }),
+      node('img1', { kind: 'image', name: 'Renamed', handling: false, content: 'x.png' }),
+      node('me', { kind: 'image', name: 'Target', handling: false }),
     ];
     const edges: CanvasEdge[] = [edge('img1->me', 'img1', 'me')];
 
@@ -280,23 +280,23 @@ describe('deriveReferences — the media URL a hover preview can play (#1945)', 
       node('img1', {
         kind: 'image',
         name: 'Hero',
-        status: 'idle',
+        handling: false,
         content: 'https://cdn/hero.png',
       }),
       node('aud1', {
         kind: 'audio',
         name: 'Narration',
-        status: 'idle',
+        handling: false,
         content: 'https://cdn/voice.m4a',
       }),
       node('vid1', {
         kind: 'video',
         name: 'Clip',
-        status: 'idle',
+        handling: false,
         content: 'https://cdn/clip.mp4',
         coverUrl: 'https://cdn/clip-cover.jpg',
       }),
-      node('gen', { kind: 'image', name: 'Target', status: 'idle' }),
+      node('gen', { kind: 'image', name: 'Target', handling: false }),
     ];
     const edges: CanvasEdge[] = [
       edge('e1', 'img1', 'gen', 1),
@@ -333,8 +333,8 @@ describe('deriveReferences — the media URL a hover preview can play (#1945)', 
 
   it('leaves mediaUrl unset for modalities with nothing to play', () => {
     const nodes: CanvasNodeView[] = [
-      node('txt1', { kind: 'text', name: 'Script', status: 'idle' }),
-      node('gen', { kind: 'video', name: 'Target', status: 'idle' }),
+      node('txt1', { kind: 'text', name: 'Script', handling: false }),
+      node('gen', { kind: 'video', name: 'Target', handling: false }),
     ];
     const rail = deriveReferences(
       'gen',
@@ -348,8 +348,8 @@ describe('deriveReferences — the media URL a hover preview can play (#1945)', 
 
   it('leaves mediaUrl unset while the source has not produced anything yet', () => {
     const nodes: CanvasNodeView[] = [
-      node('vid1', { kind: 'video', name: 'Empty', status: 'idle' }),
-      node('gen', { kind: 'video', name: 'Target', status: 'idle' }),
+      node('vid1', { kind: 'video', name: 'Empty', handling: false }),
+      node('gen', { kind: 'video', name: 'Target', handling: false }),
     ];
     const rail = deriveReferences(
       'gen',

@@ -5,10 +5,8 @@ import * as React from 'react';
 import { Lock } from 'lucide-react';
 
 import { cn } from '@web/lib/utils';
-import type { DisplayStatus } from '@web/data/yjs/node-view';
 
 interface NodeShellProps {
-  status?: DisplayStatus;
   selected?: boolean;
   locked?: boolean;
   children: React.ReactNode;
@@ -17,19 +15,15 @@ interface NodeShellProps {
   testId?: string;
 }
 
-// The node carries a single 1px border whose colour reflects its state.
-// One flat border, no rings or focus glow (rigid 1px rule, breatic/one-px-border).
-// Hover changes ONLY the border (never the background) and ONLY while idle —
-// the handling / error / selected state colours must not be overridden on hover.
-const STATUS_BORDER: Record<DisplayStatus, string> = {
-  idle: 'border-border hover:border-foreground-disabled',
-  handling: 'border-status-info',
-  error: 'border-status-error',
-};
+// The node carries a single 1px border that answers to selection and hover
+// alone; a node shows no task state (inner#888 §7.8). One flat border, no
+// rings or focus glow (rigid 1px rule, breatic/one-px-border). Hover changes
+// ONLY the border (never the background), and never the selected colour.
+const IDLE_BORDER = 'border-border hover:border-foreground-disabled';
 
 /**
  * Unified outer shell for every canvas node (text / image / audio / video
- * / annotation). Owns the single 1px state border (selection / status colour),
+ * / annotation). Owns the single 1px border (selection / hover colour),
  * the lock indicator, AND the corner clip (`overflow-hidden`) so type nodes
  * only have to render their body. The clip is the concentric-radius fix
  * (user report 2026-07-03): the shell is rounded with a 1px border and zero
@@ -38,13 +32,9 @@ const STATUS_BORDER: Record<DisplayStatus, string> = {
  * arc and opens a gap in all four corners — the shell clipping every child
  * to its rounded box makes that geometry impossible by construction.
  *
- * The one 1px border is tinted by state (selected wins over status):
- *   - `idle`     → neutral border
- *   - `handling` → info border (AI generating / mini-tool running)
- *   - `error`    → error border (last operation failed)
- *   - selected   → selected border (overrides any status colour)
+ * The one 1px border is neutral, darker on hover, and the selected colour
+ * while selected.
  * @param root0 - Node shell props.
- * @param root0.status - Node status, tinting the 1px border (idle / handling / error).
  * @param root0.selected - Whether the node is selected, tinting its own 1px border with the selected colour (no ring / offset).
  * @param root0.locked - Whether the node is locked, rendering the lock indicator.
  * @param root0.children - The type node's body rendered inside the shell.
@@ -53,7 +43,6 @@ const STATUS_BORDER: Record<DisplayStatus, string> = {
  * @returns The outer node shell element wrapping the body.
  */
 export function NodeShell({
-  status = 'idle',
   selected = false,
   locked = false,
   children,
@@ -63,7 +52,6 @@ export function NodeShell({
   return (
     <div
       data-testid={testId ?? 'node-shell'}
-      data-status={status}
       data-selected={selected ? 'true' : 'false'}
       data-locked={locked ? 'true' : 'false'}
       className={cn(
@@ -71,7 +59,7 @@ export function NodeShell({
         // (`.react-flow__node.dragging .canvas-node-shell` → shadow in index.css);
         // a static card is flat — no shadow — per the design system.
         'canvas-node-shell relative overflow-hidden rounded-sm border bg-card text-card-foreground transition-colors',
-        selected ? 'border-status-selected' : STATUS_BORDER[status],
+        selected ? 'border-status-selected' : IDLE_BORDER,
         className,
       )}
     >

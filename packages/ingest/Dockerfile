@@ -1,5 +1,6 @@
 # The media container: ffprobe reads what an uploaded object is, ffmpeg lifts a
-# cover frame out of it (#209 + #210, design §4.2).
+# cover frame out of it (#209 + #210, design §4.2), and vips cuts a picture's
+# preview (inner#1320, inner#1339).
 #
 # The service imports the Worker's own modules: the ffprobe arguments and the
 # answer format are one agreement between the two sides, and a second copy
@@ -22,6 +23,13 @@ WORKDIR /src
 COPY packages/ingest/tsconfig.json ./
 COPY packages/ingest/src ./src
 COPY packages/ingest/container ./container
+# The mini-tool runs build their colour filter from this one file of shared
+# (src/jobs/op-args.ts), resolved through tsconfig's @shared/* path.
+COPY packages/shared/src/adjust-value.ts /shared/src/adjust-value.ts
+COPY scripts/release.mjs ./scripts/release.mjs
+ARG RELEASE_VERSION=0.0.0-dev
+ARG VCS_REF=unknown
+RUN mkdir -p /out && node scripts/release.mjs build-info "$RELEASE_VERSION" "$VCS_REF" /out/build-info.json
 # esbuild is pinned so this image builds the same way on every machine. No
 # manifest in this repository declares esbuild — it arrives seven times over as
 # a transitive dependency, at seven different versions — so there is no "the
@@ -39,7 +47,11 @@ RUN npm install --no-audit --no-fund --global esbuild@0.25.12 \
 # so npm and the rest of a Node distribution would be weight with no reader,
 # and image size is what the cold start is paid in.
 FROM alpine:3.23
-RUN apk add --no-cache nodejs=~24 ffmpeg=~8.0
+ARG RELEASE_VERSION=0.0.0-dev
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.version=$RELEASE_VERSION \
+      org.opencontainers.image.revision=$VCS_REF
+RUN apk add --no-cache nodejs=~24 ffmpeg=~8.0 vips-tools=~8.17
 
 # ── ffmpeg is GPL-licensed (#178) ────────────────────────────────────────
 # Alpine builds ffmpeg with GPL components (x264 among them), so distributing
@@ -107,7 +119,40 @@ RUN set -eu; \
     echo "All four licence texts are in this directory, as upstream ships them."; \
   } > /usr/share/ffmpeg-source/SOURCE
 
+# ── vips links GPL libraries (inner#1339) ────────────────────────────────
+# libvips is LGPL-2.1-or-later, and Alpine's build links libimagequant
+# (GPL-3.0-or-later) and fftw (GPL-2.0-or-later) into it, so the `vips` program
+# in this image is carried under GPL-3.0-or-later. It is met the way ffmpeg's
+# is above: the service runs it as a separate program and loads no library of
+# it (`breatic/media-container-own-code-only`), the licence texts travel with
+# the image, and a SOURCE file names each package, its licence and the recipe
+# it was built from. Every value is read out of the installed packages.
+COPY packages/ingest/container/COPYING.GPLv2 /usr/share/vips-source/COPYING.GPLv2
+COPY packages/ingest/container/COPYING.GPLv3 /usr/share/vips-source/COPYING.GPLv3
+COPY packages/ingest/container/COPYING.LGPLv2.1 /usr/share/vips-source/COPYING.LGPLv2.1
+RUN set -eu; \
+  { \
+    echo "vips and the two GPL libraries it links, as installed in this image."; \
+    echo "Together the program is carried under GPL-3.0-or-later."; \
+    echo; \
+    for p in vips libimagequant fftw-double-libs; do \
+      info=$(awk "/^P:$p\$/,/^\$/" /lib/apk/db/installed); \
+      version=$(printf '%s\n' "$info" | sed -n 's/^V://p'); \
+      licence=$(printf '%s\n' "$info" | sed -n 's/^L://p'); \
+      origin=$(printf '%s\n' "$info" | sed -n 's/^o://p'); \
+      commit=$(printf '%s\n' "$info" | sed -n 's/^c://p'); \
+      repo=$(apk policy "$p" | tail -1 | sed 's#.*/##'); \
+      echo "$p $version, $licence."; \
+      echo "  Built by Alpine Linux from the recipe at this exact commit, whose"; \
+      echo "  APKBUILD names the upstream source it builds:"; \
+      echo "  https://gitlab.alpinelinux.org/alpine/aports/-/tree/$commit/$repo/$origin"; \
+      echo; \
+    done; \
+    echo "The licence texts are in this directory."; \
+  } > /usr/share/vips-source/SOURCE
+
 COPY --from=build /out/server.mjs /app/server.mjs
+COPY --from=build /out/build-info.json /app/build-info.json
 
 # Listening starts immediately: nothing is prepared at startup, because every
 # second before the port answers is a second the request that woke this

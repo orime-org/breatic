@@ -377,6 +377,32 @@ export const projectLastOpened = pgTable(
   ],
 );
 
+// ── 4d. Project Edits ────────────────────────────────────────────────
+//
+// When a project's content was last changed, backing the studio list's
+// "last edited" sort. Canvas and document content lives in the separate yjs
+// database, so it can never be joined from here; collab writes this row after
+// a Space document's store lands and after a Space is created, renamed,
+// locked, deleted or restored, and the server writes it with a rename,
+// description or cover change. One row per project, moved forward in place.
+//
+// No `deleted_at`, for the same reason as `project_last_opened`: a row for a
+// deleted project is filtered out by the list's join, so a leftover row is
+// harmless. `created_at` is the first recorded edit; the mutable timestamp is
+// `last_edited_at`, so there is no `updated_at`.
+
+export const projectEdits = pgTable("project_edits", {
+  projectId: uuid("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "restrict" }),
+  lastEditedAt: timestamp("last_edited_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 // ── 4b. Studio Members ───────────────────────────────────────────────
 //
 // Studio-level membership + role (Admin / Member). The admin role lives
@@ -522,7 +548,6 @@ export const tasks = pgTable(
      */
     mode: varchar("mode", { length: 16 }).notNull(),
     model: varchar("model", { length: 100 }),
-    skillName: varchar("skill_name", { length: 100 }),
     status: varchar("status", { length: 20 }).default("pending").notNull(),
     params: jsonb("params").$type<Record<string, unknown>>().default({}),
     result: jsonb("result").$type<Record<string, unknown>>(),
@@ -532,7 +557,6 @@ export const tasks = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
     creditsUsed: doublePrecision("credits_used").default(0).notNull(),
     durationMs: integer("duration_ms"),
-    resolvedSkills: jsonb("resolved_skills").$type<string[]>().default([]),
     source: varchar("source", { length: 20 }).default("canvas").notNull(),
     /**
      * URL returned by the AIGC provider, before persistence to permanent
@@ -761,6 +785,9 @@ export const nodeTasks = pgTable(
     nodeId: uuid("node_id").notNull(),
 
     kind: varchar("kind", { length: 20 }).notNull(), // 'upload' | 'generation'
+    // What the row's first line names: 'upload' | 'generate' | 'understand'
+    // | 'mini_tool' (inner#888). Its CHECK lives in 0091.
+    action: varchar("action", { length: 20 }).notNull(),
     // 'running' | 'done' | 'failed' | 'expired'
     status: varchar("status", { length: 20 }).notNull(),
 
@@ -1390,9 +1417,10 @@ export const agentUsageRecords = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     operationKey: varchar("operation_key", { length: 255 }).notNull(),
     // `chat_turn` / `memory_consolidation` / `text_tool` / `canvas_understand`
-    // / `skill_task`.
+    // / `mini_tool`.
     feature: varchar("feature", { length: 40 }).notNull(),
-    // `model`, or `tool:<name>` for a paid call a tool made.
+    // `model`, `tool:<name>` for a paid call a tool made, or `container` for
+    // a mini-tool container run.
     source: varchar("source", { length: 40 }).notNull(),
     actorUserId: uuid("actor_user_id")
       .notNull()
@@ -1409,7 +1437,8 @@ export const agentUsageRecords = pgTable(
     reasoningTokens: integer("reasoning_tokens"),
     requestCount: integer("request_count"),
     costUsd: numeric("cost_usd", { precision: 20, scale: 8 }).notNull(),
-    // `provider` / `price_table` / `generation_lookup` / `missing`.
+    // `provider` / `price_table` / `generation_lookup` / `computed` /
+    // `missing`.
     costSource: varchar("cost_source", { length: 20 }).notNull(),
     credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -1418,6 +1447,10 @@ export const agentUsageRecords = pgTable(
   },
   (table) => [
     index("agent_usage_records_operation_key_idx").on(table.operationKey),
+    // Every attempt of a container run computes the same cost; one row per task.
+    uniqueIndex("agent_usage_records_container_operation_key")
+      .on(table.operationKey)
+      .where(sql`${table.source} = 'container'`),
   ],
 );
 
@@ -1564,59 +1597,6 @@ export const projectMemoryEntries = pgTable(
   },
   (table) => [
     index("project_mem_entries_project_id_idx").on(table.projectId),
-  ],
-);
-
-// ── 15. Custom Skills ────────────────────────────────────────────────
-
-export const customSkills = pgTable(
-  "custom_skills",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    ownerUserId: uuid("owner_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    name: varchar("name", { length: 64 }).notNull(),
-    description: text("description").default("").notNull(),
-    version: varchar("version", { length: 32 }).default("1.0.0").notNull(),
-    tags: text("tags").array(),
-    files: jsonb("files").$type<Record<string, { type: string; data: string }>>(),
-    isPublished: boolean("is_published").default(false).notNull(),
-    installCount: integer("install_count").default(0).notNull(),
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
-    ...timestamps,
-  },
-  (table) => [
-    uniqueIndex("custom_skills_owner_name_idx").on(
-      table.ownerUserId,
-      table.name,
-    ),
-    index("custom_skills_owner_id_idx").on(table.ownerUserId),
-  ],
-);
-
-// ── 16. Skill Installs ───────────────────────────────────────────────
-
-export const skillInstalls = pgTable(
-  "skill_installs",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    skillId: uuid("skill_id")
-      .notNull()
-      .references(() => customSkills.id, { onDelete: "restrict" }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
-  },
-  (table) => [
-    uniqueIndex("skill_installs_user_skill_idx").on(
-      table.userId,
-      table.skillId,
-    ),
   ],
 );
 
@@ -1791,8 +1771,7 @@ export const studioInvitations = pgTable(
      * Names this request in the `/decision?token=` link. Minted when the
      * request is filed and never rotated, so the LINK stays valid for as long
      * as the row exists — what expires is the request, not the URL. Shared by
-     * all three channels that can reach the request: the email, the bell entry
-     * and (for a project invite) the owner's copyable share link.
+     * both channels that can reach the request: the email and the bell entry.
      */
     shareToken: varchar("share_token", { length: 64 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -1868,8 +1847,7 @@ export const projectInvitations = pgTable(
      * Names this request in the `/decision?token=` link. Minted when the
      * request is filed and never rotated, so the LINK stays valid for as long
      * as the row exists — what expires is the request, not the URL. Shared by
-     * all three channels that can reach the request: the email, the bell entry
-     * and (for a project invite) the owner's copyable share link.
+     * both channels that can reach the request: the email and the bell entry.
      */
     shareToken: varchar("share_token", { length: 64 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -1955,8 +1933,7 @@ export const roleUpgradeRequests = pgTable(
      * Names this request in the `/decision?token=` link. Minted when the
      * request is filed and never rotated, so the LINK stays valid for as long
      * as the row exists — what expires is the request, not the URL. Shared by
-     * all three channels that can reach the request: the email, the bell entry
-     * and (for a project invite) the owner's copyable share link.
+     * both channels that can reach the request: the email and the bell entry.
      */
     shareToken: varchar("share_token", { length: 64 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -2058,8 +2035,7 @@ export const projectTransfers = pgTable(
      * Names this request in the `/decision?token=` link. Minted when the
      * request is filed and never rotated, so the LINK stays valid for as long
      * as the row exists — what expires is the request, not the URL. Shared by
-     * all three channels that can reach the request: the email, the bell entry
-     * and (for a project invite) the owner's copyable share link.
+     * both channels that can reach the request: the email and the bell entry.
      */
     shareToken: varchar("share_token", { length: 64 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -2105,8 +2081,7 @@ export const studioTransfers = pgTable(
      * Names this request in the `/decision?token=` link. Minted when the
      * request is filed and never rotated, so the LINK stays valid for as long
      * as the row exists — what expires is the request, not the URL. Shared by
-     * all three channels that can reach the request: the email, the bell entry
-     * and (for a project invite) the owner's copyable share link.
+     * both channels that can reach the request: the email and the bell entry.
      */
     shareToken: varchar("share_token", { length: 64 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -2485,6 +2460,9 @@ export const uploadGrants = pgTable(
 // known duplicate and is safe to reclaim". The offline job then works from an
 // explicit list instead of scanning the whole bucket guessing what is an
 // orphan.
+//
+// A stored still image also has a preview at previewKeyFor(key) (inner#1320),
+// which nothing registers: reclaiming a key here reclaims that preview too.
 //
 // Nothing live ever references these keys: every consumer URL comes from the
 // surviving row's canonical (§0 rule 2), so reclaiming them cannot affect

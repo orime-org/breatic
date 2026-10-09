@@ -507,8 +507,7 @@ describe('what the catalog declares', () => {
 
   it('calls every mode what its picker prints', () => {
     // The mode code is nowhere on screen: the picker renders this string and
-    // nothing else, and `canvas_capabilities` and the skill prompts quote the
-    // declared one. Two names for one mode sends a reader looking through the
+    // nothing else, and `canvas_capabilities` quotes the declared one. Two names for one mode sends a reader looking through the
     // picker for a row that says what the agent said.
     const declaredModes = everyMode();
     const drawn = [

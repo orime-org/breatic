@@ -11,10 +11,14 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 
 import {
   ActivityNewSignalSchema,
+  t as translate,
   type ProjectActivityEntry,
   type ProjectActivityType,
   type ProjectRole,
 } from '@breatic/shared';
+import {
+  miniToolById,
+} from '@breatic/shared/mini-tools';
 import { activitiesApi } from '@web/data/api/activities';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import {
@@ -31,6 +35,7 @@ import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusi
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { useTranslation } from '@web/i18n/use-translation';
 import { relativeTime } from '@web/pages/project/chrome/tab-bar/relative-time';
+import { PreviewImg } from '@web/components/preview-img';
 
 /**
  * Project activity feed surfaced by the Activity icon on the
@@ -103,6 +108,19 @@ export function entryDotClass(entry: ProjectActivityEntry): string {
 }
 
 /**
+ * The tool a mini-tool entry ran, named as its menu row names it
+ * (inner#888 §7.7); a tool id the registry does not hold is shown as stored.
+ * @param payload - The entry's payload.
+ * @returns The name, or undefined when the entry is not a mini-tool's.
+ */
+function toolNameOf(payload: ProjectActivityEntry['payload']): string | undefined {
+  const id = payload['toolName'];
+  if (payload['source'] !== 'mini_tool' || typeof id !== 'string') return undefined;
+  const spec = miniToolById(id);
+  return spec === undefined ? id : translate(spec.labelKey);
+}
+
+/**
  * Resolve the ICU message key + params for one feed entry. Every family
  * (space / asset / generation / member) uses the unified `activity.type.*`
  * keys (snapshot names travel in the payload now).
@@ -138,6 +156,12 @@ function entryMessage(entry: ProjectActivityEntry): {
         },
       };
     case 'asset:uploaded': {
+      // A browser tool's export arrives as an upload; what the reader did was
+      // run the tool.
+      const tool = toolNameOf(p);
+      if (tool !== undefined) {
+        return { key: 'activity.type.generationSucceededTool', params: { actor, toolName: tool } };
+      }
       // Specific copy per media kind (image / video / audio); a `file` kind or
       // an absent kind falls back to the generic upload message (#1622).
       const k = p['kind'];
@@ -155,11 +179,10 @@ function entryMessage(entry: ProjectActivityEntry): {
       return { key: 'activity.type.assetDeleted', params: { actor } };
     case 'generation:succeeded': {
       // A mini-tool names the tool it ran (more specific than the modality).
-      if (typeof p['toolName'] === 'string')
-        return {
-          key: 'activity.type.generationSucceededTool',
-          params: { actor, toolName: p['toolName'] },
-        };
+      const tool = toolNameOf(p);
+      if (tool !== undefined) {
+        return { key: 'activity.type.generationSucceededTool', params: { actor, toolName: tool } };
+      }
       // A canvas task generation says what modality it produced; a non-media
       // generation (understand) falls back to the generic message (#1622).
       const k = p['kind'];
@@ -427,8 +450,8 @@ export function ProjectActivityButton({
                   >
                     {media.kind === 'image' ||
                     (media.kind === 'video' && media.poster) ? (
-                        <img
-                          src={media.kind === 'image' ? media.src : media.poster}
+                        <PreviewImg
+                          src={(media.kind === 'image' ? media.src : media.poster) ?? ''}
                           alt=''
                           className='h-full w-full object-cover'
                           loading='lazy'

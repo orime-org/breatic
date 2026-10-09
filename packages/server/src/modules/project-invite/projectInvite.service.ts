@@ -66,12 +66,9 @@ import {
  *
  * Resolves the project by id, looks the invitee up by email (unregistered →
  * NotFound), and refuses re-inviting a user who already has an active
- * `project_members` row (owner / editor / viewer). Mints the one-time email-link
- * token here — the project invite diverges from studio in that ALL three channels
- * (the owner's copyable URL, the bell, the email) funnel through the SAME
- * `/decision?token=` landing page, so the token is shared: it is returned
- * to the caller (route surfaces the copyable URL) AND embedded in
- * the notification payload (so the bell can build the same link). The token is
+ * `project_members` row (owner / editor / viewer). Mints the request's share
+ * token here; the bell (from the notification payload) and the email both build
+ * the same `/decision?token=` link from it. The token is
  * a NOT NULL column written by the same insert, so a rollback takes row and
  * token together — there is nothing to orphan. The
  * `project_invitations_one_pending` partial unique maps a duplicate LIVE
@@ -82,9 +79,8 @@ import {
  * @param role - The granted project role (editor | viewer; never owner)
  * @param origin - Request Origin; when set, the best-effort invite email is sent
  *   here (link built from the shared token). Omit to skip it.
- * @returns The new invitation id + email-link token, the invitee's id + email,
- *   and the project / inviter names + role (so the route can compose the
- *   copyable invite URL)
+ * @returns The new invitation id, the invitee's id + email, and the project /
+ *   inviter names + role
  * @throws {NotFoundError} project not found, or no user with that email
  * @throws {ConflictError} the user already has access to the project, or already
  *   has a live pending invite to it
@@ -97,7 +93,6 @@ export async function createInvite(
   origin?: string,
 ): Promise<{
   invitationId: string;
-  shareToken: string;
   inviteeUserId: string;
   inviteeEmail: string;
   projectName: string;
@@ -195,8 +190,8 @@ export async function createInvite(
   // path; this only fires when an SMTP backend is configured and the caller
   // passed an origin. A send failure must NOT fail the request.
   if (origin) {
-    // The token was already minted in the tx above (it is also returned to the
-    // route for the copyable URL), so this factory only builds the mail.
+    // The token was already minted in the tx above, so this factory only
+    // builds the mail.
     await sendBestEffortMail(
       async () =>
         buildProjectInvitationMail({
@@ -213,7 +208,6 @@ export async function createInvite(
 
   return {
     invitationId,
-    shareToken,
     inviteeUserId: invitee.id,
     inviteeEmail: email,
     projectName: project.name,

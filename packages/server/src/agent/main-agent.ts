@@ -302,7 +302,6 @@ export class MainAgent {
       const agentConfig: ResolvedAgentConfig = buildAgentConfig({
         basePrompt: buildSystemPrompt(),
         memoryContext,
-        interactive: true,
       });
 
       return {
@@ -325,8 +324,8 @@ export class MainAgent {
       let assembly = await assemble();
 
       // Measured here rather than inside the assembly because this is where
-      // the request is whole: the instructions carry the persona, the skill
-      // and the memory, and the tool definitions reach the provider as an
+      // the request is whole: the instructions carry the persona and the
+      // memory, and the tool definitions reach the provider as an
       // argument of their own.
       if (
         await foldIfOverBudget(assembly, {

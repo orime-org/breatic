@@ -1,8 +1,6 @@
 # Mode definitions for AIGC providers.
-# Each modality lists its supported modes with human-readable labels,
-# descriptions and intent-based selection guidance.
-# This file is the single source of truth — SKILL.md files and
-# skills-loader.ts both read from here via {available_modes} injection.
+# Each modality lists its supported modes with human-readable labels and
+# descriptions.
 # Guidelines:
 #   modes.*.label       — the product's name for this mode, in the words the
 #                         picker puts on screen. The mode code is nowhere in
@@ -22,10 +20,8 @@
 #                         each model's own `fill` declarations — over the
 #                         modes a generation node's picker offers, which is
 #                         where that answer quotes them. A mode no picker
-#                         offers is walked by no guard, but it still reaches
-#                         the agent: the skill prompt quotes every mode in its
-#                         bucket. So the rule above is what a person holds it
-#                         to.
+#                         offers is walked by no guard, so the rule above is
+#                         what a person holds it to.
 #   The material a run needs is declared on each model (its canvas and pool
 #   params, and `source_groups`), not here: two models in one mode can take
 #   different sources.
@@ -57,13 +53,6 @@ image:
       description: >
         Remove the background from an image, outputting the subject
         on a transparent background with precise alpha matting.
-
-  selection_guide: |
-    - User wants to create something new from a text description → t2i
-    - User wants to generate a new image based on a reference image → i2i
-    - User wants to modify/edit specific parts of an existing image → edit
-    - User wants to enlarge/upscale an image to higher resolution → upscale
-    - User wants to remove the background from an image → remove_bg
 
 video:
   modes:
@@ -126,18 +115,6 @@ video:
         Increase frame rate by inserting AI-generated intermediate frames
         for smoother motion or slow-motion effects.
 
-  selection_guide: |
-    - User describes a scene with NO media → **t2v**
-    - User has a single image to animate → **i2v**
-    - User has multiple reference images for character/style consistency → **ref**
-    - User wants to write the video shot by shot, each with its own prompt → **multi_shot**
-    - User has a video to continue → **extend**
-    - User has a video to modify → **edit**
-    - User wants motion-driven character animation → **motion** or **animate**
-    - User has a portrait + audio for talking head → **talking_head**
-    - User wants to upscale/enhance video resolution → **upscale**
-    - User wants smoother motion, higher frame rate, or slow motion → **interpolate**
-
 audio:
   modes:
     t2m:
@@ -168,13 +145,6 @@ audio:
         Separate vocals from instrumental in any audio track. Outputs
         isolated vocal or instrumental stem.
 
-  selection_guide: |
-    - User describes music to create from scratch → **t2m**
-    - User provides a reference song/voice/instrumental to guide generation → **a2m**
-    - User wants sound effects, ambient audio, or Foley → **sfx**
-    - User wants an existing track to run longer → **extend**
-    - User wants to separate vocals from instrumental → **separate**
-
 tts:
   modes:
     tts:
@@ -187,10 +157,6 @@ tts:
       description: >
         Clone a voice from a short reference audio sample, then synthesize
         new speech in that voice. No fine-tuning required.
-
-  selection_guide: |
-    - User wants to convert text to speech or generate voiceover → **tts**
-    - User wants to clone a specific voice from a sample → **voice_clone**
 
 three_d:
   modes:
@@ -206,7 +172,3 @@ three_d:
         Convert one or more 2D images into a 3D model. Single-image input
         for quick conversion, multi-view input for higher fidelity. Some
         models support mask-based object extraction.
-
-  selection_guide: |
-    - User describes a 3D object to create from scratch → **t23d**
-    - User has an image and wants to convert it to 3D → **i23d**

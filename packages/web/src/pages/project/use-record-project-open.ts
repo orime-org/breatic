@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { projectsApi } from '@web/data/api/projects';
+import { isStudioProjectsListKey, projectsApi } from '@web/data/api/projects';
 
 /**
  * Record that the user opened this project — fires `POST /projects/:id/opened`
@@ -16,8 +16,10 @@ import { projectsApi } from '@web/data/api/projects';
  * project (the resource-hook discipline, [[feedback_strictmode_resource_hook]]).
  * Best-effort — recording an open must never disrupt the page, so a failure is
  * swallowed (and the guard reset so a genuine later remount can retry). On
- * success the Recent feed query is invalidated so the just-opened project
- * surfaces (and re-sorts to the top) the next time the landing renders.
+ * success the Recent feed and every studio projects list are invalidated, so
+ * the just-opened project surfaces (and re-sorts to the top of a list sorted
+ * by last opened) the next time they render. The project itself is left
+ * alone: the open changes where it sorts, not what it is.
  * @param projectId - the bare project uuid (the route's resolved id).
  * @param enabled - gate: record only once the project has loaded (accessible).
  */
@@ -38,6 +40,9 @@ export function useRecordProjectOpen(
       .then(() => {
         void queryClient.invalidateQueries({
           queryKey: ['studios', 'recent'],
+        });
+        void queryClient.invalidateQueries({
+          predicate: (query) => isStudioProjectsListKey(query.queryKey),
         });
       })
       .catch(() => {

@@ -143,8 +143,9 @@ export async function deleteSpace(page: Page, spaceId: string): Promise<void> {
       await expect(drawer).toBeVisible({ timeout: 10_000 });
     }
 
-    // The row's action group is `opacity-0` until the row is hovered, which
+    // The row's menu button is `opacity-0` until the row is hovered, which
     // leaves it visible to Playwright and hoverable by the click itself.
+    await page.getByTestId(`space-drawer-menu-${spaceId}`).click();
     await page.getByTestId(`space-drawer-delete-${spaceId}`).click();
     await expect(
       page.getByTestId(`space-drawer-delete-confirm-${spaceId}`),

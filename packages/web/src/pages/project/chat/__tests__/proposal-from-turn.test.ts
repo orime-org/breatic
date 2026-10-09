@@ -61,22 +61,20 @@ describe('a turn that proposed a group', () => {
     expect(message.proposals?.[0]?.rationale).toBe('Two nodes');
   });
 
-  it('carries how each generation takes its material, which the canvas reads', () => {
-    // The canvas writes an @-mention for a mark only where a mention picks
-    // the material, and it reads that off the answer rather than the model
-    // catalog, which may not have loaded when the reader presses Use. Lost on
-    // the way here, the canvas would write a mention the panel refuses.
+  it('carries whether each generation draws a prompt box, which the canvas reads', () => {
+    // The canvas reads it off the answer rather than the model catalog, which
+    // may not have loaded when the reader presses Use.
     const message = toChatMessage(
       turnWith({
         ...ACCEPTED,
         nodes: [
           ACCEPTED.nodes[0]!,
-          { ...ACCEPTED.nodes[1]!, poolKinds: [] },
+          { ...ACCEPTED.nodes[1]!, takesPrompt: false },
         ],
       }),
     );
 
-    expect(message.proposals?.[0]?.nodes[1]?.poolKinds).toEqual([]);
+    expect(message.proposals?.[0]?.nodes[1]?.takesPrompt).toBe(false);
   });
 
   it('carries the name the group will land under', () => {

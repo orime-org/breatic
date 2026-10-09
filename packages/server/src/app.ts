@@ -21,7 +21,6 @@ import { canvasRoute } from "@server/routes/canvas.js";
 import { miniToolsRoute } from "@server/routes/mini-tools.js";
 import { projectsRoute } from "@server/routes/projects.js";
 import { projectJoinRequestsRoute } from "@server/routes/project-join-requests.js";
-import { skillsRoute } from "@server/routes/skills.js";
 import { tasksRoute } from "@server/routes/tasks.js";
 import { paymentRoute } from "@server/routes/payment.js";
 import creditsRoute from "@server/routes/credits.js";
@@ -90,7 +89,6 @@ export function createApp(): Hono {
   app.route("/api/v1/decisions", decisionsRoute);
   app.route("/api/v1/studios", studiosRoute);
   app.route("/api/v1/studio", studioRoute);
-  app.route("/api/v1/skills", skillsRoute);
   app.route("/api/v1/tasks", tasksRoute);
   app.route("/api/v1/payment", paymentRoute);
   app.route("/api/v1/credits", creditsRoute);

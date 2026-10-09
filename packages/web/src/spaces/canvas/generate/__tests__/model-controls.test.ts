@@ -10,12 +10,21 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { extname, resolve } from 'node:path';
 
-import { GENERATION_NODE_BUCKETS, type ModelEntry, type ParamDescriptor } from '@breatic/shared';
+import {
+  GENERATION_NODE_BUCKETS,
+  type ModelEntry,
+  type ParamDescriptor,
+} from '@breatic/shared';
+import {
+  MINI_TOOLS,
+  toolParamKeys,
+} from '@breatic/shared/mini-tools';
 import { describe, it, expect } from 'vitest';
 import { parse } from 'yaml';
 
 import {
   cameraAngleNames,
+  controlsForKeys,
   modelControls,
   ownControlSummary,
   ownControlValues,
@@ -343,5 +352,38 @@ describe('every param a panel names has words in every locale', () => {
       fields.filter((field) => !panel.paramField?.[field]).map((field) => `${lang}: ${field}`),
     );
     expect(missing).toEqual([]);
+  });
+});
+
+// inner#888 §5: a model tool's panel draws the params it lists, read from the
+// pinned model's declaration, whether the generation panel draws them or not.
+describe('controlsForKeys', () => {
+  const pinned = model({
+    target_megapixels: { description: '', default: 4, values: [4, 16, 36], fill: 'tool' },
+    creativity: { description: '', default: 0, min: 0, max: 10, step: 1, fill: 'panel', label: 'Creativity' },
+    image: { description: '', default: null, fill: 'tool' },
+    seed: { description: '', default: null, fill: 'hidden' } as unknown as ParamDescriptor,
+  });
+
+  it('draws the listed tool and panel params in the order they are listed', () => {
+    const controls = controlsForKeys(pinned, ['creativity', 'target_megapixels']);
+    expect(controls.map((control) => [control.kind, control.name])).toEqual([
+      ['range', 'creativity'],
+      ['choice', 'target_megapixels'],
+    ]);
+  });
+
+  it('draws nothing for a param of another fill, or one the model does not declare', () => {
+    expect(controlsForKeys(pinned, ['seed', 'absent'])).toEqual([]);
+  });
+});
+
+describe('every param a model tool shows is named in every locale', () => {
+  const keys = [...new Set(MINI_TOOLS.flatMap((tool) => toolParamKeys(tool)))];
+  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'])('%s', (lang) => {
+    const json = JSON.parse(readFileSync(resolve(process.cwd(), `../../locales/${lang}.json`), 'utf8')) as {
+      canvas: { generatePanel: { param?: Record<string, string> } };
+    };
+    expect(keys.filter((key) => !json.canvas.generatePanel.param?.[key])).toEqual([]);
   });
 });

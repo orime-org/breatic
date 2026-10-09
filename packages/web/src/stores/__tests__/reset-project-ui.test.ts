@@ -7,7 +7,6 @@ import { useCanvasStore } from '@web/stores/canvas';
 import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
 import { useConversationRuntime, _resetForTests } from '@web/stores/conversation-runtime';
 import { useInpaintStore } from '@web/stores/inpaint';
-import { useMiniToolStore } from '@web/stores/mini-tool';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import { useUIStore } from '@web/stores/ui';
 import { canvasSessions } from '@web/stores/canvas-session';
@@ -20,7 +19,7 @@ import { canvasSessions } from '@web/stores/canvas-session';
  */
 describe('resetProjectUiStores (#1771)', () => {
   beforeEach(() => {
-    // Start each case from a known-dirty state exercising all five stores.
+    // Start each case from a known-dirty state exercising all four stores.
     canvasSessions.of('s').getState().openGeneratePanel('node-1', 'image');
     canvasSessions.of('s').getState().startReferencePick('node-1');
     useCanvasStore.getState().setSelectedNodeIds(['node-1', 'node-2']);
@@ -37,10 +36,6 @@ describe('resetProjectUiStores (#1771)', () => {
     useInpaintStore.getState().setMaskDataUrl('data:image/png;base64,AAAA');
     useInpaintStore.getState().beginStroke({ radius: 8, alpha: 1 });
     useInpaintStore.getState().setBrushSize(42); // preference
-
-    useMiniToolStore
-      .getState()
-      .startSession({ sessionId: 's1', sourceNodeId: 'node-1', toolName: 'crop' });
   });
 
   it('clears the open Generate panel and pick session (the reported symptom)', () => {
@@ -50,7 +45,7 @@ describe('resetProjectUiStores (#1771)', () => {
     expect(canvasSessions.of('s').getState().pickSession).toBeNull();
   });
 
-  it('clears all per-project SESSION state across the five stores', () => {
+  it('clears all per-project SESSION state across the four stores', () => {
     resetProjectUiStores('project-1');
     expect(useCanvasStore.getState().selectedNodeIds).toEqual([]);
     const session = canvasSessions.of('s').getState();
@@ -72,8 +67,6 @@ describe('resetProjectUiStores (#1771)', () => {
     // Undo history (zundo temporal) is cleared too — a fresh entry can't undo
     // back into the old strokes.
     expect(useInpaintStore.temporal.getState().pastStates).toEqual([]);
-
-    expect(useMiniToolStore.getState().sessions).toEqual({});
   });
 
   it('KEEPS layout / viewport / brush preferences (fresh session, not fresh preferences)', () => {
@@ -89,7 +82,7 @@ describe('resetProjectUiStores (#1771)', () => {
   });
 
   /**
-   * The conversation runtime is not one of the five above: what it holds is a
+   * The conversation runtime is not one of the four above: what it holds is a
    * turn that may be running and a list of messages, neither of which is
    * panel state. It is torn down from the same place because leaving is the
    * same act -- and because this one line is the only thing that stops a turn

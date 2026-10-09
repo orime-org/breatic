@@ -5,6 +5,8 @@ import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 import { VideoNode } from '@web/spaces/canvas/nodes/VideoNode';
+import { resetPreviewRecords } from '@web/lib/preview-src';
+import { NodeZoomedPastPreviewContext } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 import { canvasSessions } from '@web/stores/canvas-session';
 
 beforeAll(() => {
@@ -20,7 +22,7 @@ afterEach(() => {
 
 describe('VideoNode', () => {
   it('renders placeholder when no url', () => {
-    render(<VideoNode data={{ kind: 'video', status: 'idle' }} />);
+    render(<VideoNode data={{ kind: 'video', handling: false }} />);
     expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
   });
 
@@ -33,7 +35,7 @@ describe('VideoNode', () => {
         data={{
           kind: 'video',
           content: 'https://e.com/v.mp4',
-          status: 'idle',
+          handling: false,
         }}
       />,
     );
@@ -49,7 +51,7 @@ describe('VideoNode', () => {
           kind: 'video',
           content: 'https://e.com/v.mp4',
           coverUrl: 'https://e.com/c.jpg',
-          status: 'idle',
+          handling: false,
         }}
       />,
     );
@@ -61,27 +63,12 @@ describe('VideoNode', () => {
     expect(screen.getByTestId('fullscreen')).toBeInTheDocument();
   });
 
-  it('error status shows the error message', () => {
-    render(
-      <VideoNode
-        data={{
-          kind: 'video',
-          status: 'error',
-          errorMessage: 'Failed',
-        }}
-      />,
-    );
-    expect(screen.getByTestId('node-content-error')).toHaveTextContent(
-      'Failed',
-    );
-  });
-
   // #1616: non-empty video nodes show their pixel resolution top-right once the
   // metadata loads; read from the DOM (videoWidth/Height), no data-model field.
   it('shows the resolution badge after video metadata loads (#1616)', () => {
     render(
       <VideoNode
-        data={{ kind: 'video', status: 'idle', content: 'https://e.com/v.mp4' }}
+        data={{ kind: 'video', handling: false, content: 'https://e.com/v.mp4' }}
       />,
     );
     const v = screen.getByTestId('media-element');
@@ -94,7 +81,7 @@ describe('VideoNode', () => {
   });
 
   it('empty video node shows no resolution badge (#1616)', () => {
-    render(<VideoNode data={{ kind: 'video', status: 'idle' }} />);
+    render(<VideoNode data={{ kind: 'video', handling: false }} />);
     expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
   });
 
@@ -104,7 +91,7 @@ describe('VideoNode', () => {
   it('hides its control bar for the whole focus pick session (#1987 A5)', () => {
     const data = {
       kind: 'video' as const,
-      status: 'idle' as const,
+      handling: false as const,
       content: 'https://e.com/v.mp4',
     };
     render(<VideoNode data={data} />);
@@ -129,5 +116,64 @@ describe('VideoNode', () => {
       canvasSessions.of('').setState({ pickSession: null });
     });
     expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(false);
+  });
+});
+
+describe('VideoNode zoomed past its cover preview (inner#1320)', () => {
+  const COVER =
+    'https://resource-dev.breatic.cc/video/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679_cover.png';
+
+  /**
+   * The node under a given zoom answer from the canvas.
+   * @param past - Whether the canvas says the node is past its preview.
+   * @returns The element tree.
+   */
+  function zoomed(past: boolean): React.JSX.Element {
+    return (
+      <NodeZoomedPastPreviewContext.Provider value={past}>
+        <VideoNode
+          data={{ kind: 'video', content: 'https://e.com/v.mp4', coverUrl: COVER, handling: false }}
+        />
+      </NodeZoomedPastPreviewContext.Provider>
+    );
+  }
+
+  it('shows the cover preview while the canvas is not zoomed past it', () => {
+    resetPreviewRecords();
+    render(zoomed(false));
+
+    expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(`${COVER}.preview.webp`);
+  });
+
+  it('shows the full cover once zoomed past it, and keeps it after zooming out', () => {
+    resetPreviewRecords();
+    const { rerender } = render(zoomed(true));
+    expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(COVER);
+
+    rerender(zoomed(false));
+    expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(COVER);
+  });
+});
+
+// inner#1320: the node hands the player its own size, so the box is reserved
+// before the poster arrives, as an image node's is.
+describe('VideoNode while its poster loads', () => {
+  it('reserves the box from the size it carries and shows the skeleton', () => {
+    render(
+      <VideoNode
+        data={{ kind: 'video', handling: false, content: '/v.mp4', coverUrl: '/v_cover.png', width: 1080, height: 3840 }}
+      />,
+    );
+
+    expect(screen.getByTestId('media-element').getAttribute('width')).toBe('1080');
+    expect(screen.getByTestId('media-element').getAttribute('height')).toBe('3840');
+    expect(screen.getByTestId('media-skeleton')).toBeInTheDocument();
+  });
+
+  it('reserves nothing for a node of unknown size', () => {
+    render(<VideoNode data={{ kind: 'video', handling: false, content: '/v.mp4', coverUrl: '/v_cover.png' }} />);
+
+    expect(screen.getByTestId('media-element').getAttribute('width')).toBeNull();
+    expect(screen.queryByTestId('media-skeleton')).toBeNull();
   });
 });

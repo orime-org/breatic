@@ -1,9 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
+import { expectChosenFill, expectHoverableSiblingFill } from '@web/test-utils/selection-fill';
 import { ContainerToolbar } from '@web/pages/studio/container/ContainerToolbar';
 
 describe('ContainerToolbar', () => {
@@ -62,5 +64,65 @@ describe('ContainerToolbar', () => {
     );
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(screen.getByText('Members')).toBeInTheDocument();
+  });
+
+  it('offers the given sorts, marks the current one, and reports a new choice', async () => {
+    const onChange = vi.fn();
+    render(
+      <ContainerToolbar
+        title='Projects'
+        count={3}
+        sort={{ value: 'opened', options: ['opened', 'edited', 'name', 'created'], onChange }}
+      />,
+    );
+    const trigger = screen.getByRole('button', { name: /Sort/ });
+    expect(trigger).toHaveTextContent('Last opened');
+
+    await userEvent.click(trigger);
+    const items = await screen.findAllByTestId(/^container-sort-option-/);
+    expect(items.map((i) => i.textContent)).toEqual(['Last opened', 'Last edited', 'Name', 'Created']);
+    // Same chosen fill as the language and theme menus, no radio dot.
+    expectChosenFill(items[0]!);
+    for (const sibling of items.slice(1)) expectHoverableSiblingFill(sibling);
+    expect(items[0]!.querySelector('svg')).toBeNull();
+
+    await userEvent.click(items[2]!);
+    expect(onChange).toHaveBeenCalledWith('name');
+    expect(screen.queryByTestId('container-sort-option-name')).not.toBeInTheDocument();
+  });
+
+  it('switches between grid and list and shows which one is on', async () => {
+    const onChange = vi.fn();
+    render(<ContainerToolbar title='Projects' count={3} view={{ value: 'grid', onChange }} />);
+    const grid = screen.getByRole('button', { name: 'Grid view' });
+    const list = screen.getByRole('button', { name: 'List view' });
+    expect(grid).toHaveAttribute('aria-pressed', 'true');
+    expect(list).toHaveAttribute('aria-pressed', 'false');
+
+    await userEvent.click(list);
+    expect(onChange).toHaveBeenCalledWith('list');
+  });
+
+  it('marks the chosen view one step past hover, so hovering the other one never looks chosen', () => {
+    render(<ContainerToolbar title='Projects' count={3} view={{ value: 'grid', onChange: vi.fn() }} />);
+    for (const button of [screen.getByRole('button', { name: 'Grid view' }), screen.getByRole('button', { name: 'List view' })]) {
+      expect(button.className).toContain('aria-pressed:bg-accent-strong');
+      expect(button.className).toContain('aria-pressed:hover:bg-accent-strong');
+      expect(button.className).not.toMatch(/aria-pressed:bg-muted(\s|$)/);
+    }
+  });
+
+  it('stays at the top of the scroll area while the list under it scrolls', () => {
+    render(<ContainerToolbar title='Projects' count={3} />);
+    const bar = screen.getByTestId('container-toolbar');
+    expect(bar.className).toMatch(/(^|\s)sticky(\s|$)/);
+    expect(bar.className).toMatch(/(^|\s)top-0(\s|$)/);
+    // Opaque, so the rows passing under it do not show through.
+    expect(bar.className).toMatch(/(^|\s)bg-background(\s|$)/);
+  });
+
+  it('shows no count while the list has not loaded', () => {
+    render(<ContainerToolbar title='Projects' count={null} />);
+    expect(screen.queryByTestId('container-toolbar-count')).not.toBeInTheDocument();
   });
 });

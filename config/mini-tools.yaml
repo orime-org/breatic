@@ -1,0 +1,53 @@
+# Mini-tools that run in the media container (inner#888 §8, §9).
+#
+# Each container operation names the container class it runs in and the
+# seconds the credit precheck holds the reader to. The precheck is a floor, not
+# the bill: a run is charged for the seconds it actually used, priced below.
+# How long a run may take is the node task budget (config/node-tasks.yaml),
+# the one ceiling every task has.
+
+# How often the worker asks the ingest Worker how a job is doing.
+poll_interval_ms: 5000
+
+# Cloudflare's published per-second prices
+# (https://developers.cloudflare.com/containers/pricing/, read 2026-10-07).
+prices:
+  vcpu_second_usd: 0.00002
+  memory_gib_second_usd: 0.0000025
+  disk_gb_second_usd: 0.00000007
+
+# One class per instance type, each with the instance type's published size.
+classes:
+  MiniToolContainerStd1:
+    instance_type: "standard-1"
+    vcpu: 0.5
+    memory_gib: 4
+    disk_gb: 8
+  MiniToolContainerStd4:
+    instance_type: "standard-4"
+    vcpu: 4
+    memory_gib: 12
+    disk_gb: 20
+
+ops:
+  crop:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+  speed:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+  cut:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+  adjust:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+  audio_denoise:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+  stabilize:
+    container_class: "MiniToolContainerStd4"
+    precheck_seconds: 900
+  hdr:
+    container_class: "MiniToolContainerStd4"
+    precheck_seconds: 900

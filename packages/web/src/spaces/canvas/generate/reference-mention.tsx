@@ -10,7 +10,7 @@
  * container's `data-mode` + CSS, so the chip itself never reads the mode.
  */
 
-import { Node, mergeAttributes, type Editor } from '@tiptap/core';
+import { Node, getTextBetween, getTextSerializersFromSchema, mergeAttributes, type Editor } from '@tiptap/core';
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin } from '@tiptap/pm/state';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
@@ -20,6 +20,7 @@ import { Crop } from 'lucide-react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
+import { PROMPT_NOTE_NODE } from '@web/features/prompt-note/prompt-note';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { FOCUS_REF_PREFIX } from '@web/spaces/canvas/generate/derive-references';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
@@ -30,6 +31,7 @@ import { createReferenceMentionRangeHighlight } from '@web/features/reference-me
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { NodeKind } from '@web/data/yjs/node-view';
+import { PreviewImg } from '@web/components/preview-img';
 
 /** Options for the {@link ReferenceMention} node. */
 export interface ReferenceMentionOptions {
@@ -104,9 +106,17 @@ export function serializePromptText(
   tokens: MentionTokens = NO_MENTION_TOKENS,
 ): string {
   const words = chipWordsReader(pool, tokens);
-  return editor.getText({
+  const { doc } = editor.state;
+  // Notes sit above the words and are never sent: reading starts after the
+  // last of them, so no block separator is left behind in their place.
+  let from = 0;
+  doc.forEach((block, offset) => {
+    if (block.type.name === PROMPT_NOTE_NODE) from = offset + block.nodeSize;
+  });
+  return getTextBetween(doc, { from, to: doc.content.size }, {
     blockSeparator,
     textSerializers: {
+      ...getTextSerializersFromSchema(editor.schema),
       [REFERENCE_MENTION_NODE]: ({ node }): string =>
         words(
           node.attrs[MENTION_SOURCE_ID_ATTR] as string | null,
@@ -288,7 +298,7 @@ function ReferenceMentionChip({
         contentEditable={false}
       >
         {typeof thumbnail === 'string' && thumbnail.length > 0 ? (
-          <img
+          <PreviewImg
             src={thumbnail}
             alt={label}
             className='h-3 w-3 shrink-0 rounded-content-xs object-cover'

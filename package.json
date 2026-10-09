@@ -27,6 +27,7 @@
     "db:journal-add": "tsx scripts/db-journal-add.ts",
     "db:journal-repair": "tsx scripts/db-journal-repair.ts",
     "db:check-watermark": "tsx scripts/db-check-watermark.ts",
+    "db:backfill-previews": "tsx scripts/backfill-previews.ts",
     "voice-samples": "pnpm --filter @breatic/worker voice-samples"
   },
   "devDependencies": {
@@ -62,7 +63,9 @@
       "@tiptap/y-tiptap@3.0.8": "patches/@tiptap__y-tiptap@3.0.8.patch",
       "y-prosemirror@1.3.7": "patches/y-prosemirror@1.3.7.patch",
       "@xyflow/react@12.11.2": "patches/@xyflow__react@12.11.2.patch",
-      "@blocknote/core@0.54.0": "patches/@blocknote__core@0.54.0.patch"
+      "@blocknote/core@0.54.0": "patches/@blocknote__core@0.54.0.patch",
+      "@radix-ui/react-popover@1.1.23": "patches/@radix-ui__react-popover@1.1.23.patch",
+      "@radix-ui/react-dialog@1.1.23": "patches/@radix-ui__react-dialog@1.1.23.patch"
     }
   }
 }

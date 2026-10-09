@@ -4,11 +4,15 @@
 import * as React from 'react';
 import { Folder } from 'lucide-react';
 
+import type { StudioProjectSort } from '@breatic/shared';
+
 import { useTranslation } from '@web/i18n/use-translation';
 import { ContainerToolbar } from '@web/pages/studio/container/ContainerToolbar';
-import { ProjectCard } from '@web/pages/studio/container/cards/ProjectCard';
+import { LIST_SORTS } from '@web/pages/studio/container/list-prefs';
+import { ProjectListBody } from '@web/pages/studio/container/ProjectListBody';
 import { EmptyState } from '@web/pages/studio/shared/EmptyState';
-import type { ContainerProject } from '@web/pages/studio/container/container-types';
+import type { ProjectListView } from '@web/pages/studio/container/container-types';
+import type { StudioProjectList } from '@web/pages/studio/container/use-studio-projects-paging';
 import {
   NewItemDialog,
   type NewItemValues,
@@ -20,7 +24,12 @@ import type {
 } from '@web/pages/studio/shared/studio-types';
 
 interface ProjectsTabProps {
-  projects: readonly ContainerProject[];
+  /** The studio's live projects, as loaded so far. */
+  list: StudioProjectList;
+  sort: StudioProjectSort;
+  onSortChange: (sort: StudioProjectSort) => void;
+  view: ProjectListView;
+  onViewChange: (view: ProjectListView) => void;
   /** The viewer's studio role (`null` = non-member) — decides whether the create entry shows. */
   studioRole: StudioRole | null;
   /** Called when a project is created via the dialog (stub no-op in slice 3). */
@@ -31,18 +40,18 @@ interface ProjectsTabProps {
   defaultStudioId?: string;
 }
 
-// Auto-fill grid (neutral mock §grid): cards are min 190px wide, so the row
-// packs up to ~5 columns at the 1100px container width and reflows down.
-const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3';
-
 /**
- * The Projects tab (spec §3.3 / §3.13): a toolbar (title + count + sort/view
- * placeholders + create button) over a card grid of every project the server
- * listed for this studio. When there are no projects,
- * the toolbar stays and an empty-state line shows below it (the create button
- * in the toolbar is the entry point — locked mock dropped the in-grid card).
- * @param props the projects, the viewer's studio role and the create callback.
- * @param props.projects the studio's projects.
+ * The Projects tab (spec §3.3 / §3.13): a toolbar (title + total + sort +
+ * grid/list switch + create button) over the studio's projects, loaded a page
+ * at a time. When there are no projects, the toolbar stays and an empty-state
+ * line shows below it (the create button in the toolbar is the entry point —
+ * locked mock dropped the in-grid card).
+ * @param props the list, its sort and view, the viewer's studio role and the create callback.
+ * @param props.list the studio's live projects, as loaded so far.
+ * @param props.sort the list's sort.
+ * @param props.onSortChange changes the sort.
+ * @param props.view grid or list.
+ * @param props.onViewChange changes the view.
  * @param props.studioRole the viewer's studio role.
  * @param props.onCreateProject called when a project is created via the dialog.
  * @param props.creatableStudios the studios the viewer may create in (selector).
@@ -50,7 +59,11 @@ const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3';
  * @returns the Projects tab content.
  */
 export function ProjectsTab({
-  projects,
+  list,
+  sort,
+  onSortChange,
+  view,
+  onViewChange,
   studioRole,
   onCreateProject,
   creatableStudios,
@@ -67,23 +80,25 @@ export function ProjectsTab({
     <>
       <ContainerToolbar
         title={t('studio.container.tabs.projects')}
-        count={projects.length}
+        count={list.total}
         createLabel={t('studio.container.projects.new')}
         onCreate={canCreate ? () => setDialogOpen(true) : undefined}
+        sort={{ value: sort, options: LIST_SORTS.projects, onChange: onSortChange }}
+        view={{ value: view, onChange: onViewChange }}
       />
-      {projects.length === 0 ? (
-        <EmptyState
-          icon={Folder}
-          title={t('studio.container.projects.emptyTitle')}
-          hint={t('studio.container.projects.emptyHint')}
-        />
-      ) : (
-        <div className={GRID}>
-          {projects.map((project) => (
-            <ProjectCard key={project.id} project={project} />
-          ))}
-        </div>
-      )}
+      <ProjectListBody
+        list={list}
+        archived={false}
+        sort={sort}
+        view={view}
+        empty={
+          <EmptyState
+            icon={Folder}
+            title={t('studio.container.projects.emptyTitle')}
+            hint={t('studio.container.projects.emptyHint')}
+          />
+        }
+      />
       {canCreate ? (
         <NewItemDialog
           kind='project'

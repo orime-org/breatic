@@ -21,7 +21,6 @@ import { noGplBlocknoteAddons } from "#repo-lint/checks/no-gpl-blocknote-addons"
 import { noHardcodedSecrets } from "#repo-lint/checks/no-hardcoded-secrets";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
 import { noticeCoversDependencies } from "#repo-lint/checks/notice-covers-dependencies";
-import { noticeMatchesFfmpegPin } from "#repo-lint/checks/notice-matches-ffmpeg-pin";
 import { noticeTravelsWithTheBundle } from "#repo-lint/checks/notice-travels-with-the-bundle";
 import { noSilentSkip } from "#repo-lint/checks/no-silent-skip";
 import { noSubagentResidue } from "#repo-lint/checks/no-subagent-residue";
@@ -30,7 +29,6 @@ import { noTrojanSource } from "#repo-lint/checks/no-trojan-source";
 import { noUnresolvedAliasInDist } from "#repo-lint/checks/no-unresolved-alias-in-dist";
 import { serviceEntriesPresent } from "#repo-lint/checks/service-entries-present";
 import { sharedDepsInCatalog } from "#repo-lint/checks/shared-deps-in-catalog";
-import { skillRoutingMatchesSkills } from "#repo-lint/checks/skill-routing-matches-skills";
 import { storageKeyPrefixHtml } from "#repo-lint/checks/storage-key-prefix-html";
 import { tokenValues } from "#repo-lint/checks/token-values";
 
@@ -62,7 +60,6 @@ export const CHECKS: readonly Check[] = [
   noHardcodedSecrets,
   noPrivateRepoPath,
   noticeCoversDependencies,
-  noticeMatchesFfmpegPin,
   noticeTravelsWithTheBundle,
   noSilentSkip,
   noSubagentResidue,
@@ -71,7 +68,6 @@ export const CHECKS: readonly Check[] = [
   noUnresolvedAliasInDist,
   serviceEntriesPresent,
   sharedDepsInCatalog,
-  skillRoutingMatchesSkills,
   storageKeyPrefixHtml,
   tokenValues,
 ];

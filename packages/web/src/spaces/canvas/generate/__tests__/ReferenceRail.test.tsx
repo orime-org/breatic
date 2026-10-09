@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
+import { resetPreviewRecords } from '@web/lib/preview-src';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 
@@ -354,5 +355,25 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
       'aria-disabled',
       'true',
     );
+  });
+});
+
+describe('ReferenceRail — the thumbnail shows the stored preview (inner#1320)', () => {
+  beforeEach(() => {
+    resetPreviewRecords();
+  });
+
+  it('a stored image renders its preview address in the 24px thumbnail', () => {
+    const stored =
+      'https://resource-dev.breatic.cc/image/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679.png';
+    render(
+      <ReferenceRail
+        referenceKinds={['image']}
+        references={[{ ...REFS[0], thumbnail: stored }]}
+        onRemove={() => {}}
+        onInsert={() => {}}
+      />,
+    );
+    expect(screen.getByAltText('Hero').getAttribute('src')).toBe(`${stored}.preview.webp`);
   });
 });

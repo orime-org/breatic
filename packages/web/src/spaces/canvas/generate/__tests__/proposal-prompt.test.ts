@@ -2,208 +2,116 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What a placed proposal leaves in the prompt box (#229).
+ * What a placed proposal or a picked template leaves in the prompt box
+ * (#229, inner#977).
  *
  * The prompt is written straight into the Yjs types, without an editor, so
  * every case here reads it back through a real prompt editor bound to the same
- * fragment. That is the only thing standing between a hand-built shape and one
- * ProseMirror's schema rejects the moment the reader opens the panel -- and a
- * mention whose attrs the schema does not recognise contributes nothing to
- * generation while still looking like a chip.
+ * fragment: a hand-built shape the schema rejects would vanish the moment the
+ * reader opens the panel. Nothing is @'d for the reader; the marks only tell
+ * them what to do.
  */
 
 import { describe, it, expect } from 'vitest';
 import { Editor, type JSONContent } from '@tiptap/core';
 import { Collaboration } from '@tiptap/extension-collaboration';
-import { Document } from '@tiptap/extension-document';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import { Text } from '@tiptap/extension-text';
 import * as Y from 'yjs';
 
 import type { PromptSegment } from '@breatic/shared';
 
-import { extractAtMentionedSourceIds } from '@web/spaces/canvas/generate/at-reference';
-import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
-import {
-  MENTION_KIND_ATTR,
-  ReferenceMention,
-  serializePromptText,
-} from '@web/spaces/canvas/generate/reference-mention';
+import { PROMPT_NOTE_LABEL_ATTR, PROMPT_NOTE_NODE, PromptDocument, PromptNote } from '@web/features/prompt-note/prompt-note';
+import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
+import { ReferenceMention, serializePromptText } from '@web/spaces/canvas/generate/reference-mention';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
-import {
-  writeProposalPrompt,
-  type ProposalSource,
-} from '@web/spaces/canvas/generate/proposal-prompt';
+import { writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
 
 /**
  * Write a prompt, then read it back through an editor bound to the fragment.
  * @param segments - The prompt as the model sent it.
- * @param sources - The empty nodes the asset spots mention.
- * @param upstream - The nodes already carrying work that ref spots mention.
- * @returns What the editor makes of it, its plain text, and the string that
- *   would be sent to generation.
+ * @returns What the editor makes of it and the string generation would get.
  */
-function roundTrip(
-  segments: readonly PromptSegment[],
-  sources: readonly ProposalSource[] = [],
-  upstream: readonly ProposalSource[] = [],
-): { json: JSONContent; text: string; sent: string } {
+function roundTrip(segments: readonly PromptSegment[]): { json: JSONContent; sent: string } {
   const doc = new Y.Doc();
   const fragment = doc.getXmlFragment('prompt');
-  writeProposalPrompt(fragment, segments, { sources, upstream });
+  writeProposalPrompt(fragment, segments);
 
   const editor = new Editor({
     element: document.createElement('div'),
     extensions: [
-      Document,
+      PromptDocument,
       Paragraph,
       Text,
+      PromptNote,
       ReferenceMention.configure({
-        suggestion: makeReferenceSuggestion({
-          getPool: () => [],
-          emptyLabel: '',
-        }),
+        suggestion: makeReferenceSuggestion({ getPool: () => [], emptyLabel: '' }),
       }),
       Collaboration.configure({ fragment }),
     ],
   });
-  const read = {
-    json: editor.getJSON(),
-    text: editor.getText(),
-    sent: serializePromptText(editor, []),
-  };
+  const read = { json: editor.getJSON(), sent: serializePromptText(editor, []) };
   editor.destroy();
   return read;
 }
 
-describe('a prompt with nothing left for the reader', () => {
-  it('reaches the editor as the words the model wrote', () => {
-    const { text } = roundTrip([{ text: 'a still life on a white ground' }]);
+/**
+ * Every node type in the document, depth first.
+ * @param node - Where to start.
+ * @returns The type names.
+ */
+function typesIn(node: JSONContent): string[] {
+  return [node.type ?? '', ...(node.content ?? []).flatMap(typesIn)];
+}
 
-    expect(text).toBe('a still life on a white ground');
-  });
-});
-
-describe('a spot the reader has to change', () => {
-  it('stands in the prompt bracketed, where it belongs', () => {
-    const { text } = roundTrip([
-      { text: 'a hummingbird, ' },
-      { slot: { kind: 'tweak', label: 'cyberpunk', note: 'swap the style' } },
-      { text: ', shallow focus' },
-    ]);
-
-    expect(text).toBe('a hummingbird, [✏️ cyberpunk], shallow focus');
-  });
-});
-
-describe('a spot the reader has to fill with their own material', () => {
-  const SEGMENTS: PromptSegment[] = [
-    { text: 'white ground, ' },
-    {
-      slot: {
-        kind: 'asset',
-        label: 'your product photo',
-        note: 'Put it in the node on the left',
-      },
-    },
-    { text: ' centred' },
-  ];
-  const SOURCES: ProposalSource[] = [{ id: 'n-empty', kind: 'image' }];
-
-  it('is bracketed too, and the words on either side of it survive', () => {
-    const { sent } = roundTrip(SEGMENTS, SOURCES);
-
-    // Read as generation reads it: an image chip contributes no words there --
-    // it feeds the source image instead -- so what is left is the sentence.
-    // The gap after the bracket is the chip's own: every chip keeps one
-    // ordinary space on each side so the caret has somewhere to land
-    // (reference-mention-whitespace.ts), and the editor adds them on binding.
-    expect(sent).toBe('white ground, [📎 your product photo]  centred');
+describe('words with nothing left for the reader', () => {
+  it('reach the editor as the model wrote them', () => {
+    expect(roundTrip([{ text: 'a still life on a white ground' }]).sent).toBe('a still life on a white ground');
   });
 
-  it('carries the mention of the empty node, so generation reaches it', () => {
-    const { json } = roundTrip(SEGMENTS, SOURCES);
-
-    expect(extractAtMentionedSourceIds(json)).toEqual(['n-empty']);
-  });
-
-  it('leaves the chip to follow the node rather than freezing its look', () => {
-    const { json } = roundTrip(SEGMENTS, SOURCES);
-
-    const mention = json.content?.[0]?.content?.find(
-      (n) => n.type === REFERENCE_MENTION_NODE,
-    );
-    expect(mention?.attrs?.[MENTION_SOURCE_ID_ATTR]).toBe('n-empty');
-    expect(mention?.attrs?.[MENTION_KIND_ATTR]).toBe('image');
-    // The projection fills these in from the live node.
-    expect(mention?.attrs?.['label']).toBeNull();
-    expect(mention?.attrs?.['thumbnail']).toBeNull();
-  });
-});
-
-describe('a prompt written across more than one line', () => {
-  it('becomes one block per line, which is what the schema allows', () => {
+  it('start a new block at each line break', () => {
     const { json } = roundTrip([{ text: 'first line\nsecond line' }]);
-
-    expect(json.content).toHaveLength(2);
-    expect(json.content?.[0]?.content?.[0]?.text).toBe('first line');
-    expect(json.content?.[1]?.content?.[0]?.text).toBe('second line');
+    expect(json.content?.map((block) => block.content?.[0]?.text)).toEqual(['first line', 'second line']);
   });
 });
 
-describe('a spot that points at the node upstream', () => {
-  const UPSTREAM: ProposalSource[] = [{ id: 'n-first', kind: 'image' }];
+describe('a reference and a fill-in', () => {
+  const SEGMENTS: PromptSegment[] = [
+    { slot: { kind: 'asset', label: 'the uploaded photo', note: '@ the photo' } },
+    { text: ' at night, ' },
+    { slot: { kind: 'tweak', label: 'the mood', note: 'write the mood' } },
+  ];
 
-  it('writes the mention and no bracket of its own', () => {
-    const { sent } = roundTrip(
-      [
-        { text: 'in the same light as ' },
-        { slot: { kind: 'ref', label: 'the first shot', note: 'Nothing to do' } },
-        { text: ', from the side' },
-      ],
-      [],
-      UPSTREAM,
-    );
-
-    // An image chip contributes no words to generation, so what is left is
-    // the sentence around it -- with the chip's own spaces on either side.
-    expect(sent).toBe('in the same light as  , from the side');
+  it('stand in the prompt as words telling the reader what to do', () => {
+    expect(roundTrip(SEGMENTS).sent).toBe('[📎 Use @ to pick the uploaded photo] at night, {✏️ the mood}');
   });
 
-  it('reaches generation as a mention of that node', () => {
-    const { json } = roundTrip(
-      [{ text: 'in the same light as ' }, { slot: { kind: 'ref', label: 'the first shot', note: 'x' } }],
-      [],
-      UPSTREAM,
-    );
+  it('@ nothing for the reader', () => {
+    expect(typesIn(roundTrip(SEGMENTS).json)).not.toContain(REFERENCE_MENTION_NODE);
+  });
+});
 
-    expect(extractAtMentionedSourceIds(json)).toEqual(['n-first']);
+describe('a note', () => {
+  const SEGMENTS: PromptSegment[] = [
+    { text: 'She walks forward.' },
+    { slot: { kind: 'note', label: 'Pick the first frame in the panel' } },
+    { slot: { kind: 'note', label: 'Upload the voice first' } },
+  ];
+
+  it('lands as its own blocks at the top, one per note, in the order written', () => {
+    const { json } = roundTrip(SEGMENTS);
+    expect(json.content?.slice(0, 2).map((block) => [block.type, block.attrs?.[PROMPT_NOTE_LABEL_ATTR]])).toEqual([
+      [PROMPT_NOTE_NODE, 'Pick the first frame in the panel'],
+      [PROMPT_NOTE_NODE, 'Upload the voice first'],
+    ]);
   });
 
-  it('takes its node from the upstream list, not the empty one', () => {
-    const { json } = roundTrip(
-      [
-        { slot: { kind: 'asset', label: 'your photo', note: 'x' } },
-        { text: ' in the light of ' },
-        { slot: { kind: 'ref', label: 'the first shot', note: 'x' } },
-      ],
-      [{ id: 'n-empty', kind: 'image' }],
-      UPSTREAM,
-    );
-
-    expect(extractAtMentionedSourceIds(json)).toEqual(['n-empty', 'n-first']);
+  it('is left out of what generation gets', () => {
+    expect(roundTrip(SEGMENTS).sent).toBe('She walks forward.');
   });
 
-  it('mentions a text node upstream by its own kind', () => {
-    const { json } = roundTrip(
-      [{ text: 'follow ' }, { slot: { kind: 'ref', label: 'the copy', note: 'x' } }],
-      [],
-      [{ id: 'n-copy', kind: 'text' }],
-    );
-
-    const mention = json.content?.[0]?.content?.find(
-      (n) => n.type === REFERENCE_MENTION_NODE,
-    );
-    expect(mention?.attrs?.[MENTION_KIND_ATTR]).toBe('text');
+  it('leaves a line below it to write in when it is all there is', () => {
+    const { json } = roundTrip([{ slot: { kind: 'note', label: 'Pick the first frame in the panel' } }]);
+    expect(json.content?.map((block) => block.type)).toEqual([PROMPT_NOTE_NODE, 'paragraph']);
   });
 });

@@ -1,14 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, waitFor } from '@testing-library/react';
+import type * as React from 'react';
 import { Editor } from '@tiptap/core';
 import { Collaboration } from '@tiptap/extension-collaboration';
 import { Document } from '@tiptap/extension-document';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import { Text } from '@tiptap/extension-text';
 import { TextSelection } from '@tiptap/pm/state';
-import { ReactRenderer } from '@tiptap/react';
+import { EditorContent, ReactRenderer, useEditor } from '@tiptap/react';
 import { SuggestionPluginKey } from '@tiptap/suggestion';
 import * as Y from 'yjs';
 
@@ -28,6 +30,7 @@ import {
 } from '@web/features/reference-mention/reference-mention-local-input';
 import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 
 /**
  * Mounts a bare editor carrying the ReferenceMention extension configured with
@@ -1218,5 +1221,51 @@ describe('stripForeignReferenceChips — cross-node paste', () => {
     } finally {
       editor.destroy();
     }
+  });
+});
+
+describe('ReferenceMention chip — the thumbnail shows the stored preview (inner#1320)', () => {
+  beforeEach(() => {
+    resetPreviewRecords();
+  });
+
+  it('a stored image chip renders its preview address in the chip thumbnail', async () => {
+    const stored =
+      'https://resource-dev.breatic.cc/image/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679.png';
+    /**
+     * Mounts the editor under EditorContent, which is what renders the chip's NodeView.
+     * @returns The editor host.
+     */
+    function Host(): React.JSX.Element {
+      const e = useEditor({
+        extensions: [Document, Paragraph, Text, ReferenceMention],
+        content: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                referenceMentionContent({
+                  refId: 'a->me',
+                  sourceNodeId: 'a',
+                  sourceNodeType: 'image',
+                  sourceNodeName: 'Hero',
+                  thumbnail: stored,
+                }),
+              ],
+            },
+          ],
+        },
+        immediatelyRender: true,
+      });
+      return <EditorContent editor={e} />;
+    }
+    render(<Host />);
+    const img = await waitFor(() => {
+      const found = document.querySelector('.reference-mention img');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(img.getAttribute('src')).toBe(`${stored}.preview.webp`);
   });
 });

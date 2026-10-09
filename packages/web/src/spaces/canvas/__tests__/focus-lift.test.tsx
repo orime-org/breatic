@@ -7,6 +7,7 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import * as canvasSpace from '@web/data/yjs/canvas-space';
 import {
   clickNode,
+  focusTarget,
   group,
   image,
   mockSpace,
@@ -57,7 +58,7 @@ describe('聚焦目标的抬升（#2000）', () => {
     act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
 
-    expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
+    expect(focusTarget()).toBe('src');
     expect(zOf('src')).toBe('1002');
   });
 

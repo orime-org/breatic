@@ -109,17 +109,6 @@
       "not_found": "That purchase could not be found.",
       "unavailable": "This deployment does not sell credits."
     },
-    "skill": {
-      "not_found": "Skill not found",
-      "name_taken": "You already have a skill with this name",
-      "not_published": "This skill has not been published",
-      "cannot_install_own": "You cannot install your own skill",
-      "already_installed": "This skill is already installed",
-      "not_available_here": "Skill ‘{skill}’ is not available here",
-      "not_user_invocable": "Skill ‘{skill}’ cannot be invoked directly",
-      "not_available_on_deployment": "Skill ‘{skill}’ is not available on this server",
-      "not_found_named": "Skill ‘{skill}’ not found"
-    },
     "conversation": {
       "not_found": "Conversation not found",
       "attachment_not_found": "Attachment not found",
@@ -240,6 +229,11 @@
         "lead": "Enter this code on the sign-up page to finish creating your account.",
         "footer": "This code expires in {minutes, plural, one {# minute} other {# minutes}}. If you didn't try to sign up, you can ignore this email."
       }
+    },
+    "mini_tool": {
+      "unavailable": "This tool is unavailable right now.",
+      "invalidParam": "\"{name}\" has a value this tool does not take.",
+      "foreignSource": "This file cannot be processed."
     }
   },
   "chat": {
@@ -539,7 +533,6 @@
       "focusSourceDeleted": "Source deleted.",
       "focusSourceReplaced": "Source replaced.",
       "focusSourceBusy": "Source is processing.",
-      "focusSourceFailed": "Source processing failed.",
       "focusSourceDeletedByPeer": "A collaborator deleted the source.",
       "focusSourceReplacedByPeer": "A collaborator replaced the source.",
       "pickEnded": "Selection ended.",
@@ -660,7 +653,19 @@
         "model_mode": "Region",
         "creativity": "Creativity",
         "rendering": "Rendering",
-        "style_match": "Style match"
+        "style_match": "Style match",
+        "target_megapixels": "Output size",
+        "target_resolution": "Target resolution",
+        "resolution": "Resolution",
+        "duration": "Duration",
+        "generate_audio": "Generate audio",
+        "enable_prompt_expansion": "Expand prompt",
+        "character_orientation": "Orientation from",
+        "keep_original_sound": "Keep original sound",
+        "motion_prompt": "Motion",
+        "append_duration": "Added length",
+        "ambience": "Ambience",
+        "double_output": "Two takes"
       },
       "paramField": {
         "speaker": "Name",
@@ -701,7 +706,9 @@
         "title": "Camera angle",
         "reset": "Reset",
         "loadFailed": "The 3D view could not load. Refresh the page to use it."
-      }
+      },
+      "editMarks": "Replace the text in square brackets and braces. Orange notes are not sent to the model.",
+      "notePrefix": "Note: "
     },
     "edge": {
       "delete": "Delete connection"
@@ -717,7 +724,8 @@
       "hashUnavailable": "Couldn't verify this file. Reload the page and try again.",
       "storageFull": "Studio storage is full. Uploading is unavailable.",
       "rateLimited": "Uploading too often. Try again later.",
-      "failed": "Upload failed."
+      "failed": "Upload failed.",
+      "extractionFailed": "Couldn't read the text in {filename}."
     },
     "minimap": {
       "label": "Canvas minimap"
@@ -791,13 +799,11 @@
         "expired": "Expired"
       },
       "countTip": "{status} · {count}",
-      "someFailed": "A task on this node did not finish.",
-      "view": "View",
       "action": {
-        "replace": "Replace",
         "retry": "Retry",
-        "finish": "Dismiss",
-        "clear": "Clear"
+        "finish": "Mark read",
+        "clear": "Mark read",
+        "view": "View"
       },
       "elapsed": "Running {duration}",
       "remaining": "{duration} left",
@@ -821,14 +827,192 @@
         "source_too_slow": "This address was still sending when the time ran out.",
         "unsupported_type": "{kind, select, image {Not a supported format. Images take {formats}.} video {Not a supported format. Video takes {formats}.} audio {Not a supported format. Audio takes {formats}.} other {Not a supported format.}}",
         "empty": "Nothing came back.",
-        "internal": "Something on our side went wrong. Try again.",
+        "internal": "Something on our side went wrong.",
         "no_credits": "No credits available.",
         "declined": "The model declined this request.",
-        "media_refused": "The model would not take this file."
+        "media_refused": "The model would not take this file.",
+        "tool_failed": "The tool could not process this file.",
+        "no_audio_track": "This video has no audio track."
+      },
+      "title": {
+        "upload": "Upload · {name}",
+        "generate": "Generate · {name}",
+        "understand": "Understand · {name}"
       }
     },
     "panel": {
       "hostDeletedByPeer": "A collaborator deleted the node."
+    },
+    "miniTool": {
+      "image": {
+        "remove-bg": {
+          "label": "Remove background"
+        },
+        "upscale": {
+          "label": "Upscale"
+        },
+        "digital-human": {
+          "label": "Talking head",
+          "slot": {
+            "audio": "Pick an audio node for the voice"
+          },
+          "prompt": "Describe the expression and movement"
+        },
+        "crop": {
+          "label": "Crop"
+        },
+        "rotate": {
+          "label": "Rotate & flip"
+        }
+      },
+      "video": {
+        "upscale": {
+          "label": "Upscale"
+        },
+        "interpolate": {
+          "label": "Interpolate"
+        },
+        "extend": {
+          "label": "Extend",
+          "prompt": "Describe what happens next"
+        },
+        "edit": {
+          "label": "Edit",
+          "slot": {
+            "images": "Pick images as references",
+            "audios": "Pick audio as references"
+          },
+          "prompt": "Describe the change"
+        },
+        "motion": {
+          "label": "Motion transfer",
+          "slot": {
+            "character": "Pick an image for the character"
+          },
+          "prompt": "Describe the motion"
+        },
+        "animate": {
+          "label": "Animate",
+          "slot": {
+            "character": "Pick an image for the character"
+          },
+          "prompt": "Describe the look and background"
+        },
+        "crop": {
+          "label": "Crop"
+        },
+        "speed": {
+          "label": "Speed"
+        },
+        "cut": {
+          "label": "Cut"
+        },
+        "adjust": {
+          "label": "Adjust"
+        },
+        "audio-denoise": {
+          "label": "Audio denoise"
+        },
+        "stabilize": {
+          "label": "Stabilize"
+        },
+        "hdr": {
+          "label": "HDR"
+        }
+      },
+      "audio": {
+        "separate": {
+          "label": "Separate vocals"
+        },
+        "extend": {
+          "label": "Extend",
+          "prompt": "Describe the sound to add"
+        }
+      },
+      "param": {
+        "aspect": {
+          "label": "Ratio"
+        },
+        "rect": {
+          "label": "Size (px)"
+        },
+        "orient": {
+          "label": "Orientation"
+        },
+        "rate": {
+          "label": "Speed"
+        },
+        "range": {
+          "label": "Range"
+        },
+        "value": {
+          "label": "Color"
+        },
+        "intensity": {
+          "label": "Strength"
+        },
+        "shakiness": {
+          "label": "Shakiness"
+        },
+        "smoothing": {
+          "label": "Smoothing"
+        },
+        "transfer": {
+          "label": "Transfer"
+        }
+      },
+      "panel": {
+        "close": "Close",
+        "run": "Run",
+        "free": "Free",
+        "usage": "Billed by usage",
+        "slot": "{kind, select, image {Image} audio {Audio} other {Video}}{required, select, yes { (required)} other {}}",
+        "clearSlot": "Remove",
+        "rangeLength": "Length {seconds} s",
+        "sourceMissing": "The source hasn't loaded yet. Try again once it has.",
+        "slotTooLong": "The picked media run longer than {limit} s in total.",
+        "noUsableTier": "This image can't be upscaled.",
+        "exportFailed": "Couldn't make the file.",
+        "sourceGone": "The source node was deleted.",
+        "sourceChanged": "The source changed.",
+        "sourceChangedByPeer": "A collaborator changed the source.",
+        "couldNotStart": "Couldn't start the tool. Try again."
+      },
+      "adjust": {
+        "exposure": "Exposure",
+        "highlights": "Highlights",
+        "shadows": "Shadows",
+        "contrast": "Contrast",
+        "saturation": "Saturation",
+        "vibrance": "Vibrance",
+        "temperature": "Temperature",
+        "tint": "Tint",
+        "hue": "Hue",
+        "sharpness": "Sharpness",
+        "noiseReduction": "Noise reduction",
+        "clarity": "Clarity",
+        "vignette": "Vignette",
+        "grain": "Grain",
+        "fade": "Fade"
+      }
+    },
+    "template": {
+      "title": "Templates",
+      "empty": "No templates",
+      "unavailable": "Unavailable",
+      "storyboard-grid-25": {
+        "name": "25-panel storyboard",
+        "description": "A 5×5 sequence of one story, for turning into a video",
+        "prompt": "Use [📎 character or scene reference] as the reference. Create ONE image: a storyboard grid of exactly 5 rows and 5 columns, 25 equal panels in total, separated by thin white gutters, read left to right and top to bottom as one continuous sequence in time. Story: {✏️ the story}. Every panel keeps the same people, outfits, location and lighting as the reference. Vary shot size and camera angle from panel to panel like a film storyboard. No text, no numbers."
+      },
+      "costume-sheet": {
+        "name": "Character turnaround",
+        "description": "Front, side and back views plus a close-up of a detail",
+        "prompt": "Use [📎 character reference] as the character reference. Create ONE image: a character costume sheet on a plain light grey background. On the left, full-body front, side and back views of the same character standing side by side; on the right, smaller close-up frames of {✏️ the hands or another body part}. The same photorealistic photographic style as the reference, not an illustration. The face, hairstyle, outfit, colours and body proportions match the reference in every view. Even studio lighting. No text."
+      }
+    },
+    "promptMark": {
+      "reference": "Use @ to pick {label}"
     }
   },
   "auth": {
@@ -1048,6 +1232,7 @@
       "description": "{count, plural, one {# space · click to open or use the right menu} other {# spaces · click to open or use the right menu}}",
       "empty": "No spaces yet",
       "openAria": "Open {name}",
+      "rowActions": "View, lock or delete this Space",
       "status": {
         "editing": "Editing",
         "open": "Open"
@@ -1311,10 +1496,6 @@
     "inviteSent": "Invite sent.",
     "inviteFailed": "Could not send the invite. Please try again.",
     "invalidEmail": "Please enter a valid email address.",
-    "inviteLinkLabel": "Invite link",
-    "copyInviteLink": "Copy invite link",
-    "inviteLinkCopied": "Invite link copied.",
-    "inviteLinkCopyFailed": "Could not copy the link.",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
@@ -1469,7 +1650,11 @@
         "archived": "Archived",
         "archiveFailed": "Couldn't archive",
         "restored": "Restored",
-        "restoreFailed": "Couldn't restore"
+        "restoreFailed": "Couldn't restore",
+        "openedAt": "Opened {time}",
+        "editedAt": "Edited {time}",
+        "archivedAt": "Archived {time}",
+        "neverOpened": "Never opened"
       },
       "projects": {
         "new": "New project",
@@ -1629,7 +1814,18 @@
       },
       "toolbar": {
         "sortLabel": "Sort",
-        "sortValue": "Recently opened"
+        "sortValue": "Last opened",
+        "sort": {
+          "opened": "Last opened",
+          "edited": "Last edited",
+          "name": "Name",
+          "created": "Created",
+          "archived": "Archived"
+        },
+        "view": {
+          "grid": "Grid view",
+          "list": "List view"
+        }
       },
       "imageError": {
         "too_large": "That file is over 20 MB — pick a smaller image.",
@@ -1656,6 +1852,20 @@
       "archived": {
         "emptyTitle": "No archived projects",
         "emptyHint": "Archived projects show up here, and can be restored at any time."
+      },
+      "list": {
+        "columns": {
+          "name": "Name",
+          "opened": "Last opened",
+          "edited": "Last edited",
+          "created": "Created",
+          "archived": "Archived",
+          "role": "My role"
+        },
+        "loadFailed": "Projects did not load",
+        "pageFailed": "The rest of the projects did not load",
+        "retry": "Retry",
+        "end": "{count, plural, one {# project} other {# projects}}"
       }
     },
     "rail": {

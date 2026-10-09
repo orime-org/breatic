@@ -21,8 +21,6 @@ export { useCurrentUserStore } from '@web/stores/current-user';
 export type { CurrentUser, UserRole } from '@web/stores/current-user';
 export { useCanvasStore, isProposalIntent } from '@web/stores/canvas';
 export type { CreateIntent } from '@web/stores/canvas';
-export { useMiniToolStore } from '@web/stores/mini-tool';
-export type { MiniToolStatus, MiniToolSession } from '@web/stores/mini-tool';
 export { useInpaintStore } from '@web/stores/inpaint';
 export type { BrushMode } from '@web/stores/inpaint';
 export { useProjectStore } from '@web/stores/project';

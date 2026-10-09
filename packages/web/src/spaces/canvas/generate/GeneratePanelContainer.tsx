@@ -81,6 +81,7 @@ import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
+import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 
 /**
  * For the two derivations below that deliberately want no body text. Shared so
@@ -335,6 +336,8 @@ function GeneratePanelBody({
     [projectId, spaceId, nodeId, models],
   );
 
+  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId, models);
+
   /**
    * The node's live content view, or undefined when the node is gone or is not
    * a content node. Read fresh at click time for the same reason freshVm is: a
@@ -351,7 +354,7 @@ function GeneratePanelBody({
     evaluateExecute({
       promptText,
       model: vm.model,
-      nodeStatus: vm.nodeStatus,
+      nodeExists: vm.nodeExists,
       isSubmitting,
       // The model states it (#1966). This was a literal `true` until the field
       // existed, because the only derivation available then read a `prompt`
@@ -598,7 +601,7 @@ function GeneratePanelBody({
     const verdict = evaluateExecute({
       promptText: freshPrompt,
       model: fresh.model,
-      nodeStatus: fresh.nodeStatus,
+      nodeExists: fresh.nodeExists,
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
       maxInputChars,
@@ -750,6 +753,8 @@ function GeneratePanelBody({
   return (
     <GeneratePanel
       models={stableModels}
+      catalogModels={models}
+      onPickTemplate={onPickTemplate}
       model={vm.model}
       mode={vm.mode}
       modeOptions={availableModes}

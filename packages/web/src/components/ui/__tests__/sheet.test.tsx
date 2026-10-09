@@ -48,6 +48,20 @@ describe('Sheet', () => {
     expect(content.className).toContain('border-l');
   });
 
+  it('slides in over 250ms decelerating and out over 200ms accelerating', () => {
+    setup(true);
+    const classes = screen.getByTestId('content').className.split(/\s+/);
+    expect(classes).toEqual(
+      expect.arrayContaining([
+        'data-[state=open]:duration-250',
+        'data-[state=open]:ease-[cubic-bezier(0,0,0,1)]',
+        'data-[state=closed]:duration-200',
+        'data-[state=closed]:ease-[cubic-bezier(0.8,0,0.78,1)]',
+      ]),
+    );
+    expect(classes).not.toContain('ease-in-out');
+  });
+
   it('side=left applies left-slide tokens', () => {
     setup(true, 'left');
     const content = screen.getByTestId('content');

@@ -88,9 +88,13 @@ export interface ItemField {
 
 /**
  * How a parameter's value reaches the run (#269). `storyboard` is filled from
- * the node's shots in the multi-shot mode (`storyboard.ts`).
+ * the node's shots in the multi-shot mode (`storyboard.ts`); `tool` by a
+ * mini-tool's panel (inner#888).
  */
-export type ParamFill = "canvas" | "pool" | "editor" | "panel" | "remote" | "storyboard" | "none";
+export const PARAM_FILLS = ["canvas", "pool", "editor", "panel", "remote", "storyboard", "tool", "none"] as const;
+
+/** One way a parameter's value reaches the run. */
+export type ParamFill = (typeof PARAM_FILLS)[number];
 
 /** What has to hold before a declared control counts for anything (#269). */
 export interface ParamGate {
@@ -158,6 +162,8 @@ export interface ParamDescriptor {
    */
   type?: "list" | "items" | "text";
   max_items?: number;
+  /** The longest the picked clips may run together, in seconds. */
+  max_total_duration?: number;
   /** The fewest entries a run takes; the panel keeps rows up to it. */
   min_items?: number;
   /** Another param this one stands in for: when this one is sent, that one is not. */
@@ -315,10 +321,8 @@ export interface ModelCatalog {
 // image), as opposed to a pure utility tool (`remove_bg` / `upscale`) that
 // belongs in the mini-tool system.
 //
-// Two consumers: the agent's image-plan skill
-// (`domain/agent/skills-loader.ts`), and `GENERATION_NODE_MODES` below, out
-// of which the agent's capability tools answer which modes an image node
-// can be set to.
+// Its consumer is `GENERATION_NODE_MODES` below, out of which the agent's
+// capability tools answer which modes an image node can be set to.
 // The Generate panel does NOT read this — its picker narrows the catalog to the
 // mode the user is on (`filterModelsByMode`), and since #1951 it offers only the
 // modes this deployment has a model for. It used to be a shared predicate; the
@@ -362,8 +366,7 @@ export const IMAGE_GENERATION_MODES = ["t2i", "i2i"] as const;
  * This is a separate list from `IMAGE_GENERATION_MODES` on purpose, not a
  * duplication to be merged: the two are independent product decisions that
  * happen to share a shape. Changing which image modes are generatable says
- * nothing about video, and the agent's image-plan skill reads the image list
- * without wanting a video decision attached to it.
+ * nothing about video.
  */
 export const VIDEO_GENERATION_MODES = [
   "t2v",
@@ -474,6 +477,7 @@ const paramDescriptorSchema = z
     step: z.number().optional().catch(undefined),
     type: z.enum(["list", "items", "text"]).optional().catch(undefined),
     max_items: z.number().optional().catch(undefined),
+    max_total_duration: z.number().optional().catch(undefined),
     min_items: z.number().optional().catch(undefined),
     replaces: z.string().optional().catch(undefined),
     fields: z.record(z.string(), itemFieldSchema).optional().catch(undefined),
@@ -490,7 +494,7 @@ const paramDescriptorSchema = z
     // the panel then draws nothing for it, which is less than it could do
     // rather than a control whose value reaches nobody.
     fill: z
-      .enum(["canvas", "pool", "editor", "panel", "remote", "storyboard", "none"])
+      .enum(PARAM_FILLS)
       .optional()
       .catch(undefined),
     accepts: z.enum(["image", "video", "audio"]).optional().catch(undefined),

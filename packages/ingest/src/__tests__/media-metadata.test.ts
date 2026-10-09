@@ -14,7 +14,11 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { mediaNumbersFor, pickMediaMetadata } from "@ingest/media-metadata.js";
+import {
+  hasPreviewableFrame,
+  mediaNumbersFor,
+  pickMediaMetadata,
+} from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 
 /**
@@ -214,5 +218,43 @@ describe("how long the media runs", () => {
     const picked = mediaNumbersFor(contentType, report([VIDEO_STREAM], 12.25));
 
     expect(picked.durationSeconds).toBe(12.25);
+  });
+});
+
+// An APNG probes as `apng` and a still PNG as `png`; ffprobe reports no frame
+// count for either. Measured on ffmpeg 8.0.1 — what the container ships.
+// Cutting the first frame of an animation would turn it into a still on the
+// canvas, so an APNG gets no preview and is shown whole.
+describe("whether a stored picture gets a preview", () => {
+  const still = {
+    index: 0,
+    codecType: "video",
+    codecName: "png",
+    width: 320,
+    height: 240,
+    attachedPic: false,
+  };
+
+  it("cuts one for a still picture", () => {
+    expect(hasPreviewableFrame(report([still]))).toBe(true);
+  });
+
+  it("cuts none for an animated PNG", () => {
+    expect(hasPreviewableFrame(report([{ ...still, codecName: "apng" }]))).toBe(false);
+  });
+
+  it("cuts none when nothing could be read", () => {
+    expect(hasPreviewableFrame(report([]))).toBe(false);
+  });
+
+  it("cuts none from album art alone", () => {
+    expect(
+      hasPreviewableFrame(
+        report([
+          { ...still, attachedPic: true },
+          { index: 1, codecType: "audio", codecName: "mp3", width: null, height: null, attachedPic: false },
+        ]),
+      ),
+    ).toBe(false);
   });
 });

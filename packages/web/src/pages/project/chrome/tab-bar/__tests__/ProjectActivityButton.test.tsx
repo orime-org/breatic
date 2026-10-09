@@ -37,6 +37,7 @@ import {
 import { expectEveryLocaleRenders } from '@web/test-utils/i18n-keys';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useUIStore } from '@web/stores/ui';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 
 const { listMock } = vi.hoisted(() => ({ listMock: vi.fn() }));
 vi.mock('@web/data/api/activities', () => ({
@@ -272,6 +273,26 @@ describe('entryMessage specificity (#1622)', () => {
     ).toBe('activity.type.generationSucceeded');
   });
 
+  // inner#888 §7.7: the action follows the payload's own source, and a tool
+  // the registry knows is named as its menu row names it.
+  it('names a registered tool by its label, an unknown one as stored', () => {
+    const msg = entryMessage(
+      entry({ type: 'generation:succeeded', payload: { source: 'mini_tool', toolName: 'image.upscale' } }),
+    );
+    expect(msg).toMatchObject({ key: 'activity.type.generationSucceededTool', params: { toolName: 'Upscale' } });
+    expect(
+      entryMessage(entry({ type: 'generation:succeeded', payload: { source: 'mini_tool', toolName: 'crop' } })).params
+        .toolName,
+    ).toBe('crop');
+  });
+
+  it('describes a browser tool upload as the tool, not as an upload', () => {
+    const msg = entryMessage(
+      entry({ type: 'asset:uploaded', payload: { source: 'mini_tool', toolName: 'image.rotate', kind: 'image' } }),
+    );
+    expect(msg).toMatchObject({ key: 'activity.type.generationSucceededTool', params: { toolName: 'Rotate & flip' } });
+  });
+
   it('specific keys keep the {actor} param', () => {
     expect(
       entryMessage(
@@ -501,5 +522,32 @@ describe('how the feed draws a row', () => {
     render(<ProjectActivityButton projectId={PID} />);
     await user.click(screen.getByTestId('project-activity-trigger'));
     expectInertRow(await screen.findByTestId('project-activity-entry-a-1'));
+  });
+});
+
+describe('activity feed row: the thumbnail shows the stored preview (inner#1320)', () => {
+  beforeEach(() => {
+    resetPreviewRecords();
+  });
+
+  it('a stored image renders its preview address in the row thumbnail', async () => {
+    const stored =
+      'https://resource-dev.breatic.cc/image/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679.png';
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'g-1',
+          type: 'generation:succeeded',
+          payload: { source: 'task', kind: 'image', fileUrl: stored, credits: 1.5 },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(<ProjectActivityButton projectId={PID} />);
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    await screen.findByTestId('project-activity-entry-g-1');
+    const img = screen.getByTestId('project-activity-thumb-g-1').querySelector('img');
+    expect(img?.getAttribute('src')).toBe(`${stored}.preview.webp`);
   });
 });

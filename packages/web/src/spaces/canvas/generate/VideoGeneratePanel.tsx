@@ -4,7 +4,7 @@
 import { ArrowUp, Loader2, Star, X } from 'lucide-react';
 import * as React from 'react';
 
-import type { ModelEntry, ReferenceKind } from '@breatic/shared';
+import type { GenerationTemplate, ModelEntry, ReferenceKind } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -18,6 +18,7 @@ import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import { VideoGenerateToolbar } from '@web/spaces/canvas/generate/VideoGenerateToolbar';
+import { TemplateMenu } from '@web/spaces/canvas/generate/TemplateMenu';
 import type {
   VideoSlot,
   VideoSlotUrls,
@@ -134,6 +135,10 @@ interface VideoGeneratePanelProps {
   durationFloor?: number;
   /** Close the panel without generating. */
   onExit: () => void;
+  /** Every model served for the node type: the template menu greys out templates it cannot run (inner#977). */
+  catalogModels: readonly ModelEntry[];
+  /** Applies a template picked from the corner menu. */
+  onPickTemplate: (template: GenerationTemplate) => void;
   /** Pick a model. */
   onSelectModel: (modelId: string) => void;
   /** Change one parameter. */
@@ -194,6 +199,8 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   promptSlot,
   durationFloor,
   onExit,
+  catalogModels,
+  onPickTemplate,
   onSelectModel,
   onChangeParams,
   onExecute,
@@ -220,17 +227,20 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
           styleActive={stylePicking}
           onRemoveStyle={onRemoveStyle}
         />
-        <Button
-          type='button'
-          variant={null}
-          size={null}
-          data-testid='generate-video-exit'
-          aria-label={t('canvas.generatePanel.exit')}
-          onClick={onExit}
-          className='flex h-6 w-6 items-center justify-center rounded-overlay text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-        >
-          <X className='h-3.5 w-3.5' aria-hidden='true' />
-        </Button>
+        <div className='flex items-center gap-1.5'>
+          <TemplateMenu nodeType='video' models={catalogModels} onPick={onPickTemplate} />
+          <Button
+            type='button'
+            variant={null}
+            size={null}
+            data-testid='generate-video-exit'
+            aria-label={t('canvas.generatePanel.exit')}
+            onClick={onExit}
+            className='flex h-6 w-6 items-center justify-center rounded-overlay text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          >
+            <X className='h-3.5 w-3.5' aria-hidden='true' />
+          </Button>
+        </div>
       </div>
 
       <ReferenceRail

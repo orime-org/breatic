@@ -58,7 +58,7 @@ function grantFor(
   };
 }
 
-const TASK = { budgetMs: 60_000, label: "cat.png" };
+const TASK = { budgetMs: 60_000, action: "upload" as const, label: "cat.png" };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -89,6 +89,7 @@ describe("opening an upload that lands on a node", () => {
       spaceId: SPACE,
       nodeId: NODE,
       kind: "upload",
+      action: "upload",
       startedByUserId: USER,
       budgetMs: 60_000,
       label: "cat.png",

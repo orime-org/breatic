@@ -25,7 +25,6 @@ import type { GenerationSource, TaskEntity } from "@breatic/shared";
  *   caller must hold the canvas-node Redis lock first).
  * @param params - Task parameters
  * @param model - Optional model name
- * @param skillName - Optional skill to execute
  * @param source - Which lane opened this task; defaults to `"task"`
  * @returns The newly created task entity
  */
@@ -37,7 +36,6 @@ export async function create(
   mode: "append" | "overwrite",
   params: Record<string, unknown>,
   model?: string,
-  skillName?: string,
   source?: GenerationSource,
 ): Promise<TaskEntity> {
   return taskRepo.createTask({
@@ -48,7 +46,6 @@ export async function create(
     mode,
     params,
     model,
-    skillName,
     source,
   });
 }
@@ -105,13 +102,15 @@ export async function softDelete(taskId: string): Promise<void> {
 }
 
 /**
- * Mark a task as running and record the job ID.
+ * Mark a task as running, record the job ID and keep the run's first start.
  * @param taskId - Task UUID
- * @param jobId - ARQ/BullMQ job ID
+ * @param jobId - BullMQ job ID
+ * @param now - The worker's clock, the one the run's end and duration are read on
+ * @returns When the run first started.
+ * @throws {Error} When the task row does not exist.
  */
-export async function markRunning(taskId: string, jobId: string): Promise<void> {
-  await taskRepo.setJobId(taskId, jobId);
-  await taskRepo.updateTaskStatus(taskId, "running");
+export async function markRunning(taskId: string, jobId: string, now: Date): Promise<Date> {
+  return taskRepo.markRunning(taskId, jobId, now);
 }
 
 /**
@@ -119,7 +118,7 @@ export async function markRunning(taskId: string, jobId: string): Promise<void> 
  * @param taskId - Task UUID
  * @param result - Task output data
  * @param creditsUsed - Optional credits consumed
- * @param durationMs - AIGC model call duration in milliseconds
+ * @param durationMs - How long the run took from its first start, in milliseconds
  */
 export async function markCompleted(
   taskId: string,
@@ -137,15 +136,6 @@ export async function markCompleted(
  */
 export async function markFailed(taskId: string, error: string): Promise<void> {
   await taskRepo.updateTaskStatus(taskId, "failed", { error });
-}
-
-/**
- * Backfill the resolved skills list after execution.
- * @param taskId - Task UUID
- * @param skills - Array of skill names used
- */
-export async function setResolvedSkills(taskId: string, skills: string[]): Promise<void> {
-  await taskRepo.setResolvedSkills(taskId, skills);
 }
 
 /**

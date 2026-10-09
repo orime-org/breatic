@@ -11,16 +11,16 @@ vi.mock('@web/data/api/projects', async (importOriginal) => ({
   projectsApi: { rename: vi.fn() },
 }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
-import { isStudioProjectsListKey, projectsApi } from '@web/data/api/projects';
+import { isStudioProjectsListKey, projectsApi, studioProjectsListKey } from '@web/data/api/projects';
 import { toast } from 'sonner';
 import { t } from '@breatic/shared';
 import { useRenameProject } from '@web/features/project-manage/use-rename-project';
 
 // ── pure predicate (the matching logic the bug got wrong) ──────────────────
 describe('isStudioProjectsListKey (spec: studio container projects list key)', () => {
-  it('matches a studio projects-list key ["studio", <slug>, "projects"]', () => {
-    expect(isStudioProjectsListKey(['studio', 'acme', 'projects'])).toBe(true);
-    expect(isStudioProjectsListKey(['studio', 'alex', 'projects'])).toBe(true);
+  it('matches every studio projects-list key the list builds', () => {
+    expect(isStudioProjectsListKey(studioProjectsListKey('acme', { archived: false, sort: 'opened', locale: 'en' }))).toBe(true);
+    expect(isStudioProjectsListKey(studioProjectsListKey('other', { archived: true, sort: 'name', locale: 'zh-CN' }))).toBe(true);
   });
 
   it('rejects the studio detail key, member list and unrelated keys', () => {
@@ -66,11 +66,9 @@ describe('useRenameProject (#1068: rename refreshes the studio list)', () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    // The studio container lists projects under ['studio', slug, 'projects'].
-    // Seed it as a settled (non-stale) query so we can prove the rename
-    // invalidates it. Without the fix the rename only touched the dead
-    // ['projects','list'] key, leaving this one stale-but-not-invalidated.
-    client.setQueryData(['studio', 's1', 'projects'], []);
+    // Seed a studio projects list as a settled (non-stale) query so we can
+    // prove the rename invalidates it.
+    client.setQueryData(studioProjectsListKey('s1', { archived: false, sort: 'edited', locale: 'en' }), { pages: [], pageParams: [] });
     client.setQueryData(['project', 'p1'], { name: 'Old Name' });
     client.setQueryData(['studios', 'recent'], []);
 
@@ -84,7 +82,7 @@ describe('useRenameProject (#1068: rename refreshes the studio list)', () => {
 
     await waitFor(() => {
       expect(
-        client.getQueryState(['studio', 's1', 'projects'])?.isInvalidated,
+        client.getQueryState(studioProjectsListKey('s1', { archived: false, sort: 'edited', locale: 'en' }))?.isInvalidated,
       ).toBe(true);
     });
     // The in-project detail and the Recent landing are refreshed too.

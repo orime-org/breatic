@@ -102,6 +102,7 @@ import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-que
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
+import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 
 /**
  * For the reference derivation that deliberately wants no body text. Shared so
@@ -340,6 +341,8 @@ function VideoGeneratePanelBody({
     },
     [projectId, spaceId, nodeId, models, availableModes],
   );
+
+  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId, models);
 
   /**
    * The node's live content view, or undefined when the node is gone or is not
@@ -722,7 +725,7 @@ function VideoGeneratePanelBody({
     const verdict = evaluateExecute({
       promptText: freshPrompt,
       model: fresh.model,
-      nodeStatus: fresh.nodeStatus,
+      nodeExists: fresh.nodeExists,
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
       maxInputChars,
@@ -957,6 +960,8 @@ function VideoGeneratePanelBody({
   return (
     <VideoGeneratePanel
       models={stableModels}
+      catalogModels={models}
+      onPickTemplate={onPickTemplate}
       model={vm.model}
       params={stableParams}
       creditText={creditText}
@@ -991,7 +996,7 @@ function VideoGeneratePanelBody({
         evaluateExecute({
           promptText,
           model: vm.model,
-          nodeStatus: vm.nodeStatus,
+          nodeExists: vm.nodeExists,
           isSubmitting,
           promptRequired: vm.promptRequired,
           maxInputChars: vm.modelEntry?.max_input_chars,

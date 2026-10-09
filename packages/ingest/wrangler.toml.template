@@ -64,6 +64,10 @@ image = "./Dockerfile"
 # repository root. `containers` does not inherit into an environment, so the
 # production block below carries its own copy of this line.
 image_build_context = "../.."
+# 1/4 vCPU and 1 GiB. vips cuts a 1080x64800 PNG's preview in about 5 seconds
+# here where the default lite type (1/16 vCPU, 256 MiB) takes about 22
+# (inner#1339). Not inherited either, so production carries its own copy.
+instance_type = "basic"
 max_instances = <how many may run at once; start at 5>
 
 # A container is reached through a Durable Object, so the class is bound as one.
@@ -77,6 +81,42 @@ class_name = "MediaContainer"
 # keeps its schedules in SQL, so a class without a SQLite backend throws on
 # construction.
 [exports.MediaContainer]
+type = "durable-object"
+storage = "sqlite"
+
+# The mini-tool containers (inner#888 §8.3). The same image as the media
+# container; one class per instance size, because a container's size is fixed
+# by the class it is bound under. `config/mini-tools.yaml` names the class each
+# operation runs in, and the worker passes that name on every job. A job runs
+# for minutes, so `max_instances` bounds how many tool runs a deployment holds
+# at once.
+[[containers]]
+class_name = "MiniToolContainerStd1"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-1"
+max_instances = <how many standard-1 tool runs may run at once; start at 5>
+
+[[containers]]
+class_name = "MiniToolContainerStd4"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-4"
+max_instances = <how many standard-4 tool runs may run at once; start at 2>
+
+[[durable_objects.bindings]]
+name = "MINI_TOOL_STD1"
+class_name = "MiniToolContainerStd1"
+
+[[durable_objects.bindings]]
+name = "MINI_TOOL_STD4"
+class_name = "MiniToolContainerStd4"
+
+[exports.MiniToolContainerStd1]
+type = "durable-object"
+storage = "sqlite"
+
+[exports.MiniToolContainerStd4]
 type = "durable-object"
 storage = "sqlite"
 
@@ -172,6 +212,7 @@ image = "./Dockerfile"
 # Same context as the top-level block. `containers` is not inheritable, so
 # leaving this out would deploy with the old context and fail on the first COPY.
 image_build_context = "../.."
+instance_type = "basic"
 max_instances = <how many may run at once>
 
 [[env.production.durable_objects.bindings]]
@@ -179,5 +220,35 @@ name = "MEDIA"
 class_name = "MediaContainer"
 
 [env.production.exports.MediaContainer]
+type = "durable-object"
+storage = "sqlite"
+
+[[env.production.containers]]
+class_name = "MiniToolContainerStd1"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-1"
+max_instances = <how many standard-1 tool runs may run at once>
+
+[[env.production.containers]]
+class_name = "MiniToolContainerStd4"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-4"
+max_instances = <how many standard-4 tool runs may run at once>
+
+[[env.production.durable_objects.bindings]]
+name = "MINI_TOOL_STD1"
+class_name = "MiniToolContainerStd1"
+
+[[env.production.durable_objects.bindings]]
+name = "MINI_TOOL_STD4"
+class_name = "MiniToolContainerStd4"
+
+[env.production.exports.MiniToolContainerStd1]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.MiniToolContainerStd4]
 type = "durable-object"
 storage = "sqlite"

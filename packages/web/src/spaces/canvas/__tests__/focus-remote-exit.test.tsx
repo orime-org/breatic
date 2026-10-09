@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import * as canvasSpace from '@web/data/yjs/canvas-space';
 import {
   clickNode,
+  focusTarget,
   group,
   image,
   mockSpace,
@@ -19,6 +20,7 @@ import {
   type Nodes,
 } from '@web/spaces/canvas/__tests__/focus-harness';
 import { canvasSessions } from '@web/stores/canvas-session';
+import { installLayout, relayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
 
 vi.mock('@web/data/yjs/canvas-space', async (importOriginal) => {
   const actual =
@@ -55,7 +57,7 @@ function enterFocus(nodes: Nodes): () => void {
   const rerender = renderSpace();
   act(() => canvasSessions.of('s').getState().startFocusPick('host'));
   clickNode('src');
-  expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
+  expect(focusTarget()).toBe('src');
   return rerender;
 }
 
@@ -76,7 +78,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     rerender();
 
     expect(warn.mock.calls[0]?.[0]).toBe('A collaborator deleted the source.');
-    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
+    expect(focusTarget()).toBeNull();
     expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
   });
 
@@ -91,7 +93,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
 
     expect(warn.mock.calls[0]?.[0]).toBe('A collaborator replaced the source.');
     expect(zOf('src')).toBe('0');
-    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
+    expect(focusTarget()).toBeNull();
     expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
   });
 
@@ -100,56 +102,34 @@ describe('聚焦目标被改动之后（#2000）', () => {
     const rerender = enterFocus(START);
 
     mockUseCanvasSpace.mockReturnValue(
-      mockSpace([image('host', 0), image('src', 300, { status: 'handling' })]),
+      mockSpace([image('host', 0), image('src', 300, { handling: true })]),
     );
     rerender();
 
     expect(warn.mock.calls[0]?.[0]).toBe('A collaborator is processing the source.');
     expect(zOf('src')).toBe('0');
-    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
+    expect(focusTarget()).toBeNull();
     expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
   });
 
-  it('A8b：让它进 error → toast 说处理失败，退回挑选横幅', () => {
-    // deriveStatus reaches 'error' without passing through 'handling' (a
-    // failure writes errorMessage and puts state back to idle), so a client
-    // that receives both writes in one delivery lands here having never seen
-    // 'handling'. Sharing the 'busy' copy would tell that user a generation
-    // is running while the node draws an error frame.
-    const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
-    const rerender = enterFocus(START);
-
-    mockUseCanvasSpace.mockReturnValue(
-      mockSpace([image('host', 0), image('src', 300, { status: 'error' })]),
-    );
-    rerender();
-
-    expect(warn.mock.calls[0]?.[0]).toBe('Source processing failed.');
-    expect(zOf('src')).toBe('0');
-    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
-    expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
-  });
-
-  it('焦点在浮层内时，退出把它交回挑选横幅', () => {
+  it('焦点在浮层内时，退出把它交回挑选横幅', async () => {
     vi.spyOn(toast, 'warning').mockReturnValue('t');
-    const rerender = enterFocus(START);
+    installLayout();
+    try {
+      const rerender = enterFocus(START);
+      // The bar shows once the target's crop box has a box to report.
+      await relayout();
+      const cancel = screen.getByTestId('focus-crop-cancel');
+      cancel.focus();
+      expect(document.activeElement).toBe(cancel);
 
-    // The overlay's own controls (ratio presets, confirm, cancel) render off
-    // a measured source box and jsdom gives images no size, so focus goes
-    // into the overlay root directly. This is the state the rescue exists
-    // for: the user had reached a control, and the overlay is about to
-    // unmount under them.
-    const overlay = screen.getByTestId('focus-crop-overlay');
-    overlay.tabIndex = -1;
-    overlay.focus();
-    expect(overlay.contains(document.activeElement)).toBe(true);
+      mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 0)]));
+      rerender();
 
-    mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 0)]));
-    rerender();
-
-    expect(document.activeElement).toBe(
-      screen.getByTestId('reference-pick-banner'),
-    );
+      expect(document.activeElement).toBe(screen.getByTestId('reference-pick-banner'));
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('焦点在浮层外时，退出不去搬它', () => {
@@ -186,17 +166,16 @@ describe('聚焦目标被改动之后（#2000）', () => {
     rerender();
 
     expect(warn).not.toHaveBeenCalled();
-    expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
+    expect(focusTarget()).toBe('other');
   });
 
-  it('A10：八条文案在五份 catalog 里都有', async () => {
+  it('A10：七条文案在五份 catalog 里都有', async () => {
     const locales = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'];
     const keys = [
       'focusSourceDeleted',
       'focusSourceUnavailable',
       'focusSourceReplaced',
       'focusSourceBusy',
-      'focusSourceFailed',
       'focusSourceDeletedByPeer',
       'focusSourceReplacedByPeer',
       'focusSourceBusyByPeer',
@@ -229,7 +208,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     rerender();
 
     expect(warn).not.toHaveBeenCalled();
-    expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
+    expect(focusTarget()).toBe('src');
   });
 
   it('本地写入删掉聚焦目标 → toast 不指原因，也不说协作者', () => {
@@ -244,7 +223,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     rerender();
 
     expect(warn.mock.calls[0]?.[0]).toBe('Source deleted.');
-    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
+    expect(focusTarget()).toBeNull();
     expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
   });
 
@@ -266,7 +245,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     const rerender = renderSpace();
     act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
-    expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
+    expect(focusTarget()).toBe('src');
 
     // A new array and a new host object, with the very same `src` reference —
     // which is what mirror-selection hands back for an untouched node. The
@@ -276,7 +255,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
 
     expect(warn).not.toHaveBeenCalled();
     expect(zOf('src')).toBe('1002');
-    expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
+    expect(focusTarget()).toBe('src');
   });
 
   it('A9：把它加进组 → 聚焦照常，一条 toast 都没有', () => {
@@ -293,6 +272,6 @@ describe('聚焦目标被改动之后（#2000）', () => {
     rerender();
 
     expect(warn).not.toHaveBeenCalled();
-    expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
+    expect(focusTarget()).toBe('src');
   });
 });

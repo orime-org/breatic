@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What the media container asks ffprobe and ffmpeg (#209 + #210, design §3.1).
+ * What the media container asks ffprobe, ffmpeg and vips (#209 + #210, design
+ * §3.1; inner#1339).
  *
  * The argument lists live here, beside the Worker that starts the container,
  * because they are the whole of what happens to a user's bytes and they are
@@ -24,22 +25,46 @@ import type { ProbeReport, ProbeStream } from "@ingest/media-metadata.js";
 const PROTOCOLS = "http,tcp";
 
 /**
+ * What a command reads: an object the Worker serves, or a file the container's
+ * own ffmpeg just wrote. The second is opened through the file protocol and
+ * nothing else; it never names a network address.
+ */
+export type ReadFrom = "object" | "own-file";
+
+/**
+ * The protocols a command may open for what it reads.
+ * @param from - What it reads.
+ * @returns The whitelist.
+ */
+function protocolsFor(from: ReadFrom): string {
+  return from === "object" ? PROTOCOLS : "file";
+}
+
+/**
  * The one ffprobe call that covers image, video and audio.
  *
  * `stream_disposition` is a section name of its own: asked for inside
  * `stream=` it comes back empty, and an MP3's album art then reads as an
  * ordinary video stream (measured, `2026-09-10-ffprobe-attached-picture.sh`).
+ *
+ * The first frame is read as well, because a JPEG's EXIF orientation shows up
+ * only on its decoded frame: the stream section of a phone photo taken upright
+ * reports the sensor's landscape pair and no rotation. `%+#1` stops after one
+ * packet, so a long video costs no more than a photo.
  * @param objectUrl - Where the container reads the object.
+ * @param from - Whether that is a served object or the container's own file.
  * @returns The argument list, without the program name.
  */
-export function probeArgs(objectUrl: string): string[] {
+export function probeArgs(objectUrl: string, from: ReadFrom = "object"): string[] {
   return [
     "-v",
     "error",
     "-protocol_whitelist",
-    PROTOCOLS,
+    protocolsFor(from),
+    "-read_intervals",
+    "%+#1",
     "-show_entries",
-    "stream=index,codec_type,codec_name,width,height:stream_side_data=rotation:stream_disposition=attached_pic:format=duration",
+    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space:stream_side_data=rotation:stream_disposition=attached_pic:format=duration:frame=stream_index:frame_side_data=rotation",
     "-of",
     "json",
     objectUrl,
@@ -60,14 +85,15 @@ export const COVER_CONTENT_TYPE = "image/png";
  * PNG straight out, so the frame never passes through a lossy encode on its
  * way to becoming one (the earlier worker path went MJPEG then re-encoded).
  * @param objectUrl - Where the container reads the object.
+ * @param from - Whether that is a served object or the container's own file.
  * @returns The argument list, without the program name.
  */
-export function coverArgs(objectUrl: string): string[] {
+export function coverArgs(objectUrl: string, from: ReadFrom = "object"): string[] {
   return [
     "-v",
     "error",
     "-protocol_whitelist",
-    PROTOCOLS,
+    protocolsFor(from),
     "-i",
     objectUrl,
     "-vframes",
@@ -104,6 +130,38 @@ export function coverArgs(objectUrl: string): string[] {
 const COVER_SCALE =
   "scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease";
 
+/** What vips writes a preview as. */
+export const PREVIEW_CONTENT_TYPE = "image/webp";
+
+/**
+ * The one vips call that writes a preview (inner#1320, inner#1339).
+ *
+ * The picture arrives on stdin — the stored object or a video's cover frame —
+ * and vips decodes it a strip at a time, shrinking as it reads, so a 1080x64800
+ * PNG peaks at 57 MiB where ffmpeg, which decodes the whole frame first, is
+ * killed in a 256 MiB container.
+ *
+ * The box is 576 wide by WebP's side limit of 16383, and `--size down` leaves a
+ * smaller picture at its own size. The page reads the width that comes out off
+ * the loaded preview, so nothing elsewhere repeats this rule. vips turns a picture
+ * by its EXIF orientation, so the preview comes out the way the picture is
+ * shown. `keep=icc` carries the colour profile across: a Display P3 picture
+ * without it is shown as sRGB, duller than the original.
+ * @returns The argument list, without the program name.
+ */
+export function previewArgs(): string[] {
+  return [
+    "thumbnail_source",
+    "[descriptor=0]",
+    ".webp[Q=80,keep=icc]",
+    "576",
+    "--height",
+    "16383",
+    "--size",
+    "down",
+  ];
+}
+
 /** One stream as ffprobe writes it. */
 interface RawStream {
   index?: number;
@@ -113,6 +171,9 @@ interface RawStream {
   height?: number;
   disposition?: { attached_pic?: number };
   side_data_list?: { rotation?: unknown }[];
+  color_transfer?: string;
+  color_primaries?: string;
+  color_space?: string;
 }
 
 /**
@@ -135,14 +196,39 @@ function numberOrNull(raw: unknown): number | null {
  * It arrives in its own section: ffprobe writes a `side_data_list` per stream,
  * and a stream with no matrix has no list at all. Spread rather than set, so a
  * stream that carries none has no key instead of an undefined one.
- * @param raw - One stream as ffprobe wrote it.
+ * @param raw - One stream or frame as ffprobe wrote it.
  * @returns The rotation to spread, or nothing.
  */
-function spreadRotation(raw: RawStream): { rotation?: number } {
+function spreadRotation(raw: {
+  side_data_list?: { rotation?: unknown }[];
+}): { rotation?: number } {
   const found = raw.side_data_list?.find(
     (side) => typeof side.rotation === "number",
   );
   return found === undefined ? {} : { rotation: found.rotation as number };
+}
+
+/** One frame as ffprobe writes it under `-read_intervals %+#1`. */
+interface RawFrame {
+  stream_index?: number;
+  side_data_list?: { rotation?: unknown }[];
+}
+
+/**
+ * The rotation a stream is shown at.
+ *
+ * One angle, taken once: the first frame of this stream when it reports one,
+ * since that is where a JPEG's EXIF orientation appears, and otherwise the
+ * stream's own display matrix. A rotated video reports the same angle in both
+ * places, and reading both would turn it back.
+ * @param raw - One stream as ffprobe wrote it.
+ * @param frames - The frames ffprobe read.
+ * @returns The rotation to spread, or nothing.
+ */
+function rotationOf(raw: RawStream, frames: RawFrame[]): { rotation?: number } {
+  const frame = frames.find((f) => f.stream_index === (raw.index ?? 0));
+  const fromFrame = frame === undefined ? {} : spreadRotation(frame);
+  return "rotation" in fromFrame ? fromFrame : spreadRotation(raw);
 }
 
 /**
@@ -155,12 +241,17 @@ function spreadRotation(raw: RawStream): { rotation?: number } {
  * @returns The normalised report.
  */
 export function readProbeOutput(stdout: string): ProbeReport {
-  let parsed: { streams?: RawStream[]; format?: { duration?: unknown } };
+  let parsed: {
+    streams?: RawStream[];
+    frames?: RawFrame[];
+    format?: { duration?: unknown };
+  };
   try {
     parsed = JSON.parse(stdout) as typeof parsed;
   } catch {
     return NOTHING_FOUND;
   }
+  const frames = parsed.frames ?? [];
   const streams: ProbeStream[] = (parsed.streams ?? []).map((raw) => ({
     index: raw.index ?? 0,
     codecType: raw.codec_type ?? "",
@@ -168,7 +259,10 @@ export function readProbeOutput(stdout: string): ProbeReport {
     width: raw.width ?? null,
     height: raw.height ?? null,
     attachedPic: raw.disposition?.attached_pic === 1,
-    ...spreadRotation(raw),
+    ...rotationOf(raw, frames),
+    ...(raw.color_transfer === undefined ? {} : { colorTransfer: raw.color_transfer }),
+    ...(raw.color_primaries === undefined ? {} : { colorPrimaries: raw.color_primaries }),
+    ...(raw.color_space === undefined ? {} : { colorSpace: raw.color_space }),
   }));
   return {
     streams,

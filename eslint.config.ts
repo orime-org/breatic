@@ -5,6 +5,9 @@ import jsdoc from "eslint-plugin-jsdoc";
 import importPlugin from "eslint-plugin-import";
 import drizzle from "eslint-plugin-drizzle";
 import { breaticPlugin } from "@breatic/eslint-rules";
+import ts from "typescript";
+import { posix } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // eslint-plugin-jsdoc TypeScript preset (error level): enforces TSDoc-style
 // doc comments. no-types stays on (TS already provides param/return/yield
@@ -17,6 +20,34 @@ import { breaticPlugin } from "@breatic/eslint-rules";
 // spec (docs/ARCHITECTURE.md → Coding standards): type info → signature; exception type →
 // comment. Replaces eslint-plugin-tsdoc's all-or-nothing tsdoc/syntax warn (#850).
 const jsdocTs = jsdoc.configs["flat/recommended-typescript-error"];
+
+/** Where the media container's tsconfig sits, from the repository root. */
+const MEDIA_CONTAINER_DIR = "packages/ingest/container";
+
+/** What the media container's tsconfig includes, less its tests. */
+const MEDIA_CONTAINER_INCLUDE: string[] = (
+  ts.readConfigFile(
+    fileURLToPath(new URL(`./${MEDIA_CONTAINER_DIR}/tsconfig.json`, import.meta.url)),
+    ts.sys.readFile,
+  ).config as { include: string[] }
+).include.filter((entry) => !entry.startsWith("__tests__"));
+
+/** The media container service's own sources, from the repository root. */
+const MEDIA_CONTAINER_FILES: string[] = MEDIA_CONTAINER_INCLUDE.map((entry) =>
+  posix.join(MEDIA_CONTAINER_DIR, entry),
+);
+
+/** Where each package the service reaches sits, from the container's directory, by its alias. */
+const MEDIA_CONTAINER_ALIASES: ReadonlyArray<readonly [string, string]> = [
+  ["../src/", "@ingest/"],
+  ["../../shared/src/", "@shared/"],
+];
+
+/** This repository's modules bundled into the service, as alias and path without extension. */
+const MEDIA_CONTAINER_BUNDLED_MODULES: string[] = MEDIA_CONTAINER_INCLUDE.flatMap((entry) => {
+  const alias = MEDIA_CONTAINER_ALIASES.find(([dir]) => entry.startsWith(dir));
+  return alias === undefined ? [] : [alias[1] + entry.slice(alias[0].length).replace(/\.ts$/, "")];
+});
 
 // Every glob here names the packages it governs, and never `packages/*`. Which
 // packages that is differs per rule — most name the same six, and
@@ -316,6 +347,20 @@ export default tseslint.config(
     },
   },
   {
+    // The media container's service: Node and our own modules only, so the
+    // GPL-linked vips and ffmpeg in its image stay separate programs it
+    // spawns (inner#1339). The files are the ones the container's tsconfig
+    // names, which include the Worker modules bundled into the service, less
+    // its tests.
+    files: MEDIA_CONTAINER_FILES,
+    rules: {
+      "breatic/media-container-own-code-only": [
+        "error",
+        { bundledModules: MEDIA_CONTAINER_BUNDLED_MODULES },
+      ],
+    },
+  },
+  {
     // Every package, because a leaked row type is a problem wherever it
     // surfaces. Repos get their own block for the one exemption they need —
     // mapping the row is their job — because `ignores` applies to every rule
@@ -355,7 +400,7 @@ export default tseslint.config(
   {
     // Backend only — web has no event loop shared across requests. The
     // exemptions are the paths that run before traffic arrives: startup
-    // config, infrastructure wiring, catalogue and skill loaders, and the
+    // config, infrastructure wiring, catalogue loaders, and the
     // agent's own filesystem sandbox, whose whole job is synchronous access.
     files: [
       "packages/{core,domain,server,worker,collab}/src/**/*.ts",

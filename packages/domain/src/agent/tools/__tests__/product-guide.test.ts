@@ -16,6 +16,7 @@ import { resolve } from "node:path";
 import { describe, it, expect, beforeAll } from "vitest";
 import { getAgentConfig, loadLocales, runWithLocale } from "@breatic/core";
 import { CHAT_MESSAGE_MAX_CHARS, canConnect, canGenerate, t } from "@breatic/shared";
+import { MINI_TOOLS } from "@breatic/shared/mini-tools";
 
 import { CANVAS_TOOLS, TOOL_MAP } from "@domain/agent/tools/index.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
@@ -215,19 +216,31 @@ describe("what the guide says", () => {
     expect(section("Proposal cards")).not.toMatch(/a clock|a star/);
   });
 
-  it("tells the two kinds of bracketed spot apart", () => {
-    // A pencil spot is words to write or a setting to pick; a paperclip spot
-    // is the reader's own material, which goes in an empty node.
+  it("tells the three kinds of mark apart", () => {
+    // A paperclip asks the reader to @ a node, a pencil is words they write,
+    // and an orange note says how to operate the panel and is never sent.
     const proposals = section("Proposal cards");
-    expect(proposals).toMatch(/✏️[^.]*(own words|pick in the panel)/);
-    expect(proposals).toMatch(/📎[^.]*material/);
+    expect(proposals).toMatch(/A 📎 mark in square brackets asks the reader to @ a node/);
+    expect(proposals).toMatch(/A ✏️ mark in braces is words only the reader can write/);
+    expect(proposals).toMatch(/orange note[^.]*it is never sent to the model/);
+  });
+
+  it("says the edit-marks message shows only where the placed node has a prompt box", () => {
+    expect(section("Proposal cards")).toMatch(/When a placed node that has a prompt box carries marks, the message/);
+  });
+
+  it("says words bound for a song's lyrics box are @'d there, as a note asks", () => {
+    expect(section("Proposal cards")).toMatch(/Into a song model's lyrics box: a text node the reader @s in the lyrics box, as an orange note asks/);
+  });
+
+  it("says how each mark reads in text read back from a box, and that the note is not sent", () => {
+    expect(section("Proposal cards")).toMatch(/read back as text[^\n]*\(💡 …\)[^\n]*not sent[^\n]*\[📎 …\][^\n]*\{✏️ …\}/i);
   });
 
   it("says material bound for a source slot is picked in the panel, not mentioned", () => {
-    // The placing mentions a feeder only where a mention is what picks it; a
-    // node feeding one of the mode's slots, empty or generated, gets none.
+    // Nothing is @'d at placing; a node feeding a slot is picked in the panel.
     const proposals = section("Proposal cards");
-    expect(proposals).toMatch(/source slots: it is not mentioned/i);
+    expect(proposals).toMatch(/source slots: it is not @'d; an orange note says which slot to pick it into/i);
     expect(proposals).toMatch(/file or its generated result/i);
     expect(proposals).toMatch(/presses that slot's button and clicks the node/i);
   });
@@ -424,7 +437,7 @@ describe("what the guide says", () => {
     expect(webSource("spaces/canvas/generate/AudioGeneratePanelContainer.tsx")).not.toContain("<PromptNotUsedNotice");
     const proposals = section("Proposal cards");
     expect(proposals).toMatch(new RegExp(`picture or video panel shows "${t("canvas.generatePanel.promptNotUsed").replace(/\./g, "\\.")}"`));
-    expect(proposals).toMatch(/a sound panel still shows a box that holds only the proposal's bracketed spots/);
+    expect(proposals).toMatch(/a sound panel still shows an empty box/);
   });
 
   it("names the picture panel's settings pill by the word it shows when there is nothing to summarise", () => {
@@ -533,9 +546,9 @@ describe("what the guide says", () => {
     expect(proposals).toMatch(/when every generating node uses the same model and you gave a model note, a line with that model's name/);
   });
 
-  it("says a slot-bound 📎 spot still has its note on the card", () => {
-    const slot = section("Proposal cards").split("Into one of the mode's source slots")[1] ?? "";
-    expect(slot).toMatch(/own material still has its 📎 note on the card; a generated result has no line/);
+  it("says nothing is @'d for the reader and a node not @'d is not used", () => {
+    const pool = section("Proposal cards").split("Into the reference list")[1] ?? "";
+    expect(pool).toMatch(/Nothing is @'d for them, and a node wired in that is not @'d is not used/);
   });
 
   it("says how to indent and outdent in a document", () => {
@@ -600,7 +613,8 @@ describe("in the reader's language", () => {
     // translations; a name written out in English instead shows up as a
     // fragment no id accounts for.
     const text = runWithLocale("zh-CN", renderProductGuide);
-    const shown = new Set(messageCalls().map(([id, values]) => runWithLocale("zh-CN", () => `"${t(id, values)}"`)));
+    const ids: MessageCall[] = [...messageCalls(), ...MINI_TOOLS.map((tool): MessageCall => [tool.labelKey, undefined])];
+    const shown = new Set(ids.map(([id, values]) => runWithLocale("zh-CN", () => `"${t(id, values)}"`)));
     const quotedFragments = text.match(/"[^"\n]+"/g) ?? [];
     expect(quotedFragments.length).toBeGreaterThan(0);
     for (const fragment of quotedFragments) expect(shown, fragment).toContain(fragment);
@@ -644,7 +658,11 @@ describe("messages the guide borrows", () => {
 
 describe("the guide's source", () => {
   it("spells every message id out, where the missing-key check can read it", () => {
-    const calls = source.match(/\bt\([^)]*\)/g) ?? [];
+    // The one id read off a value is each mini-tool's name, whose keys the
+    // registry's own copy check holds against every locale.
+    const registry = "t(tool.labelKey)";
+    expect(source.split(registry)).toHaveLength(2);
+    const calls = (source.match(/\bt\([^)]*\)/g) ?? []).filter((call) => call !== registry);
     expect(calls.length).toBeGreaterThan(0);
     // A sample number may fill a message that carries one; nothing else goes in.
     for (const call of calls) expect(call).toMatch(/^t\("[\w.-]+"(?:, \{(?: ?\w+: \d+,?)+ ?\})?\)$/);
@@ -700,11 +718,10 @@ describe("what the guide says about each surface", () => {
     expect(filling).toMatch(/placed from a proposal card has the name the card showed/);
   });
 
-  it("says the failure box shows only on an empty media node", () => {
+  it("says a task changes nothing on the node and a failed reading leaves it as it was", () => {
     const filling = section("Filling a node");
-    expect(filling).toMatch(/An empty picture, video or sound node with a failed or expired task and nothing running/);
-    expect(filling).toMatch(/a text node whose task failed, such as a reading made with "[^"]+", does not show this box/);
-    expect(filling).toMatch(/Extraction failed: and the file's name/);
+    expect(filling).toMatch(/A running, failed or expired task changes nothing on the node/);
+    expect(filling).toMatch(/leaves the node as it was, and a message names the file it could not read/);
   });
 
   it("says files dropped on a node still make new nodes", () => {
@@ -738,7 +755,7 @@ describe("what the guide says about each surface", () => {
   });
 
   it("says brackets left in a prompt are sent", () => {
-    expect(section("Proposal cards")).toMatch(/Whatever is left in a prompt is sent as it is, brackets included/);
+    expect(section("Proposal cards")).toMatch(/Square-bracket and brace marks left in a prompt are sent as they are/);
   });
 
   it("says what the read-only notice counts and what the leave prompt covers", () => {
@@ -775,5 +792,45 @@ describe("what the guide says about each surface", () => {
     const panel = section("Inside the generation panel");
     expect(panel).not.toMatch(/camera icon/);
     expect(panel).toContain(`a row named ${'"'}${t("canvas.generatePanel.camera")}${'"'}`);
+  });
+});
+
+// inner#888 §7.8, §9: the node shows no task state, the task row's buttons
+// changed, and the node menu gained a Tools submenu. The guide is what the
+// agent tells the reader, so each of these has to be true there too.
+describe("mini-tools and the task rows", () => {
+  it("quotes none of the controls that left the screen", () => {
+    const ids = messageIds();
+    for (const gone of ["canvas.task.action.replace", "canvas.task.someFailed", "canvas.task.view"]) {
+      expect(ids).not.toContain(gone);
+    }
+    expect(renderProductGuide()).not.toMatch(/red border/i);
+  });
+
+  it("says a node shows no task state and points to the column beside it", () => {
+    expect(section("Generating")).toMatch(/node itself shows no task state/i);
+  });
+
+  it("names every tool by the label its menu row shows, under the Tools row", () => {
+    const tools = section("Mini-tools");
+    expect(tools).toContain(`"${t("canvas.nodeMenu.tools")}"`);
+    for (const tool of MINI_TOOLS) {
+      expect(tools).toContain(`"${t(tool.labelKey)}"`);
+    }
+  });
+
+  // Each tool says what it is for, so the agent can match a need to a tool.
+  it("says what every tool is for, next to its name", () => {
+    const tools = section("Mini-tools");
+    for (const tool of MINI_TOOLS) {
+      expect(tools).toContain(`"${t(tool.labelKey)}": ${tool.guide}`);
+    }
+  });
+
+  it("says what each task row offers, View opening history at that result", () => {
+    const generating = section("Generating");
+    expect(generating).toContain(`"${t("canvas.task.action.finish")}"`);
+    expect(generating).toContain(`"${t("canvas.task.action.view")}"`);
+    expect(generating).toMatch(/opens the node's history at that result/i);
   });
 });

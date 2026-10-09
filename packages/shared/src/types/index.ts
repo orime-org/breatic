@@ -23,11 +23,14 @@ export type {
   ProjectEntity,
   ProjectDetail,
   ProjectSummary,
+  StudioProjectSort,
+  StudioProjectPage,
   RecentItem,
   MemoryContext,
-  SkillMeta,
   StoredMessageMetadata,
 } from "@shared/types/entities.js";
+
+export { LIVE_PROJECT_SORTS, ARCHIVED_PROJECT_SORTS } from "@shared/types/entities.js";
 
 export type {
   CreditPage,
@@ -87,10 +90,12 @@ export type {
   ModelCatalog,
   SourceType,
   GenerationNodeType,
+  ParamFill,
 } from "@shared/types/model-catalog.js";
 export {
   modelCatalogSchema,
   sanitizeModelCatalog,
+  PARAM_FILLS,
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
   AUDIO_GENERATION_MODES,
@@ -99,7 +104,7 @@ export {
   isGenerationNodeType,
 } from "@shared/types/model-catalog.js";
 
-export { paramValues } from "@shared/types/param-values.js";
+export { paramValueAllowed, paramValues } from "@shared/types/param-values.js";
 export {
   PANEL_EDITOR_PARAM,
 } from "@shared/types/generate-panel.js";
@@ -116,11 +121,12 @@ export type {
   ProposalAnswer,
 } from "@shared/types/canvas-proposal.js";
 export {
-  feedersOf,
   layersOf,
+  markReadsBack,
   markText,
+  writtenMark,
+  markedSegments,
   proposalMarkSegments,
-  nameableFeeders,
   promptPlainText,
   promptTextOf,
 } from "@shared/types/canvas-proposal.js";

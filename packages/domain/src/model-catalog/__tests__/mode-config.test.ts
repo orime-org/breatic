@@ -117,7 +117,7 @@ describe("a model that says nothing about its mode", () => {
     // as something: a walk over zero modes agrees with anything.
     expect(() =>
       assertModesDeclared("video", [{ name: "no-mode", mode: [] }], {
-        video: { modes: {}, selectionGuide: "" },
+        video: { modes: {} },
       }),
     ).toThrow(/no-mode/);
   });
@@ -127,7 +127,7 @@ describe("a model that says nothing about its mode", () => {
     // model missing the field left every mode of it unguarded downstream.
     expect(() =>
       assertModesDeclared("video", [{ name: "no-mode" }], {
-        video: { modes: {}, selectionGuide: "" },
+        video: { modes: {} },
       }),
     ).toThrow(/no-mode/);
   });

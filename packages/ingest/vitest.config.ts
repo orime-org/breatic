@@ -28,8 +28,11 @@ const alias = {
   "@shared": resolve(__dirname, "../shared/src"),
 };
 
-/** Tests named for Node, which the workers project leaves alone. */
-const NODE_TESTS = "src/**/__tests__/**/*.node.test.ts";
+/**
+ * Tests named for Node, which the workers project leaves alone. The media
+ * container's own tests are among them: it runs on Node, not workerd.
+ */
+const NODE_TESTS = "{src,container}/**/__tests__/**/*.node.test.ts";
 
 const workers = defineWorkersProject({
   test: {
@@ -70,6 +73,8 @@ const workers = defineWorkersProject({
           // works is measured against the real image.
           durableObjects: {
             MEDIA: { className: "MediaContainer", useSQLite: true },
+            MINI_TOOL_STD1: { className: "MiniToolContainerStd1", useSQLite: true },
+            MINI_TOOL_STD4: { className: "MiniToolContainerStd4", useSQLite: true },
           },
           // Values, kept apart from what any deployment holds: an assertion
           // written against a deployment's ports or domain turns every

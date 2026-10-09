@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 
 import {
   stashRetryFile,
-  getRetryFile,
+  getRetryUpload,
   clearRetryFile,
   hasRetryFile,
   resetRetryFilesForTests,
@@ -23,7 +23,7 @@ describe('upload retry file stash — session-scoped File references', () => {
     stashRetryFile('p1', 's1', 't1', file);
 
     expect(hasRetryFile('p1', 's1', 't1')).toBe(true);
-    expect(getRetryFile('p1', 's1', 't1')).toBe(file);
+    expect(getRetryUpload('p1', 's1', 't1')).toEqual({ file });
   });
 
   it('scopes by all three ids — a different task/space/project misses', () => {
@@ -39,7 +39,7 @@ describe('upload retry file stash — session-scoped File references', () => {
     clearRetryFile('p1', 's1', 't1');
 
     expect(hasRetryFile('p1', 's1', 't1')).toBe(false);
-    expect(getRetryFile('p1', 's1', 't1')).toBeUndefined();
+    expect(getRetryUpload('p1', 's1', 't1')).toBeUndefined();
   });
 
   it('keeps two failures on one node apart (#186 §3.7.2)', () => {
@@ -50,12 +50,12 @@ describe('upload retry file stash — session-scoped File references', () => {
     stashRetryFile('p1', 's1', 't1', first);
     stashRetryFile('p1', 's1', 't2', second);
 
-    expect(getRetryFile('p1', 's1', 't1')).toBe(first);
-    expect(getRetryFile('p1', 's1', 't2')).toBe(second);
+    expect(getRetryUpload('p1', 's1', 't1')?.file).toBe(first);
+    expect(getRetryUpload('p1', 's1', 't2')?.file).toBe(second);
 
     // …and clearing one leaves the other alone.
     clearRetryFile('p1', 's1', 't1');
-    expect(getRetryFile('p1', 's1', 't2')).toBe(second);
+    expect(getRetryUpload('p1', 's1', 't2')?.file).toBe(second);
   });
 
   it('a re-stash overwrites (latest failed file wins)', () => {
@@ -63,6 +63,17 @@ describe('upload retry file stash — session-scoped File references', () => {
     const next = f('new.png');
     stashRetryFile('p1', 's1', 't1', next);
 
-    expect(getRetryFile('p1', 's1', 't1')).toBe(next);
+    expect(getRetryUpload('p1', 's1', 't1')?.file).toBe(next);
+  });
+
+  // inner#888 §7.5: a browser tool's export uploads with the tool named on
+  // the ticket, so its task row reads as that tool. A retry that dropped the
+  // context would come back as a plain upload.
+  it('hands back the upload context the failed upload carried', () => {
+    const file = f('rotated.png');
+    const context = { source: 'mini_tool' as const, toolName: 'image.rotate' };
+    stashRetryFile('p1', 's1', 't1', file, context);
+
+    expect(getRetryUpload('p1', 's1', 't1')).toEqual({ file, context });
   });
 });

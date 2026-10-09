@@ -13,8 +13,8 @@
 #                          several models for one mode to pick: say what this
 #                          model is good at, never restate the name or the mode.
 #                          Only capabilities the panel reaches.
-#   model.guide          — what this model is for, in prose. The Skill prompt
-#                          and the canvas capability answer quote it whole, so a
+#   model.guide          — what this model is for, in prose. The canvas capability
+#                          answer quotes it whole, so a
 #                          sentence here the catalog or the panel can prove wrong
 #                          is a promise nothing keeps. Guarded by domain's
 #                          guides-name-what-the-model-takes test.
@@ -332,8 +332,7 @@ models:
         description: "Source audio"
         default: null
         accepts: "audio"
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        fill: "tool"
     providers:
       - name: "wavespeed"
         model_id: "wavespeed-ai/audio-vocal-isolator"
@@ -356,24 +355,24 @@ models:
       ambience:
         description: "Loops seamlessly end to start"
         default: false
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        values: [true, false]
+        fill: "tool"
       append_duration:
         description: "Seconds to add"
         default: 10
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        min: 1
+        max: 57
+        fill: "tool"
       audio:
         description: "Source audio"
         default: null
         accepts: "audio"
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        fill: "tool"
       double_output:
-        description: "Return two variations"
+        description: "With ambience on, plays the loop twice in one longer file"
         default: false
-        fill: "none"
-        note: "pinned: one generation lands one result"
+        values: [true, false]
+        fill: "tool"
       num_samples:
         description: "Results per run"
         default: 1

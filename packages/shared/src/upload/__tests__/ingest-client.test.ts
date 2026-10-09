@@ -625,6 +625,42 @@ describe('reading a stored object', () => {
       readStoredMediaAtIngest(WORKER_URL, SECRET, ABOUT),
     ).rejects.toMatchObject({ status: 404 });
   });
+
+  // The deferred read of a cover or an avatar and the backfill both ask for a
+  // preview (inner#1320), and the backfill needs to know what became of it.
+  it('asks for a preview and answers what became of it', async () => {
+    mockedRequest.mockResolvedValueOnce(
+      answers(200, { width: 800, height: 450, durationSeconds: null, preview: 'generated' }),
+    );
+
+    const read = await readStoredMediaAtIngest(WORKER_URL, SECRET, {
+      ...ABOUT,
+      wantPreview: true,
+    });
+
+    expect(JSON.parse(String(mockedRequest.mock.calls[0]?.[1]?.body))).toMatchObject({
+      wantPreview: true,
+    });
+    expect(read).toEqual({
+      width: 800,
+      height: 450,
+      durationSeconds: null,
+      preview: 'generated',
+    });
+  });
+
+  it('reads an outcome it does not know as none given', async () => {
+    mockedRequest.mockResolvedValueOnce(
+      answers(200, { width: 800, height: 450, durationSeconds: null, preview: 'maybe' }),
+    );
+
+    const read = await readStoredMediaAtIngest(WORKER_URL, SECRET, {
+      ...ABOUT,
+      wantPreview: true,
+    });
+
+    expect(read).not.toHaveProperty('preview');
+  });
 });
 
 describe('when the Worker refuses', () => {

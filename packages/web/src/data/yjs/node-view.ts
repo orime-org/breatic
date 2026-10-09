@@ -13,8 +13,8 @@
  *
  * The view deliberately differs from the wire in three places, so each
  * component receives exactly what it renders:
- *   - `status` is a derived 3-state (`idle` / `handling` / `error`)
- *     collapsed from the node's task counts + `errorMessage`.
+ *   - `handling` is derived from the node's task counts: whether a task is
+ *     writing to it. A node shows no task state (inner#888 §7.8).
  *   - `content` is the unified primary payload (URL or text body) — the
  *     old frontend split this into `url` (assets) vs `content` (text).
  *   - `createdAt` on an annotation is an epoch-ms `number` (the wire's
@@ -44,13 +44,6 @@ export type Modality = 'text' | 'image' | 'audio' | 'video' | '3d' | 'web';
 
 /** Every kind the canvas node components render: the 6 content + annotation + group. */
 export type NodeKind = Modality | 'annotation' | 'group';
-
-/**
- * Derived body status that drives the placeholder / error / content
- * branch. Collapsed from `taskCounts` + `errorMessage` by
- * {@link deriveStatus} — it is NOT a wire field.
- */
-export type DisplayStatus = 'idle' | 'handling' | 'error';
 
 /** Fields shared by every node view (content + annotation). */
 interface NodeViewCommon {
@@ -82,15 +75,18 @@ interface ContentNodeViewBase extends NodeViewCommon {
    * populates it from the required wire `data.name`.
    */
   name?: string;
-  status: DisplayStatus;
+  /**
+   * Whether a task is writing to this node (inner#888 §7.8). Derived from
+   * `taskCounts` by {@link deriveHandling}; it guards deletion and focus
+   * picks, and is drawn nowhere on the node.
+   */
+  handling: boolean;
   /**
    * How many tasks this node carries in each state (#186 §7.1). The counts
-   * column outside the node renders them; `status` above is derived from the
-   * same four numbers, so the two never disagree. Absent on a node the
-   * document has never opened a task for.
+   * column outside the node renders them. Absent on a node the document has
+   * never opened a task for.
    */
   taskCounts?: NodeTaskCounts;
-  errorMessage?: string;
   // Generate panel inputs (model revision 2026-06-15) — a content node can
   // carry the Generate action's collaborative inputs. All optional: a node
   // with no Generate history simply omits them.
@@ -297,76 +293,17 @@ export type ContentNodeView =
 export type NodeView = ContentNodeView | AnnotationNodeView | GroupNodeView;
 
 /**
- * Collapses a node's four task counts into the 3-state display status the
- * components branch on (#186 §7.6).
- *
- * A node carries several tasks at once, so what it shows is decided by all
- * of them together: anything still running means the node is being written
- * to, and that outranks a failure from an earlier task. A failure shows only
- * once nothing is running AND nothing landed — a node holding content shows
- * the content, and the failed task sits as a row in its task list.
- *
- * `errorMessage` counts as a failure here for the one path that never
- * reaches the task table: text extracted in the browser (§3.7.4). It is the
- * only writer left for that field.
- *
- * `holdsBody` is what a text node answers true to: its words live in a
- * fragment the editor binds to, and an empty one is still a paragraph
- * somebody can type into. A failed TASK on such a node shows in the counts
- * column and in the row that failed, and the body stays readable and
- * editable (user 2026-09-19: what a node shows and what its tasks did are
- * two different things).
- *
- * The extraction failure is the other half and is not covered by that: it
- * has no task row at all, so this box is the only place it can be said.
- *
- * There is no clock: whether a task has run past its deadline is settled
- * server-side when somebody reads the node's task list (§4.6), never by
- * whoever is looking at the node.
- * @param data - The wire data fields carrying `taskCounts`, `errorMessage` and `content`.
- * @param holdsBody - Whether this node shows a body rather than `content`.
- * @returns The derived display status.
+ * Whether a task is writing to this node (inner#888 §7.8): anything still
+ * running. Whether one has run past its deadline is settled server-side when
+ * somebody reads the node's task list (#186 §4.6), never by whoever is
+ * looking at the node.
+ * @param data - The wire data fields carrying `taskCounts`.
+ * @returns True while a task on this node is running.
  */
-export function deriveStatus(
-  data: Pick<
-    CanvasNodeFields['data'],
-    'taskCounts' | 'errorMessage' | 'content'
-  >,
-  holdsBody = false,
-): DisplayStatus {
-  const counts = data.taskCounts;
-  if (counts !== undefined && counts.running > 0) return 'handling';
-  const nothingToShow = data.content === undefined || data.content === '';
-  // Text this browser could not extract (§3.7.4). It opens no task row, so
-  // the box is where it is said, on a node holding a body as much as on one
-  // holding content.
-  if (data.errorMessage != null && nothingToShow) return 'error';
-  const taskFailed =
-    counts !== undefined && (counts.failed > 0 || counts.expired > 0);
-  if (taskFailed && !holdsBody && nothingToShow) return 'error';
-  return 'idle';
-}
-
-/**
- * Which task list the error box's "View" should open, or null when there is
- * nothing for it to show (#186 §7.6).
- *
- * The list shows one state at a time, and the error box is put on screen by
- * {@link deriveStatus}, which treats `failed` and `expired` alike. So the same
- * counts decide which of the two to open. A node whose error came from text
- * this browser could not extract has no task row at all (design §3.7.4), and
- * gets no way into a list that would be empty.
- * @param counts - The node's four task counts. Absent on a node that never
- *   carried one, null on the kinds that hold no tasks at all.
- * @returns The state to open, or null when no task on this node failed.
- */
-export function failedTaskListToOpen(
-  counts: NodeTaskCounts | null | undefined,
-): 'failed' | 'expired' | null {
-  if (counts === null || counts === undefined) return null;
-  if (counts.failed > 0) return 'failed';
-  if (counts.expired > 0) return 'expired';
-  return null;
+export function deriveHandling(
+  data: Pick<CanvasNodeFields['data'], 'taskCounts'>,
+): boolean {
+  return (data.taskCounts?.running ?? 0) > 0;
 }
 
 /**
@@ -379,23 +316,20 @@ export function failedTaskListToOpen(
  */
 export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   const { type, data } = fields;
-  const status = deriveStatus(data, type === 'text');
-  const errorMessage = data.errorMessage;
   const locked = data.locked;
   // Common content-view fields: the editable name (node name header), the
-  // derived status, and the Generate panel inputs (model / mode /
+  // derived handling flag, and the Generate panel inputs (model / mode /
   // modelByMode / paramsByModel) — the panel reads these via the view and
   // writes back to the wire through the canvas-space setters.
   const contentCommon = {
     name: data.name,
-    status,
+    handling: deriveHandling(data),
     // What the ledger judged off the bytes that landed. The Understand gate
     // reads both before it builds anything; absent for a node stored before
     // the ledger reported them.
     mimeType: data.mimeType,
     sizeBytes: data.size,
     taskCounts: data.taskCounts,
-    errorMessage,
     locked,
     model: data.model,
     mode: data.mode,
@@ -485,7 +419,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
 /**
  * Narrows a {@link NodeView} to the 6 content modalities, excluding the
  * annotation sticky. Useful where only content nodes are valid mini-tool
- * sources or carry a status branch.
+ * sources.
  * @param view - The node view to test.
  * @returns True when the view is a content node (i.e. not an annotation).
  */
@@ -496,7 +430,7 @@ export function isContentNodeView(view: NodeView): view is ContentNodeView {
 /**
  * Narrows a node view to a content view, absent views included.
  *
- * `status` is a required field on every content view and carried by neither
+ * `handling` is a required field on every content view and carried by neither
  * the annotation sticky nor the group container, so it tells all three apart
  * at runtime. Every Generate panel asks this of the node it is open on — the
  * generate inputs it reads live on content views alone — which is why it is
@@ -507,5 +441,5 @@ export function isContentNodeView(view: NodeView): view is ContentNodeView {
 export function asContentView(
   data: NodeView | undefined,
 ): ContentNodeView | undefined {
-  return data && 'status' in data ? data : undefined;
+  return data && 'handling' in data ? data : undefined;
 }

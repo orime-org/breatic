@@ -11,55 +11,137 @@
  * model catalog.
  */
 
-import { insertRefusal } from "@shared/types/canvas-reference.js";
+import { t, tInEveryLocale } from "@shared/i18n/index.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
-import type { ReferenceKind } from "@shared/reference-pool.js";
 
 /**
- * What a marked spot in the prompt asks of the reader.
- *
- * `asset` and `tweak` are things they do; `ref` is not -- it names an upstream
- * node this generation draws on, and lands as a mention with no bracket of its
- * own. Kept in one type because all three travel in the same prompt.
+ * What a marked spot in the prompt asks of the reader (inner#977): `asset`
+ * names something to @ by hand, `tweak` words to fill in, and `note` how to
+ * operate the panel -- shown to the reader and never sent to the model.
  */
-export type SlotKind = "asset" | "tweak" | "ref";
+export type SlotKind = "asset" | "tweak" | "note";
 
 /** One stretch of the prompt: plain words, or a place the reader acts on. */
 export type PromptSegment =
   | { text: string; slot?: undefined }
   | {
       text?: undefined;
-      slot: { kind: SlotKind; label: string; note: string };
+      slot:
+        | { kind: "asset" | "tweak"; label: string; note: string }
+        | { kind: "note"; label: string; note?: undefined };
     };
 
-/** What brackets a spot the reader still has to fill in (design §5.4). */
-const MARK_OPEN = "[";
-const MARK_CLOSE = "]";
-
-/** The symbol each kind of spot wears, so the two read apart at a glance. */
-const MARK_SYMBOL: Readonly<Record<"asset" | "tweak", string>> = {
-  asset: "📎",
-  tweak: "✏️",
+/** The brackets and symbol each kind wears where it is written as words. */
+const MARK_FORM: Readonly<Record<SlotKind, { open: string; symbol: string; close: string }>> = {
+  asset: { open: "[", symbol: "📎", close: "]" },
+  tweak: { open: "{", symbol: "✏️", close: "}" },
+  note: { open: "(", symbol: "💡", close: ")" },
 };
 
 /**
- * What one marked spot puts in the prompt box.
+ * A mark as words: the bracket, symbol and label of its kind, the label of a
+ * reference wrapped in the words asking the reader to @ it. A template's
+ * locale prompt writes marks this way, and so does the prompt handed to the
+ * agent; {@link markedSegments} reads them back.
+ * @param slot - The spot the reader acts on.
+ * @returns The bracketed text.
+ * @throws {never} Never.
+ */
+export function writtenMark(slot: NonNullable<PromptSegment["slot"]>): string {
+  const { open, symbol, close } = MARK_FORM[slot.kind];
+  const words = slot.kind === "asset" ? t("canvas.promptMark.reference", { label: slot.label }) : slot.label;
+  return `${open}${symbol} ${words}${close}`;
+}
+
+/**
+ * What one marked spot puts in the prompt text.
  *
  * Written here because two sides need the same answer: the canvas writes this
  * into the box, and the check that decides whether a proposal holds together
  * counts it against the model's input cap. Spelled out twice, a proposal could
  * pass a count of one shape and land as another.
  *
- * A `ref` spot puts nothing there: it lands as a mention of the upstream node,
- * and a bracket counted here that never lands would put the count past what
- * the reader's box actually holds.
+ * A note puts nothing in the text: it lands as a block of its own that is
+ * left out of what the model receives.
  * @param slot - The spot the reader acts on.
  * @returns The bracketed text, as the reader will see it.
  * @throws {never} Never.
  */
 export function markText(slot: NonNullable<PromptSegment["slot"]>): string {
-  if (slot.kind === "ref") return "";
-  return `${MARK_OPEN}${MARK_SYMBOL[slot.kind]} ${slot.label}${MARK_CLOSE}`;
+  return slot.kind === "note" ? "" : writtenMark(slot);
+}
+
+/**
+ * Whether a mark written as words reads back as the same mark: a label
+ * holding the bracket that closes its kind would read back cut short, and one
+ * holding a line break is split across two paragraphs by the box.
+ * @param slot - The spot the reader acts on.
+ * @returns True when {@link markedSegments} gives the same kind and label back.
+ * @throws {never} Never.
+ */
+export function markReadsBack(slot: NonNullable<PromptSegment["slot"]>): boolean {
+  const [only, ...rest] = markedSegments(writtenMark(slot));
+  return !slot.label.includes("\n") && rest.length === 0 && only?.slot?.kind === slot.kind && only.slot.label === slot.label;
+}
+
+/** The kinds in the order {@link MARK_PATTERN} lists them, one capture group each. */
+const MARK_KINDS = Object.keys(MARK_FORM) as SlotKind[];
+
+/**
+ * A mark as a template's locale prompt writes it, its label captured in the
+ * group of its kind: the symbol picks the kind, so brackets the reader types
+ * stay words.
+ */
+const MARK_PATTERN = new RegExp(
+  MARK_KINDS.map((kind) => {
+    const { open, symbol, close } = MARK_FORM[kind];
+    return `\\${open}${symbol} ([^\\${close}]+)\\${close}`;
+  }).join("|"),
+  "gu",
+);
+
+/**
+ * A reference mark's label with the words {@link markText} asks the reader
+ * with taken back off. Tried in every language, since the box may have been
+ * filled in another one than the language reading it now.
+ * @param label - What sits between `[📎 ` and `]`.
+ * @returns The label alone.
+ * @throws {never} Never.
+ */
+function bareReferenceLabel(label: string): string {
+  for (const wording of tInEveryLocale("canvas.promptMark.reference", { label: "\u0000" })) {
+    const [before = "", after = ""] = wording.split("\u0000");
+    if (label.length > before.length + after.length && label.startsWith(before) && label.endsWith(after)) {
+      return label.slice(before.length, label.length - after.length);
+    }
+  }
+  return label;
+}
+
+/**
+ * Read a prompt into segments: each `[📎 …]`, `{✏️ …}` and `(💡 …)` becomes
+ * the mark it stands for, the label doubling as the card's line where the
+ * kind has one. The inverse of {@link writtenMark}: a template's locale
+ * prompt and a prompt copied out of a box read back to the same label.
+ * @param text - The prompt as a locale file or a box writes it.
+ * @returns Its segments.
+ * @throws {never} Never.
+ */
+export function markedSegments(text: string): PromptSegment[] {
+  const segments: PromptSegment[] = [];
+  let at = 0;
+  for (const match of text.matchAll(MARK_PATTERN)) {
+    const [whole] = match;
+    const group = match.findIndex((captured, i) => i > 0 && captured !== undefined);
+    const kind = MARK_KINDS[group - 1] ?? "tweak";
+    const read = match[group] ?? "";
+    const label = kind === "asset" ? bareReferenceLabel(read) : read;
+    if (match.index > at) segments.push({ text: text.slice(at, match.index) });
+    segments.push({ slot: kind === "note" ? { kind, label } : { kind, label, note: label } });
+    at = match.index + whole.length;
+  }
+  if (at < text.length) segments.push({ text: text.slice(at) });
+  return segments;
 }
 
 /**
@@ -132,34 +214,12 @@ export interface ProposalNode {
    */
   shots?: ProposalShot[];
   /**
-   * The kinds this generation's reference pool takes, answered by the check,
-   * not the model (#2156: a model takes pictures, clips and tracks each in a
-   * pool of its own). Empty when its material arrives by a slot the reader
-   * clicks a node into; a pool is fed by an edge and picked by a mention.
-   *
-   * The catalog is the authority and the check has just read it, so the
-   * answer travels with the proposal rather than being asked again on the
-   * canvas -- a reader can press Use before the catalog has loaded there, and
-   * a guess either writes a mention the panel refuses or drops one the pool
-   * needs. Absent on a node that generates nothing.
-   */
-  poolKinds?: ReferenceKind[];
-  /**
-   * One entry per slot the model cannot run without, by the kind it takes,
-   * answered by the check beside {@link ProposalNode.poolKinds}. A model can
-   * take one kind both ways -- Kling O3 wants a first frame in a slot and
-   * builds elements out of mentioned pictures -- and the reader's material
-   * fills the slot first: a run without it cannot go.
-   */
-  slotKinds?: ReferenceKind[];
-  /**
    * Whether the panel will draw a prompt box here, answered by the check.
    *
-   * Beside {@link ProposalNode.poolKinds} and carried for the same reason: the
-   * catalog is the authority, the check has just read it, and a reader can
-   * press Use before the catalog has loaded on the canvas. It decides what a
-   * mark may name -- a model drawing no box mounts no editor and forces it
-   * empty, so nothing in the prompt reaches the vendor. Absent on a node that
+   * Carried on the node because the catalog is the authority, the check has
+   * just read it, and a reader can press Use before the catalog has loaded on
+   * the canvas. A model drawing no box mounts no editor, so the canvas writes
+   * nothing there and the card lists the marks instead. Absent on a node that
    * generates nothing.
    */
   takesPrompt?: boolean;
@@ -168,7 +228,12 @@ export interface ProposalNode {
 /** A whole proposal, as the model sends it and the card reads it. */
 export interface CanvasProposal {
   nodes: ProposalNode[];
-  edges: Array<{ fromIndex: number; toIndex: number }>;
+  /**
+   * The wiring. `into` says where the node wired in goes on the generation it
+   * feeds: `"pool"` for the reference pool, the name of one of its slots, or
+   * `PANEL_EDITOR_PARAM` for a song model's lyrics box.
+   */
+  edges: Array<{ fromIndex: number; toIndex: number; into?: string }>;
   modelNote?: string;
   rationale: string;
   /**
@@ -182,148 +247,10 @@ export interface CanvasProposal {
 }
 
 /**
- * Which feeders a prompt may name, in node order.
- *
- * `null` where the panel would not take a mention of that node. The place is
- * kept rather than dropped because the k-th mark is about the k-th entry:
- * compacted, every mark after the unmentionable one slides onto the node next
- * along. The upstream list leaves out the nodes that fill a required slot,
- * which the reader picks in the panel.
- */
-export interface NameableFeederIndices {
-  /** Indices of the empty nodes wired in, null where none can be mentioned. */
-  sources: (number | null)[];
-  /**
-   * The same for the nodes wired in that carry work of their own, past the
-   * ones in `slotted`: a ref mark's mention is its whole text, so the slot's
-   * node has no mark to keep a place for.
-   */
-  upstream: (number | null)[];
-  /**
-   * The nodes wired in that fill a required slot, in node order. The reader
-   * picks each into its slot in the panel, so none of them is mentioned.
-   */
-  slotted: number[];
-}
-
-/** Which nodes feed one node of a proposal, split by what they carry. */
-export interface ProposalFeederIndices {
-  /** Indices of the empty nodes wired in, for the reader to fill. */
-  sources: number[];
-  /** Indices of the nodes wired in that already carry work of their own. */
-  upstream: number[];
-}
-
-/**
- * What feeds one node of a proposal, in the order the nodes are listed.
- *
- * Node order rather than edge order, because that is the order the marks in
- * a prompt are numbered in: the k-th mark asking for material is about the
- * k-th empty node. Nothing makes a model list its edges the way it listed
- * its nodes, so reading the edge list gives the k-th mark whichever node
- * happened to be wired first -- and then the card names one node while the
- * canvas writes the mention against another.
- *
- * One function so the two cannot drift: the card draws its to-dos from it and
- * the canvas writes its mentions from it.
- * @param proposal - The proposal being read.
- * @param index - The node being fed.
- * @returns The feeder indices, split by role, each in node order.
- * @throws {never} Never.
- */
-export function feedersOf(proposal: CanvasProposal, index: number): ProposalFeederIndices {
-  const fedFrom = new Set(
-    proposal.edges.filter((edge) => edge.toIndex === index).map((edge) => edge.fromIndex),
-  );
-  const sources: number[] = [];
-  const upstream: number[] = [];
-  proposal.nodes.forEach((node, at) => {
-    if (!fedFrom.has(at)) return;
-    (node.role === "source" ? sources : upstream).push(at);
-  });
-  return { sources, upstream };
-}
-
-/**
- * What one node's prompt may name and what its marks mention.
- *
- * One function because three sides read it and they have to agree: the check
- * asks whether a mention can be carried here at all, the canvas writes the
- * mentions, and the card files its to-dos by the same list. Read differently,
- * a mark is filed under one node and lands on another.
- *
- * What may be named is asked of {@link insertRefusal}, the panel's own picker
- * rule, rather than restated here: a mention this proposal writes is one the
- * reader would have had to make by hand, and a rule spelled out twice is one
- * the two spellings can part company behind. The row it is asked about is the
- * feeder; the mode and model facts it is asked with are the two the check
- * wrote onto this node when it read the catalog.
- *
- * A row stored before the check wrote them names nothing: what the panel
- * accepts turns on both, and a guess either writes a mention it refuses or
- * drops one the pool needs.
- * @param proposal - The proposal being read.
- * @param index - The node being fed.
- * @returns The feeders its marks may point at, each in node order.
- * @throws {never} Never.
- */
-export function nameableFeeders(
-  proposal: CanvasProposal,
-  index: number,
-): NameableFeederIndices {
-  const at = proposal.nodes[index];
-  const poolKinds = at?.poolKinds;
-  if (poolKinds === undefined || at?.takesPrompt === undefined) {
-    return { sources: [], upstream: [], slotted: [] };
-  }
-  const byPool = poolKinds.length > 0;
-  const held = feedersOf(proposal, index);
-  const ctx = { referenceKinds: poolKinds, takesPrompt: at.takesPrompt };
-  /**
-   * Whether the panel would take an `@`-mention of one feeder.
-   * @param i - The feeder's index in the proposal.
-   * @returns True when a mention of it is one the reader could have made.
-   * @throws {never} Never.
-   */
-  const mentionable = (i: number): boolean => {
-    const node = proposal.nodes[i];
-    return node !== undefined && insertRefusal(node.type, ctx) === null;
-  };
-  // The required slots still open, by kind. Each node of that kind wired in
-  // takes one, in the order the nodes are listed, before any reaches the pool.
-  const open = [...(at.slotKinds ?? [])];
-  const slotted: number[] = [];
-  for (const i of [...held.sources, ...held.upstream].sort((a, b) => a - b)) {
-    const slot = open.indexOf(proposal.nodes[i]?.type as ReferenceKind);
-    if (slot === -1) continue;
-    open.splice(slot, 1);
-    slotted.push(i);
-  }
-  /**
-   * One entry per node in the list, the index where it can be mentioned.
-   * @param list - The feeders, in the order the nodes are listed.
-   * @param can - Whether a mention is possible for this run at all.
-   * @returns The same length, null where no mention can be written.
-   * @throws {never} Never.
-   */
-  const keepingPlaces = (list: readonly number[], can: boolean): (number | null)[] =>
-    list.map((i) => (can && !slotted.includes(i) && mentionable(i) ? i : null));
-  return {
-    // An asset mark mentions the empty node it names only where that mention
-    // is what picks the material. Through a slot the reader picks by clicking
-    // and the bracket alone names the slot to pick it in.
-    sources: keepingPlaces(held.sources, byPool),
-    upstream: keepingPlaces(held.upstream.filter((i) => !slotted.includes(i)), true),
-    slotted,
-  };
-}
-
-/**
- * Every segment of a node that can carry a mark, in the one order the tool,
- * the card and the canvas all pair marks with feeders by: the main prompt,
- * then each shot in turn (#2218).
+ * Every segment of a node that can carry a mark: the main prompt, then each
+ * shot in turn (#2218).
  * @param node - The proposed node.
- * @returns The segments in pairing order.
+ * @returns The segments, prompt first.
  * @throws {never} Never.
  */
 export function proposalMarkSegments(node: ProposalNode): PromptSegment[] {
