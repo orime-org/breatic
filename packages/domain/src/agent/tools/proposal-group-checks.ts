@@ -9,12 +9,12 @@ import type { CanvasProposal, ProposalNode } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import {
+  aNode,
   chosenModelOf,
   entriesFor,
   nodeWaysSentence,
   notesAsked,
   notesIn,
-  refsIn,
   routeEdges,
 } from "@domain/agent/tools/proposal-routing.js";
 import { waysIn } from "@domain/model-catalog/mode-catalog.js";
@@ -158,8 +158,7 @@ export function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
       const from = proposal.nodes[at];
       if (from) sent.add(from);
     }
-    const refs = refsIn(node);
-    spare += notesIn(node) - notesAsked(proposal, routing.routed, refs).length;
+    spare += notesIn(node) - notesAsked(routing.routed).length;
   }
   // Material reaches a generation only through fills or an edge into the
   // pool; held anywhere else it lands beside the work with nothing using it.
@@ -171,7 +170,7 @@ export function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
     });
     return {
       ok: false,
-      reason: `"${unused.name}" holds material that nothing here uses. ${takers.join(" ") || `No generation here takes a ${unused.type} node; take it out.`}`,
+      reason: `"${unused.name}" holds material that nothing here uses. ${takers.join(" ") || `No generation here takes ${aNode(unused.type)}; take it out.`}`,
     };
   }
   const loose = proposal.nodes.filter((node) => node.role === "source" && !sent.has(node) && slotKinds.has(node.type));

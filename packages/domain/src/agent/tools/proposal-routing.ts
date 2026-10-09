@@ -8,9 +8,11 @@
  * whether the canvas lets that kind be wired into the generation
  * (`canConnect`), and what the node holds -- material reaches a slot through
  * fills, everything else by an edge or, where no edge may be drawn, by the
- * reader picking it. `entriesFor` puts the three together, and every refusal
- * that tells the agent how a node goes in says what `waysSentence` makes of
- * that answer.
+ * reader picking it. `entriesFor` puts the three together into everything a
+ * proposal does to send a node one way: the edge or fills, the ref and the
+ * note. The check accepts a node only when it arrives as one of its entries,
+ * and every refusal that tells the agent how a node goes in says what
+ * `waysSentence` makes of the same entries.
  */
 import {
   canConnect,
@@ -25,12 +27,26 @@ import { modelsForMode, waysIn, type ModelInfo, type WayIn, type WayKind } from 
 /** What a node holds, which decides how it may go into a generation. */
 export type Holding = "material" | "empty" | "words";
 
-/** One way a node can go into a generation, and how the proposal sends it. */
+/** One way a node can go into a generation, and everything the proposal does to send it. */
 export interface Entry {
   /** The way, as `waysIn` lists it. */
   way: WayIn;
   /** An edge saying `into`, the generation's fills, or no edge and a note. */
   by: "edge" | "fills" | "unwired";
+  /** Whether the generation's prompt mentions the node with a ref. */
+  ref: boolean;
+  /** Whether the generation's prompt carries a note for the node. */
+  note: boolean;
+}
+
+/**
+ * A node of one kind, with its article.
+ * @param kind - The kind.
+ * @returns "an image node", "a video node".
+ * @throws {never} Never.
+ */
+export function aNode(kind: string): string {
+  return `${/^[aeiou]/.test(kind) ? "an" : "a"} ${kind} node`;
 }
 
 /**
@@ -71,9 +87,15 @@ export function holdingOf(node: ProposalNode): Holding {
 export function entriesFor(chosen: ModelInfo, kind: string, holding: Holding): Entry[] {
   const wired = canConnect(kind, chosen.nodeType);
   return (waysIn(chosen).get(kind as WayKind) ?? []).flatMap((way): Entry[] => {
-    if (way.mark !== "note") return wired && (holding !== "material" || way.into === "pool") ? [{ way, by: "edge" }] : [];
-    if (holding === "material") return [{ way, by: "fills" }];
-    return [{ way, by: wired ? "edge" : "unwired" }];
+    // The pool is @'d by a ref, and a node landing empty there needs a note
+    // saying what to put in it or run first.
+    if (way.mark === "ref") return wired ? [{ way, by: "edge", ref: true, note: holding === "empty" }] : [];
+    // The lyrics box is @'d at landing.
+    if (way.mark === "placed") return wired && holding !== "material" ? [{ way, by: "edge", ref: false, note: false }] : [];
+    // A slot: material fills it as a pick would; anything else is picked by
+    // the reader, whom a note tells which node goes there.
+    if (holding === "material") return [{ way, by: "fills", ref: false, note: false }];
+    return [{ way, by: wired ? "edge" : "unwired", ref: false, note: true }];
   });
 }
 
@@ -88,9 +110,14 @@ function entryPhrase(entry: Entry, generation: string): string {
   const { into } = entry.way;
   if (entry.by === "fills") return `through fills "${into}" on "${generation}", with no edge`;
   if (entry.by === "unwired") return `unwired, with a note saying to pick it into "${into}"`;
-  if (entry.way.mark === "ref") return `by an edge with into: "pool" and a ref @'ing it`;
-  if (into === PANEL_EDITOR_PARAM) return `by an edge with into: "${into}", which landing @s into that box`;
-  return `by an edge with into: "${into}" and a note saying to pick it there`;
+  const marks = [
+    ...(entry.ref ? ["a ref @'ing it"] : []),
+    ...(entry.note ? [entry.ref ? "a note saying what to do first" : "a note saying to pick it there"] : []),
+  ];
+  if (marks.length > 0) return `by an edge with into: "${into}" and ${marks.join(" and ")}`;
+  return into === PANEL_EDITOR_PARAM
+    ? `by an edge with into: "${into}", which landing @s into that box`
+    : `by an edge with into: "${into}"`;
 }
 
 /**
@@ -134,12 +161,22 @@ export function nodeWaysSentence(node: ProposalNode, generation: ProposalNode, c
 export function slotSentence(chosen: ModelInfo, generation: ProposalNode, kind: string, into: string): string {
   const subjects: ReadonlyArray<[Holding, string]> = kind === "text"
     ? [["words", "A written text node"]]
-    : [["material", `A ${kind} node holding material`], ["empty", `An empty ${kind} node`]];
+    : [["material", `${capitalised(aNode(kind))} holding material`], ["empty", `An empty ${kind} node`]];
   return subjects
     .map(([holding, subject]) => [subject, entriesFor(chosen, kind, holding).filter((entry) => entry.way.into === into)] as const)
     .filter(([, entries]) => entries.length > 0)
     .map(([subject, entries]) => waysSentence(subject, generation, kind, entries))
     .join(" ");
+}
+
+/**
+ * A phrase with its first letter in capitals.
+ * @param phrase - The phrase.
+ * @returns It, capitalised.
+ * @throws {never} Never.
+ */
+function capitalised(phrase: string): string {
+  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
 /**
@@ -157,10 +194,10 @@ export function boxReason(chosen: ModelInfo, generation: ProposalNode, key: stri
     : `"${key}" is written in a box of its own on the panel, and nothing set here reaches it. Leave it out. ${reached} Or add a note saying what to write in that box.`;
 }
 
-/** A node wired into a generation, and the way it goes in. */
-export interface Routed {
+/** A node going into a generation, and the entry it arrives by. */
+export interface Arriving {
   node: ProposalNode;
-  way: WayIn;
+  entry: Entry;
 }
 
 /**
@@ -177,10 +214,10 @@ export function routeEdges(
   proposal: CanvasProposal,
   index: number,
   chosen: ModelInfo,
-): { routed: Routed[] } | { reason: string } {
+): { routed: Arriving[] } | { reason: string } {
   const generation = proposal.nodes[index] as ProposalNode;
   const ways = waysIn(chosen);
-  const routed: Routed[] = [];
+  const routed: Arriving[] = [];
   for (const edge of proposal.edges.filter((e) => e.toIndex === index)) {
     const from = proposal.nodes[edge.fromIndex];
     if (!from) continue;
@@ -193,30 +230,22 @@ export function routeEdges(
       if (edge.into === undefined) continue;
       return { reason: `"${chosen.name}" takes no ${from.type} node, so the edge from "${from.name}" goes nowhere in it; leave into off that edge, or propose a model that takes it.` };
     }
-    const way = edge.into === undefined
-      ? options.length === 1 ? options[0] : undefined
-      : options.find((option) => option.into === edge.into);
-    if (way === undefined) {
-      const said = edge.into === undefined
-        ? `The edge from "${from.name}" says no into, and "${chosen.name}" takes a ${from.type} node more than one way.`
-        : `"${chosen.name}" takes no ${from.type} by "${edge.into}".`;
-      return { reason: `${said} ${nodeWaysSentence(from, generation, chosen)}` };
+    if (edge.into === undefined && options.length > 1) {
+      return {
+        reason: `The edge from "${from.name}" says no into, and "${chosen.name}" takes ${aNode(from.type)} more than one way. ${nodeWaysSentence(from, generation, chosen)}`,
+      };
     }
-    // Material reaches a slot through fills, which leaves the snapshot a pick
-    // would; an edge into a slot asks the reader to pick a node that is already
-    // what goes there.
-    if (from.material !== undefined && way.mark === "note") {
-      return { reason: `"${from.name}" holds material, so it takes no edge into "${way.into}". ${nodeWaysSentence(from, generation, chosen)}` };
+    const into = edge.into ?? options[0]?.into;
+    // The edge stands only as one of the node's entries: material reaches a
+    // slot through fills, which leaves the snapshot a pick would, so an edge
+    // into a slot is no entry of a node holding material.
+    const entry = entriesFor(chosen, from.type, holdingOf(from)).find((e) => e.by === "edge" && e.way.into === into);
+    if (entry === undefined) {
+      return { reason: `"${from.name}" does not go into "${String(into)}" of "${generation.name}" by an edge. ${nodeWaysSentence(from, generation, chosen)}` };
     }
-    routed.push({ node: from, way });
+    routed.push({ node: from, entry });
   }
   return { routed };
-}
-
-/** A material node a generation fills one of its slots with. */
-export interface Filled {
-  node: ProposalNode;
-  way: WayIn;
 }
 
 /**
@@ -236,10 +265,10 @@ export function fillsOf(
   proposal: CanvasProposal,
   node: ProposalNode,
   chosen: ModelInfo,
-): { filled: Filled[] } | { reason: string } {
+): { filled: Arriving[] } | { reason: string } {
   const ways = waysIn(chosen);
   const slots = [...ways.values()].flat().filter((way) => way.mark === "note");
-  const filled: Filled[] = [];
+  const filled: Arriving[] = [];
   for (const [param, indices] of Object.entries(node.fills ?? {})) {
     const outside = indices.find((at) => proposal.nodes[at] === undefined);
     if (outside !== undefined) {
@@ -270,7 +299,9 @@ export function fillsOf(
         return { reason: `fills "${param}" on "${node.name}" holds the same material twice; the slot keeps one copy of it.` };
       }
       seen.add(from.material);
-      filled.push({ node: from, way });
+      const entry = entriesFor(chosen, from.type, "material").find((e) => e.by === "fills" && e.way.into === param);
+      if (entry === undefined) return { reason: `"${from.name}" does not go into "${param}" of "${node.name}" through fills. ${nodeWaysSentence(from, node, chosen)}` };
+      filled.push({ node: from, entry });
     }
   }
   return { filled };
@@ -303,30 +334,22 @@ export interface NoteAsked {
 }
 
 /**
- * The notes one generation needs: one for each node going into a slot, which
- * the reader picks there, and one for each node its prompt mentions that lands empty
- * -- an empty source node to put a file in, or a generation still to run.
- * Every check counting notes reads this, so the two never count differently.
- * @param proposal - The whole proposal.
- * @param routed - The generation's incoming edges, each with the way it takes.
- * @param refs - The indices its prompt mentions.
+ * The notes one generation needs: one for each node arriving by an entry that
+ * carries a note -- a node going into a slot, which the reader picks there,
+ * and a node in the pool that lands empty, an empty source to put a file in or
+ * a generation still to run. Every check counting notes reads this, so the
+ * two never count differently.
+ * @param arriving - The nodes going into the generation, each with its entry.
  * @returns One entry per note asked for.
  * @throws {never} Never.
  */
-export function notesAsked(
-  proposal: CanvasProposal,
-  routed: readonly Routed[],
-  refs: readonly number[],
-): NoteAsked[] {
-  const slots = routed
-    .filter(({ way }) => way.mark === "note")
-    .map(({ node, way }) => ({ node, why: `going into ${way.into}` }));
-  const empties = [...new Set(refs)].flatMap((at) => {
-    const node = proposal.nodes[at];
-    if (!node) return [];
-    if (node.role === "generate") return [{ node, why: "@'d, and empty until it is generated" }];
-    if (node.role === "source" && node.material === undefined) return [{ node, why: "@'d, and empty until a file is put in it" }];
-    return [];
-  });
-  return [...slots, ...empties];
+export function notesAsked(arriving: readonly Arriving[]): NoteAsked[] {
+  return arriving
+    .filter(({ entry }) => entry.note)
+    .map(({ node, entry }) => ({
+      node,
+      why: entry.ref
+        ? node.role === "generate" ? "@'d, and empty until it is generated" : "@'d, and empty until a file is put in it"
+        : `going into ${entry.way.into}`,
+    }));
 }

@@ -72,20 +72,41 @@ function settings(): Setting[] {
   );
 }
 
+/** What the probe is: a node holding material, an empty source, words, or a generation still to run. */
+type ProbeKind = Holding | "generated";
+
 /**
- * The probe node, holding what it is asked to.
+ * A generation of one kind that stands on its own, used as an upstream node.
  * @param kind - Its kind.
- * @param holding - What it holds.
- * @returns The node.
+ * @returns The node, named Probe.
+ * @throws {Error} When no model of that kind generates from words alone.
  */
-function probe(kind: string, holding: Holding): ProposalNode {
-  if (holding === "words") return { role: "written", type: "text", name: "Probe", prompt: [{ text: "Words to use." }] };
-  const type = kind as GenerationNodeType;
-  return holding === "material" ? { role: "source", type, name: "Probe", material: ADDRESS[kind] } : { role: "source", type, name: "Probe" };
+function upstream(kind: string): ProposalNode {
+  for (const { nodeType, mode, chosen } of settings()) {
+    if (nodeType !== kind || !chosen.takesPrompt) continue;
+    const node: ProposalNode = { role: "generate", type: nodeType, name: "Probe", mode, model: chosen.name, prompt: [{ text: "Make it." }] };
+    if (checkProposal({ nodes: [node], edges: [], rationale: "r" }).ok) return node;
+  }
+  throw new Error(`No ${kind} model generates from words alone`);
 }
 
 /**
- * A group of the probe and one generation, the probe going in by one entry.
+ * The probe node.
+ * @param kind - Its kind.
+ * @param what - What it is.
+ * @returns The node.
+ */
+function probe(kind: string, what: ProbeKind): ProposalNode {
+  if (what === "words") return { role: "written", type: "text", name: "Probe", prompt: [{ text: "Words to use." }] };
+  if (what === "generated") return upstream(kind);
+  const type = kind as GenerationNodeType;
+  return what === "material" ? { role: "source", type, name: "Probe", material: ADDRESS[kind] } : { role: "source", type, name: "Probe" };
+}
+
+/**
+ * A group of the probe and one generation, the probe going in exactly as one
+ * entry says and nothing more. A song model also gets the lyrics its box
+ * needs, from a second written node, unless the probe is going there itself.
  * @param setting - The generation's model.
  * @param node - The probe.
  * @param entry - The way it goes in, or none to leave it unwired.
@@ -94,10 +115,8 @@ function probe(kind: string, holding: Holding): ProposalNode {
 function follow(setting: Setting, node: ProposalNode, entry: Entry | undefined): CanvasProposal {
   const { nodeType, mode, chosen } = setting;
   const prompt: PromptSegment[] = chosen.takesPrompt ? [{ text: "Make it. " }] : [];
-  const empty = node.role !== "written" && node.material === undefined;
-  if (entry?.by === "edge" && entry.way.mark === "ref") prompt.push({ ref: 0 });
-  if (entry?.way.mark === "note" && entry.by !== "fills") prompt.push(NOTE);
-  else if (entry?.way.mark === "ref" && empty) prompt.push(NOTE);
+  if (entry?.ref === true) prompt.push({ ref: 0 });
+  if (entry?.note === true) prompt.push(NOTE);
   const gen: ProposalNode = {
     role: "generate",
     type: nodeType,
@@ -107,36 +126,43 @@ function follow(setting: Setting, node: ProposalNode, entry: Entry | undefined):
     ...(prompt.length > 0 ? { prompt } : {}),
     ...(entry?.by === "fills" ? { fills: { [entry.way.into]: [0] } } : {}),
   };
+  const song = (waysIn(chosen).get("text") ?? []).some((way) => way.into === PANEL_EDITOR_PARAM) && entry?.way.into !== PANEL_EDITOR_PARAM;
+  const lyrics: ProposalNode = { role: "written", type: "text", name: "Lyrics", prompt: [{ text: "La la la." }] };
   return {
-    nodes: [node, gen],
-    edges: entry?.by === "edge" ? [{ fromIndex: 0, toIndex: 1, into: entry.way.into }] : [],
+    nodes: song ? [node, gen, lyrics] : [node, gen],
+    edges: [
+      ...(entry?.by === "edge" ? [{ fromIndex: 0, toIndex: 1, into: entry.way.into }] : []),
+      ...(song ? [{ fromIndex: 2, toIndex: 1, into: PANEL_EDITOR_PARAM }] : []),
+    ],
     rationale: "A probe.",
     groupName: "Probe",
   };
 }
 
-const CASES: ReadonlyArray<{ kind: string; holding: Holding }> = [
-  { kind: "image", holding: "material" },
-  { kind: "image", holding: "empty" },
-  { kind: "video", holding: "material" },
-  { kind: "video", holding: "empty" },
-  { kind: "audio", holding: "material" },
-  { kind: "audio", holding: "empty" },
-  { kind: "text", holding: "words" },
+const CASES: ReadonlyArray<{ kind: string; what: ProbeKind }> = [
+  ...["image", "video", "audio"].flatMap((kind) => (["material", "empty", "generated"] as const).map((what) => ({ kind, what }))),
+  { kind: "text", what: "words" },
 ];
 
+/**
+ * What the probe holds, as entriesFor reads it.
+ * @param what - What the probe is.
+ * @returns Its holding.
+ */
+function holdingOfProbe(what: ProbeKind): Holding {
+  return what === "generated" ? "empty" : what;
+}
+
 describe("every way entriesFor names is one the check takes", () => {
-  it("passes the probe by each entry, for every model, kind and holding", () => {
+  it("passes the probe by each entry, doing only what the entry says, for every model, kind and holding", () => {
     const refused: string[] = [];
     let followed = 0;
     for (const setting of settings()) {
-      for (const { kind, holding } of CASES) {
-        for (const entry of entriesFor(setting.chosen, kind, holding)) {
+      for (const { kind, what } of CASES) {
+        for (const entry of entriesFor(setting.chosen, kind, holdingOfProbe(what))) {
           followed += 1;
-          const verdict = checkProposal(follow(setting, probe(kind, holding), entry), MATERIALS);
-          if (!verdict.ok && verdict.reason.includes('"Probe"')) {
-            refused.push(`${setting.chosen.name} ${setting.mode} ${kind}/${holding} ${entry.by} ${entry.way.into}: ${verdict.reason}`);
-          }
+          const verdict = checkProposal(follow(setting, probe(kind, what), entry), MATERIALS);
+          if (!verdict.ok) refused.push(`${setting.chosen.name} ${setting.mode} ${kind}/${what} ${entry.by} ${entry.way.into}: ${verdict.reason}`);
         }
       }
     }
@@ -147,19 +173,38 @@ describe("every way entriesFor names is one the check takes", () => {
   it("names no entry where the model takes nothing of that kind, and the check agrees", () => {
     const missed: string[] = [];
     for (const setting of settings()) {
-      for (const { kind, holding } of CASES) {
-        if (entriesFor(setting.chosen, kind, holding).length > 0) continue;
-        const node = probe(kind, holding);
-        const tries: CanvasProposal[] = [
-          follow(setting, node, { by: "edge", way: { into: "pool", room: 1, mark: "ref" } }),
-          ...Object.keys(setting.chosen.params).map((into) => follow(setting, node, { by: "fills", way: { into, room: 1, mark: "note" } })),
-        ];
+      for (const { kind, what } of CASES) {
+        if (entriesFor(setting.chosen, kind, holdingOfProbe(what)).length > 0) continue;
+        const node = probe(kind, what);
+        const intos = ["pool", PANEL_EDITOR_PARAM, ...Object.keys(setting.chosen.params)];
+        const tries: CanvasProposal[] = intos.flatMap((into) => [
+          follow(setting, node, { by: "edge", way: { into, room: 1, mark: "ref" }, ref: into === "pool", note: true }),
+          follow(setting, node, { by: "fills", way: { into, room: 1, mark: "note" }, ref: false, note: false }),
+        ]);
         for (const proposal of tries) {
-          if (checkProposal(proposal, MATERIALS).ok) missed.push(`${setting.chosen.name} ${setting.mode} ${kind}/${holding}: ${JSON.stringify(proposal.edges)} ${JSON.stringify(proposal.nodes[1]?.fills)}`);
+          if (checkProposal(proposal, MATERIALS).ok) missed.push(`${setting.chosen.name} ${setting.mode} ${kind}/${what}: ${JSON.stringify(proposal.edges)} ${JSON.stringify(proposal.nodes[1]?.fills)}`);
         }
       }
     }
     expect(missed).toEqual([]);
+  });
+
+  it("tells each reference-pool value set as a parameter how its own kind of node goes in", () => {
+    const wrong: string[] = [];
+    for (const setting of settings()) {
+      for (const [key, info] of Object.entries(setting.chosen.params)) {
+        if (info.fromReferencePool !== true || info.accepts === undefined) continue;
+        const proposal = follow(setting, { role: "written", type: "text", name: "Probe", prompt: [{ text: "x" }] }, undefined);
+        proposal.nodes = proposal.nodes.filter((n) => n.name !== "Probe");
+        proposal.edges = proposal.edges.map((e) => ({ ...e, fromIndex: e.fromIndex - 1, toIndex: e.toIndex - 1 }));
+        proposal.nodes[0] = { ...(proposal.nodes[0] as ProposalNode), params: { [key]: "x" } };
+        const verdict = checkProposal(proposal, MATERIALS);
+        const reason = verdict.ok ? "" : verdict.reason;
+        const others = ["image", "video", "audio"].filter((k) => k !== info.accepts && reason.includes(`${k} node`));
+        if (others.length > 0) wrong.push(`${setting.chosen.name} ${setting.mode} ${key}: ${reason}`);
+      }
+    }
+    expect(wrong).toEqual([]);
   });
 });
 
@@ -192,7 +237,7 @@ describe("each refusal tells the agent a way that is there", () => {
     const gen = proposal.nodes[1] as ProposalNode;
     proposal.nodes[1] = { ...gen, prompt: [...(gen.prompt ?? []), NOTE, { ref: 0 }] };
     const verdict = checkProposal(proposal, MATERIALS);
-    expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining("Leave the ref out") });
+    expect(verdict).toMatchObject({ ok: false, reason: expect.stringMatching(/leave the ref out/i) });
     expect(verdict.ok ? "" : verdict.reason).not.toContain('into: "pool"');
   });
 

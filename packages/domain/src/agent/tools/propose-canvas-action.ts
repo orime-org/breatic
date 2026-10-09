@@ -47,7 +47,7 @@ import { checkGenerateNode } from "@domain/agent/tools/proposal-generate-check.j
 import { checkEmptyNodesFit, checkUnsentNotes, hasRing, pickedInstead } from "@domain/agent/tools/proposal-group-checks.js";
 import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/tools/proposal-node-checks.js";
-import { chosenModelOf, routeEdges } from "@domain/agent/tools/proposal-routing.js";
+import { aNode, chosenModelOf, routeEdges } from "@domain/agent/tools/proposal-routing.js";
 import { expandTemplate, templateSegmentsText } from "@domain/agent/tools/template-expansion.js";
 import { GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
@@ -161,7 +161,7 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
     if (into && outOf && !canConnect(outOf.type, into.type)) {
       return {
         ok: false,
-        reason: `The canvas does not let a ${outOf.type} node feed a ${into.type} node, by your hand or theirs, so leave this edge off.${pickedInstead(into, outOf)}`,
+        reason: `The canvas does not let ${aNode(outOf.type)} feed ${aNode(into.type)}, by your hand or theirs, so leave this edge off.${pickedInstead(into, outOf)}`,
       };
     }
   }
@@ -237,7 +237,7 @@ export function answerFor(sent: z.infer<typeof inputSchema>, materials: Material
     edges: resolved.edges.map((edge) => {
       const chosen = edge.into === undefined ? chosenModelOf(resolved.nodes[edge.toIndex] as ProposalNode) : undefined;
       const routing = chosen === undefined ? undefined : routeEdges({ ...resolved, edges: [edge] }, edge.toIndex, chosen);
-      const way = routing !== undefined && "routed" in routing ? routing.routed[0]?.way : undefined;
+      const way = routing !== undefined && "routed" in routing ? routing.routed[0]?.entry.way : undefined;
       return way === undefined ? edge : { ...edge, into: way.into };
     }),
     nodes: resolved.nodes.map((node) => {

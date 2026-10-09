@@ -33,8 +33,7 @@ import {
   refsIn,
   routeEdges,
   slotSentence,
-  type Filled,
-  type Routed,
+  type Arriving,
 } from "@domain/agent/tools/proposal-routing.js";
 import { modelsForMode, waysIn, type ModelInfo } from "@domain/model-catalog/mode-catalog.js";
 import { getModelCatalog } from "@domain/model-catalog/model-catalog.js";
@@ -109,9 +108,7 @@ function checkSettings(node: ProposalNode, chosen: ModelInfo): ProposalVerdict {
  * @param proposal - The whole proposal.
  * @param node - The generation.
  * @param chosen - Its model.
- * @param arriving - The nodes it takes by an edge, and those it fills.
- * @param arriving.routed - Those it takes by an edge.
- * @param arriving.filled - Those it fills.
+ * @param arriving - The nodes going into it, each with its entry.
  * @param stray - The index the ref names.
  * @returns The reason.
  * @throws {never} Never.
@@ -120,7 +117,7 @@ function strayRefReason(
   proposal: CanvasProposal,
   node: ProposalNode,
   chosen: ModelInfo,
-  arriving: { routed: readonly Routed[]; filled: readonly Filled[] },
+  arriving: readonly Arriving[],
   stray: number,
 ): string {
   const named = proposal.nodes[stray];
@@ -129,22 +126,21 @@ function strayRefReason(
   // Arriving another way -- an edge into a slot or the lyrics box, or a slot
   // filled through fills -- the node is already where it goes; a ref would
   // only send it a second time.
-  const filled = arriving.filled.find(({ node: n }) => n === named);
-  if (filled) {
-    return `"${named.name}" fills "${filled.way.into}" of "${node.name}" through fills, which landing does, so it takes no ref; leave the ref out.`;
-  }
-  const elsewhere = arriving.routed.find(({ node: n }) => n === named);
+  const elsewhere = arriving.find(({ node: n }) => n === named);
   if (elsewhere) {
-    return `"${named.name}" goes into "${elsewhere.way.into}" of "${node.name}", ${elsewhere.way.mark === "placed" ? "which landing @s it into" : "which the reader picks it into"}, so it takes no ref; leave the ref out.`;
+    const { entry } = elsewhere;
+    const how = entry.by === "fills"
+      ? `fills "${entry.way.into}" of "${node.name}" through fills, which landing does`
+      : `goes into "${entry.way.into}" of "${node.name}", ${entry.way.mark === "placed" ? "which landing @s it into" : "which the reader picks it into"}`;
+    return `"${named.name}" ${how}, so it takes no ref; leave the ref out.`;
   }
-  return entriesFor(chosen, named.type, holdingOf(named)).some(({ way }) => way.mark === "ref")
-    ? `"${named.name}" is @'d by a ref in "${node.name}" but is not wired into its pool. Wire it in with an edge into: "pool", or leave the ref out.`
-    : `"${named.name}" is @'d by a ref in "${node.name}", and a ref @s only a node in its pool, which "${named.name}" cannot join. ${nodeWaysSentence(named, node, chosen)} Leave the ref out.`;
+  const keeps = entriesFor(chosen, named.type, holdingOf(named)).some((entry) => entry.ref);
+  return `"${named.name}" is @'d by a ref in "${node.name}" but is not wired into its pool. ${nodeWaysSentence(named, node, chosen)} ${keeps ? "To keep the ref, send it into the pool that way; otherwise leave the ref out." : "Only a node in the pool takes a ref, so leave the ref out."}`;
 }
 
 /** What a generation's wiring settles: the nodes it takes by edge, and which of them sit in its pool. */
 interface Wiring {
-  routed: Routed[];
+  arriving: Arriving[];
   pooled: number[];
 }
 
@@ -163,13 +159,12 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
   if ("reason" in routing) return routing;
   const filling = fillsOf(proposal, node, chosen);
   if ("reason" in filling) return filling;
-  const { routed } = routing;
-  const arriving = [...routed, ...filling.filled];
+  const arriving = [...routing.routed, ...filling.filled];
   // Over a way's room is said first: the fix there is fewer nodes, and every
   // count below would otherwise ask for a mark or note for a node to remove.
   for (const [kind, list] of waysIn(chosen)) {
     for (const option of list) {
-      const going = arriving.filter(({ node: n, way }) => n.type === kind && way.into === option.into).map(({ node: n }) => n);
+      const going = arriving.filter(({ node: n, entry }) => n.type === kind && entry.way.into === option.into).map(({ node: n }) => n);
       if (going.length > option.room) {
         return {
           reason: `"${chosen.name}" takes ${String(option.room)} ${kind} node(s) by "${option.into}", and ${String(going.length)} are going that way (${going.map((n) => `"${n.name}"`).join(", ")}).${list.length > 1 ? " Send the rest another way it takes, or send fewer." : " Send fewer."}`,
@@ -177,12 +172,12 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
       }
     }
   }
-  // Every node wired into the pool is @'d by a ref, and a ref @s only such a
-  // node: the mention lands as one the reader would insert from the pool.
-  const pooled = routed.filter(({ way }) => way.mark === "ref").map(({ node: n }) => proposal.nodes.indexOf(n));
+  // Every node arriving by an entry with a ref is @'d, and a ref @s only such
+  // a node: the mention lands as one the reader would insert from the pool.
+  const pooled = arriving.filter(({ entry }) => entry.ref).map(({ node: n }) => proposal.nodes.indexOf(n));
   const refs = refsIn(node);
   const stray = refs.find((at) => !pooled.includes(at));
-  if (stray !== undefined) return { reason: strayRefReason(proposal, node, chosen, { routed, filled: filling.filled }, stray) };
+  if (stray !== undefined) return { reason: strayRefReason(proposal, node, chosen, arriving, stray) };
   // Every one at once, so a single retry puts them all in.
   const unmentioned = pooled.filter((at) => !refs.includes(at));
   if (unmentioned.length > 0) {
@@ -192,14 +187,14 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
       reason: `${names} ${unmentioned.length === 1 ? "is" : "are"} wired into the pool of "${node.name}" but no ref @s ${unmentioned.length === 1 ? "it" : "them"}. Put ${each} where the prompt speaks of ${unmentioned.length === 1 ? "it" : "each"}; a node not @'d is not used.`,
     };
   }
-  const asked = notesAsked(proposal, routed, refs);
+  const asked = notesAsked(arriving);
   const notes = notesIn(node);
   if (notes < asked.length) {
     return {
       reason: `"${node.name}" needs a note for each of ${asked.map(({ node: n, why }) => `"${n.name}" (${why})`).join(", ")}, and carries ${String(notes)}. Give each one a note: which slot to pick it into, or what to do first with a node that lands empty.`,
     };
   }
-  return { routed, pooled };
+  return { arriving, pooled };
 }
 
 /**
@@ -275,7 +270,7 @@ function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelIn
  * @throws {never} Never.
  */
 function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: ModelInfo, wiring: Wiring): ProposalVerdict {
-  const { routed, pooled } = wiring;
+  const { arriving, pooled } = wiring;
   const board = chosen.storyboard;
   const scripts = pooled.flatMap((at) => {
     const target = proposal.nodes[at];
@@ -301,8 +296,8 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
   // A song model's lyrics box is a second box the panel holds to the same
   // gate: the words of the nodes wired into it, a line apart.
   const lyricsRequired = waysIn(chosen).get("text")?.some((way) => way.into === PANEL_EDITOR_PARAM) === true;
-  const lyricsText = routed
-    .filter(({ way }) => way.into === PANEL_EDITOR_PARAM)
+  const lyricsText = arriving
+    .filter(({ entry }) => entry.way.into === PANEL_EDITOR_PARAM)
     .map(({ node: n }) => promptPlainText(n.prompt ?? []))
     .join("\n");
   const verdict = evaluateExecute({

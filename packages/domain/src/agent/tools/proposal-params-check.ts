@@ -8,7 +8,7 @@ import { PANEL_EDITOR_PARAM, type ControlGate, type ProposalNode } from "@breati
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { boxReason, slotSentence } from "@domain/agent/tools/proposal-routing.js";
-import { waysIn, type ModelInfo, type ParamInfo } from "@domain/model-catalog/mode-catalog.js";
+import type { ModelInfo, ParamInfo } from "@domain/model-catalog/mode-catalog.js";
 import { onStep } from "@domain/model-catalog/param-declaration.js";
 
 /**
@@ -92,7 +92,6 @@ function offStepReason(key: string, value: number, info: ParamInfo): string | nu
  */
 export function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
   const declared = Object.keys(chosen.params);
-  const ways = [...waysIn(chosen)];
   for (const [key, value] of Object.entries(node.params ?? {})) {
     const info = chosen.params[key];
     if (!info) {
@@ -114,13 +113,14 @@ export function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerd
       // model uses: through the pool an edge carries it, through a slot the
       // reader clicks a node on the canvas. Said the other way round, it
       // sends the model off to wire an edge the panel never reads.
-      const kind = ways.find(([, list]) => list.some((way) => way.into === (info.fromReferencePool === true ? "pool" : key)))?.[0];
+      const into = info.fromReferencePool === true ? "pool" : key;
       const said = info.fromReferencePool === true ? `"${key}" is the reference pool` : `"${key}" is a slot for the reader's own material`;
+      const reached = info.accepts === undefined ? "" : slotSentence(chosen, node, info.accepts, into);
       return {
         ok: false,
-        reason: kind === undefined
+        reason: reached === ""
           ? `${said}, which nothing set here reaches. Leave it out.`
-          : `${said}, which nodes reach and nothing set here does. Leave it out. ${slotSentence(chosen, node, kind, info.fromReferencePool === true ? "pool" : key)}`,
+          : `${said}, which nodes reach and nothing set here does. Leave it out. ${reached}`,
       };
     }
     if (info.fromStoryboard === true) {
