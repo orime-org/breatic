@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useRunAfterMenuClose } from '@web/spaces/canvas/use-run-after-menu-close';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 
 interface SelectionContextMenuProps {
@@ -72,6 +73,8 @@ export const SelectionContextMenu = React.memo(function SelectionContextMenu({
   addToAgentDisabled = false,
 }: SelectionContextMenuProps): React.JSX.Element {
   const t = useTranslation();
+  // Duplicate hands the keyboard to the copies, so it runs once the menu has closed.
+  const { later, onCloseAutoFocus } = useRunAfterMenuClose();
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
@@ -81,7 +84,7 @@ export const SelectionContextMenu = React.memo(function SelectionContextMenu({
           style={{ position: 'fixed', left: x, top: y, height: 0, width: 0 }}
         />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align='start'>
+      <DropdownMenuContent align='start' onCloseAutoFocus={onCloseAutoFocus}>
         {onGroup ? (
           <>
             <DropdownMenuItem
@@ -109,7 +112,7 @@ export const SelectionContextMenu = React.memo(function SelectionContextMenu({
         {onDuplicate ? (
           <DropdownMenuItem
             data-testid='selection-menu-duplicate'
-            onSelect={onDuplicate}
+            onSelect={later(onDuplicate)}
           >
             <CopyPlus className='mr-2 h-4 w-4' aria-hidden='true' />
             {t('canvas.contextMenu.duplicate')}

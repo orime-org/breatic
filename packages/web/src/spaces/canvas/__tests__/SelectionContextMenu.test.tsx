@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 import { SelectionContextMenu } from '@web/spaces/canvas/SelectionContextMenu';
 
@@ -37,6 +37,16 @@ describe('SelectionContextMenu', () => {
     expect(screen.getByTestId('selection-menu-copy')).toBeInTheDocument();
     expect(screen.getByTestId('selection-menu-duplicate')).toBeInTheDocument();
     expect(screen.getByTestId('selection-menu-delete')).toBeInTheDocument();
+  });
+
+  it('fires the duplicate handler once the menu has closed', async () => {
+    const onDuplicate = vi.fn();
+    const props = { x: 0, y: 0, onOpenChange: () => {}, onDuplicate };
+    const { rerender } = render(<SelectionContextMenu open {...props} />);
+    fireEvent.click(screen.getByTestId('selection-menu-duplicate'));
+    expect(onDuplicate).not.toHaveBeenCalled();
+    rerender(<SelectionContextMenu open={false} {...props} />);
+    await waitFor(() => expect(onDuplicate).toHaveBeenCalledTimes(1));
   });
 
   it('delete item reads "Delete selection"', () => {
