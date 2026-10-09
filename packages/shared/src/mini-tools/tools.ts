@@ -71,6 +71,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [],
     outputs: [{ modality: "image", namePrefix: "CROP" }],
     sourceParam: "image",
+    sourceMany: false,
   },
   {
     id: "image.rotate",
@@ -83,6 +84,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [],
     outputs: [{ modality: "image", namePrefix: "ROTATE" }],
     sourceParam: "image",
+    sourceMany: false,
   },
   {
     id: "image.remove-bg",
@@ -90,11 +92,12 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     run: { kind: "model", model: "bria-remove-background" },
     labelKey: key("image.remove-bg", "label"),
     guide: "cuts the subject out onto a transparent background",
-    icon: "Eraser",
+    icon: "ImageMinus",
     params: [],
     slots: [],
     outputs: [{ modality: "image", namePrefix: "NOBG" }],
     sourceParam: "image",
+    sourceMany: false,
   },
   {
     id: "image.upscale",
@@ -117,6 +120,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [],
     outputs: [{ modality: "image", namePrefix: "UPSCALE" }],
     sourceParam: "image",
+    sourceMany: false,
   },
   {
     id: "image.digital-human",
@@ -129,7 +133,52 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [slot("image.digital-human", "audio", "audio", "audio")],
     outputs: [{ modality: "video", namePrefix: "AVATAR" }],
     sourceParam: "image",
+    sourceMany: false,
     prompt: { placeholderKey: key("image.digital-human", "prompt") },
+  },
+  {
+    id: "image.inpaint",
+    source: "image",
+    run: { kind: "model", model: "bria-genfill" },
+    labelKey: key("image.inpaint", "label"),
+    guide: "paints over part of the picture and changes only that part to what the prompt says",
+    icon: "Brush",
+    params: [],
+    slots: [],
+    outputs: [{ modality: "image", namePrefix: "INPAINT" }],
+    sourceParam: "image",
+    sourceMany: false,
+    drawing: { kind: "mask", maskParam: "mask_image" },
+    prompt: { placeholderKey: key("image.inpaint", "prompt") },
+  },
+  {
+    id: "image.erase",
+    source: "image",
+    run: { kind: "model", model: "bria-eraser" },
+    labelKey: key("image.erase", "label"),
+    guide: "paints over something in the picture and removes it, filling in the background",
+    icon: "Eraser",
+    params: [],
+    slots: [],
+    outputs: [{ modality: "image", namePrefix: "ERASE" }],
+    sourceParam: "image",
+    sourceMany: false,
+    drawing: { kind: "mask", maskParam: "mask_image" },
+  },
+  {
+    id: "image.sketch",
+    source: "image",
+    run: { kind: "model", model: "seedream-v4.5-edit" },
+    labelKey: key("image.sketch", "label"),
+    guide: "draws rough shapes on the picture and turns them into what the prompt says",
+    icon: "PencilLine",
+    params: [],
+    slots: [],
+    outputs: [{ modality: "image", namePrefix: "SKETCH" }],
+    sourceParam: "images",
+    sourceMany: true,
+    drawing: { kind: "sketch" },
+    prompt: { placeholderKey: key("image.sketch", "prompt") },
   },
   {
     id: "video.cut",
@@ -142,6 +191,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [],
     outputs: [{ modality: "video", namePrefix: "CUT" }],
     sourceParam: "video",
+    sourceMany: false,
   },
   {
     id: "video.crop",
@@ -154,6 +204,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [],
     outputs: [{ modality: "video", namePrefix: "CROP" }],
     sourceParam: "video",
+    sourceMany: false,
   },
   {
     id: "video.speed",
@@ -166,6 +217,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [],
     outputs: [{ modality: "video", namePrefix: "SPEED" }],
     sourceParam: "video",
+    sourceMany: false,
   },
   {
     id: "video.adjust",
@@ -178,6 +230,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [],
     outputs: [{ modality: "video", namePrefix: "ADJUST" }],
     sourceParam: "video",
+    sourceMany: false,
   },
   {
     id: "video.audio-denoise",
@@ -190,6 +243,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [],
     outputs: [{ modality: "video", namePrefix: "DENOISE" }],
     sourceParam: "video",
+    sourceMany: false,
   },
   {
     id: "video.stabilize",
@@ -205,6 +259,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [],
     outputs: [{ modality: "video", namePrefix: "STABLE" }],
     sourceParam: "video",
+    sourceMany: false,
   },
   {
     id: "video.hdr",
@@ -224,6 +279,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [],
     outputs: [{ modality: "video", namePrefix: "HDR" }],
     sourceParam: "video",
+    sourceMany: false,
   },
   {
     id: "video.upscale",
@@ -236,6 +292,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [],
     outputs: [{ modality: "video", namePrefix: "UPSCALE" }],
     sourceParam: "video",
+    sourceMany: false,
   },
   {
     id: "video.interpolate",
@@ -248,6 +305,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [],
     outputs: [{ modality: "video", namePrefix: "SMOOTH" }],
     sourceParam: "video",
+    sourceMany: false,
   },
   {
     id: "video.extend",
@@ -260,6 +318,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [],
     outputs: [{ modality: "video", namePrefix: "EXTEND" }],
     sourceParam: "video",
+    sourceMany: false,
     prompt: { placeholderKey: key("video.extend", "prompt") },
   },
   {
@@ -281,6 +340,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     ],
     outputs: [{ modality: "video", namePrefix: "EDIT" }],
     sourceParam: "video",
+    sourceMany: false,
     prompt: { placeholderKey: key("video.edit", "prompt") },
   },
   {
@@ -294,6 +354,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [slot("video.motion", "character", "image", "image")],
     outputs: [{ modality: "video", namePrefix: "MOTION" }],
     sourceParam: "video",
+    sourceMany: false,
     prompt: { placeholderKey: key("video.motion", "prompt") },
   },
   {
@@ -307,6 +368,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [slot("video.animate", "character", "image", "image")],
     outputs: [{ modality: "video", namePrefix: "ANIMATE" }],
     sourceParam: "video",
+    sourceMany: false,
     prompt: { placeholderKey: key("video.animate", "prompt") },
   },
   {
@@ -323,6 +385,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
       { modality: "audio", namePrefix: "INSTRUMENTAL" },
     ],
     sourceParam: "audio",
+    sourceMany: false,
   },
   {
     id: "audio.extend",
@@ -335,6 +398,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     slots: [],
     outputs: [{ modality: "audio", namePrefix: "EXTEND" }],
     sourceParam: "audio",
+    sourceMany: false,
     prompt: { placeholderKey: key("audio.extend", "prompt") },
   },
 ];

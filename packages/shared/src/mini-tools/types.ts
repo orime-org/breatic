@@ -37,6 +37,9 @@ export type MiniToolRun =
 
 /** The lucide icon a tool's menu row shows. */
 export type MiniToolIcon =
+  | "Brush"
+  | "ImageMinus"
+  | "PencilLine"
   | "Eraser"
   | "Maximize2"
   | "UserRound"
@@ -150,6 +153,16 @@ export interface MiniToolOutput {
   readonly namePrefix: string;
 }
 
+/**
+ * A layer the reader draws on the source; the run is sent images made from it.
+ * A mask is a black-and-white image the size of the source, white where to
+ * change, sent under `maskParam`; a sketch is the source with the drawing
+ * painted on it, sent in place of the source.
+ */
+export type MiniToolDrawing =
+  | { readonly kind: "mask"; readonly maskParam: string }
+  | { readonly kind: "sketch" };
+
 /** Fields every tool declares. */
 interface MiniToolBase {
   /** `<source>.<name>`, unique across the registry. */
@@ -166,6 +179,10 @@ interface MiniToolBase {
   readonly outputs: readonly MiniToolOutput[];
   /** The param the source media fills: the model's yaml name, or the container op's input. */
   readonly sourceParam: string;
+  /** Whether that param is a list, as a slot's `many` says of its param. */
+  readonly sourceMany: boolean;
+  /** Present on a tool the reader draws on the node for. */
+  readonly drawing?: MiniToolDrawing;
   /** Present on a model tool whose pinned model takes a prompt. */
   readonly prompt?: { readonly placeholderKey: string };
 }
