@@ -3,10 +3,10 @@
 
 /**
  * inner#1127 A2, A4: where an upload's placeholder is drawn and where its
- * block lands. Both come from `resolveSlotPosition`, so a placeholder drawn at
+ * block lands. Both come from `placeSlot`, so a placeholder drawn at
  * one place and a block landing at another cannot happen; what these tests
  * hold is that the one answer is right — files keep the order they came in,
- * whichever finishes first, however the anchors moved meanwhile.
+ * whichever finishes first, however the gaps moved meanwhile.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';

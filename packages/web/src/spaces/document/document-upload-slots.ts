@@ -20,7 +20,7 @@
  * position as it stood before the edit it takes back (`namesOnUndoStack`),
  * and a batch started after that edit follows its Yjs relative position. A
  * position that lands inside a block is lifted to the gap under that block's
- * line. The placeholder and the insert both ask {@link resolveSlotPosition},
+ * line. The placeholder and the insert both ask {@link placeSlot},
  * so a placeholder drawn in one place and a block landing in another cannot
  * happen. Design 3.3 holds the transition table.
  */
@@ -124,7 +124,8 @@ interface InsertedSibling {
  * @param batch - The batch.
  * @param k - The file's index in it.
  * @param doc - The document now.
- * @returns That file's row, or undefined when none is in the document.
+ * @returns That file's row and which side of the k-th file it is on, or
+ *   undefined when none is in the document.
  */
 function insertedSibling(batch: UploadBatch, k: number, doc: PMNode): InsertedSibling | undefined {
   for (let later = k + 1; later < batch.slots.length; later += 1) {
@@ -141,25 +142,14 @@ function insertedSibling(batch: UploadBatch, k: number, doc: PMNode): InsertedSi
 }
 
 /**
- * Where the k-th file of a batch goes in the document as it is now: before the
- * nearest later file of the batch already inserted, after the nearest earlier
- * one, or at the batch's gap. Every file therefore keeps the order it came in,
- * whichever finishes first.
- * @param batch - The batch.
- * @param k - The file's index in it.
- * @param doc - The document now.
- * @returns A position between two blocks.
- */
-export function resolveSlotPosition(batch: UploadBatch, k: number, doc: PMNode): number {
-  return placeSlot(batch, k, doc).at;
-}
-
-/**
- * Where the k-th file of a batch goes, and whether it goes in quoted: as the
- * files of the batch already inserted beside it, so a batch lands quoted as
- * one; else as the empty line the reader aimed it at, while that line still
- * follows its gap; else as the block before it, or the block after it at the
- * head of a level.
+ * Where the k-th file of a batch goes in the document as it is now, and
+ * whether it goes in quoted. It goes before the nearest later file of the
+ * batch already inserted, after the nearest earlier one, or at the batch's
+ * gap, so every file keeps the order it came in, whichever finishes first. It
+ * is quoted as the files of the batch already inserted beside it, so a batch
+ * lands quoted as one; else as the empty line the reader aimed it at, while
+ * that line still follows its gap; else as the block before it, or the block
+ * after it at the head of a level.
  * @param batch - The batch.
  * @param k - The file's index in it.
  * @param doc - The document now.
@@ -212,7 +202,6 @@ export function blockGapAt(doc: PMNode, pos: number): number {
 
 /** Each batch's gap as Yjs names it, by batch id. */
 type NamedGaps = ReadonlyMap<string, Y.RelativePosition>;
-
 
 /**
  * A gap as Yjs names it.
@@ -296,7 +285,7 @@ function decorate(batches: readonly UploadBatch[], doc: PMNode): DecorationSet {
       if (slot.phase === 'inserted') return;
       widgets.push(
         Decoration.widget(
-          resolveSlotPosition(batch, k, doc),
+          placeSlot(batch, k, doc).at,
           (view) => {
             const holder = document.createElement('div');
             holder.setAttribute(UPLOAD_SLOT_ATTRIBUTE, slot.id);

@@ -296,7 +296,7 @@ describe('an upload that succeeds (A13, A15)', () => {
   it.each([
     [true, true],
     [false, false],
-  ])('lands quoted as the empty quoted line it was aimed at when aimed is %s', async (aimed, quoted) => {
+  ])('takes the quoting of the empty line after the gap only when aimed (aimed %s, quoted %s)', async (aimed, quoted) => {
     const editor = open();
     editor.replaceBlocks(editor.document, [
       { type: 'paragraph', content: 'A' },
