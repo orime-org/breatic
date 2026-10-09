@@ -12,7 +12,6 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { NodeSelection, Selection, TextSelection, type EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import { contentRangeOf, rowById } from '@web/spaces/document/document-row-by-id';
 
 /**
@@ -26,6 +25,35 @@ export function isWordless(content: PMNode): boolean {
   return !content.isTextblock && content.type.spec.tableRole === undefined && content.childCount === 0;
 }
 
+/** The element a block's own content draws: BlockNote's wrapper, or the fallback block itself. */
+const BLOCK_CONTENT = '.bn-block-content, [data-unsupported-block]';
+
+/**
+ * Where the wordless block an element draws starts.
+ * @param view - The view.
+ * @param element - The block's content element.
+ * @returns The position before that block, or null when it has words.
+ */
+function wordlessAt(view: EditorView, element: Element): number | null {
+  const at = view.posAtDOM(element, 0);
+  const $at = view.state.doc.resolve(at);
+  // Inside a block's words the element draws a block with words.
+  if ($at.parent.inlineContent) return null;
+  const node = $at.nodeAfter;
+  return node !== null && isWordless(node) ? at : null;
+}
+
+/**
+ * The wordless block a press inside the body landed on.
+ * @param view - The view.
+ * @param target - What was pressed.
+ * @returns That block's content element, or null when the press is not on one.
+ */
+export function wordlessBlockAt(view: EditorView, target: Element): Element | null {
+  const block = target.closest(BLOCK_CONTENT);
+  return block !== null && view.dom.contains(block) && wordlessAt(view, block) !== null ? block : null;
+}
+
 /**
  * Selects whole the wordless block a content element draws, unless it already is.
  * @param view - The view.
@@ -33,12 +61,8 @@ export function isWordless(content: PMNode): boolean {
  * @returns True when that block is wordless and is now selected.
  */
 export function selectWordlessBlock(view: EditorView, element: Element): boolean {
-  const at = view.posAtDOM(element, 0);
-  const $at = view.state.doc.resolve(at);
-  // Inside a block's words the element draws a block with words.
-  if ($at.parent.inlineContent) return false;
-  const node = $at.nodeAfter;
-  if (node === null || !isWordless(node)) return false;
+  const at = wordlessAt(view, element);
+  if (at === null) return false;
   const selection = NodeSelection.create(view.state.doc, at);
   if (!view.state.selection.eq(selection)) view.dispatch(view.state.tr.setSelection(selection));
   return true;
@@ -57,9 +81,7 @@ export function placeOnBlock(state: EditorState, blockId: string): Selection {
   const row = rowById(doc, blockId);
   const content = row?.node.firstChild;
   if (row === undefined || content === null || content === undefined) return state.selection;
-  if (isWordless(content)) {
-    return selectionOverBlockContent(doc, blockId);
-  }
+  if (isWordless(content)) return NodeSelection.create(doc, row.from + 1);
   const range = contentRangeOf(row)!;
   if (content.isTextblock) return TextSelection.create(doc, range.from);
   // A table, or any block whose words sit deeper: the first place for text inside it.

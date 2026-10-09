@@ -332,7 +332,7 @@ describe('what a press is on', () => {
     expect(pressTargetOf(opened.editor.prosemirrorView!, event).kind).toBe(kind);
   });
 
-  it('reads a divider, a media display, a media control, a body layer and a scrollbar', () => {
+  it('reads a divider as wordless, a media display, a media control, a body layer and a scrollbar', () => {
     const opened = open([
       { type: 'paragraph', content: 'Above' },
       { type: 'divider' },
@@ -356,11 +356,29 @@ describe('what a press is on', () => {
     scrollbar.setAttribute('data-scroll-area-scrollbar', '');
     opened.scroller.appendChild(scrollbar);
 
-    expect(at(view.dom.querySelector('[data-content-type="divider"]')!)).toBe('divider');
+    expect(at(view.dom.querySelector('[data-content-type="divider"]')!)).toBe('wordless');
+    expect(at(view.dom.querySelector('p')!)).toBe('text');
     expect(at(view.dom.querySelector('img')!)).toBe('media');
     expect(at(within(view.dom as HTMLElement).getByTestId('doc-media-download'))).toBe('control');
     expect(at(inLayer)).toBe('layer');
     expect(at(scrollbar)).toBe('scrollbar');
+  });
+
+  it('reads a block this build does not know as wordless', () => {
+    const opened = open(TEXT);
+    const view = opened.editor.prosemirrorView!;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (at < 0 && node.isTextblock) at = pos;
+    });
+    const fallback = view.state.schema.nodes['unsupportedBlock']!;
+    view.dispatch(
+      view.state.tr.replaceWith(at, at + view.state.doc.nodeAt(at)!.nodeSize, fallback.create({ originalName: 'x' })),
+    );
+    const event = new MouseEvent('mousedown', { bubbles: true });
+    Object.defineProperty(event, 'target', { value: view.dom.querySelector('[data-unsupported-block]') });
+
+    expect(pressTargetOf(view, event).kind).toBe('wordless');
   });
 
   it('passes through a press on anything it does not know', () => {

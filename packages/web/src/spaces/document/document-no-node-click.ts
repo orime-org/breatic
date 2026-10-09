@@ -31,7 +31,8 @@
  *
  * A BLOCK WITH NO WORDS IS SELECTED WHOLE (inner#1127 A22): a divider, or a
  * block this build does not know, as a plain click selects it and as the
- * press entry does when the body does not hold the focus.
+ * press entry does when the body does not hold the focus. Both find it through
+ * `wordlessBlockAt`.
  *
  * A MEDIA ROW IS NOT EITHER. The picture, video or audio and everything else
  * in its row answer a click — with the modifier or without — in
@@ -42,7 +43,7 @@ import { createExtension } from '@blocknote/core';
 import { isMacOS } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 
-import { selectWordlessBlock } from '@web/spaces/document/document-block-place';
+import { selectWordlessBlock, wordlessBlockAt } from '@web/spaces/document/document-block-place';
 import { LINK_ANCHOR_SELECTOR } from '@web/spaces/document/document-link';
 import { inMediaRow } from '@web/spaces/document/document-media-row-press';
 
@@ -90,8 +91,9 @@ export const documentNoNodeClickExtension = createExtension(() => ({
           if (!asksForANode(event)) return false;
           if (landedOnALink(event)) return false;
           if (inMediaRow(event.target)) return false;
-          const block = (event.target as Element | null)?.closest('.bn-block-content');
-          if (block != null && selectWordlessBlock(view, block)) return true;
+          const target = event.target instanceof Element ? event.target : null;
+          const block = target === null ? null : wordlessBlockAt(view, target);
+          if (block !== null && selectWordlessBlock(view, block)) return true;
           view.dispatch(
             view.state.tr.setSelection(
               TextSelection.create(view.state.doc, pos),

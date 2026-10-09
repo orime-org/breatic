@@ -16,13 +16,12 @@ import { Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
 import { columnResizingPluginKey } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { selectWordlessBlock } from '@web/spaces/document/document-block-place';
+import { selectWordlessBlock, wordlessBlockAt } from '@web/spaces/document/document-block-place';
 import { bodyHolds, layerOf, placeAtLayerAnchor, watchBodyScroll } from '@web/spaces/document/document-body-focus';
 import { extendFromPress, followFromPoint } from '@web/spaces/document/document-body-edge-pointer';
 import { DOCUMENT_COMMENT_SELECTION, selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import { rowHit } from '@web/spaces/document/document-media-row-press';
-import { DIVIDER } from '@web/spaces/document/document-divider';
 import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
 
 /** The attribute on the layout elements beside the body column that count as blank. */
@@ -37,7 +36,7 @@ export type PressKind =
   | 'quiet-control'
   | 'control'
   | 'media'
-  | 'divider'
+  | 'wordless'
   | 'trailing'
   | 'blank'
   | 'text'
@@ -99,8 +98,8 @@ export function pressTargetOf(view: EditorView, event: MouseEvent): PressTarget 
     if (control !== null) return { kind: 'control', element: control };
     const hit = rowHit(target);
     if (hit !== null) return { kind: hit.onMedia ? 'media' : 'blank', element: hit.row };
-    const divider = target.closest(`[data-content-type="${DIVIDER}"]`);
-    if (divider !== null) return { kind: 'divider', element: divider };
+    const wordless = wordlessBlockAt(view, target);
+    if (wordless !== null) return { kind: 'wordless', element: wordless };
     const trailing = target.closest('.bn-trailing-block');
     if (trailing !== null) return { kind: 'trailing', element: trailing };
     const table = target.closest('.tableWrapper');
@@ -208,7 +207,7 @@ export function attachBodyScroller(
       case 'quiet-control':
         event.preventDefault();
         return;
-      case 'divider':
+      case 'wordless':
         if (!holds && element !== null && !event.shiftKey) {
           selectWordlessBlock(view, element);
           view.focus();

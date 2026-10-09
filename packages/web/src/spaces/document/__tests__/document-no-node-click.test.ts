@@ -116,6 +116,27 @@ describe('a modifier-click in the body', () => {
     expect((selection as NodeSelection).node.type.name).toBe('divider');
   });
 
+  it('selects whole a block this build does not know', () => {
+    const editor = open();
+    const view = editor.prosemirrorView;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (at < 0 && node.isTextblock) at = pos;
+    });
+    const fallback = view.state.schema.nodes['unsupportedBlock']!;
+    view.dispatch(
+      view.state.tr.replaceWith(at, at + view.state.doc.nodeAt(at)!.nodeSize, fallback.create({ originalName: 'x' })),
+    );
+    const block = view.dom.querySelector('[data-unsupported-block]')!;
+
+    const answered = clickHandlerOf(view)(view, view.posAtDOM(block, 0), modifierClick(block));
+
+    expect(answered).toBe(true);
+    const selection = view.state.selection;
+    expect(selection).toBeInstanceOf(NodeSelection);
+    expect((selection as NodeSelection).node.type.name).toBe('unsupportedBlock');
+  });
+
   it('leaves a press on a link to the link', () => {
     const editor = open();
     const anchor = document.createElement('a');
