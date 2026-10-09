@@ -496,6 +496,8 @@ test('a video plays in place and keeps playing while its width changes (A7, A8)'
   });
   const video = page.locator(`${VIDEO} video`);
   await expect(video).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  // The size read off the file reaches the player, which holds it while loading (A23).
+  expect([await video.getAttribute('width'), await video.getAttribute('height')]).toEqual(['64', '48']);
   const handle = page.locator(`${VIDEO} [data-testid="doc-media-resize-se"]`);
   const element = await video.elementHandle();
 
