@@ -3344,7 +3344,7 @@ function CanvasSpaceInner({
           // Read at write time, against the canvas as it is then.
           afterWrite: (clones, idMap) => {
             const sourceOf = new Map([...idMap].map(([source, clone]) => [clone, source]));
-            for (const g of planDuplicateGroupGrowth(sourceOf, clones, ext, buffer.settled())) {
+            for (const g of planDuplicateGroupGrowth(sourceOf, clones, buffer.settled())) {
               expandGroup(projectId, spaceId, g.groupId, g.position, g.width, g.height);
             }
           },

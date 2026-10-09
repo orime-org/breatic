@@ -16,23 +16,25 @@ import {
  * (R2-A): a clone offset +24 from a source at the Group's edge can sit flush
  * against the border, so each affected Group expands to keep `GROUP_PADDING`.
  * Builds every affected Group's full member set (current members + the new
- * clones) in absolute coordinates — a clone's size is its source's measured size
+ * clones) in absolute coordinates, around the Group where it is now — a clone's size is its source's measured size
  * (it is an exact copy, found through `sourceOf`) — then defers the
  * only-up growth math to {@link planGroupGrowth}.
  * @param sourceOf - Clone id → the id of the node it copies, whose size it has.
  * @param clones - The freshly written clones (parentId + parent-relative position).
- * @param ext - Existing Groups (outside the payload) that gained members → their absolute top-left.
  * @param allNodes - All current flow nodes (existing members + Group rects + source sizes).
  * @returns One growth per existing Group whose size must increase.
  */
 export function planDuplicateGroupGrowth(
   sourceOf: ReadonlyMap<string, string>,
   clones: ReadonlyArray<{ id: string; parentId?: string; position: { x: number; y: number } }>,
-  ext: ReadonlyMap<string, { x: number; y: number }>,
   allNodes: ReadonlyArray<Node>,
 ): GroupGrowth[] {
-  if (ext.size === 0) return [];
   const byId = new Map(allNodes.map((node) => [node.id, node]));
+  // The existing Groups the clones joined: a clone's parent that is not itself a clone.
+  const cloneIds = new Set(clones.map((clone) => clone.id));
+  const joined = new Set(
+    clones.flatMap((clone) => (clone.parentId !== undefined && !cloneIds.has(clone.parentId) ? [clone.parentId] : [])),
+  );
   /**
    * A node's rendered size (measured first, then stored, then the drag fallback).
    * @param node - The flow node, or undefined when not found.
@@ -43,9 +45,11 @@ export function planDuplicateGroupGrowth(
     height: node?.measured?.height ?? node?.height ?? EMPTY_NODE_SIZE.height,
   });
   const inputs: GroupGrowthInput[] = [];
-  for (const [groupId, groupAbs] of ext) {
+  for (const groupId of joined) {
     const groupNode = byId.get(groupId);
     if (groupNode === undefined) continue;
+    // Groups are top-level, so a Group's position is its canvas position.
+    const groupAbs = groupNode.position;
     const memberRects: Rect[] = [];
     for (const node of allNodes) {
       if (node.parentId !== groupId) continue;

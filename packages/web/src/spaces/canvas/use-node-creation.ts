@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import * as Y from 'yjs';
 
 import {
   CANVAS_NODES_KEY,
@@ -230,8 +231,8 @@ export function useNodeCreation(
       }
       // A paste waits on the server; a Space closed meanwhile is not written.
       if (!hasDoc(docName.canvasSpace(projectId, spaceId))) return null;
-      const nodesMap = getDoc(docName.canvasSpace(projectId, spaceId)).getMap(CANVAS_NODES_KEY);
-      const placed = stepClones(nodes, cloned.idMap, options.externalParentAbs, (id) => nodesMap.has(id), stepPaste);
+      const nodesMap = getDoc(docName.canvasSpace(projectId, spaceId)).getMap<Y.Map<unknown>>(CANVAS_NODES_KEY);
+      const placed = stepClones(nodes, cloned.idMap, options.externalParentAbs, (id) => liveGroup(nodesMap, id), stepPaste);
       runCanvasUndoBatch(projectId, spaceId, () => {
         writeSnapshotNodes(getDoc(docName.canvasSpace(projectId, spaceId)), placed, cloned.edges);
         options.afterWrite?.(placed, cloned.idMap);
@@ -366,19 +367,25 @@ export function useNodeCreation(
   };
 }
 
+/** An existing Group as it is in the document when a paste writes. */
+interface LiveGroup {
+  position: { x: number; y: number };
+  locked: boolean;
+}
+
 /**
  * Settle a paste's clones where they land, at write time. A lone member
- * rejoins its existing Group only while that Group is still in the document;
- * a Group deleted while the paste waited on the server leaves the copy at
- * the top level, at the canvas position it had inside the Group. Then every
- * clone is measured where it is painted (inner#1235 A20), so a member of a
- * cloned Group landing on a taken spot steps the batch too; only the nodes
- * that sit on the canvas by themselves move — top-level clones and lone
- * members rejoining an existing Group — and members of a cloned Group follow it.
+ * rejoins its existing Group only while that Group is in the document and
+ * unlocked, measured where the Group is now; otherwise the copy goes to the
+ * top level at the canvas position it had inside the Group. Then every clone
+ * is measured where it is painted (inner#1235 A20), so a member of a cloned
+ * Group landing on a taken spot steps the batch too; only the nodes that sit
+ * on the canvas by themselves move — top-level clones and lone members
+ * rejoining an existing Group — and members of a cloned Group follow it.
  * @param clones - The clones.
  * @param idMap - Source id → clone id.
- * @param externalParentAbs - Existing Groups lone members rejoin, by id.
- * @param inDoc - Whether a node is in the document now.
+ * @param externalParentAbs - Where each existing Group was when the copy was made.
+ * @param groupNow - An existing Group as the document holds it now, or undefined once it is gone.
  * @param stepPaste - How far a batch at these corners steps.
  * @returns The clones at their final positions.
  */
@@ -386,14 +393,16 @@ function stepClones(
   clones: ReadonlyArray<SnapshotNode>,
   idMap: ReadonlyMap<string, string>,
   externalParentAbs: ReadonlyMap<string, { x: number; y: number }> | undefined,
-  inDoc: (id: string) => boolean,
+  groupNow: (id: string) => LiveGroup | undefined,
   stepPaste: (corners: ReadonlyArray<{ x: number; y: number }>) => { dx: number; dy: number },
 ): SnapshotNode[] {
   const fresh = new Set(idMap.values());
   const nodes = clones.map((node): SnapshotNode => {
-    if (node.parentId === undefined || fresh.has(node.parentId) || inDoc(node.parentId)) return node;
-    const parent = externalParentAbs?.get(node.parentId) ?? { x: 0, y: 0 };
-    const { parentId: _gone, ...rest } = node;
+    if (node.parentId === undefined || fresh.has(node.parentId)) return node;
+    const group = groupNow(node.parentId);
+    if (group !== undefined && !group.locked) return node;
+    const parent = group?.position ?? externalParentAbs?.get(node.parentId) ?? { x: 0, y: 0 };
+    const { parentId: _left, ...rest } = node;
     return { ...rest, position: { x: parent.x + node.position.x, y: parent.y + node.position.y } };
   });
   const byId = new Map(nodes.map((node) => [node.id, node]));
@@ -405,7 +414,7 @@ function stepClones(
   const moves = (node: SnapshotNode): boolean => node.parentId === undefined || !fresh.has(node.parentId);
   const corners = nodes.map((node) => {
     if (node.parentId === undefined) return node.position;
-    const parent = byId.get(node.parentId)?.position ?? externalParentAbs?.get(node.parentId);
+    const parent = byId.get(node.parentId)?.position ?? groupNow(node.parentId)?.position;
     return parent === undefined ? node.position : { x: parent.x + node.position.x, y: parent.y + node.position.y };
   });
   const step = stepPaste(corners);
@@ -413,4 +422,20 @@ function stepClones(
   return nodes.map((node) =>
     moves(node) ? { ...node, position: { x: node.position.x + step.dx, y: node.position.y + step.dy } } : node,
   );
+}
+
+/**
+ * An existing Group as the document holds it now.
+ * @param nodesMap - The canvas `nodesMap`.
+ * @param id - The Group's id.
+ * @returns Its position and lock, or undefined when it is gone.
+ */
+function liveGroup(nodesMap: Y.Map<Y.Map<unknown>>, id: string): LiveGroup | undefined {
+  const group = nodesMap.get(id);
+  if (!(group instanceof Y.Map)) return undefined;
+  const data = group.get('data');
+  return {
+    position: group.get('position') as { x: number; y: number },
+    locked: data instanceof Y.Map && data.get('locked') === true,
+  };
 }

@@ -218,6 +218,75 @@ describe('useNodeCreation', () => {
       vi.restoreAllMocks();
     });
 
+    it('puts a copy of a lone member at the top level when its Group was locked meanwhile', async () => {
+      canvasSpace.addNode('p1', 's1', {
+        id: 'g',
+        type: 'group',
+        position: { x: 1000, y: 1000 },
+        data: { name: 'G', createdAt: 0, createdBy: 'u-9', locked: false, attachments: [], width: 600, height: 400 },
+      });
+      let release = (): void => undefined;
+      vi.spyOn(canvasApi, 'paste').mockReturnValue(
+        new Promise((resolve) => {
+          release = () => resolve({ map: {} });
+        }),
+      );
+      const { result } = renderHook(() => useNodeCreation('p1', 's1'));
+      const done = result.current.pastePayload(
+        payloadOf([
+          { id: 'm', type: 'image', parentId: 'g', position: { x: 1040, y: 1040 }, data: { content: 'a.png' } },
+        ]),
+        { dx: 24, dy: 24 },
+        { externalParentAbs: new Map([['g', { x: 1000, y: 1000 }]]) },
+      );
+      canvasSpace.setNodeLocked('p1', 's1', 'g', true);
+      release();
+      const [id] = (await done) ?? [];
+      const copy = canvasSpace.readNodes(getDoc(docName.canvasSpace('p1', 's1'))).find((n) => n.id === id);
+      expect(copy?.parentId).toBeUndefined();
+      expect(copy?.position).toEqual({ x: 1064, y: 1064 });
+      vi.restoreAllMocks();
+    });
+
+    it('keeps a copy of a lone member in its Group at the place the Group moved to', async () => {
+      canvasSpace.addNode('p1', 's1', {
+        id: 'g',
+        type: 'group',
+        position: { x: 1000, y: 1000 },
+        data: { name: 'G', createdAt: 0, createdBy: 'u-9', locked: false, attachments: [], width: 600, height: 400 },
+      });
+      // Something already sits where the copy lands once the Group is at
+      // (1500, 1000): (1500 + 64, 1000 + 64).
+      canvasSpace.addNode('p1', 's1', {
+        id: 'there',
+        type: 'image',
+        position: { x: 1564, y: 1064 },
+        data: { name: 'T', createdAt: 0, createdBy: 'u-9', locked: false, attachments: [] },
+      });
+      let release = (): void => undefined;
+      vi.spyOn(canvasApi, 'paste').mockReturnValue(
+        new Promise((resolve) => {
+          release = () => resolve({ map: {} });
+        }),
+      );
+      const { result } = renderHook(() => useNodeCreation('p1', 's1'));
+      const done = result.current.pastePayload(
+        payloadOf([
+          { id: 'm', type: 'image', parentId: 'g', position: { x: 1040, y: 1040 }, data: { content: 'a.png' } },
+        ]),
+        { dx: 24, dy: 24 },
+        { externalParentAbs: new Map([['g', { x: 1000, y: 1000 }]]) },
+      );
+      canvasSpace.setNodePosition('p1', 's1', 'g', { x: 1500, y: 1000 }, null);
+      release();
+      const [id] = (await done) ?? [];
+      const copy = canvasSpace.readNodes(getDoc(docName.canvasSpace('p1', 's1'))).find((n) => n.id === id);
+      expect(copy?.parentId).toBe('g');
+      // Stepped once past the node already on that spot.
+      expect(copy?.position).toEqual({ x: 88, y: 88 });
+      vi.restoreAllMocks();
+    });
+
     it('writes nothing into a Space that was closed', async () => {
       const { done, release } = pendingPaste();
       destroyDoc(docName.canvasSpace('p1', 's1'));
