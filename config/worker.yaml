@@ -19,13 +19,15 @@ concurrency:
 
 # ── BullMQ Job Retry ──────────────────────────────
 # Max attempts per job. BullMQ schedules retries with exponential
-# backoff when the handler throws. Duplicate-provider-call protection
-# on retries (#1628): a SUCCESSFUL provider call sets provider_result_url
-# (re-entry guard: never invoked again); ASYNC providers persist the
-# vendor task id at submit, so a retry resumes polling instead of
-# re-submitting; SYNC providers ARE re-invoked on retry (accepted
-# policy: UX over the narrow duplicate-external-cost window, which is
-# monitored via provider_reinvoked_on_retry_potential_duplicate_cost).
+# backoff when the handler throws. Waiting on an upstream is not a retry:
+# a task still going goes back to the queue without spending an attempt.
+# Duplicate-provider-call protection on retries (#1628): a SUCCESSFUL
+# provider call sets provider_result_url (re-entry guard: never invoked
+# again); ASYNC providers persist the vendor task id at submit, so a later
+# pickup asks about it instead of re-submitting; SYNC providers ARE
+# re-invoked on retry (accepted policy: UX over the narrow
+# duplicate-external-cost window, which is monitored via
+# provider_reinvoked_on_retry_potential_duplicate_cost, once per retry).
 job_attempts: 3
 
 # Base backoff delay (ms) for BullMQ retries: delay = base * 2^attempt.
@@ -33,7 +35,8 @@ job_backoff_delay_ms: 2000
 
 # BullMQ lock duration (ms). Worker must renew within this window
 # or the job is reclaimed as "stalled". 10 minutes covers our
-# slowest single-step operation (large video upload, 3D generation).
+# slowest single-step operation (large video upload). Waiting on an
+# upstream holds no lock: the job is back on the queue between questions.
 lock_duration_ms: 600000
 
 # ── Polling (async AIGC tasks) ────────────────────

@@ -7,11 +7,12 @@
  * The steps are written on the task's first run and advanced here only:
  * a pending step is submitted and its prediction id stored before it is asked
  * about, a submitted step is asked about by that id once per pickup, a done
- * step is skipped and what it answered is reused. A step still going sends
- * the job back to the queue; past the task's deadline no step is started and
- * one still going ends the run as expired (inner#1337). What each step answers feeds the next — an upload id,
- * a cloned vocal or voice — and the run is billed across every prediction
- * it made plus what its steps cost outside them.
+ * step is skipped and what it answered is reused. A step still going hands
+ * a still-going answer up, and dispatch decides between the queue and the
+ * task's deadline; past the deadline no step is started (inner#1337). What
+ * each step answers feeds the next — an upload id, a cloned vocal or voice —
+ * and the run is billed across every prediction it made plus what its steps
+ * cost outside them.
  */
 
 import { logger } from "@breatic/core";
@@ -23,7 +24,7 @@ import { planSteps } from "@worker/providers/plan-steps.js";
 import { upstreamBody } from "@worker/providers/upstream-body.js";
 import { runPrediction, type PredictionRun } from "@worker/providers/wavespeed.js";
 import { queryBilling, UpstreamTaskFailed } from "@worker/providers/http.js";
-import { againOrExpired, assertBeforeDeadline } from "@worker/providers/still-running.js";
+import { assertBeforeDeadline } from "@worker/providers/still-running.js";
 
 type Step = upstreamStepRepo.UpstreamStep;
 type CloneKind = upstreamCloneRepo.UpstreamCloneKind;
@@ -111,14 +112,13 @@ function urlOf(params: Readonly<Record<string, unknown>>, param: string): string
  * submitted, under the provider's cap, marking the step failed when the
  * upstream fails it.
  * @param deps - Storage.
- * @param ctx - The task, for the resume context and the deadline.
+ * @param ctx - The task, for the resume context.
  * @param resolved - The model's resolved endpoint.
  * @param step - The step.
  * @param body - The request body; not sent for a step already submitted.
  * @returns The prediction's outputs and id.
  * @throws {UpstreamTaskFailed} when the upstream failed the prediction.
- * @throws {StillRunning} while the prediction is still going before the deadline.
- * @throws {TaskDeadlinePassed} when it is still going at the deadline.
+ * @throws {StillRunning} while the prediction is still going.
  * @throws {Error} when the request itself failed; the step stays retryable.
  */
 async function predict(
@@ -137,7 +137,7 @@ async function predict(
     });
   } catch (err) {
     if (err instanceof UpstreamTaskFailed) await deps.steps.markFailed(step.id, err.upstreamError);
-    throw againOrExpired(err, ctx.deadlineAt);
+    throw err;
   } finally {
     release();
   }
@@ -387,8 +387,8 @@ async function retireGone(deps: StepDeps, ctx: RunTaskContext, carried: Carried,
  *   canvas generation, the tool's declared outputs for a mini-tool.
  * @returns The outputs, the model and the billed cost in USD.
  * @throws {UpstreamTaskFailed} when the upstream failed a step.
- * @throws {StillRunning} while a step's prediction is still going before the deadline.
- * @throws {TaskDeadlinePassed} when the deadline has passed with work left.
+ * @throws {StillRunning} while a step's prediction is still going.
+ * @throws {TaskDeadlinePassed} when the deadline has passed before a step is started.
  * @throws {Error} when a step already failed, cannot run, or the run answered no output.
  */
 export async function runCatalogTask(

@@ -46,14 +46,3 @@ export class TaskDeadlinePassed extends Error {
 export function assertBeforeDeadline(deadlineAt: number): void {
   if (Date.now() >= deadlineAt) throw new TaskDeadlinePassed();
 }
-
-/**
- * What a still-going answer means at this moment: wait again before the
- * deadline, end as expired at or after it. Any other error passes through.
- * @param err - What the question about the work threw.
- * @param deadlineAt - The task's deadline, in epoch milliseconds.
- * @returns The error to throw.
- */
-export function againOrExpired(err: unknown, deadlineAt: number): unknown {
-  return err instanceof StillRunning && Date.now() >= deadlineAt ? new TaskDeadlinePassed() : err;
-}

@@ -16,7 +16,7 @@
 
 import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
 import { submitOrResume } from "@worker/providers/async-resume.js";
-import { againOrExpired, assertBeforeDeadline } from "@worker/providers/still-running.js";
+import { assertBeforeDeadline } from "@worker/providers/still-running.js";
 import {
   bearerHeaders,
   requestWithRetry,
@@ -52,19 +52,18 @@ function extractOutputUrl(data: Record<string, unknown>): string | undefined {
  * @param prompt - 3D object description prompt
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters (already converted by `buildRequest`)
- * @param resume - Worker resume context; absent for legacy/direct callers
+ * @param resume - Worker resume context
  * @param deadlineAt - The task's two-hour deadline, in epoch milliseconds
  * @returns Object with `url`, `model`, and `cost`
- * @throws {StillRunning} while the task is still going before the deadline
- * @throws {TaskDeadlinePassed} when the deadline has passed before a submit,
- *   or with the task still going
+ * @throws {StillRunning} while the task is still going
+ * @throws {TaskDeadlinePassed} when the deadline has passed before a submit
  * @throws {Error} if the task fails or returns no output
  */
 export async function generate(
   prompt: string,
   resolved: ResolvedModel,
   params: Record<string, unknown>,
-  resume: ResumeContext | undefined,
+  resume: ResumeContext,
   deadlineAt: number,
 ): Promise<{ url: string; model: string; cost: number }> {
   // Strip null/undefined values — WaveSpeed rejects nullable fields
@@ -124,32 +123,27 @@ export async function generate(
    * synchronously.
    * @param taskId - The vendor task id to ask about
    * @returns The terminal poll (or synchronous submit) response
-   * @throws {StillRunning} while the task is still going before the deadline
-   * @throws {TaskDeadlinePassed} when it is still going at the deadline
+   * @throws {StillRunning} while the task is still going
    */
   const poll = async (taskId: string): Promise<Record<string, unknown>> => {
     billedTaskId = taskId;
     if (syncResult) {
       return syncResult;
     }
-    try {
-      return await pollOnce(`${resolved.baseUrl}/predictions/${taskId}/result`, {
-        headers,
-        statusPath: ["data", "status"],
-        successStatuses: new Set(["completed"]),
-        failureStatuses: new Set(["failed"]),
-        errorPath: ["data", "error"],
-        provider: "wavespeed",
-      });
-    } catch (err) {
-      throw againOrExpired(err, deadlineAt);
-    }
+    return pollOnce(`${resolved.baseUrl}/predictions/${taskId}/result`, {
+      headers,
+      statusPath: ["data", "status"],
+      successStatuses: new Set(["completed"]),
+      failureStatuses: new Set(["failed"]),
+      errorPath: ["data", "error"],
+      provider: "wavespeed",
+    });
   };
 
   const result = await submitOrResume({
-    storedTaskId: resume?.storedTaskId ?? null,
+    storedTaskId: resume.storedTaskId,
     submit,
-    persistId: resume?.persistTaskId ?? (async (): Promise<void> => {}),
+    persistId: resume.persistTaskId,
     poll,
   });
 

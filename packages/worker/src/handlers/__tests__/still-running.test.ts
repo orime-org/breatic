@@ -108,6 +108,8 @@ vi.mock("@breatic/domain", () => ({
   nodeHistoryService: { recordGenerationFailure: vi.fn() },
   settleTaskForNode: h.settleTaskForNode,
   understandMediaAt: h.understandMediaAt,
+  MediaUnavailable: class extends Error {},
+  UnderstandRefused: class extends Error {},
   createUsageRecorder: () => ({ recordServiceCall: vi.fn(), settle: async () => 0 }),
   UNDERSTAND_PINS: {},
   extractPromptText: vi.fn(),
@@ -232,12 +234,10 @@ describe("an upstream prediction still running when a pickup ends", () => {
     expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ taskId: "task-1", deadlineAt: DEADLINE });
   });
 
-  it("judges no deadline for a container job, which keeps its own", async () => {
+  it("puts a container job back on the queue past the task deadline: the container judges its own, with a grace", async () => {
     vi.spyOn(Date, "now").mockReturnValue(DEADLINE + 1);
 
     await expect(runTask(containerJob(), "lock-token")).rejects.toBeInstanceOf(DelayedError);
-
-    expect(h.taskDeadline).not.toHaveBeenCalled();
   });
 
   it("fails a run whose task row is gone, without putting it back on the queue", async () => {

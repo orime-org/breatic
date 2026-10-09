@@ -51,7 +51,7 @@ function outputsOf(data: Record<string, unknown>): unknown[] | undefined {
  * @param endpoint - Base url, key and timeout.
  * @param modelId - The WaveSpeed model path, e.g. `minimax/speech-2.8-hd`.
  * @param body - The request body, sent verbatim.
- * @param resume - Worker resume context, when the run belongs to a task.
+ * @param resume - Worker resume context: the stored id, and where a new one is stored.
  * @returns The prediction's outputs and its id.
  * @throws {StillRunning} when the prediction is still going, or the question
  *   about it got no usable answer.
@@ -62,7 +62,7 @@ export async function runPrediction(
   endpoint: WavespeedEndpoint,
   modelId: string,
   body: Readonly<Record<string, unknown>>,
-  resume?: ResumeContext,
+  resume: ResumeContext,
 ): Promise<PredictionRun> {
   const headers = bearerHeaders(endpoint.apiKey);
   let syncAnswer: Record<string, unknown> | null = null;
@@ -108,12 +108,12 @@ export async function runPrediction(
   });
 
   const result = await submitOrResume({
-    storedTaskId: resume?.storedTaskId ?? null,
+    storedTaskId: resume.storedTaskId,
     submit,
     // A sync answer's "" is not an id: storing it would make a retry poll
     // a prediction that does not exist.
     persistId: async (id: string): Promise<void> => {
-      if (id !== "" && resume) await resume.persistTaskId(id);
+      if (id !== "") await resume.persistTaskId(id);
     },
     poll,
   });

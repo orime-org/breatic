@@ -566,9 +566,9 @@ export const tasks = pgTable(
      */
     providerResultUrl: text("provider_result_url"),
     /**
-     * Vendor task id for async (submit → poll) generation. Persisted right
-     * after submit; on a BullMQ retry the Worker resumes by polling this id
-     * instead of re-submitting (prevents duplicate vendor generation, #1628).
+     * Vendor task id for async (submit → ask) generation. Persisted right
+     * after submit; every later pickup of the job asks about this id instead
+     * of re-submitting (prevents duplicate vendor generation, #1628).
      */
     providerTaskId: text("provider_task_id"),
     /**
@@ -625,7 +625,7 @@ export const taskUpstreamSteps = pgTable(
     /** Which item of a list param the step serves (one element per image). */
     itemIndex: integer("item_index"),
     status: varchar("status", { length: 16 }).default("pending").notNull(),
-    /** The WaveSpeed prediction id, stored before polling. */
+    /** The WaveSpeed prediction id, stored before the first question about it. */
     predictionId: text("prediction_id"),
     /** What the step answered: an upload id, a clone id, an output url, a description. */
     output: jsonb("output").$type<Record<string, unknown>>(),

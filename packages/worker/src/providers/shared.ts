@@ -58,10 +58,10 @@ export interface ThreeDFamily {
 
 /**
  * Resume context threaded from the Worker into async (submit + poll)
- * transports (#1628). Makes the vendor submit at-most-once across BullMQ
- * retries: the transport persists the vendor task id right after submit,
- * and a retried job resumes by polling the stored id instead of
- * re-submitting (which would create a duplicate, billed vendor task).
+ * transports (#1628). Makes the vendor submit at-most-once across pickups
+ * and retries: the transport persists the vendor task id right after submit,
+ * and every later pickup asks about the stored id instead of re-submitting
+ * (which would create a duplicate, billed vendor task).
  * Sync transports ignore it.
  */
 export interface ResumeContext {

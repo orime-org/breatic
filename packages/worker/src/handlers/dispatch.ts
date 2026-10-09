@@ -121,6 +121,12 @@ export interface TaskJobData {
    * UUID, no contention possible).
    */
   mode: "append" | "overwrite";
+  /**
+   * The `attemptsMade` the retry log lines were last written for. A run that
+   * waits on its upstream is picked up again and again within one attempt;
+   * the lines describe a retry, so each retry writes them once.
+   */
+  retryReported?: number;
 }
 
 /**
@@ -303,6 +309,36 @@ function providerOf(modality: string, modelName: string | undefined): string {
 }
 
 /**
+ * Write the retry log lines once per retry. A pickup that follows a failed
+ * attempt is a retry; the pickups after it within the same attempt are the
+ * run coming back to its waiting work, and say nothing new.
+ * @param job - The job, whose data records the attempt last reported.
+ * @param run - The run.
+ * @param run.taskId - The task.
+ * @param run.taskType - What kind of task.
+ * @param run.storedTaskId - The vendor task id a previous attempt stored, if any.
+ * @param run.submitsAgain - Whether a retry without a stored id submits to the upstream again.
+ */
+async function reportRetryOnce(
+  job: Job<TaskJobData>,
+  run: { taskId: string; taskType: string; storedTaskId: string | null; submitsAgain: boolean },
+): Promise<void> {
+  if (job.attemptsMade <= (job.data.retryReported ?? 0)) return;
+  const attempt = job.attemptsMade + 1;
+  if (run.storedTaskId) {
+    logger.info({ taskId: run.taskId, providerTaskId: run.storedTaskId, attempt }, "async_resume_stored_provider_task");
+  } else if (run.submitsAgain) {
+    // #1628 monitoring: a retry with no stored vendor task id re-invokes the
+    // provider from scratch. For SYNC providers the previous attempt may have
+    // already generated + charged upstream (timeout-after-generation window)
+    // → this attempt is a POTENTIAL duplicate external cost. Structured event
+    // feeds the duplicate-cost alarm trend.
+    logger.warn({ taskId: run.taskId, taskType: run.taskType, attempt }, "provider_reinvoked_on_retry_potential_duplicate_cost");
+  }
+  await job.updateData({ ...job.data, retryReported: job.attemptsMade });
+}
+
+/**
  * Internal task execution body, called through the public {@link runTask}.
  * @param job - BullMQ job carrying the TaskJobData payload to execute.
  * @param token - This attempt's BullMQ lock token, for the zombie fence.
@@ -447,7 +483,8 @@ async function runTaskBody(
   // re-invokes the vendor (accepted policy, #1628: UX over the narrow
   // duplicate-cost window). For ASYNC providers the resume context below
   // makes the submit at-most-once: the vendor task id is persisted right
-  // after submit, and a retried job resumes by polling the stored id.
+  // after submit, and every later pickup asks about the stored id. A task
+  // still going is not an error here: it goes back to the queue.
   let providerResult: Record<string, unknown>;
   let creditsUsed = 0;
 
@@ -460,22 +497,12 @@ async function runTaskBody(
   };
   // A container job keeps its id from the first submit, so a pickup never submits it twice.
   const containerRun = source === "mini_tool" && toolId !== undefined && miniToolById(toolId)?.run.kind === "container";
-  if (resume.storedTaskId) {
-    logger.info(
-      { taskId, providerTaskId: resume.storedTaskId, attempt: job.attemptsMade + 1 },
-      "async_resume_stored_provider_task",
-    );
-  } else if (job.attemptsMade > 0 && !containerRun) {
-    // #1628 monitoring: a retry with no stored vendor task id re-invokes the
-    // provider from scratch. For SYNC providers the previous attempt may have
-    // already generated + charged upstream (timeout-after-generation window)
-    // → this attempt is a POTENTIAL duplicate external cost. Structured event
-    // feeds the duplicate-cost alarm trend.
-    logger.warn(
-      { taskId, taskType, attempt: job.attemptsMade + 1 },
-      "provider_reinvoked_on_retry_potential_duplicate_cost",
-    );
-  }
+  await reportRetryOnce(job, {
+    taskId,
+    taskType,
+    storedTaskId: resume.storedTaskId,
+    submitsAgain: !containerRun,
+  });
 
   /**
    * A recorder for the agent run a reading makes (#296). A retried job opens
@@ -494,7 +521,10 @@ async function runTaskBody(
       onMissingCost: (row) => logger.error({ row, taskId }, "agent_usage_cost_missing"),
     });
 
+  // Set before any work runs, so every still-going answer below has it.
+  let deadlineAt: number | undefined;
   try {
+    deadlineAt = await deadlineOf(taskId, existing?.createdAt);
     if (source === "mini_tool" && toolId) {
       [providerResult, creditsUsed] = await runMiniTool({
         toolId,
@@ -504,6 +534,7 @@ async function runTaskBody(
         projectId,
         taskId,
         resume,
+        deadlineAt,
       });
     } else if (taskType === "understand") {
       // A reading answers with one piece of text, and the row on the node it
@@ -521,18 +552,23 @@ async function runTaskBody(
         taskId,
         projectId: projectId ?? undefined,
         outputCount: 1,
-        deadlineAt: await deadlineOf(taskId),
+        deadlineAt,
       });
     } else {
       throw new Error(`Task type '${taskType}' has no runner`);
     }
-  } catch (err) {
+  } catch (thrown) {
     // Upstream work still going is not a failure: the run goes back to the
     // queue and returns for the same work, and a delayed job spends none of
-    // its attempts.
+    // its attempts — until the task's two hours are up. A container job
+    // judges its own deadline, with a grace for its last report.
+    let err = thrown;
     if (err instanceof StillRunning && token !== undefined) {
-      await job.moveToDelayed(err.resumeAt, token);
-      throw new DelayedError();
+      if (containerRun || deadlineAt === undefined || Date.now() < deadlineAt) {
+        await job.moveToDelayed(err.resumeAt, token);
+        throw new DelayedError();
+      }
+      err = new TaskDeadlinePassed();
     }
     // Provider call failed. Safe to retry via BullMQ — no charge yet,
     // no provider_result_url recorded. The next retry enters this
@@ -1403,14 +1439,15 @@ export interface ProviderRun {
 }
 
 /**
- * The deadline of a task whose upstream work goes back to the queue between
+ * The deadline of a task whose work goes back to the queue between
  * questions.
  * @param taskId - The task.
+ * @param createdAt - When the task row was created, as this pickup read it.
  * @returns The deadline, in epoch milliseconds.
  * @throws {Error} When the task row is gone: there is nothing to run against.
  */
-async function deadlineOf(taskId: string): Promise<number> {
-  const deadlineAt = await taskDeadline(taskId);
+async function deadlineOf(taskId: string, createdAt: Date | undefined): Promise<number> {
+  const deadlineAt = await taskDeadline(taskId, createdAt);
   if (deadlineAt === null) throw new Error(`task ${taskId} has no row to run against`);
   return deadlineAt;
 }
@@ -1426,6 +1463,8 @@ interface RunMiniToolOpts {
   taskId: string;
   /** Async-transport resume context for at-most-once vendor submit (#1628). */
   resume: ResumeContext;
+  /** The task's two-hour deadline, in epoch milliseconds (inner#1337). */
+  deadlineAt: number;
 }
 
 /**
@@ -1444,7 +1483,7 @@ interface RunMiniToolOpts {
 export async function runMiniTool(
   opts: RunMiniToolOpts,
 ): Promise<[Record<string, unknown>, number]> {
-  const { toolId, params, userId, projectId, taskId, resume } = opts;
+  const { toolId, params, userId, projectId, taskId, resume, deadlineAt } = opts;
   const spec = miniToolById(toolId);
   if (!spec) throw new Error(`mini-tool ${toolId} is not in the registry`);
 
@@ -1459,7 +1498,7 @@ export async function runMiniTool(
       taskId,
       projectId,
       outputCount: spec.outputs.length,
-      deadlineAt: await deadlineOf(taskId),
+      deadlineAt,
     });
     return [result, creditsFor((result.cost as number) ?? 0)];
   }

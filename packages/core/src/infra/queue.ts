@@ -76,7 +76,8 @@ export function createQueueEvents(name: string): QueueEvents {
  *
  * - `concurrency` (per queue) / `lockDuration` come from `config/worker.yaml`.
  * - `lockDuration` is set generously (default 10 min) to cover slow
- *   single-step operations like large video uploads or 3D generation.
+ *   single-step operations like large video uploads. Waiting on an upstream
+ *   holds no lock: the job is back on the queue between two questions.
  *   If a Worker ever exceeds this without renewing the lock, BullMQ
  *   will consider the job "stalled" and hand it to another Worker —
  *   in which case the re-entry guard in `runTask` (checks
