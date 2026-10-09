@@ -15,7 +15,8 @@ import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests
 
 import { templateSegmentsText as shown } from "@domain/agent/tools/template-expansion.js";
 
-import { answerFor, inputSchema, makeProposeCanvasAction } from "../propose-canvas-action.js";
+import { answerFor, makeProposeCanvasAction } from "../propose-canvas-action.js";
+import { inputSchema } from "../proposal-input.js";
 
 const NOTE = { slot: { kind: "note" as const, label: "Put the character's picture in Character first" } };
 

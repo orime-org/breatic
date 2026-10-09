@@ -16,7 +16,8 @@ import { GENERATION_TEMPLATES, markText, t, templatePrompt, type CanvasProposal,
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-import { answerFor, checkProposal, inputSchema, makeProposeCanvasAction } from "../propose-canvas-action.js";
+import { answerFor, checkProposal, makeProposeCanvasAction } from "../propose-canvas-action.js";
+import { inputSchema } from "../proposal-input.js";
 
 beforeEach(() => {
   loadLocales();

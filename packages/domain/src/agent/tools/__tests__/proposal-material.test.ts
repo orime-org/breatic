@@ -11,6 +11,7 @@
  */
 
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { inputSchema } from "../proposal-input.js";
 import { loadLocales } from "@breatic/core";
 import type { CanvasProposal, GenerationNodeType, ProposalNode } from "@breatic/shared";
 import type { MaterialFacts, MaterialTable } from "../propose-canvas-action.js";
@@ -21,7 +22,7 @@ import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests
 const materialFacts = vi.fn();
 vi.mock("@domain/asset/material-facts.js", () => ({ materialFacts }));
 
-const { answerFor, checkProposal, inputSchema, makeProposeCanvasAction } = await import("../propose-canvas-action.js");
+const { answerFor, checkProposal, makeProposeCanvasAction } = await import("../propose-canvas-action.js");
 
 beforeEach(() => {
   loadLocales();
@@ -335,9 +336,24 @@ describe("the tool reads the registration for the studio it runs in", () => {
     const execute = makeProposeCanvasAction().execute;
     if (!execute) throw new Error("no execute");
 
-    await execute(inputSchema.parse(proposal), { toolCallId: "t", messages: [] } as never);
+    await execute(inputSchema.parse(proposal), { toolCallId: "t", messages: [], context: { studioId: "s1" } });
 
     expect(materialFacts).not.toHaveBeenCalled();
+  });
+});
+
+describe("the answer names the way of every edge it routed", () => {
+  it("writes the one way an edge left without into goes, so landing reads the check's answer", () => {
+    const head = talkingHead({ audio: [1] });
+    const portrait: ProposalNode = { role: "source", type: "image", name: "Portrait" };
+    const answer = answerFor(
+      inputSchema.parse(group(
+        [portrait, held("audio", "Voice", VOICE), { ...head, prompt: [...(head.prompt ?? []), { slot: { kind: "note", label: "Put a portrait in Portrait" } }] }],
+        [{ fromIndex: 0, toIndex: 2 }],
+      )),
+      FACTS,
+    );
+    expect(answer).toMatchObject({ placed: true, edges: [{ fromIndex: 0, toIndex: 2, into: "image" }] });
   });
 });
 

@@ -45,11 +45,9 @@ import {
 } from "@domain/model-catalog/mode-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-import {
-  checkProposal,
-  inputSchema,
-  theirsToFill,
-} from "../propose-canvas-action.js";
+import { checkProposal } from "../propose-canvas-action.js";
+import { inputSchema } from "../proposal-input.js";
+import { theirsToFill } from "../proposal-params-check.js";
 
 /** A node type and one of its modes, with a model that mode can reach. */
 interface Reachable {

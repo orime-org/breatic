@@ -10,12 +10,13 @@
  */
 
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { inputSchema } from "../proposal-input.js";
 import { loadLocales } from "@breatic/core";
 import type { CanvasProposal, ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-const { answerFor, checkProposal, inputSchema } = await import("../propose-canvas-action.js");
+const { answerFor, checkProposal } = await import("../propose-canvas-action.js");
 const { renderGenerationModelsForModel } = await import("../generation-models.js");
 const { modelsForMode } = await import("@domain/model-catalog/mode-catalog.js");
 

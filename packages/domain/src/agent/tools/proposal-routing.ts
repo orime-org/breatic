@@ -20,7 +20,7 @@ import {
   type ProposalNode,
 } from "@breatic/shared";
 
-import { waysIn, type ModelInfo, type WayIn, type WayKind } from "@domain/model-catalog/mode-catalog.js";
+import { modelsForMode, waysIn, type ModelInfo, type WayIn, type WayKind } from "@domain/model-catalog/mode-catalog.js";
 
 /** What a node holds, which decides how it may go into a generation. */
 export type Holding = "material" | "empty" | "words";
@@ -31,6 +31,22 @@ export interface Entry {
   way: WayIn;
   /** An edge saying `into`, the generation's fills, or no edge and a note. */
   by: "edge" | "fills" | "unwired";
+}
+
+/**
+ * The model a generation node names, as the catalog serves it.
+ *
+ * A node the catalog cannot place -- no mode, no model, a model it does not
+ * carry -- has none, and the per-generation check says what is wrong with it
+ * in its own words.
+ * @param node - The proposed node.
+ * @returns The model, or undefined when the node generates nothing the catalog serves.
+ * @throws {never} Never.
+ */
+export function chosenModelOf(node: ProposalNode): ModelInfo | undefined {
+  if (node.role !== "generate" || node.type === "text" || !node.mode || !node.model) return undefined;
+  const reachable = modelsForMode(node.type, node.mode);
+  return reachable.available ? reachable.models.find((m) => m.name === node.model) : undefined;
 }
 
 /**
