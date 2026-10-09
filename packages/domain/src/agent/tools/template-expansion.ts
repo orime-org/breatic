@@ -27,32 +27,28 @@ export type TemplateExpansion =
 
 /**
  * A template's prompt as the segments a proposal sends: words as they are,
- * each reference mark as the ref of the node wired in for it.
+ * each reference mark as a ref naming the node it stands for. The number is
+ * the agent's to fill: it knows which node it wired in for which reference.
  * @param template - The template.
- * @param pool - The indices of the nodes wired into the pool, in edge order;
- *   a mark past the end reads as a placeholder naming what it stands for.
  * @returns The segments, written out as the agent would send them.
  * @throws {never} Never.
  */
-export function templateSegmentsText(template: GenerationTemplate, pool: readonly number[] = []): string {
-  let reference = 0;
-  const parts = templatePrompt(template).map((segment) => {
-    if (segment.slot?.kind !== "asset") return JSON.stringify(segment.slot === undefined ? { text: segment.text } : { slot: segment.slot });
-    const at = pool[reference];
-    reference += 1;
-    return at === undefined ? `{"ref": <index of the node wired in for ${segment.slot.label}>}` : JSON.stringify({ ref: at });
-  });
+export function templateSegmentsText(template: GenerationTemplate): string {
+  const parts = templatePrompt(template).map((segment) =>
+    segment.slot?.kind === "asset"
+      ? `{"ref": <index of the node wired in for ${segment.slot.label}>}`
+      : JSON.stringify(segment.slot === undefined ? { text: segment.text } : { slot: segment.slot }),
+  );
   return `[${parts.join(", ")}]`;
 }
 
 /**
  * Fills a node from the template it names.
  * @param node - The node as the agent sent it, naming a template.
- * @param pool - The indices of the nodes wired into its pool, in edge order.
  * @returns The expanded node, or a reason the agent can act on.
  * @throws {never} Never.
  */
-export function expandTemplate(node: ProposalNode & { template: string }, pool: readonly number[] = []): TemplateExpansion {
+export function expandTemplate(node: ProposalNode & { template: string }): TemplateExpansion {
   const { template: id, ...rest } = node;
   const template = findTemplate(id);
   if (!template) {
@@ -70,7 +66,7 @@ export function expandTemplate(node: ProposalNode & { template: string }, pool: 
   if (rest.prompt === undefined) {
     return {
       ok: false,
-      reason: `"${rest.name}" names template "${id}" and sends no prompt. Send the template's prompt as its own, rewritten in the reader's language with their story or detail in it: ${templateSegmentsText(template, pool)}.`,
+      reason: `"${rest.name}" names template "${id}" and sends no prompt. Send the template's prompt as its own, rewritten in the reader's language with their story or detail in it: ${templateSegmentsText(template)}.`,
     };
   }
   const mode = rest.mode ?? template.mode;

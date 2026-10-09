@@ -325,6 +325,25 @@ describe('useNodeCreation', () => {
       expect(written).not.toContain('thumbnail=');
     });
 
+    it('shows a material clip\'s cover on the chip that @s it', () => {
+      const CLIP = 'https://ours.example/video/clip.mp4';
+      const COVER = 'https://ours.example/video/clip.jpg';
+      const held: CanvasProposal = {
+        nodes: [
+          { role: 'source', type: 'video', name: 'Clip', material: CLIP, materialMedia: { mimeType: 'video/mp4', width: 10, height: 10, coverUrl: COVER, duration: 3, size: 1 } },
+          { role: 'generate', type: 'video', name: 'Remix', mode: 'ref', model: 'some-model', takesPrompt: true, prompt: [{ text: 'restyle ' }, { ref: 0 }] },
+        ],
+        edges: [{ fromIndex: 0, toIndex: 1, into: 'pool' }],
+        rationale: '',
+        groupName: 'Remix',
+      };
+      const { result } = renderHook(() => useNodeCreation('p-cover', 's-cover'));
+
+      const { nodeIds: ids } = result.current.placeProposalAt(held, { x: 0, y: 0 });
+
+      expect(canvasSpace.getPromptFragment('p-cover', 's-cover', ids[1]!, 'ref')!.toJSON()).toContain(`thumbnail="${COVER}"`);
+    });
+
     it('shows a material picture on the chip that @s it', () => {
       const PHOTO = 'https://ours.example/image/photo.png';
       const held: CanvasProposal = {

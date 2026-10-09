@@ -327,7 +327,12 @@ export function useNodeCreation(
           // reader would @ them, and nowhere else.
           const lyrics = proposal.edges.filter((edge) => edge.toIndex === i && edge.into === PANEL_EDITOR_PARAM);
           const lyricsBox = lyrics.length > 0 ? getLyricsFragment(projectId, spaceId, id, node.mode) : null;
-          if (lyricsBox) writeProposalPrompt(lyricsBox, lyrics.map((edge) => ({ ref: edge.fromIndex })), mentionOf);
+          // One line each, the way a reader @'ing them by hand would: two
+          // mentions on one line send their words run together.
+          const lyricsLines = lyrics.flatMap((edge, k) =>
+            k === 0 ? [{ ref: edge.fromIndex }] : [{ text: '\n' }, { ref: edge.fromIndex }],
+          );
+          if (lyricsBox) writeProposalPrompt(lyricsBox, lyricsLines, mentionOf);
           // A model drawing no prompt box shows nothing written there; the card
           // lists its marks instead.
           if (node.takesPrompt === false) return;
@@ -344,13 +349,15 @@ export function useNodeCreation(
           }
         });
       });
-      // A mark is something the reader still does. Saying so is all: what
-      // they leave as it is goes out as it is (inner#977). Where no prompt box
-      // is drawn nothing was written, and the card is where the marks are.
-      const marked = proposal.nodes.some(
-        (node) => node.takesPrompt !== false && proposalMarkSegments(node).some((segment) => segment.slot),
+      // Words in braces are the reader's to write. Saying so is all: what
+      // they leave as it is goes out as it is (inner#977). A proposal's
+      // references land as mentions and its notes show in the box, so only
+      // braces are left to point at (inner#1315). Where no prompt box is drawn
+      // nothing was written, and the card is where the marks are.
+      const toFill = proposal.nodes.some(
+        (node) => node.takesPrompt !== false && proposalMarkSegments(node).some((segment) => segment.slot?.kind === 'tweak'),
       );
-      if (marked) toast.info(t('canvas.generatePanel.editMarks'));
+      if (toFill) toast.info(t('canvas.generatePanel.editProposalMarks'));
       return groupId === undefined ? { nodeIds } : { nodeIds, groupId };
     },
     [projectId, spaceId, createNodeAt, userId, t],

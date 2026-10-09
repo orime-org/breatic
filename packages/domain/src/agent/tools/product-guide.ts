@@ -889,7 +889,7 @@ export function renderProductGuide(): string {
       "where the panel shows no prompt box, the card is the only place it appears. Read back as text, as in an " +
       "attached node's prompt, a note is (💡 …) on a line of its own and is not sent, a 📎 mark is [📎 …] and a " +
       "✏️ mark {✏️ …}. Square-bracket and brace marks " +
-      `left in a prompt are sent as they are. When a placed node that has a prompt box carries marks, the message ${quoted(t("canvas.generatePanel.editMarks"))} ` +
+      `left in a prompt are sent as they are. When a placed proposal's prompt box carries a ✏️ mark, the message ${quoted(t("canvas.generatePanel.editProposalMarks"))} ` +
       "appears; nothing checks whether they were done.",
     "How work reaches a node depends on where it goes:",
     "- Into the reference list: it is @'d in the prompt or a shot, by the proposal for every node it wires in, " +

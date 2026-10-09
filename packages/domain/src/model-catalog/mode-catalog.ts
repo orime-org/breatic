@@ -455,9 +455,9 @@ export type WayKind = ReferenceKind | "text";
 
 /**
  * Every way a model takes each kind of node reaching it (design 5.7 table
- * A): its pool, which the reader mentions from in the prompt box; each slot,
- * which the reader picks into in the panel; and for words, the prompt box and
- * the lyrics box, both of which the reader mentions them into.
+ * A): its pool, mentioned in the prompt box by a ref; each slot, which the
+ * reader picks into in the panel; and for words, the prompt box, mentioned by
+ * a ref, and the lyrics box, which landing mentions them in.
  * @param chosen - The model, as the catalog projects it.
  * @returns Per kind, its ways in declaration order.
  * @throws {never} Never.

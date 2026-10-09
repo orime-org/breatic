@@ -13,9 +13,9 @@
  *
  * A mode that needs material is proposed with an empty node to put it in.
  * Every way a node reaches a generation is read off the catalog (`waysIn`,
- * design 5.7): the reference pool, which the reader mentions it from in the
- * prompt; a slot on the panel, which the reader picks it into; or a song
- * model's lyrics box. Each edge says which on `into`.
+ * design 5.7): the reference pool, mentioned in the prompt by a ref; a slot
+ * on the panel, which the reader picks it into; or a song model's lyrics box,
+ * which landing mentions it in. Each edge says which on `into`.
  *
  * Every character of this tool's description and its field descriptions goes
  * out with every turn of every conversation, and is measured against the same
@@ -47,6 +47,7 @@ import {
   PANEL_EDITOR_PARAM,
   promptPlainText,
   promptTextOf,
+  referencePool,
   proposalMarkSegments,
   storyboardSend,
   type CanvasProposal,
@@ -591,6 +592,16 @@ function notesIn(node: ProposalNode): number {
   return proposalMarkSegments(node).filter((segment) => segment.slot?.kind === "note").length;
 }
 
+/**
+ * The indices of the nodes one node's prompt and shots @, once per ref.
+ * @param node - The node.
+ * @returns Each ref's index, in order.
+ * @throws {never} Never.
+ */
+function refsIn(node: ProposalNode): number[] {
+  return proposalMarkSegments(node).flatMap((segment) => (segment.ref === undefined ? [] : [segment.ref]));
+}
+
 /** A node one generation asks a note for, and why. */
 interface NoteAsked {
   node: ProposalNode;
@@ -739,7 +750,7 @@ function checkGenerateNode(
   // Every node wired into the pool is @'d by a ref, and a ref @s only such a
   // node: the mention lands as one the reader would insert from the pool.
   const pooled = routed.filter(({ way }) => way.mark === "ref").map(({ node: n }) => proposal.nodes.indexOf(n));
-  const refs = prompt.flatMap((segment) => (segment.ref === undefined ? [] : [segment.ref]));
+  const refs = refsIn(node);
   const stray = refs.find((at) => !pooled.includes(at));
   if (stray !== undefined) {
     const named = proposal.nodes[stray];
@@ -783,7 +794,7 @@ function checkGenerateNode(
     if (!target) return "";
     if (target.type === "text") return promptPlainText(target.prompt ?? []);
     const entry = getModelCatalog()[nodeType]?.find((m) => m.name === model);
-    const mention = Object.values(entry?.params ?? {}).find((p) => p.accepts === target.type && p.mention !== undefined)?.mention;
+    const mention = referencePool(entry, mode)[target.type]?.mention;
     if (mention === undefined) return "";
     const n = pooled.filter((i) => proposal.nodes[i]?.type === target.type).indexOf(at);
     return mention.replace("{n}", String(n + 1)).replace("{i}", String(n));
@@ -966,7 +977,7 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
   // are kept as written. Whatever they say belongs in the message this
   // proposal travels with.
   const reaching = (node.prompt ?? []).find(
-    (segment) => segment.ref !== undefined || segment.slot?.kind === "asset" || segment.slot?.kind === "note",
+    (segment) => segment.ref !== undefined || segment.slot?.kind === "note",
   );
   if (reaching) return writtenTakesNoMark(node);
   // Without them it lands as an empty text node, which is the thing a reader
@@ -1165,7 +1176,7 @@ function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
       const from = proposal.nodes[at];
       if (from) sent.add(from);
     }
-    const refs = proposalMarkSegments(node).flatMap((segment) => (segment.ref === undefined ? [] : [segment.ref]));
+    const refs = refsIn(node);
     spare += notesIn(node) - notesAsked(proposal, routing.routed, refs).length;
   }
   // Material reaches a generation only through fills or an edge into the
@@ -1304,9 +1315,7 @@ export function answerFor(sent: z.infer<typeof inputSchema>, materials: Material
       nodes.push(plain);
       continue;
     }
-    const at = nodes.length;
-    const pool = sent.edges.filter((edge) => edge.toIndex === at && edge.into === "pool").map((edge) => edge.fromIndex);
-    const expanded = expandTemplate({ ...node, template: node.template }, pool);
+    const expanded = expandTemplate({ ...node, template: node.template });
     if (!expanded.ok) return { placed: false, reason: expanded.reason };
     nodes.push(expanded.node);
   }

@@ -51,8 +51,9 @@ export type MentionOf = (index: number) => ProposalMention | undefined;
 
 /**
  * What each ref in a placed proposal mentions: the node placed for that
- * index, under the name and kind the proposal gave it. A picture it lands
- * holding shows on the chip; any other chip starts without one, the way a
+ * index, under the name and kind the proposal gave it. A picture or a clip
+ * it lands holding shows on the chip as its reference row does (an image's
+ * file, a video's cover); any other chip starts without one, the way a
  * mention of an empty node does, and follows the node once it fills.
  * @param proposal - The proposal being placed.
  * @param nodeIds - The id placed for each of its nodes, in order.
@@ -64,7 +65,7 @@ export function proposalMentionOf(proposal: CanvasProposal, nodeIds: readonly st
     const node = proposal.nodes[index];
     const sourceNodeId = nodeIds[index];
     if (!node || !sourceNodeId) return undefined;
-    const thumbnail = node.type === 'image' ? node.material : undefined;
+    const thumbnail = node.type === 'image' ? node.material : node.type === 'video' ? (node.materialMedia?.coverUrl ?? undefined) : undefined;
     return { sourceNodeId, label: node.name, kind: node.type, ...(thumbnail === undefined ? {} : { thumbnail }) };
   };
 }

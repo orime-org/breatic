@@ -225,8 +225,8 @@ describe("what the guide says", () => {
     expect(proposals).toMatch(/orange note[^.]*it is never sent to the model/);
   });
 
-  it("says the edit-marks message shows only where the placed node has a prompt box", () => {
-    expect(section("Proposal cards")).toMatch(/When a placed node that has a prompt box carries marks, the message/);
+  it("says the reminder shows only where a placed proposal's prompt box carries a mark to fill", () => {
+    expect(section("Proposal cards")).toMatch(/When a placed proposal's prompt box carries a ✏️ mark, the message/);
   });
 
   it("says words bound for a song's lyrics box arrive @'d there", () => {
