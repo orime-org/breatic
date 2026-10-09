@@ -99,7 +99,8 @@ function DrawSurface({ kind, drawing, exporting, geometry }: DrawSurfaceProps): 
   const anchor = React.useRef<[number, number]>([0, 0]);
 
   const { box, natural } = geometry;
-  // Pixels enough for the zoom it is seen at, never more than the picture has.
+  // Pixels enough for the zoom it is seen at, never more than the picture's own
+  // pixels times the device pixel ratio.
   const dpr = window.devicePixelRatio || 1;
   const scale = Math.min(dpr * zoom, natural === null ? Infinity : (dpr * natural.width) / box.width);
   const bitmap = { width: Math.max(1, Math.round(box.width * scale)), height: Math.max(1, Math.round(box.height * scale)) };
