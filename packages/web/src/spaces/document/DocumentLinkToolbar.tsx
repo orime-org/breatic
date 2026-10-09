@@ -851,13 +851,10 @@ export function DocumentLinkToolbar({
   const up = open && held !== null;
   React.useEffect(() => {
     setLinkToolbarUp(editor, up);
-  }, [editor, up]);
-  React.useEffect(
-    () => () => {
+    return () => {
       setLinkToolbarUp(editor, false);
-    },
-    [editor],
-  );
+    };
+  }, [editor, up]);
   const standingAside = textBarsStandAside(useDocumentBars(editor));
 
   if (!open || !held) return null;
