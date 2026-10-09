@@ -136,12 +136,9 @@ function requestOf(run: MiniToolRun, nodeIds: string[], drawing: DrawingUrls | u
  * @param err - What the upload threw.
  */
 function toastUploadFailure(err: unknown): void {
+  // Without a task id every reason resolves to a toast.
   const plan = resolveUploadFailure({ reason: err instanceof UploadFailedError ? err.reason : 'upload' });
-  if (plan.kind !== 'toastOnly') {
-    toast.error(t('canvas.upload.failed'));
-    return;
-  }
-  toast[plan.severity](t(plan.toastKey));
+  if (plan.kind === 'toastOnly') toast[plan.severity](t(plan.toastKey));
 }
 
 /**
