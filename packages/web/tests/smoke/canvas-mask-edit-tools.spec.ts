@@ -144,6 +144,26 @@ test('a drag draws on the picture without moving the node, and undo takes it bac
   await expect(node).toBeVisible();
 });
 
+// B4: a locked node keeps its picture; drawing on it for a new node says nothing about the lock.
+test('drawing on a locked node draws without a lock warning @needs-internet', async () => {
+  const locked = randomUUID();
+  await seedNode(page, { projectId, spaceId }, locked, 'image', -350, {
+    content: IMAGE,
+    mimeType: 'image/jpeg',
+    locked: true,
+  });
+  await expect(nodeOf(locked).getByTestId('image-node-img')).toBeVisible({ timeout: 20_000 });
+  await openTool(page, locked, 'image.erase');
+  const layer = nodeOf(locked).getByTestId('mini-tool-draw-layer');
+  await expect(layer).toBeVisible({ timeout: 15_000 });
+  await drawAcross(layer, [0.3, 0.3], [0.6, 0.6]);
+  await expect(page.getByTestId('mini-tool-run')).toBeEnabled();
+  // A lock warning shows within a frame of the drag and fades a few seconds
+  // later, so the count is read once, after the frame and before the fade.
+  await page.waitForTimeout(1_000);
+  expect(await page.locator('[data-sonner-toast]').count()).toBe(0);
+});
+
 // B4: wheel over the layer pans the canvas, Ctrl+wheel zooms it.
 test('the wheel over the drawing pans and zooms the canvas @needs-internet', async () => {
   await openTool(page, imageNode, 'image.inpaint');

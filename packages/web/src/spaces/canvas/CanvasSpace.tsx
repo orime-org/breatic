@@ -1585,8 +1585,10 @@ function CanvasSpaceInner({
       const target = e.target as Element | null;
       // A press on a connection handle is a connect gesture, not a move — and
       // connecting FROM a locked node is allowed (onConnect has no lock gate),
-      // so it must not arm the lock-drag warning.
-      if (readOnly || target?.closest('.react-flow__handle')) {
+      // so it must not arm the lock-drag warning. A press on a `nodrag`
+      // overlay (the crop frame, a mini-tool's drawing layer) never moves the
+      // node either.
+      if (readOnly || target?.closest('.react-flow__handle, .nodrag')) {
         start = null;
         return;
       }
