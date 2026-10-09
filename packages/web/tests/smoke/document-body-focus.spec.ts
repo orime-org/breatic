@@ -13,6 +13,7 @@
  */
 import { test, expect, type Page } from 'playwright/test';
 
+import { pressAndSettle } from '../helpers/editor-keys';
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, VISIBLE_SPACE } from '../helpers/space';
 
@@ -68,13 +69,13 @@ async function blankPoint(p: Page): Promise<{ x: number; y: number }> {
 }
 
 /**
- * Selects the word "hello" on the first line.
+ * Selects the word "hello" on the first line, from the caret the typing left
+ * at its end.
  * @param p - The page.
  */
 async function selectHello(p: Page): Promise<void> {
-  await p.locator(`${EDITOR} p`).first().click({ position: { x: 2, y: 8 } });
-  await p.keyboard.press('Home');
-  for (let i = 0; i < 5; i += 1) await p.keyboard.press('Shift+ArrowRight');
+  await pressAndSettle(p, process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home');
+  for (let i = 0; i < 5; i += 1) await pressAndSettle(p, 'Shift+ArrowRight');
   await expect(p.locator(BUBBLE_BAR)).toBeVisible();
 }
 
