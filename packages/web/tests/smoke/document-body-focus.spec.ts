@@ -128,3 +128,51 @@ test('a drag that starts on blank space selects from the press point and takes t
   await expect(page.locator(EDITOR)).toHaveAttribute('data-body-holds', /.*/);
   expect(await page.evaluate(() => window.getSelection()?.toString() ?? '')).not.toBe('');
 });
+
+test('Tab back into the body after the caption field keeps the scroll position and the selected picture', async () => {
+  await openWithLine(page);
+  for (let i = 0; i < 30; i += 1) await page.keyboard.type(`\nline ${String(i)}`);
+  const png = await page.evaluate(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 220;
+    canvas.height = 120;
+    canvas.getContext('2d')!.fillRect(0, 0, 220, 120);
+    const blob = await new Promise<Blob>((done) => {
+      canvas.toBlob((b) => done(b!), 'image/png');
+    });
+    return [...new Uint8Array(await blob.arrayBuffer())];
+  });
+  await page.locator(EDITOR).evaluate((element, bytes) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([new Uint8Array(bytes)], 'tab.png', { type: 'image/png' }));
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+  }, png);
+  const picture = page.locator(`${EDITOR} [data-content-type="image"]`);
+  await expect(picture.locator('img')).toBeVisible({ timeout: 60_000 });
+  const knob = picture.locator('[data-testid="doc-media-resize-se"]');
+  await picture.locator('img').click();
+  await expect(knob).toBeVisible();
+  await picture.getByTestId('doc-media-caption-button').click();
+  await page.keyboard.type('Dusk');
+  const beside = await picture.evaluate((row, selector) => {
+    const editor = document.querySelector(selector)!.getBoundingClientRect();
+    const box = row.getBoundingClientRect();
+    return { x: editor.left - 40, y: box.top + box.height / 2 };
+  }, EDITOR);
+  expect(
+    await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.hasAttribute('data-document-body-blank'), beside),
+  ).toBe(true);
+  await page.mouse.click(beside.x, beside.y);
+  await expect(page.locator(SCROLLER)).toBeFocused();
+  const before = await page.locator(SCROLLER).evaluate((el) => el.scrollTop);
+  expect(before).toBeGreaterThan(0);
+
+  for (let i = 0; i < 6; i += 1) {
+    await page.keyboard.press('Tab');
+    if (await page.locator(EDITOR).evaluate((el) => el === document.activeElement)) break;
+  }
+
+  await expect(page.locator(EDITOR)).toBeFocused();
+  expect(await page.locator(SCROLLER).evaluate((el) => el.scrollTop)).toBe(before);
+  await expect(knob).toBeVisible();
+});
