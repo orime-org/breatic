@@ -148,13 +148,7 @@ export function insertBelow(
  *   `insertBlocks`, when the pressed block is no longer in the document.
  */
 export function mediaGapBelow(editor: HandleEditor, row: PressedBlock): UploadGap {
-  const made = insertRowForMenu(editor, row);
-  const before = editor.getPrevBlock(made) as { id: string } | undefined;
-  const parent = editor.getParentBlock(made) as { id: string } | undefined;
-  return {
-    anchor: { before: before?.id ?? null, after: made, parent: parent?.id ?? null },
-    quoted: row.props?.[QUOTED] === true,
-  };
+  return gapAbove(editor, insertRowForMenu(editor, row), row);
 }
 
 /**
@@ -167,11 +161,22 @@ export function mediaGapBelow(editor: HandleEditor, row: PressedBlock): UploadGa
  *   no longer in the document.
  */
 export function mediaGapOnRow(editor: HandleEditor, row: PressedBlock): UploadGap {
-  const before = editor.getPrevBlock(row.id) as { id: string } | undefined;
-  const parent = editor.getParentBlock(row.id) as { id: string } | undefined;
+  const gap = gapAbove(editor, row.id, row);
   editor.setTextCursorPosition(row.id, 'start');
+  return gap;
+}
+
+/**
+ * The gap just above a block, quoted as the row a menu was opened on.
+ * @param editor - The editor.
+ * @param id - The block the gap is above.
+ * @param row - The row the menu was opened on.
+ * @returns The gap.
+ */
+function gapAbove(editor: HandleEditor, id: string, row: PressedBlock): UploadGap {
+  const before = editor.getPrevBlock(id) as { id: string } | undefined;
   return {
-    anchor: { before: before?.id ?? null, after: row.id, parent: parent?.id ?? null },
+    anchor: { before: before?.id ?? null, after: id },
     quoted: row.props?.[QUOTED] === true,
   };
 }

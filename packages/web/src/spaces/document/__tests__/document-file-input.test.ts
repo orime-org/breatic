@@ -137,7 +137,7 @@ describe('the gap a paste goes into (A3)', () => {
     editor.setTextCursorPosition(idOf(editor, 'B'), 'end');
 
     expect(anchorAtCaret(editor.prosemirrorView!.state)).toEqual({
-      anchor: { before: idOf(editor, 'B'), after: idOf(editor, 'C'), parent: null },
+      anchor: { before: idOf(editor, 'B'), after: idOf(editor, 'C') },
       quoted: true,
     });
   });
@@ -150,7 +150,6 @@ describe('the gap a paste goes into (A3)', () => {
     expect(anchorAtCaret(editor.prosemirrorView!.state).anchor).toEqual({
       before: idOf(editor, 'A'),
       after: empty,
-      parent: null,
     });
   });
 });
@@ -171,25 +170,11 @@ describe('the gap a paste goes into with a block selected (A3)', () => {
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)));
     const selectedId = (editor.document as Seen[])[1]!.id;
 
-    expect(anchorAtCaret(view.state).anchor).toEqual({ before: selectedId, after: idOf(editor, 'B'), parent: null });
+    expect(anchorAtCaret(view.state).anchor).toEqual({ before: selectedId, after: idOf(editor, 'B') });
   });
 });
 
 describe('the gap a drop goes into (A2)', () => {
-  it('names the row its level is nested under at the head of that level', () => {
-    const editor = open([
-      { type: 'paragraph', content: 'P', children: [{ type: 'paragraph', content: 'C' }] },
-    ]);
-    const { doc } = editor.prosemirrorView!.state;
-    const parent = (editor.document as { id: string }[])[0]!.id;
-    let headOfLevel = -1;
-    doc.descendants((node, pos) => {
-      if (headOfLevel < 0 && node.type.name === 'blockGroup' && pos > 0) headOfLevel = pos + 1;
-    });
-
-    expect(anchorAtGap(doc, headOfLevel).anchor.parent).toBe(parent);
-  });
-
   it('names the blocks on either side of it', () => {
     const editor = open([
       { type: 'paragraph', content: 'A' },
@@ -203,7 +188,6 @@ describe('the gap a drop goes into (A2)', () => {
     expect(anchorAtGap(doc, insideA).anchor).toEqual({
       before: idOf(editor, 'A'),
       after: idOf(editor, 'B'),
-      parent: null,
     });
   });
 });
@@ -228,7 +212,7 @@ describe('a paste of files', () => {
 
     expect(sink).toHaveBeenCalledWith({
       files: [PNG],
-      anchor: { before: idOf(editor, 'A'), after: idOf(editor, 'B'), parent: null },
+      anchor: { before: idOf(editor, 'A'), after: idOf(editor, 'B') },
       quoted: false,
     });
     expect(view.state.doc.eq(before)).toBe(true);

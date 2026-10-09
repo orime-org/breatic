@@ -137,7 +137,7 @@ async function start(
 ): Promise<void> {
   const [a, b] = blocks(editor);
   await uploader.start(editor.prosemirrorView!, files, () => ({
-    anchor: { before: a!.id, after: b!.id, parent: null },
+    anchor: { before: a!.id, after: b!.id },
     quoted,
   }));
   await settle();

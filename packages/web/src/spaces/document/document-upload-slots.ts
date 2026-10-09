@@ -10,32 +10,34 @@
  * sees it and nothing about it reaches Yjs or the undo stack. When the upload
  * finishes, its block is inserted where the placeholder was drawn.
  *
- * Positions are never mapped. A change arriving from Yjs — a co-editor's edit,
- * or this client's own undo — reaches ProseMirror as one transaction that
- * replaces the whole body, and mapping through it pushes every position to the
- * end (`document-comment-draft-range.ts`). So a batch remembers block ids, and
- * {@link resolveSlotPosition} finds the place again in whatever the document
- * is now. The placeholder and the insert both ask it, so a placeholder drawn
- * in one place and a block landing in another cannot happen.
+ * A batch remembers block ids, and {@link resolveSlotPosition} finds the place
+ * again in whatever the document is now. A change arriving from Yjs — a
+ * co-editor's edit, or this client's own undo — reaches ProseMirror as one
+ * transaction that replaces the whole body, and mapping through it pushes
+ * every position to the end (`document-comment-draft-range.ts`); the ids
+ * survive it. The reader's own edits are mapped: when one takes away both
+ * blocks beside a gap, the gap is carried through it, as ProseMirror's upload
+ * example carries its placeholder, and named again by the blocks now beside
+ * it. The placeholder and the insert both ask {@link resolveSlotPosition}, so a
+ * placeholder drawn in one place and a block landing in another cannot happen.
  */
 
 import { blockToNode, createExtension } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
+import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
+import { ySyncPluginKey } from 'y-prosemirror';
 
 import { keyedStore } from '@web/lib/keyed-store';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 
-/** Where a batch was dropped: the blocks on either side of the gap, and its level. */
+/** Where a batch was dropped: the blocks on either side of the gap. */
 export interface SlotAnchor {
   /** The block before the gap; null at the head of its level. */
   readonly before: string | null;
   /** The block after the gap; null at the end of its level. */
   readonly after: string | null;
-  /** The row the gap's level is nested under; null at the top level. */
-  readonly parent: string | null;
 }
 
 /** Where a batch of files lands, and whether that gap is inside a quote. */
@@ -121,11 +123,10 @@ function rangeOf(doc: PMNode, id: string | null): { from: number; to: number } |
  * Where the k-th file of a batch goes in the document as it is now.
  *
  * In order: before the nearest later file of the batch already inserted; after
- * the nearest earlier one; before `after`; after `before`; the head or the end
- * of the gap's level, whichever side the gap was on; the end of the document. Every file therefore keeps the order it came in, whichever
- * finishes first. `after` is asked before `before` because the gap a reader
- * picks under a row with children is before that row's first child, and only
- * `after` names that level.
+ * the nearest earlier one; before `after`; after `before`; the end of the
+ * document. Every file therefore keeps the order it came in, whichever
+ * finishes first. `after` is asked before `before` so the file stays directly
+ * above `after` when a block is put between the two.
  * @param batch - The batch.
  * @param k - The file's index in it.
  * @param doc - The document now.
@@ -144,29 +145,57 @@ export function resolveSlotPosition(batch: UploadBatch, k: number, doc: PMNode):
   if (after !== undefined) return after.from;
   const before = rangeOf(doc, batch.before);
   if (before !== undefined) return before.to;
-  // Both neighbours gone: the same level, at its head when the gap was there.
-  const level = levelOf(doc, batch.parent);
-  if (level !== undefined) return batch.before === null ? level.from : level.to;
-  // The end of the top-level block group, which is the document's only child.
+  // Both gone in a change from Yjs: the end of the top-level block group,
+  // which is the document's only child.
   return doc.content.size - 1;
 }
 
 /**
- * Where a level's blocks start and end.
- * @param doc - The document now.
- * @param parent - The row the level is nested under; null for the top level.
- * @returns The range, collapsed under the row when nothing is nested under it
- *   any more, or undefined when the row is gone.
+ * The blocks on either side of a position, lifted out of any block it is inside.
+ * @param doc - The document.
+ * @param pos - A position.
+ * @returns The gap's anchor.
  */
-function levelOf(doc: PMNode, parent: string | null): { from: number; to: number } | undefined {
-  // The top-level block group, which is the document's only child.
-  if (parent === null) return { from: 1, to: doc.content.size - 1 };
-  const row = rowById(doc, parent);
-  if (row === undefined) return undefined;
-  const group = row.node.lastChild;
-  if (group === null || group.type.name !== 'blockGroup') return { from: row.to, to: row.to };
-  // Inside the group, which closes just before the container does.
-  return { from: row.to - group.nodeSize, to: row.to - 2 };
+function anchorAround(doc: PMNode, pos: number): SlotAnchor {
+  let $at = doc.resolve(pos);
+  for (let depth = $at.depth; depth > 0; depth -= 1) {
+    if ($at.node(depth).type.name !== 'blockGroup') continue;
+    if (depth < $at.depth) $at = doc.resolve($at.after(depth + 1));
+    break;
+  }
+  return {
+    before: ($at.nodeBefore?.attrs['id'] as string | undefined) ?? null,
+    after: ($at.nodeAfter?.attrs['id'] as string | undefined) ?? null,
+  };
+}
+
+/**
+ * The batches after one of the reader's own edits: a batch whose gap has lost
+ * every block that named it is named again where the edit carried the gap.
+ * @param batches - The batches.
+ * @param tr - The edit.
+ * @returns The batches, the same array when none lost its place.
+ */
+function followLocalEdit(batches: readonly UploadBatch[], tr: Transaction): readonly UploadBatch[] {
+  let changed = false;
+  const next = batches.map((batch) => {
+    const named = [batch.before, batch.after, ...batch.slots.map((slot) => slot.blockId)];
+    if (named.some((id) => rangeOf(tr.doc, id) !== undefined)) return batch;
+    const k = batch.slots.findIndex((slot) => slot.phase !== 'inserted');
+    const was = resolveSlotPosition(batch, Math.max(k, 0), tr.before);
+    changed = true;
+    return { ...batch, ...anchorAround(tr.doc, tr.mapping.map(was)) };
+  });
+  return changed ? next : batches;
+}
+
+/**
+ * Whether a transaction is a change arriving from Yjs.
+ * @param tr - The transaction.
+ * @returns True for a co-editor's change or a Yjs undo.
+ */
+function fromYjs(tr: Transaction): boolean {
+  return (tr.getMeta(ySyncPluginKey) as { isChangeOrigin?: boolean } | undefined)?.isChangeOrigin === true;
 }
 
 /**
@@ -333,8 +362,9 @@ function uploadsPlugin(): Plugin<UploadsState> {
       apply: (tr, previous, _old, state) => {
         const action = tr.getMeta(documentUploadsKey) as UploadsAction | undefined;
         if (action === undefined && !tr.docChanged) return previous;
-        const batches =
+        const reduced =
           action === undefined ? previous.batches : reduce(previous.batches, action);
+        const batches = tr.docChanged && !fromYjs(tr) ? followLocalEdit(reduced, tr) : reduced;
         return { batches, decorations: decorate(batches, state.doc) };
       },
     },
