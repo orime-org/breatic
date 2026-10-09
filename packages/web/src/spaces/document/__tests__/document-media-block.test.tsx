@@ -1281,7 +1281,7 @@ describe('the focus around a media block', () => {
     ['a caret', 2, 2],
     ['a range of words', 1, 4],
   ] as const)(
-    'gives the body back %s it held when the full-screen picture opened from the toolbar of an unselected picture',
+    'selects the picture, not %s the body held, when it is opened full screen from its toolbar',
     async (_what, from, to) => {
       vi.spyOn(document, 'hasFocus').mockReturnValue(true);
       const editor = open('image', { previewWidth: 200 });
@@ -1300,13 +1300,35 @@ describe('the focus around a media block', () => {
       });
 
       expect(document.activeElement).toBe(view.dom);
-      expect(view.state.selection).toBeInstanceOf(TextSelection);
-      expect([view.state.selection.from, view.state.selection.to]).toEqual([below + from, below + to]);
+      expect(view.state.selection).toBeInstanceOf(NodeSelection);
+      expect((view.state.selection as NodeSelection).node.type.name).toBe('image');
     },
   );
 
-  it('leaves the body without the keyboard when what had it outside the body is gone by the time the picture closes', async () => {
+  it('selects the picture and gives the body the keyboard when its caption is opened from the toolbar', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const editor = open('image', { previewWidth: 200 });
+    const view = editor.prosemirrorView!;
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    act(() => {
+      outside.focus();
+    });
+
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-caption-button'));
+    const input = within(element(editor)).getByTestId('doc-media-caption-input');
+    fireEvent.change(input, { target: { value: 'Dusk' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(media(editor).props['caption']).toBe('Dusk');
+    expect(document.activeElement).toBe(view.dom);
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect((view.state.selection as NodeSelection).node.type.name).toBe('image');
+  });
+
+  it('leaves a read-only body without the keyboard when what had it outside the body is gone by the time the picture closes', async () => {
+    const editor = open('image', { previewWidth: 200 });
+    editor.isEditable = false;
     const menu = document.createElement('div');
     const item = document.createElement('button');
     menu.appendChild(item);
@@ -1315,7 +1337,7 @@ describe('the focus around a media block', () => {
       item.focus();
     });
 
-    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-fullscreen'));
+    fireEvent.doubleClick(element(editor).querySelector('img')!);
     const picture = await screen.findByTestId('doc-media-fullscreen-image');
     // The menu the keyboard was in closes while the picture is open.
     menu.remove();
@@ -1327,12 +1349,13 @@ describe('the focus around a media block', () => {
     expect(editor.prosemirrorView!.dom.contains(document.activeElement)).toBe(false);
   });
 
-  it('leaves the focus nowhere when nothing had it as the full-screen picture opened', async () => {
+  it('leaves the focus nowhere when nothing had it as a read-only body\'s picture opened full screen', async () => {
     const editor = open('image', { previewWidth: 200 });
+    editor.isEditable = false;
     (document.activeElement as HTMLElement | null)?.blur();
     expect(document.activeElement).toBe(document.body);
 
-    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-fullscreen'));
+    fireEvent.doubleClick(element(editor).querySelector('img')!);
     const picture = await screen.findByTestId('doc-media-fullscreen-image');
     fireEvent.keyDown(picture, { key: 'Escape' });
     await waitFor(() => {
@@ -1714,15 +1737,16 @@ describe('the caption field and the keyboard', () => {
 });
 
 describe('the full-screen picture and where the keyboard was', () => {
-  it('hands the keyboard back to the box that held it when the picture opened', async () => {
+  it('hands the keyboard back to the box that held it when a read-only body\'s picture opened', async () => {
     const editor = open('image', { previewWidth: 200 });
+    editor.isEditable = false;
     const elsewhere = document.createElement('input');
     document.body.appendChild(elsewhere);
     act(() => {
       elsewhere.focus();
     });
 
-    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-fullscreen'));
+    fireEvent.doubleClick(element(editor).querySelector('img')!);
     const picture = await screen.findByTestId('doc-media-fullscreen-image');
     fireEvent.keyDown(picture, { key: 'Escape' });
     await waitFor(() => {

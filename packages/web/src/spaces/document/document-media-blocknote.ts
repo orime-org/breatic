@@ -49,6 +49,7 @@ import {
 } from '@web/spaces/document/DocumentMediaBlock';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { dropMediaView, putMediaView } from '@web/spaces/document/document-media-views';
+import { placeOnBlock } from '@web/spaces/document/document-block-place';
 import { drawnSelected } from '@web/spaces/document/document-body-focus';
 
 /** A prop declaration in BlockNote's shape, as far as this reads one. */
@@ -199,6 +200,14 @@ function mediaNodeView(
     dragEnd: () => {
       endDrag?.();
       endDrag = null;
+    },
+    select: () => {
+      const id = blockId();
+      const { view } = viewProps;
+      if (id !== null) {
+        view.dispatch(view.state.tr.setSelection(placeOnBlock(view.state, id)).setMeta('addToHistory', false));
+      }
+      view.focus();
     },
     focusBody: () => {
       editor.focus();

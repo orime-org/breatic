@@ -66,6 +66,8 @@ export interface MediaBlockActions {
   readonly dragStart: (event: DragEvent) => void;
   /** Ends what {@link MediaBlockActions.dragStart} started. */
   readonly dragEnd: () => void;
+  /** Selects the block whole and gives the body the keyboard. */
+  readonly select: () => void;
   /** Hands the keyboard back to the body, from a control of the block that held it. */
   readonly focusBody: () => void;
   /** Whether an element is inside the body this block is in. */
@@ -475,6 +477,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
               action='caption'
               testId='doc-media-caption-button'
               onPress={() => {
+                actions.select();
                 setEditingCaption(true);
               }}
             >
@@ -485,7 +488,10 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
                 label={t('spaces.document.media.fullscreen')}
                 action='fullscreen'
                 testId='doc-media-fullscreen'
-                onPress={openFullscreen}
+                onPress={() => {
+                  actions.select();
+                  openFullscreen();
+                }}
               >
                 <Maximize2 />
               </ToolButton>

@@ -1068,7 +1068,7 @@ test('a right or middle press on a picture selects it as it lands, with no caret
   }
 });
 
-test('a picture shown full screen from its hover toolbar gives the caret back where it was when it closes (A10, A17)', async () => {
+test('a picture shown full screen from its hover toolbar is selected, and stays selected when it closes (A17, A20)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('alpha');
   await page.keyboard.press('Enter');
@@ -1091,12 +1091,8 @@ test('a picture shown full screen from its hover toolbar gives the caret back wh
   await expect(page.getByTestId('doc-media-fullscreen-image')).toHaveCount(0);
   await page.mouse.move(5, 5);
 
-  await expect(knob).toHaveCount(0);
-  await page.keyboard.type('Z');
-  const rows = await page.locator(`${EDITOR} .bn-block-content`).evaluateAll((all) =>
-    all.map((row) => (row.getAttribute('data-content-type') === 'image' ? 'image' : (row.textContent ?? ''))),
-  );
-  expect(rows[rows.indexOf('image') + 1]).toBe('omegaZ');
+  await expect(knob).toBeVisible();
+  await expect.poll(() => bodySelection(page)).toEqual({ kind: '_NodeSelection:image', text: '' });
 });
 
 for (const [opening, closing] of [
