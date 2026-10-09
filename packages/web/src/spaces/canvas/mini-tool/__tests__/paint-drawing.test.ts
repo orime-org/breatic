@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { hasInk, inkShows, paintDrawing } from '@web/spaces/canvas/mini-tool/paint-drawing';
+import { hasInk, inkShows, isInk, paintDrawing } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import type { DrawOp } from '@web/stores/drawing-draft';
 
 /**
@@ -123,5 +123,13 @@ describe('inkShows', () => {
     expect(inkShows(pixels(0, 1, 64, 127))).toBe(false);
     expect(inkShows(pixels(0, 128))).toBe(true);
     expect(inkShows(pixels(255))).toBe(true);
+  });
+});
+
+describe('isInk', () => {
+  // The one line the panel's check and the mask's black and white both draw.
+  it('reads a pixel at least half covered as ink', () => {
+    expect(isInk(127)).toBe(false);
+    expect(isInk(128)).toBe(true);
   });
 });

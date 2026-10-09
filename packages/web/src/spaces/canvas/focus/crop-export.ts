@@ -12,7 +12,7 @@
 import { corsUrl } from '@web/lib/cors-url';
 import type { CropRect } from '@web/lib/crop-math';
 import { intrinsicSize } from '@web/spaces/canvas/focus/crop-source';
-import { inkShows, paintDrawing, type DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
+import { inkShows, isInk, paintDrawing, type DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import type { DrawOp } from '@web/stores/drawing-draft';
 
 /**
@@ -296,20 +296,20 @@ export async function exportDrawing(url: string, kind: DrawingKind, ops: readonl
   const layer = blankCanvas(size);
   paintDrawing(layer.ctx, ops, size, kind, '#fff'); // design-value: allow — mask white, image content
   const pixels = layer.ctx.getImageData(0, 0, size.width, size.height);
+  if (!inkShows(pixels.data)) throw new DrawingEmptyError();
   // Temporary: the stored asset keeps its EXIF orientation and the models
   // read raw pixels, so a mask tool sends this upright re-encode in its place,
   // one more upload per run. Drop it for the stored source once uploads are
   // turned upright on ingest (inner#1367).
   const source = blankCanvas(size);
   source.ctx.drawImage(el, 0, 0);
-  if (!inkShows(pixels.data)) throw new DrawingEmptyError();
   if (kind === 'sketch') {
     source.ctx.drawImage(layer.canvas, 0, 0);
     return { image: await pngOf(source.canvas) };
   }
-  // White painted over black reads as its alpha; half or more is white.
+  // White painted over black reads as its alpha; ink is white, the rest black.
   for (let i = 0; i < pixels.data.length; i += 4) {
-    const value = (pixels.data[i + 3] ?? 0) >= 128 ? 255 : 0;
+    const value = isInk(pixels.data[i + 3] ?? 0) ? 255 : 0;
     pixels.data[i] = value;
     pixels.data[i + 1] = value;
     pixels.data[i + 2] = value;

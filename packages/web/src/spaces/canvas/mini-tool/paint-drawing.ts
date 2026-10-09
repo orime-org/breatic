@@ -20,7 +20,7 @@ export interface PaintSize {
 /** Which way a drawing is painted. */
 export type DrawingKind = MiniToolDrawing['kind'];
 
-/** Paints ops at a size and reports whether any pixel is left opaque. */
+/** Paints ops at a size and reports whether any pixel is ink (see {@link isInk}). */
 export type InkRaster = (ops: readonly DrawOp[], size: PaintSize, kind: DrawingKind) => boolean;
 
 /** The long side `hasInk` paints at; ink this small still shows. */
@@ -81,14 +81,23 @@ export function paintDrawing(
 }
 
 /**
- * Whether painted pixels hold any ink: a pixel at least half covered, the same
- * line the mask export draws between white and black. An eraser run along a
- * stroke leaves its anti-aliased rim below that line.
+ * Whether one pixel is ink: at least half covered. The panel's check and the
+ * mask's black and white both draw this line; an eraser run along a stroke
+ * leaves its anti-aliased rim below it.
+ * @param alpha - The pixel's alpha, 0–255.
+ * @returns True when the pixel counts as ink.
+ */
+export function isInk(alpha: number): boolean {
+  return alpha >= 128;
+}
+
+/**
+ * Whether painted pixels hold any ink.
  * @param data - RGBA pixel data.
- * @returns True when some pixel has alpha of 128 or more.
+ * @returns True when some pixel is ink.
  */
 export function inkShows(data: Uint8ClampedArray): boolean {
-  for (let i = 3; i < data.length; i += 4) if ((data[i] ?? 0) >= 128) return true;
+  for (let i = 3; i < data.length; i += 4) if (isInk(data[i] ?? 0)) return true;
   return false;
 }
 
@@ -98,7 +107,7 @@ export function inkShows(data: Uint8ClampedArray): boolean {
  * @param ops - The visible ops.
  * @param kind - Mask or sketch.
  * @param aspect - The source's width over its height.
- * @param raster - Paints and looks for opaque pixels.
+ * @param raster - Paints and looks for ink.
  * @returns True when some ink shows.
  */
 export function hasInk(ops: readonly DrawOp[], kind: DrawingKind, aspect: number, raster: InkRaster = canvasRaster): boolean {
