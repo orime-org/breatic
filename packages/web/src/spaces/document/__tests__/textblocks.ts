@@ -13,6 +13,8 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 
+import { rowById } from '@web/spaces/document/document-row-by-id';
+
 /** One textblock and the positions around it. */
 export interface Textblock {
   /** The node itself. */
@@ -79,21 +81,33 @@ export function fallbackForFirstTextblock(view: EditorView): Element {
 }
 
 /**
- * The position of the gap between two blocks, named by their ids: before
- * `after` when it is given, after `before` otherwise, else the document's end.
+ * Where a block is, by its id.
  * @param doc - The document.
- * @param before - The block before the gap, or null.
- * @param after - The block after the gap, or null.
+ * @param id - The block's id.
+ * @returns Its start and end.
+ */
+function rowOf(doc: PMNode, id: string): { from: number; to: number } {
+  const row = rowById(doc, id);
+  if (row === undefined) throw new Error(`No block ${id} in the document`);
+  return row;
+}
+
+/**
+ * The gap just before a block.
+ * @param doc - The document.
+ * @param id - The block after the gap.
  * @returns The position.
  */
-export function gapBetween(doc: PMNode, before: string | null, after: string | null): number {
-  let found: number | undefined;
-  const wanted = after ?? before;
-  doc.descendants((node, pos) => {
-    if (found !== undefined) return false;
-    if (node.attrs['id'] !== wanted || wanted === null) return true;
-    found = after !== null ? pos : pos + node.nodeSize;
-    return false;
-  });
-  return found ?? doc.content.size - 1;
+export function gapBefore(doc: PMNode, id: string): number {
+  return rowOf(doc, id).from;
+}
+
+/**
+ * The gap just after a block.
+ * @param doc - The document.
+ * @param id - The block before the gap.
+ * @returns The position.
+ */
+export function gapAfter(doc: PMNode, id: string): number {
+  return rowOf(doc, id).to;
 }

@@ -70,24 +70,14 @@ export function pastedFiles(data: DataTransfer): File[] | null {
 }
 
 /**
- * Where between the blocks a drop at a document position lands: the place a
- * dragged row would land there.
- * @param doc - The document.
- * @param at - The position the pointer is over.
- * @returns The position of the gap.
- */
-function fileLanding(doc: PMNode, at: number): number {
-  return landingFor(doc, at, blockToNode({ type: 'paragraph' } as never, doc.type.schema));
-}
-
-/**
- * The gap a drop at a document position lands in.
+ * The gap a drop at a document position lands in: the place a dragged row
+ * would land there.
  * @param doc - The document.
  * @param at - The position the pointer is over.
  * @returns The gap.
  */
-export function anchorAtGap(doc: PMNode, at: number): UploadGap {
-  return fileLanding(doc, at);
+export function gapAtDrop(doc: PMNode, at: number): UploadGap {
+  return landingFor(doc, at, blockToNode({ type: 'paragraph' } as never, doc.type.schema));
 }
 
 /**
@@ -101,7 +91,7 @@ export function fileDropPosition(context: ComputeDropPositionContext): ComputeDr
   const { view, event, defaultPosition } = context;
   if (view.dragging !== null || !carriesFiles(event)) return defaultPosition;
   if (!view.editable || defaultPosition === null) return null;
-  return { pos: fileLanding(view.state.doc, defaultPosition.pos), orientation: 'block-horizontal' };
+  return { pos: gapAtDrop(view.state.doc, defaultPosition.pos), orientation: 'block-horizontal' };
 }
 
 /**
@@ -110,7 +100,7 @@ export function fileDropPosition(context: ComputeDropPositionContext): ComputeDr
  * @param state - The editor state.
  * @returns The gap.
  */
-export function anchorAtCaret(state: EditorState): UploadGap {
+export function gapAtCaret(state: EditorState): UploadGap {
   const { $head } = state.selection;
   for (let depth = $head.depth; depth > 0; depth -= 1) {
     const container = $head.node(depth);
@@ -145,7 +135,7 @@ export function documentFileDropExtension(sink?: FilesSink): ExtensionFactoryIns
               const files = Array.from(event.dataTransfer?.files ?? []);
               const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
               if (sink === undefined || files.length === 0 || at === null) return true;
-              sink({ files, gap: anchorAtGap(view.state.doc, at.pos) });
+              sink({ files, gap: gapAtDrop(view.state.doc, at.pos) });
               return true;
             },
           },
@@ -168,7 +158,7 @@ export function filesPasteHandler(sink: FilesSink, next: PasteHandler): PasteHan
     if (files === null) return next(context);
     const view = context.editor.prosemirrorView;
     if (view !== undefined && view !== null) {
-      sink({ files, gap: anchorAtCaret(view.state) });
+      sink({ files, gap: gapAtCaret(view.state) });
     }
     return true;
   };

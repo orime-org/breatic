@@ -20,7 +20,7 @@ import {
   mediaGapBelow,
   mediaGapOnRow,
 } from '@web/spaces/document/document-insert-row';
-import { gapBetween } from './textblocks';
+import { gapBefore } from './textblocks';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -205,7 +205,7 @@ describe('the gap a media pick uploads into (inner#1127 A1)', () => {
     expect(shape(blocks)).toEqual(['pressed', '', 'after']);
     expect(blocks[1]!.props?.['quoted']).toBe(true);
     expect((editor.getTextCursorPosition().block as { id: string }).id).toBe(blocks[1]!.id);
-    expect(gap).toBe(gapBetween(editor.prosemirrorState.doc, blocks[0]!.id, blocks[1]!.id));
+    expect(gap).toBe(gapBefore(editor.prosemirrorState.doc, blocks[1]!.id));
   });
 
   it('makes that line before the pressed row\'s children, which is where the media goes', () => {
@@ -221,7 +221,7 @@ describe('the gap a media pick uploads into (inner#1127 A1)', () => {
 
     const kids = (editor.document as Seen[])[0]!.children!;
     expect(shape(kids)).toEqual(['', 'child']);
-    expect(gap).toBe(gapBetween(editor.prosemirrorState.doc, null, kids[0]!.id));
+    expect(gap).toBe(gapBefore(editor.prosemirrorState.doc, kids[0]!.id));
   });
 
   it('on an empty line goes above it and leaves the caret in it', () => {
@@ -235,7 +235,7 @@ describe('the gap a media pick uploads into (inner#1127 A1)', () => {
 
     expect(shape(editor.document)).toEqual(['above', '']);
     expect((editor.getTextCursorPosition().block as { id: string }).id).toBe(blocks[1]!.id);
-    expect(gap).toBe(gapBetween(editor.prosemirrorState.doc, blocks[0]!.id, blocks[1]!.id));
+    expect(gap).toBe(gapBefore(editor.prosemirrorState.doc, blocks[1]!.id));
   });
 
   it('on an empty first line has nothing before it', () => {
@@ -243,6 +243,6 @@ describe('the gap a media pick uploads into (inner#1127 A1)', () => {
 
     const gap = mediaGapOnRow(editor, editor.document[0] as never);
 
-    expect(gap).toBe(gapBetween(editor.prosemirrorState.doc, null, (editor.document as Seen[])[0]!.id));
+    expect(gap).toBe(gapBefore(editor.prosemirrorState.doc, (editor.document as Seen[])[0]!.id));
   });
 });

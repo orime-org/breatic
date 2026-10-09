@@ -22,7 +22,7 @@ import {
   holdGap,
   uploadSlots,
 } from '@web/spaces/document/document-upload-slots';
-import { gapBetween } from './textblocks';
+import { gapBefore } from './textblocks';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -140,7 +140,7 @@ async function start(
   const [a, b] = blocks(editor);
   if (quoted) editor.updateBlock(a!.id, { props: { quoted: true } } as never);
   const view = editor.prosemirrorView!;
-  await uploader.start(view, files, () => gapBetween(view.state.doc, a!.id, b!.id));
+  await uploader.start(view, files, () => gapBefore(view.state.doc, b!.id));
   await settle();
 }
 
@@ -201,7 +201,7 @@ describe('a gap held while admission waits (A2)', () => {
     const started = uploader.start(
       view,
       [file('m.png', 'image/png')],
-      holdGap(view, gapBetween(view.state.doc, a!.id, b!.id)),
+      holdGap(view, gapBefore(view.state.doc, b!.id)),
     );
     editor.insertBlocks([{ type: 'paragraph', content: 'X' }] as never, a!.id, 'before');
     release(1000);

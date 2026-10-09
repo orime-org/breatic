@@ -69,7 +69,6 @@ export interface DocumentUploader {
   remove(view: EditorView, slotId: string): void;
 }
 
-
 /** The failure a body that stopped being editable meanwhile shows. */
 const READ_ONLY: SlotFailure = {
   messageKey: 'spaces.document.media.readOnly',
