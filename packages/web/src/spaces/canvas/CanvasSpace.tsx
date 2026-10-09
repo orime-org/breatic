@@ -1406,12 +1406,15 @@ function CanvasSpaceInner({
   }, [pendingHistoryCommand, readOnly, undo, redo, consumeHistoryCommand, sessionStore]);
 
   // Keyboard undo / redo — double-platform (Cmd on mac, Ctrl on windows; see
-  // matchHistoryShortcut). Gated like the clipboard handlers: no-op while a
-  // field / node body is being edited (let the input's native undo win) or
-  // the viewer is read-only.
+  // matchHistoryShortcut) — and, while a drawing tool is open, [ and ] for the
+  // brush size; undo / redo then act on the drawing (routeHistoryCommand).
+  // Gated like the clipboard handlers: no-op while a field / node body is
+  // being edited (let the input's native undo win) or the viewer is read-only.
   React.useEffect(() => {
     /**
-     * Document keydown handler: route undo / redo shortcuts to the manager.
+     * Document keydown handler: [ and ] step the brush size while a drawing
+     * tool is open; undo / redo act on the drawing then, on the canvas history
+     * otherwise.
      * @param event - The keyboard event.
      */
     const onKeyDown = (event: KeyboardEvent): void => {
