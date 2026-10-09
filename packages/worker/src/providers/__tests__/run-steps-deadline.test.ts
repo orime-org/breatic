@@ -16,6 +16,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vite
 import { initCore } from "@breatic/core";
 import type { upstreamStepRepo } from "@breatic/domain";
 import type * as httpModule from "@worker/providers/http.js";
+import type * as coreModule from "@breatic/core";
 
 type Step = upstreamStepRepo.UpstreamStep;
 
@@ -24,6 +25,13 @@ const runPredictionMock = vi.fn();
 vi.mock("@worker/providers/wavespeed.js", () => ({
   runPrediction: (...args: unknown[]) => runPredictionMock(...args),
 }));
+
+const { warnMock } = vi.hoisted(() => ({ warnMock: vi.fn() }));
+
+vi.mock("@breatic/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof coreModule>();
+  return { ...actual, logger: { info: vi.fn(), warn: warnMock, error: vi.fn(), debug: vi.fn() } };
+});
 
 vi.mock("@worker/providers/http.js", async (importOriginal) => {
   const actual = await importOriginal<typeof httpModule>();
@@ -90,8 +98,8 @@ function stores(preset: Step[] = []): { steps: Step[]; deps: Parameters<typeof r
  * @param offsetMs - Milliseconds from now; negative means already passed.
  * @returns The context.
  */
-function ctx(offsetMs: number): Parameters<typeof runCatalogTask>[1] {
-  return { taskId: TASK, studioId: null, deadlineAt: NOW + offsetMs };
+function ctx(offsetMs: number, retryStarting = false): Parameters<typeof runCatalogTask>[1] {
+  return { taskId: TASK, studioId: null, deadlineAt: NOW + offsetMs, retryStarting };
 }
 
 /**
@@ -116,6 +124,7 @@ function submitted(endpoint: string): Step {
 
 beforeEach(() => {
   runPredictionMock.mockReset();
+  warnMock.mockReset();
   vi.spyOn(Date, "now").mockReturnValue(NOW);
 });
 
@@ -271,5 +280,36 @@ describe("a step submitted on this pickup", () => {
 
     expect(err).toBeInstanceOf(HttpStatusError);
     expect(steps[0]).toMatchObject({ status: "submitted", predictionId: "pred-new" });
+  });
+});
+
+describe("the duplicate-cost warning", () => {
+  beforeEach(() => {
+    vi.spyOn(FAMILIES.get("nano-banana-2")!, "prepare").mockResolvedValue({ prompt: "a cat", fields: {} });
+    runPredictionMock.mockResolvedValue({ outputs: ["https://o/cat.png"], taskId: "pred-1" });
+  });
+
+  it("is raised when a retry submits a step that holds no upstream id", async () => {
+    const { deps } = stores();
+
+    await runCatalogTask(deps, ctx(60_000, true), "image", "a cat", "nano-banana-2", {}, 1);
+
+    expect(warnMock).toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
+  });
+
+  it("is not raised when a retry only asks about a step's stored upstream id", async () => {
+    const { deps } = stores([submitted("google/nano-banana-2/text-to-image")]);
+
+    await runCatalogTask(deps, ctx(60_000, true), "image", "a cat", "nano-banana-2", {}, 1);
+
+    expect(warnMock).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
+  });
+
+  it("is not raised when the pickup does not start a retry", async () => {
+    const { deps } = stores();
+
+    await runCatalogTask(deps, ctx(60_000, false), "image", "a cat", "nano-banana-2", {}, 1);
+
+    expect(warnMock).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
   });
 });

@@ -354,25 +354,37 @@ describe("the retry log lines", () => {
     return job;
   }
 
-  it("warns once on the pickup that starts a retry, and records it", async () => {
-    await runTask(retried(), "lock-token").catch(() => undefined);
+  /**
+   * A reading on its second attempt: a retry reads the media and asks the service again.
+   * @param attemptsMade - Attempts already spent.
+   * @param reported - The attempt the log lines were already written for.
+   * @returns The job.
+   */
+  function retriedReading(attemptsMade = 1, reported?: number): Job {
+    const job = jobOf(
+      { taskType: "understand", model: undefined, params: { source_type: "image", source_url: "https://a/cat.png" } },
+      attemptsMade,
+    );
+    if (reported !== undefined) (job.data as Record<string, unknown>).retryReported = reported;
+    return job;
+  }
+
+  it("warns once on the pickup that starts a retry of a run that calls its upstream again, and records it", async () => {
+    await runTask(retriedReading(), "lock-token").catch(() => undefined);
 
     expect(h.warn).toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
     expect(h.updateData).toHaveBeenCalledWith(expect.objectContaining({ retryReported: 1 }));
   });
 
   it("stays quiet on the later pickups of the same attempt", async () => {
-    await runTask(retried(1), "lock-token").catch(() => undefined);
+    await runTask(retriedReading(1, 1), "lock-token").catch(() => undefined);
 
     expect(h.warn).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
     expect(h.updateData).not.toHaveBeenCalled();
   });
 
   it("warns again on the pickup that starts the next retry", async () => {
-    const job = jobOf({}, 2);
-    (job.data as Record<string, unknown>).retryReported = 1;
-
-    await runTask(job, "lock-token").catch(() => undefined);
+    await runTask(retriedReading(2, 1), "lock-token").catch(() => undefined);
 
     expect(h.warn).toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
     expect(h.updateData).toHaveBeenCalledWith(expect.objectContaining({ retryReported: 2 }));
@@ -390,6 +402,19 @@ describe("the retry log lines", () => {
 
     expect(h.info).toHaveBeenCalledWith(expect.anything(), "async_resume_stored_provider_task");
     expect(h.warn).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
+  });
+
+  it("leaves a generation's warning to the step that submits again, and tells the steps a retry starts", async () => {
+    await runTask(retried(), "lock-token").catch(() => undefined);
+
+    expect(h.warn).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
+    expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ retryStarting: true });
+  });
+
+  it("tells a generation's steps no retry starts on a later pickup of the same attempt", async () => {
+    await runTask(retried(1), "lock-token").catch(() => undefined);
+
+    expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ retryStarting: false });
   });
 
   it("logs a stored upstream id once per attempt, not on every pickup", async () => {
