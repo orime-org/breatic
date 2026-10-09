@@ -15,7 +15,7 @@ import { MediaUnavailable, UnderstandRefused } from "@breatic/domain";
 import type { RefusalKind, UnavailableKind } from "@breatic/domain";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
-import { TaskDeadlinePassed } from "@worker/handlers/still-running.js";
+import { TaskDeadlinePassed } from "@worker/providers/still-running.js";
 import {
   assetNameFromUrl,
   encodeTaskFailure,

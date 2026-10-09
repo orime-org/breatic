@@ -11,7 +11,7 @@ import {
   servedFromHead,
   syncVoiceSamples,
 } from "@worker/voice-samples/sync.js";
-import { StillRunning } from "@worker/handlers/still-running.js";
+import { StillRunning } from "@worker/providers/still-running.js";
 
 /** A wait no test in the first case reaches: those runs never report still going. */
 const NO_WAIT = { budgetMs: 1, now: () => 0, sleepUntil: async () => undefined };

@@ -18,7 +18,7 @@ vi.mock("@breatic/core", () => ({
 }));
 
 const { withUnderstandSlot } = await import("@worker/handlers/understand-slots.js");
-const { StillRunning } = await import("@worker/handlers/still-running.js");
+const { StillRunning } = await import("@worker/providers/still-running.js");
 
 const NOW = 1_800_000_000_000;
 

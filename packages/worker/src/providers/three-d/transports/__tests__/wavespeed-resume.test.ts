@@ -30,7 +30,7 @@ vi.mock("@worker/providers/http.js", async (importOriginal) => {
 });
 
 import { generate } from "@worker/providers/three-d/transports/wavespeed.js";
-import { StillRunning, TaskDeadlinePassed } from "@worker/handlers/still-running.js";
+import { StillRunning, TaskDeadlinePassed } from "@worker/providers/still-running.js";
 
 /** A deadline no case here reaches unless it says so. */
 const LATER = Number.MAX_SAFE_INTEGER;

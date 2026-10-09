@@ -71,7 +71,7 @@ import { UploadHttpError } from "@breatic/shared";
 import { miniToolById, type MiniToolSpec } from "@breatic/shared/mini-tools";
 
 import { ContainerJobFailed, runContainerJob } from "@worker/handlers/container/run-container-job.js";
-import { StillRunning } from "@worker/handlers/still-running.js";
+import { StillRunning } from "@worker/providers/still-running.js";
 
 const CUT = miniToolById("video.cut") as MiniToolSpec;
 const INPUT = { taskId: "t1", userId: "u1", projectId: "p1", params: { range: { start: 0, end: 2 } }, sourceKey: "v/src.mp4" };

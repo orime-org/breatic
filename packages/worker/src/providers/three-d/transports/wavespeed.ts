@@ -16,7 +16,7 @@
 
 import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
 import { submitOrResume } from "@worker/providers/async-resume.js";
-import { againOrExpired, assertBeforeDeadline } from "@worker/handlers/still-running.js";
+import { againOrExpired, assertBeforeDeadline } from "@worker/providers/still-running.js";
 import {
   bearerHeaders,
   requestWithRetry,

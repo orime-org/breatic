@@ -15,7 +15,7 @@ import type { ResolvedModel } from "@worker/providers/shared.js";
 import { logger } from "@breatic/core";
 import { getWorkerConfig } from "@breatic/core";
 import { httpRequest } from "@breatic/shared";
-import { StillRunning } from "@worker/handlers/still-running.js";
+import { StillRunning } from "@worker/providers/still-running.js";
 
 /**
  * Lazy-loaded HTTP config values, pulled from the worker config on each call.

@@ -12,7 +12,7 @@
 
 import { getUnderstandConfig, getWorkerConfig } from "@breatic/core";
 
-import { StillRunning } from "@worker/handlers/still-running.js";
+import { StillRunning } from "@worker/providers/still-running.js";
 
 let taken = 0;
 

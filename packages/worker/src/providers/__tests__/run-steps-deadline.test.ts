@@ -32,7 +32,7 @@ vi.mock("@worker/providers/http.js", async (importOriginal) => {
 
 const { runCatalogTask } = await import("@worker/providers/run-steps.js");
 const { FAMILIES } = await import("@worker/providers/generate.js");
-const { StillRunning, TaskDeadlinePassed } = await import("@worker/handlers/still-running.js");
+const { StillRunning, TaskDeadlinePassed } = await import("@worker/providers/still-running.js");
 
 beforeAll(() => {
   initCore({ DATABASE_URL: "postgres://localhost:5432/breatic_test", WAVESPEED_API_KEY: "test-key" });

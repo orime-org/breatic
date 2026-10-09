@@ -9,7 +9,7 @@
 
 import type { ResumeContext } from "@worker/providers/shared.js";
 import type { VoiceSampleJob } from "@worker/voice-samples/plan.js";
-import { StillRunning } from "@worker/handlers/still-running.js";
+import { StillRunning } from "@worker/providers/still-running.js";
 
 /** The key the storage check asks about. */
 const PROBE_KEY = "voice-samples/probe.mp3";

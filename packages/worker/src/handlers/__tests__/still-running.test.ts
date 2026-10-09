@@ -44,7 +44,7 @@ const h = vi.hoisted(() => {
   };
 });
 
-vi.mock("@worker/handlers/still-running.js", () => ({
+vi.mock("@worker/providers/still-running.js", () => ({
   StillRunning: h.StillRunning,
   TaskDeadlinePassed: h.TaskDeadlinePassed,
 }));

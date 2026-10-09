@@ -31,7 +31,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 });
 
 const { pollOnce, UpstreamTaskFailed, HttpStatusError } = await import("@worker/providers/http.js");
-const { StillRunning } = await import("@worker/handlers/still-running.js");
+const { StillRunning } = await import("@worker/providers/still-running.js");
 
 const NOW = 1_800_000_000_000;
 
