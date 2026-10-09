@@ -379,7 +379,8 @@ export function renderProductGuide(): string {
       `an earlier one back, and a failed attempt shows ${quoted(t("canvas.history.failed"))}. The panel is headed ` +
       `${quoted(t("canvas.history.title"))} with the number of entries, closes with its X, and ends with ` +
       `${quoted(t("canvas.history.end"))} once everything is loaded. A pasted or duplicated picture, video or ` +
-      `sound node starts with one ${quoted(t("canvas.history.typeUpload"))} entry, and a text node with one ` +
+      `sound node that holds a file starts with one ${quoted(t("canvas.history.typeUpload"))} entry, and a text ` +
+      `node with words in it with one ` +
       `${quoted(t("canvas.history.typeSnapshot"))} entry. A node with none shows ` +
       `${quoted(t("canvas.history.empty.title"))} and ${quoted(t("canvas.history.empty.hint"))} If it cannot ` +
       `load it says ${quoted(t("canvas.history.loadError"))} with ${quoted(t("canvas.history.retry"))}.`,
@@ -397,8 +398,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.understand.sourceGone"))}`,
     `- ${quoted(t("canvas.contextMenu.copy"))} (Cmd/Ctrl+C) and ${quoted(t("canvas.contextMenu.duplicate"))} ` +
       "(Cmd/Ctrl+D), which places a copy slightly below and to the right, a step further while another node " +
-      "already starts there. A copy, pasted or duplicated, carries everything the original holds except its " +
-      "history, and is never locked. It comes out selected with the keyboard on it, so the arrow keys move it; " +
+      "already starts there. A copy, pasted or duplicated, carries the original's content but not its history, " +
+      "its lock, its running tasks or its failure message. It comes out selected with the keyboard on it, so the arrow keys move it; " +
       "when it lands out of view the canvas slides over to it, keeping the zoom.",
     `- ${quoted(t("canvas.contextMenu.rename"))} and ${quoted(t("canvas.nodeMenu.lock"))} or ` +
       `${quoted(t("canvas.nodeMenu.unlock"))}. A locked node or group shows a small padlock at its top-right ` +

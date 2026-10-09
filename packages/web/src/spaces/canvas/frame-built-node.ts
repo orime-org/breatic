@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Where to move the canvas after a press writes a node beside another one.
+ * Where to move the canvas after an action makes something: a press that
+ * writes a node beside another one, or a paste or duplicate that makes copies.
  *
  * A node written one step to the right of the one being read is off-screen on
  * a canvas scrolled near its right edge, and a press whose only effect is

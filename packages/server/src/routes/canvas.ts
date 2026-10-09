@@ -401,7 +401,7 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
  * copy's history, and answers which address each old one became.
  * @param c - Hono context with validated `canvasPasteSchema` body.
  * @returns `200` with `{ data: { map } }`.
- * @throws {AppError} 403 without edit access, 507 with no storage left.
+ * @throws {AppError} 404 with no role on the project, 403 below editor, 507 with no storage left.
  */
 canvas.post(
   "/paste",

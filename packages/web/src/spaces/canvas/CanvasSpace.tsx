@@ -1375,8 +1375,9 @@ function CanvasSpaceInner({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [readOnly, undo, redo]);
 
-  // Capture reads every selected node's whole stored data straight from the
-  // document at copy time (inner#1349), so what is copied is what the document
+  // Capture reads the whole stored data of every captured node (the targets and
+  // the members of any target Group) straight from the document at copy time
+  // (inner#1349), so what is copied is what the document
   // says right now, nested bodies and prompts included.
   const captureClipboardFor = React.useCallback(
     (
@@ -2930,8 +2931,9 @@ function CanvasSpaceInner({
 
   // One dispatch for Cmd+V and the menu's Paste (design 5.9): our nodes paste
   // as nodes, any other words make a text node. `at` is the right-click point;
-  // a keyboard paste lands where `pasteOffsetFor` puts it, then every paste
-  // steps past nodes already on its spot (inner#1235 A20).
+  // a keyboard paste of nodes lands where `pasteOffsetFor` puts it and plain
+  // text lands at the view centre; then every paste steps past nodes already
+  // on its spot (inner#1235 A20).
   const pasteFromText = React.useCallback(
     (text: string, at: { x: number; y: number } | null): boolean => {
       const payload = parseClipboard(text);
@@ -3371,8 +3373,8 @@ function CanvasSpaceInner({
     [t],
   );
 
-  // Duplicate clones the targets in place (fixed +24 nudge) WITHOUT touching the
-  // clipboard: a Group brings its members; a lone member rejoins its existing
+  // Duplicate clones the targets +24 down-right of their sources, stepping
+  // further past nodes already on that spot, WITHOUT touching the clipboard: a Group brings its members; a lone member rejoins its existing
   // Group (externalParentAbs) and that Group auto-grows to keep 24px around the
   // new clone (R2-A); the clone of a locked source is itself unlocked (R2-F) and
   // a locked target is NOT blocked (R2-E — locked items can still be duplicated).

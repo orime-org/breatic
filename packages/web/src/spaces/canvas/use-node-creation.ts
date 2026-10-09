@@ -103,11 +103,13 @@ export interface NodeCreation {
   /**
    * Paste or duplicate a clipboard payload (inner#1349): clone it shifted by
    * `offset`, register what it names in this Studio and write each copy's
-   * history (skipped when it names nothing), then write the clones and edges
-   * in one undo step, stepped past nodes already where they land — the step is
-   * read at write time, so two pastes made before either answered do not
-   * stack. Resolves to the new node ids, or null when the server refused (a
-   * toast says why) or the Space went away first.
+   * history (the request is skipped only when there is no address to register
+   * and no history to write), then write the clones and edges in one undo
+   * step, stepped past nodes already where they land — the step is read at
+   * write time, so two pastes made before either answered do not stack.
+   * Resolves to the new node ids, or null when the registration request fails
+   * (a toast says so, with the server's reason when it gave one) or the Space
+   * went away first.
    */
   pastePayload: (
     payload: ClipboardPayload,

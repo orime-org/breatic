@@ -354,7 +354,7 @@ export type NodeHistorySnapshotInput = z.infer<
 /** A storage address a paste names: a stored object's public URL. */
 const pasteAddressSchema = z.string().url().max(2048);
 
-/** A video (or audio) address and the cover it shows. */
+/** A video address and the cover it shows. */
 export const pastePairSchema = z.object({ url: pasteAddressSchema, cover: pasteAddressSchema });
 export type PastePair = z.infer<typeof pastePairSchema>;
 
