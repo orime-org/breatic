@@ -24,9 +24,15 @@ const ICON_BUTTON =
   'h-[var(--btn-inline)] w-[var(--btn-inline)] border border-transparent p-0 ' +
   'aria-pressed:border-active-border aria-pressed:bg-accent-strong aria-pressed:hover:bg-accent-strong';
 
+// A cell around each colour dot, marked the way the canvas group colour picker
+// and the document colour panel mark theirs. The dot's edge is full-strength
+// `muted-foreground` so a white dot on the light panel and a black dot on the
+// dark one stay at 3:1 or more (WCAG 2.2 SC 1.4.11).
 const SWATCH =
-  'h-5 w-5 rounded-full border border-border p-0 ' +
-  'aria-pressed:outline aria-pressed:outline-offset-2 aria-pressed:outline-active-border';
+  'flex h-[var(--btn-inline)] w-[var(--btn-inline)] items-center justify-center rounded-chrome p-0 ' +
+  'hover:bg-accent aria-pressed:ring-1 aria-pressed:ring-active-border';
+
+const SWATCH_DOT = 'h-5 w-5 rounded-full border border-muted-foreground';
 
 /**
  * An icon button with its name in a hover tip.
@@ -151,8 +157,9 @@ export function DrawingControls({ kind }: DrawingControlsProps): React.JSX.Eleme
                 disabled={exporting}
                 onClick={() => setMaskColor(name)}
                 className={SWATCH}
-                style={{ background: `var(--color-palette-${name})` }}
-              />
+              >
+                <span className={SWATCH_DOT} style={{ background: `var(--color-palette-${name})` }} />
+              </Button>
             ))
             : INK.map((ink) => (
               <Button
@@ -166,8 +173,9 @@ export function DrawingControls({ kind }: DrawingControlsProps): React.JSX.Eleme
                 disabled={exporting}
                 onClick={() => setDrawingColor(ink)}
                 className={SWATCH}
-                style={{ background: ink }}
-              />
+              >
+                <span className={SWATCH_DOT} style={{ background: ink }} />
+              </Button>
             ))}
         </div>
       </div>

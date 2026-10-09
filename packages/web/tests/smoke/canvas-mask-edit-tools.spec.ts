@@ -342,6 +342,70 @@ test('the drawing is still there after switching Space and back @needs-internet'
   }
 });
 
+// B6: every colour swatch shows an edge that reaches 3:1 against the panel in
+// both themes (WCAG 2.2 SC 1.4.11); the selected one is marked by a 1px ring
+// flush with its cell, and a hovered cell changes.
+for (const scheme of ['light', 'dark'] as const) {
+  test(`colour swatches are visible and marked like the other colour pickers in ${scheme} @needs-internet`, async () => {
+    await page.emulateMedia({ colorScheme: scheme });
+    for (const toolId of ['image.inpaint', 'image.sketch']) {
+      await openTool(page, imageNode, toolId);
+      const swatches = page.locator('[data-testid^="mini-tool-draw-ink-"], [data-testid^="mini-tool-draw-mask-"]');
+      await expect(swatches.first()).toBeVisible({ timeout: 15_000 });
+      const read = await swatches.evaluateAll((els) => {
+        const rgb = (c: string): number[] => (c.match(/[\d.]+/g) ?? []).map(Number);
+        const lum = (c: number[]): number => {
+          const [r, g, b] = c.slice(0, 3).map((v) => {
+            const s = v / 255;
+            return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+          });
+          return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+        };
+        const ratio = (a: number[], b: number[]): number => {
+          const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+          return (x! + 0.05) / (y! + 0.05);
+        };
+        return els.map((cell) => {
+          let p = cell.parentElement;
+          let panel = 'rgba(0, 0, 0, 0)';
+          while (p !== null && (panel = getComputedStyle(p).backgroundColor) === 'rgba(0, 0, 0, 0)') p = p.parentElement;
+          const dot = cell.firstElementChild as HTMLElement | null;
+          const edge = dot === null ? [0, 0, 0, 0] : rgb(getComputedStyle(dot).borderTopColor);
+          const box = cell.getBoundingClientRect();
+          const style = getComputedStyle(cell);
+          return {
+            id: cell.getAttribute('data-testid'),
+            pressed: cell.getAttribute('aria-pressed') === 'true',
+            edgeAlpha: edge[3] ?? 1,
+            edgeRatio: ratio(edge, rgb(panel)),
+            width: box.width,
+            height: box.height,
+            outline: style.outlineStyle,
+            ring: style.boxShadow,
+          };
+        });
+      });
+      for (const s of read) {
+        expect(s.edgeAlpha, s.id!).toBe(1);
+        expect(s.edgeRatio, s.id!).toBeGreaterThanOrEqual(3);
+        expect(s.width, s.id!).toBe(28);
+        expect(s.height, s.id!).toBe(28);
+        expect(s.outline, s.id!).toBe('none');
+        if (s.pressed) expect(s.ring, s.id!).toMatch(/0px 0px 0px 1px/);
+        else expect(s.ring, s.id!).toBe('none');
+      }
+      expect(read.filter((s) => s.pressed)).toHaveLength(1);
+
+      const idle = read.find((s) => !s.pressed)!;
+      const cell = page.getByTestId(idle.id!);
+      const before = await cell.evaluate((el) => getComputedStyle(el).backgroundColor);
+      await cell.hover();
+      await expect.poll(() => cell.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(before);
+      await page.getByTestId('mini-tool-panel-close').click();
+    }
+  });
+}
+
 /**
  * Draw on a picture with a tool and run it; the result fills a new node.
  * @param nodeId - The source node.
