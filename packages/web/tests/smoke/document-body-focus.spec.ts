@@ -244,3 +244,185 @@ test('Cmd/Ctrl+click on a divider selects it whole, the body holding or not (A22
   await divider.click({ modifiers: [MOD] });
   await expect.poll(selected).toEqual({ kind: '_NodeSelection:divider', painted: 1 });
 });
+
+/**
+ * Inserts a 2x2 table under the first row through its handle menu.
+ * @param p - The page.
+ */
+async function insertTable(p: Page): Promise<void> {
+  await p.mouse.move(5, 5);
+  const row = (await p.locator(`${EDITOR} .bn-block-content`).first().boundingBox())!;
+  await p.mouse.move(row.x + 40, row.y + 12, { steps: 3 });
+  await p.getByTestId('doc-block-handle').click();
+  await p.getByTestId('doc-block-row-insertBelow').hover();
+  await p.getByTestId('doc-block-insert-table').hover();
+  await p.getByTestId('doc-table-size-2-2').click();
+  await expect(p.locator(`${EDITOR} table`)).toHaveCount(1);
+}
+
+/**
+ * Drag-selects the four cells of the table.
+ * @param p - The page.
+ */
+async function selectCells(p: Page): Promise<void> {
+  const first = (await p.locator(`${EDITOR} td`).first().boundingBox())!;
+  const last = (await p.locator(`${EDITOR} td`).last().boundingBox())!;
+  await p.mouse.move(first.x + 10, first.y + first.height / 2);
+  await p.mouse.down();
+  await p.mouse.move(last.x + last.width - 10, last.y + last.height / 2, { steps: 6 });
+  await p.mouse.up();
+  await expect(p.locator(`${EDITOR} .selectedCell`).first()).toBeVisible();
+}
+
+/**
+ * The editor's selection, as JSON text.
+ * @param p - The page.
+ * @returns It.
+ */
+async function selectionOf(p: Page): Promise<string> {
+  return p.evaluate(
+    (selector) =>
+      JSON.stringify(
+        (document.querySelector(selector) as unknown as {
+          editor: { state: { selection: { toJSON: () => unknown } } };
+        }).editor.state.selection.toJSON(),
+      ),
+    EDITOR,
+  );
+}
+
+test('a selected divider is drawn as not selected once the body is let go (A20, A21)', async () => {
+  await openWithLine(page);
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('---');
+  const divider = page.locator(`${EDITOR} [data-content-type="divider"]`);
+  await divider.click();
+  const painted = (): Promise<number> =>
+    page.evaluate((selector) => document.querySelectorAll(`${selector} .doc-in-selection`).length, EDITOR);
+  await expect.poll(painted).toBe(1);
+
+  const { x, y } = await blankPoint(page);
+  await page.mouse.click(x, y);
+
+  await expect(page.locator(EDITOR)).not.toHaveAttribute('data-body-holds', /.*/);
+  await expect.poll(painted).toBe(0);
+});
+
+test('after a drag selection and a press on blank space, hovering a row shows its handle (A20)', async () => {
+  await openWithLine(page);
+  const line = (await page.locator(`${EDITOR} p`).first().boundingBox())!;
+  await page.mouse.move(line.x + 2, line.y + line.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(line.x + 60, line.y + line.height / 2, { steps: 5 });
+  await page.mouse.up();
+  const { x, y } = await blankPoint(page);
+  await page.mouse.click(x, y);
+
+  await page.mouse.move(line.x + 40, line.y + line.height / 2, { steps: 3 });
+
+  await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+});
+
+test('a right press or a Ctrl press on blank space, then Escape, leaves no caret and no drag selection (A20)', async () => {
+  await openWithLine(page);
+  const before = await selectionOf(page);
+  const { x, y } = await blankPoint(page);
+  const line = (await page.locator(`${EDITOR} p`).first().boundingBox())!;
+
+  for (const press of ['right', 'control'] as const) {
+    if (press === 'right') await page.mouse.click(x, y, { button: 'right' });
+    else {
+      await page.keyboard.down('Control');
+      await page.mouse.click(x, y);
+      await page.keyboard.up('Control');
+    }
+    await page.keyboard.press('Escape');
+    await expect(page.locator(EDITOR)).not.toHaveAttribute('data-body-holds', /.*/);
+    await page.mouse.move(line.x + 60, line.y + line.height / 2, { steps: 5 });
+    expect(await selectionOf(page)).toBe(before);
+    await expect(page.locator(BUBBLE_BAR)).toHaveCount(0);
+  }
+});
+
+test('while let go, typing changes nothing and PageDown and Space scroll the body (A20)', async () => {
+  await openWithLine(page);
+  for (let i = 0; i < 80; i += 1) await page.keyboard.type(`\nline ${String(i)}`);
+  await pressAndSettle(page, process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
+  for (let i = 0; i < 5; i += 1) await pressAndSettle(page, 'Shift+ArrowRight');
+  await expect(page.locator(BUBBLE_BAR)).toBeVisible();
+  expect(await page.locator(SCROLLER).evaluate((el) => el.scrollTop)).toBe(0);
+  const text = await page.locator(EDITOR).innerText();
+  const beside = await page.evaluate((selector) => {
+    const editor = document.querySelector(selector)!.getBoundingClientRect();
+    const row = [...document.querySelectorAll(`${selector} p`)]
+      .map((p) => p.getBoundingClientRect())
+      .find((box) => box.top > window.innerHeight / 3 && box.bottom < (window.innerHeight * 2) / 3)!;
+    return { x: editor.left - 40, y: row.top + row.height / 2 };
+  }, EDITOR);
+  expect(
+    await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.hasAttribute('data-document-body-blank'), beside),
+  ).toBe(true);
+  await page.mouse.click(beside.x, beside.y);
+  const scroller = page.locator(SCROLLER);
+  await expect(scroller).toBeFocused();
+
+  await page.keyboard.type('abc');
+  expect(await page.locator(EDITOR).innerText()).toBe(text);
+  await expect(scroller).toBeFocused();
+  expect(await scroller.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('none');
+
+  const top = (): Promise<number> => scroller.evaluate((el) => el.scrollTop);
+  const start = await top();
+  await page.keyboard.press('PageDown');
+  await expect.poll(top).toBeGreaterThan(start);
+  const afterPage = await top();
+  await page.keyboard.press('Space');
+  await expect.poll(top).toBeGreaterThan(afterPage);
+  await expect(page.locator(EDITOR)).not.toHaveAttribute('data-body-holds', /.*/);
+});
+
+test('copy while let go leaves the clipboard as it was (A20)', async () => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openWithLine(page);
+  await selectHello(page);
+  await page.evaluate(() => navigator.clipboard.writeText('sentinel'));
+  const { x, y } = await blankPoint(page);
+  await page.mouse.click(x, y);
+
+  await page.keyboard.press(`${MOD}+c`);
+
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('sentinel');
+  await expect(page.locator(EDITOR)).toHaveText('hello world');
+});
+
+test('a press inside the old selection after letting go starts a new drag selection (A20)', async () => {
+  await openWithLine(page);
+  await selectHello(page);
+  const { x, y } = await blankPoint(page);
+  await page.mouse.click(x, y);
+  const line = (await page.locator(`${EDITOR} p`).first().boundingBox())!;
+
+  await page.mouse.move(line.x + 18, line.y + line.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(line.x + line.width - 4, line.y + line.height / 2, { steps: 6 });
+  await page.mouse.up();
+
+  await expect(page.locator(EDITOR)).toHaveText('hello world');
+  const selection = JSON.parse(await selectionOf(page)) as { anchor: number; head: number };
+  expect(selection.anchor).toBeGreaterThan(1);
+  expect(selection.head).toBeGreaterThan(selection.anchor);
+});
+
+test('after selected cells and a press on blank space, hovering the table shows its row and column handles (A21)', async () => {
+  await openWithLine(page);
+  await insertTable(page);
+  await selectCells(page);
+  const { x, y } = await blankPoint(page);
+  await page.mouse.click(x, y);
+
+  const cell = (await page.locator(`${EDITOR} td`).first().boundingBox())!;
+  await page.mouse.move(cell.x + cell.width / 2, cell.y + cell.height / 2, { steps: 4 });
+
+  await expect(page.getByTestId('doc-table-row-handle').first()).toBeVisible();
+  await expect(page.getByTestId('doc-table-col-handle').first()).toBeVisible();
+});
