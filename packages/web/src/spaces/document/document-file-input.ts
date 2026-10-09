@@ -96,16 +96,24 @@ export function fileDropPosition(context: ComputeDropPositionContext): ComputeDr
   return { pos: gapAtDrop(view.state.doc, defaultPosition.pos), orientation: 'block-horizontal' };
 }
 
+/** Where a paste of files goes, and whether the reader aimed it at a line. */
+export interface PasteTarget {
+  readonly gap: UploadGap;
+  /** The caret is in an empty line and the gap is right above it. */
+  readonly aimed: boolean;
+}
+
 /**
- * The gap a paste of files goes into: after the block the caret is in, or
- * above it when it is an empty line, which keeps the caret.
+ * Where a paste of files goes: after the block the caret is in, or above it
+ * when it is an empty line, which keeps the caret and counts as aimed at it.
  * @param state - The editor state.
- * @returns The gap.
+ * @returns The gap, and whether it is aimed at the caret's empty line.
  */
-export function gapAtCaret(state: EditorState): UploadGap {
+export function pasteTarget(state: EditorState): PasteTarget {
   const line = caretLine(state);
-  if (line === null) return state.doc.content.size - 1;
-  return line.empty ? line.start : line.start + line.container.nodeSize;
+  if (line === null) return { gap: state.doc.content.size - 1, aimed: false };
+  if (line.empty) return { gap: line.start, aimed: true };
+  return { gap: line.start + line.container.nodeSize, aimed: false };
 }
 
 /**
@@ -169,7 +177,7 @@ export function filesPasteHandler(sink: FilesSink, next: PasteHandler): PasteHan
     if (files === null) return next(context);
     const view = context.editor.prosemirrorView;
     if (view !== undefined && view !== null) {
-      sink({ files, gap: gapAtCaret(view.state), aimed: caretLine(view.state)?.empty === true });
+      sink({ files, ...pasteTarget(view.state) });
     }
     return true;
   };

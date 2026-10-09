@@ -15,7 +15,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { guardStrayFileDrops } from '@web/lib/stray-file-drop';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
-  gapAtCaret,
+  pasteTarget,
   gapAtDrop,
   fileDropPosition,
   pastedFiles,
@@ -138,7 +138,7 @@ describe('the gap a paste goes into (A3)', () => {
     editor.setTextCursorPosition(idOf(editor, 'B'), 'end');
 
     const { doc } = editor.prosemirrorView!.state;
-    expect(gapAtCaret(editor.prosemirrorView!.state)).toBe(gapBefore(doc, idOf(editor, 'C')));
+    expect(pasteTarget(editor.prosemirrorView!.state).gap).toBe(gapBefore(doc, idOf(editor, 'C')));
   });
 
   it('is above an empty line the caret is on, which keeps the caret', () => {
@@ -147,7 +147,7 @@ describe('the gap a paste goes into (A3)', () => {
     editor.setTextCursorPosition(empty, 'start');
 
     const { doc } = editor.prosemirrorView!.state;
-    expect(gapAtCaret(editor.prosemirrorView!.state)).toBe(gapBefore(doc, empty));
+    expect(pasteTarget(editor.prosemirrorView!.state).gap).toBe(gapBefore(doc, empty));
   });
 });
 
@@ -167,7 +167,7 @@ describe('the gap a paste goes into with a block selected (A3)', () => {
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)));
     const selectedId = (editor.document as Seen[])[1]!.id;
 
-    expect(gapAtCaret(view.state)).toBe(gapAfter(view.state.doc, selectedId));
+    expect(pasteTarget(view.state).gap).toBe(gapAfter(view.state.doc, selectedId));
   });
 });
 
@@ -211,6 +211,20 @@ describe('a paste of files', () => {
     });
     expect(view.state.doc.eq(before)).toBe(true);
     expect(view.state.selection).toBeInstanceOf(TextSelection);
+  });
+
+  it('hands the files over as aimed at an empty line the caret is on', () => {
+    const sink = vi.fn();
+    const editor = open([{ type: 'paragraph', content: 'A' }, { type: 'paragraph' }], sink);
+    const empty = (editor.document as Seen[])[1]!.id;
+    editor.setTextCursorPosition(empty, 'start');
+    const view = editor.prosemirrorView!;
+
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', { value: clipboard([PNG]) });
+    view.dom.dispatchEvent(event);
+
+    expect(sink).toHaveBeenCalledWith({ files: [PNG], gap: gapBefore(view.state.doc, empty), aimed: true });
   });
 
   it('hands nothing over in a read-only body', () => {

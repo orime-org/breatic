@@ -41,40 +41,68 @@ afterEach(() => {
   upload.media.mockReset();
 });
 
+/**
+ * Builds a body for a Space, mounted and focused.
+ * @returns Its handle.
+ */
+function openBody(): ReturnType<typeof getDocumentEditor> {
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
+  const handle = getDocumentEditor(doc, 'project-p1/document-s1', {
+    caretProvider: { awareness: new Awareness(doc) },
+    readWho: () => ({ role: 'owner', viewerId: 'u1' }),
+    editable: true,
+    uploadTarget: { projectId: 'p1', spaceId: 's1' },
+  });
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  containers.push(container);
+  adoptDocumentEditor(handle, container);
+  // A paste lands while the body holds the focus.
+  handle.editor.prosemirrorView!.focus();
+  return handle;
+}
+
+/**
+ * Pastes one file into the body.
+ * @param handle - The body.
+ * @param file - The file.
+ */
+function paste(handle: ReturnType<typeof getDocumentEditor>, file: File): void {
+  const event = new Event('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', {
+    value: {
+      files: [file],
+      types: ['Files'],
+      items: [],
+      getData: () => '',
+    },
+  });
+  handle.editor.prosemirrorView!.dom.dispatchEvent(event);
+}
+
 describe('a body built for a Space (A15)', () => {
   it('uploads a pasted file with the project and the Space, and no node', async () => {
     upload.media.mockReturnValue(new Promise(() => undefined));
-    const doc = new Y.Doc();
-    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
-    const handle = getDocumentEditor(doc, 'project-p1/document-s1', {
-      caretProvider: { awareness: new Awareness(doc) },
-      readWho: () => ({ role: 'owner', viewerId: 'u1' }),
-      editable: true,
-      uploadTarget: { projectId: 'p1', spaceId: 's1' },
-    });
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    containers.push(container);
-    adoptDocumentEditor(handle, container);
-    // A paste lands while the body holds the focus.
-    handle.editor.prosemirrorView!.focus();
+    const handle = openBody();
 
     const file = new File([new Uint8Array(8)], 'shot.png', { type: 'image/png' });
-    const event = new Event('paste', { bubbles: true, cancelable: true });
-    Object.defineProperty(event, 'clipboardData', {
-      value: {
-        files: [file],
-        types: ['Files'],
-        items: [],
-        getData: () => '',
-      },
-    });
-    handle.editor.prosemirrorView!.dom.dispatchEvent(event);
+    paste(handle, file);
 
     await vi.waitFor(() => {
       expect(upload.media).toHaveBeenCalledTimes(1);
     });
     expect(upload.media.mock.calls[0]![0]).toBe(file);
     expect(upload.media.mock.calls[0]![1]).toEqual({ projectId: 'p1', spaceId: 's1' });
+  });
+
+  it('hands a paste on an empty line to the uploader as aimed at that line', () => {
+    const handle = openBody();
+    const start = vi.spyOn(handle.uploader!, 'start').mockResolvedValue(undefined);
+
+    paste(handle, new File([new Uint8Array(8)], 'shot.png', { type: 'image/png' }));
+
+    expect(start).toHaveBeenCalledOnce();
+    expect(start.mock.calls[0]![3]).toBe(true);
   });
 });
