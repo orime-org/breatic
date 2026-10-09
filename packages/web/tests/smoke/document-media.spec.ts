@@ -1255,3 +1255,55 @@ test('a picture is still there after a reload (A13)', async () => {
   await expect(img).toBeVisible({ timeout: 30_000 });
   await expect.poll(() => img.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBe(220);
 });
+
+test('a picture keeps its size under a skeleton while it loads, then shows the original when the preview is too narrow (A23)', async () => {
+  await openFreshDocument(page);
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((done) => {
+    release = done;
+  });
+  await page.route(/\.(png|webp)(\?.*)?$/, async (route) => {
+    if (route.request().resourceType() === 'image') await held;
+    await route.continue();
+  });
+  await pickFromPlus(page, 'image', {
+    name: 'wide.png',
+    mimeType: 'image/png',
+    buffer: await pngBytes(page, 1600, 900),
+  });
+
+  const img = page.locator(`${IMAGE} img`);
+  await expect(img).toHaveCount(1, { timeout: UPLOAD_TIMEOUT });
+  expect(await img.getAttribute('width')).toBe('1600');
+  expect(await img.getAttribute('height')).toBe('900');
+  await expect(page.locator(`${IMAGE} [data-testid="doc-media-skeleton"]`)).toBeVisible();
+  const box = await img.boundingBox();
+  expect(box!.height).toBeGreaterThan(0);
+  expect(Math.abs(box!.width / box!.height - 16 / 9)).toBeLessThan(0.02);
+
+  release();
+  await expect(page.locator(`${IMAGE} [data-testid="doc-media-skeleton"]`)).toHaveCount(0);
+  await expect.poll(() => img.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(1600);
+  expect(await img.getAttribute('src')).not.toContain('.preview.webp');
+});
+
+test('a picture no wider than its preview is drawn from the preview (A23)', async () => {
+  await openFreshDocument(page);
+  // This worktree uploads through the deployed ingest Worker, which does not
+  // cut previews yet; the page's side of the rule is what is checked here.
+  const preview = await pngBytes(page, 400, 300);
+  await page.route(/\.preview\.webp$/, (route) =>
+    route.fulfill({ status: 200, contentType: 'image/webp', body: preview }),
+  );
+  await pickFromPlus(page, 'image', {
+    name: 'small.png',
+    mimeType: 'image/png',
+    buffer: await pngBytes(page, 400, 300),
+  });
+
+  const img = page.locator(`${IMAGE} img`);
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  await expect.poll(() => img.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth)).toBe(400);
+  expect(await img.getAttribute('src')).toMatch(/\.png\.preview\.webp$/);
+  await expect(page.locator(`${IMAGE} [data-testid="doc-media-skeleton"]`)).toHaveCount(0);
+});
