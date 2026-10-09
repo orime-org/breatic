@@ -37,6 +37,8 @@ export type PasteHandler = NonNullable<
 export interface FilesArrival {
   readonly files: readonly File[];
   readonly gap: UploadGap;
+  /** Whether the files were aimed at the empty line right after the gap. */
+  readonly aimed: boolean;
 }
 
 /** Where arriving files are handed over. */
@@ -101,16 +103,25 @@ export function fileDropPosition(context: ComputeDropPositionContext): ComputeDr
  * @returns The gap.
  */
 export function gapAtCaret(state: EditorState): UploadGap {
+  const line = caretLine(state);
+  if (line === null) return state.doc.content.size - 1;
+  return line.empty ? line.start : line.start + line.container.nodeSize;
+}
+
+/**
+ * The block the caret is in, and whether it is an empty line.
+ * @param state - The editor state.
+ * @returns The block's start and node, or null outside any block.
+ */
+function caretLine(state: EditorState): { start: number; container: PMNode; empty: boolean } | null {
   const { $head } = state.selection;
   for (let depth = $head.depth; depth > 0; depth -= 1) {
     const container = $head.node(depth);
     if (container.type.name !== 'blockContainer') continue;
-    const start = $head.before(depth);
-    const emptyLine =
-      container.firstChild?.isTextblock === true && container.firstChild.content.size === 0;
-    return emptyLine ? start : start + container.nodeSize;
+    const empty = container.firstChild?.isTextblock === true && container.firstChild.content.size === 0;
+    return { start: $head.before(depth), container, empty };
   }
-  return state.doc.content.size - 1;
+  return null;
 }
 
 /**
@@ -135,7 +146,7 @@ export function documentFileDropExtension(sink?: FilesSink): ExtensionFactoryIns
               const files = Array.from(event.dataTransfer?.files ?? []);
               const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
               if (sink === undefined || files.length === 0 || at === null) return true;
-              sink({ files, gap: gapAtDrop(view.state.doc, at.pos) });
+              sink({ files, gap: gapAtDrop(view.state.doc, at.pos), aimed: false });
               return true;
             },
           },
@@ -158,7 +169,7 @@ export function filesPasteHandler(sink: FilesSink, next: PasteHandler): PasteHan
     if (files === null) return next(context);
     const view = context.editor.prosemirrorView;
     if (view !== undefined && view !== null) {
-      sink({ files, gap: gapAtCaret(view.state) });
+      sink({ files, gap: gapAtCaret(view.state), aimed: caretLine(view.state)?.empty === true });
     }
     return true;
   };

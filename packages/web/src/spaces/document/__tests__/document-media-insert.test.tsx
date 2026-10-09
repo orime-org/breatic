@@ -130,7 +130,7 @@ describe('the file picker (A1)', () => {
 
     // The uploader makes the gap once a file is admitted.
     expect(gap).not.toHaveBeenCalled();
-    expect(start).toHaveBeenCalledWith(expect.anything(), [file], gap);
+    expect(start).toHaveBeenCalledWith(expect.anything(), [file], gap, true);
   });
 
   it('makes no gap and starts nothing when the picker is closed with no file', () => {

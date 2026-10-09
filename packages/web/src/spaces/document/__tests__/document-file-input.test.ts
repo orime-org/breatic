@@ -207,6 +207,7 @@ describe('a paste of files', () => {
     expect(sink).toHaveBeenCalledWith({
       files: [PNG],
       gap: gapBefore(view.state.doc, idOf(editor, 'B')),
+      aimed: false,
     });
     expect(view.state.doc.eq(before)).toBe(true);
     expect(view.state.selection).toBeInstanceOf(TextSelection);
@@ -264,7 +265,7 @@ describe('a file dropped on an editable body (A1–A3)', () => {
     view.dom.firstElementChild!.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(true);
-    expect(sink).toHaveBeenCalledWith({ files: [PNG], gap: gapAtDrop(view.state.doc, inAlpha) });
+    expect(sink).toHaveBeenCalledWith({ files: [PNG], gap: gapAtDrop(view.state.doc, inAlpha), aimed: false });
   });
 });
 

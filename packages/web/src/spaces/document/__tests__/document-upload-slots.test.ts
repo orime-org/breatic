@@ -18,6 +18,7 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { mediaGapBelow, mediaGapOnRow } from '@web/spaces/document/document-insert-row';
+import { gapAtCaret } from '@web/spaces/document/document-file-input';
 import { textblocks, gapBefore } from './textblocks';
 import {
   addUploadBatch,
@@ -586,7 +587,7 @@ describe('where the placeholder and the block go', () => {
       { type: 'paragraph', props: { quoted: true } },
     ]);
     const gap = mediaGapOnRow(editor, (editor.document as Seen[])[1] as never);
-    const [slot] = addUploadBatch(editor.prosemirrorView!, gap, ['m1']);
+    const [slot] = addUploadBatch(editor.prosemirrorView!, gap, ['m1'], true);
 
     land(editor, slot!);
 
@@ -595,6 +596,50 @@ describe('where the placeholder and the block go', () => {
       ['image', true],
       ['paragraph', true],
     ]);
+  });
+
+  it('lands quoted under the last line of a quote it was pasted on, above an empty line that is not quoted', () => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'Q', props: { quoted: true } },
+      { type: 'paragraph' },
+    ]);
+    editor.setTextCursorPosition(idOf(editor, 'Q'), 'end');
+    const [slot] = addUploadBatch(editor.prosemirrorView!, gapAtCaret(editor.prosemirrorView!.state), ['m1']);
+
+    land(editor, slot!);
+
+    expect((editor.document as Seen[]).map((block) => [block.type, block.props['quoted']])).toEqual([
+      ['paragraph', true],
+      ['image', true],
+      ['paragraph', false],
+    ]);
+  });
+
+  it('lands unquoted under a line that is not quoted, pasted on it, above the empty first line of a quote', () => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'P' },
+      { type: 'paragraph', props: { quoted: true } },
+    ]);
+    editor.setTextCursorPosition(idOf(editor, 'P'), 'end');
+    const [slot] = addUploadBatch(editor.prosemirrorView!, gapAtCaret(editor.prosemirrorView!.state), ['m1']);
+
+    land(editor, slot!);
+
+    expect((editor.document as Seen[]).map((block) => block.props['quoted'])).toEqual([false, false, true]);
+  });
+
+  it('lands a batch aimed at an empty quoted line all quoted, whichever file finishes first', () => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'intro' },
+      { type: 'paragraph', props: { quoted: true } },
+    ]);
+    const gap = mediaGapOnRow(editor, (editor.document as Seen[])[1] as never);
+    const ids = addUploadBatch(editor.prosemirrorView!, gap, ['m1', 'm2'], true);
+
+    land(editor, ids[1]!);
+    land(editor, ids[0]!);
+
+    expect((editor.document as Seen[]).map((block) => block.props['quoted'])).toEqual([false, true, true, true]);
   });
 
   it('takes its quoting from the rows beside it when it lands, not from where it was dropped', () => {

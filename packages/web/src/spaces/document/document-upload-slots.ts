@@ -34,7 +34,7 @@ import type * as Y from 'yjs';
 
 import { keyedStore } from '@web/lib/keyed-store';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
-import { syncBindingOf } from '@web/spaces/document/document-link-tracking';
+import { syncBindingOf, type SyncBound } from '@web/spaces/document/document-link-tracking';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { namesOnUndoStack } from '@web/spaces/document/document-undo-selection';
@@ -72,6 +72,8 @@ export interface UploadBatch {
   readonly id: string;
   /** The gap the files go into. */
   readonly gap: UploadGap;
+  /** The empty line the reader aimed the files at, when they did. */
+  readonly aimedRow: string | null;
   readonly slots: readonly UploadSlot[];
 }
 
@@ -109,14 +111,33 @@ export const documentUploadsKey = new PluginKey<UploadsState>('documentUploads')
 /** The attribute a placeholder's container carries, naming its slot. */
 export const UPLOAD_SLOT_ATTRIBUTE = 'data-upload-slot';
 
+/** A file of a batch already inserted, beside the k-th one. */
+interface InsertedSibling {
+  readonly row: NonNullable<ReturnType<typeof rowById>>;
+  /** Whether it comes after the k-th file. */
+  readonly after: boolean;
+}
+
 /**
- * Where a container starting at the given block sits, if the document holds it.
+ * The nearest file of a batch already inserted next to the k-th one: the
+ * nearest later one, else the nearest earlier one.
+ * @param batch - The batch.
+ * @param k - The file's index in it.
  * @param doc - The document now.
- * @param id - The block's id.
- * @returns Its start and end, or undefined.
+ * @returns That file's row, or undefined when none is in the document.
  */
-function rangeOf(doc: PMNode, id: string | null): { from: number; to: number } | undefined {
-  return id === null ? undefined : rowById(doc, id);
+function insertedSibling(batch: UploadBatch, k: number, doc: PMNode): InsertedSibling | undefined {
+  for (let later = k + 1; later < batch.slots.length; later += 1) {
+    const id = batch.slots[later]!.blockId;
+    const row = id === null ? undefined : rowById(doc, id);
+    if (row !== undefined) return { row, after: true };
+  }
+  for (let earlier = k - 1; earlier >= 0; earlier -= 1) {
+    const id = batch.slots[earlier]!.blockId;
+    const row = id === null ? undefined : rowById(doc, id);
+    if (row !== undefined) return { row, after: false };
+  }
+  return undefined;
 }
 
 /**
@@ -130,15 +151,9 @@ function rangeOf(doc: PMNode, id: string | null): { from: number; to: number } |
  * @returns A position between two blocks.
  */
 export function resolveSlotPosition(batch: UploadBatch, k: number, doc: PMNode): number {
-  for (let later = k + 1; later < batch.slots.length; later += 1) {
-    const range = rangeOf(doc, batch.slots[later]!.blockId);
-    if (range !== undefined) return range.from;
-  }
-  for (let earlier = k - 1; earlier >= 0; earlier -= 1) {
-    const range = rangeOf(doc, batch.slots[earlier]!.blockId);
-    if (range !== undefined) return range.to;
-  }
-  return batch.gap;
+  const sibling = insertedSibling(batch, k, doc);
+  if (sibling === undefined) return batch.gap;
+  return sibling.after ? sibling.row.from : sibling.row.to;
 }
 
 /**
@@ -167,27 +182,28 @@ export function blockGapAt(doc: PMNode, pos: number): number {
 }
 
 /**
- * Whether a block inserted at a gap goes in quoted: as the block before it, or
- * the block after it at the head of a level or when that block is an empty
- * line — files land above an empty line only because the reader aimed them at
- * it (the insert menu on it, a paste with the caret in it).
- * @param doc - The document.
- * @param at - A position between two blocks.
+ * Whether the k-th file of a batch goes in quoted: as the files of the batch
+ * already inserted beside it, so a batch lands quoted as one; else as the
+ * empty line the reader aimed it at, while that line still follows its gap;
+ * else as the block before it, or the block after it at the head of a level.
+ * @param batch - The batch.
+ * @param k - The file's index in it.
+ * @param doc - The document now.
+ * @param at - Where it goes.
  * @returns True when quoted.
  */
-function quotedAt(doc: PMNode, at: number): boolean {
+function quotedAt(batch: UploadBatch, k: number, doc: PMNode, at: number): boolean {
+  const sibling = insertedSibling(batch, k, doc);
+  const aimed = batch.aimedRow === null ? undefined : rowById(doc, batch.aimedRow);
   const $at = doc.resolve(at);
-  const after = $at.nodeAfter?.firstChild;
-  const emptyLineAfter = after?.isTextblock === true && after.content.size === 0;
-  const beside = emptyLineAfter ? $at.nodeAfter : ($at.nodeBefore ?? $at.nodeAfter);
+  const beside =
+    sibling?.row.node ?? (aimed?.from === at ? aimed.node : ($at.nodeBefore ?? $at.nodeAfter));
   return beside?.firstChild?.attrs[QUOTED] === true;
 }
 
 /** Each batch's gap as Yjs names it, by batch id. */
 type NamedGaps = ReadonlyMap<string, Y.RelativePosition>;
 
-/** The sync binding, as a gap's name is taken and read against. */
-type Binding = NonNullable<ReturnType<typeof syncBindingOf>>;
 
 /**
  * A gap as Yjs names it.
@@ -195,7 +211,7 @@ type Binding = NonNullable<ReturnType<typeof syncBindingOf>>;
  * @param gap - The gap.
  * @returns Its relative position.
  */
-function nameGap(bound: Binding, gap: UploadGap): Y.RelativePosition {
+function nameGap(bound: SyncBound, gap: UploadGap): Y.RelativePosition {
   return absolutePositionToRelativePosition(gap, bound.type, bound.mapping) as Y.RelativePosition;
 }
 
@@ -205,7 +221,7 @@ function nameGap(bound: Binding, gap: UploadGap): Y.RelativePosition {
  * @param name - The gap's relative position.
  * @returns The position, or null when Yjs cannot place it.
  */
-function gapNamed(bound: Binding, name: Y.RelativePosition): UploadGap | null {
+function gapNamed(bound: SyncBound, name: Y.RelativePosition): UploadGap | null {
   return relativePositionToAbsolutePosition(bound.doc, bound.type, name, bound.mapping);
 }
 
@@ -460,12 +476,15 @@ function send(view: EditorView, action: UploadsAction): void {
  * @param view - The editor view.
  * @param gap - The gap, a position between two blocks.
  * @param names - The files' names, in the order they came in.
+ * @param aimed - Whether the reader aimed the files at the empty line right
+ *   after the gap: its insert menu, or a paste with the caret in it.
  * @returns The slots' ids, in the same order.
  */
 export function addUploadBatch(
   view: EditorView,
   gap: UploadGap,
   names: readonly string[],
+  aimed = false,
 ): string[] {
   const slots = names.map((name) => ({
     id: crypto.randomUUID(),
@@ -475,7 +494,10 @@ export function addUploadBatch(
     failure: null,
     blockId: null,
   }));
-  send(view, { kind: 'add', batch: { id: crypto.randomUUID(), gap: blockGapAt(view.state.doc, gap), slots } });
+  const at = blockGapAt(view.state.doc, gap);
+  const next = view.state.doc.resolve(at).nodeAfter;
+  const aimedRow = aimed && typeof next?.attrs['id'] === 'string' ? next.attrs['id'] : null;
+  send(view, { kind: 'add', batch: { id: crypto.randomUUID(), gap: at, aimedRow, slots } });
   return slots.map((slot) => slot.id);
 }
 
@@ -540,7 +562,7 @@ export function insertSlotBlock(
     if (k < 0 || batch.slots[k]!.phase !== 'uploading') continue;
     const blockId = crypto.randomUUID();
     const at = resolveSlotPosition(batch, k, view.state.doc);
-    const props = { ...block.props, [QUOTED]: quotedAt(view.state.doc, at) };
+    const props = { ...block.props, [QUOTED]: quotedAt(batch, k, view.state.doc, at) };
     const node = blockToNode({ ...block, props, id: blockId } as never, view.state.schema);
     undo?.stopCapturing();
     view.dispatch(

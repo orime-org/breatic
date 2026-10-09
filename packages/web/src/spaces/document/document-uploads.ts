@@ -62,7 +62,7 @@ export interface DocumentUploader {
    * once at least one file is admitted (the insert menu makes its gap then);
    * null puts nothing anywhere.
    */
-  start(view: EditorView, files: readonly File[], place: () => UploadGap | null): Promise<void>;
+  start(view: EditorView, files: readonly File[], place: () => UploadGap | null, aimed?: boolean): Promise<void>;
   /** Sends a failed file again, when doing so can end differently. */
   retry(view: EditorView, slotId: string): void;
   /** Takes a failed placeholder away. */
@@ -173,7 +173,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
   }
 
   return {
-    async start(view, files, place) {
+    async start(view, files, place, aimed = false) {
       const maxBytes = await deps.maxUploadBytes();
       const admitted: File[] = [];
       for (const file of files) {
@@ -190,7 +190,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       if (admitted.length === 0) return;
       const gap = place();
       if (gap === null) return;
-      const ids = addUploadBatch(view, gap, admitted.map((file) => file.name));
+      const ids = addUploadBatch(view, gap, admitted.map((file) => file.name), aimed);
       ids.forEach((slotId, k) => {
         held.set(slotId, admitted[k]!);
         void run(view, slotId);
