@@ -157,7 +157,7 @@ config/ locales/ (git-tracked)
 |---|---|---|
 | 1 | BullMQ 投递(第 N 次尝试) | — |
 | 2 | 重入守卫读任务行:`billed_at` 已设 → 上次已完成并扣过费,原样返回;`provider_result_url` 已设而 `billed_at` 未设 → 上次调过厂商但没走到扣费,标失败不再重试 | — |
-| 3 | 调厂商,或交给 ingest Worker 跑容器作业。目录模型按 `task_upstream_steps` 逐步走(`run-steps.ts`):先存下 prediction id 再轮询,已完成的步骤复用它的答复。容器作业的 id、截止时间和产物 key 记在 `container_job` 这一步上,每次取出只查一次作业:还在跑 → `job.moveToDelayed`(间隔取 `config/mini-tools.yaml` 的 `poll_interval_ms`)+ `DelayedError`,不消耗重试次数;跑完 → 产物已在 R2,逐个经上传那条登记路径入账,按容器报回的用量记一次费用 | **抛异常 → BullMQ 重跑整个任务**(次数取 `job_attempts`,默认 3),重跑按那张表续上:已提交的按 id 续轮询、不再提交一次。**上游自己报这次 prediction 失败(`UpstreamTaskFailed`)除外** —— 重跑读到的还是同一个失败,所以当场结算为失败、不再重试 |
+| 3 | 调厂商,或交给 ingest Worker 跑容器作业。目录模型按 `task_upstream_steps` 逐步走(`run-steps.ts`):先存下 prediction id 再问结果,已完成的步骤复用它的答复。**每次取出对每个上游只问一次**:还没完成、查询答 5xx / 429 / 网络错误、理解读媒体的名额满,一律抛 `StillRunning`,`dispatch.ts` 那一处 catch 调 `job.moveToDelayed`(下次取出的时刻)+ `DelayedError` 把 job 放回队列,不消耗重试次数、不占处理位。到了任务的截止时间(`taskDeadline`:任务行里最早的 `started_at + budget_ms`,没有任务行就是任务 `created_at` 加两小时)还没完成,改抛 `TaskDeadlinePassed`,任务行结算为 `expired`;截止之后不再提交任何付费调用。容器作业的 id、截止时间和产物 key 记在 `container_job` 这一步上,沿用自己的截止时间(再加两个查询间隔);跑完 → 产物已在 R2,逐个经上传那条登记路径入账,按容器报回的用量记一次费用 | **抛异常 → BullMQ 重跑整个任务**(次数取 `job_attempts`,默认 3),重跑按那张表续上:已提交的按 id 接着问、不再提交一次。查询答 5xx / 429 / 网络错误之外的 4xx、或答了不是 JSON 的 200,按普通异常算、消耗一次重试。**上游自己报这次 prediction 失败(`UpstreamTaskFailed`)和已过截止(`TaskDeadlinePassed`)除外** —— 重跑得到的还是同一个答案,所以当场结算、不再重试。一次重试会重复的付费调用,在它之前打一次 `provider_reinvoked_on_retry_potential_duplicate_cost`(每次重试只打一次,worker 卡死后的重投也算一次重试) |
 | 4 | **写下「厂商已返回」这个事实 —— 这行是「不归路」** | — |
 | 5 | 转存到永久存储(交给 ingest Worker 拉取厂商产出在此) | **标失败 + 正常返回不抛异常 → BullMQ 不重跑**,且不扣用户积分 |
 | 6 | 标完成 + 锁定计费(`billed_at` 上 CAS,只有第一个到达者赢) | — |
@@ -289,7 +289,7 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 | `.env.docker` | Docker 部署模板(容器名 URLs) |
 | `config/agent.yaml` | Agent 模型、归纳模型、loop 次数、四道闸(输入 15,000 字 / 输出 16,384 token / 归纳线 850,000 字 / 归纳后留 500,000 字)、留几对工具结果(`tool_result_keep` 3)|
 | `config/text-tools.yaml` | Text mini-tool 模型 |
-| `config/worker.yaml` | Worker 并发、重试、轮询 |
+| `config/worker.yaml` | Worker 并发(按队列:`tasks` 50、其余 5)、重试、问结果的间隔 |
 | `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制、一条 socket 承载多少文档。**单文档并发可写连接数上限不在这里**——它来自档位,见 `config/membership.yaml` 的 `concurrent_editors` |
 | `config/pricing.yaml` | **不随仓库分发**(见本表下方那条),积分**购买包**(5 档一次性购买,不是订阅/会员,test+live Stripe ID)+ `trial_grant.credits`(新账号建成个人 Studio 那一刻发多少体验积分;只在计费打开的部署发,**零是真值零**不是哨兵) |
 | `config/subscription.yaml` | **会员订阅**计划:每个可订阅档位**每个计费周期**(月 / 年)各一个价 + test/live Stripe Price ID + 订阅状态过期判据 + 问 Stripe 现状的超时。加载器 `packages/core/src/config/subscription.ts`。跟 `pricing.yaml`(积分包,买断不是订阅)、`membership.yaml`(那一档的上限)是三件事 |
