@@ -15,29 +15,10 @@
  */
 
 import { getStorageAdapter, logger } from "@breatic/core";
-import type { StudioAssetEntity } from "@breatic/shared";
+import type { PasteHistoryItem, PastePair, StudioAssetEntity } from "@breatic/shared";
 import { assetRepo, assetService, ingestReportService, nodeHistoryService } from "@breatic/domain";
 
 import { assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
-
-/** A video (or audio) address and the cover it shows. */
-export interface PastePair {
-  url: string;
-  cover: string;
-}
-
-/** One copy's history, from its own data. */
-export interface PasteHistoryItem {
-  node_id: string;
-  kind: "media" | "text";
-  content: string;
-  coverUrl?: string | undefined;
-  width?: number | undefined;
-  height?: number | undefined;
-  mimeType?: string | undefined;
-  size?: number | undefined;
-  duration?: number | undefined;
-}
 
 /** What a paste asks for. */
 export interface PasteInput {
@@ -83,15 +64,17 @@ export async function pasteAssets(input: PasteInput): Promise<Record<string, str
   const misses: Miss[] = [];
   // The cover row in the target Studio for each cover address that has one.
   const coverRows = new Map<string, StudioAssetEntity>();
-  const videos: Array<{ pair: PastePair; video: StudioAssetEntity; cover: StudioAssetEntity | null; hit: StudioAssetEntity | null }> = [];
+  // Each video's hit in the target Studio, or the miss it is filed from.
+  const videos: Array<{ pair: PastePair; hit: StudioAssetEntity | null; miss: Miss | null }> = [];
   for (const pair of input.pairs) {
     const video = await sourceOf(pair.url);
     if (video === null) continue;
     const cover = await sourceOf(pair.cover);
     const hit = await assetRepo.findByStudioAndHash(studioId, video.contentHash);
-    videos.push({ pair, video, cover, hit });
-    if (hit === null) misses.push({ address: pair.url, source: video, as: "upload" });
-    else map[pair.url] = hit.fileUrl;
+    const miss: Miss | null = hit === null ? { address: pair.url, source: video, as: "upload" } : null;
+    videos.push({ pair, hit, miss });
+    if (miss !== null) misses.push(miss);
+    else if (hit !== null) map[pair.url] = hit.fileUrl;
     if (cover === null) continue;
     const standing = hit === null ? null : await assetRepo.findCoverOf(hit.id);
     if (standing !== null) {
@@ -154,13 +137,13 @@ export async function pasteAssets(input: PasteInput): Promise<Record<string, str
       map[miss.address] = null;
     }
   }
-  for (const { pair, hit } of videos) {
+  for (const { pair, hit, miss } of videos) {
     const cover = coverRows.get(pair.cover);
-    if (hit === null) {
-      const miss = misses.find((m) => m.address === pair.url);
-      if (miss !== undefined) await file(miss, cover?.id);
+    if (miss !== null) {
+      await file(miss, cover?.id);
       continue;
     }
+    if (hit === null) continue;
     // A video the Studio already held: keep the cover it shows, or give it
     // this one when it has none.
     if (cover === undefined) continue;

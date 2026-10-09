@@ -134,7 +134,6 @@ async function paste(
     headers: { "Content-Type": "application/json", Cookie: cookie },
     body: JSON.stringify({
       project_id: projectId,
-      space_id: crypto.randomUUID(),
       urls: body.urls ?? [],
       pairs: body.pairs ?? [],
       history: body.history ?? [],
@@ -279,6 +278,15 @@ describe("POST /canvas/paste", () => {
     expect(res.status).toBe(200);
     expect((await history(a.projectId, node)).map((r) => [r.entry_type, r.content])).toEqual([["snapshot", "hello\nworld"]]);
     expect(await ledger(a.studioId)).toHaveLength(before);
+  });
+
+  it("keeps a text copy's words however long they are, as the snapshot route does", async () => {
+    const a = await seedEditor();
+    const node = crypto.randomUUID();
+    const words = "x".repeat(250_000);
+    const res = await paste(a.cookie, a.projectId, { history: [{ node_id: node, kind: "text", content: words }] });
+    expect(res.status).toBe(200);
+    expect((await history(a.projectId, node)).map((r) => r.content.length)).toEqual([words.length]);
   });
 
   it("leaves an address no ledger knows out of the map and writes it no history", async () => {

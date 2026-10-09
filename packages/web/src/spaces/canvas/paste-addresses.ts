@@ -13,23 +13,16 @@
  * belongs to.
  */
 
-import { isStoredObjectUrl } from '@breatic/shared';
+import { isStoredObjectUrl, type PasteHistoryItem, type PastePair } from '@breatic/shared';
 
-import type { PasteHistoryItem } from '@web/data/api/canvas';
 import type { SnapshotNode } from '@web/data/yjs/canvas-space';
-
-/** A video (or audio) address and its cover. */
-export interface AddressPair {
-  url: string;
-  cover: string;
-}
 
 /** The addresses one paste sends. */
 export interface PasteAddresses {
   /** Addresses that are not one half of a pair, each once. */
   urls: string[];
   /** Video and cover pairs, each once. */
-  pairs: AddressPair[];
+  pairs: PastePair[];
 }
 
 /** Node types whose `content` is a media address. */
@@ -51,7 +44,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 export function collectAddresses(nodes: ReadonlyArray<SnapshotNode>): PasteAddresses {
   const urls = new Set<string>();
-  const pairs = new Map<string, AddressPair>();
+  const pairs = new Map<string, PastePair>();
   /**
    * Record a pair once.
    * @param url - The media address.
