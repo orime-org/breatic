@@ -162,7 +162,7 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
     // The same whitelist the canvas holds a reader's own drag to. A line they
     // could not draw by hand is one the agent may not draw for them.
     if (into && outOf && !canConnect(outOf.type, into.type)) {
-      return refuse("edge-not-allowed", `The canvas does not let ${aNode(outOf.type)} feed ${aNode(into.type)}, by your hand or theirs, so leave this edge off.${pickedInstead(into, outOf)}`);
+      return refuse("edge-not-allowed", `The canvas does not let ${aNode(outOf.type)} feed ${aNode(into.type)}, by your hand or theirs, so leave this edge off.${pickedInstead(proposal, into, outOf)}`);
     }
   }
   if (hasRing(proposal)) {

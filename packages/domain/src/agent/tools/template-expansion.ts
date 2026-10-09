@@ -21,6 +21,7 @@ import {
 } from "@breatic/shared";
 
 import { refuse, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
+import { poolSentence } from "@domain/agent/tools/proposal-routing.js";
 
 /** The node with its template filled in, or why the template does not apply. */
 export type TemplateExpansion =
@@ -63,7 +64,7 @@ export function expandTemplate(node: ProposalNode & { template: string }): Templ
     return refuse("template-type", `Template "${id}" is for ${template.nodeType} nodes, not ${rest.type}.`);
   }
   if (rest.prompt === undefined) {
-    return refuse("template-no-prompt", `"${rest.name}" names template "${id}" and sends no prompt. Send the template's prompt as its own, rewritten in the reader's language with their story or detail in it: ${templateSegmentsText(template)}.`);
+    return refuse("template-no-prompt", `"${rest.name}" names template "${id}" and sends no prompt. Send the template's prompt as its own, rewritten in the reader's language with their story or detail in it: ${templateSegmentsText(template)}. Each node the prompt @s goes into the pool. ${poolSentence(rest.name)}`);
   }
   const mode = rest.mode ?? template.mode;
   const model = rest.model ?? template.model;

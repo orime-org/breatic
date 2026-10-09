@@ -87,9 +87,7 @@ export function holdingOf(node: ProposalNode): Holding {
 export function entriesFor(chosen: ModelInfo, kind: string, holding: Holding): Entry[] {
   const wired = canConnect(kind, chosen.nodeType);
   return (waysIn(chosen).get(kind as WayKind) ?? []).flatMap((way): Entry[] => {
-    // The pool is @'d by a ref, and a node landing empty there needs a note
-    // saying what to put in it or run first.
-    if (way.mark === "ref") return wired ? [{ way, by: "edge", ref: true, note: holding === "empty" }] : [];
+    if (way.mark === "ref") return wired ? [poolEntry(way, holding)] : [];
     // The lyrics box is @'d at landing.
     if (way.mark === "placed") return wired && holding !== "material" ? [{ way, by: "edge", ref: false, note: false }] : [];
     // A slot: material fills it as a pick would; anything else is picked by
@@ -100,13 +98,37 @@ export function entriesFor(chosen: ModelInfo, kind: string, holding: Holding): E
 }
 
 /**
+ * The entry by which a node goes into a pool: an edge and a ref, and a note
+ * saying what to put in it or run first when it lands empty.
+ * @param way - The pool.
+ * @param holding - What the node holds.
+ * @returns The entry.
+ * @throws {never} Never.
+ */
+function poolEntry(way: WayIn, holding: Holding): Entry {
+  return { way, by: "edge", ref: true, note: holding === "empty" };
+}
+
+/**
+ * How a node goes into a generation's pool, for advice given before the
+ * generation's model is settled: once holding material or words, once empty.
+ * @param generation - The generation's name.
+ * @returns The sentence.
+ * @throws {never} Never.
+ */
+export function poolSentence(generation: string): string {
+  const pool: WayIn = { into: "pool", room: Number.POSITIVE_INFINITY, mark: "ref" };
+  return `A node holding material or words goes into "${generation}" ${entryPhrase(poolEntry(pool, "material"), generation)}; an empty one ${entryPhrase(poolEntry(pool, "empty"), generation)}.`;
+}
+
+/**
  * One entry, as the agent is told to send it.
  * @param entry - The entry.
  * @param generation - The generation's name.
  * @returns The phrase.
  * @throws {never} Never.
  */
-function entryPhrase(entry: Entry, generation: string): string {
+export function entryPhrase(entry: Entry, generation: string): string {
   const { into } = entry.way;
   if (entry.by === "fills") return `through fills "${into}" on "${generation}", with no edge and no ref`;
   if (entry.by === "unwired") return `unwired, with a note saying to pick it into "${into}" and no ref`;
@@ -123,27 +145,79 @@ function entryPhrase(entry: Entry, generation: string): string {
  * How a node goes into a generation, said for the agent.
  * @param subject - The node, as the sentence names it.
  * @param generation - The generation it goes into.
- * @param kind - The node's kind.
- * @param entries - Its entries, from `entriesFor`.
+ * @param entries - Its entries, from `entriesFor`, at least one.
  * @returns The sentence.
  * @throws {never} Never.
  */
-export function waysSentence(subject: string, generation: ProposalNode, kind: string, entries: readonly Entry[]): string {
-  const model = generation.model ?? generation.name;
-  if (entries.length === 0) return `"${model}" takes no ${kind} node, so ${subject} has no way into "${generation.name}".`;
+export function waysSentence(subject: string, generation: ProposalNode, entries: readonly Entry[]): string {
   return `${subject} goes into "${generation.name}" ${entries.map((entry) => entryPhrase(entry, generation.name)).join(", or ")}.`;
 }
 
 /**
- * How one named node goes into a generation, said for the agent.
+ * How one named node goes into a generation, said for the agent. Where the
+ * model takes nothing of its kind, the sentence says so and where else in the
+ * group it goes, so the node is never left with nowhere to be.
+ * @param proposal - The whole proposal.
  * @param node - The node.
  * @param generation - The generation.
  * @param chosen - The generation's model.
  * @returns The sentence.
  * @throws {never} Never.
  */
-export function nodeWaysSentence(node: ProposalNode, generation: ProposalNode, chosen: ModelInfo): string {
-  return waysSentence(`"${node.name}"`, generation, node.type, entriesFor(chosen, node.type, holdingOf(node)));
+export function nodeWaysSentence(proposal: CanvasProposal, node: ProposalNode, generation: ProposalNode, chosen: ModelInfo): string {
+  const entries = entriesFor(chosen, node.type, holdingOf(node));
+  if (entries.length > 0) return waysSentence(`"${node.name}"`, generation, entries);
+  return `"${chosen.name}" takes no ${node.type} node, so "${node.name}" has no way into "${generation.name}".${spaced(elsewhereSentence(proposal, node, generation))}`;
+}
+
+/**
+ * A sentence with the space that joins it to the one before, or nothing.
+ * @param sentence - The sentence, possibly empty.
+ * @returns It with a leading space, or the empty string.
+ * @throws {never} Never.
+ */
+export function spaced(sentence: string): string {
+  return sentence === "" ? "" : ` ${sentence}`;
+}
+
+/**
+ * Whether a node already goes into a generation, by an edge or its fills.
+ * @param proposal - The whole proposal.
+ * @param node - The node.
+ * @param generation - The generation.
+ * @returns True when it does.
+ * @throws {never} Never.
+ */
+function reaches(proposal: CanvasProposal, node: ProposalNode, generation: ProposalNode): boolean {
+  const from = proposal.nodes.indexOf(node);
+  const to = proposal.nodes.indexOf(generation);
+  return proposal.edges.some((edge) => edge.fromIndex === from && edge.toIndex === to) || Object.values(generation.fills ?? {}).some((indices) => indices.includes(from));
+}
+
+/**
+ * Where a source node goes once it does not go into one generation: each
+ * other generation here that takes it and it does not reach yet, how; nothing
+ * when it already goes into another; else that it comes out. A node that
+ * generates or holds words stands on the canvas without going anywhere, so it
+ * needs nothing said.
+ * @param proposal - The whole proposal.
+ * @param from - The node.
+ * @param away - The generation it does not go into, or none.
+ * @returns The sentence, or the empty string.
+ * @throws {never} Never.
+ */
+export function elsewhereSentence(proposal: CanvasProposal, from: ProposalNode, away?: ProposalNode): string {
+  if (from.role !== "source") return "";
+  const others = proposal.nodes.filter((generation) => generation !== away);
+  const takers = others.flatMap((generation) => {
+    const chosen = chosenModelOf(generation);
+    if (chosen === undefined || reaches(proposal, from, generation)) return [];
+    const entries = entriesFor(chosen, from.type, holdingOf(from));
+    return entries.length > 0 ? [waysSentence(`"${from.name}"`, generation, entries)] : [];
+  });
+  if (takers.length > 0) return `Send it into a generation that takes it: ${takers.join(" ")}`;
+  if (others.some((generation) => chosenModelOf(generation) !== undefined && reaches(proposal, from, generation))) return "";
+  return `No generation here takes ${aNode(from.type)}; take "${from.name}" out, or propose a model that takes it.`;
 }
 
 /**
@@ -164,7 +238,7 @@ export function slotSentence(chosen: ModelInfo, generation: ProposalNode, kind: 
   return subjects
     .map(([holding, subject]) => [subject, entriesFor(chosen, kind, holding).filter((entry) => entry.way.into === into)] as const)
     .filter(([, entries]) => entries.length > 0)
-    .map(([subject, entries]) => waysSentence(subject, generation, kind, entries))
+    .map(([subject, entries]) => waysSentence(subject, generation, entries))
     .join(" ");
 }
 
@@ -188,27 +262,6 @@ function capitalised(phrase: string): string {
  */
 export function boxReason(chosen: ModelInfo, generation: ProposalNode, key: string): string {
   return `"${key}" is written in a box of its own on the panel, and nothing set here reaches it. Leave it out. ${slotSentence(chosen, generation, "text", key)}`;
-}
-
-/**
- * Where else in the group a node goes, for the refusal of an edge into a model
- * that takes nothing of its kind. A node generating or holding words can stay
- * wired as a creative link; a source node is there to be used, so it is told
- * which generation here takes it, or to come out.
- * @param proposal - The whole proposal.
- * @param from - The node.
- * @returns The sentence.
- * @throws {never} Never.
- */
-function elsewhereSentence(proposal: CanvasProposal, from: ProposalNode): string {
-  if (from.role !== "source") return "Leave into off that edge, or propose a model that takes it.";
-  const takers = proposal.nodes.flatMap((generation) => {
-    const chosen = chosenModelOf(generation);
-    return chosen !== undefined && entriesFor(chosen, from.type, holdingOf(from)).length > 0 ? [nodeWaysSentence(from, generation, chosen)] : [];
-  });
-  return takers.length > 0
-    ? `Send it into a generation that takes it: ${takers.join(" ")}`
-    : `No generation here takes ${aNode(from.type)}; propose a model that takes it, or take "${from.name}" out.`;
 }
 
 /** A node going into a generation, and the entry it arrives by. */
@@ -245,10 +298,14 @@ export function routeEdges(
     // (user 2026-08-13); saying where it goes is a claim the model refutes.
     if (options.length === 0) {
       if (edge.into === undefined) continue;
-      return refuse("edge-kind-not-taken", `"${chosen.name}" takes no ${from.type} node, so the edge from "${from.name}" goes nowhere in it. ${elsewhereSentence(proposal, from)}`);
+      const nowhere = `"${chosen.name}" takes no ${from.type} node, so the edge from "${from.name}" goes nowhere in it.`;
+      // A source is there to be used, so it is told where it goes instead;
+      // anything else can stay wired as a creative link.
+      if (from.role !== "source") return refuse("edge-kind-not-taken-link", `${nowhere} Leave into off that edge, or propose a model that takes it.`);
+      return refuse("edge-kind-not-taken", `${nowhere} Take that edge off.${spaced(elsewhereSentence(proposal, from, generation))}`);
     }
     if (edge.into === undefined && options.length > 1) {
-      return refuse("edge-into-ambiguous", `The edge from "${from.name}" says no into, and "${chosen.name}" takes ${aNode(from.type)} more than one way. ${nodeWaysSentence(from, generation, chosen)}`);
+      return refuse("edge-into-ambiguous", `The edge from "${from.name}" says no into, and "${chosen.name}" takes ${aNode(from.type)} more than one way. ${nodeWaysSentence(proposal, from, generation, chosen)}`);
     }
     const into = edge.into ?? options[0]?.into;
     // The edge stands only as one of the node's entries: material reaches a
@@ -256,7 +313,7 @@ export function routeEdges(
     // into a slot is no entry of a node holding material.
     const entry = entriesFor(chosen, from.type, holdingOf(from)).find((e) => e.by === "edge" && e.way.into === into);
     if (entry === undefined) {
-      return refuse("edge-not-an-entry", `"${from.name}" does not go into "${String(into)}" of "${generation.name}" by an edge. ${nodeWaysSentence(from, generation, chosen)}`);
+      return refuse("edge-not-an-entry", `"${from.name}" does not go into "${String(into)}" of "${generation.name}" by an edge. ${nodeWaysSentence(proposal, from, generation, chosen)}`);
     }
     routed.push({ node: from, entry });
   }
@@ -293,27 +350,30 @@ export function fillsOf(
     if (named.includes(node)) {
       return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself, and a node cannot fill its own slot. Check the index the fill means.`);
     }
-    const told = named.map((from) => nodeWaysSentence(from, node, chosen)).join(" ");
+    const told = named.map((from) => nodeWaysSentence(proposal, from, node, chosen)).join(" ");
     const way = slots.find((option) => option.into === param);
     if (way === undefined) {
-      const which = chosen.params[param]?.fromReferencePool === true
-        ? `"${param}" is the reference pool of "${chosen.name}", which takes no fills.`
-        : `"${chosen.name}" has no slot "${param}".`;
-      return refuse("fill-not-a-slot", `${which} ${told}`);
+      return chosen.params[param]?.fromReferencePool === true
+        ? refuse("fill-into-pool", `"${param}" is the reference pool of "${chosen.name}", which takes no fills. Take fills "${param}" off. ${told}`)
+        : refuse("fill-not-a-slot", `"${chosen.name}" has no slot "${param}". Take fills "${param}" off. ${told}`);
     }
     const kind = [...ways.entries()].find(([, list]) => list.includes(way))?.[0];
-    const seen = new Set<string>();
+    const seen = new Map<string, ProposalNode>();
     for (const from of named) {
       if (from.material === undefined) {
-        return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${from.name}", which holds no material, and fills takes only nodes holding it. ${nodeWaysSentence(from, node, chosen)}`);
+        return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${from.name}", which holds no material, and fills takes only nodes holding it. Take "${from.name}" out of fills "${param}". ${nodeWaysSentence(proposal, from, node, chosen)}`);
       }
       if (from.type !== kind) {
-        return refuse("fill-wrong-kind", `"${chosen.name}" takes ${String(kind)} in "${param}", and "${from.name}" is ${from.type}. ${nodeWaysSentence(from, node, chosen)}`);
+        return refuse("fill-wrong-kind", `"${chosen.name}" takes ${String(kind)} in "${param}", and "${from.name}" is ${from.type}. Take "${from.name}" out of fills "${param}". ${nodeWaysSentence(proposal, from, node, chosen)}`);
       }
-      if (seen.has(from.material)) {
-        return refuse("fill-twice", `fills "${param}" on "${node.name}" holds the same material twice; the slot keeps one copy of it.`);
+      const twin = seen.get(from.material);
+      if (twin === from) {
+        return refuse("fill-repeated", `fills "${param}" on "${node.name}" names "${from.name}" twice, and the slot keeps one copy of it. Name it once.`);
       }
-      seen.add(from.material);
+      if (twin !== undefined) {
+        return refuse("fill-twice", `fills "${param}" on "${node.name}" holds "${twin.name}" and "${from.name}", which hold the same material, and the slot keeps one copy of it. Take "${from.name}" out.`);
+      }
+      seen.set(from.material, from);
       filled.push({ node: from, entry: { way, by: "fills", ref: false, note: false } });
     }
   }

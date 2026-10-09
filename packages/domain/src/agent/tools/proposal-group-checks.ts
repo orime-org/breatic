@@ -10,9 +10,8 @@ import type { CanvasProposal, ProposalNode } from "@breatic/shared";
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { refuse } from "@domain/agent/tools/proposal-refusals.js";
 import {
-  aNode,
   chosenModelOf,
-  entriesFor,
+  elsewhereSentence,
   nodeWaysSentence,
   notesAsked,
   notesIn,
@@ -86,14 +85,15 @@ function placesByKind(proposal: CanvasProposal): Map<string, number> {
  * How a node of a kind the canvas will not wire in still reaches a
  * generation: through fills or picked into a slot of that kind in the panel
  * (design 5.7 table A).
+ * @param proposal - The whole proposal.
  * @param into - The generation the edge was drawn into.
  * @param from - The node at the edge's other end.
  * @returns The sentence, or nothing where the generation names no model the catalog serves.
  * @throws {never} Never.
  */
-export function pickedInstead(into: ProposalNode, from: ProposalNode): string {
+export function pickedInstead(proposal: CanvasProposal, into: ProposalNode, from: ProposalNode): string {
   const chosen = chosenModelOf(into);
-  return chosen ? ` ${nodeWaysSentence(from, into, chosen)}` : "";
+  return chosen ? ` ${nodeWaysSentence(proposal, from, into, chosen)}` : "";
 }
 
 /**
@@ -162,11 +162,7 @@ export function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
   // pool; held anywhere else it lands beside the work with nothing using it.
   const unused = proposal.nodes.find((node) => node.material !== undefined && !sent.has(node));
   if (unused) {
-    const takers = proposal.nodes.flatMap((generation) => {
-      const chosen = chosenModelOf(generation);
-      return chosen !== undefined && entriesFor(chosen, unused.type, "material").length > 0 ? [nodeWaysSentence(unused, generation, chosen)] : [];
-    });
-    return refuse("material-unused", `"${unused.name}" holds material that nothing here uses. ${takers.join(" ") || `No generation here takes ${aNode(unused.type)}; take it out.`}`);
+    return refuse("material-unused", `"${unused.name}" holds material that nothing here uses. ${elsewhereSentence(proposal, unused)}`);
   }
   const loose = proposal.nodes.filter((node) => node.role === "source" && !sent.has(node) && slotKinds.has(node.type));
   if (loose.length <= spare) return { ok: true };

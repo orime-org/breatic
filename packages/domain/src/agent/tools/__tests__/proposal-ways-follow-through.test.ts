@@ -204,7 +204,7 @@ describe("every way entriesFor names is one the check takes", () => {
         const verdict = checkProposal(proposal, MATERIALS);
         const reason = verdict.ok ? "" : verdict.reason;
         const others = ["image", "video", "audio"].filter((k) => k !== info.accepts && reason.includes(`${k} node`));
-        const own = verdict.ok ? false : verdict.refusal === "param-source" && reason.includes(`${info.accepts} node`);
+        const own = verdict.ok ? false : verdict.refusal === "param-pool" && reason.includes(`${info.accepts} node`);
         if (others.length > 0 || !own) wrong.push(`${setting.chosen.name} ${setting.mode} ${key}: ${reason}`);
       }
     }

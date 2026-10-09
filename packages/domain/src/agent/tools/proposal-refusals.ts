@@ -9,7 +9,9 @@
  * good as the proposal it is tried on, so each refusal carries a name, and a
  * test keyed by these names builds the proposal each refusal asks for and
  * holds the check to accepting it. A refusal added here without that case
- * does not compile in the test.
+ * does not compile in the test. One name stands for one piece of advice:
+ * where a check says different things in different settings, each saying has
+ * a name of its own, so none of them goes untried.
  */
 
 /** The names of every refusal the proposal check gives. */
@@ -34,6 +36,7 @@ export const REFUSALS = [
   "text-generates",
   "no-mode-model",
   "mode-unbacked",
+  "no-model-for-kind",
   "model-not-in-mode",
   "shots-outside-multishot",
   "multishot-no-shots",
@@ -43,7 +46,9 @@ export const REFUSALS = [
   "ref-self",
   "ref-arrives-otherwise",
   "ref-not-pooled",
+  "ref-not-pooled-no-pool",
   "way-over-room",
+  "way-over-room-other-way",
   "ref-missing",
   "notes-missing",
   "shot-empty",
@@ -68,8 +73,10 @@ export const REFUSALS = [
   "param-undeclared",
   "param-from-list",
   "param-box",
-  "param-source",
+  "param-pool",
+  "param-slot",
   "param-storyboard",
+  "param-storyboard-other-mode",
   "param-no-control",
   "param-gated-off",
   "param-option",
@@ -77,13 +84,16 @@ export const REFUSALS = [
   "param-out-of-range",
   "param-off-step",
   "edge-kind-not-taken",
+  "edge-kind-not-taken-link",
   "edge-into-ambiguous",
   "edge-not-an-entry",
   "fill-outside",
   "fill-self",
   "fill-not-a-slot",
+  "fill-into-pool",
   "fill-no-material",
   "fill-wrong-kind",
+  "fill-repeated",
   "fill-twice",
 ] as const;
 

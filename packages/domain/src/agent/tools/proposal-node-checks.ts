@@ -55,7 +55,7 @@ export function checkMaterial(node: ProposalNode, materials: MaterialTable): Pro
     return refuse("material-missing", `"${node.name}" holds an address in our storage that does not exist, most likely mistyped. Copy it again exactly as the attachment or the ${SAVE_IMAGE} answer gives it.`);
   }
   if (facts.kind !== node.type) {
-    return refuse("material-wrong-kind", `"${node.name}" is ${aNode(node.type)} and its material is ${facts.kind}.`);
+    return refuse("material-wrong-kind", `"${node.name}" is ${aNode(node.type)} and its material is ${facts.kind}. Give it ${node.type} material.`);
   }
   return { ok: true };
 }

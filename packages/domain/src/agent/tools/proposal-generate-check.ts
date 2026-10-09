@@ -27,6 +27,7 @@ import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
 import {
   aNode,
   entriesFor,
+  entryPhrase,
   fillsOf,
   holdingOf,
   nodeWaysSentence,
@@ -35,6 +36,7 @@ import {
   refsIn,
   routeEdges,
   slotSentence,
+  waysSentence,
   type Arriving,
 } from "@domain/agent/tools/proposal-routing.js";
 import { modelsForMode, waysIn, type ModelInfo } from "@domain/model-catalog/mode-catalog.js";
@@ -58,9 +60,9 @@ function resolveModel(node: ProposalNode, index: number): { chosen: ModelInfo } 
   // `modelsForMode` already names what the node does offer instead.
   const reachable = modelsForMode(node.type, mode);
   if (!reachable.available) {
-    return refuse("mode-unbacked", reachable.offered.length > 0
-      ? `No model here backs "${mode}" on ${aNode(node.type)}. It offers: ${reachable.offered.join(", ")}.`
-      : `No ${node.type} model can generate right now.`);
+    return reachable.offered.length > 0
+      ? refuse("mode-unbacked", `No model here backs "${mode}" on ${aNode(node.type)}. It offers: ${reachable.offered.join(", ")}.`)
+      : refuse("no-model-for-kind", `No ${node.type} model can generate right now. Say so in your reply.`);
   }
   const chosen = reachable.models.find((m) => m.name === model);
   return chosen
@@ -125,14 +127,13 @@ function strayRefReason(
   // only send it a second time.
   const elsewhere = arriving.find(({ node: n }) => n === named);
   if (elsewhere) {
-    const { entry } = elsewhere;
-    const how = entry.by === "fills"
-      ? `fills "${entry.way.into}" of "${node.name}" through fills, which landing does`
-      : `goes into "${entry.way.into}" of "${node.name}", ${entry.way.mark === "placed" ? "which landing @s it into" : "which the reader picks it into"}`;
-    return refuse("ref-arrives-otherwise", `"${named.name}" ${how}, so it takes no ref; leave the ref out.`);
+    return refuse("ref-arrives-otherwise", `"${named.name}" goes into "${node.name}" ${entryPhrase(elsewhere.entry, node.name)}, so leave the ref out.`);
   }
   const keeps = entriesFor(chosen, named.type, holdingOf(named)).some((entry) => entry.ref);
-  return refuse("ref-not-pooled", `"${named.name}" is @'d by a ref in "${node.name}" but is not wired into its pool. ${nodeWaysSentence(named, node, chosen)} ${keeps ? "To keep the ref, send it into the pool that way; otherwise leave the ref out." : "Only a node in the pool takes a ref, so leave the ref out."}`);
+  if (!keeps) {
+    return refuse("ref-not-pooled-no-pool", `"${named.name}" is @'d by a ref in "${node.name}", and only a node in its pool takes a ref, while "${chosen.name}" has no pool for ${aNode(named.type)}. Leave the ref out. ${nodeWaysSentence(proposal, named, node, chosen)}`);
+  }
+  return refuse("ref-not-pooled", `"${named.name}" is @'d by a ref in "${node.name}" but is not wired into its pool. ${nodeWaysSentence(proposal, named, node, chosen)} To keep the ref, send it into the pool that way; otherwise leave the ref out.`);
 }
 
 /** What a generation's wiring settles: the nodes it takes by edge, and which of them sit in its pool. */
@@ -163,7 +164,15 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
     for (const option of list) {
       const going = arriving.filter(({ node: n, entry }) => n.type === kind && entry.way.into === option.into).map(({ node: n }) => n);
       if (going.length > option.room) {
-        return refuse("way-over-room", `"${chosen.name}" takes ${String(option.room)} ${kind} node(s) by "${option.into}", and ${String(going.length)} are going that way (${going.map((n) => `"${n.name}"`).join(", ")}).${list.length > 1 ? " Send the rest another way it takes, or send fewer." : " Send fewer."}`);
+        const over = `"${chosen.name}" takes ${String(option.room)} ${kind} node(s) by "${option.into}", and ${String(going.length)} are going that way (${going.map((n) => `"${n.name}"`).join(", ")}).`;
+        // The nodes past the room, each with the other ways it has in.
+        const rest = going.slice(option.room).map((n) => [n, entriesFor(chosen, n.type, holdingOf(n)).filter((entry) => entry.way.into !== option.into)] as const);
+        // Offered only where the other ways have room for all of them.
+        const free = list.filter((other) => other !== option).reduce((sum, other) => sum + other.room - arriving.filter(({ node: n, entry }) => n.type === kind && entry.way.into === other.into).length, 0);
+        if (rest.every(([, entries]) => entries.length > 0) && rest.length <= free) {
+          return refuse("way-over-room-other-way", `${over} Send fewer, or send the rest another way: ${rest.map(([n, entries]) => waysSentence(`"${n.name}"`, node, entries)).join(" ")}`);
+        }
+        return refuse("way-over-room", `${over} Send fewer.`);
       }
     }
   }
@@ -232,7 +241,7 @@ function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelIn
     case "storyboard-shot-empty":
       return refuse("shot-empty", `Shot ${String(verdict.shot)} writes nothing. Every shot needs its own words.`);
     case "storyboard-too-many":
-      return refuse("too-many-shots", `"${model}" takes at most ${String(verdict.limit)} shots.`);
+      return refuse("too-many-shots", `"${model}" takes at most ${String(verdict.limit)} shots. Send at most ${String(verdict.limit)}, with their seconds still adding up to ${String(board?.totalParam)}.`);
     case "storyboard-shot-too-long":
       return refuse("shot-too-long", `Shot ${String(verdict.shot)} is longer than the ${String(verdict.limit)} characters "${model}" takes for one shot. Shorten it.`);
     case "storyboard-duration-mismatch":
