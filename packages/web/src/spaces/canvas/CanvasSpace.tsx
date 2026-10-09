@@ -1252,7 +1252,8 @@ function CanvasSpaceInner({
   const rememberViewport = React.useCallback((): void => {
     cameraPlaced.current = true;
     storeCamera();
-  }, [storeCamera]);
+    sessionStore.getState().setSettledZoom(rfStoreApi.getState().transform[2]);
+  }, [storeCamera, sessionStore, rfStoreApi]);
   // Panning is a run of wheel events and the library holds the end event back
   // 150ms to join them, so leaving inside that window would otherwise come
   // back to where the pan started. Leaving takes two shapes: moving somewhere

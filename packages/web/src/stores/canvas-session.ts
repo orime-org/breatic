@@ -280,6 +280,13 @@ export interface CanvasSessionState {
    */
   pendingFocusUploads: Array<{ id: string; nodeId: string; name: string }>;
   /**
+   * The zoom the last canvas move ended at, or null before the first. A
+   * drawing layer re-paints its bitmap at this zoom once a zoom has stopped.
+   */
+  settledZoom: number | null;
+  /** The canvas finished moving at this zoom. */
+  setSettledZoom: (zoom: number) => void;
+  /**
    * Set or drop the box a sticky has open. Passing null forgets that sticky.
    * @see OpenAnnotationDraft
    */
@@ -549,6 +556,11 @@ export function createCanvasSessionStore(): CanvasSessionStore {
       taskPanelStatus: null,
       pickSession: null,
       pendingFocusUploads: [],
+      settledZoom: null,
+      setSettledZoom: (zoom) =>
+        set((s) => {
+          s.settledZoom = zoom;
+        }),
       setAnnotationDraft: (nodeId, open) =>
         set((s) => {
           if (open === null) delete s.annotationDrafts[nodeId];

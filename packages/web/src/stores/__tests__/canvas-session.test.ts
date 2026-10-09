@@ -348,3 +348,12 @@ describe('mini-tool source size (inner#888 §7.4.1)', () => {
     expect(store.getState().miniTool?.sourceSize).toBeNull();
   });
 });
+
+describe('settled zoom (inner#1302 §6.2)', () => {
+  it('starts unknown and holds the zoom the last canvas move ended at', () => {
+    const store = createCanvasSessionStore();
+    expect(store.getState().settledZoom).toBeNull();
+    store.getState().setSettledZoom(2);
+    expect(store.getState().settledZoom).toBe(2);
+  });
+});
