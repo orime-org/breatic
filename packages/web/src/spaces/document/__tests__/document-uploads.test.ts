@@ -89,6 +89,7 @@ function deps(maxBytes = 1000): { deps: DocumentUploaderDeps; pending: Pending[]
       unregister: vi.fn(),
       refuse: vi.fn(),
       undo: { stopCapturing: vi.fn() },
+      measure: () => Promise.resolve(undefined),
     },
   };
 }
@@ -261,6 +262,31 @@ describe('an upload that succeeds (A13, A15)', () => {
     await settle();
 
     expect(blocks(editor)[1]!.type).toBe('video');
+  });
+
+  it('writes the size read off the file onto the block (A23)', async () => {
+    const editor = open();
+    const { deps: d, pending } = deps();
+    const uploader = createDocumentUploader({ ...d, measure: () => Promise.resolve({ width: 640, height: 360 }) });
+
+    await start(editor, uploader, [file('clip.png', 'image/png')]);
+    pending[0]!.resolve({ fileUrl: 'https://cdn.example/clip.png', assetId: 'x', kind: 'image' });
+    await settle();
+
+    expect(blocks(editor)[1]!.props).toMatchObject({ mediaWidth: 640, mediaHeight: 360 });
+  });
+
+  it('writes no size when the file could not be measured (A23)', async () => {
+    const editor = open();
+    const { deps: d, pending } = deps();
+    const uploader = createDocumentUploader(d);
+
+    await start(editor, uploader, [file('clip.png', 'image/png')]);
+    pending[0]!.resolve({ fileUrl: 'https://cdn.example/clip.png', assetId: 'x', kind: 'image' });
+    await settle();
+
+    expect(blocks(editor)[1]!.props['mediaWidth']).toBeUndefined();
+    expect(blocks(editor)[1]!.props['mediaHeight']).toBeUndefined();
   });
 
   it('fails as a format we do not take when the server filed the bytes as something else', async () => {

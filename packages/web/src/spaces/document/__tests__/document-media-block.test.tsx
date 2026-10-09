@@ -13,7 +13,7 @@ import * as Y from 'yjs';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { DOCUMENT_SCHEMA, documentBodyFragment } from '@breatic/shared';
 
 import { BODY_PART } from '@web/spaces/document/document-body-focus';
 
@@ -126,6 +126,71 @@ function element(editor: Editor): HTMLElement {
 function toolbar(editor: Editor): HTMLElement {
   return within(element(editor)).getByTestId('doc-media-toolbar');
 }
+
+/** An address shaped like one our storage writes, so it has a preview beside it. */
+const STORED = 'https://cdn.example/2026-10-07/1765_12345678-1234-1234-1234-123456789abc.png';
+
+describe('the loading state and the preview (A23)', () => {
+  it('reserves the image\'s final size and covers it with a skeleton until it loads', () => {
+    const editor = open('image', { mediaWidth: 800, mediaHeight: 400 });
+    const img = element(editor).querySelector('img')!;
+
+    expect(img.getAttribute('width')).toBe('800');
+    expect(img.getAttribute('height')).toBe('400');
+    expect(within(element(editor)).getByTestId('doc-media-skeleton')).toBeTruthy();
+
+    act(() => {
+      img.dispatchEvent(new Event('load'));
+    });
+
+    expect(within(element(editor)).queryByTestId('doc-media-skeleton')).toBeNull();
+  });
+
+  it('shows the preview when it is sharp enough at the width shown', () => {
+    vi.stubGlobal('devicePixelRatio', 2);
+    const editor = open('image', { url: STORED, mediaWidth: 1600, mediaHeight: 900, previewWidth: 240 });
+
+    expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(`${STORED}.preview.webp`);
+  });
+
+  it('shows the original when the preview would be blurred at the width shown', () => {
+    vi.stubGlobal('devicePixelRatio', 2);
+    const editor = open('image', { url: STORED, mediaWidth: 1600, mediaHeight: 900, previewWidth: 400 });
+
+    expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(STORED);
+  });
+
+  it('shows the original when the size of the picture is not known', () => {
+    const editor = open('image', { url: STORED, previewWidth: 100 });
+
+    expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(STORED);
+  });
+
+  it('falls back to the original when the preview does not load', () => {
+    vi.stubGlobal('devicePixelRatio', 1);
+    const editor = open('image', { url: `${STORED.slice(0, -4)}.webp`, mediaWidth: 1600, mediaHeight: 900, previewWidth: 200 });
+    const img = element(editor).querySelector('img')!;
+    expect(img.getAttribute('src')).toMatch(/\.preview\.webp$/);
+
+    act(() => {
+      img.dispatchEvent(new Event('error'));
+    });
+
+    expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(`${STORED.slice(0, -4)}.webp`);
+  });
+
+  it.each(['image', 'video'] as const)('stores the %s\'s size in the shared document', (type) => {
+    expect(DOCUMENT_SCHEMA.nodes[type]).toEqual(expect.arrayContaining(['mediaWidth', 'mediaHeight']));
+  });
+
+  it('hands the video\'s size to the player, which reserves it before anything loads', () => {
+    const editor = open('video', { mediaWidth: 1280, mediaHeight: 720 });
+    const video = element(editor).querySelector('video')!;
+
+    expect(video.getAttribute('width')).toBe('1280');
+    expect(video.getAttribute('height')).toBe('720');
+  });
+});
 
 describe('what a media block shows (A7)', () => {
   it('draws an image lazily from its address', () => {
