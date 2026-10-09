@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { hasInk, paintDrawing } from '@web/spaces/canvas/mini-tool/paint-drawing';
+import { hasInk, inkShows, paintDrawing } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import type { DrawOp } from '@web/stores/drawing-draft';
 
 /**
@@ -105,5 +105,23 @@ describe('hasInk', () => {
     raster.mockReturnValue(true);
     expect(hasInk([op], 'mask', 0.5, raster)).toBe(true);
     expect(raster).toHaveBeenLastCalledWith([op], { width: 256, height: 512 }, 'mask');
+  });
+});
+
+describe('inkShows', () => {
+  /**
+   * RGBA pixels with the given alphas.
+   * @param alphas - One alpha per pixel.
+   * @returns The pixel data.
+   */
+  const pixels = (...alphas: number[]): Uint8ClampedArray =>
+    new Uint8ClampedArray(alphas.flatMap((alpha) => [255, 255, 255, alpha]));
+
+  // An eraser run along a stroke leaves its anti-aliased rim at alpha 1–127;
+  // the mask export reads that as black, so it is no ink.
+  it('counts only pixels at least half covered', () => {
+    expect(inkShows(pixels(0, 1, 64, 127))).toBe(false);
+    expect(inkShows(pixels(0, 128))).toBe(true);
+    expect(inkShows(pixels(255))).toBe(true);
   });
 });

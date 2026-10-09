@@ -235,6 +235,8 @@ test('the export is the upright source with a mask of only 0 and 255, and a wipe
       return {
         inked: paint.hasInk([stroke], 'mask', 4 / 3),
         wiped: paint.hasInk([stroke, wipe], 'mask', 4 / 3),
+        // The same path erased leaves only an anti-aliased rim below half cover.
+        retraced: paint.hasInk([stroke, { ...stroke, erase: true }], 'mask', 4 / 3),
         maskSource: await read(mask.image),
         mask: await read(mask.mask!),
         uprightSource: await read(upright.image),
@@ -247,6 +249,7 @@ test('the export is the upright source with a mask of only 0 and 255, and a wipe
   );
   expect(found.inked).toBe(true);
   expect(found.wiped).toBe(false);
+  expect(found.retraced).toBe(false);
   expect([found.maskSource.w, found.maskSource.h]).toEqual([400, 300]);
   expect([found.mask.w, found.mask.h, found.mask.values]).toEqual([400, 300, [0, 255]]);
   expect([found.uprightSource.w, found.uprightSource.h]).toEqual([1024, 768]);

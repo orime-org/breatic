@@ -81,6 +81,18 @@ export function paintDrawing(
 }
 
 /**
+ * Whether painted pixels hold any ink: a pixel at least half covered, the same
+ * line the mask export draws between white and black. An eraser run along a
+ * stroke leaves its anti-aliased rim below that line.
+ * @param data - RGBA pixel data.
+ * @returns True when some pixel has alpha of 128 or more.
+ */
+export function inkShows(data: Uint8ClampedArray): boolean {
+  for (let i = 3; i < data.length; i += 4) if ((data[i] ?? 0) >= 128) return true;
+  return false;
+}
+
+/**
  * Whether a drawing leaves anything on the picture: drawn and then wholly
  * erased counts as empty.
  * @param ops - The visible ops.
@@ -103,7 +115,7 @@ export function hasInk(ops: readonly DrawOp[], kind: DrawingKind, aspect: number
  * @param ops - The ops.
  * @param size - The canvas size.
  * @param kind - Mask or sketch.
- * @returns True when any pixel is not transparent.
+ * @returns True when the ink shows.
  */
 function canvasRaster(ops: readonly DrawOp[], size: PaintSize, kind: DrawingKind): boolean {
   const canvas = document.createElement('canvas');
@@ -113,7 +125,5 @@ function canvasRaster(ops: readonly DrawOp[], size: PaintSize, kind: DrawingKind
   // No 2D context to look with: leave Execute on and let the export's own check decide.
   if (ctx === null) return true;
   paintDrawing(ctx, ops, size, kind, '#fff'); // design-value: allow — probe colour, never shown
-  const { data } = ctx.getImageData(0, 0, size.width, size.height);
-  for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) return true;
-  return false;
+  return inkShows(ctx.getImageData(0, 0, size.width, size.height).data);
 }
