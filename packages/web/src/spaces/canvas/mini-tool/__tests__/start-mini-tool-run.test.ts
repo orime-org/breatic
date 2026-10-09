@@ -24,7 +24,7 @@ vi.mock('@web/lib/toast', () => ({
 
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { toast } from '@web/lib/toast';
-import { DrawingEmptyError } from '@web/spaces/canvas/focus/crop-export';
+import { DrawingEmptyError } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { startMiniToolRun, type MiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 

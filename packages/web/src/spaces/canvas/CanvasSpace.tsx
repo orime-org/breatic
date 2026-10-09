@@ -77,7 +77,8 @@ import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { frameBuiltNode } from '@web/spaces/canvas/frame-built-node';
-import { exportCropBlob, exportDrawing } from '@web/spaces/canvas/focus/crop-export';
+import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
+import { exportDrawing } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import {
   addEdge,

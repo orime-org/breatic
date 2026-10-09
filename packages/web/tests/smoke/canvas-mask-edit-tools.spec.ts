@@ -242,11 +242,11 @@ test('the export is the upright source with a mask of only 0 and 255, and a wipe
   const canvasAt = new URL(await liveModuleUrl(page, CANVAS_SPACE));
   const root = canvasAt.href.slice(0, canvasAt.href.indexOf(CANVAS_SPACE));
   const paintAt = `${root}spaces/canvas/mini-tool/paint-drawing.ts`;
-  const exportAt = `${root}spaces/canvas/focus/crop-export.ts`;
+  const exportAt = `${root}spaces/canvas/mini-tool/export-drawing.ts`;
   const found = await page.evaluate(
     async ([paintUrl, exportUrl, image, photo]) => {
       const paint = (await import(/* @vite-ignore */ paintUrl)) as typeof import('../../src/spaces/canvas/mini-tool/paint-drawing');
-      const exporter = (await import(/* @vite-ignore */ exportUrl)) as typeof import('../../src/spaces/canvas/focus/crop-export');
+      const exporter = (await import(/* @vite-ignore */ exportUrl)) as typeof import('../../src/spaces/canvas/mini-tool/export-drawing');
       const stroke = { kind: 'stroke', erase: false, size: 10, color: '#FF3B30', points: [[0.2, 0.5], [0.8, 0.5]] } as const;
       const wipe = { ...stroke, erase: true, size: 25 } as const;
       const rect = { kind: 'rect', size: 5, color: '#FF3B30', x: 0.25, y: 0.25, w: 0.5, h: 0.5 } as const;

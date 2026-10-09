@@ -26,7 +26,7 @@ import { UploadFailedError } from '@web/data/upload/media-upload';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { toast } from '@web/lib/toast';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
-import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/focus/crop-export';
+import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import type { DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import { createEmptyNode, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
