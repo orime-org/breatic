@@ -166,6 +166,7 @@ import {
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
 import { planDuplicateGroupGrowth } from '@web/spaces/canvas/duplicate-group-growth';
+import { selectionKey, userMovedOn } from '@web/spaces/canvas/paste-focus';
 import { topoSortByParent } from '@web/spaces/canvas/group-topology';
 import { useStableList } from '@web/spaces/canvas/use-stable-list';
 import {
@@ -2841,6 +2842,23 @@ function CanvasSpaceInner({
     if (!selectAfterCreate) return;
     if (!selectAfterCreate.every((id) => nodes.some((node) => node.id === id)))
       return;
+    const pastedFrom = pastedFromRef.current;
+    pastedFromRef.current = null;
+    // A paste answered by the server: the reader may have gone on to
+    // something else meanwhile, and keeps it.
+    if (
+      pastedFrom !== null &&
+      userMovedOn({
+        selectionBefore: pastedFrom,
+        selectionNow: selectionKey(flowNodes),
+        active: document.activeElement,
+        canvas: containerRef.current,
+      })
+    ) {
+      focusPastedRef.current = false;
+      setSelectAfterCreate(null);
+      return;
+    }
     const targets = new Set(selectAfterCreate);
     // reconcileSelection keeps untouched nodes' references so React.memo
     // bails on the rest of the canvas (same discipline as the other
@@ -2867,14 +2885,17 @@ function CanvasSpaceInner({
         }
       }
     });
-  }, [selectAfterCreate, nodes, setFlowNodes]);
+  }, [selectAfterCreate, nodes, flowNodes, setFlowNodes]);
 
   // Paste and duplicate select their copies and give them the keyboard; other
   // ways of making a node only select it.
   const focusPastedRef = React.useRef(false);
-  const selectPasted = React.useCallback((ids: string[]): void => {
+  // The selection when a paste that waited on the server began.
+  const pastedFromRef = React.useRef<string | null>(null);
+  const selectPasted = React.useCallback((ids: string[], pastedFrom?: string): void => {
     if (ids.length === 0) return;
     focusPastedRef.current = true;
+    pastedFromRef.current = pastedFrom ?? null;
     setSelectAfterCreate(ids);
   }, []);
 
@@ -2903,8 +2924,9 @@ function CanvasSpaceInner({
             );
           }
         }
+        const pastedFrom = selectionKey(flowNodes);
         void pastePayload(payload, offset, { keepUpstream: keepUpstreamFor(payload) }).then((ids) => {
-          if (ids) selectPasted(ids);
+          if (ids) selectPasted(ids, pastedFrom);
         });
         return true;
       }
@@ -2915,7 +2937,7 @@ function CanvasSpaceInner({
       selectPasted([pasteTextAt(text, point)]);
       return true;
     },
-    [pastePayload, pasteTextAt, keepUpstreamFor, screenToFlowPosition, viewCentre, spaceId, selectPasted],
+    [pastePayload, pasteTextAt, keepUpstreamFor, screenToFlowPosition, viewCentre, spaceId, selectPasted, flowNodes],
   );
 
   // ---- Clipboard (slice 2b) ----
@@ -3335,6 +3357,7 @@ function CanvasSpaceInner({
       const payload = captureClipboardFor(targetIds, nodes);
       if (payload.nodes.length === 0) return;
       const ext = externalParentAbs(payload.nodes, nodes);
+      const pastedFrom = selectionKey(flowNodes);
       void pastePayload(
         payload,
         { dx: PASTE_OFFSET_PX, dy: PASTE_OFFSET_PX },
@@ -3350,10 +3373,10 @@ function CanvasSpaceInner({
           },
         },
       ).then((ids) => {
-        if (ids) selectPasted(ids);
+        if (ids) selectPasted(ids, pastedFrom);
       });
     },
-    [readOnly, projectId, spaceId, captureClipboardFor, keepUpstreamFor, pastePayload, selectPasted, buffer],
+    [readOnly, projectId, spaceId, captureClipboardFor, keepUpstreamFor, pastePayload, selectPasted, buffer, flowNodes],
   );
 
   const copySelection = React.useCallback((): void => {
