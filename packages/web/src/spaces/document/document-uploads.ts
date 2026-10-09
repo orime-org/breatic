@@ -147,6 +147,8 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       patchUploadSlot(view, slotId, { phase: 'failed', failure: failureOf(err, entry.file) });
       return;
     }
+    // Still in flight, and checked for being writable, until the size is in.
+    const size = stored.kind === 'audio' ? undefined : await sizing;
     deps.unregister(slotId);
     if (stored.fileUrl === undefined || stored.kind === undefined) {
       patchUploadSlot(view, slotId, {
@@ -167,7 +169,6 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       patchUploadSlot(view, slotId, { phase: 'failed', failure: READ_ONLY });
       return;
     }
-    const size = stored.kind === 'audio' ? undefined : await sizing;
     insertSlotBlock(
       view,
       slotId,

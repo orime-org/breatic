@@ -338,6 +338,37 @@ describe('an upload that succeeds (A13, A15)', () => {
   });
 });
 
+describe('an upload whose size is read after the file is stored (A12, A23)', () => {
+  it('stays in flight and checks the body is writable once the size is in', async () => {
+    const editor = open();
+    const { deps: d, pending } = deps();
+    let sized: (size: { width: number; height: number }) => void = () => undefined;
+    const uploader = createDocumentUploader({
+      ...d,
+      measure: () =>
+        new Promise((resolve) => {
+          sized = resolve;
+        }),
+    });
+
+    await start(editor, uploader, [file('a.png', 'image/png')]);
+    pending[0]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image' });
+    await settle();
+    expect(d.unregister).not.toHaveBeenCalled();
+
+    editor.isEditable = false;
+    sized({ width: 640, height: 360 });
+    await settle();
+
+    expect(d.unregister).toHaveBeenCalled();
+    expect(blocks(editor)).toHaveLength(2);
+    expect(uploadSlots(editor.prosemirrorView!.state)[0]).toMatchObject({
+      phase: 'failed',
+      failure: { messageKey: 'spaces.document.media.readOnly' },
+    });
+  });
+});
+
 describe('an upload that fails (A6)', () => {
   it.each([
     ['upload', 'canvas.upload.failed', true],
