@@ -392,8 +392,40 @@ describe("the lyrics box a song model draws, a second way for words (table B)", 
     expect(checkProposal(song([{ text: "upbeat pop" }]))).toMatchObject({ ok: false, reason: expect.stringMatching(/"Lyrics".*"pool".*"lyrics"/s) });
   });
 
-  it("places the words sent into the prompt with a ref", () => {
-    expect(checkProposal(song([{ text: "upbeat pop, " }, { ref: 0 }], "pool"))).toEqual({ ok: true });
+  it("refuses a song whose lyrics box lands empty, since Generate would refuse it too, naming the way in", () => {
+    expect(checkProposal(song([{ text: "upbeat pop, " }, { ref: 0 }], "pool"))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('into: "lyrics"'),
+    });
+  });
+
+  it("refuses a song proposed with no lyrics node at all", () => {
+    const alone: CanvasProposal = {
+      nodes: [{ role: "generate", type: "audio", name: "Song", mode: "t2m", model: "mureka-v9.5-generate-song", prompt: [{ text: "upbeat pop" }] }],
+      edges: [],
+      rationale: "",
+    };
+    expect(checkProposal(alone)).toMatchObject({ ok: false, reason: expect.stringContaining('into: "lyrics"') });
+  });
+
+  it("tells a ref to the node in the lyrics box to come out, rather than to wire it into the pool", () => {
+    const verdict = checkProposal(song([{ text: "upbeat pop, " }, { ref: 0 }], "lyrics"));
+    expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining('"lyrics"') });
+    expect(verdict).toMatchObject({ reason: expect.stringContaining("leave the ref out") });
+    expect(verdict).not.toMatchObject({ reason: expect.stringContaining('into: "pool"') });
+  });
+});
+
+describe("a ref to no node", () => {
+  it("is turned away by the schema when the index is negative", () => {
+    expect(inputSchema.safeParse(edit([CHARACTER], [{ ref: -1 }, { text: " at night" }])).success).toBe(false);
+  });
+
+  it("is refused as pointing outside the group when the index is past the last node", () => {
+    expect(checkProposal(edit([CHARACTER], [...AT_CHARACTER, { ref: 7 }, { text: " at night" }]))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("points outside the group"),
+    });
   });
 });
 
@@ -545,6 +577,11 @@ describe("what the agent is told about marks", () => {
     const said = JSON.stringify(inputSchema.toJSONSchema()) + (makeProposeCanvasAction().description ?? "");
     expect(said).toMatch(/An @ of the node at this index in nodes/);
     expect(said).not.toMatch(/asset mark|asset segment|@s it by hand|@s every reference by hand/);
+  });
+
+  it("asks for the prompt written up from what the reader asked, their exact words only when they ask for that", () => {
+    const prompt = inputSchema.shape.nodes.element.shape.prompt.description ?? "";
+    expect(prompt).toMatch(/Write it up from what the reader asked for; copy their words exactly only when they ask for that/);
   });
 
   it("asks for the prompt in the language the reader writes in", () => {
