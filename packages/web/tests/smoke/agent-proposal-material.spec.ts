@@ -81,6 +81,16 @@ async function catchSubmit(p: Page): Promise<() => Record<string, unknown> | und
   return () => body;
 }
 
+/**
+ * Scroll the canvas the way a reader does when a placed panel lands under the
+ * canvas controls and the minimap (inner#854), so its Generate is in reach.
+ * @param p - The signed-in page.
+ */
+async function reachPanelCorner(p: Page): Promise<void> {
+  await p.mouse.move(1000, 200);
+  await p.mouse.wheel(500, 400);
+}
+
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
     storageState: STATE_FILE.A,
@@ -135,6 +145,46 @@ test('lands an attached portrait and voice in a talking head, both slots filled 
     timeout: 20_000,
   });
   await expect(page.getByTestId('generate-video-driving-audio-clear')).toHaveCount(1);
+
+  // And Generate sends both files with nothing left to pick.
+  const held = (await space.getByTestId('image-node-img').first().getAttribute('src')) ?? '';
+  const sent = await catchSubmit(page);
+  await reachPanelCorner(page);
+  await expect(page.getByTestId('generate-video-execute')).toBeEnabled({ timeout: 20_000 });
+  await page.getByTestId('generate-video-execute').click();
+  await expect.poll(sent, { timeout: 20_000 }).toBeDefined();
+  const params = JSON.stringify((sent() as { params: Record<string, unknown> }).params);
+  expect(params).toContain(held.replace(/\.preview\.webp$/, ''));
+  expect(params).toMatch(/\.mp3"/);
+});
+
+test('fills a music-to-video model from an attached clip, and Generate sends it @needs-model', async () => {
+  test.setTimeout(480_000);
+  const fixtures = join(__dirname, '../fixtures');
+  await expect(page.getByTestId('chat-composer-attach')).toBeEnabled({ timeout: 20_000 });
+  await page.getByTestId('chat-composer-file-input').setInputFiles([join(fixtures, 'media-history.mp4')]);
+  await expect(page.getByTestId('chat-composer-chips')).toContainText('media-history.mp4', { timeout: 30_000 });
+
+  await ask(
+    page,
+    'Make background music for this clip that follows its cuts, using Sonilo Video to Music on the canvas with this clip as its source video. Do not ask me anything, just propose it.',
+  );
+
+  const used = await toolsUsed(page);
+  expect(used, `the turn proposed a flow. Tools used: ${used.join(', ')}`).toContain('propose_canvas_action');
+  const card = page.getByTestId('proposal-card').last();
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  await card.getByTestId('proposal-use').click();
+
+  const sent = await catchSubmit(page);
+  await reachPanelCorner(page);
+  await expect(page.getByTestId('generate-audio-execute')).toBeEnabled({ timeout: 20_000 });
+  await page.getByTestId('generate-audio-execute').click();
+  await expect.poll(sent, { timeout: 20_000 }).toBeDefined();
+  const body = sent() as { model?: string; params: Record<string, unknown> };
+  expect(body.model).toBe('sonilo-video-to-music');
+  // The clip the node holds fills the source video slot.
+  expect(String(body.params.video)).toMatch(/^https:\/\/.+\.mp4$/);
 });
 
 test('saves a found picture and wires it into an image-to-image pool @needs-model', async () => {
@@ -189,11 +239,7 @@ test('@s an attached portrait in an image-to-image prompt, and Generate sends it
   const held = (await visibleSpace(page).getByTestId('image-node-img').first().getAttribute('src')) ?? '';
 
   const sent = await catchSubmit(page);
-  // A tall portrait lands the panel low and right, under the canvas controls
-  // and the minimap (inner#854); the reader scrolls the canvas to reach
-  // Generate, and so does this.
-  await page.mouse.move(1000, 200);
-  await page.mouse.wheel(500, 400);
+  await reachPanelCorner(page);
   await expect(page.getByTestId('generate-execute')).toBeEnabled({ timeout: 20_000 });
   await page.getByTestId('generate-execute').click();
   await expect.poll(sent, { timeout: 20_000 }).toBeDefined();
