@@ -20,6 +20,7 @@ import { test, expect, type Locator, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
+import { openTool, seedNode, zoomBy } from '../helpers/mini-tool';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 /** A public JPEG served with CORS, so the browser can draw it onto a canvas and export it. */
@@ -32,59 +33,6 @@ let page: Page;
 let projectId = '';
 let spaceId = '';
 let imageNode = '';
-
-/**
- * Seed a node straight into the live canvas document.
- * @param id - Node id.
- * @param type - Node modality.
- * @param x - Flow x.
- * @param data - Extra data fields.
- * @returns Nothing; resolves once the document holds the node.
- */
-async function seedNode(id: string, type: string, x: number, data: Record<string, unknown> = {}): Promise<void> {
-  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
-  await page.evaluate(
-    async ([pid, sid, nodeId, nodeType, at, raw, url]: [string, string, string, string, number, string, string]) => {
-      const canvas = (await import(/* @vite-ignore */ url)) as {
-        addNode: (p: string, s: string, n: unknown) => void;
-      };
-      canvas.addNode(pid, sid, {
-        id: nodeId,
-        type: nodeType,
-        position: { x: at, y: 0 },
-        data: {
-          name: 'SEED',
-          createdAt: Date.now(),
-          createdBy: 'mini-tools-e2e',
-          locked: false,
-          attachments: [],
-          ...(JSON.parse(raw) as Record<string, unknown>),
-        },
-      });
-    },
-    [projectId, spaceId, id, type, x, JSON.stringify(data), canvasAt] as [
-      string,
-      string,
-      string,
-      string,
-      number,
-      string,
-      string,
-    ],
-  );
-  await expect(visibleSpace(page).locator(`.react-flow__node[data-id="${id}"]`)).toBeVisible({ timeout: 15_000 });
-}
-
-/**
- * Open a tool on a node from its menu.
- * @param nodeId - The node.
- * @param toolId - The tool.
- */
-async function openTool(nodeId: string, toolId: string): Promise<void> {
-  await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).click({ button: 'right' });
-  await page.getByTestId('node-menu-tools').hover();
-  await page.getByTestId(`node-menu-tool-${toolId}`).click();
-}
 
 /**
  * Drag across a crop box from one fraction of it to another.
@@ -117,20 +65,6 @@ async function dragHandle(handle: Locator, layer: Locator, to: [number, number])
   await page.mouse.up();
 }
 
-/**
- * Zoom the canvas with the wheel over its middle.
- * @param deltaY - Wheel delta; negative zooms in.
- */
-async function zoomBy(deltaY: number): Promise<void> {
-  const pane = visibleSpace(page).locator('.react-flow__pane');
-  const box = await pane.boundingBox();
-  if (box === null) throw new Error('no pane');
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.keyboard.down('Control');
-  await page.mouse.wheel(0, deltaY);
-  await page.keyboard.up('Control');
-}
-
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
   await openSmokeProject(page);
@@ -138,7 +72,7 @@ test.beforeEach(async ({ browser }) => {
   spaceId = await createSpace(page, 'canvas', `mini-tools-e2e-${Date.now()}`);
   await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   imageNode = randomUUID();
-  await seedNode(imageNode, 'image', 0, { content: IMAGE, mimeType: 'image/jpeg', size: 40_000 });
+  await seedNode(page, { projectId, spaceId }, imageNode, 'image', 0, { content: IMAGE, mimeType: 'image/jpeg', size: 40_000 });
   await expect(
     visibleSpace(page).locator(`.react-flow__node[data-id="${imageNode}"] [data-testid=image-node-img]`),
   ).toBeVisible({ timeout: 20_000 });
@@ -151,7 +85,7 @@ test.afterEach(async () => {
 });
 
 test('the crop box sits on the picture inside the node and its handles hold 8px at any zoom @needs-internet', async () => {
-  await openTool(imageNode, 'image.crop');
+  await openTool(page, imageNode, 'image.crop');
   const node = visibleSpace(page).locator(`.react-flow__node[data-id="${imageNode}"]`);
   const layer = node.getByTestId('mini-tool-crop-layer');
   await expect(layer).toBeVisible({ timeout: 15_000 });
@@ -167,7 +101,7 @@ test('the crop box sits on the picture inside the node and its handles hold 8px 
 
   const handle = node.getByTestId('mini-tool-crop-handle-se');
   for (const deltaY of [0, 600, 600, -1500]) {
-    if (deltaY !== 0) await zoomBy(deltaY);
+    if (deltaY !== 0) await zoomBy(page, deltaY);
     await expect
       .poll(async () => Math.round((await handle.boundingBox())?.width ?? 0), { timeout: 5_000 })
       .toBe(8);
@@ -180,7 +114,7 @@ test('the crop box sits on the picture inside the node and its handles hold 8px 
 });
 
 test('a drawn crop sets the size in the panel, and Run fills a new node downstream @needs-internet', async () => {
-  await openTool(imageNode, 'image.crop');
+  await openTool(page, imageNode, 'image.crop');
   const node = visibleSpace(page).locator(`.react-flow__node[data-id="${imageNode}"]`);
   const layer = node.getByTestId('mini-tool-crop-layer');
   await expect(layer).toBeVisible({ timeout: 15_000 });
@@ -203,7 +137,7 @@ test('a drawn crop sets the size in the panel, and Run fills a new node downstre
 // The upscale panel offers output sizes with the pixel size each comes to on
 // the picture, 4K picked, and the creativity slider names its two ends.
 test('the upscale panel offers sizes measured on the picture @needs-internet', async () => {
-  await openTool(imageNode, 'image.upscale');
+  await openTool(page, imageNode, 'image.upscale');
   const fourK = page.getByTestId('mini-tool-size-target_megapixels-4K');
   await expect(fourK).toHaveAttribute('aria-current', 'true');
   await expect(fourK).toHaveText(/4K\s*≈(\d+×4096|4096×\d+)/);
@@ -222,7 +156,7 @@ test('the upscale panel offers sizes measured on the picture @needs-internet', a
 });
 
 test('Run on the rotate tool fills a new node downstream @needs-internet', async () => {
-  await openTool(imageNode, 'image.rotate');
+  await openTool(page, imageNode, 'image.rotate');
   // The four buttons share the panel's width: the last one ends no further
   // right than the close button, which sits inside the panel's right padding.
   const last = (await page.getByTestId('mini-tool-orient-flipY').boundingBox())!;
@@ -237,7 +171,7 @@ test('Run on the rotate tool fills a new node downstream @needs-internet', async
 
 test('the focus crop draws inside the picked node and its bar hangs under it @needs-internet', async () => {
   const host = randomUUID();
-  await seedNode(host, 'image', 600);
+  await seedNode(page, { projectId, spaceId }, host, 'image', 600);
   await visibleSpace(page).locator(`.react-flow__node[data-id="${host}"]`).click({ button: 'right' });
   await page.getByTestId('node-menu-generate').click();
   await page.getByTestId('generate-tool-focus').click();
@@ -263,7 +197,7 @@ test('the focus crop draws inside the picked node and its bar hangs under it @ne
   // The marquee is held in the picture's own pixels: a zoom keeps it on the same part of it.
   const before = await node.getByTestId('focus-crop-rect').boundingBox();
   const pictureBefore = await node.getByTestId('image-node-img').boundingBox();
-  await zoomBy(-400);
+  await zoomBy(page, -400);
   const after = await node.getByTestId('focus-crop-rect').boundingBox();
   const pictureAfter = await node.getByTestId('image-node-img').boundingBox();
   const fraction = (r: { x: number }, p: { x: number; width: number }): number => (r.x - p.x) / p.width;
@@ -276,7 +210,7 @@ test('the focus crop draws inside the picked node and its bar hangs under it @ne
 // §7.2: the panel and its draft belong to the Space, so leaving and coming back
 // finds them as they were.
 test('the tool panel and its draft wait in their Space while another is open @needs-internet', async () => {
-  await openTool(imageNode, 'image.crop');
+  await openTool(page, imageNode, 'image.crop');
   await page.getByTestId('mini-tool-param-aspect-1:1').click();
   await expect(page.getByTestId('mini-tool-param-aspect-1:1')).toHaveAttribute('aria-current', 'true');
 
@@ -295,7 +229,7 @@ test('the tool panel and its draft wait in their Space while another is open @ne
 // §7.2: what was measured on the old picture is reset when the source takes
 // new content, so the crop covers the new picture whole.
 test('a source that takes new content resets the crop to the new picture @needs-internet', async () => {
-  await openTool(imageNode, 'image.crop');
+  await openTool(page, imageNode, 'image.crop');
   await page.getByTestId('mini-tool-param-aspect-1:1').click();
   await expect.poll(async () => page.getByTestId('mini-tool-rect-w').inputValue()).toBe('300');
 
@@ -325,7 +259,7 @@ test('a source that takes new content resets the crop to the new picture @needs-
 test('the cut panel shows the frames of a pasted video @needs-internet', async () => {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   const source = randomUUID();
-  await seedNode(source, 'video', 600, {
+  await seedNode(page, { projectId, spaceId }, source, 'video', 600, {
     content: VIDEO,
     mediaWidth: 1280,
     mediaHeight: 720,
@@ -343,6 +277,6 @@ test('the cut panel shows the frames of a pasted video @needs-internet', async (
   const copy = visibleSpace(page).locator('.react-flow__node').filter({ hasText: 'COPY-SEED' });
   const copyId = await copy.getAttribute('data-id');
   expect(copyId).not.toBeNull();
-  await openTool(copyId!, 'video.cut');
+  await openTool(page, copyId!, 'video.cut');
   await expect(page.getByTestId('mini-tool-filmstrip')).toBeVisible({ timeout: 15_000 });
 });
