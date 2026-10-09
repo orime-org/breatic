@@ -33,6 +33,7 @@ import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
+import { DrawingControls } from '@web/spaces/canvas/mini-tool/DrawingControls';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
 import {
   BLOCKING_REFUSALS,
@@ -207,6 +208,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
       onClose={onClose}
     >
       <div className='flex flex-col gap-2.5 px-3 pb-2.5'>
+        {spec.drawing !== undefined ? <DrawingControls kind={spec.drawing.kind} /> : null}
         {spec.slots.length > 0 ? (
           <div className='flex flex-wrap gap-1.5'>
             {spec.slots.map((slot) => {
