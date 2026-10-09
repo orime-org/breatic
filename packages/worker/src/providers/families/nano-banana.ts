@@ -91,6 +91,7 @@ async function rewrittenPrompt(prompt: string, camera: Camera): Promise<string |
 const nanoBanana: ModelFamily = {
   MODELS: new Set(["nano-banana-2"]),
   CONSUMES: new Set(["enable_camera", "camera", "lens", "focal_length", "aperture"]),
+  PREPARE_IS_PAID: true,
   /**
    * Write the camera into the prompt.
    * @param prompt - The reader's description.

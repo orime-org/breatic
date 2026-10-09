@@ -89,7 +89,7 @@ function stores(preset: Step[] = []): {
   return { steps, clones, retired, deps };
 }
 
-const CTX = { taskId: "0f5c2c7e-1111-4222-8333-944455556666", studioId: "studio-1" };
+const CTX = { taskId: "0f5c2c7e-1111-4222-8333-944455556666", studioId: "studio-1", deadlineAt: Number.MAX_SAFE_INTEGER, retryStarting: false };
 
 /**
  * The model path and body of the n-th prediction.
@@ -221,6 +221,19 @@ describe("runCatalogTask", () => {
       runCatalogTask(refused.deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }, 1),
     ).rejects.toThrow("socket hang up");
     expect(refused.steps[0]!.status).toBe("pending");
+  });
+
+  // Table 4.1, submitted x the upstream answers failed.
+  it("marks a submitted step failed when the upstream answers it failed", async () => {
+    const { deps, steps } = stores([
+      { id: "s0", position: 0, kind: "generate", endpoint: "minimax/speech-2.8-hd", itemIndex: null, status: "submitted", predictionId: "pred-old", output: {}, inlineCostUsd: 0 },
+    ]);
+    runPredictionMock.mockRejectedValueOnce(new UpstreamTaskFailed("wavespeed", "prompt refused"));
+
+    await expect(
+      runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }, 1),
+    ).rejects.toBeInstanceOf(UpstreamTaskFailed);
+    expect(steps[0]).toMatchObject({ status: "failed", predictionId: "pred-old", output: { error: "prompt refused" } });
   });
 
   it("keeps the upstream's words on a step it failed", async () => {

@@ -15,6 +15,7 @@ import { MediaUnavailable, UnderstandRefused } from "@breatic/domain";
 import type { RefusalKind, UnavailableKind } from "@breatic/domain";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
+import { TaskDeadlinePassed } from "@worker/providers/still-running.js";
 import {
   assetNameFromUrl,
   encodeTaskFailure,
@@ -104,6 +105,8 @@ export function verdictStands(err: unknown): boolean {
   if (err instanceof UpstreamTaskFailed) return true;
   // A redelivery reads the same job, which has already ended.
   if (err instanceof ContainerJobFailed) return true;
+  // The task's two hours do not come back.
+  if (err instanceof TaskDeadlinePassed) return true;
   if (err instanceof MediaUnavailable) return MEDIA_ANSWER_STANDS[err.kind];
   if (err instanceof UnderstandRefused) return REFUSAL_ANSWER_STANDS[err.kind];
   return false;

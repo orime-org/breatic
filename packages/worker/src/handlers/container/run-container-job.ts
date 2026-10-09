@@ -38,6 +38,7 @@ import {
 
 import { storedAsOutput } from "@worker/handlers/persisted-output.js";
 import type { PersistedOutput } from "@worker/handlers/persisted-output.js";
+import { StillRunning } from "@worker/providers/still-running.js";
 
 /** A container run that ended without its outputs; the message is the row's cause code. */
 export class ContainerJobFailed extends Error {
@@ -48,25 +49,6 @@ export class ContainerJobFailed extends Error {
   constructor(readonly reason: string) {
     super(reason);
     this.name = "ContainerJobFailed";
-  }
-}
-
-/**
- * The job is still going: the run goes back to the queue and comes back for
- * the same job at `resumeAt`, holding no worker slot in between.
- */
-export class ContainerJobPending extends Error {
-  /**
-   * A job read while it was still going.
-   * @param jobId - The job still going.
-   * @param resumeAt - When to read it again, in epoch milliseconds.
-   */
-  constructor(
-    jobId: string,
-    readonly resumeAt: number,
-  ) {
-    super(`container job ${jobId} is still running`);
-    this.name = "ContainerJobPending";
   }
 }
 
@@ -152,7 +134,7 @@ async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunIn
  * @param input - The run.
  * @param job - The job.
  * @returns The report of a job that ended.
- * @throws {ContainerJobPending} When the job is still going.
+ * @throws {StillRunning} When the job is still going.
  * @throws {ContainerJobFailed} When the deadline has passed with the job still going.
  */
 async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJob): Promise<EndedReport> {
@@ -179,7 +161,7 @@ async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJo
   if (report?.state === "done" || report?.state === "failed") return report;
   // The Durable Object ends the job at its deadline; two polls leave room for its report to land.
   if (Date.now() >= job.deadlineAt + poll * 2) throw new ContainerJobFailed("tool_failed");
-  throw new ContainerJobPending(job.jobId, Date.now() + poll);
+  throw new StillRunning(Date.now() + poll);
 }
 
 /**
@@ -224,6 +206,7 @@ async function recordUsage(input: ContainerRunInput, op: ContainerOp, containerC
  * @param op - Its operation.
  * @param input - The run.
  * @returns The stored outputs, in output order, and the credits to charge.
+ * @throws {StillRunning} When the job is still going.
  * @throws {ContainerJobFailed} When the job failed or ran out of time, or an output was refused.
  */
 export async function runContainerJob(

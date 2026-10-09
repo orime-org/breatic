@@ -11,18 +11,22 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as httpModule from "@worker/providers/http.js";
 
 const requestWithRetryMock = vi.fn();
-const pollUntilDoneMock = vi.fn();
+const pollOnceMock = vi.fn();
 
 vi.mock("@worker/providers/http.js", async (importOriginal) => {
   const actual = await importOriginal<typeof httpModule>();
   return {
     ...actual,
     requestWithRetry: (...args: unknown[]) => requestWithRetryMock(...args),
-    pollUntilDone: (...args: unknown[]) => pollUntilDoneMock(...args),
+    pollOnce: (...args: unknown[]) => pollOnceMock(...args),
   };
 });
 
 import { runPrediction, type WavespeedEndpoint } from "@worker/providers/wavespeed.js";
+import { StillRunning } from "@worker/providers/still-running.js";
+
+/** A run with nothing submitted yet, whose id goes nowhere. */
+const FRESH = { storedTaskId: null, persistTaskId: async (): Promise<void> => {}, externalTaskId: "t-0", retryStarting: false };
 
 const ENDPOINT: WavespeedEndpoint = {
   baseUrl: "https://api.wavespeed.test/v3",
@@ -47,8 +51,8 @@ function submittedBody(n = 0): Record<string, unknown> {
 describe("runPrediction", () => {
   beforeEach(() => {
     requestWithRetryMock.mockReset();
-    pollUntilDoneMock.mockReset();
-    pollUntilDoneMock.mockResolvedValue(COMPLETED);
+    pollOnceMock.mockReset();
+    pollOnceMock.mockResolvedValue(COMPLETED);
   });
 
   it("posts the body verbatim to the model's endpoint, stores the id, then polls it", async () => {
@@ -58,13 +62,13 @@ describe("runPrediction", () => {
     const run = await runPrediction(ENDPOINT, "vendor/model/t2v", { text: "hi", duration: 5 }, {
       storedTaskId: null,
       persistTaskId,
-      externalTaskId: "t-1",
+      externalTaskId: "t-1", retryStarting: false,
     });
 
     expect(requestWithRetryMock.mock.calls[0]![0]).toBe("https://api.wavespeed.test/v3/vendor/model/t2v");
     expect(submittedBody()).toEqual({ text: "hi", duration: 5 });
     expect(persistTaskId).toHaveBeenCalledWith("ws-1");
-    expect(pollUntilDoneMock.mock.calls[0]![0]).toBe(
+    expect(pollOnceMock.mock.calls[0]![0]).toBe(
       "https://api.wavespeed.test/v3/predictions/ws-1/result",
     );
     expect(run).toEqual({ outputs: ["https://cdn.test/out.mp4"], taskId: "ws-1" });
@@ -74,11 +78,11 @@ describe("runPrediction", () => {
     const run = await runPrediction(ENDPOINT, "vendor/model/t2v", { text: "hi" }, {
       storedTaskId: "ws-9",
       persistTaskId: vi.fn(async (): Promise<void> => {}),
-      externalTaskId: "t-1",
+      externalTaskId: "t-1", retryStarting: false,
     });
 
     expect(requestWithRetryMock).not.toHaveBeenCalled();
-    expect(pollUntilDoneMock.mock.calls[0]![0]).toBe(
+    expect(pollOnceMock.mock.calls[0]![0]).toBe(
       "https://api.wavespeed.test/v3/predictions/ws-9/result",
     );
     expect(run.taskId).toBe("ws-9");
@@ -89,9 +93,9 @@ describe("runPrediction", () => {
       data: { id: "ws-2", outputs: ["https://cdn.test/sync.png"] },
     });
 
-    const run = await runPrediction(ENDPOINT, "vendor/model/t2i", {});
+    const run = await runPrediction(ENDPOINT, "vendor/model/t2i", {}, FRESH);
 
-    expect(pollUntilDoneMock).not.toHaveBeenCalled();
+    expect(pollOnceMock).not.toHaveBeenCalled();
     expect(run).toEqual({ outputs: ["https://cdn.test/sync.png"], taskId: "ws-2" });
   });
 
@@ -102,7 +106,7 @@ describe("runPrediction", () => {
     const run = await runPrediction(ENDPOINT, "vendor/model/t2i", {}, {
       storedTaskId: null,
       persistTaskId,
-      externalTaskId: "t-1",
+      externalTaskId: "t-1", retryStarting: false,
     });
 
     expect(persistTaskId).not.toHaveBeenCalled();
@@ -112,8 +116,19 @@ describe("runPrediction", () => {
   it("fails when the submit response carries neither an id nor outputs", async () => {
     requestWithRetryMock.mockResolvedValue({ data: {} });
 
-    await expect(runPrediction(ENDPOINT, "vendor/model/t2i", {})).rejects.toThrow(
+    await expect(runPrediction(ENDPOINT, "vendor/model/t2i", {}, FRESH)).rejects.toThrow(
       "No task ID or outputs in WaveSpeed response",
     );
+  });
+
+  it("keeps the new id and hands up a still-going answer from the first question", async () => {
+    requestWithRetryMock.mockResolvedValue({ data: { id: "ws-3" } });
+    pollOnceMock.mockRejectedValue(new StillRunning(123));
+    const persistTaskId = vi.fn(async (): Promise<void> => {});
+
+    await expect(
+      runPrediction(ENDPOINT, "vendor/model/t2v", {}, { storedTaskId: null, persistTaskId, externalTaskId: "t-3", retryStarting: false }),
+    ).rejects.toBeInstanceOf(StillRunning);
+    expect(persistTaskId).toHaveBeenCalledWith("ws-3");
   });
 });

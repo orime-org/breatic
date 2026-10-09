@@ -16,20 +16,30 @@ import type { ResolvedModel } from "@worker/providers/shared.js";
  * generation params (Tier B: persist the server-returned id, nothing more).
  */
 const requestWithRetryMock = vi.fn();
-const pollUntilDoneMock = vi.fn();
+const pollOnceMock = vi.fn();
 const queryBillingMock = vi.fn();
+const { warnMock } = vi.hoisted(() => ({ warnMock: vi.fn() }));
+
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  logger: { info: vi.fn(), warn: warnMock, error: vi.fn(), debug: vi.fn() },
+}));
 
 vi.mock("@worker/providers/http.js", async (importOriginal) => {
   const actual = await importOriginal<typeof httpModule>();
   return {
     ...actual,
     requestWithRetry: (...args: unknown[]) => requestWithRetryMock(...args),
-    pollUntilDone: (...args: unknown[]) => pollUntilDoneMock(...args),
+    pollOnce: (...args: unknown[]) => pollOnceMock(...args),
     queryBilling: (...args: unknown[]) => queryBillingMock(...args),
   };
 });
 
 import { generate } from "@worker/providers/three-d/transports/wavespeed.js";
+import { StillRunning, TaskDeadlinePassed } from "@worker/providers/still-running.js";
+
+/** A deadline no case here reaches unless it says so. */
+const LATER = Number.MAX_SAFE_INTEGER;
 
 const RESOLVED: ResolvedModel = {
   modelName: "meshy-6",
@@ -51,9 +61,9 @@ const COMPLETED_RESULT = {
 describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
   beforeEach(() => {
     requestWithRetryMock.mockReset();
-    pollUntilDoneMock.mockReset();
+    pollOnceMock.mockReset();
     queryBillingMock.mockReset();
-    pollUntilDoneMock.mockResolvedValue(COMPLETED_RESULT);
+    pollOnceMock.mockResolvedValue(COMPLETED_RESULT);
     queryBillingMock.mockResolvedValue(0.42);
   });
 
@@ -64,8 +74,8 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
     const r = await generate("a chair", RESOLVED, { quality: "high" }, {
       storedTaskId: null,
       persistTaskId,
-      externalTaskId: "breatic-task-abc",
-    });
+      externalTaskId: "breatic-task-abc", retryStarting: false,
+    }, LATER);
 
     expect(requestWithRetryMock).toHaveBeenCalledTimes(1);
     const submitBody = JSON.parse(
@@ -73,7 +83,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
     ) as Record<string, unknown>;
     expect(submitBody).toEqual({ quality: "high", prompt: "a chair" }); // Tier B: no client id field
     expect(persistTaskId).toHaveBeenCalledWith("ws-777");
-    expect(String(pollUntilDoneMock.mock.calls[0]![0])).toContain("ws-777");
+    expect(String(pollOnceMock.mock.calls[0]![0])).toContain("ws-777");
     expect(queryBillingMock).toHaveBeenCalledWith(RESOLVED, "ws-777");
     expect(r.url).toBe("https://cdn.wavespeed.test/model.glb");
   });
@@ -84,24 +94,61 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
     const r = await generate("a chair", RESOLVED, {}, {
       storedTaskId: "ws-stored-42",
       persistTaskId,
-      externalTaskId: "breatic-task-abc",
-    });
+      externalTaskId: "breatic-task-abc", retryStarting: false,
+    }, LATER);
 
     expect(requestWithRetryMock).toHaveBeenCalledTimes(0); // ⑦ core: no duplicate generation
     expect(persistTaskId).toHaveBeenCalledTimes(0);
-    expect(String(pollUntilDoneMock.mock.calls[0]![0])).toContain("ws-stored-42");
+    expect(String(pollOnceMock.mock.calls[0]![0])).toContain("ws-stored-42");
     expect(queryBillingMock).toHaveBeenCalledWith(RESOLVED, "ws-stored-42");
     expect(r.url).toBe("https://cdn.wavespeed.test/model.glb");
   });
 
-  it("no resume ctx (legacy caller): submits and polls as before", async () => {
-    requestWithRetryMock.mockResolvedValue({ data: { id: "ws-999" } });
+  describe("against the task's two-hour deadline (inner#1337)", () => {
+    it("submits nothing once the deadline has passed", async () => {
+      const persistTaskId = vi.fn(async () => {});
 
-    const r = await generate("a chair", RESOLVED, {});
+      await expect(
+        generate("a chair", RESOLVED, {}, { storedTaskId: null, persistTaskId, externalTaskId: "x", retryStarting: false }, Date.now() - 1),
+      ).rejects.toBeInstanceOf(TaskDeadlinePassed);
+      expect(requestWithRetryMock).not.toHaveBeenCalled();
+    });
 
-    expect(requestWithRetryMock).toHaveBeenCalledTimes(1);
-    expect(String(pollUntilDoneMock.mock.calls[0]![0])).toContain("ws-999");
-    expect(r.url).toBe("https://cdn.wavespeed.test/model.glb");
-    expect(r.cost).toBe(0.42);
+    // Nothing is submitted, so nothing may have been paid for twice.
+    it("writes no duplicate-cost warning for a retry that submits nothing past the deadline", async () => {
+      await expect(
+        generate("a chair", RESOLVED, {}, { storedTaskId: null, persistTaskId: vi.fn(), externalTaskId: "x", retryStarting: true }, Date.now() - 1),
+      ).rejects.toBeInstanceOf(TaskDeadlinePassed);
+      expect(warnMock).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
+    });
+
+    it("goes back to the queue while the upstream is still going before the deadline", async () => {
+      pollOnceMock.mockRejectedValue(new StillRunning(123));
+
+      const err = await generate(
+        "a chair",
+        RESOLVED,
+        {},
+        { storedTaskId: "ws-stored-42", persistTaskId: vi.fn(), externalTaskId: "x", retryStarting: false },
+        LATER,
+      ).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(StillRunning);
+      expect(queryBillingMock).not.toHaveBeenCalled();
+    });
+
+    it("hands a still-going answer up as it is at the deadline, for dispatch to judge", async () => {
+      pollOnceMock.mockRejectedValue(new StillRunning(123));
+
+      await expect(
+        generate(
+          "a chair",
+          RESOLVED,
+          {},
+          { storedTaskId: "ws-stored-42", persistTaskId: vi.fn(), externalTaskId: "x", retryStarting: false },
+          Date.now() - 1,
+        ),
+      ).rejects.toBeInstanceOf(StillRunning);
+    });
   });
 });
