@@ -19,7 +19,7 @@ import {
 } from '@web/spaces/canvas/node-clipboard';
 
 /** Where the captured nodes are copied from. */
-const SOURCE = { studioId: 'st-a', projectId: 'p-a', spaceId: 'space-a' };
+const SOURCE = { projectId: 'p-a', spaceId: 'space-a' };
 
 /**
  * A payload holding the given nodes and edges.

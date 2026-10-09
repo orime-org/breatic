@@ -53,7 +53,6 @@ export type ClipboardNodeType = CreatableNodeType | 'group' | 'annotation';
 
 /** Where a copy was made. */
 export interface ClipboardSource {
-  studioId: string;
   projectId: string;
   spaceId: string;
 }
@@ -324,7 +323,9 @@ export function cloneForPaste(
   options: CloneOptions = {},
 ): PastedClones {
   const keepUpstream = options.keepUpstream ?? ((): boolean => false);
-  const nodes = payload.nodes.filter((node) => node.type !== 'annotation');
+  const nodes = payload.nodes.filter(
+    (node): node is ClipboardNode & { type: CreatableNodeType | 'group' } => node.type !== 'annotation',
+  );
   const idMap = new Map<string, string>();
   const groupAbsById = new Map<string, { x: number; y: number }>();
   for (const node of nodes) {

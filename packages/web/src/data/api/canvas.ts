@@ -122,6 +122,20 @@ export interface NodeTaskEntry {
   size: number | null;
 }
 
+/** One copy's history, built from the copy's own data (inner#1349). */
+export interface PasteHistoryItem {
+  node_id: string;
+  kind: 'media' | 'text';
+  /** The media address, or a text body's words. */
+  content: string;
+  coverUrl?: string;
+  width?: number;
+  height?: number;
+  mimeType?: string;
+  size?: number;
+  duration?: number;
+}
+
 let limitsCache: CanvasLimits | null = null;
 
 /**
@@ -244,6 +258,26 @@ export const canvasApi = {
     text: string;
   }): Promise<{ id: string }> {
     return apiPost<{ id: string }>('/canvas/node-history/snapshot', body);
+  },
+  /**
+   * Register what a paste or duplicate brings into this project's Studio and
+   * write each copy's history (inner#1349).
+   * @param body - Where it lands, the addresses the copies name, and their history.
+   * @param body.project_id - Owning project.
+   * @param body.space_id - The Space pasted into.
+   * @param body.urls - Storage addresses that are not half of a pair.
+   * @param body.pairs - Video and cover pairs.
+   * @param body.history - One item per copy that has something to record.
+   * @returns Old address → address in this Studio; null for a cover that could not be filed.
+   */
+  paste(body: {
+    project_id: string;
+    space_id: string;
+    urls: string[];
+    pairs: Array<{ url: string; cover: string }>;
+    history: PasteHistoryItem[];
+  }): Promise<{ map: Record<string, string | null> }> {
+    return apiPost<{ map: Record<string, string | null> }>('/canvas/paste', body);
   },
 
   listTasks(projectId: string, params: { page?: number; limit?: number } = {}) {

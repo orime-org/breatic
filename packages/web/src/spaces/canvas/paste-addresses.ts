@@ -15,6 +15,7 @@
 
 import { isStoredObjectUrl } from '@breatic/shared';
 
+import type { PasteHistoryItem } from '@web/data/api/canvas';
 import type { SnapshotNode } from '@web/data/yjs/canvas-space';
 
 /** A video (or audio) address and its cover. */
@@ -29,20 +30,6 @@ export interface PasteAddresses {
   urls: string[];
   /** Video and cover pairs, each once. */
   pairs: AddressPair[];
-}
-
-/** One copy's history, built from the copy's own data. */
-export interface PasteHistoryItem {
-  node_id: string;
-  kind: 'media' | 'text';
-  /** The media address, or a text body's words. */
-  content: string;
-  coverUrl?: string;
-  width?: number;
-  height?: number;
-  mimeType?: string;
-  size?: number;
-  duration?: number;
 }
 
 /** Node types whose `content` is a media address. */
