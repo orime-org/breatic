@@ -38,6 +38,7 @@ import { usePressKeepsFocus } from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
 import { BUBBLE_BAR_CLASS, BUBBLE_ICON_BUTTON_SIZE, PRESSED_CLASS } from '@web/spaces/document/document-tool-button';
 import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import { DocumentMediaImage } from '@web/spaces/document/DocumentMediaImage';
 
 /** The media block types. */
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
@@ -49,6 +50,9 @@ export interface MediaBlockProps {
   readonly caption: string;
   /** Image and video only. */
   readonly previewWidth?: number;
+  /** Image and video only: the pixel size read off the file as it was added. */
+  readonly mediaWidth?: number;
+  readonly mediaHeight?: number;
   /** Image and video only. */
   readonly textAlignment?: string;
 }
@@ -309,6 +313,14 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   }, [sized]);
 
   const width = dragWidth ?? props.previewWidth;
+  const { mediaWidth, mediaHeight } = props;
+  const mediaSize = React.useMemo(
+    () =>
+      type === 'video' && mediaWidth !== undefined && mediaHeight !== undefined
+        ? { width: mediaWidth, height: mediaHeight }
+        : undefined,
+    [type, mediaWidth, mediaHeight],
+  );
   const alignment = props.textAlignment ?? 'center';
 
   /**
@@ -371,17 +383,15 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
 
   const body =
     type === 'image' ? (
-      <img
-        src={props.url}
-        alt=''
-        loading='lazy'
-        decoding='async'
-        draggable={false}
-        className='block h-auto w-full'
+      <DocumentMediaImage
+        url={props.url}
+        shownWidth={width}
+        mediaWidth={props.mediaWidth}
+        mediaHeight={props.mediaHeight}
         onDoubleClick={openFullscreen}
       />
     ) : (
-      <MediaPlayer modality={type} src={props.url} />
+      <MediaPlayer modality={type} src={props.url} size={mediaSize} />
     );
 
   return (

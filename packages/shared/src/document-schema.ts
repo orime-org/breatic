@@ -127,6 +127,8 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
     image: [
       "backgroundColor",
       "caption",
+      "mediaHeight",
+      "mediaWidth",
       "name",
       "previewWidth",
       "quoted",
@@ -182,6 +184,8 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
     video: [
       "backgroundColor",
       "caption",
+      "mediaHeight",
+      "mediaWidth",
       "name",
       "previewWidth",
       "quoted",

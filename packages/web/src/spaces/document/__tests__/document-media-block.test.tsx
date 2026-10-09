@@ -14,6 +14,7 @@ import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
 import { DOCUMENT_SCHEMA, documentBodyFragment } from '@breatic/shared';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 
 import { BODY_PART } from '@web/spaces/document/document-body-focus';
 
@@ -51,6 +52,7 @@ afterEach(() => {
   document.body.removeAttribute('data-radix-scroll-area-viewport');
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  resetPreviewRecords();
 });
 
 const URL_OF = 'https://cdn.example/image/2026-10-07/a.png';
@@ -146,28 +148,44 @@ describe('the loading state and the preview (A23)', () => {
     expect(within(element(editor)).queryByTestId('doc-media-skeleton')).toBeNull();
   });
 
-  it('shows the preview when it is sharp enough at the width shown', () => {
-    vi.stubGlobal('devicePixelRatio', 2);
-    const editor = open('image', { url: STORED, mediaWidth: 1600, mediaHeight: 900, previewWidth: 240 });
+  /**
+   * Loads the picture as it is drawn now, at a natural width.
+   * @param editor - The editor.
+   * @param naturalWidth - How wide the loaded file is.
+   */
+  function loadAt(editor: Editor, naturalWidth: number): void {
+    const img = element(editor).querySelector('img')!;
+    Object.defineProperty(img, 'naturalWidth', { value: naturalWidth, configurable: true });
+    act(() => {
+      img.dispatchEvent(new Event('load'));
+    });
+  }
+
+  it('starts a stored picture on its preview', () => {
+    const editor = open('image', { url: STORED, mediaWidth: 1600, mediaHeight: 900 });
 
     expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(`${STORED}.preview.webp`);
   });
 
-  it('shows the original when the preview would be blurred at the width shown', () => {
+  it('keeps the preview when it is wide enough for the width shown', () => {
+    vi.stubGlobal('devicePixelRatio', 2);
+    const editor = open('image', { url: STORED, mediaWidth: 1600, mediaHeight: 900, previewWidth: 240 });
+
+    loadAt(editor, 576);
+
+    expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(`${STORED}.preview.webp`);
+  });
+
+  it('moves to the original once the preview is narrower than the width shown needs', () => {
     vi.stubGlobal('devicePixelRatio', 2);
     const editor = open('image', { url: STORED, mediaWidth: 1600, mediaHeight: 900, previewWidth: 400 });
 
-    expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(STORED);
-  });
-
-  it('shows the original when the size of the picture is not known', () => {
-    const editor = open('image', { url: STORED, previewWidth: 100 });
+    loadAt(editor, 576);
 
     expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(STORED);
   });
 
   it('falls back to the original when the preview does not load', () => {
-    vi.stubGlobal('devicePixelRatio', 1);
     const editor = open('image', { url: `${STORED.slice(0, -4)}.webp`, mediaWidth: 1600, mediaHeight: 900, previewWidth: 200 });
     const img = element(editor).querySelector('img')!;
     expect(img.getAttribute('src')).toMatch(/\.preview\.webp$/);

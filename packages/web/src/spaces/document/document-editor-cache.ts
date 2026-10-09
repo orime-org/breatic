@@ -86,6 +86,7 @@ import {
   createDocumentUploader,
   type DocumentUploader,
 } from '@web/spaces/document/document-uploads';
+import { measureMediaFile } from '@web/spaces/document/document-media-size';
 import type { FilesArrival } from '@web/spaces/document/document-file-input';
 
 /** The editor plus what is handed out alongside it. */
@@ -187,6 +188,7 @@ function uploaderFor(target: DocumentUploadTarget, undoManager: Y.UndoManager): 
         .catch(() => Infinity),
     upload: (file, onProgress) =>
       uploadMedia(file, { projectId: target.projectId, spaceId: target.spaceId }, onProgress),
+    measure: measureMediaFile,
     register: (id) => {
       operations.register(target.spaceId, id);
     },

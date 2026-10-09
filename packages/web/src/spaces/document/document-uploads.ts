@@ -14,6 +14,7 @@
 import type { EditorView } from '@tiptap/pm/view';
 
 import { UploadFailedError, type StoredUpload } from '@web/data/upload/media-upload';
+import type { MediaSize } from '@web/spaces/document/document-media-size';
 import {
   checkFileAdmission,
   fileToNodeSpec,
@@ -51,6 +52,8 @@ export interface DocumentUploaderDeps {
   readonly refuse: (messageKey: string, params: Readonly<Record<string, string>>) => void;
   /** Keeps each insert one undo step of its own. */
   readonly undo: UndoCapture;
+  /** The pixel size of a picture or a video, read off its file (A23). */
+  readonly measure: (file: File) => Promise<MediaSize | undefined>;
 }
 
 /** Where admitted files go, and whether that gap is inside a quote. */
@@ -133,6 +136,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
     const entry = held.get(slotId);
     if (entry === undefined) return;
     deps.register(slotId);
+    const sizing = deps.measure(entry.file);
     let stored: StoredUpload;
     try {
       stored = await deps.upload(entry.file, (progress) => {
@@ -163,12 +167,18 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       patchUploadSlot(view, slotId, { phase: 'failed', failure: READ_ONLY });
       return;
     }
+    const size = stored.kind === 'audio' ? undefined : await sizing;
     insertSlotBlock(
       view,
       slotId,
       {
         type: stored.kind,
-        props: { url: stored.fileUrl, name: entry.file.name, [QUOTED]: entry.quoted },
+        props: {
+          url: stored.fileUrl,
+          name: entry.file.name,
+          [QUOTED]: entry.quoted,
+          ...(size !== undefined && { mediaWidth: size.width, mediaHeight: size.height }),
+        },
       },
       deps.undo,
     );

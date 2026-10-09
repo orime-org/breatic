@@ -101,6 +101,8 @@ function propsOf(node: PMNode): MediaBlockProps {
     name: typeof attrs['name'] === 'string' ? attrs['name'] : '',
     caption: typeof attrs['caption'] === 'string' ? attrs['caption'] : '',
     ...(typeof attrs['previewWidth'] === 'number' && { previewWidth: attrs['previewWidth'] }),
+    ...(typeof attrs['mediaWidth'] === 'number' && { mediaWidth: attrs['mediaWidth'] }),
+    ...(typeof attrs['mediaHeight'] === 'number' && { mediaHeight: attrs['mediaHeight'] }),
     ...(typeof attrs['textAlignment'] === 'string' && { textAlignment: attrs['textAlignment'] }),
   };
 }

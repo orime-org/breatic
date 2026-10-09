@@ -61,6 +61,16 @@ const NUMBERED_PROPS: Record<string, PropDecl> = {
   number: { default: undefined, type: 'number' },
 };
 
+/**
+ * The pixel size of the picture or the video, read off the file as it was
+ * added (inner#1127 A23): the block keeps the media's place at its final size
+ * while it loads.
+ */
+const MEDIA_SIZE_PROPS: Record<string, PropDecl> = {
+  mediaWidth: { default: undefined, type: 'number' },
+  mediaHeight: { default: undefined, type: 'number' },
+};
+
 /** Lets a list item pin a user-set number. */
 const NUMBER_PROP: Record<string, PropDecl> = {
   number: { default: undefined, type: 'number' },
@@ -139,8 +149,8 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     table: buildTableSpec(),
     // The library's own props: image and video carry a width and an
     // alignment, audio neither (inner#1127 A8, A9).
-    image: withMediaView(withProps(enabled.image, QUOTED_PROP)),
-    video: withMediaView(withProps(enabled.video, QUOTED_PROP)),
+    image: withMediaView(withProps(enabled.image, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS })),
+    video: withMediaView(withProps(enabled.video, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS })),
     audio: withMediaView(withProps(enabled.audio, QUOTED_PROP)),
     unsupportedBlock: unsupportedBlockSpec,
   };
