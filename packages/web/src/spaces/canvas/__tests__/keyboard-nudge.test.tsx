@@ -174,9 +174,7 @@ function mountReadOnly(): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <div data-region='space'>
-        <CanvasSpace projectId='p' spaceId='s' readOnly />
-      </div>
+      <CanvasSpace projectId='p' spaceId='s' readOnly />
     </QueryClientProvider>,
   );
 }
@@ -259,74 +257,6 @@ describe('arrow keys move the selected nodes in the document (inner#1010)', () =
       y: GROUP_PADDING,
       parentId: 'g',
     });
-  });
-
-  it('an arrow key with the keyboard on the page moves the selected nodes (inner#1349 A12)', async () => {
-    seedImage('a', 100, 100);
-    seedImage('b', 400, 100);
-    mount();
-    selectAll(['a']);
-    act(() => {
-      fireEvent.keyDown(document.body, { key: 'ArrowRight' });
-    });
-    await waitFor(() => expect(stored('a')).toMatchObject({ x: 105, y: 100 }));
-    expect(stored('b')).toMatchObject({ x: 400, y: 100 });
-  });
-
-  it('an arrow key with the keyboard on the canvas itself moves the selected nodes', async () => {
-    seedImage('a', 100, 100);
-    mount();
-    selectAll(['a']);
-    act(() => {
-      fireEvent.keyDown(document.querySelector('[data-testid="canvas-space"]') as HTMLElement, { key: 'ArrowRight' });
-    });
-    await waitFor(() => expect(stored('a')).toMatchObject({ x: 105, y: 100 }));
-  });
-
-  it('an arrow key on the selection box xyflow focuses after a marquee moves the selected nodes', async () => {
-    seedImage('a', 100, 100);
-    mount();
-    selectAll(['a']);
-    // xyflow focuses this inner box once a marquee leaves a selection.
-    const box = document.createElement('div');
-    box.className = 'react-flow__nodesselection-rect';
-    box.tabIndex = -1;
-    document.querySelector('[data-testid="canvas-space"]')?.append(box);
-    act(() => {
-      fireEvent.keyDown(box, { key: 'ArrowRight' });
-    });
-    await waitFor(() => expect(stored('a')).toMatchObject({ x: 105, y: 100 }));
-    box.remove();
-  });
-
-  it('an arrow key on the page leaves the nodes alone while another region has the keyboard', () => {
-    seedImage('a', 100, 100);
-    const write = vi.spyOn(canvasSpace, 'setNodePosition');
-    mount();
-    selectAll(['a']);
-    useUIStore.setState({ activeRegion: 'agent' });
-    act(() => {
-      fireEvent.keyDown(document.body, { key: 'ArrowRight' });
-    });
-    expect(shell('a').style.transform).toBe('translate(100px,100px)');
-    expect(write).not.toHaveBeenCalled();
-    write.mockRestore();
-  });
-
-  it('an arrow key in a field outside the canvas leaves the selected nodes alone', () => {
-    seedImage('a', 100, 100);
-    const write = vi.spyOn(canvasSpace, 'setNodePosition');
-    mount();
-    selectAll(['a']);
-    const field = document.createElement('textarea');
-    document.body.append(field);
-    act(() => {
-      fireEvent.keyDown(field, { key: 'ArrowRight' });
-    });
-    expect(shell('a').style.transform).toBe('translate(100px,100px)');
-    expect(write).not.toHaveBeenCalled();
-    field.remove();
-    write.mockRestore();
   });
 
   it('an arrow key on a node that is not selected writes nothing', () => {

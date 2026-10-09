@@ -894,9 +894,6 @@ importers:
       '@xyflow/react':
         specifier: ^12.11.2
         version: 12.11.2(patch_hash=7jpc67tegm3zk4u27ibpbo34nu)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(immer@11.1.16)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@xyflow/system':
-        specifier: 0.0.79
-        version: 0.0.79
       ahooks:
         specifier: ^3.9.7
         version: 3.9.7(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

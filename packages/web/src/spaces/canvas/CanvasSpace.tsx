@@ -2277,6 +2277,55 @@ function CanvasSpaceInner({
   const [selectAfterCreate, setSelectAfterCreate] = React.useState<
     string[] | null
   >(null);
+  // Paste and duplicate select their copies and give them the keyboard; other
+  // ways of making a node only select it.
+  const focusPastedRef = React.useRef<string[] | null>(null);
+  const selectPasted = React.useCallback((ids: string[]): void => {
+    if (ids.length === 0) return;
+    focusPastedRef.current = ids;
+    setSelectAfterCreate(ids);
+  }, []);
+  // A paste or duplicate hands the keyboard to its copies, so the arrow keys
+  // move them (inner#1229) through xyflow's own handler on the focused node.
+  // Each frame it waits while a menu is still closing (it holds focus until
+  // it unmounts) and while xyflow keeps the copy hidden before measuring it;
+  // a copy out of view is never rendered, so the keyboard stays put.
+  const focusFirstCopy = React.useCallback((ids: string[]): void => {
+    let missed = false;
+    /** One frame of the wait; schedules the next until it focuses or gives up. */
+    const step = (): void => {
+      const container = containerRef.current;
+      if (container === null) return;
+      if (document.activeElement?.closest('[role="menu"]')) {
+        requestAnimationFrame(step);
+        return;
+      }
+      const { flowNodes } = graphStore.getState();
+      const measured = ids.find(
+        (id) => flowNodes.find((node) => node.id === id)?.measured?.width !== undefined,
+      );
+      /**
+       * The copy's xyflow node element, when xyflow renders it.
+       * @param id - The copy's node id.
+       * @returns The element, or null when it is not rendered.
+       */
+      const element = (id: string): HTMLElement | null =>
+        container.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`);
+      if (measured !== undefined) {
+        const target = element(measured);
+        if (target !== null && getComputedStyle(target).visibility !== 'hidden') {
+          target.focus();
+          return;
+        }
+      } else if (!ids.some((id) => element(id) !== null)) {
+        // Not rendered for two frames running: out of view.
+        if (missed) return;
+        missed = true;
+      }
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, [graphStore]);
   const staggerRef = React.useRef(0);
   const [contextMenu, setContextMenu] = React.useState({
     open: false,
@@ -2444,7 +2493,7 @@ function CanvasSpaceInner({
     (
       files: File[],
       origin: { x: number; y: number },
-      stepPastTaken = false,
+      pasted = false,
     ): void => {
       if (readOnly || files.length === 0) return;
       // Register the batch SYNCHRONOUSLY (before the config-fetch await) so the
@@ -2501,7 +2550,7 @@ function CanvasSpaceInner({
           // Only a paste steps the whole batch, its Group included, past nodes
           // already on its spot, so it shows (inner#1235 A20).
           const step =
-            stepPastTaken
+            pasted
               ? stepPaste(frame === null ? tops : [...tops, frame])
               : { dx: 0, dy: 0 };
           const centres = laid.map((centre) => ({
@@ -2551,7 +2600,10 @@ function CanvasSpaceInner({
           // deselects everything else when the Group mirrors back.
           selectAfter = [plan.groupId];
         });
-        if (selectAfter.length > 0) setSelectAfterCreate(selectAfter);
+        if (selectAfter.length > 0) {
+          if (pasted) selectPasted(selectAfter);
+          else setSelectAfterCreate(selectAfter);
+        }
         // The bytes travel once the canvas holds the nodes they belong to.
         for (const { file, spec, node } of jobs) {
           const nodeId = node.id;
@@ -2611,6 +2663,7 @@ function CanvasSpaceInner({
       stepPaste,
       t,
       trackOperation,
+      selectPasted,
     ],
   );
 
@@ -2851,15 +2904,10 @@ function CanvasSpaceInner({
     );
     // A newer creation may already be waiting; only this run's ids clear.
     setSelectAfterCreate((current) => (current === ids ? null : current));
-  }, [selectAfterCreate, nodes, setFlowNodes]);
-
-  /**
-   * Selects a paste's or duplicate's copies once they are on the canvas.
-   * @param ids - The copies' ids.
-   */
-  const selectCopies = React.useCallback((ids: string[]): void => {
-    if (ids.length > 0) setSelectAfterCreate(ids);
-  }, []);
+    if (focusPastedRef.current !== ids) return;
+    focusPastedRef.current = null;
+    focusFirstCopy(ids);
+  }, [selectAfterCreate, nodes, setFlowNodes, focusFirstCopy]);
 
   // One dispatch for Cmd+V and the menu's Paste (design 5.9): our nodes paste
   // as nodes, any other words make a text node. `at` is the right-click point;
@@ -2887,7 +2935,7 @@ function CanvasSpaceInner({
           }
         }
         void pastePayload(payload, offset, { keepUpstream: keepUpstreamFor(payload) }).then((ids) => {
-          if (ids) selectCopies(ids);
+          if (ids) selectPasted(ids);
         });
         return true;
       }
@@ -2895,10 +2943,10 @@ function CanvasSpaceInner({
       const rect = containerRef.current?.getBoundingClientRect();
       const point = at ?? (rect ? viewCentre(rect) : null);
       if (!point) return false;
-      selectCopies([pasteTextAt(text, point)]);
+      selectPasted([pasteTextAt(text, point)]);
       return true;
     },
-    [pastePayload, pasteTextAt, keepUpstreamFor, screenToFlowPosition, viewCentre, spaceId, selectCopies],
+    [pastePayload, pasteTextAt, keepUpstreamFor, screenToFlowPosition, viewCentre, spaceId, selectPasted],
   );
 
   // ---- Clipboard (slice 2b) ----
@@ -3333,10 +3381,10 @@ function CanvasSpaceInner({
           },
         },
       ).then((ids) => {
-        if (ids) selectCopies(ids);
+        if (ids) selectPasted(ids);
       });
     },
-    [readOnly, projectId, spaceId, captureClipboardFor, keepUpstreamFor, pastePayload, selectCopies, buffer],
+    [readOnly, projectId, spaceId, captureClipboardFor, keepUpstreamFor, pastePayload, selectPasted, buffer],
   );
 
   const copySelection = React.useCallback((): void => {
@@ -4269,7 +4317,6 @@ function CanvasSpaceInner({
     [buffer, commitMove],
   );
   const nudgeKeys = useKeyboardNudge({
-    container: containerRef,
     gestureRunning: gesture.isRunning,
     commit: commitNudge,
   });
@@ -4368,6 +4415,8 @@ function CanvasSpaceInner({
           // or the one on screen draws with a hidden canvas's grid.
           id={`canvas-${spaceId}`}
           ref={setFlowShell}
+          onKeyDownCapture={nudgeKeys.onKeyDownCapture}
+          onKeyDown={nudgeKeys.onKeyDown}
           onPointerDownCapture={nudgeKeys.onPointerDownCapture}
           nodes={pickedNodes}
           edges={flowEdges}

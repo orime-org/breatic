@@ -65,7 +65,6 @@
     "@tiptap/suggestion": "catalog:",
     "@tiptap/y-tiptap": "catalog:",
     "@xyflow/react": "^12.11.2",
-    "@xyflow/system": "0.0.79",
     "ahooks": "^3.9.7",
     "ai": "catalog:",
     "axios": "^1.19.0",
