@@ -168,8 +168,9 @@ export interface MiniToolDraft {
   /** What the reader has drawn; null on a tool without a drawing (inner#1302 §6.1). */
   readonly drawing: DrawingDraft | null;
   /**
-   * Run was pressed and the drawing is being exported or uploaded. Only the
-   * run of this opening writes it; the layer, the panel and undo read it.
+   * Run was pressed and what it makes in the browser (a browser tool's file,
+   * or a drawing tool's images and their upload) is being made. Only the run
+   * of this opening writes it; the layer, the panel and undo read it.
    */
   readonly exporting: boolean;
 }

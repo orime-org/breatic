@@ -197,7 +197,7 @@ export function slotLengthCap(
  * @param input.sourceShown - Whether the source node is showing its media.
  * @param input.source - The source as the panel knows it.
  * @param input.tiers - The size tiers as they fall on the source.
- * @param input.exporting - Whether a browser tool's export is under way.
+ * @param input.exporting - Whether a press is still making its file or images in the browser.
  * @param input.inked - Whether a drawing tool's drawing leaves any ink.
  * @returns The first reason in the order the reader would fix them, or null.
  */
@@ -238,7 +238,8 @@ export function miniToolRefusal(input: {
 /**
  * Whether a press makes something in the browser before the run: a browser
  * tool's file, or a drawing tool's images. The panel shows the press as under
- * way and the Space keeps it as an operation for that stretch.
+ * way for that stretch, and the Space keeps the whole press as an operation
+ * until it resolves.
  * @param spec - The tool.
  * @returns True when the press exports first.
  */

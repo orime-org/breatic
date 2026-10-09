@@ -52,9 +52,10 @@ export interface MiniToolPanelContainerProps {
   getLastWriteWasLocal: () => boolean;
   /**
    * Run the tool on the snapshot taken at the press, with the drawing at the
-   * press on a tool that draws. Resolves once whatever the press makes in the
-   * browser has been made (or failed), or once a server tool's request has
-   * been answered (or failed).
+   * press on a tool that draws. Resolves once a browser tool's file has
+   * been made (or failed), or once a server tool's request has been answered
+   * (or failed); a drawing tool's images are made and uploaded before that
+   * request.
    */
   onRun: (
     nodeId: string,

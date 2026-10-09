@@ -70,8 +70,9 @@ function repaint(canvas: HTMLCanvasElement | null, ops: readonly DrawOp[], kind:
 
 /**
  * The two canvases and the pointer handling. The lower one holds the
- * committed steps and is repainted only when they, the colour or the settled
- * zoom change; the upper one holds the stroke under way.
+ * committed steps and is repainted when they, the mask colour or its bitmap
+ * size (the settled zoom, the picture's box) change, and while an eraser
+ * stroke cuts into it; the upper one holds the stroke under way.
  * @param root0 - Component props.
  * @param root0.kind - Mask or sketch.
  * @param root0.drawing - The drawing in the draft.

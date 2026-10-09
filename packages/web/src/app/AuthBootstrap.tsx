@@ -8,8 +8,7 @@ import { changeLocale } from '@web/i18n/locale-bootstrap';
 // The store's own module, not the `@web/stores` barrel. `App` mounts this
 // file above the router and the route table imports `ProtectedRoute`
 // statically, so both land in the chunk every reader downloads — and the
-// barrel would put the canvas, mini-tool, project and toast stores in there
-// with them.
+// barrel would put the canvas, project and toast stores in there with them.
 import {
   toCurrentUser,
   useCurrentUserStore,
