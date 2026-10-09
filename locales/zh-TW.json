@@ -987,7 +987,7 @@
         "sourceChanged": "素材已更換。",
         "sourceChangedByPeer": "協作者更換了素材。",
         "couldNotStart": "工具沒能啟動，請重試。",
-        "drawingEmpty": "請先在圖上畫"
+        "drawingEmpty": "請先在圖上畫。"
       },
       "adjust": {
         "exposure": "曝光",

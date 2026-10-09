@@ -987,7 +987,7 @@
         "sourceChanged": "The source changed.",
         "sourceChangedByPeer": "A collaborator changed the source.",
         "couldNotStart": "Couldn't start the tool. Try again.",
-        "drawingEmpty": "Draw on the picture first"
+        "drawingEmpty": "Draw on the picture first."
       },
       "adjust": {
         "exposure": "Exposure",

@@ -987,7 +987,7 @@
         "sourceChanged": "素材が変わりました。",
         "sourceChangedByPeer": "コラボレーターが素材を変えました。",
         "couldNotStart": "ツールを開始できませんでした。もう一度お試しください。",
-        "drawingEmpty": "先に画像に描いてください"
+        "drawingEmpty": "先に画像に描いてください。"
       },
       "adjust": {
         "exposure": "露出",
