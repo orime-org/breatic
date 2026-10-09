@@ -212,6 +212,12 @@ test('the upscale panel offers sizes measured on the picture @needs-internet', a
   const eightK = (await page.getByTestId('mini-tool-size-target_megapixels-8K').boundingBox())!;
   const close = (await page.getByTestId('mini-tool-panel-close').boundingBox())!;
   expect(eightK.x + eightK.width).toBeLessThanOrEqual(close.x + close.width + 0.5);
+  // The footer puts the cost at the left edge, under the title, and Run at the right, under the close button.
+  const title = (await page.getByTestId('mini-tool-panel-title').boundingBox())!;
+  const credit = (await page.getByTestId('mini-tool-credit').boundingBox())!;
+  const run = (await page.getByTestId('mini-tool-run').boundingBox())!;
+  expect(Math.abs(credit.x - title.x)).toBeLessThan(1);
+  expect(Math.abs(run.x + run.width - (close.x + close.width))).toBeLessThan(1);
   await page.keyboard.press('Escape');
 });
 

@@ -298,7 +298,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
           ))
         )}
       </div>
-      <div className='flex items-center justify-end gap-1.5 border-t border-border px-3 py-2'>
+      <div className='flex items-center justify-between gap-1.5 border-t border-border px-3 py-2'>
         <span
           data-testid='mini-tool-credit'
           className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
