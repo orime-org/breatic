@@ -17,7 +17,7 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
-import { mediaGapBelow } from '@web/spaces/document/document-insert-row';
+import { mediaGapBelow, mediaGapOnRow } from '@web/spaces/document/document-insert-row';
 import { textblocks, gapBefore } from './textblocks';
 import {
   addUploadBatch,
@@ -578,6 +578,23 @@ describe('where the placeholder and the block go', () => {
     land(editor, slot!);
 
     expect((editor.document as Seen[]).map((b) => b.type)).toEqual(['paragraph', 'image']);
+  });
+
+  it('lands quoted above an empty quoted line it was aimed at, under a line that is not quoted', () => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'intro' },
+      { type: 'paragraph', props: { quoted: true } },
+    ]);
+    const gap = mediaGapOnRow(editor, (editor.document as Seen[])[1] as never);
+    const [slot] = addUploadBatch(editor.prosemirrorView!, gap, ['m1']);
+
+    land(editor, slot!);
+
+    expect((editor.document as Seen[]).map((block) => [block.type, block.props['quoted']])).toEqual([
+      ['paragraph', false],
+      ['image', true],
+      ['paragraph', true],
+    ]);
   });
 
   it('takes its quoting from the rows beside it when it lands, not from where it was dropped', () => {

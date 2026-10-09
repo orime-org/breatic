@@ -168,14 +168,18 @@ export function blockGapAt(doc: PMNode, pos: number): number {
 
 /**
  * Whether a block inserted at a gap goes in quoted: as the block before it, or
- * the block after it at the head of a level.
+ * the block after it at the head of a level or when that block is an empty
+ * line — files land above an empty line only because the reader aimed them at
+ * it (the insert menu on it, a paste with the caret in it).
  * @param doc - The document.
  * @param at - A position between two blocks.
  * @returns True when quoted.
  */
 function quotedAt(doc: PMNode, at: number): boolean {
   const $at = doc.resolve(at);
-  const beside = $at.nodeBefore ?? $at.nodeAfter;
+  const after = $at.nodeAfter?.firstChild;
+  const emptyLineAfter = after?.isTextblock === true && after.content.size === 0;
+  const beside = emptyLineAfter ? $at.nodeAfter : ($at.nodeBefore ?? $at.nodeAfter);
   return beside?.firstChild?.attrs[QUOTED] === true;
 }
 
