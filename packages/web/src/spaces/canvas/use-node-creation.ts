@@ -9,7 +9,6 @@ import {
   promptPlainText,
   proposalMarkSegments,
   type CanvasProposal,
-  type NodeMediaFields,
 } from '@breatic/shared';
 
 import {
@@ -56,16 +55,6 @@ import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { ingestRefusalToastKey } from '@web/spaces/canvas/upload-failure';
-
-/** No numbers for a material whose registration the check could not read. */
-const NO_MEDIA: NodeMediaFields = {
-  coverUrl: null,
-  width: null,
-  height: null,
-  duration: null,
-  mimeType: null,
-  size: null,
-};
 
 /** A node an upload just created: its id and the top-left it was written at. */
 export interface CreatedUploadNode {
@@ -264,12 +253,11 @@ export function useNodeCreation(
           nodeIds.push(id);
           setNodeName(projectId, spaceId, id, node.name);
           // The reader's material, with the numbers its registration holds,
-          // the same write a restored result goes through (inner#1315).
-          if (node.material) {
-            restoreNodeMedia(projectId, spaceId, id, {
-              content: node.material,
-              media: node.materialMedia ?? NO_MEDIA,
-            });
+          // the same write a restored result goes through (inner#1315). The
+          // tool answers with both or neither: a material it could not read the
+          // registration of is refused before a card is drawn.
+          if (node.material !== undefined && node.materialMedia !== undefined) {
+            restoreNodeMedia(projectId, spaceId, id, { content: node.material, media: node.materialMedia });
           }
           // Mode and model go together in one write, so a collaborator never
           // sees the proposed mode paired with whatever model the node

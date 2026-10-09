@@ -93,6 +93,18 @@ describe("saveToStorageFor", () => {
     expect(transferReaderUrlToStorage).toHaveBeenCalledWith(LINK, { projectId: "p1", actingUserId: "u1" }, stop.signal);
     expect(noteIngestSideEffects).toHaveBeenCalledWith(STORED.storageKey, STORED);
     expect(saved).toEqual({ url: STORED.fileUrl, mimeType: "image/jpeg", width: 500, height: 375 });
+    const order = [checkRateLimit, assertAccess, assertStorageAllowance, transferReaderUrlToStorage].map(
+      (fn) => fn.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it("logs a gate failing on our side as an error, with the turn's project and reader, and rethrows it", async () => {
+    const down = new Error("db down");
+    assertAccess.mockRejectedValue(down);
+
+    expect(await refusalOf(save(LINK))).toBe(down);
+    expect(log.error).toHaveBeenCalledWith(expect.objectContaining({ err: down, projectId: "p1", userId: "u1" }), "agent_save_gate_failed");
   });
 
   it("refuses over the canvas paste's rate, logged as a hit", async () => {

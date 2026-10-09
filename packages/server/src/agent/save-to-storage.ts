@@ -62,8 +62,11 @@ export function saveToStorageFor({ projectId, userId }: { projectId: string; use
       await assertStorageAllowance(projectId, "upload");
     } catch (err) {
       // The storage gate logs its own refusal, and an access refusal is the
-      // reader's standing rather than a fault.
-      throw asRefusal(err);
+      // reader's standing rather than a fault. Anything else is a fault on
+      // our side, logged where the turn's project and reader are known.
+      const refusal = asRefusal(err);
+      if (!(refusal instanceof SaveRefused)) logger.error({ err, projectId, userId, url }, "agent_save_gate_failed");
+      throw refusal;
     }
 
     let stored;
