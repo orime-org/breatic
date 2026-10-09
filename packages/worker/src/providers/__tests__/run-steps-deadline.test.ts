@@ -15,6 +15,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import { initCore } from "@breatic/core";
 import type { upstreamStepRepo } from "@breatic/domain";
+import type * as httpModule from "@worker/providers/http.js";
 
 type Step = upstreamStepRepo.UpstreamStep;
 
@@ -23,6 +24,11 @@ const runPredictionMock = vi.fn();
 vi.mock("@worker/providers/wavespeed.js", () => ({
   runPrediction: (...args: unknown[]) => runPredictionMock(...args),
 }));
+
+vi.mock("@worker/providers/http.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof httpModule>();
+  return { ...actual, queryBilling: async () => 0 };
+});
 
 const { runCatalogTask } = await import("@worker/providers/run-steps.js");
 const { FAMILIES } = await import("@worker/providers/generate.js");

@@ -26,6 +26,7 @@ const understandConfigSchema = z.object({
   read_floor_ms: z.number().int().positive().default(5_000),
   call_timeout_ms: z.number().int().positive().default(180_000),
   max_output_tokens: z.number().int().positive().default(8_192),
+  max_concurrent: z.number().int().positive().default(5),
 });
 
 /** Validated understand configuration. */

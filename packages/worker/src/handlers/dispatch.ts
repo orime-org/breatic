@@ -14,7 +14,10 @@
 
 import { DelayedError, type Job } from "bullmq";
 import type { ResumeContext } from "@worker/providers/shared.js";
-import { ContainerJobPending, runContainerJob } from "@worker/handlers/container/run-container-job.js";
+import { runContainerJob } from "@worker/handlers/container/run-container-job.js";
+import { StillRunning, TaskDeadlinePassed } from "@worker/handlers/still-running.js";
+import { taskDeadline } from "@worker/handlers/task-deadline.js";
+import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
 import { taskService, upstreamStepRepo } from "@breatic/domain";
@@ -180,7 +183,7 @@ export async function verifyJobLockOwnership(
 }
 
 /**
- * Settle this run's row on every target node as failed, isolating each one
+ * Settle this run's row on every target node as failed or expired, isolating each one
  * (#1580 adversarial fix: a stream hiccup on node K must not skip nodes
  * K+1..N, and must never escape into BullMQ's retry machinery for a task
  * already marked failed). Best-effort for the same reason: the job is
@@ -188,9 +191,10 @@ export async function verifyJobLockOwnership(
  * next state change on it.
  * @param streamRedis - Redis client for the stream DB.
  * @param docName - Canvas doc the nodes live in.
- * @param nodeIds - Target nodes whose rows settle as failed.
+ * @param nodeIds - Target nodes whose rows settle.
  * @param errorMessage - Human-readable failure reason.
- * @param taskId - The job whose row on each node settles as failed.
+ * @param taskId - The job whose row on each node settles.
+ * @param outcome - `expired` when the run ran out of its two hours, else `failed`.
  */
 async function settleFailedBestEffort(
   streamRedis: ReturnType<typeof getStreamRedis>,
@@ -198,13 +202,14 @@ async function settleFailedBestEffort(
   nodeIds: string[],
   errorMessage: string,
   taskId: string,
+  outcome: FailedOutcome,
 ): Promise<void> {
   for (const nodeId of nodeIds) {
     try {
       await settleTaskForNode(streamRedis, docName, {
         taskId,
         nodeId,
-        outcome: "failed",
+        outcome,
         errorMessage,
       });
     } catch (err) {
@@ -511,15 +516,21 @@ async function runTaskBody(
       }
       [providerResult, creditsUsed] = await runUnderstand(params, recorderFor("canvas_understand"));
     } else if (taskType in AIGC_TASK_TYPES) {
-      [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, { resume, taskId, projectId: projectId ?? undefined, outputCount: 1 });
+      [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, {
+        resume,
+        taskId,
+        projectId: projectId ?? undefined,
+        outputCount: 1,
+        deadlineAt: await deadlineOf(taskId),
+      });
     } else {
       throw new Error(`Task type '${taskType}' has no runner`);
     }
   } catch (err) {
-    // A container job still going is not a failure: the run goes back to the
-    // queue and returns for the same job, and a delayed job spends none of its
-    // attempts.
-    if (err instanceof ContainerJobPending && token !== undefined) {
+    // Upstream work still going is not a failure: the run goes back to the
+    // queue and returns for the same work, and a delayed job spends none of
+    // its attempts.
+    if (err instanceof StillRunning && token !== undefined) {
       await job.moveToDelayed(err.resumeAt, token);
       throw new DelayedError();
     }
@@ -545,6 +556,7 @@ async function runTaskBody(
       ...runEnd,
       errorMessage: errorMsg,
       settles: settlesNow,
+      outcome: err instanceof TaskDeadlinePassed ? "expired" : "failed",
     });
     // Rethrow to let BullMQ schedule a retry, unless the verdict already
     // stands: the row is settled and the reader has been told, so another
@@ -1016,6 +1028,9 @@ export async function recordGenerationForNodes(
 
 // ─── Failure-path helpers ────────────────────────────────────────────
 
+/** How a failed run's node rows end: out of its two hours, or failed for any other cause. */
+type FailedOutcome = "failed" | "expired";
+
 /** Everything a failed run needs to finish itself. */
 export interface FailedRunEnd {
   streamRedis: ReturnType<typeof getStreamRedis>;
@@ -1032,6 +1047,8 @@ export interface FailedRunEnd {
   toolId: string | undefined;
   /** The one text the task row, the history, the node and the feed all carry. */
   errorMessage: string;
+  /** How the node rows end; `failed` unless the run ran out of its two hours. */
+  outcome?: FailedOutcome;
   /**
    * Whether this attempt is the last word on the run.
    *
@@ -1091,6 +1108,7 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
       end.nodeIds,
       end.errorMessage,
       end.taskId,
+      end.outcome ?? "failed",
     );
   }
   if (end.projectId && end.settles) {
@@ -1380,6 +1398,21 @@ export interface ProviderRun {
   projectId: string | undefined;
   /** How many outputs the run writes to nodes: 1 for a canvas generation, the tool's outputs for a mini-tool. */
   outputCount: number;
+  /** The task's two-hour deadline, in epoch milliseconds (inner#1337). */
+  deadlineAt: number;
+}
+
+/**
+ * The deadline of a task whose upstream work goes back to the queue between
+ * questions.
+ * @param taskId - The task.
+ * @returns The deadline, in epoch milliseconds.
+ * @throws {Error} When the task row is gone: there is nothing to run against.
+ */
+async function deadlineOf(taskId: string): Promise<number> {
+  const deadlineAt = await taskDeadline(taskId);
+  if (deadlineAt === null) throw new Error(`task ${taskId} has no row to run against`);
+  return deadlineAt;
 }
 
 interface RunMiniToolOpts {
@@ -1426,6 +1459,7 @@ export async function runMiniTool(
       taskId,
       projectId,
       outputCount: spec.outputs.length,
+      deadlineAt: await deadlineOf(taskId),
     });
     return [result, creditsFor((result.cost as number) ?? 0)];
   }
@@ -1468,6 +1502,7 @@ export async function runMiniTool(
  * @returns A `[result, credits]` tuple: one output holding the text, and the credits to charge.
  * @throws {MediaUnavailable} when the address yields no usable media.
  * @throws {UnderstandRefused} when the service would not answer.
+ * @throws {StillRunning} when every reading place in this process is taken.
  * @throws {Error} when the answer is empty.
  */
 export async function runUnderstand(
@@ -1494,7 +1529,7 @@ export async function runUnderstand(
 
   let answer: Awaited<ReturnType<typeof understandMediaAt>>;
   try {
-    answer = await understandMediaAt({
+    answer = await withUnderstandSlot(() => understandMediaAt({
       url: params.source_url as string,
       // The ledger's judgement outranks what storage declares: the browser's
       // gate let this run start on it, and storage answers with a type guessed
@@ -1514,7 +1549,7 @@ export async function runUnderstand(
       timeoutMs: cfg.call_timeout_ms,
       maxOutputTokens: cfg.max_output_tokens,
       onBilled: record,
-    });
+    }));
   } catch (err) {
     // A call the service billed before failing was recorded; its row lands
     // before the failure goes on, and a row that cannot be written is logged
@@ -1621,14 +1656,24 @@ async function importProvider(taskType: string): Promise<{
         async (prompt, model, params, run) => {
           const studioId = run.projectId ? await assetService.resolveOwnerStudioId(run.projectId) : null;
           return {
-            ...(await runCatalogTask(stepDepsFor(studioId), { taskId: run.taskId, studioId }, modality, prompt, model, params, run.outputCount)),
+            ...(await runCatalogTask(
+              stepDepsFor(studioId),
+              { taskId: run.taskId, studioId, deadlineAt: run.deadlineAt },
+              modality,
+              prompt,
+              model,
+              params,
+              run.outputCount,
+            )),
           };
         },
       );
     }
     case "three-d": {
       const m = await import("@worker/providers/three-d/index.js");
-      return wrap(m.validateThreeDParams, (prompt, model, params, run) => m.generateAsync(prompt, model, params, run.resume));
+      return wrap(m.validateThreeDParams, (prompt, model, params, run) =>
+        m.generateAsync(prompt, model, params, run.resume, run.deadlineAt),
+      );
     }
     default: throw new Error(`Unknown AIGC task type: ${taskType}`);
   }

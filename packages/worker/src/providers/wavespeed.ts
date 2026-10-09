@@ -7,7 +7,7 @@
  * A run is one prediction:
  *
  *     POST {base_url}/{model_id}                     ->  {"data": {"id": "...", "outputs": [...]}}
- *     GET  {base_url}/predictions/{task_id}/result   ->  poll until completed
+ *     GET  {base_url}/predictions/{task_id}/result   ->  asked once per pickup
  *
  * The body is sent as the caller built it: the upstream field names come
  * from the model's declaration, not from here.
@@ -15,7 +15,7 @@
 
 import type { ResumeContext } from "@worker/providers/shared.js";
 import { submitOrResume } from "@worker/providers/async-resume.js";
-import { bearerHeaders, requestWithRetry, pollUntilDone, extractNested } from "@worker/providers/http.js";
+import { bearerHeaders, requestWithRetry, pollOnce, extractNested } from "@worker/providers/http.js";
 
 /** Where predictions are sent and how long one may take. */
 export interface WavespeedEndpoint {
@@ -44,15 +44,17 @@ function outputsOf(data: Record<string, unknown>): unknown[] | undefined {
 }
 
 /**
- * Run one prediction to completion. Submit is at-most-once across BullMQ
- * retries (#1628): with a stored id the POST is skipped and polling resumes;
- * a fresh run stores the returned id before it polls. A submit response that
- * already carries outputs is the answer, and nothing is polled.
+ * Submit a prediction, or ask once about the one already submitted. Submit is
+ * at-most-once across pickups (#1628): with a stored id the POST is skipped;
+ * a fresh run stores the returned id before it asks. A submit response that
+ * already carries outputs is the answer, and nothing is asked.
  * @param endpoint - Base url, key and timeout.
  * @param modelId - The WaveSpeed model path, e.g. `minimax/speech-2.8-hd`.
  * @param body - The request body, sent verbatim.
  * @param resume - Worker resume context, when the run belongs to a task.
  * @returns The prediction's outputs and its id.
+ * @throws {StillRunning} when the prediction is still going, or the question
+ *   about it got no usable answer.
  * @throws {Error} when the submit response carries neither an id nor outputs,
  *   or the prediction fails.
  */
@@ -87,14 +89,14 @@ export async function runPrediction(
   };
 
   /**
-   * Poll the prediction to a terminal status, or hand back the sync answer.
+   * Ask once about the prediction, or hand back the sync answer.
    * @param taskId - The prediction id.
    * @returns The terminal response and the id it answered for.
    */
   const poll = async (taskId: string): Promise<{ data: Record<string, unknown>; taskId: string }> => ({
     data:
       syncAnswer ??
-      (await pollUntilDone(`${endpoint.baseUrl}/predictions/${taskId}/result`, {
+      (await pollOnce(`${endpoint.baseUrl}/predictions/${taskId}/result`, {
         headers,
         statusPath: ["data", "status"],
         successStatuses: new Set(["completed"]),

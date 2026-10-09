@@ -7,28 +7,27 @@
  * Delivering a request — retrying it, backing off, honouring `Retry-After` —
  * belongs to `@breatic/shared` and is no longer done here. What remains is
  * everything particular to talking to an AIGC vendor: reading the JSON,
- * wording the failure so the vendor's own message survives, polling a task to
- * a terminal status, and asking WaveSpeed what a prediction cost.
+ * wording the failure so the vendor's own message survives, asking once about
+ * a task it is running, and asking WaveSpeed what a prediction cost.
  */
 
 import type { ResolvedModel } from "@worker/providers/shared.js";
 import { logger } from "@breatic/core";
 import { getWorkerConfig } from "@breatic/core";
 import { httpRequest } from "@breatic/shared";
+import { StillRunning } from "@worker/handlers/still-running.js";
 
 /**
  * Lazy-loaded HTTP config values, pulled from the worker config on each call.
  * @returns The poll / billing timing values used by the helpers below
  */
 function httpConfig(): {
-  defaultPollInterval: number;
-  defaultMaxWait: number;
+  pollInterval: number;
   billingTimeout: number;
 } {
   const cfg = getWorkerConfig();
   return {
-    defaultPollInterval: cfg.poll_interval,
-    defaultMaxWait: cfg.poll_max_wait,
+    pollInterval: cfg.poll_interval,
     billingTimeout: cfg.billing_timeout,
   };
 }
@@ -105,8 +104,8 @@ export function extractNested(
  * @param timeoutMs - How long ONE delivery may take. Omitted leaves the
  *   transport's own default in place.
  * @returns Parsed JSON response.
- * @throws {Error} On any non-ok status, carrying the vendor's response body —
- *   it is the only diagnostic these calls produce.
+ * @throws {HttpStatusError} On any non-ok status, carrying the status and the
+ *   vendor's response body — it is the only diagnostic these calls produce.
  * @throws {Error} The transport's failure, unwrapped, when the first delivery
  *   produces no response and no replay follows. With `replaySafe: false` that
  *   is the COMMON failure shape here: a per-model deadline expiring arrives
@@ -133,15 +132,30 @@ export async function requestWithRetry(
   }
 
   const body = await response.text().catch(() => "");
-  throw new Error(`${provider} HTTP ${response.status}: ${body}`);
+  throw new HttpStatusError(provider, response.status, body);
+}
+
+/** A vendor answered a request with a non-ok status. */
+export class HttpStatusError extends Error {
+  /**
+   * Record the status and what the vendor said with it.
+   * @param provider - The vendor.
+   * @param status - The HTTP status.
+   * @param body - The response body.
+   */
+  constructor(
+    provider: string,
+    readonly status: number,
+    body: string,
+  ) {
+    super(`${provider} HTTP ${status}: ${body}`);
+    this.name = "HttpStatusError";
+  }
 }
 
 /**
- * Options for {@link pollUntilDone}.
- *
- * Carries what differs between vendors — the URL shape, where the status
- * sits in their JSON, which values are terminal. The two timings are absent
- * on purpose; see {@link pollUntilDone}.
+ * Options for {@link pollOnce}: what differs between vendors — the status's
+ * place in their JSON, and which values are terminal.
  */
 export interface PollOptions {
   headers?: Record<string, string>;
@@ -175,65 +189,57 @@ export class UpstreamTaskFailed extends Error {
 }
 
 /**
- * Poll an async task endpoint until it reaches a terminal status.
+ * Whether a failed question about a task may get an answer if asked again:
+ * a 5xx or a 429, or no answer at all (network, timeout).
+ * @param err - What the question threw.
+ * @returns True for a failure that says nothing about the task itself.
+ */
+function askAgain(err: unknown): boolean {
+  if (!(err instanceof HttpStatusError)) return true;
+  return err.status >= 500 || err.status === 429;
+}
+
+/**
+ * Ask an upstream once about a task it is running.
  *
- * Both timings come from `config/worker.yaml` and no caller can override
- * them, because neither depends on which vendor or model is being polled:
- *
- * - `poll_interval` is how long to wait between two "is it done yet?"
- *   requests.
- * - `poll_max_wait` bounds ONE round of asking, NOT how long the task is
- *   expected to take. Running out of it throws, BullMQ retries the job, and
- *   the retry resumes polling the same vendor task id (see
- *   `async-resume.ts`) instead of submitting a second one — so a task
- *   slower than one round is simply picked up by the next round, and
- *   `job_attempts` gives three of them.
+ * The job goes back to the queue between two questions, so nothing here
+ * waits: a task still going, or a question that got no usable answer, names
+ * the time to ask again (`poll_interval` in `config/worker.yaml`).
  * @param url - Poll URL
  * @param options - Vendor-specific polling shape
- * @returns The full JSON response on success
- * @throws {Error} on failure status or timeout
+ * @returns The full JSON response when the task completed
+ * @throws {UpstreamTaskFailed} When the upstream failed the task.
+ * @throws {StillRunning} When the task is still going, or the question got a
+ *   5xx, a 429 or no answer.
+ * @throws {HttpStatusError} When the upstream answered the question with
+ *   another 4xx — a statement about the task or the key, not a hiccup.
  */
-export async function pollUntilDone(
+export async function pollOnce(
   url: string,
   options: PollOptions,
 ): Promise<Record<string, unknown>> {
-  const { defaultPollInterval: interval, defaultMaxWait: maxWait } = httpConfig();
   const provider = options.provider ?? "unknown";
-  let elapsed = 0;
+  const fetchUrl = options.params ? `${url}?${new URLSearchParams(options.params).toString()}` : url;
 
-  while (elapsed < maxWait) {
-    const fetchUrl = options.params
-      ? `${url}?${new URLSearchParams(options.params).toString()}`
-      : url;
-
-    const resp = await requestWithRetry(
-      fetchUrl,
-      { method: "GET", headers: options.headers },
-      provider,
-    );
-
-    const status = String(extractNested(resp, options.statusPath, "unknown"));
-
-    if (options.successStatuses.has(status)) {
-      return resp;
-    }
-    if (options.failureStatuses.has(status)) {
-      const errorMsg = options.errorPath
-        ? String(extractNested(resp, options.errorPath, "unknown"))
-        : "unknown";
-      // #1628: log at the poll layer (not only via the bubbled-up job error)
-      // so vendor-side failures are attributable to the specific poll URL.
-      logger.warn({ provider, url, status, errorMsg }, "poll_task_failed");
-      throw new UpstreamTaskFailed(provider, errorMsg);
-    }
-
-    await sleep(interval);
-    elapsed += interval;
+  let resp: Record<string, unknown>;
+  try {
+    resp = await requestWithRetry(fetchUrl, { method: "GET", headers: options.headers }, provider);
+  } catch (err) {
+    if (!askAgain(err)) throw err;
+    logger.warn({ err, provider, url }, "poll_request_failed");
+    throw new StillRunning(Date.now() + httpConfig().pollInterval);
   }
 
-  // #1628: same rationale — make poll timeouts visible at this layer.
-  logger.warn({ provider, url, maxWait }, "poll_timeout");
-  throw new Error(`${provider} task did not complete within ${maxWait / 1000}s`);
+  const status = String(extractNested(resp, options.statusPath, "unknown"));
+  if (options.successStatuses.has(status)) return resp;
+  if (options.failureStatuses.has(status)) {
+    const errorMsg = options.errorPath ? String(extractNested(resp, options.errorPath, "unknown")) : "unknown";
+    // #1628: log at the poll layer (not only via the bubbled-up job error)
+    // so vendor-side failures are attributable to the specific poll URL.
+    logger.warn({ provider, url, status, errorMsg }, "poll_task_failed");
+    throw new UpstreamTaskFailed(provider, errorMsg);
+  }
+  throw new StillRunning(Date.now() + httpConfig().pollInterval);
 }
 
 /**
@@ -315,11 +321,3 @@ export async function queryBilling(resolved: ResolvedModel, taskId: string): Pro
   }
 }
 
-/**
- * Sleep for the given milliseconds.
- * @param ms - Milliseconds to sleep
- * @returns A promise that resolves after the delay elapses
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

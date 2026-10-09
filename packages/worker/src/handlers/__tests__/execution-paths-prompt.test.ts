@@ -95,6 +95,7 @@ vi.mock("@worker/providers/run-steps.js", () => ({
     mockGenerateAsync(...rest),
 }));
 vi.mock("@worker/handlers/step-deps.js", () => ({ stepDepsFor: (): unknown => ({}) }));
+vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: async (): Promise<number> => 1_800_000_000_000 }));
 
 
 import { runAigcDirect, runMiniTool } from "@worker/handlers/dispatch.js";

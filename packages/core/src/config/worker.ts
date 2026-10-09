@@ -4,8 +4,8 @@
 /**
  * Worker YAML configuration loader.
  *
- * Reads `config/worker.yaml`: BullMQ queue parameters, the async-task polling
- * window, and the billing-query timeout.
+ * Reads `config/worker.yaml`: BullMQ queue parameters, the interval between
+ * two questions to an upstream about a task, and the billing-query timeout.
  */
 
 import { readFileSync } from "node:fs";
@@ -15,7 +15,14 @@ import { z } from "zod";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const workerConfigSchema = z.object({
-  concurrency: z.number().int().positive().default(5),
+  /** Jobs one worker process runs at once: per queue, with a default for the rest. */
+  concurrency: z
+    .object({
+      default: z.number().int().positive(),
+      per_queue: z.record(z.string(), z.number().int().positive()).default({}),
+    })
+    .strict()
+    .default({ default: 5, per_queue: {} }),
   /** BullMQ lock duration — Worker must renew within this window or the job is reclaimed. */
   lock_duration_ms: z.number().int().positive().default(600_000), // 10 min
   /** BullMQ max attempts for a job (provider retries on transport failure). */
@@ -23,7 +30,6 @@ const workerConfigSchema = z.object({
   /** Base backoff delay (ms) between job retries. */
   job_backoff_delay_ms: z.number().int().positive().default(2000),
   poll_interval: z.number().int().positive().default(3000),
-  poll_max_wait: z.number().int().positive().default(300_000),
   billing_timeout: z.number().int().positive().default(30_000),
 });
 
@@ -46,4 +52,14 @@ export function getWorkerConfig(): Readonly<WorkerConfig> {
 
   _cached = Object.freeze(config);
   return _cached;
+}
+
+/**
+ * How many jobs of one queue a worker process runs at once.
+ * @param queue - The queue's name.
+ * @returns The figure `config/worker.yaml` names for it, or its default.
+ */
+export function workerConcurrencyFor(queue: string): number {
+  const { concurrency } = getWorkerConfig();
+  return concurrency.per_queue[queue] ?? concurrency.default;
 }
