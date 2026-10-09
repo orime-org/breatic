@@ -521,7 +521,7 @@ function groupMembersLocalBox(
  * against the border, so each affected Group expands to keep `GROUP_PADDING`.
  * Builds every affected Group's full member set (current members + the new
  * clones) in absolute coordinates — a clone's size is its source's measured size
- * (it is an exact copy; `clones[i]` pairs with `payload[i]`) — then defers the
+ * (it is an exact copy, found through `sourceOf`) — then defers the
  * only-up growth math to {@link planGroupGrowth}.
  * @param sourceOf - Clone id → the id of the node it copies, whose size it has.
  * @param clones - The freshly written clones (parentId + parent-relative position).

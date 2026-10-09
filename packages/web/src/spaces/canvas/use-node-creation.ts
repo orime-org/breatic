@@ -208,18 +208,15 @@ export function useNodeCreation(
       options: PastePayloadOptions = {},
     ): Promise<string[] | null> => {
       const cloned = cloneForPaste(payload, userId, offset, options);
-      const externalIds = new Set(
-        payload.nodes.filter((node) => node.external === true).map((node) => cloned.idMap.get(node.id)),
-      );
-      const own = cloned.nodes.filter((node) => !externalIds.has(node.id));
-      const addresses = collectAddresses(own);
-      const history = historyItems(own);
+      // An external clone carries no address yet (cloneForPaste drops it), so
+      // it adds nothing here; its fetch into storage follows the write.
+      const addresses = collectAddresses(cloned.nodes);
+      const history = historyItems(cloned.nodes);
       let nodes: SnapshotNode[] = cloned.nodes;
       if (addresses.urls.length > 0 || addresses.pairs.length > 0 || history.length > 0) {
         try {
           const { map } = await canvasApi.paste({
             project_id: projectId,
-            space_id: spaceId,
             urls: addresses.urls,
             pairs: addresses.pairs,
             history,

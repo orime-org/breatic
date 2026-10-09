@@ -628,16 +628,26 @@ export function addNode(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   doc.transact(() => {
-    const map = new Y.Map<unknown>();
-    map.set('id', node.id);
-    map.set('type', node.type);
-    // Group containment: persist the member→Group link as a top-level field
-    // (alongside position), only when set so top-level nodes carry no key.
-    if (node.parentId !== undefined) map.set('parentId', node.parentId);
-    map.set('position', node.position);
-    map.set('data', buildDataMap(node.data, node.type));
-    nodesMap.set(node.id, map);
+    nodesMap.set(node.id, nodeEntry(node, buildDataMap(node.data, node.type)));
   }, CANVAS_UNDO);
+}
+
+/**
+ * One node's entry in `nodesMap`, holding a data map built for its type.
+ * @param node - The node's id, type, position and Group link.
+ * @param data - Its data map.
+ * @returns The entry.
+ */
+function nodeEntry(node: Omit<SnapshotNode, 'data'>, data: Y.Map<unknown>): Y.Map<unknown> {
+  const map = new Y.Map<unknown>();
+  map.set('id', node.id);
+  map.set('type', node.type);
+  // Group containment: persist the member→Group link as a top-level field
+  // (alongside position), only when set so top-level nodes carry no key.
+  if (node.parentId !== undefined) map.set('parentId', node.parentId);
+  map.set('position', node.position);
+  map.set('data', data);
+  return map;
 }
 
 /** A node to write from a clipboard snapshot: `data` is `snapshotNodeData`'s output. */
@@ -674,27 +684,11 @@ export function writeSnapshotNodes(
       // A text node's words arrive in its body tree; `content` would seed the
       // body a second time.
       if (type === 'text') delete plain.content;
-      const map = new Y.Map<unknown>();
-      map.set('id', node.id);
-      map.set('type', type);
-      if (node.parentId !== undefined) map.set('parentId', node.parentId);
-      map.set('position', node.position);
       const data = buildDataMap(plain as CanvasNodeFields['data'], type);
-      map.set('data', data);
-      nodesMap.set(node.id, map);
+      nodesMap.set(node.id, nodeEntry(node, data));
       fillNestedData(data, nested);
     }
-    for (const edge of edges) {
-      if (edge.source === edge.target) continue;
-      if (!nodesMap.has(edge.source) || !nodesMap.has(edge.target) || edgesMap.has(edge.id)) continue;
-      const map = new Y.Map<unknown>();
-      map.set('id', edge.id);
-      map.set('source', edge.source);
-      map.set('target', edge.target);
-      if (edge.toolId) map.set('toolId', edge.toolId);
-      map.set('createdAt', edge.createdAt ?? Date.now());
-      edgesMap.set(edge.id, map);
-    }
+    for (const edge of edges) putEdge(nodesMap, edgesMap, edge);
   }, CANVAS_UNDO);
 }
 
@@ -1957,33 +1951,45 @@ export function addEdge(
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
   let added = false;
   doc.transact(() => {
-    // Validate BOTH endpoints against live Yjs state inside the transaction —
-    // this is the airtight write boundary. A caller's guard reads its React
-    // closure, which goes stale the instant a collaborator deletes a node
-    // (Yjs applies the deletion before React re-creates the handler), so the
-    // only race-free place to reject an orphaned edge is here, atomically with
-    // the write. Returns whether the edge landed so the caller can surface
-    // feedback (a silently-rejected edge must not read as success in the UI).
-    if (!nodesMap.has(edge.source) || !nodesMap.has(edge.target)) return;
-    // Deterministic ids make a duplicate drag map onto the EXISTING entry —
-    // rewriting it would replace createdAt (the reference silently jumps to
-    // the rail's end) and push a spurious undo entry. Idempotent success.
-    if (edgesMap.has(edge.id)) {
-      added = true;
-      return;
-    }
-    const map = new Y.Map<unknown>();
-    map.set('id', edge.id);
-    map.set('source', edge.source);
-    map.set('target', edge.target);
-    if (edge.toolId) map.set('toolId', edge.toolId);
-    // Connection time drives reference-rail order (undo re-inserts the map
-    // with its original stamp, so an undone+redone edge keeps its place).
-    map.set('createdAt', edge.createdAt ?? Date.now());
-    edgesMap.set(edge.id, map);
-    added = true;
+    added = putEdge(nodesMap, edgesMap, edge);
   }, CANVAS_UNDO);
   return added;
+}
+
+/**
+ * Write one edge inside an open transaction. Both endpoints are checked
+ * against live Yjs state here — this is the airtight write boundary. A
+ * caller's guard reads its React closure, which goes stale the instant a
+ * collaborator deletes a node (Yjs applies the deletion before React
+ * re-creates the handler), so the only race-free place to reject an orphaned
+ * edge is atomically with the write.
+ * @param nodesMap - The canvas-space `nodesMap`.
+ * @param edgesMap - The canvas-space `edgesMap`.
+ * @param edge - The edge.
+ * @returns Whether the edge is in the document afterwards, so a caller can
+ *   surface feedback (a silently-rejected edge must not read as success).
+ */
+function putEdge(
+  nodesMap: Y.Map<Y.Map<unknown>>,
+  edgesMap: Y.Map<Y.Map<unknown>>,
+  edge: CanvasEdge,
+): boolean {
+  if (edge.source === edge.target) return false;
+  if (!nodesMap.has(edge.source) || !nodesMap.has(edge.target)) return false;
+  // Deterministic ids make a duplicate drag map onto the EXISTING entry —
+  // rewriting it would replace createdAt (the reference silently jumps to
+  // the rail's end) and push a spurious undo entry. Idempotent success.
+  if (edgesMap.has(edge.id)) return true;
+  const map = new Y.Map<unknown>();
+  map.set('id', edge.id);
+  map.set('source', edge.source);
+  map.set('target', edge.target);
+  if (edge.toolId) map.set('toolId', edge.toolId);
+  // Connection time drives reference-rail order (undo re-inserts the map
+  // with its original stamp, so an undone+redone edge keeps its place).
+  map.set('createdAt', edge.createdAt ?? Date.now());
+  edgesMap.set(edge.id, map);
+  return true;
 }
 
 /**
