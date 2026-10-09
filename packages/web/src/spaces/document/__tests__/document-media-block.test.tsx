@@ -1337,6 +1337,7 @@ describe('the focus around a media block', () => {
     expect(document.activeElement).toBe(view.dom);
     expect(view.state.selection).toBeInstanceOf(NodeSelection);
     expect((view.state.selection as NodeSelection).node.type.name).toBe('image');
+    outside.remove();
   });
 
   it('leaves a read-only body without the keyboard when what had it outside the body is gone by the time the picture closes', async () => {

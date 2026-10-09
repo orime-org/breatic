@@ -486,10 +486,7 @@ export function holdGap(view: EditorView, gap: UploadGap): () => UploadGap {
   const bound = syncBindingOf(view.state);
   if (bound === null) return () => gap;
   const name = nameGap(bound, gap);
-  return () => {
-    const now = syncBindingOf(view.state);
-    return (now === null ? null : gapNamed(now, name)) ?? gap;
-  };
+  return () => gapNamed(bound, name) ?? gap;
 }
 
 /**
