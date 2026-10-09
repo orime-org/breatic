@@ -142,6 +142,30 @@ describe('media in pasted HTML (A18)', () => {
     expect(onLeftOut).toHaveBeenCalledWith(1);
   });
 
+  it('keeps the rows nested under an outside medium, in its place', async () => {
+    const onLeftOut = vi.fn();
+    const source = open(OURS);
+    source.replaceBlocks(source.document, [
+      { type: 'paragraph', content: 'above' },
+      {
+        type: 'image',
+        props: { url: 'https://elsewhere.example/a.png' },
+        children: [{ type: 'paragraph', content: 'caption notes' }],
+      },
+      { type: 'paragraph', content: 'below' },
+    ] as never);
+    const html = await source.blocksToFullHTML(source.document);
+    const editor = open(OURS, onLeftOut);
+
+    editor.pasteHTML(html, true);
+
+    expect(types(editor)).not.toContain('image');
+    expect(text(editor)).toContain('caption notes');
+    expect(text(editor).indexOf('above')).toBeLessThan(text(editor).indexOf('caption notes'));
+    expect(text(editor).indexOf('caption notes')).toBeLessThan(text(editor).indexOf('below'));
+    expect(onLeftOut).toHaveBeenCalledWith(1);
+  });
+
   it('says nothing about a paste with no media in it', () => {
     const onLeftOut = vi.fn();
     const editor = open(OURS, onLeftOut);

@@ -52,7 +52,8 @@ function isOutsideMedium(node: PMNode, prefix: string | null): boolean {
  * A fragment with every outside medium taken out, and how many were.
  *
  * A nested block group emptied by this goes too: a block container may have
- * no group, and an empty one is not allowed (`blockGroupChild+`).
+ * no group, and an empty one is not allowed (`blockGroupChild+`). The rows
+ * nested under a medium taken out stay, in its place.
  * @param fragment - The fragment.
  * @param prefix - Our prefix, or null.
  * @returns The fragment and the count.
@@ -63,6 +64,13 @@ function strip(fragment: Fragment, prefix: string | null): { fragment: Fragment;
   fragment.forEach((node) => {
     if (isOutsideMedium(node, prefix)) {
       count += 1;
+      // The rows nested under it are text the reader pasted: they take its place.
+      const group = node.lastChild;
+      if (node.childCount > 1 && group !== null && group.type.name === 'blockGroup') {
+        const inner = strip(group.content, prefix);
+        count += inner.count;
+        inner.fragment.forEach((child) => kept.push(child));
+      }
       return;
     }
     if (node.isLeaf || node.isTextblock) {
