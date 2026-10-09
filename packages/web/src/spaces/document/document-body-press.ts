@@ -12,10 +12,11 @@
  */
 
 import { createExtension } from '@blocknote/core';
-import { NodeSelection, Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
+import { Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
 import { columnResizingPluginKey } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
+import { selectWordlessBlock } from '@web/spaces/document/document-block-place';
 import { bodyHolds, layerOf, placeAtLayerAnchor, watchBodyScroll } from '@web/spaces/document/document-body-focus';
 import { extendFromPress, followFromPoint } from '@web/spaces/document/document-body-edge-pointer';
 import { DOCUMENT_COMMENT_SELECTION, selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
@@ -209,7 +210,7 @@ export function attachBodyScroller(
         return;
       case 'divider':
         if (!holds && element !== null && !event.shiftKey) {
-          view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, view.posAtDOM(element, 0))));
+          selectWordlessBlock(view, element);
           view.focus();
         }
         return;

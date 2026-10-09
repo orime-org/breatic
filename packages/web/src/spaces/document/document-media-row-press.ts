@@ -36,10 +36,11 @@
  */
 
 import { createExtension } from '@blocknote/core';
-import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { MEDIA_CHROME, MEDIA_FRAME } from '@web/spaces/document/DocumentMediaBlock';
+import { selectWordlessBlock } from '@web/spaces/document/document-block-place';
 import { MEDIA_BLOCK_TYPES } from '@web/spaces/document/document-media-types';
 
 const KEY = new PluginKey('documentMediaRowPress');
@@ -80,16 +81,6 @@ export function inMediaRow(target: EventTarget | null): boolean {
 }
 
 /**
- * Node-selects the media block whose row this is.
- * @param view - The view.
- * @param row - The row.
- */
-function selectMedia(view: EditorView, row: Element): void {
-  const selection = NodeSelection.create(view.state.doc, view.posAtDOM(row, 0));
-  if (!view.state.selection.eq(selection)) view.dispatch(view.state.tr.setSelection(selection));
-}
-
-/**
  * ProseMirror's single click in a media block's row: on what the media shows
  * it selects the media; beside it, it picks nothing.
  * @param view - The view.
@@ -99,7 +90,7 @@ function selectMedia(view: EditorView, row: Element): void {
 function clickInMediaRow(view: EditorView, event: MouseEvent): boolean {
   const hit = rowHit(event.target);
   if (hit === null) return false;
-  if (hit.onMedia) selectMedia(view, hit.row);
+  if (hit.onMedia) selectWordlessBlock(view, hit.row);
   return true;
 }
 
@@ -125,7 +116,7 @@ function pressInMediaRow(view: EditorView, event: MouseEvent): void {
   if (event.shiftKey) return;
   const hit = rowHit(event.target);
   if (hit === null || !hit.onMedia) return;
-  selectMedia(view, hit.row);
+  selectWordlessBlock(view, hit.row);
   if (!view.hasFocus()) view.focus();
 }
 
