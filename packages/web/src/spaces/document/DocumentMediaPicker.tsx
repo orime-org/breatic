@@ -31,26 +31,24 @@ export function useDocumentMediaPick(): MediaPick | null {
 }
 
 interface DocumentMediaPickerProps {
-  /** Where chosen files go. */
-  uploader: DocumentUploader;
+  /** Where chosen files go; null where nothing may be picked (a viewer). */
+  uploader: DocumentUploader | null;
   /** The editor's view, read when files are chosen. */
   view: () => EditorView | null;
   children: React.ReactNode;
 }
 
 /**
- * Provides the pick, and the hidden input it opens.
+ * Provides the pick, and the hidden input it opens. Without an uploader it
+ * provides none, around the same children, so a reader turning read-only
+ * keeps the body mounted where it is.
  * @param props - See {@link DocumentMediaPickerProps}.
  * @param props.uploader - Where chosen files go.
  * @param props.view - The editor's view.
  * @param props.children - What may pick.
  * @returns The provider and the input.
  */
-export function DocumentMediaPicker({
-  uploader,
-  view,
-  children,
-}: DocumentMediaPickerProps): React.JSX.Element {
+export function DocumentMediaPicker({ uploader, view, children }: DocumentMediaPickerProps): React.JSX.Element {
   const input = React.useRef<HTMLInputElement>(null);
   const pending = React.useRef<(() => MediaGap | null) | null>(null);
 
@@ -72,24 +70,26 @@ export function DocumentMediaPicker({
       const target = view();
       if (files.length === 0 || makeGap === null || target === null) return;
       // The gap is made only once a file is admitted.
-      void uploader.start(target, files, makeGap);
+      void uploader?.start(target, files, makeGap);
     },
     [uploader, view],
   );
 
   return (
-    <MediaPickContext.Provider value={pick}>
+    <MediaPickContext.Provider value={uploader === null ? null : pick}>
       {children}
-      <input
-        ref={input}
-        type='file'
-        multiple
-        className='hidden'
-        aria-hidden='true'
-        tabIndex={-1}
-        data-testid='doc-media-file-input'
-        onChange={onChange}
-      />
+      {uploader !== null && (
+        <input
+          ref={input}
+          type='file'
+          multiple
+          className='hidden'
+          aria-hidden='true'
+          tabIndex={-1}
+          data-testid='doc-media-file-input'
+          onChange={onChange}
+        />
+      )}
     </MediaPickContext.Provider>
   );
 }

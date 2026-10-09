@@ -324,10 +324,8 @@ export const DocumentEditor = React.memo(function DocumentEditor({
 
   // A viewer gets no media entries (A11); the menus that offer them are not
   // drawn for one either.
-  return uploader === null || readOnly ? (
-    chrome
-  ) : (
-    <DocumentMediaPicker uploader={uploader} view={viewOfEditor}>
+  return (
+    <DocumentMediaPicker uploader={readOnly ? null : uploader} view={viewOfEditor}>
       {chrome}
     </DocumentMediaPicker>
   );
