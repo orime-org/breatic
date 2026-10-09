@@ -55,6 +55,21 @@ export function getWorkerConfig(): Readonly<WorkerConfig> {
 }
 
 /**
+ * Refuse per-queue figures for queues this process does not run: a
+ * misspelt name would leave the queue it meant at the default.
+ * @param queues - The queues the worker process runs.
+ * @throws {Error} When `concurrency.per_queue` names any other queue.
+ */
+export function assertKnownQueues(queues: readonly string[]): void {
+  const unknown = Object.keys(getWorkerConfig().concurrency.per_queue).filter((name) => !queues.includes(name));
+  if (unknown.length > 0) {
+    throw new Error(
+      `config/worker.yaml concurrency.per_queue names ${unknown.join(", ")}, which this worker does not run (it runs ${queues.join(", ")})`,
+    );
+  }
+}
+
+/**
  * How many jobs of one queue a worker process runs at once.
  * @param queue - The queue's name.
  * @returns The figure `config/worker.yaml` names for it, or its default.

@@ -112,13 +112,14 @@ function urlOf(params: Readonly<Record<string, unknown>>, param: string): string
  * submitted, under the provider's cap, marking the step failed when the
  * upstream fails it.
  * @param deps - Storage.
- * @param ctx - The task, for the resume context.
+ * @param ctx - The task, for the resume context and the deadline a submit is held to.
  * @param resolved - The model's resolved endpoint.
  * @param step - The step.
  * @param body - The request body; not sent for a step already submitted.
  * @returns The prediction's outputs and id.
  * @throws {UpstreamTaskFailed} when the upstream failed the prediction.
  * @throws {StillRunning} while the prediction is still going.
+ * @throws {TaskDeadlinePassed} when the deadline has passed before a submit.
  * @throws {Error} when the request itself failed; the step stays retryable.
  */
 async function predict(
@@ -130,6 +131,9 @@ async function predict(
 ): Promise<PredictionRun> {
   const release = await acquireSemaphore(resolved.providerName, resolved.maxConcurrency);
   try {
+    // Building the body (a description, a prompt rewrite) can run past the
+    // deadline that let this step start; nothing new is submitted after it.
+    if (step.predictionId === null) assertBeforeDeadline(ctx.deadlineAt);
     return await runPrediction(resolved, step.endpoint, body, {
       storedTaskId: step.predictionId,
       persistTaskId: (id: string): Promise<void> => deps.steps.markSubmitted(step.id, id),

@@ -317,7 +317,7 @@ function providerOf(modality: string, modelName: string | undefined): string {
  * @param run.taskId - The task.
  * @param run.taskType - What kind of task.
  * @param run.storedTaskId - The vendor task id a previous attempt stored, if any.
- * @param run.submitsAgain - Whether a retry without a stored id submits to the upstream again.
+ * @param run.submitsAgain - Whether a retry without a stored id may submit to the upstream again.
  */
 async function reportRetryOnce(
   job: Job<TaskJobData>,
@@ -521,10 +521,11 @@ async function runTaskBody(
       onMissingCost: (row) => logger.error({ row, taskId }, "agent_usage_cost_missing"),
     });
 
-  // Set before any work runs, so every still-going answer below has it.
-  let deadlineAt: number | undefined;
+  // Set before any work runs, so every still-going answer below has it. A
+  // container job keeps its own deadline, with a grace for its last report.
+  let deadlineAt = Number.POSITIVE_INFINITY;
   try {
-    deadlineAt = await deadlineOf(taskId, existing?.createdAt);
+    if (!containerRun) deadlineAt = await deadlineOf(taskId, existing?.createdAt);
     if (source === "mini_tool" && toolId) {
       [providerResult, creditsUsed] = await runMiniTool({
         toolId,
@@ -560,11 +561,10 @@ async function runTaskBody(
   } catch (thrown) {
     // Upstream work still going is not a failure: the run goes back to the
     // queue and returns for the same work, and a delayed job spends none of
-    // its attempts — until the task's two hours are up. A container job
-    // judges its own deadline, with a grace for its last report.
+    // its attempts — until the task's two hours are up.
     let err = thrown;
     if (err instanceof StillRunning && token !== undefined) {
-      if (containerRun || deadlineAt === undefined || Date.now() < deadlineAt) {
+      if (Date.now() < deadlineAt) {
         await job.moveToDelayed(err.resumeAt, token);
         throw new DelayedError();
       }

@@ -195,6 +195,8 @@ export class UpstreamTaskFailed extends Error {
  * @returns True for a failure that says nothing about the task itself.
  */
 function askAgain(err: unknown): boolean {
+  // A body that is not JSON came back whole: it is an answer, not a dropped line.
+  if (err instanceof SyntaxError) return false;
   if (!(err instanceof HttpStatusError)) return true;
   return err.status >= 500 || err.status === 429;
 }

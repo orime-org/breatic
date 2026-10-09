@@ -77,8 +77,8 @@ function getTransport(providerName: string): typeof wavespeedTransport.generate 
  * @param resume - Worker resume context for at-most-once submit (#1628)
  * @param deadlineAt - The task's two-hour deadline, in epoch milliseconds
  * @returns Object with url, model, and cost (actual API cost in USD)
- * @throws {StillRunning} while the task is still going before the deadline
- * @throws {TaskDeadlinePassed} when the deadline has passed
+ * @throws {StillRunning} while the task is still going
+ * @throws {TaskDeadlinePassed} when the deadline has passed before a submit
  * @throws {Error} if model or provider resolution fails
  */
 export async function generateAsync(
