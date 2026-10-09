@@ -105,6 +105,18 @@ describe('which pastes are files (A3)', () => {
     expect(pastedFiles(data)).toBeNull();
   });
 
+  it('leaves cells copied from Excel, which come with a picture of them, to the HTML paste', () => {
+    // The shape Excel writes, from a copy measured on 2026-10-09: an Office
+    // head with its own styles, then the table, beside a PNG of the cells.
+    const html = [
+      '<html xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">',
+      '<head><meta http-equiv=Content-Type content="text/html; charset=utf-8">',
+      '<meta name=Generator content="Microsoft Excel"><style>.font0 {color:#000000;}</style></head>',
+      '<body><table><col><tr><td>1</td><td>2</td></tr></table></body></html>',
+    ].join('\r\n');
+    expect(pastedFiles(clipboard([PNG], { 'text/plain': '1\t2', 'text/html': html }))).toBeNull();
+  });
+
   it('leaves words around an image to the HTML paste', () => {
     const data = clipboard([PNG], { 'text/html': '<p>caption</p><img src="a.png">' });
     expect(pastedFiles(data)).toBeNull();
