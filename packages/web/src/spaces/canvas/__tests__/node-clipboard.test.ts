@@ -5,8 +5,8 @@ import { describe, it, expect } from 'vitest';
 
 import {
   CLIPBOARD_MARKER,
-  serializeNodes,
-  parseClipboardNodes,
+  serializeClipboard,
+  parseClipboard,
   cloneForPaste,
   captureClipboard,
   clipboardBoundingBox,
@@ -15,461 +15,426 @@ import {
   stepPastOccupied,
   textToNode,
   type ClipboardNode,
+  type ClipboardPayload,
 } from '@web/spaces/canvas/node-clipboard';
 
-/** No body text for this case — the parameter is required so omitting it cannot be an accident. */
-const NO_TEXT: ReadonlyMap<string, string> = new Map();
+/** Where the captured nodes are copied from. */
+const SOURCE = { studioId: 'st-a', projectId: 'p-a', spaceId: 'space-a' };
 
-/** The Space the captured nodes are copied on. */
-const SPACE = 'space-a';
+/**
+ * A payload holding the given nodes and edges.
+ * @param nodes - The nodes.
+ * @param extra - Edges, picked ids or source.
+ * @returns The payload.
+ */
+function payload(nodes: ClipboardNode[], extra: Partial<ClipboardPayload> = {}): ClipboardPayload {
+  return { version: 2, source: SOURCE, picked: nodes.map((n) => n.id), nodes, edges: [], ...extra };
+}
 
-describe('node-clipboard', () => {
-  it('serializeNodes + parseClipboardNodes round-trip through the marker', () => {
-    const nodes: ClipboardNode[] = [
-      { type: 'text', position: { x: 1, y: 2 }, name: 'A', content: 'hi' },
-    ];
-    const serialized = serializeNodes(nodes);
-    expect(serialized.startsWith(CLIPBOARD_MARKER)).toBe(true);
-    expect(parseClipboardNodes(serialized)).toEqual(nodes);
+/**
+ * A content clipboard node.
+ * @param id - Its id.
+ * @param type - Its type.
+ * @param position - Its absolute position.
+ * @param data - Its data snapshot.
+ * @param rest - Parent, size.
+ * @returns The node.
+ */
+function node(
+  id: string,
+  type: ClipboardNode['type'],
+  position: { x: number; y: number },
+  data: Record<string, unknown> = {},
+  rest: Partial<ClipboardNode> = {},
+): ClipboardNode {
+  return { id, type, position, data, ...rest };
+}
+
+/** A data reader for capture: every node's stored data, by id. */
+const dataOf = (store: Record<string, Record<string, unknown>>) => (id: string): Record<string, unknown> =>
+  store[id] ?? {};
+
+describe('clipboard format (version 2)', () => {
+  it('round-trips through the marker', () => {
+    const p = payload([node('a', 'text', { x: 1, y: 2 }, { name: 'A' })]);
+    const text = serializeClipboard(p);
+    expect(text.startsWith(CLIPBOARD_MARKER)).toBe(true);
+    expect(parseClipboard(text)).toEqual(p);
   });
 
-  it('parseClipboardNodes returns null for plain text and for non-JSON after the marker', () => {
-    expect(parseClipboardNodes('just some pasted text')).toBeNull();
-    expect(parseClipboardNodes(`${CLIPBOARD_MARKER}not json`)).toBeNull();
-    expect(parseClipboardNodes(`${CLIPBOARD_MARKER}{"not":"array"}`)).toBeNull();
+  it('reads plain text, non-JSON, an unversioned array and an unknown version as not ours', () => {
+    expect(parseClipboard('just some pasted text')).toBeNull();
+    expect(parseClipboard(`${CLIPBOARD_MARKER}not json`)).toBeNull();
+    expect(parseClipboard(`${CLIPBOARD_MARKER}[{"type":"text","position":{"x":0,"y":0}}]`)).toBeNull();
+    expect(parseClipboard(`${CLIPBOARD_MARKER}{"version":3,"nodes":[],"edges":[]}`)).toBeNull();
   });
+});
 
-  it('cloneForPaste: fresh unique ids, offset positions (relative preserved), carried content/name, fresh metadata', () => {
-    const src: ClipboardNode[] = [
-      { type: 'image', position: { x: 10, y: 20 }, name: 'Hero', content: 'a.png' },
-      { type: 'text', position: { x: 30, y: 40 }, content: 'note' },
-    ];
-    const cloned = cloneForPaste(src, 'u-7', { dx: 24, dy: 24 });
-
-    expect(cloned).toHaveLength(2);
-    expect(cloned[0].id).toBeTruthy();
-    expect(cloned[0].id).not.toBe(cloned[1].id);
-    expect(cloned[0].type).toBe('image');
-    expect(cloned[0].position).toEqual({ x: 34, y: 44 });
-    // Both shifted by the same offset → relative layout preserved.
-    expect(cloned[1].position).toEqual({ x: 54, y: 64 });
-    // A top-level clone is a "root" → its name gets the COPY- prefix (R2-C).
-    expect(cloned[0].data.name).toBe('COPY-Hero');
-    expect(cloned[0].data.content).toBe('a.png');
-    expect(cloned[0].data.createdBy).toBe('u-7');
-    expect(cloned[0].data.locked).toBe(false);
-    expect(typeof cloned[0].data.createdAt).toBe('number');
-  });
-
-  it('captureClipboard: a top-level content node → absolute position + id, no parent', () => {
+describe('captureClipboard', () => {
+  it('captures a top-level node with its whole stored data and the source', () => {
+    const data = { name: 'Hero', content: 'a.png', locked: true, taskCounts: { done: 2 }, prompts: { $y: 'map', entries: {} } };
     const out = captureClipboard(
       ['n'],
-      [{ id: 'n', type: 'image', position: { x: 5, y: 6 }, data: { name: 'Hero', content: 'a.png' } }],
-      NO_TEXT,
-      SPACE,
+      [{ id: 'n', type: 'image', position: { x: 5, y: 6 } }],
+      dataOf({ n: data }),
+      [],
+      SOURCE,
     );
-    expect(out).toEqual([
-      { type: 'image', position: { x: 5, y: 6 }, name: 'Hero', content: 'a.png', id: 'n', space: SPACE },
-    ]);
+    expect(out).toEqual({
+      version: 2,
+      source: SOURCE,
+      picked: ['n'],
+      nodes: [{ id: 'n', type: 'image', position: { x: 5, y: 6 }, data }],
+      edges: [],
+    });
   });
 
-  it('captureClipboard: a video node carries its coverUrl poster (#1816)', () => {
-    // The cover is intrinsic to the video content (like `content` itself), so a
-    // copy must carry it — else the duplicate loses its instant poster.
-    const out = captureClipboard(
-      ['v'],
-      [
-        {
-          id: 'v',
-          type: 'video',
-          position: { x: 5, y: 6 },
-          data: { name: 'Clip', content: 'clip.mp4', coverUrl: 'clip-cover.jpg' },
-        },
-      ],
-      NO_TEXT,
-      SPACE,
-    );
-    expect(out).toEqual([
-      {
-        type: 'video',
-        position: { x: 5, y: 6 },
-        name: 'Clip',
-        content: 'clip.mp4',
-        coverUrl: 'clip-cover.jpg',
-        id: 'v',
-        space: SPACE,
-      },
-    ]);
-  });
-
-  it('cloneForPaste: a video clipboard node keeps coverUrl so the duplicate has an instant poster (#1816)', () => {
-    const src: ClipboardNode[] = [
-      {
-        type: 'video',
-        position: { x: 10, y: 20 },
-        name: 'Clip',
-        content: 'clip.mp4',
-        coverUrl: 'clip-cover.jpg',
-      },
-    ];
-    const cloned = cloneForPaste(src, 'u-7', { dx: 24, dy: 24 });
-    expect(cloned[0].data.content).toBe('clip.mp4');
-    expect(cloned[0].data.coverUrl).toBe('clip-cover.jpg');
-  });
-
-  it('captureClipboard: records a content node size from its measured size (for paste centering)', () => {
+  it('records a content node size from its measured size', () => {
     const out = captureClipboard(
       ['n'],
-      [
-        {
-          id: 'n',
-          type: 'image',
-          position: { x: 5, y: 6 },
-          measured: { width: 300, height: 200 },
-          data: {},
-        },
-      ],
-      NO_TEXT,
-      SPACE,
+      [{ id: 'n', type: 'image', position: { x: 5, y: 6 }, measured: { width: 300, height: 200 } }],
+      dataOf({}),
+      [],
+      SOURCE,
     );
-    expect(out[0].width).toBe(300);
-    expect(out[0].height).toBe(200);
+    expect(out.nodes[0]?.width).toBe(300);
+    expect(out.nodes[0]?.height).toBe(200);
   });
 
-  it('captureClipboard: a lone group member → absolute position + parentId kept (so duplicate can rejoin)', () => {
-    const nodes = [
-      { id: 'g', type: 'group', position: { x: 100, y: 100 }, data: { width: 200, height: 200 } },
-      { id: 'm', type: 'text', parentId: 'g', position: { x: 20, y: 30 }, data: { content: 'hi' } },
-    ];
-    // member is captured alone (group not selected) → abs = group(100,100)+rel(20,30).
-    // A text node's words live in a shared body now, so they reach the
-    // clipboard through this map rather than off the node's data (#1774).
-    expect(captureClipboard(['m'], nodes, new Map([['m', 'hi']]), SPACE)).toEqual([
-      { type: 'text', position: { x: 120, y: 130 }, content: 'hi', id: 'm', parentId: 'g', space: SPACE },
-    ]);
-  });
-
-  it('captureClipboard: a group → group entry (abs + size) + every member (abs + parentId), members deduped', () => {
-    const nodes = [
-      {
-        id: 'g',
-        type: 'group',
-        position: { x: 100, y: 100 },
-        data: { name: 'My Group', width: 300, height: 200, backgroundColor: 'status-info' },
-      },
-      { id: 'm1', type: 'text', parentId: 'g', position: { x: 20, y: 30 }, data: { content: 'a' } },
-      { id: 'm2', type: 'image', parentId: 'g', position: { x: 60, y: 40 }, data: {} },
-    ];
-    // Selecting the group AND a member must not emit the member twice; the
-    // group's name is carried (R2-B — a duplicated group keeps its name).
-    const out = captureClipboard(['g', 'm1'], nodes, new Map([['m1', 'a']]), SPACE);
-    expect(out).toEqual([
-      {
-        type: 'group',
-        position: { x: 100, y: 100 },
-        name: 'My Group',
-        width: 300,
-        height: 200,
-        backgroundColor: 'status-info',
-        id: 'g',
-        space: SPACE,
-      },
-      { type: 'text', position: { x: 120, y: 130 }, content: 'a', id: 'm1', parentId: 'g', space: SPACE },
-      { type: 'image', position: { x: 160, y: 140 }, id: 'm2', parentId: 'g', space: SPACE },
-    ]);
-  });
-
-  it('captureClipboard: skips non-copyable nodes (annotation / group with no group selected stays content-only)', () => {
+  it('captures a lone group member at its absolute position, keeping parentId', () => {
     const out = captureClipboard(
-      ['a'],
-      [{ id: 'a', type: 'annotation', position: { x: 0, y: 0 }, data: {} }],
-      NO_TEXT,
-      SPACE,
+      ['m'],
+      [
+        { id: 'g', type: 'group', position: { x: 100, y: 100 } },
+        { id: 'm', type: 'text', parentId: 'g', position: { x: 20, y: 30 } },
+      ],
+      dataOf({}),
+      [],
+      SOURCE,
     );
-    expect(out).toEqual([]);
+    expect(out.nodes).toEqual([{ id: 'm', type: 'text', position: { x: 120, y: 130 }, parentId: 'g', data: {} }]);
   });
 
-  it('externalParentAbs: maps a member parentId that is NOT a group in the payload to the existing group abs', () => {
-    const payload: ClipboardNode[] = [
-      { type: 'text', position: { x: 120, y: 130 }, id: 'm', parentId: 'g' },
-    ];
-    const allNodes = [
-      { id: 'g', type: 'group', position: { x: 100, y: 100 } },
-      { id: 'm', type: 'text', parentId: 'g', position: { x: 20, y: 30 } },
-    ];
-    expect(externalParentAbs(payload, allNodes)).toEqual(
-      new Map([['g', { x: 100, y: 100 }]]),
+  it('captures a group, then each member once, with the group size from its data', () => {
+    const out = captureClipboard(
+      ['g', 'm1'],
+      [
+        { id: 'g', type: 'group', position: { x: 100, y: 100 } },
+        { id: 'm1', type: 'text', parentId: 'g', position: { x: 20, y: 30 } },
+        { id: 'm2', type: 'image', parentId: 'g', position: { x: 60, y: 40 } },
+      ],
+      dataOf({ g: { name: 'My Group', width: 300, height: 200 } }),
+      [],
+      SOURCE,
     );
+    expect(out.nodes.map((n) => [n.id, n.position, n.parentId])).toEqual([
+      ['g', { x: 100, y: 100 }, undefined],
+      ['m1', { x: 120, y: 130 }, 'g'],
+      ['m2', { x: 160, y: 140 }, 'g'],
+    ]);
+    expect(out.nodes[0]?.width).toBe(300);
+    expect(out.nodes[0]?.height).toBe(200);
+    expect(out.picked).toEqual(['g', 'm1']);
   });
 
-  it('externalParentAbs: a LOCKED existing group is excluded → the lone-member clone stays top-level (Bug A)', () => {
-    const payload: ClipboardNode[] = [
-      { type: 'text', position: { x: 120, y: 130 }, id: 'm', parentId: 'g' },
-    ];
-    const allNodes = [
-      { id: 'g', type: 'group', position: { x: 100, y: 100 }, data: { locked: true } },
-      { id: 'm', type: 'text', parentId: 'g', position: { x: 20, y: 30 } },
-    ];
-    // The group is locked (frozen membership) → it must NOT take the duplicate,
-    // so it is left out of the map and cloneForPaste makes the clone top-level.
-    expect(externalParentAbs(payload, allNodes)).toEqual(new Map());
+  it('captures a sticky with its replies, for the Agent box', () => {
+    const replies = { $y: 'array', items: [{ $y: 'map', entries: { id: 'r1' } }] };
+    const out = captureClipboard(
+      ['s'],
+      [{ id: 's', type: 'annotation', position: { x: 0, y: 0 } }],
+      dataOf({ s: { content: 'note', replies } }),
+      [],
+      SOURCE,
+    );
+    expect(out.nodes[0]).toMatchObject({ type: 'annotation', data: { replies } });
   });
 
-  it('externalParentAbs: a member whose group IS in the payload is NOT external (empty map)', () => {
-    const payload: ClipboardNode[] = [
-      { type: 'group', position: { x: 100, y: 100 }, width: 200, height: 200, id: 'g' },
-      { type: 'text', position: { x: 120, y: 130 }, id: 'm', parentId: 'g' },
+  it('keeps edges between copied nodes and edges from an upstream node into a copied one', () => {
+    const edges = [
+      { id: 'a->b', source: 'a', target: 'b', createdAt: 1 },
+      { id: 'u->b', source: 'u', target: 'b', createdAt: 2 },
+      { id: 'b->x', source: 'b', target: 'x', createdAt: 3 },
     ];
-    expect(externalParentAbs(payload, [])).toEqual(new Map());
+    const out = captureClipboard(
+      ['a', 'b'],
+      [
+        { id: 'a', type: 'image', position: { x: 0, y: 0 } },
+        { id: 'b', type: 'image', position: { x: 0, y: 0 } },
+      ],
+      dataOf({}),
+      edges,
+      SOURCE,
+    );
+    expect(out.edges.map((e) => e.id)).toEqual(['a->b', 'u->b']);
+  });
+});
+
+describe('externalParentAbs', () => {
+  it('maps a member whose group is not in the payload to the existing group', () => {
+    const p = payload([node('m', 'text', { x: 120, y: 130 }, {}, { parentId: 'g' })]);
+    expect(
+      externalParentAbs(p.nodes, [
+        { id: 'g', type: 'group', position: { x: 100, y: 100 } },
+        { id: 'm', type: 'text', parentId: 'g', position: { x: 20, y: 30 } },
+      ]),
+    ).toEqual(new Map([['g', { x: 100, y: 100 }]]));
   });
 
-  it('cloneForPaste: a group + members → fresh group id, members rehomed to it, relative layout preserved', () => {
-    const payload: ClipboardNode[] = [
-      { type: 'group', position: { x: 100, y: 100 }, width: 300, height: 200, id: 'g' },
-      { type: 'text', position: { x: 120, y: 130 }, content: 'a', id: 'm1', parentId: 'g' },
-    ];
-    const cloned = cloneForPaste(payload, 'u-1', { dx: 24, dy: 24 });
-    expect(cloned).toHaveLength(2);
-    const [group, member] = cloned;
-    expect(group.type).toBe('group');
-    // group shifts by the offset
-    expect(group.position).toEqual({ x: 124, y: 124 });
-    expect(group.parentId).toBeUndefined();
-    expect(group.data.width).toBe(300);
-    // member rehomes to the FRESH group id, relative position unchanged (offset cancels)
-    expect(member.parentId).toBe(group.id);
-    expect(member.parentId).not.toBe('g');
-    expect(member.position).toEqual({ x: 20, y: 30 });
-    expect(member.data.content).toBe('a');
+  it('leaves out a locked existing group, so the lone-member clone stays top-level', () => {
+    const p = payload([node('m', 'text', { x: 120, y: 130 }, {}, { parentId: 'g' })]);
+    expect(
+      externalParentAbs(p.nodes, [
+        { id: 'g', type: 'group', position: { x: 100, y: 100 }, data: { locked: true } },
+      ]),
+    ).toEqual(new Map());
   });
 
-  it('cloneForPaste: COPY- prefix goes on roots only — a cloned group gets it, its following members do NOT (R2-C)', () => {
-    const payload: ClipboardNode[] = [
-      { type: 'group', position: { x: 100, y: 100 }, name: 'My Group', width: 300, height: 200, id: 'g' },
-      { type: 'text', position: { x: 120, y: 130 }, name: 'Note', id: 'm1', parentId: 'g' },
-    ];
-    const cloned = cloneForPaste(payload, 'u-1', { dx: 24, dy: 24 });
-    const [group, member] = cloned;
-    // the group is a root → prefixed
-    expect(group.data.name).toBe('COPY-My Group');
-    // the member follows its cloned group → name unchanged (not prefixed)
-    expect(member.data.name).toBe('Note');
+  it('is empty when the member group is in the payload', () => {
+    const p = payload([
+      node('g', 'group', { x: 100, y: 100 }),
+      node('m', 'text', { x: 120, y: 130 }, {}, { parentId: 'g' }),
+    ]);
+    expect(externalParentAbs(p.nodes, [])).toEqual(new Map());
+  });
+});
+
+describe('cloneForPaste', () => {
+  it('mints fresh ids, shifts positions and carries every content field', () => {
+    const p = payload([
+      node('a', 'image', { x: 10, y: 20 }, { name: 'Hero', content: 'a.png', mode: 'i2i', params: { q: 1 } }),
+      node('b', 'text', { x: 30, y: 40 }, { name: 'Note' }),
+    ]);
+    const { nodes } = cloneForPaste(p, 'u-7', { dx: 24, dy: 24 });
+    expect(nodes).toHaveLength(2);
+    expect(nodes[0]?.id).not.toBe('a');
+    expect(nodes[0]?.id).not.toBe(nodes[1]?.id);
+    expect(nodes[0]?.position).toEqual({ x: 34, y: 44 });
+    expect(nodes[1]?.position).toEqual({ x: 54, y: 64 });
+    expect(nodes[0]?.data).toMatchObject({ name: 'COPY-Hero', content: 'a.png', mode: 'i2i', params: { q: 1 }, createdBy: 'u-7' });
+    expect(typeof nodes[0]?.data.createdAt).toBe('number');
   });
 
-  it('cloneForPaste: a clone is always unlocked, even when the source was locked (R2-F)', () => {
-    // The clipboard payload never carries `locked`, so a clone is always
-    // unlocked — duplicating a locked node yields an editable copy.
-    const payload: ClipboardNode[] = [
-      { type: 'group', position: { x: 0, y: 0 }, width: 100, height: 100, id: 'g' },
-      { type: 'text', position: { x: 10, y: 10 }, id: 'm', parentId: 'g' },
-    ];
-    const cloned = cloneForPaste(payload, 'u-1', { dx: 24, dy: 24 });
-    for (const node of cloned) {
-      expect(node.data.locked).toBe(false);
+  it('copies content only: no lock, task counts or failure message (R2-F)', () => {
+    const p = payload([
+      node('g', 'group', { x: 0, y: 0 }, { locked: true, width: 100, height: 100 }),
+      node('m', 'image', { x: 10, y: 10 }, { locked: true, taskCounts: { done: 1 }, errorMessage: 'boom' }, { parentId: 'g' }),
+    ]);
+    for (const clone of cloneForPaste(p, 'u-1', { dx: 0, dy: 0 }).nodes) {
+      expect(clone.data.locked).toBe(false);
+      expect(clone.data).not.toHaveProperty('taskCounts');
+      expect(clone.data).not.toHaveProperty('errorMessage');
     }
   });
 
-  it('cloneForPaste: an external-parent (lone member) clone is a root → COPY- prefixed (R2-C)', () => {
-    const payload: ClipboardNode[] = [
-      { type: 'text', position: { x: 120, y: 130 }, name: 'Note', id: 'm', parentId: 'g' },
-    ];
-    const cloned = cloneForPaste(payload, 'u-1', { dx: 24, dy: 24 }, new Map([['g', { x: 100, y: 100 }]]));
-    expect(cloned[0].data.name).toBe('COPY-Note');
+  it('skips stickies on the canvas', () => {
+    const p = payload([node('s', 'annotation', { x: 0, y: 0 }), node('a', 'image', { x: 0, y: 0 })]);
+    expect(cloneForPaste(p, 'u', { dx: 0, dy: 0 }).nodes.map((n) => n.type)).toEqual(['image']);
   });
 
-  it('cloneForPaste: a lone member with an external parent rejoins that existing group, relative +offset', () => {
-    const payload: ClipboardNode[] = [
-      { type: 'text', position: { x: 120, y: 130 }, content: 'hi', id: 'm', parentId: 'g' },
-    ];
-    const cloned = cloneForPaste(payload, 'u-1', { dx: 24, dy: 24 }, new Map([['g', { x: 100, y: 100 }]]));
-    expect(cloned).toHaveLength(1);
-    // keeps the EXISTING group id; relative = (120,130)+offset − group(100,100) = (44,54)
-    expect(cloned[0].parentId).toBe('g');
-    expect(cloned[0].position).toEqual({ x: 44, y: 54 });
+  it('rehomes members to the fresh group and keeps their relative layout', () => {
+    const p = payload([
+      node('g', 'group', { x: 100, y: 100 }, { name: 'My Group', width: 300, height: 200 }),
+      node('m1', 'text', { x: 120, y: 130 }, { name: 'Note' }, { parentId: 'g' }),
+    ]);
+    const [group, member] = cloneForPaste(p, 'u-1', { dx: 24, dy: 24 }).nodes;
+    expect(group?.position).toEqual({ x: 124, y: 124 });
+    expect(group?.data.width).toBe(300);
+    expect(group?.data.name).toBe('COPY-My Group');
+    expect(member?.parentId).toBe(group?.id);
+    expect(member?.position).toEqual({ x: 20, y: 30 });
+    expect(member?.data.name).toBe('Note');
   });
 
-  it('cloneForPaste: a lone member WITHOUT an external parent map becomes top-level (paste re-anchors)', () => {
-    const payload: ClipboardNode[] = [
-      { type: 'text', position: { x: 120, y: 130 }, content: 'hi', id: 'm', parentId: 'g' },
-    ];
-    const cloned = cloneForPaste(payload, 'u-1', { dx: 24, dy: 24 });
-    expect(cloned[0].parentId).toBeUndefined();
-    expect(cloned[0].position).toEqual({ x: 144, y: 154 });
+  it('rejoins a lone member to its existing group, prefixed as a root', () => {
+    const p = payload([node('m', 'text', { x: 120, y: 130 }, { name: 'Note' }, { parentId: 'g' })]);
+    const [clone] = cloneForPaste(p, 'u-1', { dx: 24, dy: 24 }, { externalParentAbs: new Map([['g', { x: 100, y: 100 }]]) }).nodes;
+    expect(clone?.parentId).toBe('g');
+    expect(clone?.position).toEqual({ x: 44, y: 54 });
+    expect(clone?.data.name).toBe('COPY-Note');
   });
 
-  it('textToNode builds a text node carrying the pasted text + empty-node defaults', () => {
-    const node = textToNode('pasted words', { x: 5, y: 6 }, 'u-9');
-    expect(node.type).toBe('text');
-    expect(node.position).toEqual({ x: 5, y: 6 });
-    expect(node.data.content).toBe('pasted words');
-    expect(node.data.createdBy).toBe('u-9');
-    expect(node.data.name).toBe('Text');
+  it('makes a lone member top-level when its group is not given', () => {
+    const p = payload([node('m', 'text', { x: 120, y: 130 }, {}, { parentId: 'g' })]);
+    const [clone] = cloneForPaste(p, 'u-1', { dx: 24, dy: 24 }).nodes;
+    expect(clone?.parentId).toBeUndefined();
+    expect(clone?.position).toEqual({ x: 144, y: 154 });
+  });
+
+  it('pastes an external picture as an empty node with its name, no COPY- prefix', () => {
+    const p = payload([node('x', 'image', { x: 0, y: 0 }, { name: 'found', content: 'https://elsewhere/a.png' }, { external: true })], { source: undefined });
+    const [clone] = cloneForPaste(p, 'u', { dx: 0, dy: 0 }).nodes;
+    expect(clone?.data.name).toBe('found');
+    expect(clone?.data).not.toHaveProperty('content');
   });
 });
 
-describe('pasteOffsetFor — viewport-aware Cmd+V placement (R2-H, Figma-style)', () => {
-  // A 1000x800 viewport at flow origin.
-  const viewport = { x: 0, y: 0, width: 1000, height: 800 };
-  /**
-   * A payload of one node copied on this Space, covering `box`.
-   * @param box - Its top-left and, optionally, size (a bare point is zero-sized).
-   * @param box.x - Its left.
-   * @param box.y - Its top.
-   * @param box.width - Its width.
-   * @param box.height - Its height.
-   * @returns The payload.
-   */
-  const copied = (box: { x: number; y: number; width?: number; height?: number }): ClipboardNode[] => [
-    {
-      type: 'image',
-      position: { x: box.x, y: box.y },
-      width: box.width ?? 0,
-      height: box.height ?? 0,
-      space: 'here',
-    },
+describe('cloneForPaste — edges (design 5.5)', () => {
+  const nodes = [node('a', 'image', { x: 0, y: 0 }), node('b', 'image', { x: 0, y: 0 })];
+  const edges = [
+    { id: 'a->b', source: 'a', target: 'b', createdAt: 5 },
+    { id: 'u->b', source: 'u', target: 'b', createdAt: 5 },
   ];
 
-  it('anchor inside the viewport → paste next to it (+offset)', () => {
-    expect(pasteOffsetFor(copied({ x: 500, y: 400 }), viewport, 'here')).toEqual({
-      dx: 24,
-      dy: 24,
-    });
-  });
-
-  it('a box fully off-screen (zoom-independent) recenters, no longer nudged off-screen', () => {
-    // top-left (1200,400) is past the right edge (1000) and the box has no size,
-    // so it does not overlap the viewport → recenter (the old 50%-inflated rule
-    // wrongly nudged it +24 and left it off-screen).
-    expect(pasteOffsetFor(copied({ x: 1200, y: 400 }), viewport, 'here')).toEqual({
-      dx: 500 - 1200,
-      dy: 400 - 400,
-    });
-  });
-
-  it('a box that still partly overlaps the viewport pastes beside it (+offset)', () => {
-    // box spans x 900..1100 — its left half is inside the 0..1000 viewport → in view.
-    expect(
-      pasteOffsetFor(copied({ x: 900, y: 400, width: 200, height: 100 }), viewport, 'here'),
-    ).toEqual({ dx: 24, dy: 24 });
-  });
-
-  it('anchor far outside (scrolled away) → paste at the viewport center', () => {
-    // anchor at (5000,5000) is well past the 50%-larger area → recenter.
-    // viewport center = (500,400); offset = center − anchor.
-    expect(pasteOffsetFor(copied({ x: 5000, y: 5000 }), viewport, 'here')).toEqual({
-      dx: 500 - 5000,
-      dy: 400 - 5000,
-    });
-  });
-
-  it('off-view recenter centers the bounding box, not its top-left', () => {
-    // bbox 5000..5300 × 5000..5200 → center (5150, 5100); viewport center
-    // (500, 400) → offset moves the bbox center to the viewport center.
-    expect(
-      pasteOffsetFor(copied({ x: 5000, y: 5000, width: 300, height: 200 }), viewport, 'here'),
-    ).toEqual({ dx: 500 - 5150, dy: 400 - 5100 });
-  });
-
-  it('a degenerate (zero-area) viewport falls back to the in-place nudge', () => {
-    // No layout measured yet (jsdom / pre-mount) → can't recenter, so nudge.
-    expect(pasteOffsetFor(copied({ x: 999, y: 999 }), { x: 0, y: 0, width: 0, height: 0 }, 'here')).toEqual({
-      dx: 24,
-      dy: 24,
-    });
-  });
-
-  it('recenter works with a non-origin viewport', () => {
-    const vp = { x: 2000, y: 1000, width: 1000, height: 800 };
-    // center = (2500,1400); anchor (0,0) far outside → offset = center − anchor.
-    expect(pasteOffsetFor(copied({ x: 0, y: 0 }), vp, 'here')).toEqual({ dx: 2500, dy: 1400 });
-  });
-});
-
-describe('clipboardBoundingBox — the payload bounding box for viewport-center paste (R2-H)', () => {
-  it('unions position + size across all nodes', () => {
-    const box = clipboardBoundingBox([
-      { type: 'image', position: { x: 0, y: 0 }, width: 100, height: 50 },
-      { type: 'text', position: { x: 200, y: 100 }, width: 80, height: 40 },
+  it('rebuilds edges between copies and keeps an upstream edge when the upstream node is there', () => {
+    const out = cloneForPaste(payload(nodes, { edges }), 'u', { dx: 0, dy: 0 }, { keepUpstream: (id) => id === 'u' });
+    const a = out.idMap.get('a') as string;
+    const b = out.idMap.get('b') as string;
+    expect(out.edges.map((e) => [e.source, e.target, e.id])).toEqual([
+      [a, b, `${a}->${b}`],
+      ['u', b, `u->${b}`],
     ]);
-    // x 0..280, y 0..140
-    expect(box).toEqual({ x: 0, y: 0, width: 280, height: 140 });
   });
 
-  it('falls back to the empty-node footprint for a node carrying no size', () => {
-    const box = clipboardBoundingBox([{ type: 'text', position: { x: 10, y: 20 } }]);
-    // a content node with no recorded size uses EMPTY_NODE_SIZE (288 × 192).
-    expect(box).toEqual({ x: 10, y: 20, width: 288, height: 192 });
+  it('drops the upstream edge elsewhere', () => {
+    const out = cloneForPaste(payload(nodes, { edges }), 'u', { dx: 0, dy: 0 });
+    expect(out.edges).toHaveLength(1);
   });
 
-  it('a single sized node → its own rect', () => {
-    expect(
-      clipboardBoundingBox([{ type: 'group', position: { x: 5, y: 6 }, width: 300, height: 200 }]),
-    ).toEqual({ x: 5, y: 6, width: 300, height: 200 });
+  it('writes strictly increasing createdAt in the original order, so the rail keeps its order', () => {
+    const out = cloneForPaste(payload(nodes, { edges }), 'u', { dx: 0, dy: 0 }, { keepUpstream: () => true });
+    const [first, second] = out.edges;
+    expect(first?.source).toBe(out.idMap.get('a'));
+    expect((second?.createdAt ?? 0) > (first?.createdAt ?? 0)).toBe(true);
   });
 });
 
-describe('pasteOffsetFor — where a paste lands on the Space it is pasted into (inner#1235 A20)', () => {
+describe('cloneForPaste — mentions in prompts (design 5.6)', () => {
+  /**
+   * A prompt holding one mention of the given source.
+   * @param sourceNodeId - What the mention points at.
+   * @returns The prompts tag.
+   */
+  const prompts = (sourceNodeId: string): Record<string, unknown> => ({
+    $y: 'map',
+    entries: {
+      t2i: {
+        $y: 'xml',
+        children: [{ el: 'paragraph', attrs: {}, children: [{ el: 'referenceMention', attrs: { sourceNodeId, label: 'Up' }, children: [] }] }],
+      },
+    },
+  });
+  /**
+   * The first paragraph of a clone's prompt.
+   * @param data - The clone's data.
+   * @returns The paragraph's children.
+   */
+  const firstParagraph = (data: Record<string, unknown>): unknown[] =>
+    ((data.prompts as { entries: Record<string, { children: Array<{ children: unknown[] }> }> }).entries.t2i?.children[0]?.children) ?? [];
+
+  it('points a mention of a copied node at its copy', () => {
+    const p = payload([node('up', 'image', { x: 0, y: 0 }), node('b', 'image', { x: 0, y: 0 }, { prompts: prompts('up') })]);
+    const out = cloneForPaste(p, 'u', { dx: 0, dy: 0 });
+    const clone = out.nodes.find((n) => n.id === out.idMap.get('b'));
+    expect(firstParagraph(clone?.data ?? {})).toEqual([
+      { el: 'referenceMention', attrs: { sourceNodeId: out.idMap.get('up'), label: 'Up' }, children: [] },
+    ]);
+  });
+
+  it('keeps a focus mention and a kept upstream mention', () => {
+    const p = payload([node('b', 'image', { x: 0, y: 0 }, { prompts: prompts('focus:c1') })]);
+    const kept = cloneForPaste(p, 'u', { dx: 0, dy: 0 });
+    expect(JSON.stringify(kept.nodes[0]?.data)).toContain('focus:c1');
+    const up = payload([node('b', 'image', { x: 0, y: 0 }, { prompts: prompts('u') })], {
+      edges: [{ id: 'u->b', source: 'u', target: 'b', createdAt: 1 }],
+    });
+    expect(JSON.stringify(cloneForPaste(up, 'u', { dx: 0, dy: 0 }, { keepUpstream: () => true }).nodes[0]?.data)).toContain('"sourceNodeId":"u"');
+  });
+
+  it('turns a dangling mention into plain "@name" text', () => {
+    const p = payload([node('b', 'image', { x: 0, y: 0 }, { prompts: prompts('gone') })]);
+    const out = cloneForPaste(p, 'u', { dx: 0, dy: 0 });
+    expect(firstParagraph(out.nodes[0]?.data ?? {})).toEqual([{ text: [{ insert: '@Up' }] }]);
+  });
+});
+
+describe('textToNode', () => {
+  it('builds a text node carrying the pasted text', () => {
+    const n = textToNode('pasted words', { x: 5, y: 6 }, 'u-9');
+    expect(n.type).toBe('text');
+    expect(n.data.content).toBe('pasted words');
+    expect(n.data.name).toBe('Text');
+  });
+});
+
+describe('pasteOffsetFor — viewport-aware placement (R2-H)', () => {
   const viewport = { x: 0, y: 0, width: 1000, height: 800 };
-  const at = (space?: string): ClipboardNode => ({
-    type: 'image',
-    position: { x: 500, y: 0 },
-    width: 100,
-    height: 100,
-    ...(space === undefined ? {} : { space }),
+  /**
+   * A payload of one node copied on Space "here", covering `box`.
+   * @param box - Its top-left and optional size.
+   * @param box.x - Left.
+   * @param box.y - Top.
+   * @param box.width - Width.
+   * @param box.height - Height.
+   * @returns The payload.
+   */
+  const copied = (box: { x: number; y: number; width?: number; height?: number }): ClipboardPayload =>
+    payload([node('a', 'image', { x: box.x, y: box.y }, {}, { width: box.width ?? 0, height: box.height ?? 0 })], {
+      source: { ...SOURCE, spaceId: 'here' },
+    });
+
+  it('pastes beside a source in view', () => {
+    expect(pasteOffsetFor(copied({ x: 500, y: 400 }), viewport, 'here')).toEqual({ dx: 24, dy: 24 });
   });
 
-  it('pastes a node copied on this Space beside its source when the source is in view', () => {
-    expect(pasteOffsetFor([at('here')], viewport, 'here')).toEqual({ dx: 24, dy: 24 });
+  it('recenters a source fully off-screen', () => {
+    expect(pasteOffsetFor(copied({ x: 1200, y: 400 }), viewport, 'here')).toEqual({ dx: 500 - 1200, dy: 0 });
   });
 
-  it('pastes a node copied on another Space at the centre of this view, even where its old place is in view', () => {
-    expect(pasteOffsetFor([at('there')], viewport, 'here')).toEqual({ dx: -50, dy: 350 });
+  it('pastes beside a source still partly in view', () => {
+    expect(pasteOffsetFor(copied({ x: 900, y: 400, width: 200, height: 100 }), viewport, 'here')).toEqual({ dx: 24, dy: 24 });
   });
 
-  it('pastes nodes from a mix of Spaces at the centre of this view', () => {
+  it('centres the bounding box, not its top-left', () => {
+    expect(pasteOffsetFor(copied({ x: 5000, y: 5000, width: 300, height: 200 }), viewport, 'here')).toEqual({
+      dx: 500 - 5150,
+      dy: 400 - 5100,
+    });
+  });
+
+  it('falls back to the nudge on a zero-area viewport', () => {
+    expect(pasteOffsetFor(copied({ x: 999, y: 999 }), { x: 0, y: 0, width: 0, height: 0 }, 'here')).toEqual({ dx: 24, dy: 24 });
+  });
+
+  it('recenters with a non-origin viewport', () => {
+    expect(pasteOffsetFor(copied({ x: 0, y: 0 }), { x: 2000, y: 1000, width: 1000, height: 800 }, 'here')).toEqual({ dx: 2500, dy: 1400 });
+  });
+
+  it('centres a payload copied on another Space, or with no source', () => {
+    const there = payload([node('a', 'image', { x: 500, y: 0 }, {}, { width: 100, height: 100 })], { source: { ...SOURCE, spaceId: 'there' } });
+    expect(pasteOffsetFor(there, viewport, 'here')).toEqual({ dx: -50, dy: 350 });
+    expect(pasteOffsetFor({ ...there, source: undefined }, viewport, 'here')).toEqual({ dx: -50, dy: 350 });
+  });
+});
+
+describe('clipboardBoundingBox', () => {
+  it('unions position and size across all nodes', () => {
     expect(
-      pasteOffsetFor([at('here'), at('there')], viewport, 'here'),
-    ).toEqual({ dx: -50, dy: 350 });
+      clipboardBoundingBox([
+        node('a', 'image', { x: 0, y: 0 }, {}, { width: 100, height: 50 }),
+        node('b', 'text', { x: 200, y: 100 }, {}, { width: 80, height: 40 }),
+      ]),
+    ).toEqual({ x: 0, y: 0, width: 280, height: 140 });
   });
 
-  it('pastes a node that names no Space at the centre of this view', () => {
-    expect(pasteOffsetFor([at()], viewport, 'here')).toEqual({ dx: -50, dy: 350 });
-  });
-});
-
-describe('captureClipboard — the Space a copy comes from (inner#1235 A20)', () => {
-  it('records the Space on every node it captures', () => {
-    const out = captureClipboard(
-      ['a', 'g'],
-      [
-        { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: {} },
-        { id: 'g', type: 'group', position: { x: 10, y: 10 }, data: {} },
-      ],
-      NO_TEXT,
-      'here',
-    );
-    expect(out.map((node) => node.space)).toEqual(['here', 'here']);
+  it('falls back to the empty-node footprint for a node with no size', () => {
+    expect(clipboardBoundingBox([node('a', 'text', { x: 10, y: 20 })])).toEqual({ x: 10, y: 20, width: 288, height: 192 });
   });
 });
 
-describe('stepPastOccupied — one rule for every paste (inner#1235 A20)', () => {
+describe('stepPastOccupied (inner#1235 A20)', () => {
   it('stays put on a free spot', () => {
     expect(stepPastOccupied([{ x: 0, y: 0 }], [{ x: 100, y: 100 }])).toEqual({ dx: 0, dy: 0 });
   });
 
   it('steps down and right until the spot is free', () => {
-    expect(
-      stepPastOccupied([{ x: 0, y: 0 }], [{ x: 0, y: 0 }, { x: 24, y: 24 }, { x: 60, y: 0 }]),
-    ).toEqual({ dx: 48, dy: 48 });
+    expect(stepPastOccupied([{ x: 0, y: 0 }], [{ x: 0, y: 0 }, { x: 24, y: 24 }, { x: 60, y: 0 }])).toEqual({ dx: 48, dy: 48 });
   });
 
   it('counts a node less than a step away as on the spot', () => {
     expect(stepPastOccupied([{ x: 0, y: 0 }], [{ x: 10, y: -10 }])).toEqual({ dx: 24, dy: 24 });
   });
 
-  it('steps the whole batch when any one of its nodes would land on a taken spot', () => {
-    expect(
-      stepPastOccupied([{ x: 0, y: 0 }, { x: 400, y: 300 }], [{ x: 400, y: 300 }]),
-    ).toEqual({ dx: 24, dy: 24 });
+  it('steps the whole batch when any one node would land on a taken spot', () => {
+    expect(stepPastOccupied([{ x: 0, y: 0 }, { x: 400, y: 300 }], [{ x: 400, y: 300 }])).toEqual({ dx: 24, dy: 24 });
   });
 });
