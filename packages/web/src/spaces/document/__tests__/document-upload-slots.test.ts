@@ -229,6 +229,44 @@ describe('where the placeholder and the block go', () => {
     expect(shape(editor)).toEqual(['A', 'X', 'm1', 'B', 'C']);
   });
 
+  it('stays at its gap when an edit by a co-editor arrives through Yjs', () => {
+    const docs = [new Y.Doc(), new Y.Doc()];
+    Y.applyUpdate(docs[0]!, encodeInitialSpaceContent('document'));
+    docs.forEach((doc, i) => {
+      doc.on('update', (update: Uint8Array, origin: unknown) => {
+        if (origin !== 'relay') Y.applyUpdate(docs[1 - i]!, update, 'relay');
+      });
+    });
+    Y.applyUpdate(docs[1]!, Y.encodeStateAsUpdate(docs[0]!), 'relay');
+    const [mine, theirs] = docs.map((doc, i) => {
+      const editor = buildDocumentEditor({
+        fragment: documentBodyFragment(doc),
+        extensions: i === 0 ? [documentUploadsExtension()] : [],
+      });
+      const root = document.createElement('div');
+      document.body.appendChild(root);
+      editor.mount(root);
+      mounted.push(editor);
+      return editor;
+    });
+    mine!.replaceBlocks(mine!.document, ABC as never);
+    const view = mine!.prosemirrorView!;
+    const ids = addUploadBatch(view, { before: idOf(mine!, 'A'), after: idOf(mine!, 'B') }, ['m1']);
+
+    theirs!.insertBlocks([{ type: 'paragraph', content: 'X' }] as never, idOf(theirs!, 'A'), 'before');
+    theirs!.updateBlock(idOf(theirs!, 'B'), { content: 'B2' } as never);
+
+    expect(shape(mine!)).toEqual(['X', 'A', 'B2', 'C']);
+    let afterA = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.attrs['id'] === idOf(mine!, 'A')) afterA = pos + node.nodeSize;
+      return afterA < 0;
+    });
+    expect(drawnAt(view.state).get(ids[0]!)).toBe(afterA);
+    land(mine!, ids[0]!);
+    expect(shape(mine!)).toEqual(['X', 'A', 'm1', 'B2', 'C']);
+  });
+
   it('stays at its gap when the block after it is split with Enter', () => {
     const { editor } = open([
       { type: 'paragraph', content: 'A' },
