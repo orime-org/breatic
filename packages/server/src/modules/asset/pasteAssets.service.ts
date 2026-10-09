@@ -64,17 +64,16 @@ export async function pasteAssets(input: PasteInput): Promise<Record<string, str
   const misses: Miss[] = [];
   // The cover row in the target Studio for each cover address that has one.
   const coverRows = new Map<string, StudioAssetEntity>();
-  // Each video's hit in the target Studio, or the miss it is filed from.
-  const videos: Array<{ pair: PastePair; hit: StudioAssetEntity | null; miss: Miss | null }> = [];
+  // Each video's source row and its hit in the target Studio, if any.
+  const videos: Array<{ pair: PastePair; video: StudioAssetEntity; hit: StudioAssetEntity | null }> = [];
   for (const pair of input.pairs) {
     const video = await sourceOf(pair.url);
     if (video === null) continue;
     const cover = await sourceOf(pair.cover);
     const hit = await assetRepo.findByStudioAndHash(studioId, video.contentHash);
-    const miss: Miss | null = hit === null ? { address: pair.url, source: video, as: "upload" } : null;
-    videos.push({ pair, hit, miss });
-    if (miss !== null) misses.push(miss);
-    else if (hit !== null) map[pair.url] = hit.fileUrl;
+    videos.push({ pair, video, hit });
+    if (hit === null) misses.push({ address: pair.url, source: video, as: "upload" });
+    else map[pair.url] = hit.fileUrl;
     if (cover === null) continue;
     const standing = hit === null ? null : await assetRepo.findCoverOf(hit.id);
     if (standing !== null) {
@@ -137,13 +136,12 @@ export async function pasteAssets(input: PasteInput): Promise<Record<string, str
       map[miss.address] = null;
     }
   }
-  for (const { pair, hit, miss } of videos) {
+  for (const { pair, video, hit } of videos) {
     const cover = coverRows.get(pair.cover);
-    if (miss !== null) {
-      await file(miss, cover?.id);
+    if (hit === null) {
+      await file({ address: pair.url, source: video, as: "upload" }, cover?.id);
       continue;
     }
-    if (hit === null) continue;
     // A video the Studio already held: keep the cover it shows, or give it
     // this one when it has none.
     if (cover === undefined) continue;

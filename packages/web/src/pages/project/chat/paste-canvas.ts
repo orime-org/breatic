@@ -43,7 +43,9 @@ export function pastedCanvas(payload: ClipboardPayload, canvasDoc: Y.Doc | undef
   const ids = payload.picked;
   if (ids.length === 0 || payload.nodes.length === 0) return null;
   const nodes = canvasDoc?.getMap(CANVAS_NODES_KEY);
-  if (canvasDoc !== undefined && ids.every((id) => nodes?.has(id) === true)) return { kind: 'nodes', doc: canvasDoc, ids };
+  if (canvasDoc !== undefined && nodes !== undefined && ids.every((id) => nodes.has(id))) {
+    return { kind: 'nodes', doc: canvasDoc, ids };
+  }
   return { kind: 'nodes', doc: docOf(payload), ids };
 }
 

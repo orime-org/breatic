@@ -84,14 +84,8 @@ export interface ClipboardNode {
   external?: boolean;
 }
 
-/** An edge on the clipboard. */
-export interface ClipboardEdge {
-  id: string;
-  source: string;
-  target: string;
-  toolId?: string;
-  createdAt?: number;
-}
+/** An edge on the clipboard: the edge as the canvas stores it. */
+export type ClipboardEdge = CanvasEdge;
 
 /** What Copy writes and Paste reads. */
 export interface ClipboardPayload {
@@ -335,11 +329,9 @@ export function cloneForPaste(
     }
   }
   const edges = cloneEdges(payload.edges, idMap, keepUpstream);
-  const keptUpstream = new Set(
-    payload.edges
-      .filter((edge) => !idMap.has(edge.source) && idMap.has(edge.target) && keepUpstream(edge.source))
-      .map((edge) => edge.source),
-  );
+  // A kept upstream edge is the one whose source is not a copy.
+  const fresh = new Set(idMap.values());
+  const keptUpstream = new Set(edges.filter((edge) => !fresh.has(edge.source)).map((edge) => edge.source));
   const now = Date.now();
   const clones = nodes.map((node): SnapshotNode => {
     const freshId = idMap.get(node.id) as string;
