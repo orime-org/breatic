@@ -79,7 +79,7 @@ describe("markedSegments", () => {
 describe("promptTextOf and promptPlainText", () => {
   it("measure the reference and fill-in marks and leave the note out", () => {
     const segments = markedSegments("(💡 Pick a frame)She walks in [📎 the photo]. {✏️ mood}");
-    expect(promptTextOf(segments)).toBe("She walks in [📎 Use @ to pick the photo]. {✏️ mood}");
+    expect(promptTextOf(segments, () => "")).toBe("She walks in [📎 Use @ to pick the photo]. {✏️ mood}");
     expect(promptPlainText(segments)).toBe("She walks in [📎 Use @ to pick the photo]. {✏️ mood}");
   });
 });
@@ -91,7 +91,7 @@ describe("a reference to a proposed node (inner#1315)", () => {
     expect(promptTextOf(segments, (ref) => (ref === 0 ? "la la" : ""))).toBe("Sing la la then la la");
   });
 
-  it("counts an @ as nothing when no words are given for it", () => {
-    expect(promptTextOf([{ text: "Look at " }, { ref: 1 }])).toBe("Look at ");
+  it("counts an @ as the empty words it is given", () => {
+    expect(promptTextOf([{ text: "Look at " }, { ref: 1 }], () => "")).toBe("Look at ");
   });
 });

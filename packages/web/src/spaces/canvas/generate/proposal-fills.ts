@@ -70,24 +70,23 @@ export function writeProposalFills(
     if (!spec) continue;
     const picked = indices.flatMap((at) => {
       const source = sources[at];
-      return source?.material ? [source] : [];
+      return source?.material ? [{ source, material: source.material }] : [];
     });
     if (spec.multiple) {
       // The node was created a moment ago, so its list starts empty; the check
       // already held the count to the model's cap.
-      for (const source of picked) {
-        if (source.material) {
-          appendNodeSlotItem(projectId, spaceId, nodeId, spec.field, source.material, picked.length);
-        }
+      for (const { material } of picked) {
+        appendNodeSlotItem(projectId, spaceId, nodeId, spec.field, material, picked.length);
       }
       continue;
     }
-    const [source] = picked;
-    if (!source) continue;
+    const [first] = picked;
+    if (!first) continue;
+    const { source, material } = first;
     fillSlot(projectId, spaceId, nodeId, spec, {
       type: source.type,
       data: {
-        content: source.material,
+        content: material,
         coverUrl: source.materialMedia?.coverUrl,
         duration: source.materialMedia?.duration,
       },

@@ -160,13 +160,13 @@ export function markedSegments(text: string): PromptSegment[] {
  * model's input cap here and past it by the time the reader presses Generate.
  * @param segments - The proposed prompt.
  * @param refWords - What an @ of the node at an index sends, as the panel
- *   serialises it; an @ counts as nothing without it.
+ *   serialises it.
  * @returns The text the panel will measure.
  * @throws {never} Never.
  */
 export function promptTextOf(
   segments: readonly PromptSegment[],
-  refWords: (ref: number) => string = () => "",
+  refWords: (ref: number) => string,
 ): string {
   return segments
     .map((s) => (s.slot ? markText(s.slot) : s.ref !== undefined ? refWords(s.ref) : s.text.replace(/\n/g, "\n\n")))
