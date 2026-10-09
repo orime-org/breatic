@@ -210,3 +210,76 @@ test('a duplicate that lands out of view brings the view to it', async () => {
   await page.keyboard.press('ArrowRight');
   await expect.poll(() => xOf(copy.id)).toBeGreaterThan(copy.position.x);
 });
+
+/**
+ * Zooms the canvas with Ctrl+wheel over a point, the way a trackpad pinch does,
+ * until the zoom readout says the canvas is at or past a level.
+ * @param at - Where the pointer sits while zooming.
+ * @param percent - The level to reach.
+ * @param out - True to zoom out, false to zoom in.
+ */
+async function wheelZoom(at: { x: number; y: number }, percent: number, out: boolean): Promise<void> {
+  const readout = async (): Promise<number> => Number.parseInt((await page.getByTestId('zoom-readout').textContent()) ?? '100', 10);
+  await page.mouse.move(at.x, at.y);
+  await page.keyboard.down('Control');
+  for (let i = 0; i < 60 && (out ? (await readout()) > percent : (await readout()) < percent); i += 1) {
+    await page.mouse.wheel(0, out ? 40 : -40);
+  }
+  await page.keyboard.up('Control');
+}
+
+test('copies wider than the view still put one in view and focus it', async () => {
+  const farId = `paste-focus-far-${Date.now()}`;
+  await onCanvas(
+    `canvas.addNode(pid, sid, { id: extra, type: 'text', position: { x: 2000, y: 0 },
+       data: { createdAt: Date.now(), createdBy: 'paste-focus-e2e', locked: false, attachments: [], name: 'Far', content: 'far' } });`,
+    farId,
+  );
+  const origin = await drawn(textId).boundingBox();
+  if (origin === null) throw new Error('the first node must be on screen');
+  const anchor = { x: origin.x + 20, y: origin.y + 20 };
+  await wheelZoom(anchor, 30, true);
+  const a = await drawn(textId).boundingBox();
+  const b = await drawn(farId).boundingBox();
+  if (a === null || b === null) throw new Error('both nodes must be on screen zoomed out');
+  await page.mouse.move(a.x - 30, a.y - 30);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width + 30, b.y + b.height + 30, { steps: 10 });
+  await page.mouse.up();
+  await expect(drawn(textId)).toHaveClass(/selected/);
+  await expect(drawn(farId)).toHaveClass(/selected/);
+  const back = await drawn(textId).boundingBox();
+  await wheelZoom({ x: (back?.x ?? 0) + 4, y: (back?.y ?? 0) + 4 }, 100, false);
+  const before = await nodes();
+  await page.keyboard.press('ControlOrMeta+D');
+  await expect.poll(async () => (await nodes()).length, { timeout: 20_000 }).toBe(before.length + 2);
+  const copies = (await nodes()).filter((n) => !before.some((o) => o.id === n.id));
+  await expect.poll(async () => {
+    const id = await focusedNode();
+    return id !== null && copies.some((c) => c.id === id) && (await wholeOnScreen(id));
+  }).toBe(true);
+  const focusedId = (await focusedNode()) ?? '';
+  const start = copies.find((c) => c.id === focusedId)?.position.x ?? 0;
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => xOf(focusedId)).toBeGreaterThan(start);
+});
+
+test('clearing the selection during the pan leaves the copy without the keyboard', async () => {
+  const pane = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
+  const at = await drawn(textId).boundingBox();
+  const shift = (pane?.x ?? 0) + (pane?.width ?? 0) - 10 - (at?.x ?? 0);
+  await onCanvas('canvas.setNodePosition(pid, sid, extra.id, { x: extra.shift, y: 0 }, null);', { id: textId, shift });
+  await expect.poll(async () => (await drawn(textId).boundingBox())?.x ?? 0).toBeGreaterThan((pane?.x ?? 0) + (pane?.width ?? 0) - 20);
+  const before = await nodes();
+  const sliver = await drawn(textId).boundingBox();
+  await page.mouse.click((sliver?.x ?? 0) + 4, (sliver?.y ?? 0) + 6);
+  await page.keyboard.press('ControlOrMeta+D');
+  await expect.poll(async () => (await nodes()).length, { timeout: 20_000 }).toBe(before.length + 1);
+  const [copy] = (await nodes()).filter((n) => !before.some((o) => o.id === n.id));
+  await expect(drawn(copy?.id ?? '')).toHaveClass(/selected/);
+  // The canvas is sliding to the copy; the reader clears the selection before it settles.
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(600);
+  await expect(drawn(copy?.id ?? '')).not.toHaveClass(/selected/);
+  expect(await focusedNode()).not.toBe(copy?.id);
+});

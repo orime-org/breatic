@@ -65,7 +65,7 @@ import {
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
-import { FRAME_PAN_MS, frameBuiltNode } from '@web/spaces/canvas/frame-built-node';
+import { FRAME_PAN_MS, frameBuiltNode, framedBox } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import {
@@ -2225,28 +2225,36 @@ function CanvasSpaceInner({
     });
   }, [sessionStore, getInternalNode, setCenter, rfZoom]);
 
+  // Slide what an action just made in front of the reader, together with what
+  // it was made from. Pans only, keeping the reader's zoom, the way locate does
+  // above; `framedBox` picks what of it to frame and `frameBuiltNode` whether
+  // to move at all. Returns whether the canvas moved.
+  const panToFrame = React.useCallback(
+    (made: readonly Rect[], source: Rect | null): boolean => {
+      const { transform: [tx, ty, zoom], width, height } = rfStoreApi.getState();
+      if (zoom === 0) return false;
+      const view = { x: -tx / zoom, y: -ty / zoom, width: width / zoom, height: height / zoom };
+      const built = framedBox(made, view);
+      const at = built === null ? null : frameBuiltNode(built, source, view);
+      if (at === null) return false;
+      void setCenter(at.x, at.y, { zoom, duration: FRAME_PAN_MS });
+      return true;
+    },
+    [rfStoreApi, setCenter],
+  );
   // Put a node a press just wrote in front of the reader, together with the
-  // node it was read from. Pans only, keeping the reader's zoom, the way
-  // locate does above; whether it pans at all is `frameBuiltNode`'s to say.
-  // The built node's size is the fresh-node size rather than a measured one:
-  // a node written this instant is not in ReactFlow's store yet, and a node
-  // holding nothing is that size until something lands in it.
-  const visibleFlowRect = React.useCallback((): Rect | null => {
-    const { transform, width, height } = rfStoreApi.getState();
-    const [tx, ty, zoom] = transform;
-    if (zoom === 0) return null;
-    return { x: -tx / zoom, y: -ty / zoom, width: width / zoom, height: height / zoom };
-  }, [rfStoreApi]);
+  // node it was read from. The built node's size is the fresh-node size rather
+  // than a measured one: a node written this instant is not in ReactFlow's
+  // store yet, and a node holding nothing is that size until something lands
+  // in it.
   const frameNewNode = React.useCallback(
     (position: { x: number; y: number }, sourceNodeId: string): void => {
-      const view = visibleFlowRect();
-      if (view === null) return;
       // A collaborator can delete the node being read while the menu stands
       // open. The press still produced a node, so it is still what has to be
       // in front of the reader — there is just no second box to frame it with.
       const source = getInternalNode(sourceNodeId);
-      const at = frameBuiltNode(
-        { ...position, ...EMPTY_NODE_SIZE },
+      panToFrame(
+        [{ ...position, ...EMPTY_NODE_SIZE }],
         source === undefined
           ? null
           : {
@@ -2254,12 +2262,9 @@ function CanvasSpaceInner({
             width: source.measured?.width ?? source.width ?? 0,
             height: source.measured?.height ?? source.height ?? 0,
           },
-        view,
       );
-      if (at === null) return;
-      setCenter(at.x, at.y, { zoom: rfStoreApi.getState().transform[2], duration: FRAME_PAN_MS });
     },
-    [getInternalNode, rfStoreApi, setCenter, visibleFlowRect],
+    [getInternalNode, panToFrame],
   );
 
   // ---- Node creation (library mailbox + right-click) ----
@@ -2285,31 +2290,28 @@ function CanvasSpaceInner({
     focusPastedRef.current = { ids, sources };
     setSelectAfterCreate(ids);
   }, []);
-  // The box a set of nodes covers on the canvas, from what xyflow has measured;
-  // null when none of them is measured.
-  const measuredBox = React.useCallback(
-    (ids: readonly string[]): Rect | null =>
-      groupRectForMembers(
-        ids.flatMap((id) => {
-          const node = getInternalNode(id);
-          const width = node?.measured?.width;
-          const height = node?.measured?.height;
-          if (node === undefined || width === undefined || height === undefined) return [];
-          return [{ ...node.internals.positionAbsolute, width, height }];
-        }),
-        0,
-      ),
+  // The boxes of the nodes xyflow has measured among `ids`, in canvas
+  // coordinates and in the order given.
+  const measuredRects = React.useCallback(
+    (ids: readonly string[]): Rect[] =>
+      ids.flatMap((id) => {
+        const node = getInternalNode(id);
+        const width = node?.measured?.width;
+        const height = node?.measured?.height;
+        if (node === undefined || width === undefined || height === undefined) return [];
+        return [{ ...node.internals.positionAbsolute, width, height }];
+      }),
     [getInternalNode],
   );
   // A paste or duplicate puts its copies in front of the reader and hands them
   // the keyboard, so the arrow keys move them (inner#1229) through xyflow's own
   // handler on the focused node. Each frame it waits while a menu is still
   // closing (it holds focus until it unmounts) and until xyflow has measured
-  // every copy. Copies that are not wholly in view are slid into view the way a
-  // node the generate panel builds is (frameBuiltNode, with the originals they
-  // came from). Then the first copy shown inside the canvas takes focus: xyflow
-  // keeps a copy hidden until it has measured it, and renders one that lands
-  // out of view once for that measure before culling it.
+  // every copy, then slides them into view with `panToFrame` and focuses the
+  // first copy shown inside the canvas: xyflow keeps a copy hidden until it has
+  // measured it, and renders one that lands out of view once for that measure
+  // before culling it. Only copies still selected count, so a newer paste or
+  // the reader's own pick during the slide keeps the keyboard.
   const focusFirstCopy = React.useCallback(
     (ids: readonly string[], sources: readonly string[]): void => {
       let framed = false;
@@ -2321,25 +2323,21 @@ function CanvasSpaceInner({
           requestAnimationFrame(step);
           return;
         }
-        const live = ids.filter((id) => getInternalNode(id) !== undefined);
-        if (live.length === 0) return;
-        if (live.some((id) => getInternalNode(id)?.measured?.width === undefined)) {
+        const copies = ids.filter((id) => getInternalNode(id)?.selected === true);
+        if (copies.length === 0) return;
+        if (copies.some((id) => getInternalNode(id)?.measured?.width === undefined)) {
           requestAnimationFrame(step);
           return;
         }
         if (!framed) {
           framed = true;
-          const copies = measuredBox(live);
-          const view = visibleFlowRect();
-          const at = copies === null || view === null ? null : frameBuiltNode(copies, measuredBox(sources), view);
-          if (at !== null) {
-            void setCenter(at.x, at.y, { zoom: rfStoreApi.getState().transform[2], duration: FRAME_PAN_MS });
+          if (panToFrame(measuredRects(copies), groupRectForMembers(measuredRects(sources), 0))) {
             window.setTimeout(() => requestAnimationFrame(step), FRAME_PAN_MS);
             return;
           }
         }
         const view = container.getBoundingClientRect();
-        const shown = live
+        const shown = copies
           .map((id) => container.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`))
           .find((element) => {
             if (element === null || getComputedStyle(element).visibility === 'hidden') return false;
@@ -2350,7 +2348,7 @@ function CanvasSpaceInner({
       };
       requestAnimationFrame(step);
     },
-    [getInternalNode, measuredBox, visibleFlowRect, setCenter, rfStoreApi],
+    [getInternalNode, measuredRects, panToFrame],
   );
   const staggerRef = React.useRef(0);
   const [contextMenu, setContextMenu] = React.useState({
