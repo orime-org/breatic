@@ -140,6 +140,7 @@ function jobOf(data: Record<string, unknown>, attemptsMade = 0): Job {
   return {
     id: "job-1",
     attemptsMade,
+    stalledCounter: 0,
     opts: { attempts: 3 },
     moveToDelayed: h.moveToDelayed,
     updateData: h.updateData,
@@ -409,6 +410,36 @@ describe("the retry log lines", () => {
     expect(h.updateData).toHaveBeenCalledWith(expect.objectContaining({ retryReported: 2 }));
   });
 
+  it("names the task in a reading's duplicate-cost warning", async () => {
+    await runTask(retriedReading(), "lock-token").catch(() => undefined);
+
+    expect(h.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: "task-1", taskType: "understand", attempt: 2 }),
+      "provider_reinvoked_on_retry_potential_duplicate_cost",
+    );
+  });
+
+  // A worker that died mid-run leaves its job stalled; the queue hands it out
+  // again without counting an attempt, and the run before may have submitted.
+  it("counts a stalled redelivery as a retry starting, once", async () => {
+    const stalled = retriedReading(0);
+    (stalled as unknown as { stalledCounter: number }).stalledCounter = 1;
+
+    await runTask(stalled, "lock-token").catch(() => undefined);
+
+    expect(h.warn).toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
+    expect(h.updateData).toHaveBeenCalledWith(expect.objectContaining({ retryReported: 1 }));
+  });
+
+  it("stays quiet on a later pickup after a stalled redelivery was reported", async () => {
+    const stalled = retriedReading(0, 1);
+    (stalled as unknown as { stalledCounter: number }).stalledCounter = 1;
+
+    await runTask(stalled, "lock-token").catch(() => undefined);
+
+    expect(h.warn).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
+  });
+
   it("logs the stored upstream id on the pickup that starts a retry", async () => {
     h.getByIdInternal.mockResolvedValue({
       createdAt: CREATED,
@@ -417,7 +448,7 @@ describe("the retry log lines", () => {
       providerTaskId: "ws-1",
     });
 
-    await runTask(retried(), "lock-token").catch(() => undefined);
+    await runTask(jobOf({ taskType: "three_d", model: "meshy-6" }, 1), "lock-token").catch(() => undefined);
 
     expect(h.info).toHaveBeenCalledWith(expect.anything(), "async_resume_stored_provider_task");
     expect(h.warn).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");

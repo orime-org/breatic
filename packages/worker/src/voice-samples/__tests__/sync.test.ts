@@ -128,6 +128,68 @@ describe("resumablePredict", () => {
     expect(seen).toEqual([null, "task-1", null]);
   });
 
+  // Table 4.1a, not submitted: the upstream answers failed on the first
+  // question, so the next pass submits a new task.
+  it("submits again after the upstream failed a task it had just been given", async () => {
+    const seen: Array<string | null> = [];
+    let call = 0;
+    const predict = resumablePredict(
+      async (_job, resume) => {
+        call += 1;
+        seen.push(resume.storedTaskId);
+        if (resume.storedTaskId === null) await resume.persistTaskId(`task-${call}`);
+        if (call === 1) throw new Error("upstream failed the task");
+        return "https://out.test/a.mp3";
+      },
+      (err) => err instanceof Error && err.message === "upstream failed the task",
+      NO_WAIT,
+    );
+    const job = JOBS[0]!;
+    await expect(predict(job)).rejects.toThrow("upstream failed the task");
+    await expect(predict(job)).resolves.toBe("https://out.test/a.mp3");
+    expect(seen).toEqual([null, null]);
+  });
+
+  // Table 4.1a, not submitted x other error: the submit failed before an id
+  // was stored, and may still have reached the upstream.
+  it("submits again after a submit that stored no id, and says it may be the upstream's second", async () => {
+    const calls: Array<{ stored: string | null; retryStarting: boolean }> = [];
+    const predict = resumablePredict(
+      async (_job, resume) => {
+        calls.push({ stored: resume.storedTaskId, retryStarting: resume.retryStarting });
+        if (calls.length === 1) throw new Error("socket hang up");
+        return "https://out.test/a.mp3";
+      },
+      () => false,
+      NO_WAIT,
+    );
+    const job = JOBS[0]!;
+    await expect(predict(job)).rejects.toThrow("socket hang up");
+    await expect(predict(job)).resolves.toBe("https://out.test/a.mp3");
+    expect(calls).toEqual([
+      { stored: null, retryStarting: false },
+      { stored: null, retryStarting: true },
+    ]);
+  });
+
+  it("does not say a sample may be submitted twice after the upstream failed it", async () => {
+    const flags: boolean[] = [];
+    const predict = resumablePredict(
+      async (_job, resume) => {
+        flags.push(resume.retryStarting);
+        if (resume.storedTaskId === null) await resume.persistTaskId("task-1");
+        if (flags.length === 1) throw new Error("upstream failed the task");
+        return "https://out.test/a.mp3";
+      },
+      () => true,
+      NO_WAIT,
+    );
+    const job = JOBS[0]!;
+    await expect(predict(job)).rejects.toThrow();
+    await predict(job);
+    expect(flags).toEqual([false, false]);
+  });
+
   describe("while the upstream is still going", () => {
     /**
      * A clock the test moves, and a wait that moves it.

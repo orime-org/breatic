@@ -26,11 +26,11 @@ vi.mock("@worker/providers/wavespeed.js", () => ({
   runPrediction: (...args: unknown[]) => runPredictionMock(...args),
 }));
 
-const { warnMock } = vi.hoisted(() => ({ warnMock: vi.fn() }));
+const { warnMock, infoMock } = vi.hoisted(() => ({ warnMock: vi.fn(), infoMock: vi.fn() }));
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof coreModule>();
-  return { ...actual, logger: { info: vi.fn(), warn: warnMock, error: vi.fn(), debug: vi.fn() } };
+  return { ...actual, logger: { info: infoMock, warn: warnMock, error: vi.fn(), debug: vi.fn() } };
 });
 
 vi.mock("@worker/providers/http.js", async (importOriginal) => {
@@ -125,6 +125,7 @@ function submitted(endpoint: string): Step {
 beforeEach(() => {
   runPredictionMock.mockReset();
   warnMock.mockReset();
+  infoMock.mockReset();
   vi.spyOn(Date, "now").mockReturnValue(NOW);
 });
 
@@ -335,5 +336,86 @@ describe("which step a retry hands its duplicate-cost check to", () => {
     await runCatalogTask(deps, ctx(60_000, true), "tts", "read this", "minimax-voice-clone", { audio: "https://a/me.mp3" }, 1);
 
     expect(flags()).toStrictEqual([false, false]);
+  });
+
+  /**
+   * The duplicate-cost warnings written, by their context.
+   * @returns The first argument of each warning.
+   */
+  function duplicateWarnings(): unknown[] {
+    return warnMock.mock.calls
+      .filter((call) => call[1] === "provider_reinvoked_on_retry_potential_duplicate_cost")
+      .map((call) => call[0]);
+  }
+
+  const ELEMENT = { elements: ["https://a/cat.png"] };
+
+  // A missing description means the attempt before stopped at or before the
+  // describe, so the describe is what may be paid for twice and the submit is new.
+  it("warns before describing an element image again, and hands the submit no warning", async () => {
+    runPredictionMock.mockResolvedValue({ outputs: [{ element_id: "el-1" }], taskId: "pred-1" });
+    const { deps } = stores();
+    deps.describeImage = vi.fn(async (url: string) => {
+      expect(duplicateWarnings()).toHaveLength(1);
+      return { text: `a picture at ${url}`, costUsd: 0.002 };
+    });
+
+    await runCatalogTask(deps, ctx(60_000, true), "video", "Element 1 waves", "kling-video-o3-4k-image-to-video", ELEMENT, 1).catch(
+      () => undefined,
+    );
+
+    expect(deps.describeImage).toHaveBeenCalledTimes(1);
+    expect(duplicateWarnings()).toStrictEqual([expect.objectContaining({ taskId: TASK })]);
+    expect(flags()[0]).toBe(false);
+  });
+
+  it("keeps the warning when no reading place is free for the describe", async () => {
+    const { deps } = stores();
+    deps.describeImage = vi.fn(async () => {
+      throw new StillRunning(NOW + 3_000);
+    });
+
+    await expect(
+      runCatalogTask(deps, ctx(60_000, true), "video", "Element 1 waves", "kling-video-o3-4k-image-to-video", ELEMENT, 1),
+    ).rejects.toBeInstanceOf(StillRunning);
+
+    expect(duplicateWarnings()).toHaveLength(1);
+  });
+
+  it("hands the submit the warning when the element was described but never submitted", async () => {
+    runPredictionMock.mockResolvedValue({ outputs: [{ element_id: "el-1" }], taskId: "pred-1" });
+    const described = {
+      id: "step-0", taskId: TASK, position: 0, kind: "element", endpoint: "kwaivgi/kling-elements",
+      itemIndex: 0, status: "pending", predictionId: null, output: { description: "a cat" }, inlineCostUsd: 0.002,
+    } as Step;
+    const { deps } = stores([described]);
+
+    await runCatalogTask(deps, ctx(60_000, true), "video", "Element 1 waves", "kling-video-o3-4k-image-to-video", ELEMENT, 1).catch(
+      () => undefined,
+    );
+
+    expect(deps.describeImage).not.toHaveBeenCalled();
+    expect(flags()[0]).toBe(true);
+  });
+
+  it("logs the stored upstream id a retry resumes", async () => {
+    runPredictionMock.mockResolvedValue({ outputs: ["https://o/cat.png"], taskId: "pred-kept" });
+    const { deps } = stores([submitted("google/nano-banana-2/text-to-image")]);
+
+    await runCatalogTask(deps, ctx(60_000, true), "image", "a cat", "nano-banana-2", {}, 1);
+
+    expect(infoMock).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: TASK, providerTaskId: "pred-kept" }),
+      "async_resume_stored_provider_task",
+    );
+  });
+
+  it("logs no resumed id on a pickup that is not a retry", async () => {
+    runPredictionMock.mockResolvedValue({ outputs: ["https://o/cat.png"], taskId: "pred-kept" });
+    const { deps } = stores([submitted("google/nano-banana-2/text-to-image")]);
+
+    await runCatalogTask(deps, ctx(60_000), "image", "a cat", "nano-banana-2", {}, 1);
+
+    expect(infoMock).not.toHaveBeenCalledWith(expect.anything(), "async_resume_stored_provider_task");
   });
 });

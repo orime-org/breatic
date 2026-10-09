@@ -18,6 +18,12 @@ import type { ResolvedModel } from "@worker/providers/shared.js";
 const requestWithRetryMock = vi.fn();
 const pollOnceMock = vi.fn();
 const queryBillingMock = vi.fn();
+const { warnMock } = vi.hoisted(() => ({ warnMock: vi.fn() }));
+
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  logger: { info: vi.fn(), warn: warnMock, error: vi.fn(), debug: vi.fn() },
+}));
 
 vi.mock("@worker/providers/http.js", async (importOriginal) => {
   const actual = await importOriginal<typeof httpModule>();
@@ -106,6 +112,14 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
         generate("a chair", RESOLVED, {}, { storedTaskId: null, persistTaskId, externalTaskId: "x", retryStarting: false }, Date.now() - 1),
       ).rejects.toBeInstanceOf(TaskDeadlinePassed);
       expect(requestWithRetryMock).not.toHaveBeenCalled();
+    });
+
+    // Nothing is submitted, so nothing may have been paid for twice.
+    it("writes no duplicate-cost warning for a retry that submits nothing past the deadline", async () => {
+      await expect(
+        generate("a chair", RESOLVED, {}, { storedTaskId: null, persistTaskId: vi.fn(), externalTaskId: "x", retryStarting: true }, Date.now() - 1),
+      ).rejects.toBeInstanceOf(TaskDeadlinePassed);
+      expect(warnMock).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
     });
 
     it("goes back to the queue while the upstream is still going before the deadline", async () => {
