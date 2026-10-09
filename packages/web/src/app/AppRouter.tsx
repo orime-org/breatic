@@ -2,11 +2,21 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { captureException } from '@sentry/react';
 import { RouterProvider } from 'react-router-dom';
 
 interface AppRouterProps {
   /** The data router to render. */
   router: React.ComponentProps<typeof RouterProvider>['router'];
+}
+
+/**
+ * Reports errors caught by the router before they reach the outer boundary.
+ * @param error - The original route error, without location or route parameters.
+ * @throws {Error} If the monitoring SDK fails to capture the error.
+ */
+function reportRouteError(error: unknown): void {
+  captureException(error);
 }
 
 /**
@@ -27,5 +37,5 @@ interface AppRouterProps {
  * @returns The router.
  */
 export function AppRouter({ router }: AppRouterProps): React.JSX.Element {
-  return <RouterProvider router={router} useTransitions={false} />;
+  return <RouterProvider router={router} useTransitions={false} onError={reportRouteError} />;
 }

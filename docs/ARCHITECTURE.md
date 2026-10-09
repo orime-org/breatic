@@ -323,9 +323,11 @@ Sentry 分三个项目:web · 后端(server / worker / collab 共用一个,事�
 
 | 端 | DSN | release 从哪来 | 报什么 |
 |---|---|---|---|
-| web | `VITE_SENTRY_DSN` | `VITE_APP_VERSION` | 未捕获异常 + `ErrorBoundary` + 主动 `captureMessage` |
+| web | `VITE_SENTRY_DSN` | `VITE_APP_VERSION` | 未捕获异常 + `ErrorBoundary` + `RouterProvider.onError` + 主动 `captureMessage` |
 | 后端三服务 | `SENTRY_DSN`(core env schema) | 镜像里 `/app/build-info.json` 的 `revision` | pino `error` / `fatal` 日志(`pinoIntegration`)+ 未捕获异常;server / worker 遇未处理的 Promise 拒绝先上报再退出(`strict`;SDK 写死忽略 `AbortError` / `AI_NoOutputGeneratedError`,这两类既不上报也不退出),collab 有自己的处理器(`none`) |
 | ingest | `wrangler.toml` 的 `SENTRY_DSN` | 部署时 `--var SENTRY_RELEASE:<commit>` | `src/error-monitoring.ts` 的 `noteFailure` 一个出口,读者自己的输入造成的失败只写日志 |
+
+web 的 `AppRouter` 经 `RouterProvider.onError` 将路由捕获的异常交给 `captureException`，包括组件渲染和懒加载失败。React Router 内层边界会先接住这些异常并显示错误页，外层 `Sentry.ErrorBoundary` 收不到；外层边界继续负责路由之外的组件异常。回调只传原异常，不额外附带 location、路由参数或 loader 数据，仍走现有 SDK 初始化与隐私过滤。没有配置 DSN 时不发送事件。此接线补齐错误上报，不改变错误页，也不代表触发异常的业务问题已修复。
 
 后端镜像的六个包（server / worker / collab / core / domain / shared）构建时生成 source map，在 `pnpm deploy` 之前由锁定版本的 Sentry CLI 注入 Debug ID。构建不上传、不需要令牌；`.map` 随镜像保留，部署仓从已经固定摘要的镜像提取并上传，不能重建一套映射来配旧镜像。`scripts/backend-sourcemaps.mjs` 检查所有 JS 与 map 的 Debug ID，并在镜像 CI 检查生产 node_modules 中的工作区包与注入后的原始产物逐字节一致。镜像不公开提供静态文件，`.map` 不经 HTTP 提供。
 
