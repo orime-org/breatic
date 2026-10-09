@@ -231,10 +231,17 @@ export function useNodeCreation(
       }
       // A paste waits on the server; a Space closed meanwhile is not written.
       if (!hasDoc(docName.canvasSpace(projectId, spaceId))) return null;
-      const nodesMap = getDoc(docName.canvasSpace(projectId, spaceId)).getMap<Y.Map<unknown>>(CANVAS_NODES_KEY);
-      const placed = stepClones(nodes, cloned.idMap, options.externalParentAbs, (id) => liveGroup(nodesMap, id), stepPaste);
+      const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+      const nodesMap = doc.getMap<Y.Map<unknown>>(CANVAS_NODES_KEY);
+      const placed = stepClones(
+        nodes,
+        cloned.idMap,
+        options.externalParentAbs ?? new Map(),
+        (id) => liveGroup(nodesMap, id),
+        stepPaste,
+      );
       runCanvasUndoBatch(projectId, spaceId, () => {
-        writeSnapshotNodes(getDoc(docName.canvasSpace(projectId, spaceId)), placed, cloned.edges);
+        writeSnapshotNodes(doc, placed, cloned.edges);
         options.afterWrite?.(placed, cloned.idMap);
       });
       for (const source of payload.nodes) {
@@ -392,16 +399,17 @@ interface LiveGroup {
 function stepClones(
   clones: ReadonlyArray<SnapshotNode>,
   idMap: ReadonlyMap<string, string>,
-  externalParentAbs: ReadonlyMap<string, { x: number; y: number }> | undefined,
+  externalParentAbs: ReadonlyMap<string, { x: number; y: number }>,
   groupNow: (id: string) => LiveGroup | undefined,
   stepPaste: (corners: ReadonlyArray<{ x: number; y: number }>) => { dx: number; dy: number },
-): SnapshotNode[] {
+): ReadonlyArray<SnapshotNode> {
   const fresh = new Set(idMap.values());
   const nodes = clones.map((node): SnapshotNode => {
     if (node.parentId === undefined || fresh.has(node.parentId)) return node;
     const group = groupNow(node.parentId);
     if (group !== undefined && !group.locked) return node;
-    const parent = group?.position ?? externalParentAbs?.get(node.parentId) ?? { x: 0, y: 0 };
+    // A clone keeps an existing Group's id only when that Group is in externalParentAbs.
+    const parent = group?.position ?? (externalParentAbs.get(node.parentId) as { x: number; y: number });
     const { parentId: _left, ...rest } = node;
     return { ...rest, position: { x: parent.x + node.position.x, y: parent.y + node.position.y } };
   });
@@ -418,7 +426,7 @@ function stepClones(
     return parent === undefined ? node.position : { x: parent.x + node.position.x, y: parent.y + node.position.y };
   });
   const step = stepPaste(corners);
-  if (step.dx === 0 && step.dy === 0) return [...nodes];
+  if (step.dx === 0 && step.dy === 0) return nodes;
   return nodes.map((node) =>
     moves(node) ? { ...node, position: { x: node.position.x + step.dx, y: node.position.y + step.dy } } : node,
   );
