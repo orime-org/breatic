@@ -10,6 +10,7 @@
 import * as React from 'react';
 
 import { Skeleton } from '@web/components/ui/skeleton';
+import { useDevicePixelRatio } from '@web/lib/device-pixel-ratio';
 import { usePreviewSrc, usePreviewWidth } from '@web/lib/preview-src';
 
 /** The box a picture of unknown size is drawn in while it loads. */
@@ -19,11 +20,15 @@ const UNKNOWN_SIZE: React.CSSProperties = { aspectRatio: '3 / 2' };
 export interface DocumentMediaImageProps {
   /** The original's address. */
   readonly url: string;
-  /** The width it is shown at, in CSS pixels, when the block sets one. */
-  readonly shownWidth?: number;
+  /** The width it is laid out at, in CSS pixels, once measured. */
+  readonly shownWidth: number | null;
   /** The original's pixel size, read off the file as it was added. */
   readonly mediaWidth?: number;
   readonly mediaHeight?: number;
+  /** True until the picture has loaded or failed for good. */
+  readonly waiting: boolean;
+  /** Called with the address once its picture has loaded or failed for good. */
+  readonly onSettle: (url: string) => void;
   /** Opens the picture full screen. */
   readonly onDoubleClick: () => void;
 }
@@ -34,7 +39,8 @@ export interface DocumentMediaImageProps {
  * A stored picture starts on its preview. Once the preview has loaded its
  * width is known, and when it is narrower than the width shown times the
  * screen's pixel ratio the original takes its place: the rule the canvas
- * follows, which reads the preview's width off the loaded image.
+ * follows, which reads the preview's width off the loaded image. The ratio is
+ * followed, so moving the window to another screen judges again.
  * @param props - The picture.
  * @returns The picture and, until it loads, its skeleton.
  */
@@ -43,31 +49,29 @@ export const DocumentMediaImage = React.memo(function DocumentMediaImage({
   shownWidth,
   mediaWidth,
   mediaHeight,
+  waiting,
+  onSettle,
   onDoubleClick,
 }: DocumentMediaImageProps): React.JSX.Element {
+  const ratio = useDevicePixelRatio();
   const previewWidth = usePreviewWidth(url);
-  const across = shownWidth ?? mediaWidth;
-  const needed = across === undefined ? undefined : across * window.devicePixelRatio;
-  const tooNarrow = previewWidth !== null && needed !== undefined && previewWidth < needed;
+  const tooNarrow = previewWidth !== null && shownWidth !== null && previewWidth < shownWidth * ratio;
   const shown = usePreviewSrc(url, { enabled: !tooNarrow });
   const src = shown.src ?? url;
-  const [loadedFor, setLoadedFor] = React.useState<string | null>(null);
-  const [failedFor, setFailedFor] = React.useState<string | null>(null);
   const { onLoad: recordPreview, onError: dropPreview, isOriginal } = shown;
 
   const onLoad = React.useCallback(
     (event: React.SyntheticEvent<HTMLImageElement>): void => {
       recordPreview(event);
-      setLoadedFor(url);
+      onSettle(url);
     },
-    [recordPreview, url],
+    [recordPreview, onSettle, url],
   );
   const onError = React.useCallback((): void => {
-    if (isOriginal) setFailedFor(url);
+    if (isOriginal) onSettle(url);
     else dropPreview();
-  }, [isOriginal, dropPreview, url]);
+  }, [isOriginal, dropPreview, onSettle, url]);
 
-  const waiting = loadedFor !== url && failedFor !== url;
   const sizeKnown = mediaWidth !== undefined && mediaHeight !== undefined;
   return (
     <>
@@ -86,10 +90,7 @@ export const DocumentMediaImage = React.memo(function DocumentMediaImage({
         onError={onError}
       />
       {waiting ? (
-        <Skeleton
-          data-testid='doc-media-skeleton'
-          className='pointer-events-none absolute inset-0 rounded-none'
-        />
+        <Skeleton data-testid='doc-media-skeleton' className='pointer-events-none absolute inset-0 rounded-none' />
       ) : null}
     </>
   );

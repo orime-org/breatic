@@ -133,6 +133,49 @@ function toolbar(editor: Editor): HTMLElement {
 const STORED = 'https://cdn.example/2026-10-07/1765_12345678-1234-1234-1234-123456789abc.png';
 
 describe('the loading state and the preview (A23)', () => {
+  let screens: { query: string; cb: () => void }[] = [];
+
+  /**
+   * Puts the screen at a ratio, its resolution queries recorded.
+   * @param ratio - Device pixels per CSS pixel.
+   */
+  function screenAt(ratio: number): void {
+    vi.stubGlobal('devicePixelRatio', ratio);
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: (_: string, cb: () => void) => screens.push({ query, cb }),
+      removeEventListener: (_: string, cb: () => void) => {
+        screens = screens.filter((l) => l.query !== query || l.cb !== cb);
+      },
+    }));
+  }
+
+  /**
+   * Moves the window onto a screen with another ratio.
+   * @param from - The ratio it had.
+   * @param to - The ratio it has now.
+   */
+  function moveScreen(from: number, to: number): void {
+    vi.stubGlobal('devicePixelRatio', to);
+    for (const l of screens.filter((x) => x.query === `(resolution: ${String(from)}dppx)`)) l.cb();
+  }
+
+  /**
+   * Lays the media box out this wide, the width the picture is shown at.
+   * @param width - CSS pixels.
+   */
+  function shownAt(width: number): void {
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.dataset.testid === 'doc-media-box' ? width : 0;
+    });
+  }
+
+  beforeEach(() => {
+    screens = [];
+    screenAt(1);
+  });
+
   it('reserves the image\'s final size and covers it with a skeleton until it loads', () => {
     const editor = open('image', { mediaWidth: 800, mediaHeight: 400 });
     const img = element(editor).querySelector('img')!;
@@ -160,12 +203,12 @@ describe('the loading state and the preview (A23)', () => {
     expect(within(element(editor)).getByTestId('doc-media-box').style.width).toBe('300px');
   });
 
-  it('draws a 3:2 skeleton across the row, as the canvas does, for a picture with no size', () => {
+  it('draws a 3:2 skeleton across the row while a picture with no size loads, then its own width', () => {
     const editor = open('image', {});
     const box = within(element(editor)).getByTestId('doc-media-box');
     const img = box.querySelector('img')!;
 
-    expect(box.className).toContain('w-full');
+    expect(box.classList.contains('w-full')).toBe(true);
     expect(img.style.aspectRatio).toBe('3 / 2');
 
     act(() => {
@@ -173,6 +216,7 @@ describe('the loading state and the preview (A23)', () => {
     });
 
     expect(img.style.aspectRatio).toBe('');
+    expect(within(element(editor)).getByTestId('doc-media-box').classList.contains('w-full')).toBe(false);
   });
 
   /**
@@ -195,8 +239,9 @@ describe('the loading state and the preview (A23)', () => {
   });
 
   it('keeps the preview when it is wide enough for the width shown', () => {
-    vi.stubGlobal('devicePixelRatio', 2);
-    const editor = open('image', { url: STORED, mediaWidth: 1600, mediaHeight: 900, previewWidth: 240 });
+    screenAt(2);
+    shownAt(240);
+    const editor = open('image', { url: STORED, mediaWidth: 1600, mediaHeight: 900 });
 
     loadAt(editor, 576);
 
@@ -204,8 +249,32 @@ describe('the loading state and the preview (A23)', () => {
   });
 
   it('moves to the original once the preview is narrower than the width shown needs', () => {
-    vi.stubGlobal('devicePixelRatio', 2);
-    const editor = open('image', { url: STORED, mediaWidth: 1600, mediaHeight: 900, previewWidth: 400 });
+    screenAt(2);
+    shownAt(400);
+    const editor = open('image', { url: STORED, mediaWidth: 1600, mediaHeight: 900 });
+
+    loadAt(editor, 576);
+
+    expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(STORED);
+  });
+
+  it('moves to the original when the window goes onto a screen that needs more pixels', () => {
+    shownAt(400);
+    const editor = open('image', { url: STORED, mediaWidth: 1600, mediaHeight: 900 });
+    loadAt(editor, 576);
+    expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(`${STORED}.preview.webp`);
+
+    act(() => {
+      moveScreen(1, 2);
+    });
+
+    expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(STORED);
+  });
+
+  it('judges a picture with no stored size by the width it is shown at', () => {
+    screenAt(2);
+    shownAt(720);
+    const editor = open('image', { url: STORED });
 
     loadAt(editor, 576);
 

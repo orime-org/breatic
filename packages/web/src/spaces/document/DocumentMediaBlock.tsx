@@ -220,6 +220,10 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   const [fullscreen, setFullscreen] = React.useState(false);
   const fullscreenId = React.useId();
   const [narrower, setNarrower] = React.useState(false);
+  // The width the media is laid out at, which the preview is judged against.
+  const [shownWidth, setShownWidth] = React.useState<number | null>(null);
+  // The address whose picture has loaded or failed for good.
+  const [settledFor, setSettledFor] = React.useState<string | null>(null);
   const toolbarRef = React.useRef<HTMLDivElement | null>(null);
   // The toolbar floats over the body like the selection bubble bar, and the
   // same way it takes no focus: the keys go on reaching the body.
@@ -301,6 +305,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     const measure = (): void => {
       const row = element.parentElement;
       setNarrower(row !== null && element.offsetWidth < row.clientWidth);
+      setShownWidth(element.offsetWidth);
     };
     measure();
     if (typeof ResizeObserver === 'undefined') return undefined;
@@ -316,7 +321,10 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   const { mediaWidth, mediaHeight } = props;
   // Until it loads, a picture or video has no width of its own: the box holds
   // the one it will be shown at, its own pixel width capped by the row (A23).
+  // A picture with no stored size fills the row only while it loads.
   const boxWidth = width ?? mediaWidth;
+  const waiting = settledFor !== props.url;
+  const fillsRow = type === 'image' && boxWidth === undefined && waiting;
   const mediaSize = React.useMemo(
     () =>
       type === 'video' && mediaWidth !== undefined && mediaHeight !== undefined
@@ -388,9 +396,11 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     type === 'image' ? (
       <DocumentMediaImage
         url={props.url}
-        shownWidth={width}
+        shownWidth={shownWidth}
         mediaWidth={props.mediaWidth}
         mediaHeight={props.mediaHeight}
+        waiting={waiting}
+        onSettle={setSettledFor}
         onDoubleClick={openFullscreen}
       />
     ) : (
@@ -413,7 +423,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         data-selected={selected ? 'true' : undefined}
         className={cn(
           'relative max-w-full',
-          (!sized || (type === 'image' && boxWidth === undefined)) && 'w-full',
+          (!sized || fillsRow) && 'w-full',
         )}
         style={{
           ...(type === 'video' && { minWidth: `${MIN_WIDTH.video}px` }),
