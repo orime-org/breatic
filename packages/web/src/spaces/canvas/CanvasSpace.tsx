@@ -1377,12 +1377,15 @@ function CanvasSpaceInner({
     (s) => s.setHistoryAvailability,
   );
   // While a drawing tool is open the buttons act on the drawing (inner#1302 §6.3).
-  const drawingHistory = useCanvasSession((s) => s.miniTool?.drawing ?? null);
-  const drawingExporting = useCanvasSession((s) => s.miniTool?.exporting ?? false);
   React.useEffect(() => {
-    const shown = historyAvailability(drawingHistory, drawingExporting, canUndo, canRedo);
+    const shown = historyAvailability(
+      miniToolDraft?.drawing ?? null,
+      miniToolDraft?.exporting ?? false,
+      canUndo,
+      canRedo,
+    );
     setHistoryAvailability(shown.canUndo, shown.canRedo);
-  }, [canUndo, canRedo, setHistoryAvailability, drawingHistory, drawingExporting]);
+  }, [canUndo, canRedo, setHistoryAvailability, miniToolDraft]);
 
   const pendingHistoryCommand = useCanvasStore((s) => s.pendingHistoryCommand);
   const consumeHistoryCommand = useCanvasStore(
