@@ -166,13 +166,7 @@ import {
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
 import { planDuplicateGroupGrowth } from '@web/spaces/canvas/duplicate-group-growth';
-import { selectionKey, userMovedOn } from '@web/spaces/canvas/paste-focus';
-
-/** The selection and keyboard when a paste began. */
-interface PastedFrom {
-  selection: string;
-  active: Element | null;
-}
+import { selectionKey, userMovedOn, type OwnSelection, type PastedFrom } from '@web/spaces/canvas/paste-focus';
 import { topoSortByParent } from '@web/spaces/canvas/group-topology';
 import { useStableList } from '@web/spaces/canvas/use-stable-list';
 import {
@@ -470,14 +464,14 @@ const DOT_SIZE_PX = 2;
  */
 const SNAP_GRID: [number, number] = [DOT_GAP_PX, DOT_GAP_PX];
 
+/** How many frames a paste waits for the menu it came from to close (about a second). */
+const MENU_CLOSE_WAIT_FRAMES = 60;
+
 // Footprint assumed for a node ReactFlow has not measured yet (drag hit-test +
 // group geometry). Uses the real empty-node size (288×192) so an unmeasured
 // node's center isn't mis-estimated for the one frame before it measures (the
 // old 160×96 guess shifted the center ~64px and could flip a borderline
 // center-in-group decision).
-
-/** How many frames a paste waits for the menu it came from to close (about a second). */
-const MENU_CLOSE_WAIT_FRAMES = 60;
 
 const GROUP_DRAG_FALLBACK_W = EMPTY_NODE_SIZE.width;
 const GROUP_DRAG_FALLBACK_H = EMPTY_NODE_SIZE.height;
@@ -2854,8 +2848,8 @@ function CanvasSpaceInner({
     const ids = selectAfterCreate;
     // Two pastes can answer before this runs: each handles only its own ids,
     // and a newer pending selection is left for its own run.
-    const paste = pendingPasteRef.current?.ids === ids ? pendingPasteRef.current : null;
-    if (paste) pendingPasteRef.current = null;
+    const paste = pendingPastesRef.current.get(ids) ?? null;
+    pendingPastesRef.current.delete(ids);
     const pastedFrom = paste?.from ?? null;
     /** Clear the pending selection if it is still this run's. */
     const done = (): void => {
@@ -2868,6 +2862,7 @@ function CanvasSpaceInner({
       userMovedOn({
         selectionBefore: pastedFrom.selection,
         selectionNow: selectionKey(graphStore.getState().flowNodes),
+        seq: pastedFrom.seq,
         ownSelection: ownSelectionRef.current,
         activeBefore: pastedFrom.active,
         active: document.activeElement,
@@ -2877,7 +2872,6 @@ function CanvasSpaceInner({
       done();
       return;
     }
-    ownSelectionRef.current = [...ids].sort().join('\n');
     const targets = new Set(ids);
     // reconcileSelection keeps untouched nodes' references so React.memo
     // bails on the rest of the canvas (same discipline as the other
@@ -2887,6 +2881,11 @@ function CanvasSpaceInner({
     );
     done();
     if (!paste) return;
+    ownSelectionRef.current = {
+      key: selectionKey(ids.map((id) => ({ id, selected: true }))),
+      seq: paste.seq,
+      landedAfter: pasteSeqRef.current,
+    };
     // A paste or duplicate hands the keyboard to its copies, so the arrow keys
     // move them (inner#1229). xyflow moves the selection from the focused
     // node's own handler, and only renders nodes in view, so the first copy
@@ -2914,23 +2913,31 @@ function CanvasSpaceInner({
   }, [selectAfterCreate, nodes, setFlowNodes, graphStore]);
 
   // Paste and duplicate select their copies and give them the keyboard; other
-  // ways of making a node only select it. `from` is where the reader was when
-  // a paste that waited on the server began.
-  const pendingPasteRef = React.useRef<{ ids: string[]; from: PastedFrom | null } | null>(null);
-  // The selection the canvas last set itself, so a later paste does not take
-  // an earlier paste's copies for the reader's own pick.
-  const ownSelectionRef = React.useRef<string | null>(null);
+  // ways of making a node only select it. Each paste is kept under its own ids
+  // with where the reader was when it began (`from`, for one that waited on
+  // the server) and its place in order.
+  const pendingPastesRef = React.useRef(
+    new WeakMap<ReadonlyArray<string>, { from: PastedFrom | null; seq: number }>(),
+  );
+  // Counts pastes as they begin.
+  const pasteSeqRef = React.useRef(0);
+  // The selection the last paste to land set on its copies.
+  const ownSelectionRef = React.useRef<OwnSelection | null>(null);
   /**
    * Where the reader is as a paste begins.
-   * @returns The selection and the element holding the keyboard.
+   * @returns The selection, the element holding the keyboard and the paste's place in order.
    */
   const pasteStartsFrom = React.useCallback(
-    (): PastedFrom => ({ selection: selectionKey(graphStore.getState().flowNodes), active: document.activeElement }),
+    (): PastedFrom => ({
+      selection: selectionKey(graphStore.getState().flowNodes),
+      active: document.activeElement,
+      seq: ++pasteSeqRef.current,
+    }),
     [graphStore],
   );
   const selectPasted = React.useCallback((ids: string[], pastedFrom?: PastedFrom): void => {
     if (ids.length === 0) return;
-    pendingPasteRef.current = { ids, from: pastedFrom ?? null };
+    pendingPastesRef.current.set(ids, { from: pastedFrom ?? null, seq: pastedFrom?.seq ?? ++pasteSeqRef.current });
     setSelectAfterCreate(ids);
   }, []);
 

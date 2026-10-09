@@ -271,6 +271,105 @@ test('two duplicates in a row leave the newer copy selected', async () => {
   await expect(drawn(older?.id ?? '')).not.toHaveClass(/selected/);
 });
 
+/**
+ * Hold the next POST /canvas/paste until `release` is called; later ones go through.
+ * @returns A promise for the request being sent, and the release.
+ */
+async function holdPaste(): Promise<{ asked: Promise<void>; release: () => void }> {
+  let release = (): void => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let seen = (): void => {};
+  const asked = new Promise<void>((resolve) => {
+    seen = resolve;
+  });
+  let first = true;
+  await page.route('**/api/v1/canvas/paste', async (route) => {
+    if (!first) return route.continue();
+    first = false;
+    seen();
+    await held;
+    await route.continue();
+  });
+  return { asked, release };
+}
+
+/**
+ * The node ids added since `before`.
+ * @param before - The graph earlier.
+ * @param count - How many to wait for.
+ * @returns The ids.
+ */
+async function addedSince(before: { nodes: DocNode[] }, count: number): Promise<string[]> {
+  await expect.poll(async () => (await graph()).nodes.length, { timeout: 20_000 }).toBe(before.nodes.length + count);
+  return (await graph()).nodes.filter((n) => !before.nodes.some((b) => b.id === n.id)).map((n) => n.id);
+}
+
+test('a node made while a duplicate waits keeps the selection', async () => {
+  const before = await graph();
+  const { asked, release } = await holdPaste();
+  await clickNode(pictureId);
+  await page.keyboard.press('ControlOrMeta+D');
+  await asked;
+  const pane = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
+  if (pane === null) throw new Error('the canvas is not on screen');
+  await page.mouse.click(pane.x + 60, pane.y + pane.height - 60, { button: 'right' });
+  await page.getByTestId('create-node-image').click();
+  const [made] = await addedSince(before, 1);
+  await expect(drawn(made ?? '')).toHaveClass(/selected/);
+  // The answer comes once the menu has closed and given the keyboard back.
+  await expect.poll(() => page.evaluate(() => document.activeElement?.closest('[role="menu"]') === null)).toBe(true);
+
+  release();
+  const copy = (await addedSince(before, 2)).find((id) => id !== made);
+  await page.waitForTimeout(500);
+  await expect(drawn(made ?? '')).toHaveClass(/selected/);
+  await expect(drawn(copy ?? '')).not.toHaveClass(/selected/);
+});
+
+test('an earlier copy picked while a duplicate waits keeps the selection', async () => {
+  const before = await graph();
+  await clickNode(pictureId);
+  await page.keyboard.press('ControlOrMeta+D');
+  const [earlier] = await addedSince(before, 1);
+  await expect(drawn(earlier ?? '')).toHaveClass(/selected/);
+
+  const { asked, release } = await holdPaste();
+  await clickNode(pictureId);
+  await page.keyboard.press('ControlOrMeta+D');
+  await asked;
+  // The picture was just picked and sits on top, so pick the copy where it sticks out.
+  const box = await drawn(earlier ?? '').boundingBox();
+  if (box === null) throw new Error('the earlier copy is not on screen');
+  await page.mouse.click(box.x + box.width - 6, box.y + box.height - 6);
+  await expect(drawn(earlier ?? '')).toHaveClass(/selected/);
+
+  release();
+  const later = (await addedSince(before, 2)).find((id) => id !== earlier);
+  await page.waitForTimeout(500);
+  await expect(drawn(earlier ?? '')).toHaveClass(/selected/);
+  await expect(drawn(later ?? '')).not.toHaveClass(/selected/);
+});
+
+test('a later duplicate that lands first keeps the selection', async () => {
+  const before = await graph();
+  const { asked, release } = await holdPaste();
+  await clickNode(pictureId);
+  await page.keyboard.press('ControlOrMeta+D');
+  await asked;
+  await clickNode(TEXT_ID);
+  await page.keyboard.press('ControlOrMeta+D');
+  const [later] = await addedSince(before, 1);
+  await expect(drawn(later ?? '')).toHaveClass(/selected/);
+
+  release();
+  const slower = (await addedSince(before, 2)).find((id) => id !== later);
+  await page.waitForTimeout(500);
+  await expect(drawn(later ?? '')).toHaveClass(/selected/);
+  await expect(drawn(slower ?? '')).not.toHaveClass(/selected/);
+});
+
 test('a copy pasted into the chat box is the card "Add to Agent" makes', async () => {
   await selectBoth();
   await page.keyboard.press('ControlOrMeta+C');

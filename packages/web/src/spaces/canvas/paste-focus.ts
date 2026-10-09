@@ -3,14 +3,36 @@
 
 import { isEditableTarget } from '@web/lib/is-editable-target';
 
+/** Where the reader was as a paste began, and that paste's place in order. */
+export interface PastedFrom {
+  /** The selected node ids, as a {@link selectionKey}. */
+  selection: string;
+  /** The element holding the keyboard. */
+  active: Element | null;
+  /** Counts up with every paste, so pastes compare by when they began. */
+  seq: number;
+}
+
+/** The selection a paste set on its copies when it landed. */
+export interface OwnSelection {
+  /** The copies, as a {@link selectionKey}. */
+  key: string;
+  /** The `seq` of the paste that set it. */
+  seq: number;
+  /** The newest `seq` handed out when it landed. */
+  landedAfter: number;
+}
+
 /** What the canvas looked like when a paste began, and what it looks like now. */
 export interface PasteFocusState {
   /** The selected node ids when the paste began, as one key. */
   selectionBefore: string;
   /** The selected node ids now, as the same kind of key. */
   selectionNow: string;
-  /** The selection the canvas last set itself (an earlier paste's copies), if any. */
-  ownSelection: string | null;
+  /** This paste's `seq`. */
+  seq: number;
+  /** The selection the last paste to land set on its copies, if any. */
+  ownSelection: OwnSelection | null;
   /** The element holding the keyboard when the paste began. */
   activeBefore: Element | null;
   /** The element holding the keyboard now. */
@@ -26,8 +48,8 @@ export interface PasteFocusState {
  * in a field, moving the keyboard to something else outside the canvas, or a
  * selection of their own each mean they moved on. What the canvas did itself
  * is not the reader moving on: a menu still holding the keyboard while it
- * closes, the keyboard back on the page after it closed, and the selection an
- * earlier paste set.
+ * closes, the keyboard back on the page after it closed, and the copies of a
+ * paste that began before this one and landed while this one waited.
  * @param state - The canvas then and now.
  * @returns True when the copies should leave the selection and keyboard alone.
  */
@@ -41,7 +63,11 @@ export function userMovedOn(state: PasteFocusState): boolean {
     canvas !== null &&
     !canvas.contains(active);
   if (elsewhere) return true;
-  return state.selectionNow !== state.selectionBefore && state.selectionNow !== state.ownSelection;
+  if (state.selectionNow === state.selectionBefore) return false;
+  const own = state.ownSelection;
+  const setByEarlierPaste =
+    own !== null && own.key === state.selectionNow && own.seq < state.seq && state.seq <= own.landedAfter;
+  return !setByEarlierPaste;
 }
 
 /**

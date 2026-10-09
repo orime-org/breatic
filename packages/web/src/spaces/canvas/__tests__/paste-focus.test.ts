@@ -28,45 +28,61 @@ describe('userMovedOn', () => {
   it('is false while the reader is still where the paste left them', () => {
     const { canvas, node } = page();
     node.focus();
-    expect(userMovedOn({ selectionBefore: 'a', selectionNow: 'a', ownSelection: null, activeBefore: null, active: document.activeElement, canvas })).toBe(false);
+    expect(userMovedOn({ selectionBefore: 'a', selectionNow: 'a', seq: 2, ownSelection: null, activeBefore: null, active: document.activeElement, canvas })).toBe(false);
   });
 
   it('is false with the keyboard back on the page, as after a menu closes', () => {
     const { canvas } = page();
-    expect(userMovedOn({ selectionBefore: 'a', selectionNow: 'a', ownSelection: null, activeBefore: null, active: document.body, canvas })).toBe(false);
+    expect(userMovedOn({ selectionBefore: 'a', selectionNow: 'a', seq: 2, ownSelection: null, activeBefore: null, active: document.body, canvas })).toBe(false);
   });
 
   it('is true once the reader is typing in a field', () => {
     const { canvas, input } = page();
     input.focus();
-    expect(userMovedOn({ selectionBefore: 'a', selectionNow: 'a', ownSelection: null, activeBefore: null, active: document.activeElement, canvas })).toBe(true);
+    expect(userMovedOn({ selectionBefore: 'a', selectionNow: 'a', seq: 2, ownSelection: null, activeBefore: null, active: document.activeElement, canvas })).toBe(true);
   });
 
   it('is true once the keyboard is outside the canvas', () => {
     const { canvas, outside } = page();
     outside.focus();
-    expect(userMovedOn({ selectionBefore: 'a', selectionNow: 'a', ownSelection: null, activeBefore: null, active: document.activeElement, canvas })).toBe(true);
+    expect(userMovedOn({ selectionBefore: 'a', selectionNow: 'a', seq: 2, ownSelection: null, activeBefore: null, active: document.activeElement, canvas })).toBe(true);
   });
 
   it('is false while the menu the paste came from still holds the keyboard', () => {
     const { canvas, outside } = page();
     outside.focus();
     expect(
-      userMovedOn({ selectionBefore: 'a', selectionNow: 'a', ownSelection: null, activeBefore: outside, active: outside, canvas }),
+      userMovedOn({ selectionBefore: 'a', selectionNow: 'a', seq: 2, ownSelection: null, activeBefore: outside, active: outside, canvas }),
     ).toBe(false);
   });
 
-  it('is false when the selection is the one an earlier paste set', () => {
+  it('is false when the selection is the one an earlier paste set while this one waited', () => {
     const { canvas, node } = page();
     node.focus();
     expect(
-      userMovedOn({ selectionBefore: 'a', selectionNow: 'c', ownSelection: 'c', activeBefore: node, active: node, canvas }),
+      userMovedOn({ selectionBefore: 'a', selectionNow: 'c', seq: 2, ownSelection: { key: 'c', seq: 1, landedAfter: 2 }, activeBefore: node, active: node, canvas }),
     ).toBe(false);
+  });
+
+  it('is true when the earlier paste set that selection before this one began', () => {
+    const { canvas, node } = page();
+    node.focus();
+    expect(
+      userMovedOn({ selectionBefore: 'a', selectionNow: 'c', seq: 3, ownSelection: { key: 'c', seq: 1, landedAfter: 2 }, activeBefore: node, active: node, canvas }),
+    ).toBe(true);
+  });
+
+  it('is true when the selection was set by a paste that began after this one', () => {
+    const { canvas, node } = page();
+    node.focus();
+    expect(
+      userMovedOn({ selectionBefore: 'a', selectionNow: 'c', seq: 2, ownSelection: { key: 'c', seq: 3, landedAfter: 3 }, activeBefore: node, active: node, canvas }),
+    ).toBe(true);
   });
 
   it('is true once the reader picked other nodes', () => {
     const { canvas, node } = page();
     node.focus();
-    expect(userMovedOn({ selectionBefore: 'a', selectionNow: 'b', ownSelection: null, activeBefore: null, active: document.activeElement, canvas })).toBe(true);
+    expect(userMovedOn({ selectionBefore: 'a', selectionNow: 'b', seq: 2, ownSelection: null, activeBefore: null, active: document.activeElement, canvas })).toBe(true);
   });
 });
