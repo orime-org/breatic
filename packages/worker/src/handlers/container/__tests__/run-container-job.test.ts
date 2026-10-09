@@ -35,7 +35,6 @@ vi.mock("node:timers/promises", () => ({
 vi.mock("@breatic/core", () => ({
   env: { INGEST_BASE_URL: "https://ingest.test", INGEST_SHARED_SECRET: "s", CREDIT_MULTIPLIER: 2 },
   logger: { warn: vi.fn(), error: vi.fn() },
-  getWorkerConfig: () => ({ poll_max_wait: 300_000 }),
   getMiniToolsConfig: () => ({
     poll_interval_ms: 1000,
     prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
@@ -71,7 +70,8 @@ import { logger } from "@breatic/core";
 import { UploadHttpError } from "@breatic/shared";
 import { miniToolById, type MiniToolSpec } from "@breatic/shared/mini-tools";
 
-import { ContainerJobFailed, ContainerJobPending, runContainerJob } from "@worker/handlers/container/run-container-job.js";
+import { ContainerJobFailed, runContainerJob } from "@worker/handlers/container/run-container-job.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 
 const CUT = miniToolById("video.cut") as MiniToolSpec;
 const INPUT = { taskId: "t1", userId: "u1", projectId: "p1", params: { range: { start: 0, end: 2 } }, sourceKey: "v/src.mp4" };
@@ -112,7 +112,7 @@ describe("runContainerJob", () => {
     h.readMiniToolJob.mockResolvedValueOnce(null).mockResolvedValueOnce({ state: "done", outputs: [MEASURED], usage: USAGE });
     h.submitMiniToolJob.mockResolvedValueOnce({ state: "starting" });
 
-    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(ContainerJobPending);
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(StillRunning);
     const [result, credits] = await runContainerJob(CUT, "cut", INPUT);
 
     expect(h.submitMiniToolJob.mock.calls[0]![2]).toMatchObject({
@@ -148,7 +148,7 @@ describe("runContainerJob", () => {
     h.readMiniToolJob.mockResolvedValueOnce(null);
     h.submitMiniToolJob.mockResolvedValueOnce({ state: "starting" });
 
-    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(ContainerJobPending);
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(StillRunning);
 
     expect(h.deadlineFor).toHaveBeenCalledWith("t1");
     expect(h.submitMiniToolJob.mock.calls[0]![2]).toMatchObject({ deadlineAt: DEADLINE });
@@ -205,8 +205,8 @@ describe("runContainerJob", () => {
       .mockResolvedValueOnce({ state: "done", outputs: [MEASURED], usage: USAGE });
     h.submitMiniToolJob.mockRejectedValueOnce(new UploadHttpError(503, null)).mockResolvedValueOnce({ state: "starting" });
 
-    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(ContainerJobPending);
-    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(ContainerJobPending);
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(StillRunning);
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(StillRunning);
     await runContainerJob(CUT, "cut", INPUT);
 
     expect(h.submitMiniToolJob).toHaveBeenCalledTimes(2);
@@ -242,5 +242,22 @@ describe("runContainerJob", () => {
 
     await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toMatchObject({ reason: "tool_failed" });
     expect(h.readMiniToolJob).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails as the tool's failure when the container refused to start on every pickup until past the grace", async () => {
+    h.steps[0]!.output = { jobId: "task:t1", containerClass: "Std1", deadlineAt: h.now.value - 10_000, outputs: [OUT] };
+    h.readMiniToolJob.mockResolvedValueOnce(null);
+    h.submitMiniToolJob.mockRejectedValueOnce(new UploadHttpError(503, null));
+
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toMatchObject({ reason: "tool_failed" });
+  });
+
+  it("spends an attempt when submitting fails for a reason other than the container not starting", async () => {
+    h.readMiniToolJob.mockResolvedValueOnce(null);
+    h.submitMiniToolJob.mockRejectedValueOnce(new UploadHttpError(400, null));
+
+    const err = await runContainerJob(CUT, "cut", INPUT).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UploadHttpError);
+    expect(err).not.toBeInstanceOf(StillRunning);
   });
 });

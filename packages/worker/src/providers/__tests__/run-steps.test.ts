@@ -89,7 +89,7 @@ function stores(preset: Step[] = []): {
   return { steps, clones, retired, deps };
 }
 
-const CTX = { taskId: "0f5c2c7e-1111-4222-8333-944455556666", studioId: "studio-1" };
+const CTX = { taskId: "0f5c2c7e-1111-4222-8333-944455556666", studioId: "studio-1", deadlineAt: Number.MAX_SAFE_INTEGER };
 
 /**
  * The model path and body of the n-th prediction.

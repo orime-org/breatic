@@ -11,14 +11,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as httpModule from "@worker/providers/http.js";
 
 const requestWithRetryMock = vi.fn();
-const pollUntilDoneMock = vi.fn();
+const pollOnceMock = vi.fn();
 
 vi.mock("@worker/providers/http.js", async (importOriginal) => {
   const actual = await importOriginal<typeof httpModule>();
   return {
     ...actual,
     requestWithRetry: (...args: unknown[]) => requestWithRetryMock(...args),
-    pollUntilDone: (...args: unknown[]) => pollUntilDoneMock(...args),
+    pollOnce: (...args: unknown[]) => pollOnceMock(...args),
   };
 });
 
@@ -47,8 +47,8 @@ function submittedBody(n = 0): Record<string, unknown> {
 describe("runPrediction", () => {
   beforeEach(() => {
     requestWithRetryMock.mockReset();
-    pollUntilDoneMock.mockReset();
-    pollUntilDoneMock.mockResolvedValue(COMPLETED);
+    pollOnceMock.mockReset();
+    pollOnceMock.mockResolvedValue(COMPLETED);
   });
 
   it("posts the body verbatim to the model's endpoint, stores the id, then polls it", async () => {
@@ -64,7 +64,7 @@ describe("runPrediction", () => {
     expect(requestWithRetryMock.mock.calls[0]![0]).toBe("https://api.wavespeed.test/v3/vendor/model/t2v");
     expect(submittedBody()).toEqual({ text: "hi", duration: 5 });
     expect(persistTaskId).toHaveBeenCalledWith("ws-1");
-    expect(pollUntilDoneMock.mock.calls[0]![0]).toBe(
+    expect(pollOnceMock.mock.calls[0]![0]).toBe(
       "https://api.wavespeed.test/v3/predictions/ws-1/result",
     );
     expect(run).toEqual({ outputs: ["https://cdn.test/out.mp4"], taskId: "ws-1" });
@@ -78,7 +78,7 @@ describe("runPrediction", () => {
     });
 
     expect(requestWithRetryMock).not.toHaveBeenCalled();
-    expect(pollUntilDoneMock.mock.calls[0]![0]).toBe(
+    expect(pollOnceMock.mock.calls[0]![0]).toBe(
       "https://api.wavespeed.test/v3/predictions/ws-9/result",
     );
     expect(run.taskId).toBe("ws-9");
@@ -91,7 +91,7 @@ describe("runPrediction", () => {
 
     const run = await runPrediction(ENDPOINT, "vendor/model/t2i", {});
 
-    expect(pollUntilDoneMock).not.toHaveBeenCalled();
+    expect(pollOnceMock).not.toHaveBeenCalled();
     expect(run).toEqual({ outputs: ["https://cdn.test/sync.png"], taskId: "ws-2" });
   });
 
