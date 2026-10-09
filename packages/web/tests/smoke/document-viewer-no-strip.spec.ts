@@ -191,17 +191,19 @@ test.beforeEach(async ({ browser }) => {
   });
   await owner.getByTestId('share-invite-input').fill(emailB);
   await owner.getByTestId('share-send-invite').click();
-  const inviteUrl = await owner
-    .getByTestId('share-invite-url')
-    .inputValue({ timeout: 15_000 });
-  await owner.keyboard.press('Escape');
+  // A sent invite closes the popover; the invitee answers it from the bell.
+  await expect(owner.getByTestId('share-popover')).toBeHidden({ timeout: 15_000 });
 
   viewerContext = await browser.newContext({
     storageState: STATE_FILE.B,
     viewport: { width: 1680, height: 950 },
   });
   viewer = await viewerContext.newPage();
-  await viewer.goto(inviteUrl);
+  await viewer.goto(new URL('/studio', projectUrl).toString());
+  await viewer.getByTestId('bell-trigger').click();
+  const openInvite = viewer.locator('[data-testid^="bell-open-decision-"]').first();
+  await expect(openInvite).toBeVisible({ timeout: 15_000 });
+  await openInvite.click();
   const accept = viewer.getByRole('button', { name: 'Accept' });
   await expect(accept).toBeVisible({ timeout: 15_000 });
   await accept.click();
@@ -307,4 +309,57 @@ test('a viewer sees a picture the owner added, and none of its controls (inner#1
   await viewer.waitForTimeout(500);
   await expect(viewer.getByTestId('doc-media-toolbar')).toBeHidden();
   await expect(viewer.getByTestId('doc-media-resize-se')).toHaveCount(0);
+});
+
+test('a viewer plays an audio the owner added, and files pasted or dropped do nothing (inner#1127 A11)', async () => {
+  await openTheSpace(owner);
+  await owner.locator(EDITOR).click();
+  const samples = 16000 + (Date.now() % 1000);
+  await owner.locator(EDITOR).evaluate((element, length) => {
+    const data = new Uint8Array(44 + length * 2);
+    const view = new DataView(data.buffer);
+    const text = (at: number, s: string): void => {
+      for (let i = 0; i < s.length; i += 1) data[at + i] = s.charCodeAt(i);
+    };
+    text(0, 'RIFF');
+    view.setUint32(4, 36 + length * 2, true);
+    text(8, 'WAVE');
+    text(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, 8000, true);
+    view.setUint32(28, 16000, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    text(36, 'data');
+    view.setUint32(40, length * 2, true);
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([data], 'shared.wav', { type: 'audio/wav' }));
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+  }, samples);
+  await expect(owner.locator(`${EDITOR} [data-content-type="audio"] audio`)).toHaveCount(1, { timeout: 60_000 });
+
+  await openTheSpace(viewer);
+  const audio = viewer.locator(`${EDITOR} [data-content-type="audio"]`);
+  await expect(audio).toBeVisible({ timeout: 20_000 });
+  await audio.getByTestId('play-toggle').click();
+  await expect.poll(() => audio.locator('audio').evaluate((element) => (element as HTMLAudioElement).paused)).toBe(false);
+
+  const before = await viewer.locator(`${EDITOR} .bn-block-content`).count();
+  await viewer.locator(EDITOR).evaluate((element) => {
+    const make = (): DataTransfer => {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([new Uint8Array(8)], 'x.png', { type: 'image/png' }));
+      return transfer;
+    };
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: make() }));
+    const box = element.getBoundingClientRect();
+    const at = { clientX: box.left + 20, clientY: box.top + 10 };
+    element.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: make(), ...at }));
+    element.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: make(), ...at }));
+  });
+  await viewer.waitForTimeout(1000);
+  await expect(viewer.locator('[data-testid="doc-upload-placeholder"]')).toHaveCount(0);
+  await expect(viewer.locator(`${EDITOR} .bn-block-content`)).toHaveCount(before);
 });
