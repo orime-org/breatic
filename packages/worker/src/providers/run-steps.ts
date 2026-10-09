@@ -36,6 +36,8 @@ export interface RunTaskContext {
   studioId: string | null;
   /** The task's two-hour deadline, in epoch milliseconds. */
   deadlineAt: number;
+  /** Whether this pickup starts a retry: a step submitted now may be the upstream's second. */
+  retryStarting: boolean;
 }
 
 /** The storage a run reads and writes; the two domain repositories in production. */
@@ -133,7 +135,19 @@ async function predict(
   try {
     // Building the body (a description, a prompt rewrite) can run past the
     // deadline that let this step start; nothing new is submitted after it.
-    if (step.predictionId === null) assertBeforeDeadline(ctx.deadlineAt);
+    if (step.predictionId === null) {
+      assertBeforeDeadline(ctx.deadlineAt);
+      // #1628 monitoring: the attempt before this one may have reached the
+      // upstream with this step's submit and never stored its id, so this
+      // submit is a POTENTIAL duplicate external cost. Feeds the duplicate-cost
+      // alarm trend.
+      if (ctx.retryStarting) {
+        logger.warn(
+          { taskId: ctx.taskId, step: step.position, endpoint: step.endpoint },
+          "provider_reinvoked_on_retry_potential_duplicate_cost",
+        );
+      }
+    }
     return await runPrediction(resolved, step.endpoint, body, {
       storedTaskId: step.predictionId,
       persistTaskId: (id: string): Promise<void> => deps.steps.markSubmitted(step.id, id),

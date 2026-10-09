@@ -317,13 +317,16 @@ function providerOf(modality: string, modelName: string | undefined): string {
  * @param run.taskId - The task.
  * @param run.taskType - What kind of task.
  * @param run.storedTaskId - The vendor task id a previous attempt stored, if any.
- * @param run.submitsAgain - Whether a retry without a stored id may submit to the upstream again.
+ * @param run.submitsAgain - Whether a retry without a stored id may submit to the upstream again
+ *   from here. A catalog run is not one: its steps hold their own ids, and the step that
+ *   submits again raises the warning itself.
+ * @returns Whether this pickup starts a retry.
  */
 async function reportRetryOnce(
   job: Job<TaskJobData>,
   run: { taskId: string; taskType: string; storedTaskId: string | null; submitsAgain: boolean },
-): Promise<void> {
-  if (job.attemptsMade <= (job.data.retryReported ?? 0)) return;
+): Promise<boolean> {
+  if (job.attemptsMade <= (job.data.retryReported ?? 0)) return false;
   const attempt = job.attemptsMade + 1;
   if (run.storedTaskId) {
     logger.info({ taskId: run.taskId, providerTaskId: run.storedTaskId, attempt }, "async_resume_stored_provider_task");
@@ -336,6 +339,7 @@ async function reportRetryOnce(
     logger.warn({ taskId: run.taskId, taskType: run.taskType, attempt }, "provider_reinvoked_on_retry_potential_duplicate_cost");
   }
   await job.updateData({ ...job.data, retryReported: job.attemptsMade });
+  return true;
 }
 
 /**
@@ -497,11 +501,16 @@ async function runTaskBody(
   };
   // A container job keeps its id from the first submit, so a pickup never submits it twice.
   const containerRun = source === "mini_tool" && toolId !== undefined && miniToolById(toolId)?.run.kind === "container";
-  await reportRetryOnce(job, {
+  // A catalog run keeps an upstream id per step, so only a step can tell whether a retry submits again.
+  const tool = source === "mini_tool" && toolId !== undefined ? miniToolById(toolId) : undefined;
+  const catalogRun =
+    (tool !== undefined && isModelTool(tool)) ||
+    (tool === undefined && taskType in AIGC_TASK_TYPES && AIGC_TASK_TYPES[taskType] !== "three-d");
+  const retryStarting = await reportRetryOnce(job, {
     taskId,
     taskType,
     storedTaskId: resume.storedTaskId,
-    submitsAgain: !containerRun,
+    submitsAgain: !containerRun && !catalogRun,
   });
 
   /**
@@ -536,6 +545,7 @@ async function runTaskBody(
         taskId,
         resume,
         deadlineAt,
+        retryStarting,
       });
     } else if (taskType === "understand") {
       // A reading answers with one piece of text, and the row on the node it
@@ -554,6 +564,7 @@ async function runTaskBody(
         projectId: projectId ?? undefined,
         outputCount: 1,
         deadlineAt,
+        retryStarting,
       });
     } else {
       throw new Error(`Task type '${taskType}' has no runner`);
@@ -1436,6 +1447,8 @@ export interface ProviderRun {
   outputCount: number;
   /** The task's two-hour deadline, in epoch milliseconds (inner#1337). */
   deadlineAt: number;
+  /** Whether this pickup starts a retry, for the step that may submit again to say so. */
+  retryStarting: boolean;
 }
 
 /**
@@ -1465,6 +1478,8 @@ interface RunMiniToolOpts {
   resume: ResumeContext;
   /** The task's two-hour deadline, in epoch milliseconds (inner#1337). */
   deadlineAt: number;
+  /** Whether this pickup starts a retry. */
+  retryStarting: boolean;
 }
 
 /**
@@ -1483,7 +1498,7 @@ interface RunMiniToolOpts {
 export async function runMiniTool(
   opts: RunMiniToolOpts,
 ): Promise<[Record<string, unknown>, number]> {
-  const { toolId, params, userId, projectId, taskId, resume, deadlineAt } = opts;
+  const { toolId, params, userId, projectId, taskId, resume, deadlineAt, retryStarting } = opts;
   const spec = miniToolById(toolId);
   if (!spec) throw new Error(`mini-tool ${toolId} is not in the registry`);
 
@@ -1499,6 +1514,7 @@ export async function runMiniTool(
       projectId,
       outputCount: spec.outputs.length,
       deadlineAt,
+      retryStarting,
     });
     return [result, creditsFor((result.cost as number) ?? 0)];
   }
@@ -1697,7 +1713,7 @@ async function importProvider(taskType: string): Promise<{
           return {
             ...(await runCatalogTask(
               stepDepsFor(studioId),
-              { taskId: run.taskId, studioId, deadlineAt: run.deadlineAt },
+              { taskId: run.taskId, studioId, deadlineAt: run.deadlineAt, retryStarting: run.retryStarting },
               modality,
               prompt,
               model,
