@@ -16,7 +16,8 @@
  * through Yjs — a co-editor's edit, which reaches ProseMirror as one
  * replacement of the whole body — is followed by the Yjs relative position
  * taken after the change before it; the reader's undo or redo hands back the
- * position as it stood before the edit it takes back (`keepOnUndoStack`). A
+ * position as it stood before the edit it takes back (`namesOnUndoStack`),
+ * and a batch started after that edit follows its Yjs relative position. A
  * position that lands inside a block is lifted to the gap under that block's
  * line. The placeholder and the insert both ask {@link resolveSlotPosition},
  * so a placeholder drawn in one place and a block landing in another cannot
@@ -27,11 +28,7 @@ import { blockToNode, createExtension } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
-import {
-  absolutePositionToRelativePosition,
-  relativePositionToAbsolutePosition,
-  yUndoPluginKey,
-} from 'y-prosemirror';
+import { absolutePositionToRelativePosition, relativePositionToAbsolutePosition } from 'y-prosemirror';
 import type * as Y from 'yjs';
 
 import { keyedStore } from '@web/lib/keyed-store';
@@ -39,7 +36,7 @@ import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import { syncBindingOf } from '@web/spaces/document/document-link-tracking';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { rowById } from '@web/spaces/document/document-row-by-id';
-import { keepOnUndoStack, type UndoManagerLike } from '@web/spaces/document/document-undo-selection';
+import { namesOnUndoStack } from '@web/spaces/document/document-undo-selection';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 
 /** Where a batch of files lands: a position between two blocks. */
@@ -189,8 +186,10 @@ type NamedGaps = ReadonlyMap<string, Y.RelativePosition>;
  * @param batches - The batches.
  * @param tr - The change.
  * @param state - The state after it.
- * @param named - The gaps as Yjs named them before a change from Yjs; on the
- *   reader's undo or redo, as named before the edit it takes back.
+ * @param named - The gaps as Yjs named them before a change from Yjs.
+ * @param handed - On the reader's undo or redo, the gaps as named before the
+ *   edit it takes back; a batch started after that edit has none there and
+ *   goes by `named`.
  * @returns The batches, the same array when no gap moved.
  */
 function carryGaps(
@@ -198,11 +197,12 @@ function carryGaps(
   tr: Transaction,
   state: EditorState,
   named: NamedGaps,
+  handed: NamedGaps | null,
 ): readonly UploadBatch[] {
   const bound = fromYjs(tr) ? syncBindingOf(state) : null;
   let changed = false;
   const next = batches.map((batch) => {
-    const name = named.get(batch.id);
+    const name = handed?.get(batch.id) ?? named.get(batch.id);
     const found =
       bound !== null && name !== undefined
         ? relativePositionToAbsolutePosition(bound.doc, bound.type, name, bound.mapping)
@@ -367,9 +367,6 @@ const watch = watchPluginState(uploadBatchesIn);
 /** Hears about every change to the uploads in flight. */
 export const onUploadSlotsChange: (listener: () => void) => () => void = watch.onChange;
 
-/** The key the gaps are kept under on an undo stack item. */
-const GAPS_ON_UNDO = {};
-
 /**
  * The extension that carries the plugin.
  * @returns The extension, for the assembly to register.
@@ -377,10 +374,7 @@ const GAPS_ON_UNDO = {};
 export const documentUploadsExtension = createExtension(() => {
   // Each batch's gap as Yjs names it, taken again after every change.
   let named: NamedGaps = new Map();
-  // The names as they stood when the current Yjs transaction began.
-  let beforeYjs: NamedGaps = named;
-  // The names the last undo or redo handed back, until that change is applied.
-  let handed: NamedGaps | null = null;
+  const onUndoStack = namesOnUndoStack(() => named);
   return ({
     key: 'document-uploads',
     prosemirrorPlugins: [
@@ -393,7 +387,7 @@ export const documentUploadsExtension = createExtension(() => {
             if (action === undefined && !tr.docChanged) return previous;
             const reduced =
               action === undefined ? previous.batches : reduce(previous.batches, action);
-            const batches = tr.docChanged ? carryGaps(reduced, tr, state, handed ?? named) : reduced;
+            const batches = tr.docChanged ? carryGaps(reduced, tr, state, named, onUndoStack.handedFor(tr)) : reduced;
             return { batches, decorations: decorate(batches, state.doc) };
           },
         },
@@ -402,26 +396,11 @@ export const documentUploadsExtension = createExtension(() => {
         },
         view: (view) => {
           const watching = watch.view(view);
-          const doc = syncBindingOf(view.state)?.doc;
-          const undo = (
-            yUndoPluginKey.getState(view.state) as { undoManager?: UndoManagerLike } | undefined
-          )?.undoManager;
-          const stopKeeping =
-            doc === undefined || undo === undefined
-              ? undefined
-              : keepOnUndoStack(doc, undo, GAPS_ON_UNDO, () => beforeYjs, (stored) => {
-                handed = (stored as NamedGaps | undefined) ?? null;
-              });
-          /** Keeps the names as they stand before a Yjs transaction, for its undo stack item. */
-          const onBeforeAll = (): void => {
-            beforeYjs = named;
-          };
-          doc?.on('beforeAllTransactions', onBeforeAll);
+          const stopKeeping = onUndoStack.attach(view);
           return {
             update: (next, prev): void => {
               const batches = uploadBatchesIn(next.state);
               if (next.state.doc !== prev.doc || batches !== uploadBatchesIn(prev)) {
-                handed = null;
                 const bound = syncBindingOf(next.state);
                 named = new Map(
                   bound === null
@@ -435,8 +414,7 @@ export const documentUploadsExtension = createExtension(() => {
               watching.update?.(next, prev);
             },
             destroy: (): void => {
-              stopKeeping?.();
-              doc?.off('beforeAllTransactions', onBeforeAll);
+              stopKeeping();
               watching.destroy?.();
             },
           };

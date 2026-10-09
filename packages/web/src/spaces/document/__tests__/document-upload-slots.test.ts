@@ -397,6 +397,41 @@ describe('where the placeholder and the block go', () => {
     expect(shape(editor)).toEqual(['A', 'B', 'm1', 'C', 'D']);
   });
 
+  it('stays at its gap when an edit made before it started is undone', () => {
+    const { editor, manager } = open();
+    editor.updateBlock(idOf(editor, 'C'), { content: 'Cxyz' } as never);
+    manager.stopCapturing();
+    const [slot] = addUploadBatch(
+      editor.prosemirrorView!,
+      gapBetween(editor.prosemirrorView!.state.doc, idOf(editor, 'A'), idOf(editor, 'B')),
+      ['m1'],
+    );
+    manager.undo();
+    expect(shape(editor)).toEqual(['A', 'B', 'C']);
+
+    land(editor, slot!);
+
+    expect(shape(editor)).toEqual(['A', 'm1', 'B', 'C']);
+  });
+
+  it('stays at its gap when an edit undone before it started is redone', () => {
+    const { editor, manager } = open();
+    editor.updateBlock(idOf(editor, 'C'), { content: 'Cxyz' } as never);
+    manager.stopCapturing();
+    manager.undo();
+    const [slot] = addUploadBatch(
+      editor.prosemirrorView!,
+      gapBetween(editor.prosemirrorView!.state.doc, idOf(editor, 'A'), idOf(editor, 'B')),
+      ['m1'],
+    );
+    manager.redo();
+    expect(shape(editor)).toEqual(['A', 'B', 'Cxyz']);
+
+    land(editor, slot!);
+
+    expect(shape(editor)).toEqual(['A', 'm1', 'B', 'Cxyz']);
+  });
+
   it('stays where the rows were when a co-editor deletes both rows beside it', () => {
     const { mine, theirs } = pair([
       { type: 'paragraph', content: 'A' },

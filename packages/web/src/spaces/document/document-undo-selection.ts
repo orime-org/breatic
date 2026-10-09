@@ -62,8 +62,12 @@
  * mutation of this file turns a test red for the want of it, so it is not here.
  */
 
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
+
+import { syncBindingOf } from '@web/spaces/document/document-link-tracking';
+import { undoRedo } from '@web/spaces/document/document-yjs-origin';
 
 /** The bound Yjs document, carrying the transaction-lifecycle events. */
 interface YDocLike {
@@ -141,6 +145,59 @@ export function keepOnUndoStack(
   return (): void => {
     undoManager.off('stack-item-added', onAdded);
     doc.off('beforeObserverCalls', onBeforeObserverCalls);
+  };
+}
+
+/** A plugin's Yjs names, kept on each undo stack item and handed back on its undo or redo. */
+export interface NamesOnUndoStack<T> {
+  /**
+   * The names as they stood before the edit an undo or redo takes back.
+   * @param tr - The transaction being applied.
+   * @returns Those names on the reader's undo or redo of an edit that kept
+   *   some; null for every other transaction.
+   */
+  readonly handedFor: (tr: Transaction) => T | null;
+  /**
+   * Starts keeping names for a view's undo stack.
+   * @param view - The editor view.
+   * @returns The function that stops it.
+   */
+  readonly attach: (view: EditorView) => () => void;
+}
+
+/**
+ * Keeps a plugin's Yjs names for what it tracks on every undo stack item, the
+ * way y-prosemirror's undo plugin keeps the selection: the names are taken
+ * when a Yjs transaction begins (`beforeAllTransactions`), which is before the
+ * plugin's view retakes them against the edited body, and the item that edit
+ * pushes keeps them.
+ * @param current - The names in this state, or null to keep none.
+ * @returns The handover for the plugin's state and its view.
+ */
+export function namesOnUndoStack<T>(current: (state: EditorState) => T | null): NamesOnUndoStack<T> {
+  let before: T | null = null;
+  let handed: T | null = null;
+  return {
+    handedFor: (tr) => (undoRedo(tr) ? handed : null),
+    attach: (view) => {
+      const doc = syncBindingOf(view.state)?.doc;
+      const undo = (
+        yUndoPluginKey.getState(view.state) as { undoManager?: UndoManagerLike } | undefined
+      )?.undoManager;
+      if (doc === undefined || undo === undefined) return () => undefined;
+      const stopKeeping = keepOnUndoStack(doc, undo, {}, () => before, (stored) => {
+        handed = (stored as T | undefined) ?? null;
+      });
+      /** Takes the names as they stand before a Yjs transaction. */
+      const onBeforeAll = (): void => {
+        before = current(view.state);
+      };
+      doc.on('beforeAllTransactions', onBeforeAll);
+      return () => {
+        stopKeeping();
+        doc.off('beforeAllTransactions', onBeforeAll);
+      };
+    },
   };
 }
 
