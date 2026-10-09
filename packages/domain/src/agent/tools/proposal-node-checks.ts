@@ -8,6 +8,7 @@
 import { markedSegments, promptPlainText, type ProposalNode } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
+import { refuse } from "@domain/agent/tools/proposal-refusals.js";
 import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import type { MaterialTable } from "@domain/asset/material-facts.js";
 
@@ -26,10 +27,7 @@ const MATERIAL_KINDS: ReadonlySet<string> = new Set(["image", "video", "audio"])
  * @throws {never} Never.
  */
 function writtenTakesNoMark(node: ProposalNode): ProposalVerdict {
-  return {
-    ok: false,
-    reason: `"${node.name}" holds words the reader keeps as they are, so it takes no ref or note. Take it out and say what you meant in your own message.`,
-  };
+  return refuse("written-takes-no-mark", `"${node.name}" holds words the reader keeps as they are, so it takes no ref or note. Take it out and say what you meant in your own message.`);
 }
 
 /**
@@ -46,26 +44,17 @@ function writtenTakesNoMark(node: ProposalNode): ProposalVerdict {
 export function checkMaterial(node: ProposalNode, materials: MaterialTable): ProposalVerdict {
   if (node.material === undefined) return { ok: true };
   if (node.role !== "source" || !MATERIAL_KINDS.has(node.type)) {
-    return {
-      ok: false,
-      reason: `"${node.name}" carries material, which only a source image, video or audio node holds.`,
-    };
+    return refuse("material-not-source", `"${node.name}" carries material, which only a source image, video or audio node holds.`);
   }
   const facts = materials.get(node.material);
   if (facts === undefined) {
-    return {
-      ok: false,
-      reason: `"${node.name}" holds an address that is not in our storage. Save a picture found on the web with ${SAVE_IMAGE} first and use the address it answers with.`,
-    };
+    return refuse("material-not-ours", `"${node.name}" holds an address that is not in our storage. Save a picture found on the web with ${SAVE_IMAGE} first and use the address it answers with.`);
   }
   if (facts === "missing") {
-    return {
-      ok: false,
-      reason: `"${node.name}" holds an address in our storage that does not exist, most likely mistyped. Copy it again exactly as the attachment or the ${SAVE_IMAGE} answer gives it.`,
-    };
+    return refuse("material-missing", `"${node.name}" holds an address in our storage that does not exist, most likely mistyped. Copy it again exactly as the attachment or the ${SAVE_IMAGE} answer gives it.`);
   }
   if (facts.kind !== node.type) {
-    return { ok: false, reason: `"${node.name}" is a ${node.type} node and its material is ${facts.kind}.` };
+    return refuse("material-wrong-kind", `"${node.name}" is a ${node.type} node and its material is ${facts.kind}.`);
   }
   return { ok: true };
 }
@@ -93,32 +82,20 @@ export function checkNodeRole(node: ProposalNode): ProposalVerdict {
     // text node is a click away, so proposing one asks for work rather than
     // saving any. Write the words instead, as a written node.
     if (node.type === "text") {
-      return {
-        ok: false,
-        reason: `"${node.name}" is an empty text node, which the reader makes in one click. Write the words yourself and send it as a written node, or leave it out.`,
-      };
+      return refuse("text-source", `"${node.name}" is an empty text node, which the reader makes in one click. Write the words yourself and send it as a written node, or leave it out.`);
     }
     if (configured || node.prompt !== undefined) {
-      return {
-        ok: false,
-        reason: `"${node.name}" is a source node: it holds material or stands empty for the reader, so it takes no mode, model, parameters, fills, shots or prompt.`,
-      };
+      return refuse("source-configured", `"${node.name}" is a source node: it holds material or stands empty for the reader, so it takes no mode, model, parameters, fills, shots or prompt.`);
     }
     return { ok: true };
   }
   if (node.role !== "written") return { ok: true };
 
   if (node.type !== "text") {
-    return {
-      ok: false,
-      reason: `"${node.name}" carries words, and a text node is the only one that holds those.`,
-    };
+    return refuse("written-not-text", `"${node.name}" carries words, and a text node is the only one that holds those.`);
   }
   if (configured) {
-    return {
-      ok: false,
-      reason: `"${node.name}" already holds its words, so it takes no mode, model, fills or shots -- nothing is generated there.`,
-    };
+    return refuse("written-configured", `"${node.name}" already holds its words, so it takes no mode, model, fills or shots -- nothing is generated there.`);
   }
   // A text node's body holds words and nothing else: a reference would ask
   // for material nothing here reads, and a note would vanish from words that
@@ -131,7 +108,7 @@ export function checkNodeRole(node: ProposalNode): ProposalVerdict {
   // Without them it lands as an empty text node, which is the thing a reader
   // makes in a click and has no use for in a proposal.
   if (promptPlainText(node.prompt ?? []).trim() === "") {
-    return { ok: false, reason: `"${node.name}" says it holds words and carries no words.` };
+    return refuse("written-empty", `"${node.name}" says it holds words and carries no words.`);
   }
   return { ok: true };
 }
@@ -155,8 +132,5 @@ export function markTypedAsWords(node: ProposalNode): ProposalVerdict {
   );
   if (typed.length === 0) return { ok: true };
   if (node.role === "written" && typed.some((slot) => slot.kind !== "tweak")) return writtenTakesNoMark(node);
-  return {
-    ok: false,
-    reason: `"${node.name}" types ${String(typed.length)} mark(s) into its words. Send each as a segment of its own and keep the text segments to plain words: ${typed.map((slot) => (slot.kind === "asset" ? `{"ref": <index of the node meant by ${slot.label}>}` : JSON.stringify({ slot }))).join(", ")}.`,
-  };
+  return refuse("mark-typed", `"${node.name}" types ${String(typed.length)} mark(s) into its words. Send each as a segment of its own and keep the text segments to plain words: ${typed.map((slot) => (slot.kind === "asset" ? `{"ref": <index of the node meant by ${slot.label}>}` : JSON.stringify({ slot }))).join(", ")}.`);
 }

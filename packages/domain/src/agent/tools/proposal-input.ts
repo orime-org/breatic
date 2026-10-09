@@ -14,10 +14,11 @@ import {
   type GenerationNodeType,
 } from "@breatic/shared";
 
+import type { Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 
-/** Whether a proposal holds together, and what is missing when it does not. */
-export type ProposalVerdict = { ok: true } | { ok: false; reason: string };
+/** Whether a proposal holds together, and which refusal it meets when it does not. */
+export type ProposalVerdict = { ok: true } | Refusal;
 
 const NODE_TYPES = Object.keys(GENERATION_NODE_MODES) as [
   GenerationNodeType,

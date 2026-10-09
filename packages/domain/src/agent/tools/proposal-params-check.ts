@@ -7,6 +7,7 @@
 import { PANEL_EDITOR_PARAM, type ControlGate, type ProposalNode } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
+import { refuse } from "@domain/agent/tools/proposal-refusals.js";
 import { boxReason, slotSentence } from "@domain/agent/tools/proposal-routing.js";
 import type { ModelInfo, ParamInfo } from "@domain/model-catalog/mode-catalog.js";
 import { onStep } from "@domain/model-catalog/param-declaration.js";
@@ -95,18 +96,20 @@ export function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerd
   for (const [key, value] of Object.entries(node.params ?? {})) {
     const info = chosen.params[key];
     if (!info) {
-      return {
-        ok: false,
-        reason: `"${chosen.name}" declares no ${key}. It takes: ${declared.join(", ") || "no parameters"}.`,
-      };
+      return refuse("param-undeclared", `"${chosen.name}" declares no ${key}. It takes: ${declared.join(", ") || "no parameters"}.`);
+    }
+    if (info.fromStoryboard === true) {
+      return refuse("param-storyboard", `"${key}" is set by the node's shots. Leave it out of params and give shots.`);
+    }
+    // Asked before anything that tells the agent how the reader fills a
+    // value: a value the panel draws no control for is one nobody fills.
+    if (info.noControl === true) {
+      return refuse("param-no-control", `The panel draws no control for "${key}", so the reader can neither see it nor change it. Leave it out.`);
     }
     if (theirsToFill(key, info)) {
-      return {
-        ok: false,
-        reason: info.valuesFrom !== undefined
-          ? `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here. Leave it out and add a note saying which one to pick.`
-          : boxReason(chosen, node, key),
-      };
+      return info.valuesFrom !== undefined
+        ? refuse("param-from-list", `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here. Leave it out and add a note saying which one to pick.`)
+        : refuse("param-box", boxReason(chosen, node, key));
     }
     if (info.filledBySource === true) {
       // Two ways that material arrives, and the sentence names the one this
@@ -116,51 +119,27 @@ export function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerd
       const into = info.fromReferencePool === true ? "pool" : key;
       const said = info.fromReferencePool === true ? `"${key}" is the reference pool` : `"${key}" is a slot for the reader's own material`;
       const reached = info.accepts === undefined ? "" : slotSentence(chosen, node, info.accepts, into);
-      return {
-        ok: false,
-        reason: reached === ""
-          ? `${said}, which nothing set here reaches. Leave it out.`
-          : `${said}, which nodes reach and nothing set here does. Leave it out. ${reached}`,
-      };
-    }
-    if (info.fromStoryboard === true) {
-      return {
-        ok: false,
-        reason: `"${key}" is set by the node's shots. Leave it out of params and give shots.`,
-      };
-    }
-    if (info.noControl === true) {
-      return {
-        ok: false,
-        reason: `The panel draws no control for "${key}", so the reader can neither see it nor change it. Leave it out.`,
-      };
+      return refuse("param-source", reached === ""
+        ? `${said}, which nothing set here reaches. Leave it out.`
+        : `${said}, which nodes reach and nothing set here does. Leave it out. ${reached}`);
     }
     if (!isDrawn(chosen, node.params ?? {}, info)) {
       const gate = info.gate as ControlGate;
-      return {
-        ok: false,
-        reason: `"${key}" only counts while "${gate.param}" is on, and this proposal leaves it off. Set that switch or leave "${key}" out.`,
-      };
+      return refuse("param-gated-off", `"${key}" only counts while "${gate.param}" is on, and this proposal leaves it off. Set that switch or leave "${key}" out.`);
     }
     const options = info.options ?? [];
     if (options.length > 0 && !options.some((offered) => offered === value)) {
-      return {
-        ok: false,
-        reason: `The control for "${key}" offers ${options.map((o) => JSON.stringify(o)).join(", ")}, not ${JSON.stringify(value)}.`,
-      };
+      return refuse("param-option", `The control for "${key}" offers ${options.map((o) => JSON.stringify(o)).join(", ")}, not ${JSON.stringify(value)}.`);
     }
     if (info.min === undefined && info.max === undefined) continue;
     if (typeof value !== "number") {
-      return { ok: false, reason: `"${key}" takes a number, not ${JSON.stringify(value)}.` };
+      return refuse("param-not-number", `"${key}" takes a number, not ${JSON.stringify(value)}.`);
     }
     if ((info.min !== undefined && value < info.min) || (info.max !== undefined && value > info.max)) {
-      return {
-        ok: false,
-        reason: `"${key}" runs from ${String(info.min ?? "?")} to ${String(info.max ?? "?")}, and this one is ${String(value)}.`,
-      };
+      return refuse("param-out-of-range", `"${key}" runs from ${String(info.min ?? "?")} to ${String(info.max ?? "?")}, and this one is ${String(value)}.`);
     }
     const offStep = offStepReason(key, value, info);
-    if (offStep !== null) return { ok: false, reason: offStep };
+    if (offStep !== null) return refuse("param-off-step", offStep);
   }
   return { ok: true };
 }

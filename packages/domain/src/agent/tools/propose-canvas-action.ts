@@ -47,6 +47,7 @@ import { checkGenerateNode } from "@domain/agent/tools/proposal-generate-check.j
 import { checkEmptyNodesFit, checkUnsentNotes, hasRing, pickedInstead } from "@domain/agent/tools/proposal-group-checks.js";
 import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/tools/proposal-node-checks.js";
+import { refuse, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { aNode, chosenModelOf, routeEdges } from "@domain/agent/tools/proposal-routing.js";
 import { expandTemplate, templateSegmentsText } from "@domain/agent/tools/template-expansion.js";
 import { GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
@@ -129,57 +130,50 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
     // words to say it about. On a group of empty nodes it would send the
     // model off to write copy nobody asked for.
     const words = proposal.nodes.some((node) => node.role === "written");
-    return {
-      ok: false,
-      reason: words
-        ? "Nothing here generates, so this is words the reader can read and take from your message. Write them in your reply instead."
-        : "Nothing here generates, so a card placed from this leaves the reader nothing to press. Propose what gets made, or say in your reply what they should do.",
-    };
+    return words
+      ? refuse("nothing-generates-words", "Nothing here generates, so this is words the reader can read and take from your message. Write them in your reply instead.")
+      : refuse("nothing-generates", "Nothing here generates, so a card placed from this leaves the reader nothing to press. Propose what gets made, or say in your reply what they should do.");
   }
 
+  // The canvas holds one edge between two nodes, and a node goes into a
+  // generation one way.
+  const pairs = new Set<string>();
   for (const edge of proposal.edges) {
     const ends = [edge.fromIndex, edge.toIndex];
     if (ends.some((i) => i < 0 || i >= proposal.nodes.length)) {
-      return { ok: false, reason: `An edge points outside the group: ${JSON.stringify(edge)}.` };
+      return refuse("edge-outside", `An edge points outside the group: ${JSON.stringify(edge)}.`);
     }
     if (edge.fromIndex === edge.toIndex) {
-      return { ok: false, reason: `An edge loops node ${edge.fromIndex} onto itself.` };
+      return refuse("edge-self-loop", `An edge loops node ${edge.fromIndex} onto itself.`);
     }
+    const pair = `${String(edge.fromIndex)}>${String(edge.toIndex)}`;
+    if (pairs.has(pair)) {
+      return refuse("edge-repeated", `Two edges run from "${proposal.nodes[edge.fromIndex]?.name ?? ""}" to "${proposal.nodes[edge.toIndex]?.name ?? ""}", and a node goes into a generation one way. Send one edge.`);
+    }
+    pairs.add(pair);
     // An edge is how one node draws on another's material, so it can only end
     // where something reads it. Ending anywhere else, it is drawn on the canvas
     // saying a relation that nothing acts on.
     const into = proposal.nodes[edge.toIndex];
     const outOf = proposal.nodes[edge.fromIndex];
     if (into && into.role !== "generate") {
-      return {
-        ok: false,
-        reason: `An edge flows into "${into.name}", which generates nothing, so nothing there reads what it carries.`,
-      };
+      return refuse("edge-into-nothing-generating", `An edge flows into "${into.name}", which generates nothing, so nothing there reads what it carries.`);
     }
     // The same whitelist the canvas holds a reader's own drag to. A line they
     // could not draw by hand is one the agent may not draw for them.
     if (into && outOf && !canConnect(outOf.type, into.type)) {
-      return {
-        ok: false,
-        reason: `The canvas does not let ${aNode(outOf.type)} feed ${aNode(into.type)}, by your hand or theirs, so leave this edge off.${pickedInstead(into, outOf)}`,
-      };
+      return refuse("edge-not-allowed", `The canvas does not let ${aNode(outOf.type)} feed ${aNode(into.type)}, by your hand or theirs, so leave this edge off.${pickedInstead(into, outOf)}`);
     }
   }
   if (hasRing(proposal)) {
-    return {
-      ok: false,
-      reason: "Those edges make a ring, and a ring says nothing about what the reader presses first.",
-    };
+    return refuse("edge-ring", "Those edges make a ring, and a ring says nothing about what the reader presses first.");
   }
 
   // Two or more nodes land inside a group, which the reader sees as one thing
   // on a ground of its own. Only the model knows what that thing is for -- it
   // just decided -- so the name comes with the proposal.
   if (proposal.nodes.length > 1 && (proposal.groupName ?? "").trim() === "") {
-    return {
-      ok: false,
-      reason: "Two or more nodes land together in a group, so give the group a name saying what it is for.",
-    };
+    return refuse("group-unnamed", "Two or more nodes land together in a group, so give the group a name saying what it is for.");
   }
 
   for (const [index, node] of proposal.nodes.entries()) {
@@ -197,6 +191,41 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
 }
 
 /**
+ * The proposal as the check judges it: every node naming a template filled
+ * in from it, and the catalog's facts written on, or the refusal a template
+ * gives.
+ * @param sent - What the model sent.
+ * @returns The resolved proposal, or the refusal.
+ * @throws {never} Never.
+ */
+function resolveSent(sent: z.infer<typeof inputSchema>): { proposal: CanvasProposal } | Refusal {
+  const nodes: ProposalNode[] = [];
+  for (const node of sent.nodes) {
+    if (node.template === undefined) {
+      const { template: _none, ...plain } = node;
+      nodes.push(plain);
+      continue;
+    }
+    const expanded = expandTemplate({ ...node, template: node.template });
+    if (!expanded.ok) return expanded;
+    nodes.push(expanded.node);
+  }
+  return { proposal: withCatalogFacts({ ...sent, nodes }) };
+}
+
+/**
+ * Whether what the model sent stands, templates and all.
+ * @param sent - What the model sent.
+ * @param materials - The registration behind each material address it names.
+ * @returns The verdict, naming the refusal when there is one.
+ * @throws {never} Never.
+ */
+export function verdictFor(sent: z.infer<typeof inputSchema>, materials: MaterialTable = NO_MATERIAL): ProposalVerdict {
+  const resolved = resolveSent(sent);
+  return "proposal" in resolved ? checkResolved(resolved.proposal, materials) : resolved;
+}
+
+/**
  * What the tool answers with: the proposal as it will be placed, or a refusal.
  *
  * Exported so a test can read the answer without standing up a tool call:
@@ -210,19 +239,9 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
  * @throws {never} Never.
  */
 export function answerFor(sent: z.infer<typeof inputSchema>, materials: MaterialTable = NO_MATERIAL): ProposalAnswer {
-  const nodes: ProposalNode[] = [];
-  for (const node of sent.nodes) {
-    if (node.template === undefined) {
-      const { template: _none, ...plain } = node;
-      nodes.push(plain);
-      continue;
-    }
-    const expanded = expandTemplate({ ...node, template: node.template });
-    if (!expanded.ok) return { placed: false, reason: expanded.reason };
-    nodes.push(expanded.node);
-  }
-  const proposal: CanvasProposal = { ...sent, nodes };
-  const resolved = withCatalogFacts(proposal);
+  const sentResolved = resolveSent(sent);
+  if (!("proposal" in sentResolved)) return { placed: false, reason: sentResolved.reason };
+  const resolved = sentResolved.proposal;
   const verdict = checkResolved(resolved, materials);
   if (!verdict.ok) return { placed: false, reason: verdict.reason };
   // The same resolution the check just judged against, so what the canvas

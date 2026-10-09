@@ -24,7 +24,8 @@ import { modelsForMode, waysIn, type ModelInfo } from "@domain/model-catalog/mod
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
 import { checkProposal, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
-import { boxReason, entriesFor, type Entry, type Holding } from "../proposal-routing.js";
+import { checkParams } from "../proposal-params-check.js";
+import { entriesFor, type Entry, type Holding } from "../proposal-routing.js";
 
 beforeEach(() => {
   loadLocales();
@@ -299,8 +300,8 @@ describe("each refusal tells the agent a way that is there", () => {
     const lyrics = setting.chosen.params[PANEL_EDITOR_PARAM];
     if (lyrics === undefined) throw new Error("the song model declares no lyrics box");
     const hidden: ModelInfo = { ...setting.chosen, params: { ...setting.chosen.params, [PANEL_EDITOR_PARAM]: { ...lyrics, noControl: true } } };
-    const gen: ProposalNode = { role: "generate", type: setting.nodeType, name: "Song", mode: setting.mode, model: setting.chosen.name };
-    expect(boxReason(setting.chosen, gen, PANEL_EDITOR_PARAM)).toContain(`by an edge with into: "${PANEL_EDITOR_PARAM}"`);
-    expect(boxReason(hidden, gen, PANEL_EDITOR_PARAM)).toBe(`The panel draws no box for "${PANEL_EDITOR_PARAM}" here, so nothing set for it reaches the model. Leave it out.`);
+    const gen: ProposalNode = { role: "generate", type: setting.nodeType, name: "Song", mode: setting.mode, model: setting.chosen.name, params: { [PANEL_EDITOR_PARAM]: "la" } };
+    expect(checkParams(setting.chosen, gen)).toMatchObject({ refusal: "param-box", reason: expect.stringContaining(`by an edge with into: "${PANEL_EDITOR_PARAM}"`) });
+    expect(checkParams(hidden, gen)).toMatchObject({ refusal: "param-no-control" });
   });
 });

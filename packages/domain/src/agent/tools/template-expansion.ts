@@ -20,10 +20,12 @@ import {
   type ProposalNode,
 } from "@breatic/shared";
 
+import { refuse, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
+
 /** The node with its template filled in, or why the template does not apply. */
 export type TemplateExpansion =
   | { ok: true; node: ProposalNode }
-  | { ok: false; reason: string };
+  | Refusal;
 
 /**
  * A template's prompt as the segments a proposal sends: words as they are,
@@ -52,22 +54,16 @@ export function expandTemplate(node: ProposalNode & { template: string }): Templ
   const { template: id, ...rest } = node;
   const template = findTemplate(id);
   if (!template) {
-    return {
-      ok: false,
-      reason: `No template "${id}". Templates: ${GENERATION_TEMPLATES.map((t) => t.id).join(", ")}.`,
-    };
+    return refuse("template-unknown", `No template "${id}". Templates: ${GENERATION_TEMPLATES.map((t) => t.id).join(", ")}.`);
   }
   if (rest.role !== "generate") {
-    return { ok: false, reason: `Template "${id}" goes on a generate node; "${rest.name}" is a ${rest.role} node.` };
+    return refuse("template-role", `Template "${id}" goes on a generate node; "${rest.name}" is a ${rest.role} node.`);
   }
   if (rest.type !== template.nodeType) {
-    return { ok: false, reason: `Template "${id}" is for ${template.nodeType} nodes, not ${rest.type}.` };
+    return refuse("template-type", `Template "${id}" is for ${template.nodeType} nodes, not ${rest.type}.`);
   }
   if (rest.prompt === undefined) {
-    return {
-      ok: false,
-      reason: `"${rest.name}" names template "${id}" and sends no prompt. Send the template's prompt as its own, rewritten in the reader's language with their story or detail in it: ${templateSegmentsText(template)}.`,
-    };
+    return refuse("template-no-prompt", `"${rest.name}" names template "${id}" and sends no prompt. Send the template's prompt as its own, rewritten in the reader's language with their story or detail in it: ${templateSegmentsText(template)}.`);
   }
   const mode = rest.mode ?? template.mode;
   const model = rest.model ?? template.model;
