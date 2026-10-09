@@ -420,6 +420,10 @@ describe("every refusal's advice is a proposal the check takes", () => {
       const met = verdictFor(entry.meets, MATERIALS);
       expect(met).toMatchObject({ ok: false, refusal });
       const reason = met.ok ? "" : met.reason;
+      // The words are pinned so a changed reason cannot slip past the advice
+      // followed below: a new or reworded way to put it right fails here
+      // until it is followed in `followed` too.
+      expect(reason).toMatchSnapshot();
       for (const [i, { says, proposal }] of entry.followed.entries()) {
         if (says !== undefined) expect(reason, `the reason gives advice ${String(i)}`).toContain(says);
         expect(verdictFor(proposal, MATERIALS), `advice ${String(i)} of "${reason}"`).toEqual({ ok: true });

@@ -192,9 +192,11 @@ describe("every way entriesFor names is one the check takes", () => {
 
   it("tells each reference-pool value set as a parameter how its own kind of node goes in", () => {
     const wrong: string[] = [];
+    let tried = 0;
     for (const setting of settings()) {
       for (const [key, info] of Object.entries(setting.chosen.params)) {
         if (info.fromReferencePool !== true || info.accepts === undefined) continue;
+        tried += 1;
         const proposal = follow(setting, { role: "written", type: "text", name: "Probe", prompt: [{ text: "x" }] }, undefined);
         proposal.nodes = proposal.nodes.filter((n) => n.name !== "Probe");
         proposal.edges = proposal.edges.map((e) => ({ ...e, fromIndex: e.fromIndex - 1, toIndex: e.toIndex - 1 }));
@@ -202,9 +204,11 @@ describe("every way entriesFor names is one the check takes", () => {
         const verdict = checkProposal(proposal, MATERIALS);
         const reason = verdict.ok ? "" : verdict.reason;
         const others = ["image", "video", "audio"].filter((k) => k !== info.accepts && reason.includes(`${k} node`));
-        if (others.length > 0) wrong.push(`${setting.chosen.name} ${setting.mode} ${key}: ${reason}`);
+        const own = verdict.ok ? false : verdict.refusal === "param-source" && reason.includes(`${info.accepts} node`);
+        if (others.length > 0 || !own) wrong.push(`${setting.chosen.name} ${setting.mode} ${key}: ${reason}`);
       }
     }
+    expect(tried).toBeGreaterThan(0);
     expect(wrong).toEqual([]);
   });
 });

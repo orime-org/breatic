@@ -1,0 +1,143 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`every refusal's advice is a proposal the check takes > edge-into-ambiguous: is met, and each way it says to put it right is accepted 1`] = `"The edge from "Pic" says no into, and "nano-banana-pro-edit-ultra" takes an image node more than one way. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref."`;
+
+exports[`every refusal's advice is a proposal the check takes > edge-into-nothing-generating: is met, and each way it says to put it right is accepted 1`] = `"An edge flows into "Words", which generates nothing, so nothing there reads what it carries."`;
+
+exports[`every refusal's advice is a proposal the check takes > edge-kind-not-taken: is met, and each way it says to put it right is accepted 1`] = `""nano-banana-2" takes no image node, so the edge from "Pic" goes nowhere in it. Send it into a generation that takes it: "Pic" goes into "Edit" by an edge with into: "pool" and a ref @'ing it, or through fills "style_images" on "Edit", with no edge and no ref."`;
+
+exports[`every refusal's advice is a proposal the check takes > edge-not-allowed: is met, and each way it says to put it right is accepted 1`] = `"The canvas does not let a video node feed an audio node, by your hand or theirs, so leave this edge off. "Clip" goes into "Gen" unwired, with a note saying to pick it into "video" and no ref."`;
+
+exports[`every refusal's advice is a proposal the check takes > edge-not-an-entry: is met, and each way it says to put it right is accepted 1`] = `""Pic" does not go into "style_images" of "Gen" by an edge. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it, or through fills "style_images" on "Gen", with no edge and no ref."`;
+
+exports[`every refusal's advice is a proposal the check takes > edge-outside: is met, and each way it says to put it right is accepted 1`] = `"An edge points outside the group: {"fromIndex":0,"toIndex":4}."`;
+
+exports[`every refusal's advice is a proposal the check takes > edge-repeated: is met, and each way it says to put it right is accepted 1`] = `"Two edges run from "Pic" to "Gen", and a node goes into a generation one way. Send one edge."`;
+
+exports[`every refusal's advice is a proposal the check takes > edge-ring: is met, and each way it says to put it right is accepted 1`] = `"Those edges make a ring, and a ring says nothing about what the reader presses first."`;
+
+exports[`every refusal's advice is a proposal the check takes > edge-self-loop: is met, and each way it says to put it right is accepted 1`] = `"An edge loops node 0 onto itself."`;
+
+exports[`every refusal's advice is a proposal the check takes > fill-no-material: is met, and each way it says to put it right is accepted 1`] = `"fills "style_images" on "Gen" points at "Pic", which holds no material, and fills takes only nodes holding it. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref."`;
+
+exports[`every refusal's advice is a proposal the check takes > fill-not-a-slot: is met, and each way it says to put it right is accepted 1`] = `""images" is the reference pool of "nano-banana-pro-edit-ultra", which takes no fills. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it, or through fills "style_images" on "Gen", with no edge and no ref."`;
+
+exports[`every refusal's advice is a proposal the check takes > fill-outside: is met, and each way it says to put it right is accepted 1`] = `"fills "style_images" on "Gen" points at node 5, which is not in the group."`;
+
+exports[`every refusal's advice is a proposal the check takes > fill-self: is met, and each way it says to put it right is accepted 1`] = `"fills "style_images" on "Gen" points at "Gen" itself, and a node cannot fill its own slot. Check the index the fill means."`;
+
+exports[`every refusal's advice is a proposal the check takes > fill-twice: is met, and each way it says to put it right is accepted 1`] = `"fills "style_images" on "Gen" holds the same material twice; the slot keeps one copy of it."`;
+
+exports[`every refusal's advice is a proposal the check takes > fill-wrong-kind: is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" takes image in "style_images", and "Clip" is video. "nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen"."`;
+
+exports[`every refusal's advice is a proposal the check takes > group-unnamed: is met, and each way it says to put it right is accepted 1`] = `"Two or more nodes land together in a group, so give the group a name saying what it is for."`;
+
+exports[`every refusal's advice is a proposal the check takes > loose-without-note: is met, and each way it says to put it right is accepted 1`] = `""Pic" goes into no generation, so the reader picks it into a slot in the panel, and the generations here carry 0 note(s) beyond those their wired nodes use. Give each one a note saying which slot to pick it into."`;
+
+exports[`every refusal's advice is a proposal the check takes > lyrics-missing: is met, and each way it says to put it right is accepted 1`] = `""mureka-v9.5-generate-song" sings the words in its lyrics box, and this proposal leaves it empty. A written text node goes into "Gen" by an edge with into: "lyrics", which landing @s into that box, and no ref."`;
+
+exports[`every refusal's advice is a proposal the check takes > mark-typed: is met, and each way it says to put it right is accepted 1`] = `""Gen" types 1 mark(s) into its words. Send each as a segment of its own and keep the text segments to plain words: {"slot":{"kind":"tweak","label":"mood","note":"mood"}}."`;
+
+exports[`every refusal's advice is a proposal the check takes > material-missing: is met, and each way it says to put it right is accepted 1`] = `""Pic" holds an address in our storage that does not exist, most likely mistyped. Copy it again exactly as the attachment or the save_image answer gives it."`;
+
+exports[`every refusal's advice is a proposal the check takes > material-not-ours: is met, and each way it says to put it right is accepted 1`] = `""Pic" holds an address that is not in our storage. Save a picture found on the web with save_image first and use the address it answers with."`;
+
+exports[`every refusal's advice is a proposal the check takes > material-not-source: is met, and each way it says to put it right is accepted 1`] = `""Gen" carries material, which only a source image, video or audio node holds."`;
+
+exports[`every refusal's advice is a proposal the check takes > material-unused: is met, and each way it says to put it right is accepted 1`] = `""Pic" holds material that nothing here uses. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it, or through fills "style_images" on "Gen", with no edge and no ref."`;
+
+exports[`every refusal's advice is a proposal the check takes > material-wrong-kind: is met, and each way it says to put it right is accepted 1`] = `""Pic" is an image node and its material is video."`;
+
+exports[`every refusal's advice is a proposal the check takes > mode-unbacked: is met, and each way it says to put it right is accepted 1`] = `"No model here backs "no-such-mode" on an image node. It offers: t2i, i2i."`;
+
+exports[`every refusal's advice is a proposal the check takes > model-not-in-mode: is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" does not back "t2i". Those that do: gpt-image-2.5-sunburst-text-to-image, grok-imagine-image-v2.0-text-to-image, nano-banana-2, recraft-v4.1-pro-text-to-vector, riverflow-2.0-pro-text-to-image, krea-v2-large-text-to-image, ideogram-v3-quality, recraft-v4-style-text-to-image."`;
+
+exports[`every refusal's advice is a proposal the check takes > multishot-no-shots: is met, and each way it says to put it right is accepted 1`] = `"In the multi_shot mode the shots are what is generated. Give shots, each with its own prompt and seconds."`;
+
+exports[`every refusal's advice is a proposal the check takes > no-mode-model: is met, and each way it says to put it right is accepted 1`] = `"Node 0 generates, so it needs a mode and a model."`;
+
+exports[`every refusal's advice is a proposal the check takes > no-prompt-box: is met, and each way it says to put it right is accepted 1`] = `""omnihuman-1.5" draws no prompt box, so words, tweak marks and refs written there reach nobody. Keep only notes saying what the reader picks in the panel."`;
+
+exports[`every refusal's advice is a proposal the check takes > notes-missing: is met, and each way it says to put it right is accepted 1`] = `""Gen" needs a note for each of "Pic" (@'d, and empty until a file is put in it), and carries 0. Give each one a note in the prompt: which slot to pick it into, or what to do first with a node that lands empty."`;
+
+exports[`every refusal's advice is a proposal the check takes > nothing-generates: is met, and each way it says to put it right is accepted 1`] = `"Nothing here generates, so a card placed from this leaves the reader nothing to press. Propose what gets made, or say in your reply what they should do."`;
+
+exports[`every refusal's advice is a proposal the check takes > nothing-generates-words: is met, and each way it says to put it right is accepted 1`] = `"Nothing here generates, so this is words the reader can read and take from your message. Write them in your reply instead."`;
+
+exports[`every refusal's advice is a proposal the check takes > param-box: is met, and each way it says to put it right is accepted 1`] = `""lyrics" is written in a box of its own on the panel, and nothing set here reaches it. Leave it out. A written text node goes into "Gen" by an edge with into: "lyrics", which landing @s into that box, and no ref."`;
+
+exports[`every refusal's advice is a proposal the check takes > param-from-list: is met, and each way it says to put it right is accepted 1`] = `""voice_id" is picked from a list only voices holds, so it cannot be written here. Leave it out and add a note saying which one to pick."`;
+
+exports[`every refusal's advice is a proposal the check takes > param-gated-off: is met, and each way it says to put it right is accepted 1`] = `""camera" only counts while "enable_camera" is on, and this proposal leaves it off. Set that switch or leave "camera" out."`;
+
+exports[`every refusal's advice is a proposal the check takes > param-no-control: is met, and each way it says to put it right is accepted 1`] = `"The panel draws no control for "output_format", so the reader can neither see it nor change it. Leave it out."`;
+
+exports[`every refusal's advice is a proposal the check takes > param-not-number: is met, and each way it says to put it right is accepted 1`] = `""speed" takes a number, not "fast"."`;
+
+exports[`every refusal's advice is a proposal the check takes > param-off-step: is met, and each way it says to put it right is accepted 1`] = `""horizontal_angle" moves in steps of 45 from 0, so it takes 0, 45, 90, 135, 180, 225, 270, 315, not 50."`;
+
+exports[`every refusal's advice is a proposal the check takes > param-option: is met, and each way it says to put it right is accepted 1`] = `"The control for "aspect_ratio" offers "1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "1:4", "4:1", "1:8", "8:1", not "7:7"."`;
+
+exports[`every refusal's advice is a proposal the check takes > param-out-of-range: is met, and each way it says to put it right is accepted 1`] = `""speed" runs from 0.5 to 1.5, and this one is 9."`;
+
+exports[`every refusal's advice is a proposal the check takes > param-source: is met, and each way it says to put it right is accepted 1`] = `""images" is the reference pool, which nodes reach and nothing set here does. Leave it out. An image node holding material goes into "Gen" by an edge with into: "pool" and a ref @'ing it. An empty image node goes into "Gen" by an edge with into: "pool" and a ref @'ing it and a note saying what to do first."`;
+
+exports[`every refusal's advice is a proposal the check takes > param-storyboard: is met, and each way it says to put it right is accepted 1`] = `""multi_prompt" is set by the node's shots. Leave it out of params and give shots."`;
+
+exports[`every refusal's advice is a proposal the check takes > param-undeclared: is met, and each way it says to put it right is accepted 1`] = `""nano-banana-2" declares no no_such_param. It takes: aspect_ratio, enable_image_search, enable_web_search, resolution, enable_camera, camera, lens, focal_length, aperture."`;
+
+exports[`every refusal's advice is a proposal the check takes > prompt-missing: is met, and each way it says to put it right is accepted 1`] = `""nano-banana-2" generates from what the prompt says, and this proposal writes nothing in it."`;
+
+exports[`every refusal's advice is a proposal the check takes > prompt-too-long: is met, and each way it says to put it right is accepted 1`] = `""realtime-tts-2" takes 2000 characters and this prompt is 2100. Shorten it, or propose a model that takes it."`;
+
+exports[`every refusal's advice is a proposal the check takes > ref-arrives-otherwise: is met, and each way it says to put it right is accepted 1`] = `""Pic" fills "style_images" of "Gen" through fills, which landing does, so it takes no ref; leave the ref out."`;
+
+exports[`every refusal's advice is a proposal the check takes > ref-missing: is met, and each way it says to put it right is accepted 1`] = `""Words" is wired into the pool of "Gen" but no ref @s it. Put {"ref": 0} in the shot where the words speak of it; a node not @'d is not used."`;
+
+exports[`every refusal's advice is a proposal the check takes > ref-not-pooled: is met, and each way it says to put it right is accepted 1`] = `""Pic" is @'d by a ref in "Gen" but is not wired into its pool. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref. To keep the ref, send it into the pool that way; otherwise leave the ref out."`;
+
+exports[`every refusal's advice is a proposal the check takes > ref-outside: is met, and each way it says to put it right is accepted 1`] = `"A ref in "Gen" points outside the group: {"ref": 7}."`;
+
+exports[`every refusal's advice is a proposal the check takes > ref-self: is met, and each way it says to put it right is accepted 1`] = `""Gen" @s itself with {"ref": 0}, and a node cannot @ itself. Check the index the ref means."`;
+
+exports[`every refusal's advice is a proposal the check takes > script-too-long-for-shot: is met, and each way it says to put it right is accepted 1`] = `""Words" is longer than the 512 characters "kling-v3.0-4k-text-to-video" takes for one shot, so @'ing it into a shot is refused at Generate. Shorten it, or propose a model that takes it."`;
+
+exports[`every refusal's advice is a proposal the check takes > shot-empty: is met, and each way it says to put it right is accepted 1`] = `"Shot 1 writes nothing. Every shot needs its own words."`;
+
+exports[`every refusal's advice is a proposal the check takes > shot-too-long: is met, and each way it says to put it right is accepted 1`] = `"Shot 1 is longer than the 512 characters "kling-v3.0-4k-text-to-video" takes for one shot. Shorten it."`;
+
+exports[`every refusal's advice is a proposal the check takes > shots-duration: is met, and each way it says to put it right is accepted 1`] = `"The shots add up to 5 seconds and duration is 8. Make them match."`;
+
+exports[`every refusal's advice is a proposal the check takes > shots-outside-multishot: is met, and each way it says to put it right is accepted 1`] = `"Shots belong to the multi_shot mode. Propose mode "multi_shot" with a model that takes them, or leave shots out."`;
+
+exports[`every refusal's advice is a proposal the check takes > shots-with-prompt: is met, and each way it says to put it right is accepted 1`] = `"With shots the main prompt is not sent. Put its words, refs and notes into the shots and leave prompt out."`;
+
+exports[`every refusal's advice is a proposal the check takes > source-configured: is met, and each way it says to put it right is accepted 1`] = `""Pic" is a source node: it holds material or stands empty for the reader, so it takes no mode, model, parameters, fills, shots or prompt."`;
+
+exports[`every refusal's advice is a proposal the check takes > sources-no-taker: is met, and each way it says to put it right is accepted 1`] = `"This group places 1 image source node(s), and nothing in it takes image material."`;
+
+exports[`every refusal's advice is a proposal the check takes > sources-over-room: is met, and each way it says to put it right is accepted 1`] = `"This group places 2 image source node(s), and the panels in it hold 1 at a time."`;
+
+exports[`every refusal's advice is a proposal the check takes > template-no-prompt: is met, and each way it says to put it right is accepted 1`] = `""Gen" names template "storyboard-grid-25" and sends no prompt. Send the template's prompt as its own, rewritten in the reader's language with their story or detail in it: [{"text":"Use "}, {"ref": <index of the node wired in for character or scene reference>}, {"text":" as the reference. Create ONE image: a storyboard grid of exactly 5 rows and 5 columns, 25 equal panels in total, separated by thin white gutters, read left to right and top to bottom as one continuous sequence in time. Story: "}, {"slot":{"kind":"tweak","label":"the story","note":"the story"}}, {"text":". Every panel keeps the same people, outfits, location and lighting as the reference. Vary shot size and camera angle from panel to panel like a film storyboard. No text, no numbers."}]."`;
+
+exports[`every refusal's advice is a proposal the check takes > template-role: is met, and each way it says to put it right is accepted 1`] = `"Template "storyboard-grid-25" goes on a generate node; "Pic" is a source node."`;
+
+exports[`every refusal's advice is a proposal the check takes > template-type: is met, and each way it says to put it right is accepted 1`] = `"Template "storyboard-grid-25" is for image nodes, not video."`;
+
+exports[`every refusal's advice is a proposal the check takes > template-unknown: is met, and each way it says to put it right is accepted 1`] = `"No template "no-such-template". Templates: storyboard-grid-25, costume-sheet."`;
+
+exports[`every refusal's advice is a proposal the check takes > text-generates: is met, and each way it says to put it right is accepted 1`] = `""Copy" is a text node, and nothing is generated into one. Write the words yourself and send it as a written node."`;
+
+exports[`every refusal's advice is a proposal the check takes > text-source: is met, and each way it says to put it right is accepted 1`] = `""Copy" is an empty text node, which the reader makes in one click. Write the words yourself and send it as a written node, or leave it out."`;
+
+exports[`every refusal's advice is a proposal the check takes > too-many-shots: is met, and each way it says to put it right is accepted 1`] = `""kling-v3.0-4k-text-to-video" takes at most 6 shots."`;
+
+exports[`every refusal's advice is a proposal the check takes > way-over-room: is met, and each way it says to put it right is accepted 1`] = `""qwen-image-edit-multiple-angles" takes 3 image node(s) by "pool", and 4 are going that way ("Pic 0", "Pic 1", "Pic 2", "Pic 3"). Send fewer."`;
+
+exports[`every refusal's advice is a proposal the check takes > written-configured: is met, and each way it says to put it right is accepted 1`] = `""Words" already holds its words, so it takes no mode, model, fills or shots -- nothing is generated there."`;
+
+exports[`every refusal's advice is a proposal the check takes > written-empty: is met, and each way it says to put it right is accepted 1`] = `""Words" says it holds words and carries no words."`;
+
+exports[`every refusal's advice is a proposal the check takes > written-not-text: is met, and each way it says to put it right is accepted 1`] = `""Words" carries words, and a text node is the only one that holds those."`;
+
+exports[`every refusal's advice is a proposal the check takes > written-takes-no-mark: is met, and each way it says to put it right is accepted 1`] = `""Words" holds words the reader keeps as they are, so it takes no ref or note. Take it out and say what you meant in your own message."`;
