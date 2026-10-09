@@ -48,7 +48,11 @@ interface DocumentMediaPickerProps {
  * @param props.children - What may pick.
  * @returns The provider and the input.
  */
-export function DocumentMediaPicker({ uploader, view, children }: DocumentMediaPickerProps): React.JSX.Element {
+export function DocumentMediaPicker({
+  uploader,
+  view,
+  children,
+}: DocumentMediaPickerProps): React.JSX.Element {
   const input = React.useRef<HTMLInputElement>(null);
   const pending = React.useRef<(() => MediaGap | null) | null>(null);
 
