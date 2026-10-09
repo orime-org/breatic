@@ -2221,7 +2221,8 @@ function CanvasSpaceInner({
     const h = internal.measured?.height ?? internal.height ?? 0;
     setCenter(abs.x + w / 2, abs.y + h / 2, {
       zoom: rfZoom,
-      duration: 300,
+      duration: FRAME_PAN_MS,
+      interpolate: 'linear',
     });
   }, [sessionStore, getInternalNode, setCenter, rfZoom]);
 
@@ -2250,7 +2251,9 @@ function CanvasSpaceInner({
       const built = framedBox(made, view);
       const at = built === null ? null : frameBuiltNode(built, source, view);
       if (at === null) return false;
-      void setCenter(at.x, at.y, { zoom, duration: FRAME_PAN_MS });
+      // The zoom stays the reader's, so a straight slide: the default 'smooth'
+      // path zooms out and back in on the way.
+      void setCenter(at.x, at.y, { zoom, duration: FRAME_PAN_MS, interpolate: 'linear' });
       return true;
     },
     [rfStoreApi, setCenter],

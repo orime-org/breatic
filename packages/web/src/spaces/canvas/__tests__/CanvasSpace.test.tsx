@@ -4452,7 +4452,7 @@ describe('onLocateSource absolute-position contract (item 7 grouped source)', ()
   );
   const locate = src.slice(
     src.indexOf('const onLocateSource'),
-    src.indexOf('const onLocateSource') + 900,
+    src.indexOf('}, [sessionStore, getInternalNode, setCenter, rfZoom]);'),
   );
 
   it('centers on the internal node positionAbsolute, not a parent-relative position', () => {
@@ -4461,6 +4461,12 @@ describe('onLocateSource absolute-position contract (item 7 grouped source)', ()
     // The regression is centering on `node.position` (relative for a grouped
     // member). setCenter must not be fed a bare `.position.x`.
     expect(locate).not.toMatch(/setCenter\(\s*node\.position\.x/);
+  });
+
+  // Locate keeps the reader's zoom, so the slide is a straight one: the
+  // default 'smooth' path zooms out and back in on the way.
+  it('slides in a straight line at the reader zoom', () => {
+    expect(locate).toContain('interpolate: \'linear\'');
   });
 });
 
@@ -4497,6 +4503,12 @@ describe('what an Understand press leaves on screen', () => {
   // from ReactFlow's own store, which folds in every parent offset, and the
   // viewport from the live transform. A grouped source read off
   // `node.position` would be measured a whole group-origin away.
+  // The pan keeps the reader's zoom, so it slides in a straight line; the
+  // default 'smooth' path zooms out and back in on the way.
+  it('slides in a straight line at the reader zoom', () => {
+    expect(framing).toContain('interpolate: \'linear\'');
+  });
+
   it('frames against the live viewport and the source node absolute box', () => {
     expect(framing).toContain('frameBuiltNode');
     expect(framing).toContain('positionAbsolute');
