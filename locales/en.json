@@ -857,6 +857,17 @@
           },
           "prompt": "Describe the expression and movement"
         },
+        "inpaint": {
+          "label": "Inpaint",
+          "prompt": "Describe what the painted area should become"
+        },
+        "erase": {
+          "label": "Erase"
+        },
+        "sketch": {
+          "label": "Sketch edit",
+          "prompt": "Describe what your drawing should become"
+        },
         "crop": {
           "label": "Crop"
         },
@@ -975,7 +986,8 @@
         "sourceGone": "The source node was deleted.",
         "sourceChanged": "The source changed.",
         "sourceChangedByPeer": "A collaborator changed the source.",
-        "couldNotStart": "Couldn't start the tool. Try again."
+        "couldNotStart": "Couldn't start the tool. Try again.",
+        "drawingEmpty": "Draw on the picture first"
       },
       "adjust": {
         "exposure": "Exposure",
@@ -993,6 +1005,18 @@
         "vignette": "Vignette",
         "grain": "Grain",
         "fade": "Fade"
+      },
+      "draw": {
+        "brush": "Brush",
+        "rect": "Rectangle",
+        "ellipse": "Ellipse",
+        "eraser": "Eraser",
+        "size": "Size",
+        "color": "Color",
+        "maskColor": "Mask color",
+        "undo": "Undo",
+        "redo": "Redo",
+        "clear": "Clear"
       }
     },
     "template": {
