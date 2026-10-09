@@ -119,4 +119,73 @@ describe('NodeDrawLayer', () => {
     act(() => store().startMiniToolSlotPick('n1', 'reference'));
     expect(screen.queryByTestId('mini-tool-draw-layer')).toBeNull();
   });
+
+  // inner#1302 §6.2: a pointer move repaints only the stroke under way; the
+  // committed layer is repainted while an eraser cuts into it.
+  describe('repainting', () => {
+    const clears = new Map<HTMLCanvasElement, number>();
+
+    /**
+     * A 2D context that counts how often it is cleared.
+     * @param canvas - The canvas it belongs to.
+     * @returns The context.
+     */
+    const countingContext = (canvas: HTMLCanvasElement): CanvasRenderingContext2D =>
+      new Proxy({} as Record<string, unknown>, {
+        get: (target, key: string) =>
+          key in target
+            ? target[key]
+            : (): void => {
+              if (key === 'clearRect') clears.set(canvas, (clears.get(canvas) ?? 0) + 1);
+            },
+        set: (target, key: string, value: unknown) => {
+          target[key] = value;
+          return true;
+        },
+      }) as unknown as CanvasRenderingContext2D;
+
+    beforeEach(() => {
+      clears.clear();
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement) {
+        return countingContext(this);
+      });
+    });
+
+    /**
+     * Press, move five times, and report what was repainted during the moves.
+     * @returns How often the committed layer was cleared, and how often the theme was read.
+     */
+    function strokeAndCount(): { committed: number; styleReads: number } {
+      const layer = screen.getByTestId('mini-tool-draw-layer');
+      const [committed] = Array.from(layer.querySelectorAll('canvas'));
+      fireEvent.pointerDown(layer, { clientX: 150, clientY: 80, button: 0, pointerId: 1 });
+      clears.clear();
+      const styleSpy = vi.spyOn(window, 'getComputedStyle');
+      for (let x = 160; x < 210; x += 10) fireEvent.pointerMove(layer, { clientX: x, clientY: 100, pointerId: 1 });
+      const counted = { committed: clears.get(committed!) ?? 0, styleReads: styleSpy.mock.calls.length };
+      styleSpy.mockRestore();
+      fireEvent.pointerUp(layer, { pointerId: 1 });
+      return counted;
+    }
+
+    it('leaves the committed layer alone while a brush stroke moves, and reads no theme', () => {
+      mount('image.inpaint');
+      expect(strokeAndCount()).toEqual({ committed: 0, styleReads: 0 });
+    });
+
+    it('repaints the committed layer while an eraser stroke moves', () => {
+      mount('image.inpaint');
+      act(() => store().setDrawingTool('eraser'));
+      expect(strokeAndCount().committed).toBe(5);
+    });
+
+    it('leaves the committed layer alone when only the brush size changes', () => {
+      mount('image.inpaint');
+      const [committed] = Array.from(screen.getByTestId('mini-tool-draw-layer').querySelectorAll('canvas'));
+      clears.clear();
+      act(() => store().setDrawingSize(12));
+      expect(clears.get(committed!) ?? 0).toBe(0);
+    });
+  });
 });
+

@@ -8,7 +8,7 @@ import { miniToolById } from '@breatic/shared/mini-tools';
 
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { useMediaGeometry, type MediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
-import { paintDrawing, type DrawingKind, type PaintSize } from '@web/spaces/canvas/mini-tool/paint-drawing';
+import { paintDrawing, type DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import { visibleOps, type DrawingDraft, type DrawOp } from '@web/stores/drawing-draft';
 
 interface NodeDrawLayerProps {
@@ -54,28 +54,17 @@ interface DrawSurfaceProps {
 }
 
 /**
- * The colour a mask is shown in, read off the theme each time it is painted.
- * @param el - An element under the theme.
- * @param drawing - The drawing.
- * @returns The CSS colour.
- */
-function maskColorOf(el: Element, drawing: DrawingDraft): string {
-  return getComputedStyle(el).getPropertyValue(`--color-palette-${drawing.maskColor}`).trim();
-}
-
-/**
  * Clear a canvas and paint ops on it.
  * @param canvas - The canvas.
  * @param ops - The ops.
  * @param kind - Mask or sketch.
- * @param drawing - The drawing, for the mask colour.
+ * @param color - The colour a mask is painted in.
  */
-function repaint(canvas: HTMLCanvasElement | null, ops: readonly DrawOp[], kind: DrawingKind, drawing: DrawingDraft): void {
+function repaint(canvas: HTMLCanvasElement | null, ops: readonly DrawOp[], kind: DrawingKind, color: string): void {
   const ctx = canvas?.getContext('2d') ?? null;
   if (canvas === null || ctx === null) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const size: PaintSize = { width: canvas.width, height: canvas.height };
-  paintDrawing(ctx, ops, size, kind, kind === 'mask' ? maskColorOf(canvas, drawing) : '');
+  paintDrawing(ctx, ops, { width: canvas.width, height: canvas.height }, kind, color);
 }
 
 /**
@@ -109,18 +98,29 @@ function DrawSurface({ kind, drawing, exporting, geometry }: DrawSurfaceProps): 
   const bitmap = { width: Math.max(1, Math.round(box.width * scale)), height: Math.max(1, Math.round(box.height * scale)) };
   const ops = React.useMemo(() => visibleOps(drawing.steps), [drawing.steps]);
 
+  // The mask colour is read off the theme with each repaint of the committed
+  // layer and reused by the strokes under way.
+  const maskColor = React.useRef('');
+  // Whether the last repaint showed an eraser cutting into the committed layer.
+  const erasedLast = React.useRef(false);
   React.useLayoutEffect(() => {
-    repaint(committed.current, ops, kind, drawing);
-  }, [ops, kind, drawing, bitmap.width, bitmap.height]);
+    const canvas = committed.current;
+    if (kind === 'mask' && canvas !== null) {
+      maskColor.current = getComputedStyle(canvas).getPropertyValue(`--color-palette-${drawing.maskColor}`).trim();
+    }
+    repaint(canvas, ops, kind, maskColor.current);
+  }, [ops, kind, drawing.maskColor, bitmap.width, bitmap.height]);
 
   /**
-   * Paint the stroke under way; an eraser shows on the committed layer.
-   * @param op - The stroke.
+   * Paint the stroke under way on the upper layer. An eraser cuts into the
+   * committed layer, which is painted again while it moves and once after.
+   * @param op - The stroke, or null when it ends.
    */
   const paintPending = (op: DrawOp | null): void => {
     const erasing = op?.kind === 'stroke' && op.erase;
-    repaint(committed.current, erasing ? [...ops, op] : ops, kind, drawing);
-    repaint(pending.current, op === null || erasing ? [] : [op], kind, drawing);
+    if (erasing || erasedLast.current) repaint(committed.current, erasing ? [...ops, op] : ops, kind, maskColor.current);
+    erasedLast.current = erasing;
+    repaint(pending.current, op === null || erasing ? [] : [op], kind, maskColor.current);
   };
 
   /**
