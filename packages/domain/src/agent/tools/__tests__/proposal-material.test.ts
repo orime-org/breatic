@@ -13,7 +13,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadLocales } from "@breatic/core";
 import type { CanvasProposal, GenerationNodeType, ProposalNode } from "@breatic/shared";
-import type { MaterialFacts } from "../propose-canvas-action.js";
+import type { MaterialFacts, MaterialTable } from "../propose-canvas-action.js";
 
 import { modelsForMode } from "@domain/model-catalog/mode-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
@@ -160,10 +160,22 @@ describe("material wired into the reference pool (A3)", () => {
 });
 
 describe("the address is ours (A5)", () => {
-  it("refuses an address with no registration, pointing at save_image", () => {
+  it("refuses an address outside our storage, pointing at save_image", () => {
     const reason = refusal(group([held("image", "Web photo", "https://elsewhere.example/a.jpg"), talkingHead({ image: [0] })]));
 
+    expect(reason).toContain("not in our storage");
     expect(reason).toContain("save_image");
+  });
+
+  it("refuses an address in our storage that does not exist, asking for it to be copied again", () => {
+    const typo = "https://resource.example/image/2026-10-08/1_portrait-typo.png";
+    const materials: MaterialTable = new Map<string, MaterialFacts | "missing">([...FACTS, [typo, "missing"]]);
+    const verdict = checkProposal(group([held("image", "Portrait", typo), talkingHead({ image: [0] })]), materials);
+    if (verdict.ok) throw new Error("expected a refusal");
+
+    expect(verdict.reason).toContain("does not exist");
+    expect(verdict.reason).toContain("exactly");
+    expect(verdict.reason).not.toContain("first");
   });
 
   it("refuses material of another kind than its node", () => {

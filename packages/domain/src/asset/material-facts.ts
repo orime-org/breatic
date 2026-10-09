@@ -24,15 +24,17 @@ export interface MaterialFacts {
 
 /**
  * The registration behind each material address. An address with no entry is
- * not in this studio's storage.
+ * not in our storage at all; one marked `"missing"` is in our storage but has
+ * no live registration in this studio, which is what a mistyped copy of a
+ * real address looks like.
  */
-export type MaterialTable = ReadonlyMap<string, MaterialFacts>;
+export type MaterialTable = ReadonlyMap<string, MaterialFacts | "missing">;
 
 /**
  * Read the registration behind each address, for one studio.
  *
- * An address that is not ours is left out without asking the ledger, and so
- * is one whose key has no live row in this studio. A video carries its cover,
+ * An address that is not ours is left out without asking the ledger; one whose
+ * key has no live row in this studio is marked missing. A video carries its cover,
  * the way an upload settles one onto its node.
  * @param studioId - The studio the material must belong to.
  * @param urls - The addresses a proposal names.
@@ -41,12 +43,15 @@ export type MaterialTable = ReadonlyMap<string, MaterialFacts>;
  */
 export async function materialFacts(studioId: string, urls: readonly string[]): Promise<MaterialTable> {
   const storage = await getStorageAdapter();
-  const table = new Map<string, MaterialFacts>();
+  const table = new Map<string, MaterialFacts | "missing">();
   for (const url of new Set(urls)) {
     const key = storage.keyFromUrl(url);
     if (key === null) continue;
     const row = await findLiveByKeyInStudio(studioId, key);
-    if (row === null) continue;
+    if (row === null) {
+      table.set(url, "missing");
+      continue;
+    }
     const cover = row.kind === "video" ? await findCoverOf(row.id) : null;
     table.set(url, {
       kind: row.kind,

@@ -836,7 +836,13 @@ function checkMaterial(node: ProposalNode, materials: MaterialTable): ProposalVe
   if (facts === undefined) {
     return {
       ok: false,
-      reason: `"${node.name}" holds an address that is not in the user's storage. Save a picture found on the web with ${SAVE_IMAGE} first and use the address it answers with; a file uploaded in the chat is already stored, so use its address as given.`,
+      reason: `"${node.name}" holds an address that is not in our storage. Save a picture found on the web with ${SAVE_IMAGE} first and use the address it answers with.`,
+    };
+  }
+  if (facts === "missing") {
+    return {
+      ok: false,
+      reason: `"${node.name}" holds an address in our storage that does not exist, most likely mistyped. Copy it again exactly as the attachment or the ${SAVE_IMAGE} answer gives it.`,
     };
   }
   if (facts.kind !== node.type) {
@@ -1254,7 +1260,7 @@ export function answerFor(sent: z.infer<typeof inputSchema>, materials: Material
     ...resolved,
     nodes: resolved.nodes.map((node) => {
       const facts = node.material === undefined ? undefined : materials.get(node.material);
-      return facts === undefined ? node : { ...node, materialMedia: facts.media };
+      return facts === undefined || facts === "missing" ? node : { ...node, materialMedia: facts.media };
     }),
     placed: true,
   };

@@ -74,12 +74,12 @@ describe("materialFacts", () => {
     expect(findLiveByKeyInStudio).not.toHaveBeenCalled();
   });
 
-  it("leaves out an address with no live row in this studio", async () => {
+  it("marks an address of ours with no live row in this studio as missing", async () => {
     findLiveByKeyInStudio.mockResolvedValue(null);
 
     const table = await materialFacts("s1", ["https://ours.example/image/b.png"]);
 
-    expect(table.size).toBe(0);
+    expect(table.get("https://ours.example/image/b.png")).toBe("missing");
   });
 
   it("carries a video's cover", async () => {
@@ -89,7 +89,7 @@ describe("materialFacts", () => {
     const table = await materialFacts("s1", ["https://ours.example/video/c.mp4"]);
 
     expect(findCoverOf).toHaveBeenCalledWith("a1");
-    expect(table.get("https://ours.example/video/c.mp4")?.media).toMatchObject({ coverUrl: "https://ours.example/cover.png", duration: 5 });
+    expect(table.get("https://ours.example/video/c.mp4")).toMatchObject({ media: { coverUrl: "https://ours.example/cover.png", duration: 5 } });
   });
 
   it("reads each address once", async () => {
