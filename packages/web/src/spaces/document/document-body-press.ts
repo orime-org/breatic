@@ -208,9 +208,12 @@ export function attachBodyScroller(
         event.preventDefault();
         return;
       case 'wordless':
-        if (!holds && element !== null && !event.shiftKey) {
+        if (!holds && element !== null) {
           selectWordlessBlock(view, element);
           view.focus();
+          // Shift is a plain press here. ProseMirror leaves a Shift press to the
+          // browser, which would stretch a range from this block to the pointer.
+          if (event.shiftKey) event.preventDefault();
         }
         return;
       case 'text':

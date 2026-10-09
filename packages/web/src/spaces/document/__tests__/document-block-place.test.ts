@@ -13,7 +13,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { selectWordlessBlock } from '@web/spaces/document/document-block-place';
+import { selectWordlessBlock, wordlessBlockAt } from '@web/spaces/document/document-block-place';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -41,25 +41,25 @@ function open(): ReturnType<typeof buildDocumentEditor> {
   return editor;
 }
 
-describe('selecting a wordless block from its element', () => {
-  it('selects a divider whole', () => {
+describe('finding and selecting a wordless block from its element', () => {
+  it('finds a divider from inside it, and selects it whole', () => {
     const view = open().prosemirrorView;
     const divider = view.dom.querySelector('[data-content-type="divider"]')!;
+    const inside = divider.firstElementChild ?? divider;
 
-    expect(selectWordlessBlock(view, divider)).toBe(true);
+    const found = wordlessBlockAt(view, inside);
+    expect(found).toBe(divider);
+    selectWordlessBlock(view, found!);
 
     expect(view.state.selection).toBeInstanceOf(NodeSelection);
     expect((view.state.selection as NodeSelection).node.type.name).toBe('divider');
   });
 
-  it('leaves a block with words alone', () => {
+  it('finds nothing on a block with words', () => {
     const view = open().prosemirrorView;
-    const before = view.state.selection;
     const line = view.dom.querySelector('[data-content-type="paragraph"]')!;
 
-    expect(selectWordlessBlock(view, line)).toBe(false);
-
-    expect(view.state.selection.eq(before)).toBe(true);
+    expect(wordlessBlockAt(view, line)).toBeNull();
   });
 
   it('dispatches nothing when the block is already selected', () => {
@@ -68,7 +68,7 @@ describe('selecting a wordless block from its element', () => {
     selectWordlessBlock(view, divider);
     const dispatch = vi.spyOn(view, 'dispatch');
 
-    expect(selectWordlessBlock(view, divider)).toBe(true);
+    selectWordlessBlock(view, divider);
 
     expect(dispatch).not.toHaveBeenCalled();
   });

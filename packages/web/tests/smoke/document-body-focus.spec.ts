@@ -263,6 +263,33 @@ test('Cmd/Ctrl+click on a divider selects it whole, the body holding or not (A22
   await expect.poll(selected).toEqual({ kind: '_NodeSelection:divider', painted: 1 });
 });
 
+test('Shift+click on a divider while the body is let go selects the divider and leaves the old words out (A20)', async () => {
+  await openWithLine(page);
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('---');
+  const divider = page.locator(`${EDITOR} [data-content-type="divider"]`);
+  await expect(divider).toHaveCount(1);
+  await page.locator(`${EDITOR} p`).first().click();
+  await selectHello(page);
+  const { x, y } = await blankPoint(page);
+  await page.mouse.click(x, y);
+  await expect(page.locator(EDITOR)).not.toHaveAttribute('data-body-holds', /.*/);
+
+  await divider.click({ modifiers: ['Shift'] });
+
+  await expect
+    .poll(() =>
+      page.evaluate((selector) => {
+        const el = document.querySelector(selector) as unknown as {
+          editor: { state: { selection: { constructor: { name: string }; node?: { type: { name: string } } } } };
+        };
+        const { selection } = el.editor.state;
+        return `${selection.constructor.name}:${selection.node?.type.name ?? ''}|${window.getSelection()?.toString() ?? ''}`;
+      }, EDITOR),
+    )
+    .toBe('_NodeSelection:divider|');
+});
+
 /**
  * Inserts a 2x2 table under the first row through its handle menu.
  * @param p - The page.

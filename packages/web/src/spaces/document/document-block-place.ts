@@ -55,17 +55,14 @@ export function wordlessBlockAt(view: EditorView, target: Element): Element | nu
 }
 
 /**
- * Selects whole the wordless block a content element draws, unless it already is.
+ * Selects whole the block a content element draws, unless it already is. The
+ * caller has found it wordless: through `wordlessBlockAt`, or as a media row.
  * @param view - The view.
  * @param element - The block's content element.
- * @returns True when that block is wordless and is now selected.
  */
-export function selectWordlessBlock(view: EditorView, element: Element): boolean {
-  const at = wordlessAt(view, element);
-  if (at === null) return false;
-  const selection = NodeSelection.create(view.state.doc, at);
+export function selectWordlessBlock(view: EditorView, element: Element): void {
+  const selection = NodeSelection.create(view.state.doc, view.posAtDOM(element, 0));
   if (!view.state.selection.eq(selection)) view.dispatch(view.state.tr.setSelection(selection));
-  return true;
 }
 
 /**

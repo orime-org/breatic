@@ -93,7 +93,10 @@ export const documentNoNodeClickExtension = createExtension(() => ({
           if (inMediaRow(event.target)) return false;
           const target = event.target instanceof Element ? event.target : null;
           const block = target === null ? null : wordlessBlockAt(view, target);
-          if (block !== null && selectWordlessBlock(view, block)) return true;
+          if (block !== null) {
+            selectWordlessBlock(view, block);
+            return true;
+          }
           view.dispatch(
             view.state.tr.setSelection(
               TextSelection.create(view.state.doc, pos),
