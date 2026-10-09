@@ -283,33 +283,57 @@ describe("a step submitted on this pickup", () => {
   });
 });
 
-describe("the duplicate-cost warning", () => {
+describe("which step a retry hands its duplicate-cost check to", () => {
   beforeEach(() => {
     vi.spyOn(FAMILIES.get("nano-banana-2")!, "prepare").mockResolvedValue({ prompt: "a cat", fields: {} });
-    runPredictionMock.mockResolvedValue({ outputs: ["https://o/cat.png"], taskId: "pred-1" });
   });
 
-  it("is raised when a retry submits a step that holds no upstream id", async () => {
+  /**
+   * The `retryStarting` each prediction was given, in call order.
+   * @returns The flags.
+   */
+  function flags(): unknown[] {
+    return runPredictionMock.mock.calls.map((call) => (call[3] as { retryStarting: unknown }).retryStarting);
+  }
+
+  it("goes to the step a retry pickup starts at when it holds no upstream id", async () => {
+    runPredictionMock.mockResolvedValue({ outputs: ["https://o/cat.png"], taskId: "pred-1" });
     const { deps } = stores();
 
     await runCatalogTask(deps, ctx(60_000, true), "image", "a cat", "nano-banana-2", {}, 1);
 
-    expect(warnMock).toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
+    expect(flags()).toStrictEqual([true]);
   });
 
-  it("is not raised when a retry only asks about a step's stored upstream id", async () => {
+  it("does not go to a step that only asks about its stored id", async () => {
+    runPredictionMock.mockResolvedValue({ outputs: ["https://o/cat.png"], taskId: "pred-kept" });
     const { deps } = stores([submitted("google/nano-banana-2/text-to-image")]);
 
     await runCatalogTask(deps, ctx(60_000, true), "image", "a cat", "nano-banana-2", {}, 1);
 
-    expect(warnMock).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
+    expect(flags()).toStrictEqual([false]);
   });
 
-  it("is not raised when the pickup does not start a retry", async () => {
+  it("does not go to a later step the failed attempt never reached", async () => {
+    // The first pickup submits the voice clone and leaves it waiting.
+    runPredictionMock.mockImplementationOnce(
+      async (_e: unknown, _m: unknown, _b: unknown, resume: { persistTaskId: (id: string) => Promise<void> }) => {
+        await resume.persistTaskId("pred-voice");
+        throw new StillRunning(NOW + 3_000);
+      },
+    );
     const { deps } = stores();
+    await runCatalogTask(deps, ctx(60_000), "tts", "read this", "minimax-voice-clone", { audio: "https://a/me.mp3" }, 1).catch(
+      () => undefined,
+    );
+    runPredictionMock.mockReset();
+    // The retry pickup: the clone answers, then the speech is submitted for the first time.
+    runPredictionMock
+      .mockResolvedValueOnce({ outputs: [], taskId: "pred-voice" })
+      .mockResolvedValueOnce({ outputs: ["https://o/speech.mp3"], taskId: "pred-speak" });
 
-    await runCatalogTask(deps, ctx(60_000, false), "image", "a cat", "nano-banana-2", {}, 1);
+    await runCatalogTask(deps, ctx(60_000, true), "tts", "read this", "minimax-voice-clone", { audio: "https://a/me.mp3" }, 1);
 
-    expect(warnMock).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
+    expect(flags()).toStrictEqual([false, false]);
   });
 });

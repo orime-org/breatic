@@ -38,9 +38,9 @@ describe("taskDeadline", () => {
     await expect(taskDeadline("task-1", CREATED)).resolves.toBe(1_800_000_000_000 + 7_200_000);
   });
 
-  it("is null for a task that does not exist", async () => {
+  it("fails for a task that does not exist: there is nothing to run against", async () => {
     h.deadlineFor.mockResolvedValue(null);
 
-    await expect(taskDeadline("task-1", undefined)).resolves.toBeNull();
+    await expect(taskDeadline("task-1", undefined)).rejects.toThrow("task task-1 has no row to run against");
   });
 });

@@ -44,6 +44,7 @@ const h = vi.hoisted(() => {
     updateData: vi.fn(),
     info: vi.fn(),
     slotFull: { value: false },
+    threeD: vi.fn(),
     understandMediaAt: vi.fn(),
   };
 });
@@ -58,6 +59,10 @@ vi.mock("@worker/handlers/container/run-container-job.js", () => ({
   runContainerJob: h.runContainerJob,
 }));
 vi.mock("@worker/providers/run-steps.js", () => ({ runCatalogTask: h.runCatalogTask }));
+vi.mock("@worker/providers/three-d/index.js", () => ({
+  validateThreeDParams: (model: string, params: Record<string, unknown>) => [model, params],
+  generateAsync: h.threeD,
+}));
 vi.mock("@worker/providers/generate.js", () => ({
   validateModelParams: (_modality: string, model: string, params: Record<string, unknown>) => [model, params],
 }));
@@ -176,6 +181,7 @@ beforeEach(() => {
   h.taskDeadline.mockResolvedValue(DEADLINE);
   h.runContainerJob.mockRejectedValue(new h.StillRunning(DEADLINE - 60_000));
   h.runCatalogTask.mockRejectedValue(new h.StillRunning(DEADLINE - 60_000));
+  h.threeD.mockRejectedValue(new h.StillRunning(DEADLINE - 60_000));
 });
 
 describe("a container job still running when a pickup ends", () => {
@@ -314,6 +320,16 @@ describe("work still going at the two-hour deadline", () => {
     );
   });
 
+  it("settles a reading picked up past its deadline as expired, without reading the media", async () => {
+    const result = await runTask(
+      jobOf({ taskType: "understand", model: undefined, params: { source_type: "image", source_url: "https://a/cat.png" } }),
+      "lock-token",
+    );
+
+    expect(result).toMatchObject({ failed: true, reason: "expired" });
+    expect(h.understandMediaAt).not.toHaveBeenCalled();
+  });
+
   it("settles a reading that never got a place as expired", async () => {
     h.slotFull.value = true;
 
@@ -415,6 +431,12 @@ describe("the retry log lines", () => {
     await runTask(retried(1), "lock-token").catch(() => undefined);
 
     expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ retryStarting: false });
+  });
+
+  it("tells a 3D submit that a retry starts, for the submit to say so", async () => {
+    await runTask(jobOf({ taskType: "three_d", model: "meshy-6" }, 1), "lock-token").catch(() => undefined);
+
+    expect(h.threeD.mock.calls[0]![3]).toMatchObject({ retryStarting: true });
   });
 
   it("logs a stored upstream id once per attempt, not on every pickup", async () => {
