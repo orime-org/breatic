@@ -26,7 +26,7 @@ import { Plugin, type EditorState } from '@tiptap/pm/state';
 
 import { landingFor } from '@web/spaces/document/document-drag-move';
 import { QUOTED } from '@web/spaces/document/document-list-block';
-import type { SlotAnchor } from '@web/spaces/document/document-upload-slots';
+import type { UploadGap } from '@web/spaces/document/document-upload-slots';
 
 /** BlockNote's paste hook, as this editor's options take it. */
 export type PasteHandler = NonNullable<
@@ -34,21 +34,12 @@ export type PasteHandler = NonNullable<
 >;
 
 /** Files that arrived, with the gap they go into. */
-export interface FilesArrival {
+export interface FilesArrival extends UploadGap {
   readonly files: readonly File[];
-  readonly anchor: SlotAnchor;
-  /** Whether what lands there sits in a quote. */
-  readonly quoted: boolean;
 }
 
 /** Where arriving files are handed over. */
 export type FilesSink = (arrival: FilesArrival) => void;
-
-/** A gap and the quoting what lands in it takes. */
-export interface FileGap {
-  readonly anchor: SlotAnchor;
-  readonly quoted: boolean;
-}
 
 /** The elements a browser's "copy image" puts in the HTML beside the file. */
 const MEDIA_ELEMENTS = new Set(['IMG', 'VIDEO', 'AUDIO']);
@@ -93,7 +84,7 @@ function quotedOf(container: PMNode | null | undefined): boolean {
  * @returns The gap; its quoting is the block's above, or the one below at the
  *   head of a level.
  */
-function gapAt(doc: PMNode, at: number): FileGap {
+function gapAt(doc: PMNode, at: number): UploadGap {
   const $at = doc.resolve(at);
   const before = $at.nodeBefore;
   const after = $at.nodeAfter;
@@ -113,7 +104,7 @@ function gapAt(doc: PMNode, at: number): FileGap {
  * @param at - The position the pointer is over.
  * @returns The gap.
  */
-export function anchorAtGap(doc: PMNode, at: number): FileGap {
+export function anchorAtGap(doc: PMNode, at: number): UploadGap {
   const probe = blockToNode({ type: 'paragraph' } as never, doc.type.schema);
   return gapAt(doc, landingFor(doc, at, probe));
 }
@@ -124,7 +115,7 @@ export function anchorAtGap(doc: PMNode, at: number): FileGap {
  * @param state - The editor state.
  * @returns The gap.
  */
-export function anchorAtCaret(state: EditorState): FileGap {
+export function anchorAtCaret(state: EditorState): UploadGap {
   const { $head } = state.selection;
   for (let depth = $head.depth; depth > 0; depth -= 1) {
     const container = $head.node(depth);

@@ -33,9 +33,9 @@ import {
   patchUploadSlot,
   removeUploadSlot,
   uploadSlots,
-  type SlotAnchor,
   type SlotFailure,
   type UndoCapture,
+  type UploadGap,
 } from '@web/spaces/document/document-upload-slots';
 
 /** What the uploader needs from the page. */
@@ -54,12 +54,6 @@ export interface DocumentUploaderDeps {
   readonly undo: UndoCapture;
   /** The pixel size of a picture or a video, read off its file (A23). */
   readonly measure: (file: File) => Promise<MediaSize | undefined>;
-}
-
-/** Where admitted files go, and whether that gap is inside a quote. */
-export interface UploadGap {
-  readonly anchor: SlotAnchor;
-  readonly quoted: boolean;
 }
 
 /** What the entries and the placeholders call. */

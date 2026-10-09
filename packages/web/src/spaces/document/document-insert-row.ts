@@ -21,7 +21,7 @@ import {
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
 import { QUOTED } from '@web/spaces/document/document-list-block';
-import type { SlotAnchor } from '@web/spaces/document/document-upload-slots';
+import type { UploadGap } from '@web/spaces/document/document-upload-slots';
 
 /** How many rows and columns a new table has. */
 export interface TableSize {
@@ -132,12 +132,6 @@ export function insertBelow(
   }
 }
 
-/** Where a media pick's files upload into, and the quoting they take. */
-export interface MediaGap {
-  readonly anchor: SlotAnchor;
-  readonly quoted: boolean;
-}
-
 /**
  * The gap the insert-below submenu's media entries upload into
  * (inner#1127 A1).
@@ -153,7 +147,7 @@ export interface MediaGap {
  * @throws {Error} `Block with ID … not found`, from BlockNote's
  *   `insertBlocks`, when the pressed block is no longer in the document.
  */
-export function mediaGapBelow(editor: HandleEditor, row: PressedBlock): MediaGap {
+export function mediaGapBelow(editor: HandleEditor, row: PressedBlock): UploadGap {
   const made = insertRowForMenu(editor, row);
   const before = editor.getPrevBlock(made) as { id: string } | undefined;
   return {
@@ -171,7 +165,7 @@ export function mediaGapBelow(editor: HandleEditor, row: PressedBlock): MediaGap
  * @throws {Error} `Block with ID … not found`, from BlockNote, when the row is
  *   no longer in the document.
  */
-export function mediaGapOnRow(editor: HandleEditor, row: PressedBlock): MediaGap {
+export function mediaGapOnRow(editor: HandleEditor, row: PressedBlock): UploadGap {
   const before = editor.getPrevBlock(row.id) as { id: string } | undefined;
   editor.setTextCursorPosition(row.id, 'start');
   return {

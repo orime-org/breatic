@@ -13,12 +13,12 @@ import * as React from 'react';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { uploadAcceptFor } from '@web/spaces/canvas/canvas-upload';
-import type { MediaGap } from '@web/spaces/document/document-insert-row';
+import type { UploadGap } from '@web/spaces/document/document-upload-slots';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 
 /** Opens the picker for a kind; `gap` makes the gap once files are chosen. */
-type MediaPick = (kind: MediaBlockType, gap: () => MediaGap | null) => void;
+type MediaPick = (kind: MediaBlockType, gap: () => UploadGap | null) => void;
 
 const MediaPickContext = React.createContext<MediaPick | null>(null);
 
@@ -54,7 +54,7 @@ export function DocumentMediaPicker({
   children,
 }: DocumentMediaPickerProps): React.JSX.Element {
   const input = React.useRef<HTMLInputElement>(null);
-  const pending = React.useRef<(() => MediaGap | null) | null>(null);
+  const pending = React.useRef<(() => UploadGap | null) | null>(null);
 
   const pick = React.useCallback<MediaPick>((kind, gap) => {
     const element = input.current;

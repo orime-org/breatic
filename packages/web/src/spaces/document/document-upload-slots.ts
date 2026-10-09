@@ -36,6 +36,12 @@ export interface SlotAnchor {
   readonly after: string | null;
 }
 
+/** Where a batch of files lands, and whether that gap is inside a quote. */
+export interface UploadGap {
+  readonly anchor: SlotAnchor;
+  readonly quoted: boolean;
+}
+
 /** Why a slot stopped, as the placeholder shows it. */
 export interface SlotFailure {
   /** The message key the placeholder shows beside the file name. */
