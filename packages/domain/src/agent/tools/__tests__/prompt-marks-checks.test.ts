@@ -467,7 +467,7 @@ describe("a kind the canvas will not wire into the node (table A, first row)", (
     });
     expect(answer).toMatchObject({
       ok: false,
-      reason: expect.stringContaining('"hunyuan-video-foley" takes a video node in its "video" slot, without an edge: leave this edge off'),
+      reason: expect.stringContaining('leave this edge off. "Clip" goes into "Sfx" unwired, with a note saying to pick it into "video"'),
     });
   });
 });
@@ -479,7 +479,7 @@ describe("the lyrics set as a parameter (table D)", () => {
       edges: [],
       rationale: "",
     });
-    expect(answer).toMatchObject({ ok: false, reason: expect.stringContaining('wired in with into: "lyrics"') });
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringContaining('A written text node goes into "Song" by an edge with into: "lyrics"') });
   });
 });
 

@@ -1526,7 +1526,7 @@ describe("a flow of any shape", () => {
     const verdict = checkProposal(propose(at, { params: { [key]: "https://example.com/a.png" } }));
 
     if (verdict.ok) throw new Error("expected a refusal");
-    expect(verdict.reason).toContain("fills the slot through fills");
+    expect(verdict.reason).toContain(`node holding material goes into "Result" through fills "${key}"`);
     expect(verdict.reason).not.toContain("reference pool");
   });
 

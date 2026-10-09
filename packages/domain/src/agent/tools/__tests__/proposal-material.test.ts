@@ -208,7 +208,7 @@ describe("fills (A6 and the four rules of round two)", () => {
 
   it("refuses an index pointing at an empty node", () => {
     const empty: ProposalNode = { role: "source", type: "image", name: "Portrait" };
-    expect(refusal(group([empty, talkingHead({ image: [0] })]))).toMatch(/empty/);
+    expect(refusal(group([empty, talkingHead({ image: [0] })]))).toMatch(/"Portrait", which holds no material.*"Portrait" goes into "Talking head" by an edge with into: "image" and a note/);
   });
 
   it("refuses material of a kind the slot does not take", () => {

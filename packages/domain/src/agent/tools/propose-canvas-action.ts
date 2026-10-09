@@ -58,13 +58,23 @@ import {
 } from "@breatic/shared";
 
 import { expandTemplate, templateSegmentsText } from "@domain/agent/tools/template-expansion.js";
+import {
+  entriesFor,
+  fillsOf,
+  holdingOf,
+  nodeWaysSentence,
+  notesAsked,
+  notesIn,
+  refsIn,
+  boxReason,
+  routeEdges,
+  slotSentence,
+} from "@domain/agent/tools/proposal-routing.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
 import { GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import {
   modelsForMode,
   waysIn,
-  type WayIn,
-  type WayKind,
   type ModelInfo,
   type ParamInfo,
 } from "@domain/model-catalog/mode-catalog.js";
@@ -393,6 +403,7 @@ function offStepReason(key: string, value: number, info: ParamInfo): string | nu
  */
 function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
   const declared = Object.keys(chosen.params);
+  const ways = [...waysIn(chosen)];
   for (const [key, value] of Object.entries(node.params ?? {})) {
     const info = chosen.params[key];
     if (!info) {
@@ -406,7 +417,7 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
         ok: false,
         reason: info.valuesFrom !== undefined
           ? `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here. Leave it out and add a note saying which one to pick.`
-          : `"${key}" is written in a box of its own on the panel, and nothing set here reaches it. Leave it out: send words you wrote as a written text node wired in with into: "${key}", which is @'d into that box for you, or add a note saying what to write in that box.`,
+          : boxReason(chosen, node, key),
       };
     }
     if (info.filledBySource === true) {
@@ -414,11 +425,13 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
       // model uses: through the pool an edge carries it, through a slot the
       // reader clicks a node on the canvas. Said the other way round, it
       // sends the model off to wire an edge the panel never reads.
+      const kind = ways.find(([, list]) => list.some((way) => way.into === (info.fromReferencePool === true ? "pool" : key)))?.[0];
+      const said = info.fromReferencePool === true ? `"${key}" is the reference pool` : `"${key}" is a slot for the reader's own material`;
       return {
         ok: false,
-        reason: info.fromReferencePool === true
-          ? `"${key}" is the reference pool, which a node reaches by an edge with into: "pool". Leave it out.`
-          : `"${key}" carries the reader's own material: a node holding it fills the slot through fills, and an empty node goes in by an edge with a note. Leave it out.`,
+        reason: kind === undefined
+          ? `${said}, which nothing set here reaches. Leave it out.`
+          : `${said}, which nodes reach and nothing set here does. Leave it out. ${slotSentence(chosen, node, kind, info.fromReferencePool === true ? "pool" : key)}`,
       };
     }
     if (info.fromStoryboard === true) {
@@ -463,181 +476,6 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
   return { ok: true };
 }
 
-/**
- * The refusal for a wired node whose edge does not say a way this model takes.
- * @param from - The wired node.
- * @param model - The model fed.
- * @param options - The ways this model takes its kind.
- * @param into - What the edge said, if anything.
- * @returns The reason, naming every way the model takes.
- * @throws {never} Never.
- */
-function wayRefusal(from: ProposalNode, model: string, options: readonly WayIn[], into: string | undefined): string {
-  const listed = options.map((option) => `"${option.into}"`).join(" or ");
-  return into === undefined
-    ? `"${from.name}" can go into "${model}" ${String(options.length)} ways; say which on its edge with into: ${listed}.`
-    : `"${model}" takes no ${from.type} by "${into}"; set into on the edge from "${from.name}" to ${listed}.`;
-}
-
-/** A node wired into a generation, and the way it goes in. */
-interface Routed {
-  node: ProposalNode;
-  way: WayIn;
-}
-
-/**
- * Where each node wired into one generation goes, as its edge says (design
- * 5.7). The agent knows, and the marks it writes are words that name no node,
- * so nothing here can work it out from them.
- * @param proposal - The whole proposal.
- * @param index - The generation's index.
- * @param chosen - Its model.
- * @param ways - Its ways in, as `waysIn` gives them.
- * @returns Each routed node, or the refusal for the first edge that says no way the model has.
- * @throws {never} Never.
- */
-function routeEdges(
-  proposal: CanvasProposal,
-  index: number,
-  chosen: ModelInfo,
-  ways: Map<WayKind, WayIn[]>,
-): { routed: Routed[] } | { reason: string } {
-  const routed: Routed[] = [];
-  for (const edge of proposal.edges.filter((e) => e.toIndex === index)) {
-    const from = proposal.nodes[edge.fromIndex];
-    if (!from) continue;
-    // A slot of a kind the canvas will not wire in is filled by picking, and
-    // the edge itself is refused with the rest of the wiring.
-    const options = canConnect(from.type, chosen.nodeType) ? (ways.get(from.type) ?? []) : [];
-    // An edge the model takes nothing from still carries the creative link
-    // (user 2026-08-13); saying where it goes is a claim the model refutes.
-    if (options.length === 0) {
-      if (edge.into === undefined) continue;
-      return { reason: `"${chosen.name}" takes no ${from.type} node, so the edge from "${from.name}" goes nowhere in it; leave into off that edge, or propose a model that takes it.` };
-    }
-    const way = edge.into === undefined
-      ? options.length === 1 ? options[0] : undefined
-      : options.find((option) => option.into === edge.into);
-    if (way === undefined) return { reason: wayRefusal(from, chosen.name, options, edge.into) };
-    routed.push({ node: from, way });
-  }
-  return { routed };
-}
-
-/** A material node a generation fills one of its slots with. */
-interface Filled {
-  node: ProposalNode;
-  way: WayIn;
-}
-
-/**
- * The slots one generation fills straight from material nodes (inner#1315),
- * or the refusal for the first entry that cannot stand.
- *
- * A slot filled this way is what a pick in the panel would leave: a snapshot
- * of the node, with no edge. So it is any way in that is neither the pool,
- * which an edge carries, nor the lyrics box, which holds words.
- * @param proposal - The whole proposal.
- * @param node - The generation.
- * @param chosen - Its model.
- * @param ways - Its ways in, as `waysIn` gives them.
- * @returns Each filled node with its slot, or the refusal.
- * @throws {never} Never.
- */
-function fillsOf(
-  proposal: CanvasProposal,
-  node: ProposalNode,
-  chosen: ModelInfo,
-  ways: Map<WayKind, WayIn[]>,
-): { filled: Filled[] } | { reason: string } {
-  const slots = [...ways.values()].flat().filter((way) => way.into !== "pool" && way.into !== PANEL_EDITOR_PARAM);
-  const filled: Filled[] = [];
-  for (const [param, indices] of Object.entries(node.fills ?? {})) {
-    const way = slots.find((option) => option.into === param);
-    if (way === undefined) {
-      const pool = chosen.params[param]?.fromReferencePool === true;
-      return {
-        reason: pool
-          ? `"${param}" is the reference pool of "${chosen.name}", which a node reaches through an edge with into: "pool", not through fills.`
-          : `"${chosen.name}" has no slot "${param}"${slots.length > 0 ? `; its slots are ${slots.map((option) => `"${option.into}"`).join(", ")}` : ""}.`,
-      };
-    }
-    const kind = [...ways].find(([, list]) => list.includes(way))?.[0];
-    const seen = new Set<string>();
-    for (const at of indices) {
-      const from = proposal.nodes[at];
-      if (from?.role !== "source" || from.material === undefined) {
-        return {
-          reason: `fills "${param}" on "${node.name}" points at ${from ? `"${from.name}", which is empty` : `node ${String(at)}, which is not in the group`}. Only a node holding material fills a slot here; an empty node goes in by an edge with into: "${param}" and a note.`,
-        };
-      }
-      if (from.type !== kind) {
-        return { reason: `"${chosen.name}" takes ${String(kind)} in "${param}", and "${from.name}" is ${from.type}.` };
-      }
-      if (seen.has(from.material)) {
-        return { reason: `fills "${param}" on "${node.name}" holds the same material twice; the slot keeps one copy of it.` };
-      }
-      seen.add(from.material);
-      filled.push({ node: from, way });
-    }
-  }
-  return { filled };
-}
-
-/**
- * How many notes a node carries, in its prompt and every shot.
- * @param node - The node.
- * @returns The count.
- * @throws {never} Never.
- */
-function notesIn(node: ProposalNode): number {
-  return proposalMarkSegments(node).filter((segment) => segment.slot?.kind === "note").length;
-}
-
-/**
- * The indices of the nodes one node's prompt and shots @, once per ref.
- * @param node - The node.
- * @returns Each ref's index, in order.
- * @throws {never} Never.
- */
-function refsIn(node: ProposalNode): number[] {
-  return proposalMarkSegments(node).flatMap((segment) => (segment.ref === undefined ? [] : [segment.ref]));
-}
-
-/** A node one generation asks a note for, and why. */
-interface NoteAsked {
-  node: ProposalNode;
-  why: string;
-}
-
-/**
- * The notes one generation needs: one for each node going into a slot, which
- * the reader picks there, and one for each node its prompt mentions that lands empty
- * -- an empty source node to put a file in, or a generation still to run.
- * Every check counting notes reads this, so the two never count differently.
- * @param proposal - The whole proposal.
- * @param routed - The generation's incoming edges, each with the way it takes.
- * @param refs - The indices its prompt mentions.
- * @returns One entry per note asked for.
- * @throws {never} Never.
- */
-function notesAsked(
-  proposal: CanvasProposal,
-  routed: ReadonlyArray<{ node: ProposalNode; way: WayIn }>,
-  refs: readonly number[],
-): NoteAsked[] {
-  const slots = routed
-    .filter(({ way }) => way.mark === "note")
-    .map(({ node, way }) => ({ node, why: `going into ${way.into}` }));
-  const empties = [...new Set(refs)].flatMap((at) => {
-    const node = proposal.nodes[at];
-    if (!node) return [];
-    if (node.role === "generate") return [{ node, why: "@'d, and empty until it is generated" }];
-    if (node.role === "source" && node.material === undefined) return [{ node, why: "@'d, and empty until a file is put in it" }];
-    return [];
-  });
-  return [...slots, ...empties];
-}
 
 /**
  * Judge one generation node against the catalog and its own group.
@@ -720,27 +558,17 @@ function checkGenerateNode(
     };
   }
   const ways = waysIn(chosen);
-  const routing = routeEdges(proposal, index, chosen, ways);
+  const routing = routeEdges(proposal, index, chosen);
   if ("reason" in routing) return { ok: false, reason: routing.reason };
   const { routed } = routing;
-  // Material reaches a slot through fills, which leaves the snapshot a pick
-  // would; an edge into a slot asks the reader to pick a node that is already
-  // what goes there.
-  const wiredMaterial = routed.find(({ node: n, way }) => n.material !== undefined && way.into !== "pool");
-  if (wiredMaterial) {
-    return {
-      ok: false,
-      reason: `"${wiredMaterial.node.name}" holds material, so it fills "${wiredMaterial.way.into}" through fills on "${node.name}" rather than by an edge.`,
-    };
-  }
-  const filling = fillsOf(proposal, node, chosen, ways);
+  const filling = fillsOf(proposal, node, chosen);
   if ("reason" in filling) return { ok: false, reason: filling.reason };
   const arriving = [...routed, ...filling.filled];
   // Over a way's room is said first: the fix there is fewer nodes, and every
   // count below would otherwise ask for a mark or note for a node to remove.
   for (const [kind, list] of ways) {
     for (const option of list) {
-      const going = arriving.filter(({ way }) => way === option).map(({ node: n }) => n);
+      const going = arriving.filter(({ node: n, way }) => n.type === kind && way.into === option.into).map(({ node: n }) => n);
       if (going.length > option.room) {
         return {
           ok: false,
@@ -770,11 +598,18 @@ function checkGenerateNode(
       return { ok: false, reason: `"${named.name}" fills "${filled.way.into}" of "${node.name}" through fills, which landing does, so it takes no ref; leave the ref out.` };
     }
     const elsewhere = routed.find(({ node: n }) => n === named);
+    if (elsewhere) {
+      return {
+        ok: false,
+        reason: `"${named.name}" goes into "${elsewhere.way.into}" of "${node.name}", ${elsewhere.way.mark === "placed" ? "which landing @s it into" : "which the reader picks it into"}, so it takes no ref; leave the ref out.`,
+      };
+    }
+    const entries = entriesFor(chosen, named.type, holdingOf(named));
     return {
       ok: false,
-      reason: elsewhere
-        ? `"${named.name}" goes into "${elsewhere.way.into}" of "${node.name}", ${elsewhere.way.mark === "placed" ? "which landing @s it into" : "which the reader picks it into"}, so it takes no ref; leave the ref out.`
-        : `"${named.name}" is @'d by a ref in "${node.name}" but is not wired into its pool. Wire it in with an edge into: "pool", or leave the ref out.`,
+      reason: entries.some(({ way }) => way.mark === "ref")
+        ? `"${named.name}" is @'d by a ref in "${node.name}" but is not wired into its pool. Wire it in with an edge into: "pool", or leave the ref out.`
+        : `"${named.name}" is @'d by a ref in "${node.name}", and a ref @s only a node in its pool, which "${named.name}" cannot join. ${nodeWaysSentence(named, node, chosen)} Leave the ref out.`,
     };
   }
   // Every one at once, so a single retry puts them all in.
@@ -1130,18 +965,16 @@ function placesByKind(proposal: CanvasProposal): Map<string, number> {
 
 /**
  * How a node of a kind the canvas will not wire in still reaches a
- * generation: picked into a slot of that kind in the panel (design 5.7 table A).
+ * generation: through fills or picked into a slot of that kind in the panel
+ * (design 5.7 table A).
  * @param into - The generation the edge was drawn into.
- * @param kind - The kind of the node at the edge's other end.
- * @returns The sentence naming those slots, or nothing where the model has none.
+ * @param from - The node at the edge's other end.
+ * @returns The sentence, or nothing where the generation names no model the catalog serves.
  * @throws {never} Never.
  */
-function pickedInstead(into: ProposalNode, kind: string): string {
+function pickedInstead(into: ProposalNode, from: ProposalNode): string {
   const chosen = chosenModelOf(into);
-  const slots = chosen ? (waysIn(chosen).get(kind as WayKind) ?? []) : [];
-  if (slots.length === 0) return "";
-  const names = slots.map((way) => `"${way.into}"`).join(" or ");
-  return ` "${into.model}" takes a ${kind} node in its ${names} slot, without an edge: leave this edge off. A node holding material fills it through fills; an empty node is placed unwired with a note saying which slot.`;
+  return chosen ? ` ${nodeWaysSentence(from, into, chosen)}` : "";
 }
 
 /**
@@ -1196,12 +1029,11 @@ function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
   for (const [index, node] of proposal.nodes.entries()) {
     const chosen = chosenModelOf(node);
     if (!chosen) continue;
-    const ways = waysIn(chosen);
-    for (const [kind, list] of ways) {
+    for (const [kind, list] of waysIn(chosen)) {
       if (list.some((way) => way.into !== "pool")) slotKinds.add(kind);
     }
     // Every generation passed checkGenerateNode, so its edges route.
-    const routing = routeEdges(proposal, index, chosen, ways);
+    const routing = routeEdges(proposal, index, chosen);
     if ("reason" in routing) continue;
     for (const { node: from } of routing.routed) sent.add(from);
     for (const at of Object.values(node.fills ?? {}).flat()) {
@@ -1215,9 +1047,13 @@ function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
   // pool; held anywhere else it lands beside the work with nothing using it.
   const unused = proposal.nodes.find((node) => node.material !== undefined && !sent.has(node));
   if (unused) {
+    const takers = proposal.nodes.flatMap((generation) => {
+      const chosen = chosenModelOf(generation);
+      return chosen !== undefined && entriesFor(chosen, unused.type, "material").length > 0 ? [nodeWaysSentence(unused, generation, chosen)] : [];
+    });
     return {
       ok: false,
-      reason: `"${unused.name}" holds material that nothing here uses. Fill a slot with it through fills on a generation, or wire it in with into: "pool".`,
+      reason: `"${unused.name}" holds material that nothing here uses. ${takers.join(" ") || `No generation here takes a ${unused.type} node; take it out.`}`,
     };
   }
   const loose = proposal.nodes.filter((node) => node.role === "source" && !sent.has(node) && slotKinds.has(node.type));
@@ -1291,7 +1127,7 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
     if (into && outOf && !canConnect(outOf.type, into.type)) {
       return {
         ok: false,
-        reason: `The canvas does not let a ${outOf.type} node feed a ${into.type} node, by your hand or theirs.${pickedInstead(into, outOf.type)}`,
+        reason: `The canvas does not let a ${outOf.type} node feed a ${into.type} node, by your hand or theirs, so leave this edge off.${pickedInstead(into, outOf)}`,
       };
     }
   }
@@ -1362,6 +1198,14 @@ export function answerFor(sent: z.infer<typeof inputSchema>, materials: Material
   // the way an upload would.
   return {
     ...resolved,
+    // Each edge names the way the check routed it, so landing reads one
+    // answer and never resolves an edge left without into a second time.
+    edges: resolved.edges.map((edge) => {
+      const chosen = edge.into === undefined ? chosenModelOf(resolved.nodes[edge.toIndex] as ProposalNode) : undefined;
+      const routing = chosen === undefined ? undefined : routeEdges({ ...resolved, edges: [edge] }, edge.toIndex, chosen);
+      const way = routing !== undefined && "routed" in routing ? routing.routed[0]?.way : undefined;
+      return way === undefined ? edge : { ...edge, into: way.into };
+    }),
     nodes: resolved.nodes.map((node) => {
       const facts = node.material === undefined ? undefined : materials.get(node.material);
       return facts === undefined || facts === "missing" ? node : { ...node, materialMedia: facts.media };
@@ -1457,11 +1301,11 @@ export function makeProposeCanvasAction(): Tool<z.infer<typeof inputSchema>, Pro
     // The signal is unused: a cached catalog and at most a few ledger rows,
     // so there is nothing worth abandoning. Declared so every tool has the
     // same shape.
-    { context }: { abortSignal?: AbortSignal; context?: ProposeContext },
+    { context }: { abortSignal?: AbortSignal; context: ProposeContext },
   ): Promise<ProposalAnswer> => {
     const urls = proposal.nodes.flatMap((node) => (node.material === undefined ? [] : [node.material]));
     // A proposal with no material asks the ledger nothing.
-    const materials = urls.length === 0 || context === undefined ? NO_MATERIAL : await materialFacts(context.studioId, urls);
+    const materials = urls.length === 0 ? NO_MATERIAL : await materialFacts(context.studioId, urls);
     return answerFor(proposal, materials);
   },
 });
