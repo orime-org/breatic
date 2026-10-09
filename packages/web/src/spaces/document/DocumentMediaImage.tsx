@@ -61,9 +61,10 @@ export const DocumentMediaImage = React.memo(function DocumentMediaImage({
   // The stored ratio, stated outright: a loaded image otherwise lays out at its
   // own, and a preview's height is rounded to a whole pixel, so the box would
   // change height when the preview arrives.
-  const shape = React.useMemo<React.CSSProperties>(
-    () => (sizeKnown ? { aspectRatio: `${mediaWidth} / ${mediaHeight}` } : UNKNOWN_SIZE),
-    [sizeKnown, mediaWidth, mediaHeight],
+  // An unsized picture takes 3:2 only while it loads, then its own shape.
+  const shape = React.useMemo<React.CSSProperties | undefined>(
+    () => (sizeKnown ? { aspectRatio: `${mediaWidth} / ${mediaHeight}` } : waiting ? UNKNOWN_SIZE : undefined),
+    [sizeKnown, mediaWidth, mediaHeight, waiting],
   );
   const showsOriginal = useLatchedFor(
     url,
@@ -96,7 +97,7 @@ export const DocumentMediaImage = React.memo(function DocumentMediaImage({
         width={mediaWidth}
         height={mediaHeight}
         className='block h-auto w-full'
-        style={sizeKnown || waiting ? shape : undefined}
+        style={shape}
         onDoubleClick={onDoubleClick}
         onLoad={onLoad}
         onError={onError}
