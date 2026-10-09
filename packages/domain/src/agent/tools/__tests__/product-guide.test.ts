@@ -229,8 +229,8 @@ describe("what the guide says", () => {
     expect(section("Proposal cards")).toMatch(/When a placed node that has a prompt box carries marks, the message/);
   });
 
-  it("says words bound for a song's lyrics box are @'d there, as a note asks", () => {
-    expect(section("Proposal cards")).toMatch(/Into a song model's lyrics box: a text node the reader @s in the lyrics box, as an orange note asks/);
+  it("says words bound for a song's lyrics box arrive @'d there", () => {
+    expect(section("Proposal cards")).toMatch(/Into a song model's lyrics box: a text node @'d in the lyrics box, where a proposal arrives with it already @'d/);
   });
 
   it("says how each mark reads in text read back from a box, and that the note is not sent", () => {
@@ -546,9 +546,12 @@ describe("what the guide says", () => {
     expect(proposals).toMatch(/when every generating node uses the same model and you gave a model note, a line with that model's name/);
   });
 
-  it("says nothing is @'d for the reader and a node not @'d is not used", () => {
-    const pool = section("Proposal cards").split("Into the reference list")[1] ?? "";
-    expect(pool).toMatch(/Nothing is @'d for them, and a node wired in that is not @'d is not used/);
+  it("says a proposal @s every node it wires into the pool, and a node not @'d is not used", () => {
+    const cards = section("Proposal cards");
+    expect(cards).toMatch(/A proposal @s for the reader every node it wires into the reference list/);
+    expect(cards).toMatch(/A node @'d that lands empty[^.]*comes with a note saying what to do first/);
+    const pool = cards.split("Into the reference list")[1] ?? "";
+    expect(pool).toMatch(/by the proposal for every node it wires in[^.]*\. A node wired in that is not @'d is not used/);
   });
 
   it("says how to indent and outdent in a document", () => {

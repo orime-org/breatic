@@ -120,7 +120,7 @@ describe("a talking head filled from the reader's uploads (A1)", () => {
   });
 
   it("lands each material node with the numbers its registration holds", () => {
-    const answer = answerFor(proposal(), FACTS);
+    const answer = answerFor(inputSchema.parse(proposal()), FACTS);
     if (!answer.placed) throw new Error(answer.reason);
     expect(answer.nodes[0]?.materialMedia).toEqual(FACTS.get(PORTRAIT)?.media);
     expect(answer.nodes[1]?.materialMedia).toEqual(FACTS.get(VOICE)?.media);
@@ -139,7 +139,7 @@ describe("a slot a node of its kind cannot be wired into (A2)", () => {
 });
 
 describe("material wired into the reference pool (A3)", () => {
-  it("stands with the asset mark the reader @s", () => {
+  it("stands with the ref that @s it for the reader", () => {
     const proposal = group(
       [
         held("image", "Found photo", SAVED),
@@ -149,7 +149,7 @@ describe("material wired into the reference pool (A3)", () => {
           name: "Watercolour",
           mode: "i2i",
           model: "nano-banana-pro-edit-ultra",
-          prompt: [{ text: "Repaint " }, { slot: { kind: "asset", label: "the saved photo", note: "@ the saved photo" } }, { text: " as a watercolour." }],
+          prompt: [{ text: "Repaint " }, { ref: 0 }, { text: " as a watercolour." }],
         },
       ],
       [{ fromIndex: 0, toIndex: 1, into: "pool" }],
@@ -323,7 +323,7 @@ describe("the tool reads the registration for the studio it runs in", () => {
     const execute = makeProposeCanvasAction().execute;
     if (!execute) throw new Error("no execute");
 
-    const answer = await execute(proposal, { toolCallId: "t", messages: [], context: { studioId: "s1" } });
+    const answer = await execute(inputSchema.parse(proposal), { toolCallId: "t", messages: [], context: { studioId: "s1" } });
 
     expect(materialFacts).toHaveBeenCalledWith("s1", [PORTRAIT, VOICE]);
     expect(answer).toMatchObject({ placed: true });
@@ -335,7 +335,7 @@ describe("the tool reads the registration for the studio it runs in", () => {
     const execute = makeProposeCanvasAction().execute;
     if (!execute) throw new Error("no execute");
 
-    await execute(proposal, { toolCallId: "t", messages: [] } as never);
+    await execute(inputSchema.parse(proposal), { toolCallId: "t", messages: [] } as never);
 
     expect(materialFacts).not.toHaveBeenCalled();
   });

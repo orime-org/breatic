@@ -113,9 +113,10 @@ function wayWords(kind: WayKind, way: WayIn): string {
   const where =
     way.into === "pool"
       ? kind === "text" ? "@'d into the prompt" : "the reference pool"
-      : way.into === PANEL_EDITOR_PARAM ? "@'d into the lyrics box" : "a slot";
+      : way.into === PANEL_EDITOR_PARAM ? "the lyrics box" : "a slot";
   const room = Number.isFinite(way.room) ? `, at most ${String(way.room)}` : "";
-  const mark = way.mark === "asset" ? "an asset mark each" : "a note each";
+  const mark =
+    way.mark === "ref" ? "a ref each where the prompt @s it" : way.mark === "note" ? "a note each" : "@'d there for you";
   return `${where}${room}, ${mark}`;
 }
 
@@ -169,12 +170,12 @@ function renderModel(model: PricedModelInfo): string {
           : "";
     })
     .join("");
-  // Words wired in can always be @'d into a box that is drawn, so an asset
-  // mark on a model whose material arrives only by slot can ask for nothing else.
-  const mediaToAt = [...ways].some(([kind, list]) => kind !== "text" && list.some((way) => way.mark === "asset"));
+  // Words wired in can always be @'d into a box that is drawn, so a ref on a
+  // model whose material arrives only by slot can only @ a text node.
+  const mediaToAt = [...ways].some(([kind, list]) => kind !== "text" && list.some((way) => way.mark === "ref"));
   const wordsOnly =
     model.takesPrompt && !mediaToAt
-      ? " Nothing wired in but a text node can be @'d here, so an asset mark can only ask for words."
+      ? " Nothing wired in but a text node can be @'d here, so a ref can only @ words."
       : "";
   const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${wordsOnly}${renderStoryboard(model)}${renderCameraCommands(model)}`;
   const params = Object.entries(model.params).filter(([, spec]) => !spec.fromStoryboard).map(([name, spec]) => {
@@ -191,9 +192,9 @@ function renderModel(model: PricedModelInfo): string {
     // for neither, because the reader does neither -- it is the person at the
     // canvas who fills both.
     // The lyrics box is a box of its own on the panel: words reach it as a
-    // text node the reader @s there, the lyrics way of the routing line.
+    // text node @'d there at landing, the lyrics way of the routing line.
     if (name === PANEL_EDITOR_PARAM) {
-      return `    ${name}: the lyrics box on the panel, not set here; send words you wrote as a text node wired in with into: "${name}" and a note. ${spec.what}`;
+      return `    ${name}: the lyrics box on the panel, not set here; send words you wrote as a text node wired in with into: "${name}", which is @'d there for you. ${spec.what}`;
     }
     if (spec.filledBySource) {
       // Which gesture fills it is said here, since the shape a proposal takes

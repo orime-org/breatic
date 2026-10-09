@@ -6,13 +6,17 @@
  *
  * The template is where the agent starts, not a lock: whatever the agent wrote
  * stays. The template's params belong to the template's mode and model, so
- * they come along only while the node keeps both.
+ * they come along only while the node keeps both. The prompt is the agent's
+ * own (inner#1315): the template's words mark each reference for the reader
+ * to mention by hand, and a proposal mentions the nodes it wires in, so the
+ * agent sends those words back with a ref where each mark stood.
  */
 
 import {
   GENERATION_TEMPLATES,
   findTemplate,
   templatePrompt,
+  type GenerationTemplate,
   type ProposalNode,
 } from "@breatic/shared";
 
@@ -22,11 +26,33 @@ export type TemplateExpansion =
   | { ok: false; reason: string };
 
 /**
+ * A template's prompt as the segments a proposal sends: words as they are,
+ * each reference mark as the ref of the node wired in for it.
+ * @param template - The template.
+ * @param pool - The indices of the nodes wired into the pool, in edge order;
+ *   a mark past the end reads as a placeholder naming what it stands for.
+ * @returns The segments, written out as the agent would send them.
+ * @throws {never} Never.
+ */
+export function templateSegmentsText(template: GenerationTemplate, pool: readonly number[] = []): string {
+  let reference = 0;
+  const parts = templatePrompt(template).map((segment) => {
+    if (segment.slot?.kind !== "asset") return JSON.stringify(segment.slot === undefined ? { text: segment.text } : { slot: segment.slot });
+    const at = pool[reference];
+    reference += 1;
+    return at === undefined ? `{"ref": <index of the node wired in for ${segment.slot.label}>}` : JSON.stringify({ ref: at });
+  });
+  return `[${parts.join(", ")}]`;
+}
+
+/**
  * Fills a node from the template it names.
  * @param node - The node as the agent sent it, naming a template.
+ * @param pool - The indices of the nodes wired into its pool, in edge order.
  * @returns The expanded node, or a reason the agent can act on.
+ * @throws {never} Never.
  */
-export function expandTemplate(node: ProposalNode & { template: string }): TemplateExpansion {
+export function expandTemplate(node: ProposalNode & { template: string }, pool: readonly number[] = []): TemplateExpansion {
   const { template: id, ...rest } = node;
   const template = findTemplate(id);
   if (!template) {
@@ -41,6 +67,12 @@ export function expandTemplate(node: ProposalNode & { template: string }): Templ
   if (rest.type !== template.nodeType) {
     return { ok: false, reason: `Template "${id}" is for ${template.nodeType} nodes, not ${rest.type}.` };
   }
+  if (rest.prompt === undefined) {
+    return {
+      ok: false,
+      reason: `"${rest.name}" names template "${id}" and sends no prompt. Send the template's prompt as its own, rewritten in the reader's language with their story or detail in it: ${templateSegmentsText(template, pool)}.`,
+    };
+  }
   const mode = rest.mode ?? template.mode;
   const model = rest.model ?? template.model;
   const keepsTemplate = mode === template.mode && model === template.model;
@@ -52,7 +84,7 @@ export function expandTemplate(node: ProposalNode & { template: string }): Templ
       mode,
       model,
       ...(params === undefined ? {} : { params }),
-      prompt: rest.prompt ?? templatePrompt(template),
+      prompt: rest.prompt,
     },
   };
 }

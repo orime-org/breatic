@@ -47,7 +47,6 @@ import {
   PANEL_EDITOR_PARAM,
   promptPlainText,
   promptTextOf,
-  templatePrompt,
   proposalMarkSegments,
   storyboardSend,
   type CanvasProposal,
@@ -57,7 +56,7 @@ import {
   type ProposalNode,
 } from "@breatic/shared";
 
-import { expandTemplate } from "@domain/agent/tools/template-expansion.js";
+import { expandTemplate, templateSegmentsText } from "@domain/agent/tools/template-expansion.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
 import { GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import {
@@ -68,6 +67,7 @@ import {
   type ModelInfo,
   type ParamInfo,
 } from "@domain/model-catalog/mode-catalog.js";
+import { getModelCatalog } from "@domain/model-catalog/model-catalog.js";
 import { onStep } from "@domain/model-catalog/param-declaration.js";
 
 const NODE_TYPES = Object.keys(GENERATION_NODE_MODES) as [
@@ -92,30 +92,29 @@ const NO_MATERIAL: MaterialTable = new Map();
 // the exception and is left alone -- a segment of one space is how two marks
 // are kept apart, and trimming it would run them together.
 /** Why a label holding its own closing bracket or a line break is refused: written out, it would not read back. */
-const LABEL_BRACKET = "A label may not hold the bracket that closes its mark (] for asset, } for tweak, ) for note) or a line break.";
+const LABEL_BRACKET = "A label may not hold the bracket that closes its mark (} for tweak, ) for note) or a line break.";
 
 const promptSegment = z.union([
   z.object({ text: z.string().min(1) }).strict(),
   z
     .object({
+      ref: z
+        .number()
+        .int()
+        .describe(
+          "An @ of the node at this index in nodes, written into the prompt for the reader: it lands as the " +
+            "same mention they would insert by hand. Use it for every node wired into this node's pool, " +
+            "wherever the prompt speaks of it",
+        ),
+    })
+    .strict(),
+  z
+    .object({
       slot: z.union([
         z
           .object({
-            kind: z
-              .enum(["asset", "tweak"])
-              .describe(
-                "asset: a node wired in that the reader @s by hand to use it, going into the pool -- " +
-                  "empty for their material, holding material, generated, or a text node; never a node going into a slot; " +
-                  "the label says which (uploaded, generated, the words you wrote). tweak: words only the reader can write",
-              ),
-            label: z
-              .string()
-              .trim()
-              .min(1)
-              .describe(
-                "What to @ or what to write, e.g. 'the uploaded character photo'; the words asking " +
-                  "the reader to @ are added for you",
-              ),
+            kind: z.literal("tweak").describe("Words only the reader can write"),
+            label: z.string().trim().min(1).describe("What to write"),
             note: z
               .string()
               .trim()
@@ -129,8 +128,8 @@ const promptSegment = z.union([
             kind: z
               .literal("note")
               .describe(
-                "How to operate the panel, never sent to the model: e.g. which slot to pick a node " +
-                  "into, or that a text node is @'d in the lyrics box",
+                "How to operate the panel, never sent to the model: which slot to pick a node into, or what " +
+                  "to do first with a node the prompt @s that lands empty (put a file in it, or generate it)",
               ),
             label: z.string().trim().min(1).describe("The note, which is also the card's line"),
           })
@@ -166,9 +165,9 @@ const proposalNode = z
       .min(1)
       .optional()
       .describe(
-        "role generate only: start this node from a template; it fills the mode, " +
-          "model and prompt you leave out, and its params while you keep its mode and model; " +
-          "what you write wins",
+        "role generate only: start this node from a template; it fills the mode and " +
+          "model you leave out, and its params while you keep its mode and model; " +
+          "what you write wins. The prompt is yours to send, rewritten from the template's",
       ),
     mode: z.string().min(1).optional().describe("role generate only"),
     model: z.string().min(1).optional().describe("role generate only"),
@@ -185,11 +184,10 @@ const proposalNode = z
       .optional()
       .describe(
         "What to generate, or a written node's words, in the language the reader " +
-          "writes in. A mark is a segment of its own ({\"slot\": …}), never typed into a text " +
-          "segment; it is words shown to the reader, nothing more: no mention is written for it, " +
-          "and the reader @s every reference by hand, so give every node going into the pool an asset " +
-          "mark; a node going into a slot or the lyrics box by an edge takes a note of its own instead (a slot " +
-          "filled through fills takes none), and so does " +
+          "writes in. A ref or a mark is a segment of its own, never typed into a text segment. " +
+          "Every node going into the pool gets a ref where the prompt speaks of it, and a note too " +
+          "when it lands empty; a node going into a slot by an edge takes a note of its own (a slot " +
+          "filled through fills takes none, the lyrics box takes none), and so does " +
           "an empty node no edge sends into a generation (unwired, or wired only as a link to a model that " +
           "takes nothing from it), for the reader to pick into a slot",
       ),
@@ -248,10 +246,10 @@ export const inputSchema = z
               .min(1)
               .optional()
               .describe(
-                "Where the node wired in goes: \"pool\" (the reader @s it into the prompt; an asset mark each), " +
+                "Where the node wired in goes: \"pool\" (a ref each where the prompt @s it), " +
                   "the name of a slot the model has (an empty node the reader picks in the panel; a note each; " +
                   "material fills a slot through fills instead), " +
-                  `or "${PANEL_EDITOR_PARAM}" for words the reader @s into a song model's lyrics box (a note each). Needed ` +
+                  `or "${PANEL_EDITOR_PARAM}" for words @'d into a song model's lyrics box for the reader. Needed ` +
                   "when the model takes that kind more than one way",
               ),
           })
@@ -405,7 +403,7 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
         ok: false,
         reason: info.valuesFrom !== undefined
           ? `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here. Leave it out and add a note saying which one to pick.`
-          : `"${key}" is written in a box of its own on the panel, and nothing set here reaches it. Leave it out: send words you wrote as a written text node wired in with into: "${key}" and a note, or add a note saying what to write in that box.`,
+          : `"${key}" is written in a box of its own on the panel, and nothing set here reaches it. Leave it out: send words you wrote as a written text node wired in with into: "${key}", which is @'d into that box for you, or add a note saying what to write in that box.`,
       };
     }
     if (info.filledBySource === true) {
@@ -593,6 +591,41 @@ function notesIn(node: ProposalNode): number {
   return proposalMarkSegments(node).filter((segment) => segment.slot?.kind === "note").length;
 }
 
+/** A node one generation asks a note for, and why. */
+interface NoteAsked {
+  node: ProposalNode;
+  why: string;
+}
+
+/**
+ * The notes one generation needs: one for each node going into a slot, which
+ * the reader picks there, and one for each node its prompt mentions that lands empty
+ * -- an empty source node to put a file in, or a generation still to run.
+ * Every check counting notes reads this, so the two never count differently.
+ * @param proposal - The whole proposal.
+ * @param routed - The generation's incoming edges, each with the way it takes.
+ * @param refs - The indices its prompt mentions.
+ * @returns One entry per note asked for.
+ * @throws {never} Never.
+ */
+function notesAsked(
+  proposal: CanvasProposal,
+  routed: ReadonlyArray<{ node: ProposalNode; way: WayIn }>,
+  refs: readonly number[],
+): NoteAsked[] {
+  const slots = routed
+    .filter(({ way }) => way.mark === "note")
+    .map(({ node, way }) => ({ node, why: `going into ${way.into}` }));
+  const empties = [...new Set(refs)].flatMap((at) => {
+    const node = proposal.nodes[at];
+    if (!node) return [];
+    if (node.role === "generate") return [{ node, why: "@'d, and empty until it is generated" }];
+    if (node.role === "source" && node.material === undefined) return [{ node, why: "@'d, and empty until a file is put in it" }];
+    return [];
+  });
+  return [...slots, ...empties];
+}
+
 /**
  * Judge one generation node against the catalog and its own group.
  * @param proposal - The whole proposal, for reading the group around it.
@@ -670,7 +703,7 @@ function checkGenerateNode(
   if (!chosen.takesPrompt && prompt.some((segment) => segment.slot?.kind !== "note")) {
     return {
       ok: false,
-      reason: `"${model}" draws no prompt box, so words and tweak or asset marks written there reach nobody. Keep only notes saying what the reader picks in the panel.`,
+      reason: `"${model}" draws no prompt box, so words, tweak marks and refs written there reach nobody. Keep only notes saying what the reader picks in the panel.`,
     };
   }
   const ways = waysIn(chosen);
@@ -703,31 +736,58 @@ function checkGenerateNode(
       }
     }
   }
-  // Counted, never paired: each way says what the prompt carries per node.
-  const asked = routed.filter(({ way }) => way.mark === "asset").map(({ node: n }) => n);
-  const marked = prompt.filter((segment) => segment.slot?.kind === "asset").length;
-  if (marked < asked.length) {
+  // Every node wired into the pool is @'d by a ref, and a ref @s only such a
+  // node: the mention lands as one the reader would insert from the pool.
+  const pooled = routed.filter(({ way }) => way.mark === "ref").map(({ node: n }) => proposal.nodes.indexOf(n));
+  const refs = prompt.flatMap((segment) => (segment.ref === undefined ? [] : [segment.ref]));
+  const stray = refs.find((at) => !pooled.includes(at));
+  if (stray !== undefined) {
+    const named = proposal.nodes[stray];
     return {
       ok: false,
-      reason: `"${node.name}" has ${String(asked.length)} node(s) the reader @s to use (${asked.map((n) => `"${n.name}"`).join(", ")}) and ${String(marked)} asset mark(s). Give each one an asset mark saying what to @; a node not @'d is not used.`,
+      reason: `${named ? `"${named.name}"` : `node ${String(stray)}`} is @'d by a ref in "${node.name}" but is not wired into its pool. Wire it in with an edge into: "pool", or leave the ref out.`,
     };
   }
-  // The panel says a slot is empty, never which node goes there, and the
-  // lyrics box is one the prompt says nothing about: a note says so.
-  const noted = routed.filter(({ way }) => way.mark === "note");
+  // Every one at once, so a single retry puts them all in.
+  const unmentioned = pooled.filter((at) => !refs.includes(at));
+  if (unmentioned.length > 0) {
+    const names = unmentioned.map((at) => `"${proposal.nodes[at]?.name ?? ""}"`).join(", ");
+    const each = unmentioned.map((at) => `{"ref": ${String(at)}}`).join(", ");
+    return {
+      ok: false,
+      reason: `${names} ${unmentioned.length === 1 ? "is" : "are"} wired into the pool of "${node.name}" but no ref @s ${unmentioned.length === 1 ? "it" : "them"}. Put ${each} where the prompt speaks of ${unmentioned.length === 1 ? "it" : "each"}; a node not @'d is not used.`,
+    };
+  }
+  const asked = notesAsked(proposal, routed, refs);
   const notes = notesIn(node);
-  if (notes < noted.length) {
+  if (notes < asked.length) {
     return {
       ok: false,
-      reason: `"${node.name}" has ${String(noted.length)} node(s) going into a slot or the lyrics box (${noted.map(({ node: n, way }) => `"${n.name}" into ${way.into}`).join(", ")}) and ${String(notes)} note(s). Give each one a note saying where to pick or @ it.`,
+      reason: `"${node.name}" needs a note for each of ${asked.map(({ node: n, why }) => `"${n.name}" (${why})`).join(", ")}, and carries ${String(notes)}. Give each one a note: which slot to pick it into, or what to do first with a node that lands empty.`,
     };
   }
-  const scripts = routed.filter(({ node: n, way }) => n.type === "text" && way.into === "pool").map(({ node: n }) => n);
-  // The words of a wired text node go in where the reader @s it, so they
-  // count once against what is sent. Measured as nothing, a script past the
-  // model's cap is placed and the reader meets the refusal at a button they
-  // cannot fix from -- the words are in another node.
-  const scriptWords = scripts.map((n) => promptPlainText(n.prompt ?? [])).join("");
+  const scripts = pooled.flatMap((at) => {
+    const target = proposal.nodes[at];
+    return target?.type === "text" ? [target] : [];
+  });
+  /**
+   * What the panel sends in place of one ref, the way it serialises it: a
+   * text node's words, and a picture, clip or track as its pool's mention,
+   * numbered within its kind in the order the pool lists them.
+   * @param at - The index of the node the ref mentions.
+   * @returns Its words, or its pool mention.
+   * @throws {never} Never.
+   */
+  const refWords = (at: number): string => {
+    const target = proposal.nodes[at];
+    if (!target) return "";
+    if (target.type === "text") return promptPlainText(target.prompt ?? []);
+    const entry = getModelCatalog()[nodeType]?.find((m) => m.name === model);
+    const mention = Object.values(entry?.params ?? {}).find((p) => p.accepts === target.type && p.mention !== undefined)?.mention;
+    if (mention === undefined) return "";
+    const n = pooled.filter((i) => proposal.nodes[i]?.type === target.type).indexOf(at);
+    return mention.replace("{n}", String(n + 1)).replace("{i}", String(n));
+  };
   const shotCap = board?.maxChars;
   if (shotCap !== undefined) {
     const long = scripts.find((n) => [...extractPromptText(promptPlainText(n.prompt ?? []))].length > shotCap);
@@ -740,16 +800,16 @@ function checkGenerateNode(
   }
   // What the panel's own gate would say about the box this proposal fills in,
   // asked with the text the box will hold. A note is left out of it.
-  const shots = (node.shots ?? []).map((shot) => ({ text: promptTextOf(shot.prompt), duration: shot.duration }));
+  const shots = (node.shots ?? []).map((shot) => ({ text: promptTextOf(shot.prompt, refWords), duration: shot.duration }));
   const totalParam = board?.totalParam;
   const total = totalParam === undefined
     ? undefined
     : Number(node.params?.[totalParam] ?? chosen.params[totalParam]?.default);
   // What goes out as the prompt: the shots written into one, for a model with
   // no field for them, so its length is held to the model's cap.
-  const sent = (board === undefined
-    ? promptTextOf(node.prompt ?? [])
-    : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "")) + scriptWords;
+  const sent = board === undefined
+    ? promptTextOf(node.prompt ?? [], refWords)
+    : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "");
   const verdict = evaluateExecute({
     promptText: sent,
     model,
@@ -809,7 +869,7 @@ function checkGenerateNode(
 function writtenTakesNoMark(node: ProposalNode): ProposalVerdict {
   return {
     ok: false,
-    reason: `"${node.name}" holds words the reader keeps as they are, so it takes no reference or note mark. Take the mark out and say what you meant in your own message.`,
+    reason: `"${node.name}" holds words the reader keeps as they are, so it takes no ref or note. Take it out and say what you meant in your own message.`,
   };
 }
 
@@ -906,7 +966,7 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
   // are kept as written. Whatever they say belongs in the message this
   // proposal travels with.
   const reaching = (node.prompt ?? []).find(
-    (segment) => segment.slot?.kind === "asset" || segment.slot?.kind === "note",
+    (segment) => segment.ref !== undefined || segment.slot?.kind === "asset" || segment.slot?.kind === "note",
   );
   if (reaching) return writtenTakesNoMark(node);
   // Without them it lands as an empty text node, which is the thing a reader
@@ -938,7 +998,7 @@ function markTypedAsWords(node: ProposalNode): ProposalVerdict {
   if (node.role === "written" && typed.some((slot) => slot.kind !== "tweak")) return writtenTakesNoMark(node);
   return {
     ok: false,
-    reason: `"${node.name}" types ${String(typed.length)} mark(s) into its words. Send each as a segment of its own and keep the text segments to plain words: ${typed.map((slot) => JSON.stringify({ slot })).join(", ")}.`,
+    reason: `"${node.name}" types ${String(typed.length)} mark(s) into its words. Send each as a segment of its own and keep the text segments to plain words: ${typed.map((slot) => (slot.kind === "asset" ? `{"ref": <index of the node meant by ${slot.label}>}` : JSON.stringify({ slot }))).join(", ")}.`,
   };
 }
 
@@ -1105,7 +1165,8 @@ function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
       const from = proposal.nodes[at];
       if (from) sent.add(from);
     }
-    spare += notesIn(node) - routing.routed.filter(({ way }) => way.mark === "note").length;
+    const refs = proposalMarkSegments(node).flatMap((segment) => (segment.ref === undefined ? [] : [segment.ref]));
+    spare += notesIn(node) - notesAsked(proposal, routing.routed, refs).length;
   }
   // Material reaches a generation only through fills or an edge into the
   // pool; held anywhere else it lands beside the work with nothing using it.
@@ -1243,7 +1304,9 @@ export function answerFor(sent: z.infer<typeof inputSchema>, materials: Material
       nodes.push(plain);
       continue;
     }
-    const expanded = expandTemplate({ ...node, template: node.template });
+    const at = nodes.length;
+    const pool = sent.edges.filter((edge) => edge.toIndex === at && edge.into === "pool").map((edge) => edge.fromIndex);
+    const expanded = expandTemplate({ ...node, template: node.template }, pool);
     if (!expanded.ok) return { placed: false, reason: expanded.reason };
     nodes.push(expanded.node);
   }
@@ -1295,18 +1358,12 @@ function templateGuide(): string {
     "Templates a generate node can start from: " +
     GENERATION_TEMPLATES.map((template) => {
       const references = template.references;
-      const segments = templatePrompt(template).map((segment) =>
-        segment.slot === undefined
-          ? { text: segment.text }
-          : { slot: segment.slot },
-      );
-      return `${template.id} (${template.nodeType}, ${template.mode}, ${template.model}, ${references} reference${references === 1 ? "" : "s"}): ${template.agentNote}. Its prompt, as segments: ${JSON.stringify(segments)}`;
+      return `${template.id} (${template.nodeType}, ${template.mode}, ${template.model}, ${references} reference${references === 1 ? "" : "s"}): ${template.agentNote}. Its prompt, as segments: ${templateSegmentsText(template)}`;
     }).join("; ") +
-    ". Each reference is a node wired in, as with any proposal, its edge saying into: \"pool\". Name the template on the node and leave out what " +
-    "you keep. To put the reader's own story or detail in, send the template's prompt rewritten in the " +
-    "language they write in, as segments: fill a tweak segment with words or keep it for them, and keep each " +
-    "asset segment, saying in its label whether the picture is uploaded or generated, and its note field is the card's line; " +
-    "the reader @s it by hand."
+    ". Each reference is a node wired in, as with any proposal, its edge saying into: \"pool\", and @'d by its ref. " +
+    "Name the template on the node and leave out the mode and model you keep. Send the template's prompt as the " +
+    "node's own, rewritten in the language the reader writes in with their story or detail in it: fill a tweak " +
+    "segment with words or keep it for them."
   );
 }
 

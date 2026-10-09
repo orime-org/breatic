@@ -512,8 +512,8 @@ export function renderProductGuide(): string {
       `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
       "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
       "template's; nothing asks first, and " +
-      `the message ${quoted(t("canvas.generatePanel.editMarks"))} appears. Its marks work the way a ` +
-      "proposal's do (see below): the reader @s the pictures it asks for by hand, and can change anything after.",
+      `the message ${quoted(t("canvas.generatePanel.editMarks"))} appears. Its 📎 marks ask the reader to @ ` +
+      "the pictures it needs by hand (see below), and they can change anything after.",
     "Fill in what the panel asks for, then press the round button with an upward arrow at the right end of the " +
       "panel's bottom row. Usually that is the prompt; some modes also need a source slot filled, a voice or " +
       "speakers picked, or a connected node mentioned in the prompt (see Mentions). If something is missing, " +
@@ -872,11 +872,15 @@ export function renderProductGuide(): string {
       "still shows an empty box; nothing typed there is sent. The card lists the proposal's marks for that node. " +
       "A node holding material the reader gave -- a file uploaded in this chat, or a picture saved with " +
       `${SAVE_IMAGE} -- arrives with it in, and a slot the proposal filled from such a node already holds it in ` +
-      "the panel, so there is nothing to pick there; one wired into the reference pool still has a 📎 mark to @. " +
+      "the panel, so there is nothing to pick there; one wired into the reference pool is already @'d in the prompt. " +
       "The reader generates the nodes in the order the card's arrows run, and waits for each to show its result " +
       "before generating the node it feeds: a node still generating lends nothing, or its previous result, and " +
       "where that source is optional the run goes ahead without it.",
-    "A prompt or shot from a proposal or a template carries three kinds of mark. A 📎 mark in square brackets " +
+    "A proposal @s for the reader every node it wires into the reference list: its prompt or shot arrives with " +
+      "those mentions in it, the same as ones typed with @. A node @'d that lands empty -- an empty node, or a " +
+      "generation still to run -- comes with a note saying what to do first; generating before then runs " +
+      "without it. A prompt or shot from a template carries three kinds of mark, and one from a proposal the " +
+      "last two only. A 📎 mark in square brackets " +
       "asks the reader to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
       "their own file in (double-click it to pick one), a generated result, or a text node -- then delete the " +
       "bracket. A ✏️ mark in braces is words only the reader can write; they replace it with their own. An orange " +
@@ -888,14 +892,14 @@ export function renderProductGuide(): string {
       `left in a prompt are sent as they are. When a placed node that has a prompt box carries marks, the message ${quoted(t("canvas.generatePanel.editMarks"))} ` +
       "appears; nothing checks whether they were done.",
     "How work reaches a node depends on where it goes:",
-    "- Into the reference list: the reader @s it in the prompt or a shot where a 📎 mark asks for it. Nothing " +
-      "is @'d for them, and a node wired in that is not @'d is not used.",
+    "- Into the reference list: it is @'d in the prompt or a shot, by the proposal for every node it wires in, " +
+      "or by the reader where a template's 📎 mark asks. A node wired in that is not @'d is not used.",
     "- Into one of the mode's source slots: it is not @'d; an orange note says which slot to pick it into, " +
       "and a required slot left empty stops the run. Once that node holds " +
       "its file or its generated result, the reader opens the panel of the node it feeds, presses that slot's " +
       "button and clicks the node.",
-    "- Into a song model's lyrics box: a text node the reader @s in the lyrics box, as an orange note asks; it is not " +
-      "@'d in the style prompt above it.",
+    "- Into a song model's lyrics box: a text node @'d in the lyrics box, where a proposal arrives with it " +
+      "already @'d; it is not @'d in the style prompt above it.",
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +

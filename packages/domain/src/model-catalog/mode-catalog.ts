@@ -428,8 +428,12 @@ function isReferenceKind(accepts: string | undefined): accepts is ReferenceKind 
   return accepts === "image" || accepts === "video" || accepts === "audio";
 }
 
-/** What the reader writes in the prompt for a node going one way in. */
-export type WayMark = "asset" | "note";
+/**
+ * How a node going one way in is used: the prompt mentions it with a ref,
+ * the reader picks it into a slot as a note asks, or landing mentions it in
+ * a box of its own (the lyrics box) with nothing asked of the prompt.
+ */
+export type WayMark = "ref" | "note" | "placed";
 
 /** One way a node reaches a generation, as the model declares it. */
 export interface WayIn {
@@ -438,9 +442,9 @@ export interface WayIn {
   /** How many nodes this way takes. */
   room: number;
   /**
-   * What the prompt carries for each node going this way: an asset mark to
-   * mention it from the pool, or a note saying which slot to pick it into or
-   * that it is mentioned in the lyrics box. A required slot gets a note too:
+   * What the prompt carries for each node going this way: a ref that
+   * mentions it from the pool, a note saying which slot to pick it into, or
+   * nothing for the lyrics box, which landing mentions it in. A required slot gets a note too:
    * the panel says the slot is empty, not which node goes there.
    */
   mark: WayMark;
@@ -474,14 +478,14 @@ export function waysIn(chosen: ModelInfo): Map<WayKind, WayIn[]> {
   for (const [name, info] of Object.entries(chosen.params)) {
     if (info.filledBySource !== true || !isReferenceKind(info.accepts)) continue;
     if (info.fromReferencePool === true) {
-      if (chosen.takesPrompt) add(info.accepts, { into: "pool", room: info.maxItems ?? Number.POSITIVE_INFINITY, mark: "asset" });
+      if (chosen.takesPrompt) add(info.accepts, { into: "pool", room: info.maxItems ?? Number.POSITIVE_INFINITY, mark: "ref" });
     } else {
       add(info.accepts, { into: name, room: info.maxItems ?? 1, mark: "note" });
     }
   }
-  if (chosen.takesPrompt) add("text", { into: "pool", room: Number.POSITIVE_INFINITY, mark: "asset" });
+  if (chosen.takesPrompt) add("text", { into: "pool", room: Number.POSITIVE_INFINITY, mark: "ref" });
   if (chosen.params[PANEL_EDITOR_PARAM] !== undefined) {
-    add("text", { into: PANEL_EDITOR_PARAM, room: Number.POSITIVE_INFINITY, mark: "note" });
+    add("text", { into: PANEL_EDITOR_PARAM, room: Number.POSITIVE_INFINITY, mark: "placed" });
   }
   return ways;
 }

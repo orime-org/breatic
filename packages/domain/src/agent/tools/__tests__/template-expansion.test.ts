@@ -3,14 +3,14 @@
 
 /**
  * A proposed node naming a template starts from it and keeps whatever the
- * agent wrote (inner#977).
+ * agent wrote (inner#977); the prompt is always the agent's own (inner#1315).
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
 
-import { findTemplate, templatePrompt, type ProposalNode } from "@breatic/shared";
+import type { ProposalNode } from "@breatic/shared";
 
 import { expandTemplate } from "@domain/agent/tools/template-expansion.js";
 
@@ -18,8 +18,7 @@ beforeAll(() => {
   loadLocales();
 });
 
-const grid = findTemplate("storyboard-grid-25");
-if (!grid) throw new Error("grid template missing");
+const PROMPT = [{ text: "A storyboard of " }, { ref: 0 }, { text: " in 25 frames." }];
 
 /**
  * A generate node naming a template, with what the test gives it.
@@ -27,11 +26,11 @@ if (!grid) throw new Error("grid template missing");
  * @returns The node as the agent sent it.
  */
 function named(extra: Partial<ProposalNode> = {}): ProposalNode & { template: string } {
-  return { role: "generate", type: "image", name: "Grid", template: "storyboard-grid-25", ...extra };
+  return { role: "generate", type: "image", name: "Grid", template: "storyboard-grid-25", prompt: PROMPT, ...extra };
 }
 
 describe("expandTemplate", () => {
-  it("fills the mode, model, params and prompt the agent left out", () => {
+  it("fills the mode, model and params the agent left out", () => {
     const out = expandTemplate(named());
     expect(out).toEqual({
       ok: true,
@@ -42,7 +41,7 @@ describe("expandTemplate", () => {
         mode: "i2i",
         model: "nano-banana-pro-edit-ultra",
         params: { aspect_ratio: "1:1", resolution: "4k" },
-        prompt: templatePrompt(grid),
+        prompt: PROMPT,
       },
     });
   });
@@ -67,6 +66,15 @@ describe("expandTemplate", () => {
     const prompt = [{ text: "a storyboard of a cat" }];
     const out = expandTemplate(named({ prompt }));
     expect(out.ok && out.node.prompt).toEqual(prompt);
+  });
+
+  it("refuses a node with no prompt, giving the template's words with the ref of each node in its pool", () => {
+    const out = expandTemplate(named({ prompt: undefined }), [4]);
+    expect(out.ok).toBe(false);
+    const reason = out.ok ? "" : out.reason;
+    expect(reason).toContain("sends no prompt");
+    expect(reason).toContain('{"ref":4}');
+    expect(reason).not.toContain("📎");
   });
 
   it("refuses a template it does not have, naming the ones it does", () => {

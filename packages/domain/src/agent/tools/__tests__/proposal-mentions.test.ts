@@ -15,7 +15,7 @@ import type { CanvasProposal, ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-const { checkProposal, inputSchema } = await import("../propose-canvas-action.js");
+const { answerFor, checkProposal, inputSchema } = await import("../propose-canvas-action.js");
 const { renderGenerationModelsForModel } = await import("../generation-models.js");
 const { modelsForMode } = await import("@domain/model-catalog/mode-catalog.js");
 
@@ -150,13 +150,13 @@ describe("a node in the pool is @'d by a ref", () => {
 
 describe("a template-started node", () => {
   it("refuses a node naming a template without its own prompt, giving the template's words with refs", () => {
-    const node: ProposalNode = { role: "generate", type: "image", name: "Board", template: "storyboard-grid-25" };
-    const proposal = group([emptyPicture("Reference"), node], [{ fromIndex: 0, toIndex: 1, into: "pool" }]);
+    const node = { role: "generate" as const, type: "image" as const, name: "Board", template: "storyboard-grid-25" };
+    const answer = answerFor({ nodes: [{ role: "source", type: "image", name: "Reference" }, node], edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }], rationale: "r", groupName: "Group" });
 
-    const reason = refusal(proposal);
+    const reason = answer.placed ? "" : answer.reason;
 
     expect(reason).toContain("prompt");
-    expect(reason).toContain('{"ref"');
+    expect(reason).toContain('{"ref":0}');
     expect(reason).not.toContain("📎");
   });
 });
@@ -204,7 +204,7 @@ describe("a loose empty node", () => {
 
 describe("what the model list says", () => {
   it("speaks of refs and asks no note for the lyrics box", () => {
-    const text = renderGenerationModelsForModel(modelsForMode("audio", "t2m") as never);
+    const text = renderGenerationModelsForModel(modelsForMode("audio", "t2m"));
 
     expect(text).not.toContain("asset mark");
     expect(text).toContain("lyrics box");
