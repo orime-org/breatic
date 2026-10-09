@@ -149,14 +149,17 @@ describe("a node in the pool is @'d by a ref", () => {
 });
 
 describe("a template-started node", () => {
-  it("refuses a node naming a template without its own prompt, giving the template's words with refs", () => {
+  it("refuses a node naming a template without its own prompt, giving the template's words with a ref placeholder for each reference", () => {
     const node = { role: "generate" as const, type: "image" as const, name: "Board", template: "storyboard-grid-25" };
     const answer = answerFor({ nodes: [{ role: "source", type: "image", name: "Reference" }, node], edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }], rationale: "r", groupName: "Group" });
 
     const reason = answer.placed ? "" : answer.reason;
 
     expect(reason).toContain("prompt");
-    expect(reason).toContain('{"ref":0}');
+    // The agent knows its own indices; the refusal names which node each ref
+    // stands for and leaves the number to it.
+    expect(reason).toContain('{"ref": <index of the node wired in for');
+    expect(reason).not.toContain('{"ref":0}');
     expect(reason).not.toContain("📎");
   });
 });
@@ -179,14 +182,26 @@ describe("the lyrics box", () => {
 });
 
 describe("the length the panel sends", () => {
-  it("counts a referenced text node's words once", () => {
-    const words: ProposalNode = { role: "written", type: "text", name: "Script", prompt: [{ text: "x".repeat(40) }] };
-    const proposal = group(
-      [words, edit([{ text: "Use " }, { ref: 0 }])],
-      [{ fromIndex: 0, toIndex: 1, into: "pool" }],
-    );
+  /** realtime-tts-2 takes at most this many characters of prompt. */
+  const CAP = 2000;
 
-    expect(checkProposal(proposal)).toEqual({ ok: true });
+  /**
+   * A script read aloud after a few words of its own.
+   * @param length - How many characters the script holds.
+   * @returns The proposal.
+   */
+  function speech(length: number): CanvasProposal {
+    const script: ProposalNode = { role: "written", type: "text", name: "Script", prompt: [{ text: "x".repeat(length) }] };
+    const voice: ProposalNode = { role: "generate", type: "audio", name: "Voice", mode: "tts", model: "realtime-tts-2", prompt: [{ text: "Read: " }, { ref: 0 }] };
+    return group([script, voice], [{ fromIndex: 0, toIndex: 1, into: "pool" }]);
+  }
+
+  it("counts a referenced text node's words once, so a script at exactly the cap fits", () => {
+    expect(checkProposal(speech(CAP - "Read: ".length))).toEqual({ ok: true });
+  });
+
+  it("refuses the script one character past the cap", () => {
+    expect(checkProposal(speech(CAP - "Read: ".length + 1))).toMatchObject({ ok: false });
   });
 });
 

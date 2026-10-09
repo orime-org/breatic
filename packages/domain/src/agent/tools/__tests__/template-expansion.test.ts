@@ -68,12 +68,12 @@ describe("expandTemplate", () => {
     expect(out.ok && out.node.prompt).toEqual(prompt);
   });
 
-  it("refuses a node with no prompt, giving the template's words with the ref of each node in its pool", () => {
-    const out = expandTemplate(named({ prompt: undefined }), [4]);
+  it("refuses a node with no prompt, giving the template's words with a ref placeholder for each reference", () => {
+    const out = expandTemplate(named({ prompt: undefined }));
     expect(out.ok).toBe(false);
     const reason = out.ok ? "" : out.reason;
     expect(reason).toContain("sends no prompt");
-    expect(reason).toContain('{"ref":4}');
+    expect(reason).toContain('{"ref": <index of the node wired in for');
     expect(reason).not.toContain("📎");
   });
 

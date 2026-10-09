@@ -341,6 +341,31 @@ describe('useNodeCreation', () => {
       expect(canvasSpace.getPromptFragment('p-thumb', 's-thumb', ids[1]!, 'i2i')!.toJSON()).toContain(`thumbnail="${PHOTO}"`);
     });
 
+    it('puts each text node @\'d in a song model\'s lyrics box on a line of its own', () => {
+      const song: CanvasProposal = {
+        nodes: [
+          { role: 'written', type: 'text', name: 'Verse', prompt: [{ text: 'la la' }] },
+          { role: 'written', type: 'text', name: 'Chorus', prompt: [{ text: 'oh oh' }] },
+          { role: 'generate', type: 'audio', name: 'Song', mode: 't2m', model: 'some-model', takesPrompt: true, prompt: [{ text: 'gentle pop' }] },
+        ],
+        edges: [
+          { fromIndex: 0, toIndex: 2, into: 'lyrics' },
+          { fromIndex: 1, toIndex: 2, into: 'lyrics' },
+        ],
+        rationale: '',
+        groupName: 'Song',
+      };
+      const { result } = renderHook(() => useNodeCreation('p-lyr2', 's-lyr2'));
+
+      const { nodeIds: ids } = result.current.placeProposalAt(song, { x: 0, y: 0 });
+
+      const box = canvasSpace.getLyricsFragment('p-lyr2', 's-lyr2', ids[2]!, 't2m')!;
+      const lines = box.toArray().map((line) => (line as Y.XmlElement).toString());
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toContain(`sourceNodeId="${ids[0]!}"`);
+      expect(lines[1]).toContain(`sourceNodeId="${ids[1]!}"`);
+    });
+
     it('@s a text node in a song model\'s lyrics box, and not in its prompt', () => {
       const song: CanvasProposal = {
         nodes: [
@@ -428,7 +453,9 @@ describe('useNodeCreation', () => {
         };
         const { result } = renderHook(() => useNodeCreation('p-mk', 's-mk'));
         result.current.placeProposalAt(marked, { x: 0, y: 0 });
-        expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editMarks);
+        // A proposal lands no square brackets: its references arrive as
+        // mentions, so the reminder speaks of the braces alone.
+        expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editProposalMarks);
       });
 
       it('reminds them when only a shot carries a mark', () => {
@@ -467,7 +494,7 @@ describe('useNodeCreation', () => {
         expect(canvasSpace.getPromptFragment('p-box', 's-box', ids[1]!, 'i2i')!.toJSON()).not.toContain('Pick the photo');
       });
 
-      it('reminds them when a placed prompt carries only a note', () => {
+      it('says nothing when a placed prompt carries only a note, which shows in the box already', () => {
         const noted: CanvasProposal = {
           ...PAIR,
           nodes: [
@@ -477,7 +504,7 @@ describe('useNodeCreation', () => {
         };
         const { result } = renderHook(() => useNodeCreation('p-nt', 's-nt'));
         result.current.placeProposalAt(noted, { x: 0, y: 0 });
-        expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editMarks);
+        expect(toast.info).not.toHaveBeenCalled();
       });
 
       it('says nothing when the prompt only @s a node', () => {

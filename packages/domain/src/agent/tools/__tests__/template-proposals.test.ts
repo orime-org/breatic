@@ -123,10 +123,10 @@ describe("a template drawing on work generated upstream", () => {
     expect(answer.placed).toBe(true);
   });
 
-  it("is refused with no prompt of its own, giving the template's words with the ref to the character", () => {
+  it("is refused with no prompt of its own, giving the template's words with a ref placeholder for the character", () => {
     const sent = chained([]);
     const answer = answerFor({ ...sent, nodes: [sent.nodes[0]!, { role: "generate", type: "image", name: "Storyboard", template: "storyboard-grid-25" }] });
-    expect(answer).toMatchObject({ placed: false, reason: expect.stringContaining('{"ref":0}') });
+    expect(answer).toMatchObject({ placed: false, reason: expect.stringContaining('{"ref": <index of the node wired in for') });
   });
 });
 
