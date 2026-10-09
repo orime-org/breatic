@@ -1364,7 +1364,8 @@ test('a picture keeps its size under a skeleton while it loads, then shows the o
     await route.continue();
   });
   // A preview that loads, so the original can only come from the width rule.
-  // 576 wide is the box the ingest cuts previews to.
+  // The ingest cuts previews 576 wide and rounds the height, so a 1601x901
+  // original gets a 576x324 preview, a shade off the original's shape.
   const preview = await pngBytes(page, 576, 324);
   await page.route(/\.preview\.webp$/, async (route) => {
     await held;
@@ -1373,26 +1374,38 @@ test('a picture keeps its size under a skeleton while it loads, then shows the o
   await pickFromPlus(page, 'image', {
     name: 'wide.png',
     mimeType: 'image/png',
-    buffer: await pngBytes(page, 1600, 900),
+    buffer: await pngBytes(page, 1601, 901),
   });
 
   const img = page.locator(`${IMAGE} img`);
   await expect(img).toHaveCount(1, { timeout: UPLOAD_TIMEOUT });
-  expect(await img.getAttribute('width')).toBe('1600');
-  expect(await img.getAttribute('height')).toBe('900');
+  expect(await img.getAttribute('width')).toBe('1601');
+  expect(await img.getAttribute('height')).toBe('901');
   await expect(page.locator(`${IMAGE} [data-testid="doc-media-skeleton"]`)).toBeVisible();
   const next = page.locator(`${EDITOR} .bn-block-content >> nth=1`);
   const nextTop = (await next.boundingBox())!.y;
   const box = await img.boundingBox();
   expect(box!.height).toBeGreaterThan(0);
-  expect(Math.abs(box!.width / box!.height - 16 / 9)).toBeLessThan(0.02);
+  expect(Math.abs(box!.width / box!.height - 1601 / 901)).toBeLessThan(0.02);
+  // Every frame from here on records where the next block sits.
+  await next.evaluate((element) => {
+    const tops: number[] = [];
+    (window as unknown as { nextTops: number[] }).nextTops = tops;
+    const sample = (): void => {
+      tops.push(element.getBoundingClientRect().top);
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
 
   release();
   await expect(page.locator(`${IMAGE} [data-testid="doc-media-skeleton"]`)).toHaveCount(0);
-  await expect.poll(() => img.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(1600);
+  await expect.poll(() => img.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(1601);
   expect(await img.getAttribute('src')).not.toContain('.preview.webp');
-  // Loading changed nothing below it (A23).
+  // Loading changed nothing below it, the preview's frames included (A23).
   expect((await next.boundingBox())!.y).toBe(nextTop);
+  const tops = await page.evaluate(() => (window as unknown as { nextTops: number[] }).nextTops);
+  expect(new Set(tops)).toEqual(new Set([nextTop]));
 });
 
 test('a video keeps its size under a skeleton until its first frame, and nothing below it moves (A23)', async () => {

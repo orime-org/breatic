@@ -218,6 +218,17 @@ describe('the loading state and the preview (A23)', () => {
     expect(within(element(editor)).queryByTestId('doc-media-skeleton')).toBeNull();
   });
 
+  it('keeps the stored shape after it loads, whatever shape the preview has', () => {
+    const editor = open('image', { mediaWidth: 800, mediaHeight: 400 });
+    const img = element(editor).querySelector('img')!;
+
+    expect(img.style.aspectRatio).toBe('800 / 400');
+    act(() => {
+      img.dispatchEvent(new Event('load'));
+    });
+    expect(img.style.aspectRatio).toBe('800 / 400');
+  });
+
   it('holds the width the picture will be shown at before it loads, when no width was set', () => {
     const editor = open('image', { mediaWidth: 800, mediaHeight: 400 });
 
