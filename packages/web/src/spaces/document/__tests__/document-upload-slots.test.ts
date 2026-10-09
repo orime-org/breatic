@@ -23,6 +23,7 @@ import {
   addUploadBatch,
   documentUploadsExtension,
   insertSlotBlock,
+  patchUploadSlot,
   removeUploadSlot,
   documentUploadsKey,
   uploadSlots,
@@ -630,6 +631,23 @@ describe('landing a block leaves the reader where they are (A4)', () => {
     manager.undo();
 
     expect(shape(editor)).toEqual(['A', 'm1', 'B', 'C']);
+  });
+
+  it('leaves what the reader types while a file uploads in one undo step', () => {
+    const { editor, manager } = open();
+    const view = editor.prosemirrorView!;
+    const [slot] = addUploadBatch(
+      view,
+      gapBetween(view.state.doc, idOf(editor, 'A'), idOf(editor, 'B')), ['m1']);
+    manager.stopCapturing();
+    editor.setTextCursorPosition(idOf(editor, 'C'), 'end');
+
+    view.dispatch(view.state.tr.insertText('abc'));
+    patchUploadSlot(view, slot!, { progress: 0.5 });
+    view.dispatch(view.state.tr.insertText('def'));
+    manager.undo();
+
+    expect(shape(editor)).toEqual(['A', 'B', 'C']);
   });
 
   it('removes the placeholder of the file that landed, and only that one', () => {

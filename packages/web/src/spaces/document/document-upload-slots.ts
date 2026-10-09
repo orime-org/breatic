@@ -430,7 +430,7 @@ export const documentUploadsExtension = createExtension(() => {
  * @param action - What to do.
  */
 function send(view: EditorView, action: UploadsAction): void {
-  view.dispatch(view.state.tr.setMeta(documentUploadsKey, action).setMeta('addToHistory', false));
+  view.dispatch(view.state.tr.setMeta(documentUploadsKey, action));
 }
 
 /**
