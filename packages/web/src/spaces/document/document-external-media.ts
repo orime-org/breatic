@@ -66,7 +66,7 @@ function strip(fragment: Fragment, prefix: string | null): { fragment: Fragment;
       count += 1;
       // The rows nested under it are text the reader pasted: they take its place.
       const group = node.lastChild;
-      if (node.childCount > 1 && group !== null && group.type.name === 'blockGroup') {
+      if (group?.type.name === 'blockGroup') {
         const inner = strip(group.content, prefix);
         count += inner.count;
         inner.fragment.forEach((child) => kept.push(child));
