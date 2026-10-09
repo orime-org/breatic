@@ -324,6 +324,8 @@ test('starts a storyboard from its template, and reminds the reader of what is t
   await expect(prompt).not.toContainText('[📎');
   await expect(page.getByTestId('generate-model-trigger')).toContainText('Nano Banana Pro');
   await expect(page.getByText('square brackets', { exact: false })).toHaveCount(0);
+  // Checked once the panel is ready, so a toast that came late still counts.
+  if (!toFill) await expect(reminder).toHaveCount(0);
 });
 
 test('chains a generated character into a template storyboard, a ref @-ing it @needs-model', async () => {

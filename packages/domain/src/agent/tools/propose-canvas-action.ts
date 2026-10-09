@@ -102,6 +102,7 @@ const promptSegment = z.union([
       ref: z
         .number()
         .int()
+        .nonnegative()
         .describe(
           "An @ of the node at this index in nodes, written into the prompt for the reader: it lands as the " +
             "same mention they would insert by hand. Use it for every node wired into this node's pool, " +
@@ -185,7 +186,8 @@ const proposalNode = z
       .optional()
       .describe(
         "What to generate, or a written node's words, in the language the reader " +
-          "writes in. A ref or a mark is a segment of its own, never typed into a text segment. " +
+          "writes in. Write it up from what the reader asked for; copy their words exactly only when they ask for that. " +
+          "A ref or a mark is a segment of its own, never typed into a text segment. " +
           "Every node going into the pool gets a ref where the prompt speaks of it, and a note too " +
           "when it lands empty; a node going into a slot by an edge takes a note of its own (a slot " +
           "filled through fills takes none, the lyrics box takes none), and so does " +
@@ -754,9 +756,17 @@ function checkGenerateNode(
   const stray = refs.find((at) => !pooled.includes(at));
   if (stray !== undefined) {
     const named = proposal.nodes[stray];
+    if (!named) {
+      return { ok: false, reason: `A ref in "${node.name}" points outside the group: {"ref": ${String(stray)}}.` };
+    }
+    // Wired in another way, the node is already where it goes; a ref would
+    // only send it a second time.
+    const elsewhere = routed.find(({ node: n }) => n === named);
     return {
       ok: false,
-      reason: `${named ? `"${named.name}"` : `node ${String(stray)}`} is @'d by a ref in "${node.name}" but is not wired into its pool. Wire it in with an edge into: "pool", or leave the ref out.`,
+      reason: elsewhere
+        ? `"${named.name}" goes into "${elsewhere.way.into}" of "${node.name}", ${elsewhere.way.mark === "placed" ? "which landing @s it into" : "which the reader picks it into"}, so it takes no ref; leave the ref out.`
+        : `"${named.name}" is @'d by a ref in "${node.name}" but is not wired into its pool. Wire it in with an edge into: "pool", or leave the ref out.`,
     };
   }
   // Every one at once, so a single retry puts them all in.
@@ -781,6 +791,7 @@ function checkGenerateNode(
     const target = proposal.nodes[at];
     return target?.type === "text" ? [target] : [];
   });
+  const pool = referencePool(getModelCatalog()[nodeType]?.find((m) => m.name === model), mode);
   /**
    * What the panel sends in place of one ref, the way it serialises it: a
    * text node's words, and a picture, clip or track as its pool's mention,
@@ -793,8 +804,7 @@ function checkGenerateNode(
     const target = proposal.nodes[at];
     if (!target) return "";
     if (target.type === "text") return promptPlainText(target.prompt ?? []);
-    const entry = getModelCatalog()[nodeType]?.find((m) => m.name === model);
-    const mention = referencePool(entry, mode)[target.type]?.mention;
+    const mention = pool[target.type]?.mention;
     if (mention === undefined) return "";
     const n = pooled.filter((i) => proposal.nodes[i]?.type === target.type).indexOf(at);
     return mention.replace("{n}", String(n + 1)).replace("{i}", String(n));
@@ -821,12 +831,20 @@ function checkGenerateNode(
   const sent = board === undefined
     ? promptTextOf(node.prompt ?? [], refWords)
     : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "");
+  // A song model's lyrics box is a second box the panel holds to the same
+  // gate: the words of the nodes wired into it, a line apart.
+  const lyricsRequired = ways.get("text")?.some((way) => way.into === PANEL_EDITOR_PARAM) === true;
+  const lyricsText = routed
+    .filter(({ way }) => way.into === PANEL_EDITOR_PARAM)
+    .map(({ node: n }) => promptPlainText(n.prompt ?? []))
+    .join("\n");
   const verdict = evaluateExecute({
     promptText: sent,
     model,
     nodeExists: true,
     isSubmitting: false,
     promptRequired: chosen.takesPrompt,
+    ...(lyricsRequired ? { lyricsRequired, lyricsText } : {}),
     ...(chosen.maxInputChars === undefined ? {} : { maxInputChars: chosen.maxInputChars }),
     ...(node.shots !== undefined && total !== undefined
       ? {
@@ -852,6 +870,12 @@ function checkGenerateNode(
     return {
       ok: false,
       reason: `"${model}" generates from what the prompt says, and this proposal writes nothing in it.`,
+    };
+  }
+  if (verdict?.refusal === "lyrics-missing") {
+    return {
+      ok: false,
+      reason: `"${model}" sings the words in its lyrics box, and this proposal leaves it empty. Write the lyrics as a written text node wired in with into: "${PANEL_EDITOR_PARAM}", which is @'d there for you.`,
     };
   }
   if (verdict?.refusal === "prompt-too-long") {

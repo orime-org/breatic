@@ -225,8 +225,8 @@ describe("what the guide says", () => {
     expect(proposals).toMatch(/orange note[^.]*it is never sent to the model/);
   });
 
-  it("says the reminder shows only where a placed proposal's prompt box carries a mark to fill", () => {
-    expect(section("Proposal cards")).toMatch(/When a placed proposal's prompt box carries a ✏️ mark, the message/);
+  it("says the reminder shows only where a placed proposal carries a mark to fill", () => {
+    expect(section("Proposal cards")).toMatch(/When a placed proposal carries a ✏️ mark \(in a prompt box or a text node's words\), the message/);
   });
 
   it("says words bound for a song's lyrics box arrive @'d there", () => {
