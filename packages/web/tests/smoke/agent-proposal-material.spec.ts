@@ -190,8 +190,8 @@ test('@s an attached portrait in an image-to-image prompt, and Generate sends it
 
   const sent = await catchSubmit(page);
   // A tall portrait lands the panel low and right, under the canvas controls
-  // and the minimap; the reader scrolls the canvas to reach Generate, and so
-  // does this.
+  // and the minimap (inner#854); the reader scrolls the canvas to reach
+  // Generate, and so does this.
   await page.mouse.move(1000, 200);
   await page.mouse.wheel(500, 400);
   await expect(page.getByTestId('generate-execute')).toBeEnabled({ timeout: 20_000 });
