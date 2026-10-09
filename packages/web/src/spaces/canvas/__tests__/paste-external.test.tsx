@@ -78,6 +78,8 @@ describe('cloning a node from outside', () => {
 describe('pasting a node from outside', () => {
   beforeEach(() => {
     _resetForTests();
+    // The Space is open, as it is while its canvas is on screen.
+    getDoc(docName.canvasSpace('p1', 's1'));
     toastError.mockReset();
     useCurrentUserStore.getState().setUser({
       id: 'u-9',

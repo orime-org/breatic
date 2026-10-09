@@ -10,7 +10,7 @@ import type { ContentNodeView, NodeView } from '@web/data/yjs/node-view';
 
 import * as canvasSpace from '@web/data/yjs/canvas-space';
 import { readShots } from '@web/data/yjs/node-storyboard';
-import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
+import { _resetForTests, destroyDoc, docName, getDoc } from '@web/data/yjs/manager';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
@@ -40,6 +40,8 @@ describe('useNodeCreation', () => {
     // The paste case below writes into a REAL canvas document, and documents
     // are cached per name across every test file in this process.
     _resetForTests();
+    // The Space is open, as it is while its canvas is on screen.
+    getDoc(docName.canvasSpace('p1', 's1'));
     useCurrentUserStore.getState().setUser({
       id: 'u-9',
       name: 'Ada',
@@ -145,6 +147,54 @@ describe('useNodeCreation', () => {
     expect(data.name).toBe('COPY-Hero');
     expect(canvasSpace.nodeDataMap(getDoc(docName.canvasSpace('p1', 's1')), ids?.[0] ?? '')?.get('createdBy')).toBe('u-9');
     paste.mockRestore();
+  });
+
+  // The Space's tab hidden while the server answers: the document is still
+  // open, so the copies land in it (React runs effect cleanups on a hidden
+  // Activity). A closed Space's document is gone and nothing is written.
+  describe('a paste whose answer comes back after the Space left the screen', () => {
+    /**
+     * Start a paste whose server answer is held until `release` is called.
+     * @returns The pending paste, the hook's unmount, and the release.
+     */
+    const pendingPaste = (): {
+      done: Promise<string[] | null>;
+      unmount: () => void;
+      release: () => void;
+    } => {
+      let release = (): void => undefined;
+      vi.spyOn(canvasApi, 'paste').mockReturnValue(
+        new Promise((resolve) => {
+          release = () => resolve({ map: {} });
+        }),
+      );
+      const { result, unmount } = renderHook(() => useNodeCreation('p1', 's1'));
+      // A picture with content has a history row, so the paste waits on the server.
+      const done = result.current.pastePayload(
+        payloadOf([{ id: 'a', type: 'image', position: { x: 0, y: 0 }, data: { content: 'a.png' } }]),
+        { dx: 0, dy: 0 },
+      );
+      return { done, unmount, release: () => release() };
+    };
+
+    it('writes the copies into a Space that is only hidden', async () => {
+      const { done, unmount, release } = pendingPaste();
+      unmount();
+      release();
+      const ids = await done;
+      expect(ids).toHaveLength(1);
+      expect(canvasSpace.readNodes(getDoc(docName.canvasSpace('p1', 's1'))).map((n) => n.id)).toEqual(ids);
+      vi.restoreAllMocks();
+    });
+
+    it('writes nothing into a Space that was closed', async () => {
+      const { done, release } = pendingPaste();
+      destroyDoc(docName.canvasSpace('p1', 's1'));
+      release();
+      expect(await done).toBeNull();
+      expect(canvasSpace.readNodes(getDoc(docName.canvasSpace('p1', 's1')))).toHaveLength(0);
+      vi.restoreAllMocks();
+    });
   });
 
   // Every paste steps past nodes already on its spot (inner#1235 A20). Read

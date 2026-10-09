@@ -25,7 +25,7 @@ import {
   writeSnapshotNodes,
   type SnapshotNode,
 } from '@web/data/yjs/canvas-space';
-import { docName, getDoc } from '@web/data/yjs/manager';
+import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
 import { setStoryboardShots } from '@web/data/yjs/node-storyboard';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import { writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
@@ -201,14 +201,6 @@ export function useNodeCreation(
     },
     [projectId, spaceId, userId, stepPaste],
   );
-  // A paste waits on the server; a Space unmounted meanwhile is not written.
-  const mounted = React.useRef(true);
-  React.useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
   const pastePayload = React.useCallback(
     async (
       payload: ClipboardPayload,
@@ -238,7 +230,8 @@ export function useNodeCreation(
           return null;
         }
       }
-      if (!mounted.current) return null;
+      // A paste waits on the server; a Space closed meanwhile is not written.
+      if (!hasDoc(docName.canvasSpace(projectId, spaceId))) return null;
       const placed = stepClones(nodes, cloned.idMap, options.externalParentAbs, stepPaste);
       runCanvasUndoBatch(projectId, spaceId, () => {
         writeSnapshotNodes(getDoc(docName.canvasSpace(projectId, spaceId)), placed, cloned.edges);
