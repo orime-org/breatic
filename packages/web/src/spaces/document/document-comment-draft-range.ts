@@ -116,6 +116,7 @@ import {
 } from '@web/spaces/document/document-comment-selection';
 import {
   syncBindingOf,
+  type SyncBound,
   type TrackedLink,
 } from '@web/spaces/document/document-link-tracking';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
@@ -168,10 +169,6 @@ interface NamedBeforeEdit {
   readonly entry: number;
   readonly links: readonly TrackedLink[];
 }
-
-/** The sync binding, as a position conversion takes it. */
-type Binding = NonNullable<ReturnType<typeof syncBindingOf>>;
-
 
 /**
  * Draws a range in to the letters it covers.
@@ -307,7 +304,7 @@ function carryEnd(
  * @param range - The range, against its letters.
  * @returns The two positions.
  */
-function trackDraft(bound: Binding, range: DraftRange): TrackedLink {
+function trackDraft(bound: SyncBound, range: DraftRange): TrackedLink {
   const start = absolutePositionToRelativePosition(
     range.from,
     bound.type,
@@ -406,7 +403,7 @@ function besideGoneRow(tr: Transaction, id: string, side: Side): number | null {
  */
 function endAcrossYjs(
   tr: Transaction,
-  bound: Binding,
+  bound: SyncBound,
   end: Y.RelativePosition,
   handed: Y.RelativePosition | null,
   was: number,
@@ -450,7 +447,7 @@ function endAcrossYjs(
  */
 function carryAcrossYjs(
   tr: Transaction,
-  bound: Binding,
+  bound: SyncBound,
   link: TrackedLink,
   handed: TrackedLink | null,
   range: DraftRange,
