@@ -140,7 +140,7 @@ async function start(
   const [a, b] = blocks(editor);
   if (quoted) editor.updateBlock(a!.id, { props: { quoted: true } } as never);
   const view = editor.prosemirrorView!;
-  await uploader.start(view, files, () => gapBefore(view.state.doc, b!.id));
+  await uploader.start(view, files, () => gapBefore(view.state.doc, b!.id), false);
   await settle();
 }
 
@@ -168,7 +168,7 @@ describe('admission (A5)', () => {
     const uploader = createDocumentUploader(d);
     const place = vi.fn(() => null);
 
-    await uploader.start(editor.prosemirrorView!, [file('e.png', 'image/png', 0)], place);
+    await uploader.start(editor.prosemirrorView!, [file('e.png', 'image/png', 0)], place, false);
 
     expect(place).not.toHaveBeenCalled();
   });
@@ -182,6 +182,27 @@ describe('admission (A5)', () => {
 
     expect(pending.map((p) => p.file.name)).toEqual(['a.png']);
     expect(uploadSlots(editor.prosemirrorView!.state).map((s) => s.name)).toEqual(['a.png']);
+  });
+});
+
+describe('a batch and the undo step (A10)', () => {
+  it('closes the reader\'s undo step before the batch starts', async () => {
+    const editor = open();
+    const { deps: d } = deps();
+    const view = editor.prosemirrorView!;
+    const seen: number[] = [];
+    const uploader = createDocumentUploader({
+      ...d,
+      undo: {
+        stopCapturing: () => {
+          seen.push(uploadSlots(view.state).length);
+        },
+      },
+    });
+
+    await start(editor, uploader, [file('a.png', 'image/png')]);
+
+    expect(seen[0]).toBe(0);
   });
 });
 
@@ -202,6 +223,7 @@ describe('a gap held while admission waits (A2)', () => {
       view,
       [file('m.png', 'image/png')],
       holdGap(view, gapBefore(view.state.doc, b!.id)),
+      false,
     );
     editor.insertBlocks([{ type: 'paragraph', content: 'X' }] as never, a!.id, 'before');
     release(1000);
@@ -269,6 +291,29 @@ describe('an upload that succeeds (A13, A15)', () => {
       quoted: true,
     });
     expect(uploadSlots(editor.prosemirrorView!.state)).toEqual([]);
+  });
+
+  it.each([
+    [true, true],
+    [false, false],
+  ])('lands quoted as the empty quoted line it was aimed at when aimed is %s', async (aimed, quoted) => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'A' },
+      { type: 'paragraph', props: { quoted: true } },
+      { type: 'paragraph', content: 'B' },
+    ] as never);
+    const { deps: d, pending } = deps();
+    const uploader = createDocumentUploader(d);
+    const view = editor.prosemirrorView!;
+    const empty = blocks(editor)[1]!.id;
+
+    await uploader.start(view, [file('a.png', 'image/png')], () => gapBefore(view.state.doc, empty), aimed);
+    await settle();
+    pending[0]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image' });
+    await settle();
+
+    expect(blocks(editor)[1]!.props).toMatchObject({ name: 'a.png', quoted });
   });
 
   it('fails as a plain upload failure when the answer carries no address', async () => {

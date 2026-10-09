@@ -151,9 +151,38 @@ function insertedSibling(batch: UploadBatch, k: number, doc: PMNode): InsertedSi
  * @returns A position between two blocks.
  */
 export function resolveSlotPosition(batch: UploadBatch, k: number, doc: PMNode): number {
+  return placeSlot(batch, k, doc).at;
+}
+
+/**
+ * Where the k-th file of a batch goes, and whether it goes in quoted: as the
+ * files of the batch already inserted beside it, so a batch lands quoted as
+ * one; else as the empty line the reader aimed it at, while that line still
+ * follows its gap; else as the block before it, or the block after it at the
+ * head of a level.
+ * @param batch - The batch.
+ * @param k - The file's index in it.
+ * @param doc - The document now.
+ * @returns Its position between two blocks, and whether it is quoted.
+ */
+function placeSlot(batch: UploadBatch, k: number, doc: PMNode): { at: number; quoted: boolean } {
   const sibling = insertedSibling(batch, k, doc);
-  if (sibling === undefined) return batch.gap;
-  return sibling.after ? sibling.row.from : sibling.row.to;
+  if (sibling !== undefined) {
+    return { at: sibling.after ? sibling.row.from : sibling.row.to, quoted: isQuoted(sibling.row.node) };
+  }
+  const aimed = batch.aimedRow === null ? undefined : rowById(doc, batch.aimedRow);
+  const $gap = doc.resolve(batch.gap);
+  const beside = aimed?.from === batch.gap ? aimed.node : ($gap.nodeBefore ?? $gap.nodeAfter);
+  return { at: batch.gap, quoted: isQuoted(beside) };
+}
+
+/**
+ * Whether a row is quoted.
+ * @param row - The row, if any.
+ * @returns True when its line is quoted.
+ */
+function isQuoted(row: PMNode | null | undefined): boolean {
+  return row?.firstChild?.attrs[QUOTED] === true;
 }
 
 /**
@@ -179,26 +208,6 @@ export function blockGapAt(doc: PMNode, pos: number): number {
     return $at.after(depth + 1);
   }
   return doc.content.size - 1;
-}
-
-/**
- * Whether the k-th file of a batch goes in quoted: as the files of the batch
- * already inserted beside it, so a batch lands quoted as one; else as the
- * empty line the reader aimed it at, while that line still follows its gap;
- * else as the block before it, or the block after it at the head of a level.
- * @param batch - The batch.
- * @param k - The file's index in it.
- * @param doc - The document now.
- * @param at - Where it goes.
- * @returns True when quoted.
- */
-function quotedAt(batch: UploadBatch, k: number, doc: PMNode, at: number): boolean {
-  const sibling = insertedSibling(batch, k, doc);
-  const aimed = batch.aimedRow === null ? undefined : rowById(doc, batch.aimedRow);
-  const $at = doc.resolve(at);
-  const beside =
-    sibling?.row.node ?? (aimed?.from === at ? aimed.node : ($at.nodeBefore ?? $at.nodeAfter));
-  return beside?.firstChild?.attrs[QUOTED] === true;
 }
 
 /** Each batch's gap as Yjs names it, by batch id. */
@@ -478,6 +487,8 @@ function send(view: EditorView, action: UploadsAction): void {
  * @param names - The files' names, in the order they came in.
  * @param aimed - Whether the reader aimed the files at the empty line right
  *   after the gap: its insert menu, or a paste with the caret in it.
+ * @param undo - Closes the undo step the reader is in, so undoing an edit
+ *   made after the batch started hands its gap back as it stood then.
  * @returns The slots' ids, in the same order.
  */
 export function addUploadBatch(
@@ -485,6 +496,7 @@ export function addUploadBatch(
   gap: UploadGap,
   names: readonly string[],
   aimed = false,
+  undo?: UndoCapture,
 ): string[] {
   const slots = names.map((name) => ({
     id: crypto.randomUUID(),
@@ -497,6 +509,7 @@ export function addUploadBatch(
   const at = blockGapAt(view.state.doc, gap);
   const next = view.state.doc.resolve(at).nodeAfter;
   const aimedRow = aimed && typeof next?.attrs['id'] === 'string' ? next.attrs['id'] : null;
+  undo?.stopCapturing();
   send(view, { kind: 'add', batch: { id: crypto.randomUUID(), gap: at, aimedRow, slots } });
   return slots.map((slot) => slot.id);
 }
@@ -561,8 +574,8 @@ export function insertSlotBlock(
     const k = batch.slots.findIndex((slot) => slot.id === slotId);
     if (k < 0 || batch.slots[k]!.phase !== 'uploading') continue;
     const blockId = crypto.randomUUID();
-    const at = resolveSlotPosition(batch, k, view.state.doc);
-    const props = { ...block.props, [QUOTED]: quotedAt(batch, k, view.state.doc, at) };
+    const { at, quoted } = placeSlot(batch, k, view.state.doc);
+    const props = { ...block.props, [QUOTED]: quoted };
     const node = blockToNode({ ...block, props, id: blockId } as never, view.state.schema);
     undo?.stopCapturing();
     view.dispatch(

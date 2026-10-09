@@ -49,7 +49,7 @@ export interface DocumentUploaderDeps {
   readonly unregister: (operationId: string) => void;
   /** Says why a file was turned away before it was sent. */
   readonly refuse: (messageKey: string, params: Readonly<Record<string, string>>) => void;
-  /** Keeps each insert one undo step of its own. */
+  /** Closes the reader's undo step around a batch's start and each insert. */
   readonly undo: UndoCapture;
   /** The pixel size of a picture or a video, read off its file (A23). */
   readonly measure: (file: File) => Promise<MediaSize | undefined>;
@@ -60,9 +60,11 @@ export interface DocumentUploader {
   /**
    * Admits the files and starts the ones that pass at one gap, asked for only
    * once at least one file is admitted (the insert menu makes its gap then);
-   * null puts nothing anywhere.
+   * null puts nothing anywhere. `aimed` says the reader aimed the files at
+   * the empty line right after the gap (its insert menu, or a paste with the
+   * caret in it), so they land quoted as that line.
    */
-  start(view: EditorView, files: readonly File[], place: () => UploadGap | null, aimed?: boolean): Promise<void>;
+  start(view: EditorView, files: readonly File[], place: () => UploadGap | null, aimed: boolean): Promise<void>;
   /** Sends a failed file again, when doing so can end differently. */
   retry(view: EditorView, slotId: string): void;
   /** Takes a failed placeholder away. */
@@ -173,7 +175,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
   }
 
   return {
-    async start(view, files, place, aimed = false) {
+    async start(view, files, place, aimed) {
       const maxBytes = await deps.maxUploadBytes();
       const admitted: File[] = [];
       for (const file of files) {
@@ -190,7 +192,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       if (admitted.length === 0) return;
       const gap = place();
       if (gap === null) return;
-      const ids = addUploadBatch(view, gap, admitted.map((file) => file.name), aimed);
+      const ids = addUploadBatch(view, gap, admitted.map((file) => file.name), aimed, deps.undo);
       ids.forEach((slotId, k) => {
         held.set(slotId, admitted[k]!);
         void run(view, slotId);

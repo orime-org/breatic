@@ -18,7 +18,7 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { mediaGapBelow, mediaGapOnRow } from '@web/spaces/document/document-insert-row';
-import { gapAtCaret } from '@web/spaces/document/document-file-input';
+import { pasteTarget } from '@web/spaces/document/document-file-input';
 import { textblocks, gapBefore } from './textblocks';
 import {
   addUploadBatch,
@@ -399,6 +399,30 @@ describe('where the placeholder and the block go', () => {
     expect(shape(editor)).toEqual(['A', 'B', 'm1', 'C', 'D']);
   });
 
+  it('goes back above the line it was aimed at when an edit merged around its start is undone', () => {
+    const { editor, manager } = open([
+      { type: 'paragraph', content: 'A' },
+      { type: 'paragraph', content: '' },
+      { type: 'paragraph', content: 'B' },
+    ]);
+    editor.updateBlock(idOf(editor, 'A'), { content: 'Ax' } as never);
+    const empty = (editor.document as Seen[])[1]!.id;
+    const [slot] = addUploadBatch(
+      editor.prosemirrorView!,
+      gapBefore(editor.prosemirrorView!.state.doc, empty),
+      ['m1'],
+      true,
+      manager,
+    );
+    editor.removeBlocks([empty]);
+    manager.stopCapturing();
+    manager.undo();
+
+    land(editor, slot!);
+
+    expect(shape(editor)).toEqual(['Ax', 'm1', '', 'B']);
+  });
+
   it('stays at its gap when an edit made before it started is undone', () => {
     const { editor, manager } = open();
     editor.updateBlock(idOf(editor, 'C'), { content: 'Cxyz' } as never);
@@ -604,7 +628,8 @@ describe('where the placeholder and the block go', () => {
       { type: 'paragraph' },
     ]);
     editor.setTextCursorPosition(idOf(editor, 'Q'), 'end');
-    const [slot] = addUploadBatch(editor.prosemirrorView!, gapAtCaret(editor.prosemirrorView!.state), ['m1']);
+    const { gap, aimed } = pasteTarget(editor.prosemirrorView!.state);
+    const [slot] = addUploadBatch(editor.prosemirrorView!, gap, ['m1'], aimed);
 
     land(editor, slot!);
 
@@ -621,7 +646,8 @@ describe('where the placeholder and the block go', () => {
       { type: 'paragraph', props: { quoted: true } },
     ]);
     editor.setTextCursorPosition(idOf(editor, 'P'), 'end');
-    const [slot] = addUploadBatch(editor.prosemirrorView!, gapAtCaret(editor.prosemirrorView!.state), ['m1']);
+    const { gap, aimed } = pasteTarget(editor.prosemirrorView!.state);
+    const [slot] = addUploadBatch(editor.prosemirrorView!, gap, ['m1'], aimed);
 
     land(editor, slot!);
 
