@@ -47,6 +47,7 @@ export const REFUSALS = [
   "ref-arrives-otherwise",
   "ref-not-pooled",
   "ref-not-pooled-no-pool",
+  "ref-not-pooled-closed",
   "way-over-room",
   "way-over-room-other-way",
   "ref-missing",

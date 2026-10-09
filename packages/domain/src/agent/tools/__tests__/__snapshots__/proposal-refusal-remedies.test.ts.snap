@@ -8,21 +8,25 @@ exports[`every refusal's advice is a proposal the check takes > edge-kind-not-ta
 
 exports[`every refusal's advice is a proposal the check takes > edge-kind-not-taken (1): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-2" takes no image node, so the edge from "Pic" goes nowhere in it. Take that edge off."`;
 
-exports[`every refusal's advice is a proposal the check takes > edge-kind-not-taken (2): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-2" takes no image node, so the edge from "Pic" goes nowhere in it. Take that edge off. No generation here has a way left for an image node; take "Pic" out, or propose a model that takes it."`;
+exports[`every refusal's advice is a proposal the check takes > edge-kind-not-taken (2): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-2" takes no image node, so the edge from "Pic" goes nowhere in it. Take that edge off. No other generation here has a way left for "Pic"; take "Pic" out, or propose a model that takes it."`;
 
 exports[`every refusal's advice is a proposal the check takes > edge-kind-not-taken (3): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-2" takes no image node, so the edge from "Pic" goes nowhere in it. Take that edge off."`;
 
-exports[`every refusal's advice is a proposal the check takes > edge-kind-not-taken (4): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-2" takes no image node, so the edge from "Pic" goes nowhere in it. Take that edge off. No generation here has a way left for an image node; take "Pic" out, or propose a model that takes it."`;
+exports[`every refusal's advice is a proposal the check takes > edge-kind-not-taken (4): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-2" takes no image node, so the edge from "Pic" goes nowhere in it. Take that edge off. No other generation here has a way left for "Pic"; take "Pic" out, or propose a model that takes it."`;
 
 exports[`every refusal's advice is a proposal the check takes > edge-kind-not-taken-link (0): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-2" takes no image node, so the edge from "A" goes nowhere in it. Leave into off that edge, or propose a model that takes it."`;
 
 exports[`every refusal's advice is a proposal the check takes > edge-not-allowed (0): is met, and each way it says to put it right is accepted 1`] = `"The canvas does not let a video node feed an audio node, by your hand or theirs, so leave this edge off. "Clip" goes into "Gen" unwired, with a note saying to pick it into "video" and no ref."`;
 
-exports[`every refusal's advice is a proposal the check takes > edge-not-allowed (1): is met, and each way it says to put it right is accepted 1`] = `"The canvas does not let a video node feed an image node, by your hand or theirs, so leave this edge off. "nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen". No generation here has a way left for a video node; take "Clip" out, or propose a model that takes it."`;
+exports[`every refusal's advice is a proposal the check takes > edge-not-allowed (1): is met, and each way it says to put it right is accepted 1`] = `"The canvas does not let a video node feed an image node, by your hand or theirs, so leave this edge off. "nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen". No other generation here has a way left for "Clip"; take "Clip" out, or propose a model that takes it."`;
 
 exports[`every refusal's advice is a proposal the check takes > edge-not-an-entry (0): is met, and each way it says to put it right is accepted 1`] = `""Pic" does not go into "style_images" of "Gen" by an edge. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it, or through fills "style_images" on "Gen", with no edge and no ref."`;
 
-exports[`every refusal's advice is a proposal the check takes > edge-not-an-entry (1): is met, and each way it says to put it right is accepted 1`] = `""B" does not go into "image" of "Vid" by an edge. "Vid" has no room left for another image node, so "B" has no way into it. No generation here has a way left for an image node; take "B" out, or propose a model that takes it."`;
+exports[`every refusal's advice is a proposal the check takes > edge-not-an-entry (1): is met, and each way it says to put it right is accepted 1`] = `""B" does not go into "image" of "Vid" by an edge. Take that edge off. "B" has no way left into "Vid": "image" has no room left. No other generation here has a way left for "B"; take "B" out, or propose a model that takes it."`;
+
+exports[`every refusal's advice is a proposal the check takes > edge-not-an-entry (2): is met, and each way it says to put it right is accepted 1`] = `""N" does not go into "style_images" of "Gen" by an edge. Take that edge off. "N" has no way left into "Gen": "X" already brings the same material into "style_images". No other generation here has a way left for "N"; take "N" out, or propose a model that takes it."`;
+
+exports[`every refusal's advice is a proposal the check takes > edge-not-an-entry (3): is met, and each way it says to put it right is accepted 1`] = `""N" does not go into "style_images" of "Gen" by an edge. Take that edge off. "N" has no way left into "Gen": "style_images" has no room left. No other generation here has a way left for "N"; take "N" out, or propose a model that takes it."`;
 
 exports[`every refusal's advice is a proposal the check takes > edge-outside (0): is met, and each way it says to put it right is accepted 1`] = `"An edge points outside the group: {"fromIndex":0,"toIndex":4}."`;
 
@@ -46,7 +50,7 @@ exports[`every refusal's advice is a proposal the check takes > fill-self (0): i
 
 exports[`every refusal's advice is a proposal the check takes > fill-twice (0): is met, and each way it says to put it right is accepted 1`] = `"fills "style_images" on "Gen" holds "Pic" and "Pic 2", which hold the same material, and the slot keeps one copy of it. Take "Pic 2" out."`;
 
-exports[`every refusal's advice is a proposal the check takes > fill-wrong-kind (0): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" takes image in "style_images", and "Clip" is video. Take "Clip" out of fills "style_images". "nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen". No generation here has a way left for a video node; take "Clip" out, or propose a model that takes it."`;
+exports[`every refusal's advice is a proposal the check takes > fill-wrong-kind (0): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" takes image in "style_images", and "Clip" is video. Take "Clip" out of fills "style_images". "nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen". No other generation here has a way left for "Clip"; take "Clip" out, or propose a model that takes it."`;
 
 exports[`every refusal's advice is a proposal the check takes > group-unnamed (0): is met, and each way it says to put it right is accepted 1`] = `"Two or more nodes land together in a group, so give the group a name saying what it is for."`;
 
@@ -64,7 +68,7 @@ exports[`every refusal's advice is a proposal the check takes > material-not-sou
 
 exports[`every refusal's advice is a proposal the check takes > material-unused (0): is met, and each way it says to put it right is accepted 1`] = `""Pic" holds material that nothing here uses. Send it into a generation that takes it: "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it, or through fills "style_images" on "Gen", with no edge and no ref."`;
 
-exports[`every refusal's advice is a proposal the check takes > material-unused (1): is met, and each way it says to put it right is accepted 1`] = `""B" holds material that nothing here uses. No generation here has a way left for an image node; take "B" out, or propose a model that takes it."`;
+exports[`every refusal's advice is a proposal the check takes > material-unused (1): is met, and each way it says to put it right is accepted 1`] = `""B" holds material that nothing here uses. No other generation here has a way left for "B"; take "B" out, or propose a model that takes it."`;
 
 exports[`every refusal's advice is a proposal the check takes > material-unused (2): is met, and each way it says to put it right is accepted 1`] = `""Pic 2" holds material that nothing here uses. Send it into a generation that takes it: "Pic 2" goes into "Gen" by an edge with into: "pool" and a ref @'ing it."`;
 
@@ -128,7 +132,9 @@ exports[`every refusal's advice is a proposal the check takes > ref-missing (0):
 
 exports[`every refusal's advice is a proposal the check takes > ref-not-pooled (0): is met, and each way it says to put it right is accepted 1`] = `""Pic" is @'d by a ref in "Gen" but is not wired into its pool. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref. To keep the ref, send it into the pool that way; otherwise leave the ref out."`;
 
-exports[`every refusal's advice is a proposal the check takes > ref-not-pooled-no-pool (0): is met, and each way it says to put it right is accepted 1`] = `""Pic" is @'d by a ref in "Gen", and only a node in its pool takes a ref, while "nano-banana-2" has no pool for an image node. Leave the ref out. "nano-banana-2" takes no image node, so "Pic" has no way into "Gen". No generation here has a way left for an image node; take "Pic" out, or propose a model that takes it."`;
+exports[`every refusal's advice is a proposal the check takes > ref-not-pooled-closed (0): is met, and each way it says to put it right is accepted 1`] = `""Pic 3" is @'d by a ref in "Gen" but is not wired into its pool, and the pool has no way left for it. Leave the ref out. "Pic 3" has no way left into "Gen": "pool" has no room left. No other generation here has a way left for "Pic 3"; take "Pic 3" out, or propose a model that takes it."`;
+
+exports[`every refusal's advice is a proposal the check takes > ref-not-pooled-no-pool (0): is met, and each way it says to put it right is accepted 1`] = `""Pic" is @'d by a ref in "Gen", and only a node in its pool takes a ref, while "nano-banana-2" has no pool for an image node. Leave the ref out. "nano-banana-2" takes no image node, so "Pic" has no way into "Gen". No other generation here has a way left for "Pic"; take "Pic" out, or propose a model that takes it."`;
 
 exports[`every refusal's advice is a proposal the check takes > ref-not-pooled-no-pool (1): is met, and each way it says to put it right is accepted 1`] = `""Clip" is @'d by a ref in "Gen", and only a node in its pool takes a ref, while "sonilo-video-to-music" has no pool for a video node. Leave the ref out. "Clip" goes into "Gen" through fills "video" on "Gen", with no edge and no ref."`;
 
@@ -171,6 +177,8 @@ exports[`every refusal's advice is a proposal the check takes > text-source (0):
 exports[`every refusal's advice is a proposal the check takes > too-many-shots (0): is met, and each way it says to put it right is accepted 1`] = `""kling-v3.0-4k-text-to-video" takes at most 6 shots. Send at most 6, with their seconds still adding up to duration."`;
 
 exports[`every refusal's advice is a proposal the check takes > way-over-room (0): is met, and each way it says to put it right is accepted 1`] = `""qwen-image-edit-multiple-angles" takes 3 image node(s) by "pool", and 4 are going that way ("Pic 0", "Pic 1", "Pic 2", "Pic 3"). Send fewer."`;
+
+exports[`every refusal's advice is a proposal the check takes > way-over-room (1): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" takes 11 image node(s) by "pool", and 12 are going that way ("M0", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11"). Send fewer."`;
 
 exports[`every refusal's advice is a proposal the check takes > way-over-room-other-way (0): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" takes 11 image node(s) by "pool", and 12 are going that way ("Pic 0", "Pic 1", "Pic 2", "Pic 3", "Pic 4", "Pic 5", "Pic 6", "Pic 7", "Pic 8", "Pic 9", "Pic 10", "Pic 11"). Send fewer, or send the rest another way: "Pic 11" goes into "Gen" by an edge with into: "style_images" and a note saying to pick it there and no ref."`;
 

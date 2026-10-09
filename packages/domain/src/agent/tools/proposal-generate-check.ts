@@ -29,18 +29,19 @@ import {
   entriesFor,
   entryPhrase,
   fillsOf,
-  goingBy,
+  goingWay,
   holdingOf,
   nodeWaysSentence,
   notesAsked,
   notesIn,
+  openEntries,
   refsIn,
   routeEdges,
   slotSentence,
   waysSentence,
   type Arriving,
 } from "@domain/agent/tools/proposal-routing.js";
-import { modelsForMode, waysIn, type ModelInfo, type WayIn } from "@domain/model-catalog/mode-catalog.js";
+import { modelsForMode, waysIn, type ModelInfo } from "@domain/model-catalog/mode-catalog.js";
 import { getModelCatalog } from "@domain/model-catalog/model-catalog.js";
 
 /**
@@ -130,11 +131,14 @@ function strayRefReason(
   if (elsewhere) {
     return refuse("ref-arrives-otherwise", `"${named.name}" goes into "${node.name}" ${entryPhrase(elsewhere.entry, node.name)}, so leave the ref out.`);
   }
-  const keeps = entriesFor(chosen, named.type, holdingOf(named)).some((entry) => entry.ref);
-  if (!keeps) {
-    return refuse("ref-not-pooled-no-pool", `"${named.name}" is @'d by a ref in "${node.name}", and only a node in its pool takes a ref, while "${chosen.name}" has no pool for ${aNode(named.type)}. Leave the ref out. ${nodeWaysSentence(proposal, named, node, chosen)}`);
+  const ways = nodeWaysSentence(proposal, named, node, chosen);
+  if (!entriesFor(chosen, named.type, holdingOf(named)).some((entry) => entry.ref)) {
+    return refuse("ref-not-pooled-no-pool", `"${named.name}" is @'d by a ref in "${node.name}", and only a node in its pool takes a ref, while "${chosen.name}" has no pool for ${aNode(named.type)}. Leave the ref out. ${ways}`);
   }
-  return refuse("ref-not-pooled", `"${named.name}" is @'d by a ref in "${node.name}" but is not wired into its pool. ${nodeWaysSentence(proposal, named, node, chosen)} To keep the ref, send it into the pool that way; otherwise leave the ref out.`);
+  if (!openEntries(proposal, named, node, chosen).some((entry) => entry.ref)) {
+    return refuse("ref-not-pooled-closed", `"${named.name}" is @'d by a ref in "${node.name}" but is not wired into its pool, and the pool has no way left for it. Leave the ref out. ${ways}`);
+  }
+  return refuse("ref-not-pooled", `"${named.name}" is @'d by a ref in "${node.name}" but is not wired into its pool. ${ways} To keep the ref, send it into the pool that way; otherwise leave the ref out.`);
 }
 
 /** What a generation's wiring settles: the nodes it takes by edge, and which of them sit in its pool. */
@@ -162,21 +166,14 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
   // Over a way's room is said first: the fix there is fewer nodes, and every
   // count below would otherwise ask for a mark or note for a node to remove.
   for (const [kind, list] of waysIn(chosen)) {
-    /**
-     * How many more nodes of this kind one way takes.
-     * @param way - The way.
-     * @returns The room left.
-     * @throws {never} Never.
-     */
-    const left = (way: WayIn): number => way.room - goingBy(arriving, kind, way.into);
     for (const option of list) {
-      if (left(option) >= 0) continue;
-      const going = arriving.filter(({ node: n, entry }) => n.type === kind && entry.way.into === option.into).map(({ node: n }) => n);
+      const going = goingWay(arriving, kind, option.into);
+      if (going.length <= option.room) continue;
       const over = `"${chosen.name}" takes ${String(option.room)} ${kind} node(s) by "${option.into}", and ${String(going.length)} are going that way (${going.map((n) => `"${n.name}"`).join(", ")}).`;
-      // The nodes past the room, each with the other ways that still have room
-      // for it; offered only where those ways have room for all of them.
-      const rest = going.slice(option.room).map((n) => [n, entriesFor(chosen, n.type, holdingOf(n)).filter((entry) => entry.way.into !== option.into && left(entry.way) > 0)] as const);
-      const free = list.filter((other) => other !== option).reduce((sum, other) => sum + Math.max(0, left(other)), 0);
+      // The nodes past the room, each with the other ways still open to it;
+      // offered only where those ways have room for all of them.
+      const rest = going.slice(option.room).map((n) => [n, openEntries(proposal, n, node, chosen).filter((entry) => entry.way.into !== option.into)] as const);
+      const free = list.filter((other) => other !== option).reduce((sum, other) => sum + Math.max(0, other.room - goingWay(arriving, kind, other.into).length), 0);
       if (rest.every(([, entries]) => entries.length > 0) && rest.length <= free) {
         return refuse("way-over-room-other-way", `${over} Send fewer, or send the rest another way: ${rest.map(([n, entries]) => waysSentence(`"${n.name}"`, node, entries)).join(" ")}`);
       }

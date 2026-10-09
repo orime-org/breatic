@@ -131,10 +131,10 @@ function placedElsewhere(chosen: ModelInfo, node: ProposalNode, key: string, inf
  * @throws {never} Never.
  */
 export function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
-  const settable = Object.entries(chosen.params).filter(([key, info]) => placedElsewhere(chosen, node, key, info) === undefined).map(([key]) => key);
   for (const [key, value] of Object.entries(node.params ?? {})) {
     const info = chosen.params[key];
     if (!info) {
+      const settable = Object.entries(chosen.params).filter(([name, declared]) => placedElsewhere(chosen, node, name, declared) === undefined).map(([name]) => name);
       return refuse("param-undeclared", `"${chosen.name}" declares no ${key}. ${settable.length > 0 ? `The ones set here: ${settable.join(", ")}.` : "Nothing is set here."} Leave "${key}" out.`);
     }
     const elsewhere = placedElsewhere(chosen, node, key, info);
