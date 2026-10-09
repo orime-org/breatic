@@ -108,6 +108,15 @@ describe('NodeDrawLayer', () => {
     expect(store().miniTool?.drawing?.steps).toEqual([]);
   });
 
+  // B3: the ring's lines stay one screen pixel whatever the zoom, as the crop frame's do.
+  it('draws the brush ring with lines one screen pixel wide at any zoom', () => {
+    render(cropCanvas([NODE], null, 2));
+    act(() => store().openMiniTool('n1', 'image.inpaint', { sourceContent: NODE.src, params: {} }));
+    const ring = screen.getByTestId('mini-tool-draw-ring');
+    expect(ring.style.borderWidth).toBe('0.5px');
+    expect(ring.style.outlineWidth).toBe('0.5px');
+  });
+
   it('takes no pointer while the run is exporting', () => {
     mount('image.inpaint');
     act(() => store().setMiniToolExporting(true, store().panelSession));

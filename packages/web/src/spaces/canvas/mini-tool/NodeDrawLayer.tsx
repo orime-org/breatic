@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { useStoreApi } from '@xyflow/react';
+import { useStore, useStoreApi } from '@xyflow/react';
 import * as React from 'react';
 
 import { miniToolById } from '@breatic/shared/mini-tools';
 
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
+import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
 import { useMediaGeometry, type MediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { paintDrawing, type DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import { visibleOps, type DrawingDraft, type DrawOp } from '@web/stores/drawing-draft';
@@ -81,6 +82,8 @@ function repaint(canvas: HTMLCanvasElement | null, ops: readonly DrawOp[], kind:
 function DrawSurface({ kind, drawing, exporting, geometry }: DrawSurfaceProps): React.JSX.Element {
   const store = useCanvasSessionStore();
   const flow = useStoreApi();
+  // The ring follows the zoom live, as the crop frame's lines do.
+  const liveZoom = useStore((s) => s.transform[2]);
   const settledZoom = useCanvasSession((s) => s.settledZoom);
   const [mountZoom] = React.useState(() => flow.getState().transform[2]);
   const zoom = settledZoom ?? mountZoom;
@@ -220,9 +223,16 @@ function DrawSurface({ kind, drawing, exporting, geometry }: DrawSurfaceProps): 
       {strokes ? (
         <div
           ref={ring}
+          data-testid='mini-tool-draw-ring'
           aria-hidden='true'
           className='pointer-events-none absolute left-0 top-0 rounded-full border border-background outline outline-foreground'
-          style={{ width: ringSize, height: ringSize, visibility: 'hidden' }}
+          style={{
+            width: ringSize,
+            height: ringSize,
+            visibility: 'hidden',
+            borderWidth: handleScale(liveZoom),
+            outlineWidth: handleScale(liveZoom),
+          }}
         />
       ) : null}
     </div>
