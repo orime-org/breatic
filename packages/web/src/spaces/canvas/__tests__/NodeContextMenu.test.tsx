@@ -3,7 +3,7 @@
 
 import type * as React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
 
@@ -101,21 +101,14 @@ describe('NodeContextMenu', () => {
     );
   });
 
-  it('fires the delete handler on selection', () => {
+  it('fires the duplicate / delete handlers on selection', () => {
+    const onDuplicate = vi.fn();
     const onDelete = vi.fn();
-    setup({ target: 'node', onDelete });
+    setup({ target: 'node', onDuplicate, onDelete });
+    fireEvent.click(screen.getByTestId('node-menu-duplicate'));
+    expect(onDuplicate).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByTestId('node-menu-delete'));
     expect(onDelete).toHaveBeenCalledTimes(1);
-  });
-
-  it('fires the duplicate handler once the menu has closed', async () => {
-    const onDuplicate = vi.fn();
-    const props = { x: 10, y: 10, locked: false, target: 'node' as const, onOpenChange: () => {}, onToggleLock: () => {}, onDuplicate };
-    const { rerender } = render(<NodeContextMenu open {...props} />);
-    fireEvent.click(screen.getByTestId('node-menu-duplicate'));
-    expect(onDuplicate).not.toHaveBeenCalled();
-    rerender(<NodeContextMenu open={false} {...props} />);
-    await waitFor(() => expect(onDuplicate).toHaveBeenCalledTimes(1));
   });
 
   it('omits action items whose handlers are not supplied (lock always present)', () => {

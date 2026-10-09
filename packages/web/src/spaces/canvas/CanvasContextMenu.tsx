@@ -16,7 +16,6 @@ import { useTranslation } from '@web/i18n/use-translation';
 import type { CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import { CreatableNodeMenuItems } from '@web/spaces/canvas/nodes/_shared/CreatableNodeMenuItems';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
-import { useRunAfterMenuClose } from '@web/spaces/canvas/use-run-after-menu-close';
 
 interface CanvasContextMenuProps {
   /** Whether the menu is open (driven by the canvas's right-click handler). */
@@ -58,8 +57,6 @@ export const CanvasContextMenu = React.memo(function CanvasContextMenu({
   onPaste,
 }: CanvasContextMenuProps): React.JSX.Element {
   const t = useTranslation();
-  // Paste hands the keyboard to the copies, so it runs once the menu has closed.
-  const { later, onCloseAutoFocus } = useRunAfterMenuClose();
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
@@ -69,14 +66,14 @@ export const CanvasContextMenu = React.memo(function CanvasContextMenu({
           style={{ position: 'fixed', left: x, top: y, height: 0, width: 0 }}
         />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align='start' onCloseAutoFocus={onCloseAutoFocus}>
+      <DropdownMenuContent align='start'>
         <CreatableNodeMenuItems onPick={onPick} />
         {onPaste ? (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               data-testid='canvas-menu-paste'
-              onSelect={later(onPaste)}
+              onSelect={onPaste}
             >
               <Clipboard className='mr-2 h-4 w-4' aria-hidden='true' />
               {t('canvas.contextMenu.paste')}

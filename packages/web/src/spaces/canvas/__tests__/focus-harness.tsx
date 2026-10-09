@@ -55,7 +55,10 @@ export function renderSpace(): () => void {
   // never re-read the mocked space.
   const tree = (): React.ReactElement => (
     <QueryClientProvider client={client}>
-      <CanvasSpace projectId='p' spaceId='s' readOnly={false} />
+      {/* The project page puts the canvas in the space region. */}
+      <div data-region='space'>
+        <CanvasSpace projectId='p' spaceId='s' readOnly={false} />
+      </div>
     </QueryClientProvider>
   );
   const r = render(tree());

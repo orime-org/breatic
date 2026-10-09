@@ -216,11 +216,12 @@ test('a copy carries content and edges, leaves the lock, gets history and comes 
     await expect(visibleSpace(page).locator(`.react-flow__node[data-id="${copy?.id ?? ''}"]`)).toHaveClass(/selected/);
   }
   await page.keyboard.press('ArrowRight');
-  const moved = await graph();
   for (const copy of [pictureCopy, textCopy]) {
-    expect(moved.nodes.find((n) => n.id === copy?.id)?.position.x).toBeGreaterThan(copy?.position.x ?? 0);
+    await expect
+      .poll(async () => (await graph()).nodes.find((n) => n.id === copy?.id)?.position.x)
+      .toBeGreaterThan(copy?.position.x ?? 0);
   }
-  expect(moved.nodes.find((n) => n.id === pictureId)?.position).toEqual(original?.position);
+  expect((await graph()).nodes.find((n) => n.id === pictureId)?.position).toEqual(original?.position);
 });
 
 test('a duplicate is a copy beside the original', async () => {
@@ -251,7 +252,8 @@ test('a duplicate from the node menu comes out selected and moves with the arrow
   await expect.poll(async () => (await graph()).nodes.length, { timeout: 20_000 }).toBe(before.nodes.length + 1);
   const [copy] = (await graph()).nodes.filter((n) => !before.nodes.some((b) => b.id === n.id));
   await expect(drawn(copy?.id ?? '')).toHaveClass(/selected/);
-  await expect(drawn(copy?.id ?? '')).toBeFocused();
+  // The menu keeps the keyboard until it has finished closing.
+  await expect(page.locator('[role="menu"]')).toHaveCount(0);
   await page.keyboard.press('ArrowRight');
   await expect.poll(async () => (await graph()).nodes.find((n) => n.id === copy?.id)?.position.x).toBeGreaterThan(copy?.position.x ?? 0);
 });
@@ -267,9 +269,41 @@ test('a paste from the canvas menu comes out selected and moves with the arrow k
   await expect.poll(async () => (await graph()).nodes.length, { timeout: 20_000 }).toBe(before.nodes.length + 1);
   const [copy] = (await graph()).nodes.filter((n) => !before.nodes.some((b) => b.id === n.id));
   await expect(drawn(copy?.id ?? '')).toHaveClass(/selected/);
-  await expect(drawn(copy?.id ?? '')).toBeFocused();
+  // The menu keeps the keyboard until it has finished closing.
+  await expect(page.locator('[role="menu"]')).toHaveCount(0);
   await page.keyboard.press('ArrowRight');
   await expect.poll(async () => (await graph()).nodes.find((n) => n.id === copy?.id)?.position.x).toBeGreaterThan(copy?.position.x ?? 0);
+});
+
+test('a picture pasted with the keyboard comes out selected and moves with the arrow keys', async () => {
+  const before = await graph();
+  const png = await freshPng();
+  await page.evaluate(async ([encoded]: [string]) => {
+    const binary = atob(encoded);
+    const buffer = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) buffer[i] = binary.charCodeAt(i);
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': new Blob([buffer], { type: 'image/png' }) })]);
+  }, [png] as [string]);
+  const pane = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
+  await page.mouse.click((pane?.x ?? 0) + 200, (pane?.y ?? 0) + (pane?.height ?? 600) - 150);
+  await page.keyboard.press('ControlOrMeta+V');
+
+  await expect.poll(async () => (await graph()).nodes.length, { timeout: 20_000 }).toBe(before.nodes.length + 1);
+  const [picture] = (await graph()).nodes.filter((n) => !before.nodes.some((b) => b.id === n.id));
+  await expect(drawn(picture?.id ?? '')).toHaveClass(/selected/);
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => (await graph()).nodes.find((n) => n.id === picture?.id)?.position.x).toBeGreaterThan(picture?.position.x ?? 0);
+});
+
+test('arrow keys typed in the chat box leave the selected nodes where they are', async () => {
+  await clickNode(pictureId);
+  const at = (await graph()).nodes.find((n) => n.id === pictureId)?.position;
+  await page.getByTestId('chat-composer-box').click();
+  await page.keyboard.type('ab');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(500);
+  expect((await graph()).nodes.find((n) => n.id === pictureId)?.position).toEqual(at);
 });
 
 test('rename from the node menu puts the caret in the name', async () => {

@@ -2851,38 +2851,14 @@ function CanvasSpaceInner({
     );
     // A newer creation may already be waiting; only this run's ids clear.
     setSelectAfterCreate((current) => (current === ids ? null : current));
-    if (focusPastedRef.current !== ids) return;
-    focusPastedRef.current = null;
-    focusAfterMeasureRef.current = ids;
   }, [selectAfterCreate, nodes, setFlowNodes]);
 
-  // A paste or duplicate hands the keyboard to its copies, so the arrow keys
-  // move them (inner#1229). xyflow moves the selection from the focused node's
-  // own handler, and keeps a node hidden (unfocusable) until it has measured
-  // it, so the first copy with a size takes focus; a copy out of view is not
-  // rendered and never measures.
-  React.useEffect(() => {
-    const ids = focusAfterMeasureRef.current;
-    if (ids === null) return;
-    const ready = ids.find((id) => flowNodes.find((node) => node.id === id)?.measured?.width !== undefined);
-    if (ready === undefined) return;
-    focusAfterMeasureRef.current = null;
-    requestAnimationFrame(() => {
-      containerRef.current
-        ?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(ready)}"]`)
-        ?.focus();
-    });
-  }, [flowNodes]);
-
-  // Paste and duplicate select their copies and give them the keyboard; other
-  // ways of making a node only select it.
-  const focusPastedRef = React.useRef<string[] | null>(null);
-  // The copies waiting for xyflow to measure them before taking the keyboard.
-  const focusAfterMeasureRef = React.useRef<string[] | null>(null);
-  const selectPasted = React.useCallback((ids: string[]): void => {
-    if (ids.length === 0) return;
-    focusPastedRef.current = ids;
-    setSelectAfterCreate(ids);
+  /**
+   * Selects a paste's or duplicate's copies once they are on the canvas.
+   * @param ids - The copies' ids.
+   */
+  const selectCopies = React.useCallback((ids: string[]): void => {
+    if (ids.length > 0) setSelectAfterCreate(ids);
   }, []);
 
   // One dispatch for Cmd+V and the menu's Paste (design 5.9): our nodes paste
@@ -2911,7 +2887,7 @@ function CanvasSpaceInner({
           }
         }
         void pastePayload(payload, offset, { keepUpstream: keepUpstreamFor(payload) }).then((ids) => {
-          if (ids) selectPasted(ids);
+          if (ids) selectCopies(ids);
         });
         return true;
       }
@@ -2919,10 +2895,10 @@ function CanvasSpaceInner({
       const rect = containerRef.current?.getBoundingClientRect();
       const point = at ?? (rect ? viewCentre(rect) : null);
       if (!point) return false;
-      selectPasted([pasteTextAt(text, point)]);
+      selectCopies([pasteTextAt(text, point)]);
       return true;
     },
-    [pastePayload, pasteTextAt, keepUpstreamFor, screenToFlowPosition, viewCentre, spaceId, selectPasted],
+    [pastePayload, pasteTextAt, keepUpstreamFor, screenToFlowPosition, viewCentre, spaceId, selectCopies],
   );
 
   // ---- Clipboard (slice 2b) ----
@@ -3357,10 +3333,10 @@ function CanvasSpaceInner({
           },
         },
       ).then((ids) => {
-        if (ids) selectPasted(ids);
+        if (ids) selectCopies(ids);
       });
     },
-    [readOnly, projectId, spaceId, captureClipboardFor, keepUpstreamFor, pastePayload, selectPasted, buffer],
+    [readOnly, projectId, spaceId, captureClipboardFor, keepUpstreamFor, pastePayload, selectCopies, buffer],
   );
 
   const copySelection = React.useCallback((): void => {
@@ -4293,6 +4269,7 @@ function CanvasSpaceInner({
     [buffer, commitMove],
   );
   const nudgeKeys = useKeyboardNudge({
+    container: containerRef,
     gestureRunning: gesture.isRunning,
     commit: commitNudge,
   });
@@ -4391,8 +4368,6 @@ function CanvasSpaceInner({
           // or the one on screen draws with a hidden canvas's grid.
           id={`canvas-${spaceId}`}
           ref={setFlowShell}
-          onKeyDownCapture={nudgeKeys.onKeyDownCapture}
-          onKeyDown={nudgeKeys.onKeyDown}
           onPointerDownCapture={nudgeKeys.onPointerDownCapture}
           nodes={pickedNodes}
           edges={flowEdges}

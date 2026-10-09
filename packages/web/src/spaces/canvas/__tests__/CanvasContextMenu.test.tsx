@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
@@ -43,16 +43,22 @@ describe('CanvasContextMenu', () => {
     expect(screen.queryByTestId('create-node-text')).toBeNull();
   });
 
-  it('shows a Paste item (with shortcut hint) that fires onPaste once the menu has closed', async () => {
+  it('shows a Paste item (with shortcut hint) that fires onPaste', async () => {
     const user = userEvent.setup();
     const onPaste = vi.fn();
-    const props = { x: 0, y: 0, onOpenChange: () => {}, onPick: () => {}, onPaste };
-    const { rerender } = render(<CanvasContextMenu open {...props} />);
+    render(
+      <CanvasContextMenu
+        open
+        x={0}
+        y={0}
+        onOpenChange={() => {}}
+        onPick={() => {}}
+        onPaste={onPaste}
+      />,
+    );
     const item = await screen.findByTestId('canvas-menu-paste');
     expect(item.textContent).toMatch(/⌘V|Ctrl\+V/);
     await user.click(item);
-    expect(onPaste).not.toHaveBeenCalled();
-    rerender(<CanvasContextMenu open={false} {...props} />);
-    await waitFor(() => expect(onPaste).toHaveBeenCalledTimes(1));
+    expect(onPaste).toHaveBeenCalledTimes(1);
   });
 });
