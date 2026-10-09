@@ -225,7 +225,7 @@ test('@s an attached portrait in an image-to-image prompt, and Generate sends it
 
   await ask(
     page,
-    'Turn this portrait into a watercolour painting with an image-to-image generation on the canvas that uses it as the reference. Do not ask me anything, just propose it.',
+    'Turn this portrait into a watercolour painting with exactly one image-to-image generation node on the canvas that uses it as the reference. Do not ask me anything, just propose it.',
   );
 
   const used = await toolsUsed(page);
