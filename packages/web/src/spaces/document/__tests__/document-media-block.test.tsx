@@ -317,14 +317,14 @@ describe('the loading state and the preview (A23)', () => {
     expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(STORED);
   });
 
-  it('stays on the preview when the original is no wider than it', () => {
+  it('moves a picture no wider than its preview to the original too, the preview being a lossy copy', () => {
     screenAt(2);
     shownAt(400);
     const editor = open('image', { url: STORED, mediaWidth: 400, mediaHeight: 300 });
 
     loadAt(editor, 400);
 
-    expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(`${STORED}.preview.webp`);
+    expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(STORED);
   });
 
   it('falls back to the original when the preview does not load', () => {

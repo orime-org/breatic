@@ -40,9 +40,9 @@ export interface DocumentMediaImageProps {
  * The canvas's rule. A stored picture with a stored size starts on its
  * preview; one without shows its original, which lays it out at its own size.
  * Once the preview has loaded its width is known, and when it is narrower than
- * the width shown times the screen's pixel ratio, and narrower than the
- * original, the original takes its place and stays. The ratio is followed, so
- * moving the window to another screen judges again.
+ * the width shown times the screen's pixel ratio the original takes its place
+ * and stays. The ratio is followed, so moving the window to another screen
+ * judges again.
  * @param props - The picture.
  * @returns The picture and, until it loads, its skeleton.
  */
@@ -56,12 +56,11 @@ export const DocumentMediaImage = React.memo(function DocumentMediaImage({
   onDoubleClick,
 }: DocumentMediaImageProps): React.JSX.Element {
   const ratio = useDevicePixelRatio();
-  const previewWidth = usePreviewWidth(url);
+  const previewPixels = usePreviewWidth(url);
   const sizeKnown = mediaWidth !== undefined && mediaHeight !== undefined;
-  const originalSharper = previewWidth !== null && mediaWidth !== undefined && previewWidth < mediaWidth;
   const showsOriginal = useLatchedFor(
     url,
-    originalSharper && shownWidth !== null && zoomedPastPreview(shownWidth, 1, ratio, previewWidth),
+    shownWidth !== null && zoomedPastPreview(shownWidth, 1, ratio, previewPixels),
   );
   const shown = usePreviewSrc(url, { enabled: sizeKnown && !showsOriginal });
   const src = shown.src ?? url;
