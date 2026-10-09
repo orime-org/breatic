@@ -279,6 +279,18 @@ export function attachBodyScroller(
     window.addEventListener('mouseup', onUp, true);
   };
   /**
+   * A press that lands on the page itself while one of the body's own layers
+   * holds the keyboard: a modal menu has made everything else inert, and the
+   * press only closes it. Its default would move the page selection, which
+   * the editor then reads back as its own once the keyboard returns.
+   * @param event - The press.
+   */
+  const onPagePress = (event: MouseEvent): void => {
+    if (event.target === scroller.ownerDocument.documentElement && bodyHolds(view.state)) {
+      event.preventDefault();
+    }
+  };
+  /**
    * Undo and redo while the scroller itself has the focus.
    * @param event - The key.
    */
@@ -295,12 +307,14 @@ export function attachBodyScroller(
     event.preventDefault();
   };
   scroller.addEventListener('mousedown', onDown, true);
+  scroller.ownerDocument.addEventListener('mousedown', onPagePress, true);
   scroller.addEventListener('contextmenu', endPress, true);
   scroller.addEventListener('keydown', onKey);
   return () => {
     endPress();
     stopScroll();
     scroller.removeEventListener('mousedown', onDown, true);
+    scroller.ownerDocument.removeEventListener('mousedown', onPagePress, true);
     scroller.removeEventListener('contextmenu', endPress, true);
     scroller.removeEventListener('keydown', onKey);
   };

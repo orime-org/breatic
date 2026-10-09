@@ -1068,6 +1068,40 @@ test('a right or middle press on a picture selects it as it lands, with no caret
   }
 });
 
+for (const kind of ['image', 'video', 'audio'] as const) {
+  test(`a press that closes the grip menu leaves the selected ${kind} selected (A20)`, async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('alpha');
+    const file = DOWNLOADS[kind];
+    const bytes = await file.bytes(page);
+    await page.locator(EDITOR).evaluate(
+      (element, [base64, fileName, type]) => {
+        const transfer = new DataTransfer();
+        const raw = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+        transfer.items.add(new File([raw], fileName, { type }));
+        element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+      },
+      [bytes.toString('base64'), file.name, file.mimeType] as const,
+    );
+    const frame = page.locator(`${EDITOR} [data-content-type="${kind}"] [data-testid="doc-media-box"]`);
+    await expect(frame.locator(kind === 'image' ? 'img' : kind)).toBeAttached({ timeout: UPLOAD_TIMEOUT });
+    await expect(frame).toBeVisible();
+    const box = (await frame.boundingBox())!;
+    // The far corner of the media, away from the menu and the player's controls.
+    const corner = { x: box.x + box.width - 12, y: box.y + 12 };
+    await page.mouse.click(corner.x, corner.y);
+    await expect.poll(() => bodySelection(page)).toEqual({ kind: `_NodeSelection:${kind}`, text: '' });
+
+    await page.mouse.move(box.x - 30, box.y + 10);
+    await page.getByTestId('doc-block-handle').click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await page.mouse.click(corner.x, corner.y);
+
+    await expect(page.getByRole('menu')).toHaveCount(0);
+    await expect.poll(() => bodySelection(page)).toEqual({ kind: `_NodeSelection:${kind}`, text: '' });
+  });
+}
+
 test('a picture shown full screen from its hover toolbar is selected, and stays selected when it closes (A17, A20)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('alpha');

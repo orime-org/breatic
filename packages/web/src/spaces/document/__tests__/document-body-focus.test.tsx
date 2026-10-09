@@ -320,6 +320,27 @@ describe('a press on blank space in the body (A20)', () => {
   });
 });
 
+describe('a press on the page itself (A20)', () => {
+  it('moves nothing while the body holds the focus, as when it closes a modal menu of the body', () => {
+    const { editor } = open(TEXT);
+    selectWords(editor);
+
+    const press = click(document.documentElement);
+
+    expect(press.defaultPrevented).toBe(true);
+  });
+
+  it('is left to the browser while the body does not hold the focus', () => {
+    const { editor, scroller } = open(TEXT);
+    selectWords(editor);
+    click(scroller);
+
+    const press = click(document.documentElement);
+
+    expect(press.defaultPrevented).toBe(false);
+  });
+});
+
 describe('what a press is on', () => {
   it.each([
     ['the scroller itself', (o: Opened) => o.scroller, 'blank'],
