@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import {
   newId,
+  PANEL_EDITOR_PARAM,
   promptPlainText,
   proposalMarkSegments,
   type CanvasProposal,
@@ -15,6 +16,7 @@ import {
   addEdge,
   addNode,
   createGroup,
+  getLyricsFragment,
   getPromptFragment,
   getTextBody,
   readNodeCorners,
@@ -28,7 +30,7 @@ import {
 import { setStoryboardShots } from '@web/data/yjs/node-storyboard';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import { writeProposalFills } from '@web/spaces/canvas/generate/proposal-fills';
-import { writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
+import { proposalMentionOf, writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
 import { planFlowLayout, type Spot } from '@web/spaces/canvas/lib/place-flow';
 import {
   cloneForPaste,
@@ -318,7 +320,9 @@ export function useNodeCreation(
             });
           }
         });
-        // Words last, once every node and edge is in place.
+        // Words last, once every node and edge is in place: a ref lands as a
+        // mention of the node placed for it (inner#1315).
+        const mentionOf = proposalMentionOf(proposal, nodeIds);
         proposal.nodes.forEach((node, i) => {
           const id = nodeIds[i];
           if (!id) return;
@@ -331,18 +335,23 @@ export function useNodeCreation(
             return;
           }
           if (!node.mode) return;
+          // Words sent into a song model's lyrics box are @'d there, the way the
+          // reader would @ them, and nowhere else.
+          const lyrics = proposal.edges.filter((edge) => edge.toIndex === i && edge.into === PANEL_EDITOR_PARAM);
+          const lyricsBox = lyrics.length > 0 ? getLyricsFragment(projectId, spaceId, id, node.mode) : null;
+          if (lyricsBox) writeProposalPrompt(lyricsBox, lyrics.map((edge) => ({ ref: edge.fromIndex })), mentionOf);
           // A model drawing no prompt box shows nothing written there; the card
           // lists its marks instead.
           if (node.takesPrompt === false) return;
           // The main prompt goes into the proposal's own mode (#2218), then
           // each shot.
           const fragment = getPromptFragment(projectId, spaceId, id, node.mode);
-          if (fragment && node.prompt) writeProposalPrompt(fragment, node.prompt);
+          if (fragment && node.prompt) writeProposalPrompt(fragment, node.prompt, mentionOf);
           if (node.shots) {
             const shotFragments = setStoryboardShots(projectId, spaceId, id, node.shots.map((shot) => shot.duration));
             node.shots.forEach((shot, k) => {
               const target = shotFragments[k];
-              if (target) writeProposalPrompt(target, shot.prompt);
+              if (target) writeProposalPrompt(target, shot.prompt, mentionOf);
             });
           }
         });
