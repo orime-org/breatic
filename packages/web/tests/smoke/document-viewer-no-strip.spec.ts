@@ -36,6 +36,7 @@
 import { test, expect, type Page, type BrowserContext } from 'playwright/test';
 
 import { credentialsFor } from '../helpers/credentials';
+import { wavBytes } from '../helpers/media-bytes';
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
@@ -314,30 +315,12 @@ test('a viewer sees a picture the owner added, and none of its controls (inner#1
 test('a viewer plays an audio the owner added, and files pasted or dropped do nothing (inner#1127 A11)', async () => {
   await openTheSpace(owner);
   await owner.locator(EDITOR).click();
-  const samples = 16000 + (Date.now() % 1000);
-  await owner.locator(EDITOR).evaluate((element, length) => {
-    const data = new Uint8Array(44 + length * 2);
-    const view = new DataView(data.buffer);
-    const text = (at: number, s: string): void => {
-      for (let i = 0; i < s.length; i += 1) data[at + i] = s.charCodeAt(i);
-    };
-    text(0, 'RIFF');
-    view.setUint32(4, 36 + length * 2, true);
-    text(8, 'WAVE');
-    text(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, 8000, true);
-    view.setUint32(28, 16000, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    text(36, 'data');
-    view.setUint32(40, length * 2, true);
+  await owner.locator(EDITOR).evaluate((element, b64) => {
+    const data = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const transfer = new DataTransfer();
     transfer.items.add(new File([data], 'shared.wav', { type: 'audio/wav' }));
     element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
-  }, samples);
+  }, wavBytes().toString('base64'));
   await expect(owner.locator(`${EDITOR} [data-content-type="audio"] audio`)).toHaveCount(1, { timeout: 60_000 });
 
   await openTheSpace(viewer);
@@ -402,6 +385,31 @@ test('a viewer selects from blank space beside the column and sees the highlight
   expect(await viewer.evaluate(() => window.getSelection()?.toString().length ?? 0)).toBeGreaterThan(0);
   expect(await selectionColour(viewer)).not.toBe('rgba(0, 0, 0, 0)');
   await expect(editor).not.toHaveAttribute('data-body-holds', /.*/);
+});
+
+test('a viewer press on blank space beside the column, or between it and the comment rail, clears the highlight (inner#1127 A20)', async () => {
+  await openTheSpace(viewer);
+  await viewer.getByTestId('doc-doc-menu-trigger').click();
+  await viewer.getByTestId('doc-doc-menu-comments').click();
+  await expect(viewer.getByTestId('doc-comment-rail')).toBeVisible();
+  const editor = viewer.locator(EDITOR);
+  const line = (await viewer.locator(`${EDITOR} p`).first().boundingBox())!;
+  const box = (await editor.boundingBox())!;
+  const rail = (await viewer.getByTestId('doc-comment-rail').boundingBox())!;
+  const y = line.y + line.height / 2;
+
+  for (const x of [box.x - 30, (box.x + box.width + rail.x) / 2]) {
+    await viewer.mouse.move(line.x + 2, y);
+    await viewer.mouse.down();
+    await viewer.mouse.move(line.x + 80, y, { steps: 6 });
+    await viewer.mouse.up();
+    expect(await viewer.evaluate(() => window.getSelection()?.toString().length ?? 0)).toBeGreaterThan(0);
+
+    expect(await viewer.evaluate(({ px, py }) => document.elementFromPoint(px, py)?.hasAttribute('data-document-body-blank'), { px: x, py: y })).toBe(true);
+    await viewer.mouse.click(x, y);
+
+    expect(await viewer.evaluate(() => window.getSelection()?.toString() ?? '')).toBe('');
+  }
 });
 
 test('an editor turned viewer while the body is open still sees the highlight (inner#1127 A20)', async () => {
