@@ -186,6 +186,41 @@ describe('whether the body holds the focus', () => {
     button.remove();
   });
 
+  it('puts its own selection back when the page selection went into a control of the body before it let go', () => {
+    const { editor, scroller } = open(TEXT);
+    const view = editor.prosemirrorView!;
+    selectWords(editor);
+    // A control a block draws inside the editable element, as a caption
+    // field is: the page selection goes there while the body still holds.
+    const control = document.createElement('div');
+    control.setAttribute('contenteditable', 'false');
+    control.textContent = 'caption';
+    view.dom.querySelector('p')!.after(control);
+    act(() => {
+      const inside = document.createRange();
+      inside.selectNodeContents(control);
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(inside);
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+    act(() => {
+      scroller.focus();
+    });
+    const first = view.dom.querySelector('p')!.firstChild as Text;
+    const caret = document.createRange();
+    caret.setStart(first, 0);
+    const writes = vi.spyOn(view, 'focus');
+
+    act(() => {
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(caret);
+      view.dom.focus();
+    });
+
+    expect(writes).toHaveBeenCalled();
+    control.remove();
+  });
+
   it('leaves the page selection alone when the focus returns and it never left the body', () => {
     const { editor, scroller } = open(TEXT);
     const view = editor.prosemirrorView!;

@@ -388,14 +388,15 @@ export const documentBodyFocusExtension = createExtension(({ editor }) => {
           let later: ReturnType<typeof setTimeout> | undefined;
           let leaving: MutationObserver | undefined;
           let editable = view.editable;
-          // Whether the page's selection left the body's text while the body
-          // did not hold: the browser moves it back on its own as the focus
-          // returns, so the moment of return cannot tell.
-          let pageLeft = false;
-          /** Notes the page's selection leaving the body's text. */
+          // Whether the page's selection was last in the body's text. The
+          // browser moves it back on its own as the focus returns, before any
+          // focus handler runs, so the moment of return cannot tell; it can
+          // also leave while the body still holds, into a block's own field.
+          let pageInText = true;
+          /** Notes where the page's selection now is. */
           const onSelection = (): void => {
-            if (bodyHolds(view.state) || view.isDestroyed) return;
-            if (!inBodyText(view, page.getSelection()?.anchorNode ?? null)) pageLeft = true;
+            if (view.isDestroyed) return;
+            pageInText = inBodyText(view, page.getSelection()?.anchorNode ?? null);
           };
           /** Publishes the state for the page. */
           const publish = (): void => {
@@ -422,8 +423,7 @@ export const documentBodyFocusExtension = createExtension(({ editor }) => {
             leaving?.disconnect();
             leaving = undefined;
             focused = event.target instanceof Element ? event.target : null;
-            if (focused === view.dom && view.editable && pageLeft) restoreOnReturn(view);
-            pageLeft = false;
+            if (focused === view.dom && view.editable && !pageInText) restoreOnReturn(view);
             judgeFocus(view, focused);
             publish();
           };
