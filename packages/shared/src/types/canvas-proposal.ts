@@ -22,15 +22,21 @@ import type { NodeMediaFields } from "@shared/canvas/node-media.js";
  */
 export type SlotKind = "asset" | "tweak" | "note";
 
-/** One stretch of the prompt: plain words, or a place the reader acts on. */
+/**
+ * One stretch of the prompt: plain words, a place the reader acts on, or an
+ * @ of another node in the proposal by its index (inner#1315), which lands as
+ * the same mention the reader would insert by hand.
+ */
 export type PromptSegment =
-  | { text: string; slot?: undefined }
+  | { text: string; slot?: undefined; ref?: undefined }
   | {
       text?: undefined;
+      ref?: undefined;
       slot:
         | { kind: "asset" | "tweak"; label: string; note: string }
         | { kind: "note"; label: string; note?: undefined };
-    };
+    }
+  | { ref: number; text?: undefined; slot?: undefined };
 
 /** The brackets and symbol each kind wears where it is written as words. */
 const MARK_FORM: Readonly<Record<SlotKind, { open: string; symbol: string; close: string }>> = {
@@ -153,12 +159,17 @@ export function markedSegments(text: string): PromptSegment[] {
  * two between blocks. Counted any other way, a proposal sits inside the
  * model's input cap here and past it by the time the reader presses Generate.
  * @param segments - The proposed prompt.
+ * @param refWords - What an @ of the node at an index sends, as the panel
+ *   serialises it; an @ counts as nothing without it.
  * @returns The text the panel will measure.
  * @throws {never} Never.
  */
-export function promptTextOf(segments: readonly PromptSegment[]): string {
+export function promptTextOf(
+  segments: readonly PromptSegment[],
+  refWords: (ref: number) => string = () => "",
+): string {
   return segments
-    .map((s) => (s.slot ? markText(s.slot) : s.text.replace(/\n/g, "\n\n")))
+    .map((s) => (s.slot ? markText(s.slot) : s.ref !== undefined ? refWords(s.ref) : s.text.replace(/\n/g, "\n\n")))
     .join("");
 }
 
@@ -178,7 +189,7 @@ export function promptTextOf(segments: readonly PromptSegment[]): string {
  * @throws {never} Never.
  */
 export function promptPlainText(segments: readonly PromptSegment[]): string {
-  return segments.map((s) => (s.slot ? markText(s.slot) : s.text)).join("");
+  return segments.map((s) => (s.slot ? markText(s.slot) : (s.text ?? ""))).join("");
 }
 
 /**

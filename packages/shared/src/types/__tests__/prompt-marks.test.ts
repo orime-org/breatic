@@ -83,3 +83,15 @@ describe("promptTextOf and promptPlainText", () => {
     expect(promptPlainText(segments)).toBe("She walks in [📎 Use @ to pick the photo]. {✏️ mood}");
   });
 });
+
+describe("a reference to a proposed node (inner#1315)", () => {
+  it("counts each @ as the words it sends, as often as it is written", () => {
+    const segments = [{ text: "Sing " }, { ref: 0 }, { text: " then " }, { ref: 0 }];
+
+    expect(promptTextOf(segments, (ref) => (ref === 0 ? "la la" : ""))).toBe("Sing la la then la la");
+  });
+
+  it("counts an @ as nothing when no words are given for it", () => {
+    expect(promptTextOf([{ text: "Look at " }, { ref: 1 }])).toBe("Look at ");
+  });
+});
