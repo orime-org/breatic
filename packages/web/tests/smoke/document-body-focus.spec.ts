@@ -215,3 +215,32 @@ test('a body let go draws neither its text selection nor its selected cells (A20
   await expect(editor).not.toHaveAttribute('data-body-holds', /.*/);
   expect(await tint()).toBe('none');
 });
+
+test('Cmd/Ctrl+click on a divider selects it whole, the body holding or not (A22)', async () => {
+  await openWithLine(page);
+  const editor = page.locator(EDITOR);
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('---');
+  const divider = page.locator(`${EDITOR} [data-content-type="divider"]`);
+  await expect(divider).toHaveCount(1);
+  const selected = (): Promise<{ kind: string; painted: number }> =>
+    page.evaluate((selector) => {
+      const el = document.querySelector(selector) as unknown as {
+        editor: { state: { selection: { constructor: { name: string }; node?: { type: { name: string } } } } };
+      };
+      const { selection } = el.editor.state;
+      return {
+        kind: `${selection.constructor.name}:${selection.node?.type.name ?? ''}`,
+        painted: document.querySelectorAll(`${selector} [data-content-type="divider"].doc-in-selection, ${selector} .doc-in-selection [data-content-type="divider"]`).length,
+      };
+    }, EDITOR);
+
+  await divider.click({ modifiers: [MOD] });
+  await expect.poll(selected).toEqual({ kind: '_NodeSelection:divider', painted: 1 });
+
+  const { x, y } = await blankPoint(page);
+  await page.mouse.click(x, y);
+  await expect(editor).not.toHaveAttribute('data-body-holds', /.*/);
+  await divider.click({ modifiers: [MOD] });
+  await expect.poll(selected).toEqual({ kind: '_NodeSelection:divider', painted: 1 });
+});
