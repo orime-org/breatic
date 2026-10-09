@@ -75,16 +75,16 @@ function key(kind: "image" | "video", cover = false): string {
 /** A user with a personal studio, a project in it, and a session. */
 async function seedEditor(): Promise<{ userId: string; studioId: string; projectId: string; cookie: string }> {
   const users = await sql<{ id: string }[]>`
-    INSERT INTO users (email, email_verified) VALUES (${`cp-${seq++}@example.com`}, true) RETURNING id
+    INSERT INTO users (email, email_verified) VALUES (${`canvas-paste-${seq++}@example.com`}, true) RETURNING id
   `;
   const userId = users[0]!.id;
   const studios = await sql<{ id: string }[]>`
     INSERT INTO studios (created_by_user_id, slug, type, name)
-    VALUES (${userId}, ${`cp-s-${seq++}`}, 'personal', 'Personal') RETURNING id
+    VALUES (${userId}, ${`canvas-paste-s-${seq++}`}, 'personal', 'Personal') RETURNING id
   `;
   const studioId = studios[0]!.id;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${userId}, 'admin')`;
-  const slug = `cp-proj-${seq++}`;
+  const slug = `canvas-paste-proj-${seq++}`;
   const projects = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug)
     VALUES (${studioId}, ${userId}, ${`P ${slug}`}, ${slug}) RETURNING id
