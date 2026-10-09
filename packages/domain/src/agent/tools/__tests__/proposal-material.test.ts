@@ -340,3 +340,21 @@ describe("the tool reads the registration for the studio it runs in", () => {
     expect(materialFacts).not.toHaveBeenCalled();
   });
 });
+
+describe("a ref to material a slot takes through fills (inner#1315)", () => {
+  it("is told the node already fills the slot and takes no ref, never to wire it into the pool", () => {
+    const clip: ProposalNode = {
+      role: "generate",
+      type: "video",
+      name: "Clip",
+      mode: "i2v",
+      model: "kling-video-o3-4k-image-to-video",
+      fills: { image: [0] },
+      prompt: [{ text: "Animate " }, { ref: 0 }],
+    };
+    const reason = refusal(group([held("image", "Portrait", PORTRAIT), clip]));
+
+    expect(reason).toMatch(/"Portrait".*fills.*leave the ref out/s);
+    expect(reason).not.toContain('into: "pool"');
+  });
+});

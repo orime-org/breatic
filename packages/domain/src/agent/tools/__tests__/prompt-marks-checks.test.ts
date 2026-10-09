@@ -416,6 +416,31 @@ describe("the lyrics box a song model draws, a second way for words (table B)", 
   });
 });
 
+describe("a ref to a node that does not go into the pool", () => {
+  it("is told a node cannot @ itself", () => {
+    expect(checkProposal(edit([CHARACTER], [...AT_CHARACTER, { ref: 1 }, { text: " at night" }]))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("cannot @ itself"),
+    });
+  });
+
+  it("is told a node wired into a slot is picked there and takes no ref", () => {
+    const pick = { slot: { kind: "note" as const, label: "Pick Style into the style slot" } };
+    const proposal: CanvasProposal = {
+      nodes: [
+        { role: "source", type: "image", name: "Style" },
+        { role: "generate", type: "image", name: "Night", mode: "i2i", model: "nano-banana-pro-edit-ultra", prompt: [pick, { text: "in the style of " }, { ref: 0 }] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "style_images" }],
+      rationale: "",
+      groupName: "Night",
+    };
+    const verdict = checkProposal(proposal);
+    expect(verdict).toMatchObject({ ok: false, reason: expect.stringMatching(/"Style".*"style_images".*leave the ref out/s) });
+    expect(verdict).not.toMatchObject({ reason: expect.stringContaining('into: "pool"') });
+  });
+});
+
 describe("a ref to no node", () => {
   it("is turned away by the schema when the index is negative", () => {
     expect(inputSchema.safeParse(edit([CHARACTER], [{ ref: -1 }, { text: " at night" }])).success).toBe(false);

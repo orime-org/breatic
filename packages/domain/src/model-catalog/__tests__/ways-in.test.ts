@@ -102,3 +102,17 @@ describe("the ways a model takes each kind of node", () => {
     expect(waysIn(model("video", "talking_head", "omnihuman-1.5")).get("text")).toBeUndefined();
   });
 });
+
+describe("the lyrics box as a way in", () => {
+  it("is offered only where the lyrics param applies in the mode, as the panel's lyrics box is", () => {
+    const answer = modelsForMode("audio", "t2m");
+    const song = answer.available ? answer.models.find((m) => m.name === "mureka-v9.5-generate-song") : undefined;
+    if (!song) throw new Error("the catalog serves no song model under t2m");
+    const lyrics = song.params[PANEL_EDITOR_PARAM];
+    if (!lyrics) throw new Error("the song model declares no lyrics box");
+    const elsewhere: ModelInfo = { ...song, params: { ...song.params, [PANEL_EDITOR_PARAM]: { ...lyrics, noControl: true } } };
+
+    expect((waysIn(song).get("text") ?? []).map((way) => way.into)).toContain(PANEL_EDITOR_PARAM);
+    expect((waysIn(elsewhere).get("text") ?? []).map((way) => way.into)).not.toContain(PANEL_EDITOR_PARAM);
+  });
+});
