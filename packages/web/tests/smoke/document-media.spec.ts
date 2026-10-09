@@ -17,7 +17,7 @@ import { resolve } from 'node:path';
 
 import { test, expect, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
 let page: Page;
@@ -1308,4 +1308,31 @@ test('a picture no wider than its preview is drawn from the preview (A23)', asyn
   await expect.poll(() => img.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth)).toBe(400);
   expect(await img.getAttribute('src')).toMatch(/\.png\.preview\.webp$/);
   await expect(page.locator(`${IMAGE} [data-testid="doc-media-skeleton"]`)).toHaveCount(0);
+});
+
+test('a picture and its caption show in a second client opening the document (A13)', async ({ browser }) => {
+  await openFreshDocument(page);
+  const home = (await page.locator('[role="tab"][aria-selected="true"]').getAttribute('data-testid'))!;
+  await pastePicture(page, 'shared.png');
+  const img = page.locator(`${IMAGE} img`);
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  await img.click();
+  await page.getByTestId('doc-media-caption-button').click();
+  await page.getByTestId('doc-media-caption-input').fill('Shared');
+  await page.keyboard.press('Enter');
+  await expect(page.locator(`${IMAGE} [data-testid="doc-media-caption"]`)).toHaveText('Shared');
+
+  const second = await browser.newContext({ storageState: STATE_FILE.A, viewport: { width: 1680, height: 950 } });
+  const peer = await second.newPage();
+  try {
+    await peer.goto(page.url());
+    await peer.getByTestId(home).click();
+    const seen = peer.locator(`${IMAGE} img`);
+    await expect(seen).toBeVisible({ timeout: 30_000 });
+    expect([await seen.getAttribute('width'), await seen.getAttribute('height')]).toEqual(['220', '120']);
+    await expect(peer.locator(`${IMAGE} [data-testid="doc-media-caption"]`)).toHaveText('Shared');
+    await expect.poll(() => seen.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth)).toBe(220);
+  } finally {
+    await second.close();
+  }
 });
