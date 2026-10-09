@@ -14,6 +14,7 @@ import * as Y from 'yjs';
 import { NodeSelection, TextSelection, type EditorState } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
+import { fallbackForFirstTextblock } from './textblocks';
 
 const { buildDocumentEditor } = await import('@web/spaces/document/build-document-editor');
 const { DocumentMediaViews } = await import('@web/spaces/document/DocumentMediaViews');
@@ -367,16 +368,9 @@ describe('what a press is on', () => {
   it('reads a block this build does not know as wordless', () => {
     const opened = open(TEXT);
     const view = opened.editor.prosemirrorView!;
-    let at = -1;
-    view.state.doc.descendants((node, pos) => {
-      if (at < 0 && node.isTextblock) at = pos;
-    });
-    const fallback = view.state.schema.nodes['unsupportedBlock']!;
-    view.dispatch(
-      view.state.tr.replaceWith(at, at + view.state.doc.nodeAt(at)!.nodeSize, fallback.create({ originalName: 'x' })),
-    );
+    const fallbackBlock = fallbackForFirstTextblock(view);
     const event = new MouseEvent('mousedown', { bubbles: true });
-    Object.defineProperty(event, 'target', { value: view.dom.querySelector('[data-unsupported-block]') });
+    Object.defineProperty(event, 'target', { value: fallbackBlock });
 
     expect(pressTargetOf(view, event).kind).toBe('wordless');
   });

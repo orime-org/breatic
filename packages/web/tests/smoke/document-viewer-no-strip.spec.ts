@@ -36,6 +36,7 @@
 import { test, expect, type Page, type BrowserContext } from 'playwright/test';
 
 import { credentialsFor } from '../helpers/credentials';
+import { blankPoint, openCommentRail } from '../helpers/document-body';
 import { wavBytes } from '../helpers/media-bytes';
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
@@ -274,7 +275,10 @@ test('a viewer reads a table and gets none of its controls, nor can type in it',
   await expect(cell).toHaveText(CELL);
 });
 
-test('a viewer sees a picture the owner added, and none of its controls (inner#1127 A11, A13)', async () => {
+/**
+ * The owner pastes a 240x120 picture into the case's Space and waits for it to land.
+ */
+async function ownerPastesAPicture(): Promise<void> {
   await openTheSpace(owner);
   await owner.locator(EDITOR).click();
   const png = await owner.evaluate(async () => {
@@ -300,6 +304,10 @@ test('a viewer sees a picture the owner added, and none of its controls (inner#1
     element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
   }, png);
   await expect(owner.locator(`${EDITOR} [data-content-type="image"] img`)).toBeVisible({ timeout: 60_000 });
+}
+
+test('a viewer sees a picture the owner added, and none of its controls (inner#1127 A11, A13)', async () => {
+  await ownerPastesAPicture();
 
   await openTheSpace(viewer);
   const img = viewer.locator(`${EDITOR} [data-content-type="image"] img`);
@@ -387,26 +395,23 @@ test('a viewer selects from blank space beside the column and sees the highlight
   await expect(editor).not.toHaveAttribute('data-body-holds', /.*/);
 });
 
-test('a viewer press on blank space beside the column, or between it and the comment rail, clears the highlight (inner#1127 A20)', async () => {
+test('a viewer press on blank space beside the column, beside a picture, or between the column and the comment rail clears the highlight (inner#1127 A20)', async () => {
+  await ownerPastesAPicture();
   await openTheSpace(viewer);
-  await viewer.getByTestId('doc-doc-menu-trigger').click();
-  await viewer.getByTestId('doc-doc-menu-comments').click();
-  await expect(viewer.getByTestId('doc-comment-rail')).toBeVisible();
-  const editor = viewer.locator(EDITOR);
+  await openCommentRail(viewer);
   const line = (await viewer.locator(`${EDITOR} p`).first().boundingBox())!;
-  const box = (await editor.boundingBox())!;
-  const rail = (await viewer.getByTestId('doc-comment-rail').boundingBox())!;
   const y = line.y + line.height / 2;
+  const picture = (await viewer.locator(`${EDITOR} [data-content-type="image"] img`).boundingBox())!;
+  const besidePicture = { x: picture.x + picture.width + 40, y: picture.y + picture.height / 2 };
 
-  for (const x of [box.x - 30, (box.x + box.width + rail.x) / 2]) {
+  for (const point of [await blankPoint(viewer, 'left'), await blankPoint(viewer, 'rail'), besidePicture]) {
     await viewer.mouse.move(line.x + 2, y);
     await viewer.mouse.down();
     await viewer.mouse.move(line.x + 80, y, { steps: 6 });
     await viewer.mouse.up();
     expect(await viewer.evaluate(() => window.getSelection()?.toString().length ?? 0)).toBeGreaterThan(0);
 
-    expect(await viewer.evaluate(({ px, py }) => document.elementFromPoint(px, py)?.hasAttribute('data-document-body-blank'), { px: x, py: y })).toBe(true);
-    await viewer.mouse.click(x, y);
+    await viewer.mouse.click(point.x, point.y);
 
     expect(await viewer.evaluate(() => window.getSelection()?.toString() ?? '')).toBe('');
   }

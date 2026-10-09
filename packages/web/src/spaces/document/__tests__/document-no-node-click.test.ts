@@ -19,6 +19,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { fallbackForFirstTextblock } from './textblocks';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -119,15 +120,7 @@ describe('a modifier-click in the body', () => {
   it('selects whole a block this build does not know', () => {
     const editor = open();
     const view = editor.prosemirrorView;
-    let at = -1;
-    view.state.doc.descendants((node, pos) => {
-      if (at < 0 && node.isTextblock) at = pos;
-    });
-    const fallback = view.state.schema.nodes['unsupportedBlock']!;
-    view.dispatch(
-      view.state.tr.replaceWith(at, at + view.state.doc.nodeAt(at)!.nodeSize, fallback.create({ originalName: 'x' })),
-    );
-    const block = view.dom.querySelector('[data-unsupported-block]')!;
+    const block = fallbackForFirstTextblock(view);
 
     const answered = clickHandlerOf(view)(view, view.posAtDOM(block, 0), modifierClick(block));
 
