@@ -20,7 +20,7 @@ import { bodyHolds, layerOf, placeAtLayerAnchor, watchBodyScroll } from '@web/sp
 import { extendFromPress, followFromPoint } from '@web/spaces/document/document-body-edge-pointer';
 import { DOCUMENT_COMMENT_SELECTION, selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
-import { MEDIA_BLOCK_TYPES } from '@web/spaces/document/document-media-types';
+import { rowHit } from '@web/spaces/document/document-media-row-press';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
 
@@ -54,8 +54,6 @@ const blankPresses = new WeakSet<Event>();
 
 /** The pointer travel past which a press is a drag. */
 const CLICK_SLOP = 4;
-
-const MEDIA_ROW = MEDIA_BLOCK_TYPES.map((type) => `[data-content-type="${type}"]`).join(', ');
 
 /**
  * Whether a point is above the first block or below the last one, inside the
@@ -98,12 +96,8 @@ export function pressTargetOf(view: EditorView, event: MouseEvent): PressTarget 
     if (quiet !== null) return { kind: 'quiet-control', element: quiet };
     const control = target.closest(`${MEDIA_CHROME}, input, button, textarea`);
     if (control !== null) return { kind: 'control', element: control };
-    const row = target.closest(MEDIA_ROW);
-    if (row !== null) {
-      return target.closest('[data-media-frame]') !== null
-        ? { kind: 'media', element: row }
-        : { kind: 'blank', element: row };
-    }
+    const hit = rowHit(target);
+    if (hit !== null) return { kind: hit.onMedia ? 'media' : 'blank', element: hit.row };
     const divider = target.closest(`[data-content-type="${DIVIDER}"]`);
     if (divider !== null) return { kind: 'divider', element: divider };
     const trailing = target.closest('.bn-trailing-block');

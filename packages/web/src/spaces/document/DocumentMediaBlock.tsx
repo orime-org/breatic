@@ -102,6 +102,9 @@ const TOOLBAR_GAP = 8;
 /** The block's own controls, which the node view hands their events. */
 export const MEDIA_CHROME = '[data-media-chrome]';
 
+/** What the block shows: the picture or the player. */
+export const MEDIA_FRAME = '[data-media-frame]';
+
 /**
  * Whether a press belongs to the block's own controls or the player's.
  * @param target - Where it landed.

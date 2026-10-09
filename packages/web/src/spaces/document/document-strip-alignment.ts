@@ -46,6 +46,8 @@
 import type { Middleware } from '@floating-ui/react';
 import * as React from 'react';
 
+import { MEDIA_FRAME } from '@web/spaces/document/DocumentMediaBlock';
+
 /**
  * How far the strip stands out from the body's left edge, the same on every
  * row (user 2026-10-04). A table's row handle is 12px wide and centred on the
@@ -140,7 +142,7 @@ export function stripOffsetFromRowTop(
  * @returns The box, or undefined when the row shows no line.
  */
 export function firstLineOf(row: Element): DOMRect | undefined {
-  const media = row.querySelector('[data-media-frame]');
+  const media = row.querySelector(MEDIA_FRAME);
   if (media !== null) return firstLineOfMedia(row, media);
   const firstRow = row.querySelector('tr');
   if (firstRow !== null) return firstLineOfTableRow(firstRow);

@@ -43,6 +43,7 @@ import { downloadHref } from '@web/data/api/download-href';
 import { triggerDownload } from '@web/lib/download';
 import {
   MEDIA_CHROME,
+  MEDIA_FRAME,
   type MediaBlockActions,
   type MediaBlockProps,
 } from '@web/spaces/document/DocumentMediaBlock';
@@ -68,7 +69,7 @@ interface MediaSpec {
 }
 
 /** Where a media block's drags may start: the media, and its caption field. */
-const MEDIA_BLOCK_DRAGS = '[data-media-frame], [data-testid="doc-media-caption-input"]';
+const MEDIA_BLOCK_DRAGS = `${MEDIA_FRAME}, [data-testid="doc-media-caption-input"]`;
 
 /**
  * Writes the block's props onto its own element the way the library does:
