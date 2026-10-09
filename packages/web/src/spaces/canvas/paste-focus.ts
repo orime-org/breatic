@@ -9,6 +9,10 @@ export interface PasteFocusState {
   selectionBefore: string;
   /** The selected node ids now, as the same kind of key. */
   selectionNow: string;
+  /** The selection the canvas last set itself (an earlier paste's copies), if any. */
+  ownSelection: string | null;
+  /** The element holding the keyboard when the paste began. */
+  activeBefore: Element | null;
   /** The element holding the keyboard now. */
   active: Element | null;
   /** The canvas container. */
@@ -19,19 +23,25 @@ export interface PasteFocusState {
  * Whether the reader went on to something else while a paste waited on the
  * server (inner#1349 A12). A paste selects its copies and gives them the
  * keyboard only while the reader is still where the paste left them: typing
- * in a field, holding the keyboard outside the canvas, or a selection of
- * their own each mean they moved on. The keyboard back on the page, as after
- * a menu closes, is not moving on.
+ * in a field, moving the keyboard to something else outside the canvas, or a
+ * selection of their own each mean they moved on. What the canvas did itself
+ * is not the reader moving on: a menu still holding the keyboard while it
+ * closes, the keyboard back on the page after it closed, and the selection an
+ * earlier paste set.
  * @param state - The canvas then and now.
  * @returns True when the copies should leave the selection and keyboard alone.
  */
 export function userMovedOn(state: PasteFocusState): boolean {
   const { active, canvas } = state;
   if (isEditableTarget(active)) return true;
-  if (active !== null && active !== active.ownerDocument.body && canvas !== null && !canvas.contains(active)) {
-    return true;
-  }
-  return state.selectionBefore !== state.selectionNow;
+  const elsewhere =
+    active !== null &&
+    active !== state.activeBefore &&
+    active !== active.ownerDocument.body &&
+    canvas !== null &&
+    !canvas.contains(active);
+  if (elsewhere) return true;
+  return state.selectionNow !== state.selectionBefore && state.selectionNow !== state.ownSelection;
 }
 
 /**

@@ -235,6 +235,42 @@ test('a duplicate is a copy beside the original', async () => {
   await expect.poll(() => historyTotal(added[0]?.id ?? ''), { timeout: 10_000 }).toBe(1);
 });
 
+/**
+ * Whether a node is drawn selected.
+ * @param id - The node.
+ * @returns The locator to assert on.
+ */
+const drawn = (id: string): ReturnType<Page['locator']> => visibleSpace(page).locator(`.react-flow__node[data-id="${id}"]`);
+
+test('a duplicate from the node menu comes out selected and moves with the arrow keys', async () => {
+  const before = await graph();
+  const box = await drawn(pictureId).boundingBox();
+  await page.mouse.click((box?.x ?? 0) + 20, (box?.y ?? 0) + 6, { button: 'right' });
+  await page.getByTestId('node-menu-duplicate').click();
+
+  await expect.poll(async () => (await graph()).nodes.length, { timeout: 20_000 }).toBe(before.nodes.length + 1);
+  const [copy] = (await graph()).nodes.filter((n) => !before.nodes.some((b) => b.id === n.id));
+  await expect(drawn(copy?.id ?? '')).toHaveClass(/selected/);
+  // The keyboard reaches the copy once the menu has finished closing.
+  await expect(drawn(copy?.id ?? '')).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => (await graph()).nodes.find((n) => n.id === copy?.id)?.position.x).toBeGreaterThan(copy?.position.x ?? 0);
+});
+
+test('two duplicates in a row leave the newer copy selected', async () => {
+  const before = await graph();
+  await clickNode(pictureId);
+  await page.keyboard.press('ControlOrMeta+D');
+  await page.keyboard.press('ControlOrMeta+D');
+
+  await expect.poll(async () => (await graph()).nodes.length, { timeout: 20_000 }).toBe(before.nodes.length + 2);
+  const added = (await graph()).nodes.filter((n) => !before.nodes.some((b) => b.id === n.id));
+  // The second duplicate copies the first copy, so it lands further down and right.
+  const [newer, older] = [...added].sort((a, b) => b.position.x - a.position.x);
+  await expect(drawn(newer?.id ?? '')).toHaveClass(/selected/);
+  await expect(drawn(older?.id ?? '')).not.toHaveClass(/selected/);
+});
+
 test('a copy pasted into the chat box is the card "Add to Agent" makes', async () => {
   await selectBoth();
   await page.keyboard.press('ControlOrMeta+C');

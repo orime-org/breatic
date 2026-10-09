@@ -167,6 +167,12 @@ import {
 } from '@web/spaces/canvas/group-geometry';
 import { planDuplicateGroupGrowth } from '@web/spaces/canvas/duplicate-group-growth';
 import { selectionKey, userMovedOn } from '@web/spaces/canvas/paste-focus';
+
+/** The selection and keyboard when a paste began. */
+interface PastedFrom {
+  selection: string;
+  active: Element | null;
+}
 import { topoSortByParent } from '@web/spaces/canvas/group-topology';
 import { useStableList } from '@web/spaces/canvas/use-stable-list';
 import {
@@ -469,6 +475,9 @@ const SNAP_GRID: [number, number] = [DOT_GAP_PX, DOT_GAP_PX];
 // node's center isn't mis-estimated for the one frame before it measures (the
 // old 160×96 guess shifted the center ~64px and could flip a borderline
 // center-in-group decision).
+
+/** How many frames a paste waits for the menu it came from to close (about a second). */
+const MENU_CLOSE_WAIT_FRAMES = 60;
 
 const GROUP_DRAG_FALLBACK_W = EMPTY_NODE_SIZE.width;
 const GROUP_DRAG_FALLBACK_H = EMPTY_NODE_SIZE.height;
@@ -2842,39 +2851,55 @@ function CanvasSpaceInner({
     if (!selectAfterCreate) return;
     if (!selectAfterCreate.every((id) => nodes.some((node) => node.id === id)))
       return;
-    const pastedFrom = pastedFromRef.current;
-    pastedFromRef.current = null;
+    const ids = selectAfterCreate;
+    // Two pastes can answer before this runs: each handles only its own ids,
+    // and a newer pending selection is left for its own run.
+    const paste = pendingPasteRef.current?.ids === ids ? pendingPasteRef.current : null;
+    if (paste) pendingPasteRef.current = null;
+    const pastedFrom = paste?.from ?? null;
+    /** Clear the pending selection if it is still this run's. */
+    const done = (): void => {
+      setSelectAfterCreate((current) => (current === ids ? null : current));
+    };
     // A paste answered by the server: the reader may have gone on to
     // something else meanwhile, and keeps it.
     if (
       pastedFrom !== null &&
       userMovedOn({
-        selectionBefore: pastedFrom,
-        selectionNow: selectionKey(flowNodes),
+        selectionBefore: pastedFrom.selection,
+        selectionNow: selectionKey(graphStore.getState().flowNodes),
+        ownSelection: ownSelectionRef.current,
+        activeBefore: pastedFrom.active,
         active: document.activeElement,
         canvas: containerRef.current,
       })
     ) {
-      focusPastedRef.current = false;
-      setSelectAfterCreate(null);
+      done();
       return;
     }
-    const targets = new Set(selectAfterCreate);
+    ownSelectionRef.current = [...ids].sort().join('\n');
+    const targets = new Set(ids);
     // reconcileSelection keeps untouched nodes' references so React.memo
     // bails on the rest of the canvas (same discipline as the other
     // programmatic selection writes).
     setFlowNodes((current) =>
       reconcileSelection(current, (node) => targets.has(node.id)),
     );
-    setSelectAfterCreate(null);
-    if (!focusPastedRef.current) return;
-    focusPastedRef.current = false;
+    done();
+    if (!paste) return;
     // A paste or duplicate hands the keyboard to its copies, so the arrow keys
     // move them (inner#1229). xyflow moves the selection from the focused
     // node's own handler, and only renders nodes in view, so the first copy
     // that is on the page takes focus.
-    const ids = selectAfterCreate;
-    requestAnimationFrame(() => {
+    // A paste from a menu lands while the menu is still closing, and the menu
+    // hands the keyboard back to its anchor once it is gone: wait for that.
+    let frames = MENU_CLOSE_WAIT_FRAMES;
+    /** Give the first rendered copy the keyboard once no menu holds it. */
+    const focusCopy = (): void => {
+      if (document.activeElement?.closest('[role="menu"]') && frames-- > 0) {
+        requestAnimationFrame(focusCopy);
+        return;
+      }
       for (const id of ids) {
         const el = containerRef.current?.querySelector<HTMLElement>(
           `.react-flow__node[data-id="${CSS.escape(id)}"]`,
@@ -2884,18 +2909,28 @@ function CanvasSpaceInner({
           return;
         }
       }
-    });
-  }, [selectAfterCreate, nodes, flowNodes, setFlowNodes]);
+    };
+    requestAnimationFrame(focusCopy);
+  }, [selectAfterCreate, nodes, setFlowNodes, graphStore]);
 
   // Paste and duplicate select their copies and give them the keyboard; other
-  // ways of making a node only select it.
-  const focusPastedRef = React.useRef(false);
-  // The selection when a paste that waited on the server began.
-  const pastedFromRef = React.useRef<string | null>(null);
-  const selectPasted = React.useCallback((ids: string[], pastedFrom?: string): void => {
+  // ways of making a node only select it. `from` is where the reader was when
+  // a paste that waited on the server began.
+  const pendingPasteRef = React.useRef<{ ids: string[]; from: PastedFrom | null } | null>(null);
+  // The selection the canvas last set itself, so a later paste does not take
+  // an earlier paste's copies for the reader's own pick.
+  const ownSelectionRef = React.useRef<string | null>(null);
+  /**
+   * Where the reader is as a paste begins.
+   * @returns The selection and the element holding the keyboard.
+   */
+  const pasteStartsFrom = React.useCallback(
+    (): PastedFrom => ({ selection: selectionKey(graphStore.getState().flowNodes), active: document.activeElement }),
+    [graphStore],
+  );
+  const selectPasted = React.useCallback((ids: string[], pastedFrom?: PastedFrom): void => {
     if (ids.length === 0) return;
-    focusPastedRef.current = true;
-    pastedFromRef.current = pastedFrom ?? null;
+    pendingPasteRef.current = { ids, from: pastedFrom ?? null };
     setSelectAfterCreate(ids);
   }, []);
 
@@ -2924,7 +2959,7 @@ function CanvasSpaceInner({
             );
           }
         }
-        const pastedFrom = selectionKey(flowNodes);
+        const pastedFrom = pasteStartsFrom();
         void pastePayload(payload, offset, { keepUpstream: keepUpstreamFor(payload) }).then((ids) => {
           if (ids) selectPasted(ids, pastedFrom);
         });
@@ -2937,7 +2972,7 @@ function CanvasSpaceInner({
       selectPasted([pasteTextAt(text, point)]);
       return true;
     },
-    [pastePayload, pasteTextAt, keepUpstreamFor, screenToFlowPosition, viewCentre, spaceId, selectPasted, flowNodes],
+    [pastePayload, pasteTextAt, keepUpstreamFor, screenToFlowPosition, viewCentre, spaceId, selectPasted, pasteStartsFrom],
   );
 
   // ---- Clipboard (slice 2b) ----
@@ -3357,7 +3392,7 @@ function CanvasSpaceInner({
       const payload = captureClipboardFor(targetIds, nodes);
       if (payload.nodes.length === 0) return;
       const ext = externalParentAbs(payload.nodes, nodes);
-      const pastedFrom = selectionKey(flowNodes);
+      const pastedFrom = pasteStartsFrom();
       void pastePayload(
         payload,
         { dx: PASTE_OFFSET_PX, dy: PASTE_OFFSET_PX },
@@ -3376,7 +3411,7 @@ function CanvasSpaceInner({
         if (ids) selectPasted(ids, pastedFrom);
       });
     },
-    [readOnly, projectId, spaceId, captureClipboardFor, keepUpstreamFor, pastePayload, selectPasted, buffer, flowNodes],
+    [readOnly, projectId, spaceId, captureClipboardFor, keepUpstreamFor, pastePayload, selectPasted, buffer, pasteStartsFrom],
   );
 
   const copySelection = React.useCallback((): void => {
