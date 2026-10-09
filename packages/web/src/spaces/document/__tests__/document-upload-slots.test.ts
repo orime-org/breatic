@@ -252,7 +252,7 @@ describe('where the placeholder and the block go', () => {
     expect(landedAt).toBe(drawn);
   });
 
-  it('goes before the block after it when a co-editor puts a block between the anchors', () => {
+  it('goes under a block the reader inserts right at its gap', () => {
     const { editor } = open();
     const ids = addUploadBatch(
       editor.prosemirrorView!,
@@ -431,6 +431,82 @@ describe('where the placeholder and the block go', () => {
     land(editor, slot!);
 
     expect(shape(editor)).toEqual(['A', 'm1', 'B', 'Cxyz']);
+  });
+
+  it('stays at its gap when the reader types somewhere else', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView!;
+    const [slot] = addUploadBatch(view, gapBefore(view.state.doc, idOf(editor, 'B')), ['m1']);
+    editor.setTextCursorPosition(idOf(editor, 'C'), 'end');
+    view.dispatch(view.state.tr.insertText('xyz'));
+
+    land(editor, slot!);
+
+    expect(shape(editor)).toEqual(['A', 'm1', 'B', 'Cxyz']);
+  });
+
+  it('goes under a row the reader moves into its gap', () => {
+    const { editor } = open();
+    const [slot] = addUploadBatch(
+      editor.prosemirrorView!,
+      gapBefore(editor.prosemirrorView!.state.doc, idOf(editor, 'B')),
+      ['m1'],
+    );
+    editor.setTextCursorPosition(idOf(editor, 'C'), 'end');
+    editor.moveBlocksUp();
+
+    land(editor, slot!);
+
+    expect(shape(editor)).toEqual(['A', 'C', 'm1', 'B']);
+  });
+
+  it('goes under a file of another batch that lands in the same gap first', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView!;
+    const [first] = addUploadBatch(view, gapBefore(view.state.doc, idOf(editor, 'B')), ['m1']);
+    const [second] = addUploadBatch(view, gapBefore(view.state.doc, idOf(editor, 'B')), ['m2']);
+
+    land(editor, second!);
+    land(editor, first!);
+
+    expect(shape(editor)).toEqual(['A', 'm2', 'm1', 'B', 'C']);
+  });
+
+  it('goes back to where the rows were deleted when that deletion is redone', () => {
+    const { editor, manager } = open([
+      { type: 'paragraph', content: 'A' },
+      { type: 'paragraph', content: 'B' },
+      { type: 'paragraph', content: 'C' },
+      { type: 'paragraph', content: 'D' },
+    ]);
+    const [slot] = addUploadBatch(
+      editor.prosemirrorView!,
+      gapBefore(editor.prosemirrorView!.state.doc, idOf(editor, 'C')),
+      ['m1'],
+    );
+    editor.removeBlocks([idOf(editor, 'B'), idOf(editor, 'C')]);
+    manager.stopCapturing();
+    manager.undo();
+    manager.redo();
+    expect(shape(editor)).toEqual(['A', 'D']);
+
+    land(editor, slot!);
+
+    expect(shape(editor)).toEqual(['A', 'm1', 'D']);
+  });
+
+  it('stays where the row after it was when a co-editor moves that row away', () => {
+    const { mine, theirs } = pair(ABC);
+    const view = mine.prosemirrorView!;
+    const [slot] = addUploadBatch(view, gapBefore(view.state.doc, idOf(mine, 'B')), ['m1']);
+
+    theirs.setTextCursorPosition(idOf(theirs, 'B'), 'end');
+    theirs.moveBlocksDown();
+    expect(shape(mine)).toEqual(['A', 'C', 'B']);
+
+    land(mine, slot!);
+
+    expect(shape(mine)).toEqual(['A', 'm1', 'C', 'B']);
   });
 
   it('stays where the rows were when a co-editor deletes both rows beside it', () => {
