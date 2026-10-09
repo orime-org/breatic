@@ -187,6 +187,37 @@ describe('useNodeCreation', () => {
       vi.restoreAllMocks();
     });
 
+    it('puts a copy of a lone member at the top level when its Group was deleted meanwhile', async () => {
+      canvasSpace.addNode('p1', 's1', {
+        id: 'g',
+        type: 'group',
+        position: { x: 1000, y: 1000 },
+        data: { name: 'G', createdAt: 0, createdBy: 'u-9', locked: false, attachments: [], width: 600, height: 400 },
+      });
+      let release = (): void => undefined;
+      vi.spyOn(canvasApi, 'paste').mockReturnValue(
+        new Promise((resolve) => {
+          release = () => resolve({ map: {} });
+        }),
+      );
+      const { result } = renderHook(() => useNodeCreation('p1', 's1'));
+      // The member sits at (1040, 1040) on the canvas, (40, 40) inside the Group.
+      const done = result.current.pastePayload(
+        payloadOf([
+          { id: 'm', type: 'image', parentId: 'g', position: { x: 1040, y: 1040 }, data: { content: 'a.png' } },
+        ]),
+        { dx: 24, dy: 24 },
+        { externalParentAbs: new Map([['g', { x: 1000, y: 1000 }]]) },
+      );
+      canvasSpace.removeNode('p1', 's1', 'g');
+      release();
+      const [id] = (await done) ?? [];
+      const copy = canvasSpace.readNodes(getDoc(docName.canvasSpace('p1', 's1'))).find((n) => n.id === id);
+      expect(copy?.parentId).toBeUndefined();
+      expect(copy?.position).toEqual({ x: 1064, y: 1064 });
+      vi.restoreAllMocks();
+    });
+
     it('writes nothing into a Space that was closed', async () => {
       const { done, release } = pendingPaste();
       destroyDoc(docName.canvasSpace('p1', 's1'));

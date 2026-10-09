@@ -4,6 +4,7 @@
 import * as React from 'react';
 
 import {
+  CANVAS_NODES_KEY,
   newId,
   promptPlainText,
   proposalMarkSegments,
@@ -229,7 +230,8 @@ export function useNodeCreation(
       }
       // A paste waits on the server; a Space closed meanwhile is not written.
       if (!hasDoc(docName.canvasSpace(projectId, spaceId))) return null;
-      const placed = stepClones(nodes, cloned.idMap, options.externalParentAbs, stepPaste);
+      const nodesMap = getDoc(docName.canvasSpace(projectId, spaceId)).getMap(CANVAS_NODES_KEY);
+      const placed = stepClones(nodes, cloned.idMap, options.externalParentAbs, (id) => nodesMap.has(id), stepPaste);
       runCanvasUndoBatch(projectId, spaceId, () => {
         writeSnapshotNodes(getDoc(docName.canvasSpace(projectId, spaceId)), placed, cloned.edges);
         options.afterWrite?.(placed, cloned.idMap);
@@ -365,24 +367,35 @@ export function useNodeCreation(
 }
 
 /**
- * Step a paste's clones past nodes already where they land. Every clone is
- * measured where it is painted (inner#1235 A20), so a member of a cloned
- * Group landing on a taken spot steps the batch too; only the nodes that sit
- * on the canvas by themselves move — top-level clones and lone members
- * rejoining an existing Group — and members of a cloned Group follow it.
- * @param nodes - The clones.
+ * Settle a paste's clones where they land, at write time. A lone member
+ * rejoins its existing Group only while that Group is still in the document;
+ * a Group deleted while the paste waited on the server leaves the copy at
+ * the top level, at the canvas position it had inside the Group. Then every
+ * clone is measured where it is painted (inner#1235 A20), so a member of a
+ * cloned Group landing on a taken spot steps the batch too; only the nodes
+ * that sit on the canvas by themselves move — top-level clones and lone
+ * members rejoining an existing Group — and members of a cloned Group follow it.
+ * @param clones - The clones.
  * @param idMap - Source id → clone id.
  * @param externalParentAbs - Existing Groups lone members rejoin, by id.
+ * @param inDoc - Whether a node is in the document now.
  * @param stepPaste - How far a batch at these corners steps.
  * @returns The clones at their final positions.
  */
 function stepClones(
-  nodes: ReadonlyArray<SnapshotNode>,
+  clones: ReadonlyArray<SnapshotNode>,
   idMap: ReadonlyMap<string, string>,
   externalParentAbs: ReadonlyMap<string, { x: number; y: number }> | undefined,
+  inDoc: (id: string) => boolean,
   stepPaste: (corners: ReadonlyArray<{ x: number; y: number }>) => { dx: number; dy: number },
 ): SnapshotNode[] {
   const fresh = new Set(idMap.values());
+  const nodes = clones.map((node): SnapshotNode => {
+    if (node.parentId === undefined || fresh.has(node.parentId) || inDoc(node.parentId)) return node;
+    const parent = externalParentAbs?.get(node.parentId) ?? { x: 0, y: 0 };
+    const { parentId: _gone, ...rest } = node;
+    return { ...rest, position: { x: parent.x + node.position.x, y: parent.y + node.position.y } };
+  });
   const byId = new Map(nodes.map((node) => [node.id, node]));
   /**
    * Whether a clone sits on the canvas by itself rather than inside a cloned Group.
