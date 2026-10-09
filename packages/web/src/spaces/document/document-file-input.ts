@@ -89,10 +89,13 @@ function gapAt(doc: PMNode, at: number): UploadGap {
   const $at = doc.resolve(at);
   const before = $at.nodeBefore;
   const after = $at.nodeAfter;
+  // A nested group sits in a row's container; the top-level one in the document.
+  const parent = $at.depth > 1 ? ($at.node($at.depth - 1).attrs['id'] as string) : null;
   return {
     anchor: {
       before: (before?.attrs['id'] as string | undefined) ?? null,
       after: (after?.attrs['id'] as string | undefined) ?? null,
+      parent,
     },
     quoted: before !== null ? quotedOf(before) : quotedOf(after),
   };

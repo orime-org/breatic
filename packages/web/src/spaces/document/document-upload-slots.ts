@@ -28,12 +28,14 @@ import { keyedStore } from '@web/lib/keyed-store';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 
-/** Where a batch was dropped: the blocks on either side of the gap. */
+/** Where a batch was dropped: the blocks on either side of the gap, and its level. */
 export interface SlotAnchor {
-  /** The block before the gap; null at the head of the document. */
+  /** The block before the gap; null at the head of its level. */
   readonly before: string | null;
-  /** The block after the gap; null at the end of the document. */
+  /** The block after the gap; null at the end of its level. */
   readonly after: string | null;
+  /** The row the gap's level is nested under; null at the top level. */
+  readonly parent: string | null;
 }
 
 /** Where a batch of files lands, and whether that gap is inside a quote. */
@@ -119,8 +121,8 @@ function rangeOf(doc: PMNode, id: string | null): { from: number; to: number } |
  * Where the k-th file of a batch goes in the document as it is now.
  *
  * In order: before the nearest later file of the batch already inserted; after
- * the nearest earlier one; before `after`; after `before`; the end of the
- * document. Every file therefore keeps the order it came in, whichever
+ * the nearest earlier one; before `after`; after `before`; the head or the end
+ * of the gap's level, whichever side the gap was on; the end of the document. Every file therefore keeps the order it came in, whichever
  * finishes first. `after` is asked before `before` because the gap a reader
  * picks under a row with children is before that row's first child, and only
  * `after` names that level.
@@ -142,8 +144,29 @@ export function resolveSlotPosition(batch: UploadBatch, k: number, doc: PMNode):
   if (after !== undefined) return after.from;
   const before = rangeOf(doc, batch.before);
   if (before !== undefined) return before.to;
+  // Both neighbours gone: the same level, at its head when the gap was there.
+  const level = levelOf(doc, batch.parent);
+  if (level !== undefined) return batch.before === null ? level.from : level.to;
   // The end of the top-level block group, which is the document's only child.
   return doc.content.size - 1;
+}
+
+/**
+ * Where a level's blocks start and end.
+ * @param doc - The document now.
+ * @param parent - The row the level is nested under; null for the top level.
+ * @returns The range, collapsed under the row when nothing is nested under it
+ *   any more, or undefined when the row is gone.
+ */
+function levelOf(doc: PMNode, parent: string | null): { from: number; to: number } | undefined {
+  // The top-level block group, which is the document's only child.
+  if (parent === null) return { from: 1, to: doc.content.size - 1 };
+  const row = rowById(doc, parent);
+  if (row === undefined) return undefined;
+  const group = row.node.lastChild;
+  if (group === null || group.type.name !== 'blockGroup') return { from: row.to, to: row.to };
+  // Inside the group, which closes just before the container does.
+  return { from: row.to - group.nodeSize, to: row.to - 2 };
 }
 
 /**

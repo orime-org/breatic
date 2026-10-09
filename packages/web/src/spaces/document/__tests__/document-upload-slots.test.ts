@@ -17,6 +17,7 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
+import { mediaGapBelow } from '@web/spaces/document/document-insert-row';
 import {
   addUploadBatch,
   documentUploadsExtension,
@@ -153,7 +154,7 @@ describe('a batch of three files keeps its order (A2)', () => {
     const { editor } = open();
     const ids = addUploadBatch(
       editor.prosemirrorView!,
-      { before: idOf(editor, 'A'), after: idOf(editor, 'B') },
+      { before: idOf(editor, 'A'), after: idOf(editor, 'B'), parent: null },
       FILES,
     );
     order.forEach((k) => land(editor, ids[k]!));
@@ -164,7 +165,7 @@ describe('a batch of three files keeps its order (A2)', () => {
     const { editor } = open();
     const ids = addUploadBatch(
       editor.prosemirrorView!,
-      { before: null, after: idOf(editor, 'A') },
+      { before: null, after: idOf(editor, 'A'), parent: null },
       FILES,
     );
     order.forEach((k) => land(editor, ids[k]!));
@@ -175,7 +176,7 @@ describe('a batch of three files keeps its order (A2)', () => {
     const { editor } = open();
     const ids = addUploadBatch(
       editor.prosemirrorView!,
-      { before: idOf(editor, 'A'), after: idOf(editor, 'B') },
+      { before: idOf(editor, 'A'), after: idOf(editor, 'B'), parent: null },
       FILES,
     );
     editor.removeBlocks([idOf(editor, 'A')]);
@@ -187,7 +188,7 @@ describe('a batch of three files keeps its order (A2)', () => {
 describe('a batch whose block after it is deleted once one file landed (A2)', () => {
   it('lands the rest after the file that landed, not at the end', () => {
     const { editor } = open();
-    const ids = addUploadBatch(editor.prosemirrorView!, { before: null, after: idOf(editor, 'A') }, FILES);
+    const ids = addUploadBatch(editor.prosemirrorView!, { before: null, after: idOf(editor, 'A'), parent: null }, FILES);
     land(editor, ids[0]!);
     editor.removeBlocks([idOf(editor, 'A')]);
 
@@ -202,7 +203,7 @@ describe('where the placeholder and the block go', () => {
   it('draws each placeholder exactly where its block then lands', () => {
     const { editor } = open();
     const view = editor.prosemirrorView!;
-    const ids = addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B') }, FILES);
+    const ids = addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B'), parent: null }, FILES);
     land(editor, ids[1]!);
 
     const drawn = drawnAt(view.state).get(ids[0]!)!;
@@ -219,7 +220,7 @@ describe('where the placeholder and the block go', () => {
     const { editor } = open();
     const ids = addUploadBatch(
       editor.prosemirrorView!,
-      { before: idOf(editor, 'A'), after: idOf(editor, 'B') },
+      { before: idOf(editor, 'A'), after: idOf(editor, 'B'), parent: null },
       ['m1'],
     );
     editor.insertBlocks([{ type: 'paragraph', content: 'X' }] as never, idOf(editor, 'A'), 'after');
@@ -251,7 +252,7 @@ describe('where the placeholder and the block go', () => {
     });
     mine!.replaceBlocks(mine!.document, ABC as never);
     const view = mine!.prosemirrorView!;
-    const ids = addUploadBatch(view, { before: idOf(mine!, 'A'), after: idOf(mine!, 'B') }, ['m1']);
+    const ids = addUploadBatch(view, { before: idOf(mine!, 'A'), after: idOf(mine!, 'B'), parent: null }, ['m1']);
 
     theirs!.insertBlocks([{ type: 'paragraph', content: 'X' }] as never, idOf(theirs!, 'A'), 'before');
     theirs!.updateBlock(idOf(theirs!, 'B'), { content: 'B2' } as never);
@@ -273,7 +274,7 @@ describe('where the placeholder and the block go', () => {
       { type: 'paragraph', content: 'B1B2' },
     ]);
     const view = editor.prosemirrorView!;
-    const ids = addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B1B2') }, ['m1']);
+    const ids = addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B1B2'), parent: null }, ['m1']);
     editor.setTextCursorPosition(idOf(editor, 'B1B2'), 'start');
     const { from } = view.state.selection;
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from + 2)));
@@ -290,7 +291,7 @@ describe('where the placeholder and the block go', () => {
     const { editor } = open();
     const ids = addUploadBatch(
       editor.prosemirrorView!,
-      { before: idOf(editor, 'A'), after: idOf(editor, 'B') },
+      { before: idOf(editor, 'A'), after: idOf(editor, 'B'), parent: null },
       ['m1'],
     );
     editor.removeBlocks([idOf(editor, 'A'), idOf(editor, 'B')]);
@@ -300,6 +301,32 @@ describe('where the placeholder and the block go', () => {
     expect(shape(editor)).toEqual(['C', 'm1']);
   });
 
+  it('stays at the head of a nested level when the row made for it is deleted', () => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'R', children: [{ type: 'paragraph', content: 'C1' }] },
+      { type: 'paragraph', content: 'D' },
+    ]);
+    const gap = mediaGapBelow(editor as never, (editor.document as Seen[])[0] as never);
+    const [slot] = addUploadBatch(editor.prosemirrorView!, gap.anchor, ['m1']);
+    editor.removeBlocks([gap.anchor.after!]);
+
+    land(editor, slot!);
+
+    expect(shape(editor)).toEqual(['R', 'D']);
+    const children = (editor.document as Seen[])[0]!.children!;
+    expect(children.map((c) => c.type)).toEqual(['image', 'paragraph']);
+  });
+
+  it('stays at the head of the document when the first row it was dropped above is deleted', () => {
+    const { editor } = open();
+    const [slot] = addUploadBatch(editor.prosemirrorView!, { before: null, after: idOf(editor, 'A'), parent: null }, ['m1']);
+    editor.removeBlocks([idOf(editor, 'A')]);
+
+    land(editor, slot!);
+
+    expect(shape(editor)).toEqual(['m1', 'B', 'C']);
+  });
+
   it('lands as the first child when the block after it is a first child', () => {
     const { editor } = open([
       { type: 'paragraph', content: 'R', children: [{ type: 'paragraph', content: 'C1' }] },
@@ -307,7 +334,7 @@ describe('where the placeholder and the block go', () => {
     const parent = (editor.document as Seen[])[0]!;
     const ids = addUploadBatch(
       editor.prosemirrorView!,
-      { before: parent.id, after: parent.children![0]!.id },
+      { before: null, after: parent.children![0]!.id, parent: parent.id },
       ['m1'],
     );
 
@@ -322,7 +349,7 @@ describe('landing a block leaves the reader where they are (A4)', () => {
   it('keeps the caret in the block being typed into', () => {
     const { editor } = open();
     const view = editor.prosemirrorView!;
-    const ids = addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B') }, ['m1']);
+    const ids = addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B'), parent: null }, ['m1']);
     editor.setTextCursorPosition(idOf(editor, 'C'), 'end');
 
     land(editor, ids[0]!);
@@ -336,7 +363,7 @@ describe('landing a block leaves the reader where they are (A4)', () => {
   it('is one undo step of its own, apart from what was just typed', () => {
     const { editor, manager } = open();
     const view = editor.prosemirrorView!;
-    const ids = addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B') }, ['m1']);
+    const ids = addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B'), parent: null }, ['m1']);
     editor.setTextCursorPosition(idOf(editor, 'C'), 'end');
     view.dispatch(view.state.tr.insertText('!'));
 
@@ -349,7 +376,7 @@ describe('landing a block leaves the reader where they are (A4)', () => {
   it('keeps what is typed straight after it out of its undo step', () => {
     const { editor, manager } = open();
     const view = editor.prosemirrorView!;
-    const ids = addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B') }, ['m1']);
+    const ids = addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B'), parent: null }, ['m1']);
     editor.setTextCursorPosition(idOf(editor, 'C'), 'end');
 
     land(editor, ids[0]!, manager);
@@ -362,7 +389,7 @@ describe('landing a block leaves the reader where they are (A4)', () => {
   it('removes the placeholder of the file that landed, and only that one', () => {
     const { editor } = open();
     const view = editor.prosemirrorView!;
-    const ids = addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B') }, ['m1', 'm2']);
+    const ids = addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B'), parent: null }, ['m1', 'm2']);
 
     land(editor, ids[0]!);
 
@@ -372,7 +399,7 @@ describe('landing a block leaves the reader where they are (A4)', () => {
   it('lands nothing for a slot that was removed', () => {
     const { editor } = open();
     const view = editor.prosemirrorView!;
-    const ids = addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B') }, ['m1']);
+    const ids = addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B'), parent: null }, ['m1']);
     removeUploadSlot(view, ids[0]!);
 
     expect(land(editor, ids[0]!)).toBeNull();
@@ -386,7 +413,7 @@ describe('placeholders stay out of the shared document (A4)', () => {
     const view = editor.prosemirrorView!;
     const before = view.state.doc;
 
-    addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B') }, ['m1']);
+    addUploadBatch(view, { before: idOf(editor, 'A'), after: idOf(editor, 'B'), parent: null }, ['m1']);
 
     expect(view.state.doc.eq(before)).toBe(true);
   });

@@ -21,6 +21,7 @@ import {
   useDocumentMediaPick,
 } from '@web/spaces/document/DocumentMediaPicker';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
+import type { UploadGap } from '@web/spaces/document/document-upload-slots';
 
 /**
  * The insert menu, open.
@@ -75,7 +76,7 @@ function PickButton({
   gap,
 }: {
   kind: 'image' | 'audio' | 'video';
-  gap: () => { anchor: { before: string | null; after: string | null }; quoted: boolean } | null;
+  gap: () => UploadGap | null;
 }): React.JSX.Element {
   const pick = useDocumentMediaPick();
   return (
@@ -92,7 +93,7 @@ describe('the file picker (A1)', () => {
    * @returns The uploader stub and the hidden input.
    */
   function setup(
-    gap: () => { anchor: { before: string | null; after: string | null }; quoted: boolean } | null,
+    gap: () => UploadGap | null,
   ): { start: ReturnType<typeof vi.fn>; input: HTMLInputElement } {
     const start = vi.fn().mockResolvedValue(undefined);
     const uploader = { start, retry: vi.fn(), remove: vi.fn() } as unknown as DocumentUploader;
@@ -118,7 +119,7 @@ describe('the file picker (A1)', () => {
   });
 
   it('hands the chosen files over with the way to make their gap, and makes none itself', () => {
-    const anchor = { before: 'a', after: 'b' };
+    const anchor = { before: 'a', after: 'b', parent: null };
     const gap = vi.fn(() => ({ anchor, quoted: true }));
     const { input, start } = setup(gap);
     vi.spyOn(input, 'click').mockImplementation(() => undefined);
@@ -134,7 +135,7 @@ describe('the file picker (A1)', () => {
   });
 
   it('makes no gap and starts nothing when the picker is closed with no file', () => {
-    const gap = vi.fn(() => ({ anchor: { before: null, after: null }, quoted: false }));
+    const gap = vi.fn(() => ({ anchor: { before: null, after: null, parent: null }, quoted: false }));
     const { input, start } = setup(gap);
     vi.spyOn(input, 'click').mockImplementation(() => undefined);
     fireEvent.click(screen.getByTestId('pick'));

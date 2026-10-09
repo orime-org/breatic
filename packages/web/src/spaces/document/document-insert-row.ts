@@ -150,8 +150,9 @@ export function insertBelow(
 export function mediaGapBelow(editor: HandleEditor, row: PressedBlock): UploadGap {
   const made = insertRowForMenu(editor, row);
   const before = editor.getPrevBlock(made) as { id: string } | undefined;
+  const parent = editor.getParentBlock(made) as { id: string } | undefined;
   return {
-    anchor: { before: before?.id ?? null, after: made },
+    anchor: { before: before?.id ?? null, after: made, parent: parent?.id ?? null },
     quoted: row.props?.[QUOTED] === true,
   };
 }
@@ -167,9 +168,10 @@ export function mediaGapBelow(editor: HandleEditor, row: PressedBlock): UploadGa
  */
 export function mediaGapOnRow(editor: HandleEditor, row: PressedBlock): UploadGap {
   const before = editor.getPrevBlock(row.id) as { id: string } | undefined;
+  const parent = editor.getParentBlock(row.id) as { id: string } | undefined;
   editor.setTextCursorPosition(row.id, 'start');
   return {
-    anchor: { before: before?.id ?? null, after: row.id },
+    anchor: { before: before?.id ?? null, after: row.id, parent: parent?.id ?? null },
     quoted: row.props?.[QUOTED] === true,
   };
 }

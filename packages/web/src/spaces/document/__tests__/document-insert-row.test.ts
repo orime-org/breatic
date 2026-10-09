@@ -205,7 +205,7 @@ describe('the gap a media pick uploads into (inner#1127 A1)', () => {
     expect(blocks[1]!.props?.['quoted']).toBe(true);
     expect((editor.getTextCursorPosition().block as { id: string }).id).toBe(blocks[1]!.id);
     expect(gap).toEqual({
-      anchor: { before: blocks[0]!.id, after: blocks[1]!.id },
+      anchor: { before: blocks[0]!.id, after: blocks[1]!.id, parent: null },
       quoted: true,
     });
   });
@@ -223,7 +223,11 @@ describe('the gap a media pick uploads into (inner#1127 A1)', () => {
 
     const kids = (editor.document as Seen[])[0]!.children!;
     expect(shape(kids)).toEqual(['', 'child']);
-    expect(gap.anchor.after).toBe(kids[0]!.id);
+    expect(gap.anchor).toEqual({
+      before: null,
+      after: kids[0]!.id,
+      parent: (editor.document as Seen[])[0]!.id,
+    });
   });
 
   it('on an empty line goes above it and leaves the caret in it', () => {
@@ -238,7 +242,7 @@ describe('the gap a media pick uploads into (inner#1127 A1)', () => {
     expect(shape(editor.document)).toEqual(['above', '']);
     expect((editor.getTextCursorPosition().block as { id: string }).id).toBe(blocks[1]!.id);
     expect(gap).toEqual({
-      anchor: { before: blocks[0]!.id, after: blocks[1]!.id },
+      anchor: { before: blocks[0]!.id, after: blocks[1]!.id, parent: null },
       quoted: true,
     });
   });
