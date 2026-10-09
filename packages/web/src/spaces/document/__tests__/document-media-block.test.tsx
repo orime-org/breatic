@@ -160,13 +160,13 @@ describe('the loading state and the preview (A23)', () => {
     expect(within(element(editor)).getByTestId('doc-media-box').style.width).toBe('300px');
   });
 
-  it('draws a 16:9 skeleton across the row for a picture with no size', () => {
+  it('draws a 3:2 skeleton across the row, as the canvas does, for a picture with no size', () => {
     const editor = open('image', {});
     const box = within(element(editor)).getByTestId('doc-media-box');
     const img = box.querySelector('img')!;
 
     expect(box.className).toContain('w-full');
-    expect(img.style.aspectRatio).toBe('16 / 9');
+    expect(img.style.aspectRatio).toBe('3 / 2');
 
     act(() => {
       img.dispatchEvent(new Event('load'));

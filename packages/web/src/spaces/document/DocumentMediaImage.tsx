@@ -13,7 +13,7 @@ import { Skeleton } from '@web/components/ui/skeleton';
 import { usePreviewSrc, usePreviewWidth } from '@web/lib/preview-src';
 
 /** The box a picture of unknown size is drawn in while it loads. */
-const UNKNOWN_SIZE: React.CSSProperties = { aspectRatio: '16 / 9' };
+const UNKNOWN_SIZE: React.CSSProperties = { aspectRatio: '3 / 2' };
 
 /** What the picture is drawn from. */
 export interface DocumentMediaImageProps {
