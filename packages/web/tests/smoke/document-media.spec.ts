@@ -18,6 +18,8 @@ import { resolve } from 'node:path';
 import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { blankPoint } from '../helpers/document-body';
+import { pressAndSettle } from '../helpers/editor-keys';
 import { wavBytes } from '../helpers/media-bytes';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
@@ -707,6 +709,34 @@ async function pastePicture(p: Page, name: string): Promise<void> {
     [png, name] as const,
   );
 }
+
+test('Shift+click on a picture while the body is let go selects the picture and leaves the old words out (A20)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('hello world');
+  await pastePicture(page, 'shift.png');
+  const img = page.locator(`${IMAGE} img`);
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  await page.locator(`${EDITOR} p`).first().click();
+  await pressAndSettle(page, process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home');
+  for (let i = 0; i < 5; i += 1) await pressAndSettle(page, 'Shift+ArrowRight');
+  const { x, y } = await blankPoint(page);
+  await page.mouse.click(x, y);
+  await expect(page.locator(EDITOR)).not.toHaveAttribute('data-body-holds', /.*/);
+
+  await img.click({ modifiers: ['Shift'] });
+
+  await expect
+    .poll(() =>
+      page.evaluate((selector) => {
+        const el = document.querySelector(selector) as unknown as {
+          editor: { state: { selection: { constructor: { name: string }; node?: { type: { name: string } } } } };
+        };
+        const { selection } = el.editor.state;
+        return `${selection.constructor.name}:${selection.node?.type.name ?? ''}|${window.getSelection()?.toString() ?? ''}`;
+      }, EDITOR),
+    )
+    .toBe('_NodeSelection:image|');
+});
 
 test('a picture is no longer selected once the focus leaves the body, and never re-frames when another is picked (A10)', async () => {
   await openFreshDocument(page);

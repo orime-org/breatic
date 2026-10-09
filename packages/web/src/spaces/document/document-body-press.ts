@@ -140,6 +140,21 @@ function collapseToPress(view: EditorView, event: MouseEvent): void {
 }
 
 /**
+ * A press on a wordless block while the body is let go: the block is selected
+ * whole and the body takes the focus.
+ * @param view - The view.
+ * @param element - The block's content element.
+ * @param event - The press.
+ */
+function pressWordless(view: EditorView, element: Element, event: MouseEvent): void {
+  selectWordlessBlock(view, element);
+  view.focus();
+  // Shift is a plain press here. ProseMirror leaves a Shift press to the
+  // browser, which would stretch a range from this block to the pointer.
+  if (event.shiftKey) event.preventDefault();
+}
+
+/**
  * Attaches the body scroller: the press entry, the Space-level undo keys and
  * the scroll position a Tab back into the body restores.
  * @param view - The view.
@@ -207,14 +222,13 @@ export function attachBodyScroller(
       case 'quiet-control':
         event.preventDefault();
         return;
+      case 'media':
+        // A plain press on what a medium shows is `document-media-row-press`'s;
+        // a Shift one it leaves, and here it is a plain press like any wordless block's.
+        if (event.shiftKey && !holds && element !== null) pressWordless(view, element, event);
+        return;
       case 'wordless':
-        if (!holds && element !== null) {
-          selectWordlessBlock(view, element);
-          view.focus();
-          // Shift is a plain press here. ProseMirror leaves a Shift press to the
-          // browser, which would stretch a range from this block to the pointer.
-          if (event.shiftKey) event.preventDefault();
-        }
+        if (!holds && element !== null) pressWordless(view, element, event);
         return;
       case 'text':
         if (!holds && event.button === 0 && !event.metaKey && !event.altKey) collapseToPress(view, event);
