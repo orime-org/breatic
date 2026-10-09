@@ -4478,10 +4478,11 @@ describe('what an Understand press leaves on screen', () => {
     src.indexOf('const understandFromMenu'),
     src.indexOf('const onUploadInputChange'),
   );
-  // frameNewNode hands its boxes to panToFrame, which reads the viewport and
-  // asks frameBuiltNode; the two read together are the framing.
+  // frameNewNode reads the source's box through measuredRects and hands it to
+  // panToFrame, which reads the viewport and asks frameBuiltNode; the three
+  // read together are the framing.
   const framing = src.slice(
-    src.indexOf('const panToFrame'),
+    src.indexOf('const measuredRects'),
     src.indexOf('// ---- Node creation (library mailbox + right-click) ----'),
   );
 

@@ -2225,6 +2225,19 @@ function CanvasSpaceInner({
     });
   }, [sessionStore, getInternalNode, setCenter, rfZoom]);
 
+  // The boxes of the nodes xyflow has measured among `ids`, in canvas
+  // coordinates and in the order given.
+  const measuredRects = React.useCallback(
+    (ids: readonly string[]): Rect[] =>
+      ids.flatMap((id) => {
+        const node = getInternalNode(id);
+        const width = node?.measured?.width;
+        const height = node?.measured?.height;
+        if (node === undefined || width === undefined || height === undefined) return [];
+        return [{ ...node.internals.positionAbsolute, width, height }];
+      }),
+    [getInternalNode],
+  );
   // Slide what an action just made in front of the reader, together with what
   // it was made from. Pans only, keeping the reader's zoom, the way locate does
   // above; `framedBox` picks what of it to frame and `frameBuiltNode` whether
@@ -2252,19 +2265,9 @@ function CanvasSpaceInner({
       // A collaborator can delete the node being read while the menu stands
       // open. The press still produced a node, so it is still what has to be
       // in front of the reader — there is just no second box to frame it with.
-      const source = getInternalNode(sourceNodeId);
-      panToFrame(
-        [{ ...position, ...EMPTY_NODE_SIZE }],
-        source === undefined
-          ? null
-          : {
-            ...source.internals.positionAbsolute,
-            width: source.measured?.width ?? source.width ?? 0,
-            height: source.measured?.height ?? source.height ?? 0,
-          },
-      );
+      panToFrame([{ ...position, ...EMPTY_NODE_SIZE }], measuredRects([sourceNodeId])[0] ?? null);
     },
-    [getInternalNode, panToFrame],
+    [measuredRects, panToFrame],
   );
 
   // ---- Node creation (library mailbox + right-click) ----
@@ -2290,19 +2293,6 @@ function CanvasSpaceInner({
     focusPastedRef.current = { ids, sources };
     setSelectAfterCreate(ids);
   }, []);
-  // The boxes of the nodes xyflow has measured among `ids`, in canvas
-  // coordinates and in the order given.
-  const measuredRects = React.useCallback(
-    (ids: readonly string[]): Rect[] =>
-      ids.flatMap((id) => {
-        const node = getInternalNode(id);
-        const width = node?.measured?.width;
-        const height = node?.measured?.height;
-        if (node === undefined || width === undefined || height === undefined) return [];
-        return [{ ...node.internals.positionAbsolute, width, height }];
-      }),
-    [getInternalNode],
-  );
   // A paste or duplicate puts its copies in front of the reader and hands them
   // the keyboard, so the arrow keys move them (inner#1229) through xyflow's own
   // handler on the focused node. Each frame it waits while a menu is still
@@ -2325,13 +2315,14 @@ function CanvasSpaceInner({
         }
         const copies = ids.filter((id) => getInternalNode(id)?.selected === true);
         if (copies.length === 0) return;
-        if (copies.some((id) => getInternalNode(id)?.measured?.width === undefined)) {
+        const rects = measuredRects(copies);
+        if (rects.length < copies.length) {
           requestAnimationFrame(step);
           return;
         }
         if (!framed) {
           framed = true;
-          if (panToFrame(measuredRects(copies), groupRectForMembers(measuredRects(sources), 0))) {
+          if (panToFrame(rects, groupRectForMembers(measuredRects(sources), 0))) {
             window.setTimeout(() => requestAnimationFrame(step), FRAME_PAN_MS);
             return;
           }
