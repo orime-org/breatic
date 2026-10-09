@@ -35,7 +35,9 @@ import {
   slotLengthCap,
   type MiniToolSourceInfo,
 } from '@web/spaces/canvas/mini-tool/mini-tool-view';
+import { hasInk } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
+import { visibleOps } from '@web/stores/drawing-draft';
 
 /** The params a changed source resets: they are measured on the source. */
 const SOURCE_BOUND = new Set(['rect', 'range', 'orient']);
@@ -188,7 +190,8 @@ function OpenMiniToolPanel({
     spaceId,
     nodeId,
     content,
-    tieredParamKeys(spec).length > 0 && (dataWidth === undefined || dataHeight === undefined),
+    (tieredParamKeys(spec).length > 0 || spec.drawing !== undefined) &&
+      (dataWidth === undefined || dataHeight === undefined),
   );
   const source = React.useMemo<MiniToolSourceInfo>(
     () => ({
@@ -258,6 +261,14 @@ function OpenMiniToolPanel({
         ? t('canvas.miniTool.panel.usage')
         : (estimate ?? '');
 
+  const drawingSteps = draft?.drawing?.steps;
+  const inked = React.useMemo(() => {
+    if (spec.drawing === undefined || drawingSteps === undefined) return false;
+    // The shape only scales the probe; a square stands in until the size is known.
+    const aspect = source.width !== undefined && source.height !== undefined ? source.width / source.height : 1;
+    return hasInk(visibleOps(drawingSteps), spec.drawing.kind, aspect);
+  }, [spec, drawingSteps, source.width, source.height]);
+
   const refusal = miniToolRefusal({
     spec,
     entry,
@@ -267,6 +278,7 @@ function OpenMiniToolPanel({
     source,
     tiers: sizeTiers,
     exporting,
+    inked,
   });
   const pickingSlot = pickSession?.purpose === 'miniToolSlot' ? (pickSession.slotKey ?? null) : null;
 

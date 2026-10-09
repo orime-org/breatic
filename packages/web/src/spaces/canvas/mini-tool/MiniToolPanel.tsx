@@ -35,6 +35,7 @@ import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
 import {
+  BLOCKING_REFUSALS,
   aspectRatioOf,
   rectForAspect,
   setRectSide,
@@ -193,7 +194,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
     onClose,
   } = props;
   const t = useTranslation();
-  const blocked = refusal === 'slotMissing' || refusal === 'promptMissing' || refusal === 'exporting';
+  const blocked = BLOCKING_REFUSALS.has(refusal);
   return (
     <CanvasPanel
       title={

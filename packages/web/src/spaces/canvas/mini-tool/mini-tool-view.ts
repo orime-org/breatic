@@ -57,9 +57,18 @@ export type MiniToolRefusal =
   | 'noUsableTier'
   | 'slotMissing'
   | 'slotTooLong'
+  | 'drawingEmpty'
   | 'promptMissing'
   | 'exporting'
   | null;
+
+/** The refusals that disable Execute; the rest let it be pressed and say why. */
+export const BLOCKING_REFUSALS: ReadonlySet<MiniToolRefusal> = new Set<MiniToolRefusal>([
+  'slotMissing',
+  'drawingEmpty',
+  'promptMissing',
+  'exporting',
+]);
 
 /** How the panel's footer states the cost. */
 export type CreditMode = 'free' | 'usage' | 'estimate';
@@ -189,6 +198,7 @@ export function slotLengthCap(
  * @param input.source - The source as the panel knows it.
  * @param input.tiers - The size tiers as they fall on the source.
  * @param input.exporting - Whether a browser tool's export is under way.
+ * @param input.inked - Whether a drawing tool's drawing leaves any ink.
  * @returns The first reason in the order the reader would fix them, or null.
  */
 export function miniToolRefusal(input: {
@@ -200,6 +210,7 @@ export function miniToolRefusal(input: {
   source?: MiniToolSourceInfo;
   tiers?: readonly SizeTierChoice[];
   exporting: boolean;
+  inked?: boolean;
 }): MiniToolRefusal {
   const { spec, entry, prompt, slots, sourceShown, source = {}, exporting } = input;
   if (exporting) return 'exporting';
@@ -219,6 +230,7 @@ export function miniToolRefusal(input: {
     if (empty && !slotOptional(entry, slot.param)) return 'slotMissing';
   }
   if (slotLengthCap(spec, entry, slots) !== null) return 'slotTooLong';
+  if (spec.drawing !== undefined && input.inked !== true) return 'drawingEmpty';
   if (promptRequired(spec, entry) && prompt.trim() === '') return 'promptMissing';
   return null;
 }
