@@ -21,7 +21,6 @@ import {
   writeSnapshotNodes,
 } from '@web/data/yjs/canvas-space';
 import { snapshotNodeData } from '@web/data/yjs/node-data-snapshot';
-import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 
 const PID = 'p1';
 const SID = 's1';
@@ -123,7 +122,7 @@ describe('node data snapshot', () => {
     roundTrip('a', 'b', 'text');
     const body = nodeDataMap(doc(), 'b')?.get('body') as Y.XmlFragment;
     expect(body.length).toBe(2);
-    expect(bodyToPlainText(body)).toBe('bold plain\nsecond');
+    expect(body.toString()).toBe((nodeDataMap(doc(), 'a')?.get('body') as Y.XmlFragment).toString());
     const first = (body.get(0) as Y.XmlElement).get(0) as Y.XmlText;
     expect(first.toDelta()[0]).toEqual({ insert: 'bold', attributes: { bold: true } });
   });
@@ -138,6 +137,17 @@ describe('node data snapshot', () => {
       expect(copy.get(mode)?.toString()).toBe(src.get(mode)?.toString());
     }
     expect(copy.get([...src.keys()][0] as string)?.toString()).toContain('sourceNodeId="up-1"');
+  });
+
+  it('keeps a container for every mode, even one the snapshot lacks', () => {
+    seedSource('a', 'video');
+    const snapshot = snapshotNodeData(nodeDataMap(doc(), 'a') as Y.Map<unknown>);
+    const entries = (snapshot.prompts as { entries: Record<string, unknown> }).entries;
+    const dropped = Object.keys(entries)[0] as string;
+    delete entries[dropped];
+    writeSnapshotNodes(doc(), [{ id: 'b', type: 'video', position: { x: 0, y: 0 }, data: snapshot }], []);
+    const copy = nodeDataMap(doc(), 'b')?.get('prompts') as Y.Map<Y.XmlFragment>;
+    expect(copy.get(dropped)).toBeInstanceOf(Y.XmlFragment);
   });
 
   it('carries shots, lyrics and focus crops once each', () => {

@@ -24,6 +24,7 @@ import { usableUrls, writeNodeMedia, type NodeMediaFields } from '@breatic/share
 import { bodyFromText, bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import type { NodeKind, NodeView } from '@web/data/yjs/node-view';
 import { toNodeView } from '@web/data/yjs/node-view';
+import { fillNestedData, splitSnapshot } from '@web/data/yjs/node-data-snapshot';
 
 /**
  * Canvas-space Yjs document — single source of truth for one canvas
@@ -636,6 +637,64 @@ export function addNode(
     map.set('position', node.position);
     map.set('data', buildDataMap(node.data, node.type));
     nodesMap.set(node.id, map);
+  }, CANVAS_UNDO);
+}
+
+/** A node to write from a clipboard snapshot: `data` is `snapshotNodeData`'s output. */
+export interface SnapshotNode {
+  id: string;
+  type: string;
+  position: { x: number; y: number };
+  parentId?: string;
+  data: Record<string, unknown>;
+}
+
+/**
+ * Write nodes and edges carried by a clipboard snapshot, in one undo step
+ * (inner#1349, design 5.3). Each node is born through the same path as
+ * {@link addNode}, so every container a node of its type needs exists from
+ * birth; the snapshot's nested structures are then filled into those
+ * containers once the node is in the document, where they can be read.
+ * Edges whose ends are not both in the document are skipped.
+ * @param doc - The canvas document (a live Space, or a throwaway doc).
+ * @param nodes - The nodes, groups before their members.
+ * @param edges - The edges, each with its `createdAt`.
+ */
+export function writeSnapshotNodes(
+  doc: Y.Doc,
+  nodes: ReadonlyArray<SnapshotNode>,
+  edges: ReadonlyArray<CanvasEdge>,
+): void {
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
+  doc.transact(() => {
+    for (const node of nodes) {
+      const { plain, nested } = splitSnapshot(node.data);
+      const type = node.type as NodeType;
+      // A text node's words arrive in its body tree; `content` would seed the
+      // body a second time.
+      if (type === 'text') delete plain.content;
+      const map = new Y.Map<unknown>();
+      map.set('id', node.id);
+      map.set('type', type);
+      if (node.parentId !== undefined) map.set('parentId', node.parentId);
+      map.set('position', node.position);
+      const data = buildDataMap(plain as CanvasNodeFields['data'], type);
+      map.set('data', data);
+      nodesMap.set(node.id, map);
+      fillNestedData(data, nested);
+    }
+    for (const edge of edges) {
+      if (edge.source === edge.target) continue;
+      if (!nodesMap.has(edge.source) || !nodesMap.has(edge.target) || edgesMap.has(edge.id)) continue;
+      const map = new Y.Map<unknown>();
+      map.set('id', edge.id);
+      map.set('source', edge.source);
+      map.set('target', edge.target);
+      if (edge.toolId) map.set('toolId', edge.toolId);
+      map.set('createdAt', edge.createdAt ?? Date.now());
+      edgesMap.set(edge.id, map);
+    }
   }, CANVAS_UNDO);
 }
 
