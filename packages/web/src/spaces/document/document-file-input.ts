@@ -19,6 +19,7 @@ import {
   blockToNode,
   createExtension,
   type BlockNoteEditorOptions,
+  type ComputeDropPositionContext,
   type ExtensionFactoryInstance,
 } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
@@ -98,15 +99,38 @@ function gapAt(doc: PMNode, at: number): UploadGap {
 }
 
 /**
- * The gap a drop at a document position lands in: the same one a dragged
- * row would land in there.
+ * Where between the blocks a drop at a document position lands: the place a
+ * dragged row would land there.
+ * @param doc - The document.
+ * @param at - The position the pointer is over.
+ * @returns The position of the gap.
+ */
+function fileLanding(doc: PMNode, at: number): number {
+  return landingFor(doc, at, blockToNode({ type: 'paragraph' } as never, doc.type.schema));
+}
+
+/**
+ * The gap a drop at a document position lands in.
  * @param doc - The document.
  * @param at - The position the pointer is over.
  * @returns The gap.
  */
 export function anchorAtGap(doc: PMNode, at: number): UploadGap {
-  const probe = blockToNode({ type: 'paragraph' } as never, doc.type.schema);
-  return gapAt(doc, landingFor(doc, at, probe));
+  return gapAt(doc, fileLanding(doc, at));
+}
+
+/**
+ * The drop line a drag of files shows (A2): at the gap the files land in, the
+ * line a dragged row shows there; none over a read-only body, where the drop
+ * does nothing. Every other drag keeps the line the editor draws.
+ * @param context - The drag, as the drop line extension hands it.
+ * @returns The line, or null for none.
+ */
+export function fileDropPosition(context: ComputeDropPositionContext): ComputeDropPositionContext['defaultPosition'] {
+  const { view, event, defaultPosition } = context;
+  if (view.dragging !== null || !carriesFiles(event)) return defaultPosition;
+  if (!view.editable || defaultPosition === null) return null;
+  return { pos: fileLanding(view.state.doc, defaultPosition.pos), orientation: 'block-horizontal' };
 }
 
 /**

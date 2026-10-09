@@ -17,6 +17,7 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import {
   anchorAtCaret,
   anchorAtGap,
+  fileDropPosition,
   pastedFiles,
   type FilesArrival,
 } from '@web/spaces/document/document-file-input';
@@ -243,5 +244,57 @@ describe('a file dragged over a read-only body (A11)', () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(sink).not.toHaveBeenCalled();
+  });
+});
+
+describe('a file dropped on an editable body (A1–A3)', () => {
+  it('hands the files and the gap at the drop to the uploads', () => {
+    const sink = vi.fn();
+    const editor = open([{ type: 'paragraph', content: 'Alpha' }, { type: 'paragraph', content: 'Beta' }], sink);
+    const view = editor.prosemirrorView!;
+    const inAlpha = 3;
+    vi.spyOn(view, 'posAtCoords').mockReturnValue({ pos: inAlpha, inside: -1 });
+    const event = fileDrag('drop');
+
+    view.dom.firstElementChild!.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(sink).toHaveBeenCalledWith({ files: [PNG], ...anchorAtGap(view.state.doc, inAlpha) });
+  });
+});
+
+describe('the line a file drag shows (A2)', () => {
+  it('stands between the blocks the files will land between, not inside the words', () => {
+    const editor = open([{ type: 'paragraph', content: 'Alpha words' }, { type: 'paragraph', content: 'Beta' }]);
+    const view = editor.prosemirrorView!;
+    const inWords = 5;
+
+    const shown = fileDropPosition({
+      editor: editor as never,
+      view,
+      event: fileDrag('dragover') as DragEvent,
+      defaultPosition: { pos: inWords, orientation: 'inline' },
+    });
+
+    expect(shown?.orientation).toBe('block-horizontal');
+    const $shown = view.state.doc.resolve(shown!.pos);
+    expect($shown.parent.inlineContent).toBe(false);
+    const { anchor } = anchorAtGap(view.state.doc, inWords);
+    expect($shown.nodeBefore?.attrs['id'] ?? null).toBe(anchor.before);
+    expect($shown.nodeAfter?.attrs['id'] ?? null).toBe(anchor.after);
+  });
+
+  it('shows no line over a read-only body, where a drop does nothing', () => {
+    const editor = open([{ type: 'paragraph', content: 'Alpha' }]);
+    editor.isEditable = false;
+
+    const shown = fileDropPosition({
+      editor: editor as never,
+      view: editor.prosemirrorView!,
+      event: fileDrag('dragover') as DragEvent,
+      defaultPosition: { pos: 3, orientation: 'inline' },
+    });
+
+    expect(shown).toBeNull();
   });
 });

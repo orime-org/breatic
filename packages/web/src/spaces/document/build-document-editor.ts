@@ -75,6 +75,7 @@ import {
 } from '@web/spaces/document/document-external-media';
 import {
   documentFileDropExtension,
+  fileDropPosition,
   filesPasteHandler,
   type FilesSink,
 } from '@web/spaces/document/document-file-input';
@@ -224,7 +225,7 @@ export function buildDocumentEditor(
     // draws a band across the whole 768px column; two reads as a line, which
     // is all this has to say and is how the rest of this product's chrome is
     // drawn.
-    dropCursor: { color: false, width: 2 },
+    dropCursor: { color: false, width: 2, hooks: { computeDropPosition: fileDropPosition } },
     // Merge and split, a fill colour per cell, and a header row and column.
     // Cell text colour stays off: a cell's text takes the same text colour
     // mark every other run does.
