@@ -1009,8 +1009,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.media.fullscreen"))} (four arrows, pictures only; double-clicking the ` +
       "picture does the same, and an X at the top right closes it), " +
       `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, and ` +
-      `${quoted(t("spaces.document.media.delete"))} (a bin). A picture or video also shows a bar on each side; ` +
-      "dragging one changes its width. Videos and audio play in place. Someone who can only view the document " +
+      `${quoted(t("spaces.document.media.delete"))} (a bin). Clicking a picture or video also shows a small square at each ` +
+      "corner; dragging one changes its width. Videos and audio play in place. Someone who can only view the document " +
       "sees and plays them without the icons.",
     "- A table shows a table icon at the left of its first row instead of the six dots. Drag it to move the " +
       `whole table; click it for a menu with ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
