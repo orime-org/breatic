@@ -74,6 +74,7 @@ export type {
   ItemField,
   ModelCatalog,
   SourceType,
+  ParamFill,
   ProjectRole,
   ProjectMember,
   Studio,
@@ -206,12 +207,14 @@ export type {
 export {
   modelCatalogSchema,
   sanitizeModelCatalog,
+  PARAM_FILLS,
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
   AUDIO_GENERATION_MODES,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   isGenerationNodeType,
+  paramValueAllowed,
   paramValues,
   PANEL_EDITOR_PARAM,
   insertRefusal,
@@ -385,6 +388,7 @@ export {
   buildAdjustVideoFilter,
 } from "@shared/adjust-value.js";
 export type { AdjustValue } from "@shared/adjust-value.js";
+
 
 // The confirmation email names the instant the window closes, in the buyer's
 // zone and in UTC; the eligibility rule beside it asks whether that instant
@@ -610,6 +614,9 @@ export {
   type AudioFormat,
   type VideoFormat,
 } from "@shared/understand/media-formats.js";
+export { UNDERSTAND_MODEL } from "@shared/understand/pinned-model.js";
+export { NODE_TASK_ACTIONS } from "@shared/types/node-task.js";
+export type { NodeTaskAction, NodeTaskEntry } from "@shared/types/node-task.js";
 // The one word each format goes by on screen, asked by both gates that name a
 // format while refusing a file.
 export {
@@ -621,7 +628,11 @@ export {
 export { assetNameFromUrl } from "@shared/media/asset-name.js";
 // The media fields a result puts on a node, written the same way by collab
 // when a task settles and by the canvas when a reader restores one.
-export { writeNodeMedia, type NodeMediaFields } from "@shared/canvas/node-media.js";
+export {
+  NODE_MEDIA_KEYS,
+  writeNodeMedia,
+  type NodeMediaFields,
+} from "@shared/canvas/node-media.js";
 export {
   GENERATION_TEMPLATES,
   findTemplate,
@@ -667,6 +678,17 @@ export {
   type PreviewOutcome,
   type StoredMediaRead,
 } from "@shared/upload/ingest-client.js";
+// The mini-tool container job protocol, read by the worker and the ingest Worker.
+export {
+  miniToolJobRequestSchema,
+  readMiniToolJob,
+  readMiniToolJobReport,
+  submitMiniToolJob,
+  type ContainerUsage,
+  type MiniToolJobOutput,
+  type MiniToolJobReport,
+  type MiniToolJobRequest,
+} from "@shared/upload/mini-tool-job.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,
 // and a storage key's extension comes from a filename we let be any Unicode.

@@ -13,10 +13,6 @@ interface WebNodeProps {
   selected?: boolean;
   locked?: boolean;
   onActivate?: () => void;
-  /** Open this node's task list on its failures (#186 §3.7.2). */
-  onViewTasks?: () => void;
-  /** Whether that list is already open beside this node. */
-  tasksPanelOpen?: boolean;
   onRename?: (name: string) => void;
 }
 
@@ -26,12 +22,11 @@ interface WebNodeProps {
  * Sandbox flags are restrictive by default; opening the page in a new
  * tab remains the safe fallback for sites that block framing.
  * @param root0 - Web node props.
- * @param root0.data - Web node payload (embedded page URL, status, optional error message).
+ * @param root0.data - Web node payload (embedded page URL).
  * @param root0.selected - Whether the node is selected, driving the selection ring.
  * @param root0.locked - Whether the node is locked, showing the lock indicator.
  * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
- * @param root0.onViewTasks - Open this node's task list on its failures.
  * @returns The web node element (placeholder or sandboxed iframe).
  */
 export const WebNode = React.memo(function WebNode({
@@ -39,8 +34,6 @@ export const WebNode = React.memo(function WebNode({
   selected,
   locked,
   onActivate,
-  onViewTasks,
-  tasksPanelOpen,
   onRename,
 }: WebNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
@@ -48,17 +41,12 @@ export const WebNode = React.memo(function WebNode({
     <ContentNodeFrame
       modality='web'
       name={data.name}
-      status={data.status}
       selected={selected}
       locked={locked}
       onRename={onRename}
       testId='web-node'
     >
       <NodeContent
-        onViewTasks={onViewTasks}
-        tasksPanelOpen={tasksPanelOpen}
-        status={data.status}
-        errorMessage={data.errorMessage}
         hasContent={hasContent}
         placeholder={
           <NodePlaceholder modality='web' onActivate={onActivate} />

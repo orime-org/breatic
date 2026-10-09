@@ -28,7 +28,7 @@ describe('taskRowActions', () => {
     ).toEqual([]);
   });
 
-  it('offers writing the result onto the node, then finishing, when it is done', () => {
+  it('offers only finishing on a done task, whose result is already on the node', () => {
     expect(
       taskRowActions({
         status: 'done',
@@ -36,10 +36,10 @@ describe('taskRowActions', () => {
         hasRetryFile: false,
         readOnly: false,
       }),
-    ).toEqual(['replace', 'finish']);
+    ).toEqual(['finish']);
   });
 
-  it('drops the write when a done task left no result to write', () => {
+  it('offers only finishing on a done task that left no result', () => {
     expect(
       taskRowActions({
         status: 'done',
@@ -85,9 +85,9 @@ describe('taskRowActions', () => {
     ).toEqual(['clear']);
   });
 
-  it('offers the late result on an expired task whose report arrived after the verdict', () => {
-    // §4.5: the work finished, only too late to be counted. The bytes are
-    // real, so the reader gets to put them on the node.
+  it('offers viewing the late result in history on an expired task whose report arrived after the verdict', () => {
+    // §4.5: the work finished, only too late to be counted. It sits in the
+    // node's history; the reader decides there whether to restore it.
     expect(
       taskRowActions({
         status: 'expired',
@@ -95,7 +95,7 @@ describe('taskRowActions', () => {
         hasRetryFile: false,
         readOnly: false,
       }),
-    ).toEqual(['replace', 'clear']);
+    ).toEqual(['view', 'clear']);
   });
 
   it('never offers a retry outside a failure', () => {
@@ -110,6 +110,14 @@ describe('taskRowActions', () => {
           readOnly: false,
         }),
       ).not.toContain('retry');
+    }
+  });
+
+  it('never offers replacing the node from any row', () => {
+    for (const status of ['running', 'done', 'failed', 'expired'] as const) {
+      expect(
+        taskRowActions({ status, hasResult: true, hasRetryFile: true, readOnly: false }),
+      ).not.toContain('replace');
     }
   });
 
@@ -151,6 +159,6 @@ describe('a reader who cannot write', () => {
         hasRetryFile: false,
         readOnly: false,
       }),
-    ).toEqual(['replace', 'finish']);
+    ).toEqual(['finish']);
   });
 });

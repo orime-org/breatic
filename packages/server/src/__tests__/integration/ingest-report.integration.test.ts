@@ -578,6 +578,22 @@ describe("a finish this server drove — a completed upload", () => {
     expect(feed[0]!.n).toBe("1");
   });
 
+  // A20: a browser mini-tool's export lands as an upload, and its history row
+  // names the tool so the panel can say what made it.
+  it("names the mini-tool on the history row of an export it made", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId, source: "mini_tool", tool_name: "image.crop" });
+
+    await report(completed(key));
+
+    const history = await sql<{ metadata: Record<string, unknown> }[]>`
+      SELECT metadata FROM node_history
+      WHERE node_id = ${nodeId} AND deleted_at IS NULL
+    `;
+    expect(history[0]!.metadata.toolId).toBe("image.crop");
+  });
+
   it("reuses the existing row when the bytes turn out to be a duplicate", async () => {
     const seed = await seedEditor();
     const sha = crypto.randomBytes(32).toString("hex");

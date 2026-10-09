@@ -766,10 +766,10 @@ describe("migration 0087 on a history that already holds duplicates (#2186 A7)",
     });
     await sql`
       INSERT INTO node_tasks
-        (project_id, space_id, node_id, kind, status,
+        (project_id, space_id, node_id, kind, action, status,
          started_by_user_id, started_at, budget_ms, label, node_history_id)
       VALUES
-        (${projectId}, ${crypto.randomUUID()}, ${nodeId}, 'upload', 'done',
+        (${projectId}, ${crypto.randomUUID()}, ${nodeId}, 'upload', 'upload', 'done',
          ${userId}, now(), 600000, 'pointer.png', ${entry.id})
     `;
     await sql`UPDATE node_history SET deleted_at = now() WHERE id = ${entry.id}`;
@@ -913,10 +913,10 @@ describe("history rows carry the media a result landed with (#2184)", () => {
     });
     await sql`
       INSERT INTO node_tasks
-        (project_id, space_id, node_id, kind, status,
+        (project_id, space_id, node_id, kind, action, status,
          started_by_user_id, started_at, budget_ms, label, node_history_id)
       VALUES
-        (${projectId}, ${crypto.randomUUID()}, ${nodeId}, 'upload', 'done',
+        (${projectId}, ${crypto.randomUUID()}, ${nodeId}, 'upload', 'upload', 'done',
          ${userId}, now(), 600000, 'media-task.mp4', ${recorded.entry.id})
     `;
 

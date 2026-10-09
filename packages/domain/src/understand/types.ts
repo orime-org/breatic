@@ -11,7 +11,7 @@
  * base64 and fails to decode.
  */
 
-import type { AudioFormat, VideoFormat } from "@breatic/shared";
+import { UNDERSTAND_MODEL, type AudioFormat, type VideoFormat } from "@breatic/shared";
 
 /** Which of the three kinds an address turned out to hold. */
 export type MediaKind = "image" | "video" | "audio";
@@ -300,7 +300,7 @@ export type UnderstandAt = FetchMediaRequest & Omit<UnderstandRequest, "media">;
  * the deployment means a clip that worked yesterday is refused today.
  */
 export const UNDERSTAND_PINS = {
-  model: "google/gemini-3.8-flash",
+  model: UNDERSTAND_MODEL.id,
   backend: "google-vertex",
   baseUrl: "https://openrouter.ai/api/v1",
 } as const;

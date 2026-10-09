@@ -4,7 +4,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 
 import { canvasRootOf } from '@web/spaces/canvas/canvas-context';
-import { handOffFocusToPickBanner } from '@web/spaces/canvas/focus/FocusCropOverlay';
+import { handOffFocusToPickBanner } from '@web/spaces/canvas/focus/FocusCropControls';
 
 /**
  * Puts a Space outlet holding a pick banner on the page.

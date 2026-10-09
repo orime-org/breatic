@@ -96,6 +96,7 @@ function renderRow(
       entry={e}
       modality={modality}
       isCurrent={false}
+      isFocused={false}
       onRestore={() => {}}
     />,
   );
@@ -109,6 +110,14 @@ describe('NodeHistoryRow (#1619)', () => {
   it('failed generation row: the type chip states the TYPE, not the failure', () => {
     renderRow(entry({ entryType: 'generation', status: 'failed' }));
     expect(screen.getByText('canvas.history.typeGeneration')).toBeTruthy();
+  });
+
+  // A20: a mini-tool result is named by its tool, as its task row is, whichever
+  // way its bytes reached the node (a browser export lands as an upload).
+  it('names the mini-tool that made the result instead of the way it landed', () => {
+    renderRow(entry({ entryType: 'upload', status: 'success', metadata: { toolId: 'image.crop', filename: 'CROP.png' } }));
+    expect(screen.getByText('canvas.miniTool.image.crop.label')).toBeTruthy();
+    expect(screen.queryByText('canvas.history.typeUpload')).toBeNull();
   });
 
   it('upload row: the type chip states Upload', () => {
@@ -143,12 +152,14 @@ describe('NodeHistoryRow (#1619)', () => {
           entry={entry()}
           modality='image'
           isCurrent
+          isFocused={false}
           onRestore={() => {}}
         />
         <NodeHistoryRow
           entry={entry({ id: 'h2' })}
           modality='image'
           isCurrent={false}
+          isFocused={false}
           onRestore={() => {}}
         />
       </>,
@@ -322,6 +333,7 @@ describe('reading a row against its fill (#2186)', () => {
         entry={entry({ entryType: 'snapshot', status: 'success', content: 'kept', operatorName: 'Lin' })}
         modality='text'
         isCurrent
+        isFocused={false}
         onRestore={() => {}}
       />,
     );
@@ -340,6 +352,7 @@ describe('reading a row against its fill (#2186)', () => {
         entry={entry({ entryType: 'snapshot', status: 'success', content: 'kept', operatorName: 'Lin' })}
         modality='text'
         isCurrent={false}
+        isFocused={false}
         onRestore={() => {}}
       />,
     );

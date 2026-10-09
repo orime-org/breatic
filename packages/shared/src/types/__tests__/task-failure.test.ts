@@ -77,6 +77,10 @@ describe("the cause a stored code is read as", () => {
     expect(readTaskFailure("media_refused").reason).toBe("media_refused");
   });
 
+  it("names a container source that lacks what its operation works on", () => {
+    expect(readTaskFailure("no_audio_track").reason).toBe("no_audio_track");
+  });
+
   it("answers nothing for a sentence a provider wrote about itself", () => {
     expect(readTaskFailure("The model is overloaded, try again").reason).toBeNull();
     expect(readTaskFailure(null).reason).toBeNull();

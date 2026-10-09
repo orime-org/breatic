@@ -281,7 +281,7 @@ const seconds = z.coerce
   .catch(null)
   .transform(absentAsNone);
 
-const ingestMeasurements = z.object({
+export const ingestMeasurements = z.object({
   sha256: z.string().regex(SHA256_HEX),
   sizeBytes: z.coerce.number().int().nonnegative(),
   contentType: z.string().min(1).max(100),
@@ -605,7 +605,7 @@ export async function fetchUrlToIngest(
  * @returns The parsed answer.
  * @throws {UploadHttpError} When the Worker refuses.
  */
-async function askWorker<T>(
+export async function askWorker<T>(
   url: string,
   init: RequestInit,
   { timeoutMs, replaySafe }: { timeoutMs?: number; replaySafe: boolean },

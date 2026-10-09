@@ -40,15 +40,14 @@ vi.mock("@breatic/shared", async (importOriginal) => {
 // The billing deadline reaches the transport via getWorkerConfig, so pinning
 // that wire needs the config mocked. The two figures are DIFFERENT on
 // purpose: a value can only identify a key if it is unique among the
-// candidates, and the mutation this exists to catch is precisely
-// billingTimeout being rewired to poll_max_wait.
+// candidates, and the mutation this exists to catch is billingTimeout being
+// rewired to the other figure in the same config.
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof coreModule>();
   return {
     ...actual,
     getWorkerConfig: () => ({
       poll_interval: 1_000,
-      poll_max_wait: 999_999,
       billing_timeout: 30_000,
     }),
     // The billing fixtures here carry no billing line, which `queryBilling`
@@ -148,10 +147,10 @@ describe("queryBilling hands the billing deadline to the transport", () => {
   it("carries billing_timeout, not any sibling config figure", async () => {
     // The guard beside this file pins the call-site text
     // `httpConfig().billingTimeout` — and only that text. Rewiring
-    // billingTimeout to poll_max_wait INSIDE httpConfig leaves the call site
-    // untouched and every source check green; measured, 30s silently became
-    // 300s. The mocked config gives the two fields different figures
-    // precisely so that rewiring cannot hide behind an equal value.
+    // billingTimeout to poll_interval INSIDE httpConfig leaves the call site
+    // untouched and every source check green. The mocked config gives the
+    // two fields different figures precisely so that rewiring cannot hide
+    // behind an equal value.
     const cost = await queryBilling(RESOLVED, "task-123");
 
     expect(httpRequestMock).toHaveBeenCalledTimes(1);

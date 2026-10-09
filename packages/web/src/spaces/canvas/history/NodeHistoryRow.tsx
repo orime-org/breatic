@@ -26,8 +26,10 @@ import {
   entryCredits,
   entryFilename,
   entryModel,
+  entryTool,
   isRestorable,
 } from '@web/spaces/canvas/history/history-format';
+import { MINI_TOOL_ICONS } from '@web/spaces/canvas/mini-tool/tool-icons';
 import { PreviewImg } from '@web/components/preview-img';
 
 /** The host node's modality — picks the thumbnail treatment. */
@@ -77,6 +79,11 @@ export interface NodeHistoryRowProps {
   modality: HistoryModality;
   /** Whether this row is the node's current content (tagged, not restorable). */
   isCurrent: boolean;
+  /**
+   * Whether a task row's View opened the history at this entry (inner#888
+   * §7.7): the row is outlined so the reader sees which result it meant.
+   */
+  isFocused: boolean;
   /**
    * Restore an entry onto the node. Takes the entry so the panel can pass ONE
    * stable handler to every row (an inline `() => onRestore(entry)` per row
@@ -161,6 +168,7 @@ function previewFor(
  * @param root0.entry - The history row.
  * @param root0.modality - The host node's modality.
  * @param root0.isCurrent - Whether this row is the node's current content.
+ * @param root0.isFocused - Whether a task row's View opened the history here.
  * @param root0.onRestore - Restore this entry onto the node.
  * @returns The row.
  */
@@ -168,6 +176,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
   entry,
   modality,
   isCurrent,
+  isFocused,
   onRestore,
 }: NodeHistoryRowProps): React.JSX.Element {
   const t = useTranslation();
@@ -177,6 +186,8 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
   const model = entryModel(entry);
   const credits = entryCredits(entry);
   const filename = entryFilename(entry);
+  const tool = entryTool(entry);
+  const ToolIcon = tool === undefined ? undefined : MINI_TOOL_ICONS[tool.icon];
   const restorable = isRestorable(entry);
   // muted-foreground measures under 4.5:1 on the chosen fill in both themes
   // (light 4.39, dark 3.73) and on the dark hover fill (4.46), so text on a
@@ -218,9 +229,12 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
   return (
     <div
       data-testid='node-history-row'
+      data-entry-id={entry.id}
+      data-focused={isFocused ? 'true' : undefined}
       className={
         'group grid grid-cols-[46px_1fr_auto] items-center gap-2.5 rounded-content-sm px-1.5 py-1.5 transition-colors' +
         (isCurrent ? ' bg-accent-strong' : ' hover:bg-accent') +
+        (isFocused ? ' ring-1 ring-inset ring-active-border' : '') +
         (failed ? ' opacity-60' : '')
       }
     >
@@ -257,14 +271,16 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
               secondaryText
             }
           >
-            {entry.entryType === 'generation' ? (
+            {ToolIcon !== undefined ? (
+              <ToolIcon className='h-2.5 w-2.5' aria-hidden='true' />
+            ) : entry.entryType === 'generation' ? (
               <Sparkles className='h-2.5 w-2.5' aria-hidden='true' />
             ) : entry.entryType === 'snapshot' ? (
               <Bookmark className='h-2.5 w-2.5' aria-hidden='true' />
             ) : (
               <ArrowUp className='h-2.5 w-2.5' aria-hidden='true' />
             )}
-            {t(TYPE_LABEL[entry.entryType])}
+            {t(tool?.labelKey ?? TYPE_LABEL[entry.entryType])}
           </span>
           <span
             className={

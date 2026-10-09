@@ -104,6 +104,7 @@ async function openTask(): Promise<{ taskId: string; nodeId: string }> {
     spaceId: crypto.randomUUID(),
     nodeId,
     kind: "upload",
+    action: "upload",
     startedByUserId: userId,
     budgetMs: 600_000,
     label: "sunset.jpg",

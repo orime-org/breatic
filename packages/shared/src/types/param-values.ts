@@ -25,7 +25,7 @@
  * pulled inward to whole seconds rather than offered as halves.
  */
 
-import type { ModelEntry } from "@shared/types/model-catalog.js";
+import type { ModelEntry, ParamDescriptor } from "@shared/types/model-catalog.js";
 
 /**
  * A value a parameter can take — the catalog's own type, which is what gets
@@ -86,4 +86,27 @@ function expandRange(min: number | undefined, max: number | undefined): number[]
   const out: number[] = [];
   for (let v = first; v <= last; v += 1) out.push(v);
   return out;
+}
+
+/**
+ * Whether a value is one a param's declaration takes: one of its `values`, a
+ * number inside its range, or text for a text param. An absent value is
+ * taken; the run fills it with the declared default.
+ * @param descriptor - The param's declaration.
+ * @param value - The value a request carries.
+ * @returns True when the declaration admits it.
+ */
+export function paramValueAllowed(
+  descriptor: Pick<ParamDescriptor, "values" | "min" | "max" | "type">,
+  value: unknown,
+): boolean {
+  if (value === undefined) return true;
+  if (descriptor.values) return descriptor.values.some((offered) => offered === value);
+  if (descriptor.type === "text") return typeof value === "string";
+  if (descriptor.min === undefined && descriptor.max === undefined) return true;
+  return (
+    typeof value === "number" &&
+    (descriptor.min === undefined || value >= descriptor.min) &&
+    (descriptor.max === undefined || value <= descriptor.max)
+  );
 }

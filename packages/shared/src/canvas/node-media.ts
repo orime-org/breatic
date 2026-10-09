@@ -17,6 +17,9 @@ import type { NodeTaskResult } from '@shared/types/canvas-node.js';
 /** A result's media fields, everything it carries besides the content. */
 export type NodeMediaFields = Omit<NodeTaskResult, 'content'>;
 
+/** The node-data keys {@link writeNodeMedia} owns, which describe the content itself. */
+export const NODE_MEDIA_KEYS = ['coverUrl', 'mediaWidth', 'mediaHeight', 'duration', 'mimeType', 'size'] as const;
+
 /**
  * Write a result's media fields onto a node, removing each one it has no value
  * for.

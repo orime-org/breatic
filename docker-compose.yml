@@ -68,7 +68,7 @@ services:
 
   # ── Frontend + Reverse Proxy ───────────────────
   web:
-    image: ghcr.io/orime-org/breatic-web:v0.0.4
+    image: ghcr.io/orime-org/breatic-web:v0.0.6
     ports:
       - "${WEB_BIND_ADDRESS:-127.0.0.1}:80:80"
       - "${WEB_BIND_ADDRESS:-127.0.0.1}:443:443"
@@ -86,7 +86,7 @@ services:
   # Must run from packages/server so Node can resolve @breatic/core's
   # transitive deps (drizzle-orm, postgres) via server's node_modules.
   migrate:
-    image: ghcr.io/orime-org/breatic:v0.0.4
+    image: ghcr.io/orime-org/breatic:v0.0.6
     working_dir: /app/packages/server
     command: ["node", "-e", "import('@breatic/core').then(async m => { m.initCore(process.env); try { await m.runMigrations(); await m.runYjsMigrations(); } finally { await Promise.all([m.closeDb(), m.closeYjsDb()]); } }).catch(e => { console.error(e); process.exit(1); })"]
     env_file: .env
@@ -108,7 +108,7 @@ services:
   # here in the sense that it becomes VISIBLE, not that it is auto-repaired
   # (see CLAUDE.md "server-side industrial-grade standards" mandate).
   server:
-    image: ghcr.io/orime-org/breatic:v0.0.4
+    image: ghcr.io/orime-org/breatic:v0.0.6
     command: ["node", "packages/server/dist/index.js"]
     ports:
       - "127.0.0.1:3000:3000"
@@ -132,7 +132,7 @@ services:
     restart: unless-stopped
 
   collab:
-    image: ghcr.io/orime-org/breatic:v0.0.4
+    image: ghcr.io/orime-org/breatic:v0.0.6
     command: ["node", "packages/collab/dist/index.js"]
     # Deliberately not published. Browsers reach collab through nginx's /ws
     # location, and nginx is what sets the X-Real-IP the connection gate needs
@@ -156,7 +156,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: ghcr.io/orime-org/breatic:v0.0.4
+    image: ghcr.io/orime-org/breatic:v0.0.6
     command: ["node", "packages/worker/dist/index.js"]
     env_file: .env
     volumes:

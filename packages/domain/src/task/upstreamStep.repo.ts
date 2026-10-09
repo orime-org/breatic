@@ -20,7 +20,8 @@ export type UpstreamStepKind =
   | "voice"
   | "element"
   | "generate"
-  | "speak";
+  | "speak"
+  | "container_job";
 
 /** Where a step stands. */
 export type UpstreamStepStatus = "pending" | "submitted" | "done" | "failed";

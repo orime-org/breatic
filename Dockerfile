@@ -49,20 +49,6 @@ RUN pnpm deploy --filter=@breatic/collab --prod /app/deploy/collab
 # ── Stage 2: Runtime (slim) ──────────────────────────────────────────
 FROM node:24-bookworm-slim AS runtime
 
-# ffmpeg for the worker's eight video mini-tools (crop, cut, speed, adjust,
-# stabilisation, scene extension, audio denoise, HDR conversion). Cover frames
-# and media metadata are the media container's job (packages/ingest), and #225
-# moves these eight there too.
-#
-# The version is pinned because THIRD-PARTY.md names it, and GPL-2 §3 asks for
-# the source of the binary actually distributed. Unpinned, a rebuild after
-# bookworm moves on would ship one version while the notice points at another.
-# When this fails because the pin is gone from the archive, update both: this
-# line and the "FFmpeg in the `breatic` image" entry in THIRD-PARTY.md.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg=7:5.1.9-0+deb12u1 \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 # Server: built output + production node_modules
@@ -103,9 +89,8 @@ COPY package.json pnpm-workspace.yaml ./
 COPY --from=builder /app/packages/core/src/db/migrations ./packages/core/src/db/migrations
 COPY --from=builder /app/packages/core/src/db/migrations-yjs ./packages/core/src/db/migrations-yjs
 
-# What this image distributes and under what terms. It goes where the rest of
-# this filesystem keeps that kind of file: Debian's own FFmpeg copyright is at
-# /usr/share/doc/ffmpeg/copyright, so anyone looking finds both the same way.
+# What this image distributes and under what terms, where the rest of this
+# filesystem keeps that kind of file.
 COPY THIRD-PARTY.md /usr/share/doc/breatic/THIRD-PARTY.md
 
 ENV NODE_ENV=production

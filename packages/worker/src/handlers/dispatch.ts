@@ -12,10 +12,12 @@
  * Anything else throws.
  */
 
-import type { Job } from "bullmq";
-import { resolveMiniToolEntry } from "@worker/mini-tool-registry.js";
+import { DelayedError, type Job } from "bullmq";
 import type { ResumeContext } from "@worker/providers/shared.js";
-import { runLocalHandler } from "@worker/handlers/local/index.js";
+import { runContainerJob } from "@worker/handlers/container/run-container-job.js";
+import { assertBeforeDeadline, StillRunning, TaskDeadlinePassed } from "@worker/providers/still-running.js";
+import { taskDeadline } from "@worker/handlers/task-deadline.js";
+import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
 import { taskService, upstreamStepRepo } from "@breatic/domain";
@@ -43,6 +45,7 @@ import {
 } from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
 import { canvasSpaceDocName, type GenerationSource } from "@breatic/shared";
+import { isModelTool, miniToolById } from "@breatic/shared/mini-tools";
 import type { NodeTaskResult, TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -93,7 +96,10 @@ export interface TaskJobData {
   model?: string;
   /** Which lane queued this run, as the activity feed files it. */
   source?: GenerationSource;
-  toolName?: string;
+  /** The registry id of the mini-tool this job runs (`source: "mini_tool"`). */
+  toolId?: string;
+  /** The stored object a container tool reads. */
+  sourceKey?: string;
   /**
    * Target canvas node IDs whose task rows this run settles.
    * Length === 1 for single-output ops; length === N for multi-output ops
@@ -115,18 +121,25 @@ export interface TaskJobData {
    * UUID, no contention possible).
    */
   mode: "append" | "overwrite";
+  /**
+   * The retry the log lines were last written for, counted as `attemptsMade`
+   * plus `stalledCounter`. A run that waits on its upstream is picked up again
+   * and again within one retry; the lines describe a retry, so each retry
+   * writes them once.
+   */
+  retryReported?: number;
 }
 
 /**
- * Whether the currently-running attempt is the job's LAST allowed one
+ * Whether a failure in the currently-running attempt leaves no retry
  * (#1580 adversarial fix: retryable close self-fences the retry). BullMQ
- * 5.30 semantics (source-verified): `attemptsStarted` increments when
- * processing starts, so attempt N observes attemptsStarted === N;
- * `opts.attempts` is the total allowance (absent = 1). A terminal outcome may
+ * retries while `attemptsMade + 1 < opts.attempts` (bullmq 5.81.3 job.js
+ * shouldRetryJob), and `attemptsMade` counts failed attempts only: a job
+ * moved back to delayed and picked up again keeps it. A terminal outcome may
  * only be settled on a terminal attempt: settling a retryable failure marks
  * the row failed while the retry is still to come, and the reader sees that
  * failure sitting on a task the next attempt goes on to finish. Defensive: a
- * missing attemptsStarted counts as terminal — settling a possibly-early
+ * missing attemptsMade counts as terminal — settling a possibly-early
  * failure is the safer failure mode, since a row this settles is one `settle`
  * refuses to move again, while suppressing the only settle leaves the row
  * running until its budget is judged.
@@ -134,10 +147,10 @@ export interface TaskJobData {
  * @returns true when no further retries will follow this attempt.
  */
 export function isTerminalAttempt(
-  job: Pick<Job<TaskJobData>, "attemptsStarted" | "opts">,
+  job: Pick<Job<TaskJobData>, "attemptsMade" | "opts">,
 ): boolean {
-  const started = job.attemptsStarted ?? Number.MAX_SAFE_INTEGER;
-  return started >= (job.opts?.attempts ?? 1);
+  const failed = job.attemptsMade ?? Number.MAX_SAFE_INTEGER;
+  return failed + 1 >= (job.opts?.attempts ?? 1);
 }
 
 /**
@@ -177,7 +190,7 @@ export async function verifyJobLockOwnership(
 }
 
 /**
- * Settle this run's row on every target node as failed, isolating each one
+ * Settle this run's row on every target node as failed or expired, isolating each one
  * (#1580 adversarial fix: a stream hiccup on node K must not skip nodes
  * K+1..N, and must never escape into BullMQ's retry machinery for a task
  * already marked failed). Best-effort for the same reason: the job is
@@ -185,9 +198,10 @@ export async function verifyJobLockOwnership(
  * next state change on it.
  * @param streamRedis - Redis client for the stream DB.
  * @param docName - Canvas doc the nodes live in.
- * @param nodeIds - Target nodes whose rows settle as failed.
+ * @param nodeIds - Target nodes whose rows settle.
  * @param errorMessage - Human-readable failure reason.
- * @param taskId - The job whose row on each node settles as failed.
+ * @param taskId - The job whose row on each node settles.
+ * @param outcome - `expired` when the run ran out of its two hours, else `failed`.
  */
 async function settleFailedBestEffort(
   streamRedis: ReturnType<typeof getStreamRedis>,
@@ -195,13 +209,14 @@ async function settleFailedBestEffort(
   nodeIds: string[],
   errorMessage: string,
   taskId: string,
+  outcome: FailedOutcome,
 ): Promise<void> {
   for (const nodeId of nodeIds) {
     try {
       await settleTaskForNode(streamRedis, docName, {
         taskId,
         nodeId,
-        outcome: "failed",
+        outcome,
         errorMessage,
       });
     } catch (err) {
@@ -295,6 +310,33 @@ function providerOf(modality: string, modelName: string | undefined): string {
 }
 
 /**
+ * Note a retry once. A pickup that follows a failed attempt, or a worker that
+ * stalled mid-run, is a retry; the pickups after it are the run coming back
+ * to its waiting work, and say nothing new. A delayed re-queue moves neither
+ * count.
+ * @param job - The job, whose data records the attempt last reported.
+ * @param run - The run.
+ * @param run.taskId - The task.
+ * @param run.storedTaskId - The vendor task id a previous attempt stored, if any.
+ * @returns Whether this pickup starts a retry.
+ */
+async function reportRetryOnce(
+  job: Job<TaskJobData>,
+  run: { taskId: string; storedTaskId: string | null },
+): Promise<boolean> {
+  const round = job.attemptsMade + job.stalledCounter;
+  if (round <= (job.data.retryReported ?? 0)) return false;
+  if (run.storedTaskId) {
+    logger.info(
+      { taskId: run.taskId, providerTaskId: run.storedTaskId, attempt: job.attemptsMade + 1 },
+      "async_resume_stored_provider_task",
+    );
+  }
+  await job.updateData({ ...job.data, retryReported: round });
+  return true;
+}
+
+/**
  * Internal task execution body, called through the public {@link runTask}.
  * @param job - BullMQ job carrying the TaskJobData payload to execute.
  * @param token - This attempt's BullMQ lock token, for the zombie fence.
@@ -304,7 +346,7 @@ async function runTaskBody(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, spaceId, params, model, source, toolName, targetNodeIds } = job.data;
+  const { taskId, taskType, userId, projectId, spaceId, params, model, source, toolId, sourceKey, targetNodeIds } = job.data;
   const canvasDocName = resolveCanvasDocName(projectId, spaceId);
 
   const streamRedis = getStreamRedis();
@@ -324,7 +366,7 @@ async function runTaskBody(
     model,
     params,
     source,
-    toolName,
+    toolId,
   };
   // ─── Re-entry guard ───────────────────────────────────────────────
   // Two cases where BullMQ might redeliver a job we've already touched:
@@ -376,6 +418,7 @@ async function runTaskBody(
             credits: existing.billedCredits ?? undefined,
             durationMs: existing.durationMs ?? undefined,
             params,
+            toolId: source === "mini_tool" ? toolId : undefined,
           }),
         },
         nodeResultsFrom(nodeIds, storedOutputs),
@@ -396,7 +439,7 @@ async function runTaskBody(
         spaceId,
         nodeId: nodeIds.length === 1 ? nodeIds[0] : null,
         source,
-        toolName,
+        toolName: toolId,
         model,
         // #1622 crash-redelivery: thread the same preview + what the run
         // consumed, so a recovered success row is not preview-less. Sources
@@ -428,7 +471,9 @@ async function runTaskBody(
     return { failed: true, reason: "no_retry_after_provider" };
   }
 
-  await taskService.markRunning(taskId, job.id ?? "");
+  // A run picked up again (a retry, or a container job coming back for its
+  // next read) is still the same run: markRunning keeps its first start.
+  const startedAt = await taskService.markRunning(taskId, job.id ?? "", new Date());
 
 
   // ─── Stage 1: Call the provider ───────────────────────────────────
@@ -436,34 +481,24 @@ async function runTaskBody(
   // re-invokes the vendor (accepted policy, #1628: UX over the narrow
   // duplicate-cost window). For ASYNC providers the resume context below
   // makes the submit at-most-once: the vendor task id is persisted right
-  // after submit, and a retried job resumes by polling the stored id.
+  // after submit, and every later pickup asks about the stored id. A task
+  // still going is not an error here: it goes back to the queue.
   let providerResult: Record<string, unknown>;
   let creditsUsed = 0;
-  const startTime = performance.now();
 
   // #1628: threaded into async transports via provider.generateAsync.
+  const storedTaskId = existing?.providerTaskId ?? null;
+  // Each paid call that may repeat writes its own duplicate-cost warning.
+  const retryStarting = await reportRetryOnce(job, { taskId, storedTaskId });
   const resume: ResumeContext = {
-    storedTaskId: existing?.providerTaskId ?? null,
+    storedTaskId,
     persistTaskId: (id: string): Promise<void> =>
       taskService.recordProviderTaskId(taskId, id),
     externalTaskId: `breatic-${taskId}`,
+    retryStarting,
   };
-  if (resume.storedTaskId) {
-    logger.info(
-      { taskId, providerTaskId: resume.storedTaskId, attempt: job.attemptsMade + 1 },
-      "async_resume_stored_provider_task",
-    );
-  } else if (job.attemptsMade > 0) {
-    // #1628 monitoring: a retry with no stored vendor task id re-invokes the
-    // provider from scratch. For SYNC providers the previous attempt may have
-    // already generated + charged upstream (timeout-after-generation window)
-    // → this attempt is a POTENTIAL duplicate external cost. Structured event
-    // feeds the duplicate-cost alarm trend.
-    logger.warn(
-      { taskId, taskType, attempt: job.attemptsMade + 1 },
-      "provider_reinvoked_on_retry_potential_duplicate_cost",
-    );
-  }
+  // A container job keeps its id from the first submit, so a pickup never submits it twice.
+  const containerRun = source === "mini_tool" && toolId !== undefined && miniToolById(toolId)?.run.kind === "container";
 
   /**
    * A recorder for the agent run a reading makes (#296). A retried job opens
@@ -482,17 +517,21 @@ async function runTaskBody(
       onMissingCost: (row) => logger.error({ row, taskId }, "agent_usage_cost_missing"),
     });
 
+  // Set before any work runs, so every still-going answer below has it. A
+  // container job keeps its own deadline, with a grace for its last report.
+  let deadlineAt = Number.POSITIVE_INFINITY;
   try {
-    if (source === "mini_tool" && toolName) {
+    if (!containerRun) deadlineAt = await taskDeadline(taskId, existing?.createdAt);
+    if (source === "mini_tool" && toolId) {
       [providerResult, creditsUsed] = await runMiniTool({
-        toolName,
-        taskType,
+        toolId,
         params,
-        jobId: job.id ?? "",
+        ...(sourceKey !== undefined && { sourceKey }),
         userId,
         projectId,
         taskId,
         resume,
+        deadlineAt,
       });
     } else if (taskType === "understand") {
       // A reading answers with one piece of text, and the row on the node it
@@ -503,13 +542,40 @@ async function runTaskBody(
       if (nodeIds.length === 0) {
         throw new Error("understand: a reading must name the node it writes to");
       }
+      assertBeforeDeadline(deadlineAt);
+      // #1628 monitoring: a retried reading reads the media and calls the
+      // service again, a POTENTIAL duplicate external cost. Written before the
+      // reading place, which may send the run back to the queue.
+      if (retryStarting) {
+        logger.warn(
+          { taskId, taskType, attempt: job.attemptsMade + 1 },
+          "provider_reinvoked_on_retry_potential_duplicate_cost",
+        );
+      }
       [providerResult, creditsUsed] = await runUnderstand(params, recorderFor("canvas_understand"));
     } else if (taskType in AIGC_TASK_TYPES) {
-      [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, { resume, taskId, projectId: projectId ?? undefined });
+      [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, {
+        resume,
+        taskId,
+        projectId: projectId ?? undefined,
+        outputCount: 1,
+        deadlineAt,
+      });
     } else {
       throw new Error(`Task type '${taskType}' has no runner`);
     }
-  } catch (err) {
+  } catch (thrown) {
+    // Upstream work still going is not a failure: the run goes back to the
+    // queue and returns for the same work, and a delayed job spends none of
+    // its attempts — until the task's two hours are up.
+    let err = thrown;
+    if (err instanceof StillRunning && token !== undefined) {
+      if (Date.now() < deadlineAt) {
+        await job.moveToDelayed(err.resumeAt, token);
+        throw new DelayedError();
+      }
+      err = new TaskDeadlinePassed();
+    }
     // Provider call failed. Safe to retry via BullMQ — no charge yet,
     // no provider_result_url recorded. The next retry enters this
     // function fresh.
@@ -532,6 +598,7 @@ async function runTaskBody(
       ...runEnd,
       errorMessage: errorMsg,
       settles: settlesNow,
+      outcome: err instanceof TaskDeadlinePassed ? "expired" : "failed",
     });
     // Rethrow to let BullMQ schedule a retry, unless the verdict already
     // stands: the row is settled and the reader has been told, so another
@@ -541,17 +608,17 @@ async function runTaskBody(
   }
 
   // ─── Normalize to unified outputs shape ──────────────────────────
-  // Provider paths and local handlers return different shapes; we
-  // collapse them here so the rest of runTask works with a single
-  // `{outputs:[{url,cover_url?,extra?}], extras}` view. N=1 (provider)
-  // and N>1 (local cut) flow through the same code path.
+  // Provider and container paths collapse here so the rest of runTask works
+  // with a single `{outputs:[{url,cover_url?,extra?}], extras}` view.
   const unified = toUnifiedOutputs(providerResult);
   if (source === "mini_tool" && nodeIds.length > 0 && unified.outputs.length !== nodeIds.length) {
-    const msg = `outputs.length (${unified.outputs.length}) !== node_ids.length (${nodeIds.length})`;
-    logger.error({ taskId, toolName }, msg);
+    logger.error(
+      { taskId, toolId, outputs: unified.outputs.length, nodes: nodeIds.length },
+      "mini_tool_output_count_mismatch",
+    );
     await finishFailedRun({
       ...runEnd,
-      errorMessage: msg,
+      errorMessage: "no_result" satisfies TaskFailureReason,
       settles: true,
     });
     return { failed: true, reason: "output_count_mismatch" };
@@ -602,7 +669,7 @@ async function runTaskBody(
     outputs: persistedOutputs,
   };
 
-  const durationMs = Math.round(performance.now() - startTime);
+  const durationMs = Date.now() - startedAt.getTime();
 
   // #1580 zombie fence: prove we still exclusively own this job BEFORE
   // touching money. A revived stalled handler reads 0 here (BullMQ already
@@ -716,6 +783,7 @@ async function runTaskBody(
           credits: creditsUsed,
           durationMs,
           params,
+          toolId: source === "mini_tool" ? toolId : undefined,
         }),
       },
       nodeResultsFrom(nodeIds, persistedOutputs),
@@ -732,7 +800,7 @@ async function runTaskBody(
       spaceId,
       nodeId: nodeIds.length === 1 ? nodeIds[0] : null,
       source,
-      toolName,
+      toolName: toolId,
       model: (unified.extras.model as string | undefined) ?? model,
       outputCount: persistedOutputs.length,
       // #1622 preview + what the run consumed, taken from the usage the
@@ -880,7 +948,7 @@ const NO_RESULT: TaskFailureReason = "no_result";
  * @param ctx.metadata.model - Model identifier that produced the result.
  * @param ctx.metadata.credits - Credits charged for the generation. Not the
  *   dollars the service charged us: the row's chip is labelled in credits.
- * @param ctx.metadata.durationMs - Provider call duration in milliseconds.
+ * @param ctx.metadata.durationMs - How long the run took from its first start, in milliseconds.
  * @param ctx.metadata.params - Provider/tool parameters used for the generation.
  * @param outputs - Per-node results; one with no url settles its row as
  *   failed rather than leaving it for the expiry sweep (#196).
@@ -1002,6 +1070,9 @@ export async function recordGenerationForNodes(
 
 // ─── Failure-path helpers ────────────────────────────────────────────
 
+/** How a failed run's node rows end: out of its two hours, or failed for any other cause. */
+type FailedOutcome = "failed" | "expired";
+
 /** Everything a failed run needs to finish itself. */
 export interface FailedRunEnd {
   streamRedis: ReturnType<typeof getStreamRedis>;
@@ -1015,9 +1086,11 @@ export interface FailedRunEnd {
   model: string | undefined;
   params: Record<string, unknown>;
   source: GenerationSource | undefined;
-  toolName: string | undefined;
+  toolId: string | undefined;
   /** The one text the task row, the history, the node and the feed all carry. */
   errorMessage: string;
+  /** How the node rows end; `failed` unless the run ran out of its two hours. */
+  outcome?: FailedOutcome;
   /**
    * Whether this attempt is the last word on the run.
    *
@@ -1060,8 +1133,14 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
     end.projectId,
     end.nodeIds,
     end.userId,
-    end.model,
-    end.params,
+    generationMetadata({
+      reportedModel: undefined,
+      jobModel: end.model,
+      credits: undefined,
+      durationMs: undefined,
+      params: end.params,
+      toolId: end.source === "mini_tool" ? end.toolId : undefined,
+    }),
     end.errorMessage,
   );
   if (end.canvasDocName && end.settles) {
@@ -1071,6 +1150,7 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
       end.nodeIds,
       end.errorMessage,
       end.taskId,
+      end.outcome ?? "failed",
     );
   }
   if (end.projectId && end.settles) {
@@ -1082,7 +1162,7 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
       spaceId: end.spaceId,
       nodeId: end.nodeIds.length === 1 ? end.nodeIds[0] : null,
       source: end.source,
-      toolName: end.toolName,
+      toolName: end.toolId,
       model: end.model,
       errorMessage: end.errorMessage,
     });
@@ -1095,8 +1175,7 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
  * @param projectId - Project the failed nodes belong to; when undefined the call is a no-op
  * @param nodeIds - Canvas nodes that should receive a failure history entry
  * @param userId - User who owns the failed task
- * @param model - Model name used for the attempt, if any
- * @param params - Original task params, stored in the history metadata
+ * @param metadata - What the history row says about the run
  * @param errorMessage - Human-readable failure reason
  */
 async function recordFailureHistory(
@@ -1104,8 +1183,7 @@ async function recordFailureHistory(
   projectId: string | undefined,
   nodeIds: string[],
   userId: string,
-  model: string | undefined,
-  params: Record<string, unknown>,
+  metadata: ReturnType<typeof generationMetadata>,
   errorMessage: string,
 ): Promise<void> {
   if (!projectId || nodeIds.length === 0) return;
@@ -1117,7 +1195,7 @@ async function recordFailureHistory(
         userId,
         errorMessage,
         taskId,
-        metadata: { model, params },
+        metadata,
       });
     } catch (err) {
       logger.warn({ err, taskId, nodeId }, "Failed to record node history (failure)");
@@ -1360,88 +1438,79 @@ export interface ProviderRun {
   resume: ResumeContext;
   taskId: string;
   projectId: string | undefined;
+  /** How many outputs the run writes to nodes: 1 for a canvas generation, the tool's outputs for a mini-tool. */
+  outputCount: number;
+  /** The task's two-hour deadline, in epoch milliseconds (inner#1337). */
+  deadlineAt: number;
 }
 
 interface RunMiniToolOpts {
-  toolName: string;
-  taskType: string;
+  /** The registry id the job names. */
+  toolId: string;
   params: Record<string, unknown>;
-  jobId: string;
+  /** The stored object a container tool reads. */
+  sourceKey?: string;
   userId: string;
   projectId: string | undefined;
   taskId: string;
   /** Async-transport resume context for at-most-once vendor submit (#1628). */
   resume: ResumeContext;
+  /** The task's two-hour deadline, in epoch milliseconds (inner#1337). */
+  deadlineAt: number;
 }
 
 /**
- * Execution path 1: run a mini-tool, dispatching to a local ffmpeg/Sharp
- * handler or to an AIGC provider depending on the registry entry kind.
+ * Execution path 1: run a mini-tool the way its registry entry says
+ * (inner#888 §6.2). A model tool runs on its pinned model, whatever the
+ * params name; a container tool runs as a container job.
  *
- * Exported for its tests. The provider branch carries an invariant nothing else
+ * Exported for its tests. The model branch carries an invariant nothing else
  * can check — that the user's prompt is lifted out of `params` BEFORE they are
  * validated (#1967) — and reaching it through `runTask` would mean standing up
- * the database, Redis and the credit ledger to assert one argument. Adversarial
- * round 2 proved the gap was real: reversing the two steps here left all 246
- * worker tests green.
- * @param opts - Mini-tool invocation context (tool name, task type, params, ids)
- * @returns A `[result, credits]` tuple: the provider/handler result dict and the credits to charge
+ * the database, Redis and the credit ledger to assert one argument.
+ * @param opts - The run.
+ * @returns A `[result, credits]` tuple: the outputs and the credits to charge.
+ * @throws {Error} When the registry holds no such server-run tool, or the run has no project or source.
  */
 export async function runMiniTool(
   opts: RunMiniToolOpts,
 ): Promise<[Record<string, unknown>, number]> {
-  const { toolName, taskType, params, jobId, userId, projectId, taskId, resume } = opts;
-  const entry = resolveMiniToolEntry(taskType, toolName);
+  const { toolId, params, userId, projectId, taskId, resume, deadlineAt } = opts;
+  const spec = miniToolById(toolId);
+  if (!spec) throw new Error(`mini-tool ${toolId} is not in the registry`);
 
-  // Strip workflow-meta fields that are for infra (not for the
-  // provider/handler to see). Model override survives so users can
-  // pick a non-default vendor model; it's stripped again inside the
-  // provider branch before validation.
-  const cleanParams = { ...params };
-  delete cleanParams.node_ids;
-  delete cleanParams.project_id;
-
-  if (entry.kind === "local") {
-    // A local handler stores what it produces, and storing it needs a studio
-    // to file it against — which comes from the project. Every canvas
-    // mini-tool carries one (`project_id` is required on each of their request
-    // schemas), so this says the job data was built wrong rather than that a
-    // user did something unusual.
-    if (projectId === undefined) {
-      throw new Error(`mini-tool ${toolName} ran with no project to store its output against`);
-    }
-    const result = await runLocalHandler({
-      handler: entry.handler,
-      taskType,
-      toolName,
-      params: cleanParams,
-      jobId,
-      userId,
+  if (isModelTool(spec)) {
+    const model = spec.run.model;
+    const provider = await importProvider(spec.outputs[0]!.modality);
+    const cleanParams = { ...params };
+    delete cleanParams.model;
+    const [prompt, , validated] = takePromptAndValidate(cleanParams, model, provider.validateParams);
+    const result = await provider.generateAsync(prompt, model, validated, {
+      resume,
+      taskId,
       projectId,
+      outputCount: spec.outputs.length,
+      deadlineAt,
     });
-    const cost = result.cost ?? 0;
-    const credits = creditsFor(cost);
-    return [result as unknown as Record<string, unknown>, credits];
+    return [result, creditsFor((result.cost as number) ?? 0)];
   }
 
-  // kind === "provider"
-  const modelName = (cleanParams.model as string) || entry.model;
-  delete cleanParams.model;
+  if (spec.run.kind === "container") {
+    // Its outputs are stored against the project's studio, and its source is
+    // the stored object the server resolved the request's address to.
+    if (projectId === undefined || opts.sourceKey === undefined) {
+      throw new Error(`mini-tool ${toolId} ran with no project or no source key`);
+    }
+    return runContainerJob(spec, spec.run.op, {
+      taskId,
+      userId,
+      projectId,
+      params,
+      sourceKey: opts.sourceKey,
+    });
+  }
 
-  // One call, so there is no order to get wrong here — see
-  // `takePromptAndValidate` for why that is the fix and not just tidier.
-  const provider = await importProvider(taskType);
-  const [prompt, , validated] = takePromptAndValidate(
-    cleanParams,
-    modelName,
-    provider.validateParams,
-  );
-
-  const result = await provider.generateAsync(prompt, modelName, validated, { resume, taskId, projectId });
-  const cost = (result.cost as number) ?? 0;
-  const credits = creditsFor(cost);
-
-  return [result, credits];
+  throw new Error(`mini-tool ${toolId} runs in the browser and never reaches the worker`);
 }
 
 /**
@@ -1464,6 +1533,7 @@ export async function runMiniTool(
  * @returns A `[result, credits]` tuple: one output holding the text, and the credits to charge.
  * @throws {MediaUnavailable} when the address yields no usable media.
  * @throws {UnderstandRefused} when the service would not answer.
+ * @throws {StillRunning} when every reading place in this process is taken.
  * @throws {Error} when the answer is empty.
  */
 export async function runUnderstand(
@@ -1490,7 +1560,7 @@ export async function runUnderstand(
 
   let answer: Awaited<ReturnType<typeof understandMediaAt>>;
   try {
-    answer = await understandMediaAt({
+    answer = await withUnderstandSlot(() => understandMediaAt({
       url: params.source_url as string,
       // The ledger's judgement outranks what storage declares: the browser's
       // gate let this run start on it, and storage answers with a type guessed
@@ -1510,7 +1580,7 @@ export async function runUnderstand(
       timeoutMs: cfg.call_timeout_ms,
       maxOutputTokens: cfg.max_output_tokens,
       onBilled: record,
-    });
+    }));
   } catch (err) {
     // A call the service billed before failing was recorded; its row lands
     // before the failure goes on, and a row that cannot be written is logged
@@ -1617,14 +1687,24 @@ async function importProvider(taskType: string): Promise<{
         async (prompt, model, params, run) => {
           const studioId = run.projectId ? await assetService.resolveOwnerStudioId(run.projectId) : null;
           return {
-            ...(await runCatalogTask(stepDepsFor(studioId), { taskId: run.taskId, studioId }, modality, prompt, model, params)),
+            ...(await runCatalogTask(
+              stepDepsFor(studioId),
+              { taskId: run.taskId, studioId, deadlineAt: run.deadlineAt, retryStarting: run.resume.retryStarting },
+              modality,
+              prompt,
+              model,
+              params,
+              run.outputCount,
+            )),
           };
         },
       );
     }
     case "three-d": {
       const m = await import("@worker/providers/three-d/index.js");
-      return wrap(m.validateThreeDParams, (prompt, model, params, run) => m.generateAsync(prompt, model, params, run.resume));
+      return wrap(m.validateThreeDParams, (prompt, model, params, run) =>
+        m.generateAsync(prompt, model, params, run.resume, run.deadlineAt),
+      );
     }
     default: throw new Error(`Unknown AIGC task type: ${taskType}`);
   }

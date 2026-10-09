@@ -33,6 +33,10 @@ export interface ProbeStream {
    * cover cut from the same run comes out already turned.
    */
   rotation?: number;
+  /** ffprobe's colour tags, when the stream carries them; HDR reads the source as they say. */
+  colorTransfer?: string;
+  colorPrimaries?: string;
+  colorSpace?: string;
 }
 
 /** One /probe answer, minus the cover bytes. */

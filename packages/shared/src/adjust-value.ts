@@ -2,19 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * `AdjustValue` is the shared parameter shape for every image/video
- * adjust mini-tool (client UI panel, client pre-migration ffmpeg.wasm
- * path, Worker Sharp handler, Worker FFmpeg handler). One source of
- * truth prevents the front-end sliders and back-end filters from
- * silently drifting in semantics.
+ * `AdjustValue` is the shared parameter shape of the adjust mini-tool: the
+ * panel's sliders and the container's ffmpeg filter read the same fields,
+ * so the two cannot drift apart in meaning.
  *
  * All values are slider-normalised to [-100, 100] except noise /
  * sharpness / vignette / grain which are [0, 100]. The neutral value
  * (`defaultAdjustValue`) is all-zeros.
  *
  * `buildAdjustVideoFilter()` is the canonical FFmpeg `-vf` filter
- * chain builder. Kept here so Worker's `handlers/local/video/adjust.ts`
- * and legacy front-end paths can use identical construction logic.
+ * chain builder, which the mini-tool container's adjust operation runs.
  */
 
 export interface AdjustValue {

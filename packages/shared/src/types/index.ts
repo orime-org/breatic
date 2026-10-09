@@ -90,10 +90,12 @@ export type {
   ModelCatalog,
   SourceType,
   GenerationNodeType,
+  ParamFill,
 } from "@shared/types/model-catalog.js";
 export {
   modelCatalogSchema,
   sanitizeModelCatalog,
+  PARAM_FILLS,
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
   AUDIO_GENERATION_MODES,
@@ -102,7 +104,7 @@ export {
   isGenerationNodeType,
 } from "@shared/types/model-catalog.js";
 
-export { paramValues } from "@shared/types/param-values.js";
+export { paramValueAllowed, paramValues } from "@shared/types/param-values.js";
 export {
   PANEL_EDITOR_PARAM,
 } from "@shared/types/generate-panel.js";

@@ -20,7 +20,7 @@
  * taken a second time, so the two cannot name different places.
  */
 
-import { canvasSpaceDocName } from "@breatic/shared";
+import { canvasSpaceDocName, type NodeTaskAction } from "@breatic/shared";
 import { nodeTaskService, uploadGrantService } from "@breatic/domain";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 
@@ -37,7 +37,9 @@ interface TaskRowRequest {
    * address is bounded by one call the configuration ends in minutes.
    */
   budgetMs: number;
-  /** What the node's task list shows — a filename, or the address. */
+  /** What the row's first line names. */
+  action: NodeTaskAction;
+  /** What the node's task list shows — a filename, the address, or a tool id. */
   label: string;
 }
 
@@ -116,6 +118,7 @@ export async function openUpload(
     spaceId,
     nodeId,
     kind: "upload",
+    action: task.action,
     startedByUserId: grant.actingUserId,
     budgetMs: task.budgetMs,
     label: task.label,

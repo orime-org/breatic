@@ -37,13 +37,11 @@ import {
   violatesSourceRequirementForModel,
   violatesReferenceCountForModel,
 } from "@breatic/domain";
-import { AppError } from "@breatic/core";
-import type { TaskFailureReason } from "@breatic/shared";
 import { nodeHistoryService } from "@breatic/domain";
 import { nodeTaskService, ingestReportService } from "@breatic/domain";
 import {
-  failOpenedTasks,
   openGenerationTasks,
+  startRowedRun,
 } from "@server/modules/task/generation-task.js";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
@@ -193,6 +191,7 @@ canvas.post(
         // still running.
         budgetMs:
           ingest.ticket_expires_seconds * 1000 + ingest.url_fetch_deadline_ms,
+        action: "upload",
         label: labelForUrl(body.url),
       },
     );
@@ -314,11 +313,10 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
   await precheckCredits(
     projectId,
     user.id,
-    await estimateTaskCredits(
-      body.model,
-      body.params,
-      extractPromptText(body.params.prompt ?? body.params.text),
-    ),
+    await estimateTaskCredits(body.model, {
+      params: body.params,
+      prompt: extractPromptText(body.params.prompt ?? body.params.text),
+    }),
   );
 
   // #89: storage gate, the other soft pre-check. AFTER credits, because
@@ -365,6 +363,7 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
     taskId: task.id,
     // What the list shows for this row. The model names it when there is
     // one; the rest name what they are.
+    action: "generate",
     label: body.model ?? body.task_type,
   });
 
@@ -511,109 +510,41 @@ canvas.post(
     );
 
     // The node this run writes to is already on the canvas — the browser built
-    // it before the request went out — so its row is opened here, BEFORE the
-    // gates below. That order is the whole point: a run refused for credits has
-    // to be able to say so where the node can show it, and the row is the only
-    // thing that carries a cause back to a node (downstream-node-creation
-    // decision, stages 3 and 4).
-    const nodeIds = body.node_ids;
-
-    // Opening that row is inside the guard below for the same reason
-    // everything after it is: the task row exists from here on, and a task
-    // left `pending` is one no worker will pick up and no sweep will end.
-    // Understanding invokes a real model and is billed at completion like
-    // every other task; a short balance settles the rows just opened rather
-    // than leaving them running forever against a job that never gets queued.
-    let rows: Awaited<ReturnType<typeof openGenerationTasks>> = [];
-    try {
-      rows = await openGenerationTasks({
-        projectId: body.project_id,
-        spaceId: body.space_id,
-        nodeIds,
-        startedByUserId: user.id,
-        taskId: task.id,
-        label: model,
-      });
-
-      await precheckCredits(body.project_id, user.id, await estimateTaskCredits(model, params));
-
-      const job = await tasksQueue.add(
-        "execute-task",
-        {
-          taskId: task.id,
-          userId: user.id,
-          projectId: body.project_id,
-          spaceId: body.space_id,
-          taskType: "understand",
-          model,
-          params,
-          // What the activity feed labels this row by. The payload's own
-          // vocabulary (`project-activity.ts`) has a word for this lane, and
-          // it is the only thing telling a reading apart from a generation in
-          // the feed.
-          source: "understand",
-          targetNodeIds: nodeIds,
-          mode: "append" as const,
-        },
-        defaultJobOpts(),
-      );
-
-      // Queueing is the point of no return: a worker will pick this job up,
-      // read the media and bill for it, and nothing here can call that back.
-      // The id is recorded for whoever has to find that job in the queue by
-      // hand — no code reads the column. So a run whose id went unrecorded
-      // still runs exactly as it would have: it keeps its rows and the reader
-      // watches it finish, and the log carries the id instead.
-      try {
-        await taskService.setJobId(task.id, job.id ?? "");
-      } catch (err) {
-        logger.error(
-          { err, taskId: task.id, jobId: job.id, projectId: body.project_id },
-          "understand_job_id_not_recorded",
-        );
-      }
-    } catch (err) {
-      // `no_credits` is the one cause the reader can act on; anything else
-      // that lands here is ours, and the row says so while the log carries
-      // the detail.
-      const reason: TaskFailureReason =
-        err instanceof AppError && err.statusCode === 402 ? "no_credits" : "internal";
-      // Two rows are open and each is somebody's only account of this run, so
-      // neither settlement is allowed to take the other down with it: a task
-      // left `pending` is one no worker picks up and no sweep ends, and a node
-      // row left `running` counts a run that is not happening.
-      for (const settle of [
-        (): Promise<unknown> => taskService.markFailed(task.id, reason),
-        (): Promise<unknown> =>
-          failOpenedTasks(body.project_id, body.space_id, rows, reason),
-      ]) {
-        try {
-          await settle();
-        } catch (settleErr) {
-          logger.error(
-            { err: settleErr, taskId: task.id, projectId: body.project_id },
-            "understand_run_settle_failed",
-          );
-        }
-      }
-      // Whether a row exists is something only this route knows, and a browser
-      // that has to guess at it guesses wrong: a 500 raised before the row
-      // opened looks exactly like one raised after. So the answer carries the
-      // fact instead. A row that is open IS the answer — it holds the cause and
-      // the node shows it — while opening the row is itself what failed here
-      // when there is none, which leaves the rejection as the only way the
-      // cause can travel.
-      logger.warn(
-        { err, taskId: task.id, projectId: body.project_id, reason },
-        "understand_run_failed",
-      );
-      if (rows.length > 0) {
-        return c.json({ data: { task_id: task.id, status: "failed" } }, 201);
-      }
-      throw err;
-    }
-
-    return c.json({ data: { task_id: task.id, status: "pending" } }, 201);
+    // it before the request went out — so its row opens before the credit
+    // gate, and a refusal is said where the node can show it.
+    const status = await startRowedRun({
+      taskId: task.id,
+      projectId: body.project_id,
+      spaceId: body.space_id,
+      nodeIds: body.node_ids,
+      userId: user.id,
+      action: "understand",
+      label: model,
+      credits: () => estimateTaskCredits(model, { params }),
+      enqueue: () =>
+        tasksQueue.add(
+          "execute-task",
+          {
+            taskId: task.id,
+            userId: user.id,
+            projectId: body.project_id,
+            spaceId: body.space_id,
+            taskType: "understand",
+            model,
+            params,
+            // What the activity feed labels this row by. The payload's own
+            // vocabulary (`project-activity.ts`) has a word for this lane, and
+            // it is the only thing telling a reading apart from a generation in
+            // the feed.
+            source: "understand",
+            targetNodeIds: body.node_ids,
+            mode: "append" as const,
+          },
+          defaultJobOpts(),
+        ),
+      logTag: "understand",
+    });
+    return c.json({ data: { task_id: task.id, status } }, 201);
   },
 );
 

@@ -9,8 +9,7 @@ import {
 } from '@breatic/shared';
 
 import {
-  deriveStatus,
-  failedTaskListToOpen,
+  deriveHandling,
   isContentNodeView,
   toNodeView,
 } from '@web/data/yjs/node-view';
@@ -61,8 +60,7 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     expect(v).toEqual({
       kind: 'text',
       name: 'N',
-      status: 'idle',
-      errorMessage: undefined,
+      handling: false,
       locked: false,
     });
   });
@@ -80,25 +78,19 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     const counts = { running: 0, done: 0, failed: 1, expired: 0 };
     expect(toNodeView(fields('text', { taskCounts: counts }))).toMatchObject({
       kind: 'text',
-      status: 'idle',
+      handling: false,
     });
   });
 
-  // The other half: text this browser could not extract opens no task row, so
-  // the error box is the only place it can be said — on a text node as much
-  // as on any other.
-  it('still shows a text node as failed when extraction wrote the message', () => {
-    expect(
-      toNodeView(fields('text', { errorMessage: 'Could not read that file' })),
-    ).toMatchObject({ kind: 'text', status: 'error' });
-  });
-
-  it('still shows an image with a failed run and nothing to display as failed', () => {
-    const counts = { running: 0, done: 0, failed: 1, expired: 0 };
-    expect(toNodeView(fields('image', { taskCounts: counts }))).toMatchObject({
-      kind: 'image',
-      status: 'error',
-    });
+  // inner#888 §7.8: a node shows no task state. Failures live in the counts
+  // column and the task list; text this browser could not extract is a toast.
+  it('carries no display status on any node, whatever its tasks did', () => {
+    const failed = counts({ failed: 1, expired: 1 });
+    for (const type of ['image', 'video', 'audio', 'text'] as const) {
+      const view = toNodeView(fields(type, { taskCounts: failed }));
+      expect(view).toMatchObject({ handling: false });
+      expect(view).not.toHaveProperty('status');
+    }
   });
 
   it('projects what the ledger settled the file as onto a content view', () => {
@@ -288,7 +280,7 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     const v = toNodeView(
       fields('image', { taskCounts: counts({ running: 1 }) }),
     );
-    expect(v).toMatchObject({ status: 'handling' });
+    expect(v).toMatchObject({ handling: true });
     expect(v).not.toHaveProperty('handlingByUserId');
   });
 
@@ -364,90 +356,26 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
   });
 });
 
-describe('deriveStatus — task counts → 3-state display status (#186 §7.6)', () => {
-  it('shows the loading branch while any task is still running', () => {
-    expect(
-      deriveStatus({ taskCounts: counts({ running: 1 }) }),
-    ).toBe('handling');
+describe('deriveHandling — is a task writing to this node (inner#888 §7.8)', () => {
+  it('is true while any task is still running', () => {
+    expect(deriveHandling({ taskCounts: counts({ running: 1 }) })).toBe(true);
   });
 
-  it('keeps showing loading when an earlier task already failed', () => {
+  it('stays true when an earlier task already failed', () => {
     // A node may carry several tasks at once. One of them having failed says
     // nothing about the one still writing to this node.
     expect(
-      deriveStatus({ taskCounts: counts({ running: 1, failed: 2 }) }),
-    ).toBe('handling');
+      deriveHandling({ taskCounts: counts({ running: 1, failed: 2 }) }),
+    ).toBe(true);
   });
 
-  it('shows the error branch once the last task failed and nothing landed', () => {
-    expect(deriveStatus({ taskCounts: counts({ failed: 1 }) })).toBe('error');
+  it('is false once nothing runs, failures and expiries included', () => {
+    expect(deriveHandling({ taskCounts: counts({ failed: 1 }) })).toBe(false);
+    expect(deriveHandling({ taskCounts: counts({ expired: 1 }) })).toBe(false);
   });
 
-  it('shows the error branch for a task judged expired', () => {
-    expect(deriveStatus({ taskCounts: counts({ expired: 1 }) })).toBe('error');
-  });
-
-  it('shows the error branch for the local text extraction that failed', () => {
-    // `data.errorMessage` survives as the one field the browser still writes,
-    // and only for the extraction that never reaches the task table (§3.7.4).
-    expect(deriveStatus({ errorMessage: 'boom' })).toBe('error');
-  });
-
-  it('shows the content once a task landed something, failures and all', () => {
-    // One upload failed, another succeeded. What the node shows is the
-    // content; the failure is a row in the task list.
-    expect(
-      deriveStatus({
-        taskCounts: counts({ done: 1, failed: 1 }),
-        content: 'https://cdn.invalid/out.png',
-      }),
-    ).toBe('idle');
-  });
-
-  it('shows nothing for a node whose tasks all finished', () => {
-    expect(deriveStatus({ taskCounts: counts({ done: 2 }) })).toBe('idle');
-  });
-
-  it('shows nothing for a node that has never carried a task', () => {
-    expect(deriveStatus({})).toBe('idle');
-  });
-});
-
-describe('failedTaskListToOpen', () => {
-  // The error box's "View" is the one way into the list from a node, and the
-  // list shows one state at a time. Which state it should show is decided from
-  // the same counts that put the error box there in the first place —
-  // `deriveStatus` treats `failed` and `expired` alike, so sending every
-  // reader to `failed` lands half of them on an empty list.
-  it('opens the failed list when the node holds a failed task', () => {
-    expect(failedTaskListToOpen(counts({ failed: 1 }))).toBe('failed');
-  });
-
-  it('opens the expired list when that is the only kind of failure', () => {
-    expect(failedTaskListToOpen(counts({ expired: 2 }))).toBe('expired');
-  });
-
-  it('prefers failed when the node holds both', () => {
-    expect(failedTaskListToOpen(counts({ failed: 1, expired: 1 }))).toBe(
-      'failed',
-    );
-  });
-
-  // A text node whose extraction failed in the browser carries an
-  // `errorMessage` and no task row at all (#186 §3.7.4). There is nothing for
-  // a list to show, so the error box offers no way into one.
-  it('opens nothing when no task failed', () => {
-    expect(failedTaskListToOpen(counts({ done: 3 }))).toBeNull();
-  });
-
-  it('opens nothing for a node that has never carried a task', () => {
-    expect(failedTaskListToOpen(undefined)).toBeNull();
-  });
-
-  // A group or an annotation shows no task column at all, and reaches here as
-  // null rather than as four zeros.
-  it('opens nothing for a kind that holds no tasks', () => {
-    expect(failedTaskListToOpen(null)).toBeNull();
+  it('is false for a node that has never carried a task', () => {
+    expect(deriveHandling({})).toBe(false);
   });
 });
 

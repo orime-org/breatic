@@ -155,7 +155,7 @@ function containerTree(
                 graph?.nodes ?? [
                   {
                     id: 'target',
-                    data: { kind: 'image', status: 'idle' },
+                    data: { kind: 'image', handling: false },
                   },
                 ]
               }
@@ -285,7 +285,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
           <GeneratePanelContainer
             projectId='p'
             spaceId='s'
-            nodes={[{ id: 'target', data: { kind: 'image', status: 'idle', mode } }]}
+            nodes={[{ id: 'target', data: { kind: 'image', handling: false, mode } }]}
             edges={[]}
             getLastWriteWasLocal={author}
           />
@@ -471,7 +471,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
             <GeneratePanelContainer
               projectId='p'
               spaceId='s'
-              nodes={[{ id: 'target', data: { kind: 'image', status: 'idle', mode: 't2i', model } }]}
+              nodes={[{ id: 'target', data: { kind: 'image', handling: false, mode: 't2i', model } }]}
               edges={[]}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
             />
@@ -524,7 +524,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
               nodes={[
                 {
                   id: 'target',
-                  data: { kind: 'image', status: 'idle', mode: 't2i', model: 'styled', styleImageUrls: ['a', 'b', 'c'] },
+                  data: { kind: 'image', handling: false, mode: 't2i', model: 'styled', styleImageUrls: ['a', 'b', 'c'] },
                 },
               ]}
               edges={[]}
@@ -568,11 +568,11 @@ describe('GeneratePanelContainer — body subscription set', () => {
     });
     mountContainer({
       nodes: [
-        { id: 'target', data: { kind: 'image', status: 'idle' } },
-        { id: 'wired-a', data: { kind: 'text', status: 'idle' } },
-        { id: 'wired-b', data: { kind: 'text', status: 'idle' } },
-        { id: 'stray', data: { kind: 'text', status: 'idle' } },
-        { id: 'other', data: { kind: 'image', status: 'idle' } },
+        { id: 'target', data: { kind: 'image', handling: false } },
+        { id: 'wired-a', data: { kind: 'text', handling: false } },
+        { id: 'wired-b', data: { kind: 'text', handling: false } },
+        { id: 'stray', data: { kind: 'text', handling: false } },
+        { id: 'other', data: { kind: 'image', handling: false } },
       ],
       edges: [
         { id: 'e1', source: 'wired-a', target: 'target' },
@@ -818,8 +818,8 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     seedImageNode();
     mountContainer({
       nodes: [
-        { id: 'target', data: { kind: 'image', status: 'idle' } },
-        { id: 'src', data: { kind: 'text', status: 'idle' } },
+        { id: 'target', data: { kind: 'image', handling: false } },
+        { id: 'src', data: { kind: 'text', handling: false } },
       ],
       edges: [{ id: 'e1', source: 'src', target: 'target' }],
     });
@@ -844,8 +844,8 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     seedImageNode();
     mountContainer({
       nodes: [
-        { id: 'target', data: { kind: 'image', status: 'idle' } },
-        { id: 'src', data: { kind: 'text', status: 'idle' } },
+        { id: 'target', data: { kind: 'image', handling: false } },
+        { id: 'src', data: { kind: 'text', handling: false } },
       ],
       edges: [{ id: 'e1', source: 'src', target: 'target' }],
     });
@@ -1363,7 +1363,7 @@ describe('这个部署服务不了的档 (#1951)', () => {
     // 这条用例就测不到「存了不可用档」这件事（实现对抗第 2 轮咬出）。
     seedImageNode({ mode: 'i2i' });
     mountContainer({
-      nodes: [{ id: 'target', data: { kind: 'image', status: 'idle', mode: 'i2i' } }],
+      nodes: [{ id: 'target', data: { kind: 'image', handling: false, mode: 'i2i' } }],
     });
     act(() => {
       canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
@@ -1437,8 +1437,8 @@ describe('GeneratePanelContainer — what the @ list says when it has nothing to
     const nothingUsable = await emptyStateText(
       {
         nodes: [
-          { id: 'target', data: { kind: 'image', status: 'idle' } },
-          { id: 'src', data: { kind: 'image', status: 'idle' } },
+          { id: 'target', data: { kind: 'image', handling: false } },
+          { id: 'src', data: { kind: 'image', handling: false } },
         ],
         edges: [{ id: 'e1', source: 'src', target: 'target' }],
       },
@@ -1452,8 +1452,8 @@ describe('GeneratePanelContainer — what the @ list says when it has nothing to
     const nothingMatched = await emptyStateText(
       {
         nodes: [
-          { id: 'target', data: { kind: 'image', status: 'idle' } },
-          { id: 'src', data: { kind: 'text', status: 'idle' } },
+          { id: 'target', data: { kind: 'image', handling: false } },
+          { id: 'src', data: { kind: 'text', handling: false } },
         ],
         edges: [{ id: 'e1', source: 'src', target: 'target' }],
       },
@@ -1532,8 +1532,8 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
     addEdge('p', 's', { id: 'e1', source: 'src', target: 'target' });
     mountContainer({
       nodes: [
-        { id: 'target', data: { kind: 'image', status: 'idle' } },
-        { id: 'src', data: { kind: 'image', status: 'idle' } },
+        { id: 'target', data: { kind: 'image', handling: false } },
+        { id: 'src', data: { kind: 'image', handling: false } },
       ],
       edges: [{ id: 'e1', source: 'src', target: 'target' }],
     });

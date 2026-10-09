@@ -88,8 +88,8 @@ export interface GeneratePanelViewModel {
   focusImages: FocusImage[];
   /** The selected model's catalog entry, when the catalog has it. */
   modelEntry: ModelEntry | undefined;
-  /** The target node's display status — gates execute (no submit while handling). */
-  nodeStatus: string | undefined;
+  /** Whether the target node is still on the board — gates execute. */
+  nodeExists: boolean;
   /** Active generation sub-mode (the t2i / i2i toggle state; default t2i). */
   mode: ImageGenMode;
   /**
@@ -237,7 +237,7 @@ export function buildGeneratePanelViewModel(input: {
     pool,
     focusImages,
     modelEntry: current,
-    nodeStatus: content?.status,
+    nodeExists: content !== undefined,
     mode,
     // Execute gate (#1675): the active panel mode and the model's own
     // declarations decide, through the same rule the server re-checks.

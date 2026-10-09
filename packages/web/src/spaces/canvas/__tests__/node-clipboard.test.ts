@@ -214,6 +214,26 @@ describe('cloneForPaste', () => {
     expect(typeof nodes[0]?.data.createdAt).toBe('number');
   });
 
+  it('keeps a video copy\'s six media fields, so the cut panel can lay frames on it', () => {
+    const media = {
+      coverUrl: 'clip-cover.jpg',
+      mediaWidth: 1280,
+      mediaHeight: 720,
+      duration: 5.038,
+      mimeType: 'video/mp4',
+      size: 5_469_707,
+    };
+    const captured = captureClipboard(
+      ['v'],
+      [{ id: 'v', type: 'video', position: { x: 0, y: 0 } }],
+      dataOf({ v: { name: 'Clip', content: 'clip.mp4', ...media } }),
+      [],
+      SOURCE,
+    );
+    const { nodes } = cloneForPaste(captured, 'u-7', { dx: 24, dy: 24 });
+    expect(nodes[0]?.data).toMatchObject({ content: 'clip.mp4', ...media });
+  });
+
   it('copies content only: no lock, task counts or failure message (R2-F)', () => {
     const p = payload([
       node('g', 'group', { x: 0, y: 0 }, { locked: true, width: 100, height: 100 }),

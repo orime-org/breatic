@@ -15,12 +15,12 @@ beside the bundle at `/third-party-licences.txt`.
 
 ## Programs in our container images
 
-We publish three images. Two of them carry FFmpeg, and the media container
-also carries vips:
+We publish three images. One of them, the media container, carries FFmpeg and
+vips:
 
 | Image | Built from | Base | Carries FFmpeg |
 |---|---|---|---|
-| `ghcr.io/<owner>/breatic` | [Dockerfile](./Dockerfile) | `node:24-bookworm-slim` | yes |
+| `ghcr.io/<owner>/breatic` | [Dockerfile](./Dockerfile) | `node:24-bookworm-slim` | no |
 | the media container | [packages/ingest/Dockerfile](./packages/ingest/Dockerfile) | `alpine:3.23` | yes |
 | `ghcr.io/<owner>/breatic-web` | [Dockerfile.web](./Dockerfile.web) | `nginx:1.27-alpine` | no — it serves the built front-end and nothing else |
 
@@ -34,27 +34,6 @@ whichever of the three it arrives through. A binding named otherwise —
 `beamcoder` is one — is caught by the licence review this project requires of
 every new dependency, which is what that review is for.
 
-### FFmpeg in the `breatic` image
-
-| | |
-|---|---|
-| Version | `7:5.1.9-0+deb12u1` — the epoch is Debian's, and upstream FFmpeg calls this 5.1.9 |
-| Origin | Debian bookworm, installed with `apt-get install ffmpeg=7:5.1.9-0+deb12u1` ([Dockerfile](./Dockerfile), runtime stage) |
-| Licence | **GPL-2.0-or-later** |
-| Source | `apt-get source ffmpeg=7:5.1.9-0+deb12u1` on bookworm with `deb-src` enabled, or the files themselves from `http://deb.debian.org/debian/pool/main/f/ffmpeg/` |
-
-FFmpeg's own code is LGPL-2.1-or-later, but Debian builds it with
-`--enable-gpl`, `--enable-libx264` and `--enable-libx265`, and those components
-are GPL. The resulting binary is therefore GPL-2.0-or-later. It is built without
-`--enable-nonfree`, so it remains redistributable.
-
-Anyone who received this image may obtain the complete corresponding source for
-this FFmpeg build from either address above. Both serve whatever bookworm holds
-now, so the version is pinned in the Dockerfile: the pin is what keeps them
-pointing at the binary the image actually carries. Once bookworm moves past it,
-that version stays available at `snapshot.debian.org`, and the pin's build
-failure is the signal to update this entry alongside it.
-
 ### FFmpeg in the media container
 
 | | |
@@ -64,8 +43,12 @@ failure is the signal to update this entry alongside it.
 | Licence | **GPL-3.0-or-later** |
 | Source | `https://ffmpeg.org/releases/ffmpeg-8.0.1.tar.xz` for the program, and `https://gitlab.alpinelinux.org/alpine/aports/-/tree/8623c9968f3fca48863eb9d3a355c2baaba7b20b/community/ffmpeg` for the recipe Alpine built it with |
 
-Version 3, not the 2 the Debian build above carries: Alpine configures this one
-with `--enable-gpl` **and** `--enable-version3`, and asked directly it answers
+It reads media numbers, cuts cover frames, and runs the mini-tools' video
+operations: crop, speed, cut, colour adjustment, audio denoise, stabilisation
+(`libvidstab`) and HDR conversion (`zimg` and `libx265`).
+
+Version 3 of the GPL: Alpine configures this build with `--enable-gpl` **and**
+`--enable-version3`, and asked directly it answers
 "either version 3 of the License, or (at your option) any later version"
 (`ffmpeg -L`). Alpine's own package metadata says `GPL-2.0-or-later AND
 LGPL-2.1-or-later`, which is where the or-later chain starts rather than where
@@ -99,7 +82,8 @@ program in this image is carried under GPL-3.0-or-later.
 The container's service runs `vips` as a separate program, handing it the
 picture on stdin and reading the preview from stdout, and loads none of its
 libraries: the `breatic/media-container-own-code-only` ESLint rule allows the
-service only Node builtins and its own modules. The image carries the licence
+service only Node builtins and this repository's modules that the container's
+`tsconfig.json` names. The image carries the licence
 texts and a `SOURCE` file at `/usr/share/vips-source/`, written from the
 installed packages while the image is built, as the FFmpeg one above is, so a
 rebuild that resolves `=~8.17` to a later release writes the later one rather
@@ -287,14 +271,14 @@ file, not this one, is what carries full licence texts to a browser.
 |---|---|
 | The distributed npm packages | `pnpm licenses list --json --prod` — the same source the check reads |
 | The build and development tools | `pnpm licenses list --json` without `--prod`, minus the packages the line above reports. Read it for a licence the project may not take, not to transcribe it — nothing here is distributed |
-| The two FFmpeg builds | The version comes from the package: `dpkg-query -W ffmpeg` in the `breatic` image, `awk '/^P:ffmpeg$/,/^$/' /lib/apk/db/installed` in the media container. **The licence comes from the binary**: `ffmpeg -hide_banner -L`, which names the version of the GPL that build actually landed on. Both readings go into the media container's own `SOURCE` file |
+| The FFmpeg build | The version comes from the package: `awk '/^P:ffmpeg$/,/^$/' /lib/apk/db/installed` in the media container. **The licence comes from the binary**: `ffmpeg -hide_banner -L`, which names the version of the GPL that build actually landed on. Both readings go into the media container's own `SOURCE` file |
 
 A package reported under `Unknown` or `UNLICENSED` means its `package.json`
 says nothing usable, not that the package is unlicensed. Open the licence file
 in its own tarball before writing the entry; two of the entries above exist
 because that file said MIT where the metadata said otherwise.
 
-The same holds for the two FFmpeg builds, and it is not hypothetical: Alpine's
+The same holds for the FFmpeg build, and it is not hypothetical: Alpine's
 package metadata says GPL-2.0-or-later while the binary it installed answers
 version 3. Metadata describes the source a package was built from; only the
 binary knows which optional components were compiled into it.

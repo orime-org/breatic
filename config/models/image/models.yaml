@@ -590,8 +590,8 @@ models:
           formula: ""
           discount_rate: 100
 
-  - name: "crystal-upscaler"
-    display_name: "Crystal Upscaler"
+  - name: "pro-upscaler"
+    display_name: "Pro Upscaler"
     mode: "upscale"
     takes_prompt: false
     tier: "internal"
@@ -601,28 +601,31 @@ models:
     icon: "clarity"
     params:
       creativity:
-        description: "How freely detail is invented"
+        description: "Below zero stays closer to the source, above zero adds generated detail"
         default: 0
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        min: -10
+        max: 10
+        step: 1
+        value_labels: {-10: "Closer to source", 10: "More detail"}
+        fill: "tool"
       image:
         description: "Source image"
         default: null
         accepts: "image"
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        fill: "tool"
       target_megapixels:
         description: "Output size in megapixels"
         default: 4
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        min: 1
+        max: 64
+        fill: "tool"
     providers:
       - name: "wavespeed"
-        model_id: "clarity-ai/crystal-upscaler"
+        model_id: "clarity-ai/pro-upscaler"
         priority: 1
         pricing:
           base_price: 30000
-          formula: "{\"total_price\": target_megapixels <= 4 ? 50000 : target_megapixels <= 16 ? 200000 : target_megapixels <= 36 ? 800000 : target_megapixels <= 100 ? 1600000 : target_megapixels <= 400 ? 6400000 : 24000000}"
+          formula: "{\"total_price\": base_price * target_megapixels}"
           discount_rate: 100
 
   - name: "bria-remove-background"
@@ -639,8 +642,7 @@ models:
         description: "Source image"
         default: null
         accepts: "image"
-        fill: "none"
-        note: "mini-tool: no panel reaches this model"
+        fill: "tool"
     providers:
       - name: "wavespeed"
         model_id: "bria/remove-background"

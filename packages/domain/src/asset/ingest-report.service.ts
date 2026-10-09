@@ -686,6 +686,9 @@ export async function applyIngestReport(
         ...(grant.filename !== null && { filename: grant.filename }),
         size: sizeBytes,
         mimeType: contentType,
+        // The row is named by the browser tool that made the file, as its
+        // task row is (inner#888 A20).
+        ...(grant.source === "mini_tool" && grant.toolName !== null && { toolId: grant.toolName }),
       },
       // The panel reads a video's preview off this row and nothing else, and
       // restoring an entry writes what it holds back onto the node — so an
