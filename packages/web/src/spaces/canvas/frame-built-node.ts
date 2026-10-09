@@ -18,6 +18,9 @@ import {
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
 
+/** How long the canvas takes to slide a just-made node into view. */
+export const FRAME_PAN_MS = 300;
+
 /**
  * Whether one rect lies entirely within another.
  * @param inner - The rect being looked for.

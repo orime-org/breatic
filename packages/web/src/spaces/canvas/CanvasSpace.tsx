@@ -65,7 +65,7 @@ import {
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
-import { frameBuiltNode } from '@web/spaces/canvas/frame-built-node';
+import { FRAME_PAN_MS, frameBuiltNode } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import {
@@ -2231,11 +2231,16 @@ function CanvasSpaceInner({
   // The built node's size is the fresh-node size rather than a measured one:
   // a node written this instant is not in ReactFlow's store yet, and a node
   // holding nothing is that size until something lands in it.
+  const visibleFlowRect = React.useCallback((): Rect | null => {
+    const { transform, width, height } = rfStoreApi.getState();
+    const [tx, ty, zoom] = transform;
+    if (zoom === 0) return null;
+    return { x: -tx / zoom, y: -ty / zoom, width: width / zoom, height: height / zoom };
+  }, [rfStoreApi]);
   const frameNewNode = React.useCallback(
     (position: { x: number; y: number }, sourceNodeId: string): void => {
-      const { transform, width, height } = rfStoreApi.getState();
-      const [tx, ty, zoom] = transform;
-      if (zoom === 0) return;
+      const view = visibleFlowRect();
+      if (view === null) return;
       // A collaborator can delete the node being read while the menu stands
       // open. The press still produced a node, so it is still what has to be
       // in front of the reader — there is just no second box to frame it with.
@@ -2249,17 +2254,12 @@ function CanvasSpaceInner({
             width: source.measured?.width ?? source.width ?? 0,
             height: source.measured?.height ?? source.height ?? 0,
           },
-        {
-          x: -tx / zoom,
-          y: -ty / zoom,
-          width: width / zoom,
-          height: height / zoom,
-        },
+        view,
       );
       if (at === null) return;
-      setCenter(at.x, at.y, { zoom, duration: 300 });
+      setCenter(at.x, at.y, { zoom: rfStoreApi.getState().transform[2], duration: FRAME_PAN_MS });
     },
-    [getInternalNode, rfStoreApi, setCenter],
+    [getInternalNode, rfStoreApi, setCenter, visibleFlowRect],
   );
 
   // ---- Node creation (library mailbox + right-click) ----
@@ -2279,53 +2279,79 @@ function CanvasSpaceInner({
   >(null);
   // Paste and duplicate select their copies and give them the keyboard; other
   // ways of making a node only select it.
-  const focusPastedRef = React.useRef<string[] | null>(null);
-  const selectPasted = React.useCallback((ids: string[]): void => {
+  const focusPastedRef = React.useRef<{ ids: string[]; sources: readonly string[] } | null>(null);
+  const selectPasted = React.useCallback((ids: string[], sources: readonly string[] = []): void => {
     if (ids.length === 0) return;
-    focusPastedRef.current = ids;
+    focusPastedRef.current = { ids, sources };
     setSelectAfterCreate(ids);
   }, []);
-  // A paste or duplicate hands the keyboard to its copies, so the arrow keys
-  // move them (inner#1229) through xyflow's own handler on the focused node.
-  // Each frame it waits while a menu is still closing (it holds focus until
-  // it unmounts) and while xyflow keeps the copy hidden before measuring it;
-  // a copy out of view is never rendered, so the keyboard stays put.
-  const focusFirstCopy = React.useCallback((ids: string[]): void => {
-    let missed = false;
-    /** One frame of the wait; schedules the next until it focuses or gives up. */
-    const step = (): void => {
-      const container = containerRef.current;
-      if (container === null) return;
-      if (document.activeElement?.closest('[role="menu"]')) {
-        requestAnimationFrame(step);
-        return;
-      }
-      const { flowNodes } = graphStore.getState();
-      const measured = ids.find(
-        (id) => flowNodes.find((node) => node.id === id)?.measured?.width !== undefined,
-      );
-      /**
-       * The copy's xyflow node element, when xyflow renders it.
-       * @param id - The copy's node id.
-       * @returns The element, or null when it is not rendered.
-       */
-      const element = (id: string): HTMLElement | null =>
-        container.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`);
-      if (measured !== undefined) {
-        const target = element(measured);
-        if (target !== null && getComputedStyle(target).visibility !== 'hidden') {
-          target.focus();
+  // The box a set of nodes covers on the canvas, from what xyflow has measured;
+  // null when none of them is measured.
+  const measuredBox = React.useCallback(
+    (ids: readonly string[]): Rect | null =>
+      groupRectForMembers(
+        ids.flatMap((id) => {
+          const node = getInternalNode(id);
+          const width = node?.measured?.width;
+          const height = node?.measured?.height;
+          if (node === undefined || width === undefined || height === undefined) return [];
+          return [{ ...node.internals.positionAbsolute, width, height }];
+        }),
+        0,
+      ),
+    [getInternalNode],
+  );
+  // A paste or duplicate puts its copies in front of the reader and hands them
+  // the keyboard, so the arrow keys move them (inner#1229) through xyflow's own
+  // handler on the focused node. Each frame it waits while a menu is still
+  // closing (it holds focus until it unmounts) and until xyflow has measured
+  // every copy. Copies that are not wholly in view are slid into view the way a
+  // node the generate panel builds is (frameBuiltNode, with the originals they
+  // came from). Then the first copy shown inside the canvas takes focus: xyflow
+  // keeps a copy hidden until it has measured it, and renders one that lands
+  // out of view once for that measure before culling it.
+  const focusFirstCopy = React.useCallback(
+    (ids: readonly string[], sources: readonly string[]): void => {
+      let framed = false;
+      /** One frame of the wait; schedules the next until it focuses or gives up. */
+      const step = (): void => {
+        const container = containerRef.current;
+        if (container === null) return;
+        if (document.activeElement?.closest('[role="menu"]')) {
+          requestAnimationFrame(step);
           return;
         }
-      } else if (!ids.some((id) => element(id) !== null)) {
-        // Not rendered for two frames running: out of view.
-        if (missed) return;
-        missed = true;
-      }
+        const live = ids.filter((id) => getInternalNode(id) !== undefined);
+        if (live.length === 0) return;
+        if (live.some((id) => getInternalNode(id)?.measured?.width === undefined)) {
+          requestAnimationFrame(step);
+          return;
+        }
+        if (!framed) {
+          framed = true;
+          const copies = measuredBox(live);
+          const view = visibleFlowRect();
+          const at = copies === null || view === null ? null : frameBuiltNode(copies, measuredBox(sources), view);
+          if (at !== null) {
+            void setCenter(at.x, at.y, { zoom: rfStoreApi.getState().transform[2], duration: FRAME_PAN_MS });
+            window.setTimeout(() => requestAnimationFrame(step), FRAME_PAN_MS);
+            return;
+          }
+        }
+        const view = container.getBoundingClientRect();
+        const shown = live
+          .map((id) => container.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`))
+          .find((element) => {
+            if (element === null || getComputedStyle(element).visibility === 'hidden') return false;
+            const box = element.getBoundingClientRect();
+            return box.right > view.left && box.left < view.right && box.bottom > view.top && box.top < view.bottom;
+          });
+        shown?.focus({ preventScroll: true });
+      };
       requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  }, [graphStore]);
+    },
+    [getInternalNode, measuredBox, visibleFlowRect, setCenter, rfStoreApi],
+  );
   const staggerRef = React.useRef(0);
   const [contextMenu, setContextMenu] = React.useState({
     open: false,
@@ -2904,9 +2930,10 @@ function CanvasSpaceInner({
     );
     // A newer creation may already be waiting; only this run's ids clear.
     setSelectAfterCreate((current) => (current === ids ? null : current));
-    if (focusPastedRef.current !== ids) return;
+    const pasted = focusPastedRef.current;
+    if (pasted?.ids !== ids) return;
     focusPastedRef.current = null;
-    focusFirstCopy(ids);
+    focusFirstCopy(ids, pasted.sources);
   }, [selectAfterCreate, nodes, setFlowNodes, focusFirstCopy]);
 
   // One dispatch for Cmd+V and the menu's Paste (design 5.9): our nodes paste
@@ -2935,7 +2962,7 @@ function CanvasSpaceInner({
           }
         }
         void pastePayload(payload, offset, { keepUpstream: keepUpstreamFor(payload) }).then((ids) => {
-          if (ids) selectPasted(ids);
+          if (ids) selectPasted(ids, payload.nodes.map((node) => node.id));
         });
         return true;
       }
@@ -3381,7 +3408,7 @@ function CanvasSpaceInner({
           },
         },
       ).then((ids) => {
-        if (ids) selectPasted(ids);
+        if (ids) selectPasted(ids, targetIds);
       });
     },
     [readOnly, projectId, spaceId, captureClipboardFor, keepUpstreamFor, pastePayload, selectPasted, buffer],
