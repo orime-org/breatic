@@ -1048,8 +1048,8 @@ body {
    drawn. `data-body-holds` is written by `document-body-focus.ts`; a
    read-only body never carries it and draws its selection the browser's
    way, so the rule reaches editable bodies only. */
-.doc-body .ProseMirror[contenteditable='true']:not([data-body-holds]) ::selection,
-.doc-body .ProseMirror[contenteditable='true']:not([data-body-holds])::selection {
+.doc-body[contenteditable='true']:not([data-body-holds]) ::selection,
+.doc-body[contenteditable='true']:not([data-body-holds])::selection {
   background-color: transparent;
 }
 
@@ -1983,7 +1983,7 @@ body {
 /* A cell selection is the selection too: not drawn while the body does not
    hold the focus. A row or column an open menu acts on is drawn — the menu is
    the body's own layer, and the body holds while it is open. */
-.doc-body .ProseMirror[contenteditable='true']:not([data-body-holds]) .selectedCell::after {
+.doc-body[contenteditable='true']:not([data-body-holds]) .selectedCell::after {
   content: none;
 }
 

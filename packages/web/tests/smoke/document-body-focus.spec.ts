@@ -176,3 +176,41 @@ test('Tab back into the body after the caption field keeps the scroll position a
   expect(await page.locator(SCROLLER).evaluate((el) => el.scrollTop)).toBe(before);
   await expect(knob).toBeVisible();
 });
+
+test('a body let go draws neither its text selection nor its selected cells (A20, A21)', async () => {
+  await openWithLine(page);
+  await selectHello(page);
+  const editor = page.locator(EDITOR);
+  const textHighlight = (): Promise<string> =>
+    page.locator(`${EDITOR} p`).first().evaluate((el) => getComputedStyle(el, '::selection').backgroundColor);
+  expect(await textHighlight()).not.toBe('rgba(0, 0, 0, 0)');
+
+  const { x, y } = await blankPoint(page);
+  await page.mouse.click(x, y);
+  await expect(editor).not.toHaveAttribute('data-body-holds', /.*/);
+  expect(await textHighlight()).toBe('rgba(0, 0, 0, 0)');
+
+  // A 2x2 table below the line, its four cells selected by a drag.
+  await editor.click();
+  await page.mouse.move(5, 5);
+  const row = (await page.locator(`${EDITOR} .bn-block-content`).first().boundingBox())!;
+  await page.mouse.move(row.x + 40, row.y + 12, { steps: 3 });
+  await page.getByTestId('doc-block-handle').click();
+  await page.getByTestId('doc-block-row-insertBelow').hover();
+  await page.getByTestId('doc-block-insert-table').hover();
+  await page.getByTestId('doc-table-size-2-2').click();
+  const first = (await page.locator(`${EDITOR} td`).first().boundingBox())!;
+  const last = (await page.locator(`${EDITOR} td`).last().boundingBox())!;
+  await page.mouse.move(first.x + 10, first.y + first.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(last.x + last.width - 10, last.y + last.height / 2, { steps: 6 });
+  await page.mouse.up();
+  const cell = page.locator(`${EDITOR} .selectedCell`).first();
+  await expect(cell).toBeVisible();
+  const tint = (): Promise<string> => cell.evaluate((el) => getComputedStyle(el, '::after').content);
+  expect(await tint()).not.toBe('none');
+
+  await page.mouse.click(x, y);
+  await expect(editor).not.toHaveAttribute('data-body-holds', /.*/);
+  expect(await tint()).toBe('none');
+});
