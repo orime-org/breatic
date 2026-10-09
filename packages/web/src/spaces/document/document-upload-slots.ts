@@ -7,8 +7,9 @@
  *
  * A file being uploaded has no block yet: its placeholder lives in this
  * plugin's state and is drawn as a widget decoration, so only the uploader
- * sees it and nothing about it reaches Yjs or the undo stack. When the upload
- * finishes, its block is inserted where the placeholder was drawn.
+ * sees it and nothing of it reaches the shared document; only its gap's Yjs
+ * name rides on undo stack items (below). When the upload finishes, its block
+ * is inserted where the placeholder was drawn.
  *
  * A batch remembers its gap as a position between two blocks, carried the way
  * the comment draft carries its range (`document-comment-draft-range.ts`):
@@ -181,6 +182,29 @@ function quotedAt(doc: PMNode, at: number): boolean {
 /** Each batch's gap as Yjs names it, by batch id. */
 type NamedGaps = ReadonlyMap<string, Y.RelativePosition>;
 
+/** The sync binding, as a gap's name is taken and read against. */
+type Binding = NonNullable<ReturnType<typeof syncBindingOf>>;
+
+/**
+ * A gap as Yjs names it.
+ * @param bound - The sync binding.
+ * @param gap - The gap.
+ * @returns Its relative position.
+ */
+function nameGap(bound: Binding, gap: UploadGap): Y.RelativePosition {
+  return absolutePositionToRelativePosition(gap, bound.type, bound.mapping) as Y.RelativePosition;
+}
+
+/**
+ * Where a named gap is now.
+ * @param bound - The sync binding.
+ * @param name - The gap's relative position.
+ * @returns The position, or null when Yjs cannot place it.
+ */
+function gapNamed(bound: Binding, name: Y.RelativePosition): UploadGap | null {
+  return relativePositionToAbsolutePosition(bound.doc, bound.type, name, bound.mapping);
+}
+
 /**
  * The batches with their gaps carried across a change to the body.
  * @param batches - The batches.
@@ -203,10 +227,7 @@ function carryGaps(
   let changed = false;
   const next = batches.map((batch) => {
     const name = handed?.get(batch.id) ?? named.get(batch.id);
-    const found =
-      bound !== null && name !== undefined
-        ? relativePositionToAbsolutePosition(bound.doc, bound.type, name, bound.mapping)
-        : null;
+    const found = bound !== null && name !== undefined ? gapNamed(bound, name) : null;
     const gap = blockGapAt(tr.doc, found ?? tr.mapping.map(batch.gap));
     if (gap === batch.gap) return batch;
     changed = true;
@@ -405,10 +426,7 @@ export const documentUploadsExtension = createExtension(() => {
                 named = new Map(
                   bound === null
                     ? []
-                    : batches.map((batch) => [
-                      batch.id,
-                      absolutePositionToRelativePosition(batch.gap, bound.type, bound.mapping) as Y.RelativePosition,
-                    ]),
+                    : batches.map((batch) => [batch.id, nameGap(bound, batch.gap)]),
                 );
               }
               watching.update?.(next, prev);
@@ -462,15 +480,15 @@ export function addUploadBatch(
  * Yjs, so the reader's edits and a co-editor's meanwhile carry it along.
  * @param view - The editor view.
  * @param gap - The gap as it is now.
- * @returns The gap as it is when called.
+ * @returns A function giving the gap as it stands when called.
  */
 export function holdGap(view: EditorView, gap: UploadGap): () => UploadGap {
   const bound = syncBindingOf(view.state);
   if (bound === null) return () => gap;
-  const name = absolutePositionToRelativePosition(gap, bound.type, bound.mapping) as Y.RelativePosition;
+  const name = nameGap(bound, gap);
   return () => {
     const now = syncBindingOf(view.state);
-    return (now === null ? null : relativePositionToAbsolutePosition(now.doc, now.type, name, now.mapping)) ?? gap;
+    return (now === null ? null : gapNamed(now, name)) ?? gap;
   };
 }
 

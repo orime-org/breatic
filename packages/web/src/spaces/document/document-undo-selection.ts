@@ -60,6 +60,15 @@
  * caret at, so replaying it lands the caret where it already is, and a single
  * selection-only dispatch clears it before a remote change can arrive. No
  * mutation of this file turns a test red for the want of it, so it is not here.
+ *
+ * ## Other values kept on the stack
+ *
+ * The same handover carries other plugins' Yjs names across undo and redo:
+ * `keepOnUndoStack` keeps any value on each stack item, and `namesOnUndoStack`
+ * takes a plugin's names when a Yjs transaction begins and hands them back on
+ * the undo or redo of that edit. The upload placeholders keep their gaps this
+ * way (`document-upload-slots.ts`), the comment draft its range
+ * (`document-comment-draft-range.ts`).
  */
 
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
