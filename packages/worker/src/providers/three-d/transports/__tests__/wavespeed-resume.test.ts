@@ -98,17 +98,6 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
     expect(r.url).toBe("https://cdn.wavespeed.test/model.glb");
   });
 
-  it("no resume ctx (legacy caller): submits and polls as before", async () => {
-    requestWithRetryMock.mockResolvedValue({ data: { id: "ws-999" } });
-
-    const r = await generate("a chair", RESOLVED, {}, undefined, LATER);
-
-    expect(requestWithRetryMock).toHaveBeenCalledTimes(1);
-    expect(String(pollOnceMock.mock.calls[0]![0])).toContain("ws-999");
-    expect(r.url).toBe("https://cdn.wavespeed.test/model.glb");
-    expect(r.cost).toBe(0.42);
-  });
-
   describe("against the task's two-hour deadline (inner#1337)", () => {
     it("submits nothing once the deadline has passed", async () => {
       const persistTaskId = vi.fn(async () => {});
@@ -134,7 +123,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
       expect(queryBillingMock).not.toHaveBeenCalled();
     });
 
-    it("ends as expired when the upstream is still going at the deadline", async () => {
+    it("hands a still-going answer up as it is at the deadline, for dispatch to judge", async () => {
       pollOnceMock.mockRejectedValue(new StillRunning(123));
 
       await expect(
@@ -145,7 +134,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
           { storedTaskId: "ws-stored-42", persistTaskId: vi.fn(), externalTaskId: "x" },
           Date.now() - 1,
         ),
-      ).rejects.toBeInstanceOf(TaskDeadlinePassed);
+      ).rejects.toBeInstanceOf(StillRunning);
     });
   });
 });

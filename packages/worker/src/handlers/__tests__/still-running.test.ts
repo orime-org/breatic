@@ -41,6 +41,10 @@ const h = vi.hoisted(() => {
     markCompletedAndBill: vi.fn(),
     markRunning: vi.fn(),
     settleTaskForNode: vi.fn(),
+    updateData: vi.fn(),
+    info: vi.fn(),
+    slotFull: { value: false },
+    understandMediaAt: vi.fn(),
   };
 });
 
@@ -58,6 +62,12 @@ vi.mock("@worker/providers/generate.js", () => ({
   validateModelParams: (_modality: string, model: string, params: Record<string, unknown>) => [model, params],
 }));
 vi.mock("@worker/handlers/step-deps.js", () => ({ stepDepsFor: () => ({}) }));
+vi.mock("@worker/handlers/understand-slots.js", () => ({
+  withUnderstandSlot: async <T>(read: () => Promise<T>): Promise<T> => {
+    if (h.slotFull.value) throw new h.StillRunning(DEADLINE - 60_000);
+    return read();
+  },
+}));
 vi.mock("@worker/handlers/prompt-params.js", () => ({
   takePromptAndValidate: (params: Record<string, unknown>) => ["a cat", undefined, params],
 }));
@@ -76,7 +86,7 @@ vi.mock("@breatic/core", () => ({
   storageKey: vi.fn(),
   env: {},
   NotFoundError: class extends Error {},
-  logger: { info: vi.fn(), warn: h.warn, error: vi.fn(), debug: vi.fn() },
+  logger: { info: h.info, warn: h.warn, error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", () => ({
   buildAgentConfig: vi.fn(),
@@ -97,7 +107,8 @@ vi.mock("@breatic/domain", () => ({
   resolveActiveProvider: vi.fn(),
   nodeHistoryService: { recordGenerationFailure: vi.fn() },
   settleTaskForNode: h.settleTaskForNode,
-  understandMediaAt: vi.fn(),
+  understandMediaAt: h.understandMediaAt,
+  createUsageRecorder: () => ({ recordServiceCall: vi.fn(), settle: async () => 0 }),
   UNDERSTAND_PINS: {},
   extractPromptText: vi.fn(),
 }));
@@ -107,6 +118,7 @@ import { DelayedError, type Job } from "bullmq";
 import { runTask } from "@worker/handlers/dispatch.js";
 
 const DEADLINE = 1_800_000_000_000;
+const CREATED = new Date(DEADLINE - 7_200_000);
 
 /**
  * A job as the queue hands it over.
@@ -120,6 +132,7 @@ function jobOf(data: Record<string, unknown>, attemptsMade = 0): Job {
     attemptsMade,
     opts: { attempts: 3 },
     moveToDelayed: h.moveToDelayed,
+    updateData: h.updateData,
     extendLock: async () => 1,
     data: {
       taskId: "task-1",
@@ -149,7 +162,14 @@ function containerJob(attemptsMade = 0): Job {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  h.getByIdInternal.mockResolvedValue(null);
+  vi.restoreAllMocks();
+  h.slotFull.value = false;
+  h.getByIdInternal.mockResolvedValue({
+    createdAt: CREATED,
+    billedAt: null,
+    providerResultUrl: null,
+    providerTaskId: null,
+  });
   h.markRunning.mockResolvedValue(new Date());
   h.taskDeadline.mockResolvedValue(DEADLINE);
   h.runContainerJob.mockRejectedValue(new h.StillRunning(DEADLINE - 60_000));
@@ -200,7 +220,7 @@ describe("an upstream prediction still running when a pickup ends", () => {
   it("hands the task's deadline to the steps of a canvas generation", async () => {
     await runTask(jobOf({}), "lock-token").catch(() => undefined);
 
-    expect(h.taskDeadline).toHaveBeenCalledWith("task-1");
+    expect(h.taskDeadline).toHaveBeenCalledWith("task-1", CREATED);
     expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ taskId: "task-1", deadlineAt: DEADLINE });
   });
 
@@ -210,6 +230,14 @@ describe("an upstream prediction still running when a pickup ends", () => {
     );
 
     expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ taskId: "task-1", deadlineAt: DEADLINE });
+  });
+
+  it("judges no deadline for a container job, which keeps its own", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(DEADLINE + 1);
+
+    await expect(runTask(containerJob(), "lock-token")).rejects.toBeInstanceOf(DelayedError);
+
+    expect(h.taskDeadline).not.toHaveBeenCalled();
   });
 
   it("fails a run whose task row is gone, without putting it back on the queue", async () => {
@@ -265,5 +293,90 @@ describe("a run past its two-hour deadline", () => {
       expect.any(String),
       expect.objectContaining({ outcome: "failed" }),
     );
+  });
+});
+
+describe("work still going at the two-hour deadline", () => {
+  beforeEach(() => {
+    vi.spyOn(Date, "now").mockReturnValue(DEADLINE);
+  });
+
+  it("settles a generation as expired instead of putting it back on the queue", async () => {
+    const result = await runTask(jobOf({}, 0), "lock-token");
+
+    expect(result).toMatchObject({ failed: true, reason: "expired" });
+    expect(h.moveToDelayed).not.toHaveBeenCalled();
+    expect(h.settleTaskForNode).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      expect.objectContaining({ taskId: "task-1", outcome: "expired" }),
+    );
+  });
+
+  it("settles a reading that never got a place as expired", async () => {
+    h.slotFull.value = true;
+
+    const result = await runTask(
+      jobOf({ taskType: "understand", model: undefined, params: { source_type: "image", source_url: "https://a/cat.png" } }),
+      "lock-token",
+    );
+
+    expect(result).toMatchObject({ failed: true, reason: "expired" });
+    expect(h.understandMediaAt).not.toHaveBeenCalled();
+    expect(h.moveToDelayed).not.toHaveBeenCalled();
+  });
+});
+
+describe("a reading that finds every place taken", () => {
+  it("goes back to the queue before its deadline", async () => {
+    h.slotFull.value = true;
+
+    await expect(
+      runTask(
+        jobOf({ taskType: "understand", model: undefined, params: { source_type: "image", source_url: "https://a/cat.png" } }),
+        "lock-token",
+      ),
+    ).rejects.toBeInstanceOf(DelayedError);
+    expect(h.moveToDelayed).toHaveBeenCalledWith(DEADLINE - 60_000, "lock-token");
+  });
+});
+
+describe("the retry log lines", () => {
+  /**
+   * A job on its second attempt.
+   * @param reported - The attempt the log lines were already written for.
+   * @returns The job.
+   */
+  function retried(reported?: number): Job {
+    const job = jobOf({}, 1);
+    if (reported !== undefined) (job.data as Record<string, unknown>).retryReported = reported;
+    return job;
+  }
+
+  it("warns once on the pickup that starts a retry, and records it", async () => {
+    await runTask(retried(), "lock-token").catch(() => undefined);
+
+    expect(h.warn).toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
+    expect(h.updateData).toHaveBeenCalledWith(expect.objectContaining({ retryReported: 1 }));
+  });
+
+  it("stays quiet on the later pickups of the same attempt", async () => {
+    await runTask(retried(1), "lock-token").catch(() => undefined);
+
+    expect(h.warn).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
+    expect(h.updateData).not.toHaveBeenCalled();
+  });
+
+  it("logs a stored upstream id once per attempt, not on every pickup", async () => {
+    h.getByIdInternal.mockResolvedValue({
+      createdAt: CREATED,
+      billedAt: null,
+      providerResultUrl: null,
+      providerTaskId: "ws-1",
+    });
+
+    await runTask(retried(1), "lock-token").catch(() => undefined);
+
+    expect(h.info).not.toHaveBeenCalledWith(expect.anything(), "async_resume_stored_provider_task");
   });
 });

@@ -23,6 +23,10 @@ vi.mock("@worker/providers/http.js", async (importOriginal) => {
 });
 
 import { runPrediction, type WavespeedEndpoint } from "@worker/providers/wavespeed.js";
+import { StillRunning } from "@worker/providers/still-running.js";
+
+/** A run with nothing submitted yet, whose id goes nowhere. */
+const FRESH = { storedTaskId: null, persistTaskId: async (): Promise<void> => {}, externalTaskId: "t-0" };
 
 const ENDPOINT: WavespeedEndpoint = {
   baseUrl: "https://api.wavespeed.test/v3",
@@ -89,7 +93,7 @@ describe("runPrediction", () => {
       data: { id: "ws-2", outputs: ["https://cdn.test/sync.png"] },
     });
 
-    const run = await runPrediction(ENDPOINT, "vendor/model/t2i", {});
+    const run = await runPrediction(ENDPOINT, "vendor/model/t2i", {}, FRESH);
 
     expect(pollOnceMock).not.toHaveBeenCalled();
     expect(run).toEqual({ outputs: ["https://cdn.test/sync.png"], taskId: "ws-2" });
@@ -112,8 +116,19 @@ describe("runPrediction", () => {
   it("fails when the submit response carries neither an id nor outputs", async () => {
     requestWithRetryMock.mockResolvedValue({ data: {} });
 
-    await expect(runPrediction(ENDPOINT, "vendor/model/t2i", {})).rejects.toThrow(
+    await expect(runPrediction(ENDPOINT, "vendor/model/t2i", {}, FRESH)).rejects.toThrow(
       "No task ID or outputs in WaveSpeed response",
     );
+  });
+
+  it("keeps the new id and hands up a still-going answer from the first question", async () => {
+    requestWithRetryMock.mockResolvedValue({ data: { id: "ws-3" } });
+    pollOnceMock.mockRejectedValue(new StillRunning(123));
+    const persistTaskId = vi.fn(async (): Promise<void> => {});
+
+    await expect(
+      runPrediction(ENDPOINT, "vendor/model/t2v", {}, { storedTaskId: null, persistTaskId, externalTaskId: "t-3" }),
+    ).rejects.toBeInstanceOf(StillRunning);
+    expect(persistTaskId).toHaveBeenCalledWith("ws-3");
   });
 });

@@ -6,10 +6,10 @@
  *
  * A step with no upstream id yet is where money is spent, so past the
  * deadline none is started — not its submit, not the LLM or vision call that
- * builds its body. A step already submitted is asked once more and, when the
- * upstream is still going, goes back to the queue until the deadline, then
- * ends as expired. A pickup of a submitted step makes no outside call before
- * that question.
+ * builds its body. A step already submitted is asked once more; a still-going
+ * answer is handed up as it is, and dispatch decides whether the run goes
+ * back to the queue or has run out of its two hours. A pickup of a submitted
+ * step makes no outside call before that question.
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
@@ -33,6 +33,7 @@ vi.mock("@worker/providers/http.js", async (importOriginal) => {
 const { runCatalogTask } = await import("@worker/providers/run-steps.js");
 const { FAMILIES } = await import("@worker/providers/generate.js");
 const { StillRunning, TaskDeadlinePassed } = await import("@worker/providers/still-running.js");
+const { HttpStatusError } = await import("@worker/providers/http.js");
 
 beforeAll(() => {
   initCore({ DATABASE_URL: "postgres://localhost:5432/breatic_test", WAVESPEED_API_KEY: "test-key" });
@@ -167,13 +168,23 @@ describe("a step already submitted", () => {
     expect(steps[0]!.status).toBe("submitted");
   });
 
-  it("ends as expired when the upstream is still going at the deadline", async () => {
+  it("hands a still-going answer up as it is at the deadline, for dispatch to judge", async () => {
     runPredictionMock.mockRejectedValue(new StillRunning(NOW + 3_000));
     const { deps } = stores([submitted("google/nano-banana-2/text-to-image")]);
 
     await expect(runCatalogTask(deps, ctx(0), "image", "a cat", "nano-banana-2", {}, 1)).rejects.toBeInstanceOf(
-      TaskDeadlinePassed,
+      StillRunning,
     );
+  });
+
+  it("spends an attempt on a 4xx answer past the deadline, not an expiry", async () => {
+    runPredictionMock.mockRejectedValue(new HttpStatusError("wavespeed", 404, "prediction not found"));
+    const { deps, steps } = stores([submitted("google/nano-banana-2/text-to-image")]);
+
+    const err = await runCatalogTask(deps, ctx(-1), "image", "a cat", "nano-banana-2", {}, 1).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(HttpStatusError);
+    expect(steps[0]!.status).toBe("submitted");
   });
 
   it("is asked once more past the deadline, and keeps a result the upstream had ready", async () => {
@@ -195,5 +206,50 @@ describe("a step already submitted", () => {
 
     expect(prepare).not.toHaveBeenCalled();
     expect(runPredictionMock.mock.calls[0]![3]).toMatchObject({ storedTaskId: "pred-kept" });
+  });
+});
+
+describe("a step submitted on this pickup", () => {
+  /**
+   * The upstream takes the submit, then answers the first question with `err`.
+   * @param err - What the first question throws.
+   */
+  function submitThenAsk(err: Error): void {
+    runPredictionMock.mockImplementation(
+      async (_endpoint: unknown, _model: unknown, _body: unknown, resume: { persistTaskId: (id: string) => Promise<void> }) => {
+        await resume.persistTaskId("pred-new");
+        throw err;
+      },
+    );
+  }
+
+  it("keeps the new upstream id and goes back to the queue while the upstream is still going", async () => {
+    submitThenAsk(new StillRunning(NOW + 3_000));
+    const { deps, steps } = stores();
+
+    const err = await runCatalogTask(deps, ctx(60_000), "image", "a cat", "nano-banana-2", {}, 1).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(StillRunning);
+    expect(steps[0]).toMatchObject({ status: "submitted", predictionId: "pred-new" });
+  });
+
+  it("keeps the new upstream id when the first question reaches the deadline, for dispatch to judge", async () => {
+    submitThenAsk(new StillRunning(NOW + 3_000));
+    const { deps, steps } = stores();
+
+    const err = await runCatalogTask(deps, ctx(1), "image", "a cat", "nano-banana-2", {}, 1).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(StillRunning);
+    expect(steps[0]).toMatchObject({ status: "submitted", predictionId: "pred-new" });
+  });
+
+  it("keeps the new upstream id and spends an attempt when the first question gets a 4xx", async () => {
+    submitThenAsk(new HttpStatusError("wavespeed", 404, "prediction not found"));
+    const { deps, steps } = stores();
+
+    const err = await runCatalogTask(deps, ctx(60_000), "image", "a cat", "nano-banana-2", {}, 1).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(HttpStatusError);
+    expect(steps[0]).toMatchObject({ status: "submitted", predictionId: "pred-new" });
   });
 });
