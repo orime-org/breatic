@@ -49,3 +49,29 @@ export async function blankPoint(p: Page, side: BlankSide = 'left'): Promise<{ x
   expect(blank).toBe(true);
   return point;
 }
+
+/** The body's selection as the editor holds it, and the page's selected text. */
+export interface BodySelection {
+  /** The selection's class and, for a node selection, the node's type: `_NodeSelection:divider`. */
+  readonly kind: string;
+  /** What the page shows selected. */
+  readonly text: string;
+}
+
+/**
+ * Reads the body's selection.
+ * @param p - The page.
+ * @returns It.
+ */
+export async function bodySelection(p: Page): Promise<BodySelection> {
+  return p.evaluate((selector) => {
+    const el = document.querySelector(selector) as unknown as {
+      editor: { state: { selection: { constructor: { name: string }; node?: { type: { name: string } } } } };
+    };
+    const { selection } = el.editor.state;
+    return {
+      kind: `${selection.constructor.name}:${selection.node?.type.name ?? ''}`,
+      text: window.getSelection()?.toString() ?? '',
+    };
+  }, EDITOR);
+}

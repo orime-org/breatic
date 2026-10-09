@@ -13,7 +13,7 @@
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { blankPoint, openCommentRail } from '../helpers/document-body';
+import { blankPoint, bodySelection, openCommentRail } from '../helpers/document-body';
 import { pressAndSettle } from '../helpers/editor-keys';
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, VISIBLE_SPACE } from '../helpers/space';
@@ -211,17 +211,14 @@ test('Cmd/Ctrl+click on a divider selects it whole, the body holding or not (A22
   await page.keyboard.type('---');
   const divider = page.locator(`${EDITOR} [data-content-type="divider"]`);
   await expect(divider).toHaveCount(1);
-  const selected = (): Promise<{ kind: string; painted: number }> =>
-    page.evaluate((selector) => {
-      const el = document.querySelector(selector) as unknown as {
-        editor: { state: { selection: { constructor: { name: string }; node?: { type: { name: string } } } } };
-      };
-      const { selection } = el.editor.state;
-      return {
-        kind: `${selection.constructor.name}:${selection.node?.type.name ?? ''}`,
-        painted: document.querySelectorAll(`${selector} [data-content-type="divider"].doc-in-selection, ${selector} .doc-in-selection [data-content-type="divider"]`).length,
-      };
-    }, EDITOR);
+  const selected = async (): Promise<{ kind: string; painted: number }> => ({
+    kind: (await bodySelection(page)).kind,
+    painted: await page.evaluate(
+      (selector) =>
+        document.querySelectorAll(`${selector} [data-content-type="divider"].doc-in-selection, ${selector} .doc-in-selection [data-content-type="divider"]`).length,
+      EDITOR,
+    ),
+  });
 
   await divider.click({ modifiers: [MOD] });
   await expect.poll(selected).toEqual({ kind: '_NodeSelection:divider', painted: 1 });
@@ -247,17 +244,7 @@ test('Shift+click on a divider while the body is let go selects the divider and 
 
   await divider.click({ modifiers: ['Shift'] });
 
-  await expect
-    .poll(() =>
-      page.evaluate((selector) => {
-        const el = document.querySelector(selector) as unknown as {
-          editor: { state: { selection: { constructor: { name: string }; node?: { type: { name: string } } } } };
-        };
-        const { selection } = el.editor.state;
-        return `${selection.constructor.name}:${selection.node?.type.name ?? ''}|${window.getSelection()?.toString() ?? ''}`;
-      }, EDITOR),
-    )
-    .toBe('_NodeSelection:divider|');
+  await expect.poll(() => bodySelection(page)).toEqual({ kind: '_NodeSelection:divider', text: '' });
 });
 
 /**

@@ -18,7 +18,7 @@ import { resolve } from 'node:path';
 import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { blankPoint } from '../helpers/document-body';
+import { blankPoint, bodySelection } from '../helpers/document-body';
 import { pressAndSettle } from '../helpers/editor-keys';
 import { wavBytes } from '../helpers/media-bytes';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
@@ -725,17 +725,7 @@ test('Shift+click on a picture while the body is let go selects the picture and 
 
   await img.click({ modifiers: ['Shift'] });
 
-  await expect
-    .poll(() =>
-      page.evaluate((selector) => {
-        const el = document.querySelector(selector) as unknown as {
-          editor: { state: { selection: { constructor: { name: string }; node?: { type: { name: string } } } } };
-        };
-        const { selection } = el.editor.state;
-        return `${selection.constructor.name}:${selection.node?.type.name ?? ''}|${window.getSelection()?.toString() ?? ''}`;
-      }, EDITOR),
-    )
-    .toBe('_NodeSelection:image|');
+  await expect.poll(() => bodySelection(page)).toEqual({ kind: '_NodeSelection:image', text: '' });
 });
 
 test('a picture is no longer selected once the focus leaves the body, and never re-frames when another is picked (A10)', async () => {
