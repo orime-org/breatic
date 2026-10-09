@@ -12,10 +12,16 @@
  * submit, and on every later pickup ask about the stored id instead.
  */
 
+import { logger } from "@breatic/core";
+
 /** Injected steps of one async generation, so the flow is unit-testable. */
 export interface SubmitOrResumeOptions<T> {
   /** The vendor task id already persisted for this task, or null on first run. */
   storedTaskId: string | null;
+  /** Whether this pickup starts a retry: a submit now may be the upstream's second. */
+  retryStarting: boolean;
+  /** What the submit is, for the log line. */
+  label: string;
   /** Submit the generation to the vendor; resolves to the vendor's task id. */
   submit: () => Promise<string>;
   /** Persist the vendor task id BEFORE the first question, so a later pickup asks about it. */
@@ -40,6 +46,10 @@ export async function submitOrResume<T>(
 ): Promise<T> {
   let taskId = opts.storedTaskId;
   if (taskId === null) {
+    // #1628 monitoring: the attempt before this one may have reached the
+    // upstream and never stored the id, so this submit is a POTENTIAL
+    // duplicate external cost. Feeds the duplicate-cost alarm trend.
+    if (opts.retryStarting) logger.warn({ submit: opts.label }, "provider_reinvoked_on_retry_potential_duplicate_cost");
     taskId = await opts.submit();
     await opts.persistId(taskId);
   }

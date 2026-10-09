@@ -15,7 +15,7 @@
 import { DelayedError, type Job } from "bullmq";
 import type { ResumeContext } from "@worker/providers/shared.js";
 import { runContainerJob } from "@worker/handlers/container/run-container-job.js";
-import { StillRunning, TaskDeadlinePassed } from "@worker/providers/still-running.js";
+import { assertBeforeDeadline, StillRunning, TaskDeadlinePassed } from "@worker/providers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
@@ -309,34 +309,25 @@ function providerOf(modality: string, modelName: string | undefined): string {
 }
 
 /**
- * Write the retry log lines once per retry. A pickup that follows a failed
- * attempt is a retry; the pickups after it within the same attempt are the
- * run coming back to its waiting work, and say nothing new.
+ * Note a retry once. A pickup that follows a failed attempt is a retry; the
+ * pickups after it within the same attempt are the run coming back to its
+ * waiting work, and say nothing new.
  * @param job - The job, whose data records the attempt last reported.
  * @param run - The run.
  * @param run.taskId - The task.
- * @param run.taskType - What kind of task.
  * @param run.storedTaskId - The vendor task id a previous attempt stored, if any.
- * @param run.submitsAgain - Whether a retry without a stored id may submit to the upstream again
- *   from here. A catalog run is not one: its steps hold their own ids, and the step that
- *   submits again raises the warning itself.
  * @returns Whether this pickup starts a retry.
  */
 async function reportRetryOnce(
   job: Job<TaskJobData>,
-  run: { taskId: string; taskType: string; storedTaskId: string | null; submitsAgain: boolean },
+  run: { taskId: string; storedTaskId: string | null },
 ): Promise<boolean> {
   if (job.attemptsMade <= (job.data.retryReported ?? 0)) return false;
-  const attempt = job.attemptsMade + 1;
   if (run.storedTaskId) {
-    logger.info({ taskId: run.taskId, providerTaskId: run.storedTaskId, attempt }, "async_resume_stored_provider_task");
-  } else if (run.submitsAgain) {
-    // #1628 monitoring: a retry with no stored vendor task id re-invokes the
-    // provider from scratch. For SYNC providers the previous attempt may have
-    // already generated + charged upstream (timeout-after-generation window)
-    // → this attempt is a POTENTIAL duplicate external cost. Structured event
-    // feeds the duplicate-cost alarm trend.
-    logger.warn({ taskId: run.taskId, taskType: run.taskType, attempt }, "provider_reinvoked_on_retry_potential_duplicate_cost");
+    logger.info(
+      { taskId: run.taskId, providerTaskId: run.storedTaskId, attempt: job.attemptsMade + 1 },
+      "async_resume_stored_provider_task",
+    );
   }
   await job.updateData({ ...job.data, retryReported: job.attemptsMade });
   return true;
@@ -493,25 +484,18 @@ async function runTaskBody(
   let creditsUsed = 0;
 
   // #1628: threaded into async transports via provider.generateAsync.
+  const storedTaskId = existing?.providerTaskId ?? null;
+  // Where a paid call may repeat, it says so itself: the submit, or the reading.
+  const retryStarting = await reportRetryOnce(job, { taskId, storedTaskId });
   const resume: ResumeContext = {
-    storedTaskId: existing?.providerTaskId ?? null,
+    storedTaskId,
     persistTaskId: (id: string): Promise<void> =>
       taskService.recordProviderTaskId(taskId, id),
     externalTaskId: `breatic-${taskId}`,
+    retryStarting,
   };
   // A container job keeps its id from the first submit, so a pickup never submits it twice.
   const containerRun = source === "mini_tool" && toolId !== undefined && miniToolById(toolId)?.run.kind === "container";
-  // A catalog run keeps an upstream id per step, so only a step can tell whether a retry submits again.
-  const tool = source === "mini_tool" && toolId !== undefined ? miniToolById(toolId) : undefined;
-  const catalogRun =
-    (tool !== undefined && isModelTool(tool)) ||
-    (tool === undefined && taskType in AIGC_TASK_TYPES && AIGC_TASK_TYPES[taskType] !== "three-d");
-  const retryStarting = await reportRetryOnce(job, {
-    taskId,
-    taskType,
-    storedTaskId: resume.storedTaskId,
-    submitsAgain: !containerRun && !catalogRun,
-  });
 
   /**
    * A recorder for the agent run a reading makes (#296). A retried job opens
@@ -534,7 +518,7 @@ async function runTaskBody(
   // container job keeps its own deadline, with a grace for its last report.
   let deadlineAt = Number.POSITIVE_INFINITY;
   try {
-    if (!containerRun) deadlineAt = await deadlineOf(taskId, existing?.createdAt);
+    if (!containerRun) deadlineAt = await taskDeadline(taskId, existing?.createdAt);
     if (source === "mini_tool" && toolId) {
       [providerResult, creditsUsed] = await runMiniTool({
         toolId,
@@ -556,7 +540,8 @@ async function runTaskBody(
       if (nodeIds.length === 0) {
         throw new Error("understand: a reading must name the node it writes to");
       }
-      [providerResult, creditsUsed] = await runUnderstand(params, recorderFor("canvas_understand"));
+      assertBeforeDeadline(deadlineAt);
+      [providerResult, creditsUsed] = await runUnderstand(params, recorderFor("canvas_understand"), retryStarting);
     } else if (taskType in AIGC_TASK_TYPES) {
       [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, {
         resume,
@@ -1451,20 +1436,6 @@ export interface ProviderRun {
   retryStarting: boolean;
 }
 
-/**
- * The deadline of a task whose work goes back to the queue between
- * questions.
- * @param taskId - The task.
- * @param createdAt - When the task row was created, as this pickup read it.
- * @returns The deadline, in epoch milliseconds.
- * @throws {Error} When the task row is gone: there is nothing to run against.
- */
-async function deadlineOf(taskId: string, createdAt: Date | undefined): Promise<number> {
-  const deadlineAt = await taskDeadline(taskId, createdAt);
-  if (deadlineAt === null) throw new Error(`task ${taskId} has no row to run against`);
-  return deadlineAt;
-}
-
 interface RunMiniToolOpts {
   /** The registry id the job names. */
   toolId: string;
@@ -1554,6 +1525,7 @@ export async function runMiniTool(
  * what this path sends has to be able to call it.
  * @param params - Task params carrying `source_type`, `source_url` and an optional prompt.
  * @param usage - The task's recorder; the call is recorded on it.
+ * @param retryStarting - Whether this pickup starts a retry: the reading is then a second paid call.
  * @returns A `[result, credits]` tuple: one output holding the text, and the credits to charge.
  * @throws {MediaUnavailable} when the address yields no usable media.
  * @throws {UnderstandRefused} when the service would not answer.
@@ -1563,7 +1535,12 @@ export async function runMiniTool(
 export async function runUnderstand(
   params: Record<string, unknown>,
   usage: UsageRecorder,
+  retryStarting: boolean,
 ): Promise<[Record<string, unknown>, number]> {
+  // #1628 monitoring: a retried reading reads the media and calls the service
+  // again, so it is a POTENTIAL duplicate external cost. Feeds the
+  // duplicate-cost alarm trend.
+  if (retryStarting) logger.warn({ source: "understand" }, "provider_reinvoked_on_retry_potential_duplicate_cost");
   const sourceType = params.source_type as string;
   const cfg = getUnderstandConfig();
   const question = understandQuestion(params.prompt, sourceType, params.reader_locale);

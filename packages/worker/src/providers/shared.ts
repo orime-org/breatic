@@ -75,6 +75,11 @@ export interface ResumeContext {
    * identical submit is rejected as a duplicate instead of re-generating.
    */
   externalTaskId: string;
+  /**
+   * Whether this pickup starts a retry and this run has not stored an id yet:
+   * a submit now may be the upstream's second (#1628 monitoring).
+   */
+  retryStarting: boolean;
 }
 
 // ── Parameter Validation (Lenient) ───────────────────────────────────

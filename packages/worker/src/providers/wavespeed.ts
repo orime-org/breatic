@@ -109,6 +109,8 @@ export async function runPrediction(
 
   const result = await submitOrResume({
     storedTaskId: resume.storedTaskId,
+    retryStarting: resume.retryStarting,
+    label: resume.externalTaskId,
     submit,
     // A sync answer's "" is not an id: storing it would make a retry poll
     // a prediction that does not exist.

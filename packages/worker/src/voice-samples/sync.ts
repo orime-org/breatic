@@ -175,6 +175,7 @@ export function resumablePredict(
             submitted.set(job.key, { id, at: waiting.now() });
           },
           externalTaskId: job.key,
+          retryStarting: false,
         });
       } catch (err) {
         if (!(err instanceof StillRunning)) {

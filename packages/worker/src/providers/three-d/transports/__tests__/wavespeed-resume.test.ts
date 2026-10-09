@@ -68,7 +68,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
     const r = await generate("a chair", RESOLVED, { quality: "high" }, {
       storedTaskId: null,
       persistTaskId,
-      externalTaskId: "breatic-task-abc",
+      externalTaskId: "breatic-task-abc", retryStarting: false,
     }, LATER);
 
     expect(requestWithRetryMock).toHaveBeenCalledTimes(1);
@@ -88,7 +88,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
     const r = await generate("a chair", RESOLVED, {}, {
       storedTaskId: "ws-stored-42",
       persistTaskId,
-      externalTaskId: "breatic-task-abc",
+      externalTaskId: "breatic-task-abc", retryStarting: false,
     }, LATER);
 
     expect(requestWithRetryMock).toHaveBeenCalledTimes(0); // ⑦ core: no duplicate generation
@@ -103,7 +103,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
       const persistTaskId = vi.fn(async () => {});
 
       await expect(
-        generate("a chair", RESOLVED, {}, { storedTaskId: null, persistTaskId, externalTaskId: "x" }, Date.now() - 1),
+        generate("a chair", RESOLVED, {}, { storedTaskId: null, persistTaskId, externalTaskId: "x", retryStarting: false }, Date.now() - 1),
       ).rejects.toBeInstanceOf(TaskDeadlinePassed);
       expect(requestWithRetryMock).not.toHaveBeenCalled();
     });
@@ -115,7 +115,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
         "a chair",
         RESOLVED,
         {},
-        { storedTaskId: "ws-stored-42", persistTaskId: vi.fn(), externalTaskId: "x" },
+        { storedTaskId: "ws-stored-42", persistTaskId: vi.fn(), externalTaskId: "x", retryStarting: false },
         LATER,
       ).catch((e: unknown) => e);
 
@@ -131,7 +131,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
           "a chair",
           RESOLVED,
           {},
-          { storedTaskId: "ws-stored-42", persistTaskId: vi.fn(), externalTaskId: "x" },
+          { storedTaskId: "ws-stored-42", persistTaskId: vi.fn(), externalTaskId: "x", retryStarting: false },
           Date.now() - 1,
         ),
       ).rejects.toBeInstanceOf(StillRunning);

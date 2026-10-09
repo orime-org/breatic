@@ -26,7 +26,7 @@ import { runPrediction, type WavespeedEndpoint } from "@worker/providers/wavespe
 import { StillRunning } from "@worker/providers/still-running.js";
 
 /** A run with nothing submitted yet, whose id goes nowhere. */
-const FRESH = { storedTaskId: null, persistTaskId: async (): Promise<void> => {}, externalTaskId: "t-0" };
+const FRESH = { storedTaskId: null, persistTaskId: async (): Promise<void> => {}, externalTaskId: "t-0", retryStarting: false };
 
 const ENDPOINT: WavespeedEndpoint = {
   baseUrl: "https://api.wavespeed.test/v3",
@@ -62,7 +62,7 @@ describe("runPrediction", () => {
     const run = await runPrediction(ENDPOINT, "vendor/model/t2v", { text: "hi", duration: 5 }, {
       storedTaskId: null,
       persistTaskId,
-      externalTaskId: "t-1",
+      externalTaskId: "t-1", retryStarting: false,
     });
 
     expect(requestWithRetryMock.mock.calls[0]![0]).toBe("https://api.wavespeed.test/v3/vendor/model/t2v");
@@ -78,7 +78,7 @@ describe("runPrediction", () => {
     const run = await runPrediction(ENDPOINT, "vendor/model/t2v", { text: "hi" }, {
       storedTaskId: "ws-9",
       persistTaskId: vi.fn(async (): Promise<void> => {}),
-      externalTaskId: "t-1",
+      externalTaskId: "t-1", retryStarting: false,
     });
 
     expect(requestWithRetryMock).not.toHaveBeenCalled();
@@ -106,7 +106,7 @@ describe("runPrediction", () => {
     const run = await runPrediction(ENDPOINT, "vendor/model/t2i", {}, {
       storedTaskId: null,
       persistTaskId,
-      externalTaskId: "t-1",
+      externalTaskId: "t-1", retryStarting: false,
     });
 
     expect(persistTaskId).not.toHaveBeenCalled();
@@ -127,7 +127,7 @@ describe("runPrediction", () => {
     const persistTaskId = vi.fn(async (): Promise<void> => {});
 
     await expect(
-      runPrediction(ENDPOINT, "vendor/model/t2v", {}, { storedTaskId: null, persistTaskId, externalTaskId: "t-3" }),
+      runPrediction(ENDPOINT, "vendor/model/t2v", {}, { storedTaskId: null, persistTaskId, externalTaskId: "t-3", retryStarting: false }),
     ).rejects.toBeInstanceOf(StillRunning);
     expect(persistTaskId).toHaveBeenCalledWith("ws-3");
   });

@@ -52,6 +52,9 @@ const h = vi.hoisted(() => {
 vi.mock("@worker/providers/still-running.js", () => ({
   StillRunning: h.StillRunning,
   TaskDeadlinePassed: h.TaskDeadlinePassed,
+  assertBeforeDeadline: (deadlineAt: number): void => {
+    if (Date.now() >= deadlineAt) throw new h.TaskDeadlinePassed();
+  },
 }));
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.taskDeadline }));
 vi.mock("@worker/handlers/container/run-container-job.js", () => ({
@@ -248,7 +251,7 @@ describe("an upstream prediction still running when a pickup ends", () => {
   });
 
   it("fails a run whose task row is gone, without putting it back on the queue", async () => {
-    h.taskDeadline.mockResolvedValue(null);
+    h.taskDeadline.mockRejectedValue(new Error("task task-1 has no row to run against"));
 
     await runTask(jobOf({}, 2), "lock-token").catch(() => undefined);
 

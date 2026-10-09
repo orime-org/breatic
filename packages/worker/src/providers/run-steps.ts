@@ -36,7 +36,11 @@ export interface RunTaskContext {
   studioId: string | null;
   /** The task's two-hour deadline, in epoch milliseconds. */
   deadlineAt: number;
-  /** Whether this pickup starts a retry: a step submitted now may be the upstream's second. */
+  /**
+   * Whether this pickup starts a retry. The run hands it on only to the first
+   * step it runs, and only when that step holds no upstream id: the attempt
+   * before stopped at that step, and never reached the ones after it.
+   */
   retryStarting: boolean;
 }
 
@@ -135,23 +139,12 @@ async function predict(
   try {
     // Building the body (a description, a prompt rewrite) can run past the
     // deadline that let this step start; nothing new is submitted after it.
-    if (step.predictionId === null) {
-      assertBeforeDeadline(ctx.deadlineAt);
-      // #1628 monitoring: the attempt before this one may have reached the
-      // upstream with this step's submit and never stored its id, so this
-      // submit is a POTENTIAL duplicate external cost. Feeds the duplicate-cost
-      // alarm trend.
-      if (ctx.retryStarting) {
-        logger.warn(
-          { taskId: ctx.taskId, step: step.position, endpoint: step.endpoint },
-          "provider_reinvoked_on_retry_potential_duplicate_cost",
-        );
-      }
-    }
+    if (step.predictionId === null) assertBeforeDeadline(ctx.deadlineAt);
     return await runPrediction(resolved, step.endpoint, body, {
       storedTaskId: step.predictionId,
       persistTaskId: (id: string): Promise<void> => deps.steps.markSubmitted(step.id, id),
       externalTaskId: `breatic-${ctx.taskId}-${step.position}`,
+      retryStarting: ctx.retryStarting,
     });
   } catch (err) {
     if (err instanceof UpstreamTaskFailed) await deps.steps.markFailed(step.id, err.upstreamError);
@@ -422,6 +415,7 @@ export async function runCatalogTask(
   const entry = entryOf(modality, resolved.modelName);
   const steps = await deps.steps.ensureSteps(ctx.taskId, planSteps(entry, params));
   const carried: Carried = { ids: {}, elementIds: [], cached: [], predictions: [], inlineCostUsd: 0 };
+  let retryStarting = ctx.retryStarting;
 
   for (const step of steps) {
     if (step.status === "failed") {
@@ -433,8 +427,10 @@ export async function runCatalogTask(
       // Past the deadline nothing new is started; a step already submitted
       // is still asked once, and keeps a result the upstream had ready.
       if (step.predictionId === null) assertBeforeDeadline(ctx.deadlineAt);
+      const stepCtx = { ...ctx, retryStarting: retryStarting && step.predictionId === null };
+      retryStarting = false;
       try {
-        output = await runStep(deps, ctx, resolved, entry, step, prompt, params, carried);
+        output = await runStep(deps, stepCtx, resolved, entry, step, prompt, params, carried);
       } catch (err) {
         await retireGone(deps, ctx, carried, err);
         throw err;

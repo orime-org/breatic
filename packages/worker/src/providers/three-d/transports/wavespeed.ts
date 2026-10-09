@@ -142,6 +142,8 @@ export async function generate(
 
   const result = await submitOrResume({
     storedTaskId: resume.storedTaskId,
+    retryStarting: resume.retryStarting,
+    label: resume.externalTaskId,
     submit,
     persistId: resume.persistTaskId,
     poll,
