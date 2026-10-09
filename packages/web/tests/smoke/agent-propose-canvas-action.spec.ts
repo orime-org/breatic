@@ -173,18 +173,17 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
   ).toEqual([]);
 
   // What the reader is left looking at: the node that generates, selected,
-  // with its panel open and the prompt already in the box. The bracket is
-  // what says the rest is theirs to do.
+  // with its panel open and the prompt already in the box, the empty node
+  // @'d there and a note saying to put their picture in it first
+  // (inner#1315).
   const selected = visibleSpace(page).locator('.react-flow__node.selected');
   await expect(selected).toHaveCount(1, { timeout: 20_000 });
   const prompt = page.getByTestId('generate-prompt-editor');
   await expect(prompt).toBeVisible({ timeout: 20_000 });
   const written = await prompt.innerText();
   expect(written.length, `the prompt box is empty. Read: "${written}"`).toBeGreaterThan(0);
-  expect(
-    written,
-    `nothing in the prompt marks what is left for the reader. Read: "${written}"`,
-  ).toContain('[');
+  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(1);
+  await expect(prompt.locator('[data-prompt-note]')).not.toHaveCount(0);
 
   // A6: one press put the whole group down, so one undo takes all of it back.
   // The click moves focus off the prompt editor first -- it keeps a history of
@@ -285,15 +284,14 @@ test('starts a storyboard from its template, and reminds the reader to fill it i
 
   const prompt = page.getByTestId('generate-prompt-editor');
   await expect(prompt).toBeVisible({ timeout: 20_000 });
-  await expect(prompt).toContainText('5 rows and 5 columns');
-  // The reference spot survives the rewrite as a bracket telling the reader to
-  // @ the photo; nothing is @'d for them.
-  await expect(prompt).toContainText('[📎');
-  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(0);
+  // The prompt is the agent's own, rewritten from the template's, and the
+  // photo's empty node is @'d where it speaks of it (inner#1315).
+  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(1);
+  await expect(prompt).not.toContainText('[📎');
   await expect(page.getByTestId('generate-model-trigger')).toContainText('Nano Banana Pro');
 });
 
-test('chains a generated character into a template storyboard, a reference mark asking for it @needs-model', async () => {
+test('chains a generated character into a template storyboard, a ref @-ing it @needs-model', async () => {
   test.setTimeout(240_000);
   const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
@@ -307,7 +305,7 @@ test('chains a generated character into a template storyboard, a reference mark 
 
   await expect(page.getByTestId('message-bubble')).toHaveCount(2, { timeout: 200_000 });
   await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 200_000 });
-  const marks = await page.evaluate(async () => {
+  const refs = await page.evaluate(async () => {
     const list = await (await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })).json();
     const id = list?.data?.conversations?.[0]?.id as string;
     const read = await (await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })).json();
@@ -315,17 +313,17 @@ test('chains a generated character into a template storyboard, a reference mark 
       parts?: {
         type?: string;
         output?: { placed?: boolean };
-        input?: { nodes?: { template?: string; prompt?: { slot?: { kind?: string } }[] }[] };
+        input?: { nodes?: { template?: string; prompt?: { ref?: number }[] }[] };
       }[];
     }[];
     const placed = messages
       .flatMap((m) => m.parts ?? [])
       .filter((part) => part.type === 'tool-propose_canvas_action' && part.output?.placed === true);
     const grid = placed.flatMap((part) => part.input?.nodes ?? []).find((n) => n.template === 'storyboard-grid-25');
-    return grid?.prompt?.flatMap((s) => (s.slot?.kind ? [s.slot.kind] : [])) ?? null;
+    return grid?.prompt?.flatMap((s) => (s.ref === undefined ? [] : [s.ref])) ?? null;
   });
-  expect(marks, 'a placed proposal carried the storyboard template').not.toBeNull();
-  expect(marks).toContain('asset');
+  expect(refs, 'a placed proposal carried the storyboard template').not.toBeNull();
+  expect(refs).toHaveLength(1);
 });
 
 test('writes the proposal prompt in the language the reader asked in @needs-model', async () => {
