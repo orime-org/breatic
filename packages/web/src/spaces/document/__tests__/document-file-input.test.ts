@@ -21,6 +21,7 @@ import {
   pastedFiles,
   type FilesArrival,
 } from '@web/spaces/document/document-file-input';
+import { gapBetween } from './textblocks';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -136,10 +137,8 @@ describe('the gap a paste goes into (A3)', () => {
     ]);
     editor.setTextCursorPosition(idOf(editor, 'B'), 'end');
 
-    expect(anchorAtCaret(editor.prosemirrorView!.state)).toEqual({
-      anchor: { before: idOf(editor, 'B'), after: idOf(editor, 'C') },
-      quoted: true,
-    });
+    const { doc } = editor.prosemirrorView!.state;
+    expect(anchorAtCaret(editor.prosemirrorView!.state)).toBe(gapBetween(doc, idOf(editor, 'B'), idOf(editor, 'C')));
   });
 
   it('is above an empty line the caret is on, which keeps the caret', () => {
@@ -147,10 +146,8 @@ describe('the gap a paste goes into (A3)', () => {
     const empty = (editor.document as Seen[])[1]!.id;
     editor.setTextCursorPosition(empty, 'start');
 
-    expect(anchorAtCaret(editor.prosemirrorView!.state).anchor).toEqual({
-      before: idOf(editor, 'A'),
-      after: empty,
-    });
+    const { doc } = editor.prosemirrorView!.state;
+    expect(anchorAtCaret(editor.prosemirrorView!.state)).toBe(gapBetween(doc, idOf(editor, 'A'), empty));
   });
 });
 
@@ -170,7 +167,7 @@ describe('the gap a paste goes into with a block selected (A3)', () => {
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)));
     const selectedId = (editor.document as Seen[])[1]!.id;
 
-    expect(anchorAtCaret(view.state).anchor).toEqual({ before: selectedId, after: idOf(editor, 'B') });
+    expect(anchorAtCaret(view.state)).toBe(gapBetween(view.state.doc, selectedId, idOf(editor, 'B')));
   });
 });
 
@@ -185,10 +182,7 @@ describe('the gap a drop goes into (A2)', () => {
     // after A, the same one a dragged row lands in.
     const insideA = 4;
 
-    expect(anchorAtGap(doc, insideA).anchor).toEqual({
-      before: idOf(editor, 'A'),
-      after: idOf(editor, 'B'),
-    });
+    expect(anchorAtGap(doc, insideA)).toBe(gapBetween(doc, idOf(editor, 'A'), idOf(editor, 'B')));
   });
 });
 
@@ -212,8 +206,7 @@ describe('a paste of files', () => {
 
     expect(sink).toHaveBeenCalledWith({
       files: [PNG],
-      anchor: { before: idOf(editor, 'A'), after: idOf(editor, 'B') },
-      quoted: false,
+      gap: gapBetween(view.state.doc, idOf(editor, 'A'), idOf(editor, 'B')),
     });
     expect(view.state.doc.eq(before)).toBe(true);
     expect(view.state.selection).toBeInstanceOf(TextSelection);
@@ -271,7 +264,7 @@ describe('a file dropped on an editable body (A1–A3)', () => {
     view.dom.firstElementChild!.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(true);
-    expect(sink).toHaveBeenCalledWith({ files: [PNG], ...anchorAtGap(view.state.doc, inAlpha) });
+    expect(sink).toHaveBeenCalledWith({ files: [PNG], gap: anchorAtGap(view.state.doc, inAlpha) });
   });
 });
 
@@ -291,9 +284,7 @@ describe('the line a file drag shows (A2)', () => {
     expect(shown?.orientation).toBe('block-horizontal');
     const $shown = view.state.doc.resolve(shown!.pos);
     expect($shown.parent.inlineContent).toBe(false);
-    const { anchor } = anchorAtGap(view.state.doc, inWords);
-    expect($shown.nodeBefore?.attrs['id'] ?? null).toBe(anchor.before);
-    expect($shown.nodeAfter?.attrs['id'] ?? null).toBe(anchor.after);
+    expect(shown!.pos).toBe(anchorAtGap(view.state.doc, inWords));
   });
 
   it('shows no line over a read-only body, where a drop does nothing', () => {

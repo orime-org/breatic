@@ -21,6 +21,7 @@ import {
   documentUploadsExtension,
   uploadSlots,
 } from '@web/spaces/document/document-upload-slots';
+import { gapBetween } from './textblocks';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -127,7 +128,7 @@ async function settle(): Promise<void> {
  * @param editor - The editor.
  * @param uploader - The uploader.
  * @param files - The files.
- * @param quoted - Whether the gap is inside a quote.
+ * @param quoted - Whether the block before the gap is quoted.
  */
 async function start(
   editor: Editor,
@@ -136,10 +137,9 @@ async function start(
   quoted = false,
 ): Promise<void> {
   const [a, b] = blocks(editor);
-  await uploader.start(editor.prosemirrorView!, files, () => ({
-    anchor: { before: a!.id, after: b!.id },
-    quoted,
-  }));
+  if (quoted) editor.updateBlock(a!.id, { props: { quoted: true } } as never);
+  const view = editor.prosemirrorView!;
+  await uploader.start(view, files, () => gapBetween(view.state.doc, a!.id, b!.id));
   await settle();
 }
 

@@ -119,8 +119,7 @@ describe('the file picker (A1)', () => {
   });
 
   it('hands the chosen files over with the way to make their gap, and makes none itself', () => {
-    const anchor = { before: 'a', after: 'b' };
-    const gap = vi.fn(() => ({ anchor, quoted: true }));
+    const gap = vi.fn(() => 7);
     const { input, start } = setup(gap);
     vi.spyOn(input, 'click').mockImplementation(() => undefined);
     fireEvent.click(screen.getByTestId('pick'));
@@ -135,7 +134,7 @@ describe('the file picker (A1)', () => {
   });
 
   it('makes no gap and starts nothing when the picker is closed with no file', () => {
-    const gap = vi.fn(() => ({ anchor: { before: null, after: null }, quoted: false }));
+    const gap = vi.fn(() => 1);
     const { input, start } = setup(gap);
     vi.spyOn(input, 'click').mockImplementation(() => undefined);
     fireEvent.click(screen.getByTestId('pick'));

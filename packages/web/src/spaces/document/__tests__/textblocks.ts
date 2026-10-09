@@ -77,3 +77,23 @@ export function fallbackForFirstTextblock(view: EditorView): Element {
   view.dispatch(view.state.tr.replaceWith(first.before, first.after, fallback.create({ originalName: 'x' })));
   return view.dom.querySelector('[data-unsupported-block]')!;
 }
+
+/**
+ * The position of the gap between two blocks, named by their ids: before
+ * `after` when it is given, after `before` otherwise, else the document's end.
+ * @param doc - The document.
+ * @param before - The block before the gap, or null.
+ * @param after - The block after the gap, or null.
+ * @returns The position.
+ */
+export function gapBetween(doc: PMNode, before: string | null, after: string | null): number {
+  let found: number | undefined;
+  const wanted = after ?? before;
+  doc.descendants((node, pos) => {
+    if (found !== undefined) return false;
+    if (node.attrs['id'] !== wanted || wanted === null) return true;
+    found = after !== null ? pos : pos + node.nodeSize;
+    return false;
+  });
+  return found ?? doc.content.size - 1;
+}

@@ -231,7 +231,7 @@ function createDocumentEditor(
       onFiles: (arrival: FilesArrival) => {
         const view = viewOf(editor);
         if (view !== null) {
-          void uploader.start(view, arrival.files, () => arrival);
+          void uploader.start(view, arrival.files, () => arrival.gap);
         }
       },
     }),

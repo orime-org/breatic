@@ -10,41 +10,40 @@
  * sees it and nothing about it reaches Yjs or the undo stack. When the upload
  * finishes, its block is inserted where the placeholder was drawn.
  *
- * A batch remembers block ids, and {@link resolveSlotPosition} finds the place
- * again in whatever the document is now. A change arriving from Yjs — a
- * co-editor's edit, or this client's own undo — reaches ProseMirror as one
- * transaction that replaces the whole body, and mapping through it pushes
- * every position to the end (`document-comment-draft-range.ts`); the ids
- * survive it. The reader's own edits are mapped: when one takes away both
- * blocks beside a gap, the gap is carried through it, as ProseMirror's upload
- * example carries its placeholder, and named again by the blocks now beside
- * it. The placeholder and the insert both ask {@link resolveSlotPosition}, so a
- * placeholder drawn in one place and a block landing in another cannot happen.
+ * A batch remembers its gap as a position between two blocks, carried the way
+ * the comment draft carries its range (`document-comment-draft-range.ts`):
+ * the reader's own edits move it through `tr.mapping`; a change that comes in
+ * through Yjs — a co-editor's edit, which reaches ProseMirror as one
+ * replacement of the whole body — is followed by the Yjs relative position
+ * taken after the change before it; the reader's undo or redo hands back the
+ * position as it stood before the edit it takes back (`keepOnUndoStack`). A
+ * position that lands inside a block is lifted to the gap under that block's
+ * line. The placeholder and the insert both ask {@link resolveSlotPosition},
+ * so a placeholder drawn in one place and a block landing in another cannot
+ * happen. Design 3.3 holds the transition table.
  */
 
 import { blockToNode, createExtension } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
-import { ySyncPluginKey } from 'y-prosemirror';
+import {
+  absolutePositionToRelativePosition,
+  relativePositionToAbsolutePosition,
+  yUndoPluginKey,
+} from 'y-prosemirror';
+import type * as Y from 'yjs';
 
 import { keyedStore } from '@web/lib/keyed-store';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
+import { syncBindingOf } from '@web/spaces/document/document-link-tracking';
+import { QUOTED } from '@web/spaces/document/document-list-block';
 import { rowById } from '@web/spaces/document/document-row-by-id';
+import { keepOnUndoStack, type UndoManagerLike } from '@web/spaces/document/document-undo-selection';
+import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 
-/** Where a batch was dropped: the blocks on either side of the gap. */
-export interface SlotAnchor {
-  /** The block before the gap; null at the head of its level. */
-  readonly before: string | null;
-  /** The block after the gap; null at the end of its level. */
-  readonly after: string | null;
-}
-
-/** Where a batch of files lands, and whether that gap is inside a quote. */
-export interface UploadGap {
-  readonly anchor: SlotAnchor;
-  readonly quoted: boolean;
-}
+/** Where a batch of files lands: a position between two blocks. */
+export type UploadGap = number;
 
 /** Why a slot stopped, as the placeholder shows it. */
 export interface SlotFailure {
@@ -71,7 +70,10 @@ export interface UploadSlot {
 }
 
 /** One pick, drop or paste: its files, in the order they came in. */
-export interface UploadBatch extends SlotAnchor {
+export interface UploadBatch {
+  readonly id: string;
+  /** The gap the files go into. */
+  readonly gap: UploadGap;
   readonly slots: readonly UploadSlot[];
 }
 
@@ -120,13 +122,10 @@ function rangeOf(doc: PMNode, id: string | null): { from: number; to: number } |
 }
 
 /**
- * Where the k-th file of a batch goes in the document as it is now.
- *
- * In order: before the nearest later file of the batch already inserted; after
- * the nearest earlier one; before `after`; after `before`; the end of the
- * document. Every file therefore keeps the order it came in, whichever
- * finishes first. `after` is asked before `before` so the file stays directly
- * above `after` when a block is put between the two.
+ * Where the k-th file of a batch goes in the document as it is now: before the
+ * nearest later file of the batch already inserted, after the nearest earlier
+ * one, or at the batch's gap. Every file therefore keeps the order it came in,
+ * whichever finishes first.
  * @param batch - The batch.
  * @param k - The file's index in it.
  * @param doc - The document now.
@@ -141,61 +140,79 @@ export function resolveSlotPosition(batch: UploadBatch, k: number, doc: PMNode):
     const range = rangeOf(doc, batch.slots[earlier]!.blockId);
     if (range !== undefined) return range.to;
   }
-  const after = rangeOf(doc, batch.after);
-  if (after !== undefined) return after.from;
-  const before = rangeOf(doc, batch.before);
-  if (before !== undefined) return before.to;
-  // Both gone in a change from Yjs: the end of the top-level block group,
-  // which is the document's only child.
+  return batch.gap;
+}
+
+/**
+ * The gap between blocks a position stands for. One inside a block is lifted
+ * to the gap under that block's line: the head of its nested blocks when it
+ * has some, as "insert below" places a row (`insertRowForMenu`), or the gap
+ * after it.
+ * @param doc - The document.
+ * @param pos - A position.
+ * @returns A position between two blocks.
+ */
+export function blockGapAt(doc: PMNode, pos: number): number {
+  // The top-level block group, which is the document's only child, spans 1 to size - 1.
+  const $at = doc.resolve(Math.min(Math.max(pos, 1), doc.content.size - 1));
+  for (let depth = $at.depth; depth > 0; depth -= 1) {
+    if ($at.node(depth).type.name !== 'blockGroup') continue;
+    if (depth === $at.depth) return $at.pos;
+    const row = $at.node(depth + 1);
+    const children = row.lastChild;
+    if (row.childCount > 1 && children?.type.name === 'blockGroup') {
+      return $at.before(depth + 1) + 1 + row.firstChild!.nodeSize + 1;
+    }
+    return $at.after(depth + 1);
+  }
   return doc.content.size - 1;
 }
 
 /**
- * The blocks on either side of a position, lifted out of any block it is inside.
+ * Whether a block inserted at a gap goes in quoted: as the block before it, or
+ * the block after it at the head of a level.
  * @param doc - The document.
- * @param pos - A position.
- * @returns The gap's anchor.
+ * @param at - A position between two blocks.
+ * @returns True when quoted.
  */
-function anchorAround(doc: PMNode, pos: number): SlotAnchor {
-  let $at = doc.resolve(pos);
-  for (let depth = $at.depth; depth > 0; depth -= 1) {
-    if ($at.node(depth).type.name !== 'blockGroup') continue;
-    if (depth < $at.depth) $at = doc.resolve($at.after(depth + 1));
-    break;
-  }
-  return {
-    before: ($at.nodeBefore?.attrs['id'] as string | undefined) ?? null,
-    after: ($at.nodeAfter?.attrs['id'] as string | undefined) ?? null,
-  };
+function quotedAt(doc: PMNode, at: number): boolean {
+  const $at = doc.resolve(at);
+  const beside = $at.nodeBefore ?? $at.nodeAfter;
+  return beside?.firstChild?.attrs[QUOTED] === true;
 }
 
+/** Each batch's gap as Yjs names it, by batch id. */
+type NamedGaps = ReadonlyMap<string, Y.RelativePosition>;
+
 /**
- * The batches after one of the reader's own edits: a batch whose gap has lost
- * every block that named it is named again where the edit carried the gap.
+ * The batches with their gaps carried across a change to the body.
  * @param batches - The batches.
- * @param tr - The edit.
- * @returns The batches, the same array when none lost its place.
+ * @param tr - The change.
+ * @param state - The state after it.
+ * @param named - The gaps as Yjs named them before a change from Yjs; on the
+ *   reader's undo or redo, as named before the edit it takes back.
+ * @returns The batches, the same array when no gap moved.
  */
-function followLocalEdit(batches: readonly UploadBatch[], tr: Transaction): readonly UploadBatch[] {
+function carryGaps(
+  batches: readonly UploadBatch[],
+  tr: Transaction,
+  state: EditorState,
+  named: NamedGaps,
+): readonly UploadBatch[] {
+  const bound = fromYjs(tr) ? syncBindingOf(state) : null;
   let changed = false;
   const next = batches.map((batch) => {
-    const named = [batch.before, batch.after, ...batch.slots.map((slot) => slot.blockId)];
-    if (named.some((id) => rangeOf(tr.doc, id) !== undefined)) return batch;
-    const k = batch.slots.findIndex((slot) => slot.phase !== 'inserted');
-    const was = resolveSlotPosition(batch, Math.max(k, 0), tr.before);
+    const name = named.get(batch.id);
+    const found =
+      bound !== null && name !== undefined
+        ? relativePositionToAbsolutePosition(bound.doc, bound.type, name, bound.mapping)
+        : null;
+    const gap = blockGapAt(tr.doc, found ?? tr.mapping.map(batch.gap));
+    if (gap === batch.gap) return batch;
     changed = true;
-    return { ...batch, ...anchorAround(tr.doc, tr.mapping.map(was)) };
+    return { ...batch, gap };
   });
   return changed ? next : batches;
-}
-
-/**
- * Whether a transaction is a change arriving from Yjs.
- * @param tr - The transaction.
- * @returns True for a co-editor's change or a Yjs undo.
- */
-function fromYjs(tr: Transaction): boolean {
-  return (tr.getMeta(ySyncPluginKey) as { isChangeOrigin?: boolean } | undefined)?.isChangeOrigin === true;
 }
 
 /**
@@ -350,39 +367,84 @@ const watch = watchPluginState(uploadBatchesIn);
 /** Hears about every change to the uploads in flight. */
 export const onUploadSlotsChange: (listener: () => void) => () => void = watch.onChange;
 
-/**
- * The plugin.
- * @returns A fresh plugin.
- */
-function uploadsPlugin(): Plugin<UploadsState> {
-  return new Plugin<UploadsState>({
-    key: documentUploadsKey,
-    state: {
-      init: () => ({ batches: [], decorations: DecorationSet.empty }),
-      apply: (tr, previous, _old, state) => {
-        const action = tr.getMeta(documentUploadsKey) as UploadsAction | undefined;
-        if (action === undefined && !tr.docChanged) return previous;
-        const reduced =
-          action === undefined ? previous.batches : reduce(previous.batches, action);
-        const batches = tr.docChanged && !fromYjs(tr) ? followLocalEdit(reduced, tr) : reduced;
-        return { batches, decorations: decorate(batches, state.doc) };
-      },
-    },
-    props: {
-      decorations: (state) => documentUploadsKey.getState(state)?.decorations,
-    },
-    view: watch.view,
-  });
-}
+/** The key the gaps are kept under on an undo stack item. */
+const GAPS_ON_UNDO = {};
 
 /**
  * The extension that carries the plugin.
  * @returns The extension, for the assembly to register.
  */
-export const documentUploadsExtension = createExtension(() => ({
-  key: 'document-uploads',
-  prosemirrorPlugins: [uploadsPlugin()],
-}) as never);
+export const documentUploadsExtension = createExtension(() => {
+  // Each batch's gap as Yjs names it, taken again after every change.
+  let named: NamedGaps = new Map();
+  // The names as they stood when the current Yjs transaction began.
+  let beforeYjs: NamedGaps = named;
+  // The names the last undo or redo handed back, until that change is applied.
+  let handed: NamedGaps | null = null;
+  return ({
+    key: 'document-uploads',
+    prosemirrorPlugins: [
+      new Plugin<UploadsState>({
+        key: documentUploadsKey,
+        state: {
+          init: () => ({ batches: [], decorations: DecorationSet.empty }),
+          apply: (tr, previous, _old, state) => {
+            const action = tr.getMeta(documentUploadsKey) as UploadsAction | undefined;
+            if (action === undefined && !tr.docChanged) return previous;
+            const reduced =
+              action === undefined ? previous.batches : reduce(previous.batches, action);
+            const batches = tr.docChanged ? carryGaps(reduced, tr, state, handed ?? named) : reduced;
+            return { batches, decorations: decorate(batches, state.doc) };
+          },
+        },
+        props: {
+          decorations: (state) => documentUploadsKey.getState(state)?.decorations,
+        },
+        view: (view) => {
+          const watching = watch.view(view);
+          const doc = syncBindingOf(view.state)?.doc;
+          const undo = (
+            yUndoPluginKey.getState(view.state) as { undoManager?: UndoManagerLike } | undefined
+          )?.undoManager;
+          const stopKeeping =
+            doc === undefined || undo === undefined
+              ? undefined
+              : keepOnUndoStack(doc, undo, GAPS_ON_UNDO, () => beforeYjs, (stored) => {
+                handed = (stored as NamedGaps | undefined) ?? null;
+              });
+          /** Keeps the names as they stand before a Yjs transaction, for its undo stack item. */
+          const onBeforeAll = (): void => {
+            beforeYjs = named;
+          };
+          doc?.on('beforeAllTransactions', onBeforeAll);
+          return {
+            update: (next, prev): void => {
+              const batches = uploadBatchesIn(next.state);
+              if (next.state.doc !== prev.doc || batches !== uploadBatchesIn(prev)) {
+                handed = null;
+                const bound = syncBindingOf(next.state);
+                named = new Map(
+                  bound === null
+                    ? []
+                    : batches.map((batch) => [
+                      batch.id,
+                      absolutePositionToRelativePosition(batch.gap, bound.type, bound.mapping) as Y.RelativePosition,
+                    ]),
+                );
+              }
+              watching.update?.(next, prev);
+            },
+            destroy: (): void => {
+              stopKeeping?.();
+              doc?.off('beforeAllTransactions', onBeforeAll);
+              watching.destroy?.();
+            },
+          };
+        },
+      }),
+    ],
+  }) as never;
+});
 
 /**
  * Dispatches one action.
@@ -396,13 +458,13 @@ function send(view: EditorView, action: UploadsAction): void {
 /**
  * Starts a batch: one placeholder per file, all at one gap.
  * @param view - The editor view.
- * @param anchor - The gap.
+ * @param gap - The gap, a position between two blocks.
  * @param names - The files' names, in the order they came in.
  * @returns The slots' ids, in the same order.
  */
 export function addUploadBatch(
   view: EditorView,
-  anchor: SlotAnchor,
+  gap: UploadGap,
   names: readonly string[],
 ): string[] {
   const slots = names.map((name) => ({
@@ -413,7 +475,7 @@ export function addUploadBatch(
     failure: null,
     blockId: null,
   }));
-  send(view, { kind: 'add', batch: { ...anchor, slots } });
+  send(view, { kind: 'add', batch: { id: crypto.randomUUID(), gap: blockGapAt(view.state.doc, gap), slots } });
   return slots.map((slot) => slot.id);
 }
 
@@ -463,11 +525,13 @@ export function insertSlotBlock(
     const k = batch.slots.findIndex((slot) => slot.id === slotId);
     if (k < 0 || batch.slots[k]!.phase !== 'uploading') continue;
     const blockId = crypto.randomUUID();
-    const node = blockToNode({ ...block, id: blockId } as never, view.state.schema);
+    const at = resolveSlotPosition(batch, k, view.state.doc);
+    const props = { ...block.props, [QUOTED]: quotedAt(view.state.doc, at) };
+    const node = blockToNode({ ...block, props, id: blockId } as never, view.state.schema);
     undo?.stopCapturing();
     view.dispatch(
       view.state.tr
-        .insert(resolveSlotPosition(batch, k, view.state.doc), node)
+        .insert(at, node)
         .setMeta(documentUploadsKey, { kind: 'inserted', slotId, blockId }),
     );
     undo?.stopCapturing();

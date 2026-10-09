@@ -25,7 +25,6 @@ import {
   uploadFailureMessageKey,
   uploadRetryCanChange,
 } from '@web/spaces/canvas/upload-failure';
-import { QUOTED } from '@web/spaces/document/document-list-block';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import {
   addUploadBatch,
@@ -70,11 +69,6 @@ export interface DocumentUploader {
   remove(view: EditorView, slotId: string): void;
 }
 
-/** A file that was admitted, and what it needs to become a block. */
-interface Held {
-  readonly file: File;
-  readonly quoted: boolean;
-}
 
 /** The failure a body that stopped being editable meanwhile shows. */
 const READ_ONLY: SlotFailure = {
@@ -119,7 +113,7 @@ function failureOf(err: unknown, file: File): SlotFailure {
  * @returns The uploader.
  */
 export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUploader {
-  const held = new Map<string, Held>();
+  const held = new Map<string, File>();
 
   /**
    * Runs one upload to its end.
@@ -127,18 +121,18 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
    * @param slotId - Which slot.
    */
   async function run(view: EditorView, slotId: string): Promise<void> {
-    const entry = held.get(slotId);
-    if (entry === undefined) return;
+    const file = held.get(slotId);
+    if (file === undefined) return;
     deps.register(slotId);
-    const sizing = deps.measure(entry.file);
+    const sizing = deps.measure(file);
     let stored: StoredUpload;
     try {
-      stored = await deps.upload(entry.file, (progress) => {
+      stored = await deps.upload(file, (progress) => {
         patchUploadSlot(view, slotId, { progress });
       });
     } catch (err) {
       deps.unregister(slotId);
-      patchUploadSlot(view, slotId, { phase: 'failed', failure: failureOf(err, entry.file) });
+      patchUploadSlot(view, slotId, { phase: 'failed', failure: failureOf(err, file) });
       return;
     }
     // Still in flight, and checked for being writable, until the size is in.
@@ -147,7 +141,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
     if (stored.fileUrl === undefined || stored.kind === undefined) {
       patchUploadSlot(view, slotId, {
         phase: 'failed',
-        failure: failureOf(new UploadFailedError('upload'), entry.file),
+        failure: failureOf(new UploadFailedError('upload'), file),
       });
       return;
     }
@@ -155,7 +149,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
     if (!isMediaBlockType(stored.kind)) {
       patchUploadSlot(view, slotId, {
         phase: 'failed',
-        failure: failureOf(new UploadFailedError('unsupportedType'), entry.file),
+        failure: failureOf(new UploadFailedError('unsupportedType'), file),
       });
       return;
     }
@@ -170,8 +164,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
         type: stored.kind,
         props: {
           url: stored.fileUrl,
-          name: entry.file.name,
-          [QUOTED]: entry.quoted,
+          name: file.name,
           ...(size !== undefined && { mediaWidth: size.width, mediaHeight: size.height }),
         },
       },
@@ -198,9 +191,9 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       if (admitted.length === 0) return;
       const gap = place();
       if (gap === null) return;
-      const ids = addUploadBatch(view, gap.anchor, admitted.map((file) => file.name));
+      const ids = addUploadBatch(view, gap, admitted.map((file) => file.name));
       ids.forEach((slotId, k) => {
-        held.set(slotId, { file: admitted[k]!, quoted: gap.quoted });
+        held.set(slotId, admitted[k]!);
         void run(view, slotId);
       });
     },

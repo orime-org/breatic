@@ -16,6 +16,7 @@
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 import { runBlockType } from '@web/spaces/document/document-block-run';
 import { DIVIDER } from '@web/spaces/document/document-divider';
+import { rowById } from '@web/spaces/document/document-row-by-id';
 import {
   type HandleEditor,
   type PressedBlock,
@@ -148,7 +149,7 @@ export function insertBelow(
  *   `insertBlocks`, when the pressed block is no longer in the document.
  */
 export function mediaGapBelow(editor: HandleEditor, row: PressedBlock): UploadGap {
-  return gapAbove(editor, insertRowForMenu(editor, row), row);
+  return gapAbove(editor, insertRowForMenu(editor, row));
 }
 
 /**
@@ -161,24 +162,22 @@ export function mediaGapBelow(editor: HandleEditor, row: PressedBlock): UploadGa
  *   no longer in the document.
  */
 export function mediaGapOnRow(editor: HandleEditor, row: PressedBlock): UploadGap {
-  const gap = gapAbove(editor, row.id, row);
+  const gap = gapAbove(editor, row.id);
   editor.setTextCursorPosition(row.id, 'start');
   return gap;
 }
 
 /**
- * The gap just above a block, quoted as the row a menu was opened on.
+ * The gap just above a block.
  * @param editor - The editor.
  * @param id - The block the gap is above.
- * @param row - The row the menu was opened on.
  * @returns The gap.
+ * @throws {Error} When the document no longer holds the block.
  */
-function gapAbove(editor: HandleEditor, id: string, row: PressedBlock): UploadGap {
-  const before = editor.getPrevBlock(id) as { id: string } | undefined;
-  return {
-    anchor: { before: before?.id ?? null, after: id },
-    quoted: row.props?.[QUOTED] === true,
-  };
+function gapAbove(editor: HandleEditor, id: string): UploadGap {
+  const row = rowById(editor.prosemirrorState.doc, id);
+  if (row === undefined) throw new Error(`Block with ID ${id} not found`);
+  return row.from;
 }
 
 /**

@@ -26,7 +26,6 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, type EditorState } from '@tiptap/pm/state';
 
 import { landingFor } from '@web/spaces/document/document-drag-move';
-import { QUOTED } from '@web/spaces/document/document-list-block';
 import type { UploadGap } from '@web/spaces/document/document-upload-slots';
 
 /** BlockNote's paste hook, as this editor's options take it. */
@@ -35,8 +34,9 @@ export type PasteHandler = NonNullable<
 >;
 
 /** Files that arrived, with the gap they go into. */
-export interface FilesArrival extends UploadGap {
+export interface FilesArrival {
   readonly files: readonly File[];
+  readonly gap: UploadGap;
 }
 
 /** Where arriving files are handed over. */
@@ -70,35 +70,6 @@ export function pastedFiles(data: DataTransfer): File[] | null {
 }
 
 /**
- * Whether a block's own node sits in a quote.
- * @param container - A block container.
- * @returns True when quoted.
- */
-function quotedOf(container: PMNode | null | undefined): boolean {
-  return container?.firstChild?.attrs[QUOTED] === true;
-}
-
-/**
- * The gap at a position between two blocks.
- * @param doc - The document.
- * @param at - A position between two block containers.
- * @returns The gap; its quoting is the block's above, or the one below at the
- *   head of a level.
- */
-function gapAt(doc: PMNode, at: number): UploadGap {
-  const $at = doc.resolve(at);
-  const before = $at.nodeBefore;
-  const after = $at.nodeAfter;
-  return {
-    anchor: {
-      before: (before?.attrs['id'] as string | undefined) ?? null,
-      after: (after?.attrs['id'] as string | undefined) ?? null,
-    },
-    quoted: before !== null ? quotedOf(before) : quotedOf(after),
-  };
-}
-
-/**
  * Where between the blocks a drop at a document position lands: the place a
  * dragged row would land there.
  * @param doc - The document.
@@ -116,7 +87,7 @@ function fileLanding(doc: PMNode, at: number): number {
  * @returns The gap.
  */
 export function anchorAtGap(doc: PMNode, at: number): UploadGap {
-  return gapAt(doc, fileLanding(doc, at));
+  return fileLanding(doc, at);
 }
 
 /**
@@ -147,9 +118,9 @@ export function anchorAtCaret(state: EditorState): UploadGap {
     const start = $head.before(depth);
     const emptyLine =
       container.firstChild?.isTextblock === true && container.firstChild.content.size === 0;
-    return gapAt(state.doc, emptyLine ? start : start + container.nodeSize);
+    return emptyLine ? start : start + container.nodeSize;
   }
-  return gapAt(state.doc, state.doc.content.size - 1);
+  return state.doc.content.size - 1;
 }
 
 /**
@@ -174,7 +145,7 @@ export function documentFileDropExtension(sink?: FilesSink): ExtensionFactoryIns
               const files = Array.from(event.dataTransfer?.files ?? []);
               const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
               if (sink === undefined || files.length === 0 || at === null) return true;
-              sink({ files, ...anchorAtGap(view.state.doc, at.pos) });
+              sink({ files, gap: anchorAtGap(view.state.doc, at.pos) });
               return true;
             },
           },
@@ -197,7 +168,7 @@ export function filesPasteHandler(sink: FilesSink, next: PasteHandler): PasteHan
     if (files === null) return next(context);
     const view = context.editor.prosemirrorView;
     if (view !== undefined && view !== null) {
-      sink({ files, ...anchorAtCaret(view.state) });
+      sink({ files, gap: anchorAtCaret(view.state) });
     }
     return true;
   };

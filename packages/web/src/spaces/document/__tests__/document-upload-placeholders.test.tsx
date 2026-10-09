@@ -21,6 +21,7 @@ import {
   patchUploadSlot,
 } from '@web/spaces/document/document-upload-slots';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
+import { gapBetween } from './textblocks';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -62,7 +63,9 @@ function open(readOnly = false): {
   );
   let slot = '';
   act(() => {
-    [slot] = addUploadBatch(editor.prosemirrorView!, { before: id, after: null }, ['take2.mp4']);
+    [slot] = addUploadBatch(
+      editor.prosemirrorView!,
+      gapBetween(editor.prosemirrorView!.state.doc, id, null), ['take2.mp4']);
   });
   return { editor, slot, uploader };
 }
@@ -188,7 +191,9 @@ describe('a placeholder whose neighbours change (A4, A6)', () => {
     );
     let slot = '';
     act(() => {
-      [slot] = addUploadBatch(editor.prosemirrorView!, { before: a!, after: b! }, ['clip.mp4']);
+      [slot] = addUploadBatch(
+      editor.prosemirrorView!,
+      gapBetween(editor.prosemirrorView!.state.doc, a!, b!), ['clip.mp4']);
     });
     act(() => {
       patchUploadSlot(editor.prosemirrorView!, slot, {
