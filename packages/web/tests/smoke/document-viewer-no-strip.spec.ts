@@ -363,3 +363,64 @@ test('a viewer plays an audio the owner added, and files pasted or dropped do no
   await expect(viewer.locator('[data-testid="doc-upload-placeholder"]')).toHaveCount(0);
   await expect(viewer.locator(`${EDITOR} .bn-block-content`)).toHaveCount(before);
 });
+
+/**
+ * Set the second account's role from the owner's roster.
+ * @param page - The owner's page, inside the project.
+ * @param role - The role's label as the roster shows it.
+ */
+async function setTheRole(page: Page, role: 'Editor' | 'Viewer'): Promise<void> {
+  const { modal, row } = await openTheRoster(page);
+  await expect(row).toHaveCount(1, { timeout: 15_000 });
+  const memberId = ((await row.getAttribute('data-testid')) ?? '').replace('members-modal-row-', '');
+  await page.getByTestId(`members-modal-role-${memberId}`).click();
+  await page.getByRole('option', { name: role }).click();
+  await expect(page.getByTestId(`members-modal-role-${memberId}`)).toHaveText(role);
+  await closeTheRoster(modal);
+}
+
+/**
+ * The background the page draws the selection with, on the first row.
+ * @param page - The page.
+ * @returns The computed colour.
+ */
+async function selectionColour(page: Page): Promise<string> {
+  return page.locator(`${EDITOR} p`).first().evaluate((el) => getComputedStyle(el, '::selection').backgroundColor);
+}
+
+test('a viewer selects from blank space beside the column and sees the highlight (inner#1127 A20)', async () => {
+  await openTheSpace(viewer);
+  const editor = viewer.locator(EDITOR);
+  const line = (await viewer.locator(`${EDITOR} p`).first().boundingBox())!;
+  const box = (await editor.boundingBox())!;
+
+  await viewer.mouse.move(box.x - 30, line.y + line.height / 2);
+  await viewer.mouse.down();
+  await viewer.mouse.move(line.x + 80, line.y + line.height / 2, { steps: 6 });
+  await viewer.mouse.up();
+
+  expect(await viewer.evaluate(() => window.getSelection()?.toString().length ?? 0)).toBeGreaterThan(0);
+  expect(await selectionColour(viewer)).not.toBe('rgba(0, 0, 0, 0)');
+  await expect(editor).not.toHaveAttribute('data-body-holds', /.*/);
+});
+
+test('an editor turned viewer while the body is open still sees the highlight (inner#1127 A20)', async () => {
+  await setTheRole(owner, 'Editor');
+  await viewer.reload();
+  await openTheSpace(viewer);
+  const editor = viewer.locator(EDITOR);
+  await expect(editor).toHaveAttribute('contenteditable', 'true', { timeout: 20_000 });
+  await viewer.locator(`${EDITOR} p`).first().click();
+
+  await setTheRole(owner, 'Viewer');
+  await expect(editor).toHaveAttribute('contenteditable', 'false', { timeout: 20_000 });
+  await expect(editor).not.toHaveAttribute('data-body-holds', /.*/);
+
+  const line = (await viewer.locator(`${EDITOR} p`).first().boundingBox())!;
+  await viewer.mouse.move(line.x + 2, line.y + line.height / 2);
+  await viewer.mouse.down();
+  await viewer.mouse.move(line.x + 80, line.y + line.height / 2, { steps: 6 });
+  await viewer.mouse.up();
+  expect(await viewer.evaluate(() => window.getSelection()?.toString().length ?? 0)).toBeGreaterThan(0);
+  expect(await selectionColour(viewer)).not.toBe('rgba(0, 0, 0, 0)');
+});
