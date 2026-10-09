@@ -15,7 +15,20 @@
  */
 
 import type { NodeType } from '@breatic/shared';
-import type { MiniToolSlotValue } from '@breatic/shared/mini-tools';
+import { castDraft } from 'immer';
+
+import { miniToolById, type MiniToolSlotValue } from '@breatic/shared/mini-tools';
+
+import {
+  EMPTY_DRAWING,
+  redone,
+  undone,
+  withStep,
+  type DrawingDraft,
+  type DrawStep,
+  type DrawTool,
+  type MaskDisplayColor,
+} from '@web/stores/drawing-draft';
 import { immer } from 'zustand/middleware/immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
@@ -152,6 +165,13 @@ export interface MiniToolDraft {
    * the box and source pixels with it, the same size the export crops in.
    */
   readonly sourceSize: { readonly width: number; readonly height: number } | null;
+  /** What the reader has drawn; null on a tool without a drawing (inner#1302 §6.1). */
+  readonly drawing: DrawingDraft | null;
+  /**
+   * Run was pressed and the drawing is being exported or uploaded. Only the
+   * run of this opening writes it; the layer, the panel and undo read it.
+   */
+  readonly exporting: boolean;
 }
 
 /** The target's box as the crop box last saw it in the node. */
@@ -306,6 +326,25 @@ export interface CanvasSessionState {
   resetMiniToolSource: (sourceContent: string, params: Readonly<Record<string, unknown>>) => void;
   /** Record the source size the crop box read off the shown element. */
   setMiniToolSourceSize: (size: { width: number; height: number }) => void;
+  /** Pick the shape a press on the node draws. */
+  setDrawingTool: (tool: DrawTool) => void;
+  /** Set the brush diameter, in percent of the source's shorter side. */
+  setDrawingSize: (size: number) => void;
+  /** Set the sketch ink. */
+  setDrawingColor: (color: string) => void;
+  /** Set the colour the mask is shown in. */
+  setMaskColor: (color: MaskDisplayColor) => void;
+  /** Take a drawing step: a finished stroke or shape, or a clear. */
+  addDrawingStep: (step: DrawStep) => void;
+  /** Take the last drawing step back. */
+  undoDrawing: () => void;
+  /** Put the last undone drawing step back. */
+  redoDrawing: () => void;
+  /**
+   * Mark the open draft's run as exporting or done. Written only by the run
+   * pressed in opening `session`; a later opening is left alone.
+   */
+  setMiniToolExporting: (exporting: boolean, session: number) => void;
   /** Make a node the focus crop target; the current target again changes nothing, null ends it. */
   setFocusTarget: (target: { nodeId: string; content: string } | null) => void;
   /** Write the marquee and the ratio item holding it. */
@@ -483,6 +522,15 @@ function claimTheNextClick(
 }
 
 /**
+ * Replace the open draft's drawing.
+ * @param s - The session state being written.
+ * @param next - The drawing's next value from its current one.
+ */
+function updateDrawing(s: CanvasSessionState, next: (drawing: DrawingDraft) => DrawingDraft): void {
+  if (s.miniTool?.drawing) s.miniTool = { ...s.miniTool, drawing: castDraft(next(s.miniTool.drawing)) };
+}
+
+/**
  * Create one canvas's session store.
  * @returns The store.
  */
@@ -550,6 +598,8 @@ export function createCanvasSessionStore(): CanvasSessionStore {
               params: { ...start.params },
               slots: {},
               sourceSize: null,
+              drawing: miniToolById(toolId)?.drawing === undefined ? null : castDraft(EMPTY_DRAWING),
+              exporting: false,
             };
           }
         }),
@@ -580,12 +630,30 @@ export function createCanvasSessionStore(): CanvasSessionStore {
       resetMiniToolSource: (sourceContent, params) =>
         set((s) => {
           if (s.miniTool) {
-            s.miniTool = { ...s.miniTool, sourceContent, params: { ...s.miniTool.params, ...params }, sourceSize: null };
+            const drawing = s.miniTool.drawing === null ? null : { ...s.miniTool.drawing, steps: [], undone: [] };
+            s.miniTool = {
+              ...s.miniTool,
+              sourceContent,
+              params: { ...s.miniTool.params, ...params },
+              sourceSize: null,
+              drawing,
+            };
           }
         }),
       setMiniToolSourceSize: (size) =>
         set((s) => {
           if (s.miniTool) s.miniTool = { ...s.miniTool, sourceSize: { width: size.width, height: size.height } };
+        }),
+      setDrawingTool: (tool) => set((s) => updateDrawing(s, (d) => ({ ...d, tool }))),
+      setDrawingSize: (size) => set((s) => updateDrawing(s, (d) => ({ ...d, size }))),
+      setDrawingColor: (color) => set((s) => updateDrawing(s, (d) => ({ ...d, color }))),
+      setMaskColor: (maskColor) => set((s) => updateDrawing(s, (d) => ({ ...d, maskColor }))),
+      addDrawingStep: (step) => set((s) => updateDrawing(s, (d) => withStep(d, step))),
+      undoDrawing: () => set((s) => updateDrawing(s, undone)),
+      redoDrawing: () => set((s) => updateDrawing(s, redone)),
+      setMiniToolExporting: (exporting, session) =>
+        set((s) => {
+          if (s.miniTool !== null && s.panelSession === session) s.miniTool = { ...s.miniTool, exporting };
         }),
       setFocusTarget: (target) =>
         set((s) => {

@@ -122,6 +122,8 @@ describe('mini-tool draft (inner#888 §7.2)', () => {
       params: { creativity: 0 },
       slots: {},
       sourceSize: null,
+      drawing: null,
+      exporting: false,
     });
   });
 
