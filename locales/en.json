@@ -709,6 +709,9 @@
       "storageFull": "Studio storage is full. Uploading is unavailable.",
       "failed": "Upload failed."
     },
+    "paste": {
+      "failed": "Paste failed."
+    },
     "minimap": {
       "label": "Canvas minimap"
     },

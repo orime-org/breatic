@@ -222,7 +222,8 @@ export function renderProductGuide(): string {
       `${String(getAgentConfig().attachment_max_items)} pictures, videos, sounds, PDF, Word (.docx), Excel or ` +
       "plain text files to the next message; pasting such files into the box (a screenshot, a copied file) " +
       "attaches them the same way. Canvas nodes are handed over with " +
-      `${quoted(t("canvas.contextMenu.addToAgent"))} on their right-click menu; if the model list cannot be read at that moment, nothing is attached and ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} on their right-click menu, or by copying them and pasting into the box, which attaches the same chip; ` +
+      "if the model list cannot be read at that moment, nothing is attached and " +
       `${quoted(t("canvas.generatePanel.catalogUnavailable"))} shows. In a document, the selected text or a whole ` +
       "line goes in as one text attachment named after its first line, from the selection bar or the six-dot " +
       "handle's menu (see the document section); the same line handed over again leaves one chip holding what " +
@@ -290,8 +291,9 @@ export function renderProductGuide(): string {
     "- Right-click an empty spot on the canvas (inside a group's box you get the group's menu instead) and pick " +
       `${typeLabel("text")}, ${typeLabel("image")}, ${typeLabel("audio")} or ${typeLabel("video")}; the node ` +
       `appears centred where you clicked. The same menu has ${quoted(t("canvas.contextMenu.paste"))}, which puts ` +
-      "copied nodes or copied text at the spot you clicked, a step down and to the right while another node " +
-      "already starts at that spot; a copied picture, screenshot or file does nothing there, so paste those with Cmd/Ctrl+V.",
+      "copied nodes, copied text or a copied picture or screenshot at the spot you clicked, a step down and to " +
+      "the right while another node already starts at that spot; a file copied from the computer's file browser " +
+      "pastes there as its name in a text node, so paste files with Cmd/Ctrl+V.",
     "- On a canvas space a floating menu of icons runs along the left edge; each names itself when hovered. " +
       `${quoted(t("menu.item.nodes"))} (a sparkle) opens a list of the same types; the node appears in the ` +
       "middle of the view.",

@@ -81,7 +81,12 @@ vi.mock('@web/components/ui/tooltip', () => ({
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import * as canvasSpace from '@web/data/yjs/canvas-space';
 import * as blankPng from '@web/spaces/canvas/empty-image/generate-blank-png';
-import { serializeNodes } from '@web/spaces/canvas/node-clipboard';
+import {
+  CLIPBOARD_VERSION,
+  serializeClipboard,
+  type ClipboardNodeType,
+} from '@web/spaces/canvas/node-clipboard';
+import { canvasApi } from '@web/data/api/canvas';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import { useCanvasStore, useUIStore } from '@web/stores';
 import { canvasGraphs } from '@web/stores/canvas-graph';
@@ -220,6 +225,45 @@ function clickPane(pane: Element, at = { x: 0, y: 0 }): void {
     pane.dispatchEvent(new MouseEvent('click', pointerInit));
   });
 }
+
+/**
+ * The canvas's clipboard text for nodes written in the short form these tests
+ * use: each node gets an id, and its name and content go into its data.
+ * @param nodes - The nodes; `space` names the Space they were copied in.
+ * @returns The clipboard text.
+ */
+function clip(
+  nodes: ReadonlyArray<{
+    type: ClipboardNodeType;
+    position: { x: number; y: number };
+    name?: string;
+    content?: string;
+    space?: string;
+  }>,
+): string {
+  const space = nodes[0]?.space;
+  const payloadNodes = nodes.map((node, i) => ({
+    id: `copied-${i}`,
+    type: node.type,
+    position: node.position,
+    data: {
+      ...(node.name === undefined ? {} : { name: node.name }),
+      ...(node.content === undefined ? {} : { content: node.content }),
+    },
+  }));
+  return serializeClipboard({
+    version: CLIPBOARD_VERSION,
+    ...(space === undefined ? {} : { source: { projectId: 'p', spaceId: space } }),
+    picked: payloadNodes.map((node) => node.id),
+    nodes: payloadNodes,
+    edges: [],
+  });
+}
+
+// A paste registers what it names with the server before it writes.
+beforeEach(() => {
+  vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {} });
+});
 
 /**
  * Dispatch a `paste` event on the document with a stubbed clipboard payload.
@@ -2060,7 +2104,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     } as const;
     mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [target] }));
     const addNode = vi
-      .spyOn(canvasSpace, 'addNode')
+      .spyOn(canvasSpace, 'writeSnapshotNodes')
       .mockImplementation(() => undefined);
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -2084,7 +2128,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     // Right-click paste on empty canvas → clone written to Yjs + flagged for
     // auto-selection on mirror-back (same mechanism as ⌘V).
     dispatchPaste(
-      serializeNodes([
+      clip([
         {
           type: 'image',
           position: { x: 10, y: 20 },
@@ -2094,8 +2138,8 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       ]),
     );
     await waitFor(() => expect(addNode).toHaveBeenCalledTimes(1));
-    const pasted = addNode.mock
-      .calls[0][2] as unknown as canvasSpace.CanvasNodeView;
+    const [pasted] = addNode.mock.calls[0][1] as unknown as canvasSpace.CanvasNodeView[];
+    if (pasted === undefined) throw new Error('a pasted node expected');
     mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [target, pasted] }));
     rerender(
       <QueryClientProvider client={client}>
@@ -2279,7 +2323,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   it('opening the panel on a co-selected host clears the co-selection', async () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
     const addNode = vi
-      .spyOn(canvasSpace, 'addNode')
+      .spyOn(canvasSpace, 'writeSnapshotNodes')
       .mockImplementation(() => undefined);
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -2291,16 +2335,14 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     // Paste TWO nodes — both get auto-selected once mirrored back.
     dispatchPaste(
-      serializeNodes([
+      clip([
         { type: 'image', position: { x: 0, y: 0 }, name: 'One', content: 'a.png' },
         { type: 'image', position: { x: 100, y: 0 }, name: 'Two', content: 'b.png' },
       ]),
     );
-    await waitFor(() => expect(addNode).toHaveBeenCalledTimes(2));
-    const one = addNode.mock
-      .calls[0][2] as unknown as canvasSpace.CanvasNodeView;
-    const two = addNode.mock
-      .calls[1][2] as unknown as canvasSpace.CanvasNodeView;
+    await waitFor(() => expect(addNode).toHaveBeenCalledTimes(1));
+    const [one, two] = addNode.mock.calls[0][1] as unknown as canvasSpace.CanvasNodeView[];
+    if (one === undefined || two === undefined) throw new Error('two pasted nodes expected');
     mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [one, two] }));
     rerender(
       <QueryClientProvider client={client}>
@@ -2441,24 +2483,24 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     addNode.mockRestore();
   });
 
-  it('paste a marked node payload clones the node (offset +24), not a text node', () => {
+  it('paste a marked node payload clones the node (offset +24), not a text node', async () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi
-      .spyOn(canvasSpace, 'addNode')
+      .spyOn(canvasSpace, 'writeSnapshotNodes')
       .mockImplementation(() => undefined);
     renderSpace();
 
     dispatchPaste(
-      serializeNodes([
+      clip([
         { type: 'image', position: { x: 10, y: 20 }, name: 'Hero', content: 'a.png', space: 's' },
       ]),
     );
 
-    expect(addNode).toHaveBeenCalledTimes(1);
-    const node = addNode.mock.calls[0][2];
-    expect(node.type).toBe('image');
-    expect(node.data.content).toBe('a.png');
-    expect(node.position).toEqual({ x: 34, y: 44 });
+    await waitFor(() => expect(addNode).toHaveBeenCalledTimes(1));
+    const [node] = addNode.mock.calls[0][1];
+    expect(node?.type).toBe('image');
+    expect(node?.data.content).toBe('a.png');
+    expect(node?.position).toEqual({ x: 34, y: 44 });
     addNode.mockRestore();
   });
 
@@ -2571,7 +2613,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     // its text box belongs to the box, even when it carries canvas nodes.
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi
-      .spyOn(canvasSpace, 'addNode')
+      .spyOn(canvasSpace, 'writeSnapshotNodes')
       .mockImplementation(() => undefined);
     renderSpace();
     const agent = document.createElement('div');
@@ -2582,7 +2624,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     useUIStore.setState({ activeRegion: 'agent' });
     input.focus();
 
-    dispatchPaste(serializeNodes([{ type: 'text', position: { x: 0, y: 0 }, content: 'n' }]));
+    dispatchPaste(clip([{ type: 'text', position: { x: 0, y: 0 }, content: 'n' }]));
 
     expect(addNode).not.toHaveBeenCalled();
     expect(useUIStore.getState().activeRegion).toBe('agent');
@@ -2590,10 +2632,10 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     addNode.mockRestore();
   });
 
-  it('takes canvas nodes pasted after a click on a button in the agent column', () => {
+  it('takes canvas nodes pasted after a click on a button in the agent column', async () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi
-      .spyOn(canvasSpace, 'addNode')
+      .spyOn(canvasSpace, 'writeSnapshotNodes')
       .mockImplementation(() => undefined);
     renderSpace();
     const agent = document.createElement('div');
@@ -2604,9 +2646,9 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     useUIStore.setState({ activeRegion: 'agent' });
     button.focus();
 
-    dispatchPaste(serializeNodes([{ type: 'text', position: { x: 0, y: 0 }, content: 'n' }]));
+    dispatchPaste(clip([{ type: 'text', position: { x: 0, y: 0 }, content: 'n' }]));
 
-    expect(addNode).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(addNode).toHaveBeenCalledTimes(1));
     // The pasted node is selected on the canvas, so undo, delete and Escape
     // that follow it act there.
     expect(useUIStore.getState().activeRegion).toBe('space');

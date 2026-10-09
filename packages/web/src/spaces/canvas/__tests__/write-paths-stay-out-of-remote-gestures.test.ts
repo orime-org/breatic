@@ -169,16 +169,16 @@ describe('every write path reads the buffer through the door', () => {
 
   it('the clipboard records the document position, not the one in flight', () => {
     const view = docGeometryView(bufferMidGesture(), documentNodes(), REMOTE);
-    const captured = captureClipboard([FLYING_ID], view, new Map(), 'space');
-    expect(captured[0]?.position).toEqual(DOC_AT);
+    const captured = captureClipboard([FLYING_ID], view, () => ({}), [], { projectId: 'p', spaceId: 'space' });
+    expect(captured.nodes[0]?.position).toEqual(DOC_AT);
   });
 
   it('a duplicate places its clone at the document position', () => {
     // `planDuplicateGroupGrowth` reads the same array the clipboard capture
     // does, so the capture standing in for it is the same read.
     const view = docGeometryView(bufferMidGesture(), documentNodes(), REMOTE);
-    const captured = captureClipboard([GROUP_ID, FLYING_ID], view, new Map(), 'space');
-    const flying = captured.find((n) => n.position.x === DOC_AT.x);
+    const captured = captureClipboard([GROUP_ID, FLYING_ID], view, () => ({}), [], { projectId: 'p', spaceId: 'space' });
+    const flying = captured.nodes.find((n) => n.position.x === DOC_AT.x);
     expect(flying).toBeDefined();
   });
 });

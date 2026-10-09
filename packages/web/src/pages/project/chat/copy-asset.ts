@@ -13,7 +13,7 @@ import * as React from 'react';
 
 import { useKeyedCopy } from '@web/pages/project/chat/copy-answer';
 import type { ChatAsset } from '@web/pages/project/chat/types';
-import { serializeNodes, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
+import { CLIPBOARD_VERSION, serializeClipboard, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 
 /**
  * The address a copy hands to the canvas: the thumbnail.
@@ -35,14 +35,15 @@ function addressOf(asset: ChatAsset): string {
  * @returns The canvas's clipboard text for one image node from outside.
  */
 export function clipboardTextFor(asset: ChatAsset): string {
+  // The id only names the node inside this payload; a paste gives it a new one.
   const node: ClipboardNode = {
+    id: 'external',
     type: 'image',
     position: { x: 0, y: 0 },
-    ...(asset.title !== '' ? { name: asset.title } : {}),
-    content: addressOf(asset),
+    data: { ...(asset.title !== '' ? { name: asset.title } : {}), content: addressOf(asset) },
     external: true,
   };
-  return serializeNodes([node]);
+  return serializeClipboard({ version: CLIPBOARD_VERSION, picked: [node.id], nodes: [node], edges: [] });
 }
 
 /** One row's copy state, shared by every button that copies a picture of it. */

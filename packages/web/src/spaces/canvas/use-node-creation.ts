@@ -375,9 +375,11 @@ export function useNodeCreation(
 }
 
 /**
- * Step a paste's clones past nodes already where they land. Only the nodes
- * that sit on the canvas by themselves move — top-level clones and lone
- * members rejoining an existing Group; members of a cloned Group follow it.
+ * Step a paste's clones past nodes already where they land. Every clone is
+ * measured where it is painted (inner#1235 A20), so a member of a cloned
+ * Group landing on a taken spot steps the batch too; only the nodes that sit
+ * on the canvas by themselves move — top-level clones and lone members
+ * rejoining an existing Group — and members of a cloned Group follow it.
  * @param nodes - The clones.
  * @param idMap - Source id → clone id.
  * @param externalParentAbs - Existing Groups lone members rejoin, by id.
@@ -391,14 +393,16 @@ function stepClones(
   stepPaste: (corners: ReadonlyArray<{ x: number; y: number }>) => { dx: number; dy: number },
 ): SnapshotNode[] {
   const fresh = new Set(idMap.values());
+  const byId = new Map(nodes.map((node) => [node.id, node]));
   /**
    * Whether a clone sits on the canvas by itself rather than inside a cloned Group.
    * @param node - The clone.
    * @returns True for a top-level clone or a member of an existing Group.
    */
   const moves = (node: SnapshotNode): boolean => node.parentId === undefined || !fresh.has(node.parentId);
-  const corners = nodes.filter(moves).map((node) => {
-    const parent = node.parentId === undefined ? undefined : externalParentAbs?.get(node.parentId);
+  const corners = nodes.map((node) => {
+    if (node.parentId === undefined) return node.position;
+    const parent = byId.get(node.parentId)?.position ?? externalParentAbs?.get(node.parentId);
     return parent === undefined ? node.position : { x: parent.x + node.position.x, y: parent.y + node.position.y };
   });
   const step = stepPaste(corners);

@@ -16,12 +16,24 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { planFlowLayout } from '@web/spaces/canvas/lib/place-flow';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
+import { CLIPBOARD_VERSION, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 import { toast } from '@web/lib/toast';
+import { canvasApi } from '@web/data/api/canvas';
 import en from '@locales/en.json';
 
 vi.mock('@web/lib/toast', () => ({
   toast: { info: vi.fn(), error: vi.fn(), warning: vi.fn(), success: vi.fn() },
 }));
+
+
+/**
+ * A clipboard payload of the given nodes, every one picked.
+ * @param nodes - Its nodes.
+ * @returns The payload.
+ */
+function payloadOf(nodes: ClipboardNode[]): ClipboardPayload {
+  return { version: CLIPBOARD_VERSION, picked: nodes.map((n) => n.id), nodes, edges: [] };
+}
 
 describe('useNodeCreation', () => {
   beforeEach(() => {
@@ -109,31 +121,30 @@ describe('useNodeCreation', () => {
     addNode.mockRestore();
   });
 
-  it('pasteNodesAt clones clipboard nodes (offset + fresh ids + carried content) and returns their ids', () => {
-    const addNode = vi
-      .spyOn(canvasSpace, 'addNode')
-      .mockImplementation(() => undefined);
+  it('pastePayload clones clipboard nodes (offset + fresh ids + carried content) and returns their ids', async () => {
+    // The text's history is registered with the server first.
+    const paste = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {} });
     const { result } = renderHook(() => useNodeCreation('p1', 's1'));
 
-    const ids = result.current.pasteNodesAt(
-      [
-        { type: 'image', position: { x: 10, y: 20 }, name: 'Hero', content: 'a.png' },
-        { type: 'text', position: { x: 30, y: 40 }, content: 'note' },
-      ],
+    const ids = await result.current.pastePayload(
+      payloadOf([
+        { id: 'a', type: 'image', position: { x: 10, y: 20 }, data: { name: 'Hero', content: 'a.png' } },
+        { id: 'b', type: 'text', position: { x: 30, y: 40 }, data: { content: 'note' } },
+      ]),
       { dx: 24, dy: 24 },
     );
 
-    expect(addNode).toHaveBeenCalledTimes(2);
     expect(ids).toHaveLength(2);
-    const first = addNode.mock.calls[0][2];
-    expect(first.id).toBe(ids[0]);
-    expect(first.type).toBe('image');
-    expect(first.position).toEqual({ x: 34, y: 44 });
-    expect(first.data.content).toBe('a.png');
+    const nodes = canvasSpace.readNodes(getDoc(docName.canvasSpace('p1', 's1')));
+    const first = nodes.find((n) => n.id === ids?.[0]);
+    expect(first?.type).toBe('image');
+    expect(first?.position).toEqual({ x: 34, y: 44 });
+    const data = first?.data as unknown as Record<string, unknown>;
+    expect(data.content).toBe('a.png');
     // A pasted top-level clone is a root → COPY- prefixed (R2-C).
-    expect(first.data.name).toBe('COPY-Hero');
-    expect(first.data.createdBy).toBe('u-9');
-    addNode.mockRestore();
+    expect(data.name).toBe('COPY-Hero');
+    expect(canvasSpace.nodeDataMap(getDoc(docName.canvasSpace('p1', 's1')), ids?.[0] ?? '')?.get('createdBy')).toBe('u-9');
+    paste.mockRestore();
   });
 
   // Every paste steps past nodes already on its spot (inner#1235 A20). Read
@@ -164,25 +175,25 @@ describe('useNodeCreation', () => {
       ]);
     });
 
-    it('steps a staggered pair whose box corner is free but one of whose nodes lands on a taken spot', () => {
+    it('steps a staggered pair whose box corner is free but one of whose nodes lands on a taken spot', async () => {
       const { result } = renderHook(() => useNodeCreation('p1', 's1'));
       // The pair's bounding box starts at (0, 0), where neither node sits.
-      const pair = [
-        { type: 'image' as const, position: { x: 0, y: 300 } },
-        { type: 'image' as const, position: { x: 400, y: 0 } },
-      ];
-      result.current.pasteNodesAt(pair, { dx: 0, dy: 0 });
+      const pair = payloadOf([
+        { id: 'a', type: 'image', position: { x: 0, y: 300 }, data: {} },
+        { id: 'b', type: 'image', position: { x: 400, y: 0 }, data: {} },
+      ]);
+      await result.current.pastePayload(pair, { dx: 0, dy: 0 });
       // Moved by (400, -300) the box corner (400, -300) is free and so is the
       // second node's spot, but the first node lands on the first copy's
       // second node at (400, 0).
-      const again = result.current.pasteNodesAt(pair, { dx: 400, dy: -300 });
-      expect(placed(again)).toEqual([
+      const again = await result.current.pastePayload(pair, { dx: 400, dy: -300 });
+      expect(placed(again ?? [])).toEqual([
         { x: 424, y: 24 },
         { x: 824, y: -276 },
       ]);
     });
 
-    it('measures a Group member where it is painted, not where it is stored', () => {
+    it('measures a Group member where it is painted, not where it is stored', async () => {
       const { result } = renderHook(() => useNodeCreation('p1', 's1'));
       canvasSpace.addNode('p1', 's1', {
         id: 'g',
@@ -197,14 +208,14 @@ describe('useNodeCreation', () => {
         position: { x: 40, y: 40 },
         data: { name: 'M', createdAt: 0, createdBy: 'u-9', locked: false, attachments: [] },
       });
-      const [pasted] = result.current.pasteNodesAt(
-        [{ type: 'image', position: { x: 0, y: 0 } }],
+      const [pasted] = (await result.current.pastePayload(
+        payloadOf([{ id: 'a', type: 'image', position: { x: 0, y: 0 }, data: {} }]),
         { dx: 1040, dy: 1040 },
-      );
+      )) ?? [];
       expect(placed([pasted as string])).toEqual([{ x: 1064, y: 1064 }]);
     });
 
-    it('steps a pasted Group when only one of its members would land on a taken spot', () => {
+    it('steps a pasted Group when only one of its members would land on a taken spot', async () => {
       const { result } = renderHook(() => useNodeCreation('p1', 's1'));
       canvasSpace.addNode('p1', 's1', {
         id: 'there',
@@ -214,22 +225,22 @@ describe('useNodeCreation', () => {
       });
       // Clipboard positions are absolute, members included: shifted by 24 the
       // Group's corner (524, 524) is free, its member lands on (624, 624).
-      const [group] = result.current.pasteNodesAt(
-        [
-          { id: 'g', type: 'group', position: { x: 500, y: 500 }, width: 600, height: 400 },
-          { id: 'm', type: 'image', parentId: 'g', position: { x: 600, y: 600 } },
-        ],
+      const [group] = (await result.current.pastePayload(
+        payloadOf([
+          { id: 'g', type: 'group', position: { x: 500, y: 500 }, width: 600, height: 400, data: { width: 600, height: 400 } },
+          { id: 'm', type: 'image', parentId: 'g', position: { x: 600, y: 600 }, data: {} },
+        ]),
         { dx: 24, dy: 24 },
-      );
+      )) ?? [];
       expect(placed([group as string])).toEqual([{ x: 548, y: 548 }]);
     });
 
-    it('leaves a paste on a free spot where it was asked to go', () => {
+    it('leaves a paste on a free spot where it was asked to go', async () => {
       const { result } = renderHook(() => useNodeCreation('p1', 's1'));
-      const [pasted] = result.current.pasteNodesAt(
-        [{ type: 'image', position: { x: 0, y: 0 } }],
+      const [pasted] = (await result.current.pastePayload(
+        payloadOf([{ id: 'a', type: 'image', position: { x: 0, y: 0 }, data: {} }]),
         { dx: 24, dy: 24 },
-      );
+      )) ?? [];
       expect(placed([pasted as string])).toEqual([{ x: 24, y: 24 }]);
     });
   });

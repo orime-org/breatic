@@ -709,6 +709,9 @@
       "storageFull": "Studio 儲存空間已滿，目前無法上傳。",
       "failed": "上傳失敗。"
     },
+    "paste": {
+      "failed": "貼上失敗。"
+    },
     "minimap": {
       "label": "畫布縮略圖"
     },

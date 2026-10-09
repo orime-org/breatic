@@ -709,6 +709,9 @@
       "storageFull": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다.",
       "failed": "업로드에 실패했습니다."
     },
+    "paste": {
+      "failed": "붙여넣기에 실패했습니다."
+    },
     "minimap": {
       "label": "캔버스 미니맵"
     },
