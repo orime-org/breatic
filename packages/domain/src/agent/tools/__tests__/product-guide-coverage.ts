@@ -368,6 +368,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.upload.empty": { described: /An empty file makes no node, and a message names it/ },
   "canvas.upload.failed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.upload.hashUnavailable": { excluded: REASONS.SAYS_TRY_AGAIN },
+  "canvas.upload.rateLimited": { excluded: REASONS.SAYS_TRY_AGAIN },
   "canvas.upload.tooLarge": { described: /over the size limit, makes no node, and a message names it/ },
   "canvas.upload.unsupportedType": { described: /in a format that is not supported, or over the size limit, makes no node, and a message names it/ },
   "chat.action.copied": { excluded: REASONS.PASSING },
