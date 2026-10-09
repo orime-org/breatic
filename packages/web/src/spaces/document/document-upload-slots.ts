@@ -458,6 +458,23 @@ export function addUploadBatch(
 }
 
 /**
+ * Holds a gap until its batch is started, which waits on admission: named in
+ * Yjs, so the reader's edits and a co-editor's meanwhile carry it along.
+ * @param view - The editor view.
+ * @param gap - The gap as it is now.
+ * @returns The gap as it is when called.
+ */
+export function holdGap(view: EditorView, gap: UploadGap): () => UploadGap {
+  const bound = syncBindingOf(view.state);
+  if (bound === null) return () => gap;
+  const name = absolutePositionToRelativePosition(gap, bound.type, bound.mapping) as Y.RelativePosition;
+  return () => {
+    const now = syncBindingOf(view.state);
+    return (now === null ? null : relativePositionToAbsolutePosition(now.doc, now.type, name, now.mapping)) ?? gap;
+  };
+}
+
+/**
  * Changes what one slot shows.
  * @param view - The editor view.
  * @param slotId - Which slot.

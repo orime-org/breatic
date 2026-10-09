@@ -81,7 +81,7 @@ import {
 } from '@web/spaces/document/document-undo-blocknote';
 import { marksStayOnTextExtension } from '@web/spaces/document/document-marks-on-text';
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
-import { documentUploadsExtension } from '@web/spaces/document/document-upload-slots';
+import { documentUploadsExtension, holdGap } from '@web/spaces/document/document-upload-slots';
 import {
   createDocumentUploader,
   type DocumentUploader,
@@ -231,7 +231,7 @@ function createDocumentEditor(
       onFiles: (arrival: FilesArrival) => {
         const view = viewOf(editor);
         if (view !== null) {
-          void uploader.start(view, arrival.files, () => arrival.gap);
+          void uploader.start(view, arrival.files, holdGap(view, arrival.gap));
         }
       },
     }),

@@ -19,6 +19,7 @@ import {
 } from '@web/spaces/document/document-uploads';
 import {
   documentUploadsExtension,
+  holdGap,
   uploadSlots,
 } from '@web/spaces/document/document-upload-slots';
 import { gapBetween } from './textblocks';
@@ -181,6 +182,40 @@ describe('admission (A5)', () => {
 
     expect(pending.map((p) => p.file.name)).toEqual(['a.png']);
     expect(uploadSlots(editor.prosemirrorView!.state).map((s) => s.name)).toEqual(['a.png']);
+  });
+});
+
+describe('a gap held while admission waits (A2)', () => {
+  it('lands between the rows it was dropped between when a row is added above meanwhile', async () => {
+    const editor = open();
+    const { deps: d, pending } = deps();
+    let release!: (bytes: number) => void;
+    const uploader = createDocumentUploader({
+      ...d,
+      maxUploadBytes: () => new Promise<number>((resolve) => {
+        release = resolve;
+      }),
+    });
+    const view = editor.prosemirrorView!;
+    const [a, b] = blocks(editor);
+    const started = uploader.start(
+      view,
+      [file('m.png', 'image/png')],
+      holdGap(view, gapBetween(view.state.doc, a!.id, b!.id)),
+    );
+    editor.insertBlocks([{ type: 'paragraph', content: 'X' }] as never, a!.id, 'before');
+    release(1000);
+    await started;
+    await settle();
+    pending[0]!.resolve({ fileUrl: 'https://cdn.example/m.png', assetId: 'x', kind: 'image' });
+    await settle();
+
+    expect(blocks(editor).map((block) => (block.type === 'image' ? 'image' : (block.content ?? []).map((c) => c.text ?? '').join('')))).toEqual([
+      'X',
+      'A',
+      'image',
+      'B',
+    ]);
   });
 });
 
