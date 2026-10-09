@@ -91,6 +91,25 @@ async function pngBytes(p: Page, width = 480, height = 270): Promise<Buffer> {
 }
 
 /**
+ * The stored address of each picture in the body, read from the document;
+ * what the page shows may be the picture's preview.
+ * @param p - The page.
+ * @returns One per picture, in order.
+ */
+async function storedPictures(p: Page): Promise<string[]> {
+  return p.evaluate((selector) => {
+    const el = document.querySelector(selector) as unknown as {
+      editor: { state: { doc: { descendants: (f: (node: { type: { name: string }; attrs: { url: string } }) => void) => void } } };
+    };
+    const urls: string[] = [];
+    el.editor.state.doc.descendants((node) => {
+      if (node.type.name === 'image') urls.push(node.attrs.url);
+    });
+    return urls;
+  }, EDITOR);
+}
+
+/**
  * A short silent WAV, unique per call.
  * @returns The bytes.
  */
@@ -329,7 +348,7 @@ test('the toolbar hands the stored file to the browser as a download (A19) @need
   await pickFromPlus(page, 'image', { name: 'keep.png', mimeType: 'image/png', buffer: bytes });
   const img = page.locator(`${IMAGE} img`);
   await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
-  const stored = await img.evaluate((element) => (element as HTMLImageElement).src);
+  const [stored] = await storedPictures(page);
 
   // The first block's bar sits on the picture's top, so the pointer rests low.
   await img.hover({ position: { x: 4, y: 86 } });
@@ -341,7 +360,7 @@ test('the toolbar hands the stored file to the browser as a download (A19) @need
   ]);
 
   expect(download.suggestedFilename()).toBe(
-    decodeURIComponent(new URL(stored).pathname.split('/').pop() ?? ''),
+    decodeURIComponent(new URL(stored!).pathname.split('/').pop() ?? ''),
   );
   expect(readFileSync(await download.path()).equals(bytes)).toBe(true);
 });
@@ -1131,7 +1150,7 @@ test('a picture copied with the keyboard pastes back as the same picture (A10, A
   await pastePicture(page, 'copy.png');
   const img = page.locator(`${IMAGE} img`);
   await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
-  const src = await img.getAttribute('src');
+  const [stored] = await storedPictures(page);
 
   await img.click();
   await page.keyboard.press('ControlOrMeta+c');
@@ -1140,7 +1159,7 @@ test('a picture copied with the keyboard pastes back as the same picture (A10, A
   await page.keyboard.press('ControlOrMeta+v');
 
   await expect(img).toHaveCount(2);
-  expect(await img.nth(1).getAttribute('src')).toBe(src);
+  expect(await storedPictures(page)).toEqual([stored, stored]);
 });
 
 /**
