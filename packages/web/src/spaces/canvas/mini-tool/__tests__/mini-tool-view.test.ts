@@ -9,6 +9,7 @@ import {
   BLOCKING_REFUSALS,
   aspectRatioOf,
   creditMode,
+  exportsBeforeRun,
   miniToolRefusal,
   rectForAspect,
   resolvedParams,
@@ -218,6 +219,15 @@ describe('miniToolRefusal', () => {
 describe('BLOCKING_REFUSALS', () => {
   it('disables Execute for the reasons the reader fixes in the panel', () => {
     expect([...BLOCKING_REFUSALS].sort()).toEqual(['drawingEmpty', 'exporting', 'promptMissing', 'slotMissing']);
+  });
+});
+
+describe('exportsBeforeRun', () => {
+  it('holds for a browser tool and a drawing tool, not for a plain server tool', () => {
+    expect(exportsBeforeRun(tool('image.rotate'))).toBe(true);
+    expect(exportsBeforeRun(tool('image.inpaint'))).toBe(true);
+    expect(exportsBeforeRun(tool('image.sketch'))).toBe(true);
+    expect(exportsBeforeRun(tool('image.upscale'))).toBe(false);
   });
 });
 

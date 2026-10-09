@@ -236,6 +236,17 @@ export function miniToolRefusal(input: {
 }
 
 /**
+ * Whether a press makes something in the browser before the run: a browser
+ * tool's file, or a drawing tool's images. The panel shows the press as under
+ * way and the Space keeps it as an operation for that stretch.
+ * @param spec - The tool.
+ * @returns True when the press exports first.
+ */
+export function exportsBeforeRun(spec: MiniToolSpec): boolean {
+  return spec.run.kind === 'browser' || spec.drawing !== undefined;
+}
+
+/**
  * How the footer states the cost: a browser tool is free, a container tool is
  * billed on what it used, a model tool shows the yaml estimate.
  * @param spec - The tool.

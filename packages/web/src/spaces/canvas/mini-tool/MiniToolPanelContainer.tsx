@@ -36,6 +36,7 @@ import {
   type MiniToolSourceInfo,
 } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { hasInk } from '@web/spaces/canvas/mini-tool/paint-drawing';
+import type { MiniToolDrawingSnapshot } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { visibleOps } from '@web/stores/drawing-draft';
 
@@ -50,11 +51,17 @@ export interface MiniToolPanelContainerProps {
   /** Whether the last write to the document was this reader's. */
   getLastWriteWasLocal: () => boolean;
   /**
-   * Run the tool on the snapshot taken at the press. Resolves once a browser
-   * tool's export has been made (or failed), or once a server tool's request
-   * has been answered (or failed).
+   * Run the tool on the snapshot taken at the press, with the drawing at the
+   * press on a tool that draws. Resolves once whatever the press makes in the
+   * browser has been made (or failed), or once a server tool's request has
+   * been answered (or failed).
    */
-  onRun: (nodeId: string, spec: MiniToolSpec, snapshot: MiniToolSnapshot) => Promise<void>;
+  onRun: (
+    nodeId: string,
+    spec: MiniToolSpec,
+    snapshot: MiniToolSnapshot,
+    drawing: MiniToolDrawingSnapshot | undefined,
+  ) => Promise<void>;
 }
 
 /**
@@ -164,7 +171,6 @@ function OpenMiniToolPanel({
   const resetMiniToolSource = useCanvasSession((s) => s.resetMiniToolSource);
   const startMiniToolSlotPick = useCanvasSession((s) => s.startMiniToolSlotPick);
   const endPick = useCanvasSession((s) => s.endPick);
-  const [exporting, setExporting] = React.useState(false);
 
   const { data: catalog, isError } = useQuery(modelCatalogQuery());
   const entry =
@@ -176,6 +182,7 @@ function OpenMiniToolPanel({
     closeActivePanel();
   }, [modelMissing, closeActivePanel, t]);
 
+  const exporting = draft?.exporting ?? false;
   const view = asContentView(node.data);
   const content = view !== undefined && 'content' in view ? (view.content ?? '') : '';
   // A crop is converted with the size the node's crop box read off the shown
@@ -314,11 +321,12 @@ function OpenMiniToolPanel({
       return;
     }
     if (refusal !== null) return;
-    const running = onRun(nodeId, spec, snapshot);
-    if (spec.run.kind !== 'browser') return;
-    setExporting(true);
-    void running.finally(() => setExporting(false));
-  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, t]);
+    const drawing =
+      spec.drawing !== undefined && drawingSteps !== undefined
+        ? { kind: spec.drawing.kind, ops: visibleOps(drawingSteps) }
+        : undefined;
+    void onRun(nodeId, spec, snapshot, drawing);
+  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, t]);
 
   // Escape closes the panel; a running pick takes the press first.
   useEscapeInSpace(pickSession === null, closeActivePanel);

@@ -7,7 +7,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { ReactFlow } from '@xyflow/react';
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -114,7 +114,14 @@ describe('MiniToolPanelContainer', () => {
         params: { orient: { turns: 1, flipX: false, flipY: false } },
         source: { url: 'a.png' },
       }),
+      undefined,
     );
+  });
+
+  it('shows a press under way while the draft says it is exporting', () => {
+    render(tree(source('a.png'), () => Promise.resolve()));
+    act(() => canvasSessions.of('').getState().setMiniToolExporting(true, canvasSessions.of('').getState().panelSession));
+    expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
   });
 
   // A7: nothing to export yet, so nothing is started and the reader is told.
@@ -168,6 +175,7 @@ describe('MiniToolPanelContainer', () => {
       'src',
       expect.objectContaining({ id: 'video.cut' }),
       expect.objectContaining({ params: { range: { start: 0, end: 12 } } }),
+      undefined,
     );
   });
 
@@ -202,6 +210,19 @@ describe('MiniToolPanelContainer', () => {
       canvasSessions.of('').getState().addDrawingStep({ ...STROKE, points: [[0.2, 0.2]] });
       view.rerender(tree(source('a.png'), () => Promise.resolve()));
       expect(screen.getByTestId('mini-tool-run')).toBeEnabled();
+    });
+
+    it('hands the run the visible ops at the press', () => {
+      const onRun = vi.fn(() => Promise.resolve());
+      canvasSessions.of('').getState().addDrawingStep(STROKE);
+      canvasSessions.of('').getState().addDrawingStep({ kind: 'clear' });
+      canvasSessions.of('').getState().addDrawingStep({ ...STROKE, points: [[0.2, 0.2]] });
+      render(tree(source('a.png'), onRun));
+      fireEvent.click(screen.getByTestId('mini-tool-run'));
+      expect(onRun).toHaveBeenCalledWith('src', expect.objectContaining({ id: 'image.erase' }), expect.anything(), {
+        kind: 'mask',
+        ops: [{ ...STROKE, points: [[0.2, 0.2]] }],
+      });
     });
   });
 });

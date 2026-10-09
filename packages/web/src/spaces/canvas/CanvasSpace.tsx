@@ -77,7 +77,7 @@ import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { frameBuiltNode } from '@web/spaces/canvas/frame-built-node';
-import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
+import { exportCropBlob, exportDrawing } from '@web/spaces/canvas/focus/crop-export';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import {
   addEdge,
@@ -123,6 +123,7 @@ import {
   planGroupShortcut,
 } from '@web/spaces/canvas/canvas-group-shortcut';
 import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
+import { uploadDerivedImage } from '@web/spaces/canvas/upload-derived-image';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import {
   fileToNodeSpec,
@@ -138,8 +139,6 @@ import {
 import {
   runMediaUpload,
   type UploadFailure,
-  uploadMedia,
-  UploadFailedError,
 } from '@web/data/upload/media-upload';
 import { hashFile } from '@web/data/upload/hash';
 import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
@@ -196,7 +195,11 @@ import { triggerDownload } from '@web/lib/download';
 import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
 import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
-import { startMiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
+import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
+import {
+  startMiniToolRun,
+  type MiniToolDrawingSnapshot,
+} from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import {
   activeMiniToolSlot,
   heldSlotUrls,
@@ -1088,25 +1091,7 @@ function CanvasSpaceInner({
           },
           {
             exportCrop: exportCropBlob,
-            uploadFile: async (file, pid) => {
-              const { fileUrl } = await uploadMedia(file, {
-                projectId: pid,
-                spaceId,
-                // No node: a crop is a pool entry, so there is no handling to
-                // fence and nothing for the server to announce to. That is
-                // also why this path reads its URL from the answer rather
-                // than from Yjs (design §9).
-                // A byproduct: registered in the ledger for attribution and
-                // dedup, without an activity-feed row of its own.
-                derived: true,
-              });
-              // The rejection carries the REASON as its message (Gate-2 R5): a
-              // hashing failure cannot be fixed by retrying on this page, so the
-              // crop pipeline must be able to say "reload" rather than the
-              // generic "try again".
-              if (fileUrl === undefined) throw new UploadFailedError('upload');
-              return fileUrl;
-            },
+            uploadFile: (file, pid) => uploadDerivedImage(file, { projectId: pid, spaceId }),
             addFocusImage: (image) => {
               sessionStore.getState().removePendingFocusUpload(pendingId);
               // A refused append must be SAID — the upload already succeeded,
@@ -3924,10 +3909,19 @@ function CanvasSpaceInner({
     viewerId,
   ]);
   // A mini-tool's Run (inner#888 §7.5): the snapshot was taken by the panel.
-  // A browser tool's export, build and upload are one tracked operation, so a
-  // tab close in the middle is held back as an upload's is.
+  // Whatever the press makes in the browser first (a browser tool's file, a
+  // drawing tool's images), the build and the upload are one tracked
+  // operation, so a tab close in the middle is held back as an upload's is.
+  // The press belongs to the opening of the panel it was made in: a reader
+  // who closed it and opened another meanwhile keeps that one's state and
+  // selection.
   const runMiniTool = React.useCallback(
-    (nodeId: string, spec: MiniToolSpec, snapshot: MiniToolSnapshot): Promise<void> => {
+    (
+      nodeId: string,
+      spec: MiniToolSpec,
+      snapshot: MiniToolSnapshot,
+      drawing: MiniToolDrawingSnapshot | undefined,
+    ): Promise<void> => {
       const host = nodes.find((n) => n.id === nodeId);
       const view = asContentView(host?.data);
       if (host === undefined || view === undefined) return Promise.resolve();
@@ -3935,12 +3929,14 @@ function CanvasSpaceInner({
         host.parentId === undefined
           ? undefined
           : nodes.find((n) => n.id === host.parentId);
+      const session = sessionStore.getState().panelSession;
       const work = startMiniToolRun({
         projectId,
         spaceId,
         userId: viewerId ?? '',
         spec,
         snapshot,
+        drawing,
         source: {
           id: host.id,
           name: view.name,
@@ -3953,16 +3949,20 @@ function CanvasSpaceInner({
         sourceExists: () => buffer.settled().some((n) => n.id === nodeId),
         exportFile: exportMiniToolFile,
         fillUpload,
+        exportDrawing,
+        uploadImage: (file) => uploadDerivedImage(file, { projectId, spaceId }),
+        setExporting: (exporting) => sessionStore.getState().setMiniToolExporting(exporting, session),
+        stillOpen: () => sessionStore.getState().panelSession === session,
         onBuilt: (built) => {
           setSelectAfterCreate(built.map((node) => node.id));
           const [first] = built;
           if (first !== undefined) frameNewNode(first.position, nodeId);
         },
       });
-      if (spec.run.kind === 'browser') trackOperation(newId(), work);
+      if (exportsBeforeRun(spec)) trackOperation(newId(), work);
       return work;
     },
-    [nodes, projectId, spaceId, viewerId, buffer, fillUpload, frameNewNode, trackOperation],
+    [nodes, projectId, spaceId, viewerId, buffer, fillUpload, frameNewNode, trackOperation, sessionStore],
   );
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {

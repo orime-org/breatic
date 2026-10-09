@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { t } from '@breatic/shared';
 import { miniToolById, type MiniToolSnapshot, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 const canvas = vi.hoisted(() => ({
@@ -21,7 +22,9 @@ vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
 
+import { UploadFailedError } from '@web/data/upload/media-upload';
 import { toast } from '@web/lib/toast';
+import { DrawingEmptyError } from '@web/spaces/canvas/focus/crop-export';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { startMiniToolRun, type MiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 
@@ -65,6 +68,10 @@ function press(over: Partial<MiniToolRun> = {}): MiniToolRun {
     sourceExists: () => true,
     exportFile: vi.fn(),
     fillUpload: vi.fn(),
+    exportDrawing: vi.fn(),
+    uploadImage: vi.fn(),
+    setExporting: vi.fn(),
+    stillOpen: () => true,
     onBuilt: vi.fn(),
     ...over,
   };
@@ -146,8 +153,101 @@ describe('startMiniToolRun', () => {
     expect(api.run).not.toHaveBeenCalled();
   });
 
+  // inner#1302 §6.5: a reader who closed the panel and opened another keeps its selection.
+  it('builds the nodes without selecting them once the panel was opened again', async () => {
+    const run = press({ stillOpen: () => false });
+    await startMiniToolRun(run);
+    expect(canvas.addNode).toHaveBeenCalledTimes(2);
+    expect(run.onBuilt).not.toHaveBeenCalled();
+  });
+
   it('places the nodes from the absolute position of a grouped source', async () => {
     await startMiniToolRun(press({ source: { ...press().source, groupOrigin: { x: 1000, y: 2000 } } }));
     expect(canvas.addNode.mock.calls[0]?.[2].position).toEqual({ x: 1100 + NODE_STEP.x, y: 2050 });
+  });
+
+  // inner#1302 §6.5: a drawing tool exports and uploads its images before
+  // anything is built, and the request carries them.
+  describe('a drawing tool', () => {
+    const STROKE = { kind: 'stroke', erase: false, size: 5, color: '#FF3B30', points: [[0.1, 0.1]] } as const;
+    const IMAGE = { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/jpeg' };
+    const PICTURE = { ...SNAPSHOT, source: { url: 'https://cdn/a.jpg' }, prompt: 'a cat' };
+
+    /**
+     * A press of a drawing tool whose export and uploads succeed.
+     * @param id - The tool.
+     * @param kind - Its drawing kind.
+     * @param over - Fields to override.
+     * @returns The run.
+     */
+    function drawingPress(id: string, kind: 'mask' | 'sketch', over: Partial<MiniToolRun> = {}): MiniToolRun {
+      const image = new Blob(['i'], { type: 'image/png' });
+      const mask = new Blob(['m'], { type: 'image/png' });
+      return press({
+        spec: tool(id),
+        source: IMAGE,
+        snapshot: PICTURE,
+        drawing: { kind, ops: [STROKE] },
+        exportDrawing: vi.fn(() => Promise.resolve(kind === 'mask' ? { image, mask } : { image })),
+        uploadImage: vi.fn((file: File) => Promise.resolve(`https://cdn/${file.name}`)),
+        ...over,
+      });
+    }
+
+    it('uploads the source and mask and sends them, holding the panel busy until the build', async () => {
+      const run = drawingPress('image.inpaint', 'mask');
+      vi.mocked(run.setExporting).mockImplementation((busy) => {
+        if (!busy) expect(canvas.addNode).not.toHaveBeenCalled();
+      });
+      await startMiniToolRun(run);
+      expect(run.exportDrawing).toHaveBeenCalledWith('https://cdn/a.jpg', 'mask', [STROKE]);
+      expect(vi.mocked(run.setExporting).mock.calls).toEqual([[true], [false]]);
+      expect(api.run).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tool: 'image.inpaint',
+          prompt: 'a cat',
+          drawing: { image: 'https://cdn/INPAINT-source.png', mask: 'https://cdn/INPAINT-mask.png' },
+        }),
+      );
+    });
+
+    it('sends a sketch as one picture', async () => {
+      await startMiniToolRun(drawingPress('image.sketch', 'sketch'));
+      expect(api.run).toHaveBeenCalledWith(
+        expect.objectContaining({ drawing: { image: 'https://cdn/SKETCH-sketch.png' } }),
+      );
+    });
+
+    it('builds nothing and asks for a drawing when it leaves nothing', async () => {
+      const run = drawingPress('image.erase', 'mask', {
+        exportDrawing: vi.fn(() => Promise.reject(new DrawingEmptyError())),
+      });
+      await startMiniToolRun(run);
+      expect(toast.warning).toHaveBeenCalledWith(t('canvas.miniTool.panel.drawingEmpty'));
+      expect(canvas.addNode).not.toHaveBeenCalled();
+      expect(api.run).not.toHaveBeenCalled();
+      expect(vi.mocked(run.setExporting).mock.calls).toEqual([[true], [false]]);
+    });
+
+    it('builds nothing and says why when an upload fails', async () => {
+      const run = drawingPress('image.inpaint', 'mask', {
+        uploadImage: vi.fn(() => Promise.reject(new UploadFailedError('storage'))),
+      });
+      await startMiniToolRun(run);
+      expect(toast.error).toHaveBeenCalledWith(t('canvas.upload.storageFull'));
+      expect(canvas.addNode).not.toHaveBeenCalled();
+      expect(api.run).not.toHaveBeenCalled();
+      expect(vi.mocked(run.setExporting).mock.calls).toEqual([[true], [false]]);
+    });
+  });
+
+  it('holds a browser tool busy through its export, and a server tool not at all', async () => {
+    const file = new File(['x'], 'a.png', { type: 'image/png' });
+    const browser = press({ spec: tool('image.rotate'), exportFile: vi.fn(() => Promise.resolve(file)) });
+    await startMiniToolRun(browser);
+    expect(vi.mocked(browser.setExporting).mock.calls).toEqual([[true], [false]]);
+    const server = press();
+    await startMiniToolRun(server);
+    expect(server.setExporting).not.toHaveBeenCalled();
   });
 });
