@@ -759,8 +759,16 @@ function checkGenerateNode(
     if (!named) {
       return { ok: false, reason: `A ref in "${node.name}" points outside the group: {"ref": ${String(stray)}}.` };
     }
-    // Wired in another way, the node is already where it goes; a ref would
+    if (named === node) {
+      return { ok: false, reason: `"${node.name}" @s itself with {"ref": ${String(stray)}}, and a node cannot @ itself. Check the index the ref means.` };
+    }
+    // Arriving another way -- an edge into a slot or the lyrics box, or a slot
+    // filled through fills -- the node is already where it goes; a ref would
     // only send it a second time.
+    const filled = filling.filled.find(({ node: n }) => n === named);
+    if (filled) {
+      return { ok: false, reason: `"${named.name}" fills "${filled.way.into}" of "${node.name}" through fills, which landing does, so it takes no ref; leave the ref out.` };
+    }
     const elsewhere = routed.find(({ node: n }) => n === named);
     return {
       ok: false,

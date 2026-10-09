@@ -484,7 +484,10 @@ export function waysIn(chosen: ModelInfo): Map<WayKind, WayIn[]> {
     }
   }
   if (chosen.takesPrompt) add("text", { into: "pool", room: Number.POSITIVE_INFINITY, mark: "ref" });
-  if (chosen.params[PANEL_EDITOR_PARAM] !== undefined) {
+  // The lyrics box is drawn only in the modes its param applies in; out of
+  // them the projection marks it as nothing to set.
+  const lyrics = chosen.params[PANEL_EDITOR_PARAM];
+  if (lyrics !== undefined && lyrics.noControl !== true) {
     add("text", { into: PANEL_EDITOR_PARAM, room: Number.POSITIVE_INFINITY, mark: "placed" });
   }
   return ways;
