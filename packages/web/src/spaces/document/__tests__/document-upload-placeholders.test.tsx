@@ -86,6 +86,18 @@ describe('a placeholder while its file uploads (A4)', () => {
 
     expect(screen.getByTestId('doc-upload-placeholder').textContent).toContain('40%');
   });
+
+  it('shows no share once every part has landed, which is all a one-part file ever reports', () => {
+    const { editor, slot } = open();
+
+    act(() => {
+      patchUploadSlot(editor.prosemirrorView!, slot, { progress: 1 });
+    });
+
+    const shown = screen.getByTestId('doc-upload-placeholder');
+    expect(shown.textContent).toContain('Uploading');
+    expect(shown.textContent).not.toContain('%');
+  });
 });
 
 describe('a placeholder whose file failed (A6)', () => {

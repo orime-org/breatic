@@ -102,7 +102,10 @@ const Placeholder = React.memo(function Placeholder({
       </div>
     );
   }
-  const percent = slot.progress === null ? null : Math.round(slot.progress * 100);
+  // A share is shown only while parts remain: a one-part file reports nothing
+  // until its only part lands, and after the last part the finish is left.
+  const percent =
+    slot.progress === null || slot.progress >= 1 ? null : Math.round(slot.progress * 100);
   return (
     <div
       data-testid='doc-upload-placeholder'
