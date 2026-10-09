@@ -123,6 +123,12 @@ import {
   planGroupShortcut,
 } from '@web/spaces/canvas/canvas-group-shortcut';
 import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
+import {
+  brushSizeStep,
+  historyAvailability,
+  routeHistoryCommand,
+} from '@web/spaces/canvas/mini-tool/drawing-history';
+import { BRUSH_SIZE } from '@web/stores/drawing-draft';
 import { uploadDerivedImage } from '@web/spaces/canvas/upload-derived-image';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import {
@@ -1370,9 +1376,13 @@ function CanvasSpaceInner({
   const setHistoryAvailability = useCanvasStore(
     (s) => s.setHistoryAvailability,
   );
+  // While a drawing tool is open the buttons act on the drawing (inner#1302 §6.3).
+  const drawingHistory = useCanvasSession((s) => s.miniTool?.drawing ?? null);
+  const drawingExporting = useCanvasSession((s) => s.miniTool?.exporting ?? false);
   React.useEffect(() => {
-    setHistoryAvailability(canUndo, canRedo);
-  }, [canUndo, canRedo, setHistoryAvailability]);
+    const shown = historyAvailability(sessionStore.getState(), canUndo, canRedo);
+    setHistoryAvailability(shown.canUndo, shown.canRedo);
+  }, [canUndo, canRedo, setHistoryAvailability, sessionStore, drawingHistory, drawingExporting]);
 
   const pendingHistoryCommand = useCanvasStore((s) => s.pendingHistoryCommand);
   const consumeHistoryCommand = useCanvasStore(
@@ -1384,10 +1394,12 @@ function CanvasSpaceInner({
       consumeHistoryCommand();
       return;
     }
-    if (pendingHistoryCommand === 'undo') undo();
-    else redo();
+    if (routeHistoryCommand(sessionStore.getState(), pendingHistoryCommand) === 'canvas') {
+      if (pendingHistoryCommand === 'undo') undo();
+      else redo();
+    }
     consumeHistoryCommand();
-  }, [pendingHistoryCommand, readOnly, undo, redo, consumeHistoryCommand]);
+  }, [pendingHistoryCommand, readOnly, undo, redo, consumeHistoryCommand, sessionStore]);
 
   // Keyboard undo / redo — double-platform (Cmd on mac, Ctrl on windows; see
   // matchHistoryShortcut). Gated like the clipboard handlers: no-op while a
@@ -1403,15 +1415,25 @@ function CanvasSpaceInner({
       // A caret in a field is answered by the field or by the browser, so
       // this key is theirs while one is there.
       if (isEditableTarget(event.target as Element | null)) return;
+      const session = sessionStore.getState();
+      const step = brushSizeStep(event);
+      const drawing = session.miniTool?.drawing;
+      if (step !== null && drawing != null) {
+        event.preventDefault();
+        if (session.miniTool?.exporting) return;
+        session.setDrawingSize(Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, drawing.size + step)));
+        return;
+      }
       const action = matchHistoryShortcut(event);
       if (!action) return;
       event.preventDefault();
+      if (routeHistoryCommand(session, action) === 'drawing') return;
       if (action === 'undo') undo();
       else redo();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [readOnly, undo, redo]);
+  }, [readOnly, undo, redo, sessionStore]);
 
   // Capture with the bodies filled in. A clipboard entry is plain data and a
   // shared body cannot travel in one, so the text is read out of the document
