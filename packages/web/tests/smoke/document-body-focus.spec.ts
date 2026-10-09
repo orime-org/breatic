@@ -49,17 +49,27 @@ async function openWithLine(p: Page): Promise<void> {
   await expect(editor).toHaveAttribute('data-body-holds', /.*/);
 }
 
+/** Where beside the body column a blank point is taken. */
+type BlankSide = 'left' | 'right' | 'rail';
+
 /**
- * A point on the blank space left of the body column, checked to be blank.
+ * A point on the blank space beside the body column, checked to be blank.
  * @param p - The page.
+ * @param side - Left or right of the column, or between it and the open comment rail.
  * @returns The point.
  */
-async function blankPoint(p: Page): Promise<{ x: number; y: number }> {
-  const point = await p.evaluate((selector) => {
-    const editor = document.querySelector(selector)!.getBoundingClientRect();
-    const line = document.querySelector(`${selector} p`)!.getBoundingClientRect();
-    return { x: editor.left - 40, y: line.top + line.height / 2 };
-  }, EDITOR);
+async function blankPoint(p: Page, side: BlankSide = 'left'): Promise<{ x: number; y: number }> {
+  const point = await p.evaluate(
+    ([selector, where]) => {
+      const editor = document.querySelector(selector)!.getBoundingClientRect();
+      const line = document.querySelector(`${selector} p`)!.getBoundingClientRect();
+      const rail = document.querySelector('[data-testid="doc-comment-rail"]')?.getBoundingClientRect();
+      const x =
+        where === 'left' ? editor.left - 40 : where === 'right' ? editor.right + 40 : (editor.right + rail!.left) / 2;
+      return { x, y: line.top + line.height / 2 };
+    },
+    [EDITOR, side] as const,
+  );
   const blank = await p.evaluate(
     ({ x, y }) => document.elementFromPoint(x, y)?.hasAttribute('data-document-body-blank') ?? false,
     point,
@@ -79,22 +89,30 @@ async function selectHello(p: Page): Promise<void> {
   await expect(p.locator(BUBBLE_BAR)).toBeVisible();
 }
 
-test('a press on blank space lets the body go and leaves the focus on the body scroller', async () => {
-  await openWithLine(page);
-  await selectHello(page);
-  const { x, y } = await blankPoint(page);
+for (const side of ['left', 'right', 'rail'] as const) {
+  test(`a press on blank space ${side === 'rail' ? 'between the column and the comment rail' : `${side} of the column`} lets the body go and leaves the focus on the body scroller (A20)`, async () => {
+    await openWithLine(page);
+    if (side === 'rail') {
+      await page.getByTestId('doc-doc-menu-trigger').click();
+      await page.getByTestId('doc-doc-menu-comments').click();
+      await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
+      await page.locator(`${EDITOR} p`).first().click();
+    }
+    await selectHello(page);
+    const { x, y } = await blankPoint(page, side);
 
-  await page.mouse.click(x, y);
+    await page.mouse.click(x, y);
 
-  const editor = page.locator(EDITOR);
-  await expect(editor).not.toHaveAttribute('data-body-holds', /.*/);
-  await expect(page.locator(BUBBLE_BAR)).toHaveCount(0);
-  await expect(page.locator(SCROLLER)).toBeFocused();
-  expect(await page.locator(SCROLLER).evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('none');
-  // The selection is kept, only not drawn: a press back in the text takes it.
-  await editor.click();
-  await expect(editor).toHaveAttribute('data-body-holds', /.*/);
-});
+    const editor = page.locator(EDITOR);
+    await expect(editor).not.toHaveAttribute('data-body-holds', /.*/);
+    await expect(page.locator(BUBBLE_BAR)).toHaveCount(0);
+    await expect(page.locator(SCROLLER)).toBeFocused();
+    expect(await page.locator(SCROLLER).evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('none');
+    // The selection is kept, only not drawn: a press back in the text takes it.
+    await editor.click();
+    await expect(editor).toHaveAttribute('data-body-holds', /.*/);
+  });
+}
 
 test('cut and paste do nothing while the body is let go, and undo still reaches the document', async () => {
   await openWithLine(page);
