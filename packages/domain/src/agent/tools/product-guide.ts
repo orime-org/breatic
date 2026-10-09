@@ -378,7 +378,9 @@ export function renderProductGuide(): string {
       `holds now is marked ${quoted(t("canvas.history.current"))}, ${quoted(t("canvas.history.restore"))} puts ` +
       `an earlier one back, and a failed attempt shows ${quoted(t("canvas.history.failed"))}. The panel is headed ` +
       `${quoted(t("canvas.history.title"))} with the number of entries, closes with its X, and ends with ` +
-      `${quoted(t("canvas.history.end"))} once everything is loaded. A node with none shows ` +
+      `${quoted(t("canvas.history.end"))} once everything is loaded. A pasted or duplicated picture, video or ` +
+      `sound node starts with one ${quoted(t("canvas.history.typeUpload"))} entry, and a text node with one ` +
+      `${quoted(t("canvas.history.typeSnapshot"))} entry. A node with none shows ` +
       `${quoted(t("canvas.history.empty.title"))} and ${quoted(t("canvas.history.empty.hint"))} If it cannot ` +
       `load it says ${quoted(t("canvas.history.loadError"))} with ${quoted(t("canvas.history.retry"))}.`,
     `- On a text node, ${quoted(t("canvas.nodeMenu.snapshot"))}, greyed while the node is empty: it keeps a copy ` +
@@ -394,7 +396,10 @@ export function renderProductGuide(): string {
       "deleted as it starts, " +
       `${quoted(t("canvas.understand.sourceGone"))}`,
     `- ${quoted(t("canvas.contextMenu.copy"))} (Cmd/Ctrl+C) and ${quoted(t("canvas.contextMenu.duplicate"))} ` +
-      "(Cmd/Ctrl+D), which places a copy slightly below and to the right.",
+      "(Cmd/Ctrl+D), which places a copy slightly below and to the right, a step further while another node " +
+      "already starts there. A copy, pasted or duplicated, carries everything the original holds except its " +
+      "history, and is never locked. It comes out selected with the keyboard on it, so the arrow keys move it; " +
+      "when it lands out of view the canvas slides over to it, keeping the zoom.",
     `- ${quoted(t("canvas.contextMenu.rename"))} and ${quoted(t("canvas.nodeMenu.lock"))} or ` +
       `${quoted(t("canvas.nodeMenu.unlock"))}. A locked node or group shows a small padlock at its top-right ` +
       "corner, and a locked note shows one at the bottom right of its bubble; a locked node " +
@@ -1068,7 +1073,8 @@ export function renderProductGuide(): string {
       `closes; the project's owner can bring the space back from ${quoted(t("activity.header"))}.`,
     `- When this chat cannot load, it is covered with ${quoted(t("chat.load.failedTitle"))} or ` +
       `${quoted(t("chat.load.refusedTitle"))} and ${quoted(t("chat.load.retry"))}.`,
-    `- ${quoted(t("canvas.upload.storageFull"))} when uploading, or ` +
+    `- ${quoted(t("canvas.upload.storageFull"))} when uploading or when pasting pictures, videos or sounds ` +
+      "into another studio, or " +
       `${quoted(t("canvas.generatePanel.errorStorageFull"))} when generating: the storage of the studio's admin ` +
       "is full, counted across every studio they administer. What is already there keeps working, but nothing " +
       "new can be uploaded or generated until they upgrade. The bell's " +
