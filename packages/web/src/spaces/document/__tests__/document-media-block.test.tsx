@@ -506,6 +506,19 @@ describe('the toolbar', () => {
     expect(media(editor).props['caption']).toBe('Dusk');
   });
 
+  it('keeps the caption field and what is typed in it when its button is pressed again', () => {
+    const editor = open('image');
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-caption-button'));
+    const input = within(element(editor)).getByTestId('doc-media-caption-input');
+    fireEvent.change(input, { target: { value: 'Dusk' } });
+
+    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-caption-button'));
+
+    const field = within(element(editor)).getByTestId('doc-media-caption-input');
+    expect(document.activeElement).toBe(field);
+    expect((field as HTMLInputElement).value).toBe('Dusk');
+  });
+
   it.each(['Enter', 'Escape'])('leaves the caption open on %s pressed while an input method composes', (key) => {
     const editor = open('image');
 

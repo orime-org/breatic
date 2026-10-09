@@ -477,7 +477,8 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
               action='caption'
               testId='doc-media-caption-button'
               onPress={() => {
-                actions.select();
+                // An open field already holds the keyboard with the block selected.
+                if (!editingCaption) actions.select();
                 setEditingCaption(true);
               }}
             >
