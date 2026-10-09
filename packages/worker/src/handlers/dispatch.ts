@@ -488,7 +488,7 @@ async function runTaskBody(
 
   // #1628: threaded into async transports via provider.generateAsync.
   const storedTaskId = existing?.providerTaskId ?? null;
-  // Where a paid call may repeat, it says so itself: the submit, or the reading.
+  // Each paid call that may repeat writes its own duplicate-cost warning.
   const retryStarting = await reportRetryOnce(job, { taskId, storedTaskId });
   const resume: ResumeContext = {
     storedTaskId,

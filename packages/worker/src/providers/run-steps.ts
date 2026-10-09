@@ -143,7 +143,7 @@ async function predict(
     return await runPrediction(resolved, step.endpoint, body, {
       storedTaskId: step.predictionId,
       persistTaskId: (id: string): Promise<void> => deps.steps.markSubmitted(step.id, id),
-      externalTaskId: `breatic-${ctx.taskId}-${step.position}`,
+      externalTaskId: stepLabel(ctx, step),
       retryStarting: ctx.retryStarting,
     });
   } catch (err) {
@@ -208,6 +208,32 @@ async function cloneOnce(
  */
 function customVoiceId(taskId: string): string {
   return `Breatic${taskId.replace(/-/g, "")}`;
+}
+
+/**
+ * The label a step's upstream calls go under.
+ * @param ctx - The task.
+ * @param step - The step.
+ * @returns The label.
+ */
+function stepLabel(ctx: RunTaskContext, step: Step): string {
+  return `breatic-${ctx.taskId}-${step.position}`;
+}
+
+/**
+ * Write the duplicate-cost warning ahead of a paid call that comes before a
+ * step's submit, when this pickup starts a retry. The warning goes before
+ * the call, so a reading place that sends the run back to the queue or a
+ * deadline passed during the call does not lose it, and the submit after it
+ * is handed none: one warning per retry.
+ * @param ctx - The task.
+ * @param step - The step.
+ * @returns The context to submit with.
+ */
+function warnAheadOfPaidCall(ctx: RunTaskContext, step: Step): RunTaskContext {
+  if (!ctx.retryStarting) return ctx;
+  logger.warn({ taskId: ctx.taskId, submit: stepLabel(ctx, step) }, "provider_reinvoked_on_retry_potential_duplicate_cost");
+  return { ...ctx, retryStarting: false };
 }
 
 /**
@@ -293,8 +319,13 @@ async function runStep(
     case "generate": {
       // A submitted step is only asked about, so its body is not built: for
       // some families building it is a paid LLM call.
-      const body = step.predictionId === null ? await generateBody(entry, prompt, params, carried) : {};
-      const run = await predict(deps, ctx, resolved, step, body);
+      let submitCtx = ctx;
+      let body: Record<string, unknown> = {};
+      if (step.predictionId === null) {
+        if (FAMILIES.get(entry.name)?.PREPARE_IS_PAID) submitCtx = warnAheadOfPaidCall(ctx, step);
+        body = await generateBody(entry, prompt, params, carried);
+      }
+      const run = await predict(deps, submitCtx, resolved, step, body);
       return { urls: outputUrls(run), prediction: run.taskId };
     }
     case "element": {
@@ -310,17 +341,7 @@ async function runStep(
         let description = step.output.description;
         let submitCtx = ctx;
         if (typeof description !== "string") {
-          // The description is recorded before the submit, so the attempt
-          // before stopped at or before the describe: the describe is the
-          // call that may be paid for twice, and the submit is new. Warned
-          // ahead of the reading place, which may send the run back to the queue.
-          if (ctx.retryStarting) {
-            logger.warn(
-              { taskId: ctx.taskId, describe: `${ctx.taskId}-${step.position}` },
-              "provider_reinvoked_on_retry_potential_duplicate_cost",
-            );
-            submitCtx = { ...ctx, retryStarting: false };
-          }
+          submitCtx = warnAheadOfPaidCall(ctx, step);
           const described = await deps.describeImage(image);
           description = described.text.slice(0, ELEMENT_DESCRIPTION_MAX);
           await deps.steps.recordInline(step.id, { description }, described.costUsd);

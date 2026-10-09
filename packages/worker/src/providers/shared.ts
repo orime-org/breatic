@@ -39,6 +39,8 @@ export interface ResolvedModel {
 export interface ModelFamily {
   MODELS: ReadonlySet<string>;
   CONSUMES: ReadonlySet<string>;
+  /** Whether `prepare` makes a paid call of its own, which a retry repeats. */
+  PREPARE_IS_PAID: boolean;
   prepare(
     prompt: string,
     params: Readonly<Record<string, unknown>>,
