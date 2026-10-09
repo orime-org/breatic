@@ -137,6 +137,47 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
   ).toBe(0);
 
   const before = await visibleSpace(page).locator('.react-flow__node').count();
+  // The button fills the card at the narrowest column and stops at 270px
+  // once the column is wider, centred in the card (inner#1372). Measured at
+  // the widest column, where the card is wider than the cap.
+  const column = page.getByTestId('agent-column');
+  const columnBox = await column.boundingBox();
+  const edgeX = (columnBox?.x ?? 0) + (columnBox?.width ?? 0);
+  const midY = (columnBox?.y ?? 0) + (columnBox?.height ?? 0) / 2;
+  await page.mouse.move(edgeX, midY);
+  await page.mouse.down();
+  await page.mouse.move(edgeX + 400, midY, { steps: 8 });
+  await page.mouse.up();
+  const geometry = await card.evaluate((el) => {
+    const button = el.querySelector('[data-testid="proposal-use"]') as HTMLElement;
+    const style = getComputedStyle(el);
+    const box = el.getBoundingClientRect();
+    const inner = box.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+      - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth);
+    const b = button.getBoundingClientRect();
+    return { inner, width: b.width, offset: b.left + b.width / 2 - (box.left + box.width / 2) };
+  });
+  expect(geometry.inner, 'the widened column gives the card more room than the cap').toBeGreaterThan(270);
+  expect(geometry.width).toBeCloseTo(270, 0);
+  expect(Math.abs(geometry.offset)).toBeLessThanOrEqual(1);
+  const widened = await column.boundingBox();
+  const widenedEdgeX = (widened?.x ?? 0) + (widened?.width ?? 0);
+  await page.mouse.move(widenedEdgeX, midY);
+  await page.mouse.down();
+  await page.mouse.move(edgeX - 400, midY, { steps: 8 });
+  await page.mouse.up();
+  // Back at the narrowest column the cap is the card's own width, so the
+  // button fills it.
+  const narrow = await card.evaluate((el) => {
+    const button = el.querySelector('[data-testid="proposal-use"]') as HTMLElement;
+    const style = getComputedStyle(el);
+    const inner = el.getBoundingClientRect().width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+      - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth);
+    return { inner, width: button.getBoundingClientRect().width };
+  });
+  expect(await column.boundingBox().then((b) => b?.width)).toBeCloseTo(320, 0);
+  expect(narrow.inner).toBeCloseTo(270, 0);
+  expect(narrow.width).toBeCloseTo(270, 0);
   await card.getByTestId('proposal-use').click();
 
   // Two nodes, the group the canvas puts two or more of them into, and the
