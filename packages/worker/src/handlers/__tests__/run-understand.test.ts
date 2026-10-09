@@ -118,7 +118,7 @@ describe("running one understand task", () => {
   // the same address with the type a ticket signed, guessed from a file name.
   // This is the middle of that chain — the end that judges is a package away.
   it("hands over the type the ledger judged, when the press knew it", async () => {
-    await runUnderstand({ ...PARAMS, source_mime_type: "image/png" }, recorder(), false);
+    await runUnderstand({ ...PARAMS, source_mime_type: "image/png" }, recorder());
 
     expect(vi.mocked(understandMediaAt)).toHaveBeenCalledWith(
       expect.objectContaining({ ledgerType: "image/png" }),
@@ -128,14 +128,14 @@ describe("running one understand task", () => {
   // A node stored before the ledger reported its type carries none, and the
   // run judges by the address the way it did before.
   it("hands over no type when the press had none", async () => {
-    await runUnderstand(PARAMS, recorder(), false);
+    await runUnderstand(PARAMS, recorder());
 
     const [args] = vi.mocked(understandMediaAt).mock.calls[0] ?? [];
     expect(args).not.toHaveProperty("ledgerType");
   });
 
   it("hands the address and the ceilings to the shared capability", async () => {
-    await runUnderstand(PARAMS, recorder(), false);
+    await runUnderstand(PARAMS, recorder());
 
     expect(vi.mocked(understandMediaAt)).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -155,7 +155,7 @@ describe("running one understand task", () => {
   });
 
   it("carries the text back as the content one node gets", async () => {
-    const [result] = await runUnderstand(PARAMS, recorder(), false);
+    const [result] = await runUnderstand(PARAMS, recorder());
 
     expect(result).toMatchObject({
       outputs: [{ content: "A red bicycle against a brick wall." }],
@@ -172,7 +172,7 @@ describe("running one understand task", () => {
       kind: "image",
     });
 
-    await expect(runUnderstand(PARAMS, recorder(), false)).rejects.toThrow();
+    await expect(runUnderstand(PARAMS, recorder())).rejects.toThrow();
   });
 
   // The media was the prompt, so a call that wrote nothing was still paid
@@ -180,7 +180,7 @@ describe("running one understand task", () => {
   it("records what an empty answer cost before failing", async () => {
     billedThen(0.0041, () => ({ text: "", finishReason: "content_filter", kind: "image" }));
 
-    await expect(runUnderstand(PARAMS, recorder(), false)).rejects.toThrow();
+    await expect(runUnderstand(PARAMS, recorder())).rejects.toThrow();
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ source: "model", costUsd: 0.0041, costSource: "provider" });
@@ -193,7 +193,7 @@ describe("running one understand task", () => {
   it("charges what the service said the call cost", async () => {
     billedThen(0.0037, () => ({ text: "A red bicycle.", finishReason: "stop", kind: "image" }));
 
-    const [, credits] = await runUnderstand(PARAMS, recorder(), false);
+    const [, credits] = await runUnderstand(PARAMS, recorder());
 
     expect(credits).toBeCloseTo(0.0037 * 100 * MULTIPLIER, 10);
   });
@@ -203,7 +203,7 @@ describe("running one understand task", () => {
   // uncharged and reconciliation is where an unpriced run belongs.
   it("charges nothing when the service did not say what it cost", async () => {
     billedThen(undefined, () => ({ text: "A red bicycle.", finishReason: "stop", kind: "image" }));
-    const [, credits] = await runUnderstand(PARAMS, recorder(), false);
+    const [, credits] = await runUnderstand(PARAMS, recorder());
 
     expect(credits).toBe(0);
     // Recorded at zero and reported, so reconciliation can find it.
@@ -214,7 +214,7 @@ describe("running one understand task", () => {
   it("records the call it charged for", async () => {
     billedThen(0.0037, () => ({ text: "A red bicycle.", finishReason: "stop", kind: "image" }));
 
-    await runUnderstand(PARAMS, recorder(), false);
+    await runUnderstand(PARAMS, recorder());
 
     expect(rows).toEqual([
       expect.objectContaining({
@@ -236,7 +236,7 @@ describe("running one understand task", () => {
       throw new UnderstandRefused(200, "blocked", "content-filter");
     });
 
-    await expect(runUnderstand(PARAMS, recorder(), false)).rejects.toBeInstanceOf(UnderstandRefused);
+    await expect(runUnderstand(PARAMS, recorder())).rejects.toBeInstanceOf(UnderstandRefused);
 
     expect(rows).toEqual([expect.objectContaining({ costUsd: 0.002, costSource: "provider" })]);
   });
@@ -244,7 +244,7 @@ describe("running one understand task", () => {
   it("records nothing when the media never reached the service", async () => {
     vi.mocked(understandMediaAt).mockRejectedValue(new MediaUnavailable("too-large", {}));
 
-    await expect(runUnderstand(PARAMS, recorder(), false)).rejects.toBeInstanceOf(MediaUnavailable);
+    await expect(runUnderstand(PARAMS, recorder())).rejects.toBeInstanceOf(MediaUnavailable);
 
     expect(rows).toEqual([]);
   });
@@ -254,7 +254,7 @@ describe("running one understand task", () => {
   // is, so the run is told — and the telling has to reach the model, because
   // the model is what decides the language of the answer.
   it("asks in the language the reader set", async () => {
-    await runUnderstand({ ...PARAMS, reader_locale: "zh-CN" }, recorder(), false);
+    await runUnderstand({ ...PARAMS, reader_locale: "zh-CN" }, recorder());
 
     expect(vi.mocked(understandMediaAt)).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -267,8 +267,8 @@ describe("running one understand task", () => {
   // not know, both reach the model the same way: asking for nothing in
   // particular, which is what every run did before the locale travelled.
   it("asks for no language in particular when none was named", async () => {
-    await runUnderstand(PARAMS, recorder(), false);
-    await runUnderstand({ ...PARAMS, reader_locale: "xx-YY" }, recorder(), false);
+    await runUnderstand(PARAMS, recorder());
+    await runUnderstand({ ...PARAMS, reader_locale: "xx-YY" }, recorder());
 
     for (const call of vi.mocked(understandMediaAt).mock.calls) {
       expect(call[0].question).toBe("Describe this image.");
@@ -286,7 +286,6 @@ describe("running one understand task", () => {
         reader_locale: "ja",
       },
       recorder(),
-      false,
     );
 
     const asked = vi.mocked(understandMediaAt).mock.calls[0]?.[0].question;
@@ -297,7 +296,7 @@ describe("running one understand task", () => {
   it("lets the capability's own failures through as they are", async () => {
     vi.mocked(understandMediaAt).mockRejectedValue(new MediaUnavailable("too-large", {}));
 
-    await expect(runUnderstand(PARAMS, recorder(), false)).rejects.toBeInstanceOf(
+    await expect(runUnderstand(PARAMS, recorder())).rejects.toBeInstanceOf(
       MediaUnavailable,
     );
   });

@@ -88,11 +88,9 @@ export async function generate(
   /**
    * Submit the generation task to WaveSpeed.
    * @returns The vendor task id
-   * @throws {TaskDeadlinePassed} when the deadline has passed
    * @throws {Error} if the response carries no task id
    */
   const submit = async (): Promise<string> => {
-    assertBeforeDeadline(deadlineAt);
     const data = await requestWithRetry(
       submitUrl,
       {
@@ -140,6 +138,8 @@ export async function generate(
     });
   };
 
+  // Before the duplicate-cost warning, which only a submit that runs may raise.
+  if (resume.storedTaskId === null) assertBeforeDeadline(deadlineAt);
   const result = await submitOrResume({
     storedTaskId: resume.storedTaskId,
     retryStarting: resume.retryStarting,

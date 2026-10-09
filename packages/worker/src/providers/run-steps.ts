@@ -308,13 +308,25 @@ async function runStep(
       let prediction = "";
       const { id, cached } = await cloneOnce(deps, ctx, "element", image, `:${name}`, step, async () => {
         let description = step.output.description;
+        let submitCtx = ctx;
         if (typeof description !== "string") {
+          // The description is recorded before the submit, so the attempt
+          // before stopped at or before the describe: the describe is the
+          // call that may be paid for twice, and the submit is new. Warned
+          // ahead of the reading place, which may send the run back to the queue.
+          if (ctx.retryStarting) {
+            logger.warn(
+              { taskId: ctx.taskId, describe: `${ctx.taskId}-${step.position}` },
+              "provider_reinvoked_on_retry_potential_duplicate_cost",
+            );
+            submitCtx = { ...ctx, retryStarting: false };
+          }
           const described = await deps.describeImage(image);
           description = described.text.slice(0, ELEMENT_DESCRIPTION_MAX);
           await deps.steps.recordInline(step.id, { description }, described.costUsd);
           step.inlineCostUsd += described.costUsd;
         }
-        const run = await predict(deps, ctx, resolved, step, {
+        const run = await predict(deps, submitCtx, resolved, step, {
           name,
           description,
           image,
@@ -427,6 +439,9 @@ export async function runCatalogTask(
       // Past the deadline nothing new is started; a step already submitted
       // is still asked once, and keeps a result the upstream had ready.
       if (step.predictionId === null) assertBeforeDeadline(ctx.deadlineAt);
+      else if (retryStarting) {
+        logger.info({ taskId: ctx.taskId, providerTaskId: step.predictionId }, "async_resume_stored_provider_task");
+      }
       const stepCtx = { ...ctx, retryStarting: retryStarting && step.predictionId === null };
       retryStarting = false;
       try {

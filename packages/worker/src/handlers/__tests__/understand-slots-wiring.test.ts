@@ -78,7 +78,7 @@ describe("a worker reading of media", () => {
     h.full.value = true;
 
     await expect(
-      runUnderstand({ source_type: "image", source_url: "https://a/cat.png" }, usage as never, false),
+      runUnderstand({ source_type: "image", source_url: "https://a/cat.png" }, usage as never),
     ).rejects.toBeInstanceOf(h.StillRunning);
     expect(h.understandMediaAt).not.toHaveBeenCalled();
   });

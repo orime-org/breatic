@@ -122,9 +122,10 @@ export interface TaskJobData {
    */
   mode: "append" | "overwrite";
   /**
-   * The `attemptsMade` the retry log lines were last written for. A run that
-   * waits on its upstream is picked up again and again within one attempt;
-   * the lines describe a retry, so each retry writes them once.
+   * The retry the log lines were last written for, counted as `attemptsMade`
+   * plus `stalledCounter`. A run that waits on its upstream is picked up again
+   * and again within one retry; the lines describe a retry, so each retry
+   * writes them once.
    */
   retryReported?: number;
 }
@@ -309,9 +310,10 @@ function providerOf(modality: string, modelName: string | undefined): string {
 }
 
 /**
- * Note a retry once. A pickup that follows a failed attempt is a retry; the
- * pickups after it within the same attempt are the run coming back to its
- * waiting work, and say nothing new.
+ * Note a retry once. A pickup that follows a failed attempt, or a worker that
+ * stalled mid-run, is a retry; the pickups after it are the run coming back
+ * to its waiting work, and say nothing new. A delayed re-queue moves neither
+ * count.
  * @param job - The job, whose data records the attempt last reported.
  * @param run - The run.
  * @param run.taskId - The task.
@@ -322,14 +324,15 @@ async function reportRetryOnce(
   job: Job<TaskJobData>,
   run: { taskId: string; storedTaskId: string | null },
 ): Promise<boolean> {
-  if (job.attemptsMade <= (job.data.retryReported ?? 0)) return false;
+  const round = job.attemptsMade + job.stalledCounter;
+  if (round <= (job.data.retryReported ?? 0)) return false;
   if (run.storedTaskId) {
     logger.info(
       { taskId: run.taskId, providerTaskId: run.storedTaskId, attempt: job.attemptsMade + 1 },
       "async_resume_stored_provider_task",
     );
   }
-  await job.updateData({ ...job.data, retryReported: job.attemptsMade });
+  await job.updateData({ ...job.data, retryReported: round });
   return true;
 }
 
@@ -529,7 +532,6 @@ async function runTaskBody(
         taskId,
         resume,
         deadlineAt,
-        retryStarting,
       });
     } else if (taskType === "understand") {
       // A reading answers with one piece of text, and the row on the node it
@@ -541,7 +543,16 @@ async function runTaskBody(
         throw new Error("understand: a reading must name the node it writes to");
       }
       assertBeforeDeadline(deadlineAt);
-      [providerResult, creditsUsed] = await runUnderstand(params, recorderFor("canvas_understand"), retryStarting);
+      // #1628 monitoring: a retried reading reads the media and calls the
+      // service again, a POTENTIAL duplicate external cost. Written before the
+      // reading place, which may send the run back to the queue.
+      if (retryStarting) {
+        logger.warn(
+          { taskId, taskType, attempt: job.attemptsMade + 1 },
+          "provider_reinvoked_on_retry_potential_duplicate_cost",
+        );
+      }
+      [providerResult, creditsUsed] = await runUnderstand(params, recorderFor("canvas_understand"));
     } else if (taskType in AIGC_TASK_TYPES) {
       [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, {
         resume,
@@ -549,7 +560,6 @@ async function runTaskBody(
         projectId: projectId ?? undefined,
         outputCount: 1,
         deadlineAt,
-        retryStarting,
       });
     } else {
       throw new Error(`Task type '${taskType}' has no runner`);
@@ -1432,8 +1442,6 @@ export interface ProviderRun {
   outputCount: number;
   /** The task's two-hour deadline, in epoch milliseconds (inner#1337). */
   deadlineAt: number;
-  /** Whether this pickup starts a retry, for the step that may submit again to say so. */
-  retryStarting: boolean;
 }
 
 interface RunMiniToolOpts {
@@ -1449,8 +1457,6 @@ interface RunMiniToolOpts {
   resume: ResumeContext;
   /** The task's two-hour deadline, in epoch milliseconds (inner#1337). */
   deadlineAt: number;
-  /** Whether this pickup starts a retry. */
-  retryStarting: boolean;
 }
 
 /**
@@ -1469,7 +1475,7 @@ interface RunMiniToolOpts {
 export async function runMiniTool(
   opts: RunMiniToolOpts,
 ): Promise<[Record<string, unknown>, number]> {
-  const { toolId, params, userId, projectId, taskId, resume, deadlineAt, retryStarting } = opts;
+  const { toolId, params, userId, projectId, taskId, resume, deadlineAt } = opts;
   const spec = miniToolById(toolId);
   if (!spec) throw new Error(`mini-tool ${toolId} is not in the registry`);
 
@@ -1485,7 +1491,6 @@ export async function runMiniTool(
       projectId,
       outputCount: spec.outputs.length,
       deadlineAt,
-      retryStarting,
     });
     return [result, creditsFor((result.cost as number) ?? 0)];
   }
@@ -1525,7 +1530,6 @@ export async function runMiniTool(
  * what this path sends has to be able to call it.
  * @param params - Task params carrying `source_type`, `source_url` and an optional prompt.
  * @param usage - The task's recorder; the call is recorded on it.
- * @param retryStarting - Whether this pickup starts a retry: the reading is then a second paid call.
  * @returns A `[result, credits]` tuple: one output holding the text, and the credits to charge.
  * @throws {MediaUnavailable} when the address yields no usable media.
  * @throws {UnderstandRefused} when the service would not answer.
@@ -1535,12 +1539,7 @@ export async function runMiniTool(
 export async function runUnderstand(
   params: Record<string, unknown>,
   usage: UsageRecorder,
-  retryStarting: boolean,
 ): Promise<[Record<string, unknown>, number]> {
-  // #1628 monitoring: a retried reading reads the media and calls the service
-  // again, so it is a POTENTIAL duplicate external cost. Feeds the
-  // duplicate-cost alarm trend.
-  if (retryStarting) logger.warn({ source: "understand" }, "provider_reinvoked_on_retry_potential_duplicate_cost");
   const sourceType = params.source_type as string;
   const cfg = getUnderstandConfig();
   const question = understandQuestion(params.prompt, sourceType, params.reader_locale);
@@ -1690,7 +1689,7 @@ async function importProvider(taskType: string): Promise<{
           return {
             ...(await runCatalogTask(
               stepDepsFor(studioId),
-              { taskId: run.taskId, studioId, deadlineAt: run.deadlineAt, retryStarting: run.retryStarting },
+              { taskId: run.taskId, studioId, deadlineAt: run.deadlineAt, retryStarting: run.resume.retryStarting },
               modality,
               prompt,
               model,

@@ -166,6 +166,8 @@ export function resumablePredict(
   waiting: PredictionWaiting,
 ): (job: VoiceSampleJob) => Promise<string> {
   const submitted = new Map<string, { id: string; at: number }>();
+  // Samples whose last submit failed before an id was stored: it may have reached the upstream.
+  const unsure = new Set<string>();
   return async (job) => {
     for (;;) {
       try {
@@ -175,11 +177,14 @@ export function resumablePredict(
             submitted.set(job.key, { id, at: waiting.now() });
           },
           externalTaskId: job.key,
-          retryStarting: false,
+          retryStarting: unsure.has(job.key),
         });
       } catch (err) {
         if (!(err instanceof StillRunning)) {
-          if (startsOver(err)) submitted.delete(job.key);
+          const over = startsOver(err);
+          if (over) submitted.delete(job.key);
+          if (over || submitted.has(job.key)) unsure.delete(job.key);
+          else unsure.add(job.key);
           throw err;
         }
         const since = submitted.get(job.key)?.at ?? waiting.now();

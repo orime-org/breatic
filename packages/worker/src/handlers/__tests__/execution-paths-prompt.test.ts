@@ -123,7 +123,6 @@ describe("both validating execution paths carry the prompt to the provider", () 
       taskId: RUN.taskId,
       resume: RUN.resume,
       deadlineAt: Number.MAX_SAFE_INTEGER,
-      retryStarting: false,
     });
 
     expect(mockGenerateAsync).toHaveBeenCalledTimes(1);
@@ -163,7 +162,6 @@ describe("both validating execution paths carry the prompt to the provider", () 
       taskId: RUN.taskId,
       resume: RUN.resume,
       deadlineAt: Number.MAX_SAFE_INTEGER,
-      retryStarting: false,
     });
 
     expect(mockGenerateAsync.mock.calls[0]![0]).toBe("bold plan");
@@ -178,7 +176,6 @@ describe("both validating execution paths carry the prompt to the provider", () 
       taskId: RUN.taskId,
       resume: RUN.resume,
       deadlineAt: Number.MAX_SAFE_INTEGER,
-      retryStarting: false,
     });
     expect(mockGenerateAsync.mock.calls[0]![0]).toBe("spoken line");
 
@@ -200,7 +197,6 @@ describe("a mini-tool's pinned model", () => {
       taskId: RUN.taskId,
       resume: RUN.resume,
       deadlineAt: Number.MAX_SAFE_INTEGER,
-      retryStarting: false,
     });
 
     expect(mockGenerateAsync.mock.calls[0]![1]).toBe("seedance-2.5-video-extend");
