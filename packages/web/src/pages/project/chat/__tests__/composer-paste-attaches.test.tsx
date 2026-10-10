@@ -10,7 +10,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
-import { CLIPBOARD_MARKER } from '@web/spaces/canvas/node-clipboard';
+import { CLIPBOARD_MARKER, CLIPBOARD_VERSION, serializeClipboard, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 
 /**
  * Render the composer with an attach handler unless one is given.
@@ -90,11 +90,16 @@ describe('pasting into the composer', () => {
 
   it('hands canvas text on as nodes and keeps it out of the box', () => {
     const { onPasteCanvas } = setup();
-    const node = { type: 'image', position: { x: 0, y: 0 }, content: 'https://x/y.png', external: true };
+    const payload: ClipboardPayload = {
+      version: CLIPBOARD_VERSION,
+      picked: ['x'],
+      nodes: [{ id: 'x', type: 'image', position: { x: 0, y: 0 }, data: { content: 'https://x/y.png' }, external: true }],
+      edges: [],
+    };
 
-    paste([], `${CLIPBOARD_MARKER}${JSON.stringify([node])}`);
+    paste([], serializeClipboard(payload));
 
-    expect(onPasteCanvas).toHaveBeenCalledWith([node]);
+    expect(onPasteCanvas).toHaveBeenCalledWith(payload);
     expect(screen.getByTestId('chat-composer-box')).not.toHaveTextContent(CLIPBOARD_MARKER);
   });
 

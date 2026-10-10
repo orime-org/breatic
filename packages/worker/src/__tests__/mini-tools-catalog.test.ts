@@ -7,7 +7,7 @@
  * worker loads.
  */
 
-import { MINI_TOOLS, modelOf, toolParamKeys } from "@breatic/shared/mini-tools";
+import { MINI_TOOLS, modelOf, toolFilledParams, toolParamKeys } from "@breatic/shared/mini-tools";
 import { initCore } from "@breatic/core";
 import { getFullModelConfig } from "@breatic/domain";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -63,7 +63,9 @@ describe("model tools against the catalog", () => {
       const model = catalog().get(modelOf(tool)!);
       expect(model).toBeDefined();
       const params = model!.params ?? {};
-      expect(Object.keys(params)).toContain(tool.sourceParam);
+      for (const key of toolFilledParams(tool)) expect(Object.keys(params)).toContain(key);
+      expect(params[tool.sourceParam]?.type === "list").toBe(tool.sourceMany);
+      if (tool.drawing?.kind === "mask") expect(params[tool.drawing.maskParam]?.accepts).toBe("image");
       for (const slot of tool.slots) {
         expect(Object.keys(params)).toContain(slot.param);
         expect(params[slot.param]?.accepts).toBe(slot.accepts);
@@ -96,7 +98,7 @@ describe("model tools against the catalog", () => {
     const claimed = new Set<string>();
     for (const tool of modelTools) {
       const name = modelOf(tool)!;
-      for (const key of [tool.sourceParam, ...tool.slots.map((s) => s.param), ...toolParamKeys(tool)]) {
+      for (const key of [...toolFilledParams(tool), ...toolParamKeys(tool)]) {
         claimed.add(`${name}.${key}`);
       }
     }

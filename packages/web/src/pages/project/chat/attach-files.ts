@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { UploadFailedError } from '@web/data/upload/media-upload';
 import type { ChatAttachedChip } from '@breatic/shared';
 
 import {
@@ -147,10 +148,15 @@ async function fillIn(picked: Accepted, tray: Tray, projectId: string, deps: Att
       if (text.trim() === '') throw new Error('document holds no words');
       chip = { ...base, data_snapshot: { text } };
     }
-  } catch {
+  } catch (err) {
     // The item says it failed, which is what the reader acts on: take it out
-    // and pick the file again.
-    chatAttachments.fail(tray.conversationId, item.id, media ? 'upload' : 'extract');
+    // and pick the file again, after a while when it was uploading too often.
+    const rateLimited = err instanceof UploadFailedError && err.reason === 'rateLimited';
+    chatAttachments.fail(
+      tray.conversationId,
+      item.id,
+      media ? (rateLimited ? 'rate_limited' : 'upload') : 'extract',
+    );
     return;
   }
   chatAttachments.settle(tray.conversationId, item.id, chip, tray.limits);

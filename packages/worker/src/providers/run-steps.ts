@@ -5,11 +5,14 @@
  * One task run as its upstream steps (#2156, design §15.1).
  *
  * The steps are written on the task's first run and advanced here only:
- * a pending step is submitted and its prediction id stored before polling, a
- * submitted step is polled by that id, a done step is skipped and what it
- * answered is reused. What each step answers feeds the next — an upload id,
- * a cloned vocal or voice — and the run is billed across every prediction
- * it made plus what its steps cost outside them.
+ * a pending step is submitted and its prediction id stored before it is asked
+ * about, a submitted step is asked about by that id once per pickup, a done
+ * step is skipped and what it answered is reused. A step still going hands
+ * a still-going answer up, and dispatch decides between the queue and the
+ * task's deadline; past the deadline no step is started (inner#1337). What
+ * each step answers feeds the next — an upload id, a cloned vocal or voice —
+ * and the run is billed across every prediction it made plus what its steps
+ * cost outside them.
  */
 
 import { logger } from "@breatic/core";
@@ -21,6 +24,7 @@ import { planSteps } from "@worker/providers/plan-steps.js";
 import { upstreamBody } from "@worker/providers/upstream-body.js";
 import { runPrediction, type PredictionRun } from "@worker/providers/wavespeed.js";
 import { queryBilling, UpstreamTaskFailed } from "@worker/providers/http.js";
+import { assertBeforeDeadline } from "@worker/providers/still-running.js";
 
 type Step = upstreamStepRepo.UpstreamStep;
 type CloneKind = upstreamCloneRepo.UpstreamCloneKind;
@@ -30,6 +34,14 @@ export interface RunTaskContext {
   taskId: string;
   /** The studio whose clone cache the run reads and writes; null leaves the cache alone. */
   studioId: string | null;
+  /** The task's two-hour deadline, in epoch milliseconds. */
+  deadlineAt: number;
+  /**
+   * Whether this pickup starts a retry. The run hands it on only to the first
+   * step it runs, and only when that step holds no upstream id: the attempt
+   * before stopped at that step, and never reached the ones after it.
+   */
+  retryStarting: boolean;
 }
 
 /** The storage a run reads and writes; the two domain repositories in production. */
@@ -102,30 +114,37 @@ function urlOf(params: Readonly<Record<string, unknown>>, param: string): string
 }
 
 /**
- * Submit or resume one step's prediction under the provider's cap, marking
- * the step failed when the upstream fails it.
+ * Submit one step's prediction, or ask once about the one it already
+ * submitted, under the provider's cap, marking the step failed when the
+ * upstream fails it.
  * @param deps - Storage.
+ * @param ctx - The task, for the resume context and the deadline a submit is held to.
  * @param resolved - The model's resolved endpoint.
  * @param step - The step.
- * @param body - The request body.
- * @param taskId - The task, for the resume context.
+ * @param body - The request body; not sent for a step already submitted.
  * @returns The prediction's outputs and id.
  * @throws {UpstreamTaskFailed} when the upstream failed the prediction.
+ * @throws {StillRunning} while the prediction is still going.
+ * @throws {TaskDeadlinePassed} when the deadline has passed before a submit.
  * @throws {Error} when the request itself failed; the step stays retryable.
  */
 async function predict(
   deps: StepDeps,
+  ctx: RunTaskContext,
   resolved: ResolvedModel,
   step: Step,
   body: Record<string, unknown>,
-  taskId: string,
 ): Promise<PredictionRun> {
   const release = await acquireSemaphore(resolved.providerName, resolved.maxConcurrency);
   try {
+    // Building the body (a description, a prompt rewrite) can run past the
+    // deadline that let this step start; nothing new is submitted after it.
+    if (step.predictionId === null) assertBeforeDeadline(ctx.deadlineAt);
     return await runPrediction(resolved, step.endpoint, body, {
       storedTaskId: step.predictionId,
       persistTaskId: (id: string): Promise<void> => deps.steps.markSubmitted(step.id, id),
-      externalTaskId: `breatic-${taskId}-${step.position}`,
+      externalTaskId: stepLabel(ctx, step),
+      retryStarting: ctx.retryStarting,
     });
   } catch (err) {
     if (err instanceof UpstreamTaskFailed) await deps.steps.markFailed(step.id, err.upstreamError);
@@ -192,6 +211,54 @@ function customVoiceId(taskId: string): string {
 }
 
 /**
+ * The label a step's upstream calls go under.
+ * @param ctx - The task.
+ * @param step - The step.
+ * @returns The label.
+ */
+function stepLabel(ctx: RunTaskContext, step: Step): string {
+  return `breatic-${ctx.taskId}-${step.position}`;
+}
+
+/**
+ * Write the duplicate-cost warning ahead of a paid call that comes before a
+ * step's submit, when this pickup starts a retry. The warning goes before
+ * the call, so a reading place that sends the run back to the queue or a
+ * deadline passed during the call does not lose it, and the submit after it
+ * is handed none: one warning per retry.
+ * @param ctx - The task.
+ * @param step - The step.
+ * @returns The context to submit with.
+ */
+function warnAheadOfPaidCall(ctx: RunTaskContext, step: Step): RunTaskContext {
+  if (!ctx.retryStarting) return ctx;
+  logger.warn({ taskId: ctx.taskId, submit: stepLabel(ctx, step) }, "provider_reinvoked_on_retry_potential_duplicate_cost");
+  return { ...ctx, retryStarting: false };
+}
+
+/**
+ * The request body a generate step submits.
+ * @param entry - The model.
+ * @param prompt - The reader's prompt.
+ * @param params - The run's params.
+ * @param carried - What earlier steps answered.
+ * @returns The body.
+ * @throws {Error} when the model's family fails to prepare the prompt.
+ */
+async function generateBody(
+  entry: FullModelEntry,
+  prompt: string,
+  params: Readonly<Record<string, unknown>>,
+  carried: Carried,
+): Promise<Record<string, unknown>> {
+  const family = FAMILIES.get(entry.name);
+  const withIds: Record<string, unknown> = { ...params, ...carried.ids };
+  if (carried.elementIds.length > 0) withIds.elements = carried.elementIds.map((id) => ({ element_id: id }));
+  const prepared = family ? await family.prepare(prompt, withIds) : { prompt, fields: {} };
+  return { ...upstreamBody(entry, withIds, prepared.prompt, family?.CONSUMES), ...prepared.fields };
+}
+
+/**
  * Run one pending or submitted step and answer what it produced.
  * @param deps - Storage.
  * @param ctx - The task.
@@ -218,13 +285,13 @@ async function runStep(
     case "upload_reference":
     case "upload_melody": {
       const { param, purpose } = UPLOADS[step.kind];
-      const run = await predict(deps, resolved, step, { audio: urlOf(params, param), purpose }, ctx.taskId);
+      const run = await predict(deps, ctx, resolved, step, { audio: urlOf(params, param), purpose });
       return { param, id: outputField(run, `${purpose}_id`), prediction: run.taskId };
     }
     case "vocal": {
       let prediction = "";
       const { id, cached } = await cloneOnce(deps, ctx, "vocal", urlOf(params, "vocal"), "", step, async () => {
-        const run = await predict(deps, resolved, step, { audio: urlOf(params, "vocal") }, ctx.taskId);
+        const run = await predict(deps, ctx, resolved, step, { audio: urlOf(params, "vocal") });
         prediction = run.taskId;
         return outputField(run, "vocal_id");
       });
@@ -235,13 +302,10 @@ async function runStep(
       const source = urlOf(params, entry.reused_by ?? "");
       const { id, cached } = await cloneOnce(deps, ctx, "voice", source, "", step, async () => {
         const voiceId = customVoiceId(ctx.taskId);
-        const run = await predict(
-          deps,
-          resolved,
-          step,
-          { ...upstreamBody(entry, params, ""), custom_voice_id: voiceId },
-          ctx.taskId,
-        );
+        const run = await predict(deps, ctx, resolved, step, {
+          ...upstreamBody(entry, params, ""),
+          custom_voice_id: voiceId,
+        });
         prediction = run.taskId;
         return voiceId;
       });
@@ -249,16 +313,19 @@ async function runStep(
     }
     case "speak": {
       if (carried.voiceId === undefined) throw new Error("No cloned voice to speak with");
-      const run = await predict(deps, resolved, step, { text: prompt, voice_id: carried.voiceId }, ctx.taskId);
+      const run = await predict(deps, ctx, resolved, step, { text: prompt, voice_id: carried.voiceId });
       return { urls: [outputUrls(run)[0]!], prediction: run.taskId };
     }
     case "generate": {
-      const family = FAMILIES.get(entry.name);
-      const withIds: Record<string, unknown> = { ...params, ...carried.ids };
-      if (carried.elementIds.length > 0) withIds.elements = carried.elementIds.map((id) => ({ element_id: id }));
-      const prepared = family ? await family.prepare(prompt, withIds) : { prompt, fields: {} };
-      const body = { ...upstreamBody(entry, withIds, prepared.prompt, family?.CONSUMES), ...prepared.fields };
-      const run = await predict(deps, resolved, step, body, ctx.taskId);
+      // A submitted step is only asked about, so its body is not built: for
+      // some families building it is a paid LLM call.
+      let submitCtx = ctx;
+      let body: Record<string, unknown> = {};
+      if (step.predictionId === null) {
+        if (FAMILIES.get(entry.name)?.PREPARE_IS_PAID) submitCtx = warnAheadOfPaidCall(ctx, step);
+        body = await generateBody(entry, prompt, params, carried);
+      }
+      const run = await predict(deps, submitCtx, resolved, step, body);
       return { urls: outputUrls(run), prediction: run.taskId };
     }
     case "element": {
@@ -272,19 +339,20 @@ async function runStep(
       let prediction = "";
       const { id, cached } = await cloneOnce(deps, ctx, "element", image, `:${name}`, step, async () => {
         let description = step.output.description;
+        let submitCtx = ctx;
         if (typeof description !== "string") {
+          submitCtx = warnAheadOfPaidCall(ctx, step);
           const described = await deps.describeImage(image);
           description = described.text.slice(0, ELEMENT_DESCRIPTION_MAX);
           await deps.steps.recordInline(step.id, { description }, described.costUsd);
           step.inlineCostUsd += described.costUsd;
         }
-        const run = await predict(
-          deps,
-          resolved,
-          step,
-          { name, description, image, element_refer_list: [image] },
-          ctx.taskId,
-        );
+        const run = await predict(deps, submitCtx, resolved, step, {
+          name,
+          description,
+          image,
+          element_refer_list: [image],
+        });
         prediction = run.taskId;
         return outputField(run, "element_id");
       });
@@ -363,6 +431,8 @@ async function retireGone(deps: StepDeps, ctx: RunTaskContext, carried: Carried,
  *   canvas generation, the tool's declared outputs for a mini-tool.
  * @returns The outputs, the model and the billed cost in USD.
  * @throws {UpstreamTaskFailed} when the upstream failed a step.
+ * @throws {StillRunning} while a step's prediction is still going.
+ * @throws {TaskDeadlinePassed} when the deadline has passed before a step is started.
  * @throws {Error} when a step already failed, cannot run, or the run answered no output.
  */
 export async function runCatalogTask(
@@ -378,6 +448,7 @@ export async function runCatalogTask(
   const entry = entryOf(modality, resolved.modelName);
   const steps = await deps.steps.ensureSteps(ctx.taskId, planSteps(entry, params));
   const carried: Carried = { ids: {}, elementIds: [], cached: [], predictions: [], inlineCostUsd: 0 };
+  let retryStarting = ctx.retryStarting;
 
   for (const step of steps) {
     if (step.status === "failed") {
@@ -386,8 +457,16 @@ export async function runCatalogTask(
     }
     let output = step.output;
     if (step.status !== "done") {
+      // Past the deadline nothing new is started; a step already submitted
+      // is still asked once, and keeps a result the upstream had ready.
+      if (step.predictionId === null) assertBeforeDeadline(ctx.deadlineAt);
+      else if (retryStarting) {
+        logger.info({ taskId: ctx.taskId, providerTaskId: step.predictionId }, "async_resume_stored_provider_task");
+      }
+      const stepCtx = { ...ctx, retryStarting: retryStarting && step.predictionId === null };
+      retryStarting = false;
       try {
-        output = await runStep(deps, ctx, resolved, entry, step, prompt, params, carried);
+        output = await runStep(deps, stepCtx, resolved, entry, step, prompt, params, carried);
       } catch (err) {
         await retireGone(deps, ctx, carried, err);
         throw err;

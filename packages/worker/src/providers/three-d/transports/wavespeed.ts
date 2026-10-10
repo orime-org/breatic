@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * WaveSpeed 3D transport -- async submit + poll.
+ * WaveSpeed 3D transport -- async submit, then one question per pickup.
  *
  * Handles all WaveSpeed-hosted 3D models (Meshy, Hunyuan3D, Rodin,
  * Tripo3D, SAM). Same submit+poll pattern as image/audio/video
@@ -11,15 +11,16 @@
  * WaveSpeed API pattern:
  *
  *     POST {base_url}/{model_id}  ->  {"data": {"id": "...", "outputs": [...]}}
- *     GET  {base_url}/predictions/{task_id}/result  ->  poll until completed
+ *     GET  {base_url}/predictions/{task_id}/result  ->  asked once per pickup
  */
 
 import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
 import { submitOrResume } from "@worker/providers/async-resume.js";
+import { assertBeforeDeadline } from "@worker/providers/still-running.js";
 import {
   bearerHeaders,
   requestWithRetry,
-  pollUntilDone,
+  pollOnce,
   extractNested,
   queryBilling,
 } from "@worker/providers/http.js";
@@ -40,27 +41,30 @@ function extractOutputUrl(data: Record<string, unknown>): string | undefined {
 /**
  * Generate a 3D model asynchronously via WaveSpeed API.
  *
- * Uses submit + poll pattern. The shared `requestWithRetry` handles
- * 429 exponential backoff. After completion, queries WaveSpeed billing
- * for actual cost.
+ * Submits the task, or asks once about the one already submitted. The
+ * shared `requestWithRetry` handles 429 exponential backoff. After
+ * completion, queries WaveSpeed billing for actual cost.
  *
- * Submit is at-most-once across BullMQ retries (#1628): with a stored
- * vendor task id the submit POST is skipped and polling resumes; on a
- * fresh run the returned task id is persisted before polling starts.
- * WaveSpeed has no client-side idempotency field, so nothing is added
- * to the submit body (Tier B).
+ * Submit is at-most-once across pickups (#1628): with a stored vendor task
+ * id the submit POST is skipped; on a fresh run the returned task id is
+ * persisted before the first question. WaveSpeed has no client-side
+ * idempotency field, so nothing is added to the submit body (Tier B).
  * @param prompt - 3D object description prompt
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters (already converted by `buildRequest`)
- * @param resume - Worker resume context; absent for legacy/direct callers
+ * @param resume - Worker resume context
+ * @param deadlineAt - The task's two-hour deadline, in epoch milliseconds
  * @returns Object with `url`, `model`, and `cost`
+ * @throws {StillRunning} while the task is still going
+ * @throws {TaskDeadlinePassed} when the deadline has passed before a submit
  * @throws {Error} if the task fails or returns no output
  */
 export async function generate(
   prompt: string,
   resolved: ResolvedModel,
   params: Record<string, unknown>,
-  resume?: ResumeContext,
+  resume: ResumeContext,
+  deadlineAt: number,
 ): Promise<{ url: string; model: string; cost: number }> {
   // Strip null/undefined values — WaveSpeed rejects nullable fields
   const body: Record<string, unknown> = {};
@@ -111,37 +115,37 @@ export async function generate(
   };
 
   /**
-   * Poll the WaveSpeed task by id until it reaches a terminal status.
+   * Ask once about the WaveSpeed task by id.
    *
    * Short-circuits when this run's submit already returned the outputs
-   * synchronously. Timings come from `config/worker.yaml` like every other
-   * transport: a 3D task outlasting one polling round is picked up by the
-   * next round on retry, so it needs no window of its own.
-   * @param taskId - The vendor task id to poll
+   * synchronously.
+   * @param taskId - The vendor task id to ask about
    * @returns The terminal poll (or synchronous submit) response
+   * @throws {StillRunning} while the task is still going
    */
   const poll = async (taskId: string): Promise<Record<string, unknown>> => {
     billedTaskId = taskId;
     if (syncResult) {
       return syncResult;
     }
-    return pollUntilDone(
-      `${resolved.baseUrl}/predictions/${taskId}/result`,
-      {
-        headers,
-        statusPath: ["data", "status"],
-        successStatuses: new Set(["completed"]),
-        failureStatuses: new Set(["failed"]),
-        errorPath: ["data", "error"],
-        provider: "wavespeed",
-      },
-    );
+    return pollOnce(`${resolved.baseUrl}/predictions/${taskId}/result`, {
+      headers,
+      statusPath: ["data", "status"],
+      successStatuses: new Set(["completed"]),
+      failureStatuses: new Set(["failed"]),
+      errorPath: ["data", "error"],
+      provider: "wavespeed",
+    });
   };
 
+  // Before the duplicate-cost warning, which only a submit that runs may raise.
+  if (resume.storedTaskId === null) assertBeforeDeadline(deadlineAt);
   const result = await submitOrResume({
-    storedTaskId: resume?.storedTaskId ?? null,
+    storedTaskId: resume.storedTaskId,
+    retryStarting: resume.retryStarting,
+    label: resume.externalTaskId,
     submit,
-    persistId: resume?.persistTaskId ?? (async (): Promise<void> => {}),
+    persistId: resume.persistTaskId,
     poll,
   });
 

@@ -179,11 +179,7 @@ export async function exportCropBlob(
     crop.width,
     crop.height,
   );
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, 'image/png'),
-  );
-  if (!blob) throw new Error('canvas export produced no blob');
-  return blob;
+  return pngOf(canvas);
 }
 
 /** Quarter turns clockwise and flips, as the rotate & flip tool holds them. */
@@ -227,6 +223,16 @@ export async function exportOrientedBlob(source: CropSource, orientation: Orient
   ctx.scale(orientation.flipX ? -1 : 1, orientation.flipY ? -1 : 1);
   ctx.rotate((orientation.turns * Math.PI) / 2);
   ctx.drawImage(el, -width / 2, -height / 2);
+  return pngOf(canvas);
+}
+
+/**
+ * A canvas as a PNG blob.
+ * @param canvas - The canvas.
+ * @returns The blob.
+ * @throws {Error} When the canvas cannot export.
+ */
+export async function pngOf(canvas: HTMLCanvasElement): Promise<Blob> {
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('canvas export produced no blob');
   return blob;

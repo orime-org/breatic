@@ -29,6 +29,7 @@ const CFG = {
   clientRetryBaseDelayMs: 1000,
   clientRequestTimeoutMs: 30000,
   clientPutMinBytesPerSec: 65536,
+  assetUrlPrefix: 'https://cdn/',
 };
 
 const HASH = 'a'.repeat(64);
@@ -95,6 +96,23 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(deps.onFailure).not.toHaveBeenCalled();
   });
 
+  it('reports progress as the share of the file that has landed (inner#1127 A4)', async () => {
+    const big = new File([new Uint8Array(400)], 'clip.mp4', { type: 'video/mp4' });
+    const onProgress = vi.fn();
+    const deps = makeUploadDeps({
+      onProgress,
+      sendToIngest: vi.fn(async (_file, _ticket, _cfg, onPartLanded?: (n: number) => void) => {
+        onPartLanded?.(100);
+        onPartLanded?.(400);
+        return { assetId: 'a', fileUrl: 'https://cdn/c.mp4', kind: 'video' };
+      }),
+    });
+
+    await runMediaUpload(big, context, deps);
+
+    expect(onProgress.mock.calls).toEqual([[0.25], [1]]);
+  });
+
   // The node reads its result from Yjs and ignores this; an upload with no
   // node behind it has no other channel and reads it here (design §9).
   it('hands back what completing the upload said it became', async () => {
@@ -105,6 +123,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith({
       fileUrl: 'https://cdn/p.png',
       assetId: 'asset-new',
+      kind: 'image',
     });
   });
 
@@ -124,6 +143,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith({
       fileUrl: 'https://cdn/existing.png',
       assetId: 'asset-existing',
+      kind: 'image',
     });
   });
 
@@ -249,6 +269,16 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'storage' });
   });
 
+  it('names a rate limit at once, asking for the ticket only one time', async () => {
+    const requestTicket = vi.fn().mockRejectedValue(apiError(429));
+    const deps = makeUploadDeps({ requestTicket });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(requestTicket).toHaveBeenCalledOnce();
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'rateLimited' });
+  });
+
   it('reports a failure when the knobs cannot be fetched', async () => {
     const deps = makeUploadDeps({
       getUploadConfig: vi.fn().mockRejectedValue(new Error('offline')),
@@ -303,6 +333,7 @@ describe('uploadMedia — the pipeline wired to the real network, as a promise',
     await expect(uploadMedia(file, { projectId: 'p1', derived: true })).resolves.toEqual({
       fileUrl: 'https://cdn/p.png',
       assetId: 'asset-new',
+      kind: 'image',
     });
     expect(assetsApi.requestUploadTicket).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: 'p1', derived: true, hash: HASH }),

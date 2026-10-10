@@ -10,7 +10,6 @@ describe('stores barrel', () => {
     expect(typeof stores.usePreferencesStore).toBe('function');
     expect(typeof stores.useCurrentUserStore).toBe('function');
     expect(typeof stores.useCanvasStore).toBe('function');
-    expect(typeof stores.useInpaintStore).toBe('function');
     expect(typeof stores.useProjectStore).toBe('function');
     expect(typeof stores.useToastStore).toBe('function');
   });

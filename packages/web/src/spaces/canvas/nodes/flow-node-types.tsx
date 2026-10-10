@@ -31,6 +31,7 @@ import {
   overlayCounterScale,
 } from '@web/spaces/canvas/overlay-scale';
 import { NodeCropLayer } from '@web/spaces/canvas/crop/NodeCropLayer';
+import { NodeDrawLayer } from '@web/spaces/canvas/mini-tool/NodeDrawLayer';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import type { NodeView } from '@web/data/yjs/node-view';
@@ -266,6 +267,7 @@ function makeFlowNode(
                   the card's clip so the handles on the picture's edge are whole,
                   and after the connection handles so a press on it is its own. */}
                 {takesEdges ? <NodeCropLayer nodeId={props.id} wrapper={wrapper} /> : null}
+                {takesEdges ? <NodeDrawLayer nodeId={props.id} wrapper={wrapper} /> : null}
                 {/* Outside the node's own box, so it never covers content and
                 never changes what the body is sized to. It counter-scales on
                 the same factor as the name header. Once the canvas has taken

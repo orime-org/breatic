@@ -10,6 +10,8 @@ import {
   type ReactNode,
 } from 'react';
 
+import { captureException } from '@sentry/react';
+
 import { PageUnavailableScreen } from '@web/components/page-unavailable-screen';
 
 /** A route's page, able to start its own download before it renders. */
@@ -153,8 +155,31 @@ export function lazyRoute<T extends ComponentType<unknown>>(
   load: () => Promise<{ default: T }>,
   { editingSurface = false }: { editingSurface?: boolean } = {},
 ): LazyExoticComponent<T> {
+  let failureReported = false;
+
+  /**
+   * Report the first failed download for this page in the current document.
+   * Preload and render can observe the same rejection; neither should hide it
+   * or report it twice. Pass the original error, without copying route data.
+   * @param error - The original module download rejection.
+   * @param stage - Where this page first observed the failure.
+   * @throws {Error} If the monitoring SDK cannot capture the exception.
+   */
+  function reportFailure(error: unknown, stage: 'preload' | 'render'): void {
+    if (failureReported) return;
+    failureReported = true;
+    captureException(error, {
+      tags: {
+        error_boundary: 'route-chunk',
+        chunk_stage: stage,
+        chunk_surface: editingSurface ? 'editing' : 'ordinary',
+      },
+    });
+  }
+
   const Page = lazy(() =>
-    load().catch(() => {
+    load().catch((error: unknown) => {
+      reportFailure(error, 'render');
       if (editingSurface) {
         return { default: PageUnavailableScreen as unknown as T };
       }
@@ -167,9 +192,12 @@ export function lazyRoute<T extends ComponentType<unknown>>(
   // the render that follows waits on this request rather than making a second.
   // A rejection here reaches the reader through that render, where the factory
   // above turns it into the notice; swallowing it at this end keeps a preload
-  // nobody awaits from surfacing as an unhandled rejection.
+  // nobody awaits from surfacing as an unhandled rejection. The first observer
+  // reports it above, independently of whether the page ever renders.
   Page.preload = (): void => {
-    void load().catch(() => undefined);
+    void load().catch((error: unknown) => {
+      reportFailure(error, 'preload');
+    });
   };
   return Page;
 }

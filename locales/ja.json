@@ -136,8 +136,7 @@
     },
     "storage": {
       "quota_exceeded_upload": "Studio のストレージがいっぱいです。アップロードできません。",
-      "quota_exceeded_generate": "Studio のストレージがいっぱいです。生成できません。",
-      "download_not_downloadable": "このファイルはダウンロードできません。"
+      "quota_exceeded_generate": "Studio のストレージがいっぱいです。生成できません。"
     },
     "purchase_mail": {
       "subject": "クレジットを追加しました",
@@ -247,7 +246,7 @@
       "attach": "ファイルを添付",
       "removeAttachment": "{name} を外す",
       "attachmentUploading": "アップロード中",
-      "attachmentFailed": "{reason, select, upload {アップロード失敗} extract {読み取り失敗} too_long {長すぎます} other {失敗}}",
+      "attachmentFailed": "{reason, select, upload {アップロード失敗} rate_limited {アップロードが多すぎます。後でお試しください} extract {読み取り失敗} too_long {長すぎます} other {失敗}}",
       "attachFull": "添付できるのは最大 {limit, number} 件です",
       "attachTooLong": "添付した内容が多すぎます。件数を減らすか、短いファイルにしてください。",
       "attachUnsupported": "{filename} は添付できません",
@@ -725,8 +724,12 @@
       "empty": "{filename} は空のファイルです。追加できる内容がありません。",
       "hashUnavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。",
       "storageFull": "Studio のストレージがいっぱいです。アップロードできません。",
+      "rateLimited": "アップロードの回数が多すぎます。しばらくしてからもう一度お試しください。",
       "failed": "アップロードに失敗しました。",
       "extractionFailed": "{filename} のテキストを読み取れません。"
+    },
+    "paste": {
+      "failed": "貼り付けに失敗しました。"
     },
     "minimap": {
       "label": "キャンバスのミニマップ"
@@ -859,6 +862,17 @@
           },
           "prompt": "表情や動きを入力"
         },
+        "inpaint": {
+          "label": "部分修正",
+          "prompt": "塗った部分をどう変えるか入力"
+        },
+        "erase": {
+          "label": "消去"
+        },
+        "sketch": {
+          "label": "スケッチ編集",
+          "prompt": "描いたものを何にするか入力"
+        },
         "crop": {
           "label": "トリミング"
         },
@@ -977,7 +991,8 @@
         "sourceGone": "元のノードが削除されました。",
         "sourceChanged": "素材が変わりました。",
         "sourceChangedByPeer": "コラボレーターが素材を変えました。",
-        "couldNotStart": "ツールを開始できませんでした。もう一度お試しください。"
+        "couldNotStart": "ツールを開始できませんでした。もう一度お試しください。",
+        "drawingEmpty": "先に画像に描いてください。"
       },
       "adjust": {
         "exposure": "露出",
@@ -995,6 +1010,18 @@
         "vignette": "周辺減光",
         "grain": "粒子",
         "fade": "フェード"
+      },
+      "draw": {
+        "brush": "ブラシ",
+        "rect": "長方形",
+        "ellipse": "楕円",
+        "eraser": "消しゴム",
+        "size": "サイズ",
+        "color": "色",
+        "maskColor": "マスクの色",
+        "undo": "元に戻す",
+        "redo": "やり直す",
+        "clear": "クリア"
       }
     },
     "template": {
@@ -1033,7 +1060,7 @@
       "noAccount": "アカウントをお持ちでないですか?",
       "forgotPassword": "パスワードをお忘れですか?",
       "googleLoading": "Google ログインを読み込み中…",
-      "googleFailed": "Google ログインを利用できません。再試行するか、メールでログインしてください。",
+      "googleFailed": "Google ログインを利用できません。ページを再読み込みするか、メールでログインしてください。",
       "failed": "サインインに失敗しました。もう一度お試しください。"
     },
     "register": {
@@ -1429,6 +1456,23 @@
         "splitCell": "セルを分割",
         "mergeCells": "セルを結合",
         "textHighlight": "背景（文字のハイライト）"
+      },
+      "media": {
+        "image": "画像",
+        "audio": "音声",
+        "video": "動画",
+        "uploading": "アップロード中",
+        "uploadingPercent": "アップロード中 {percent}%",
+        "readOnly": "現在は読み取り専用です。",
+        "retry": "再試行",
+        "remove": "削除",
+        "caption": "キャプション",
+        "captionPlaceholder": "キャプションを追加",
+        "fullscreen": "全画面で表示",
+        "close": "閉じる",
+        "download": "ダウンロード",
+        "delete": "削除",
+        "leftOut": "{count} 件の画像・動画・音声は貼り付けられませんでした。ファイルを直接ドロップまたは貼り付けてください。"
       }
     },
     "readOnlyReconnect": "再接続"
@@ -1818,7 +1862,8 @@
         "not_an_image": "そのファイルは画像として読み取れませんでした。",
         "encode_failed": "画像を準備できませんでした。別の画像をお試しください。",
         "unsupported_type": "このファイル形式には対応していません。",
-        "hash_unavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。"
+        "hash_unavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。",
+        "rate_limited": "アップロードの回数が多すぎます。しばらくしてからもう一度お試しください。"
       },
       "cropRegion": "切り抜き範囲 — 矢印キーで移動できます",
       "cover": {
@@ -2217,6 +2262,13 @@
     "heading": "ページが見つかりません",
     "body": "お探しのページは存在しないか、移動した可能性があります。ホームに戻りましょう。",
     "cta": "ホームに戻る"
+  },
+  "applicationError": {
+    "title": "問題が発生しました",
+    "message": "このページを続行できません。再読み込みするか、ホームに戻ってください。ブラウザの翻訳を使用している場合は無効にし、製品の言語設定をご利用ください。",
+    "reload": "再読み込み",
+    "home": "ホームに戻る",
+    "reference": "エラー番号：{id}"
   },
   "pageLoadError": {
     "message": "ページを読み込めませんでした。もう一度お試しください。",

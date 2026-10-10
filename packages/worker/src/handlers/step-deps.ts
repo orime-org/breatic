@@ -18,6 +18,7 @@ import {
 } from "@breatic/domain";
 
 import type { StepDeps } from "@worker/providers/run-steps.js";
+import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 
 /** What the element description is asked to be. */
 const DESCRIBE_QUESTION =
@@ -47,11 +48,12 @@ export function stepDepsFor(studioId: string | null): StepDeps {
      * One sentence about an image, from the understand model.
      * @param url - The image.
      * @returns The sentence and what it cost; a service that reported no cost is recorded at 0.
+     * @throws {StillRunning} when every reading place in this process is taken.
      */
     describeImage: async (url: string): Promise<{ text: string; costUsd: number }> => {
       const cfg = getUnderstandConfig();
       let costUsd = 0;
-      const answer = await understandMediaAt({
+      const answer = await withUnderstandSlot(() => understandMediaAt({
         url,
         question: DESCRIBE_QUESTION,
         model: UNDERSTAND_PINS.model,
@@ -67,7 +69,7 @@ export function stepDepsFor(studioId: string | null): StepDeps {
         onBilled: (billed) => {
           costUsd = billed ?? 0;
         },
-      });
+      }));
       return { text: answer.text.trim(), costUsd };
     },
   };

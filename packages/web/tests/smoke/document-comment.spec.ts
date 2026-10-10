@@ -67,7 +67,8 @@ async function commentOnParagraph(
 }
 
 /**
- * Selects a character range in one paragraph.
+ * Selects a character range in one paragraph, from inside the body the way a
+ * reader does: the body takes the focus first, then the range is set.
  * @param p - The page.
  * @param from - Where the range starts.
  * @param to - Where it ends.
@@ -81,6 +82,7 @@ async function selectChars(
 ): Promise<void> {
   await p.evaluate(
     ({ sel, at, index }) => {
+      (document.querySelector(sel) as HTMLElement).focus({ preventScroll: true });
       const para = document.querySelectorAll(`${sel} p`)[index]!;
       const walker = document.createTreeWalker(para, NodeFilter.SHOW_TEXT);
       let seen = 0;
@@ -839,10 +841,9 @@ test.describe('the card a comment is written in', () => {
     await page.getByTestId('doc-bubble-tool-comment').click();
     await page.getByTestId('doc-comment-draft-input').fill('half a thought');
 
-    // Back in the body the editor puts its old selection back, which runs
-    // over both lines; collapsing it leaves the caret in the last line only.
-    await page.locator(`${EDITOR} p`).nth(1).click();
-    await page.keyboard.press('ArrowRight');
+    // A press on the line's words puts the caret there (inner#1127 A20: a
+    // press on text from a body that let go collapses to the press point).
+    await page.locator(`${EDITOR} p`).nth(1).click({ position: { x: 4, y: 8 } });
     await page.keyboard.press('ControlOrMeta+Shift+ArrowDown');
 
     await expect(page.locator(`${EDITOR} p`)).toHaveText([

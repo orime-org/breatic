@@ -57,9 +57,18 @@ export type MiniToolRefusal =
   | 'noUsableTier'
   | 'slotMissing'
   | 'slotTooLong'
+  | 'drawingEmpty'
   | 'promptMissing'
   | 'exporting'
   | null;
+
+/** The refusals that disable Execute; the rest let it be pressed and say why. */
+export const BLOCKING_REFUSALS: ReadonlySet<MiniToolRefusal> = new Set<MiniToolRefusal>([
+  'slotMissing',
+  'drawingEmpty',
+  'promptMissing',
+  'exporting',
+]);
 
 /** How the panel's footer states the cost. */
 export type CreditMode = 'free' | 'usage' | 'estimate';
@@ -188,7 +197,8 @@ export function slotLengthCap(
  * @param input.sourceShown - Whether the source node is showing its media.
  * @param input.source - The source as the panel knows it.
  * @param input.tiers - The size tiers as they fall on the source.
- * @param input.exporting - Whether a browser tool's export is under way.
+ * @param input.exporting - Whether a press is still making its file or images in the browser.
+ * @param input.inked - Whether a drawing tool's drawing leaves any ink.
  * @returns The first reason in the order the reader would fix them, or null.
  */
 export function miniToolRefusal(input: {
@@ -200,6 +210,7 @@ export function miniToolRefusal(input: {
   source?: MiniToolSourceInfo;
   tiers?: readonly SizeTierChoice[];
   exporting: boolean;
+  inked?: boolean;
 }): MiniToolRefusal {
   const { spec, entry, prompt, slots, sourceShown, source = {}, exporting } = input;
   if (exporting) return 'exporting';
@@ -219,8 +230,21 @@ export function miniToolRefusal(input: {
     if (empty && !slotOptional(entry, slot.param)) return 'slotMissing';
   }
   if (slotLengthCap(spec, entry, slots) !== null) return 'slotTooLong';
+  if (spec.drawing !== undefined && input.inked !== true) return 'drawingEmpty';
   if (promptRequired(spec, entry) && prompt.trim() === '') return 'promptMissing';
   return null;
+}
+
+/**
+ * Whether a press makes something in the browser before the run: a browser
+ * tool's file, or a drawing tool's images. The panel shows the press as under
+ * way for that stretch, and the Space keeps the whole press as an operation
+ * until it resolves.
+ * @param spec - The tool.
+ * @returns True when the press exports first.
+ */
+export function exportsBeforeRun(spec: MiniToolSpec): boolean {
+  return spec.run.kind === 'browser' || spec.drawing !== undefined;
 }
 
 /**

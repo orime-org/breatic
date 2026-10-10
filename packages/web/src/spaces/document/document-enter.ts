@@ -39,6 +39,7 @@ import {
 import type { Transaction } from '@tiptap/pm/state';
 import { cellAround } from '@tiptap/pm/tables';
 
+import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
 import {
   QUOTED,
@@ -234,44 +235,26 @@ function handleWholeBlockEnter(editor: ListEditor): boolean {
 const imeKey = new PluginKey('document-enter-ime');
 
 /**
- * Notes that a composition just ended, until whatever is already queued has
- * run.
+ * Watches for the end of a composition, so the Enter binding can leave the
+ * keystroke that ends it to the input method (`@web/lib/composition-end`).
  *
- * An input method that accepts a candidate with Enter sends the keystroke to
- * every Enter handler in the editor, and nothing in the event says where it
- * came from: Chrome sends `compositionend` FIRST and then a keydown carrying
- * `isComposing: false`. `prosemirror-view` clears its own `view.composing` on
- * the first line of that handler and guards the window that follows with
+ * `prosemirror-view` clears its own `view.composing` on the first line of the
+ * keydown handler and guards the window that follows with
  * `safari && Math.abs(Date.now() - view.input.compositionEndedAt) < 500`
  * (`prosemirror-view@1.42.2`, `dist/index.js:3547`), which on Chrome —
- * `navigator.vendor` reads "Google Inc." — is no guard at all.
- * Measured in a browser: a numbered item ended up holding the two committed
- * characters followed by the raw pinyin of the next word, the block split
- * between them.
- *
- * Released by queue order rather than by a length of time. The timer is
- * queued here, from inside the `compositionend` handler, so anything the
- * browser has already queued for this keystroke runs first — the keydown
- * Chrome reports as 229 and then again as 13 — and the release runs after all
- * of it. A press the reader makes afterwards is queued behind the release and
- * splits as it always did. A 500ms window would have swallowed that second
- * press, and pressing Enter right after accepting a candidate is how writing
- * Chinese goes.
- * @param ended - The flag to raise, shared with the Enter binding.
- * @param ended.justNow - Whether a composition has ended with the release not
- * yet run.
+ * `navigator.vendor` reads "Google Inc." — is no guard at all. Measured in a
+ * browser: a numbered item ended up holding the two committed characters
+ * followed by the raw pinyin of the next word, the block split between them.
+ * @param ended - The composition ends, shared with the Enter binding.
  * @returns The ProseMirror plugin.
  */
-function imeWatchPlugin(ended: { justNow: boolean }): Plugin {
+function imeWatchPlugin(ended: CompositionEnd): Plugin {
   return new Plugin({
     key: imeKey,
     props: {
       handleDOMEvents: {
         compositionend: () => {
-          ended.justNow = true;
-          setTimeout(() => {
-            ended.justNow = false;
-          }, 0);
+          ended.mark();
           // Claiming nothing: what the editor does with the composed text is
           // its own business, and this only watches for the key that follows.
           return false;
@@ -293,7 +276,7 @@ function imeWatchPlugin(ended: { justNow: boolean }): Plugin {
  * @returns The extension, for the assembly to register.
  */
 export const documentEnterExtension = createExtension(() => {
-  const ended = { justNow: false };
+  const ended = compositionEnd();
 
   return {
     key: 'document-enter',
@@ -311,7 +294,7 @@ export const documentEnterExtension = createExtension(() => {
         // the key and 13 once it lets go — and a guard that cleared itself
         // here answered the first and let the second split the block. Clearing
         // is the timer's job alone.
-        if (ended.justNow) {
+        if (ended.justEnded()) {
           return true;
         }
         // Inside a table Enter breaks the line in the cell

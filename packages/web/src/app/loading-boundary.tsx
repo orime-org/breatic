@@ -4,6 +4,7 @@
 import * as React from 'react';
 import { Outlet, type RouteObject } from 'react-router-dom';
 
+import { RouteErrorPage } from '@web/app/RouteErrorPage';
 import { LoadingScreen } from '@web/components/loading-screen';
 
 /**
@@ -42,7 +43,8 @@ LoadingBoundary.rendersEveryChild = true;
  * listening; only the matched entry is hidden.
  * @param routes - The route table.
  * @returns The same table, as children of the boundary.
+ * @throws {Error} If React cannot construct the route elements.
  */
 export function behindLoadingScreen(routes: RouteObject[]): RouteObject[] {
-  return [{ element: <LoadingBoundary />, children: routes }];
+  return [{ element: <LoadingBoundary />, errorElement: <RouteErrorPage />, children: routes }];
 }

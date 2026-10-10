@@ -5,7 +5,6 @@ import { useCanvasStore } from '@web/stores/canvas';
 import { canvasGraphs } from '@web/stores/canvas-graph';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { conversationRuntime } from '@web/stores/conversation-runtime';
-import { useInpaintStore } from '@web/stores/inpaint';
 import { useUIStore } from '@web/stores/ui';
 
 /**
@@ -21,8 +20,7 @@ import { useUIStore } from '@web/stores/ui';
  *   - canvas viewport preferences (`useCanvasStore` minimap / snap / zoom),
  *   the chat-panel collapse, minimap and snap being loaded for the next
  *   project's account by `ProjectPage` (`restoreAgentPanel`,
- *   `restoreViewPreferences`) before its workspace mounts;
- *   - brush preferences (`useInpaintStore` size / color / opacity / tool).
+ *   `restoreViewPreferences`) before its workspace mounts.
  * Deliberately UNTOUCHED: `useSpaceOperationsStore` — it refcounts real in-flight
  * upload work, not UI panel state; clearing it could mask a lost local write-back.
  * @param projectId - The project being left. Its conversations are dropped by
@@ -40,8 +38,4 @@ export function resetProjectUiStores(projectId: string): void {
   canvasSessions.clear();
   canvasGraphs.clear();
   useUIStore.getState().reset();
-  useInpaintStore.getState().reset();
-  // The brush-stroke undo history (zundo `temporal`) lives outside store state,
-  // so clear it too — otherwise a fresh entry could undo back into old strokes.
-  useInpaintStore.temporal.getState().clear();
 }

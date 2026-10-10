@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isStoredObjectUrl,
   originalUrlFor,
   previewKeyFor,
   previewUrlFor,
@@ -79,5 +80,19 @@ describe("originalUrlFor", () => {
     const preview = previewUrlFor(original);
     expect(preview).not.toBeNull();
     expect(originalUrlFor(preview ?? "")).toBe(original);
+  });
+});
+
+describe("isStoredObjectUrl", () => {
+  it("accepts a stored original and a stored cover", () => {
+    expect(isStoredObjectUrl(`${BASE}/${IMAGE_KEY}`)).toBe(true);
+    expect(isStoredObjectUrl(`${BASE}/${COVER_KEY}`)).toBe(true);
+  });
+
+  it("rejects a preview, an external address and a non-http string", () => {
+    expect(isStoredObjectUrl(`${BASE}/${IMAGE_KEY}.preview.webp`)).toBe(false);
+    expect(isStoredObjectUrl("https://example.com/cat.png")).toBe(false);
+    expect(isStoredObjectUrl(`blob:${BASE}/${IMAGE_KEY}`)).toBe(false);
+    expect(isStoredObjectUrl("plain words")).toBe(false);
   });
 });

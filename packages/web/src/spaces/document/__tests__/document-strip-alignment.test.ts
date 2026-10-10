@@ -145,3 +145,21 @@ describe('the first line of a table (inner#1278)', () => {
     spy.mockRestore();
   });
 });
+
+describe('the first line of a media block (inner#1127)', () => {
+  it('is one line of body text at the media\'s top edge, so a tall picture keeps the strip at its top', () => {
+    const block = document.createElement('div');
+    block.setAttribute('data-content-type', 'image');
+    block.style.lineHeight = '22.5px';
+    block.innerHTML = '<div><div data-media-frame=""><img></div></div>';
+    block.querySelector('[data-media-frame]')!.getBoundingClientRect = (): DOMRect =>
+      new DOMRect(100, 200, 400, 300);
+    document.body.appendChild(block);
+
+    const line = firstLineOf(block);
+
+    expect(line?.top).toBe(200);
+    expect(line?.height).toBe(22.5);
+    block.remove();
+  });
+});

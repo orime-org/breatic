@@ -53,6 +53,16 @@ describe('MediaPlayer', () => {
     expect(screen.getByTestId('seek')).toBeInTheDocument();
     expect(screen.queryByTestId('volume-button')).not.toBeInTheDocument();
     expect(screen.queryByTestId('fullscreen')).not.toBeInTheDocument();
+    expect(screen.getByTestId('time-current').className).not.toContain('hidden');
+    expect(screen.getByTestId('time-total').className).not.toContain('hidden');
+  });
+
+  it('video variant="full": hides the times only below its 16rem container width', () => {
+    render(<MediaPlayer modality='video' src='/v.mp4' poster='/p.jpg' />);
+    for (const id of ['time-current', 'time-total']) {
+      expect(screen.getByTestId(id).className).toContain('hidden');
+      expect(screen.getByTestId(id).className).toContain('@min-[16rem]:inline');
+    }
   });
 
   // #1772: pin the metadata-only preload as a contract. The HTML spec leaves

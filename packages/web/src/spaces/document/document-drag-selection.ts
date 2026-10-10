@@ -41,6 +41,8 @@ import {
   contentRangeOf,
   rowById,
 } from '@web/spaces/document/document-row-by-id';
+import { placeOnBlock } from '@web/spaces/document/document-block-place';
+import { readerSelection } from '@web/spaces/document/document-body-focus';
 
 /** One end of the reader's selection, addressed so a move cannot shift it. */
 interface Anchored {
@@ -109,13 +111,15 @@ function anchor(doc: PMNode, pos: number): Anchored | undefined {
  * selection that reaches past the first or last block is kept as that edge.
  *
  * A node selection is not read: the one current when a drag starts is a
- * divider the reader selected, which has no text place to hand back, and the
- * drag then ends with a caret at the start of the moved row.
+ * divider the reader selected, which has no text place to hand back. Nor is a
+ * selection the body let go of with the focus (inner#1127). Either way the
+ * drag ends with the selection on the moved row ({@link restoreAfterRowDrag}).
  * @param state - The editor's state.
  * @returns The place, or undefined when there is nothing to hand back.
  */
 export function readerPlace(state: EditorState): ReaderPlace | undefined {
-  const { selection, doc } = state;
+  const selection = readerSelection(state);
+  const { doc } = state;
   if (!(selection instanceof TextSelection) && !(selection instanceof BodyEdgeSelection)) return undefined;
   /**
    * Addresses one end: by its edge when it is on one, else by its block. An
@@ -177,4 +181,19 @@ export function restoreReaderPlace(view: EditorView, place: ReaderPlace): void {
       asked ?? TextSelection.near(doc.resolve(view.state.selection.from)),
     ),
   );
+}
+
+/**
+ * Puts the selection back after a row drag: where the reader was, or, when the
+ * body did not hold the focus as the drag began, on the row that moved.
+ * @param view - The view.
+ * @param place - Where the reader was, read as the drag began.
+ * @param blockId - The row that moved.
+ */
+export function restoreAfterRowDrag(view: EditorView, place: ReaderPlace | undefined, blockId: string): void {
+  if (place === undefined && rowById(view.state.doc, blockId) !== undefined) {
+    view.dispatch(view.state.tr.setSelection(placeOnBlock(view.state, blockId)));
+    return;
+  }
+  restoreReaderPlace(view, place ?? caretAtStartOf(blockId));
 }

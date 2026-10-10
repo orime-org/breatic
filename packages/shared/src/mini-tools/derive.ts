@@ -28,6 +28,11 @@ export interface MiniToolSnapshot {
   readonly prompt: string;
   readonly source: { readonly url: string; readonly duration?: number };
   readonly slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined>>;
+  /**
+   * Where the images made from the reader's drawing were uploaded: the image
+   * sent as the source, and on a mask tool the mask.
+   */
+  readonly drawing?: { readonly image: string; readonly mask?: string };
 }
 
 const BY_ID = new Map(MINI_TOOLS.map((tool) => [tool.id, tool]));
@@ -104,6 +109,17 @@ export function modelOf(spec: MiniToolSpec): string | undefined {
  */
 export function toolParamKeys(spec: MiniToolSpec): readonly string[] {
   return isModelTool(spec) ? spec.params.map((param) => param.key) : [];
+}
+
+/**
+ * Every media param a tool fills on its pinned model: the source, each slot's
+ * param, and a mask tool's mask.
+ * @param spec - The tool.
+ * @returns The yaml param names, source first.
+ */
+export function toolFilledParams(spec: MiniToolSpec): string[] {
+  const mask = spec.drawing?.kind === "mask" ? [spec.drawing.maskParam] : [];
+  return [spec.sourceParam, ...spec.slots.map((slot) => slot.param), ...mask];
 }
 
 /** No turn and no flip: the picture as it is, the orientation param's default. */
@@ -227,13 +243,18 @@ function knownDurations(values: readonly MiniToolSlotValue[]): number[] | undefi
 
 /**
  * The estimate input of one run: the draft params first, then the source and
- * every filled slot written under the model params they fill.
+ * every filled slot written under the model params they fill. A drawing's
+ * image stands in for the source and its mask fills the mask param.
  * @param spec - The tool.
  * @param snapshot - What the run reads.
  * @returns The input `estimateCredits` takes for the pinned model.
  */
 export function miniToolEstimateInput(spec: MiniToolSpec, snapshot: MiniToolSnapshot): EstimateInput {
-  const params: Record<string, unknown> = { ...snapshot.params, [spec.sourceParam]: snapshot.source.url };
+  const sourceUrl = snapshot.drawing?.image ?? snapshot.source.url;
+  const params: Record<string, unknown> = {
+    ...snapshot.params,
+    [spec.sourceParam]: spec.sourceMany ? [sourceUrl] : sourceUrl,
+  };
   const durations: Record<string, readonly number[]> = {};
   const sourceLength = knownDurations([snapshot.source]);
   if (sourceLength) durations[spec.sourceParam] = sourceLength;
@@ -245,10 +266,13 @@ export function miniToolEstimateInput(spec: MiniToolSpec, snapshot: MiniToolSnap
     const lengths = knownDurations(list);
     if (lengths) durations[slot.param] = lengths;
   }
+  if (spec.drawing?.kind === "mask" && snapshot.drawing?.mask !== undefined) {
+    params[spec.drawing.maskParam] = snapshot.drawing.mask;
+  }
   return {
     params,
     prompt: snapshot.prompt,
     durations,
-    sources: [spec.sourceParam, ...spec.slots.map((slot) => slot.param)],
+    sources: toolFilledParams(spec),
   };
 }

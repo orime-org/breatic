@@ -15,7 +15,7 @@ import userEvent from '@testing-library/user-event';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
 import { clipboardTextFor } from '@web/pages/project/chat/copy-asset';
-import { parseClipboardNodes } from '@web/spaces/canvas/node-clipboard';
+import { parseClipboard } from '@web/spaces/canvas/node-clipboard';
 import type { ChatAsset } from '@web/pages/project/chat/types';
 
 const toastError = vi.hoisted(() => vi.fn());
@@ -34,25 +34,30 @@ describe('what a copy puts on the clipboard', () => {
     // The original is whatever format the site that published it chose (an
     // AVIF one is refused by the fetch into storage); the thumbnail is the
     // search service's own JPEG or PNG copy, which the row already shows.
-    const nodes = parseClipboardNodes(
+    const payload = parseClipboard(
       clipboardTextFor(asset({ imageUrl: 'https://original.example/1.avif' })),
     );
 
-    expect(nodes).toEqual([
-      {
-        type: 'image',
-        position: { x: 0, y: 0 },
-        name: 'A picture',
-        content: 'https://thumb.example/1.jpg',
-        external: true,
-      },
-    ]);
+    expect(payload).toEqual({
+      version: 2,
+      picked: ['external'],
+      nodes: [
+        {
+          id: 'external',
+          type: 'image',
+          position: { x: 0, y: 0 },
+          data: { name: 'A picture', content: 'https://thumb.example/1.jpg' },
+          external: true,
+        },
+      ],
+      edges: [],
+    });
   });
 
   it('leaves the name out when the picture has no title', () => {
-    const nodes = parseClipboardNodes(clipboardTextFor(asset({ title: '' })));
+    const payload = parseClipboard(clipboardTextFor(asset({ title: '' })));
 
-    expect(nodes?.[0]).not.toHaveProperty('name');
+    expect(payload?.nodes[0]?.data).toEqual({ content: 'https://thumb.example/1.jpg' });
   });
 });
 

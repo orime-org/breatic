@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { Breadcrumb, BrowserOptions, ErrorEvent } from '@sentry/react';
+import { getClient, type Breadcrumb, type BrowserOptions, type ErrorEvent } from '@sentry/react';
 import {
   addressWithoutQuery,
   errorMonitoringDataCollection,
@@ -24,7 +24,6 @@ export interface ErrorMonitoringBuild {
 const IGNORED_ERRORS: readonly string[] = [
   'ResizeObserver loop limit exceeded',
   'Script error.',
-  'NetworkError when attempting to fetch resource',
 ];
 
 /** Breadcrumb fields that hold an address. */
@@ -39,6 +38,12 @@ const ADDRESS_FIELDS: readonly string[] = ['url', 'from', 'to'];
 function prepareEvent(event: ErrorEvent): ErrorEvent | null {
   const message = event.exception?.values?.[0]?.value ?? '';
   if (IGNORED_ERRORS.some((ignored) => message.includes(ignored))) return null;
+  // A handled route download failure is actionable, even when Firefox names
+  // it with the same message as an otherwise unclassified network failure.
+  if (
+    message.includes('NetworkError when attempting to fetch resource') &&
+    event.tags?.error_boundary !== 'route-chunk'
+  ) return null;
   return requestWithoutQuery(event);
 }
 
@@ -81,4 +86,15 @@ export function errorMonitoringInit(build: ErrorMonitoringBuild): BrowserOptions
     beforeSend: prepareEvent,
     beforeBreadcrumb: prepareBreadcrumb,
   };
+}
+
+/**
+ * Hide synthetic event identifiers when no enabled reporting client exists.
+ * @param eventId - Identifier returned by an SDK capture.
+ * @returns The identifier for an enabled configured client, otherwise undefined.
+ * @throws {Error} If the SDK cannot inspect its client.
+ */
+export function configuredErrorEventId(eventId: string): string | undefined {
+  const client = getClient();
+  return client?.getDsn() && client.getOptions().enabled !== false ? eventId : undefined;
 }

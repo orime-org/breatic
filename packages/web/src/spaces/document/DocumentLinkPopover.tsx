@@ -44,7 +44,8 @@ import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
 import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
 import { LINK_PANEL_SURFACE } from '@web/spaces/document/document-link-panel';
 import { panelReference } from '@web/spaces/document/document-link-anchor';
-import { BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
+import { BUBBLE_ICON_BUTTON_SIZE, PRESSED_CLASS } from '@web/spaces/document/document-tool-button';
+import { cn } from '@web/lib/utils';
 import { isWholeDocumentSelection } from '@web/spaces/document/document-select-all-guard';
 import {
   resolveLinkSelection,
@@ -143,6 +144,9 @@ export function DocumentLinkPopover({
 }): React.JSX.Element | null {
   const t = useTranslation();
   const [mode, setMode] = React.useState<LinkMode>('closed');
+  // The button names the panel it opened, which is how the body counts the
+  // panel among its own layers (inner#1127, design 3.5.1).
+  const panelId = React.useId();
   const [target, setTarget] = React.useState<LinkTarget>(NO_TARGET);
 
   // Subscribed rather than read while rendering: a co-editor's change arrives
@@ -366,19 +370,20 @@ export function DocumentLinkPopover({
   return (
     <>
       <Button
-        variant={holdsLink ? 'secondary' : 'ghost'}
+        variant='ghost'
         size='icon'
         aria-label={t('spaces.document.commands.link')}
         aria-pressed={holdsLink}
         aria-haspopup='dialog'
         aria-expanded={mode !== 'closed'}
+        aria-controls={mode !== 'closed' ? panelId : undefined}
         disabled={!canLink}
         onClick={openFromSelection}
         data-testid='doc-bubble-tool-link'
         // The bar stays out of the tab order entirely, as the eight command
         // buttons beside it do.
         tabIndex={-1}
-        className={BUBBLE_ICON_BUTTON_SIZE}
+        className={cn(BUBBLE_ICON_BUTTON_SIZE, holdsLink && PRESSED_CLASS)}
       >
         <LinkIcon className='h-4 w-4' />
       </Button>
@@ -396,6 +401,7 @@ export function DocumentLinkPopover({
               // `visibility: hidden` element cannot take focus.
               style={{ ...floatingStyles, opacity: isPositioned ? 1 : 0 }}
               {...getFloatingProps()}
+              id={panelId}
               data-testid='doc-link-popover'
               role='dialog'
               className={`z-50 ${LINK_PANEL_SURFACE}`}

@@ -56,6 +56,9 @@ function snapshotOf(body: MiniToolRequest): MiniToolSnapshot {
       ...(body.source.duration !== undefined && { duration: body.source.duration }),
     },
     slots: body.slots,
+    ...(body.drawing !== undefined && {
+      drawing: { image: body.drawing.image, ...(body.drawing.mask !== undefined && { mask: body.drawing.mask }) },
+    }),
   };
 }
 

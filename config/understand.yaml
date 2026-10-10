@@ -39,3 +39,9 @@ call_timeout_ms: 180000
 # What it writes is the whole of what the new text node holds, and a reader
 # who asked for a description of a video is reading all of it.
 max_output_tokens: 8192
+
+# How many readings one worker process holds in memory at once.
+# The tasks queue runs many jobs at a time, and each reading here may hold up
+# to max_media_bytes several times over. A reading that finds every place
+# taken goes back to the queue and comes back one poll interval later.
+max_concurrent: 5

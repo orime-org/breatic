@@ -483,13 +483,10 @@ export default [
     },
   },
   {
-    // The hex rule carries two more: the brand mark is a fixed logo colour,
-    // and the inpaint brush works in pigment rather than UI surfaces.
+    // The hex rule carries one more: the brand mark is a fixed logo colour.
     files: ['src/**/*.{ts,tsx}'],
     ignores: [
       'src/ui/BrandMark.tsx',
-      'src/spaces/canvas/inpaint/**',
-      'src/stores/inpaint.ts',
       '**/__tests__/**',
       '**/*.test.{ts,tsx}',
       '**/*.spec.{ts,tsx}',

@@ -7,7 +7,7 @@ VITE_API_BASE_URL=https://backend.example.com/api/v1
 VITE_COLLAB_URL=wss://backend.example.com/ws
 ```
 
-These are public addresses, never secrets. Vite embeds them in the bundle; changing the backend container environment does not update an already built frontend. Dockerfile.web accepts the same names as build arguments. Turbo includes the values in the build cache key. The API base includes `/api/v1`; a trailing slash is removed. Axios, text SSE, agent chat and download links all use the same base. Collab's shared socket and document providers use the configured WS URL.
+These are public addresses, never secrets. Vite embeds them in the bundle; changing the backend container environment does not update an already built frontend. Dockerfile.web accepts the same names as build arguments. Turbo includes the values in the build cache key. The API base includes `/api/v1`; a trailing slash is removed. Axios, text SSE and agent chat all use the same base. Download links do not: they are the file's own address under `UPLOAD_BASE_URL` with `download=1` appended. Collab's shared socket and document providers use the configured WS URL.
 
 Set `ALLOWED_ORIGINS` to the frontend's exact origin, for example `https://example.com`. Ordinary API and streaming clients send credentials. With API and WS on the same backend hostname, leave `COOKIE_DOMAIN` empty: the host-only session cookie belongs to that backend, not to the frontend. This arrangement assumes HTTPS frontend/backend hosts on the same site; an unrelated frontend domain has different browser cookie restrictions and is not this deployment contract.
 

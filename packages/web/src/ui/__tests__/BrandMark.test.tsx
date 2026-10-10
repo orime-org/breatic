@@ -8,14 +8,13 @@ import { BrandMark } from '@web/ui/BrandMark';
 
 /** What each path contributes, and enough of its data to catch a swap. */
 const PATHS = [
-  { id: 'blue', fill: '#0EA5E9', length: 1038, head: 'M3973 10975 c-137 -37 -610 -314' },
-  { id: 'green', fill: '#15D45A', length: 219, head: 'M6125 12233 c-205 -28 -414 -135' },
-  { id: 'red', fill: '#BC4B36', length: 874, head: 'M5770 9050 c-52 -3 -125 -12 -163' },
+  { id: 'bowl', fill: '#BC4B36', length: 608, head: 'M4103.50 5164.27 L4105.00 3375' },
+  { id: 'stem', fill: '#0EA5E9', length: 608, head: 'M4573.00 5395.00 C4576.00 5406' },
+  { id: 'top', fill: '#15D45A', length: 542, head: 'M5770.00 9050.00 C5718.00 9047' },
 ] as const;
 
 /** Shared by all three paths: the alignment transform onto the viewBox. */
-const TRANSFORM =
-  'translate(0.926888,-0.005946) scale(0.07814190) translate(0.000000,1280.000000) scale(0.100000,-0.100000)';
+const TRANSFORM = 'translate(-46.512353,137.124128) scale(0.01476023,-0.01476023)';
 
 describe('BrandMark', () => {
   it('renders the inlined brand SVG mark, hidden from the a11y tree', () => {
@@ -27,7 +26,7 @@ describe('BrandMark', () => {
     expect(mark).toHaveAttribute('aria-hidden', 'true');
   });
 
-  it('draws the orbit-B geometry: an open ring, a particle, and the core', () => {
+  it('draws the B Tricolor geometry: the bowl, the stem, and the top chamber', () => {
     render(<BrandMark />);
     const mark = screen.getByTestId('top-bar-logo');
     // The mark is the registrable identity, so its geometry is pinned here:

@@ -85,6 +85,9 @@ function openToolbar(options?: {
   document.body.appendChild(root);
   editor.mount(root);
   mounted.push(editor);
+  // A reader working in the body: the body holds the focus, which the caret
+  // needs before it raises anything (inner#1127 A20).
+  editor.prosemirrorView!.dom.focus();
   editor.replaceBlocks(editor.document, [
     {
       type: 'paragraph',

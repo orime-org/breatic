@@ -26,6 +26,7 @@ function asAlias(entry: unknown): string | undefined {
 const minimaxSpeech: ModelFamily = {
   MODELS: new Set(["minimax-speech-2.8-hd"]),
   CONSUMES: new Set(["pronunciation_dict"]),
+  PREPARE_IS_PAID: false,
   /**
    * Send each complete dictionary entry as `original/reading`.
    * @param prompt - The lines to speak.

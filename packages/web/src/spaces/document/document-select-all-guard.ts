@@ -37,7 +37,8 @@ import {
   type Transaction,
 } from '@tiptap/pm/state';
 import { isMacOS, isiOS } from '@tiptap/core';
-import { ySyncPluginKey } from 'y-prosemirror';
+
+import { undoRedo } from '@web/spaces/document/document-yjs-origin';
 
 /** What this file needs of the editor object. */
 export interface SelectAllEditor {
@@ -225,13 +226,7 @@ function guardPlugin(ask: (() => void) | null): Plugin {
      * @returns The normalising transaction, or null.
      */
     appendTransaction(transactions, _oldState, newState) {
-      const isUndoRedo = transactions.some((tr) => {
-        const meta = tr.getMeta(ySyncPluginKey) as
-          | { isUndoRedoOperation?: boolean }
-          | undefined;
-        return meta?.isUndoRedoOperation === true;
-      });
-      if (isUndoRedo) {
+      if (transactions.some(undoRedo)) {
         return null;
       }
       const { selection } = newState;

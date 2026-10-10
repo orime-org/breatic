@@ -341,6 +341,8 @@ function readMeasurements(answered: unknown): IngestMeasurements {
  * @param bytes - What to upload. A browser's `File` is one of these.
  * @param target - What the ticket endpoint issued for it.
  * @param cfg - The upload knobs, which size the per-delivery deadlines.
+ * @param onPartLanded - Told how many bytes have landed so far, after each
+ *   part the Worker accepts.
  * @returns Everything finishing this upload will need.
  * @throws {UploadHttpError} When the Worker refuses either step.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -350,6 +352,7 @@ export async function sendBytesToIngest(
   bytes: Blob,
   target: IngestTarget,
   cfg: UploadClientConfig,
+  onPartLanded?: (bytesLanded: number) => void,
 ): Promise<HeldUpload> {
   const opened = await openUpload(target, cfg);
 
@@ -368,6 +371,7 @@ export async function sendBytesToIngest(
     );
     token = landed.token;
     parts.push({ partNumber: landed.partNumber, etag: landed.etag });
+    onPartLanded?.(start + slice.size);
   }
 
   return { uploadId: opened.uploadId, token, parts };

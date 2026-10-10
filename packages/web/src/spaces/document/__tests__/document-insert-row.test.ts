@@ -14,7 +14,13 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { insertBelow, insertRowForMenu } from '@web/spaces/document/document-insert-row';
+import {
+  insertBelow,
+  insertRowForMenu,
+  mediaGapBelow,
+  mediaGapOnRow,
+} from '@web/spaces/document/document-insert-row';
+import { gapBefore } from './textblocks';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -183,5 +189,60 @@ describe('a table inserted below (inner#1126 A1)', () => {
       'paragraph',
       'heading',
     ]);
+  });
+});
+
+describe('the gap a media pick uploads into (inner#1127 A1)', () => {
+  it('makes the empty line under the pressed row at once, caret in it, and goes above that line', () => {
+    const editor = open([
+      { type: 'paragraph', props: { quoted: true }, content: 'pressed' },
+      { type: 'paragraph', content: 'after' },
+    ]);
+
+    const gap = mediaGapBelow(editor, editor.document[0] as never);
+
+    const blocks = editor.document as Seen[];
+    expect(shape(blocks)).toEqual(['pressed', '', 'after']);
+    expect(blocks[1]!.props?.['quoted']).toBe(true);
+    expect((editor.getTextCursorPosition().block as { id: string }).id).toBe(blocks[1]!.id);
+    expect(gap).toBe(gapBefore(editor.prosemirrorState.doc, blocks[1]!.id));
+  });
+
+  it('makes that line before the pressed row\'s children, which is where the media goes', () => {
+    const editor = open([
+      {
+        type: 'paragraph',
+        content: 'parent',
+        children: [{ type: 'paragraph', content: 'child' }],
+      },
+    ]);
+
+    const gap = mediaGapBelow(editor, editor.document[0] as never);
+
+    const kids = (editor.document as Seen[])[0]!.children!;
+    expect(shape(kids)).toEqual(['', 'child']);
+    expect(gap).toBe(gapBefore(editor.prosemirrorState.doc, kids[0]!.id));
+  });
+
+  it('on an empty line goes above it and leaves the caret in it', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'above' },
+      { type: 'paragraph', props: { quoted: true } },
+    ]);
+    const blocks = editor.document as Seen[];
+
+    const gap = mediaGapOnRow(editor, blocks[1] as never);
+
+    expect(shape(editor.document)).toEqual(['above', '']);
+    expect((editor.getTextCursorPosition().block as { id: string }).id).toBe(blocks[1]!.id);
+    expect(gap).toBe(gapBefore(editor.prosemirrorState.doc, blocks[1]!.id));
+  });
+
+  it('on an empty first line has nothing before it', () => {
+    const editor = open([{ type: 'paragraph' }]);
+
+    const gap = mediaGapOnRow(editor, editor.document[0] as never);
+
+    expect(gap).toBe(gapBefore(editor.prosemirrorState.doc, (editor.document as Seen[])[0]!.id));
   });
 });

@@ -184,13 +184,12 @@ const THREE_JS = { label: 'three.js', holds: (src) => /node_modules\/three\//.te
 const HEAVY = [
   // The canvas's state belongs to the canvas as much as its body does, and it
   // travels separately: importing the `@web/stores` barrel from anywhere drags
-  // all of it in, which is how /login came to download the canvas, mini-tool
-  // and inpaint stores plus zundo.
+  // all of it in, which is how /login came to download the canvas store.
   {
     label: 'canvas',
     holds: (src) =>
       src.includes('/src/spaces/canvas/') ||
-      /\/src\/stores\/(canvas|mini-tool|inpaint)\.ts$/.test(src),
+      /\/src\/stores\/canvas\.ts$/.test(src),
   },
   { label: 'document editor', holds: (src) => src.includes('/src/spaces/document/') },
   { label: 'model runtime', holds: (src) => /node_modules\/(ai|@ai-sdk)\//.test(src) },

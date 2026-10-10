@@ -4,18 +4,32 @@
 # Restart the worker service after editing.
 
 # ── Concurrency ───────────────────────────────────
-# Max number of jobs processed simultaneously.
-concurrency: 5
+# Jobs one worker process runs at once, per queue.
+#
+# A task waiting on an upstream goes back to the queue between two questions
+# about it, so waiting holds no slot: a tasks job holds one while it works —
+# submits, asks once, reads media, rewrites or describes before a submit,
+# stores outputs. The figure for tasks bounds how many of those run at once.
+# WaveSpeed queues a prediction past an account's concurrency instead of
+# refusing it; its per-minute submit limit answers 429, which the transport
+# replays with backoff, and a submit still refused after that is an ordinary
+# submit failure that spends an attempt.
+concurrency:
+  default: 5
+  per_queue:
+    tasks: 50
 
 # ── BullMQ Job Retry ──────────────────────────────
 # Max attempts per job. BullMQ schedules retries with exponential
-# backoff when the handler throws. Duplicate-provider-call protection
-# on retries (#1628): a SUCCESSFUL provider call sets provider_result_url
-# (re-entry guard: never invoked again); ASYNC providers persist the
-# vendor task id at submit, so a retry resumes polling instead of
-# re-submitting; SYNC providers ARE re-invoked on retry (accepted
-# policy: UX over the narrow duplicate-external-cost window, which is
-# monitored via provider_reinvoked_on_retry_potential_duplicate_cost).
+# backoff when the handler throws. Waiting on an upstream is not a retry:
+# a task still going goes back to the queue without spending an attempt.
+# Duplicate-provider-call protection on retries (#1628): a SUCCESSFUL
+# provider call sets provider_result_url (re-entry guard: never invoked
+# again); ASYNC providers persist the vendor task id at submit, so a later
+# pickup asks about it instead of re-submitting; SYNC providers ARE
+# re-invoked on retry (accepted policy: UX over the narrow
+# duplicate-external-cost window, which is monitored via
+# provider_reinvoked_on_retry_potential_duplicate_cost, once per retry).
 job_attempts: 3
 
 # Base backoff delay (ms) for BullMQ retries: delay = base * 2^attempt.
@@ -23,23 +37,16 @@ job_backoff_delay_ms: 2000
 
 # BullMQ lock duration (ms). Worker must renew within this window
 # or the job is reclaimed as "stalled". 10 minutes covers our
-# slowest single-step operation (large video upload, 3D generation).
+# slowest single-step operation (large video upload). Waiting on an
+# upstream holds no lock: the job is back on the queue between questions.
 lock_duration_ms: 600000
 
 # ── Polling (async AIGC tasks) ────────────────────
 # An async vendor task is "submit, get an id, then keep asking whether it
-# is done". These two values shape that asking.
-
-# How long to wait between two "is it done yet?" requests.
+# is done". Each pickup of the job asks once; a task still going goes back
+# to the queue and is picked up again after this interval, without spending
+# an attempt, until the task's two-hour budget (config/node-tasks.yaml).
 poll_interval: 3000
-
-# How long ONE round of asking lasts, NOT how long the task is expected to
-# take. When the round runs out with no terminal answer, the job throws and
-# BullMQ retries it; the retry resumes polling the same vendor task id
-# (see async-resume.ts) rather than submitting a second one. `job_attempts`
-# above therefore gives three such rounds, and a slower model is covered by
-# taking more rounds — which is why this value does not vary per model.
-poll_max_wait: 300000            # 5 minutes per round
 
 # ── Billing ───────────────────────────────────────
 # Timeout (ms) for WaveSpeed billing API queries.

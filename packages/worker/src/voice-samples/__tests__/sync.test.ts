@@ -11,6 +11,10 @@ import {
   servedFromHead,
   syncVoiceSamples,
 } from "@worker/voice-samples/sync.js";
+import { StillRunning } from "@worker/providers/still-running.js";
+
+/** A wait no test in the first case reaches: those runs never report still going. */
+const NO_WAIT = { budgetMs: 1, now: () => 0, sleepUntil: async () => undefined };
 
 const JOBS = [
   { model: "m", key: "voice-samples/m/a.mp3", body: {} },
@@ -115,12 +119,158 @@ describe("resumablePredict", () => {
         return "https://out.test/a.mp3";
       },
       (err) => err instanceof Error && err.message === "upstream failed the task",
+      NO_WAIT,
     );
     const job = JOBS[0]!;
     await expect(predict(job)).rejects.toThrow("poll ran out of time");
     await expect(predict(job)).rejects.toThrow("upstream failed the task");
     await expect(predict(job)).resolves.toBe("https://out.test/a.mp3");
     expect(seen).toEqual([null, "task-1", null]);
+  });
+
+  // Table 4.1a, not submitted: the upstream answers failed on the first
+  // question, so the next pass submits a new task.
+  it("submits again after the upstream failed a task it had just been given", async () => {
+    const seen: Array<string | null> = [];
+    let call = 0;
+    const predict = resumablePredict(
+      async (_job, resume) => {
+        call += 1;
+        seen.push(resume.storedTaskId);
+        if (resume.storedTaskId === null) await resume.persistTaskId(`task-${call}`);
+        if (call === 1) throw new Error("upstream failed the task");
+        return "https://out.test/a.mp3";
+      },
+      (err) => err instanceof Error && err.message === "upstream failed the task",
+      NO_WAIT,
+    );
+    const job = JOBS[0]!;
+    await expect(predict(job)).rejects.toThrow("upstream failed the task");
+    await expect(predict(job)).resolves.toBe("https://out.test/a.mp3");
+    expect(seen).toEqual([null, null]);
+  });
+
+  // Table 4.1a, not submitted x other error: the submit failed before an id
+  // was stored, and may still have reached the upstream.
+  it("submits again after a submit that stored no id, and says it may be the upstream's second", async () => {
+    const calls: Array<{ stored: string | null; retryStarting: boolean }> = [];
+    const predict = resumablePredict(
+      async (_job, resume) => {
+        calls.push({ stored: resume.storedTaskId, retryStarting: resume.retryStarting });
+        if (calls.length === 1) throw new Error("socket hang up");
+        return "https://out.test/a.mp3";
+      },
+      () => false,
+      NO_WAIT,
+    );
+    const job = JOBS[0]!;
+    await expect(predict(job)).rejects.toThrow("socket hang up");
+    await expect(predict(job)).resolves.toBe("https://out.test/a.mp3");
+    expect(calls).toEqual([
+      { stored: null, retryStarting: false },
+      { stored: null, retryStarting: true },
+    ]);
+  });
+
+  it("does not say a sample may be submitted twice after the upstream failed it", async () => {
+    const flags: boolean[] = [];
+    const predict = resumablePredict(
+      async (_job, resume) => {
+        flags.push(resume.retryStarting);
+        if (resume.storedTaskId === null) await resume.persistTaskId("task-1");
+        if (flags.length === 1) throw new Error("upstream failed the task");
+        return "https://out.test/a.mp3";
+      },
+      () => true,
+      NO_WAIT,
+    );
+    const job = JOBS[0]!;
+    await expect(predict(job)).rejects.toThrow();
+    await predict(job);
+    expect(flags).toEqual([false, false]);
+  });
+
+  describe("while the upstream is still going", () => {
+    /**
+     * A clock the test moves, and a wait that moves it.
+     * @returns The clock and the waits it was asked for.
+     */
+    function clock(): { waiting: Parameters<typeof resumablePredict>[2]; waits: number[] } {
+      const waits: number[] = [];
+      let now = 1_000;
+      return {
+        waits,
+        waiting: {
+          budgetMs: 10_000,
+          now: () => now,
+          sleepUntil: async (at: number) => {
+            waits.push(at);
+            now = at;
+          },
+        },
+      };
+    }
+
+    it("waits until the time the poll named and asks the same task again, submitting once", async () => {
+      const { waiting, waits } = clock();
+      const seen: Array<string | null> = [];
+      let call = 0;
+      const predict = resumablePredict(
+        async (_job, resume) => {
+          call += 1;
+          seen.push(resume.storedTaskId);
+          if (resume.storedTaskId === null) await resume.persistTaskId("task-1");
+          if (call < 3) throw new StillRunning(waiting.now() + 3_000);
+          return "https://out.test/a.mp3";
+        },
+        () => false,
+        waiting,
+      );
+
+      await expect(predict(JOBS[0]!)).resolves.toBe("https://out.test/a.mp3");
+      expect(seen).toEqual([null, "task-1", "task-1"]);
+      expect(waits).toEqual([4_000, 7_000]);
+    });
+
+    it("gives the sample up once it has waited the whole budget since it was submitted", async () => {
+      const { waiting } = clock();
+      const predict = resumablePredict(
+        async (_job, resume) => {
+          if (resume.storedTaskId === null) await resume.persistTaskId("task-1");
+          throw new StillRunning(waiting.now() + 3_000);
+        },
+        () => false,
+        waiting,
+      );
+
+      const err = await predict(JOBS[0]!).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(Error);
+      expect(err).not.toBeInstanceOf(StillRunning);
+      expect(waiting.now()).toBeGreaterThanOrEqual(1_000 + 10_000);
+    });
+
+    it("keeps the task after giving up, so the next pass asks it again", async () => {
+      const { waiting } = clock();
+      const seen: Array<string | null> = [];
+      let giveUp = true;
+      const predict = resumablePredict(
+        async (_job, resume) => {
+          seen.push(resume.storedTaskId);
+          if (resume.storedTaskId === null) await resume.persistTaskId("task-1");
+          if (giveUp) throw new StillRunning(waiting.now() + 3_000);
+          return "https://out.test/a.mp3";
+        },
+        () => false,
+        waiting,
+      );
+
+      await predict(JOBS[0]!).catch(() => undefined);
+      giveUp = false;
+
+      await expect(predict(JOBS[0]!)).resolves.toBe("https://out.test/a.mp3");
+      expect(seen.at(-1)).toBe("task-1");
+    });
   });
 });
 

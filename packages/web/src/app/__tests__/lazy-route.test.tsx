@@ -2,9 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
+import { captureException } from '@sentry/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, afterEach } from 'vitest';
+
+vi.mock('@sentry/react', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@sentry/react')>(),
+  captureException: vi.fn(),
+}));
 
 // Imported for its type: `freshDocument` re-imports the module for each case,
 // and the cases should stop compiling when its signatures change.
@@ -56,6 +62,7 @@ async function show(Page: React.ComponentType): Promise<void> {
 }
 
 afterEach(() => {
+  vi.clearAllMocks();
   vi.restoreAllMocks();
 });
 
@@ -69,6 +76,130 @@ describe('lazyRoute', () => {
     await show(Page);
 
     expect(screen.getByTestId('page')).toBeInTheDocument();
+    expect(captureException).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { editingSurface: false, surface: 'ordinary' },
+    { editingSurface: true, surface: 'editing' },
+  ])('reports the original render failure on the $surface surface', async ({ editingSurface, surface }) => {
+    const error = new TypeError('Failed to fetch dynamically imported module');
+    const reload = watchReload();
+    const { lazyRoute } = await freshDocument();
+    const Page = lazyRoute(() => Promise.reject(error), { editingSurface });
+
+    await act(async () => {
+      render(
+        <React.Suspense fallback={<div data-testid='waiting' />}>
+          <Page />
+        </React.Suspense>,
+      );
+    });
+
+    expect(vi.mocked(captureException).mock.calls[0]?.[0]).toBe(error);
+    expect(captureException).toHaveBeenCalledExactlyOnceWith(error, {
+      tags: {
+        error_boundary: 'route-chunk',
+        chunk_stage: 'render',
+        chunk_surface: surface,
+      },
+    });
+    expect(reload).not.toHaveBeenCalled();
+    if (editingSurface) {
+      expect(screen.getByTestId('page-unavailable-screen')).toBeInTheDocument();
+    } else {
+      expect(screen.getByTestId('waiting')).toBeInTheDocument();
+      expect(screen.queryByTestId('page-unavailable-screen')).toBeNull();
+    }
+  });
+
+  it('reports a preload failure once when the same page is later rendered and preloaded again', async () => {
+    const error = new TypeError('Failed to fetch dynamically imported module');
+    const reload = watchReload();
+    const { lazyRoute, preloadMatched } = await freshDocument();
+    const Page = lazyRoute(() => Promise.reject(error), { editingSurface: true });
+    const matches = [{ route: { element: <Page /> } }];
+
+    await act(async () => {
+      preloadMatched(matches, true);
+    });
+    expect(vi.mocked(captureException).mock.calls[0]?.[0]).toBe(error);
+    expect(captureException).toHaveBeenCalledExactlyOnceWith(error, {
+      tags: {
+        error_boundary: 'route-chunk',
+        chunk_stage: 'preload',
+        chunk_surface: 'editing',
+      },
+    });
+
+    await show(Page);
+    await act(async () => {
+      preloadMatched(matches, true);
+    });
+
+    expect(captureException).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('page-unavailable-screen')).toBeInTheDocument();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('reports failures of different pages independently', async () => {
+    const error = new TypeError('Failed to fetch dynamically imported module');
+    const { lazyRoute, preloadMatched } = await freshDocument();
+    const secondError = new TypeError('Failed to fetch dynamically imported module');
+    const First = lazyRoute(() => Promise.reject(error));
+    const Second = lazyRoute(() => Promise.reject(secondError));
+
+    await act(async () => {
+      preloadMatched([
+        { route: { element: <First /> } },
+        { route: { element: <Second /> } },
+      ], true);
+    });
+
+    expect(captureException).toHaveBeenCalledTimes(2);
+    expect(captureException).toHaveBeenNthCalledWith(1, error, {
+      tags: {
+        error_boundary: 'route-chunk',
+        chunk_stage: 'preload',
+        chunk_surface: 'ordinary',
+      },
+    });
+    expect(captureException).toHaveBeenNthCalledWith(2, secondError, {
+      tags: {
+        error_boundary: 'route-chunk',
+        chunk_stage: 'preload',
+        chunk_surface: 'ordinary',
+      },
+    });
+  });
+
+  it('reports nothing while a slow module is pending or after it arrives', async () => {
+    const reload = watchReload();
+    const { lazyRoute, preloadMatched } = await freshDocument();
+    let finish: ((module: { default: React.ComponentType<unknown> }) => void) | undefined;
+    const module = new Promise<{ default: React.ComponentType<unknown> }>((resolve) => {
+      finish = resolve;
+    });
+    const Page = lazyRoute(() => module);
+
+    await act(async () => {
+      preloadMatched([{ route: { element: <Page /> } }], true);
+      render(
+        <React.Suspense fallback={<div data-testid='waiting' />}>
+          <Page />
+        </React.Suspense>,
+      );
+    });
+    expect(screen.getByTestId('waiting')).toBeInTheDocument();
+    expect(captureException).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finish?.({ default: () => <div data-testid='page' /> });
+    });
+
+    expect(screen.getByTestId('page')).toBeInTheDocument();
+    expect(captureException).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it('says the page did not load on the one the reader works in', async () => {

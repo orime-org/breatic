@@ -39,6 +39,8 @@ export interface ResolvedModel {
 export interface ModelFamily {
   MODELS: ReadonlySet<string>;
   CONSUMES: ReadonlySet<string>;
+  /** Whether `prepare` makes a paid call of its own, which a retry repeats. */
+  PREPARE_IS_PAID: boolean;
   prepare(
     prompt: string,
     params: Readonly<Record<string, unknown>>,
@@ -58,10 +60,10 @@ export interface ThreeDFamily {
 
 /**
  * Resume context threaded from the Worker into async (submit + poll)
- * transports (#1628). Makes the vendor submit at-most-once across BullMQ
- * retries: the transport persists the vendor task id right after submit,
- * and a retried job resumes by polling the stored id instead of
- * re-submitting (which would create a duplicate, billed vendor task).
+ * transports (#1628). Makes the vendor submit at-most-once across pickups
+ * and retries: the transport persists the vendor task id right after submit,
+ * and every later pickup asks about the stored id instead of re-submitting
+ * (which would create a duplicate, billed vendor task).
  * Sync transports ignore it.
  */
 export interface ResumeContext {
@@ -75,6 +77,8 @@ export interface ResumeContext {
    * identical submit is rejected as a duplicate instead of re-generating.
    */
   externalTaskId: string;
+  /** Whether this pickup starts a retry: a submit now may be the upstream's second (#1628 monitoring). */
+  retryStarting: boolean;
 }
 
 // ── Parameter Validation (Lenient) ───────────────────────────────────

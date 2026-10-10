@@ -496,7 +496,7 @@ async function fileCover(
  *   the video points at it.
  * @returns The URL the node should show, and whether pointing at it failed.
  */
-async function settleDedupedCover(
+export async function settleDedupedCover(
   video: StudioAssetEntity,
   filed: { id: string | null; url: string | null },
 ): Promise<{ url: string | null; failed: boolean }> {

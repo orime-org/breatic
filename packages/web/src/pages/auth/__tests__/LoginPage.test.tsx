@@ -57,6 +57,11 @@ async function signIn(): Promise<void> {
 }
 
 describe('LoginPage', () => {
+  it('shows the development build label on the login card', () => {
+    setup();
+    expect(screen.getByText('Dev')).toBeInTheDocument();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     useCurrentUserStore.setState({

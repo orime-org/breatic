@@ -30,6 +30,7 @@ import {
   startHealthServer,
   runGracefulShutdown,
   getAgentConfig,
+  assertKnownQueues,
 } from "@breatic/core";
 import {
   modelCatalog,
@@ -125,6 +126,10 @@ export function startWorker(): void {
       logger.error({ err, client }, "redis_error");
     });
   }
+
+  // A per-queue figure for a queue this process does not run is a typo that
+  // would leave the queue it meant at the default.
+  assertKnownQueues(["tasks", "url-ingest", USAGE_LOOKUP_QUEUE, MEDIA_READ_QUEUE, MAIL_QUEUE]);
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
 

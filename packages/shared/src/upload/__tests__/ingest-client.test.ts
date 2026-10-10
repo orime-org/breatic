@@ -129,6 +129,17 @@ describe('sending bytes to the ingest Worker', () => {
     expect(headersOf(0)['x-upload-ticket']).toBe('signed-ticket');
   });
 
+  it('reports the bytes landed after each part, so a page can show progress', async () => {
+    wireOpenAndParts(3);
+    const landed: number[] = [];
+
+    await sendBytesToIngest(fileOf(PART_SIZE * 2 + 700), ticketFor(3), cfg, (bytes) => {
+      landed.push(bytes);
+    });
+
+    expect(landed).toEqual([PART_SIZE, PART_SIZE * 2, PART_SIZE * 2 + 700]);
+  });
+
   it('cuts at the signed part size, and only the last part may be short', async () => {
     wireOpenAndParts(3);
 

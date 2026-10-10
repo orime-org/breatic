@@ -50,16 +50,7 @@ import {
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
-import {
-  rowHasLanded,
-  rowIsFlying,
-} from '@web/spaces/document/document-drag-drop';
-import {
-  caretAtStartOf,
-  readerPlace,
-  restoreReaderPlace,
-  type ReaderPlace,
-} from '@web/spaces/document/document-drag-selection';
+import { startRowDrag } from '@web/spaces/document/document-row-drag';
 import { deleteRow } from '@web/spaces/document/document-handle-commands';
 import {
   BLOCK_MENU_ROWS,
@@ -69,15 +60,20 @@ import { itemWithin } from '@web/spaces/document/document-block-menu-parts';
 import {
   fillEmptyRow,
   isEmptyParagraph,
+  mediaGapOnRow,
   type InsertChoice,
 } from '@web/spaces/document/document-insert-row';
+import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
+import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { useStripOnFirstLine } from '@web/spaces/document/document-strip-alignment';
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import type { PressedBlock } from '@web/spaces/document/document-handle-commands';
+import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useRowNow } from '@web/spaces/document/use-row-now';
+import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 
 /**
  * The handle: 24 square, which is the smallest a pointer target may be
@@ -157,8 +153,8 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
   // turn the line from empty to not (or back) while the menu is still on
   // screen, closing included, and that menu stays the one the reader opened.
   const [menuFace, setMenuFace] = React.useState<StripFace>('grip');
-  // Where the reader was when a drag started, to hand back when it ends.
-  const place = React.useRef<ReaderPlace | undefined>(undefined);
+  // Ends the drag started from this handle, while one is under way.
+  const endDrag = React.useRef<(() => void) | null>(null);
   // Whether the drag off this handle is running. The handle IS the drag's
   // source element, so it cannot leave the document while the drag is on —
   // and the drag's own first act is to select the row it moves, which is what
@@ -170,17 +166,10 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
   // pointer alone (`SideMenu.ts:607` — `onMouseMove` straight to
   // `updateStateFromMousePos`, with no selection in the judgement; it hides
   // only while a key is pressed in the body, `:600-604`), so this gate is
-  // ours. The same reading `DocumentEditor` makes for the link toolbar, from
-  // the same hook: it subscribes to both change and selection change
-  // (`use-editor-snapshot.ts:40-41`) and reads during render, so the strip
-  // arriving under a pointer is served without a second mechanism.
-  const holdsSelection = useEditorSnapshot(
-    // The context's editor type is pinned to the library's own default schema
-    // while ours is `BlockNoteEditor<never, never, never>` — the same cast
-    // `DocumentBlockControls` makes when it puts the editor into the context.
-    editor as never,
-    (current) => !current.prosemirrorState.selection.empty,
-  );
+  // ours. It reads whether the bubble bar is up rather than the selection
+  // behind it: a selection the body let go of stays in the editor without
+  // being drawn, and nothing stands over it (inner#1127, `document-bars.ts`).
+  const holdsSelection = useDocumentBars(editor).bubbleBarUp;
 
   // Read off the document on every change: the side menu's own snapshot is not
   // refreshed while the pointer stays on the same row.
@@ -244,6 +233,23 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
     [editor, rowNow, closeMenu],
   );
 
+  // The plus menu's media entries: the files land above the empty line once
+  // they are chosen, and the caret stays in it (inner#1127 A1).
+  const mediaPick = useDocumentMediaPick();
+  const onFillMedia = React.useMemo(
+    () =>
+      mediaPick === null
+        ? undefined
+        : (kind: MediaBlockType): void => {
+          mediaPick(kind, () => {
+            const live = rowNow();
+            return live === undefined ? null : mediaGapOnRow(editor as never, live);
+          });
+          closeMenu();
+        },
+    [mediaPick, editor, rowNow, closeMenu],
+  );
+
   // The plus menu's last entry: the empty line itself goes.
   const onDelete = React.useCallback((): void => {
     const live = rowNow();
@@ -272,6 +278,8 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
       // is not always the row a pointer was aimed at (a heading's top margin
       // answers for the row above it).
       data-row-id={block.id}
+      // A layer of the body, belonging on its row (inner#1127).
+      {...bodyLayerMark(editor, { block: block.id })}
       // `select-none`: the strip is chrome standing in the gutter, and a
       // selection that reaches a selectable element OUTSIDE the body takes
       // everything in between with it — measured 2026-09-18, a pointer over a
@@ -311,38 +319,14 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
             className={drags ? `${STRIP_BUTTON} cursor-grab` : STRIP_BUTTON}
             draggable={drags ? true : undefined}
             onDragStart={(event) => {
-              // Read before the library takes the selection for its own
-              // (`blockDragStart` puts a node selection on the row).
               setDragActive(true);
               setMenuFace(face);
-              place.current = readerPlace(editor.prosemirrorView.state);
-              // Which row is in flight, for the drop to read out of the
-              // document rather than out of the payload (§8).
-              rowIsFlying(block.id, place.current);
-              sideMenu.blockDragStart(event, block as never);
+              endDrag.current = startRowDrag(editor as never, event.nativeEvent, block.id);
             }}
             onDragEnd={() => {
               setDragActive(false);
-              rowHasLanded();
-              sideMenu.blockDragEnd();
-              const held = place.current;
-              place.current = undefined;
-              // A text selection goes back whatever the reader had: the node
-              // selection the library put on the row at dragstart is still
-              // there when the drag ends, and the bubble bar comes up for any
-              // selection that is not empty — so a row nobody selected would
-              // carry the bar. The reader's own place when there was one; the
-              // caret in the row that moved when there was not (`readerPlace`
-              // declines anything that is not a text selection, and a gap
-              // cursor is one of those).
-              restoreReaderPlace(
-                editor.prosemirrorView,
-                held ?? caretAtStartOf(block.id),
-              );
-              // The press that started the drag took the focus to this button,
-              // and a key pressed after the drag has to land in the document —
-              // the same reason the menu hands focus back when it closes.
-              editor.focus();
+              endDrag.current?.();
+              endDrag.current = null;
             }}
             onClick={() => {
               if (!menuOpen) setMenuFace(face);
@@ -386,6 +370,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
             <>
               <DocumentInsertChoices
                 onPick={onFill}
+                onPickMedia={onFillMedia}
                 unreachable={row.quoted ? QUOTE_GREYED : undefined}
               />
               {/* The grip menu's delete row, the one command an empty line

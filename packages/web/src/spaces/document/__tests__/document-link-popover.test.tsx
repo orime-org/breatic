@@ -184,6 +184,7 @@ describe('the link button', () => {
       'aria-pressed',
       'true',
     );
+    expect(screen.getByTestId('doc-bubble-tool-link').className).toContain('bg-accent-strong');
   });
 
   it('reads as unpressed while the selection merely touches a boundary', async () => {

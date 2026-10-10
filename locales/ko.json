@@ -136,8 +136,7 @@
     },
     "storage": {
       "quota_exceeded_upload": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다.",
-      "quota_exceeded_generate": "Studio 저장 공간이 가득 찼습니다. 생성할 수 없습니다.",
-      "download_not_downloadable": "이 파일은 다운로드할 수 없습니다."
+      "quota_exceeded_generate": "Studio 저장 공간이 가득 찼습니다. 생성할 수 없습니다."
     },
     "purchase_mail": {
       "subject": "크레딧이 충전되었습니다",
@@ -247,7 +246,7 @@
       "attach": "파일 첨부",
       "removeAttachment": "{name} 제거",
       "attachmentUploading": "업로드 중",
-      "attachmentFailed": "{reason, select, upload {업로드 실패} extract {읽기 실패} too_long {너무 김} other {실패}}",
+      "attachmentFailed": "{reason, select, upload {업로드 실패} rate_limited {업로드가 너무 잦음, 잠시 후 다시 시도} extract {읽기 실패} too_long {너무 김} other {실패}}",
       "attachFull": "최대 {limit, number}개까지 첨부할 수 있습니다",
       "attachTooLong": "첨부한 내용이 너무 많습니다. 항목을 줄이거나 더 짧은 파일을 사용하세요.",
       "attachUnsupported": "{filename}은(는) 첨부할 수 없습니다",
@@ -725,8 +724,12 @@
       "empty": "{filename}은(는) 빈 파일이라 추가할 내용이 없습니다.",
       "hashUnavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요.",
       "storageFull": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다.",
+      "rateLimited": "업로드가 너무 잦습니다. 잠시 후 다시 시도해 주세요.",
       "failed": "업로드에 실패했습니다.",
       "extractionFailed": "{filename}의 텍스트를 읽을 수 없습니다."
+    },
+    "paste": {
+      "failed": "붙여넣기에 실패했습니다."
     },
     "minimap": {
       "label": "캔버스 미니맵"
@@ -859,6 +862,17 @@
           },
           "prompt": "표정과 움직임을 입력하세요"
         },
+        "inpaint": {
+          "label": "부분 수정",
+          "prompt": "칠한 부분을 무엇으로 바꿀지 입력하세요"
+        },
+        "erase": {
+          "label": "지우기"
+        },
+        "sketch": {
+          "label": "스케치 편집",
+          "prompt": "그린 것을 무엇으로 바꿀지 입력하세요"
+        },
         "crop": {
           "label": "자르기"
         },
@@ -977,7 +991,8 @@
         "sourceGone": "원본 노드가 삭제되었습니다.",
         "sourceChanged": "소재가 바뀌었습니다.",
         "sourceChangedByPeer": "공동 작업자가 소재를 바꿨습니다.",
-        "couldNotStart": "도구를 시작하지 못했습니다. 다시 시도하세요."
+        "couldNotStart": "도구를 시작하지 못했습니다. 다시 시도하세요.",
+        "drawingEmpty": "먼저 그림 위에 그려 주세요."
       },
       "adjust": {
         "exposure": "노출",
@@ -995,6 +1010,18 @@
         "vignette": "비네트",
         "grain": "그레인",
         "fade": "페이드"
+      },
+      "draw": {
+        "brush": "브러시",
+        "rect": "사각형",
+        "ellipse": "타원",
+        "eraser": "지우개",
+        "size": "크기",
+        "color": "색상",
+        "maskColor": "마스크 색상",
+        "undo": "실행 취소",
+        "redo": "다시 실행",
+        "clear": "모두 지우기"
       }
     },
     "template": {
@@ -1033,7 +1060,7 @@
       "noAccount": "계정이 없으신가요?",
       "forgotPassword": "비밀번호를 잊으셨나요?",
       "googleLoading": "Google 로그인 불러오는 중…",
-      "googleFailed": "Google 로그인을 사용할 수 없습니다. 다시 시도하거나 이메일로 로그인하세요.",
+      "googleFailed": "Google 로그인을 사용할 수 없습니다. 페이지를 새로고침하거나 이메일로 로그인하세요.",
       "failed": "로그인에 실패했습니다. 다시 시도해 주세요."
     },
     "register": {
@@ -1429,6 +1456,23 @@
         "splitCell": "셀 분할",
         "mergeCells": "셀 병합",
         "textHighlight": "배경(텍스트 강조)"
+      },
+      "media": {
+        "image": "이미지",
+        "audio": "오디오",
+        "video": "동영상",
+        "uploading": "업로드 중",
+        "uploadingPercent": "업로드 중 {percent}%",
+        "readOnly": "현재 읽기 전용입니다.",
+        "retry": "다시 시도",
+        "remove": "제거",
+        "caption": "캡션",
+        "captionPlaceholder": "캡션 추가",
+        "fullscreen": "전체 화면으로 보기",
+        "close": "닫기",
+        "download": "다운로드",
+        "delete": "삭제",
+        "leftOut": "이미지, 동영상, 오디오 {count}개는 붙여넣지 않았습니다. 파일을 직접 끌어다 놓거나 붙여넣으세요."
       }
     },
     "readOnlyReconnect": "다시 연결"
@@ -1818,7 +1862,8 @@
         "not_an_image": "해당 파일을 이미지로 읽을 수 없습니다.",
         "encode_failed": "이미지를 준비하지 못했습니다. 다른 이미지를 시도해 주세요.",
         "unsupported_type": "지원하지 않는 파일 형식입니다.",
-        "hash_unavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요."
+        "hash_unavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요.",
+        "rate_limited": "업로드가 너무 잦습니다. 잠시 후 다시 시도해 주세요."
       },
       "cropRegion": "자르기 영역 — 화살표 키로 이동할 수 있습니다",
       "cover": {
@@ -2217,6 +2262,13 @@
     "heading": "페이지를 찾을 수 없습니다",
     "body": "찾으시는 페이지가 존재하지 않거나 이동되었습니다. 홈으로 돌아가 다시 시작해 보세요.",
     "cta": "홈으로 돌아가기"
+  },
+  "applicationError": {
+    "title": "문제가 발생했습니다",
+    "message": "이 페이지를 계속 사용할 수 없습니다. 새로고침하거나 홈으로 돌아가세요. 브라우저 번역을 사용 중이라면 끄고 제품의 언어 설정을 이용해 주세요.",
+    "reload": "새로고침",
+    "home": "홈으로 돌아가기",
+    "reference": "오류 번호: {id}"
   },
   "pageLoadError": {
     "message": "페이지를 불러오지 못했습니다. 다시 시도해 주세요.",

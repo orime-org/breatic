@@ -14,3 +14,13 @@ export function fromYjs(tr: Transaction): boolean {
   const sync = tr.getMeta(ySyncPluginKey) as { isChangeOrigin?: boolean } | undefined;
   return sync?.isChangeOrigin === true;
 }
+
+/**
+ * Whether a transaction is the reader's own undo or redo.
+ * @param tr - The transaction.
+ * @returns True when the binding writes an undo or redo into the body.
+ */
+export function undoRedo(tr: Transaction): boolean {
+  const sync = tr.getMeta(ySyncPluginKey) as { isUndoRedoOperation?: boolean } | undefined;
+  return sync?.isUndoRedoOperation === true;
+}

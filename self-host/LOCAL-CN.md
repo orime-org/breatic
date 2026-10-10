@@ -92,6 +92,8 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 在 bucket 设置中启用 Public Development URL，取得 `https://pub-....r2.dev`，供本机试用读取文件。这个地址名称里的 Development 不表示运行本地 Worker；它是 Cloudflare 提供的公开读取入口。长期稳定使用应绑定自己的资产域名，`r2.dev` 有使用限制，见 [公开 bucket 文档](https://developers.cloudflare.com/r2/buckets/public-buckets/)。
 
+画布节点菜单的「下载」打开的是文件自己的地址加上 `download=1`。使用自己的资产域名时，在 Cloudflare 给这个域名加一条响应头转换规则：查询参数里有 `download` 时，把 `Content-Disposition` 设为 `attachment`，浏览器就会把文件存下来，文件名取地址的最后一段。`r2.dev` 地址配不了这条规则，在那里点「下载」会在新标签页直接打开文件。
+
 当前资产通过公开 URL 读取；Breatic 实例私有并不自动使 R2 文件私有。不要把需要私密访问控制的素材放入这套公开读取配置。
 
 在 bucket 的 CORS 设置中保存：

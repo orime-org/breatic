@@ -140,6 +140,23 @@ describe('assetsApi.fetchUploadConfig — session-cached knobs', () => {
     expect(vi.mocked(apiGet)).toHaveBeenCalledWith('/assets/upload-config');
   });
 
+  it('answers the cached knobs at once, and nothing before the first fetch (inner#1127 A18)', async () => {
+    assetsApi.resetUploadConfigCache();
+    expect(assetsApi.cachedUploadConfig()).toBeNull();
+    vi.mocked(apiGet).mockResolvedValue({
+      maxUploadBytes: 1,
+      clientMaxAttempts: 3,
+      clientRetryBaseDelayMs: 1000,
+      clientRequestTimeoutMs: 30000,
+      clientPutMinBytesPerSec: 65536,
+      assetUrlPrefix: 'https://cdn.example/',
+    });
+
+    await assetsApi.fetchUploadConfig();
+
+    expect(assetsApi.cachedUploadConfig()?.assetUrlPrefix).toBe('https://cdn.example/');
+  });
+
   it('does not cache a failure (next call retries the fetch)', async () => {
     assetsApi.resetUploadConfigCache();
     vi.mocked(apiGet)

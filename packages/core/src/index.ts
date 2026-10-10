@@ -56,7 +56,7 @@ export { env, MONOREPO_ROOT } from "@core/config/env.js";
 export { initCore, getConfig, getRawEnvVar } from "@core/config/runtime.js";
 export type { CoreConfig } from "@core/config/schema.js";
 export { errorMonitoringOptions, type ErrorMonitoringStart } from "@core/config/error-monitoring.js";
-export { getWorkerConfig } from "@core/config/worker.js";
+export { assertKnownQueues, getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
 export { getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";

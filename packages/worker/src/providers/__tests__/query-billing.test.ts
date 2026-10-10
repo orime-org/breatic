@@ -38,7 +38,6 @@ vi.mock("@breatic/core", async (importOriginal) => {
     ...actual,
     getWorkerConfig: () => ({
       poll_interval: 1_000,
-      poll_max_wait: 999_999,
       billing_timeout: 30_000,
     }),
     logger: {

@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Handing an address to the browser to download.
+ * Handing one stored asset to the browser to download.
  *
  * The click is what makes the request the browser's own, and the removal is
  * what keeps a page that downloads several files from accumulating anchors.
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { triggerDownload } from '@web/lib/download';
+import { downloadAsset } from '@web/lib/download';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -43,18 +43,48 @@ function anchorAtClick(): {
 }
 
 describe('starting a download', () => {
-  it('clicks a link pointing at the address', () => {
+  it('clicks a link pointing at the asset URL with download=1', () => {
     const captured = anchorAtClick();
 
-    triggerDownload('/api/v1/assets/download?url=x');
+    downloadAsset('https://assets.example.com/image/a.png');
 
-    expect(captured.href).toBe('/api/v1/assets/download?url=x');
+    expect(captured.href).toBe('https://assets.example.com/image/a.png?download=1');
+  });
+
+  it('keeps a query the asset URL already has', () => {
+    const captured = anchorAtClick();
+
+    downloadAsset('https://assets.example.com/a.png?v=2&x=1');
+
+    const href = new URL(captured.href ?? '');
+    expect(href.origin + href.pathname).toBe('https://assets.example.com/a.png');
+    expect(href.searchParams.get('v')).toBe('2');
+    expect(href.searchParams.get('x')).toBe('1');
+    expect(href.searchParams.get('download')).toBe('1');
+  });
+
+  it('sets download=1 once when the asset URL already names it', () => {
+    const captured = anchorAtClick();
+
+    downloadAsset('https://assets.example.com/a.png?download=0');
+
+    expect(new URL(captured.href ?? '').searchParams.getAll('download')).toEqual(['1']);
+  });
+
+  it('keeps a non-ASCII name pointing at the same object', () => {
+    const captured = anchorAtClick();
+
+    downloadAsset('https://assets.example.com/image/封面.png');
+
+    const href = new URL(captured.href ?? '');
+    expect(decodeURIComponent(href.pathname)).toBe('/image/封面.png');
+    expect(href.searchParams.get('download')).toBe('1');
   });
 
   it('has the link in the document when it clicks', () => {
     const captured = anchorAtClick();
 
-    triggerDownload('/api/v1/assets/download?url=x');
+    downloadAsset('https://assets.example.com/a.png');
 
     expect(captured.connected).toBe(true);
   });
@@ -68,7 +98,7 @@ describe('starting a download', () => {
   it('aims the navigation away from the page it was pressed on', () => {
     const captured = anchorAtClick();
 
-    triggerDownload('/api/v1/assets/download?url=x');
+    downloadAsset('https://assets.example.com/a.png');
 
     expect(captured.target).toBe('_blank');
   });
@@ -77,7 +107,7 @@ describe('starting a download', () => {
     anchorAtClick();
     const before = document.querySelectorAll('a').length;
 
-    triggerDownload('/api/v1/assets/download?url=x');
+    downloadAsset('https://assets.example.com/a.png');
 
     expect(document.querySelectorAll('a')).toHaveLength(before);
   });

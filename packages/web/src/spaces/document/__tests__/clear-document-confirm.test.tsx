@@ -20,6 +20,7 @@ import { t } from '@breatic/shared';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
+import { BODY_ANCHOR, BODY_LAYER } from '@web/spaces/document/document-body-focus';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
 import {
   blockCount,
@@ -116,6 +117,14 @@ describe('the whole-document delete asks first', () => {
       await screen.findByText(t('spaces.document.clearConfirm.title')),
     ).toBeInTheDocument();
     expect(blockTexts(doc)).toEqual(['alpha', 'beta']);
+  });
+
+  it('marks the dialog as a layer of the body, belonging on the whole document (inner#1127)', async () => {
+    const { pm } = await mountWith('doc-layer', ['alpha', 'beta']);
+    selectAllThenDelete(pm);
+
+    const dialog = await screen.findByTestId('document-clear-confirm');
+    expect(dialog.closest(`[${BODY_LAYER}]`)?.getAttribute(BODY_ANCHOR)).toMatch(/^range:0:\d+$/);
   });
 
   it('取消：对话框关掉，内容原样', async () => {

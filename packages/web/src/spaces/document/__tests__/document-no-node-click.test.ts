@@ -12,12 +12,14 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { NodeSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { fallbackForFirstTextblock } from './textblocks';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -95,6 +97,37 @@ describe('a modifier-click in the body', () => {
 
     expect(answered).toBe(true);
     expect(editor.prosemirrorView.state.selection.empty).toBe(true);
+  });
+
+  it('selects a divider whole, as a plain click does (A22)', () => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'alpha' },
+      { type: 'divider' },
+    ] as never);
+    const view = editor.prosemirrorView;
+    const divider = view.dom.querySelector('[data-content-type="divider"]')!;
+
+    const answered = clickHandlerOf(view)(view, view.posAtDOM(divider, 0), modifierClick(divider));
+
+    expect(answered).toBe(true);
+
+    const selection = view.state.selection;
+    expect(selection).toBeInstanceOf(NodeSelection);
+    expect((selection as NodeSelection).node.type.name).toBe('divider');
+  });
+
+  it('selects whole a block this build does not know', () => {
+    const editor = open();
+    const view = editor.prosemirrorView;
+    const block = fallbackForFirstTextblock(view);
+
+    const answered = clickHandlerOf(view)(view, view.posAtDOM(block, 0), modifierClick(block));
+
+    expect(answered).toBe(true);
+    const selection = view.state.selection;
+    expect(selection).toBeInstanceOf(NodeSelection);
+    expect((selection as NodeSelection).node.type.name).toBe('unsupportedBlock');
   });
 
   it('leaves a press on a link to the link', () => {

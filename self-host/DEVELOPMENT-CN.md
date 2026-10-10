@@ -80,7 +80,7 @@ EMAIL_BACKEND=console
 
 1. 登录 Cloudflare，进入 R2，创建一个本地试用 bucket，例如 `breatic-local-yourname`。不要使用已有生产 bucket。
 2. 在 R2 API Tokens 中创建限定到该 bucket 的 **Object Read & Write** 凭据，保存 Access Key ID、Secret Access Key 和账户的 S3 API endpoint。这对凭据不同于 Wrangler 登录凭据。
-3. 在 bucket 的设置中启用 **Public Development URL**，取得形如 `https://pub-....r2.dev` 的地址，作为本地试用的公开读取入口。此设置使文件可通过公开链接读取，勿上传私密资料。
+3. 在 bucket 的设置中启用 **Public Development URL**，取得形如 `https://pub-....r2.dev` 的地址，作为本地试用的公开读取入口。此设置使文件可通过公开链接读取，勿上传私密资料。在 `r2.dev` 地址下，画布节点菜单的「下载」会在新标签页打开文件；要存成文件，需要使用自己的域名并加上 [LOCAL-CN.md](LOCAL-CN.md) 里说的那条响应头规则。
 4. 在 bucket 的 CORS 设置中填入下面规则并保存：
 
 ```json

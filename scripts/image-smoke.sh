@@ -24,8 +24,6 @@ JS
 case "$IMAGE_KIND" in
   backend)
     docker run --rm --entrypoint node "$TEST_IMAGE" -e "if(process.arch !== '${ARCH/amd64/x64}') process.exit(1)"
-    docker run --rm --network none --entrypoint sh "$TEST_IMAGE" -c \
-      'ffmpeg -v error -f lavfi -i color=size=64x48:rate=2 -t 1 -y /tmp/check.mp4 && ffprobe -v error -show_entries stream=width,height /tmp/check.mp4'
     docker run --rm -v "$PWD/scripts/backend-sourcemaps.mjs:/tmp/verify-maps.mjs:ro" --entrypoint node "$TEST_IMAGE" /tmp/verify-maps.mjs /app --installed
     ;;
   web)

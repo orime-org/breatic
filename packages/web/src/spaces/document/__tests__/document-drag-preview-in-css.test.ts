@@ -34,6 +34,6 @@ describe('what a drag shows', () => {
   it('lifts the clone by making its contents translucent', () => {
     // The child, not the clone itself: Chrome ignores `opacity` on the element
     // handed to `setDragImage`.
-    expect(stylesheet()).toContain('.bn-drag-preview > * {\n  opacity: 0.6;');
+    expect(stylesheet()).toMatch(/\.bn-drag-preview > \* \{\s*opacity: 0\.6;/);
   });
 });
