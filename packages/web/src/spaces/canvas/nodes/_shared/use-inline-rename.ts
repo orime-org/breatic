@@ -64,8 +64,7 @@ interface UseInlineRenameOptions {
  * commits a trimmed non-blank value, Escape cancels, and a key that ends the
  * edit gives the keyboard back to the node's ReactFlow wrapper. Owning the
  * editing / draft state + the double-fire guard here keeps the one rule in one
- * place;
- * each consumer renders its own input + label markup around it.
+ * place; each consumer renders its own input + label markup around it.
  * @param root0 - The current value, length cap, read-only / locked flags, and commit callback.
  * @param root0.current - Display value seeded into the draft when editing starts.
  * @param root0.readOnly - Viewer mode — editing is disabled (`startEdit` no-ops).

@@ -108,9 +108,12 @@ export function useInlineEditExit({
   const handBack = React.useRef(false);
   const releaseHeld = React.useRef<(() => void) | null>(null);
   // The sites pass fresh closures every render; reading them through a ref
-  // keeps the handler and the effect below stable.
+  // keeps the handler and the effect below stable. Written at commit, so a
+  // render React throws away never reaches it.
   const latest = React.useRef({ target, commit, cancel });
-  latest.current = { target, commit, cancel };
+  React.useLayoutEffect(() => {
+    latest.current = { target, commit, cancel };
+  });
 
   React.useEffect(() => {
     if (editing || !handBack.current) return;
