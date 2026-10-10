@@ -291,9 +291,13 @@ export class ReaderUrlTransferError extends Error {
    * A refusal carrying the reason its grant was settled with.
    * @param reason - The failure reason the grant was settled with, one the
    *   Worker named or one of the ingest failure sentinels.
+   * @param reported - The type the Worker reported, when that is what was refused.
    * @throws {never} Never.
    */
-  constructor(readonly reason: string) {
+  constructor(
+    readonly reason: string,
+    readonly reported?: string,
+  ) {
     super(`the link did not land: ${reason}`);
     this.name = "ReaderUrlTransferError";
   }
@@ -340,12 +344,29 @@ export async function transferReaderUrlToStorage(
   );
 
   const pulled = await pullReaderLink(opened.storageKey, opened.target, sourceUrl, ingest.url_fetch_deadline_ms, signal);
-  if (pulled.status === "failed") throw new ReaderUrlTransferError(pulled.reason);
+  if (pulled.status === "failed") throw new ReaderUrlTransferError(pulled.reason, pulled.reported);
   // A rejected report turned down what the link sent (nothing, or too much):
   // the same link gets the same answer again.
   if (pulled.outcome.status === "rejected") throw new ReaderUrlTransferError(pulled.outcome.reason);
   const stored = landed(pulled.outcome, `the transfer of ${sourceUrl}`);
   return { ...stored, storageKey: opened.storageKey };
+}
+
+/**
+ * Settle a grant whose transfer did not land, keeping why it did not land
+ * when settling fails too.
+ * @param storageKey - The key the grant was opened on.
+ * @param reason - Why the transfer did not land.
+ * @param cause - What the transfer threw, or what it was refused over.
+ * @returns What settling decided.
+ * @throws {AggregateError} When settling fails, carrying the transfer's cause and the settling error.
+ */
+async function settleAborted(storageKey: string, reason: string, cause: unknown): Promise<IngestReportOutcome> {
+  try {
+    return await applyIngestReport({ storageKey, outcome: "aborted", reason });
+  } catch (settleErr) {
+    throw new AggregateError([cause, settleErr], `settling the grant for ${storageKey} failed after the link did not land: ${reason}`);
+  }
 }
 
 /** How pulling a reader's link ended: settled before any bytes were judged, or reported. */
@@ -374,7 +395,9 @@ export type ReaderLinkPull =
  * @param deadlineMs - How long the transfer may take.
  * @param signal - Raised when nobody wants the answer any more.
  * @returns How it ended.
- * @throws {Error} When filing the outcome itself fails.
+ * @throws {AggregateError} When settling a grant whose transfer did not land
+ *   fails, carrying why it did not land and the settling error.
+ * @throws {Error} When filing a landed outcome fails.
  */
 export async function pullReaderLink(
   storageKey: string,
@@ -400,13 +423,13 @@ export async function pullReaderLink(
     // of any answer is the source running out of time.
     const reason =
       err instanceof UploadHttpError ? (err.code ?? INGEST_REFUSED_UNNAMED) : INGEST_NO_ANSWER;
-    const settled = await applyIngestReport({ storageKey, outcome: "aborted", reason });
+    const settled = await settleAborted(storageKey, reason, err);
     return { status: "failed", reason, settled, err };
   }
 
   const storedType = storedTypeOf(measured.contentType);
   if (storedType === null) {
-    const settled = await applyIngestReport({ storageKey, outcome: "aborted", reason: INGEST_TYPE_NOT_REPORTED });
+    const settled = await settleAborted(storageKey, INGEST_TYPE_NOT_REPORTED, `the Worker reported ${measured.contentType}`);
     return { status: "failed", reason: INGEST_TYPE_NOT_REPORTED, settled, reported: measured.contentType };
   }
 

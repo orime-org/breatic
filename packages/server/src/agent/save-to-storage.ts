@@ -79,11 +79,12 @@ export function saveToStorageFor({ projectId, userId }: { projectId: string; use
     } catch (err) {
       if (signal?.aborted === true) throw err;
       if (err instanceof backendUploadService.ReaderUrlTransferError) {
-        logger[urlIngestFailureLevel(err.reason)](
-          { err, projectId, userId, url, reason: err.reason },
-          "agent_save_failed",
-        );
-        throw new SaveRefused("link", err.reason);
+        // Only a refusal of the reader's own link is the link's to answer
+        // for; one on our side is a fault, told to the model as one.
+        const level = urlIngestFailureLevel(err.reason);
+        logger[level]({ err, projectId, userId, url, reason: err.reason, reported: err.reported }, "agent_save_failed");
+        if (level === "warn") throw new SaveRefused("link", err.reason);
+        throw err;
       }
       logger.error({ err, projectId, userId, url }, "agent_save_failed");
       throw err;
