@@ -19,7 +19,7 @@ import { restoreProcessEnv, useEnvWithKeys, useFullCatalog } from "@domain/model
 
 import { verdictFor, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
-import { typedMarks } from "../proposal-node-checks.js";
+import { markTypedAsWords } from "../proposal-node-checks.js";
 import { REFUSALS, type RefusalId } from "../proposal-refusals.js";
 
 beforeEach(() => {
@@ -788,7 +788,7 @@ function doubledMarks(sent: Sent): Sent {
   // Typed marks are found by the check's own reading, so a mark typed across
   // segments is written twice by writing the words twice.
   const twice = (segments: NonNullable<Sent["nodes"][number]["prompt"]>): NonNullable<Sent["nodes"][number]["prompt"]> =>
-    typedMarks({ role: "written", type: "text", name: "", prompt: segments }).length > 0
+    !markTypedAsWords({ role: "written", type: "text", name: "", prompt: segments }).ok
       ? [...segments, ...segments]
       : segments.flatMap((s): typeof segments => ("ref" in s || ("slot" in s && s.slot.kind === "note") ? [s, s] : [s]));
   return {

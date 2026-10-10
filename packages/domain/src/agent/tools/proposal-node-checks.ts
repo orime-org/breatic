@@ -156,7 +156,7 @@ function segmentAsSent(segment: PromptSegment): string {
  * @returns The typed marks.
  * @throws {never} Never.
  */
-export function typedMarks(node: ProposalNode): TypedMark[] {
+function typedMarks(node: ProposalNode): TypedMark[] {
   return [node.prompt ?? [], ...(node.shots ?? []).map((shot) => shot.prompt)].flatMap((segments) => {
     const words = segments.map((segment, i) => segment.text ?? String.fromCodePoint(SEGMENT_MARK + i)).join("");
     return marksTypedIn(words).map(({ slot, text }): TypedMark => ({
