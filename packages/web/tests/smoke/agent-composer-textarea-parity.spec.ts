@@ -17,7 +17,15 @@ test.use({ storageState: STATE_FILE.A, viewport: { width: 1500, height: 900 } })
 const BOX = '[data-testid="chat-composer-box"]';
 const LIMIT = 10_000;
 const MARKER = '__breatic_canvas_nodes__:';
-const PICTURE = { type: 'image', position: { x: 0, y: 0 }, name: 'Pic', content: 'https://img.example.com/p.jpg', external: true };
+const PICTURE = {
+  id: 'picture',
+  type: 'image',
+  position: { x: 0, y: 0 },
+  data: { name: 'Pic', content: 'https://img.example.com/p.jpg' },
+  external: true,
+};
+/** The canvas's clipboard text (version 2) for the picture. */
+const PICTURE_TEXT = MARKER + JSON.stringify({ version: 2, picked: [PICTURE.id], nodes: [PICTURE], edges: [] });
 
 const STARTS: Record<string, string> = {
   empty: '',
@@ -191,7 +199,7 @@ test('handing the keyboard back after removing an attachment keeps the caret whe
     const data = new DataTransfer();
     data.setData('text/plain', t as string);
     document.querySelector(sel as string)?.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
-  }, [BOX, MARKER + JSON.stringify([PICTURE])]);
+  }, [BOX, PICTURE_TEXT]);
   // A click somewhere else on the page moves the document's selection out of the box.
   await page.mouse.click(5, 5);
   await page.getByTestId('chat-composer-chips').getByRole('button').focus();
@@ -313,7 +321,7 @@ async function startWithBlock(page: Page): Promise<void> {
     const data = new DataTransfer();
     data.setData('text/plain', t as string);
     document.querySelector(sel as string)?.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
-  }, [BOX, MARKER + JSON.stringify([PICTURE])]);
+  }, [BOX, PICTURE_TEXT]);
   await page.keyboard.type('hello @');
   await expect(page.locator('[data-testid^="reference-mention-option-"]').first()).toBeVisible();
   await page.keyboard.press('Enter');

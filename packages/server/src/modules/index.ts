@@ -17,6 +17,7 @@
 export * as membershipService from "@server/modules/account/membership.service.js";
 export * as assetUploadService from "@server/modules/asset/assetUpload.service.js";
 export * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
+export * as pasteAssetsService from "@server/modules/asset/pasteAssets.service.js";
 export * as authService from "@server/modules/auth/auth.service.js";
 export * as recoveryCodeService from "@server/modules/auth/recovery-code.service.js";
 export * as signupCodeService from "@server/modules/auth/signup-code.service.js";

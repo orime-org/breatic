@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Where to move the canvas after a press writes a node beside another one.
+ * Where to move the canvas after an action makes something: a press that
+ * writes a node beside another one, or a paste or duplicate that makes copies.
  *
  * A node written one step to the right of the one being read is off-screen on
  * a canvas scrolled near its right edge, and a press whose only effect is
@@ -17,6 +18,9 @@ import {
   type Point,
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
+
+/** How long the canvas takes to slide what an action just made into view. */
+export const FRAME_PAN_MS = 300;
 
 /**
  * Whether one rect lies entirely within another.
@@ -42,10 +46,12 @@ function contains(inner: Rect, outer: Rect): boolean {
  * zoom is the reader's and stays that way, so a pair too far apart to fit at
  * it cannot be framed together; the built node wins then, being the thing the
  * press produced.
- * @param built - The node this press wrote.
- * @param source - The node it was read from, or null when a collaborator
- *   deleted it while the menu stood open — the press still produced a node,
- *   and that node is what has to be on screen.
+ * @param built - What the action produced: the node a press wrote, or the
+ *   box {@link framedBox} picks from a paste's or duplicate's copies.
+ * @param source - What it was made from, or null when none of that is on
+ *   this canvas (a collaborator deleted it, the paste came from another Space,
+ *   or the paste was text or a picture); what was produced is what has to be
+ *   on screen.
  * @param viewport - What the reader can see, in canvas coordinates.
  * @returns The point to centre on, or null when nothing needs to move.
  */
@@ -61,4 +67,18 @@ export function frameBuiltNode(
   const both = groupRectForMembers([built, source], 0) ?? built;
   const fits = both.width <= viewport.width && both.height <= viewport.height;
   return centerOf(fits ? both : built);
+}
+
+/**
+ * The box a paste or duplicate frames among its copies: all of them when they
+ * fit the view together, else the first one. The middle of copies that do not
+ * fit can be empty canvas, and framing it would put none of them on screen.
+ * @param copies - Each copy's box, in canvas coordinates, in paste order.
+ * @param viewport - What the reader can see, in canvas coordinates.
+ * @returns The box to frame, or null when there are no copies.
+ */
+export function framedBox(copies: readonly Rect[], viewport: Rect): Rect | null {
+  const all = groupRectForMembers(copies, 0);
+  if (all === null) return null;
+  return all.width <= viewport.width && all.height <= viewport.height ? all : (copies[0] ?? null);
 }

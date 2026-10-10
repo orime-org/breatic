@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import * as Y from 'yjs';
 
 import {
+  CANVAS_NODES_KEY,
   newId,
   promptPlainText,
   proposalMarkSegments,
@@ -22,7 +24,10 @@ import {
   setNodeMode,
   setNodeModel,
   setNodeName,
+  writeSnapshotNodes,
+  type SnapshotNode,
 } from '@web/data/yjs/canvas-space';
+import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
 import { setStoryboardShots } from '@web/data/yjs/node-storyboard';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import { writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
@@ -31,8 +36,10 @@ import {
   cloneForPaste,
   stepPastOccupied,
   textToNode,
-  type ClipboardNode,
+  type ClipboardPayload,
+  type CloneOptions,
 } from '@web/spaces/canvas/node-clipboard';
+import { collectAddresses, historyItems, replaceAddresses } from '@web/spaces/canvas/paste-addresses';
 import {
   centerToTopLeft,
   createEmptyNode,
@@ -56,6 +63,12 @@ import { ingestRefusalToastKey } from '@web/spaces/canvas/upload-failure';
 export interface CreatedUploadNode {
   id: string;
   position: { x: number; y: number };
+}
+
+/** Options for {@link NodeCreation.pastePayload}. */
+export interface PastePayloadOptions extends CloneOptions {
+  /** Runs inside the paste's undo step, after the clones are written. */
+  afterWrite?: (clones: ReadonlyArray<SnapshotNode>, idMap: ReadonlyMap<string, string>) => void;
 }
 
 export interface NodeCreation {
@@ -88,17 +101,21 @@ export interface NodeCreation {
    */
   pasteTextAt: (text: string, position: { x: number; y: number }) => string;
   /**
-   * Paste cloned clipboard nodes (fresh ids, positions shifted by `offset`
-   * so relative layout is preserved, then the whole batch stepped past any
-   * node already where one of them would land); returns the new node ids in
-   * order.
-   * The duplicate path (which can re-home a clone into an existing Group +
-   * grow it) is orchestrated by the canvas, not here.
+   * Paste or duplicate a clipboard payload (inner#1349): clone it shifted by
+   * `offset`, register what it names in this Studio and write each copy's
+   * history (the request is skipped only when there is no address to register
+   * and no history to write), then write the clones and edges in one undo
+   * step, stepped past nodes already where they land — the step is read at
+   * write time, so two pastes made before either answered do not stack.
+   * Resolves to the new node ids, or null when the registration request fails
+   * (a toast says so, with the server's reason when it gave one) or the Space
+   * went away first.
    */
-  pasteNodesAt: (
-    nodes: ReadonlyArray<ClipboardNode>,
+  pastePayload: (
+    payload: ClipboardPayload,
     offset: { dx: number; dy: number },
-  ) => string[];
+    options?: PastePayloadOptions,
+  ) => Promise<string[] | null>;
   /**
    * How far a paste whose nodes would land at `corners` (their top-lefts, in
    * flow coordinates) steps down and right past the nodes already on this
@@ -188,45 +205,58 @@ export function useNodeCreation(
     },
     [projectId, spaceId, userId, stepPaste],
   );
-  const pasteNodesAt = React.useCallback(
-    (
-      nodes: ReadonlyArray<ClipboardNode>,
+  const pastePayload = React.useCallback(
+    async (
+      payload: ClipboardPayload,
       offset: { dx: number; dy: number },
-    ): string[] => {
-      // Clipboard positions are absolute, Group members included, so each one
-      // plus the offset is where that node will be painted.
-      const step = stepPaste(
-        nodes.map((node) => ({ x: node.position.x + offset.dx, y: node.position.y + offset.dy })),
-      );
-      const cloned = cloneForPaste(nodes, userId, {
-        dx: offset.dx + step.dx,
-        dy: offset.dy + step.dy,
-      });
-      // One paste is ONE undo entry — a group + its members (or a multi-node
-      // selection) must undo as a unit, not node-by-node (mirrors the duplicate
-      // path's batch).
-      runCanvasUndoBatch(projectId, spaceId, () => {
-        cloned.forEach((node) => addNode(projectId, spaceId, node));
-      });
-      // `cloneForPaste` keeps the payload's order, so a clone sits at its
-      // source's index.
-      nodes.forEach((source, i) => {
-        const target = cloned[i];
-        if (source.external !== true || source.content === undefined || target === undefined) {
-          return;
-        }
-        canvasApi
-          .ingestUrl({
-            url: source.content,
+      options: PastePayloadOptions = {},
+    ): Promise<string[] | null> => {
+      const cloned = cloneForPaste(payload, userId, offset, options);
+      // An external clone carries no address yet (cloneForPaste drops it), so
+      // it adds nothing here; its fetch into storage follows the write.
+      const addresses = collectAddresses(cloned.nodes);
+      const history = historyItems(cloned.nodes);
+      let nodes: SnapshotNode[] = cloned.nodes;
+      if (addresses.urls.length > 0 || addresses.pairs.length > 0 || history.length > 0) {
+        try {
+          const { map } = await canvasApi.paste({
             project_id: projectId,
-            space_id: spaceId,
-            node_id: target.id,
-          })
+            urls: addresses.urls,
+            pairs: addresses.pairs,
+            history,
+          });
+          nodes = replaceAddresses(nodes, new Map(Object.entries(map)));
+        } catch (err) {
+          toast.error(err instanceof ApiException && err.fromServer ? err.message : t('canvas.paste.failed'));
+          return null;
+        }
+      }
+      // A paste waits on the server; a Space closed meanwhile is not written.
+      if (!hasDoc(docName.canvasSpace(projectId, spaceId))) return null;
+      const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+      const nodesMap = doc.getMap<Y.Map<unknown>>(CANVAS_NODES_KEY);
+      const placed = stepClones(
+        nodes,
+        cloned.idMap,
+        options.externalParentAbs ?? new Map(),
+        (id) => liveGroup(nodesMap, id),
+        stepPaste,
+      );
+      runCanvasUndoBatch(projectId, spaceId, () => {
+        writeSnapshotNodes(doc, placed, cloned.edges);
+        options.afterWrite?.(placed, cloned.idMap);
+      });
+      for (const source of payload.nodes) {
+        const target = cloned.idMap.get(source.id);
+        const url = source.data.content;
+        if (source.external !== true || typeof url !== 'string' || target === undefined) continue;
+        canvasApi
+          .ingestUrl({ url, project_id: projectId, space_id: spaceId, node_id: target })
           .catch((err: unknown) => {
             toast.error(t(ingestRefusalToastKey(err instanceof ApiException ? err.status : undefined)));
           });
-      });
-      return cloned.map((node) => node.id);
+      }
+      return placed.map((node) => node.id);
     },
     [projectId, spaceId, userId, t, stepPaste],
   );
@@ -340,8 +370,82 @@ export function useNodeCreation(
     createNodeAt,
     createUploadNodeAt,
     pasteTextAt,
-    pasteNodesAt,
+    pastePayload,
     stepPaste,
     placeProposalAt,
+  };
+}
+
+/** An existing Group as it is in the document when a paste writes. */
+interface LiveGroup {
+  position: { x: number; y: number };
+  locked: boolean;
+}
+
+/**
+ * Settle a paste's clones where they land, at write time. A lone member
+ * rejoins its existing Group only while that Group is in the document and
+ * unlocked, measured where the Group is now; otherwise the copy goes to the
+ * top level at the canvas position it had inside the Group. Then every clone
+ * is measured where it is painted (inner#1235 A20), so a member of a cloned
+ * Group landing on a taken spot steps the batch too; only the nodes that sit
+ * on the canvas by themselves move — top-level clones and lone members
+ * rejoining an existing Group — and members of a cloned Group follow it.
+ * @param clones - The clones.
+ * @param idMap - Source id → clone id.
+ * @param externalParentAbs - Where each existing Group was when the copy was made.
+ * @param groupNow - An existing Group as the document holds it now, or undefined once it is gone.
+ * @param stepPaste - How far a batch at these corners steps.
+ * @returns The clones at their final positions.
+ */
+function stepClones(
+  clones: ReadonlyArray<SnapshotNode>,
+  idMap: ReadonlyMap<string, string>,
+  externalParentAbs: ReadonlyMap<string, { x: number; y: number }>,
+  groupNow: (id: string) => LiveGroup | undefined,
+  stepPaste: (corners: ReadonlyArray<{ x: number; y: number }>) => { dx: number; dy: number },
+): ReadonlyArray<SnapshotNode> {
+  const fresh = new Set(idMap.values());
+  const nodes = clones.map((node): SnapshotNode => {
+    if (node.parentId === undefined || fresh.has(node.parentId)) return node;
+    const group = groupNow(node.parentId);
+    if (group !== undefined && !group.locked) return node;
+    // A clone keeps an existing Group's id only when that Group is in externalParentAbs.
+    const parent = group?.position ?? (externalParentAbs.get(node.parentId) as { x: number; y: number });
+    const { parentId: _left, ...rest } = node;
+    return { ...rest, position: { x: parent.x + node.position.x, y: parent.y + node.position.y } };
+  });
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  /**
+   * Whether a clone sits on the canvas by itself rather than inside a cloned Group.
+   * @param node - The clone.
+   * @returns True for a top-level clone or a member of an existing Group.
+   */
+  const moves = (node: SnapshotNode): boolean => node.parentId === undefined || !fresh.has(node.parentId);
+  const corners = nodes.map((node) => {
+    if (node.parentId === undefined) return node.position;
+    const parent = byId.get(node.parentId)?.position ?? groupNow(node.parentId)?.position;
+    return parent === undefined ? node.position : { x: parent.x + node.position.x, y: parent.y + node.position.y };
+  });
+  const step = stepPaste(corners);
+  if (step.dx === 0 && step.dy === 0) return nodes;
+  return nodes.map((node) =>
+    moves(node) ? { ...node, position: { x: node.position.x + step.dx, y: node.position.y + step.dy } } : node,
+  );
+}
+
+/**
+ * An existing Group as the document holds it now.
+ * @param nodesMap - The canvas `nodesMap`.
+ * @param id - The Group's id.
+ * @returns Its position and lock, or undefined when it is gone.
+ */
+function liveGroup(nodesMap: Y.Map<Y.Map<unknown>>, id: string): LiveGroup | undefined {
+  const group = nodesMap.get(id);
+  if (!(group instanceof Y.Map)) return undefined;
+  const data = group.get('data');
+  return {
+    position: group.get('position') as { x: number; y: number },
+    locked: data instanceof Y.Map && data.get('locked') === true,
   };
 }

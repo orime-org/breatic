@@ -168,19 +168,28 @@ export async function fillMediaNumbers(
 }
 
 /**
+ * A live asset row stored under a key, from any studio. Storage keys are
+ * tenant-neutral, so every row under one key describes the same bytes.
+ * @param storageKey - The object's storage key.
+ * @returns One such row, or null when no live asset is stored under it.
+ */
+export async function findLiveByStorageKey(storageKey: string): Promise<StudioAssetEntity | null> {
+  const [row] = await db
+    .select()
+    .from(studioAssets)
+    .where(and(eq(studioAssets.storageKey, storageKey), isNull(studioAssets.deletedAt)))
+    .limit(1);
+  return row ? toEntity(row) : null;
+}
+
+/**
  * The content hash of the bytes stored under a key, from any studio's live
- * asset row. Storage keys are tenant-neutral, so every row under one key holds
- * the same hash.
+ * asset row.
  * @param storageKey - The object's storage key.
  * @returns The sha256 hex, or null when no live asset is stored under it.
  */
 export async function findHashByStorageKey(storageKey: string): Promise<string | null> {
-  const [row] = await db
-    .select({ contentHash: studioAssets.contentHash })
-    .from(studioAssets)
-    .where(and(eq(studioAssets.storageKey, storageKey), isNull(studioAssets.deletedAt)))
-    .limit(1);
-  return row?.contentHash ?? null;
+  return (await findLiveByStorageKey(storageKey))?.contentHash ?? null;
 }
 
 /**

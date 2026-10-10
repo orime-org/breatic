@@ -726,6 +726,9 @@
       "failed": "Upload failed.",
       "extractionFailed": "Couldn't read the text in {filename}."
     },
+    "paste": {
+      "failed": "Paste failed."
+    },
     "minimap": {
       "label": "Canvas minimap"
     },

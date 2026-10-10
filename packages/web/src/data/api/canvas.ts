@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
+import type { CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
 
 import { apiDelete, apiGet, apiPost } from '@web/data/api/request';
 
@@ -200,6 +200,15 @@ export const canvasApi = {
     text: string;
   }): Promise<{ id: string }> {
     return apiPost<{ id: string }>('/canvas/node-history/snapshot', body);
+  },
+  /**
+   * Register what a paste or duplicate brings into this project's Studio and
+   * write each copy's history (inner#1349).
+   * @param body - The project, the addresses the copies name, and their history.
+   * @returns Old address → address in this Studio; null for a cover that could not be filed.
+   */
+  paste(body: CanvasPasteInput): Promise<{ map: Record<string, string | null> }> {
+    return apiPost<{ map: Record<string, string | null> }>('/canvas/paste', body);
   },
 
   listTasks(projectId: string, params: { page?: number; limit?: number } = {}) {

@@ -267,6 +267,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.nodePlaceholder.video": { described: /An empty picture, video or sound node shows its type icon/ },
   "canvas.nodePlaceholder.web": { excluded: REASONS.NOT_CREATABLE },
   "canvas.panel.hostDeletedByPeer": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "canvas.paste.failed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.generatePanel.param.target_megapixels": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.generatePanel.param.target_resolution": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.generatePanel.param.resolution": { excluded: REASONS.MODEL_SETTING_NAME },

@@ -726,6 +726,9 @@
       "failed": "업로드에 실패했습니다.",
       "extractionFailed": "{filename}의 텍스트를 읽을 수 없습니다."
     },
+    "paste": {
+      "failed": "붙여넣기에 실패했습니다."
+    },
     "minimap": {
       "label": "캔버스 미니맵"
     },

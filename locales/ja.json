@@ -726,6 +726,9 @@
       "failed": "アップロードに失敗しました。",
       "extractionFailed": "{filename} のテキストを読み取れません。"
     },
+    "paste": {
+      "failed": "貼り付けに失敗しました。"
+    },
     "minimap": {
       "label": "キャンバスのミニマップ"
     },

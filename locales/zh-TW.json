@@ -726,6 +726,9 @@
       "failed": "上傳失敗。",
       "extractionFailed": "無法讀取 {filename} 中的文字。"
     },
+    "paste": {
+      "failed": "貼上失敗。"
+    },
     "minimap": {
       "label": "畫布縮略圖"
     },

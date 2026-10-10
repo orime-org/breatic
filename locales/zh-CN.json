@@ -726,6 +726,9 @@
       "failed": "上传失败。",
       "extractionFailed": "无法读取 {filename} 中的文字。"
     },
+    "paste": {
+      "failed": "粘贴失败。"
+    },
     "minimap": {
       "label": "画布缩略图"
     },

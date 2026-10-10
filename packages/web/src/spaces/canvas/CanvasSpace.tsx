@@ -76,7 +76,7 @@ import {
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
-import { frameBuiltNode } from '@web/spaces/canvas/frame-built-node';
+import { FRAME_PAN_MS, frameBuiltNode, framedBox } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { exportDrawing } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
@@ -105,9 +105,11 @@ import {
   type CanvasNodeView,
   type CanvasUndoStep,
   readCanvasGraph,
-  readNodeMediaFields,
   readTextBodies,
+  readEdges,
+  nodeDataMap,
 } from '@web/data/yjs/canvas-space';
+import { docName, getDoc } from '@web/data/yjs/manager';
 import { handToAgent } from '@web/spaces/canvas/pick-for-agent';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -174,12 +176,10 @@ import {
   groupRectForMembers,
   GROUP_PADDING,
   groupResizeBounds,
-  planGroupGrowth,
   planGroupResize,
-  type GroupGrowth,
-  type GroupGrowthInput,
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
+import { planDuplicateGroupGrowth } from '@web/spaces/canvas/duplicate-group-growth';
 import { topoSortByParent } from '@web/spaces/canvas/group-topology';
 import { useStableList } from '@web/spaces/canvas/use-stable-list';
 import {
@@ -282,15 +282,15 @@ import {
 import {
   captureClipboard,
   clipboardBoundingBox,
-  cloneForPaste,
   externalParentAbs,
   canvasTakesPaste,
   PASTE_OFFSET_PX,
   pasteOffsetFor,
-  parseClipboardNodes,
-  serializeNodes,
-  type ClipboardNode,
+  parseClipboard,
+  serializeClipboard,
+  type ClipboardPayload,
 } from '@web/spaces/canvas/node-clipboard';
+import { snapshotNodeData } from '@web/data/yjs/node-data-snapshot';
 import {
   centerToTopLeft,
   createAnnotationNode,
@@ -517,77 +517,6 @@ function groupMembersLocalBox(
     box: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
     allMeasured,
   };
-}
-
-/**
- * The Group growth needed when a duplicate drops clones into EXISTING Groups
- * (R2-A): a clone offset +24 from a source at the Group's edge can sit flush
- * against the border, so each affected Group expands to keep `GROUP_PADDING`.
- * Builds every affected Group's full member set (current members + the new
- * clones) in absolute coordinates — a clone's size is its source's measured size
- * (it is an exact copy; `clones[i]` pairs with `payload[i]`) — then defers the
- * only-up growth math to {@link planGroupGrowth}.
- * @param payload - The captured clipboard payload (same order as `clones`; carries each clone's source id).
- * @param clones - The freshly cloned wire nodes (parentId + parent-relative position).
- * @param ext - Existing Groups (outside the payload) that gained members → their absolute top-left.
- * @param allNodes - All current flow nodes (existing members + Group rects + source sizes).
- * @returns One growth per existing Group whose size must increase.
- */
-function planDuplicateGroupGrowth(
-  payload: ReadonlyArray<ClipboardNode>,
-  clones: ReadonlyArray<{ parentId?: string; position: { x: number; y: number } }>,
-  ext: ReadonlyMap<string, { x: number; y: number }>,
-  allNodes: ReadonlyArray<Node>,
-): GroupGrowth[] {
-  if (ext.size === 0) return [];
-  const byId = new Map(allNodes.map((node) => [node.id, node]));
-  /**
-   * A node's rendered size (measured first, then stored, then the drag fallback).
-   * @param node - The flow node, or undefined when not found.
-   * @returns Its width / height.
-   */
-  const sizeOf = (node: Node | undefined): { width: number; height: number } => ({
-    width: node?.measured?.width ?? node?.width ?? GROUP_DRAG_FALLBACK_W,
-    height: node?.measured?.height ?? node?.height ?? GROUP_DRAG_FALLBACK_H,
-  });
-  const inputs: GroupGrowthInput[] = [];
-  for (const [groupId, groupAbs] of ext) {
-    const groupNode = byId.get(groupId);
-    if (groupNode === undefined) continue;
-    const memberRects: Rect[] = [];
-    for (const node of allNodes) {
-      if (node.parentId !== groupId) continue;
-      const size = sizeOf(node);
-      memberRects.push({
-        x: groupAbs.x + node.position.x,
-        y: groupAbs.y + node.position.y,
-        width: size.width,
-        height: size.height,
-      });
-    }
-    clones.forEach((clone, index) => {
-      if (clone.parentId !== groupId) return;
-      const size = sizeOf(byId.get(payload[index]?.id ?? ''));
-      memberRects.push({
-        x: groupAbs.x + clone.position.x,
-        y: groupAbs.y + clone.position.y,
-        width: size.width,
-        height: size.height,
-      });
-    });
-    inputs.push({
-      groupId,
-      rect: {
-        x: groupNode.position.x,
-        y: groupNode.position.y,
-        width: groupNode.width ?? groupNode.measured?.width ?? GROUP_DRAG_FALLBACK_W,
-        height:
-          groupNode.height ?? groupNode.measured?.height ?? GROUP_DRAG_FALLBACK_H,
-      },
-      memberRects,
-    });
-  }
-  return planGroupGrowth(inputs);
 }
 
 /**
@@ -1442,29 +1371,38 @@ function CanvasSpaceInner({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [readOnly, undo, redo, sessionStore]);
 
-  // Capture with the bodies filled in. A clipboard entry is plain data and a
-  // shared body cannot travel in one, so the text is read out of the document
-  // at copy time and the paste writes it into the new node's own body. Read
-  // here rather than from a subscription: this runs on a keystroke, and the
-  // value that gets copied should be what the document says right now.
-  const captureClipboardWithText = React.useCallback(
+  // Capture reads the whole stored data of every captured node (the targets and
+  // the members of any target Group) straight from the document at copy time
+  // (inner#1349), so what is copied is what the document
+  // says right now, nested bodies and prompts included.
+  const captureClipboardFor = React.useCallback(
     (
       targetIds: ReadonlyArray<string>,
       allNodes: Parameters<typeof captureClipboard>[1],
-    ): ReturnType<typeof captureClipboard> =>
-      captureClipboard(
+    ): ClipboardPayload => {
+      const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+      return captureClipboard(
         targetIds,
         allNodes,
-        {
-          text: readTextBodies(
-            projectId,
-            spaceId,
-            allNodes.filter((n) => n.type === 'text').map((n) => n.id),
-          ),
-          media: readNodeMediaFields(projectId, spaceId, allNodes.map((n) => n.id)),
+        (id) => {
+          const data = nodeDataMap(doc, id);
+          return data ? snapshotNodeData(data) : {};
         },
-        spaceId,
-      ),
+        readEdges(doc),
+        { projectId, spaceId },
+      );
+    },
+    [projectId, spaceId],
+  );
+
+  // An uncopied upstream node keeps its edge into a copy only on the Space the
+  // copy was made on, and only while it is still there (design 5.5).
+  const keepUpstreamFor = React.useCallback(
+    (payload: ClipboardPayload): ((sourceId: string) => boolean) => {
+      if (payload.source?.spaceId !== spaceId) return () => false;
+      const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+      return (sourceId) => nodeDataMap(doc, sourceId) !== null;
+    },
     [projectId, spaceId],
   );
 
@@ -1472,7 +1410,7 @@ function CanvasSpaceInner({
     createNodeAt,
     createUploadNodeAt,
     pasteTextAt,
-    pasteNodesAt,
+    pastePayload,
     stepPaste,
     placeProposalAt,
   } = useNodeCreation(projectId, spaceId);
@@ -2300,45 +2238,56 @@ function CanvasSpaceInner({
     const h = internal.measured?.height ?? internal.height ?? 0;
     setCenter(abs.x + w / 2, abs.y + h / 2, {
       zoom: rfZoom,
-      duration: 300,
+      duration: FRAME_PAN_MS,
+      interpolate: 'linear',
     });
   }, [sessionStore, getInternalNode, setCenter, rfZoom]);
 
+  // The boxes of the nodes xyflow has measured among `ids`, in canvas
+  // coordinates and in the order given.
+  const measuredRects = React.useCallback(
+    (ids: readonly string[]): Rect[] =>
+      ids.flatMap((id) => {
+        const node = getInternalNode(id);
+        const width = node?.measured?.width;
+        const height = node?.measured?.height;
+        if (node === undefined || width === undefined || height === undefined) return [];
+        return [{ ...node.internals.positionAbsolute, width, height }];
+      }),
+    [getInternalNode],
+  );
+  // Slide what an action just made in front of the reader, together with what
+  // it was made from. Pans only, keeping the reader's zoom, the way locate does
+  // above; `framedBox` picks what of it to frame and `frameBuiltNode` whether
+  // to move at all. Returns whether the canvas moved.
+  const panToFrame = React.useCallback(
+    (made: readonly Rect[], source: Rect | null): boolean => {
+      const { transform: [tx, ty, zoom], width, height } = rfStoreApi.getState();
+      if (zoom === 0) return false;
+      const view = { x: -tx / zoom, y: -ty / zoom, width: width / zoom, height: height / zoom };
+      const built = framedBox(made, view);
+      const at = built === null ? null : frameBuiltNode(built, source, view);
+      if (at === null) return false;
+      // The zoom stays the reader's, so a straight slide: the default 'smooth'
+      // path zooms out and back in on the way.
+      void setCenter(at.x, at.y, { zoom, duration: FRAME_PAN_MS, interpolate: 'linear' });
+      return true;
+    },
+    [rfStoreApi, setCenter],
+  );
   // Put a node a press just wrote in front of the reader, together with the
-  // node it was read from. Pans only, keeping the reader's zoom, the way
-  // locate does above; whether it pans at all is `frameBuiltNode`'s to say.
-  // The built node's size is the fresh-node size rather than a measured one:
-  // a node written this instant is not in ReactFlow's store yet, and a node
-  // holding nothing is that size until something lands in it.
+  // node it was read from. The built node's size is the fresh-node size rather
+  // than a measured one: a node written this instant is not in ReactFlow's
+  // store yet, and a node holding nothing is that size until something lands
+  // in it.
   const frameNewNode = React.useCallback(
     (position: { x: number; y: number }, sourceNodeId: string): void => {
-      const { transform, width, height } = rfStoreApi.getState();
-      const [tx, ty, zoom] = transform;
-      if (zoom === 0) return;
       // A collaborator can delete the node being read while the menu stands
       // open. The press still produced a node, so it is still what has to be
       // in front of the reader — there is just no second box to frame it with.
-      const source = getInternalNode(sourceNodeId);
-      const at = frameBuiltNode(
-        { ...position, ...EMPTY_NODE_SIZE },
-        source === undefined
-          ? null
-          : {
-            ...source.internals.positionAbsolute,
-            width: source.measured?.width ?? source.width ?? 0,
-            height: source.measured?.height ?? source.height ?? 0,
-          },
-        {
-          x: -tx / zoom,
-          y: -ty / zoom,
-          width: width / zoom,
-          height: height / zoom,
-        },
-      );
-      if (at === null) return;
-      setCenter(at.x, at.y, { zoom, duration: 300 });
+      panToFrame([{ ...position, ...EMPTY_NODE_SIZE }], measuredRects([sourceNodeId])[0] ?? null);
     },
-    [getInternalNode, rfStoreApi, setCenter],
+    [measuredRects, panToFrame],
   );
 
   // ---- Node creation (library mailbox + right-click) ----
@@ -2356,6 +2305,62 @@ function CanvasSpaceInner({
   const [selectAfterCreate, setSelectAfterCreate] = React.useState<
     string[] | null
   >(null);
+  // Paste and duplicate select their copies and give them the keyboard; other
+  // ways of making a node only select it.
+  const focusPastedRef = React.useRef<{ ids: string[]; sources: readonly string[] } | null>(null);
+  const selectPasted = React.useCallback((ids: string[], sources: readonly string[] = []): void => {
+    if (ids.length === 0) return;
+    focusPastedRef.current = { ids, sources };
+    setSelectAfterCreate(ids);
+  }, []);
+  // A paste or duplicate puts its copies in front of the reader and hands them
+  // the keyboard, so the arrow keys move them (inner#1229) through xyflow's own
+  // handler on the focused node. Each frame it waits while a menu is still
+  // closing (it holds focus until it unmounts) and until xyflow has measured
+  // every copy, then slides them into view with `panToFrame` and focuses the
+  // first copy shown inside the canvas: xyflow keeps a copy hidden until it has
+  // measured it, and renders one that lands out of view once for that measure
+  // before culling it. Only copies still selected count, so a newer paste or
+  // the reader's own pick during the slide keeps the keyboard.
+  const focusFirstCopy = React.useCallback(
+    (ids: readonly string[], sources: readonly string[]): void => {
+      let framed = false;
+      /** One frame of the wait; schedules the next until it focuses or gives up. */
+      const step = (): void => {
+        const container = containerRef.current;
+        if (container === null) return;
+        if (document.activeElement?.closest('[role="menu"]')) {
+          requestAnimationFrame(step);
+          return;
+        }
+        const copies = ids.filter((id) => getInternalNode(id)?.selected === true);
+        if (copies.length === 0) return;
+        const rects = measuredRects(copies);
+        if (rects.length < copies.length) {
+          requestAnimationFrame(step);
+          return;
+        }
+        if (!framed) {
+          framed = true;
+          if (panToFrame(rects, groupRectForMembers(measuredRects(sources), 0))) {
+            window.setTimeout(() => requestAnimationFrame(step), FRAME_PAN_MS);
+            return;
+          }
+        }
+        const view = container.getBoundingClientRect();
+        const shown = copies
+          .map((id) => container.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`))
+          .find((element) => {
+            if (element === null || getComputedStyle(element).visibility === 'hidden') return false;
+            const box = element.getBoundingClientRect();
+            return box.right > view.left && box.left < view.right && box.bottom > view.top && box.top < view.bottom;
+          });
+        shown?.focus({ preventScroll: true });
+      };
+      requestAnimationFrame(step);
+    },
+    [getInternalNode, measuredRects, panToFrame],
+  );
   const staggerRef = React.useRef(0);
   const [contextMenu, setContextMenu] = React.useState({
     open: false,
@@ -2528,7 +2533,7 @@ function CanvasSpaceInner({
     (
       files: File[],
       origin: { x: number; y: number },
-      stepPastTaken = false,
+      pasted = false,
     ): void => {
       if (readOnly || files.length === 0) return;
       // Register the batch SYNCHRONOUSLY (before the config-fetch await) so the
@@ -2585,7 +2590,7 @@ function CanvasSpaceInner({
           // Only a paste steps the whole batch, its Group included, past nodes
           // already on its spot, so it shows (inner#1235 A20).
           const step =
-            stepPastTaken
+            pasted
               ? stepPaste(frame === null ? tops : [...tops, frame])
               : { dx: 0, dy: 0 };
           const centres = laid.map((centre) => ({
@@ -2635,7 +2640,10 @@ function CanvasSpaceInner({
           // deselects everything else when the Group mirrors back.
           selectAfter = [plan.groupId];
         });
-        if (selectAfter.length > 0) setSelectAfterCreate(selectAfter);
+        if (selectAfter.length > 0) {
+          if (pasted) selectPasted(selectAfter);
+          else setSelectAfterCreate(selectAfter);
+        }
         // The bytes travel once the canvas holds the nodes they belong to.
         for (const { file, spec, node } of jobs) {
           const nodeId = node.id;
@@ -2689,6 +2697,7 @@ function CanvasSpaceInner({
       stepPaste,
       t,
       trackOperation,
+      selectPasted,
     ],
   );
 
@@ -2920,15 +2929,62 @@ function CanvasSpaceInner({
     if (!selectAfterCreate) return;
     if (!selectAfterCreate.every((id) => nodes.some((node) => node.id === id)))
       return;
-    const targets = new Set(selectAfterCreate);
+    const ids = selectAfterCreate;
+    const targets = new Set(ids);
     // reconcileSelection keeps untouched nodes' references so React.memo
     // bails on the rest of the canvas (same discipline as the other
     // programmatic selection writes).
     setFlowNodes((current) =>
       reconcileSelection(current, (node) => targets.has(node.id)),
     );
-    setSelectAfterCreate(null);
-  }, [selectAfterCreate, nodes, setFlowNodes]);
+    // A newer creation may already be waiting; only this run's ids clear.
+    setSelectAfterCreate((current) => (current === ids ? null : current));
+    const pasted = focusPastedRef.current;
+    if (pasted?.ids !== ids) return;
+    focusPastedRef.current = null;
+    focusFirstCopy(ids, pasted.sources);
+  }, [selectAfterCreate, nodes, setFlowNodes, focusFirstCopy]);
+
+  // One dispatch for Cmd+V and the menu's Paste (design 5.9): our nodes paste
+  // as nodes, any other words make a text node. `at` is the right-click point;
+  // a keyboard paste of nodes lands where `pasteOffsetFor` puts it and plain
+  // text lands at the view centre; then every paste steps past nodes already
+  // on its spot (inner#1235 A20).
+  const pasteFromText = React.useCallback(
+    (text: string, at: { x: number; y: number } | null): boolean => {
+      const payload = parseClipboard(text);
+      if (payload && payload.nodes.length > 0) {
+        let offset = { dx: PASTE_OFFSET_PX, dy: PASTE_OFFSET_PX };
+        if (at) {
+          // Centre the payload's bounding box on the cursor (Bug C).
+          const box = clipboardBoundingBox(payload.nodes);
+          offset = { dx: at.x - (box.x + box.width / 2), dy: at.y - (box.y + box.height / 2) };
+        } else {
+          const rect = containerRef.current?.getBoundingClientRect();
+          if (rect) {
+            const tl = screenToFlowPosition({ x: rect.left, y: rect.top });
+            const br = screenToFlowPosition({ x: rect.right, y: rect.bottom });
+            offset = pasteOffsetFor(
+              payload,
+              { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y },
+              spaceId,
+            );
+          }
+        }
+        void pastePayload(payload, offset, { keepUpstream: keepUpstreamFor(payload) }).then((ids) => {
+          if (ids) selectPasted(ids, payload.nodes.map((node) => node.id));
+        });
+        return true;
+      }
+      if (text.trim().length === 0) return false;
+      const rect = containerRef.current?.getBoundingClientRect();
+      const point = at ?? (rect ? viewCentre(rect) : null);
+      if (!point) return false;
+      selectPasted([pasteTextAt(text, point)]);
+      return true;
+    },
+    [pastePayload, pasteTextAt, keepUpstreamFor, screenToFlowPosition, viewCentre, spaceId, selectPasted],
+  );
 
   // ---- Clipboard (slice 2b) ----
   // The system clipboard is the single source of truth. Copy serializes the
@@ -2965,38 +3021,11 @@ function CanvasSpaceInner({
         return;
       }
 
-      const clipboardNodes = parseClipboardNodes(text);
-      if (clipboardNodes && clipboardNodes.length > 0) {
-        event.preventDefault();
-        // Viewport-aware placement (R2-H, Figma-style): nodes copied on this
-        // Space paste beside their source while it is in view; anything else
-        // lands in the middle of the view, so a paste is never dropped
-        // off-screen (inner#1235 A20). `pasteNodesAt` then steps the batch past
-        // nodes already on its spot.
-        const rect = containerRef.current?.getBoundingClientRect();
-        let offset = { dx: PASTE_OFFSET_PX, dy: PASTE_OFFSET_PX };
-        if (rect) {
-          const tl = screenToFlowPosition({ x: rect.left, y: rect.top });
-          const br = screenToFlowPosition({ x: rect.right, y: rect.bottom });
-          offset = pasteOffsetFor(
-            clipboardNodes,
-            { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y },
-            spaceId,
-          );
-        }
-        setSelectAfterCreate(pasteNodesAt(clipboardNodes, offset));
-        return;
-      }
-
-      if (text.trim().length === 0) return;
-      event.preventDefault();
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      setSelectAfterCreate([pasteTextAt(text, viewCentre(rect))]);
+      if (pasteFromText(text, null)) event.preventDefault();
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
-  }, [readOnly, pasteNodesAt, pasteTextAt, screenToFlowPosition, viewCentre, processFiles, spaceId]);
+  }, [readOnly, pasteFromText, viewCentre, processFiles]);
 
   React.useEffect(() => {
     /**
@@ -3023,20 +3052,17 @@ function CanvasSpaceInner({
       if (!regionOwnsKeyboard(document.activeElement, 'space')) return;
       if (isEditableTarget(document.activeElement)) return;
       const writable = buffer.settled();
-      const clipboardNodes = captureClipboardWithText(
+      const payload = captureClipboardFor(
         writable.filter((node) => node.selected).map((node) => node.id),
         writable,
       );
-      if (clipboardNodes.length === 0) return;
-      event.clipboardData?.setData(
-        'text/plain',
-        serializeNodes(clipboardNodes),
-      );
+      if (payload.nodes.length === 0) return;
+      event.clipboardData?.setData('text/plain', serializeClipboard(payload));
       event.preventDefault();
     };
     document.addEventListener('copy', onCopy);
     return () => document.removeEventListener('copy', onCopy);
-  }, [readOnly, captureClipboardWithText, buffer]);
+  }, [readOnly, captureClipboardFor, buffer]);
 
   // ---- Grouping (selection → group / ungroup) ----
   // Stable references (#1647 step 4): the Yjs mirror hands a fresh `flowNodes`
@@ -3335,37 +3361,36 @@ function CanvasSpaceInner({
   // The clipboard-portable form of the current selection — Group-aware: a
   // selected Group brings its members and a member resolves to absolute (see
   // captureClipboard). Used by the copy paths (Cmd+C / menu copy).
-  const collectSelectedClipboard = React.useCallback((): ClipboardNode[] => {
+  const collectSelectedClipboard = React.useCallback((): ClipboardPayload => {
     const writable = buffer.settled();
-    return captureClipboardWithText(
+    return captureClipboardFor(
       writable.filter((node) => node.selected).map((node) => node.id),
       writable,
     );
-  }, [captureClipboardWithText, buffer]);
+  }, [captureClipboardFor, buffer]);
 
   // The clipboard-portable form of the right-clicked node. Used by the node
   // menu's copy.
   const nodeMenuClipboard = React.useCallback(
-    (): ClipboardNode[] =>
-      captureClipboardWithText([nodeMenu.nodeId], buffer.settled()),
-    [nodeMenu.nodeId, captureClipboardWithText, buffer],
+    (): ClipboardPayload => captureClipboardFor([nodeMenu.nodeId], buffer.settled()),
+    [nodeMenu.nodeId, captureClipboardFor, buffer],
   );
 
   // Copy writes to the SYSTEM clipboard (same target as Cmd+C) so it round-trips
   // with paste here and elsewhere; a permission / browser failure (e.g. Firefox)
   // surfaces a toast rather than failing silently.
   const writeNodesToClipboard = React.useCallback(
-    (clipboardNodes: ClipboardNode[]): void => {
-      if (clipboardNodes.length === 0) return;
+    (payload: ClipboardPayload): void => {
+      if (payload.nodes.length === 0) return;
       void navigator.clipboard
-        .writeText(serializeNodes(clipboardNodes))
+        .writeText(serializeClipboard(payload))
         .catch(() => toast.error(t('canvas.contextMenu.clipboardError')));
     },
     [t],
   );
 
-  // Duplicate clones the targets in place (fixed +24 nudge) WITHOUT touching the
-  // clipboard: a Group brings its members; a lone member rejoins its existing
+  // Duplicate clones the targets +24 down-right of their sources, stepping
+  // further past nodes already on that spot, WITHOUT touching the clipboard: a Group brings its members; a lone member rejoins its existing
   // Group (externalParentAbs) and that Group auto-grows to keep 24px around the
   // new clone (R2-A); the clone of a locked source is itself unlocked (R2-F) and
   // a locked target is NOT blocked (R2-E — locked items can still be duplicated).
@@ -3375,25 +3400,28 @@ function CanvasSpaceInner({
     (targetIds: ReadonlyArray<string>): void => {
       if (readOnly || targetIds.length === 0) return;
       const nodes = buffer.settled();
-      const payload = captureClipboardWithText(targetIds, nodes);
-      if (payload.length === 0) return;
-      const ext = externalParentAbs(payload, nodes);
-      const clones = cloneForPaste(
+      const payload = captureClipboardFor(targetIds, nodes);
+      if (payload.nodes.length === 0) return;
+      const ext = externalParentAbs(payload.nodes, nodes);
+      void pastePayload(
         payload,
-        userId,
         { dx: PASTE_OFFSET_PX, dy: PASTE_OFFSET_PX },
-        ext,
-      );
-      const growth = planDuplicateGroupGrowth(payload, clones, ext, nodes);
-      runCanvasUndoBatch(projectId, spaceId, () => {
-        for (const clone of clones) addNode(projectId, spaceId, clone);
-        for (const g of growth) {
-          expandGroup(projectId, spaceId, g.groupId, g.position, g.width, g.height);
-        }
+        {
+          externalParentAbs: ext,
+          keepUpstream: keepUpstreamFor(payload),
+          // Read at write time, against the canvas as it is then.
+          afterWrite: (clones, idMap) => {
+            const sourceOf = new Map([...idMap].map(([source, clone]) => [clone, source]));
+            for (const g of planDuplicateGroupGrowth(sourceOf, clones, buffer.settled())) {
+              expandGroup(projectId, spaceId, g.groupId, g.position, g.width, g.height);
+            }
+          },
+        },
+      ).then((ids) => {
+        if (ids) selectPasted(ids, targetIds);
       });
-      setSelectAfterCreate(clones.map((clone) => clone.id));
     },
-    [readOnly, projectId, spaceId, userId, captureClipboardWithText, buffer],
+    [readOnly, projectId, spaceId, captureClipboardFor, keepUpstreamFor, pastePayload, selectPasted, buffer],
   );
 
   const copySelection = React.useCallback((): void => {
@@ -3415,7 +3443,7 @@ function CanvasSpaceInner({
    */
   const addToAgent = React.useCallback(
     (ids: readonly string[]): void => {
-      void handToAgent(queryClient, projectId, spaceId, ids).then((read) => {
+      void handToAgent(queryClient, projectId, getDoc(docName.canvasSpace(projectId, spaceId)), ids).then((read) => {
         if (read) return;
         toast.error(t('canvas.generatePanel.catalogUnavailable'), {
           id: 'generate-catalog-unavailable',
@@ -3556,34 +3584,26 @@ function CanvasSpaceInner({
     if (readOnly) return;
     const point = screenToFlowPosition({ x: contextMenu.x, y: contextMenu.y });
     void navigator.clipboard
-      .readText()
-      .then((text) => {
-        const clipboardNodes = parseClipboardNodes(text);
-        if (clipboardNodes && clipboardNodes.length > 0) {
-          // Centre the pasted content's bounding box ON the cursor (not its
-          // top-left there) — consistent with how creation centres on its drop
-          // point (Bug C).
-          const box = clipboardBoundingBox(clipboardNodes);
-          setSelectAfterCreate(
-            pasteNodesAt(clipboardNodes, {
-              dx: point.x - (box.x + box.width / 2),
-              dy: point.y - (box.y + box.height / 2),
-            }),
-          );
-        } else if (text.trim().length > 0) {
-          setSelectAfterCreate([pasteTextAt(text, point)]);
+      .read()
+      .then(async (items) => {
+        // Picture data (a screenshot, an image copied in a browser) uploads at
+        // the cursor like a Cmd+V picture; anything else goes through the same
+        // dispatch as Cmd+V. A file copied in Finder reaches a page only as its
+        // name (design §4), so it pastes as text, as it does elsewhere.
+        for (const item of items) {
+          if (!item.types.includes('image/png')) continue;
+          const blob = await item.getType('image/png');
+          processFiles([new File([blob], 'image.png', { type: 'image/png' })], point, true);
+          return;
+        }
+        for (const item of items) {
+          if (!item.types.includes('text/plain')) continue;
+          pasteFromText(await (await item.getType('text/plain')).text(), point);
+          return;
         }
       })
       .catch(() => toast.error(t('canvas.contextMenu.clipboardError')));
-  }, [
-    readOnly,
-    screenToFlowPosition,
-    contextMenu.x,
-    contextMenu.y,
-    pasteNodesAt,
-    pasteTextAt,
-    t,
-  ]);
+  }, [readOnly, screenToFlowPosition, contextMenu.x, contextMenu.y, processFiles, pasteFromText, t]);
 
   // Frontend-owned mutation surfaced to the node bodies through context: a
   // node knows its new name but not the project / space it lives in. The

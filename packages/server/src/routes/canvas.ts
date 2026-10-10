@@ -17,6 +17,7 @@ import {
   taskCreateSchema,
   understandSchema,
   nodeHistorySnapshotSchema,
+  canvasPasteSchema,
   paginationSchema,
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -48,6 +49,7 @@ import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { UNDERSTAND_PINS } from "@breatic/domain";
 import {
   assertStorageAllowance,
+  pasteAssetsService,
   precheckCredits,
   projectService,
 } from "@server/modules";
@@ -390,6 +392,34 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
 
   return c.json({ data: { task_id: task.id, status: "pending" } }, 201);
 });
+
+/**
+ * `POST /canvas/paste` — a paste or duplicate counts as an upload (inner#1349).
+ *
+ * Registers every resource the copy names in the project's Studio, writes each
+ * copy's history, and answers which address each old one became.
+ * @param c - Hono context with validated `canvasPasteSchema` body.
+ * @returns `200` with `{ data: { map } }`.
+ * @throws {AppError} 404 with no role on the project, 403 below editor, 507 with no storage left.
+ */
+canvas.post(
+  "/paste",
+  rateLimitFor("canvas-paste", "user"),
+  validate("json", canvasPasteSchema),
+  async (c) => {
+    const user = c.get("user");
+    const body = c.req.valid("json");
+    await projectService.assertAccess(body.project_id, user.id, "editor");
+    const map = await pasteAssetsService.pasteAssets({
+      projectId: body.project_id,
+      userId: user.id,
+      urls: body.urls,
+      pairs: body.pairs,
+      history: body.history,
+    });
+    return c.json({ data: { map } }, 200);
+  },
+);
 
 /**
  * `POST /canvas/node-history/snapshot` — keep a copy of what a node holds.

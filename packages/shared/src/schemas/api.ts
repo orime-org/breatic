@@ -351,6 +351,42 @@ export type NodeHistorySnapshotInput = z.infer<
   typeof nodeHistorySnapshotSchema
 >;
 
+/** A storage address a paste names: a stored object's public URL. */
+const pasteAddressSchema = z.string().url().max(2048);
+
+/** A video address and the cover it shows. */
+export const pastePairSchema = z.object({ url: pasteAddressSchema, cover: pasteAddressSchema });
+export type PastePair = z.infer<typeof pastePairSchema>;
+
+/** One copy's history, built from the copy's own data. */
+export const pasteHistoryItemSchema = z.object({
+  node_id: z.string().uuid(),
+  kind: z.enum(["media", "text"]),
+  // The media address, or a text body's words. No ceiling on the words, as
+  // with nodeHistorySnapshotSchema: a text node's words have none.
+  content: z.string(),
+  coverUrl: pasteAddressSchema.optional(),
+  width: z.number().int().nonnegative().optional(),
+  height: z.number().int().nonnegative().optional(),
+  mimeType: z.string().max(100).optional(),
+  size: z.number().int().nonnegative().optional(),
+  duration: z.number().nonnegative().optional(),
+});
+export type PasteHistoryItem = z.infer<typeof pasteHistoryItemSchema>;
+
+/**
+ * `POST /canvas/paste` (inner#1349): the stored addresses a paste or
+ * duplicate names and each copy's history. The array caps bound one request.
+ */
+export const canvasPasteSchema = z.object({
+  project_id: z.string().uuid(),
+  /** Stored addresses that are not one half of a pair, each once. */
+  urls: z.array(pasteAddressSchema).max(1000),
+  pairs: z.array(pastePairSchema).max(1000),
+  history: z.array(pasteHistoryItemSchema).max(1000),
+});
+export type CanvasPasteInput = z.infer<typeof canvasPasteSchema>;
+
 // ── Projects ─────────────────────────────────────────────────────────
 
 /**
