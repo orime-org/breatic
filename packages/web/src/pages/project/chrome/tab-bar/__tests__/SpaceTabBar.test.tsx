@@ -731,9 +731,9 @@ describe('SpaceTabBar', () => {
 
 // Ending a rename gives the keyboard to the content of the Space being shown,
 // the container a press beside the document body leaves it in (inner#956).
-// Each outlet stands in for one kind of Space: the canvas container carries
-// the mark in its markup, the document body scroller gets it when the body
-// attaches it.
+// Which element carries the mark in each kind of Space is pinned by the
+// canvas and document body tests; this one pins that the renamed Space's own
+// outlet is the one searched.
 describe('ending a tab rename', () => {
   const outlets: HTMLElement[] = [];
 
@@ -758,21 +758,16 @@ describe('ending a tab rename', () => {
     outlets.splice(0).forEach((outlet) => outlet.remove());
   });
 
-  it.each([
-    ['canvas', 'Enter', 's1'],
-    ['canvas', 'Escape', 's1'],
-    ['document', 'Enter', 's2'],
-    ['document', 'Escape', 's2'],
-  ])('gives the %s Space content the keyboard on %s', async (_kind, key, id) => {
+  it.each(['Enter', 'Escape'])('gives the renamed Space content the keyboard on %s', async (key) => {
     const user = userEvent.setup();
-    const canvas = addOutlet('s1');
-    const body = addOutlet('s2');
-    setup({ activeSpaceId: id, onRenameSpace: vi.fn() });
-    await user.dblClick(screen.getByTestId(`space-tab-name-${id}`));
-    const field = screen.getByTestId(`space-tab-name-input-${id}`);
-    await user.type(field, `x{${key}}`);
-    expect(screen.queryByTestId(`space-tab-name-input-${id}`)).toBeNull();
-    expect(document.activeElement).toBe(id === 's1' ? canvas : body);
+    const other = addOutlet('s1');
+    const renamed = addOutlet('s2');
+    setup({ activeSpaceId: 's2', onRenameSpace: vi.fn() });
+    await user.dblClick(screen.getByTestId('space-tab-name-s2'));
+    await user.type(screen.getByTestId('space-tab-name-input-s2'), `x{${key}}`);
+    expect(screen.queryByTestId('space-tab-name-input-s2')).toBeNull();
+    expect(document.activeElement).toBe(renamed);
+    expect(document.activeElement).not.toBe(other);
   });
 
   it.each([
