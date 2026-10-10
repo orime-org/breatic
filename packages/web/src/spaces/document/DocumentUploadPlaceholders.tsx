@@ -74,13 +74,14 @@ const Placeholder = React.memo(function Placeholder({
       <div
         data-testid='doc-upload-placeholder'
         data-phase='failed'
-        className='my-2 flex items-center gap-3 rounded-md border border-dashed border-status-error-border px-3.5 py-3 text-sm text-status-error-foreground'
+        className='my-2 flex items-center gap-3 rounded-chrome border border-solid border-status-error-border px-3.5 py-3 text-sm text-status-error-foreground'
       >
         <span className='min-w-0 flex-1 truncate'>{line}</span>
         {slot.failure.retryable && canRetry && (
           <Button
             variant='outline'
             size='compact'
+            className='text-foreground'
             data-testid='doc-upload-retry'
             onClick={() => {
               onRetry(slot.id);
@@ -92,6 +93,7 @@ const Placeholder = React.memo(function Placeholder({
         <Button
           variant='outline'
           size='compact'
+          className='text-foreground'
           data-testid='doc-upload-remove'
           onClick={() => {
             onRemove(slot.id);
@@ -110,7 +112,7 @@ const Placeholder = React.memo(function Placeholder({
     <div
       data-testid='doc-upload-placeholder'
       data-phase='uploading'
-      className='my-2 flex items-center gap-3 rounded-md border border-dashed border-border px-3.5 py-3 text-sm text-muted-foreground'
+      className='my-2 flex items-center gap-3 rounded-chrome border border-dashed border-border px-3.5 py-3 text-sm text-muted-foreground'
     >
       <Loader2 className='h-3.5 w-3.5 shrink-0 animate-spin' aria-hidden />
       <span className='min-w-0 flex-1 truncate text-foreground'>{slot.name}</span>

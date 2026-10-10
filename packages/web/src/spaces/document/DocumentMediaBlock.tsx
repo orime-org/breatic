@@ -31,6 +31,7 @@ import {
   DialogContent,
   DialogTitle,
 } from '@web/components/ui/dialog';
+import { Separator } from '@web/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-end';
@@ -126,12 +127,16 @@ const ALIGNMENTS = [
   { value: 'right', Icon: AlignRight, labelKey: 'spaces.document.commands.alignRight' },
 ] as const;
 
-/** The corner knobs of a selected picture or video, and the side each one pulls. */
+/**
+ * The corner knobs of a selected picture or video, and the side each one
+ * pulls. Each takes a press on a 24px square centred on its corner, the
+ * smallest target WCAG 2.5.8 allows, around an 8px dot.
+ */
 const CORNERS = [
-  { corner: 'nw', side: 'left', place: '-left-1 -top-1', cursor: 'cursor-nwse-resize' },
-  { corner: 'ne', side: 'right', place: '-right-1 -top-1', cursor: 'cursor-nesw-resize' },
-  { corner: 'sw', side: 'left', place: '-bottom-1 -left-1', cursor: 'cursor-nesw-resize' },
-  { corner: 'se', side: 'right', place: '-bottom-1 -right-1', cursor: 'cursor-nwse-resize' },
+  { corner: 'nw', side: 'left', place: '-left-3 -top-3', cursor: 'cursor-nwse-resize' },
+  { corner: 'ne', side: 'right', place: '-right-3 -top-3', cursor: 'cursor-nesw-resize' },
+  { corner: 'sw', side: 'left', place: '-bottom-3 -left-3', cursor: 'cursor-nesw-resize' },
+  { corner: 'se', side: 'right', place: '-bottom-3 -right-3', cursor: 'cursor-nwse-resize' },
 ] as const;
 
 /** Where each alignment puts the media in its row. */
@@ -472,6 +477,14 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
                 <Icon />
               </ToolButton>
             ))}
+            {sized && narrower && (
+              <Separator
+                orientation='vertical'
+                data-testid='doc-media-sep'
+                // The selection bar's rule between groups.
+                className='mx-[3px] h-4 w-px'
+              />
+            )}
             <ToolButton
               label={t('spaces.document.media.caption')}
               action='caption'
@@ -545,13 +558,14 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
               <span
                 key={corner}
                 data-media-chrome=''
-                data-media-knob=''
                 data-testid={`doc-media-resize-${corner}`}
-                className={`absolute h-2 w-2 rounded-sm border bg-background ${place} ${cursor}`}
+                className={`absolute flex h-6 w-6 items-center justify-center ${place} ${cursor}`}
                 onPointerDown={(event) => {
                   startResize(towards, event);
                 }}
-              />
+              >
+                <span data-media-knob='' className='h-2 w-2 rounded-sm border bg-background' />
+              </span>
             ))}
         </div>
         {editingCaption ? (

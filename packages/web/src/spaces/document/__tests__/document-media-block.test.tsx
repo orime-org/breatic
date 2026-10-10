@@ -428,6 +428,7 @@ describe('the toolbar', () => {
       .getAllByRole('button')
       .map((b) => b.getAttribute('data-action'));
     expect(buttons).toEqual(rows);
+    expect(within(toolbar(editor)).queryByTestId('doc-media-sep')).toBeNull();
   });
 
   it('offers alignment on an image narrower than the body (A9)', () => {
@@ -469,6 +470,9 @@ describe('the toolbar', () => {
     expect(media(editor).props['textAlignment']).toBe('left');
     expect(within(toolbar(editor)).getByTestId('doc-media-align-left').className).toContain('bg-accent-strong');
     expect(within(toolbar(editor)).getByTestId('doc-media-align-center').className).not.toContain('bg-accent-strong');
+    // A rule sets the alignments apart from the rest, as in the selection bar.
+    expect(within(toolbar(editor)).getByTestId('doc-media-align-right').nextElementSibling)
+      .toBe(within(toolbar(editor)).getByTestId('doc-media-sep'));
   });
 
   it('never offers alignment on audio, which is as wide as the body', () => {
@@ -687,6 +691,19 @@ describe('resizing (A8)', () => {
 
     for (const corner of ['nw', 'ne', 'sw', 'se']) {
       expect(within(element(editor)).getByTestId(`doc-media-resize-${corner}`)).toBeTruthy();
+    }
+  });
+
+  it('takes a press on a 24px square around each knob, which stays an 8px dot (WCAG 2.5.8)', () => {
+    const editor = open('image', { previewWidth: 200 });
+    selectMedia(editor);
+
+    for (const corner of ['nw', 'ne', 'sw', 'se']) {
+      const target = within(element(editor)).getByTestId(`doc-media-resize-${corner}`);
+      expect(target.className).toMatch(/\bh-6\b.*\bw-6\b|\bw-6\b.*\bh-6\b/);
+      const dot = target.querySelector('[data-media-knob]')!;
+      expect(dot.className).toMatch(/\bh-2\b/);
+      expect(dot.className).toMatch(/\bw-2\b/);
     }
   });
 

@@ -99,6 +99,7 @@ describe('a placeholder while its file uploads (A4)', () => {
 
     const shown = screen.getByTestId('doc-upload-placeholder');
     expect(shown.textContent).toContain('Uploading');
+    expect(shown.className).toContain('rounded-chrome');
     expect(shown.textContent).not.toContain('%');
   });
 });
@@ -116,6 +117,14 @@ describe('a placeholder whose file failed (A6)', () => {
     const shown = screen.getByTestId('doc-upload-placeholder');
     expect(shown.getAttribute('data-phase')).toBe('failed');
     expect(shown.textContent).toContain('take2.mp4');
+    // A solid edge sets it apart from one still uploading; the red is the
+    // sentence's, and the actions keep the foreground every outline button has.
+    expect(shown.className).toContain('border-solid');
+    expect(shown.className).not.toContain('border-dashed');
+    expect(shown.className).toContain('rounded-chrome');
+    for (const id of ['doc-upload-retry', 'doc-upload-remove']) {
+      expect(screen.getByTestId(id).className).toContain('text-foreground');
+    }
     fireEvent.click(screen.getByTestId('doc-upload-retry'));
     expect(uploader.retry).toHaveBeenCalledWith(editor.prosemirrorView, slot);
     fireEvent.click(screen.getByTestId('doc-upload-remove'));

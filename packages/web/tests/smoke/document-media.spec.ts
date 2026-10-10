@@ -486,8 +486,23 @@ test('a selected picture is framed with a knob on each corner, and its handle st
   await img.click();
   await expect(frame).toHaveCSS('outline-width', '1px');
   expect(await frame.evaluate((element) => getComputedStyle(element).outline)).toBe(hoveredOutline);
-  for (const corner of ['nw', 'ne', 'sw', 'se']) {
-    await expect(page.getByTestId(`doc-media-resize-${corner}`)).toBeVisible();
+  // Each knob takes a press on 24px around its corner (WCAG 2.5.8) and shows an 8px dot.
+  const shown = (await frame.boundingBox())!;
+  const corners = {
+    nw: [shown.x, shown.y],
+    ne: [shown.x + shown.width, shown.y],
+    sw: [shown.x, shown.y + shown.height],
+    se: [shown.x + shown.width, shown.y + shown.height],
+  } as const;
+  for (const corner of ['nw', 'ne', 'sw', 'se'] as const) {
+    const knob = page.getByTestId(`doc-media-resize-${corner}`);
+    await expect(knob).toBeVisible();
+    const box = (await knob.boundingBox())!;
+    expect([box.width, box.height]).toEqual([24, 24]);
+    expect(Math.abs(box.x + 12 - corners[corner][0])).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.y + 12 - corners[corner][1])).toBeLessThanOrEqual(1);
+    const dot = (await knob.locator('[data-media-knob]').boundingBox())!;
+    expect([dot.width, dot.height]).toEqual([8, 8]);
   }
   await expect(page.locator(IMAGE)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
