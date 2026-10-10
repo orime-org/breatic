@@ -19,9 +19,10 @@
  *
  * Every character of this tool's description and its field descriptions goes
  * out with every turn of every conversation, and is measured against the same
- * budget the messages are (`payload-size.ts`). The refusals below teach the
- * model at the moment it needs it, so the descriptions say the least that
- * gets a first attempt in the right shape.
+ * budget the messages are (`payload-size.ts`). The descriptions carry the
+ * rules a first attempt needs to take the right shape; a refusal below says
+ * what is wrong, the rule it breaks and the facts of the proposal (design
+ * 5.10), and the agent puts the proposal right from that.
  *
  * What this check answers is what the catalog and the product rules settle:
  * this mode exists, this model backs it, this value is one the control
@@ -44,11 +45,11 @@ import {
 } from "@breatic/shared";
 
 import { checkGenerateNode } from "@domain/agent/tools/proposal-generate-check.js";
-import { checkEmptyNodesFit, checkUnsentNotes, hasRing, pickedInstead } from "@domain/agent/tools/proposal-group-checks.js";
+import { checkEmptyNodesFit, checkUnsentNotes, hasRing } from "@domain/agent/tools/proposal-group-checks.js";
 import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/tools/proposal-node-checks.js";
 import { refuse, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
-import { aNode, chosenModelOf, routeEdges } from "@domain/agent/tools/proposal-routing.js";
+import { aNode, chosenModelOf, routeEdges, spaced, waysOrNone } from "@domain/agent/tools/proposal-routing.js";
 import { expandTemplate, templateSegmentsText } from "@domain/agent/tools/template-expansion.js";
 import { GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
@@ -131,8 +132,8 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
     // model off to write copy nobody asked for.
     const words = proposal.nodes.some((node) => node.role === "written");
     return words
-      ? refuse("nothing-generates-words", "Nothing here generates, so this is words the reader can read and take from your message. Write them in your reply instead.")
-      : refuse("nothing-generates", "Nothing here generates, so a card placed from this leaves the reader nothing to press. Propose what gets made, or say in your reply what they should do.");
+      ? refuse("nothing-generates-words", "Nothing here generates, so these are words the reader reads and takes from your message: words with nothing generating belong in your reply.")
+      : refuse("nothing-generates", "Nothing here generates, so a card placed from this leaves the reader nothing to press.");
   }
 
   // The canvas holds one edge between two nodes, and a node goes into a
@@ -141,14 +142,18 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
   for (const edge of proposal.edges) {
     const ends = [edge.fromIndex, edge.toIndex];
     if (ends.some((i) => i < 0 || i >= proposal.nodes.length)) {
-      return refuse("edge-outside", `An edge points outside the group: ${JSON.stringify(edge)}.`);
+      return refuse("edge-outside", `An edge points outside the group: ${JSON.stringify(edge)}. Take that edge off.`);
     }
     if (edge.fromIndex === edge.toIndex) {
-      return refuse("edge-self-loop", `An edge loops node ${edge.fromIndex} onto itself.`);
+      return refuse("edge-self-loop", `An edge loops node ${edge.fromIndex} onto itself. Take that edge off.`);
     }
     const pair = `${String(edge.fromIndex)}>${String(edge.toIndex)}`;
     if (pairs.has(pair)) {
-      return refuse("edge-repeated", `Two edges run from "${proposal.nodes[edge.fromIndex]?.name ?? ""}" to "${proposal.nodes[edge.toIndex]?.name ?? ""}", and a node goes into a generation one way. Send one edge.`);
+      const intos = proposal.edges
+        .filter((e) => e.fromIndex === edge.fromIndex && e.toIndex === edge.toIndex)
+        .map((e) => (e.into === undefined ? "no into" : `into "${e.into}"`))
+        .join(", ");
+      return refuse("edge-repeated", `Two edges run from "${proposal.nodes[edge.fromIndex]?.name ?? ""}" to "${proposal.nodes[edge.toIndex]?.name ?? ""}" (${intos}), and a node goes into a generation one way.`);
     }
     pairs.add(pair);
     // An edge is how one node draws on another's material, so it can only end
@@ -162,7 +167,10 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
     // The same whitelist the canvas holds a reader's own drag to. A line they
     // could not draw by hand is one the agent may not draw for them.
     if (into && outOf && !canConnect(outOf.type, into.type)) {
-      return refuse("edge-not-allowed", `The canvas does not let ${aNode(outOf.type)} feed ${aNode(into.type)}, by your hand or theirs, so leave this edge off.${pickedInstead(proposal, into, outOf)}`);
+      // How the node reaches the generation instead is the model's to say; a
+      // generation naming no model the catalog serves has only the canvas rule.
+      const chosen = chosenModelOf(into);
+      return refuse("edge-not-allowed", `The canvas does not let ${aNode(outOf.type)} feed ${aNode(into.type)}, by your hand or theirs. Take that edge off.${chosen ? spaced(waysOrNone(outOf, into, chosen)) : ""}`);
     }
   }
   if (hasRing(proposal)) {

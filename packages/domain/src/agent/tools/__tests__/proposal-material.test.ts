@@ -358,7 +358,7 @@ describe("the answer names the way of every edge it routed", () => {
 });
 
 describe("a ref to material a slot takes through fills (inner#1315)", () => {
-  it("is told the node already fills the slot and takes no ref, never to wire it into the pool", () => {
+  it("is told the node already fills the slot and only a pool node takes a ref, never to wire it into the pool", () => {
     const clip: ProposalNode = {
       role: "generate",
       type: "video",
@@ -370,7 +370,7 @@ describe("a ref to material a slot takes through fills (inner#1315)", () => {
     };
     const reason = refusal(group([held("image", "Portrait", PORTRAIT), clip]));
 
-    expect(reason).toMatch(/"Portrait".*fills.*leave the ref out/s);
+    expect(reason).toMatch(/"Portrait".*fills.*only a node wired into the pool takes a ref/s);
     expect(reason).not.toContain('into: "pool"');
   });
 });

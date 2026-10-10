@@ -95,7 +95,7 @@ function placedElsewhere(chosen: ModelInfo, node: ProposalNode, key: string, inf
   if (info.fromStoryboard === true) {
     return chosen.storyboard === undefined
       ? refuse("param-storyboard-other-mode", `"${key}" is set by shots, which only the multi_shot mode takes. Leave it out.`)
-      : refuse("param-storyboard", `"${key}" is set by the node's shots. Leave it out of params and give shots.`);
+      : refuse("param-storyboard", `"${key}" is set by the node's shots. Leave it out of params.`);
   }
   // Asked before anything that tells the agent how the reader fills a
   // value: a value the panel draws no control for is one nobody fills.
@@ -104,7 +104,7 @@ function placedElsewhere(chosen: ModelInfo, node: ProposalNode, key: string, inf
   }
   if (theirsToFill(key, info)) {
     return info.valuesFrom !== undefined
-      ? refuse("param-from-list", `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here. Leave it out and add a note saying which one to pick.`)
+      ? refuse("param-from-list", `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here; which one to pick goes in a note. Leave it out.`)
       : refuse("param-box", boxReason(chosen, node, key));
   }
   if (info.filledBySource !== true) return undefined;
@@ -141,7 +141,7 @@ export function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerd
     if (elsewhere !== undefined) return elsewhere;
     if (!isDrawn(chosen, node.params ?? {}, info)) {
       const gate = info.gate as ControlGate;
-      return refuse("param-gated-off", `"${key}" only counts while "${gate.param}" is on, and this proposal leaves it off. Set that switch or leave "${key}" out.`);
+      return refuse("param-gated-off", `"${key}" only counts while "${gate.param}" is on, and this proposal leaves it off.`);
     }
     const options = info.options ?? [];
     if (options.length > 0 && !options.some((offered) => offered === value)) {

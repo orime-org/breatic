@@ -11,11 +11,10 @@ import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { refuse } from "@domain/agent/tools/proposal-refusals.js";
 import {
   chosenModelOf,
-  elsewhereSentence,
-  nodeWaysSentence,
   notesAsked,
   notesIn,
   routeEdges,
+  waysAcrossGroup,
 } from "@domain/agent/tools/proposal-routing.js";
 import { waysIn } from "@domain/model-catalog/mode-catalog.js";
 
@@ -79,21 +78,6 @@ function placesByKind(proposal: CanvasProposal): Map<string, number> {
     }
   }
   return room;
-}
-
-/**
- * How a node of a kind the canvas will not wire in still reaches a
- * generation: through fills or picked into a slot of that kind in the panel
- * (design 5.7 table A).
- * @param proposal - The whole proposal.
- * @param into - The generation the edge was drawn into.
- * @param from - The node at the edge's other end.
- * @returns The sentence, or nothing where the generation names no model the catalog serves.
- * @throws {never} Never.
- */
-export function pickedInstead(proposal: CanvasProposal, into: ProposalNode, from: ProposalNode): string {
-  const chosen = chosenModelOf(into);
-  return chosen ? ` ${nodeWaysSentence(proposal, from, into, chosen)}` : "";
 }
 
 /**
@@ -162,9 +146,9 @@ export function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
   // pool; held anywhere else it lands beside the work with nothing using it.
   const unused = proposal.nodes.find((node) => node.material !== undefined && !sent.has(node));
   if (unused) {
-    return refuse("material-unused", `"${unused.name}" holds material that nothing here uses. ${elsewhereSentence(proposal, unused)}`);
+    return refuse("material-unused", `"${unused.name}" holds material that nothing here uses, and material reaches a generation only through fills or an edge into its pool. ${waysAcrossGroup(proposal, unused)}`);
   }
   const loose = proposal.nodes.filter((node) => node.role === "source" && !sent.has(node) && slotKinds.has(node.type));
   if (loose.length <= spare) return { ok: true };
-  return refuse("loose-without-note", `${loose.map((n) => `"${n.name}"`).join(", ")} ${loose.length === 1 ? "goes" : "go"} into no generation, so the reader picks ${loose.length === 1 ? "it" : "each"} into a slot in the panel, and the generations here carry ${String(spare)} note(s) beyond those their wired nodes use. Give each one a note saying which slot to pick it into.`);
+  return refuse("loose-without-note", `${loose.map((n) => `"${n.name}"`).join(", ")} ${loose.length === 1 ? "goes" : "go"} into no generation, so the reader picks ${loose.length === 1 ? "it" : "each"} into a slot in the panel, and a note tells them which. The generations here carry ${String(spare)} note(s) beyond those their wired nodes use.`);
 }

@@ -110,8 +110,8 @@ function poolEntry(way: WayIn, holding: Holding): Entry {
 }
 
 /**
- * How a node goes into a generation's pool, for advice given before the
- * generation's model is settled: once holding material or words, once empty.
+ * How a node goes into a generation's pool, said where the generation's model
+ * is not settled yet: once holding material or words, once empty.
  * @param generation - The generation's name.
  * @returns The sentence.
  * @throws {never} Never.
@@ -154,67 +154,60 @@ export function waysSentence(subject: string, generation: ProposalNode, entries:
 }
 
 /**
- * How one named node goes into a generation as the proposal stands, said for
- * the agent. Where the model takes nothing of its kind, or every way it has is
- * closed to this node, the sentence says why each way is closed and where else
- * in the group the node goes, so it is never left with nowhere to be.
- * @param proposal - The whole proposal.
+ * How one node goes into a generation by the catalog, said for the agent: each
+ * way its model takes a node of its kind holding what it holds, or that the
+ * model takes none.
  * @param node - The node.
  * @param generation - The generation.
  * @param chosen - The generation's model.
- * @param byEdge - Whether an edge now runs from the node into the generation, which then has to come off.
- * @param before - Nodes the same advice has already sent in.
  * @returns The sentence.
  * @throws {never} Never.
  */
-export function nodeWaysSentence(
-  proposal: CanvasProposal,
-  node: ProposalNode,
-  generation: ProposalNode,
-  chosen: ModelInfo,
-  byEdge = false,
-  before: readonly Arriving[] = [],
-): string {
-  const { open, closed } = wayStates(proposal, node, generation, chosen, before);
-  if (open.length > 0) return waysSentence(`"${node.name}"`, generation, open);
-  const takeOff = byEdge ? "Take that edge off. " : "";
-  const why = closed.length === 0
-    ? `"${chosen.name}" takes no ${node.type} node, so "${node.name}" has no way into "${generation.name}".`
-    : `"${node.name}" has no way left into "${generation.name}": ${closed.map((state) => closedPhrase(state.entry, state.closed)).join("; ")}.`;
-  return `${takeOff}${why}${spaced(elsewhereSentence(proposal, node, generation))}`;
+export function waysOrNone(node: ProposalNode, generation: ProposalNode, chosen: ModelInfo): string {
+  const entries = entriesFor(chosen, node.type, holdingOf(node));
+  return entries.length > 0
+    ? waysSentence(`"${node.name}"`, generation, entries)
+    : `"${chosen.name}" takes no ${node.type} node, so "${node.name}" has no way into "${generation.name}".`;
 }
 
 /**
- * How each of several nodes one piece of advice sends goes into a
- * generation, said for the agent: each with its way, or why it has none and
- * where it goes instead.
+ * How a node goes into each generation of the group the catalog serves, said
+ * for the agent from the catalog alone.
  * @param proposal - The whole proposal.
- * @param nodes - The nodes.
- * @param generation - The generation.
- * @param chosen - Its model.
- * @returns The sentences.
+ * @param node - The node.
+ * @param away - A generation to leave out, or none.
+ * @returns The sentences, or the empty string where the group has no other generation.
  * @throws {never} Never.
  */
-export function placedWaysSentence(proposal: CanvasProposal, nodes: readonly ProposalNode[], generation: ProposalNode, chosen: ModelInfo): string {
-  // A node that already goes in stays in once the advice is followed, so it
-  // is told nothing.
-  const arrived = new Set(arrivingInto(proposal, generation, chosen).map(({ node }) => node));
-  return placeEach(proposal, nodes.filter((node) => !arrived.has(node)), generation, chosen)
-    .map(({ node, ways, before }) => (ways.length > 0 ? waysSentence(`"${node.name}"`, generation, ways) : nodeWaysSentence(proposal, node, generation, chosen, false, before)))
+export function waysAcrossGroup(proposal: CanvasProposal, node: ProposalNode, away?: ProposalNode): string {
+  return proposal.nodes
+    .flatMap((generation) => {
+      const chosen = chosenModelOf(generation);
+      return generation === away || generation === node || chosen === undefined ? [] : [waysOrNone(node, generation, chosen)];
+    })
     .join(" ");
 }
 
 /**
- * Why one way is closed to a node, said for the agent.
- * @param entry - The way.
- * @param closed - Why it is closed.
+ * The slots a model fills straight from material nodes: every way in that the
+ * reader would pick a node into, which is every way carrying a note.
+ * @param chosen - The model.
+ * @returns Each slot with the kind it takes.
+ * @throws {never} Never.
+ */
+export function slotsOf(chosen: ModelInfo): { kind: WayKind; way: WayIn }[] {
+  return [...waysIn(chosen)].flatMap(([kind, list]) => list.filter((way) => way.mark === "note").map((way) => ({ kind, way })));
+}
+
+/**
+ * The slots of a model, said for the agent.
+ * @param chosen - The model.
  * @returns The phrase.
  * @throws {never} Never.
  */
-function closedPhrase(entry: Entry, closed: Closed): string {
-  return closed.why === "twin"
-    ? `"${closed.twin.name}" already brings the same material into "${entry.way.into}"`
-    : `"${entry.way.into}" has no room left`;
+function slotsPhrase(chosen: ModelInfo): string {
+  const names = slotsOf(chosen).map(({ way }) => `"${way.into}"`);
+  return names.length > 0 ? `its slots: ${names.join(", ")}` : "it has no slot";
 }
 
 /**
@@ -225,32 +218,6 @@ function closedPhrase(entry: Entry, closed: Closed): string {
  */
 export function spaced(sentence: string): string {
   return sentence === "" ? "" : ` ${sentence}`;
-}
-
-/**
- * Where a source node goes once it does not go into one generation: nothing
- * when it already goes into another; else each other generation here with a
- * way left for it, how; else that it comes out. A node that generates or holds
- * words stands on the canvas without going anywhere, so it needs nothing said.
- * @param proposal - The whole proposal.
- * @param from - The node.
- * @param away - The generation it does not go into, or none.
- * @returns The sentence, or the empty string.
- * @throws {never} Never.
- */
-export function elsewhereSentence(proposal: CanvasProposal, from: ProposalNode, away?: ProposalNode): string {
-  if (from.role !== "source") return "";
-  const others = proposal.nodes.flatMap((generation) => {
-    const chosen = chosenModelOf(generation);
-    return generation === away || chosen === undefined ? [] : [[generation, chosen] as const];
-  });
-  if (others.some(([generation, chosen]) => arrivingInto(proposal, generation, chosen).some(({ node }) => node === from))) return "";
-  const takers = others.flatMap(([generation, chosen]) => {
-    const open = openEntries(proposal, from, generation, chosen);
-    return open.length > 0 ? [waysSentence(`"${from.name}"`, generation, open)] : [];
-  });
-  if (takers.length > 0) return `Send it into a generation that takes it: ${takers.join(" ")}`;
-  return `No other generation here has a way left for "${from.name}"; take "${from.name}" out, or propose a model that takes it.`;
 }
 
 /**
@@ -265,14 +232,24 @@ export function elsewhereSentence(proposal: CanvasProposal, from: ProposalNode, 
  * @throws {never} Never.
  */
 export function slotSentence(chosen: ModelInfo, generation: ProposalNode, kind: string, into: string): string {
-  const subjects: ReadonlyArray<[Holding, string]> = kind === "text"
-    ? [["words", "A written text node"]]
-    : [["material", `${capitalised(aNode(kind))} holding material`], ["empty", `An empty ${kind} node`]];
-  return subjects
-    .map(([holding, subject]) => [subject, entriesFor(chosen, kind, holding).filter((entry) => entry.way.into === into)] as const)
+  const holdings: readonly Holding[] = kind === "text" ? ["words"] : ["material", "empty"];
+  return holdings
+    .map((holding) => [holdingSubject(kind, holding), entriesFor(chosen, kind, holding).filter((entry) => entry.way.into === into)] as const)
     .filter(([, entries]) => entries.length > 0)
     .map(([subject, entries]) => waysSentence(subject, generation, entries))
     .join(" ");
+}
+
+/**
+ * Any node of one kind holding one thing, as a sentence's subject.
+ * @param kind - The kind.
+ * @param holding - What it holds.
+ * @returns "An image node holding material", "An empty image node", "A written text node".
+ * @throws {never} Never.
+ */
+export function holdingSubject(kind: string, holding: Holding): string {
+  if (holding === "words") return "A written text node";
+  return holding === "material" ? `${capitalised(aNode(kind))} holding material` : `An empty ${kind} node`;
 }
 
 /**
@@ -313,7 +290,7 @@ type EdgeRoute =
 
 /**
  * What an edge from a node does for a generation, judged without words: the
- * check refuses from this, and the advice counts what already arrives by it.
+ * check refuses from this.
  * @param chosen - The generation's model.
  * @param from - The node at the edge's other end.
  * @param into - What the edge says.
@@ -366,99 +343,18 @@ export function routeEdges(
         break;
       case "nowhere": {
         const nowhere = `"${chosen.name}" takes no ${from.type} node, so the edge from "${from.name}" goes nowhere in it.`;
-        // A source is there to be used, so it is told where it goes instead;
-        // anything else can stay wired as a creative link.
-        if (from.role !== "source") return refuse("edge-kind-not-taken-link", `${nowhere} Leave into off that edge, or propose a model that takes it.`);
-        return refuse("edge-kind-not-taken", `${nowhere} Take that edge off.${spaced(elsewhereSentence(proposal, from, generation))}`);
+        // A source is there to be used, so it is told how the rest of the
+        // group takes it; anything else can stay wired as a creative link.
+        if (from.role !== "source") return refuse("edge-kind-not-taken-link", `${nowhere} An edge that says no into stands as a creative link.`);
+        return refuse("edge-kind-not-taken", `${nowhere}${spaced(waysAcrossGroup(proposal, from, generation))}`);
       }
       case "ambiguous":
-        return refuse("edge-into-ambiguous", `The edge from "${from.name}" says no into, and "${chosen.name}" takes ${aNode(from.type)} more than one way. ${nodeWaysSentence(proposal, from, generation, chosen, true)}`);
+        return refuse("edge-into-ambiguous", `The edge from "${from.name}" says no into, and "${chosen.name}" takes ${aNode(from.type)} more than one way. ${waysOrNone(from, generation, chosen)}`);
       case "no-entry":
-        return refuse("edge-not-an-entry", `"${from.name}" does not go into "${route.into}" of "${generation.name}" by an edge. ${nodeWaysSentence(proposal, from, generation, chosen, true)}`);
+        return refuse("edge-not-an-entry", `"${from.name}" does not go into "${route.into}" of "${generation.name}" by an edge. ${waysOrNone(from, generation, chosen)}`);
     }
   }
   return { routed };
-}
-
-/** Why the check refuses one fill, as data the refusal is said from. */
-type FillProblem =
-  | { kind: "outside"; param: string; at: number }
-  | { kind: "self"; param: string }
-  | { kind: "not-a-slot"; param: string; named: ProposalNode[] }
-  | { kind: "no-material"; param: string; from: ProposalNode }
-  | { kind: "wrong-kind"; param: string; from: ProposalNode; slotKind: string }
-  | { kind: "repeated"; param: string; from: ProposalNode }
-  | { kind: "twin"; param: string; from: ProposalNode; twin: ProposalNode };
-
-/**
- * Every fill one generation names, judged once: the nodes that stand in their
- * slot, and why each other one is refused, in the order the check meets them.
- * The check refuses from the first problem; the advice counts only what stands.
- * @param proposal - The whole proposal.
- * @param generation - The generation.
- * @param chosen - Its model.
- * @returns The fills that stand and the problems.
- * @throws {never} Never.
- */
-function judgeFills(proposal: CanvasProposal, generation: ProposalNode, chosen: ModelInfo): { filled: Arriving[]; problems: FillProblem[] } {
-  const slots = [...waysIn(chosen)].flatMap(([kind, list]) => list.filter((way) => way.mark === "note").map((way) => ({ kind, way })));
-  const filled: Arriving[] = [];
-  const problems: FillProblem[] = [];
-  for (const [param, indices] of Object.entries(generation.fills ?? {})) {
-    // A bad index is refused on its own; the nodes beside it still count, so
-    // advice reads the slot as the nodes it names fill it.
-    const outside = indices.find((at) => proposal.nodes[at] === undefined);
-    if (outside !== undefined) problems.push({ kind: "outside", param, at: outside });
-    const all = indices.flatMap((at) => proposal.nodes[at] ?? []);
-    if (all.includes(generation)) problems.push({ kind: "self", param });
-    const named = all.filter((from) => from !== generation);
-    const slot = slots.find(({ way }) => way.into === param);
-    if (slot === undefined) {
-      problems.push({ kind: "not-a-slot", param, named });
-      continue;
-    }
-    const { kind: slotKind, way } = slot;
-    const seen = new Map<string, ProposalNode>();
-    for (const from of named) {
-      if (from.material === undefined) {
-        problems.push({ kind: "no-material", param, from });
-        continue;
-      }
-      if (from.type !== slotKind) {
-        problems.push({ kind: "wrong-kind", param, from, slotKind });
-        continue;
-      }
-      const twin = seen.get(from.material);
-      if (twin !== undefined) {
-        problems.push(twin === from ? { kind: "repeated", param, from } : { kind: "twin", param, from, twin });
-        continue;
-      }
-      seen.set(from.material, from);
-      filled.push({ node: from, entry: { way, by: "fills", ref: false, note: false } });
-    }
-  }
-  return { filled, problems };
-}
-
-/**
- * Every node that goes into one generation as the proposal stands, by an edge
- * that routes or a fill that stands, with the entry it arrives by. Edges and
- * fills the check refuses arrive by nothing here.
- * @param proposal - The whole proposal.
- * @param generation - The generation.
- * @param chosen - Its model.
- * @returns The arriving nodes.
- * @throws {never} Never.
- */
-function arrivingInto(proposal: CanvasProposal, generation: ProposalNode, chosen: ModelInfo): Arriving[] {
-  const index = proposal.nodes.indexOf(generation);
-  const byEdge = proposal.edges.flatMap((edge): Arriving[] => {
-    const from = proposal.nodes[edge.fromIndex];
-    if (edge.toIndex !== index || !from) return [];
-    const route = edgeRoute(chosen, from, edge.into);
-    return route.kind === "entry" ? [{ node: from, entry: route.entry }] : [];
-  });
-  return [...byEdge, ...judgeFills(proposal, generation, chosen).filled];
 }
 
 /**
@@ -473,105 +369,13 @@ export function goingWay(arriving: readonly Arriving[], kind: string, into: stri
   return arriving.filter(({ node, entry }) => node.type === kind && entry.way.into === into).map(({ node }) => node);
 }
 
-/** Why a way is closed to a node: other nodes fill its room, or one already brings the same material. */
-type Closed = { why: "room" } | { why: "twin"; twin: ProposalNode };
-
-/**
- * Each way a node can go into a generation, and, for each, whether it is
- * closed to the node as the proposal stands and why: the other arriving nodes
- * fill its room, or a fill already brings the same material into that slot.
- * The advice on how a node goes in reads this, so none can offer a way the
- * check refuses; the note rule for unwired sources in checkUnsentNotes judges
- * slot kinds alone (inner#1389).
- * @param proposal - The whole proposal.
- * @param node - The node.
- * @param generation - The generation.
- * @param chosen - Its model.
- * @param placed - Nodes the same advice has already sent in, each by the way it was given.
- * @returns The open entries, and the closed ones with why.
- * @throws {never} Never.
- */
-function wayStates(
-  proposal: CanvasProposal,
-  node: ProposalNode,
-  generation: ProposalNode,
-  chosen: ModelInfo,
-  placed: readonly Arriving[],
-): { open: Entry[]; closed: { entry: Entry; closed: Closed }[] } {
-  const others = [...arrivingInto(proposal, generation, chosen).filter((arrival) => arrival.node !== node), ...placed];
-  const open: Entry[] = [];
-  const closed: { entry: Entry; closed: Closed }[] = [];
-  for (const entry of entriesFor(chosen, node.type, holdingOf(node))) {
-    const twin = entry.by === "fills" ? others.find((arrival) => arrival.entry.way.into === entry.way.into && arrival.node.material === node.material) : undefined;
-    if (goingWay(others, node.type, entry.way.into).length >= entry.way.room) closed.push({ entry, closed: { why: "room" } });
-    else if (twin !== undefined) closed.push({ entry, closed: { why: "twin", twin: twin.node } });
-    else open.push(entry);
-  }
-  return { open, closed };
-}
-
-/**
- * The entries by which a node can still go into a generation as the proposal stands.
- * @param proposal - The whole proposal.
- * @param node - The node.
- * @param generation - The generation.
- * @param chosen - Its model.
- * @returns The open entries.
- * @throws {never} Never.
- */
-export function openEntries(proposal: CanvasProposal, node: ProposalNode, generation: ProposalNode, chosen: ModelInfo): Entry[] {
-  return wayStates(proposal, node, generation, chosen, []).open;
-}
-
-/** One node of several sent in by the same advice, with the ways it is told. */
-export interface Placement {
-  /** The node. */
-  node: ProposalNode;
-  /** The ways it is told: every open one when it is sent alone, else the one it is given; none when none is left. */
-  ways: Entry[];
-  /** The nodes sent in before it by the same advice. */
-  before: readonly Arriving[];
-}
-
-/**
- * Where each of several nodes goes into a generation when one piece of advice
- * sends them all. They are placed in turn, each counted where it was sent
- * before the next is judged, so room and same material hold across them; when
- * more than one is sent, each is given one way, since two given the same
- * choice could take the same slot.
- * @param proposal - The whole proposal.
- * @param nodes - The nodes, in the order they are told.
- * @param generation - The generation.
- * @param chosen - Its model.
- * @param allowed - The ways the advice may send them.
- * @returns One placement per node.
- * @throws {never} Never.
- */
-export function placeEach(
-  proposal: CanvasProposal,
-  nodes: readonly ProposalNode[],
-  generation: ProposalNode,
-  chosen: ModelInfo,
-  allowed: (entry: Entry) => boolean = () => true,
-): Placement[] {
-  const placed: Arriving[] = [];
-  return nodes.map((node) => {
-    const before = [...placed];
-    const open = wayStates(proposal, node, generation, chosen, before).open.filter(allowed);
-    const ways = nodes.length === 1 ? open : open.slice(0, 1);
-    const [first] = ways;
-    if (first !== undefined) placed.push({ node, entry: first });
-    return { node, ways, before };
-  });
-}
-
 /**
  * The slots one generation fills straight from material nodes (inner#1315),
  * or the refusal for the first fill that cannot stand.
  *
  * A slot filled this way is what a pick in the panel would leave: a snapshot
- * of the node, with no edge. So it is any way in that is neither the pool,
- * which an edge carries, nor the lyrics box, which holds words.
+ * of the node, with no edge. So it is any way in that carries a note -- never
+ * the pool, which an edge carries, nor the lyrics box, which holds words.
  * @param proposal - The whole proposal.
  * @param node - The generation.
  * @param chosen - Its model.
@@ -583,30 +387,43 @@ export function fillsOf(
   node: ProposalNode,
   chosen: ModelInfo,
 ): { filled: Arriving[] } | Refusal {
-  const { filled, problems } = judgeFills(proposal, node, chosen);
-  const [problem] = problems;
-  if (problem === undefined) return { filled };
-  const { param } = problem;
-  switch (problem.kind) {
-    case "outside":
-      return refuse("fill-outside", `fills "${param}" on "${node.name}" points at node ${String(problem.at)}, which is not in the group.`);
-    case "self":
-      return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself, and a node cannot fill its own slot. Check the index the fill means.`);
-    case "not-a-slot": {
-      const told = placedWaysSentence(proposal, [...new Set(problem.named)], node, chosen);
-      return chosen.params[param]?.fromReferencePool === true
-        ? refuse("fill-into-pool", `"${param}" is the reference pool of "${chosen.name}", which takes no fills. Take fills "${param}" off.${spaced(told)}`)
-        : refuse("fill-not-a-slot", `"${chosen.name}" has no slot "${param}". Take fills "${param}" off.${spaced(told)}`);
+  const slots = slotsOf(chosen);
+  const filled: Arriving[] = [];
+  for (const [param, indices] of Object.entries(node.fills ?? {})) {
+    const outside = indices.find((at) => proposal.nodes[at] === undefined);
+    if (outside !== undefined) {
+      return refuse("fill-outside", `fills "${param}" on "${node.name}" points at node ${String(outside)}, which is not in the group. Take it out of fills "${param}".`);
     }
-    case "no-material":
-      return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${problem.from.name}", which holds no material, and fills takes only nodes holding it. Take "${problem.from.name}" out of fills "${param}". ${nodeWaysSentence(proposal, problem.from, node, chosen)}`);
-    case "wrong-kind":
-      return refuse("fill-wrong-kind", `"${chosen.name}" takes ${problem.slotKind} in "${param}", and "${problem.from.name}" is ${problem.from.type}. Take "${problem.from.name}" out of fills "${param}". ${nodeWaysSentence(proposal, problem.from, node, chosen)}`);
-    case "repeated":
-      return refuse("fill-repeated", `fills "${param}" on "${node.name}" names "${problem.from.name}" twice, and the slot keeps one copy of it. Name it once.`);
-    case "twin":
-      return refuse("fill-twice", `fills "${param}" on "${node.name}" holds "${problem.twin.name}" and "${problem.from.name}", which hold the same material, and the slot keeps one copy of it. Take "${problem.from.name}" out.`);
+    const named = indices.map((at) => proposal.nodes[at] as ProposalNode);
+    if (named.includes(node)) {
+      return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself, and a node cannot fill its own slot. Take it out of fills "${param}".`);
+    }
+    const slot = slots.find(({ way }) => way.into === param);
+    if (slot === undefined) {
+      return chosen.params[param]?.fromReferencePool === true
+        ? refuse("fill-into-pool", `"${param}" is the reference pool of "${chosen.name}", which takes no fills; ${slotsPhrase(chosen)}. Take fills "${param}" off.`)
+        : refuse("fill-not-a-slot", `"${chosen.name}" has no slot "${param}"; ${slotsPhrase(chosen)}. Take fills "${param}" off.`);
+    }
+    const seen = new Map<string, ProposalNode>();
+    for (const from of named) {
+      if (from.material === undefined) {
+        return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${from.name}", which holds no material, and fills takes only nodes holding it. Take "${from.name}" out of fills "${param}". ${waysOrNone(from, node, chosen)}`);
+      }
+      if (from.type !== slot.kind) {
+        return refuse("fill-wrong-kind", `"${chosen.name}" takes ${slot.kind} in "${param}", and "${from.name}" is ${from.type}. Take "${from.name}" out of fills "${param}". ${waysOrNone(from, node, chosen)}`);
+      }
+      const twin = seen.get(from.material);
+      if (twin === from) {
+        return refuse("fill-repeated", `fills "${param}" on "${node.name}" names "${from.name}" twice, and the slot keeps one copy of it. Name it once.`);
+      }
+      if (twin !== undefined) {
+        return refuse("fill-twice", `fills "${param}" on "${node.name}" holds "${twin.name}" and "${from.name}", which hold the same material, and the slot keeps one copy of it.`);
+      }
+      seen.set(from.material, from);
+      filled.push({ node: from, entry: { way: slot.way, by: "fills", ref: false, note: false } });
+    }
   }
+  return { filled };
 }
 
 /**

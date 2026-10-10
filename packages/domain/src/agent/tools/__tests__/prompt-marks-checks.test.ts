@@ -409,10 +409,10 @@ describe("the lyrics box a song model draws, a second way for words (table B)", 
     expect(checkProposal(alone)).toMatchObject({ ok: false, reason: expect.stringContaining('into: "lyrics"') });
   });
 
-  it("tells a ref to the node in the lyrics box to come out, rather than to wire it into the pool", () => {
+  it("tells a ref to the node in the lyrics box that it goes into the lyrics box, and only a pool node takes a ref", () => {
     const verdict = checkProposal(song([{ text: "upbeat pop, " }, { ref: 0 }], "lyrics"));
-    expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining('"lyrics"') });
-    expect(verdict).toMatchObject({ reason: expect.stringContaining("leave the ref out") });
+    expect(verdict).toMatchObject({ ok: false, refusal: "ref-arrives-otherwise", reason: expect.stringContaining('by an edge with into: "lyrics"') });
+    expect(verdict).toMatchObject({ reason: expect.stringContaining("only a node wired into the pool takes a ref") });
     expect(verdict).not.toMatchObject({ reason: expect.stringContaining('into: "pool"') });
   });
 });
@@ -425,7 +425,7 @@ describe("a ref to a node that does not go into the pool", () => {
     });
   });
 
-  it("is told a node wired into a slot is picked there and takes no ref", () => {
+  it("is told a node wired into a slot goes there, and only a pool node takes a ref", () => {
     const pick = { slot: { kind: "note" as const, label: "Pick Style into the style slot" } };
     const proposal: CanvasProposal = {
       nodes: [
@@ -437,7 +437,7 @@ describe("a ref to a node that does not go into the pool", () => {
       groupName: "Night",
     };
     const verdict = checkProposal(proposal);
-    expect(verdict).toMatchObject({ ok: false, reason: expect.stringMatching(/"Style".*"style_images".*leave the ref out/s) });
+    expect(verdict).toMatchObject({ ok: false, reason: expect.stringMatching(/"Style".*"style_images".*only a node wired into the pool takes a ref/s) });
     expect(verdict).not.toMatchObject({ reason: expect.stringContaining('into: "pool"') });
   });
 });
@@ -456,7 +456,7 @@ describe("a ref to no node", () => {
 });
 
 describe("a kind the canvas will not wire into the node (table A, first row)", () => {
-  it("is refused with the way it does reach the node: picked into its slot, the edge left off", () => {
+  it("is refused with the edge to take off and the way it does reach the node: picked into its slot", () => {
     const answer = checkProposal({
       nodes: [
         { role: "source", type: "video", name: "Clip" },
@@ -468,7 +468,7 @@ describe("a kind the canvas will not wire into the node (table A, first row)", (
     });
     expect(answer).toMatchObject({
       ok: false,
-      reason: expect.stringContaining('leave this edge off. "Clip" goes into "Sfx" unwired, with a note saying to pick it into "video"'),
+      reason: expect.stringContaining('Take that edge off. "Clip" goes into "Sfx" unwired, with a note saying to pick it into "video"'),
     });
   });
 });
@@ -508,7 +508,7 @@ describe("what the note and the capabilities say", () => {
 });
 
 describe("a way over its room (table C)", () => {
-  it("says to wire fewer, and nothing about another way, when the kind has one way", () => {
+  it("states the room and the one way the kind has, when the kind has one way", () => {
     const pictures = Array.from({ length: 4 }, (_, i): ProposalNode => ({ role: "source", type: "image", name: `P${String(i + 1)}` }));
     const proposal: CanvasProposal = {
       nodes: [...pictures, { role: "generate", type: "image", name: "Edit", mode: "i2i", model: "qwen-image-edit-multiple-angles", prompt: [{ text: "edit " }, ...pictures.map((_, i) => ({ ref: i }))] }],
@@ -517,8 +517,8 @@ describe("a way over its room (table C)", () => {
       groupName: "g",
     };
     const answer = checkProposal(proposal);
-    expect(answer).toMatchObject({ ok: false, reason: expect.stringContaining("Send fewer.") });
-    expect(answer).not.toMatchObject({ reason: expect.stringContaining("another way") });
+    expect(answer).toMatchObject({ ok: false, refusal: "way-over-room", reason: expect.stringContaining('takes 3 image node(s) by "pool", and 4 are going that way') });
+    expect(answer).not.toMatchObject({ reason: expect.stringContaining("style_images") });
   });
 });
 
@@ -732,7 +732,7 @@ describe("notes in a multi-shot node", () => {
       rationale: "",
       groupName: "Clip",
     };
-    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringContaining("notes into the shots") });
+    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringContaining("its words, refs and notes go in the shots") });
     expect(inputSchema.shape.nodes.element.shape.shots.description ?? "").toMatch(/notes go in a shot too/);
   });
 });

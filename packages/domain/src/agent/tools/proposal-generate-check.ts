@@ -31,14 +31,13 @@ import {
   fillsOf,
   goingWay,
   holdingOf,
-  nodeWaysSentence,
+  holdingSubject,
   notesAsked,
   notesIn,
-  openEntries,
-  placeEach,
   refsIn,
   routeEdges,
   slotSentence,
+  waysOrNone,
   waysSentence,
   type Arriving,
 } from "@domain/agent/tools/proposal-routing.js";
@@ -55,7 +54,7 @@ import { getModelCatalog } from "@domain/model-catalog/model-catalog.js";
 function resolveModel(node: ProposalNode, index: number): { chosen: ModelInfo } | Refusal {
   const { mode, model } = node;
   if (node.type === "text") {
-    return refuse("text-generates", `"${node.name}" is a text node, and nothing is generated into one. Write the words yourself and send it as a written node.`);
+    return refuse("text-generates", `"${node.name}" is a text node, and nothing is generated into one; words go on a written node.`);
   }
   if (!mode || !model) return refuse("no-mode-model", `Node ${index} generates, so it needs a mode and a model.`);
   // A mode this node never had and a mode no model here backs are the same
@@ -65,7 +64,7 @@ function resolveModel(node: ProposalNode, index: number): { chosen: ModelInfo } 
   if (!reachable.available) {
     return reachable.offered.length > 0
       ? refuse("mode-unbacked", `No model here backs "${mode}" on ${aNode(node.type)}. It offers: ${reachable.offered.join(", ")}.`)
-      : refuse("no-model-for-kind", `No ${node.type} model can generate right now. Say so in your reply.`);
+      : refuse("no-model-for-kind", `No ${node.type} model can generate right now.`);
   }
   const chosen = reachable.models.find((m) => m.name === model);
   return chosen
@@ -86,7 +85,7 @@ function checkSettings(node: ProposalNode, chosen: ModelInfo): ProposalVerdict {
   // Defined in the multi-shot mode alone, for a model that takes shots there.
   const board = chosen.storyboard;
   if (node.shots !== undefined && board === undefined) {
-    return refuse("shots-outside-multishot", `Shots belong to the multi_shot mode. Propose mode "multi_shot" with a model that takes them, or leave shots out.`);
+    return refuse("shots-outside-multishot", `Shots belong to the multi_shot mode, and "${node.name}" runs "${node.mode ?? ""}". Leave shots out.`);
   }
   if (board !== undefined && node.shots === undefined) {
     return refuse("multishot-no-shots", `In the multi_shot mode the shots are what is generated. Give shots, each with its own prompt and seconds.`);
@@ -94,7 +93,7 @@ function checkSettings(node: ProposalNode, chosen: ModelInfo): ProposalVerdict {
   // The multi-shot run sends the shots in place of the main prompt, so marks
   // in a main prompt beside them would be counted and priced but never sent.
   if (node.shots !== undefined && (node.prompt?.length ?? 0) > 0) {
-    return refuse("shots-with-prompt", `With shots the main prompt is not sent. Put its words, refs and notes into the shots and leave prompt out.`);
+    return refuse("shots-with-prompt", `With shots the main prompt is not sent; its words, refs and notes go in the shots. Leave prompt out.`);
   }
   // A model drawing no box mounts no editor and forces the box empty: only a
   // note, which the reader reads on the card and which is never sent, has a
@@ -123,23 +122,42 @@ function strayRefReason(
   stray: number,
 ): Refusal {
   const named = proposal.nodes[stray];
-  if (!named) return refuse("ref-outside", `A ref in "${node.name}" points outside the group: {"ref": ${String(stray)}}.`);
-  if (named === node) return refuse("ref-self", `"${node.name}" @s itself with {"ref": ${String(stray)}}, and a node cannot @ itself. Check the index the ref means.`);
+  if (!named) return refuse("ref-outside", `A ref in "${node.name}" points outside the group: {"ref": ${String(stray)}}. Take that ref out.`);
+  if (named === node) return refuse("ref-self", `"${node.name}" @s itself with {"ref": ${String(stray)}}, and a node cannot @ itself. Take that ref out.`);
   // Arriving another way -- an edge into a slot or the lyrics box, or a slot
   // filled through fills -- the node is already where it goes; a ref would
   // only send it a second time.
   const elsewhere = arriving.find(({ node: n }) => n === named);
   if (elsewhere) {
-    return refuse("ref-arrives-otherwise", `"${named.name}" goes into "${node.name}" ${entryPhrase(elsewhere.entry, node.name)}, so leave the ref out.`);
+    return refuse("ref-arrives-otherwise", `"${named.name}" goes into "${node.name}" ${entryPhrase(elsewhere.entry, node.name)}, and only a node wired into the pool takes a ref.`);
   }
-  const ways = nodeWaysSentence(proposal, named, node, chosen);
-  if (!entriesFor(chosen, named.type, holdingOf(named)).some((entry) => entry.ref)) {
+  const ways = waysOrNone(named, node, chosen);
+  const pool = (waysIn(chosen).get(named.type) ?? []).find((way) => way.mark === "ref");
+  if (pool === undefined || !entriesFor(chosen, named.type, holdingOf(named)).some((entry) => entry.ref)) {
     return refuse("ref-not-pooled-no-pool", `"${named.name}" is @'d by a ref in "${node.name}", and only a node in its pool takes a ref, while "${chosen.name}" has no pool for ${aNode(named.type)}. Leave the ref out. ${ways}`);
   }
-  if (!openEntries(proposal, named, node, chosen).some((entry) => entry.ref)) {
-    return refuse("ref-not-pooled-closed", `"${named.name}" is @'d by a ref in "${node.name}" but is not wired into its pool, and the pool has no way left for it. Leave the ref out. ${ways}`);
-  }
-  return refuse("ref-not-pooled", `"${named.name}" is @'d by a ref in "${node.name}" but is not wired into its pool. ${ways} To keep the ref, send it into the pool that way; otherwise leave the ref out.`);
+  const held = goingWay(arriving, named.type, pool.into);
+  return refuse("ref-not-pooled", `"${named.name}" is @'d by a ref in "${node.name}" but is not wired into its pool, and only a node in its pool takes a ref. ${ways} The pool of "${node.name}" takes ${roomOf(pool.room)} ${named.type} node(s) and holds ${namesOrNone(held)}.`);
+}
+
+/**
+ * How many nodes a way takes, said for the agent.
+ * @param room - The way's room.
+ * @returns The number, or "any number" for a way with no cap.
+ * @throws {never} Never.
+ */
+function roomOf(room: number): string {
+  return Number.isFinite(room) ? String(room) : "any number of";
+}
+
+/**
+ * Nodes, named for the agent.
+ * @param nodes - The nodes.
+ * @returns Their names, or "none".
+ * @throws {never} Never.
+ */
+function namesOrNone(nodes: readonly ProposalNode[]): string {
+  return nodes.length === 0 ? "none" : nodes.map((n) => `"${n.name}"`).join(", ");
 }
 
 /** What a generation's wiring settles: the nodes it takes by edge, and which of them sit in its pool. */
@@ -171,13 +189,12 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
       const going = goingWay(arriving, kind, option.into);
       if (going.length <= option.room) continue;
       const over = `"${chosen.name}" takes ${String(option.room)} ${kind} node(s) by "${option.into}", and ${String(going.length)} are going that way (${going.map((n) => `"${n.name}"`).join(", ")}).`;
-      // The nodes past the room, placed in turn in the other ways; offered
-      // only where every one of them is left a way.
-      const rest = placeEach(proposal, going.slice(option.room), node, chosen, (entry) => entry.way.into !== option.into);
-      if (rest.every(({ ways }) => ways.length > 0)) {
-        return refuse("way-over-room-other-way", `${over} Send fewer, or send the rest another way: ${rest.map(({ node: n, ways }) => waysSentence(`"${n.name}"`, node, ways)).join(" ")}`);
-      }
-      return refuse("way-over-room", `${over} Send fewer.`);
+      // The rule for each kind of node going this way, and the room and
+      // holders of every other way the kind has.
+      const holdings = [...new Set(going.map(holdingOf))];
+      const rules = holdings.map((holding) => waysSentence(holdingSubject(kind, holding), node, entriesFor(chosen, kind, holding)));
+      const others = list.filter((way) => way !== option).map((way) => `"${way.into}" takes ${roomOf(way.room)} and holds ${namesOrNone(goingWay(arriving, kind, way.into))}.`);
+      return refuse("way-over-room", [over, ...rules, ...others].join(" "));
     }
   }
   // Every node arriving by an entry with a ref is @'d, and a ref @s only such
@@ -193,7 +210,7 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
   if (unmentioned.length > 0) {
     const names = unmentioned.map((at) => `"${proposal.nodes[at]?.name ?? ""}"`).join(", ");
     const each = unmentioned.map((at) => `{"ref": ${String(at)}}`).join(", ");
-    return refuse("ref-missing", `${names} ${unmentioned.length === 1 ? "is" : "are"} wired into the pool of "${node.name}" but no ref @s ${unmentioned.length === 1 ? "it" : "them"}. Put ${each} ${where} where the words speak of ${unmentioned.length === 1 ? "it" : "each"}; a node not @'d is not used.`);
+    return refuse("ref-missing", `${names} ${unmentioned.length === 1 ? "is" : "are"} wired into the pool of "${node.name}" and no ref @s ${unmentioned.length === 1 ? "it" : "them"}. A node in the pool is used only where a ref @s it ${where}: ${each}.`);
   }
   const asked = notesAsked(arriving);
   const notes = notesIn(node);
@@ -245,20 +262,20 @@ function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelIn
     case "storyboard-shot-empty":
       return refuse("shot-empty", `Shot ${String(verdict.shot)} writes nothing. Every shot needs its own words.`);
     case "storyboard-too-many":
-      return refuse("too-many-shots", `"${model}" takes at most ${String(verdict.limit)} shots. Send at most ${String(verdict.limit)}, with their seconds still adding up to ${String(board?.totalParam)}.`);
+      return refuse("too-many-shots", `"${model}" takes at most ${String(verdict.limit)} shots, and their seconds add up to ${String(board?.totalParam)}.`);
     case "storyboard-shot-too-long":
-      return refuse("shot-too-long", `Shot ${String(verdict.shot)} is longer than the ${String(verdict.limit)} characters "${model}" takes for one shot. Shorten it.`);
+      return refuse("shot-too-long", `Shot ${String(verdict.shot)} is longer than the ${String(verdict.limit)} characters "${model}" takes for one shot.`);
     case "storyboard-duration-mismatch":
-      return refuse("shots-duration", `The shots add up to ${String(verdict.seconds?.shots)} seconds and ${String(board?.totalParam)} is ${String(verdict.seconds?.total)}. Make them match.`);
+      return refuse("shots-duration", `The shots add up to ${String(verdict.seconds?.shots)} seconds and ${String(board?.totalParam)} is ${String(verdict.seconds?.total)}.`);
     case "prompt-missing":
     case "style-missing":
-      return refuse("prompt-missing", `"${model}" generates from what the prompt says, and this proposal writes nothing in it.`);
+      return refuse("prompt-missing", `"${model}" generates from what the prompt says, and this proposal writes nothing in it. Write a prompt.`);
     case "lyrics-missing":
       return refuse("lyrics-missing", `"${model}" sings the words in its lyrics box, and this proposal leaves it empty. ${slotSentence(chosen, node, "text", PANEL_EDITOR_PARAM)}`);
     case "prompt-too-long": {
       const written = [...extractPromptText(sent)].length;
       const holding = scripts.map((n) => `"${n.name}"`);
-      return refuse("prompt-too-long", `"${model}" takes ${String(chosen.maxInputChars)} characters and this prompt is ${String(written)}${board === undefined ? "" : " with the shots written into it"}${holding.length > 0 ? `, counting the words in ${holding.join(", ")}` : ""}. Shorten it, or propose a model that takes it.`);
+      return refuse("prompt-too-long", `"${model}" takes ${String(chosen.maxInputChars)} characters and this prompt is ${String(written)}${board === undefined ? "" : " with the shots written into it"}${holding.length > 0 ? `, counting the words in ${holding.join(", ")}` : ""}.`);
     }
     default:
       return null;
@@ -285,7 +302,7 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
   const shotCap = board?.maxChars;
   const long = shotCap === undefined ? undefined : scripts.find((n) => [...extractPromptText(promptPlainText(n.prompt ?? []))].length > shotCap);
   if (long) {
-    return refuse("script-too-long-for-shot", `"${long.name}" is longer than the ${String(shotCap)} characters "${chosen.name}" takes for one shot, so @'ing it into a shot is refused at Generate. Shorten it, or propose a model that takes it.`);
+    return refuse("script-too-long-for-shot", `"${long.name}" is longer than the ${String(shotCap)} characters "${chosen.name}" takes for one shot, so @'ing it into a shot is refused at Generate.`);
   }
   const refWords = refWordsFor(proposal, node, pooled);
   const shots = (node.shots ?? []).map((shot) => ({ text: promptTextOf(shot.prompt, refWords), duration: shot.duration }));

@@ -55,7 +55,7 @@ export function checkMaterial(node: ProposalNode, materials: MaterialTable): Pro
     return refuse("material-missing", `"${node.name}" holds an address in our storage that does not exist, most likely mistyped. Copy it again exactly as the attachment or the ${SAVE_IMAGE} answer gives it.`);
   }
   if (facts.kind !== node.type) {
-    return refuse("material-wrong-kind", `"${node.name}" is ${aNode(node.type)} and its material is ${facts.kind}. Give it ${node.type} material.`);
+    return refuse("material-wrong-kind", `"${node.name}" is ${aNode(node.type)} and its material is ${facts.kind}.`);
   }
   return { ok: true };
 }
@@ -83,7 +83,7 @@ export function checkNodeRole(node: ProposalNode): ProposalVerdict {
     // text node is a click away, so proposing one asks for work rather than
     // saving any. Write the words instead, as a written node.
     if (node.type === "text") {
-      return refuse("text-source", `"${node.name}" is an empty text node, which the reader makes in one click. Write the words yourself and send it as a written node, or leave it out.`);
+      return refuse("text-source", `"${node.name}" is an empty text node, which the reader makes in one click; words go on a written node.`);
     }
     if (configured || node.prompt !== undefined) {
       return refuse("source-configured", `"${node.name}" is a source node: it holds material or stands empty for the reader, so it takes no mode, model, parameters, fills, shots or prompt.`);
@@ -133,5 +133,5 @@ export function markTypedAsWords(node: ProposalNode): ProposalVerdict {
   );
   if (typed.length === 0) return { ok: true };
   if (node.role === "written" && typed.some((slot) => slot.kind !== "tweak")) return writtenTakesNoMark(node);
-  return refuse("mark-typed", `"${node.name}" types ${String(typed.length)} mark(s) into its words. Send each as a segment of its own and keep the text segments to plain words: ${typed.map((slot) => (slot.kind === "asset" ? `{"ref": <index of the node meant by ${slot.label}>}` : JSON.stringify({ slot }))).join(", ")}.`);
+  return refuse("mark-typed", `"${node.name}" types ${String(typed.length)} mark(s) into its words, and a mark works only as a segment of its own, with the text segments kept to plain words: ${typed.map((slot) => (slot.kind === "asset" ? `{"ref": <index of the node meant by ${slot.label}>}` : JSON.stringify({ slot }))).join(", ")}.`);
 }

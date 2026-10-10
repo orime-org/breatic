@@ -1228,7 +1228,7 @@ describe("a flow of any shape", () => {
 
     expect(verdict).toMatchObject({
       ok: false,
-      reason: expect.stringContaining("Write them in your reply"),
+      reason: expect.stringContaining("words with nothing generating belong in your reply"),
     });
   });
 
