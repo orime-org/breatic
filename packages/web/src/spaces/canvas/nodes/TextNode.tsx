@@ -8,11 +8,11 @@ import { ensureTextBody } from '@web/data/yjs/canvas-space';
 import { useEditedTextBody, useTextBody } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
-  canvasRootOf,
   useCanvasContext,
   useCanvasSession,
   useCanvasSessionStore,
 } from '@web/spaces/canvas/canvas-context';
+import { nodeShell } from '@web/spaces/canvas/node-shell';
 import { endKeptEditor } from '@web/spaces/canvas/kept-editors';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
@@ -26,24 +26,6 @@ import {
   TEXT_BODY_MAX_HEIGHT,
   TextNodeEditor,
 } from '@web/spaces/canvas/nodes/TextNodeEditor';
-
-/**
- * The ReactFlow wrapper element for a node id, or null when it is not mounted.
- *
- * Written once because two places need it — handing focus back on the way out
- * of the editor, and attaching the Enter listener — and it encodes how
- * ReactFlow stamps its wrappers. Two copies of that coupling would be free to
- * drift the day the selector or the id escaping has to change.
- * @param spaceId - The Space whose canvas holds the node.
- * @param nodeId - The node whose wrapper to find.
- * @returns The wrapper element, or null.
- */
-function nodeShell(spaceId: string, nodeId: string): HTMLElement | null {
-  const shell = canvasRootOf(spaceId).querySelector(
-    `.react-flow__node[data-id="${nodeId}"]`,
-  );
-  return shell instanceof HTMLElement ? shell : null;
-}
 
 interface TextNodeProps {
   data: TextNodeView;

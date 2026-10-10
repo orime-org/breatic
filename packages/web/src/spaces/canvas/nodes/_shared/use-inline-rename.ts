@@ -3,8 +3,10 @@
 
 import * as React from 'react';
 
+import { useInlineEditExit } from '@web/lib/inline-edit-exit';
 import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
+import { nodeShell } from '@web/spaces/canvas/node-shell';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { useCanvasStore } from '@web/stores';
 
@@ -36,6 +38,13 @@ export interface InlineRename {
   blur: () => void;
   /** Discard the draft and close the editor (Escape). */
   cancel: () => void;
+  /**
+   * The editor input's keydown: Enter commits, Escape cancels, and either
+   * gives the keyboard back to the node's shell.
+   */
+  onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
+  /** The editor input's compositionend. */
+  onCompositionEnd: () => void;
 }
 
 /** {@link useInlineRename} inputs. */
@@ -55,7 +64,8 @@ interface UseInlineRenameOptions {
 /**
  * The shared inline name-edit state machine behind the canvas node name
  * header and the group name label: double-click to edit, Enter / blur
- * commits a trimmed non-blank value, Escape cancels. Owning the editing /
+ * commits a trimmed non-blank value, Escape cancels, and a key that ends the
+ * edit gives the keyboard back to the node's shell. Owning the editing /
  * draft state + the double-fire guard here keeps the one rule in one place;
  * each consumer renders its own input + label markup around it.
  * @param root0 - The current value, length cap, read-only / locked flags, and commit callback.
@@ -139,13 +149,20 @@ export function useInlineRename({
     setEditing(false);
   }, []);
 
+  const nodeId = React.useContext(NodeIdContext);
+  const exit = useInlineEditExit({
+    editing,
+    target: () => (nodeId == null ? null : nodeShell(spaceId, nodeId)),
+    commit,
+    cancel,
+  });
+
   // External rename trigger: the right-click menu's "Rename" lives at the canvas
   // level and can't reach this node's edit state directly, so it posts this
   // node's id to the store's `pendingRename` mailbox. The matching node picks it
   // up here, enters edit (no-op if locked / read-only — `startEdit` guards), and
   // clears the mailbox either way so it never gets stuck. The id comes from the
   // wrapper-provided NodeIdContext (null outside the canvas → the watch no-ops).
-  const nodeId = React.useContext(NodeIdContext);
   const isRenameTarget = useCanvasStore(
     (s) => nodeId != null && s.pendingRename === nodeId,
   );
@@ -166,5 +183,7 @@ export function useInlineRename({
     commit,
     blur,
     cancel,
+    onKeyDown: exit.onKeyDown,
+    onCompositionEnd: exit.onCompositionEnd,
   };
 }
