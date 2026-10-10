@@ -24,7 +24,6 @@ export interface ErrorMonitoringBuild {
 const IGNORED_ERRORS: readonly string[] = [
   'ResizeObserver loop limit exceeded',
   'Script error.',
-  'NetworkError when attempting to fetch resource',
 ];
 
 /** Breadcrumb fields that hold an address. */
@@ -39,6 +38,12 @@ const ADDRESS_FIELDS: readonly string[] = ['url', 'from', 'to'];
 function prepareEvent(event: ErrorEvent): ErrorEvent | null {
   const message = event.exception?.values?.[0]?.value ?? '';
   if (IGNORED_ERRORS.some((ignored) => message.includes(ignored))) return null;
+  // A handled route download failure is actionable, even when Firefox names
+  // it with the same message as an otherwise unclassified network failure.
+  if (
+    message.includes('NetworkError when attempting to fetch resource') &&
+    event.tags?.error_boundary !== 'route-chunk'
+  ) return null;
   return requestWithoutQuery(event);
 }
 
