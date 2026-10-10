@@ -115,6 +115,10 @@ export {
   type HealthServerOptions,
 } from "@core/infra/health-server.js";
 export { runGracefulShutdown } from "@core/infra/graceful-shutdown.js";
+export {
+  idleSocketDispatcher,
+  deadlineBoundDispatcher,
+} from "@core/infra/idle-socket-dispatcher.js";
 export type { GracefulShutdownDeps } from "@core/infra/graceful-shutdown.js";
 export { checkInfraReady } from "@core/infra/connectivity-check.js";
 export { InfraNotReadyError } from "@core/infra/errors.js";

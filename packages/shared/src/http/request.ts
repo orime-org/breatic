@@ -132,6 +132,26 @@ export interface HttpRequestOptions {
    * screen, it is not, and this is what that caller passes.
    */
   signal?: AbortSignal;
+
+  /**
+   * How long a delivery may go without a byte moving either way, in
+   * milliseconds (inner#1367).
+   *
+   * An idle window, not a duration: it restarts every time bytes move, so a
+   * slow delivery that keeps moving runs as long as it needs, and only one that
+   * has stopped is cut — and then resent under the same rules as a dropped
+   * connection. rclone's `--timeout`, the AWS SDK's `socketTimeout` and Uppy's
+   * upload `timeout` judge a stalled transfer the same way.
+   *
+   * Pages only, and only for a body given as bytes (`Blob`, `ArrayBuffer` or a
+   * view): progress is read from `XMLHttpRequest`, since `fetch` reports none
+   * for a request body (WHATWG fetch#577). Node pulls a streamed body into
+   * memory whatever the socket is doing, so a stall there is judged on the
+   * socket instead — core's `idleSocketDispatcher`, passed as the init's
+   * `dispatcher` — and naming this option where there is no
+   * `XMLHttpRequest` is refused.
+   */
+  idleTimeoutMs?: number;
 }
 
 /**
@@ -301,6 +321,142 @@ function usableDeadline(asked: number | undefined): number {
   return deadlineMs;
 }
 
+/** Bytes a delivery can read again, and so send and watch again. */
+type SentBytes = Blob | ArrayBuffer | ArrayBufferView;
+
+/** One delivery's send, watched for bytes that stop moving. */
+interface IdleWatch {
+  bytes: SentBytes;
+  idleMs: number;
+  /** Cut this delivery: its send has stopped moving. */
+  onStall: () => void;
+}
+
+/**
+ * The body as bytes this layer can watch, or null when it is something else.
+ * @param body - The body from the caller's fetch init.
+ * @returns The bytes, or null.
+ */
+function sentBytes(body: BodyInit | null | undefined): SentBytes | null {
+  if (body instanceof Blob || body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
+    return body;
+  }
+  return null;
+}
+
+/**
+ * Restart a stall timer each time bytes move, and stop it when the delivery ends.
+ * @param watch - The window and what to do when it runs out.
+ * @returns `moved` whenever bytes move, `done` when the delivery ends.
+ */
+function idleTimer(watch: IdleWatch): { moved: () => void; done: () => void } {
+  let timer = setTimeout(watch.onStall, watch.idleMs);
+  return {
+    moved: (): void => {
+      clearTimeout(timer);
+      timer = setTimeout(watch.onStall, watch.idleMs);
+    },
+    done: (): void => clearTimeout(timer),
+  };
+}
+
+/**
+ * The response headers XMLHttpRequest hands back as one string, as Headers.
+ * @param raw - `getAllResponseHeaders()`.
+ * @returns The headers.
+ */
+function parsedHeaders(raw: string): Headers {
+  const headers = new Headers();
+  for (const line of raw.trim().split(/[\r\n]+/)) {
+    const at = line.indexOf(":");
+    if (at > 0) headers.append(line.slice(0, at).trim(), line.slice(at + 1).trim());
+  }
+  return headers;
+}
+
+/** Statuses a Response may not carry a body for. */
+const NULL_BODY_STATUSES = new Set([101, 103, 204, 205, 304]);
+
+/**
+ * Send through XMLHttpRequest, the one browser API that reports upload
+ * progress, and hand back what `fetch` would have.
+ *
+ * A network failure rejects with a `TypeError`, the way `fetch` does, so the
+ * retry policy reads it the same.
+ * @param url - Where to send.
+ * @param init - Method, headers and the body.
+ * @param signal - This delivery's signal.
+ * @param watch - The stall window.
+ * @returns The response.
+ */
+function sendWithXhr(
+  url: string,
+  init: RequestInit,
+  signal: AbortSignal,
+  watch: IdleWatch,
+): Promise<Response> {
+  return new Promise<Response>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const timer = idleTimer(watch);
+    /** Abort the request when this delivery's signal is raised. */
+    const abort = (): void => xhr.abort();
+    /** Stop the timer and the subscription, on every way out. */
+    const settle = (): void => {
+      timer.done();
+      signal.removeEventListener("abort", abort);
+    };
+    xhr.open(init.method ?? "GET", url);
+    xhr.responseType = "arraybuffer";
+    new Headers(init.headers).forEach((value, name) => xhr.setRequestHeader(name, value));
+    // Bytes moving either way restart the window, so the wait for an answer
+    // is timed the same as the send.
+    xhr.upload.onprogress = (): void => timer.moved();
+    xhr.onprogress = (): void => timer.moved();
+    xhr.onload = (): void => {
+      settle();
+      resolve(
+        new Response(NULL_BODY_STATUSES.has(xhr.status) ? null : (xhr.response as ArrayBuffer), {
+          status: xhr.status,
+          statusText: xhr.statusText,
+          headers: parsedHeaders(xhr.getAllResponseHeaders()),
+        }),
+      );
+    };
+    xhr.onerror = (): void => {
+      settle();
+      reject(new TypeError("Failed to fetch"));
+    };
+    xhr.onabort = (): void => {
+      settle();
+      reject(signal.reason instanceof Error ? signal.reason : new Error("aborted"));
+    };
+    if (signal.aborted) {
+      settle();
+      reject(signal.reason instanceof Error ? signal.reason : new Error("aborted"));
+      return;
+    }
+    signal.addEventListener("abort", abort, { once: true });
+    xhr.send(watch.bytes as XMLHttpRequestBodyInit);
+  });
+}
+
+/**
+ * One delivery, watched for a stall when the caller asked for that.
+ * @param url - Where to send.
+ * @param init - The caller's fetch init.
+ * @param signal - This delivery's signal.
+ * @param watch - The stall window, or null to send as `fetch` would.
+ * @returns The response.
+ */
+function deliver(
+  url: string,
+  init: RequestInit,
+  signal: AbortSignal,
+  watch: IdleWatch | null,
+): Promise<Response> {
+  return watch === null ? fetch(url, { ...init, signal }) : sendWithXhr(url, init, signal, watch);
+}
+
 /**
  * Perform an HTTP request, replaying it when — and only when — the caller's
  * declared replay-safety and the failure together allow it.
@@ -341,6 +497,12 @@ export async function httpRequest(
   const bodyReplayable = bodyCanBeResent(init.body);
   // The caller's figure when it gave one; ours only when it did not.
   const deadlineMs = usableDeadline(options.timeoutMs);
+  const idleMs =
+    options.idleTimeoutMs === undefined ? undefined : usableDeadline(options.idleTimeoutMs);
+  const bytes = idleMs === undefined ? null : sentBytes(init.body);
+  if (bytes !== null && typeof XMLHttpRequest !== "function") {
+    throw new Error("http was given idleTimeoutMs where there is no XMLHttpRequest; pass a dispatcher that times the socket instead");
+  }
 
   // Unbounded by design: `decideRetry` owns the budget and refuses past
   // MAX_RETRIES, so the exit is the predicate rather than a second counter
@@ -378,12 +540,21 @@ export async function httpRequest(
       // created fresh above, and the caller's is the same object every time
       // round. A composite made once and kept would carry the first delivery's
       // expiry into the second.
-      response = await fetch(url, {
-        ...init,
-        signal: options.signal
-          ? AbortSignal.any([options.signal, controller.signal])
-          : controller.signal,
-      });
+      const signal = options.signal
+        ? AbortSignal.any([options.signal, controller.signal])
+        : controller.signal;
+      const watch =
+        bytes === null || idleMs === undefined
+          ? null
+          : {
+            bytes,
+            idleMs,
+            onStall: (): void =>
+              controller.abort(
+                new Error(`http request to ${safeUrl} stopped moving for ${idleMs}ms`),
+              ),
+          };
+      response = await deliver(url, init, signal, watch);
       if (response.ok) return response;
     } catch (error) {
       failure = error;
