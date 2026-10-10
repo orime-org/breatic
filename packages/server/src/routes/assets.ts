@@ -51,6 +51,7 @@ import {
 import {
   coverKeyFor,
   getStorageConfig,
+  getStorageAdapter,
   env,
   logger,
   getNodeTaskConfig,
