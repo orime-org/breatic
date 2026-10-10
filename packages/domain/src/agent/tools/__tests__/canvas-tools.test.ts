@@ -250,8 +250,16 @@ describe("what the rendered answer tells the model", () => {
   it("says a kind the canvas will not wire into the node is picked into its slot in the panel", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "sfx" });
     const line = renderGenerationModelsForModel(answer).split("\n").find((l) => l.includes("(hunyuan-video-foley)")) ?? "";
-    expect(line).toMatch(/Each video node is picked into "video" in the panel, not wired in \(a slot, at most 1, a note each\)\./);
+    expect(line).toMatch(/An empty video node is picked into "video" in the panel, not wired in \(a slot, at most 1, a note each\)\./);
+    expect(line).toMatch(/A video node holding material goes into "video" through fills, with no edge and no note\./);
     expect(line).not.toMatch(/video node wired in/);
+  });
+
+  it("says a node holding material goes into a slot through fills, with no note, wherever the model has a slot", async () => {
+    const i2v = renderGenerationModelsForModel(await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" }));
+    expect(i2v).toMatch(/\(seedance-2\.5-image-to-video\)[^\n]*Each image node wired in goes into "image" \(a slot, at most 1, a note each\)\. An image node holding material goes into "image" through fills, with no edge and no note\./);
+    const t2i = renderGenerationModelsForModel(await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" }));
+    expect(t2i).toMatch(/\(krea-v2-large-text-to-image\)[^\n]*An image node holding material goes into "style_images" through fills, with no edge and no note\./);
   });
 
   it("says the lyrics box is filled by a text node wired in, not set as a parameter", async () => {
