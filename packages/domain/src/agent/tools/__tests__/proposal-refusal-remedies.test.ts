@@ -56,6 +56,7 @@ const MISSING = "https://resource.example/image/2026-10-09/1_typo.png";
 const CLIP_IMAGE = "https://resource.example/image/2026-10-09/2_frame.png";
 const THIRD = "https://resource.example/image/2026-10-09/3_third.png";
 const FOURTH = "https://resource.example/image/2026-10-09/4_fourth.png";
+const TUNES = ["1_a", "2_x", "3_c"].map((name) => `https://resource.example/audio/2026-10-09/${name}.mp3`);
 
 const MEDIA = { coverUrl: null, width: 640, height: 480, duration: 3, mimeType: "image/png", size: 100 };
 const MATERIALS: MaterialTable = new Map<string, MaterialFacts | "missing">([
@@ -64,6 +65,7 @@ const MATERIALS: MaterialTable = new Map<string, MaterialFacts | "missing">([
   [THIRD, { kind: "image", media: MEDIA }],
   [FOURTH, { kind: "image", media: MEDIA }],
   [CLIP, { kind: "video", media: { ...MEDIA, mimeType: "video/mp4" } }],
+  ...TUNES.map((tune): [string, MaterialFacts] => [tune, { kind: "audio", media: { ...MEDIA, mimeType: "audio/mpeg" } }]),
   [MISSING, "missing"],
 ]);
 
@@ -384,6 +386,12 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     ) }],
     endsOn: "Send fewer.",
   }, {
+    // "X" also fills "vocal", which stays when it leaves "melody", so "vocal"
+    // has no room for "C" and no other way is offered.
+    meets: group([...["A", "X", "C"].map((name, i): Sent["nodes"][number] => ({ role: "source", type: "audio", name, material: TUNES[i] })), gen("audio", "a2m", SONG, { prompt: [{ text: "Make a song." }], fills: { melody: [0, 1, 2], vocal: [1] } })]),
+    followed: [{ says: "Send fewer.", proposal: group([...["A", "X"].map((name, i): Sent["nodes"][number] => ({ role: "source", type: "audio", name, material: TUNES[i] })), gen("audio", "a2m", SONG, { prompt: [{ text: "Make a song." }], fills: { melody: [0], vocal: [1] } })]) }],
+    endsOn: "Send fewer.",
+  }, {
     // Four past the room, and the other way holds three.
     meets: group(
       PICS(15).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(15), ...NOTES(15)] })]),
@@ -658,6 +666,11 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
       [{ fromIndex: 0, toIndex: 3, into: "pool" }, { fromIndex: 1, toIndex: 3, into: "pool" }, { fromIndex: 2, toIndex: 3, into: "pool" }],
     ) }],
     endsOn: '"N1" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it.',
+  }, {
+    // Every node it names already goes in, so taking it off is all there is.
+    meets: group([HELD_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }], fills: { images: [0] } })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    followed: [{ says: 'Take fills "images" off.', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }],
+    endsOn: 'Take fills "images" off.',
   }],
   "fill-no-material": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
