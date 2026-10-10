@@ -354,6 +354,9 @@ test('A7: dragging a row by its handle moves it, with a line where it lands', as
   await page.mouse.move(handle!.x + 4, handle!.y + 10, { steps: 4 });
   await page.mouse.move(last!.x + 30, last!.y + last!.height - 3, { steps: 8 });
   await expect(page.locator('.doc-table-drop-row-after')).toHaveCount(2);
+  // The table's own line is the only one: the editor's drop line, which says
+  // where words would land, is held back (inner#1404).
+  await expect(page.locator('.prosemirror-dropcursor-block, .prosemirror-dropcursor-inline')).toHaveCount(0);
   await page.mouse.up();
 
   expect(await grids(page)).toEqual([[['a2', 'b2'], ['a3', 'b3'], ['a1', 'b1']]]);

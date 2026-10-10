@@ -283,6 +283,10 @@ test('A7 and A1: a column dragged past the table frame scrolls the frame sideway
   expect(await frame.evaluate((el) => el.scrollLeft)).toBeGreaterThan(left + 100);
   expect(await scrollTop(page)).toBe(top);
   await page.mouse.move(box.x + box.width / 2, c1.y + c1.height / 2, { steps: 4 });
+  await hold(page, box.x + box.width / 2, c1.y + c1.height / 2, 400);
+  // Over the table, only the table's own line says where the column lands
+  // (inner#1404).
+  await expect(page.locator('.prosemirror-dropcursor-block, .prosemirror-dropcursor-inline')).toHaveCount(0);
   await page.mouse.up();
   const images = await page.evaluate(() => (window as unknown as { __images: Array<{ width: number; height: number; scale: string; lift: number }> }).__images);
   const ours = images.at(-1)!;

@@ -7,7 +7,7 @@
  * through other people's edits; a row a merged cell spans cannot be dragged.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
 
@@ -18,6 +18,8 @@ import {
   canDragFrom,
   dragSourceOf,
   dropGapAt,
+  endTableDrag,
+  holdDropLineInTableDrags,
   moveToGap,
   startTableDrag,
 } from '@web/spaces/document/document-table-drag';
@@ -189,5 +191,24 @@ describe('the row a drag started on', () => {
     ]);
     expect(canDragFrom(editor.prosemirrorState.doc, cellOf(editor, 'b1'), 'row')).toBe(false);
     expect(canDragFrom(editor.prosemirrorState.doc, cellOf(editor, 'b1'), 'column')).toBe(true);
+  });
+});
+
+describe('the editor\'s drop line during a row or column drag', () => {
+  it('is held back while a row or a column is dragged, and drawn as before otherwise', () => {
+    const editor = open();
+    const view = editor.prosemirrorView!;
+    const line = { pos: 3, orientation: 'inline' as const };
+    const next = vi.fn(() => line);
+    const position = holdDropLineInTableDrags(next);
+    const context = { editor, view, event: new MouseEvent('dragover'), defaultPosition: line } as never;
+    expect(position(context)).toBe(line);
+    for (const orientation of ['row', 'column'] as const) {
+      startTableDrag(view, orientation, cellOf(editor, 'b2'));
+      expect(position(context)).toBeNull();
+      endTableDrag(view);
+    }
+    expect(position(context)).toBe(line);
+    expect(next).toHaveBeenCalledTimes(2);
   });
 });
