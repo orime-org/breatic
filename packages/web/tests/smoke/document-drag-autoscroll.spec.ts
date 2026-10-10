@@ -33,13 +33,16 @@ test.beforeEach(async ({ browser }) => {
   // Every element handed to setDragImage, measured as it is handed over.
   await page.addInitScript(() => {
     const original = DataTransfer.prototype.setDragImage;
-    (window as unknown as { __images: Array<{ width: number; height: number; scale: string }> }).__images = [];
+    (window as unknown as { __images: Array<{ width: number; height: number; scale: string; lift: number }> }).__images = [];
     DataTransfer.prototype.setDragImage = function (el: Element, x: number, y: number) {
       const root = el as HTMLElement;
-      (window as unknown as { __images: Array<{ width: number; height: number; scale: string }> }).__images.push({
+      (window as unknown as { __images: Array<{ width: number; height: number; scale: string; lift: number }> }).__images.push({
         width: parseFloat(root.style.width),
         height: parseFloat(root.style.height),
         scale: (root.firstElementChild as HTMLElement | null)?.style.transform ?? '',
+        // How far the first block stands below the preview's top edge.
+        lift: (root.querySelector('.bn-block-content')?.getBoundingClientRect().top ?? root.getBoundingClientRect().top) -
+          root.getBoundingClientRect().top,
       });
       original.call(this, el, x, y);
     };
@@ -143,10 +146,11 @@ test('A1 and A2: a row dragged to the body bottom scrolls it down, under a 512px
   expect(await scrollTop(page)).toBeGreaterThan(before + 300);
   await page.mouse.move(view.x + 200, view.y + view.height / 2, { steps: 4 });
   await page.mouse.up();
-  const images = await page.evaluate(() => (window as unknown as { __images: Array<{ width: number; height: number; scale: string }> }).__images);
+  const images = await page.evaluate(() => (window as unknown as { __images: Array<{ width: number; height: number; scale: string; lift: number }> }).__images);
   const ours = images.at(-1)!;
   expect(Math.max(ours.width, ours.height)).toBeCloseTo(512, 0);
   expect(ours.scale).toMatch(/^scale\(/);
+  expect(ours.lift).toBeCloseTo(0, 0);
 });
 
 test('A3 and A4: a row dragged over the top bar scrolls the body up, and the scrolling stops on release', async () => {
@@ -248,7 +252,8 @@ test('A7 and A1: a column dragged past the table frame scrolls the frame sideway
   expect(await scrollTop(page)).toBe(top);
   await page.mouse.move(box.x + box.width / 2, c1.y + c1.height / 2, { steps: 4 });
   await page.mouse.up();
-  const images = await page.evaluate(() => (window as unknown as { __images: Array<{ width: number; height: number; scale: string }> }).__images);
+  const images = await page.evaluate(() => (window as unknown as { __images: Array<{ width: number; height: number; scale: string; lift: number }> }).__images);
   const ours = images.at(-1)!;
   expect(Math.max(ours.width, ours.height)).toBeCloseTo(512, 0);
+  expect(ours.lift).toBeCloseTo(0, 0);
 });

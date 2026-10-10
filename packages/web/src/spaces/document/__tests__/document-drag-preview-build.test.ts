@@ -92,6 +92,7 @@ describe('buildDragPreview', () => {
     const layer = root.firstElementChild as HTMLElement;
     expect(layer.style.transform).toBe('scale(0.5)');
     expect(layer.style.transformOrigin).toBe('0px 0px');
+    expect(layer.style.verticalAlign).toBe('top');
     expect(root.style.transform).toBe('');
     expect(layer.classList.contains('doc-body')).toBe(true);
     // BlockNote takes any `.bn-editor` in the page for an editor and reads its
@@ -103,6 +104,17 @@ describe('buildDragPreview', () => {
     expect(layer.contains(content)).toBe(true);
     preview.remove();
     expect(root.isConnected).toBe(false);
+  });
+
+  it('stands its first block flush against its top, as the document\'s first block stands, and leaves the space between blocks', () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }]);
+    const content = document.createElement('div');
+    content.innerHTML = '<div class="bn-block-content">first</div><div class="bn-block-content">second</div>';
+    const preview = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 100, height: 40 }));
+    const [first, second] = [...preview.element.querySelectorAll<HTMLElement>('.bn-block-content')];
+    expect(first!.style.getPropertyValue('--doc-block-lift')).toBe('0px');
+    expect(second!.style.getPropertyValue('--doc-block-lift')).toBe('');
+    preview.remove();
   });
 });
 
