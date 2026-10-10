@@ -180,8 +180,8 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: ["An edge points outside the group", "Take that edge off."],
     fix: group([DRAW]),
   }, {
-    meets: group([DRAW], [{ fromIndex: 0, toIndex: 4 }, { fromIndex: 0, toIndex: 4 }]),
-    states: ['2 edges point outside the group: {"fromIndex":0,"toIndex":4}.', "Take those edges off."],
+    meets: group([DRAW], [{ fromIndex: 0, toIndex: 4 }, { fromIndex: 0, toIndex: 4, into: "pool" }]),
+    states: ["2 edges run from node 0 to node 4, which is not in the group (no into, into \"pool\").", "Take every edge from node 0 to node 4 off."],
     fix: group([DRAW]),
   }],
   "edge-self-loop": [{
@@ -220,6 +220,11 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([CLIP_EMPTY, gen("image", "i2i", "no-such-model")], [{ fromIndex: 0, toIndex: 1 }]),
     states: ["The canvas does not let a video node feed an image node, by your hand or theirs. Take that edge off."],
     fix: group([CLIP_EMPTY, gen("image", "i2i", "no-such-model")]),
+  }, {
+    // The same edge twice: the fix names the pair, so following it takes both.
+    meets: group([CLIP_EMPTY, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }] })], [{ fromIndex: 0, toIndex: 1 }, { fromIndex: 0, toIndex: 1, into: "video" }]),
+    states: ['2 edges run from "Clip" to "Gen" (no into, into "video")', 'Take every edge from "Clip" to "Gen" off.'],
+    fix: group([CLIP_EMPTY, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }] })]),
   }],
   "edge-ring": [{
     meets: group(
@@ -438,7 +443,12 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     fix: group([WORDS, DRAW]),
   }, {
     meets: group([{ ...WORDS, prompt: [{ text: "Copy " }, NOTE, { text: " and " }, NOTE] }, DRAW]),
-    states: ["so it takes no ref or note, and it carries 2.", "Take them out"],
+    states: ["so it takes no ref or note, and it carries 2."],
+    fix: group([WORDS, DRAW]),
+  }, {
+    // A note segment and a note typed as words are counted together.
+    meets: group([{ ...WORDS, prompt: [{ text: "Copy (💡 do this) " }, NOTE] }, DRAW]),
+    states: ["so it takes no ref or note, and it carries 2."],
     fix: group([WORDS, DRAW]),
   }],
   "material-not-source": [{
@@ -657,6 +667,52 @@ describe("every refusal states its fault, its rule and its facts", () => {
         if (entry.fix === undefined) return;
         const after = verdictFor(entry.fix, MATERIALS);
         expect(after.ok ? undefined : after.refusal, `following the fix of "${reason}"`).not.toBe(refusal);
+      });
+    }
+  }
+});
+
+/**
+ * The proposal with every edge, every ref and note segment and every fill index
+ * written twice.
+ * @param sent - The proposal.
+ * @returns The doubled proposal.
+ */
+function doubled(sent: Sent): Sent {
+  const twice = (segments: NonNullable<Sent["nodes"][number]["prompt"]>): NonNullable<Sent["nodes"][number]["prompt"]> =>
+    segments.flatMap((s) => (s.ref !== undefined || s.slot?.kind === "note" ? [s, s] : [s]));
+  return {
+    ...sent,
+    edges: sent.edges.flatMap((edge) => [edge, edge]),
+    nodes: sent.nodes.map((node) => ({
+      ...node,
+      ...(node.prompt === undefined ? {} : { prompt: twice(node.prompt) }),
+      ...(node.shots === undefined ? {} : { shots: node.shots.map((shot) => ({ ...shot, prompt: twice(shot.prompt) })) }),
+      ...(node.fills === undefined ? {} : { fills: Object.fromEntries(Object.entries(node.fills).map(([k, v]) => [k, v.flatMap((at) => [at, at])])) }),
+    })),
+  };
+}
+
+/**
+ * The fix a reason ends on: its last sentence.
+ * @param reason - The reason.
+ * @returns The last sentence.
+ */
+function lastSentence(reason: string): string {
+  return reason.slice(reason.lastIndexOf(". ", reason.length - 2) + 2);
+}
+
+describe("a fix names what to take out by value, so the copies of it do not change it", () => {
+  for (const [refusal, cases] of Object.entries(CASES) as [RefusalId, RefusalCase[]][]) {
+    if (!REFUSALS[refusal]) continue;
+    for (const [at, entry] of cases.entries()) {
+      it(`${refusal} (${String(at)}): ends on the same fix with everything written twice`, () => {
+        entry.catalog?.();
+        const once = verdictFor(entry.meets, MATERIALS);
+        const twice = verdictFor(doubled(entry.meets), MATERIALS);
+        // Writing everything twice can trip an earlier check first; only the same refusal says anything here.
+        if (twice.ok || once.ok || twice.refusal !== refusal) return;
+        expect(lastSentence(twice.reason)).toBe(lastSentence(once.reason));
       });
     }
   }
