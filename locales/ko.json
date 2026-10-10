@@ -246,7 +246,7 @@
       "attach": "파일 첨부",
       "removeAttachment": "{name} 제거",
       "attachmentUploading": "업로드 중",
-      "attachmentFailed": "{reason, select, upload {업로드 실패} extract {읽기 실패} too_long {너무 김} other {실패}}",
+      "attachmentFailed": "{reason, select, upload {업로드 실패} rate_limited {업로드가 너무 잦음, 잠시 후 다시 시도} extract {읽기 실패} too_long {너무 김} other {실패}}",
       "attachFull": "최대 {limit, number}개까지 첨부할 수 있습니다",
       "attachTooLong": "첨부한 내용이 너무 많습니다. 항목을 줄이거나 더 짧은 파일을 사용하세요.",
       "attachUnsupported": "{filename}은(는) 첨부할 수 없습니다",
@@ -722,6 +722,7 @@
       "empty": "{filename}은(는) 빈 파일이라 추가할 내용이 없습니다.",
       "hashUnavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요.",
       "storageFull": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다.",
+      "rateLimited": "업로드가 너무 잦습니다. 잠시 후 다시 시도해 주세요.",
       "failed": "업로드에 실패했습니다.",
       "extractionFailed": "{filename}의 텍스트를 읽을 수 없습니다."
     },
@@ -1453,6 +1454,23 @@
         "splitCell": "셀 분할",
         "mergeCells": "셀 병합",
         "textHighlight": "배경(텍스트 강조)"
+      },
+      "media": {
+        "image": "이미지",
+        "audio": "오디오",
+        "video": "동영상",
+        "uploading": "업로드 중",
+        "uploadingPercent": "업로드 중 {percent}%",
+        "readOnly": "현재 읽기 전용입니다.",
+        "retry": "다시 시도",
+        "remove": "제거",
+        "caption": "캡션",
+        "captionPlaceholder": "캡션 추가",
+        "fullscreen": "전체 화면으로 보기",
+        "close": "닫기",
+        "download": "다운로드",
+        "delete": "삭제",
+        "leftOut": "이미지, 동영상, 오디오 {count}개는 붙여넣지 않았습니다. 파일을 직접 끌어다 놓거나 붙여넣으세요."
       }
     },
     "readOnlyReconnect": "다시 연결"
@@ -1842,7 +1860,8 @@
         "not_an_image": "해당 파일을 이미지로 읽을 수 없습니다.",
         "encode_failed": "이미지를 준비하지 못했습니다. 다른 이미지를 시도해 주세요.",
         "unsupported_type": "지원하지 않는 파일 형식입니다.",
-        "hash_unavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요."
+        "hash_unavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요.",
+        "rate_limited": "업로드가 너무 잦습니다. 잠시 후 다시 시도해 주세요."
       },
       "cropRegion": "자르기 영역 — 화살표 키로 이동할 수 있습니다",
       "cover": {

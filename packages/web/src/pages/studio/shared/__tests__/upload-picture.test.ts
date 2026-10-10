@@ -31,7 +31,7 @@ const blob = new Blob(['x'], { type: 'image/jpeg' });
 
 describe('uploadPicture', () => {
   it('uploads the picture as a file of its own type and resolves the ledger row', async () => {
-    const run = upload({ fileUrl: 'u', assetId: 'asset-1' });
+    const run = upload({ fileUrl: 'u', assetId: 'asset-1', kind: 'image' });
 
     const assetId = await uploadPicture(
       blob,
@@ -57,7 +57,7 @@ describe('uploadPicture', () => {
   });
 
   it('fails when the upload ended without naming a ledger row', async () => {
-    const run = upload({ fileUrl: undefined, assetId: undefined });
+    const run = upload({ fileUrl: undefined, assetId: undefined, kind: undefined });
 
     const failure = await uploadPicture(blob, { studioId: 's1', purpose: 'studio_avatar' }, run)
       .catch((err: unknown) => err);
@@ -68,7 +68,7 @@ describe('uploadPicture', () => {
 
 describe('the upload target', () => {
   it('pairs a studio with its avatar and a project with its cover, at compile time', () => {
-    const run = upload({ fileUrl: 'u', assetId: 'a' });
+    const run = upload({ fileUrl: 'u', assetId: 'a', kind: 'image' });
     // @ts-expect-error a studio uploads nothing but its avatar
     void uploadPicture(blob, { studioId: 's1', purpose: 'project_cover' }, run);
     // @ts-expect-error a studio upload must say it is the avatar
@@ -84,6 +84,7 @@ describe('pictureFailureOf', () => {
     expect(pictureFailureOf(new UploadFailedError('storage'))).toBe('storage');
     expect(pictureFailureOf(new UploadFailedError('unsupportedType'))).toBe('unsupportedType');
     expect(pictureFailureOf(new UploadFailedError('hash'))).toBe('hash');
+    expect(pictureFailureOf(new UploadFailedError('rateLimited'))).toBe('rateLimited');
     expect(pictureFailureOf(new UploadFailedError('transfer'))).toBe('upload');
     expect(pictureFailureOf(new Error('network'))).toBe('upload');
   });
@@ -96,6 +97,12 @@ describe('pictureErrorMessage', () => {
   it('tells the person to reload when the file could not be fingerprinted', () => {
     expect(pictureErrorMessage(new UploadFailedError('hash'), t, KEYS)).toBe(
       'studio.container.imageError.hash_unavailable',
+    );
+  });
+
+  it('tells the person they are uploading too often', () => {
+    expect(pictureErrorMessage(new UploadFailedError('rateLimited'), t, KEYS)).toBe(
+      'studio.container.imageError.rate_limited',
     );
   });
 

@@ -662,3 +662,17 @@ describe('ScrollArea — what a rail answers to, and what a drag on it does', ()
   });
 });
 
+describe('what a scrollbar says it is', () => {
+  it('carries the scrollbar mark on both axes, for the presses that must not reach what is under it', () => {
+    const { container } = render(
+      <ScrollAreaPrimitive.Root type='always'>
+        <ScrollAreaPrimitive.Viewport />
+        <ScrollBar forceMount orientation='vertical' />
+        <ScrollBar forceMount orientation='horizontal' />
+      </ScrollAreaPrimitive.Root>,
+    );
+
+    const bars = container.querySelectorAll('[data-scroll-area-scrollbar]');
+    expect([...bars].map((bar) => bar.getAttribute('data-orientation'))).toEqual(['vertical', 'horizontal']);
+  });
+});

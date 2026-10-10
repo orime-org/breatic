@@ -31,6 +31,7 @@ import {
   _resetDocumentEditorCacheForTests,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
+import type { DocumentUploader } from '@web/spaces/document/document-uploads';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 describe('DocumentEditor', () => {
@@ -58,6 +59,24 @@ describe('DocumentEditor', () => {
     _resetDocumentEditorCacheForTests();
     awareness.destroy();
     doc.destroy();
+  });
+
+  it('keeps the editor in the body when the reader turns read-only while it is open', () => {
+    // A role change or an archive refetches the project with the Space open
+    // (`use-refresh-on-reauth.ts`), so `readOnly` flips on a mounted body.
+    const uploader: DocumentUploader = {
+      start: () => Promise.resolve(),
+      retry: () => undefined,
+      remove: () => undefined,
+    } as unknown as DocumentUploader;
+    const { container, rerender } = render(
+      <DocumentEditor handle={handle} uploader={uploader} />,
+    );
+    expect(container.contains(handle.surface)).toBe(true);
+
+    rerender(<DocumentEditor handle={handle} uploader={uploader} readOnly />);
+
+    expect(container.contains(handle.surface)).toBe(true);
   });
 
   it('renders one chrome element beside the body: the scroller', () => {
@@ -132,6 +151,9 @@ describe('DocumentEditor', () => {
       }
       return true;
     });
+    // The caret raises the toolbar only while the body holds the focus
+    // (inner#1127 A20).
+    editor.prosemirrorView!.dom.focus();
     editor.transact((tr) => {
       tr.setSelection(TextSelection.create(tr.doc, inside));
     });

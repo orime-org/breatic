@@ -57,6 +57,7 @@ import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
 import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
 import { showLinkEditSpan } from '@web/spaces/document/document-link-edit-mark';
 import { LINK_PANEL_SURFACE } from '@web/spaces/document/document-link-panel';
+import { cn } from '@web/lib/utils';
 import {
   panelReference,
   underPointer,
@@ -84,6 +85,8 @@ import {
   LINK_TOOLBAR_OPEN_DELAY_MS,
   LINK_TOOLBAR_CLOSE_DELAY_MS,
 } from '@web/spaces/document/link-toolbar-timing';
+import { setLinkToolbarUp, textBarsStandAside, useDocumentBars } from '@web/spaces/document/document-bars';
+import { bodyFocusStore, bodyLayerMark } from '@web/spaces/document/document-body-focus';
 
 /** Which of the toolbar's two faces is showing. */
 type ToolbarFace = 'read' | 'form';
@@ -332,7 +335,15 @@ export function DocumentLinkToolbar({
     const spanOf = (one: TrackedLink | null): LinkRange | null =>
       resolveTrackedLink(state, one).range;
 
-    const atCaret = linkAtCaret(state);
+    // The caret raises the toolbar only while the body holds the focus and the
+    // focus is in the editable element or in this toolbar (inner#1127, design
+    // 3.5.1): a caret the body let go of is not drawn, and raises nothing.
+    const focus = bodyFocusStore.get(editor);
+    const caretCounts =
+      focus.holds &&
+      focus.focused !== null &&
+      (focus.focused === domElementOf(editor) || surfaceRef.current?.contains(focus.focused) === true);
+    const atCaret = caretCounts ? linkAtCaret(state) : { range: null, href: null };
     const atPointer = resolveTrackedLink(state, pointerOn.current);
 
     // A dismissal lasts while a reason that raised it is still on its link.
@@ -657,9 +668,12 @@ export function DocumentLinkToolbar({
     settle();
     const offChange = editor.onChange(settle);
     const offSelection = editor.onSelectionChange(settle);
+    // The body letting go of the focus, or taking it back, moves no selection.
+    const offFocus = bodyFocusStore.subscribe(editor, settle);
     return () => {
       offChange();
       offSelection();
+      offFocus();
     };
   }, [editor, settle]);
 
@@ -831,6 +845,18 @@ export function DocumentLinkToolbar({
     [refs],
   );
 
+  // The one bar the document shows (`document-bars.ts`): this toolbar says
+  // when it is up, so a selected media block keeps its own down meanwhile, and
+  // steps aside while a media block is under the pointer.
+  const up = open && held !== null;
+  React.useEffect(() => {
+    setLinkToolbarUp(editor, up);
+    return () => {
+      setLinkToolbarUp(editor, false);
+    };
+  }, [editor, up]);
+  const standingAside = textBarsStandAside(useDocumentBars(editor));
+
   if (!open || !held) return null;
 
   return (
@@ -839,7 +865,10 @@ export function DocumentLinkToolbar({
         ref={holdSurface}
         style={floatingStyles}
         data-testid='doc-link-toolbar'
-        className={LINK_PANEL_SURFACE}
+        data-standing-aside={standingAside ? 'true' : undefined}
+        // A layer of the body, belonging on the link it is about.
+        {...bodyLayerMark(editor, held.range)}
+        className={cn(LINK_PANEL_SURFACE, standingAside && 'invisible pointer-events-none')}
         {...getFloatingProps({
           onMouseEnter: takeSurface,
           onMouseLeave: releaseSurface,

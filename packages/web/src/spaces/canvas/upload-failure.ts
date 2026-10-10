@@ -72,10 +72,10 @@ const REFUSALS: ReadonlySet<UploadFailure['reason']> = new Set([
 /**
  * The sentence each reason needs, keyed by what the reader should do next.
  *
- * `transfer` is absent, and the compiler holds it out: that reason leaves
- * through the reporting arm below, which carries no sentence. A ticket without
- * a task row (`upload-opening.ts`, when no node or no space is named) is the
- * one shape that would want one, and the arm spells out what it reads.
+ * `transfer` is absent, and the compiler holds it out: with a task row it
+ * leaves through the reporting arm below, which carries no sentence; where it
+ * does need one (no task row, a document placeholder, the focus crop),
+ * `uploadFailureMessageKey` reads it as the catch-all.
  */
 const TOAST_KEY: Readonly<
   Record<Exclude<UploadFailure['reason'], 'transfer'>, string>
@@ -86,6 +86,8 @@ const TOAST_KEY: Readonly<
   hash: 'canvas.upload.hashUnavailable',
   // The bytes are not a kind we keep, which re-sending them does not change.
   unsupportedType: 'canvas.upload.unsupportedType',
+  // The window passes; the reader retries after it.
+  rateLimited: 'canvas.upload.rateLimited',
   upload: 'canvas.upload.failed',
 };
 
@@ -101,6 +103,33 @@ const TOAST_KEY: Readonly<
  */
 export function ingestRefusalToastKey(status: number | undefined): string {
   return status === STORAGE_FULL_STATUS ? TOAST_KEY.storage : TOAST_KEY.upload;
+}
+
+/**
+ * Whether sending the same file again can end differently.
+ *
+ * The catch-all, a transfer and a rate limit are about this attempt: a
+ * transfer ends when the connection drops, the ticket runs out or the edge
+ * could not store a part, and a fresh ticket starts all of that over; a rate
+ * limit lifts once its window passes. The other reasons are about the file or
+ * the account, and re-sending meets the same answer.
+ * @param reason - Why the upload ended.
+ * @returns True when a Retry is worth offering.
+ */
+export function uploadRetryCanChange(reason: UploadFailure['reason']): boolean {
+  return reason === 'upload' || reason === 'transfer' || reason === 'rateLimited';
+}
+
+/**
+ * The sentence a failure is said in.
+ *
+ * A transfer reads as any failed upload: where no row exists to report it
+ * against, that is all the reader can be told.
+ * @param reason - Why the upload ended.
+ * @returns The message key.
+ */
+export function uploadFailureMessageKey(reason: UploadFailure['reason']): string {
+  return reason === 'transfer' ? TOAST_KEY.upload : TOAST_KEY[reason];
 }
 
 /**
@@ -123,11 +152,11 @@ export function resolveUploadFailure(
       ? { kind: 'reportToServer', taskId: outcome.taskId }
       : {
         kind: 'toastOnly',
-        toastKey: TOAST_KEY.upload,
+        toastKey: uploadFailureMessageKey(outcome.reason),
         severity: 'error',
       };
   }
-  const toastKey = TOAST_KEY[outcome.reason];
+  const toastKey = uploadFailureMessageKey(outcome.reason);
   const severity: UploadFailureSeverity = REFUSALS.has(outcome.reason)
     ? 'warning'
     : 'error';
@@ -135,9 +164,7 @@ export function resolveUploadFailure(
     kind: 'toastOnly',
     toastKey,
     severity,
-    // Only the catch-all is about this attempt. Every named reason is about
-    // the file or the account, and re-sending meets the same answer.
-    ...(outcome.reason === 'upload' &&
+    ...(uploadRetryCanChange(outcome.reason) &&
       outcome.taskId !== undefined && { keepFileFor: outcome.taskId }),
   };
 }

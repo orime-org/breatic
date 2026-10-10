@@ -58,6 +58,9 @@ describe("Assets routes", () => {
     });
 
     it("returns the yaml upload knobs (camelCase wire shape)", async () => {
+      mocks.getStorageAdapter.mockResolvedValue({
+        publicUrl: (key: string) => `https://cdn.example/${key}`,
+      });
       const app = createApp();
       const res = await app.request("/api/v1/assets/upload-config", {
         headers: AUTH,
@@ -71,6 +74,7 @@ describe("Assets routes", () => {
           clientRetryBaseDelayMs: number;
           clientRequestTimeoutMs: number;
           clientPutMinBytesPerSec: number;
+          assetUrlPrefix: string;
         };
       };
       expect(body.data).toEqual({
@@ -79,6 +83,9 @@ describe("Assets routes", () => {
         clientRetryBaseDelayMs: 250,
         clientRequestTimeoutMs: 5000,
         clientPutMinBytesPerSec: 1024,
+        // What every stored object's public URL starts with: the document
+        // body tells its own media from outside links by it (inner#1127 A18).
+        assetUrlPrefix: "https://cdn.example/",
       });
     });
   });

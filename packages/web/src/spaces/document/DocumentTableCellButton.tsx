@@ -42,6 +42,8 @@ import {
 import { caretCellOf, cellButtonBox } from '@web/spaces/document/document-table-control-place';
 import { isMerged, splitCellAt } from '@web/spaces/document/document-table-run';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
+import { setCellButtonCell } from '@web/spaces/document/document-bars';
+import { bodyFocusStore, bodyLayerMark } from '@web/spaces/document/document-body-focus';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
 /**
@@ -101,7 +103,24 @@ export function DocumentTableCellButton({
     editor as never,
     (current: { prosemirrorState: EditorState }) => tableTargetOf(current.prosemirrorState),
   );
-  const cellPos = open ? heldCell : caretCell;
+  // The caret raises the button only while the body holds the focus and the
+  // focus is in the editable element (inner#1127, design 3.5.1); while the
+  // menu is open the focus is in it, and the button stays on its cell.
+  const subscribeFocus = React.useCallback(
+    (listener: () => void) => bodyFocusStore.subscribe(editor, listener),
+    [editor],
+  );
+  const focus = React.useSyncExternalStore(subscribeFocus, () => bodyFocusStore.get(editor));
+  const caretCounts =
+    focus.holds && focus.focused !== null && focus.focused === editor.prosemirrorView?.dom;
+  const cellPos = open ? heldCell : caretCounts ? caretCell : null;
+  // Where the button stands, for the column handle that makes room for it.
+  React.useEffect(() => {
+    setCellButtonCell(editor, cellPos);
+    return () => {
+      setCellButtonCell(editor, null);
+    };
+  }, [editor, cellPos]);
   const merged = useEditorSnapshot(
     editor as never,
     (current: { prosemirrorState: EditorState }) =>
@@ -159,7 +178,12 @@ export function DocumentTableCellButton({
 
   return (
     <FloatingPortal root={viewport}>
-      <div ref={refs.setFloating} style={style}>
+      <div
+        ref={refs.setFloating}
+        style={style}
+        // A layer of the body, belonging on its cell.
+        {...bodyLayerMark(editor, { from: cellPos, to: cellPos + 1 })}
+      >
         <DropdownMenu open={open} onOpenChange={onOpenChange}>
           <div className='relative flex'>
             {/* The anchor, and nothing else, as on the handles. */}

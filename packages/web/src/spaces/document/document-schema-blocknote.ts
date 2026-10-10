@@ -35,6 +35,7 @@ import {
 
 import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
 import { buildListItemSpecs } from '@web/spaces/document/document-list-block';
+import { withMediaView } from '@web/spaces/document/document-media-blocknote';
 import { buildTableSpec } from '@web/spaces/document/document-table-blocknote';
 import {
   unsupportedBlockSpec,
@@ -58,6 +59,16 @@ const QUOTED_PROP: Record<string, PropDecl> = {
 const NUMBERED_PROPS: Record<string, PropDecl> = {
   numbered: { default: false },
   number: { default: undefined, type: 'number' },
+};
+
+/**
+ * The pixel size of the picture or the video, read off the file as it was
+ * added (inner#1127 A23): the block keeps the media's place at its final size
+ * while it loads.
+ */
+const MEDIA_SIZE_PROPS: Record<string, PropDecl> = {
+  mediaWidth: { default: undefined, type: 'number' },
+  mediaHeight: { default: undefined, type: 'number' },
 };
 
 /** Lets a list item pin a user-set number. */
@@ -85,7 +96,7 @@ function withProps<T extends SpecWithProps>(
 }
 
 /**
- * Builds the schema: nine block types, three added props, the rest turned off.
+ * Builds the schema: twelve block types, five added props, the rest turned off.
  * @returns The schema to hand `BlockNoteEditor.create`.
  * @throws {Error} Whatever BlockNote throws while validating the specs.
  */
@@ -97,9 +108,8 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     // make the coexistence rule false for whichever came in as a container.
     quote: _quote,
     toggleListItem: _toggleListItem,
-    image: _image,
-    video: _video,
-    audio: _audio,
+    // Uploads admit images, videos and audio only (inner#1127 A5), so nothing
+    // this Space does can produce a generic file block.
     file: _file,
     ...enabled
   } = defaultBlockSpecs;
@@ -137,6 +147,11 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     // places the divider and the caret in one transaction instead.
     divider: { ...withProps(enabled.divider, QUOTED_PROP), extensions: [] },
     table: buildTableSpec(),
+    // The library's own props: image and video carry a width and an
+    // alignment, audio neither (inner#1127 A8, A9).
+    image: withMediaView(withProps(enabled.image, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS })),
+    video: withMediaView(withProps(enabled.video, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS })),
+    audio: withMediaView(withProps(enabled.audio, QUOTED_PROP)),
     unsupportedBlock: unsupportedBlockSpec,
   };
 

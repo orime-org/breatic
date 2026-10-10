@@ -246,7 +246,7 @@
       "attach": "新增檔案",
       "removeAttachment": "移除 {name}",
       "attachmentUploading": "上傳中",
-      "attachmentFailed": "{reason, select, upload {上傳失敗} extract {讀取失敗} too_long {太長} other {失敗}}",
+      "attachmentFailed": "{reason, select, upload {上傳失敗} rate_limited {上傳太頻繁，請稍後再試} extract {讀取失敗} too_long {太長} other {失敗}}",
       "attachFull": "最多附帶 {limit, number} 項",
       "attachTooLong": "附帶的內容太多了，請少掛幾項或換短一點的檔案。",
       "attachUnsupported": "{filename} 不能附帶",
@@ -722,6 +722,7 @@
       "empty": "{filename} 是空檔案，沒有內容可以新增。",
       "hashUnavailable": "無法驗證此檔案，請重新整理頁面後再試。",
       "storageFull": "Studio 儲存空間已滿，目前無法上傳。",
+      "rateLimited": "上傳太頻繁，請稍後再試。",
       "failed": "上傳失敗。",
       "extractionFailed": "無法讀取 {filename} 中的文字。"
     },
@@ -1453,6 +1454,23 @@
         "splitCell": "分割儲存格",
         "mergeCells": "合併儲存格",
         "textHighlight": "背景（醒目提示文字）"
+      },
+      "media": {
+        "image": "圖片",
+        "audio": "音訊",
+        "video": "影片",
+        "uploading": "上傳中",
+        "uploadingPercent": "上傳中 {percent}%",
+        "readOnly": "目前唯讀。",
+        "retry": "重試",
+        "remove": "移除",
+        "caption": "說明",
+        "captionPlaceholder": "新增說明",
+        "fullscreen": "全螢幕檢視",
+        "close": "關閉",
+        "download": "下載",
+        "delete": "刪除",
+        "leftOut": "{count} 個圖片、影片或音訊沒有貼上，可以直接拖入或貼上檔案。"
       }
     },
     "readOnlyReconnect": "重新連線"
@@ -1842,7 +1860,8 @@
         "not_an_image": "無法把這個檔案讀成圖片。",
         "encode_failed": "無法處理這張圖片，請換一張試試。",
         "unsupported_type": "不支援這個檔案的格式。",
-        "hash_unavailable": "無法驗證此檔案，請重新整理頁面後再試。"
+        "hash_unavailable": "無法驗證此檔案，請重新整理頁面後再試。",
+        "rate_limited": "上傳太頻繁，請稍後再試。"
       },
       "cropRegion": "裁切區域 — 可用方向鍵移動",
       "cover": {

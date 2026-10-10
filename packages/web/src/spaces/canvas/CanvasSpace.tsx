@@ -79,7 +79,7 @@ import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { FRAME_PAN_MS, frameBuiltNode, framedBox } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { exportDrawing } from '@web/spaces/canvas/mini-tool/export-drawing';
-import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
+import { focusFailureMessageKey, runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import {
   addEdge,
   addNodeFocusImage,
@@ -1079,25 +1079,7 @@ function CanvasSpaceInner({
             },
             onFailure: (stage) => {
               sessionStore.getState().removePendingFocusUpload(pendingId);
-              // Two of these are not retryable, and saying "try again" to
-              // either is worse than useless: a hashing refusal hits the same
-              // broken worker on this page (Gate-2 R5), and a full account has
-              // no room to find in the seconds a retry takes (#89).
-              if (stage === 'hash') {
-                toast.error(t('canvas.upload.hashUnavailable'));
-                return;
-              }
-              if (stage === 'storage') {
-                toast.error(t('canvas.upload.storageFull'));
-                return;
-              }
-              toast.error(
-                t(
-                  stage === 'export'
-                    ? 'canvas.generatePanel.focusExportFailed'
-                    : 'canvas.generatePanel.focusUploadFailed',
-                ),
-              );
+              toast.error(t(focusFailureMessageKey(stage)));
             },
             makeId: newId,
           },

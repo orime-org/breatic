@@ -246,7 +246,7 @@
       "attach": "Attach files",
       "removeAttachment": "Remove {name}",
       "attachmentUploading": "Uploading",
-      "attachmentFailed": "{reason, select, upload {Upload failed} extract {Couldn’t read it} too_long {Too long} other {Failed}}",
+      "attachmentFailed": "{reason, select, upload {Upload failed} rate_limited {Too many uploads, try later} extract {Couldn’t read it} too_long {Too long} other {Failed}}",
       "attachFull": "At most {limit, number} items can be attached",
       "attachTooLong": "Too much content attached. Attach fewer items or shorter files.",
       "attachUnsupported": "{filename} can’t be attached",
@@ -722,6 +722,7 @@
       "empty": "{filename} is empty — there's nothing to add.",
       "hashUnavailable": "Couldn't verify this file. Reload the page and try again.",
       "storageFull": "Studio storage is full. Uploading is unavailable.",
+      "rateLimited": "Uploading too often. Try again later.",
       "failed": "Upload failed.",
       "extractionFailed": "Couldn't read the text in {filename}."
     },
@@ -1453,6 +1454,23 @@
         "splitCell": "Split cell",
         "mergeCells": "Merge cells",
         "textHighlight": "Highlight"
+      },
+      "media": {
+        "image": "Image",
+        "audio": "Audio",
+        "video": "Video",
+        "uploading": "Uploading",
+        "uploadingPercent": "Uploading {percent}%",
+        "readOnly": "Read-only now.",
+        "retry": "Retry",
+        "remove": "Remove",
+        "caption": "Caption",
+        "captionPlaceholder": "Add a caption",
+        "fullscreen": "View full screen",
+        "close": "Close",
+        "download": "Download",
+        "delete": "Delete",
+        "leftOut": "{count, plural, one {# image, video or audio was not pasted.} other {# images, videos or audio were not pasted.}} Drop or paste the files instead."
       }
     },
     "readOnlyReconnect": "Reconnect"
@@ -1842,7 +1860,8 @@
         "not_an_image": "That file could not be read as an image.",
         "encode_failed": "Could not prepare the image. Please try another one.",
         "unsupported_type": "This file format is not supported.",
-        "hash_unavailable": "Couldn't verify this file. Reload the page and try again."
+        "hash_unavailable": "Couldn't verify this file. Reload the page and try again.",
+        "rate_limited": "Uploading too often. Try again later."
       },
       "cropRegion": "Crop area — use the arrow keys to move it",
       "cover": {

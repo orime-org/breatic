@@ -51,10 +51,10 @@ describe('isTransientUploadError — retry only what can heal', () => {
   // Carried on a flat `.status`, which is the only shape that reaches this
   // function now: presign is its one caller, and axios normalises every
   // failure into an ApiException before it arrives.
-  it('retries 5xx and 429, never other 4xx', () => {
+  it('retries 5xx, never a 4xx: a 429 is a limit the reader is told about', () => {
     expect(isTransientUploadError({ status: 500 })).toBe(true);
     expect(isTransientUploadError({ status: 503 })).toBe(true);
-    expect(isTransientUploadError({ status: 429 })).toBe(true);
+    expect(isTransientUploadError({ status: 429 })).toBe(false);
     expect(isTransientUploadError({ status: 403 })).toBe(false);
     expect(isTransientUploadError({ status: 413 })).toBe(false);
     expect(isTransientUploadError({ status: 422 })).toBe(false);
@@ -63,14 +63,14 @@ describe('isTransientUploadError — retry only what can heal', () => {
   it('reads status off the project ApiException flat .status (real presign error shape)', () => {
     // apiGet rejects with ApiException, whose status is FLAT on `.status` and
     // not at `{ response: { status } }`. Adversarial #2: without this, every
-    // transient presign failure (503/429/network-0) is judged non-transient
+    // transient presign failure (5xx/network-0) is judged non-transient
     // and the presign retry is dead. The real class is constructed here rather
     // than a stand-in shaped like it, so that a change to the class is a
     // change to this fixture.
     const apiErr = (status: number): unknown =>
       new ApiException({ status, message: 'api' });
     expect(isTransientUploadError(apiErr(503))).toBe(true);
-    expect(isTransientUploadError(apiErr(429))).toBe(true);
+    expect(isTransientUploadError(apiErr(429))).toBe(false);
     expect(isTransientUploadError(apiErr(0))).toBe(true); // network drop
     expect(isTransientUploadError(apiErr(403))).toBe(false);
     expect(isTransientUploadError(apiErr(413))).toBe(false);

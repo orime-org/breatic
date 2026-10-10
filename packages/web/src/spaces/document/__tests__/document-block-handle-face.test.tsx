@@ -18,7 +18,11 @@ import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
 
+import { TextSelection } from '@tiptap/pm/state';
+
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { setBubbleBarUp } from '@web/spaces/document/document-bars';
+import { BODY_ANCHOR, BODY_LAYER } from '@web/spaces/document/document-body-focus';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -232,5 +236,65 @@ describe('delete is greyed only on the document\'s only block (A12)', () => {
     fireEvent.click(remove);
 
     expect((editor.document[0] as unknown as { children: unknown[] }).children).toHaveLength(0);
+  });
+});
+
+describe('the strip beside a selected block (inner#1127)', () => {
+  it('stays on a picture the reader clicked, which selects it whole', async () => {
+    const { NodeSelection } = await import('@tiptap/pm/state');
+    const editor = openOver(
+      [
+        { type: 'paragraph', content: 'words' },
+        { type: 'image', props: { url: 'https://cdn.example/a.png', name: 'a' } },
+      ],
+      1,
+    );
+    const view = editor.prosemirrorView!;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'image') at = pos;
+      return at < 0;
+    });
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)));
+
+    render(<DocumentBlockHandle />);
+
+    expect(screen.getByTestId('doc-block-handle')).toBeTruthy();
+  });
+});
+
+describe('the strip and the bubble bar (inner#1127)', () => {
+  it('is there over a selection the body let go of, with no bubble bar up', () => {
+    const editor = openOver([{ type: 'paragraph', content: 'words here' }, { type: 'paragraph', content: 'more' }], 1);
+    const pm = editor.prosemirrorView!;
+    act(() => {
+      pm.dispatch(pm.state.tr.setSelection(TextSelection.create(pm.state.doc, 2, 6)));
+    });
+    render(<DocumentBlockHandle />);
+
+    expect(screen.queryByTestId('doc-block-handle')).not.toBeNull();
+  });
+
+  it('stands aside while the bubble bar is up', () => {
+    const editor = openOver([{ type: 'paragraph', content: 'words here' }, { type: 'paragraph', content: 'more' }], 1);
+    render(<DocumentBlockHandle />);
+    expect(screen.queryByTestId('doc-block-handle')).not.toBeNull();
+
+    act(() => {
+      setBubbleBarUp(editor, true);
+    });
+
+    expect(screen.queryByTestId('doc-block-handle')).toBeNull();
+  });
+});
+
+describe('the strip as a layer of the body (inner#1127)', () => {
+  it('carries the body layer mark, belonging on the row it is for', () => {
+    const editor = openOver([{ type: 'paragraph', content: 'words' }], 0);
+    render(<DocumentBlockHandle />);
+
+    const layer = screen.getByTestId('doc-block-handle').closest(`[${BODY_LAYER}]`);
+    const id = (editor.document[0] as { id: string }).id;
+    expect(layer?.getAttribute(BODY_ANCHOR)).toBe(`block:${id}`);
   });
 });

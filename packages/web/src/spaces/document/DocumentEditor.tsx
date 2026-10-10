@@ -29,8 +29,15 @@ import {
 import { useCommentRail } from '@web/spaces/document/use-comment-rail';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 import { DocumentTableCellButton } from '@web/spaces/document/DocumentTableCellButton';
-import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { type FocusReturn, useFocusReturn } from '@web/lib/use-focus-return';
+import { viewOf } from '@web/spaces/document/document-editor-view';
+import { DocumentMediaPicker } from '@web/spaces/document/DocumentMediaPicker';
+import { DocumentUploadPlaceholders } from '@web/spaces/document/DocumentUploadPlaceholders';
+import { DocumentMediaViews } from '@web/spaces/document/DocumentMediaViews';
+import { useDocumentBars } from '@web/spaces/document/document-bars';
+import { bodyPartMark, recomputeBodyFocus, releaseBodyFocus } from '@web/spaces/document/document-body-focus';
+import { attachBodyScroller, BODY_BLANK } from '@web/spaces/document/document-body-press';
+import type { DocumentUploader } from '@web/spaces/document/document-uploads';
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -47,6 +54,8 @@ interface DocumentEditorProps {
    * does.
    */
   myRole?: ProjectRole;
+  /** What takes files into this body; a body without one offers no media entries. */
+  uploader?: DocumentUploader | null;
 }
 
 /**
@@ -63,6 +72,7 @@ interface DocumentEditorProps {
  * @param root0.handle - The editor to render, with its surface.
  * @param root0.readOnly - True for a viewer.
  * @param root0.myRole - The reader's role on the project.
+ * @param root0.uploader - What takes files into this body.
  * @returns The editor body, the comment panel beside it, the entry and the
  *   bubble bar.
  */
@@ -70,6 +80,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   handle,
   readOnly = false,
   myRole = 'viewer',
+  uploader = null,
 }: DocumentEditorProps): React.JSX.Element {
   const body = React.useRef<HTMLDivElement>(null);
   // The one bit that says whether the panel is on screen, and the reader is
@@ -138,10 +149,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // over such a selection — so one reading covers both of the surfaces the
   // toolbar would otherwise sit on top of. The toolbar's own field leaves the
   // selection alone, so using it does not make it stand aside.
-  const selectionHoldsText = useEditorSnapshot(
-    handle.editor,
-    (editor) => !editor.prosemirrorState.selection.empty,
-  );
+  // What it stands aside for is the bubble bar on screen, not the selection
+  // behind it, which stays without being drawn once the body lets go of the
+  // focus (inner#1127, `document-bars.ts`).
+  const selectionHoldsText = useDocumentBars(handle.editor).bubbleBarUp;
 
   // A hand-off, not a construction: the editor belongs to
   // `document-editor-cache` and outlives every one of these renders. What
@@ -157,6 +168,22 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       container.closest<HTMLElement>('[data-radix-scroll-area-viewport]'),
     );
   }, [handle]);
+
+  // The scroller is where a press on blank space leaves the focus, and where
+  // a press in the body is first read (inner#1127 A20). A Space hidden
+  // lets go of the focus at once: its layers stay on the page, so nothing
+  // waits for them to leave. Shown again, the body decides from where the
+  // focus is.
+  React.useEffect(() => {
+    const view = handle.editor.prosemirrorView;
+    if (viewport === null || view === null || readOnly) return;
+    const detach = attachBodyScroller(view, viewport, handle.editor);
+    recomputeBodyFocus(view);
+    return () => {
+      detach();
+      releaseBodyFocus(view);
+    };
+  }, [handle, viewport, readOnly]);
 
   // Back on screen after a switch of Space, the caret goes back in if it was
   // here when the Space was hidden (inner#1235 A1): hiding takes focus out of
@@ -175,7 +202,12 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     () => handle.editor.prosemirrorView?.focus(),
   );
 
-  return (
+  const viewOfEditor = React.useCallback(
+    () => viewOf(handle.editor),
+    [handle.editor],
+  );
+
+  const chrome = (
     // `isolate` keeps the z-values below local: the entry has to paint over
     // the body and the bubble bar over the entry, and neither of those two
     // relationships is anyone else's business. Without it both numbers would
@@ -202,13 +234,16 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           // caret that opens a document is `absolute` with no offsets and so
           // stays at its static position, and a remote caret's label is measured
           // against the caret itself.
-          viewportClassName='relative'
+          viewportClassName='relative outline-none'
         >
           {/* Both a flex item of the wrapper `index.css` grows, so the row
               takes that height, and a flex container, so the text column and
               the panel beside it each take it in turn. */}
-          <div className='flex flex-1'>
-            <div className='flex min-w-0 flex-1 flex-col px-[var(--doc-body-gutter)]'>
+          <div {...{ [BODY_BLANK]: '' }} className='flex flex-1'>
+            <div
+              {...{ [BODY_BLANK]: '' }}
+              className='flex min-w-0 flex-1 flex-col px-[var(--doc-body-gutter)]'
+            >
               <DocumentMenuEntry
                 commentsOpen={railOpen}
                 onOpenComments={openRail}
@@ -217,6 +252,9 @@ export const DocumentEditor = React.memo(function DocumentEditor({
               <div
                 ref={body}
                 data-testid='document-editor-content'
+                // The body and the row handles that stand beside it: the
+                // focus on a handle has not left the body.
+                {...bodyPartMark(handle.editor)}
                 className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
               />
             </div>
@@ -245,6 +283,20 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           readOnly={readOnly}
         />
       )}
+      {/* Every image, video and audio block, drawn into its node view's
+          container from inside this tree (inner#1127). A viewer sees them
+          too; their controls are hidden while the body is not editable. */}
+      <DocumentMediaViews editor={handle.editor} />
+      {/* What each upload in flight shows, in the body where it will land
+          (inner#1127 A4). Kept for a body that turned read-only meanwhile:
+          a failed file still has its placeholder to remove. */}
+      {uploader !== null && (
+        <DocumentUploadPlaceholders
+          editor={handle.editor}
+          uploader={uploader}
+          readOnly={readOnly}
+        />
+      )}
       {/* The strip beside the row under the pointer. A viewer gets none of it
           (A3): every command in the handle's menu writes to the document. */}
       {!readOnly && <DocumentBlockControls editor={handle.editor} />}
@@ -268,5 +320,13 @@ export const DocumentEditor = React.memo(function DocumentEditor({
         />
       )}
     </div>
+  );
+
+  // A viewer gets no media entries (A11); the menus that offer them are not
+  // drawn for one either.
+  return (
+    <DocumentMediaPicker uploader={readOnly ? null : uploader} view={viewOfEditor}>
+      {chrome}
+    </DocumentMediaPicker>
   );
 });

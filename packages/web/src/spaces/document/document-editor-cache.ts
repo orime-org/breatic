@@ -58,7 +58,12 @@
 import type * as Y from 'yjs';
 import type { BlockNoteEditor } from '@blocknote/core';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment, t } from '@breatic/shared';
+
+import { assetsApi } from '@web/data/api/assets';
+import { uploadMedia } from '@web/data/upload/media-upload';
+import { toast } from '@web/lib/toast';
+import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
@@ -76,6 +81,13 @@ import {
 } from '@web/spaces/document/document-undo-blocknote';
 import { marksStayOnTextExtension } from '@web/spaces/document/document-marks-on-text';
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
+import { documentUploadsExtension, holdGap } from '@web/spaces/document/document-upload-slots';
+import {
+  createDocumentUploader,
+  type DocumentUploader,
+} from '@web/spaces/document/document-uploads';
+import { measureMediaFile } from '@web/spaces/document/document-media-size';
+import type { FilesArrival } from '@web/spaces/document/document-file-input';
 
 /** The editor plus what is handed out alongside it. */
 export interface DocumentEditorHandle {
@@ -108,6 +120,17 @@ export interface DocumentEditorHandle {
    * @returns Unsubscribe.
    */
   onClearDocumentRequest: (listener: () => void) => () => void;
+  /**
+   * What takes files into this body (inner#1127), or null for an editor built
+   * with nowhere to upload them to.
+   */
+  uploader: DocumentUploader | null;
+}
+
+/** Where a body's uploads land. */
+export interface DocumentUploadTarget {
+  readonly projectId: string;
+  readonly spaceId: string;
 }
 
 /**
@@ -140,6 +163,43 @@ export interface DocumentEditorInputs {
    * the first paint.
    */
   editable: boolean;
+  /**
+   * Where files put into this body are uploaded to. Left out, the body takes
+   * no files: a drop or a paste of one does nothing.
+   */
+  uploadTarget?: DocumentUploadTarget;
+}
+
+/**
+ * The uploader for a body whose uploads land in this project and Space.
+ * @param target - Where they land.
+ * @param undoManager - The body's undo manager.
+ * @returns The uploader.
+ */
+function uploaderFor(target: DocumentUploadTarget, undoManager: Y.UndoManager): DocumentUploader {
+  const operations = useSpaceOperationsStore.getState();
+  return createDocumentUploader({
+    maxUploadBytes: () =>
+      assetsApi
+        .fetchUploadConfig()
+        .then((cfg) => cfg.maxUploadBytes)
+        // The ticket endpoint refuses an oversize file itself; a cap that
+        // could not be read only skips the early refusal.
+        .catch(() => Infinity),
+    upload: (file, onProgress) =>
+      uploadMedia(file, { projectId: target.projectId, spaceId: target.spaceId }, onProgress),
+    measure: measureMediaFile,
+    register: (id) => {
+      operations.register(target.spaceId, id);
+    },
+    unregister: (id) => {
+      operations.unregister(target.spaceId, id);
+    },
+    refuse: (key, params) => {
+      toast.warning(t(key, params));
+    },
+    undo: undoManager,
+  });
 }
 
 /**
@@ -155,10 +215,32 @@ function createDocumentEditor(
   const { manager: undoManager, extension: undoExtension } =
     createDocumentUndo(doc);
   const clearListeners = new Set<() => void>();
+  const target = inputs.uploadTarget;
+  const uploader = target === undefined ? null : uploaderFor(target, undoManager);
+  if (uploader !== null) {
+    // Fetched now so a paste can tell our media from outside links the moment
+    // it lands (inner#1127 A18). A fetch that fails leaves every pasted
+    // medium out until a later fetch lands, which an upload also makes.
+    void assetsApi.fetchUploadConfig().catch(() => undefined);
+  }
 
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(doc),
     comments: { doc, readWho: inputs.readWho },
+    ...(uploader !== null && {
+      onFiles: (arrival: FilesArrival) => {
+        const view = viewOf(editor);
+        if (view !== null) {
+          void uploader.start(view, arrival.files, holdGap(view, arrival.gap), arrival.aimed);
+        }
+      },
+    }),
+    media: {
+      assetUrlPrefix: () => assetsApi.cachedUploadConfig()?.assetUrlPrefix ?? null,
+      onLeftOut: (count) => {
+        toast.warning(t('spaces.document.media.leftOut', { count }));
+      },
+    },
     extensions: [
       // The awareness is withheld from BlockNote's own collaboration wiring and
       // handed to this plugin instead; `build-document-editor` carries why.
@@ -178,6 +260,7 @@ function createDocumentEditor(
       marksStayOnTextExtension(),
       documentPlaceholderExtension(),
       documentLocaleRedrawExtension(),
+      documentUploadsExtension(),
     ],
   });
 
@@ -190,6 +273,7 @@ function createDocumentEditor(
     editor,
     undoManager,
     surface,
+    uploader,
     onClearDocumentRequest: (listener) => {
       clearListeners.add(listener);
       return () => {

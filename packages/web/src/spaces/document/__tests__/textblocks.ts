@@ -11,6 +11,9 @@
  */
 
 import type { Node as PMNode } from '@tiptap/pm/model';
+import type { EditorView } from '@tiptap/pm/view';
+
+import { rowById } from '@web/spaces/document/document-row-by-id';
 
 /** One textblock and the positions around it. */
 export interface Textblock {
@@ -63,4 +66,48 @@ export function textblockReading(
   text: string,
 ): Textblock | undefined {
   return textblocks(doc).find((block) => block.node.textContent === text);
+}
+
+/**
+ * Puts a block this build does not know in place of the first textblock.
+ * @param view - The editor's view.
+ * @returns The fallback block's element.
+ */
+export function fallbackForFirstTextblock(view: EditorView): Element {
+  const first = textblocks(view.state.doc)[0]!;
+  const fallback = view.state.schema.nodes['unsupportedBlock']!;
+  view.dispatch(view.state.tr.replaceWith(first.before, first.after, fallback.create({ originalName: 'x' })));
+  return view.dom.querySelector('[data-unsupported-block]')!;
+}
+
+/**
+ * Where a block is, by its id.
+ * @param doc - The document.
+ * @param id - The block's id.
+ * @returns Its start and end.
+ */
+function rowOf(doc: PMNode, id: string): { from: number; to: number } {
+  const row = rowById(doc, id);
+  if (row === undefined) throw new Error(`No block ${id} in the document`);
+  return row;
+}
+
+/**
+ * The gap just before a block.
+ * @param doc - The document.
+ * @param id - The block after the gap.
+ * @returns The position.
+ */
+export function gapBefore(doc: PMNode, id: string): number {
+  return rowOf(doc, id).from;
+}
+
+/**
+ * The gap just after a block.
+ * @param doc - The document.
+ * @param id - The block before the gap.
+ * @returns The position.
+ */
+export function gapAfter(doc: PMNode, id: string): number {
+  return rowOf(doc, id).to;
 }

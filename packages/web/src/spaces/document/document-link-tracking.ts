@@ -74,17 +74,20 @@ interface SyncPluginState {
   doc?: Y.Doc;
 }
 
+/** The body's sync binding: its Yjs document, fragment and position mapping. */
+export interface SyncBound {
+  doc: Y.Doc;
+  type: Y.XmlFragment;
+  mapping: ProsemirrorMapping;
+}
+
 /**
  * Read the collaboration binding, when there is one.
  * @param editorState - The editor state to read from.
  * @returns The three things a position conversion needs, or null when this
  *   editor is not bound to a shared document.
  */
-export function syncBindingOf(editorState: EditorState): {
-  doc: Y.Doc;
-  type: Y.XmlFragment;
-  mapping: ProsemirrorMapping;
-} | null {
+export function syncBindingOf(editorState: EditorState): SyncBound | null {
   const state = ySyncPluginKey.getState(editorState) as SyncPluginState | undefined;
   if (!state?.type || !state.binding || !state.doc) return null;
   return { doc: state.doc, type: state.type, mapping: state.binding.mapping };

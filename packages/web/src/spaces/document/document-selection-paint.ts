@@ -13,9 +13,10 @@
  *
  * WHICH SELECTIONS. A range that is not empty (a drag, Shift with an arrow,
  * select-all) paints every no-text block wholly inside it. A node selection
- * paints only a divider: the reader makes one by clicking a divider or walking
- * onto it with the arrows, and the 2026-09-18 rule that the machinery's own
- * node selections are not drawn (`index.css:558`) stays for every other block.
+ * paints only a divider: the reader makes one by clicking it or walking onto
+ * it with the arrows, and the 2026-09-18 rule that the machinery's own node
+ * selections are not drawn (`index.css`, "A node-selected block is not drawn") stays for every other block. A
+ * media block the reader selects draws itself (see `NODE_SELECTED`).
  *
  * WHEN. Only while the reader can see a selection at all. In an editable body
  * that is while it holds the focus. A read-only body never takes the focus —
@@ -40,8 +41,10 @@ import {
   emptyEdgeLinePos,
   type BodyEdge,
 } from '@web/spaces/document/document-body-edge-selection';
+import { bodyHolds } from '@web/spaces/document/document-body-focus';
 import { UNSUPPORTED_BLOCK } from '@web/spaces/document/document-unsupported-blocknote';
 import { DIVIDER } from '@web/spaces/document/document-divider';
+import { MEDIA_BLOCK_TYPES, isMediaBlockType } from '@web/spaces/document/document-media-types';
 
 /** The class `index.css` paints a no-text block inside the selection with. */
 export const IN_SELECTION_CLASS = 'doc-in-selection';
@@ -53,8 +56,32 @@ export const IN_SELECTION_CLASS = 'doc-in-selection';
  */
 export const EMPTY_LINE_CLASS = 'doc-empty-line-in-selection';
 
+/**
+ * The class `index.css` frames an image, video or audio block inside the
+ * selection with. A band behind the media would fill the rest of its row; the
+ * frame sits on the media itself (inner#1127).
+ */
+export const MEDIA_IN_SELECTION_CLASS = 'doc-media-in-selection';
+
+
 /** The blocks with no text that a range selection paints. */
-const NO_TEXT = new Set([DIVIDER, UNSUPPORTED_BLOCK]);
+const NO_TEXT = new Set<string>([DIVIDER, UNSUPPORTED_BLOCK, ...MEDIA_BLOCK_TYPES]);
+
+/**
+ * The node selections painted here. A media block the reader selected draws
+ * its own frame, with its corner knobs and its toolbar, off its own selected
+ * state (`DocumentMediaBlock`), so all of it comes and goes together.
+ */
+const NODE_SELECTED = new Set([DIVIDER]);
+
+/**
+ * The class a no-text block in the selection is painted with.
+ * @param name - The block's node name.
+ * @returns The frame for a media block, the band for the rest.
+ */
+function paintClassOf(name: string): string {
+  return isMediaBlockType(name) ? MEDIA_IN_SELECTION_CLASS : IN_SELECTION_CLASS;
+}
 
 /** Tags the transaction that asks for the band to be redrawn. */
 const KEY = new PluginKey('documentSelectionPaint');
@@ -97,9 +124,11 @@ function paintFor(state: EditorState): DecorationSet {
   const { selection, doc } = state;
   const found: Decoration[] = [];
   if (selection instanceof NodeSelection) {
-    if (selection.node.type.name === DIVIDER) {
+    if (NODE_SELECTED.has(selection.node.type.name)) {
       found.push(
-        Decoration.node(selection.from, selection.to, { class: IN_SELECTION_CLASS }),
+        Decoration.node(selection.from, selection.to, {
+          class: paintClassOf(selection.node.type.name),
+        }),
       );
     }
   } else if (!selection.empty) {
@@ -108,7 +137,7 @@ function paintFor(state: EditorState): DecorationSet {
     doc.nodesBetween(selection.from, selection.to, (node, pos) => {
       if (node.isTextblock) return false;
       if (!NO_TEXT.has(node.type.name)) return true;
-      found.push(Decoration.node(pos, pos + node.nodeSize, { class: IN_SELECTION_CLASS }));
+      found.push(Decoration.node(pos, pos + node.nodeSize, { class: paintClassOf(node.type.name) }));
       return false;
     });
     found.push(...emptyLinesAtEnds(selection, doc));
@@ -147,7 +176,9 @@ export const documentSelectionPaintExtension = createExtension(({ editor }) => {
    * @returns True while the band belongs on screen.
    */
   const visible = (view: EditorView): boolean => {
-    if (view.editable) return view.hasFocus();
+    // An editable body draws what is selected while it holds the focus, which
+    // counts its own layers (a menu, a confirm dialog) as the body.
+    if (view.editable) return bodyHolds(view.state);
     const selection = view.dom.ownerDocument.getSelection();
     return (
       selection !== null &&

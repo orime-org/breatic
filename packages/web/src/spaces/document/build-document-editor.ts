@@ -42,6 +42,9 @@ import { documentNodeCompositionExtension } from '@web/spaces/document/document-
 import { documentDividerInputExtension } from '@web/spaces/document/document-divider';
 import { documentBodyEdgePointerExtension } from '@web/spaces/document/document-body-edge-pointer';
 import { documentBodyEdgeExtension } from '@web/spaces/document/document-body-edge-selection';
+import { documentMediaRowPressExtension } from '@web/spaces/document/document-media-row-press';
+import { documentBodyFocusExtension } from '@web/spaces/document/document-body-focus';
+import { documentBlankPressExtension } from '@web/spaces/document/document-body-press';
 import { documentSelectionPaintExtension } from '@web/spaces/document/document-selection-paint';
 import { documentEnterExtension } from '@web/spaces/document/document-enter';
 import { documentKeyboardMoveExtension } from '@web/spaces/document/document-keyboard-move';
@@ -66,6 +69,16 @@ import { documentCommentPasteExtension } from '@web/spaces/document/document-com
 import { documentCommentSelection } from '@web/spaces/document/document-comment-selection';
 import { documentNoNodeClickExtension } from '@web/spaces/document/document-no-node-click';
 import { LINK_ANCHOR_SELECTOR } from '@web/spaces/document/document-link';
+import {
+  documentPastedMediaExtension,
+  type PastedMediaOptions,
+} from '@web/spaces/document/document-external-media';
+import {
+  documentFileDropExtension,
+  fileDropPosition,
+  filesPasteHandler,
+  type FilesSink,
+} from '@web/spaces/document/document-file-input';
 
 /** What a caller has to supply to open a document. */
 export interface DocumentEditorOptions {
@@ -80,6 +93,17 @@ export interface DocumentEditorOptions {
    * two registrars brings the comment mark — see {@link commentWiring}.
    */
   readonly comments?: DocumentCommentsOptions;
+  /**
+   * Where files dropped or pasted into the body are handed over, with the gap
+   * they go into (inner#1127 A2, A3). Left out, a dropped or pasted file does
+   * nothing.
+   */
+  readonly onFiles?: FilesSink;
+  /**
+   * How pasted media are judged (inner#1127 A18). Left out, every pasted
+   * medium is left out.
+   */
+  readonly media?: PastedMediaOptions;
 }
 
 /**
@@ -147,6 +171,9 @@ export function buildDocumentEditor(
       documentBodyEdgePointerExtension(),
       documentBodyEdgeExtension(),
       documentSelectionPaintExtension(),
+      documentBodyFocusExtension(),
+      documentBlankPressExtension(),
+      documentMediaRowPressExtension(),
       documentLinkEditMarkExtension(),
       documentDragDropExtension(),
       documentNoNodeClickExtension(),
@@ -156,9 +183,15 @@ export function buildDocumentEditor(
       commentWiring(options.comments),
       documentCommentPasteExtension(),
       documentCommentDraftRange(),
+      documentFileDropExtension(options.onFiles),
+      documentPastedMediaExtension(options.media),
       ...(options.extensions ?? []),
     ],
     disableExtensions: [
+      // `documentFileDropExtension` takes file drops; the library's own would
+      // take them first, at the DOM event, and insert nothing without an
+      // `uploadFile` option (`fileDropExtension.ts:27-45`).
+      'dropFile',
       // Ours draws the placeholder, from `document-placeholders-blocknote.ts`.
       'placeholder',
       // §14 keeps our own bubble bar, so BlockNote's is never drawn — and a
@@ -192,7 +225,7 @@ export function buildDocumentEditor(
     // draws a band across the whole 768px column; two reads as a line, which
     // is all this has to say and is how the rest of this product's chrome is
     // drawn.
-    dropCursor: { color: false, width: 2 },
+    dropCursor: { color: false, width: 2, hooks: { computeDropPosition: fileDropPosition } },
     // Merge and split, a fill colour per cell, and a header row and column.
     // Cell text colour stays off: a cell's text takes the same text colour
     // mark every other run does.
@@ -202,7 +235,10 @@ export function buildDocumentEditor(
       cellTextColor: false,
       headers: true,
     },
-    pasteHandler: documentPasteHandler,
+    pasteHandler:
+      options.onFiles === undefined
+        ? documentPasteHandler
+        : filesPasteHandler(options.onFiles, documentPasteHandler),
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;
 }

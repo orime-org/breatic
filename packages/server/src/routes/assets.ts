@@ -74,9 +74,15 @@ const assets = new Hono<{ Variables: AuthVariables }>();
  * A part's retry count is deliberately absent: parts go through the shared
  * HTTP transport, which owns how many times each one is delivered, so no knob
  * here can move it.
+ *
+ * `assetUrlPrefix` is what every stored object's public URL starts with. A
+ * document body keeps a pasted media block only when its address is one of
+ * ours (inner#1127 A18), and this side is the one that knows the bucket's
+ * public base.
  */
-assets.get("/upload-config", requireAuth, (c) => {
+assets.get("/upload-config", requireAuth, async (c) => {
   const { upload } = getStorageConfig();
+  const store = await getStorageAdapter();
   return c.json({
     data: {
       maxUploadBytes: upload.max_upload_bytes,
@@ -84,6 +90,7 @@ assets.get("/upload-config", requireAuth, (c) => {
       clientRetryBaseDelayMs: upload.client_retry_base_delay_ms,
       clientRequestTimeoutMs: upload.client_request_timeout_ms,
       clientPutMinBytesPerSec: upload.client_put_min_bytes_per_sec,
+      assetUrlPrefix: store.publicUrl(""),
     },
   });
 });

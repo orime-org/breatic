@@ -31,7 +31,7 @@
 
 import { createExtension } from '@blocknote/core';
 import type { Node } from '@tiptap/pm/model';
-import { Plugin, PluginKey, type Selection } from '@tiptap/pm/state';
+import { Plugin, PluginKey, TextSelection, type Selection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import {
@@ -44,6 +44,8 @@ import {
   type BodyEdge,
   type PointerZone,
 } from '@web/spaces/document/document-body-edge-selection';
+import { bodyHolds } from '@web/spaces/document/document-body-focus';
+import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 
 /**
  * How far the pointer can travel before a press is a drag rather than a click:
@@ -173,14 +175,14 @@ function isPlainPress(event: MouseEvent): boolean {
 }
 
 /**
- * Whether a press lands on a control a block draws, a check-list checkbox or a
- * toggle heading's button: the press is the control's, and the text selection
- * stays as it is.
+ * Whether a press lands on a control a block draws — a check-list checkbox, a
+ * toggle heading's button, a media block's toolbar, resize knob or caption
+ * field: the press is the control's, and the text selection stays as it is.
  * @param event - The press.
  * @returns True for a press on such a control.
  */
 function onControl(event: MouseEvent): boolean {
-  return event.target instanceof Element && event.target.closest('input, button') !== null;
+  return event.target instanceof Element && event.target.closest(`input, button, ${MEDIA_CHROME}`) !== null;
 }
 
 /**
@@ -280,10 +282,13 @@ class PointerFollower {
    */
   private readonly onDown = (event: MouseEvent): void => {
     const { view } = this;
-    if (!view.editable || !isPlainPress(event) || onControl(event)) return;
+    // A press the body's press entry took as blank is followed only from
+    // there (`document-body-press.ts`).
+    if (event.defaultPrevented || !view.editable || !isPlainPress(event) || onControl(event)) return;
     const zone = zoneAt(view, event.clientY);
     const at = { startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY };
-    if (event.shiftKey) {
+    // With the body not holding the focus there is no selection to extend.
+    if (event.shiftKey && bodyHolds(view.state)) {
       this.extendFrom(event, zone, at);
       return;
     }
@@ -304,7 +309,7 @@ class PointerFollower {
    * @param at.x - Across.
    * @param at.y - Down.
    */
-  private extendFrom(event: MouseEvent, zone: PointerZone, at: Pick<Press, 'startX' | 'startY' | 'x' | 'y'>): void {
+  extendFrom(event: MouseEvent, zone: PointerZone, at: Pick<Press, 'startX' | 'startY' | 'x' | 'y'>): void {
     const { view } = this;
     const { doc, selection } = view.state;
     const pointer = zone === 'body' ? positionAt(view, event.clientX, event.clientY) : null;
@@ -326,6 +331,23 @@ class PointerFollower {
     if (!view.hasFocus()) view.focus();
     const next = dragSelection(doc, { press: zone, anchor: fixed, left: true }, zone, pointer);
     if (next !== null && !next.eq(selection)) view.dispatch(view.state.tr.setSelection(next));
+  }
+
+  /**
+   * Starts following from a point the body's press entry took as blank: the
+   * caret goes to the nearest place for text and the drag goes on from there.
+   * @param x - Across.
+   * @param y - Down.
+   */
+  followFrom(x: number, y: number): void {
+    const { view } = this;
+    const pos = positionAt(view, x, y);
+    if (pos !== null) {
+      view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos))));
+    }
+    view.focus();
+    const zone = zoneAt(view, y);
+    this.begin({ startX: x, startY: y, x, y, zone, anchorEdge: zone === 'body' ? null : zone, left: true, moved: true, onWidget: false });
   }
 
   /**
@@ -434,6 +456,26 @@ function travelled(press: Press, x: number, y: number): boolean {
 
 /** The follower of each view, for `createSelectionBetween` to ask. */
 const followers = new WeakMap<EditorView, PointerFollower>();
+
+/**
+ * Starts following a drag from a point on blank space.
+ * @param view - The view.
+ * @param x - Across.
+ * @param y - Down.
+ */
+export function followFromPoint(view: EditorView, x: number, y: number): void {
+  followers.get(view)?.followFrom(x, y);
+}
+
+/**
+ * Extends the selection to a Shift+press on blank space.
+ * @param view - The view.
+ * @param event - The press.
+ */
+export function extendFromPress(view: EditorView, event: MouseEvent): void {
+  const at = { startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY };
+  followers.get(view)?.extendFrom(event, zoneAt(view, event.clientY), at);
+}
 
 /**
  * The extension that lets a drag or a Shift+click reach past the first or last

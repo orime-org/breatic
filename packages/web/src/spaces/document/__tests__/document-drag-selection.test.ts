@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -26,6 +26,7 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import {
   caretAtStartOf,
   readerPlace,
+  restoreAfterRowDrag,
   restoreReaderPlace,
 } from '@web/spaces/document/document-drag-selection';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
@@ -60,6 +61,8 @@ function open(): ReturnType<typeof buildDocumentEditor> {
     { type: 'paragraph', content: 'alpha' },
     { type: 'paragraph', content: 'beta' },
   ] as never);
+  // The reader is working in the body: it holds the focus.
+  editor.prosemirrorView.dom.focus();
   return editor;
 }
 
@@ -141,5 +144,49 @@ describe('putting back a selection that reaches past the last block', () => {
     expect(doc.resolve(selection.anchor).parent.textContent).toBe('alpha');
     expect(selection.anchor - doc.resolve(selection.anchor).start()).toBe(1);
     expect(selection.head).toBe(bodyEdgePos(doc, 'end'));
+  });
+});
+
+describe('a drag started from a body that does not hold the focus (inner#1127)', () => {
+  it('has no place of the reader’s to hand back', () => {
+    const editor = open();
+    const view = editor.prosemirrorView;
+    selectTheRow(editor);
+    const outside = document.createElement('input');
+    document.body.appendChild(outside);
+    outside.focus();
+
+    expect(readerPlace(view.state)).toBeUndefined();
+    outside.remove();
+  });
+
+  it('puts the caret at the start of the moved row', () => {
+    const editor = open();
+    const view = editor.prosemirrorView;
+    const second = (editor.document[1] as unknown as Seen).id;
+
+    restoreAfterRowDrag(view, undefined, second);
+
+    const { selection } = view.state;
+    expect(selection).toBeInstanceOf(TextSelection);
+    expect(selection.empty).toBe(true);
+    expect(selection.$from.parent.textContent).toBe('beta');
+    expect(selection.$from.parentOffset).toBe(0);
+  });
+
+  it('selects a moved divider whole', () => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'alpha' },
+      { type: 'divider' },
+    ] as never);
+    const view = editor.prosemirrorView;
+    const divider = (editor.document[1] as unknown as Seen).id;
+
+    restoreAfterRowDrag(view, undefined, divider);
+
+    const { selection } = view.state;
+    expect(selection).toBeInstanceOf(NodeSelection);
+    expect((selection as NodeSelection).node.type.name).toBe('divider');
   });
 });

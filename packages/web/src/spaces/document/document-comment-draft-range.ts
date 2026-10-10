@@ -106,8 +106,6 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import {
   absolutePositionToRelativePosition,
   relativePositionToAbsolutePosition,
-  ySyncPluginKey,
-  yUndoPluginKey,
 } from 'y-prosemirror';
 import * as Y from 'yjs';
 
@@ -118,13 +116,11 @@ import {
 } from '@web/spaces/document/document-comment-selection';
 import {
   syncBindingOf,
+  type SyncBound,
   type TrackedLink,
 } from '@web/spaces/document/document-link-tracking';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
-import {
-  keepOnUndoStack,
-  type UndoManagerLike,
-} from '@web/spaces/document/document-undo-selection';
+import { namesOnUndoStack } from '@web/spaces/document/document-undo-selection';
 import {
   contentRangeOf,
   rowById,
@@ -173,10 +169,6 @@ interface NamedBeforeEdit {
   readonly entry: number;
   readonly links: readonly TrackedLink[];
 }
-
-/** The sync binding, as a position conversion takes it. */
-type Binding = NonNullable<ReturnType<typeof syncBindingOf>>;
-
 
 /**
  * Draws a range in to the letters it covers.
@@ -312,7 +304,7 @@ function carryEnd(
  * @param range - The range, against its letters.
  * @returns The two positions.
  */
-function trackDraft(bound: Binding, range: DraftRange): TrackedLink {
+function trackDraft(bound: SyncBound, range: DraftRange): TrackedLink {
   const start = absolutePositionToRelativePosition(
     range.from,
     bound.type,
@@ -411,7 +403,7 @@ function besideGoneRow(tr: Transaction, id: string, side: Side): number | null {
  */
 function endAcrossYjs(
   tr: Transaction,
-  bound: Binding,
+  bound: SyncBound,
   end: Y.RelativePosition,
   handed: Y.RelativePosition | null,
   was: number,
@@ -455,7 +447,7 @@ function endAcrossYjs(
  */
 function carryAcrossYjs(
   tr: Transaction,
-  bound: Binding,
+  bound: SyncBound,
   link: TrackedLink,
   handed: TrackedLink | null,
   range: DraftRange,
@@ -542,19 +534,6 @@ export function mapDraftRange(
 }
 
 /**
- * Whether a change is the reader's own undo or redo, as the sync plugin marks
- * the change it builds from one.
- * @param tr - The transaction.
- * @returns True for the reader's undo or redo.
- */
-function undoRedo(tr: Transaction): boolean {
-  const sync = tr.getMeta(ySyncPluginKey) as
-    | { isUndoRedoOperation?: boolean }
-    | undefined;
-  return sync?.isUndoRedoOperation === true;
-}
-
-/**
  * Whether a transaction changes the body's text.
  * @param tr - The transaction.
  * @returns False for a selection change, and for the binding re-rendering the
@@ -597,7 +576,7 @@ function carryDraft(
           tr,
           bound,
           link,
-          undoRedo(tr) ? (handed?.[index] ?? null) : null,
+          handed?.[index] ?? null,
           segment,
         )
         : mapDraftRange(segment, tr);
@@ -700,10 +679,12 @@ export const onDraftChange: (listener: () => void) => () => void =
 export const documentCommentDraftRange = createExtension(() => {
   // The open draft's stretches as Yjs names them.
   let tracked: readonly TrackedLink[] | null = null;
-  // The names as they stood when the current Yjs transaction began.
-  let beforeYjs: readonly TrackedLink[] | null = null;
-  // The names the last undo or redo handed back for this draft, if any.
-  let handed: readonly TrackedLink[] | null = null;
+  // The open draft's names, kept on each undo stack item with the press on
+  // the entry they belong to.
+  const onUndoStack = namesOnUndoStack<NamedBeforeEdit>((state) => {
+    const range = draftRangeIn(state);
+    return tracked === null || range === null ? null : { entry: range.entry, links: tracked };
+  });
   return {
     key: 'document-comment-draft-range',
     prosemirrorPlugins: [
@@ -755,6 +736,8 @@ export const documentCommentDraftRange = createExtension(() => {
             // unchanged — which is what a reader clicking elsewhere before
             // typing their comment needs.
             if (current?.kind !== 'aimed' || !changesText(tr)) return current;
+            const kept = onUndoStack.handedFor(tr);
+            const handed = kept?.entry === current.entry ? kept.links : null;
             return carryDraft(tr, current, before, tracked, handed);
           },
         },
@@ -774,52 +757,10 @@ export const documentCommentDraftRange = createExtension(() => {
          */
         view: (view) => {
           const watching = watch.view(view);
-          const doc = syncBindingOf(view.state)?.doc;
-          const undo = (
-            yUndoPluginKey.getState(view.state) as
-              | { undoManager?: UndoManagerLike }
-              | undefined
-          )?.undoManager;
-          /**
-           * Keeps the range as named before the reader's edit on the stack
-           * item the edit made, and hands an undo or redo back the range as
-           * named before the edit it takes back — the way y-prosemirror's undo
-           * plugin keeps and restores the selection (`undo-plugin.js`), with
-           * the handover moved ahead of the observer for the reason
-           * `document-undo-selection.ts` gives.
-           */
-          const stopKeeping =
-            doc === undefined || undo === undefined
-              ? undefined
-              : keepOnUndoStack(
-                doc,
-                undo,
-                {},
-                (): NamedBeforeEdit | null => {
-                  const range = draftRangeIn(view.state);
-                  return beforeYjs === null || range === null
-                    ? null
-                    : { entry: range.entry, links: beforeYjs };
-                },
-                (stored) => {
-                  const named = stored as NamedBeforeEdit | undefined;
-                  handed =
-                    named !== undefined && named.entry === draftRangeIn(view.state)?.entry
-                      ? named.links
-                      : null;
-                },
-              );
-          /**
-           * Takes the names as they stand before a Yjs transaction, which is
-           * what the stack item it may push has to keep — y-prosemirror takes
-           * the selection it restores at the same moment
-           * (`beforeAllTransactions`). An undo or redo retakes the names in
-           * this view before Yjs pushes the item it makes.
-           */
-          const onBeforeAll = (): void => {
-            beforeYjs = tracked;
-          };
-          doc?.on('beforeAllTransactions', onBeforeAll);
+          // Keeps the range as named before the reader's edit on the stack
+          // item the edit made, as y-prosemirror's undo plugin keeps the
+          // selection (`undo-plugin.js`).
+          const stopKeeping = onUndoStack.attach(view);
           return {
             update: (next, prev): void => {
               const range = draftRangeIn(next.state);
@@ -835,8 +776,7 @@ export const documentCommentDraftRange = createExtension(() => {
               watching.update?.(next, prev);
             },
             destroy: (): void => {
-              stopKeeping?.();
-              doc?.off('beforeAllTransactions', onBeforeAll);
+              stopKeeping();
               watching.destroy?.();
             },
           };

@@ -10,6 +10,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { UploadFailedError } from '@web/data/upload/media-upload';
 import { attachFiles, type AttachDeps } from '@web/pages/project/chat/attach-files';
 import { chatAttachments, useChatAttachments } from '@web/stores/chat-attachments';
 
@@ -132,6 +133,19 @@ describe('attaching picked files', () => {
     );
 
     expect(chatAttachments.trayOf(CONV)[0]).toMatchObject({ status: 'failed', failure: 'upload' });
+  });
+
+  it('marks an upload turned away for uploading too often as that', async () => {
+    await pick(
+      [file('cover.png', 'image/png')],
+      deps({
+        upload: async () => {
+          throw new UploadFailedError('rateLimited');
+        },
+      }),
+    );
+
+    expect(chatAttachments.trayOf(CONV)[0]).toMatchObject({ status: 'failed', failure: 'rate_limited' });
   });
 
   it('marks an upload that came back without an address as failed', async () => {

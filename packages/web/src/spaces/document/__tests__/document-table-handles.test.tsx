@@ -15,6 +15,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { BODY_ANCHOR, BODY_LAYER } from '@web/spaces/document/document-body-focus';
 import { deleteRowAt, insertRow } from '@web/spaces/document/document-table-run';
 import { tableTargetOf } from '@web/spaces/document/document-table-target';
 
@@ -40,6 +41,7 @@ vi.mock('@blocknote/react', () => ({
   useExtensionState: () => side.state,
 }));
 
+const { setBubbleBarUp } = await import('@web/spaces/document/document-bars');
 const { DocumentTableHandle } = await import(
   '@web/spaces/document/DocumentTableHandles'
 );
@@ -238,13 +240,23 @@ describe('the row handle (A6)', () => {
     expect(side.unfrozen).toBe(1);
   });
 
-  it('is not there while the reader holds a selection', () => {
+  it('is not there while the bubble bar is up (inner#1127)', () => {
+    const editor = openOver(0, 0);
+    act(() => {
+      setBubbleBarUp(editor, true);
+    });
+    render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
+
+    expect(screen.queryByTestId('doc-table-row-handle')).toBeNull();
+  });
+
+  it('is there over a selection the body let go of, with no bubble bar up (inner#1127)', () => {
     const editor = openOver(0, 0);
     const pm = editor.prosemirrorView!;
     pm.dispatch(pm.state.tr.setSelection(TextSelection.create(pm.state.doc, 2, 4)));
     render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
 
-    expect(screen.queryByTestId('doc-table-row-handle')).toBeNull();
+    expect(screen.queryByTestId('doc-table-row-handle')).not.toBeNull();
   });
 });
 
@@ -265,5 +277,16 @@ describe('the column handle (A6)', () => {
 
     fireEvent.click(screen.getByTestId('doc-table-col-delete'));
     expect(grid(editor)).toEqual([['a1'], ['a2']]);
+  });
+});
+
+describe('the table handles as layers of the body (inner#1127)', () => {
+  it.each(['row', 'column'] as const)('carries the body layer mark on the %s handle, belonging on its table', (orientation) => {
+    const editor = openOver(0, 0);
+    render(<DocumentTableHandle orientation={orientation} hideOtherElements={() => undefined} />);
+
+    const handle = screen.getByTestId(orientation === 'row' ? 'doc-table-row-handle' : 'doc-table-col-handle');
+    const table = (editor.document as { id: string; type: string }[]).find((block) => block.type === 'table')!;
+    expect(handle.closest(`[${BODY_LAYER}]`)?.getAttribute(BODY_ANCHOR)).toBe(`block:${table.id}`);
   });
 });

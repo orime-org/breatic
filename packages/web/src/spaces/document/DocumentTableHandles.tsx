@@ -34,7 +34,6 @@ import {
   PanelLeft,
   PanelTop,
 } from 'lucide-react';
-import type { EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import * as React from 'react';
 
@@ -68,7 +67,6 @@ import {
   useHoldsSelection,
 } from '@web/spaces/document/document-table-menu-parts';
 import {
-  caretCellOf,
   cellButtonBox,
   columnHandleCentre,
   COLUMN_HANDLE_NUDGE,
@@ -77,7 +75,9 @@ import {
 } from '@web/spaces/document/document-table-control-place';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
 import { endTableDrag, startTableDrag } from '@web/spaces/document/document-table-drag';
+import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
+import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 
 /** What the library's handle state carries, as far as these read it. */
 interface HandlesState {
@@ -339,11 +339,9 @@ export function DocumentTableHandle({
   useCloseWhenTargetGone(editor, open, close);
 
   // Read against the frame whenever the controller places the handles; it
-  // hides them on a scroll.
-  const caretCell = useEditorSnapshot(
-    editor as never,
-    (current: { prosemirrorState: EditorState }) => caretCellOf(current.prosemirrorState),
-  );
+  // hides them on a scroll. The cell the cell button stands on, as the button
+  // says: it is up only while the body holds the focus (inner#1127).
+  const caretCell = useDocumentBars(editor).cellButtonCell;
   const placeStyle = React.useMemo<React.CSSProperties | undefined>(() => {
     const place =
       state === undefined
@@ -363,7 +361,12 @@ export function DocumentTableHandle({
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <div className='doc-table-handle relative flex' style={placeStyle}>
+      <div
+        className='doc-table-handle relative flex'
+        style={placeStyle}
+        // A layer of the body, belonging on its table (inner#1127).
+        {...bodyLayerMark(editor, { block: state.block.id })}
+      >
         {/* The anchor, and nothing else, as on the block handle: it answers
             no pointer events, so Radix's trigger handlers never run on the
             button beside it. */}

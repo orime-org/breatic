@@ -45,6 +45,8 @@ function open(text = 'lead'): Editor {
   editor.replaceBlocks(editor.document, [{ type: 'paragraph', content: text }] as never);
   const view = editor.prosemirrorView!;
   view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(view.state.doc)));
+  // A press, a paste or a key in the body lands while it holds the focus.
+  editor.prosemirrorView!.focus();
   return editor;
 }
 
