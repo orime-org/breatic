@@ -8,7 +8,7 @@
  * A drag session starts on any `dragstart` nobody cancelled — a cancelled one
  * starts no drag and would never end — and on content dragged in from outside
  * the window. It reads the pointer off `dragover` and ends on `drop`,
- * `dragend` or the first `mousemove`: a live drag produces no mouse events, and
+ * `dragend` or the first `mousemove` with no button held: a drag whose button is up is over, and
  * a drag whose source left the page, or one from another application, has no
  * `dragend` that reaches the document (`document-table-drag.ts` ends its drag
  * the same way). The pointer leaving the window is told the way Pragmatic drag
@@ -29,9 +29,9 @@
  * could scroll that the pointer nears, and one with `overflow-y: hidden` is not
  * one. Everything else scrolls the body.
  *
- * A pulled selection's session is started and ended by the pointer follower
+ * A pulled selection's session belongs to the pointer follower
  * (`document-body-edge-pointer.ts`), which knows when it took a press from the
- * browser; this file only feeds it the pointer.
+ * browser.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -226,12 +226,13 @@ function listen(view: EditorView, auto: BodyAutoScroll): () => void {
     if (!isSynthetic(event)) endDrag();
   };
   /**
-   * Ends a drag that is over, or feeds a pulled selection.
+   * Ends a drag that is over: the first move with no button held. Firefox lets
+   * a few pointer events through after a drag starts, the button still held
+   * (Pragmatic drag and drop `detect-broken-drag.js`).
    * @param event - The mousemove.
    */
   const onMouseMove = (event: MouseEvent): void => {
-    if (auto.source === 'drag') endDrag();
-    else if (auto.source === 'press') auto.follow({ x: event.clientX, y: event.clientY });
+    if (auto.source === 'drag' && event.buttons === 0) endDrag();
   };
   page.addEventListener('dragstart', onDragStart);
   page.addEventListener('dragenter', onDragEnter, true);

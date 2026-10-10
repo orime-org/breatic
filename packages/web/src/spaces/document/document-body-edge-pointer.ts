@@ -360,7 +360,8 @@ class PointerFollower {
    */
   private scrollWithPress(): void {
     const scroller = bodyScrollerOf(this.view);
-    if (scroller !== null) autoScrollOf(this.view)?.beginPress(scroller);
+    const { press } = this;
+    if (scroller !== null && press !== null) autoScrollOf(this.view)?.beginPress(scroller, { x: press.x, y: press.y });
   }
 
   /**
@@ -418,6 +419,7 @@ class PointerFollower {
     if (press === null) return;
     const left = press.left || zoneAt(this.view, y) !== press.zone;
     this.press = { ...press, x, y, left, moved: press.moved || travelled(press, x, y) };
+    autoScrollOf(this.view)?.follow({ x, y });
     this.sync();
   }
 

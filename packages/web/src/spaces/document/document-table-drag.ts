@@ -193,6 +193,18 @@ function edgesOf(view: EditorView, drag: Drag): number[] | null {
 }
 
 /**
+ * The gap the pointer of a drag event is over.
+ * @param view - The editor view.
+ * @param drag - The drag.
+ * @param event - The dragover or drop.
+ * @returns The gap, or null when the table is not drawn.
+ */
+function gapUnder(view: EditorView, drag: Drag, event: MouseEvent): number | null {
+  const edges = edgesOf(view, drag);
+  return edges === null ? null : dropGapAt(edges, drag.orientation === 'row' ? event.clientY : event.clientX);
+}
+
+/**
  * The line drawn where a drop would land.
  * @param state - The editor state.
  * @returns Decorations on the row or the cells the line runs along.
@@ -245,8 +257,8 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
         return source === null ? null : { ...value, source };
       },
     },
-    // The handle a drag starts from can leave the page mid-drag (the
-    // controller drops it), and a drag from an element no longer in the page
+    // The handle a drag starts from can leave the page mid-drag (its table
+    // can be deleted under it), and a drag from an element no longer in the page
     // fires no `dragend`. So the end is also read off the page: any drop, any
     // drag end, and the first pointer move with no button held.
     view: (view) => {
@@ -284,10 +296,8 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
           const drag = tableDragKey.getState(view.state);
           if (drag == null) return false;
           event.preventDefault();
-          const edges = edgesOf(view, drag);
-          if (edges === null) return true;
-          const gap = dropGapAt(edges, drag.orientation === 'row' ? event.clientY : event.clientX);
-          if (gap !== drag.gap) {
+          const gap = gapUnder(view, drag, event);
+          if (gap !== null && gap !== drag.gap) {
             const command: DragCommand = { gap };
             view.dispatch(view.state.tr.setMeta(tableDragKey, command).setMeta('addToHistory', false));
           }
@@ -297,7 +307,10 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
           const drag = tableDragKey.getState(view.state);
           if (drag == null) return false;
           event.preventDefault();
-          if (drag.gap !== null) moveToGap(editor, drag.source, drag.orientation, drag.gap);
+          // Read at the drop itself: the body or the table frame can scroll the
+          // lines under a still pointer between dragovers (inner#1350).
+          const gap = gapUnder(view, drag, event) ?? drag.gap;
+          if (gap !== null) moveToGap(editor, drag.source, drag.orientation, gap);
           endTableDrag(view);
           return true;
         },

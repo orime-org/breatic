@@ -80,7 +80,6 @@ import { endTableDrag, startTableDrag } from '@web/spaces/document/document-tabl
 import {
   buildDragPreview,
   tableLinePreviewContent,
-  type DragPreview,
 } from '@web/spaces/document/document-drag-preview';
 import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
@@ -300,7 +299,9 @@ export function DocumentTableHandle({
   // source, stays in the page and its `dragend` reaches the document
   // (inner#1350 §5.2); frozen, it no longer follows the table, so it is hidden.
   const source = useDragSourceHidden();
-  const preview = React.useRef<DragPreview | null>(null);
+  // Gives back what a drag off this handle took: its preview, and the handles
+  // it froze. Its end and the unmount both call it, whichever comes first.
+  const releaseDrag = React.useRef<(() => void) | null>(null);
   const row = orientation === 'row';
 
   // What the unmount has to undo, read when it runs: the controller drops a
@@ -315,7 +316,8 @@ export function DocumentTableHandle({
   React.useEffect(
     () => () => {
       const last = held.current;
-      preview.current?.remove();
+      releaseDrag.current?.();
+      releaseDrag.current = null;
       if (!last.open) return;
       last.handles.unfreezeHandles();
       last.hideOtherElements(false);
@@ -410,19 +412,21 @@ export function DocumentTableHandle({
             event.dataTransfer.effectAllowed = 'move';
             event.dataTransfer.setData(TABLE_LINE_TYPE, '');
             const content = tableLinePreviewContent(view, pos, orientation);
-            if (content !== null) {
-              preview.current = buildDragPreview(view, content);
-              event.dataTransfer.setDragImage(preview.current.element, 0, 0);
-            }
+            const preview = content === null ? null : buildDragPreview(view, content);
+            if (preview !== null) event.dataTransfer.setDragImage(preview.element, 0, 0);
             handles.freezeHandles();
+            releaseDrag.current = () => {
+              preview?.remove();
+              // An open menu keeps the handles frozen; it lets them go itself.
+              if (!held.current.open) handles.unfreezeHandles();
+            };
             source.hideAfterStart();
           }}
           onDragEnd={() => {
             const view = editor.prosemirrorView;
             if (view !== undefined) endTableDrag(view);
-            preview.current?.remove();
-            preview.current = null;
-            if (!open) handles.unfreezeHandles();
+            releaseDrag.current?.();
+            releaseDrag.current = null;
             source.show();
           }}
           onClick={() => {

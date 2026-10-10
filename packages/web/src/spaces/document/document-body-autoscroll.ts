@@ -235,9 +235,11 @@ export class BodyAutoScroll {
   /**
    * Starts a pulled-selection session on the body scroller.
    * @param el - The body scroller.
+   * @param at - Where the press is.
    */
-  beginPress(el: HTMLElement): void {
+  beginPress(el: HTMLElement, at: PointerAt): void {
     this.start('press', { el, axis: 'y', gate: false });
+    this.follow(at);
   }
 
   /**
@@ -256,6 +258,11 @@ export class BodyAutoScroll {
     const { session } = this;
     if (session === null || session.source !== 'drag') return;
     session.outside = true;
+    // The last dragover, which no frame may have read yet.
+    if (session.at !== null) {
+      const { target } = session;
+      session.last = readEdge(target.el.getBoundingClientRect(), session.at, target.axis, target.gate);
+    }
     session.carry = carriesOutside(session.last, this.edgeIsWindowEdge(session));
   }
 
