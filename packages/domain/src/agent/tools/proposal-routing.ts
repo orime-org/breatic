@@ -211,6 +211,18 @@ function slotsPhrase(chosen: ModelInfo): string {
 }
 
 /**
+ * How many times an element a refusal names appears in the proposal, said
+ * after it: nothing for once, so a fix that takes it out is read as taking
+ * every copy out.
+ * @param count - How many times it appears.
+ * @returns ", N times", or the empty string.
+ * @throws {never} Never.
+ */
+export function timesNamed(count: number): string {
+  return count > 1 ? `, ${String(count)} times` : "";
+}
+
+/**
  * A sentence with the space that joins it to the one before, or nothing.
  * @param sentence - The sentence, possibly empty.
  * @returns It with a leading space, or the empty string.
@@ -370,6 +382,18 @@ export function goingWay(arriving: readonly Arriving[], kind: string, into: stri
 }
 
 /**
+ * The fix for an index a fill names that cannot stand, which may be named
+ * more than once.
+ * @param param - The fill.
+ * @param count - How many times the index is named.
+ * @returns The fix.
+ * @throws {never} Never.
+ */
+function takeOutOfFill(param: string, count: number): string {
+  return count > 1 ? `Take every one out of fills "${param}".` : `Take it out of fills "${param}".`;
+}
+
+/**
  * The slots one generation fills straight from material nodes (inner#1315),
  * or the refusal for the first fill that cannot stand.
  *
@@ -392,11 +416,13 @@ export function fillsOf(
   for (const [param, indices] of Object.entries(node.fills ?? {})) {
     const outside = indices.find((at) => proposal.nodes[at] === undefined);
     if (outside !== undefined) {
-      return refuse("fill-outside", `fills "${param}" on "${node.name}" points at node ${String(outside)}, which is not in the group.`, `Take it out of fills "${param}".`);
+      const count = indices.filter((at) => at === outside).length;
+      return refuse("fill-outside", `fills "${param}" on "${node.name}" points at node ${String(outside)}${timesNamed(count)}, which is not in the group.`, takeOutOfFill(param, count));
     }
     const named = indices.map((at) => proposal.nodes[at] as ProposalNode);
-    if (named.includes(node)) {
-      return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself, and a node cannot fill its own slot.`, `Take it out of fills "${param}".`);
+    const selfCount = named.filter((n) => n === node).length;
+    if (selfCount > 0) {
+      return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself${timesNamed(selfCount)}, and a node cannot fill its own slot.`, takeOutOfFill(param, selfCount));
     }
     const slot = slots.find(({ way }) => way.into === param);
     if (slot === undefined) {
@@ -406,16 +432,17 @@ export function fillsOf(
     }
     const seen = new Map<string, ProposalNode>();
     for (const from of named) {
+      const count = named.filter((n) => n === from).length;
+      const takeFrom = `Take "${from.name}" out of fills "${param}"${count > 1 ? ", every time it is named" : ""}.`;
       if (from.material === undefined) {
-        return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${from.name}", which holds no material, and fills takes only nodes holding it. ${waysOrNone(from, node, chosen)}`, `Take "${from.name}" out of fills "${param}".`);
+        return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${from.name}"${timesNamed(count)}, which holds no material, and fills takes only nodes holding it. ${waysOrNone(from, node, chosen)}`, takeFrom);
       }
       if (from.type !== slot.kind) {
-        return refuse("fill-wrong-kind", `"${chosen.name}" takes ${slot.kind} in "${param}", and "${from.name}" is ${from.type}. ${waysOrNone(from, node, chosen)}`, `Take "${from.name}" out of fills "${param}".`);
+        return refuse("fill-wrong-kind", `"${chosen.name}" takes ${slot.kind} in "${param}", and "${from.name}" is ${from.type}${count > 1 ? `, named ${String(count)} times` : ""}. ${waysOrNone(from, node, chosen)}`, takeFrom);
       }
       const twin = seen.get(from.material);
       if (twin === from) {
-        const times = named.filter((n) => n === from).length;
-        return refuse("fill-repeated", `fills "${param}" on "${node.name}" names "${from.name}" ${String(times)} times, and the slot keeps one copy of it.`, "Name it once.");
+        return refuse("fill-repeated", `fills "${param}" on "${node.name}" names "${from.name}" ${String(count)} times, and the slot keeps one copy of it.`, "Name it once.");
       }
       if (twin !== undefined) {
         return refuse("fill-twice", `fills "${param}" on "${node.name}" holds "${twin.name}" and "${from.name}", which hold the same material, and the slot keeps one copy of it.`);

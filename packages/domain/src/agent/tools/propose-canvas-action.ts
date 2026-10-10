@@ -80,6 +80,28 @@ function withCatalogFacts(proposal: CanvasProposal): CanvasProposal {
 }
 
 /**
+ * Whether two edges join the same two nodes the same way round.
+ * @param a - One edge.
+ * @param b - The other.
+ * @returns True when both run from the same node to the same node.
+ * @throws {never} Never.
+ */
+function sameEnds(a: CanvasProposal["edges"][number], b: CanvasProposal["edges"][number]): boolean {
+  return a.fromIndex === b.fromIndex && a.toIndex === b.toIndex;
+}
+
+/**
+ * How many edges the proposal sends the same way as this one, itself included.
+ * @param proposal - The proposal.
+ * @param edge - The edge.
+ * @returns The count.
+ * @throws {never} Never.
+ */
+function copiesOf(proposal: CanvasProposal, edge: CanvasProposal["edges"][number]): number {
+  return proposal.edges.filter((e) => sameEnds(e, edge)).length;
+}
+
+/**
  * Whether a proposal states a flow the reader can carry out.
  *
  * Pure, so the rule it applies is the one a test can hold: the catalog goes
@@ -142,14 +164,16 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
   for (const edge of proposal.edges) {
     const ends = [edge.fromIndex, edge.toIndex];
     if (ends.some((i) => i < 0 || i >= proposal.nodes.length)) {
-      return refuse("edge-outside", `An edge points outside the group: ${JSON.stringify(edge)}.`, "Take that edge off.");
+      const count = copiesOf(proposal, edge);
+      return refuse("edge-outside", `${count > 1 ? `${String(count)} edges point` : "An edge points"} outside the group: ${JSON.stringify(edge)}.`, count > 1 ? "Take those edges off." : "Take that edge off.");
     }
     if (edge.fromIndex === edge.toIndex) {
-      return refuse("edge-self-loop", `An edge loops node ${edge.fromIndex} onto itself.`, "Take that edge off.");
+      const count = copiesOf(proposal, edge);
+      return refuse("edge-self-loop", `${count > 1 ? `${String(count)} edges loop` : "An edge loops"} node ${String(edge.fromIndex)} onto itself.`, count > 1 ? "Take those edges off." : "Take that edge off.");
     }
     const pair = `${String(edge.fromIndex)}>${String(edge.toIndex)}`;
     if (pairs.has(pair)) {
-      const between = proposal.edges.filter((e) => e.fromIndex === edge.fromIndex && e.toIndex === edge.toIndex);
+      const between = proposal.edges.filter((e) => sameEnds(e, edge));
       const intos = between.map((e) => (e.into === undefined ? "no into" : `into "${e.into}"`)).join(", ");
       return refuse("edge-repeated", `${String(between.length)} edges run from "${proposal.nodes[edge.fromIndex]?.name ?? ""}" to "${proposal.nodes[edge.toIndex]?.name ?? ""}" (${intos}), and a node goes into a generation one way.`);
     }

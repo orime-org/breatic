@@ -192,7 +192,7 @@ describe("the address is ours (A5)", () => {
 describe("fills (A6 and the four rules of round two)", () => {
   it("refuses fills on a node that does not generate", () => {
     const node: ProposalNode = { ...held("image", "Portrait", PORTRAIT), fills: { image: [0] } };
-    expect(refusal(group([node, talkingHead({ image: [0] })]))).toMatch(/takes no mode, model, parameters, fills/);
+    expect(refusal(group([node, talkingHead({ image: [0] })]))).toMatch(/takes no mode, model, params, fills/);
   });
 
   it("refuses a slot the model does not have", () => {

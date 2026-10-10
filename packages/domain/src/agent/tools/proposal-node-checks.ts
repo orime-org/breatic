@@ -13,14 +13,18 @@ import { aNode, capitalised } from "@domain/agent/tools/proposal-routing.js";
 import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import type { MaterialTable } from "@domain/asset/material-facts.js";
 
-/** The fields that configure a generation, each with the word a refusal names it by. */
-const CONFIGURED_FIELDS: ReadonlyArray<readonly [keyof ProposalNode, string]> = [
-  ["mode", "mode"],
-  ["model", "model"],
-  ["params", "parameters"],
-  ["fills", "fills"],
-  ["shots", "shots"],
-];
+/** The fields that configure a generation, named as the agent sends them. */
+const CONFIGURED = ["mode", "model", "params", "fills", "shots"] as const;
+
+/**
+ * Field names joined for a sentence, the last after "or".
+ * @param names - The names, at least two.
+ * @returns "a, b or c".
+ * @throws {never} Never.
+ */
+function oneOf(names: readonly string[]): string {
+  return `${names.slice(0, -1).join(", ")} or ${names.at(-1) ?? ""}`;
+}
 
 /** The node kinds that hold material. */
 const MATERIAL_KINDS: ReadonlySet<string> = new Set(["image", "video", "audio"]);
@@ -33,19 +37,21 @@ const MATERIAL_KINDS: ReadonlySet<string> = new Set(["image", "video", "audio"])
  * kept as written. Said one way wherever it is caught, so a node is never
  * told to send the very segment the next check refuses.
  * @param node - The written node.
+ * @param count - How many refs and notes it carries.
  * @returns The refusal.
  * @throws {never} Never.
  */
-function writtenTakesNoMark(node: ProposalNode): ProposalVerdict {
-  return refuse("written-takes-no-mark", `"${node.name}" holds words the reader keeps as they are, so it takes no ref or note.`, "Take it out and say what you meant in your own message.");
+function writtenTakesNoMark(node: ProposalNode, count: number): ProposalVerdict {
+  return count > 1
+    ? refuse("written-takes-no-mark", `"${node.name}" holds words the reader keeps as they are, so it takes no ref or note, and it carries ${String(count)}.`, "Take them out and say what you meant in your own message.")
+    : refuse("written-takes-no-mark", `"${node.name}" holds words the reader keeps as they are, so it takes no ref or note.`, "Take it out and say what you meant in your own message.");
 }
 
 /**
  * Whether the material a node names is this studio's, and of the node's kind.
  *
- * An address outside our storage is put right by saving the picture first. One
- * in our storage with no live registration in this studio is most likely
- * mistyped, and is told to be copied again.
+ * An address in our storage with no live registration in this studio is
+ * most likely mistyped, and is told to be copied again.
  * @param node - The node being judged.
  * @param materials - The registration behind each address.
  * @returns Whether it stands, and what is wrong with it when it does not.
@@ -85,7 +91,7 @@ export function checkMaterial(node: ProposalNode, materials: MaterialTable): Pro
  * @throws {never} Never.
  */
 export function checkNodeRole(node: ProposalNode): ProposalVerdict {
-  const configured = CONFIGURED_FIELDS.filter(([field]) => node[field] !== undefined).map(([, said]) => said);
+  const configured: string[] = CONFIGURED.filter((field) => node[field] !== undefined);
   if (node.role === "source") {
     // Words are the one kind of material nobody has to go and find: an empty
     // text node is a click away, so proposing one asks for work rather than
@@ -95,7 +101,7 @@ export function checkNodeRole(node: ProposalNode): ProposalVerdict {
     }
     const carried = [...configured, ...(node.prompt !== undefined ? ["prompt"] : [])];
     if (carried.length > 0) {
-      return refuse("source-configured", `"${node.name}" is a source node: it holds material or stands empty for the reader, so it takes no mode, model, parameters, fills, shots or prompt; it carries ${carried.join(", ")}.`);
+      return refuse("source-configured", `"${node.name}" is a source node: it holds material or stands empty for the reader, so it takes no ${oneOf([...CONFIGURED, "prompt"])}; it carries ${carried.join(", ")}.`);
     }
     return { ok: true };
   }
@@ -105,16 +111,16 @@ export function checkNodeRole(node: ProposalNode): ProposalVerdict {
     return refuse("written-not-text", `"${node.name}" carries words, and a text node is the only one that holds those.`);
   }
   if (configured.length > 0) {
-    return refuse("written-configured", `"${node.name}" already holds its words, so it takes no mode, model, parameters, fills or shots -- nothing is generated there; it carries ${configured.join(", ")}.`);
+    return refuse("written-configured", `"${node.name}" already holds its words, so it takes no ${oneOf(CONFIGURED)} -- nothing is generated there; it carries ${configured.join(", ")}.`);
   }
   // A text node's body holds words and nothing else: a reference would ask
   // for material nothing here reads, and a note would vanish from words that
   // are kept as written. Whatever they say belongs in the message this
   // proposal travels with.
-  const reaching = (node.prompt ?? []).find(
+  const reaching = (node.prompt ?? []).filter(
     (segment) => segment.ref !== undefined || segment.slot?.kind === "note",
   );
-  if (reaching) return writtenTakesNoMark(node);
+  if (reaching.length > 0) return writtenTakesNoMark(node, reaching.length);
   // Without them it lands as an empty text node, which is the thing a reader
   // makes in a click and has no use for in a proposal.
   if (promptPlainText(node.prompt ?? []).trim() === "") {
@@ -141,6 +147,7 @@ export function markTypedAsWords(node: ProposalNode): ProposalVerdict {
     markedSegments(segments.map((segment) => segment.text ?? "\u0000").join("")).flatMap((part) => (part.slot ? [part.slot] : [])),
   );
   if (typed.length === 0) return { ok: true };
-  if (node.role === "written" && typed.some((slot) => slot.kind !== "tweak")) return writtenTakesNoMark(node);
+  const marks = typed.filter((slot) => slot.kind !== "tweak");
+  if (node.role === "written" && marks.length > 0) return writtenTakesNoMark(node, marks.length);
   return refuse("mark-typed", `"${node.name}" types ${String(typed.length)} mark(s) into its words, and a mark works only as a segment of its own, with the text segments kept to plain words: ${typed.map((slot) => (slot.kind === "asset" ? `{"ref": <index of the node meant by ${slot.label}>}` : JSON.stringify({ slot }))).join(", ")}.`);
 }

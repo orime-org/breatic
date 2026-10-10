@@ -472,7 +472,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "source-configured": [{
     meets: group([{ ...EMPTY_PIC, mode: "t2i" }, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    states: ["takes no mode, model, parameters, fills, shots or prompt; it carries mode."],
+    states: ["takes no mode, model, params, fills, shots or prompt; it carries mode."],
   }],
   "written-not-text": [{
     meets: group([{ ...WORDS, type: "image" }, DRAW]),
@@ -480,10 +480,10 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "written-configured": [{
     meets: group([{ ...WORDS, mode: "t2i" }, DRAW]),
-    states: ["takes no mode, model, parameters, fills or shots -- nothing is generated there; it carries mode."],
+    states: ["takes no mode, model, params, fills or shots -- nothing is generated there; it carries mode."],
   }, {
     meets: group([{ ...WORDS, params: { duration: 5 } }, DRAW]),
-    states: ["it carries parameters."],
+    states: ["it carries params."],
   }],
   "written-empty": [{
     meets: group([{ ...WORDS, prompt: [{ text: "   " }] }, DRAW]),

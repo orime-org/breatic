@@ -63,12 +63,15 @@ export function expandTemplate(node: ProposalNode & { template: string }): Templ
   if (rest.type !== template.nodeType) {
     return refuse("template-type", `Template "${id}" is for ${template.nodeType} nodes, not ${rest.type}.`);
   }
-  if (rest.prompt === undefined) {
-    return refuse("template-no-prompt", `"${rest.name}" names template "${id}" and sends no prompt. The template's prompt, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template)}. Each node the prompt @s goes into the pool. ${poolSentence(rest.name)}`, "Give it a prompt.");
-  }
   const mode = rest.mode ?? template.mode;
   const model = rest.model ?? template.model;
   const keepsTemplate = mode === template.mode && model === template.model;
+  if (rest.prompt === undefined) {
+    // The pool is the template's own model's; a node settling another model
+    // is told how its nodes go in once it has a prompt to check.
+    const pool = keepsTemplate ? ` Each node the prompt @s goes into the pool. ${poolSentence(rest.name)}` : "";
+    return refuse("template-no-prompt", `"${rest.name}" names template "${id}" and sends no prompt. The template's prompt, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template)}.${pool}`, "Give it a prompt.");
+  }
   const params = keepsTemplate ? { ...template.params, ...rest.params } : rest.params;
   return {
     ok: true,

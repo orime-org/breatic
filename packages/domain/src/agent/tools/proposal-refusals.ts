@@ -120,5 +120,5 @@ type FixFor<Id extends RefusalId> = (typeof REFUSALS)[Id] extends true ? [fix: s
  * @throws {never} Never.
  */
 export function refuse<Id extends RefusalId>(refusal: Id, reason: string, ...fix: FixFor<Id>): Refusal {
-  return { ok: false, refusal, reason: fix.length > 0 ? `${reason} ${fix.join(" ")}` : reason };
+  return { ok: false, refusal, reason: [reason, ...fix].join(" ") };
 }

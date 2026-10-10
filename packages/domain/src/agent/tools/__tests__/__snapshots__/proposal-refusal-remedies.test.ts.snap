@@ -22,6 +22,8 @@ exports[`every refusal states its fault, its rule and its facts > edge-not-an-en
 
 exports[`every refusal states its fault, its rule and its facts > edge-outside (0): is met and says what is wrong, and its one fix clears it 1`] = `"An edge points outside the group: {"fromIndex":0,"toIndex":4}. Take that edge off."`;
 
+exports[`every refusal states its fault, its rule and its facts > edge-outside (1): is met and says what is wrong, and its one fix clears it 1`] = `"2 edges point outside the group: {"fromIndex":0,"toIndex":4}. Take those edges off."`;
+
 exports[`every refusal states its fault, its rule and its facts > edge-repeated (0): is met and says what is wrong 1`] = `"2 edges run from "Pic" to "Gen" (into "pool", into "pool"), and a node goes into a generation one way."`;
 
 exports[`every refusal states its fault, its rule and its facts > edge-repeated (1): is met and says what is wrong 1`] = `"3 edges run from "Pic" to "Gen" (into "pool", into "pool", no into), and a node goes into a generation one way."`;
@@ -32,13 +34,19 @@ exports[`every refusal states its fault, its rule and its facts > edge-ring (0):
 
 exports[`every refusal states its fault, its rule and its facts > edge-self-loop (0): is met and says what is wrong, and its one fix clears it 1`] = `"An edge loops node 0 onto itself. Take that edge off."`;
 
+exports[`every refusal states its fault, its rule and its facts > edge-self-loop (1): is met and says what is wrong, and its one fix clears it 1`] = `"2 edges loop node 0 onto itself. Take those edges off."`;
+
 exports[`every refusal states its fault, its rule and its facts > fill-into-pool (0): is met and says what is wrong, and its one fix clears it 1`] = `""images" is the reference pool of "nano-banana-pro-edit-ultra", which takes no fills; its slots: "style_images". Take fills "images" off."`;
 
 exports[`every refusal states its fault, its rule and its facts > fill-no-material (0): is met and says what is wrong, and its one fix clears it 1`] = `"fills "style_images" on "Gen" points at "Pic", which holds no material, and fills takes only nodes holding it. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref. Take "Pic" out of fills "style_images"."`;
 
+exports[`every refusal states its fault, its rule and its facts > fill-no-material (1): is met and says what is wrong, and its one fix clears it 1`] = `"fills "style_images" on "Gen" points at "Pic", 2 times, which holds no material, and fills takes only nodes holding it. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref. Take "Pic" out of fills "style_images", every time it is named."`;
+
 exports[`every refusal states its fault, its rule and its facts > fill-not-a-slot (0): is met and says what is wrong, and its one fix clears it 1`] = `""nano-banana-pro-edit-ultra" has no slot "nope"; its slots: "style_images". Take fills "nope" off."`;
 
 exports[`every refusal states its fault, its rule and its facts > fill-outside (0): is met and says what is wrong, and its one fix clears it 1`] = `"fills "style_images" on "Gen" points at node 5, which is not in the group. Take it out of fills "style_images"."`;
+
+exports[`every refusal states its fault, its rule and its facts > fill-outside (1): is met and says what is wrong, and its one fix clears it 1`] = `"fills "style_images" on "Gen" points at node 5, 2 times, which is not in the group. Take every one out of fills "style_images"."`;
 
 exports[`every refusal states its fault, its rule and its facts > fill-repeated (0): is met and says what is wrong, and its one fix clears it 1`] = `"fills "style_images" on "Gen" names "Pic" 2 times, and the slot keeps one copy of it. Name it once."`;
 
@@ -46,9 +54,13 @@ exports[`every refusal states its fault, its rule and its facts > fill-repeated 
 
 exports[`every refusal states its fault, its rule and its facts > fill-self (0): is met and says what is wrong, and its one fix clears it 1`] = `"fills "style_images" on "Gen" points at "Gen" itself, and a node cannot fill its own slot. Take it out of fills "style_images"."`;
 
+exports[`every refusal states its fault, its rule and its facts > fill-self (1): is met and says what is wrong, and its one fix clears it 1`] = `"fills "style_images" on "Gen" points at "Gen" itself, 2 times, and a node cannot fill its own slot. Take every one out of fills "style_images"."`;
+
 exports[`every refusal states its fault, its rule and its facts > fill-twice (0): is met and says what is wrong 1`] = `"fills "style_images" on "Gen" holds "Pic" and "Pic 2", which hold the same material, and the slot keeps one copy of it."`;
 
 exports[`every refusal states its fault, its rule and its facts > fill-wrong-kind (0): is met and says what is wrong, and its one fix clears it 1`] = `""nano-banana-pro-edit-ultra" takes image in "style_images", and "Clip" is video. "nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen". Take "Clip" out of fills "style_images"."`;
+
+exports[`every refusal states its fault, its rule and its facts > fill-wrong-kind (1): is met and says what is wrong, and its one fix clears it 1`] = `""nano-banana-pro-edit-ultra" takes image in "style_images", and "Clip" is video, named 2 times. "nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen". Take "Clip" out of fills "style_images", every time it is named."`;
 
 exports[`every refusal states its fault, its rule and its facts > group-unnamed (0): is met and says what is wrong, and its one fix clears it 1`] = `"Two or more nodes land together in a group, and it has no name. Give the group a name saying what it is for."`;
 
@@ -134,19 +146,27 @@ exports[`every refusal states its fault, its rule and its facts > ref-not-pooled
 
 exports[`every refusal states its fault, its rule and its facts > ref-not-pooled (1): is met and says what is wrong 1`] = `""Pic 3" is @'d by a ref in "Gen" but is not wired into its pool, and only a node in its pool takes a ref. "Pic 3" goes into "Gen" by an edge with into: "pool" and a ref @'ing it and a note saying what to do first. The pool of "Gen" takes 3 image node(s) and holds "Pic 0", "Pic 1", "Pic 2"."`;
 
+exports[`every refusal states its fault, its rule and its facts > ref-not-pooled (2): is met and says what is wrong 1`] = `""Pic" is @'d by 2 refs in "Gen" but is not wired into its pool, and only a node in its pool takes a ref. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref. The pool of "Gen" takes 11 image node(s) and holds none."`;
+
 exports[`every refusal states its fault, its rule and its facts > ref-not-pooled-no-pool (0): is met and says what is wrong, and its one fix clears it 1`] = `""Pic" is @'d by a ref in "Gen", and only a node in its pool takes a ref, while "nano-banana-2" has no pool for an image node. "nano-banana-2" takes no image node, so "Pic" has no way into "Gen". Leave the ref out."`;
 
 exports[`every refusal states its fault, its rule and its facts > ref-not-pooled-no-pool (1): is met and says what is wrong, and its one fix clears it 1`] = `""Clip" is @'d by a ref in "Gen", and only a node in its pool takes a ref, while "sonilo-video-to-music" has no pool for a video node. "Clip" goes into "Gen" through fills "video" on "Gen", with no edge and no ref. Leave the ref out."`;
 
+exports[`every refusal states its fault, its rule and its facts > ref-not-pooled-no-pool (2): is met and says what is wrong, and its one fix clears it 1`] = `""Pic" is @'d by 2 refs in "Gen", and only a node in its pool takes a ref, while "nano-banana-2" has no pool for an image node. "nano-banana-2" takes no image node, so "Pic" has no way into "Gen". Leave those refs out."`;
+
 exports[`every refusal states its fault, its rule and its facts > ref-outside (0): is met and says what is wrong, and its one fix clears it 1`] = `"A ref in "Gen" points outside the group: {"ref": 7}. Take that ref out."`;
 
+exports[`every refusal states its fault, its rule and its facts > ref-outside (1): is met and says what is wrong, and its one fix clears it 1`] = `"A ref in "Gen" points outside the group: {"ref": 7}, 2 times. Take those refs out."`;
+
 exports[`every refusal states its fault, its rule and its facts > ref-self (0): is met and says what is wrong, and its one fix clears it 1`] = `""Gen" @s itself with {"ref": 0}, and a node cannot @ itself. Take that ref out."`;
+
+exports[`every refusal states its fault, its rule and its facts > ref-self (1): is met and says what is wrong, and its one fix clears it 1`] = `""Gen" @s itself with {"ref": 0}, 2 times, and a node cannot @ itself. Take those refs out."`;
 
 exports[`every refusal states its fault, its rule and its facts > script-too-long-for-shot (0): is met and says what is wrong 1`] = `""Words" is longer than the 512 characters "kling-v3.0-4k-text-to-video" takes for one shot, so @'ing it into a shot is refused at Generate."`;
 
 exports[`every refusal states its fault, its rule and its facts > shot-empty (0): is met and says what is wrong 1`] = `"Shot 1 writes nothing. Every shot needs its own words."`;
 
-exports[`every refusal states its fault, its rule and its facts > shot-too-long (0): is met and says what is wrong 1`] = `"Shot 1 is longer than the 512 characters "kling-v3.0-4k-text-to-video" takes for one shot."`;
+exports[`every refusal states its fault, its rule and its facts > shot-too-long (0): is met and says what is wrong 1`] = `"Shot 1 is 600 characters, longer than the 512 characters "kling-v3.0-4k-text-to-video" takes for one shot."`;
 
 exports[`every refusal states its fault, its rule and its facts > shots-duration (0): is met and says what is wrong 1`] = `"The shots add up to 5 seconds and duration is 8."`;
 
@@ -154,13 +174,15 @@ exports[`every refusal states its fault, its rule and its facts > shots-outside-
 
 exports[`every refusal states its fault, its rule and its facts > shots-with-prompt (0): is met and says what is wrong, and its one fix clears it 1`] = `"With shots the main prompt is not sent; its words, refs and notes go in the shots. Leave prompt out."`;
 
-exports[`every refusal states its fault, its rule and its facts > source-configured (0): is met and says what is wrong 1`] = `""Pic" is a source node: it holds material or stands empty for the reader, so it takes no mode, model, parameters, fills, shots or prompt; it carries mode."`;
+exports[`every refusal states its fault, its rule and its facts > source-configured (0): is met and says what is wrong 1`] = `""Pic" is a source node: it holds material or stands empty for the reader, so it takes no mode, model, params, fills, shots or prompt; it carries mode."`;
 
 exports[`every refusal states its fault, its rule and its facts > sources-no-taker (0): is met and says what is wrong 1`] = `"This group places 1 image source node(s), and nothing in it takes image material."`;
 
 exports[`every refusal states its fault, its rule and its facts > sources-over-room (0): is met and says what is wrong 1`] = `"This group places 2 image source node(s), and the panels in it hold 1 at a time."`;
 
 exports[`every refusal states its fault, its rule and its facts > template-no-prompt (0): is met and says what is wrong, and its one fix clears it 1`] = `""Gen" names template "storyboard-grid-25" and sends no prompt. The template's prompt, to rewrite in the reader's language with their story or detail in it: [{"text":"Use "}, {"ref": <index of the node wired in for character or scene reference>}, {"text":" as the reference. Create ONE image: a storyboard grid of exactly 5 rows and 5 columns, 25 equal panels in total, separated by thin white gutters, read left to right and top to bottom as one continuous sequence in time. Story: "}, {"slot":{"kind":"tweak","label":"the story","note":"the story"}}, {"text":". Every panel keeps the same people, outfits, location and lighting as the reference. Vary shot size and camera angle from panel to panel like a film storyboard. No text, no numbers."}]. Each node the prompt @s goes into the pool. A node holding material or words goes into "Gen" by an edge with into: "pool" and a ref @'ing it; an empty one by an edge with into: "pool" and a ref @'ing it and a note saying what to do first. Give it a prompt."`;
+
+exports[`every refusal states its fault, its rule and its facts > template-no-prompt (1): is met and says what is wrong, and its one fix clears it 1`] = `""Gen" names template "storyboard-grid-25" and sends no prompt. The template's prompt, to rewrite in the reader's language with their story or detail in it: [{"text":"Use "}, {"ref": <index of the node wired in for character or scene reference>}, {"text":" as the reference. Create ONE image: a storyboard grid of exactly 5 rows and 5 columns, 25 equal panels in total, separated by thin white gutters, read left to right and top to bottom as one continuous sequence in time. Story: "}, {"slot":{"kind":"tweak","label":"the story","note":"the story"}}, {"text":". Every panel keeps the same people, outfits, location and lighting as the reference. Vary shot size and camera angle from panel to panel like a film storyboard. No text, no numbers."}]. Give it a prompt."`;
 
 exports[`every refusal states its fault, its rule and its facts > template-role (0): is met and says what is wrong 1`] = `"Template "storyboard-grid-25" goes on a generate node; "Pic" is a source node."`;
 
@@ -172,7 +194,7 @@ exports[`every refusal states its fault, its rule and its facts > text-generates
 
 exports[`every refusal states its fault, its rule and its facts > text-source (0): is met and says what is wrong 1`] = `""Copy" is an empty text node, which the reader makes in one click; words go on a written node."`;
 
-exports[`every refusal states its fault, its rule and its facts > too-many-shots (0): is met and says what is wrong 1`] = `""kling-v3.0-4k-text-to-video" takes at most 6 shots, and their seconds add up to duration."`;
+exports[`every refusal states its fault, its rule and its facts > too-many-shots (0): is met and says what is wrong 1`] = `""kling-v3.0-4k-text-to-video" takes at most 6 shots, and this proposal gives 7."`;
 
 exports[`every refusal states its fault, its rule and its facts > way-over-room (0): is met and says what is wrong 1`] = `""qwen-image-edit-multiple-angles" takes 3 image node(s) by "pool", and 4 are going that way ("Pic 0", "Pic 1", "Pic 2", "Pic 3"). An empty image node goes into "Gen" by an edge with into: "pool" and a ref @'ing it and a note saying what to do first."`;
 
@@ -182,12 +204,14 @@ exports[`every refusal states its fault, its rule and its facts > way-over-room 
 
 exports[`every refusal states its fault, its rule and its facts > way-over-room (3): is met and says what is wrong 1`] = `""mureka-v9.5-generate-song" takes 1 audio node(s) by "melody", and 3 are going that way ("A", "X", "C"). An audio node holding material goes into "Gen" through fills "melody" on "Gen", with no edge and no ref, or through fills "song" on "Gen", with no edge and no ref, or through fills "vocal" on "Gen", with no edge and no ref. "song" takes 1 audio node(s) and holds none. "vocal" takes 1 audio node(s) and holds "X"."`;
 
-exports[`every refusal states its fault, its rule and its facts > written-configured (0): is met and says what is wrong 1`] = `""Words" already holds its words, so it takes no mode, model, parameters, fills or shots -- nothing is generated there; it carries mode."`;
+exports[`every refusal states its fault, its rule and its facts > written-configured (0): is met and says what is wrong 1`] = `""Words" already holds its words, so it takes no mode, model, params, fills or shots -- nothing is generated there; it carries mode."`;
 
-exports[`every refusal states its fault, its rule and its facts > written-configured (1): is met and says what is wrong 1`] = `""Words" already holds its words, so it takes no mode, model, parameters, fills or shots -- nothing is generated there; it carries parameters."`;
+exports[`every refusal states its fault, its rule and its facts > written-configured (1): is met and says what is wrong 1`] = `""Words" already holds its words, so it takes no mode, model, params, fills or shots -- nothing is generated there; it carries params."`;
 
 exports[`every refusal states its fault, its rule and its facts > written-empty (0): is met and says what is wrong 1`] = `""Words" says it holds words and carries no words."`;
 
 exports[`every refusal states its fault, its rule and its facts > written-not-text (0): is met and says what is wrong 1`] = `""Words" carries words, and a text node is the only one that holds those."`;
 
 exports[`every refusal states its fault, its rule and its facts > written-takes-no-mark (0): is met and says what is wrong, and its one fix clears it 1`] = `""Words" holds words the reader keeps as they are, so it takes no ref or note. Take it out and say what you meant in your own message."`;
+
+exports[`every refusal states its fault, its rule and its facts > written-takes-no-mark (1): is met and says what is wrong, and its one fix clears it 1`] = `""Words" holds words the reader keeps as they are, so it takes no ref or note, and it carries 2. Take them out and say what you meant in your own message."`;
