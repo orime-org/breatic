@@ -13,6 +13,13 @@
  * `dragend` that reaches the document (`document-table-drag.ts` ends its drag
  * the same way). A `dragleave` to nothing is the pointer leaving the window.
  *
+ * The pointer is read off `dragenter` as well as `dragover`: each drag update
+ * in Chrome fires `dragenter` when the element under the pointer changed and
+ * `dragover` only when it did not (`event_handler.cc` `UpdateDragAndDrop`).
+ * Events BlockNote re-dispatches are skipped: it marks them `synthetic` and
+ * clamps their pointer into the editor (`SideMenu.ts` `dispatchSyntheticEvent`),
+ * so they would read a pointer over the Agent column as one over the body.
+ *
  * A column drag scrolls the frame its table scrolls sideways in; everything
  * else scrolls the body.
  *
@@ -30,6 +37,15 @@ import { dragSourceOf } from '@web/spaces/document/document-table-drag';
 
 /** The element a scroll area scrolls. */
 const SCROLL_VIEWPORT = '[data-radix-scroll-area-viewport]';
+
+/**
+ * Whether an event is one BlockNote re-dispatched, by the mark it sets.
+ * @param event - The event.
+ * @returns Whether it is synthetic.
+ */
+function isSynthetic(event: Event): boolean {
+  return (event as Event & { synthetic?: boolean }).synthetic === true;
+}
 
 /** Each view's session loop. */
 const sessions = new WeakMap<EditorView, BodyAutoScroll>();
@@ -83,27 +99,33 @@ function listen(view: EditorView, auto: BodyAutoScroll): () => void {
    * @param event - The dragstart.
    */
   const onDragStart = (event: Event): void => {
-    if (event.defaultPrevented) return;
+    if (event.defaultPrevented || isSynthetic(event)) return;
     const target = dragTargetOf(view);
     if (target !== null) auto.beginDrag(target);
   };
   /**
-   * Starts a drag that comes in from outside the window.
+   * Starts a drag that comes in from outside the window, and feeds the pointer.
    * @param event - The dragenter.
    */
   const onDragEnter = (event: Event): void => {
-    if (auto.state !== 'idle' || (event as MouseEvent).relatedTarget !== null) return;
-    const target = dragTargetOf(view);
-    if (target !== null) auto.beginDrag(target);
+    if (isSynthetic(event)) return;
+    if (auto.state === 'idle') {
+      if ((event as MouseEvent).relatedTarget !== null) return;
+      const target = dragTargetOf(view);
+      if (target === null) return;
+      auto.beginDrag(target);
+    }
+    onDragOver(event);
   };
   /**
    * Feeds the pointer.
-   * @param event - The dragover.
+   * @param event - The dragover or dragenter.
    */
-  const onDragOver = (event: Event): void => {
+  function onDragOver(event: Event): void {
+    if (isSynthetic(event)) return;
     const { clientX, clientY } = event as MouseEvent;
     auto.follow({ x: clientX, y: clientY });
-  };
+  }
   /**
    * Notes the pointer leaving the window.
    * @param event - The dragleave.
@@ -111,9 +133,12 @@ function listen(view: EditorView, auto: BodyAutoScroll): () => void {
   const onDragLeave = (event: Event): void => {
     if ((event as MouseEvent).relatedTarget === null) auto.leaveWindow();
   };
-  /** Ends a drag. */
-  const onDragDone = (): void => {
-    auto.end('drag');
+  /**
+   * Ends a drag.
+   * @param event - The drop or dragend.
+   */
+  const onDragDone = (event: Event): void => {
+    if (!isSynthetic(event)) auto.end('drag');
   };
   /**
    * Ends a drag that is over, or feeds a pulled selection.
