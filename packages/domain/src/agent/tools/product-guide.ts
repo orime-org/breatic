@@ -402,7 +402,8 @@ export function renderProductGuide(): string {
     `- On a text node, ${quoted(t("canvas.nodeMenu.snapshot"))}, greyed while the node is empty: it keeps a copy ` +
       `of the node's words in its history (words it already holds are not listed again; a snapshot row shows ` +
       `its words) and shows ${quoted(t("canvas.history.snapshotKept"))}`,
-    `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.download"))}, which saves the file, then ` +
+    `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.download"))}, which saves the file (on a deployment whose ` +
+      "files are served from an r2.dev address it opens the file in a new tab instead), then " +
       `${quoted(t("canvas.nodeMenu.understand"))}, which writes a description of what the node holds into a new ` +
       `text node connected to it, and ${quoted(t("canvas.nodeMenu.tools"))}, described under Mini-tools. All three ` +
       "are greyed while the node holds nothing. A reading that cannot " +

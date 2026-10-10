@@ -34,7 +34,6 @@ import {
 } from "@breatic/shared";
 import * as Sentry from "@sentry/cloudflare";
 import { fromOurBackend } from "@ingest/backend-secret.js";
-import { downloadTarget, serveDownload } from "@ingest/download.js";
 import { JOB_PATH, readJob, submitJob, type JobsEnv } from "@ingest/jobs/routes.js";
 import {
   monitoringOptions,
@@ -1226,13 +1225,6 @@ async function route(request: Request, env: Env): Promise<Response> {
   const finish = COMPLETE_PATH.exec(pathname);
   if (request.method === "POST" && finish) {
     return completeUpload(request, env, finish[1] ?? "");
-  }
-
-  // Matched before the method is judged, so a download URL reached with a
-  // method it does not take is told which ones it does.
-  const key = downloadTarget(pathname);
-  if (key !== null) {
-    return serveDownload(request, env.BUCKET, key);
   }
 
   return new Response("Not found", { status: 404 });

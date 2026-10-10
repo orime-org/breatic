@@ -92,6 +92,8 @@ Create a dedicated R2 bucket, such as `creator-assets-personal`. Create **Object
 
 For local evaluation, enable the bucket's Public Development URL and copy its `https://pub-....r2.dev` address. The word Development here describes Cloudflare's public read endpoint, not a local Worker. For sustained use, connect your own asset domain; `r2.dev` has usage limits. See [Public buckets](https://developers.cloudflare.com/r2/buckets/public-buckets/).
 
+The canvas node menu's **Download** opens the file's own address with `download=1` appended. On a custom asset domain, add a Cloudflare response header transform rule: when the query string contains `download`, set `Content-Disposition` to `attachment`; the browser then saves the file under the last segment of its address. An `r2.dev` address cannot carry this rule, so there Download opens the file in a new tab.
+
 Assets are currently read through public URLs. A private Breatic instance does not automatically make R2 files private. Do not put files requiring authenticated access into this public-read setup.
 
 Save the following bucket CORS configuration:

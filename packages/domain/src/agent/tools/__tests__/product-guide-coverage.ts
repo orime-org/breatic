@@ -704,7 +704,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.purchase_mail.refund_heading": { excluded: REASONS.MAIL },
   "server.purchase_mail.subject": { excluded: REASONS.MAIL },
   "server.purchase_mail.support": { excluded: REASONS.MAIL },
-  "server.storage.download_not_downloadable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.storage.quota_exceeded_generate": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.storage.quota_exceeded_upload": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.studio.already_invited": { excluded: REASONS.NOT_ON_THESE_SCREENS },

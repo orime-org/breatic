@@ -3276,7 +3276,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       }),
     );
     const started = vi
-      .spyOn(downloadLib, 'triggerDownload')
+      .spyOn(downloadLib, 'downloadAsset')
       .mockImplementation(() => {});
     try {
       canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
@@ -3291,9 +3291,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       });
       fireEvent.click(screen.getByTestId('node-menu-download'));
       expect(started).toHaveBeenCalledTimes(1);
-      expect(started.mock.calls[0]?.[0]).toBe(
-        `/api/v1/assets/download?url=${encodeURIComponent(clicked)}`,
-      );
+      expect(started.mock.calls[0]?.[0]).toBe(clicked);
     } finally {
       started.mockRestore();
       canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
