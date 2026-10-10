@@ -41,6 +41,7 @@ import {
   useExtensionState,
 } from '@blocknote/react';
 
+import { cn } from '@web/lib/utils';
 import { Button } from '@web/components/ui/button';
 import {
   DropdownMenu,
@@ -289,7 +290,10 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
       // thing the library does for its own chrome (`.bn-trailing-block`,
       // `.bn-toggle-button`). The handle's own half is also covered by the UA
       // style on `[draggable=true]`; this reaches the rest of the strip.
-      className='flex select-none items-center gap-0.5'
+      // `invisible` while its drag runs: the menu is frozen for the drag so the
+      // handle, the drag's source, stays in the page, but it no longer follows
+      // the rows as the body scrolls under the drag (inner#1350 §5.2).
+      className={cn('flex select-none items-center gap-0.5', dragActive && 'invisible')}
       style={{ transform: `translateY(${String(offset)}px)` }}
     >
       <DropdownMenu open={menuOpen} onOpenChange={onMenuOpenChange}>
