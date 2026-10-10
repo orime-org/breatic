@@ -646,6 +646,18 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
       { says: 'Take fills "images" off. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) },
       { says: 'or through fills "style_images" on "Gen"', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) },
     ],
+  }, {
+    // "N0" already goes into the pool, so it is told nothing and takes no room
+    // from "N1".
+    meets: group(
+      [{ ...HELD_PIC, name: "P1" }, { ...HELD_PIC, name: "N0", material: CLIP_IMAGE }, { ...HELD_PIC, name: "N1", material: THIRD }, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, { ref: 1 }], fills: { images: [1, 2] } })],
+      [{ fromIndex: 0, toIndex: 3, into: "pool" }, { fromIndex: 1, toIndex: 3, into: "pool" }],
+    ),
+    followed: [{ says: 'Take fills "images" off. "N1" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it.', proposal: group(
+      [{ ...HELD_PIC, name: "P1" }, { ...HELD_PIC, name: "N0", material: CLIP_IMAGE }, { ...HELD_PIC, name: "N1", material: THIRD }, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, { ref: 1 }, { ref: 2 }] })],
+      [{ fromIndex: 0, toIndex: 3, into: "pool" }, { fromIndex: 1, toIndex: 3, into: "pool" }, { fromIndex: 2, toIndex: 3, into: "pool" }],
+    ) }],
+    endsOn: '"N1" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it.',
   }],
   "fill-no-material": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
