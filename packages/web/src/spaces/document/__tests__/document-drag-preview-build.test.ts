@@ -131,17 +131,25 @@ describe('blockPreviewContent', () => {
     expect(content.querySelector('img')).not.toBeNull();
   });
 
-  it('lets a table out of its scroll frame so every column is in the preview', () => {
+  it('takes a table out of its scroll frame: every column, and none of the frame\'s scrollbar or edges', () => {
     const editor = open([{ type: 'paragraph', content: 'x' }]);
     const view = editor.prosemirrorView!;
     const block = document.createElement('div');
     block.className = 'bn-block-outer';
     block.innerHTML =
-      '<div class="relative overflow-hidden"><div data-radix-scroll-area-viewport="" style="overflow: scroll"><table></table></div></div>';
+      '<div class="bn-block-content" data-content-type="table"><div class="doc-table-scroller"><div class="doc-table-frame">' +
+      '<div class="relative overflow-hidden"><div data-radix-scroll-area-viewport="" style="overflow: scroll hidden">' +
+      '<div style="min-width: 100%; display: table"><div class="tableWrapper"><table><tbody><tr><td>a1</td><td>b1</td></tr></tbody></table></div></div>' +
+      '</div><div data-scroll-area-scrollbar=""><div style="width: 511px"></div></div></div>' +
+      '<span class="doc-table-overflow-edge" data-overflow-edge="left"></span>' +
+      '<span class="doc-table-overflow-edge" data-overflow-edge="right" data-on=""></span>' +
+      '</div></div></div>';
     const content = blockPreviewContent(view, [block]);
-    const viewport = content.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
-    expect(viewport.style.overflow).toBe('visible');
-    expect((viewport.parentElement as HTMLElement).style.overflow).toBe('visible');
+    expect(content.querySelector('[data-content-type="table"] > table')).not.toBeNull();
+    expect(cellTexts(content)).toEqual([['a1', 'b1']]);
+    expect(content.querySelector('[data-radix-scroll-area-viewport]')).toBeNull();
+    expect(content.querySelector('[data-scroll-area-scrollbar]')).toBeNull();
+    expect(content.querySelector('[data-overflow-edge]')).toBeNull();
   });
 
   it('draws each video as a canvas of the same size', () => {
@@ -178,6 +186,28 @@ describe('tableLinePreviewContent', () => {
     expect(cellTexts(content)).toEqual([['c1'], ['c2'], ['c3']]);
     const cols = content.querySelectorAll('colgroup col');
     expect(cols.length).toBeLessThanOrEqual(1);
+  });
+
+  it('holds the line\'s table and nothing of the frame the table scrolls in', () => {
+    const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
+    const view = editor.prosemirrorView!;
+    // The frame the body draws around a table (`document-table-blocknote.tsx`)
+    // is a React view a test page does not mount; its parts are put in place.
+    const table = view.dom.querySelector('table')!;
+    const viewport = document.createElement('div');
+    viewport.setAttribute('data-radix-scroll-area-viewport', '');
+    table.replaceWith(viewport);
+    viewport.append(table);
+    const scrollbar = document.createElement('div');
+    scrollbar.setAttribute('data-scroll-area-scrollbar', '');
+    const edge = document.createElement('span');
+    edge.setAttribute('data-overflow-edge', 'right');
+    viewport.after(scrollbar, edge);
+    const content = tableLinePreviewContent(view, cellOf(editor, 'c1'), 'column')!;
+    expect(content.querySelector(':scope > table')).not.toBeNull();
+    expect(content.querySelector('[data-radix-scroll-area-viewport]')).toBeNull();
+    expect(content.querySelector('[data-scroll-area-scrollbar]')).toBeNull();
+    expect(content.querySelector('[data-overflow-edge]')).toBeNull();
   });
 
   it('finds the column by the table map when a merged cell shifts the cells', () => {
