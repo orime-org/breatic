@@ -339,44 +339,77 @@ export async function transferReaderUrlToStorage(
     true,
   );
 
+  const pulled = await pullReaderLink(opened.storageKey, opened.target, sourceUrl, ingest.url_fetch_deadline_ms, signal);
+  if (pulled.status === "failed") throw new ReaderUrlTransferError(pulled.reason);
+  // A rejected report turned down what the link sent (nothing, or too much):
+  // the same link gets the same answer again.
+  if (pulled.outcome.status === "rejected") throw new ReaderUrlTransferError(pulled.outcome.reason);
+  const stored = landed(pulled.outcome, `the transfer of ${sourceUrl}`);
+  return { ...stored, storageKey: opened.storageKey };
+}
+
+/** How pulling a reader's link ended: settled before any bytes were judged, or reported. */
+export type ReaderLinkPull =
+  | {
+      status: "failed";
+      /** The reason the grant was settled with. */
+      reason: string;
+      /** What settling it decided. */
+      settled: IngestReportOutcome;
+      /** What the transfer threw, when it threw. */
+      err?: unknown;
+      /** The type the Worker reported, when that is what was refused. */
+      reported?: string;
+    }
+  | { status: "reported"; outcome: IngestReportOutcome };
+
+/**
+ * Have the Worker pull a reader's link into the object a ticket names, and
+ * file what came of it: the one flow both lanes for a reader's link run (the
+ * canvas paste through the worker's queue, the agent's save in its request).
+ * Either way the grant ends settled; what each lane says about it is its own.
+ * @param storageKey - The key the grant was opened on.
+ * @param target - The signed ticket.
+ * @param url - The link.
+ * @param deadlineMs - How long the transfer may take.
+ * @param signal - Raised when nobody wants the answer any more.
+ * @returns How it ended.
+ * @throws {Error} When filing the outcome itself fails.
+ */
+export async function pullReaderLink(
+  storageKey: string,
+  target: Parameters<typeof fetchUrlToIngest>[1],
+  url: string,
+  deadlineMs: number,
+  signal?: AbortSignal,
+): Promise<ReaderLinkPull> {
   let measured;
   try {
     measured = await fetchUrlToIngest(
-      sourceUrl,
-      opened.target,
+      url,
+      target,
       env.INGEST_SHARED_SECRET,
-      coverKeyFor(opened.storageKey),
+      coverKeyFor(storageKey),
       mediaLimits(),
-      ingest.url_fetch_deadline_ms,
+      deadlineMs,
       signal,
     );
   } catch (err) {
     // An UploadHttpError exists only because an answer arrived, so a missing
-    // name on it is the Worker refusing without saying why.
+    // name on it is the Worker refusing without saying why. Only the absence
+    // of any answer is the source running out of time.
     const reason =
       err instanceof UploadHttpError ? (err.code ?? INGEST_REFUSED_UNNAMED) : INGEST_NO_ANSWER;
-    await applyIngestReport({ storageKey: opened.storageKey, outcome: "aborted", reason });
-    throw new ReaderUrlTransferError(reason);
+    const settled = await applyIngestReport({ storageKey, outcome: "aborted", reason });
+    return { status: "failed", reason, settled, err };
   }
 
   const storedType = storedTypeOf(measured.contentType);
   if (storedType === null) {
-    await applyIngestReport({
-      storageKey: opened.storageKey,
-      outcome: "aborted",
-      reason: INGEST_TYPE_NOT_REPORTED,
-    });
-    throw new ReaderUrlTransferError(INGEST_TYPE_NOT_REPORTED);
+    const settled = await applyIngestReport({ storageKey, outcome: "aborted", reason: INGEST_TYPE_NOT_REPORTED });
+    return { status: "failed", reason: INGEST_TYPE_NOT_REPORTED, settled, reported: measured.contentType };
   }
 
-  const stored = landed(
-    await applyIngestReport({
-      storageKey: opened.storageKey,
-      outcome: "completed",
-      ...measured,
-      contentType: storedType,
-    }),
-    `the transfer of ${sourceUrl}`,
-  );
-  return { ...stored, storageKey: opened.storageKey };
+  const outcome = await applyIngestReport({ storageKey, outcome: "completed", ...measured, contentType: storedType });
+  return { status: "reported", outcome };
 }

@@ -11,12 +11,14 @@ import { canonicalMediaType, isUploadableMediaType, reduceMediaType } from "@bre
 
 /**
  * Refusals that come from the link the reader handed us: it would not answer,
- * it held a kind we do not take, or it was larger than the ticket allows.
+ * it held a kind we do not take, it was larger than the ticket allows, or it
+ * sent nothing.
  */
 const READER_SOURCE_REFUSALS: ReadonlySet<string> = new Set([
   "source_unreachable",
   "unsupported_type",
   "over_cap",
+  "empty",
 ]);
 
 /**

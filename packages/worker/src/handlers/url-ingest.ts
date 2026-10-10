@@ -20,24 +20,16 @@
  */
 
 import type { Job } from "bullmq";
-import { coverKeyFor, env, getStorageConfig, logger } from "@breatic/core";
+import { getStorageConfig, logger } from "@breatic/core";
 import {
-  assetService,
+  backendUploadService,
   ingestReportService,
-  storedTypeOf,
   TYPE_UNKNOWN,
   uploadTicketService,
   urlIngestFailureLevel,
 } from "@breatic/domain";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
-import {
-  fetchUrlToIngest,
-  UploadHttpError,
-  INGEST_REFUSED_UNNAMED,
-  INGEST_NO_ANSWER,
-  INGEST_NOT_STARTED,
-  INGEST_TYPE_NOT_REPORTED,
-} from "@breatic/shared";
+import { INGEST_NOT_STARTED } from "@breatic/shared";
 
 /** What the route queued for one submitted address. */
 export interface UrlIngestJobData {
@@ -112,52 +104,24 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
     return;
   }
 
-  let measured;
-  try {
-    measured = await fetchUrlToIngest(
-      url,
-      target,
-      env.INGEST_SHARED_SECRET,
-      // Named on every call rather than only for video. Which media have a
-      // frame to lift is decided from the type, and nobody on this side knows
-      // the type until the transfer has already happened — so the Worker
-      // judges it there, against the type it stored the object under.
-      coverKeyFor(storageKey),
-      assetService.mediaLimits(),
-      ingest.url_fetch_deadline_ms,
-    );
-  } catch (err) {
-    // An UploadHttpError exists only because an answer arrived, so a missing
-    // name on it is the Worker refusing without saying why. Only the absence
-    // of any answer is the source running out of time.
-    const reason =
-      err instanceof UploadHttpError
-        ? (err.code ?? INGEST_REFUSED_UNNAMED)
-        : INGEST_NO_ANSWER;
-    logger[urlIngestFailureLevel(reason)](
-      { err, key: storageKey, projectId, nodeId, reason },
-      "url_ingest_failed",
-    );
-    await fail(storageKey, reason);
+  const pulled = await backendUploadService.pullReaderLink(storageKey, target, url, ingest.url_fetch_deadline_ms);
+  if (pulled.status === "failed") {
+    if (pulled.reported === undefined) {
+      logger[urlIngestFailureLevel(pulled.reason)](
+        { err: pulled.err, key: storageKey, projectId, nodeId, reason: pulled.reason },
+        "url_ingest_failed",
+      );
+    } else {
+      logger.error(
+        { key: storageKey, projectId, nodeId, reported: pulled.reported },
+        "url_ingest_type_not_reported",
+      );
+    }
+    noteSideEffects(pulled.settled, { key: storageKey });
     return;
   }
 
-  const storedType = storedTypeOf(measured.contentType);
-  if (storedType === null) {
-    logger.error(
-      { key: storageKey, projectId, nodeId, reported: measured.contentType },
-      "url_ingest_type_not_reported",
-    );
-    await fail(storageKey, INGEST_TYPE_NOT_REPORTED);
-    return;
-  }
-
-  const outcome = await ingestReportService.applyIngestReport({
-    storageKey,
-    outcome: "completed",
-    ...measured,
-    contentType: storedType,
-  });
+  const { outcome } = pulled;
   if (outcome.status === "rejected") {
     logger.info(
       { key: storageKey, projectId, nodeId, reason: outcome.reason },
