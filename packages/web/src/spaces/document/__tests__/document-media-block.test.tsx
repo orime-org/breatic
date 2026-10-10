@@ -701,9 +701,10 @@ describe('resizing (A8)', () => {
     for (const corner of ['nw', 'ne', 'sw', 'se']) {
       const target = within(element(editor)).getByTestId(`doc-media-resize-${corner}`);
       expect(target.className).toMatch(/\bh-6\b.*\bw-6\b|\bw-6\b.*\bh-6\b/);
-      const dot = target.querySelector('[data-media-knob]')!;
-      expect(dot.className).toMatch(/\bh-2\b/);
-      expect(dot.className).toMatch(/\bw-2\b/);
+      // The dot is the stylesheet's (`[data-media-knob]::after`): an element
+      // inside it would put line breaks in the page's selection of the block.
+      expect(target.hasAttribute('data-media-knob')).toBe(true);
+      expect(target.childElementCount).toBe(0);
     }
   });
 

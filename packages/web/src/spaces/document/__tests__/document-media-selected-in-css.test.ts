@@ -64,4 +64,19 @@ describe('a selected or hovered media block in the stylesheet', () => {
     // focus that would let the selection go.
     expect(own?.selector).toContain('[contenteditable=\'true\']');
   });
+
+  it('draws each corner knob as an 8px dot in the middle of its 24px target', () => {
+    const css = readFileSync(resolve(import.meta.dirname, '../../../index.css'), 'utf8');
+    const decls = new Map<string, string>();
+    postcss.parse(css).walkRules((rule) => {
+      if (rule.selector === '.doc-body [data-media-knob]::after') {
+        rule.walkDecls((decl) => {
+          decls.set(decl.prop, decl.value);
+        });
+      }
+    });
+
+    expect(decls.get('inset')).toBe('8px');
+    expect(decls.get('border')).toBe('1px solid var(--color-content-link)');
+  });
 });

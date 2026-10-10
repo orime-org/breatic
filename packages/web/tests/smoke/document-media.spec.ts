@@ -501,8 +501,11 @@ test('a selected picture is framed with a knob on each corner, and its handle st
     expect([box.width, box.height]).toEqual([24, 24]);
     expect(Math.abs(box.x + 12 - corners[corner][0])).toBeLessThanOrEqual(1);
     expect(Math.abs(box.y + 12 - corners[corner][1])).toBeLessThanOrEqual(1);
-    const dot = (await knob.locator('[data-media-knob]').boundingBox())!;
-    expect([dot.width, dot.height]).toEqual([8, 8]);
+    const dot = await knob.evaluate((element) => {
+      const style = getComputedStyle(element, '::after');
+      return [style.width, style.height];
+    });
+    expect(dot).toEqual(['8px', '8px']);
   }
   await expect(page.locator(IMAGE)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
