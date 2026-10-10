@@ -29,16 +29,17 @@ type Editor = ReturnType<typeof buildDocumentEditor>;
 const side = vi.hoisted(() => ({
   editor: undefined as unknown,
   block: undefined as unknown,
+  menu: {
+    freezeMenu: vi.fn(),
+    unfreezeMenu: vi.fn(),
+    blockDragStart: (): undefined => undefined,
+    blockDragEnd: (): undefined => undefined,
+  },
 }));
 
 vi.mock('@blocknote/react', () => ({
   useBlockNoteEditor: () => side.editor,
-  useExtension: () => ({
-    freezeMenu: () => undefined,
-    unfreezeMenu: () => undefined,
-    blockDragStart: () => undefined,
-    blockDragEnd: () => undefined,
-  }),
+  useExtension: () => side.menu,
   useExtensionState: () => side.block,
 }));
 
@@ -165,6 +166,21 @@ describe('the strip keeps its face through what the reader started', () => {
 
     fireEvent.dragEnd(grip);
     expect(screen.getByTestId('doc-block-plus')).toBeTruthy();
+  });
+
+  it('freezes the menu for a drag off its handle, which is the drag\'s source, until the drag ends', () => {
+    openOver([{ type: 'paragraph', content: 'x' }], 0);
+    side.menu.freezeMenu.mockClear();
+    side.menu.unfreezeMenu.mockClear();
+    render(<DocumentBlockHandle />);
+    const grip = screen.getByTestId('doc-block-handle');
+    // Left to itself the menu goes on the first scroll, and a drag whose source
+    // left the page sends its `dragend` nowhere the document hears (§5.2).
+    fireEvent.dragStart(grip);
+    expect(side.menu.freezeMenu).toHaveBeenCalledTimes(1);
+    expect(side.menu.unfreezeMenu).not.toHaveBeenCalled();
+    fireEvent.dragEnd(grip);
+    expect(side.menu.unfreezeMenu).toHaveBeenCalledTimes(1);
   });
 
   it('hides the strip from the frame after its drag starts, keeping it in the page for the drag end', async () => {

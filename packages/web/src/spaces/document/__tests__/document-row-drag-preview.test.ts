@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * inner#1350 A1 and §5.2: a row drag hands the browser our scaled preview, and
- * keeps the side menu — the drag's source — in the page until it ends, so the
- * `dragend` of an Esc reaches the document.
+ * inner#1350 A1: a row drag hands the browser our scaled preview, and takes it
+ * away when it ends.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -71,21 +70,18 @@ describe('a row drag', () => {
     expect(element.textContent).toContain('first');
   });
 
-  it('freezes the side menu while it is up and lets it go, preview and all, at the end', () => {
+  it('leaves the side menu to whoever started the drag, and takes its preview away at the end', () => {
     const editor = open();
     const sideMenu = editor.getExtension(SideMenuExtension)!;
-    // The menu is up whenever its handle is pressed; a test page has no hover
-    // to bring it up, so its state is put in place.
+    // The menu is up whenever a row is hovered, a medium included; a drag off
+    // the medium itself has the medium for its source, not the menu.
     sideMenu.store.setState({ show: true } as never);
     const freeze = vi.spyOn(sideMenu, 'freezeMenu').mockImplementation(() => undefined);
-    const unfreeze = vi.spyOn(sideMenu, 'unfreezeMenu').mockImplementation(() => undefined);
     const { dataTransfer, setDragImage } = transfer();
     const end = startRowDrag(editor as never, { dataTransfer, clientY: 0 }, (editor.document[0] as unknown as { id: string }).id);
-    expect(freeze).toHaveBeenCalledTimes(1);
-    expect(unfreeze).not.toHaveBeenCalled();
+    expect(freeze).not.toHaveBeenCalled();
     const [element] = setDragImage.mock.calls.at(-1) as [HTMLElement];
     end();
-    expect(unfreeze).toHaveBeenCalledTimes(1);
     expect(element.isConnected).toBe(false);
   });
 });
