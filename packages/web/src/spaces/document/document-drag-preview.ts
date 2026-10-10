@@ -15,11 +15,12 @@
  * - It is drawn in the body's styles: it carries the editor element's classes
  *   but the three BlockNote reads as an editor's, and `index.css` gives it the
  *   table rules that hang off those three.
- * - It is scaled as a whole so its longest side is 512px. Chrome draws the
- *   image in the root element's own space, leaving out the root's transform
- *   and opacity (`data_transfer.cc`, the same reason `index.css` puts the
- *   preview's opacity on a child), so the root takes the scaled size and the
- *   scale sits on the layer inside it.
+ * - It is scaled down as a whole when a side is longer than 512px, until the
+ *   longest is 512px; content no longer than that keeps its own size. Chrome
+ *   draws the image in the root element's own space, leaving out the root's
+ *   transform and opacity (`data_transfer.cc`, the same reason `index.css`
+ *   puts the preview's opacity on a child), so the root takes the scaled size
+ *   and the scale sits on the layer inside it.
  */
 
 import type { EditorView } from '@tiptap/pm/view';
@@ -27,7 +28,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import type { DragOrientation } from '@web/spaces/document/document-table-drag';
 import { cellAt } from '@web/spaces/document/document-table-run';
 
-/** The longest side of every drag preview, in px (user 2026-10-10). */
+/** The longest a drag preview's side may be, in px (user 2026-10-10). */
 export const PREVIEW_LONGEST_SIDE = 512;
 
 /** A natural size, in px. */
@@ -68,14 +69,16 @@ const BLOCK_CONTENT = '.bn-block-content';
 const HAVE_CURRENT_DATA = 2;
 
 /**
- * The scale that brings the longest side to {@link PREVIEW_LONGEST_SIDE}.
+ * The scale that brings a longest side over {@link PREVIEW_LONGEST_SIDE} down to
+ * it. It never enlarges: the browser clamps a drag image the same way, shrinking
+ * only what is over its limit (Chromium `drag_image.cc` `ClampedImageScale`).
  * @param width - The natural width.
  * @param height - The natural height.
- * @returns The scale; 1 for content with no size.
+ * @returns The scale, at most 1.
  */
 export function previewScale(width: number, height: number): number {
   const longest = Math.max(width, height);
-  return longest > 0 ? PREVIEW_LONGEST_SIDE / longest : 1;
+  return longest > PREVIEW_LONGEST_SIDE ? PREVIEW_LONGEST_SIDE / longest : 1;
 }
 
 /**
