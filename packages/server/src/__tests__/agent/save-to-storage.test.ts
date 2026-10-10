@@ -19,7 +19,10 @@ const noteIngestSideEffects = vi.fn();
 const log = { warn: vi.fn(), error: vi.fn(), info: vi.fn() };
 
 class ReaderUrlTransferError extends Error {
-  constructor(readonly reason: string) {
+  constructor(
+    readonly reason: string,
+    readonly reported?: string,
+  ) {
     super(reason);
   }
 }
@@ -145,12 +148,23 @@ describe("saveToStorageFor", () => {
     expect(log.error).not.toHaveBeenCalled();
   });
 
-  it("logs a failure on our side as an error and lets it through", async () => {
-    transferReaderUrlToStorage.mockRejectedValue(new ReaderUrlTransferError("store_failed"));
+  it("logs a failure on our side as an error and lets it through, never as a refusal of the link", async () => {
+    const failure = new ReaderUrlTransferError("store_failed");
+    transferReaderUrlToStorage.mockRejectedValue(failure);
+
+    const err = await refusalOf(save(LINK));
+
+    expect(err).toBe(failure);
+    expect(log.error).toHaveBeenCalledWith(expect.objectContaining({ reason: "store_failed" }), "agent_save_failed");
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it("logs the type the Worker reported with a failure over it", async () => {
+    transferReaderUrlToStorage.mockRejectedValue(new ReaderUrlTransferError("type_not_reported", "text/html"));
 
     await refusalOf(save(LINK));
 
-    expect(log.error).toHaveBeenCalledWith(expect.objectContaining({ reason: "store_failed" }), "agent_save_failed");
+    expect(log.error).toHaveBeenCalledWith(expect.objectContaining({ reason: "type_not_reported", reported: "text/html" }), "agent_save_failed");
   });
 
   it("logs anything else as an error and rethrows it", async () => {

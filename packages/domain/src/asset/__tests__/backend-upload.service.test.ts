@@ -450,9 +450,23 @@ describe("transferReaderUrlToStorage — a reader's link (inner#1315)", () => {
     const failed = await transferReaderUrlToStorage(LINK, WHO).catch((err: unknown) => err);
 
     expect((failed as InstanceType<typeof ReaderUrlTransferError>).reason).toBe(INGEST_TYPE_NOT_REPORTED);
+    expect((failed as InstanceType<typeof ReaderUrlTransferError>).reported).toBe("application/octet-stream");
     expect(applyIngestReport).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ outcome: "aborted", reason: INGEST_TYPE_NOT_REPORTED }),
     );
+  });
+
+  it("keeps why the link failed when settling its grant fails too", async () => {
+    const refused = new UploadHttpError(502, "source_unreachable");
+    const unsettled = new Error("db down");
+    fetchUrlToIngest.mockRejectedValue(refused);
+    applyIngestReport.mockRejectedValue(unsettled);
+
+    const failed = await transferReaderUrlToStorage(LINK, WHO).catch((err: unknown) => err);
+
+    expect(failed).toBeInstanceOf(AggregateError);
+    expect((failed as AggregateError).errors).toEqual([refused, unsettled]);
+    expect((failed as AggregateError).message).toContain("source_unreachable");
   });
 
   it.each(["empty", "over_cap"])("names a %s report as the link's own refusal", async (reason) => {

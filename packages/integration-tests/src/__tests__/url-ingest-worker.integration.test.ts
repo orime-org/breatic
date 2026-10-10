@@ -27,6 +27,19 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+/**
+ * What the job logs, at each level. Core's logger answers through a proxy
+ * that a spy cannot see into, so the job is handed this one instead.
+ */
+const logged = vi.hoisted(() => {
+  const record = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), fatal: vi.fn(), trace: vi.fn() };
+  return { ...record, child: () => record };
+});
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  logger: logged,
+}));
+
 import crypto from "node:crypto";
 import postgres from "postgres";
 import {
@@ -322,6 +335,38 @@ describe("the url ingest job — when the transfer lands", () => {
     const grant = await grantOn(job.storageKey);
     expect(grant.consumed_at).not.toBeNull();
     expect(grant.voided_at).toBeNull();
+  });
+});
+
+describe("the url ingest job — what it logs when it does not land", () => {
+  /** A refusal of the reader's own link is a warning; one on our side stays an error. */
+  const LEVELS: [number, string, "warn" | "error"][] = [
+    [502, "source_unreachable", "warn"],
+    [415, "unsupported_type", "warn"],
+    [413, "over_cap", "warn"],
+    [502, "store_failed", "error"],
+    [502, "assemble_failed", "error"],
+  ];
+
+  it.each(LEVELS)("logs %i %s at %s", async (status, code, level) => {
+    const job = await submitted();
+    workerAnswers(refusal(status, code));
+    vi.clearAllMocks();
+
+    await run(job);
+
+    expect(logged[level]).toHaveBeenCalledWith(expect.objectContaining({ reason: code, key: job.storageKey }), "url_ingest_failed");
+    expect(logged[level === "warn" ? "error" : "warn"]).not.toHaveBeenCalledWith(expect.anything(), "url_ingest_failed");
+  });
+
+  it("logs a type the Worker did not judge as an error, with the type it reported", async () => {
+    const job = await submitted();
+    workerAnswers(landed({ contentType: "text/html" }));
+    vi.clearAllMocks();
+
+    await run(job);
+
+    expect(logged.error).toHaveBeenCalledWith(expect.objectContaining({ reported: "text/html", key: job.storageKey }), "url_ingest_type_not_reported");
   });
 });
 
