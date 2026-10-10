@@ -3,12 +3,13 @@
 
 /**
  * Every press in an editable body goes through one entry first (inner#1127
- * A20, design 3.5.1 "按下分派表"): it reads what the press is on and decides
- * what the press does to the selection and the focus, before the handlers
- * that act on it run. A press on what a media block shows is the one already
- * answered: `document-media-row-press.ts` selects the block on `pointerdown`,
- * before this entry's `mousedown`, and the entry leaves it. The entry sits on the body scroller, which is also
- * where a press on blank space leaves the focus (inner#1327): the body lets
+ * A20, design 3.5.1, the press dispatch table): it reads what the press is on
+ * and decides what the press does to the selection and the focus, before the
+ * handlers that act on it run. A press on what a media block shows is the one
+ * already answered: `document-media-row-press.ts` selects the block on
+ * `pointerdown`, before this entry's `mousedown`, and the entry leaves it. The
+ * entry sits on the body scroller, which is also where a press on blank space
+ * leaves the focus (inner#1327): the body lets
  * go, the page keeps scrolling with the keyboard, and Space-level keys such
  * as undo still reach the document. One more listener sits on the page: a
  * press on the page itself while one of the body's modal menus is open only
