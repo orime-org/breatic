@@ -145,14 +145,15 @@ describe('naming a conversation from its row', () => {
     await userEvent.click(await screen.findByTestId('conversation-rename-c2'));
     const box = await screen.findByTestId('conversation-rename-input');
 
-    // 失焦本身就是「读者已经把焦点给了别的东西」这件事的信号 —— Tab 和点击
-    // 别处对这个框来说是同一条路。
+    act(() => box.focus());
+    fireEvent.change(box, { target: { value: 'Storyboard notes' } });
+    const elsewhere = screen.getByTestId('conversation-open-c1');
     await act(async () => {
-      fireEvent.blur(box, { target: { value: 'Storyboard notes' } });
+      elsewhere.focus();
     });
 
     expect(screen.queryByTestId('conversation-rename-input')).toBeNull();
-    expect(document.activeElement).not.toBe(screen.getByTestId('conversation-open-c2'));
+    expect(document.activeElement).toBe(elsewhere);
   });
 
   it.each([
