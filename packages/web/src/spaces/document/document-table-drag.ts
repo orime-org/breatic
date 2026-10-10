@@ -24,7 +24,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
-import type { BlockNoteEditor } from '@blocknote/core';
+import type { BlockNoteEditor, ComputeDropPositionContext } from '@blocknote/core';
 
 import { followCell, renameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
 import { cellAt, moveLineAt } from '@web/spaces/document/document-table-run';
@@ -142,6 +142,21 @@ export function endTableDrag(view: EditorView): void {
 export function dragSourceOf(state: EditorState): { cellPos: number; orientation: DragOrientation } | null {
   const drag = tableDragKey.getState(state);
   return drag == null ? null : { cellPos: drag.source, orientation: drag.orientation };
+}
+
+/** The editor's drop-line hook (`dropCursor.hooks.computeDropPosition`). */
+type DropPositionHook = (context: ComputeDropPositionContext) => ComputeDropPositionContext['defaultPosition'];
+
+/**
+ * Holds the editor's drop line back while a row or a column is dragged: that
+ * drag draws its own line across the table, and the editor's line says where
+ * words would land, which is not where the row or column goes. BlockNote's own
+ * table handles hide it the same way (`TableHandles.ts` `dragOverHandler`).
+ * @param next - The hook for every other drag.
+ * @returns The hook.
+ */
+export function holdDropLineInTableDrags(next: DropPositionHook): DropPositionHook {
+  return (context) => (dragSourceOf(context.view.state) === null ? next(context) : null);
 }
 
 /**
