@@ -44,6 +44,9 @@ export interface DragPreview {
   readonly remove: () => void;
 }
 
+/** The class BlockNote gives its own drag preview, and ours takes for its positioning. */
+const LIBRARY_PREVIEW_CLASS = 'bn-drag-preview';
+
 /** The classes the body's styles hang off, besides the editor element's own. */
 const SURFACE_CLASSES = ['bn-root', 'bn-editor', 'ProseMirror'];
 
@@ -94,7 +97,7 @@ export function buildDragPreview(
 ): DragPreview {
   const page = view.dom.ownerDocument;
   const root = page.createElement('div');
-  root.className = 'bn-drag-preview';
+  root.className = LIBRARY_PREVIEW_CLASS;
   root.style.padding = '0';
   root.style.overflow = 'hidden';
   const layer = page.createElement('div');
@@ -270,4 +273,22 @@ export function tableLinePreviewContent(
   }
   settle(view, copy);
   return copy;
+}
+
+/**
+ * Replaces the preview BlockNote set for a row drag with ours, built from the
+ * blocks BlockNote copied. Called in the same `dragstart`, after the library's
+ * `blockDragStart`: each `setDragImage` replaces the last one
+ * (`data_transfer.cc`).
+ * @param view - The editor view.
+ * @param dataTransfer - The drag's data transfer.
+ * @returns Our preview, or null when the library put none in the page.
+ */
+export function previewRowDrag(view: EditorView, dataTransfer: DataTransfer | null): DragPreview | null {
+  const library = [...view.dom.ownerDocument.querySelectorAll(`body > .${LIBRARY_PREVIEW_CLASS}`)].at(-1);
+  if (library === undefined || dataTransfer === null) return null;
+  const blocks = [...library.children].map((block) => block.cloneNode(true) as Element);
+  const preview = buildDragPreview(view, blockPreviewContent(view, blocks));
+  dataTransfer.setDragImage(preview.element, 0, 0);
+  return preview;
 }

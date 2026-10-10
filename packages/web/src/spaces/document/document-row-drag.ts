@@ -11,6 +11,7 @@ import type { BlockNoteEditor } from '@blocknote/core';
 import { SideMenuExtension } from '@blocknote/core/extensions';
 
 import { rowHasLanded, rowIsFlying } from '@web/spaces/document/document-drag-drop';
+import { previewRowDrag } from '@web/spaces/document/document-drag-preview';
 import {
   readerPlace,
   restoreAfterRowDrag,
@@ -47,7 +48,14 @@ export function startRowDrag(
   // Which row is in flight, for the drop to read out of the document rather
   // than out of the payload.
   rowIsFlying(blockId, held);
-  editor.getExtension(SideMenuExtension)!.blockDragStart(event as never, editor.getBlock(blockId) as never);
+  const sideMenu = editor.getExtension(SideMenuExtension)!;
+  sideMenu.blockDragStart(event as never, editor.getBlock(blockId) as never);
+  const preview = previewRowDrag(view, event.dataTransfer);
+  // The menu is the drag's source when its handle started it. Left to itself it
+  // goes on the first scroll, and a drag whose source left the page sends its
+  // `dragend` nowhere the document can hear (inner#1350 §5.2).
+  const frozen = sideMenu.store.state !== undefined;
+  if (frozen) sideMenu.freezeMenu();
 
   const page = view.dom.ownerDocument;
   let ended = false;
@@ -57,7 +65,9 @@ export function startRowDrag(
     ended = true;
     page.removeEventListener('drop', onDrop, true);
     rowHasLanded();
-    editor.getExtension(SideMenuExtension)!.blockDragEnd();
+    preview?.remove();
+    if (frozen) sideMenu.unfreezeMenu();
+    sideMenu.blockDragEnd();
     // A text selection goes back to whatever the reader had: the node
     // selection the library put on the row at dragstart is still there, and
     // the bubble bar comes up for any selection that is not empty.
