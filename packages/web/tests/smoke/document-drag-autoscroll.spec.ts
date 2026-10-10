@@ -296,3 +296,44 @@ test('A7 and A1: a column dragged past the table frame scrolls the frame sideway
   expect(Math.max(ours.width, ours.height)).toBeLessThan(512);
   expect(ours.lift).toBeCloseTo(0, 0);
 });
+
+test('A7: a column dragged along the body\'s top edge leaves the body where it is', async () => {
+  await openLongDocument(page, 30);
+  await page.keyboard.type('anchor');
+  const anchor = page.locator(TOP).filter({ hasText: 'anchor' }).first();
+  const ab = (await anchor.boundingBox())!;
+  await page.mouse.move(5, 5);
+  await page.mouse.move(ab.x + 40, ab.y + Math.min(ab.height / 2, 12), { steps: 3 });
+  await page.getByTestId('doc-block-handle').click();
+  await page.getByTestId('doc-block-row-insertBelow').hover();
+  await page.getByTestId('doc-block-insert-table').hover();
+  await page.getByTestId('doc-table-size-3-4').click();
+  await page.keyboard.type('x1');
+  for (let i = 0; i < 40; i += 1) {
+    await page.locator(TOP).last().click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type(`line ${i + 1} below the table`);
+  }
+  // The table's top line, where the column handle sits, 10px under the
+  // body's top edge: inside the band the browser's own drag autoscroll reads.
+  const scroller = page.locator(SCROLLER).first();
+  const view = (await scroller.boundingBox())!;
+  const tableTop = (await page.locator(`${EDITOR} table`).first().boundingBox())!;
+  await scroller.evaluate((el, delta) => {
+    el.scrollTop += delta;
+  }, tableTop.y - view.y - 10);
+  await page.waitForTimeout(200);
+  const cell = (await page.locator(`${EDITOR} td`).filter({ hasText: 'x1' }).first().boundingBox())!;
+  await page.mouse.move(5, 5);
+  await page.mouse.move(cell.x + 10, cell.y + 10, { steps: 4 });
+  const handle = (await page.getByTestId('doc-table-col-handle').boundingBox())!;
+  expect(handle.y + 2 - view.y).toBeLessThan(20);
+  const before = await scrollTop(page);
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + 2);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + handle.width / 2 + 8, handle.y + 2, { steps: 4 });
+  await hold(page, handle.x + handle.width / 2 + 60, handle.y + 2, 1500);
+  expect(await scrollTop(page)).toBe(before);
+  await page.mouse.up();
+});
