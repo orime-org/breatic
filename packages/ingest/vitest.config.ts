@@ -34,10 +34,17 @@ const alias = {
  */
 const NODE_TESTS = "{src,container}/**/__tests__/**/*.node.test.ts";
 
+/**
+ * Tests that host the upright arbiter in a Durable Object of their own. The
+ * production host is the media container, which will not construct without an
+ * image, so these run under a test entry that exports a stand-in host.
+ */
+const ARBITER_TESTS = "src/**/__tests__/**/*.arbiter.test.ts";
+
 const workers = defineWorkersProject({
   test: {
     name: "workers",
-    exclude: ["**/node_modules/**", NODE_TESTS],
+    exclude: ["**/node_modules/**", NODE_TESTS, ARBITER_TESTS],
     // vitest's default is 5s, and one case here deliberately waits two real
     // seconds to tell a re-issued token's window from a carried-forward one.
     // Two seconds of head-room is not enough on a machine running the other
@@ -93,6 +100,29 @@ const workers = defineWorkersProject({
   resolve: { alias },
 });
 
+const arbiter = defineWorkersProject({
+  test: {
+    name: "arbiter",
+    include: [ARBITER_TESTS],
+    testTimeout: 30_000,
+    poolOptions: {
+      workers: {
+        main: "./src/__tests__/helpers/arbiter-host.ts",
+        isolatedStorage: false,
+        miniflare: {
+          compatibilityDate: "2026-03-10",
+          compatibilityFlags: ["nodejs_compat"],
+          r2Buckets: ["BUCKET"],
+          durableObjects: {
+            ARBITER_HOST: { className: "ArbiterHost", useSQLite: true },
+          },
+        },
+      },
+    },
+  },
+  resolve: { alias },
+});
+
 const node = defineConfig({
   test: {
     name: "node",
@@ -102,4 +132,4 @@ const node = defineConfig({
   resolve: { alias },
 });
 
-export default defineConfig({ test: { projects: [workers, node] } });
+export default defineConfig({ test: { projects: [workers, arbiter, node] } });
