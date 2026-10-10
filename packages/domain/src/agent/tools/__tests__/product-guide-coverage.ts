@@ -52,6 +52,11 @@ interface Excluded {
 
 /** Every message the guide does not quote, and what the guide does with it. */
 export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
+  "applicationError.title": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "applicationError.message": { excluded: REASONS.SAYS_TRY_AGAIN },
+  "applicationError.reload": { excluded: REASONS.SAYS_TRY_AGAIN },
+  "applicationError.home": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "applicationError.reference": { excluded: REASONS.FILLS_A_VALUE },
   "activity.description": { described: /the project's uploads, generations and changes to spaces and members/ },
   "activity.empty": { described: /the project's uploads, generations and changes to spaces and members/ },
   "activity.label": { excluded: REASONS.SCREEN_READER, look: /a pulse line/ },

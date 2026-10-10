@@ -327,7 +327,7 @@ Sentry 分三个项目:web · 后端(server / worker / collab 共用一个,事�
 | 后端三服务 | `SENTRY_DSN`(core env schema) | 镜像里 `/app/build-info.json` 的 `revision` | pino `error` / `fatal` 日志(`pinoIntegration`)+ 未捕获异常;server / worker 遇未处理的 Promise 拒绝先上报再退出(`strict`;SDK 写死忽略 `AbortError` / `AI_NoOutputGeneratedError`,这两类既不上报也不退出),collab 有自己的处理器(`none`) |
 | ingest | `wrangler.toml` 的 `SENTRY_DSN` | 部署时 `--var SENTRY_RELEASE:<commit>` | `src/error-monitoring.ts` 的 `noteFailure` 一个出口,读者自己的输入造成的失败只写日志 |
 
-web 的 `AppRouter` 经 `RouterProvider.onError` 将路由捕获的异常交给 `captureException`，包括组件渲染和懒加载失败。React Router 内层边界会先接住这些异常并显示错误页，外层 `Sentry.ErrorBoundary` 收不到；外层边界继续负责路由之外的组件异常。回调只传原异常，不额外附带 location、路由参数或 loader 数据，仍走现有 SDK 初始化与隐私过滤。没有配置 DSN 时不发送事件。此接线补齐错误上报，不改变错误页，也不代表触发异常的业务问题已修复。
+web 的 `AppRouter` 经 `RouterProvider.onError` 将路由捕获的异常交给 `captureException`，包括组件渲染和懒加载失败。React Router 内层边界会先接住这些异常并显示错误页，外层 `Sentry.ErrorBoundary` 收不到；外层边界继续负责路由之外的组件异常。回调只传原异常，不额外附带 location、路由参数或 loader 数据，仍走现有 SDK 初始化与隐私过滤。没有配置 DSN 时不发送事件。路由最外层的 `RouteErrorPage` 显示当前语言的恢复页，提供整页重新加载和返回首页；它只显示与当前原异常匹配的事件编号，不再次捕获。应用外层 `AppErrorBoundary` 复用同一恢复页；Google 登录有独立 Sentry 边界，按钮渲染/Effect 异常只替换 Google 区域，保留邮箱表单与已有输入。该区域的失败提示及可用事件编号在卡片内水平居中；字段校验沿用各自样式。事件用 `error_boundary` 标签区分 `route` / `application` / `google-sign-in`，不附加表单或凭据。没有配置 SDK 时隐藏事件编号。边界处理的是渲染/Effect 故障，不能修复任意事件回调、异步任务或尚未加载的 JavaScript 模块。
 
 后端镜像的六个包（server / worker / collab / core / domain / shared）构建时生成 source map，在 `pnpm deploy` 之前由锁定版本的 Sentry CLI 注入 Debug ID。构建不上传、不需要令牌；`.map` 随镜像保留，部署仓从已经固定摘要的镜像提取并上传，不能重建一套映射来配旧镜像。`scripts/backend-sourcemaps.mjs` 检查所有 JS 与 map 的 Debug ID，并在镜像 CI 检查生产 node_modules 中的工作区包与注入后的原始产物逐字节一致。镜像不公开提供静态文件，`.map` 不经 HTTP 提供。
 
@@ -555,13 +555,22 @@ packages/web/
 └── package.json
 ```
 
+### External browser translation and recovery
+
+The product HTML declares `translate="no"` and `class="notranslate"` before React mounts. Body-mounted portals and editable document content inherit the declaration; the existing five-language switch remains the interface translation mechanism. External translation replacing React-owned text nodes can invalidate DOM insertion/removal relationships. This declaration asks compatible translators to leave them intact; extensions can ignore it. Recovery uses full-document navigation, with no patched DOM methods or swallowed exceptions. See [verification and scope](dd/2026-10-10-frontend-error-recovery-verify.md).
+
+### Login and registration build label
+
+Login and registration cards (including the signup-code step) show their build identity at the right of the title row. Production builds with a readable `VITE_RELEASE_VERSION` show `Beta vX.Y.Z` (or the existing release-candidate suffix); Vite development, missing versions and the build pipeline's `0.0.0-dev` marker show `Dev`. Other account-recovery cards do not opt into the label. The value is injected into the bundle at build time from the same source that generates `app-version.json.releaseVersion`; the JSON's `version` identifies the source commit, not the readable product version. Using the running bundle's identity avoids relabeling a still-open older page when a newer deployment replaces the JSON. No version request is added to the login flow.
+
 ### Environment variables
 
 所有 `VITE_*` 变量从 monorepo 根 `.env` 读。前端经相对 URL(`/api/*`、`/ws`)跟后端通信;一个反向代理(生产用 nginx、dev 用 Vite dev proxy)把它们路由到 api / collab 容器。构建产物里不写死任何 host。
 
 | 变量 | 用途 |
 |---|---|
-| `VITE_APP_VERSION` | app 版本号字符串;是 40 位小写 commit 时同时作 Sentry 的 release |
+| `VITE_APP_VERSION` | 构建提交标识；是 40 位小写 commit 时同时作 Sentry 的 release，与产品可读版本号不同 |
+| `VITE_RELEASE_VERSION` | 打包时的产品可读版本（如 `0.0.6`）；与 `app-version.json.releaseVersion` 同源，供登录/注册卡片显示 Beta 版本。开发或缺失时显示 `Dev` |
 | `GOOGLE_CLIENT_ID` | Google OAuth(可选;注入为 `__GOOGLE_CLIENT_ID__`) |
 | `VITE_SENTRY_DSN` | Sentry DSN(可选;留空不启动 Sentry)。environment 取 Vite 的 `MODE`,不是 `production` / `staging` / `development` 之一记作 `development` |
 
