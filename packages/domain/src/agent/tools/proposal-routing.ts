@@ -480,8 +480,9 @@ type Closed = { why: "room" } | { why: "twin"; twin: ProposalNode };
  * Each way a node can go into a generation, and, for each, whether it is
  * closed to the node as the proposal stands and why: the other arriving nodes
  * fill its room, or a fill already brings the same material into that slot.
- * Every piece of advice on how a node goes in reads this, so none can offer a
- * way the check refuses.
+ * The advice on how a node goes in reads this, so none can offer a way the
+ * check refuses; the note rule for unwired sources in checkUnsentNotes judges
+ * slot kinds alone (inner#1389).
  * @param proposal - The whole proposal.
  * @param node - The node.
  * @param generation - The generation.

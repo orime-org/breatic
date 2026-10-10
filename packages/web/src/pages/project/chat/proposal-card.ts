@@ -133,9 +133,10 @@ export function shapeOf(proposal: CanvasProposal): ShapeGroup[] {
  */
 function runsOf(proposal: CanvasProposal): number[] {
   const run = proposal.nodes.map((_, at) => at);
+  const feeds = feedsOf(proposal);
   for (let pass = 0; pass < proposal.nodes.length; pass += 1) {
     let moved = false;
-    for (const edge of feedsOf(proposal)) {
+    for (const edge of feeds) {
       const a = run[edge.fromIndex];
       const b = run[edge.toIndex];
       if (a === undefined || b === undefined || a === b) continue;

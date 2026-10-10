@@ -34,9 +34,9 @@ function writtenTakesNoMark(node: ProposalNode): ProposalVerdict {
 /**
  * Whether the material a node names is this studio's, and of the node's kind.
  *
- * An address the registration table does not hold is either somewhere else on
- * the web or not this studio's; both are put right the same way, by saving
- * the picture first.
+ * An address outside our storage is put right by saving the picture first. One
+ * in our storage with no live registration in this studio is most likely
+ * mistyped, and is told to be copied again.
  * @param node - The node being judged.
  * @param materials - The registration behind each address.
  * @returns Whether it stands, and what is wrong with it when it does not.
