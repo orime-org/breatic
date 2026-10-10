@@ -29,18 +29,15 @@ export interface InlineRename {
   startEdit: () => void;
   /** Update the draft as the user types. */
   setDraft: (value: string) => void;
-  /** Commit the trimmed/clipped draft (Enter / blur); blank leaves it unchanged. */
-  commit: () => void;
   /**
    * The editor input's blur handler: commits when the reader leaves the input,
    * and not when its Space is hidden or the browser loses focus.
    */
   blur: () => void;
-  /** Discard the draft and close the editor (Escape). */
-  cancel: () => void;
   /**
-   * The editor input's keydown: Enter commits, Escape cancels, and either
-   * gives the keyboard back to the node's shell.
+   * The editor input's keydown: Enter commits the trimmed, clipped draft
+   * (blank leaves the name unchanged), Escape discards it, and either gives the
+   * keyboard back to the node's wrapper.
    */
   onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   /** The editor input's compositionend. */
@@ -180,9 +177,7 @@ export function useInlineRename({
     inputRef,
     startEdit,
     setDraft,
-    commit,
     blur,
-    cancel,
     onKeyDown: exit.onKeyDown,
     onCompositionEnd: exit.onCompositionEnd,
   };

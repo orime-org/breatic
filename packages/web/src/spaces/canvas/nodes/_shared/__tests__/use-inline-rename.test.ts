@@ -6,7 +6,7 @@ import { renderHook, act } from '@testing-library/react';
 import * as React from 'react';
 
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
-import { useInlineRename } from '@web/spaces/canvas/nodes/_shared/use-inline-rename';
+import { useInlineRename, type InlineRename } from '@web/spaces/canvas/nodes/_shared/use-inline-rename';
 import { useCanvasStore } from '@web/stores';
 
 /**
@@ -20,6 +20,21 @@ function nodeIdWrapper(
 ): (props: { children: React.ReactNode }) => React.ReactElement {
   return ({ children }) =>
     React.createElement(NodeIdContext.Provider, { value: nodeId }, children);
+}
+
+/**
+ * Presses a key in the editor input the way the input's keydown would deliver it.
+ * @param rename - The hook's controller.
+ * @param key - Enter or Escape.
+ */
+function press(rename: InlineRename, key: 'Enter' | 'Escape'): void {
+  rename.onKeyDown({
+    key,
+    repeat: false,
+    nativeEvent: { isComposing: false, keyCode: key === 'Enter' ? 13 : 27 },
+    preventDefault: () => undefined,
+    stopPropagation: () => undefined,
+  } as unknown as React.KeyboardEvent<HTMLInputElement>);
 }
 
 describe('useInlineRename — inline name-edit state machine', () => {
@@ -56,51 +71,56 @@ describe('useInlineRename — inline name-edit state machine', () => {
     expect(result.current.editing).toBe(false);
   });
 
-  it('commit reports the trimmed draft and closes the editor', () => {
+  it('Enter reports the trimmed draft and closes the editor', () => {
     const onRename = vi.fn();
     const { result } = renderHook(() =>
       useInlineRename({ current: 'Group', maxLength: 30, onRename }),
     );
     act(() => result.current.startEdit());
     act(() => result.current.setDraft('  Scenes  '));
-    act(() => result.current.commit());
+    act(() => press(result.current, 'Enter'));
     expect(onRename).toHaveBeenCalledExactlyOnceWith('Scenes');
     expect(result.current.editing).toBe(false);
   });
 
-  it('commit clips the draft to maxLength', () => {
+  it('Enter clips the draft to maxLength', () => {
     const onRename = vi.fn();
     const { result } = renderHook(() =>
       useInlineRename({ current: 'x', maxLength: 5, onRename }),
     );
     act(() => result.current.startEdit());
     act(() => result.current.setDraft('abcdefghij'));
-    act(() => result.current.commit());
+    act(() => press(result.current, 'Enter'));
     expect(onRename).toHaveBeenCalledExactlyOnceWith('abcde');
   });
 
-  it('commit leaves the name unchanged when the draft is blank', () => {
+  it('Enter leaves the name unchanged when the draft is blank', () => {
     const onRename = vi.fn();
     const { result } = renderHook(() =>
       useInlineRename({ current: 'Group', maxLength: 30, onRename }),
     );
     act(() => result.current.startEdit());
     act(() => result.current.setDraft('   '));
-    act(() => result.current.commit());
+    act(() => press(result.current, 'Enter'));
     expect(onRename).not.toHaveBeenCalled();
     expect(result.current.editing).toBe(false);
   });
 
-  it('commit fires at most once (Enter then a trailing blur)', () => {
+  it('commits once when a blur trails the Enter', async () => {
+    const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const onRename = vi.fn();
     const { result } = renderHook(() =>
       useInlineRename({ current: 'Group', maxLength: 30, onRename }),
     );
     act(() => result.current.startEdit());
     act(() => result.current.setDraft('Scenes'));
-    act(() => result.current.commit());
-    act(() => result.current.commit());
+    act(() => press(result.current, 'Enter'));
+    act(() => result.current.blur());
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(onRename).toHaveBeenCalledTimes(1);
+    hasFocus.mockRestore();
   });
 
   it('enters edit when the rename mailbox targets this node id, then clears it', () => {
@@ -153,7 +173,7 @@ describe('useInlineRename — inline name-edit state machine', () => {
     expect(result.current.displayName).toBe('Old');
     act(() => result.current.startEdit());
     act(() => result.current.setDraft('New'));
-    act(() => result.current.commit());
+    act(() => press(result.current, 'Enter'));
     // Commit wrote 'New' to Yjs, but the `current` prop is still the stale 'Old'
     // (the Yjs observe hasn't round-tripped yet). displayName already shows the
     // committed 'New', so the editor closing does NOT flash the old name.
@@ -172,7 +192,7 @@ describe('useInlineRename — inline name-edit state machine', () => {
     );
     act(() => result.current.startEdit());
     act(() => result.current.setDraft('Mine'));
-    act(() => result.current.commit());
+    act(() => press(result.current, 'Enter'));
     expect(result.current.displayName).toBe('Mine');
     // A collaborator renamed it to a DIFFERENT value during the round-trip
     // window. The live value must show — not our stale committed 'Mine'.
@@ -180,14 +200,14 @@ describe('useInlineRename — inline name-edit state machine', () => {
     expect(result.current.displayName).toBe('Theirs');
   });
 
-  it('cancel closes the editor without reporting a rename', () => {
+  it('Escape closes the editor without reporting a rename', () => {
     const onRename = vi.fn();
     const { result } = renderHook(() =>
       useInlineRename({ current: 'Group', maxLength: 30, onRename }),
     );
     act(() => result.current.startEdit());
     act(() => result.current.setDraft('Scenes'));
-    act(() => result.current.cancel());
+    act(() => press(result.current, 'Escape'));
     expect(onRename).not.toHaveBeenCalled();
     expect(result.current.editing).toBe(false);
   });
