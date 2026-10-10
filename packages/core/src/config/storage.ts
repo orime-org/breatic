@@ -104,6 +104,12 @@ export const storageConfigSchema = z
        */
       container_tool_timeout_ms: z.number().int().positive().default(60_000),
       /**
+       * The quality a JPEG or lossy WebP is re-encoded at when the ingest
+       * Worker turns a picture shown at an EXIF orientation upright
+       * (inner#1367). Turning a JPEG re-encodes it.
+       */
+      upright_jpeg_quality: z.number().int().min(1).max(100).default(90),
+      /**
        * How long ONE call asking the Worker to pull a source URL may take, in
        * milliseconds. It bounds the whole transfer, because the answer only
        * arrives once the Worker has finished writing R2.

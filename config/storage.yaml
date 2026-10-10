@@ -62,6 +62,10 @@ ingest:
   # above with PREVIEW_MARGIN_MS (5 s) kept back, which the loader checks; the
   # preview runs on whatever is left.
   container_tool_timeout_ms: 60000
+  # The quality a JPEG or lossy WebP is re-encoded at when a picture shown at an
+  # EXIF orientation is turned upright on ingest (1-100). Turning a JPEG
+  # re-encodes it; PNG and lossless WebP stay lossless.
+  upright_jpeg_quality: 90
   # How long ONE call asking the Worker to pull a source URL may take. It
   # bounds the whole transfer: the answer only arrives once the Worker has
   # finished writing R2.

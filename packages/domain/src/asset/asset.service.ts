@@ -231,5 +231,6 @@ export function mediaLimits(): MediaLimits {
   return {
     runDeadlineMs: ingest.container_run_deadline_ms,
     toolTimeoutMs: ingest.container_tool_timeout_ms,
+    uprightJpegQuality: ingest.upright_jpeg_quality,
   };
 }

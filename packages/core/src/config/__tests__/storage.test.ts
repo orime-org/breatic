@@ -295,3 +295,14 @@ describe("the preview in the run deadline", () => {
     ).toThrow(/PREVIEW_MARGIN_MS/);
   });
 });
+
+// The quality a picture is re-encoded at when it is turned upright (inner#1367).
+describe("the upright quality", () => {
+  it("defaults to 90", () => {
+    expect(storageConfigSchema.parse({}).ingest.upright_jpeg_quality).toBe(90);
+  });
+
+  it.each([0, 101, 85.5])("refuses %s", (value) => {
+    expect(() => storageConfigSchema.parse({ ingest: { upright_jpeg_quality: value } })).toThrow();
+  });
+});

@@ -32,7 +32,8 @@ const PART_SIZE = 8 * 1024 * 1024;
 const MAX_UPLOAD = 2 * 1024 * 1024 * 1024;
 const RUN_DEADLINE = 150_000;
 const TOOL_TIMEOUT = 60_000;
-const LIMITS = { runDeadlineMs: RUN_DEADLINE, toolTimeoutMs: TOOL_TIMEOUT };
+const UPRIGHT_QUALITY = 85;
+const LIMITS = { runDeadlineMs: RUN_DEADLINE, toolTimeoutMs: TOOL_TIMEOUT, uprightJpegQuality: UPRIGHT_QUALITY };
 const URL_FETCH_DEADLINE_MS = 290_000;
 
 vi.mock("@breatic/core", () => ({
@@ -49,6 +50,7 @@ vi.mock("@breatic/core", () => ({
       session_token_ttl_seconds: 300,
       container_run_deadline_ms: RUN_DEADLINE,
       container_tool_timeout_ms: TOOL_TIMEOUT,
+      upright_jpeg_quality: UPRIGHT_QUALITY,
       url_fetch_deadline_ms: URL_FETCH_DEADLINE_MS,
     },
     upload: {
