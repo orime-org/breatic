@@ -217,6 +217,14 @@ export class BodyAutoScroll {
   }
 
   /**
+   * What the running session scrolls.
+   * @returns The target, or null when idle.
+   */
+  get target(): DragTarget | null {
+    return this.session?.target ?? null;
+  }
+
+  /**
    * Starts a drag session; one already running is replaced.
    * @param target - What it scrolls.
    */

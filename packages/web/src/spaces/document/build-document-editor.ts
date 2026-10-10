@@ -41,6 +41,7 @@ import { buildDocumentSchema } from '@web/spaces/document/document-schema-blockn
 import { documentNodeCompositionExtension } from '@web/spaces/document/document-node-composition';
 import { documentDividerInputExtension } from '@web/spaces/document/document-divider';
 import { documentBodyEdgePointerExtension } from '@web/spaces/document/document-body-edge-pointer';
+import { documentDragAutoScrollExtension } from '@web/spaces/document/document-drag-autoscroll';
 import { documentBodyEdgeExtension } from '@web/spaces/document/document-body-edge-selection';
 import { documentMediaRowPressExtension } from '@web/spaces/document/document-media-row-press';
 import { documentBodyFocusExtension } from '@web/spaces/document/document-body-focus';
@@ -169,6 +170,7 @@ export function buildDocumentEditor(
       documentDividerInputExtension(),
       documentNodeCompositionExtension(),
       documentBodyEdgePointerExtension(),
+      documentDragAutoScrollExtension(),
       documentBodyEdgeExtension(),
       documentSelectionPaintExtension(),
       documentBodyFocusExtension(),
