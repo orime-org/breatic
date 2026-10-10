@@ -72,7 +72,7 @@ afterEach(() => {
 describe('RegisterPage without email (two-step entry)', () => {
   it('shows the development build label on the registration card', () => {
     setup();
-    expect(screen.getByText('dev')).toBeInTheDocument();
+    expect(screen.getByText('Dev')).toBeInTheDocument();
   });
 
   // The username rewrite removed the free-form "Name" field entirely —

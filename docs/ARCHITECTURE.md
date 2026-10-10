@@ -561,7 +561,7 @@ The product HTML declares `translate="no"` and `class="notranslate"` before Reac
 
 ### Login and registration build label
 
-Login and registration cards (including the signup-code step) show their build identity at the right of the title row. Production builds with a readable `VITE_RELEASE_VERSION` show `Beta vX.Y.Z` (or the existing release-candidate suffix); Vite development, missing versions and the build pipeline's `0.0.0-dev` marker show `dev`. Other account-recovery cards do not opt into the label. The value is injected into the bundle at build time from the same source that generates `app-version.json.releaseVersion`; the JSON's `version` identifies the source commit, not the readable product version. Using the running bundle's identity avoids relabeling a still-open older page when a newer deployment replaces the JSON. No version request is added to the login flow.
+Login and registration cards (including the signup-code step) show their build identity at the right of the title row. Production builds with a readable `VITE_RELEASE_VERSION` show `Beta vX.Y.Z` (or the existing release-candidate suffix); Vite development, missing versions and the build pipeline's `0.0.0-dev` marker show `Dev`. Other account-recovery cards do not opt into the label. The value is injected into the bundle at build time from the same source that generates `app-version.json.releaseVersion`; the JSON's `version` identifies the source commit, not the readable product version. Using the running bundle's identity avoids relabeling a still-open older page when a newer deployment replaces the JSON. No version request is added to the login flow.
 
 ### Environment variables
 
@@ -570,7 +570,7 @@ Login and registration cards (including the signup-code step) show their build i
 | 变量 | 用途 |
 |---|---|
 | `VITE_APP_VERSION` | 构建提交标识；是 40 位小写 commit 时同时作 Sentry 的 release，与产品可读版本号不同 |
-| `VITE_RELEASE_VERSION` | 打包时的产品可读版本（如 `0.0.6`）；与 `app-version.json.releaseVersion` 同源，供登录/注册卡片显示 Beta 版本。开发或缺失时显示 `dev` |
+| `VITE_RELEASE_VERSION` | 打包时的产品可读版本（如 `0.0.6`）；与 `app-version.json.releaseVersion` 同源，供登录/注册卡片显示 Beta 版本。开发或缺失时显示 `Dev` |
 | `GOOGLE_CLIENT_ID` | Google OAuth(可选;注入为 `__GOOGLE_CLIENT_ID__`) |
 | `VITE_SENTRY_DSN` | Sentry DSN(可选;留空不启动 Sentry)。environment 取 Vite 的 `MODE`,不是 `production` / `staging` / `development` 之一记作 `development` |
 

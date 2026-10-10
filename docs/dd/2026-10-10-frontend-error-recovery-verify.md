@@ -58,7 +58,7 @@ Verification: the 31 existing Google/login/registration tests, web typecheck and
 
 ## Auth build version follow-up (2026-10-10)
 
-The user requested the current readable release at the upper right of login and registration cards. These cards and the signup-code step opt into the shared title-row label; other account-recovery cards do not. A production build with a release version displays `Beta vX.Y.Z` (including existing release-candidate suffixes). Development, a missing version and `0.0.0-dev` display `dev`.
+The user requested the current readable release at the upper right of login and registration cards. These cards and the signup-code step opt into the shared title-row label; other account-recovery cards do not. A production build with a release version displays `Beta vX.Y.Z` (including existing release-candidate suffixes). Development, a missing version and `0.0.0-dev` display `Dev`.
 
 The bundle reads `VITE_RELEASE_VERSION`, the same build input used for `app-version.json.releaseVersion`. The manifest's `version` field is the commit identity, not the readable release. No extra version request is made, so an older open bundle cannot accidentally display a newer deployment's manifest version.
 
@@ -71,3 +71,9 @@ These were local display checks. Anonymous authentication responses and an inten
 The shared Google-unavailable message now explicitly asks the user to refresh the page or use email sign-in instead of saying to try again. All five locale catalogs use the same guidance. Both script/credential feedback and the SDK-boundary fallback already read this key, so no login behavior or control was added.
 
 Verification: 17 existing login, Google and locale-registration tests and all 30 repository checks passed. Chromium rendered the actual Chinese login page with the new refresh wording and preserved centered feedback; its screenshot was inspected. The intentionally blocked Google script and anonymous local authentication response were expected. This was copy/layout verification, not live authentication.
+
+## Auth label capitalization follow-up (2026-10-10)
+
+The user approved consistent UI capitalization: development and missing-version labels now display `Dev`, while published labels remain `Beta vX.Y.Z`. Build configuration identifiers, including `0.0.0-dev`, retain their existing spelling. Existing assertions and current architecture guidance were updated; no new behavior or test suite was added.
+
+Verification: 34 existing shared-card/login/registration tests, web typecheck, scoped ESLint and all 30 repository checks passed. The tests retain stable-release and release-candidate coverage. Chromium displayed `Dev` beside the title on actual local login and registration pages; both desktop screenshots were inspected. Earlier lowercase screenshots/results above record the initial implementation. This follow-up was not deployed to production.

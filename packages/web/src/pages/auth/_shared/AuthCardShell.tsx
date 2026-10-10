@@ -62,7 +62,7 @@ export function AuthCardShell({
   const releaseVersion = import.meta.env.VITE_RELEASE_VERSION;
   const versionLabel = import.meta.env.PROD && releaseVersion && releaseVersion !== '0.0.0-dev'
     ? `Beta v${releaseVersion}`
-    : 'dev';
+    : 'Dev';
   return (
     <div className='flex min-h-screen flex-col bg-background'>
       <AuthPageHeader />

@@ -80,9 +80,9 @@ describe('auth card build version', () => {
   it.each([
     [true, '0.0.6', 'Beta v0.0.6'],
     [true, '0.0.6-rc.1', 'Beta v0.0.6-rc.1'],
-    [true, '', 'dev'],
-    [true, '0.0.0-dev', 'dev'],
-    [false, '0.0.6', 'dev'],
+    [true, '', 'Dev'],
+    [true, '0.0.0-dev', 'Dev'],
+    [false, '0.0.6', 'Dev'],
   ])('shows the build identity for production=%s, version=%s', (production, version, label) => {
     vi.stubEnv('PROD', production);
     vi.stubEnv('VITE_RELEASE_VERSION', version);
@@ -98,6 +98,6 @@ describe('auth card build version', () => {
     vi.stubEnv('VITE_RELEASE_VERSION', '0.0.6');
     renderShell();
     expect(screen.queryByText('Beta v0.0.6')).not.toBeInTheDocument();
-    expect(screen.queryByText('dev')).not.toBeInTheDocument();
+    expect(screen.queryByText('Dev')).not.toBeInTheDocument();
   });
 });
