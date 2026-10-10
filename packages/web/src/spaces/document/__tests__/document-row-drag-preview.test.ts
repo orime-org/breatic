@@ -64,7 +64,7 @@ describe('a row drag', () => {
   it('hands the browser our preview last, scaled on an inner layer', () => {
     const editor = open();
     const { dataTransfer, setDragImage } = transfer();
-    ends.push(startRowDrag(editor as never, { dataTransfer, clientY: 0 }, editor.document[0]!.id));
+    ends.push(startRowDrag(editor as never, { dataTransfer, clientY: 0 }, (editor.document[0] as unknown as { id: string }).id));
     const [element] = setDragImage.mock.calls.at(-1) as [HTMLElement];
     expect(element.isConnected).toBe(true);
     expect((element.firstElementChild as HTMLElement).style.transform).toMatch(/^scale\(/);
@@ -80,7 +80,7 @@ describe('a row drag', () => {
     const freeze = vi.spyOn(sideMenu, 'freezeMenu').mockImplementation(() => undefined);
     const unfreeze = vi.spyOn(sideMenu, 'unfreezeMenu').mockImplementation(() => undefined);
     const { dataTransfer, setDragImage } = transfer();
-    const end = startRowDrag(editor as never, { dataTransfer, clientY: 0 }, editor.document[0]!.id);
+    const end = startRowDrag(editor as never, { dataTransfer, clientY: 0 }, (editor.document[0] as unknown as { id: string }).id);
     expect(freeze).toHaveBeenCalledTimes(1);
     expect(unfreeze).not.toHaveBeenCalled();
     const [element] = setDragImage.mock.calls.at(-1) as [HTMLElement];
