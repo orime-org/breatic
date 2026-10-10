@@ -619,6 +619,32 @@ body {
     opacity: 0.6;
   }
 
+  /* A table in a drag preview (inner#1350). Its lines, the collapse and the
+     width of a cell with no stored width hang off `.bn-editor` and
+     `.ProseMirror` in BlockNote and prosemirror-tables, and the preview carries
+     neither: BlockNote takes any `.bn-editor` in the page for an editor and
+     reads its block group, the drop's routing included. The colours and
+     padding still come from the `.doc-body` rules, since the preview keeps the
+     editor's other classes. */
+  .bn-drag-preview [data-content-type='table'] table {
+    border-collapse: collapse;
+    table-layout: fixed;
+    width: auto;
+  }
+
+  .bn-drag-preview [data-content-type='table'] th,
+  .bn-drag-preview [data-content-type='table'] td {
+    border-width: 1px;
+    border-style: solid;
+    vertical-align: top;
+    box-sizing: border-box;
+  }
+
+  .bn-drag-preview [data-content-type='table'] td:not([colwidth]),
+  .bn-drag-preview [data-content-type='table'] th:not([colwidth]) {
+    min-width: var(--default-cell-min-width);
+  }
+
   /* Where the carried row, or a dragged piece of text, will land. The extension
      is asked for no colour of its own (`build-document-editor.ts`), so this is
      the whole paint: the same token the block being dragged wears, since the

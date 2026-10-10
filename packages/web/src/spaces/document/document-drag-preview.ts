@@ -12,9 +12,9 @@
  *   its own and takes the body column's, a media block is its media box, a
  *   table is every one of its columns (its scroll frame does not clip the
  *   copy), a table line is that whole row or column.
- * - It is drawn in the body's styles. The table's lines and widths hang off
- *   `.bn-editor` and `.ProseMirror` (BlockNote `editor.css`), which BlockNote
- *   strips from its own copy; the colours and padding off `.doc-body`.
+ * - It is drawn in the body's styles: it carries the editor element's classes
+ *   but the three BlockNote reads as an editor's, and `index.css` gives it the
+ *   table rules that hang off those three.
  * - It is scaled as a whole so its longest side is 512px. Chrome draws the
  *   image in the root element's own space, leaving out the root's transform
  *   and opacity (`data_transfer.cc`, the same reason `index.css` puts the
@@ -47,8 +47,14 @@ export interface DragPreview {
 /** The class BlockNote gives its own drag preview, and ours takes for its positioning. */
 const LIBRARY_PREVIEW_CLASS = 'bn-drag-preview';
 
-/** The classes the body's styles hang off, besides the editor element's own. */
-const SURFACE_CLASSES = ['bn-root', 'bn-editor', 'ProseMirror'];
+/**
+ * The editor element's classes the preview leaves off: BlockNote takes any
+ * `.bn-editor` in the page for an editor and reads its block group, the drop's
+ * routing included (`SideMenu.ts` `findClosestEditorElement`), and its own
+ * preview drops these three (`dragging.ts`). What the table needs from them
+ * is given to the preview in `index.css`.
+ */
+const EDITOR_ONLY_CLASSES = new Set(['bn-root', 'bn-editor', 'ProseMirror']);
 
 /** A media block's box: the media and nothing around it. */
 const MEDIA_BOX = '[data-media-box]';
@@ -101,8 +107,7 @@ export function buildDragPreview(
   root.style.padding = '0';
   root.style.overflow = 'hidden';
   const layer = page.createElement('div');
-  layer.className = view.dom.className;
-  layer.classList.add(...SURFACE_CLASSES);
+  layer.className = [...view.dom.classList].filter((name) => !EDITOR_ONLY_CLASSES.has(name)).join(' ');
   layer.style.display = 'inline-block';
   layer.style.padding = '0';
   layer.style.transformOrigin = '0px 0px';
