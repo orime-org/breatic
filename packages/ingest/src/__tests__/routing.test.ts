@@ -22,4 +22,19 @@ describe("an unknown path", () => {
 
     expect(response.status).toBe(404);
   });
+
+  it("includes the download path, even for a stored object", async () => {
+    // The resource domain answers downloads now (inner#1335), so a stored
+    // object is no longer served from here.
+    const key = "image/2026-08-13/stored.png";
+    await env.BUCKET.put(key, new Uint8Array([1, 2, 3]));
+    const ctx = createExecutionContext();
+
+    for (const method of ["GET", "HEAD"]) {
+      const request = new Request(`https://ingest.example.com/download/${key}`, { method });
+      const response = await worker.fetch(request, env, ctx);
+
+      expect(response.status).toBe(404);
+    }
+  });
 });
