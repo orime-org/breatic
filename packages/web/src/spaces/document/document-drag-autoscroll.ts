@@ -11,7 +11,11 @@
  * `dragend` or the first `mousemove`: a live drag produces no mouse events, and
  * a drag whose source left the page, or one from another application, has no
  * `dragend` that reaches the document (`document-table-drag.ts` ends its drag
- * the same way). A `dragleave` to nothing is the pointer leaving the window.
+ * the same way). The pointer leaving the window is told the way Pragmatic drag
+ * and drop tells it (`is-leaving-window.js`): a `dragleave` to nothing, and in
+ * Safari, whose `relatedTarget` is always null (WebKit bug 242627), the count
+ * of `dragenter` against `dragleave` coming back to nothing
+ * (`count-events-for-safari.js`).
  *
  * The pointer is read off `dragenter` as well as `dragover`: each drag update
  * in Chrome fires `dragenter` when the element under the pointer changed and
@@ -20,8 +24,10 @@
  * clamps their pointer into the editor (`SideMenu.ts` `dispatchSyntheticEvent`),
  * so they would read a pointer over the Agent column as one over the body.
  *
- * A column drag scrolls the frame its table scrolls sideways in; everything
- * else scrolls the body.
+ * A column drag scrolls the frame its table scrolls sideways in, and holds
+ * the body still: the browser's own drag autoscroll scrolls any box a reader
+ * could scroll that the pointer nears, and one with `overflow-y: hidden` is not
+ * one. Everything else scrolls the body.
  *
  * A pulled selection's session is started and ended by the pointer follower
  * (`document-body-edge-pointer.ts`), which knows when it took a press from the
@@ -45,6 +51,59 @@ const SCROLL_VIEWPORT = '[data-radix-scroll-area-viewport]';
  */
 function isSynthetic(event: Event): boolean {
   return (event as Event & { synthetic?: boolean }).synthetic === true;
+}
+
+/**
+ * Whether the browser's drag events leave the window only by their count:
+ * Safari, the way Pragmatic drag and drop tells it (`is-safari.js`).
+ * @param userAgent - The browser's user agent.
+ * @returns Whether to count.
+ */
+export function countsDragEvents(userAgent: string): boolean {
+  return userAgent.includes('AppleWebKit') && !userAgent.includes('Chrome');
+}
+
+/** Whether a drag's pointer is leaving the window, one `dragleave` at a time. */
+export class DragWindow {
+  private entered = 0;
+  private over = false;
+
+  /**
+   * Tells leaving the window by count or by relatedTarget.
+   * @param counts - Whether to tell it by counting (Safari).
+   */
+  constructor(private readonly counts: boolean) {}
+
+  /** A drag started in this window. */
+  start(): void {
+    this.entered = 0;
+    this.over = true;
+  }
+
+  /** A drag ended. */
+  reset(): void {
+    this.entered = 0;
+    this.over = false;
+  }
+
+  /** The pointer entered an element. */
+  enter(): void {
+    this.over = true;
+    this.entered += 1;
+  }
+
+  /**
+   * Whether this `dragleave` is the pointer leaving the window.
+   * @param event - The dragleave.
+   * @returns Whether it leaves.
+   */
+  leaves(event: MouseEvent): boolean {
+    if (!this.counts) return event.relatedTarget == null;
+    this.entered -= 1;
+    if (!this.over || this.entered > 0) return false;
+    this.over = false;
+    return true;
+  }
 }
 
 /** Each view's session loop. */
@@ -94,14 +153,39 @@ function dragTargetOf(view: EditorView): DragTarget | null {
 function listen(view: EditorView, auto: BodyAutoScroll): () => void {
   const page = view.dom.ownerDocument;
   const win = page.defaultView;
+  const dragWindow = new DragWindow(countsDragEvents(win?.navigator.userAgent ?? ''));
+  /** Gives the body back its own vertical overflow, after a column drag. */
+  let releaseBody: (() => void) | null = null;
+  /**
+   * Starts a drag session on a target, holding the body still under a column drag.
+   * @param target - What it scrolls.
+   */
+  const begin = (target: DragTarget): void => {
+    auto.beginDrag(target);
+    const body = bodyScrollerOf(view);
+    if (target.axis !== 'x' || body === null || releaseBody !== null) return;
+    const own = body.style.overflowY;
+    body.style.overflowY = 'hidden';
+    releaseBody = () => {
+      body.style.overflowY = own;
+    };
+  };
+  /** Ends the drag session. */
+  const endDrag = (): void => {
+    auto.end('drag');
+    dragWindow.reset();
+    releaseBody?.();
+    releaseBody = null;
+  };
   /**
    * Starts a drag nobody cancelled.
    * @param event - The dragstart.
    */
   const onDragStart = (event: Event): void => {
     if (event.defaultPrevented || isSynthetic(event)) return;
+    dragWindow.start();
     const target = dragTargetOf(view);
-    if (target !== null) auto.beginDrag(target);
+    if (target !== null) begin(target);
   };
   /**
    * Starts a drag that comes in from outside the window, and feeds the pointer.
@@ -109,11 +193,12 @@ function listen(view: EditorView, auto: BodyAutoScroll): () => void {
    */
   const onDragEnter = (event: Event): void => {
     if (isSynthetic(event)) return;
+    dragWindow.enter();
     if (auto.state === 'idle') {
       if ((event as MouseEvent).relatedTarget !== null) return;
       const target = dragTargetOf(view);
       if (target === null) return;
-      auto.beginDrag(target);
+      begin(target);
     }
     onDragOver(event);
   };
@@ -131,21 +216,21 @@ function listen(view: EditorView, auto: BodyAutoScroll): () => void {
    * @param event - The dragleave.
    */
   const onDragLeave = (event: Event): void => {
-    if ((event as MouseEvent).relatedTarget === null) auto.leaveWindow();
+    if (!isSynthetic(event) && dragWindow.leaves(event as MouseEvent)) auto.leaveWindow();
   };
   /**
    * Ends a drag.
    * @param event - The drop or dragend.
    */
   const onDragDone = (event: Event): void => {
-    if (!isSynthetic(event)) auto.end('drag');
+    if (!isSynthetic(event)) endDrag();
   };
   /**
    * Ends a drag that is over, or feeds a pulled selection.
    * @param event - The mousemove.
    */
   const onMouseMove = (event: MouseEvent): void => {
-    if (auto.source === 'drag') auto.end('drag');
+    if (auto.source === 'drag') endDrag();
     else if (auto.source === 'press') auto.follow({ x: event.clientX, y: event.clientY });
   };
   page.addEventListener('dragstart', onDragStart);
@@ -163,6 +248,8 @@ function listen(view: EditorView, auto: BodyAutoScroll): () => void {
     page.removeEventListener('dragend', onDragDone, true);
     win?.removeEventListener('dragleave', onDragLeave, true);
     win?.removeEventListener('mousemove', onMouseMove, true);
+    releaseBody?.();
+    releaseBody = null;
   };
 }
 
