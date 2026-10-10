@@ -50,6 +50,7 @@ import {
 } from "@server/modules";
 import {
   coverKeyFor,
+  getStorageAdapter,
   getStorageConfig,
   env,
   logger,

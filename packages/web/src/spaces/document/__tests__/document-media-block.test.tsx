@@ -19,7 +19,7 @@ import { resetPreviewRecords } from '@web/lib/preview-src';
 import { BODY_PART } from '@web/spaces/document/document-body-focus';
 
 const download = vi.hoisted(() => ({ trigger: vi.fn() }));
-vi.mock('@web/lib/download', () => ({ triggerDownload: download.trigger }));
+vi.mock('@web/lib/download', () => ({ downloadAsset: download.trigger }));
 
 const { buildDocumentEditor } = await import('@web/spaces/document/build-document-editor');
 const { DocumentMediaViews } = await import('@web/spaces/document/DocumentMediaViews');
@@ -482,14 +482,12 @@ describe('the toolbar', () => {
     expect(within(toolbar(editor)).queryByTestId('doc-media-align-left')).toBeNull();
   });
 
-  it('downloads through the same address the canvas uses (A19)', () => {
+  it('downloads the stored file the way the canvas does (A19)', () => {
     const editor = open('audio');
 
     fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-download'));
 
-    expect(download.trigger).toHaveBeenCalledWith(
-      `/api/v1/assets/download?url=${encodeURIComponent(URL_OF)}`,
-    );
+    expect(download.trigger).toHaveBeenCalledWith(URL_OF);
   });
 
   it('deletes the block', () => {
