@@ -42,9 +42,9 @@ exports[`every refusal's advice is a proposal the check takes > fill-no-material
 
 exports[`every refusal's advice is a proposal the check takes > fill-not-a-slot (0): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" has no slot "nope". Take fills "nope" off. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it, or through fills "style_images" on "Gen", with no edge and no ref."`;
 
-exports[`every refusal's advice is a proposal the check takes > fill-not-a-slot (1): is met, and each way it says to put it right is accepted 1`] = `""minimax-h3-image-to-video" has no slot "first_frame". Take fills "first_frame" off. "A" goes into "Gen" through fills "image" on "Gen", with no edge and no ref. "B" goes into "Gen" through fills "image" on "Gen", with no edge and no ref."`;
+exports[`every refusal's advice is a proposal the check takes > fill-not-a-slot (1): is met, and each way it says to put it right is accepted 1`] = `""minimax-h3-image-to-video" has no slot "first_frame". Take fills "first_frame" off. "A" goes into "Gen" through fills "image" on "Gen", with no edge and no ref. "B" has no way left into "Gen": "image" has no room left. No other generation here has a way left for "B"; take "B" out, or propose a model that takes it."`;
 
-exports[`every refusal's advice is a proposal the check takes > fill-not-a-slot (2): is met, and each way it says to put it right is accepted 1`] = `""ideogram-v3-quality" has no slot "style". Take fills "style" off. "A" goes into "Gen" through fills "style_images" on "Gen", with no edge and no ref. "B" goes into "Gen" through fills "style_images" on "Gen", with no edge and no ref."`;
+exports[`every refusal's advice is a proposal the check takes > fill-not-a-slot (2): is met, and each way it says to put it right is accepted 1`] = `""ideogram-v3-quality" has no slot "style". Take fills "style" off. "A" goes into "Gen" through fills "style_images" on "Gen", with no edge and no ref. "B" has no way left into "Gen": "A" already brings the same material into "style_images". No other generation here has a way left for "B"; take "B" out, or propose a model that takes it."`;
 
 exports[`every refusal's advice is a proposal the check takes > fill-outside (0): is met, and each way it says to put it right is accepted 1`] = `"fills "style_images" on "Gen" points at node 5, which is not in the group."`;
 
@@ -183,6 +183,8 @@ exports[`every refusal's advice is a proposal the check takes > too-many-shots (
 exports[`every refusal's advice is a proposal the check takes > way-over-room (0): is met, and each way it says to put it right is accepted 1`] = `""qwen-image-edit-multiple-angles" takes 3 image node(s) by "pool", and 4 are going that way ("Pic 0", "Pic 1", "Pic 2", "Pic 3"). Send fewer."`;
 
 exports[`every refusal's advice is a proposal the check takes > way-over-room (1): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" takes 11 image node(s) by "pool", and 12 are going that way ("M0", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11"). Send fewer."`;
+
+exports[`every refusal's advice is a proposal the check takes > way-over-room (2): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" takes 11 image node(s) by "pool", and 13 are going that way ("M0", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12"). Send fewer."`;
 
 exports[`every refusal's advice is a proposal the check takes > way-over-room (3): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" takes 11 image node(s) by "pool", and 15 are going that way ("Pic 0", "Pic 1", "Pic 2", "Pic 3", "Pic 4", "Pic 5", "Pic 6", "Pic 7", "Pic 8", "Pic 9", "Pic 10", "Pic 11", "Pic 12", "Pic 13", "Pic 14"). Send fewer."`;
 

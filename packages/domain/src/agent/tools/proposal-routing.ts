@@ -163,18 +163,42 @@ export function waysSentence(subject: string, generation: ProposalNode, entries:
  * @param generation - The generation.
  * @param chosen - The generation's model.
  * @param byEdge - Whether an edge now runs from the node into the generation, which then has to come off.
+ * @param before - Nodes the same advice has already sent in.
  * @returns The sentence.
  * @throws {never} Never.
  */
-export function nodeWaysSentence(proposal: CanvasProposal, node: ProposalNode, generation: ProposalNode, chosen: ModelInfo, byEdge = false): string {
-  const states = wayStates(proposal, node, generation, chosen);
-  const open = states.flatMap((state) => (state.closed === undefined ? [state.entry] : []));
+export function nodeWaysSentence(
+  proposal: CanvasProposal,
+  node: ProposalNode,
+  generation: ProposalNode,
+  chosen: ModelInfo,
+  byEdge = false,
+  before: readonly Arriving[] = [],
+): string {
+  const { open, closed } = wayStates(proposal, node, generation, chosen, before);
   if (open.length > 0) return waysSentence(`"${node.name}"`, generation, open);
   const takeOff = byEdge ? "Take that edge off. " : "";
-  const why = states.length === 0
+  const why = closed.length === 0
     ? `"${chosen.name}" takes no ${node.type} node, so "${node.name}" has no way into "${generation.name}".`
-    : `"${node.name}" has no way left into "${generation.name}": ${states.map(({ entry, closed }) => closedPhrase(entry, closed)).join("; ")}.`;
+    : `"${node.name}" has no way left into "${generation.name}": ${closed.map((state) => closedPhrase(state.entry, state.closed)).join("; ")}.`;
   return `${takeOff}${why}${spaced(elsewhereSentence(proposal, node, generation))}`;
+}
+
+/**
+ * How each of several nodes one piece of advice sends goes into a
+ * generation, said for the agent: each with its way, or why it has none and
+ * where it goes instead.
+ * @param proposal - The whole proposal.
+ * @param nodes - The nodes.
+ * @param generation - The generation.
+ * @param chosen - Its model.
+ * @returns The sentences.
+ * @throws {never} Never.
+ */
+export function placedWaysSentence(proposal: CanvasProposal, nodes: readonly ProposalNode[], generation: ProposalNode, chosen: ModelInfo): string {
+  return placeEach(proposal, nodes, generation, chosen)
+    .map(({ node, ways, before }) => (ways.length > 0 ? waysSentence(`"${node.name}"`, generation, ways) : nodeWaysSentence(proposal, node, generation, chosen, false, before)))
+    .join(" ");
 }
 
 /**
@@ -184,8 +208,8 @@ export function nodeWaysSentence(proposal: CanvasProposal, node: ProposalNode, g
  * @returns The phrase.
  * @throws {never} Never.
  */
-function closedPhrase(entry: Entry, closed: Closed | undefined): string {
-  return closed?.why === "twin"
+function closedPhrase(entry: Entry, closed: Closed): string {
+  return closed.why === "twin"
     ? `"${closed.twin.name}" already brings the same material into "${entry.way.into}"`
     : `"${entry.way.into}" has no room left`;
 }
@@ -374,27 +398,23 @@ type FillProblem =
  * @throws {never} Never.
  */
 function judgeFills(proposal: CanvasProposal, generation: ProposalNode, chosen: ModelInfo): { filled: Arriving[]; problems: FillProblem[] } {
-  const ways = waysIn(chosen);
-  const slots = [...ways.values()].flat().filter((way) => way.mark === "note");
+  const slots = [...waysIn(chosen)].flatMap(([kind, list]) => list.filter((way) => way.mark === "note").map((way) => ({ kind, way })));
   const filled: Arriving[] = [];
   const problems: FillProblem[] = [];
   for (const [param, indices] of Object.entries(generation.fills ?? {})) {
+    // A bad index is refused on its own; the nodes beside it still count, so
+    // advice reads the slot as the nodes it names fill it.
     const outside = indices.find((at) => proposal.nodes[at] === undefined);
-    if (outside !== undefined) {
-      problems.push({ kind: "outside", param, at: outside });
-      continue;
-    }
-    const named = indices.map((at) => proposal.nodes[at] as ProposalNode);
-    if (named.includes(generation)) {
-      problems.push({ kind: "self", param });
-      continue;
-    }
-    const way = slots.find((option) => option.into === param);
-    if (way === undefined) {
+    if (outside !== undefined) problems.push({ kind: "outside", param, at: outside });
+    const all = indices.flatMap((at) => proposal.nodes[at] ?? []);
+    if (all.includes(generation)) problems.push({ kind: "self", param });
+    const named = all.filter((from) => from !== generation);
+    const slot = slots.find(({ way }) => way.into === param);
+    if (slot === undefined) {
       problems.push({ kind: "not-a-slot", param, named });
       continue;
     }
-    const slotKind = [...ways.entries()].find(([, list]) => list.includes(way))?.[0] ?? "";
+    const { kind: slotKind, way } = slot;
     const seen = new Map<string, ProposalNode>();
     for (const from of named) {
       if (from.material === undefined) {
@@ -463,16 +483,27 @@ type Closed = { why: "room" } | { why: "twin"; twin: ProposalNode };
  * @param node - The node.
  * @param generation - The generation.
  * @param chosen - Its model.
- * @returns Each entry with why it is closed, or undefined when it is open.
+ * @param placed - Nodes the same advice has already sent in, each by the way it was given.
+ * @returns The open entries, and the closed ones with why.
  * @throws {never} Never.
  */
-function wayStates(proposal: CanvasProposal, node: ProposalNode, generation: ProposalNode, chosen: ModelInfo): { entry: Entry; closed: Closed | undefined }[] {
-  const others = arrivingInto(proposal, generation, chosen).filter((arrival) => arrival.node !== node);
-  return entriesFor(chosen, node.type, holdingOf(node)).map((entry) => {
-    if (goingWay(others, node.type, entry.way.into).length >= entry.way.room) return { entry, closed: { why: "room" } };
+function wayStates(
+  proposal: CanvasProposal,
+  node: ProposalNode,
+  generation: ProposalNode,
+  chosen: ModelInfo,
+  placed: readonly Arriving[],
+): { open: Entry[]; closed: { entry: Entry; closed: Closed }[] } {
+  const others = [...arrivingInto(proposal, generation, chosen).filter((arrival) => arrival.node !== node), ...placed];
+  const open: Entry[] = [];
+  const closed: { entry: Entry; closed: Closed }[] = [];
+  for (const entry of entriesFor(chosen, node.type, holdingOf(node))) {
     const twin = entry.by === "fills" ? others.find((arrival) => arrival.entry.way.into === entry.way.into && arrival.node.material === node.material) : undefined;
-    return { entry, closed: twin === undefined ? undefined : { why: "twin", twin: twin.node } };
-  });
+    if (goingWay(others, node.type, entry.way.into).length >= entry.way.room) closed.push({ entry, closed: { why: "room" } });
+    else if (twin !== undefined) closed.push({ entry, closed: { why: "twin", twin: twin.node } });
+    else open.push(entry);
+  }
+  return { open, closed };
 }
 
 /**
@@ -485,7 +516,49 @@ function wayStates(proposal: CanvasProposal, node: ProposalNode, generation: Pro
  * @throws {never} Never.
  */
 export function openEntries(proposal: CanvasProposal, node: ProposalNode, generation: ProposalNode, chosen: ModelInfo): Entry[] {
-  return wayStates(proposal, node, generation, chosen).flatMap((state) => (state.closed === undefined ? [state.entry] : []));
+  return wayStates(proposal, node, generation, chosen, []).open;
+}
+
+/** One node of several sent in by the same advice, with the ways it is told. */
+export interface Placement {
+  /** The node. */
+  node: ProposalNode;
+  /** The ways it is told: every open one when it is sent alone, else the one it is given; none when none is left. */
+  ways: Entry[];
+  /** The nodes sent in before it by the same advice. */
+  before: readonly Arriving[];
+}
+
+/**
+ * Where each of several nodes goes into a generation when one piece of advice
+ * sends them all. They are placed in turn, each counted where it was sent
+ * before the next is judged, so room and same material hold across them; when
+ * more than one is sent, each is given one way, since two given the same
+ * choice could take the same slot.
+ * @param proposal - The whole proposal.
+ * @param nodes - The nodes, in the order they are told.
+ * @param generation - The generation.
+ * @param chosen - Its model.
+ * @param allowed - The ways the advice may send them.
+ * @returns One placement per node.
+ * @throws {never} Never.
+ */
+export function placeEach(
+  proposal: CanvasProposal,
+  nodes: readonly ProposalNode[],
+  generation: ProposalNode,
+  chosen: ModelInfo,
+  allowed: (entry: Entry) => boolean = () => true,
+): Placement[] {
+  const placed: Arriving[] = [];
+  return nodes.map((node) => {
+    const before = [...placed];
+    const open = wayStates(proposal, node, generation, chosen, before).open.filter(allowed);
+    const ways = nodes.length === 1 ? open : open.slice(0, 1);
+    const [first] = ways;
+    if (first !== undefined) placed.push({ node, entry: first });
+    return { node, ways, before };
+  });
 }
 
 /**
@@ -516,7 +589,7 @@ export function fillsOf(
     case "self":
       return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself, and a node cannot fill its own slot. Check the index the fill means.`);
     case "not-a-slot": {
-      const told = problem.named.map((from) => nodeWaysSentence(proposal, from, node, chosen)).join(" ");
+      const told = placedWaysSentence(proposal, [...new Set(problem.named)], node, chosen);
       return chosen.params[param]?.fromReferencePool === true
         ? refuse("fill-into-pool", `"${param}" is the reference pool of "${chosen.name}", which takes no fills. Take fills "${param}" off. ${told}`)
         : refuse("fill-not-a-slot", `"${chosen.name}" has no slot "${param}". Take fills "${param}" off. ${told}`);

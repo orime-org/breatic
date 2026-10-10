@@ -35,6 +35,7 @@ import {
   notesAsked,
   notesIn,
   openEntries,
+  placeEach,
   refsIn,
   routeEdges,
   slotSentence,
@@ -170,12 +171,11 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
       const going = goingWay(arriving, kind, option.into);
       if (going.length <= option.room) continue;
       const over = `"${chosen.name}" takes ${String(option.room)} ${kind} node(s) by "${option.into}", and ${String(going.length)} are going that way (${going.map((n) => `"${n.name}"`).join(", ")}).`;
-      // The nodes past the room, each with the other ways still open to it;
-      // offered only where those ways have room for all of them.
-      const rest = going.slice(option.room).map((n) => [n, openEntries(proposal, n, node, chosen).filter((entry) => entry.way.into !== option.into)] as const);
-      const free = list.filter((other) => other !== option).reduce((sum, other) => sum + Math.max(0, other.room - goingWay(arriving, kind, other.into).length), 0);
-      if (rest.every(([, entries]) => entries.length > 0) && rest.length <= free) {
-        return refuse("way-over-room-other-way", `${over} Send fewer, or send the rest another way: ${rest.map(([n, entries]) => waysSentence(`"${n.name}"`, node, entries)).join(" ")}`);
+      // The nodes past the room, placed in turn in the other ways; offered
+      // only where every one of them is left a way.
+      const rest = placeEach(proposal, going.slice(option.room), node, chosen, (entry) => entry.way.into !== option.into);
+      if (rest.every(({ ways }) => ways.length > 0)) {
+        return refuse("way-over-room-other-way", `${over} Send fewer, or send the rest another way: ${rest.map(({ node: n, ways }) => waysSentence(`"${n.name}"`, node, ways)).join(" ")}`);
       }
       return refuse("way-over-room", `${over} Send fewer.`);
     }
