@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+  fireEvent,
   render as rtlRender,
   screen,
   waitFor,
@@ -29,7 +30,7 @@ vi.mock('@web/data/yjs/project-meta', async () => {
   return {
     ...actual,
     useProjectMeta: () => ({
-      spaces: [],
+      spaces: mockMetaSpaces.current,
       users: new Map(),
       synced: true,
       provider: null,
@@ -38,6 +39,17 @@ vi.mock('@web/data/yjs/project-meta', async () => {
     }),
   };
 });
+
+// The Spaces the meta doc lists. Empty for every case but the tab ones; held
+// in one object so the array a render reads stays the same between renders.
+const mockMetaSpaces: { current: { id: string; name: string; type: 'canvas' }[] } = {
+  current: [],
+};
+
+// A Space body dials its own document; the tab strip is what these cases read.
+vi.mock('@web/pages/project/OpenSpace', () => ({
+  OpenSpace: () => null,
+}));
 
 // Stub the project-open recorder (fires a fetch on mount otherwise).
 vi.mock('@web/pages/project/use-record-project-open', () => ({
@@ -212,5 +224,35 @@ describe('ProjectPage — an archived project is read-only for everyone', () => 
     setup('owner');
     expect(await screen.findByTestId('agent-column')).toBeInTheDocument();
     expect(screen.queryByText('This project is archived and can only be viewed')).toBeNull();
+  });
+});
+
+// A viewer cannot rename a Space -- the server refuses it -- so the tab does
+// not open its name for editing (inner#956).
+describe('ProjectPage — renaming a Space from its tab', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMetaSpaces.current = [{ id: 'sp1', name: 'Main', type: 'canvas' }];
+  });
+
+  afterEach(() => {
+    mockMetaSpaces.current = [];
+  });
+
+  it('opens the name for an editor', async () => {
+    setup('editor');
+    fireEvent.doubleClick(await screen.findByTestId('space-tab-name-sp1'));
+    expect(screen.getByTestId('space-tab-name-input-sp1')).toBeInTheDocument();
+  });
+
+  it('leaves the name closed for a viewer', async () => {
+    setup('viewer');
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /request editor access/i }),
+      ).toBeInTheDocument();
+    });
+    fireEvent.doubleClick(await screen.findByTestId('space-tab-name-sp1'));
+    expect(screen.queryByTestId('space-tab-name-input-sp1')).toBeNull();
   });
 });
