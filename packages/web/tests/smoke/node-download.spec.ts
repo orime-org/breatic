@@ -2,29 +2,26 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Node download E2E (#2108) — the half no unit test can reach.
+ * The node menu's Download hands the stored file to the browser's own
+ * download list (#2108, inner#1335).
  *
- * The unit suite pins which nodes offer the item and what address it hands
- * over. What it cannot answer is whether the browser treats that address as
- * a download at all: `<a download>` is ignored the moment the final URL is
- * cross-origin, so the only thing that makes this a download is the
- * `Content-Disposition: attachment` the ingest Worker sends. If that header
- * were missing the browser would navigate to the image instead and no
- * `download` event would ever fire — which is exactly what this asserts (A11).
+ * The menu opens the asset's own public URL with `download=1`. The resource
+ * domain answers that query with `Content-Disposition: attachment`, and that
+ * header is the only thing that makes the answer a download: `<a download>`
+ * is ignored once the URL is cross-origin. Without it the browser opens the
+ * picture and no `download` event fires — which is what this waits for.
  *
- * The bytes are uploaded by the run itself, because the address has to be a
- * real object in our own bucket: the server refuses anything else, and a data
- * URI never reaches the Worker.
+ * The bytes are uploaded by the run itself, so the address is a real object
+ * in our own bucket.
  *
  * Needs a running dev stack (`pnpm dev`):
  *
  *   pnpm --filter @breatic/web test:smoke:all
  *
- * It also needs the ingest Worker this checkout's `INGEST_BASE_URL` names to
- * be serving `/download/{key}`. A Worker deployed before that route existed
- * answers 404, the browser navigates to it, and no download ever starts —
- * measured 2026-09-18 against `breatic-ingest.orime.workers.dev`, where a
- * `POST /download/probe` came back 404 rather than the 405 the route answers.
+ * It also needs this checkout's `UPLOAD_BASE_URL` on a domain that carries
+ * the `download` rule (resource-dev.breatic.cc). An `r2.dev` address cannot
+ * carry it, and there the browser opens the file by design; the case checks
+ * the host first so that reads as a setup problem.
  */
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -98,14 +95,14 @@ test('the menu hands the stored file to the browser as a download @needs-ingest 
     timeout: 20_000,
   });
 
-  // The Space starts empty, so the one image that appears is this upload's,
-  // and it carries the address the server registered.
+  // The Space starts empty, so the one picture that appears is this upload's.
   const nodeImage = visibleSpace(page).locator('.react-flow__node img');
   await expect(nodeImage).toHaveCount(1, { timeout: 30_000 });
-  const stored = await nodeImage.evaluate(
-    (img) => (img as HTMLImageElement).src,
-  );
-  expect(stored).toMatch(/^https?:\/\//);
+  const shown = new URL(await nodeImage.evaluate((img) => (img as HTMLImageElement).src));
+  expect(
+    shown.hostname.endsWith('.r2.dev'),
+    `UPLOAD_BASE_URL is on ${shown.hostname}, which cannot carry the download rule`,
+  ).toBe(false);
 
   await page
     .locator('.react-flow__node')
@@ -113,18 +110,20 @@ test('the menu hands the stored file to the browser as a download @needs-ingest 
     .locator('[data-testid=image-node]')
     .click({ button: 'right' });
 
-  // A navigation instead of a download would leave this waiting: nothing on
-  // our side can force the browser's hand, only the Worker's header does.
+  // A navigation instead of a download would leave this waiting: only the
+  // resource domain's header makes the answer a download.
   const [download] = await Promise.all([
     page.waitForEvent('download', { timeout: 30_000 }),
     page.getByTestId('node-menu-download').click(),
   ]);
 
-  // A7: the name is the last segment of the object's key, which is also the
-  // last segment of the address the node holds.
-  const keyTail = decodeURIComponent(
-    new URL(stored).pathname.split('/').pop() ?? '',
-  );
+  // The browser went straight to the stored object, asking for the download.
+  const fetched = new URL(download.url());
+  expect(fetched.host).toBe(shown.host);
+  expect(fetched.search).toBe('?download=1');
+
+  // A7: the name is the last segment of the object's key.
+  const keyTail = decodeURIComponent(fetched.pathname.split('/').pop() ?? '');
   expect(download.suggestedFilename()).toBe(keyTail);
 
   // And it is that object, not an error page wearing its name.
