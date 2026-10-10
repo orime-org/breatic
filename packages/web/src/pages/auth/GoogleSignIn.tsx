@@ -88,7 +88,7 @@ function GoogleSignInButton({ clientId, busy, onCredential }: GoogleSignInProps)
         </div>
       </GoogleOAuthProvider>
       {script === 'loading' ? <p role='status' className='text-sm text-muted-foreground'>{t('auth.login.googleLoading')}</p> : null}
-      {script === 'failed' || credentialError ? <FieldError role='alert'>{t('auth.login.googleFailed')}</FieldError> : null}
+      {script === 'failed' || credentialError ? <FieldError role='alert' className='text-center'>{t('auth.login.googleFailed')}</FieldError> : null}
     </div>
   );
 }
@@ -113,8 +113,8 @@ function GoogleSignInFailure({ eventId }: { eventId?: string }): React.JSX.Eleme
   const t = useTranslation();
   return (
     <div className='flex flex-col gap-2'>
-      <FieldError role='alert'>{t('auth.login.googleFailed')}</FieldError>
-      {eventId ? <p className='break-all text-xs text-muted-foreground'>{t('applicationError.reference', { id: eventId })}</p> : null}
+      <FieldError role='alert' className='text-center'>{t('auth.login.googleFailed')}</FieldError>
+      {eventId ? <p className='break-all text-center text-xs text-muted-foreground'>{t('applicationError.reference', { id: eventId })}</p> : null}
     </div>
   );
 }

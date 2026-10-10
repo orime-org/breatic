@@ -49,3 +49,9 @@ Invariant: a displayed route ID belongs to its exact original error; report stat
 ### Verification limits
 
 The complete default smoke suite was attempted but stopped at its database preflight: `DATABASE_URL` is unset in this independent worktree. The local server, PostgreSQL/Yjs databases and Redis are not configured here. Full live email authentication and project-creation E2E were not run; no production credentials were requested or accessed. The reported Google SDK error was injected into its render lifecycle; this verifies containment, not a repair of Google's iOS/in-app-browser compatibility. External translation was simulated by the known DOM replacement pattern; arbitrary extensions can ignore translation declarations.
+
+## Google feedback alignment follow-up (2026-10-10)
+
+The user requested that the Google-unavailable message be horizontally centered in the login card. Both the existing script/credential failure feedback and the isolated SDK-boundary fallback now use centered text; an available error reference follows the same alignment. Field validation styling is unchanged. Registration currently has no Google button.
+
+Verification: the 31 existing Google/login/registration tests, web typecheck and scoped ESLint passed. Chromium rendered the actual local login page with Google script failure and an injected SDK render failure. Chinese feedback computed `text-align: center`; its text midpoint differed from the paragraph midpoint by less than 0.01 pixels. English feedback wrapped to two lines, each with a zero-pixel midpoint offset. The email field remained enabled. The expected blocked/synthetic Google failure and anonymous local auth response were visible in the development console; this was layout verification, not a live Google or email authentication E2E. The existing full-suite database preflight limitation above remains.
