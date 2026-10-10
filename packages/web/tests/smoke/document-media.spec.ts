@@ -507,6 +507,15 @@ test('a selected picture is framed with a knob on each corner, and its handle st
     });
     expect(square).toEqual(['8px', '8px', '1px']);
   }
+  // The rule after the alignments sits 5px from each neighbour, as the selection bar's does.
+  const ruleGaps = await page.getByTestId('doc-media-align-right').evaluate((button) => {
+    const box = button.getBoundingClientRect();
+    const style = getComputedStyle(button, '::after');
+    const ruleLeft = box.right - parseFloat(style.right) - parseFloat(style.width);
+    const next = button.nextElementSibling!.getBoundingClientRect();
+    return [Math.round(ruleLeft - box.right), Math.round(next.left - (ruleLeft + parseFloat(style.width)))];
+  });
+  expect(ruleGaps).toEqual([5, 5]);
   await expect(page.locator(IMAGE)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
   // The frame stops at the media: a caption under it is outside.

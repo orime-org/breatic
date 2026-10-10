@@ -139,12 +139,13 @@ const CORNERS = [
 ] as const;
 
 /**
- * The selection bar's rule between groups (16px tall, 3px either side), drawn
- * after the last alignment: an element of its own inside the block would put
- * line breaks in the page's selection of the block.
+ * The selection bar's rule between groups (16px tall, 5px either side once the
+ * bar's 2px gap is counted), drawn after the last alignment: an element of its
+ * own inside the block would put line breaks in the page's selection of the
+ * block.
  */
 const GROUP_RULE_AFTER =
-  'relative mr-[7px] after:absolute after:-right-[4px] after:top-1/2 after:h-4 after:w-px after:-translate-y-1/2 after:bg-border';
+  'relative mr-[9px] after:absolute after:-right-[6px] after:top-1/2 after:h-4 after:w-px after:-translate-y-1/2 after:bg-border';
 
 /** Where each alignment puts the media in its row. */
 const JUSTIFY: Readonly<Record<string, string>> = {
