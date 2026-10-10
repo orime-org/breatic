@@ -75,15 +75,22 @@ export interface StoredPicture {
 }
 
 /**
- * Read a stored picture's own pixels, as a model reading the file would.
- * @param target - A page whose origin may fetch the URL.
- * @param url - The stored picture.
+ * Read a stored picture's own pixels, as a model reading the file would. A
+ * preview URL is read as the original beside it.
+ * @param target - A page to decode in.
+ * @param url - The stored picture, or its preview.
  * @returns Its size and the colour near the middle of each edge.
  */
 export async function storedPicture(target: Page, url: string): Promise<StoredPicture> {
-  return target.evaluate(async (address: string) => {
-    const blob = await (await fetch(address)).blob();
-    const bitmap = await createImageBitmap(blob, { imageOrientation: 'none' });
+  const original = url.replace(/\.preview\.webp$/, '');
+  const fetched = await target.request.get(original);
+  if (!fetched.ok()) throw new Error(`GET ${original} answered ${fetched.status()}`);
+  const encoded = (await fetched.body()).toString('base64');
+  return target.evaluate(async (data: string) => {
+    const binary = atob(data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    const bitmap = await createImageBitmap(new Blob([bytes]), { imageOrientation: 'none' });
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
     const ctx = canvas.getContext('2d')!;
     ctx.drawImage(bitmap, 0, 0);
@@ -100,7 +107,7 @@ export async function storedPicture(target: Page, url: string): Promise<StoredPi
       left: at(4, height / 2),
       right: at(width - 5, height / 2),
     };
-  }, url);
+  }, encoded);
 }
 
 /**

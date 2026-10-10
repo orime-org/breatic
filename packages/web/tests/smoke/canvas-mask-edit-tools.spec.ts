@@ -273,8 +273,9 @@ test('a phone photo is stored upright, and dropping it again uploads nothing @ne
 test('a mask tool exports only a mask of 0 and 255 at the stored picture\'s size, and a wiped drawing has no ink @needs-internet @needs-ingest', async () => {
   const photo = await dropPhoto(uniqueJpeg(EXIF_BYTES));
   const stored = await storedPicture(page, photo.src);
-  await openTool(page, imageNode, 'image.inpaint');
-  await expect(nodeOf(imageNode).getByTestId('mini-tool-draw-layer')).toBeVisible({ timeout: 15_000 });
+  // The dropped photo lands over the seeded node, so the tool opens on it.
+  await openTool(page, photo.id, 'image.inpaint');
+  await expect(nodeOf(photo.id).getByTestId('mini-tool-draw-layer')).toBeVisible({ timeout: 15_000 });
   // The resource timeline keeps only the first modules loaded; these two sit
   // beside the canvas module on the same dev server.
   const canvasAt = new URL(await liveModuleUrl(page, CANVAS_SPACE));
