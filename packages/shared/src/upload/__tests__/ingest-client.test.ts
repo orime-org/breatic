@@ -112,6 +112,7 @@ function wireOpenAndParts(parts: number): void {
 /** What the Worker measures over an object that landed. */
 const MEASURED = {
   sha256: 'a'.repeat(64),
+  receivedSha256: 'b'.repeat(64),
   sizeBytes: 1024,
   contentType: 'image/png',
 };
@@ -349,6 +350,23 @@ describe('finishing an upload', () => {
 
   // These three decide whether the upload succeeded at all, so an answer
   // missing one of them is unusable rather than degraded.
+  it('fails when the answer carries no received hash', async () => {
+    const { receivedSha256: _dropped, ...withoutReceived } = MEASURED;
+    mockedRequest.mockResolvedValueOnce(answers(200, withoutReceived));
+
+    await expect(
+      finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS),
+    ).rejects.toThrow();
+  });
+
+  it('hands back the received hash beside the stored one', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
+
+    const measured = await finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS);
+
+    expect(measured.receivedSha256).toBe(MEASURED.receivedSha256);
+  });
+
   it('fails when the answer carries no hash', async () => {
     mockedRequest.mockResolvedValueOnce(
       answers(200, { sizeBytes: 1024, contentType: 'image/png' }),

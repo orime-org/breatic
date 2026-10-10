@@ -99,6 +99,8 @@ function reportOf(record: JobRecord): MiniToolJobReport {
       return {
         storageKey: output.storageKey,
         ...written,
+        // Our own tool wrote these bytes; nothing turned them after they landed.
+        receivedSha256: written.sha256,
         width: media?.width ?? null,
         height: media?.height ?? null,
         durationSeconds: media?.durationSeconds ?? null,
