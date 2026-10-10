@@ -70,7 +70,8 @@ import {
   loadLocales,
   getNodeTaskConfig,
 } from "@breatic/core";
-import { assetRepo, MEDIA_READ_QUEUE } from "@breatic/domain";
+import { assetRepo, MEDIA_READ_QUEUE, type UploadFinishResult } from "@breatic/domain";
+import { closeFinishQueue, runQueuedFinish } from "@server/__tests__/helpers/queued-finish.js";
 import { signSessionToken } from "@breatic/shared";
 import type { Hono } from "hono";
 
@@ -100,6 +101,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await closeFinishQueue();
   await sql?.end({ timeout: 1 });
 });
 
@@ -173,13 +175,14 @@ async function keyFor(cookie: string, body: Record<string, unknown>): Promise<st
 
 /**
  * Finish the upload on `storageKey`, the Worker answering `answer`.
- * @returns This server's answer, and the body it sent the Worker.
+ * @returns How the queued finish ended, and the body it sent the Worker.
+ * @throws {Error} When the route did not queue a finish, or the finish threw.
  */
 async function finish(
   cookie: string,
   storageKey: string,
   answer: Record<string, unknown>,
-): Promise<{ res: Response; sent: Record<string, unknown> }> {
+): Promise<{ result: UploadFinishResult; sent: Record<string, unknown> }> {
   let sent: Record<string, unknown> = {};
   vi.stubGlobal(
     "fetch",
@@ -212,7 +215,8 @@ async function finish(
     },
     body: JSON.stringify({ parts: PARTS }),
   });
-  return { res, sent };
+  if (res.status !== 202) throw new Error(`the finish route answered ${res.status}`);
+  return { result: await runQueuedFinish(storageKey), sent };
 }
 
 /** A picture the Worker measured nothing on. */
@@ -240,9 +244,9 @@ describe("which finishes ask the Worker for no media read", () => {
       purpose: "project_cover",
     });
 
-    const { res, sent } = await finish(admin.cookie, key, picture());
+    const { result, sent } = await finish(admin.cookie, key, picture());
 
-    expect(res.status).toBe(200);
+    expect(result.refused).toBeUndefined();
     expect(sent.deferMediaRead).toBe(true);
     // The upload's two hours, signed into its token by the ticket (inner#1367).
     expect(sent.deadlineAt as number).toBeGreaterThan(Date.now());
@@ -287,8 +291,8 @@ describe("which finished uploads get a read job", () => {
       purpose: "project_cover",
     });
 
-    const { res } = await finish(admin.cookie, key, picture());
-    const { data } = (await res.json()) as { data: { assetId: string } };
+    const { result } = await finish(admin.cookie, key, picture());
+    const data = result.outcome as { assetId: string };
 
     expect((await rowOf(data.assetId)).width).toBeNull();
     const job = await queue.getJob(`media-read-${data.assetId}`);
@@ -306,14 +310,14 @@ describe("which finished uploads get a read job", () => {
       space_id: crypto.randomUUID(),
     });
     const first = await finish(admin.cookie, canvasKey, picture(sha256));
-    const { data: canvasRow } = (await first.res.json()) as { data: { assetId: string } };
+    const canvasRow = first.result.outcome as { assetId: string };
     const coverKey = await keyFor(admin.cookie, {
       project_id: admin.projectId,
       purpose: "project_cover",
     });
 
-    const { res } = await finish(admin.cookie, coverKey, picture(sha256));
-    const { data } = (await res.json()) as { data: { assetId: string } };
+    const { result } = await finish(admin.cookie, coverKey, picture(sha256));
+    const data = result.outcome as { assetId: string };
 
     expect(data.assetId).toBe(canvasRow.assetId);
     expect(await queue.getJob(`media-read-${canvasRow.assetId}`)).toBeUndefined();
@@ -327,8 +331,8 @@ describe("which finished uploads get a read job", () => {
       space_id: crypto.randomUUID(),
     });
 
-    const { res } = await finish(admin.cookie, key, picture());
-    const { data } = (await res.json()) as { data: { assetId: string } };
+    const { result } = await finish(admin.cookie, key, picture());
+    const data = result.outcome as { assetId: string };
 
     expect(await queue.getJob(`media-read-${data.assetId}`)).toBeUndefined();
   });
@@ -344,10 +348,10 @@ it("answers the finish even when the read could not be queued", async () => {
   });
   scheduling.fails = true;
   try {
-    const { res } = await finish(admin.cookie, key, picture());
+    const { result } = await finish(admin.cookie, key, picture());
 
-    expect(res.status).toBe(200);
-    const { data } = (await res.json()) as { data: { assetId: string } };
+    expect(result.refused).toBeUndefined();
+    const data = result.outcome as { assetId: string };
     expect((await rowOf(data.assetId)).width).toBeNull();
   } finally {
     scheduling.fails = false;
@@ -389,12 +393,12 @@ describe("a purpose admits pictures only", () => {
       purpose: "project_cover",
     });
 
-    const { res } = await finish(admin.cookie, key, {
+    const { result } = await finish(admin.cookie, key, {
       ...picture(),
       contentType: "video/mp4",
     });
 
-    expect(res.status).toBe(415);
+    expect(result.refused?.reason).toBe("unsupported_type");
     const rows = await sql`SELECT id FROM studio_assets WHERE storage_key = ${key}`;
     expect(rows).toHaveLength(0);
     const grants = await sql<{ voided_at: Date | null }[]>`
@@ -411,8 +415,8 @@ describe("writing the numbers back", () => {
       project_id: admin.projectId,
       purpose: "project_cover",
     });
-    const { res } = await finish(admin.cookie, key, picture());
-    const { data } = (await res.json()) as { data: { assetId: string } };
+    const { result } = await finish(admin.cookie, key, picture());
+    const data = result.outcome as { assetId: string };
 
     const first = await assetRepo.fillMediaNumbers(data.assetId, {
       width: 800,

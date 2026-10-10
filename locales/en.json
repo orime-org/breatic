@@ -8,8 +8,7 @@
       "upload_too_large": "File exceeds the upload size limit.",
       "insufficient_credits": "Insufficient credits: required {required}, available {available}",
       "rate_limited": "Too many requests, please try again later",
-      "internal": "Internal server error",
-      "upload_empty": "Nothing was uploaded."
+      "internal": "Internal server error"
     },
     "credit": {
       "not_studio_admin": "You can only assign credits to a studio you administer.",

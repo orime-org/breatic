@@ -53,12 +53,17 @@ import {
   loadLocales,
   taskEventsStreamKey,
   getStorageConfig,
+  createQueue,
 } from "@breatic/core";
 import {
   backendUploadService,
   ingestReportService,
   uploadGrantService,
+  UPLOAD_FINISH_QUEUE,
+  type UploadFinishResult,
 } from "@breatic/domain";
+import { Queue } from "bullmq";
+import { closeFinishQueue, runQueuedFinish } from "@server/__tests__/helpers/queued-finish.js";
 import {
   canvasSpaceDocName,
   INGEST_FAILURE_HEADER,
@@ -90,6 +95,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await closeFinishQueue();
   await sql?.end({ timeout: 1 });
 });
 
@@ -172,6 +178,7 @@ async function mintTicket(
 
 const FINISH_UPLOAD_ID = "r2-upload-id";
 
+
 /** What the last finish request asked the Worker for. */
 let lastFinishBody: Record<string, unknown> = {};
 const ONE_PART = [{ partNumber: 1, etag: "etag-1" }];
@@ -185,12 +192,13 @@ const ONE_PART = [{ partNumber: 1, etag: "etag-1" }];
  * turn the parts into an object; one carrying `refusal` stands for a Worker
  * that could, looked at the bytes, and named what it would not keep.
  * @param body - What the Worker's answer amounts to.
- * @returns This server's answer to the browser.
+ * @returns How the queued finish ended.
+ * @throws {Error} When the route did not queue a finish, or the finish threw.
  */
 async function report(
   body: Record<string, unknown>,
   cookie?: string,
-): Promise<Response> {
+): Promise<UploadFinishResult> {
   const storageKey = body.storage_key as string;
   const contentType = (body.content_type as string) ?? "image/png";
   const token = await signSessionToken(
@@ -243,7 +251,7 @@ async function report(
     }),
   );
   try {
-    return await app.request(
+    const res = await app.request(
       `/api/v1/assets/uploads/${FINISH_UPLOAD_ID}/complete`,
       {
         method: "POST",
@@ -257,6 +265,8 @@ async function report(
         body: JSON.stringify({ parts: ONE_PART }),
       },
     );
+    if (res.status !== 202) throw new Error(`the finish route answered ${res.status}`);
+    return await runQueuedFinish(storageKey);
   } finally {
     vi.unstubAllGlobals();
   }
@@ -321,7 +331,7 @@ describe("a finish this server drove — a completed upload", () => {
 
     const res = await report(noHash);
 
-    expect(res.status).toBe(502);
+    expect(res.refused).toBeDefined();
     const rows = await sql<{ n: string }[]>`
       SELECT count(*) AS n FROM studio_assets WHERE studio_id = ${seed.studioId}
     `;
@@ -369,7 +379,7 @@ describe("a finish this server drove — a completed upload", () => {
 
     const res = await report(completed(key, { sha256: sha }));
 
-    expect(res.status).toBe(200);
+    expect(res.refused).toBeUndefined();
     const assets = await sql<
       { studio_id: string; content_hash: string; storage_key: string; kind: string }[]
     >`
@@ -438,7 +448,7 @@ describe("a finish this server drove — a completed upload", () => {
     // so nothing about this may turn a finished upload into a failed one.
     const res = await report(completed(key, { sha256: sha }));
 
-    expect(res.status).toBe(200);
+    expect(res.refused).toBeUndefined();
     const rows = await sql<
       { width: number | null; height: number | null; duration_seconds: string | null }[]
     >`
@@ -465,7 +475,7 @@ describe("a finish this server drove — a completed upload", () => {
       }),
     );
 
-    expect(res.status).toBe(200);
+    expect(res.refused).toBeUndefined();
     const rows = await sql<
       { width: number | null; height: number | null; duration_seconds: string | null }[]
     >`
@@ -641,7 +651,7 @@ describe("a finish this server drove — a completed upload", () => {
     const secondKey = await mintTicket(seed);
     const res = await report(completed(secondKey, { sha256: sha }));
 
-    expect(res.status).toBe(200);
+    expect(res.refused).toBeUndefined();
     // One row per (studio, content), so the second upload resolves onto the
     // first one's row rather than adding another.
     const assets = await sql<{ storage_key: string }[]>`
@@ -669,9 +679,9 @@ describe("a finish this server drove — a completed upload", () => {
     const sha = crypto.randomBytes(32).toString("hex");
 
     const firstKey = await mintTicket(seed, { node_id: nodeId });
-    expect((await report(completed(firstKey, { sha256: sha }))).status).toBe(200);
+    expect((await report(completed(firstKey, { sha256: sha }))).refused).toBeUndefined();
     const secondKey = await mintTicket(seed, { node_id: nodeId });
-    expect((await report(completed(secondKey, { sha256: sha }))).status).toBe(200);
+    expect((await report(completed(secondKey, { sha256: sha }))).refused).toBeUndefined();
 
     const history = await sql<{ n: string }[]>`
       SELECT count(*) AS n FROM node_history
@@ -696,7 +706,7 @@ describe("a finish this server drove — a completed upload", () => {
       completed(key, { size_bytes: 3 * 1024 * 1024 * 1024 }),
     );
 
-    expect(res.status).toBe(413);
+    expect(res.outcome).toMatchObject({ status: "rejected", reason: "over_cap" });
     const assets = await sql<{ n: string }[]>`
       SELECT count(*) AS n FROM studio_assets WHERE storage_key = ${key}
     `;
@@ -759,7 +769,7 @@ describe("a finish this server drove — an upload the backend opened", () => {
 
     const res = await report(completed(key, { sha256: sha }), seed.cookie);
 
-    expect(res.status).toBe(200);
+    expect(res.refused).toBeUndefined();
     const rows = await sql<
       { source: string; generation_task_id: string | null; id: string }[]
     >`
@@ -773,8 +783,7 @@ describe("a finish this server drove — an upload the backend opened", () => {
 
     // The row it landed on, which is what a caller hanging a cover off this
     // asset has to be told -- it never sees the ledger itself.
-    const answer = (await res.json()) as { data: { assetId: string } };
-    expect(answer.data.assetId).toBe(rows[0]!.id);
+    expect(res.outcome).toMatchObject({ assetId: rows[0]!.id });
 
     // The feed announces what a person did in the project. A generation's
     // output reaches it through the worker, which writes its own row; one
@@ -839,7 +848,7 @@ describe("a finish this server drove — a backend upload that landed empty", ()
       seed.cookie,
     );
 
-    expect(res.status).toBe(422);
+    expect(res.outcome).toMatchObject({ status: "rejected", reason: "empty" });
     const rows = await sql<{ n: string }[]>`
       SELECT count(*) AS n FROM studio_assets WHERE content_hash = ${sha}
     `;
@@ -856,7 +865,7 @@ describe("a finish this server drove — a backend upload that landed empty", ()
       seed.cookie,
     );
 
-    expect(res.status).toBe(422);
+    expect(res.outcome).toMatchObject({ status: "rejected", reason: "empty" });
   });
 
   it("needs no lane of its own, because the browser cannot open an empty one", async () => {
@@ -891,10 +900,9 @@ describe("a finish this server drove — an event that could not be published", 
     const xadd = vi
       .spyOn(getStreamRedis(), "xadd")
       .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
-    const res = await report(completed(key));
+    // The job throws, so the queue delivers it again.
+    await expect(report(completed(key))).rejects.toThrow();
     xadd.mockRestore();
-
-    expect(res.status).toBeGreaterThanOrEqual(500);
   });
 
   // Nothing here can be logged where it happens — a library holds no logger —
@@ -946,7 +954,8 @@ describe("a finish this server drove — an event that could not be published", 
     const xadd = vi
       .spyOn(getStreamRedis(), "xadd")
       .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
-    await report(completed(key));
+    // The job throws, and the queue delivers it again.
+    await expect(report(completed(key))).rejects.toThrow("unreachable");
     xadd.mockRestore();
 
     const feed = (await sql`
@@ -966,10 +975,11 @@ describe("a finish this server drove — an event that could not be published", 
     const xadd = vi
       .spyOn(getStreamRedis(), "xadd")
       .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
-    await report(completed(key));
+    // The job throws, and the queue delivers it again.
+    await expect(report(completed(key))).rejects.toThrow("unreachable");
     xadd.mockRestore();
 
-    expect((await report(completed(key))).status).toBe(200);
+    expect((await report(completed(key))).refused).toBeUndefined();
 
     const events = await eventsFor(
       canvasSpaceDocName(seed.projectId, seed.spaceId),
@@ -991,7 +1001,7 @@ describe("a finish the Worker could not complete", () => {
       outcome: "aborted",
     });
 
-    expect(res.status).toBe(502);
+    expect(res.refused).toBeDefined();
     const assets = await sql<{ n: string }[]>`
       SELECT count(*) AS n FROM studio_assets WHERE storage_key = ${key}
     `;
@@ -1016,7 +1026,7 @@ describe("a finish the Worker could not complete", () => {
     const nodeId = crypto.randomUUID();
     const key = await mintTicket(seed, { node_id: nodeId });
 
-    expect((await report(completed(key))).status).toBe(200);
+    expect((await report(completed(key))).refused).toBeUndefined();
 
     // The browser did not hear that answer and asked the Worker to finish
     // again. That delivery holds the same upload id, so it is granted the key,
@@ -1027,7 +1037,7 @@ describe("a finish the Worker could not complete", () => {
       outcome: "aborted",
     });
 
-    expect(res.status).toBe(502);
+    expect(res.refused).toBeDefined();
     const tasks = await sql<{ status: string }[]>`
       SELECT status FROM node_tasks WHERE node_id = ${nodeId}
     `;
@@ -1108,7 +1118,7 @@ describe("a finish the Worker could not complete", () => {
     // the row is failed before the event is tried, and the event carries four
     // numbers and no content. Opening the node's task list republishes them
     // (design §4.6.4), so a stream that was unreachable costs nothing else.
-    expect(res.status).toBe(502);
+    expect(res.refused).toBeDefined();
     const grants = await sql<{ voided_at: Date | null }[]>`
       SELECT voided_at FROM upload_grants WHERE storage_key = ${key}
     `;
@@ -1126,11 +1136,11 @@ describe("a finish this server drove — the same report twice", () => {
     const first = await report(body);
     const second = await report(body);
 
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
-    const a = (await first.json()) as { data: { fileUrl: string } };
-    const b = (await second.json()) as { data: { fileUrl: string } };
-    expect(b.data.fileUrl).toBe(a.data.fileUrl);
+    expect(first.outcome.status).toBe("registered");
+    expect(second.outcome.status).toBe("already_registered");
+    const a = first.outcome as { fileUrl: string };
+    const b = second.outcome as { fileUrl: string };
+    expect(b.fileUrl).toBe(a.fileUrl);
 
     // One asset, one history row: the retry registers nothing new.
     const assets = await sql<{ n: string }[]>`
@@ -1157,7 +1167,7 @@ describe("a finish this server drove — the same report twice", () => {
     const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
     // The ticket's own event, then one settlement per report.
     expect(events).toHaveLength(3);
-    expect(events[2]!.result?.content).toBe(a.data.fileUrl);
+    expect(events[2]!.result?.content).toBe(a.fileUrl);
   });
 
   // The grant is what tells a repeat report apart from a first one, so it is
@@ -1179,13 +1189,13 @@ describe("a finish this server drove — the same report twice", () => {
       `ALTER TABLE node_history ADD CONSTRAINT node_history_report_retry_probe
        CHECK (node_id <> '${nodeId}')`,
     );
-    const first = await report(body);
+    const first = await report(body).catch((err: unknown) => err);
     await sql.unsafe(
       `ALTER TABLE node_history DROP CONSTRAINT node_history_report_retry_probe`,
     );
 
-    expect(first.status).toBeGreaterThanOrEqual(500);
-    expect((await report(body)).status).toBe(200);
+    expect(first).toBeInstanceOf(Error);
+    expect((await report(body)).refused).toBeUndefined();
 
     const history = await sql<{ n: string }[]>`
       SELECT count(*) AS n FROM node_history
@@ -1358,7 +1368,7 @@ describe("a video, whose cover comes back with the rest of the answer", () => {
       completed(key, { content_type: "video/mp4", size_bytes: 200_000 }),
     );
 
-    expect(res.status).toBe(200);
+    expect(res.refused).toBeUndefined();
     const video = await sql<{ cover_asset_id: string | null }[]>`
       SELECT cover_asset_id FROM studio_assets WHERE storage_key = ${key}
     `;
@@ -1615,7 +1625,7 @@ describe("a finish this server drove — the task it settles", () => {
     const nodeId = crypto.randomUUID();
     const key = await mintTicket(seed, { node_id: nodeId });
 
-    expect((await report(completed(key))).status).toBe(200);
+    expect((await report(completed(key))).refused).toBeUndefined();
 
     const rows = await tasksOn(nodeId);
     expect(rows).toHaveLength(1);
@@ -1715,7 +1725,7 @@ describe("a finish this server drove — the task it settles", () => {
       refusal: "unsupported_type",
     });
 
-    expect(res.status).toBe(415);
+    expect(res.refused?.reason).toBe("unsupported_type");
     const rows = await tasksOn(nodeId);
     expect(rows[0]!.status).toBe("failed");
     expect(rows[0]!.error_message).toBe("unsupported_type");
@@ -1731,7 +1741,7 @@ describe("a finish this server drove — the task it settles", () => {
 
     const res = await report({ storage_key: key, unreachable: true });
 
-    expect(res.status).toBe(502);
+    expect(res.refused).toBeDefined();
     const rows = await tasksOn(nodeId);
     expect(rows[0]!.status).toBe("failed");
     expect(rows[0]!.error_message).toBe("aborted");
@@ -1799,7 +1809,7 @@ describe("a finish this server drove — the task it settles", () => {
     await report(body);
     const first = await tasksOn(nodeId);
 
-    expect((await report(body)).status).toBe(200);
+    expect((await report(body)).refused).toBeUndefined();
     const second = await tasksOn(nodeId);
 
     expect(second).toHaveLength(1);
@@ -1826,16 +1836,15 @@ describe("a finish this server drove — the task it settles", () => {
 
     const res = await report(body);
 
-    expect(res.status).toBe(200);
-    const answer = (await res.json()) as { data: Record<string, unknown> };
-    expect(answer.data).not.toHaveProperty("fileUrl");
+    expect(res.outcome.status).toBe("stale");
+    expect(res.outcome).not.toHaveProperty("fileUrl");
   });
 
   it("settles nothing for an upload with no node behind it", async () => {
     const seed = await seedEditor();
     const key = await mintTicket(seed, { node_id: undefined, space_id: undefined });
 
-    expect((await report(completed(key))).status).toBe(200);
+    expect((await report(completed(key))).refused).toBeUndefined();
 
     const rows = (await sql`
       SELECT id FROM node_tasks WHERE storage_key = ${key}
@@ -1998,9 +2007,9 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
 
     const res = await finish(await tokenFor(key), { parts: PARTS }, seed.cookie);
 
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { data: { fileUrl: string } };
-    expect(body.data.fileUrl).toBeTruthy();
+    expect(res.status).toBe(202);
+    const result = await runQueuedFinish(key);
+    expect(result.outcome).toMatchObject({ status: "registered", fileUrl: expect.any(String) });
     const rows = (await sql`
       SELECT consumed_at FROM upload_grants WHERE storage_key = ${key}
     `) as unknown as { consumed_at: Date | null }[];
@@ -2030,7 +2039,8 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
     // Asserted first: without it this passes on any answer at all, including
     // a route that does not exist, and then it says nothing about which key
     // was used.
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
+    await runQueuedFinish(myKey);
     const rows = (await sql`
       SELECT storage_key, consumed_at FROM upload_grants
       WHERE storage_key IN (${myKey}, ${theirKey})
@@ -2059,6 +2069,47 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
     );
 
     expect(res.status).toBe(401);
+  });
+
+  // A browser that did not hear 202 sends the finish again; the key is the
+  // job id, so the job already queued is the only one (inner#1367 §4.2a).
+  it("queues one finish however many times the browser asks", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    workerAnswers({
+      sha256: crypto.randomBytes(32).toString("hex"),
+      sizeBytes: 4096,
+      contentType: "image/png",
+    });
+    const token = await tokenFor(key);
+
+    expect((await finish(token, { parts: PARTS }, seed.cookie)).status).toBe(202);
+    expect((await finish(token, { parts: PARTS }, seed.cookie)).status).toBe(202);
+
+    const queue = createQueue(UPLOAD_FINISH_QUEUE);
+    const queued = (await queue.getJobs(["waiting", "delayed", "active"])).filter(
+      (job) => job.id === key,
+    );
+    expect(queued).toHaveLength(1);
+    await runQueuedFinish(key);
+  });
+
+  it("voids the grant and answers 502 when the finish could not be queued", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    const add = vi
+      .spyOn(Queue.prototype, "add")
+      .mockRejectedValueOnce(new Error("the queue's Redis is unreachable"));
+
+    const res = await finish(await tokenFor(key), { parts: PARTS }, seed.cookie);
+    add.mockRestore();
+
+    expect(res.status).toBe(502);
+    const grants = await sql<{ voided_at: Date | null; failure_reason: string | null }[]>`
+      SELECT voided_at, failure_reason FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]!.voided_at).not.toBeNull();
+    expect(grants[0]!.failure_reason).toBe("not_started");
   });
 
   it("refuses a caller with no session", async () => {
@@ -2106,7 +2157,8 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
         contentType: "image/png",
       });
       const first = await finish(await tokenFor(key), { parts: PARTS }, seed.cookie);
-      expect(first.status).toBe(200);
+      expect(first.status).toBe(202);
+      await runQueuedFinish(key);
 
       const stub = workerAnswers({
         sha256: crypto.randomBytes(32).toString("hex"),

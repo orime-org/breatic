@@ -18,13 +18,10 @@ import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import {
-  finishUploadAtIngest,
   verifySessionToken,
   reduceMediaType,
   isUploadableMediaType,
-  UploadHttpError,
-  INGEST_REFUSED_UNNAMED,
-  signalUntil,
+  INGEST_NOT_STARTED,
   UPLOAD_STATUS_MAX_KEYS,
   t,
   type NodeTaskAction,
@@ -40,6 +37,8 @@ import {
   uploadDeadline,
   uploadStatusService,
   uploadTicketService,
+  UPLOAD_FINISH_QUEUE,
+  type UploadFinishJob,
 } from "@breatic/domain";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
@@ -53,7 +52,8 @@ import {
   projectService,
 } from "@server/modules";
 import {
-  coverKeyFor,
+  createQueue,
+  defaultJobOpts,
   getStorageConfig,
   getStorageAdapter,
   env,
@@ -63,6 +63,9 @@ import {
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 
 const assets = new Hono<{ Variables: AuthVariables }>();
+
+/** Finishing a browser upload, which runs as a job (inner#1367 §4.2a). */
+const uploadFinishQueue = createQueue(UPLOAD_FINISH_QUEUE);
 
 // ── File kind detection ─────────────────────────────────────────────
 
@@ -526,130 +529,36 @@ assets.post(
         : c.json({ error: { message: t("server.error.conflict") } }, 409);
     }
 
-    /**
-     * Settle the grant and the task row as aborted, and answer the caller.
-     *
-     * The bytes stay in R2 for the sweep. A format we do not take came from
-     * the caller and answers 415; every other way this ends is our own side
-     * failing, which 502 is the honest answer for. The status is the part
-     * that carries it: 502 is retried by the client and 4xx is not, and
-     * retrying a format we do not take gets the same refusal every time. What
-     * a person reads is the task row, which the reason settles.
-     * @param reason - Why the upload stops here.
-     * @returns The 415 or 502 answer.
-     */
-    const refuse = async (reason: string): Promise<Response> => {
+    // Finishing lasts as long as the Worker takes, bounded by the upload's two
+    // hours, so it runs as a job and the browser learns the ending from the
+    // status query (inner#1367 §4.2a). The key is the job id: a browser that
+    // did not hear 202 sends this again, and a job with that id already queued
+    // or kept takes no second one.
+    try {
+      await uploadFinishQueue.add(
+        "finish",
+        {
+          storageKey,
+          uploadId,
+          token: c.req.header("x-upload-token") ?? "",
+          parts,
+          assetSource: claim.assetSource,
+        } satisfies UploadFinishJob,
+        { ...defaultJobOpts(), jobId: storageKey },
+      );
+    } catch (err) {
+      logger.error({ err, key: storageKey }, "upload_finish_enqueue_failed");
       noteIngestSideEffects(
         storageKey,
         await ingestReportService.applyIngestReport({
           storageKey,
           outcome: "aborted",
-          reason,
+          reason: INGEST_NOT_STARTED,
         }),
       );
-      return reason === "unsupported_type"
-        ? c.json({ error: { message: t("server.error.validation") } }, 415)
-        : c.json({ error: { message: t("server.error.internal") } }, 502);
-    };
-
-    // The Worker could not turn the parts into an object: it failed to
-    // assemble them, or to read the result back to hash it. The bytes stay in
-    // R2 for the sweep to collect, and the grant and the task row are ours to
-    // settle — nothing else will, now that the Worker reports to nobody.
-    let answered;
-    try {
-      answered = await finishUploadAtIngest(
-        env.INGEST_BASE_URL,
-        { uploadId, token: c.req.header("x-upload-token") ?? "", parts },
-        env.INGEST_SHARED_SECRET,
-        // Named unconditionally: which media have a frame to lift is decided
-        // from the type, and the type is the edge's to read off the bytes, so
-        // nobody here knows it yet. The key is derived from the object's own,
-        // so re-delivering this request names the same place rather than
-        // leaving a second frame behind.
-        {
-          coverKey: coverKeyFor(storageKey),
-          // The upload's two hours, signed into the token by the ticket
-          // (inner#1367); finishing it is held to them and nothing shorter.
-          deadlineAt: session.deadlineAt,
-          signal: signalUntil(session.deadlineAt),
-          deferMediaRead: !mediaReadService.readsMediaAtFinish(claim.assetSource),
-        },
-      );
-    } catch (err) {
-      // Both ways this can go wrong end here: the Worker refused, or it
-      // answered something the ledger cannot be written from. Either way the
-      // bytes stay in R2 for the sweep, and the grant and the task row are
-      // ours to settle.
-      //
-      // An UploadHttpError exists only because an answer arrived, so a missing
-      // name on it is the Worker refusing without saying why. Without the name
-      // the list reads "interrupted" for every one of them, which invites a
-      // retry that the edge will refuse identically.
-      //
-      // Nothing arriving at all keeps that same "interrupted", because on this
-      // lane it is the true sentence: the bytes came off a disk the person
-      // picked from, so the tokens that speak of a source and its address —
-      // what the URL lane settles on here — would describe something this
-      // upload never had.
-      const reason =
-        err instanceof UploadHttpError
-          ? (err.code ?? INGEST_REFUSED_UNNAMED)
-          : "aborted";
-      logger.error({ err, key: storageKey, reason }, "upload_finish_failed");
-      return refuse(reason);
+      return c.json({ error: { message: t("server.error.internal") } }, 502);
     }
-
-    // The ticket named a picture; this is what the bytes that landed are. A
-    // cover or an avatar that turns out to be anything else is refused the way
-    // a format we do not take is, before a row is written for it.
-    if (!mediaReadService.storedTypeAccepted(claim.assetSource, answered.contentType)) {
-      logger.info(
-        { key: storageKey, contentType: answered.contentType, source: claim.assetSource },
-        "upload_purpose_type_refused",
-      );
-      return refuse("unsupported_type");
-    }
-
-    const outcome = await ingestReportService.applyIngestReport({
-      storageKey,
-      outcome: "completed",
-      ...answered,
-    });
-    noteIngestSideEffects(storageKey, outcome);
-
-    // The row stands either way; a read that could not be queued leaves it
-    // without numbers, which is how a read that failed leaves it too.
-    try {
-      await mediaReadService.scheduleMediaRead(outcome, claim.assetSource);
-    } catch (err) {
-      logger.error({ err, key: storageKey }, "media_read_enqueue_failed");
-    }
-
-    if (outcome.status === "rejected") {
-      logger.info(
-        { key: storageKey, size: answered.sizeBytes, reason: outcome.reason },
-        `ingest_report_${outcome.reason}`,
-      );
-      return outcome.reason === "over_cap"
-        ? c.json({ error: { message: t("server.error.upload_too_large") } }, 413)
-        : c.json({ error: { message: t("server.error.upload_empty") } }, 422);
-    }
-    if (outcome.status === "stale" || outcome.status === "voided") {
-      logger.info({ key: storageKey, status: outcome.status }, "ingest_report_stale");
-      return c.json({ data: { ok: true } });
-    }
-    logger.info({ key: storageKey, status: outcome.status }, "ingest_report_registered");
-    return c.json({
-      data: {
-        ok: true,
-        // The ledger row this key ended up on, which a caller hanging
-        // something off the asset needs (a video's cover, #181 §4.6).
-        assetId: outcome.assetId,
-        fileUrl: outcome.fileUrl,
-        kind: outcome.kind,
-      },
-    });
+    return c.json({ data: { storageKey } }, 202);
   },
 );
 

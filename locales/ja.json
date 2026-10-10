@@ -8,8 +8,7 @@
       "upload_too_large": "ファイルがアップロードサイズの上限を超えています。",
       "insufficient_credits": "クレジット不足：必要 {required}、残高 {available}",
       "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
-      "internal": "内部サーバーエラー",
-      "upload_empty": "アップロードされた内容がありません。"
+      "internal": "内部サーバーエラー"
     },
     "credit": {
       "not_studio_admin": "クレジットを割り当てられるのは、自分が管理する Studio だけです。",

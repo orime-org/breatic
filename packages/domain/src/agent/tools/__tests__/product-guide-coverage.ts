@@ -602,7 +602,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.error.internal": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.error.not_found": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.error.rate_limited": { excluded: REASONS.SAYS_TRY_AGAIN },
-  "server.error.upload_empty": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.error.upload_too_large": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.error.validation": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.mail.expiry.invitation": { excluded: REASONS.MAIL },

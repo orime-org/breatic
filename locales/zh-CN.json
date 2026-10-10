@@ -8,8 +8,7 @@
       "upload_too_large": "文件超过上传大小限制。",
       "insufficient_credits": "积分不足：需要 {required}，可用 {available}",
       "rate_limited": "请求过于频繁，请稍后再试",
-      "internal": "服务器内部错误",
-      "upload_empty": "没有上传任何内容。"
+      "internal": "服务器内部错误"
     },
     "credit": {
       "not_studio_admin": "只能指定给你管理的 Studio。",
