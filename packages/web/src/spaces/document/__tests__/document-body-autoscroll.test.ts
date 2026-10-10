@@ -259,7 +259,7 @@ describe('BodyAutoScroll', () => {
     const clock = fakeClock();
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
-    auto.beginPress(body);
+    auto.beginPress(body, { x: 10, y: 400 });
     auto.follow({ x: 10, y: BOX.bottom + 30 });
     clock.tick();
     expect(body.scrollTop).toBe(50);
@@ -269,7 +269,7 @@ describe('BodyAutoScroll', () => {
     const clock = fakeClock();
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
-    auto.beginPress(body);
+    auto.beginPress(body, { x: 10, y: 400 });
     auto.beginDrag({ el: body, axis: 'y', gate: true });
     expect(auto.source).toBe('drag');
     expect(clock.pending()).toBeLessThanOrEqual(1);
@@ -296,5 +296,31 @@ describe('BodyAutoScroll', () => {
     const before = body.scrollTop;
     clock.tick();
     expect(body.scrollTop - before).toBe(1);
+  });
+});
+
+describe('BodyAutoScroll, the latest pointer (inner#1350 round 2)', () => {
+  it('reads the last dragover when the pointer leaves the window, though no frame has run since', () => {
+    const clock = fakeClock();
+    const auto = new BodyAutoScroll(clock.deps);
+    const body = fakeScroller();
+    body.scrollTop = 5000;
+    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    auto.follow({ x: 600, y: 400 });
+    clock.tick();
+    // Over the top bar, and straight out of the window within the same frame.
+    auto.follow({ x: 600, y: 40 });
+    auto.leaveWindow();
+    for (let i = 0; i < 10; i += 1) clock.tick();
+    expect(body.scrollTop).toBeLessThan(5000);
+  });
+
+  it('starts a pulled selection from the point it was pressed at', () => {
+    const clock = fakeClock();
+    const auto = new BodyAutoScroll(clock.deps);
+    const body = fakeScroller();
+    auto.beginPress(body, { x: 600, y: 930 });
+    for (let i = 0; i < 5; i += 1) clock.tick();
+    expect(body.scrollTop).toBeGreaterThan(0);
   });
 });

@@ -6,7 +6,7 @@
  * autoscroll session.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -20,7 +20,17 @@ type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
 
+/** A Chrome user agent; jsdom's own reads as Safari's (`AppleWebKit`, no `Chrome`). */
+const CHROME = 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+/** A Safari user agent. */
+const SAFARI = 'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
+
+beforeEach(() => {
+  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(CHROME);
+});
+
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const editor of mounted.splice(0)) editor.unmount();
   document.body.innerHTML = '';
 });
@@ -96,6 +106,9 @@ describe('the drag session', () => {
     const { editor } = open();
     const view = editor.prosemirrorView!;
     drag(view.dom, 'dragstart');
+    // Within the page, a dragleave names where the pointer went.
+    drag(window, 'dragleave', { relatedTarget: document.body });
+    expect(autoScrollOf(view)!.state).toBe('tracking');
     drag(window, 'dragleave', { relatedTarget: null });
     expect(autoScrollOf(view)!.state).toBe('outside');
     // On the page, held at the body: the session reads it in the capture
@@ -142,12 +155,29 @@ describe('the drag session', () => {
     expect(autoScrollOf(view)!.state).toBe('idle');
   });
 
-  it('ends on the first mousemove, which a live drag never produces', () => {
+  it('ends on the first mousemove with no button held, and not on one a drag lets through', () => {
     const { editor } = open();
     const view = editor.prosemirrorView!;
     drag(view.dom, 'dragstart');
-    drag(document.body, 'mousemove');
+    // Firefox lets a few pointer events through after a drag starts
+    // (Pragmatic drag and drop `detect-broken-drag.js`); the button is held.
+    document.body.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, buttons: 1 }));
+    expect(autoScrollOf(view)!.state).toBe('tracking');
+    document.body.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, buttons: 0 }));
     expect(autoScrollOf(view)!.state).toBe('idle');
+  });
+
+  it('in Safari, tells leaving the window by the count of dragenter and dragleave', () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(SAFARI);
+    const { editor } = open();
+    const view = editor.prosemirrorView!;
+    drag(view.dom, 'dragstart');
+    drag(view.dom, 'dragenter', { relatedTarget: null });
+    drag(document.body, 'dragenter', { relatedTarget: null });
+    drag(window, 'dragleave', { relatedTarget: null });
+    expect(autoScrollOf(view)!.state).toBe('tracking');
+    drag(window, 'dragleave', { relatedTarget: null });
+    expect(autoScrollOf(view)!.state).toBe('outside');
   });
 
   it('scrolls the frame of the dragged column sideways, ungated, and holds the body still until the drag ends', () => {
@@ -216,10 +246,15 @@ describe('leaving the window', () => {
 });
 
 describe('the pulled-selection session', () => {
-  it('starts when the follower takes a blank press from the browser, and ends with the press', () => {
+  it('starts from the press point when the follower takes a blank press, and follows the follower\'s pointer', () => {
     const { editor, scroller } = open();
     const view = editor.prosemirrorView!;
+    const begin = vi.spyOn(autoScrollOf(view)!, 'beginPress');
     followFromPoint(view, 10, 10);
+    expect(begin).toHaveBeenCalledWith(scroller, { x: 10, y: 10 });
+    const follow = vi.spyOn(autoScrollOf(view)!, 'follow');
+    view.root.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: 30, clientY: 40 }));
+    expect(follow).toHaveBeenCalledWith({ x: 30, y: 40 });
     const auto = autoScrollOf(view)!;
     expect(auto.source).toBe('press');
     expect(auto.target?.el).toBe(scroller);

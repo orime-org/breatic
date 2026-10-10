@@ -212,3 +212,35 @@ describe('the editor\'s drop line during a row or column drag', () => {
     expect(next).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('the drop of a dragged row (inner#1350 round 2)', () => {
+  it('lands at the gap under the pointer when it is released, though the rows moved since the last dragover', () => {
+    const editor = open();
+    const view = editor.prosemirrorView!;
+    let shift = 0;
+    // Rows 30 tall from the top, by their place in the table: the editor can
+    // draw them again during the drag.
+    vi.spyOn(HTMLTableRowElement.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: HTMLTableRowElement) {
+      const i = [...this.parentElement!.children].indexOf(this);
+      return { top: i * 30 - shift, bottom: (i + 1) * 30 - shift, left: 0, right: 300 } as DOMRect;
+    });
+    // The editor holds the pointer, as it does over a table on screen; a test
+    // page lays nothing out, and BlockNote clamps a pointer outside the editor
+    // into it (`SideMenu.ts` `dispatchSyntheticEvent`).
+    const page = (): DOMRect => ({ top: -200, bottom: 600, left: 0, right: 600, x: 0, y: -200, width: 600, height: 800 }) as DOMRect;
+    view.dom.getBoundingClientRect = page;
+    (view.dom.firstChild as HTMLElement).getBoundingClientRect = page;
+    startTableDrag(view, 'row', cellOf(editor, 'a1'));
+    const at = (type: string): void => {
+      view.dom.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 50, clientY: 20 }));
+    };
+    // Over the lower half of the first row: the gap under it, where the row is.
+    at('dragover');
+    // The body scrolls under a pointer that does not move: no dragover comes,
+    // and the pointer is over the lower half of the last row.
+    shift = 60;
+    at('drop');
+    vi.restoreAllMocks();
+    expect(grid(editor).map((row) => row[0])).toEqual(['a2', 'a3', 'a1']);
+  });
+});

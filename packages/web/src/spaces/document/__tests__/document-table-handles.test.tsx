@@ -292,6 +292,19 @@ describe('the table handles as layers of the body (inner#1127)', () => {
 });
 
 describe('dragging a line (inner#1350)', () => {
+  it('gives back the frozen handles, the preview and the hidden strip when it unmounts mid-drag', () => {
+    openOver(0, 1);
+    const handle = render(<DocumentTableHandle orientation='column' hideOtherElements={() => undefined} />);
+    const setDragImage = vi.fn();
+    const dataTransfer = { setData: vi.fn(), getData: () => '', types: [], setDragImage, effectAllowed: 'all' };
+    fireEvent.dragStart(screen.getByTestId('doc-table-col-handle'), { dataTransfer });
+    const [preview] = setDragImage.mock.calls.at(-1) as [HTMLElement];
+    handle.unmount();
+    expect(side.unfrozen).toBe(1);
+    expect(preview.isConnected).toBe(false);
+  });
+
+
   it('hands the browser a preview of the whole line, freezes the handles and hides itself until the drag ends', async () => {
     openOver(0, 1);
     render(<DocumentTableHandle orientation='column' hideOtherElements={() => undefined} />);
