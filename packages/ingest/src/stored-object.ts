@@ -19,6 +19,12 @@ export interface RecordedPart {
 /**
  * Assemble the object from the parts R2 accepted.
  *
+ * An object already standing at the key is answered as it stands, without
+ * completing again: the key is minted per upload, so an object there means a
+ * delivery of this finish already assembled it, and a picture turned upright
+ * since then must not be completed back over (inner#1367). This does not rest
+ * on how R2 answers a second complete of the same upload.
+ *
  * An attempt that assembled and then died leaves R2 holding the object while
  * the instance has no record of it, and R2 answers the second assembly the
  * same way it answers one for an upload that was never opened: "the specified
@@ -37,6 +43,8 @@ export async function assembleObject(
   uploadId: string,
   parts: RecordedPart[],
 ): Promise<number> {
+  const standing = await bucket.head(storageKey);
+  if (standing !== null) return standing.size;
   const ordered = [...parts].sort((a, b) => a.partNumber - b.partNumber);
   try {
     const object = await bucket

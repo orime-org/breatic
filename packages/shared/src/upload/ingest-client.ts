@@ -136,6 +136,12 @@ export interface MediaLimits {
   runDeadlineMs: number;
   /** One tool inside it, reads included. */
   toolTimeoutMs: number;
+  /**
+   * JPEG and lossy WebP quality a picture is re-encoded at when it is turned
+   * upright (inner#1367). A finish that names none seals pictures carrying an
+   * orientation instead of turning them.
+   */
+  uprightJpegQuality?: number;
 }
 
 

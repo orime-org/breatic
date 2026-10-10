@@ -57,6 +57,7 @@ import {
 } from "@ingest/probe-command.js";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
 import { runWindowLeft } from "@ingest/run-window.js";
+import { groundOnObject, uprightStep } from "@ingest/upright-step.js";
 import {
   assembleObject,
   hashStoredObject,
@@ -524,22 +525,44 @@ async function finishUpload(
   // Read here rather than at entry: the run may have whatever the transfer,
   // the assembly and the hash left of the caller's window, and nothing below
   // this line can unmake the object above it.
-  const measured = upload.deferMediaRead === true
+  // A picture shown at an EXIF orientation is turned upright before anything
+  // reads it (inner#1367). Its key's arbiter decides that at most once, and
+  // when the run it starts measured the written picture, that is what the
+  // finish reports; every later step is then held to the instant it set.
+  const isPicture = storedType.startsWith("image/") && assembled.sizeBytes > 0;
+  const upright = isPicture
+    ? await uprightStep(env, {
+      storageKey,
+      contentType: storedType,
+      sha256,
+      limits,
+      answerBy: upload.answerBy ?? null,
+    })
+    : null;
+  const measuredByArbiter = upright?.media ?? null;
+  const measured = measuredByArbiter !== null
+    ? { media: measuredByArbiter, cover: null, contentType: storedType }
+    : upload.deferMediaRead === true
     ? { media: NO_MEASUREMENT, cover: null, contentType: storedType }
     : (await measureMedia(env, {
       storageKey,
       contentType: storedType,
-      limits: runWindowLeft(limits, upload.answerBy ?? null, Date.now()),
+      limits: runWindowLeft(limits, upright?.finishBy ?? upload.answerBy ?? null, Date.now()),
       ...(upload.coverKey !== undefined && { coverKey: upload.coverKey }),
     }).catch(noted("ingest_media_measure_failed", { storageKey }))) ??
     { media: NO_MEASUREMENT, cover: null, contentType: storedType };
 
-  // The caller took the permission to finish this key before it asked, and it
-  // is the caller that records the outcome — this Worker reaches nothing but
-  // its own container and remembers nothing.
+  // What the answer reports is read off the object as it now stands, so a
+  // picture turned by this finish or by an earlier delivery of it is reported
+  // as the bytes that are there.
+  const grounded = isPicture
+    ? await groundOnObject(env.BUCKET, storageKey, { sha256, sizeBytes: assembled.sizeBytes })
+    : { sha256, sizeBytes: assembled.sizeBytes, receivedSha256: sha256 };
+
   return Response.json({
-    sha256,
-    sizeBytes: assembled.sizeBytes,
+    sha256: grounded.sha256,
+    sizeBytes: grounded.sizeBytes,
+    receivedSha256: grounded.receivedSha256,
     contentType: measured.contentType,
     ...measured.media,
     cover: measured.cover,
@@ -562,7 +585,9 @@ function limitsOf(sent: MediaLimits | undefined): MediaLimits | null {
   const tool = sent?.toolTimeoutMs;
   if (typeof run !== "number" || run <= 0) return null;
   if (typeof tool !== "number" || tool <= 0) return null;
-  return { runDeadlineMs: run, toolTimeoutMs: tool };
+  const quality = sent?.uprightJpegQuality;
+  const validQuality = typeof quality === "number" && Number.isInteger(quality) && quality >= 1 && quality <= 100;
+  return { runDeadlineMs: run, toolTimeoutMs: tool, ...(validQuality && { uprightJpegQuality: quality }) };
 }
 
 /**
