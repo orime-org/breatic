@@ -188,13 +188,13 @@ describe('startMiniToolRun', () => {
         source: IMAGE,
         snapshot: PICTURE,
         drawing: { kind, ops: [STROKE] },
-        exportDrawing: vi.fn(() => Promise.resolve(kind === 'mask' ? { image, mask } : { image })),
+        exportDrawing: vi.fn(() => Promise.resolve(kind === 'mask' ? { mask } : { image })),
         uploadImage: vi.fn((file: File) => Promise.resolve(`https://cdn/${file.name}`)),
         ...over,
       });
     }
 
-    it('uploads the source and mask and sends them, holding the panel busy until the build', async () => {
+    it('uploads the mask alone and sends it, holding the panel busy until the build', async () => {
       const run = drawingPress('image.inpaint', 'mask');
       vi.mocked(run.setExporting).mockImplementation((busy) => {
         if (!busy) expect(canvas.addNode).not.toHaveBeenCalled();
@@ -206,7 +206,7 @@ describe('startMiniToolRun', () => {
         expect.objectContaining({
           tool: 'image.inpaint',
           prompt: 'a cat',
-          drawing: { image: 'https://cdn/INPAINT-source.png', mask: 'https://cdn/INPAINT-mask.png' },
+          drawing: { mask: 'https://cdn/INPAINT-mask.png' },
         }),
       );
     });
