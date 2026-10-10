@@ -41,4 +41,8 @@ describe('the download address for an asset', () => {
     expect(decodeURIComponent(href.pathname)).toBe('/image/封面.png');
     expect(href.searchParams.get('download')).toBe('1');
   });
+
+  it('hands back an address that does not parse as it was', () => {
+    expect(downloadHref('not a url')).toBe('not a url');
+  });
 });

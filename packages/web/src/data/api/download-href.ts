@@ -10,17 +10,21 @@
  * as an entry that was already complete.
  */
 
-import { API_BASE_PATH } from '@web/data/api/base-path';
+/** The query the resource domain answers with `Content-Disposition: attachment`. */
+const DOWNLOAD_PARAM = 'download';
 
 /**
- * The configured backend address that downloads one asset.
- *
- * The server reads the asset URL off the query, confirms the URL is ours,
- * and redirects to the ingest Worker, which serves the object with
- * `Content-Disposition: attachment`.
+ * The address that downloads one asset: its own public URL with
+ * `download=1`. The resource domain answers that query with
+ * `Content-Disposition: attachment`; a deployment reading files through an
+ * `r2.dev` address has no such rule, and there the browser opens the file.
  * @param assetUrl - The asset's public URL, as a node holds it.
- * @returns The address to navigate to.
+ * @returns The address to navigate to; an address that does not parse comes
+ *   back as it was.
  */
 export function downloadHref(assetUrl: string): string {
-  return `${API_BASE_PATH}/assets/download?url=${encodeURIComponent(assetUrl)}`;
+  if (!URL.canParse(assetUrl)) return assetUrl;
+  const url = new URL(assetUrl);
+  url.searchParams.set(DOWNLOAD_PARAM, '1');
+  return url.toString();
 }

@@ -46,15 +46,15 @@ describe('starting a download', () => {
   it('clicks a link pointing at the address', () => {
     const captured = anchorAtClick();
 
-    triggerDownload('/api/v1/assets/download?url=x');
+    triggerDownload('https://assets.example.com/a.png?download=1');
 
-    expect(captured.href).toBe('/api/v1/assets/download?url=x');
+    expect(captured.href).toBe('https://assets.example.com/a.png?download=1');
   });
 
   it('has the link in the document when it clicks', () => {
     const captured = anchorAtClick();
 
-    triggerDownload('/api/v1/assets/download?url=x');
+    triggerDownload('https://assets.example.com/a.png?download=1');
 
     expect(captured.connected).toBe(true);
   });
@@ -68,7 +68,7 @@ describe('starting a download', () => {
   it('aims the navigation away from the page it was pressed on', () => {
     const captured = anchorAtClick();
 
-    triggerDownload('/api/v1/assets/download?url=x');
+    triggerDownload('https://assets.example.com/a.png?download=1');
 
     expect(captured.target).toBe('_blank');
   });
@@ -77,7 +77,7 @@ describe('starting a download', () => {
     anchorAtClick();
     const before = document.querySelectorAll('a').length;
 
-    triggerDownload('/api/v1/assets/download?url=x');
+    triggerDownload('https://assets.example.com/a.png?download=1');
 
     expect(document.querySelectorAll('a')).toHaveLength(before);
   });
