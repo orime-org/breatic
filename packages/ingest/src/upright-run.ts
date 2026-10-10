@@ -26,7 +26,31 @@ export interface UprightOrder {
   lossless: boolean;
   /** JPEG and lossy WebP quality, 1-100. */
   quality: number;
+  /** The most the upright picture may weigh, in bytes. */
+  maxBytes: number;
 }
+
+/** The name the media container refers to the write-back handler by. */
+export const WRITE_UPRIGHT = "writeUpright";
+
+/** What one run's write-back handler may write: one key, one type, a ceiling. */
+export interface UprightWriteGrant {
+  /** `uprightKeyFor` of the key the run reads. */
+  key: string;
+  /** What the stored picture reads as; the upright copy keeps its format. */
+  contentType: string;
+  /** The most the upright copy may weigh, in bytes. */
+  maxBytes: number;
+}
+
+/** The headers the container's write-back states the picture's pixel size in. */
+export const UPRIGHT_WIDTH_HEADER = "x-upright-width";
+export const UPRIGHT_HEIGHT_HEADER = "x-upright-height";
+
+/** How turning a picture upright ended, as the container answers it. */
+export type UprightOutcome =
+  | { state: "written" }
+  | { state: "failed"; step: "turn" | "write" };
 
 /**
  * Where the container writes one key back.

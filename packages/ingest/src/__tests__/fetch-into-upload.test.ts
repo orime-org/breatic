@@ -238,6 +238,7 @@ describe("POST /fetch — the transfer", () => {
       "height",
       "sha256",
       "sizeBytes",
+      "upright",
       "width",
     ]);
   });

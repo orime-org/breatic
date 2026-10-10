@@ -24,6 +24,13 @@
 import { Container } from "@cloudflare/containers";
 import type { OutboundHandlerContext } from "@cloudflare/containers";
 import { serveOneObject } from "@ingest/media-object-route.js";
+import { writeStreamedObject } from "@ingest/stored-object.js";
+import {
+  UPRIGHT_HEIGHT_HEADER,
+  UPRIGHT_WIDTH_HEADER,
+  WRITE_UPRIGHT,
+  type UprightWriteGrant,
+} from "@ingest/upright-run.js";
 import { PROBE_PORT } from "@ingest/probe-answer.js";
 import {
   SERVE_OBJECT,
@@ -93,4 +100,57 @@ function serveObject(
   return serveOneObject(request, env.BUCKET, ctx.params.key);
 }
 
-MediaContainer.outboundHandlers = { [SERVE_OBJECT]: serveObject };
+/** The size of every part of an upright copy but the last. */
+const UPRIGHT_PART_SIZE = 8 * 1024 * 1024;
+
+/**
+ * A pixel size the container stated, as the object's metadata holds it.
+ * @param stated - The header's value.
+ * @returns The value, or null when it is not a positive integer.
+ */
+function pixelsStated(stated: string | null): string | null {
+  return stated !== null && /^[1-9]\d{0,9}$/.test(stated) ? stated : null;
+}
+
+/**
+ * Take the upright picture the container turned, and store it at the one key
+ * this run was set up to write (inner#1367 §4.4).
+ *
+ * The pixel size the container measured goes onto the object, so a
+ * re-delivery of the finish answers from the object without a second run.
+ * @param request - The container's PUT.
+ * @param env - The Worker's bindings, which is where the bucket is.
+ * @param ctx - The instance's context, carrying what it may write.
+ * @returns 200 once stored; 403 for another key; 413 over the ceiling.
+ */
+export async function writeUpright(
+  request: Request,
+  env: MediaEnv,
+  ctx: OutboundHandlerContext<UprightWriteGrant>,
+): Promise<Response> {
+  const grant = ctx.params;
+  if (request.method !== "PUT" || request.body === null) {
+    return new Response("Not allowed", { status: 405 });
+  }
+  const asked = decodeURIComponent(new URL(request.url).pathname).slice(1);
+  if (asked !== grant.key) return new Response("Not this object", { status: 403 });
+
+  const width = pixelsStated(request.headers.get(UPRIGHT_WIDTH_HEADER));
+  const height = pixelsStated(request.headers.get(UPRIGHT_HEIGHT_HEADER));
+  const stored = await writeStreamedObject(env.BUCKET, grant.key, request.body, {
+    contentType: grant.contentType,
+    customMetadata: {
+      ...(width !== null && { width }),
+      ...(height !== null && { height }),
+    },
+    partSize: UPRIGHT_PART_SIZE,
+    maxBytes: grant.maxBytes,
+  });
+  if (stored === "over_cap") return new Response("Too large", { status: 413 });
+  return new Response(null, { status: 200 });
+}
+
+MediaContainer.outboundHandlers = {
+  [SERVE_OBJECT]: serveObject,
+  [WRITE_UPRIGHT]: writeUpright,
+};

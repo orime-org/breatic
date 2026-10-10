@@ -27,6 +27,7 @@ import {
   previewKeyFor,
   INGEST_FAILURE_HEADER,
   type IngestFailureCode,
+  type MediaLimits,
   type SessionTokenPayload,
   type PreviewOutcome,
   type UploadTicketPayload,
@@ -41,6 +42,7 @@ import {
   type MonitoringEnv,
 } from "@ingest/error-monitoring.js";
 import { readMediaAtEdge, type MediaEnv } from "@ingest/media-read.js";
+import { turnUprightIfTagged } from "@ingest/upright-step.js";
 import {
   hasPreviewableFrame,
   mediaNumbersFor,
@@ -308,6 +310,8 @@ interface FinishBody {
   coverKey?: string;
   /** When the upload's task runs out, in epoch ms (inner#1367). */
   deadlineAt?: number;
+  /** What a picture with an EXIF orientation is turned upright under. */
+  limits?: unknown;
   /**
    * True when the caller reads the media numbers after this upload returns
    * (#299: covers and avatars). Its own field: a finish whose deadline is
@@ -388,6 +392,7 @@ async function completeUpload(
     contentType: session.contentType,
     parts,
     deadlineAt: deadlineOf(body.deadlineAt),
+    limits: limitsOf(body.limits),
     deferMediaRead: body.deferMediaRead === true,
     ...(typeof body.coverKey === "string" && { coverKey: body.coverKey }),
   });
@@ -417,8 +422,11 @@ async function completeUpload(
  *   type until the transfer has already happened.
  * @param upload.deadlineAt - When the upload's task runs out, which every
  *   container run is held to, or null when the caller named none.
+ * @param upload.limits - What a picture with an EXIF orientation is turned
+ *   upright under, or null when the caller named none.
  * @param upload.deferMediaRead - True when the caller reads the numbers later,
- *   so no container is started here.
+ *   so no container is started here. A picture that has to be turned upright
+ *   is turned all the same.
  * @returns What the server registered, or why this could not finish.
  */
 async function finishUpload(
@@ -430,6 +438,7 @@ async function finishUpload(
     parts: RecordedPart[];
     coverKey?: string;
     deadlineAt: number | null;
+    limits: MediaLimits | null;
     deferMediaRead?: boolean;
   },
 ): Promise<Response> {
@@ -502,6 +511,35 @@ async function finishUpload(
     );
   }
 
+  // A picture shown at an EXIF orientation is turned upright and answered as
+  // its upright copy, beside the bytes as received (inner#1367 §4.2). The hash
+  // and the type stay the received bytes'. One that cannot be turned fails the
+  // upload: filed as it is, it would be shown sideways.
+  if (storedType.startsWith("image/") && assembled.sizeBytes > 0) {
+    const turned = await turnUprightIfTagged(env, {
+      storageKey,
+      contentType: storedType,
+      deadlineAt,
+      limits: upload.limits,
+    });
+    if (turned.kind === "failed") {
+      return refused("upright_failed", "Could not turn the picture upright", 502);
+    }
+    if (turned.kind === "upright") {
+      if (turned.preview !== null) await storePreview(env, turned.copy.storageKey, turned.preview);
+      return Response.json({
+        sha256,
+        sizeBytes: assembled.sizeBytes,
+        contentType: storedType,
+        width: turned.copy.width,
+        height: turned.copy.height,
+        durationSeconds: null,
+        cover: null,
+        upright: turned.copy,
+      });
+    }
+  }
+
   // Read after the object stands, and never allowed to unmake it. The three
   // above are what the ledger keys on, charges for and serves; what follows
   // decides whether a node shows a resolution and a poster, so a container
@@ -529,6 +567,7 @@ async function finishUpload(
     contentType: measured.contentType,
     ...measured.media,
     cover: measured.cover,
+    upright: null,
   });
 }
 
@@ -544,6 +583,23 @@ async function finishUpload(
  */
 function deadlineOf(sent: unknown): number | null {
   return typeof sent === "number" && Number.isFinite(sent) && sent > 0 ? sent : null;
+}
+
+/**
+ * What the caller named to turn a picture upright under, or null when it named
+ * none usable. Read rather than trusted: only our backend sends it, and a
+ * value nothing can encode with is the same as none.
+ * @param sent - What the request carried.
+ * @returns The limits, or null.
+ */
+function limitsOf(sent: unknown): MediaLimits | null {
+  if (typeof sent !== "object" || sent === null) return null;
+  const { uprightJpegQuality: quality, uprightMaxBytes: maxBytes } = sent as Partial<
+    Record<keyof MediaLimits, unknown>
+  >;
+  if (typeof quality !== "number" || !Number.isInteger(quality) || quality < 1 || quality > 100) return null;
+  if (typeof maxBytes !== "number" || !Number.isInteger(maxBytes) || maxBytes < 1) return null;
+  return { uprightJpegQuality: quality, uprightMaxBytes: maxBytes };
 }
 
 /**
@@ -817,6 +873,8 @@ interface FetchBody {
    * The transfer and the container that reads the result are both held to it.
    */
   deadlineAt?: number;
+  /** What a picture with an EXIF orientation is turned upright under. */
+  limits?: unknown;
 }
 
 /**
@@ -948,6 +1006,7 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
     contentType: storedType,
     parts: written,
     deadlineAt: deadlineOf(body?.deadlineAt),
+    limits: limitsOf(body?.limits),
     ...(typeof body?.coverKey === "string" && { coverKey: body.coverKey }),
   });
 }

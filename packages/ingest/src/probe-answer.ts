@@ -20,7 +20,7 @@
  */
 
 import { NOTHING_FOUND } from "@ingest/media-metadata.js";
-import type { UprightOrder } from "@ingest/upright-run.js";
+import type { UprightOrder, UprightOutcome } from "@ingest/upright-run.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import {
   COVER_CONTENT_TYPE,
@@ -58,8 +58,9 @@ export interface ProbeRequest {
    */
   deadlineAt: number;
   /**
-   * Turn the object upright and write it back before probing it (inner#1367).
-   * Probing and the preview then read the written picture.
+   * Turn the object upright before probing it (inner#1367). Probing and the
+   * preview then read the turned picture, and it is written back with its
+   * pixel size last.
    */
   upright?: UprightOrder;
 }
@@ -73,6 +74,8 @@ export interface ProbeAnswer {
   preview: Uint8Array | null;
   /** Whether a container answered at all, which an empty report cannot say. */
   answered: boolean;
+  /** How turning the picture upright ended, when the run was asked to. */
+  upright: UprightOutcome | null;
 }
 
 /**
@@ -80,15 +83,18 @@ export interface ProbeAnswer {
  * @param report - What ffprobe found.
  * @param cover - The PNG frame, or null when none was lifted.
  * @param preview - The WebP preview, or null when none was cut.
+ * @param upright - How turning the picture upright ended, when it was asked.
  * @returns The response the container sends.
  */
 export function buildProbeAnswer(
   report: ProbeReport,
   cover: Uint8Array | null,
   preview: Uint8Array | null = null,
+  upright: UprightOutcome | null = null,
 ): Response {
   const form = new FormData();
   form.set("meta", JSON.stringify(report));
+  if (upright !== null) form.set("upright", JSON.stringify(upright));
   if (cover !== null) {
     // Typed from the arguments that produced it: the container is what decided
     // the format, and this type is stored on the R2 object.
@@ -125,6 +131,7 @@ export const UNREAD_ANSWER: ProbeAnswer = Object.freeze({
   cover: null,
   preview: null,
   answered: false,
+  upright: null,
 });
 
 /**
@@ -172,5 +179,25 @@ export async function readProbeAnswer(
     cover: await bytesOf(form, "cover"),
     preview: await bytesOf(form, "preview"),
     answered: true,
+    upright: uprightOf(form.get("upright")),
   };
+}
+
+/**
+ * How turning the picture upright ended, when the answer says.
+ * @param part - The answer's `upright` part.
+ * @returns The outcome, or null when there is none or it cannot be read.
+ */
+function uprightOf(part: ReturnType<FormData["get"]>): UprightOutcome | null {
+  if (typeof part !== "string") return null;
+  try {
+    const parsed = JSON.parse(part) as Partial<{ state: unknown; step: unknown }>;
+    if (parsed.state === "written") return { state: "written" };
+    if (parsed.state === "failed" && (parsed.step === "turn" || parsed.step === "write")) {
+      return { state: "failed", step: parsed.step };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }

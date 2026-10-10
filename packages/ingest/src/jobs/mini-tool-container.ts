@@ -24,7 +24,7 @@ import { readContainerReport, type ContainerReportBody, type MediaOfOutput } fro
 import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { PROBE_PORT } from "@ingest/probe-answer.js";
 import { transition, type JobEvent, type JobState } from "@ingest/jobs/transition.js";
-import { hashStoredObject, sniffStoredObject, writeStreamAsParts } from "@ingest/stored-object.js";
+import { hashStoredObject, sniffStoredObject, writeStreamedObject } from "@ingest/stored-object.js";
 
 /** Where the container reports how its run went. */
 export const JOB_REPORT_HOST = "jobs.local";
@@ -333,16 +333,15 @@ async function jobObjects(request: Request, env: MiniToolEnv, ctx: OutboundHandl
   const contentType = ctx.params.writes[key];
   if (contentType === undefined) return new Response("Not this object", { status: 403 });
 
-  const created = await env.BUCKET.createMultipartUpload(key, { httpMetadata: { contentType } });
-  const parts = await writeStreamAsParts(env.BUCKET, key, created.uploadId, request.body, PART_SIZE, MAX_PARTS);
-  if (parts === "over_cap") {
-    await created.abort();
-    return new Response("Too large", { status: 413 });
-  }
-  const stored = await created.complete(parts);
+  const stored = await writeStreamedObject(env.BUCKET, key, request.body, {
+    contentType,
+    partSize: PART_SIZE,
+    maxBytes: PART_SIZE * MAX_PARTS,
+  });
+  if (stored === "over_cap") return new Response("Too large", { status: 413 });
   const written: Written = {
     sha256: await hashStoredObject(env.BUCKET, key),
-    sizeBytes: stored.size,
+    sizeBytes: stored.sizeBytes,
     contentType: await sniffStoredObject(env.BUCKET, key),
   };
   await jobObject(env, ctx).noteWritten(key, written);

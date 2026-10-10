@@ -109,6 +109,7 @@ describe("a meta part that parses to the wrong thing", () => {
       cover: null,
       preview: null,
       answered: false,
+      upright: null,
     });
   });
 });
@@ -120,6 +121,30 @@ describe("an answer carrying a preview", () => {
 
     const read = await readProbeAnswer(buildProbeAnswer(report, null, preview));
 
-    expect(read).toEqual({ report, cover: null, preview, answered: true });
+    expect(read).toEqual({ report, cover: null, preview, answered: true, upright: null });
+  });
+});
+
+describe("an answer saying how turning the picture upright ended", () => {
+  it.each([
+    [{ state: "written" as const }],
+    [{ state: "failed" as const, step: "turn" as const }],
+    [{ state: "failed" as const, step: "write" as const }],
+  ])("reads %o back as it was written", async (upright) => {
+    const report = { streams: [], durationSeconds: null };
+
+    const read = await readProbeAnswer(buildProbeAnswer(report, null, null, upright));
+
+    expect(read.upright).toEqual(upright);
+  });
+
+  it("reads an outcome it does not know as none", async () => {
+    const form = new FormData();
+    form.set("meta", '{"streams":[],"durationSeconds":null}');
+    form.set("upright", '{"state":"maybe"}');
+
+    const read = await readProbeAnswer(new Response(form));
+
+    expect(read.upright).toBeNull();
   });
 });

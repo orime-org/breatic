@@ -312,6 +312,7 @@ describe("an upload whose parts all arrived", () => {
       "height",
       "sha256",
       "sizeBytes",
+      "upright",
       "width",
     ]);
   });

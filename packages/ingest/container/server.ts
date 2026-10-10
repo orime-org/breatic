@@ -22,7 +22,10 @@
  * between the two sides, and a second copy in here would drift from it.
  */
 
-import { createServer } from "node:http";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer, type ServerResponse } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable } from "node:stream";
 import {
   buildProbeAnswer,
@@ -36,7 +39,8 @@ import {
   readProbeOutput,
 } from "@ingest/probe-command.js";
 import { previewSource } from "@ingest/preview-step.js";
-import { uprightArgs, type UprightOrder } from "@ingest/upright-run.js";
+import type { UprightOrder } from "@ingest/upright-run.js";
+import { runUpright, type UprightDeps } from "./upright-probe.js";
 import { openObject, runTool } from "./run-tool.js";
 import { NOTHING_FOUND, pickMediaMetadata } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
@@ -59,12 +63,6 @@ const COVER_MAX_BYTES = 10 * 1024 * 1024;
  * ordinary 576-wide frame is around 100 KB.
  */
 const PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
-
-/**
- * The most an upright picture may weigh. It is held in memory between vips
- * and the write-back, and the instance has 1 GiB.
- */
-const UPRIGHT_MAX_BYTES = 256 * 1024 * 1024;
 
 /** One run's request as it arrives: read before it is believed. */
 type IncomingRequest = Partial<Record<keyof ProbeRequest, unknown>>;
@@ -163,36 +161,56 @@ function uprightOrderOf(sent: unknown): UprightOrder | null {
     typeof order.writeUrl !== "string" ||
     typeof order.contentType !== "string" ||
     typeof order.lossless !== "boolean" ||
-    typeof order.quality !== "number"
+    typeof order.quality !== "number" ||
+    typeof order.maxBytes !== "number"
   ) {
     return null;
   }
-  return { writeUrl: order.writeUrl, contentType: order.contentType, lossless: order.lossless, quality: order.quality };
+  return {
+    writeUrl: order.writeUrl,
+    contentType: order.contentType,
+    lossless: order.lossless,
+    quality: order.quality,
+    maxBytes: order.maxBytes,
+  };
 }
 
+/** What an upright run reaches out to, in this container. */
+const UPRIGHT_DEPS: UprightDeps = {
+  openObject,
+  runTool,
+  writeTemp: async (bytes) => {
+    const dir = await mkdtemp(join(tmpdir(), "upright-"));
+    const path = join(dir, "picture");
+    await writeFile(path, bytes);
+    return { path, remove: () => rm(dir, { recursive: true, force: true }) };
+  },
+  put: async (url, headers, body) => {
+    try {
+      const answered = await fetch(url, { method: "PUT", headers, body });
+      await answered.body?.cancel();
+      if (answered.status !== 200) console.error("media_upright_write_refused", { status: answered.status });
+      return answered.status;
+    } catch (err) {
+      console.error("media_upright_write_failed", { err: err instanceof Error ? err.message : String(err) });
+      return 0;
+    }
+  },
+};
+
 /**
- * Turn the object upright and write it back.
- * @param objectUrl - Where to read it.
- * @param order - How to encode it and where to write it.
- * @param signal - The run's deadline, the read included.
- * @returns True only when the write-back was answered 200.
+ * Send one answer.
+ * @param res - The response to write.
+ * @param answer - What to send.
  */
-async function turnUpright(objectUrl: string, order: UprightOrder, signal: AbortSignal): Promise<boolean> {
-  const args = uprightArgs(order);
-  if (args === null) return false;
-  const input = await openObject(objectUrl, signal);
-  if (input === null) return false;
-  const turned = await runTool("vips", args, { maxBytes: UPRIGHT_MAX_BYTES, signal, input });
-  if (turned === null) return false;
-  try {
-    const answered = await fetch(order.writeUrl, { method: "PUT", body: turned });
-    await answered.body?.cancel();
-    if (answered.status !== 200) console.error("media_upright_write_refused", { status: answered.status });
-    return answered.status === 200;
-  } catch (err) {
-    console.error("media_upright_write_failed", { err: err instanceof Error ? err.message : String(err) });
-    return false;
+function send(res: ServerResponse, answer: Response): void {
+  res.writeHead(200, { "content-type": answer.headers.get("content-type") ?? "" });
+  const body = answer.body;
+  if (body === null) {
+    res.end();
+    return;
   }
+  Readable.fromWeb(body).pipe(res);
 }
 
 createServer((req, res) => {
@@ -247,26 +265,15 @@ createServer((req, res) => {
 
     const upright = uprightOrderOf(asked.upright);
     if (upright !== null) {
-      // Anything but a 200 from the write-back ends the run here: the Worker's
-      // arbiter counts it as a failed run and the object stays as received.
-      const written = await turnUpright(request.objectUrl, upright, signal);
-      if (!written) {
-        res.writeHead(409).end();
-        return;
-      }
+      // The probe and the preview are of the turned picture, which is written
+      // back last with its pixel size (inner#1367 §4.4).
+      const ran = await runUpright(request.objectUrl, upright, request, signal, UPRIGHT_DEPS);
+      send(res, buildProbeAnswer(ran.report, null, ran.preview, ran.outcome));
+      return;
     }
 
     const found = await probe(request.objectUrl, request.wantCover, signal);
     const preview = await cutPreview(request, found, signal);
-    const answer = buildProbeAnswer(found.report, found.cover, preview);
-    res.writeHead(200, {
-      "content-type": answer.headers.get("content-type") ?? "",
-    });
-    const body = answer.body;
-    if (body === null) {
-      res.end();
-      return;
-    }
-    Readable.fromWeb(body).pipe(res);
+    send(res, buildProbeAnswer(found.report, found.cover, preview));
   })();
 }).listen(PROBE_PORT);

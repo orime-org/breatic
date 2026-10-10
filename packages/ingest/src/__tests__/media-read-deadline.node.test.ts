@@ -82,6 +82,8 @@ describe("a container run that outlasts the deadline", () => {
       cover: null,
       preview: null,
       answered: false,
+      upright: null,
+      missed: "unfinished",
     });
     expect(noted).toHaveBeenCalledWith(
       "ingest_media_read_unfinished",
