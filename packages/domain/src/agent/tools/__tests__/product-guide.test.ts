@@ -229,6 +229,10 @@ describe("what the guide says", () => {
     expect(section("Proposal cards")).toMatch(/When a placed proposal carries a ✏️ mark \(in a prompt box or a text node's words\), the message/);
   });
 
+  it("says material wired into the pool arrives @'d in the prompt, or in the shot on a multi-shot node", () => {
+    expect(section("Proposal cards")).toMatch(/one wired into the reference pool is already @'d in its prompt, or in its shot on a node in Multi-Shot\./);
+  });
+
   it("says words bound for a song's lyrics box arrive @'d there", () => {
     expect(section("Proposal cards")).toMatch(/Into a song model's lyrics box: a text node @'d in the lyrics box, where a proposal arrives with it already @'d/);
   });

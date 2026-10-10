@@ -60,8 +60,7 @@ interface Setting {
 }
 
 /**
- * Every model a generation node can be set to, outside the multi-shot mode
- * whose shots a probe has nothing to do with.
+ * Every model a generation node can be set to, in every mode.
  * @returns Each setting.
  */
 function settings(): Setting[] {
@@ -69,9 +68,27 @@ function settings(): Setting[] {
     GENERATION_NODE_MODES[nodeType].flatMap((mode) => {
       const reach = modelsForMode(nodeType, mode);
       if (!reach.available) return [];
-      return reach.models.filter((chosen) => chosen.storyboard === undefined).map((chosen) => ({ nodeType, mode, chosen }));
+      return reach.models.map((chosen) => ({ nodeType, mode, chosen }));
     }),
   );
+}
+
+/**
+ * Where a generation's words go: its prompt, or on a multi-shot model one
+ * shot holding the default length and the length that adds up to.
+ * @param chosen - The generation's model.
+ * @param words - The words, with any marks.
+ * @returns The fields to spread into the node.
+ */
+function wordsFor(chosen: ModelInfo, words: PromptSegment[]): Partial<ProposalNode> {
+  const board = chosen.storyboard;
+  if (board === undefined) return words.length > 0 ? { prompt: words } : {};
+  const total = board.totalParam === undefined ? undefined : chosen.params[board.totalParam]?.default;
+  const seconds = typeof total === "number" ? total : 5;
+  return {
+    shots: [{ prompt: words, duration: seconds }],
+    ...(board.totalParam === undefined ? {} : { params: { [board.totalParam]: seconds } }),
+  };
 }
 
 /** What the probe is: a node holding material, an empty source, words, or a generation still to run. */
@@ -125,7 +142,7 @@ function follow(setting: Setting, node: ProposalNode, entry: Entry | undefined):
     name: "Gen",
     mode,
     model: chosen.name,
-    ...(prompt.length > 0 ? { prompt } : {}),
+    ...wordsFor(chosen, prompt),
     ...(entry?.by === "fills" ? { fills: { [entry.way.into]: [0] } } : {}),
   };
   const song = (waysIn(chosen).get("text") ?? []).some((way) => way.into === PANEL_EDITOR_PARAM) && entry?.way.into !== PANEL_EDITOR_PARAM;
@@ -201,7 +218,7 @@ describe("every way entriesFor names is one the check takes", () => {
         const proposal = follow(setting, { role: "written", type: "text", name: "Probe", prompt: [{ text: "x" }] }, undefined);
         proposal.nodes = proposal.nodes.filter((n) => n.name !== "Probe");
         proposal.edges = proposal.edges.map((e) => ({ ...e, fromIndex: e.fromIndex - 1, toIndex: e.toIndex - 1 }));
-        proposal.nodes[0] = { ...(proposal.nodes[0] as ProposalNode), params: { [key]: "x" } };
+        { const gen = proposal.nodes[0] as ProposalNode; proposal.nodes[0] = { ...gen, params: { ...gen.params, [key]: "x" } }; }
         const verdict = checkProposal(proposal, MATERIALS);
         const reason = verdict.ok ? "" : verdict.reason;
         const others = ["image", "video", "audio"].filter((k) => k !== info.accepts && reason.includes(`${k} node`));

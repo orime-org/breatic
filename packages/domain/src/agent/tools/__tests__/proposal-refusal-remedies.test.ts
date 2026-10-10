@@ -45,6 +45,11 @@ interface RefusalCase {
   fix?: Sent;
   /** Words the reason must not hold, where saying them would be untrue of this proposal. */
   absent?: string[];
+  /**
+   * Why nothing this case holds can be written twice and still meet its
+   * refusal; the copies test checks the reason holds and skips the case.
+   */
+  noCopies?: string;
 }
 
 const PIC = "https://resource.example/image/2026-10-09/1_pic.png";
@@ -384,7 +389,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }, {
     meets: group([EMPTY_PIC, gen("image", "t2i", T2I, { prompt: [{ text: "Draw " }, { ref: 0 }, { text: " like " }, { ref: 0 }, NOTE] })]),
     states: ['"Pic" is @\'d by 2 refs in "Gen"', 'On node 1 ("Gen"), take every {"ref": 0} out.'],
-    fix: group([EMPTY_PIC, gen("image", "t2i", T2I, { prompt: [{ text: "Draw it like it." }, NOTE] })]),
+    fix: group([EMPTY_PIC, gen("image", "t2i", T2I, { prompt: [{ text: "Draw " }, { text: " like " }, NOTE] })]),
   }, {
     // A second generation with a pool @s the same index, rightly: the fix acts on the named node only.
     meets: group([EMPTY_PIC, gen("image", "t2i", T2I, { name: "G1", prompt: [{ text: "Draw " }, { ref: 0 }, NOTE] }), gen("image", "i2i", EDIT, { name: "G2", prompt: [{ text: "Edit " }, { ref: 0 }, NOTE] })], [{ fromIndex: 0, toIndex: 2, into: "pool" }]),
@@ -424,6 +429,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     // With shots, notes go in a shot.
     meets: group([EMPTY_PIC, gen("video", "multi_shot", OMNI_SHOTS, { prompt: undefined, params: { duration: 5 }, shots: TWO_SHOTS })], [{ fromIndex: 0, toIndex: 1, into: "image" }]),
     states: ['On node 1 ("Gen"), give each one a note in the shot'],
+    noCopies: "it carries no mark, and its one edge written twice is refused as repeated first",
     fix: group([EMPTY_PIC, gen("video", "multi_shot", OMNI_SHOTS, { prompt: undefined, params: { duration: 5 }, shots: [{ ...TWO_SHOTS[0] as (typeof TWO_SHOTS)[number], prompt: [{ text: "A paper boat." }, NOTE] }, TWO_SHOTS[1] as (typeof TWO_SHOTS)[number]] })], [{ fromIndex: 0, toIndex: 1, into: "image" }]),
   }],
   "shot-empty": [{
@@ -464,26 +470,26 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   "written-takes-no-mark": [{
     meets: group([{ ...WORDS, prompt: [{ text: "Copy " }, NOTE] }, DRAW]),
     states: ['"Words" holds words the reader keeps as they are, so it takes no ref or note; it carries the note "Put the picture in Pic first".', 'On node 0 ("Words"), take out every ref and note it carries, the typed ones included, and say what you meant in your own message.'],
-    fix: group([WORDS, DRAW]),
+    fix: group([{ ...WORDS, prompt: [{ text: "Copy " }] }, DRAW]),
   }, {
     meets: group([{ ...WORDS, prompt: [{ text: "Copy " }, NOTE, { text: " and " }, NOTE] }, DRAW]),
     states: ['it carries the note "Put the picture in Pic first", the note "Put the picture in Pic first".'],
-    fix: group([WORDS, DRAW]),
+    fix: group([{ ...WORDS, prompt: [{ text: "Copy " }, { text: " and " }] }, DRAW]),
   }, {
     // A note segment and a note typed as words are named together.
     meets: group([{ ...WORDS, prompt: [{ text: "Copy (💡 do this) " }, NOTE] }, DRAW]),
     states: ['it carries the note "Put the picture in Pic first", the typed "(💡 do this)".'],
-    fix: group([WORDS, DRAW]),
+    fix: group([{ ...WORDS, prompt: [{ text: "Copy  " }] }, DRAW]),
   }, {
     // A mark typed across two text segments is read as one.
     meets: group([{ ...WORDS, prompt: [{ text: "See (💡 do " }, { text: "this)" }] }, DRAW]),
     states: ['it carries the typed "(💡 do this)".'],
-    fix: group([WORDS, DRAW]),
+    fix: group([{ ...WORDS, prompt: [{ text: "See " }] }, DRAW]),
   }, {
     // A ref inside typed brackets: both are named, the ref as the agent sent it.
     meets: group([{ ...WORDS, prompt: [{ text: "See [📎 a" }, { ref: 1 }, { text: "b]" }] }, DRAW]),
     states: ['it carries {"ref": 1}, the typed "[📎 a{"ref": 1}b]".'],
-    fix: group([WORDS, DRAW]),
+    fix: group([{ ...WORDS, prompt: [{ text: "See " }] }, DRAW]),
   }, {
     // Only a typed mark: it is named as typed, so the agent finds it in its words.
     meets: group([{ ...WORDS, prompt: [{ text: "Copy [📎 Pic] " }] }, DRAW]),
@@ -493,7 +499,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     // A generation carries a note rightly: the fix acts on the written node only.
     meets: group([{ ...WORDS, prompt: [{ text: "Copy " }, NOTE] }, EMPTY_PIC, EDIT_POOL_1], [{ fromIndex: 1, toIndex: 2, into: "pool" }]),
     states: ['On node 0 ("Words"), take out every ref and note it carries'],
-    fix: group([WORDS, EMPTY_PIC, EDIT_POOL_1], [{ fromIndex: 1, toIndex: 2, into: "pool" }]),
+    fix: group([{ ...WORDS, prompt: [{ text: "Copy " }] }, EMPTY_PIC, EDIT_POOL_1], [{ fromIndex: 1, toIndex: 2, into: "pool" }]),
   }],
   "material-not-source": [{
     meets: group([{ ...DRAW, material: PIC }]),
@@ -550,7 +556,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     // Brackets typed around a ref: quoted as written, the ref inside as the agent sent it.
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit [📎 " }, { ref: 0 }, { text: "] now." }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     states: ['"Gen" types 1 mark(s) into its words as text: "[📎 {"ref": 0}]".', '{"ref": <index>} for a node'],
-    absent: ["\u0000", "meant by"],
+    absent: ["meant by"],
   }],
   "param-undeclared": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE], params: { format: "png" } })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
@@ -565,6 +571,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   "param-box": [{
     meets: group([WORDS, gen("audio", "t2m", SONG, { prompt: [{ text: "Upbeat pop." }], params: { lyrics: "la la" } })], [{ fromIndex: 0, toIndex: 1, into: "lyrics" }]),
     states: ['A written text node goes into "Gen" by an edge with into: "lyrics"', 'On node 1 ("Gen"), leave "lyrics" out of params.'],
+    noCopies: "a param is set once by its key, and its one edge written twice is refused as repeated first",
     fix: group([WORDS, gen("audio", "t2m", SONG, { prompt: [{ text: "Upbeat pop." }] })], [{ fromIndex: 0, toIndex: 1, into: "lyrics" }]),
   }],
   "param-pool": [{
@@ -816,15 +823,24 @@ describe("a fix names what to take out by value, so the copies of it do not chan
   for (const [refusal, cases] of Object.entries(CASES) as [RefusalId, RefusalCase[]][]) {
     if (REFUSALS[refusal] === false) continue;
     for (const [at, entry] of cases.entries()) {
+      // A doubling that leaves the proposal as it was proves nothing, and a
+      // case no doubling changes has nothing written twice to name.
+      const changing = doublings.filter((double) => JSON.stringify(double(entry.meets)) !== JSON.stringify(entry.meets));
+      if (changing.length === 0) continue;
       it(`${refusal} (${String(at)}): ends on the same fix with its elements written twice`, () => {
         entry.catalog?.();
         const once = verdictFor(entry.meets, MATERIALS);
         // Writing everything twice can trip an earlier check first, so each case
-        // has to meet its own refusal under one doubling at least.
-        const reached = doublings.flatMap((double) => {
+        // has to meet its own refusal under one doubling that changes it at least,
+        // or say why none can, which then has to hold.
+        const reached = changing.flatMap((double) => {
           const twice = verdictFor(double(entry.meets), MATERIALS);
           return !twice.ok && twice.refusal === refusal ? [twice.reason] : [];
         });
+        if (entry.noCopies !== undefined) {
+          expect(reached, `${refusal} (${String(at)}) says ${entry.noCopies}`).toEqual([]);
+          return;
+        }
         expect(reached.length, `${refusal} (${String(at)}) meets its own refusal under some doubling`).toBeGreaterThan(0);
         for (const reason of reached) expect(lastSentence(reason)).toBe(lastSentence(once.ok ? "" : once.reason));
       });

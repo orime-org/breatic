@@ -11,7 +11,7 @@ import { resolve } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { setLocale, setLocaleMessages } from "@shared/i18n/index.js";
-import { markText, markedSegments, promptPlainText, promptTextOf, typedMarkTexts } from "@shared/types/canvas-proposal";
+import { markText, markedSegments, marksTypedIn, promptPlainText, promptTextOf } from "@shared/types/canvas-proposal";
 
 beforeAll(() => {
   for (const locale of ["en", "zh-CN"]) {
@@ -96,12 +96,18 @@ describe("a reference to a proposed node (inner#1315)", () => {
   });
 });
 
-describe("typedMarkTexts", () => {
-  it("gives each mark typed into words as it is written there, in order", () => {
-    expect(typedMarkTexts("(💡 Pick a frame) Use [📎 a photo] to show {✏️ the story}.")).toEqual(["(💡 Pick a frame)", "[📎 a photo]", "{✏️ the story}"]);
+describe("marksTypedIn", () => {
+  it("gives each mark typed into words, read as markedSegments reads it and as it is written there, in order", () => {
+    const words = "(💡 Pick a frame) Use [📎 a photo] to show {✏️ the story}.";
+    expect(marksTypedIn(words)).toEqual([
+      { slot: { kind: "note", label: "Pick a frame" }, text: "(💡 Pick a frame)" },
+      { slot: { kind: "asset", label: "a photo", note: "a photo" }, text: "[📎 a photo]" },
+      { slot: { kind: "tweak", label: "the story", note: "the story" }, text: "{✏️ the story}" },
+    ]);
+    expect(marksTypedIn(words).map(({ slot }) => slot)).toEqual(markedSegments(words).flatMap((part) => (part.slot ? [part.slot] : [])));
   });
 
   it("gives nothing for words with no mark", () => {
-    expect(typedMarkTexts("Plain words (and a bracket).")).toEqual([]);
+    expect(marksTypedIn("Plain words (and a bracket).")).toEqual([]);
   });
 });
