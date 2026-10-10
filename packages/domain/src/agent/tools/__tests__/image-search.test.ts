@@ -304,10 +304,10 @@ describe("search_images: what comes back", () => {
 });
 
 describe("search_images: what the model reads", () => {
-  it("tells the model it has not seen these pictures", async () => {
-    // It has the titles and nothing else. Without this line the model writes
-    // "the second one fits your mood best" over images it never received, and
-    // the reader is looking straight at them.
+  it("tells the model it has not seen these pictures, and how one is saved", async () => {
+    // It has the titles and addresses and nothing else. Without this line the
+    // model writes "the second one fits your mood best" over images it never
+    // received, and the reader is looking straight at them.
     httpRequestMock.mockImplementation(async () => imagesOk([braveResult(), braveResult()]));
 
     const text = await runForModel({ query: "cyberpunk city" });
@@ -316,9 +316,35 @@ describe("search_images: what the model reads", () => {
     // -- "has not seen" -- is also in "the user has not seen these pictures",
     // which instructs the model in the opposite direction and would pass.
     expect(text).toContain(
-      "You have not seen these pictures -- you have their titles and nothing else -- " +
-        "so do not describe, rank or compare what is in them.",
+      "You have not seen these pictures -- you have their titles and addresses and nothing else -- " +
+        "so do not describe, rank or compare what is in them. To use one, give its address to " +
+        "save_image exactly as written.",
     );
+  });
+
+  it("gives each picture the address save_image takes, the original where it is https", async () => {
+    // Without an address the model has no picture it can save, and goes
+    // looking for one through page searches until the turn runs out.
+    httpRequestMock.mockImplementation(async () => imagesOk([braveResult({ title: "Neon rain", source: "magnific.com" })]));
+
+    const text = await runForModel({ query: "cyberpunk city" });
+
+    expect(text).toMatch(/^1\. Neon rain \(magnific\.com\)\n {3}address: https:\/\/img\.magnific\.com\/premium-photo\/neon-rain\.jpg$/m);
+  });
+
+  it("gives the thumbnail's address where the original is missing or not https", async () => {
+    httpRequestMock.mockImplementation(async () =>
+      imagesOk([
+        braveResult({ title: "No original", properties: {} }),
+        braveResult({ title: "Plain http", properties: { url: "http://img.example/a.jpg" } }),
+      ]),
+    );
+
+    const text = await runForModel({ query: "cyberpunk city" });
+
+    const thumb = "https://imgs.search.brave.com/sig/rs:fit:500:0:1:0/g:ce/aHR0cHM6";
+    expect(text).toContain(`1. No original (magnific.com)\n   address: ${thumb}`);
+    expect(text).toContain(`2. Plain http (magnific.com)\n   address: ${thumb}`);
   });
 
   it("states the query and how many came back", async () => {
