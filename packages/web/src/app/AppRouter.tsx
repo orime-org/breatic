@@ -3,20 +3,13 @@
 
 import * as React from 'react';
 import { captureException } from '@sentry/react';
+import { RouteErrorReportContext, type RouteErrorReport } from '@web/app/RouteErrorPage';
+import { configuredErrorEventId } from '@web/lib/error-monitoring';
 import { RouterProvider } from 'react-router-dom';
 
 interface AppRouterProps {
   /** The data router to render. */
   router: React.ComponentProps<typeof RouterProvider>['router'];
-}
-
-/**
- * Reports errors caught by the router before they reach the outer boundary.
- * @param error - The original route error, without location or route parameters.
- * @throws {Error} If the monitoring SDK fails to capture the error.
- */
-function reportRouteError(error: unknown): void {
-  captureException(error);
 }
 
 /**
@@ -35,7 +28,17 @@ function reportRouteError(error: unknown): void {
  * @param root0 - The component props.
  * @param root0.router - The data router to render.
  * @returns The router.
+ * @throws {Error} If the router cannot render or error capture fails.
  */
 export function AppRouter({ router }: AppRouterProps): React.JSX.Element {
-  return <RouterProvider router={router} useTransitions={false} onError={reportRouteError} />;
+  const [report, setReport] = React.useState<RouteErrorReport>();
+  const reportRouteError = React.useCallback((error: unknown): void => {
+    const eventId = captureException(error, { tags: { error_boundary: 'route' } });
+    setReport({ error, eventId: configuredErrorEventId(eventId) });
+  }, []);
+  return (
+    <RouteErrorReportContext.Provider value={report}>
+      <RouterProvider router={router} useTransitions={false} onError={reportRouteError} />
+    </RouteErrorReportContext.Provider>
+  );
 }

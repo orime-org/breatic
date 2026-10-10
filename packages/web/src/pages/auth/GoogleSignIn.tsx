@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { configuredErrorEventId } from '@web/lib/error-monitoring';
+import { ErrorBoundary, type Scope, type FallbackRender } from '@sentry/react';
 import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
 import { getLocale } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -22,7 +24,7 @@ interface GoogleSignInProps {
  * @returns The Google-owned button and local loading/error feedback.
  * @throws {Error} If React cannot render the component.
  */
-export function GoogleSignIn({ clientId, busy, onCredential }: GoogleSignInProps): React.JSX.Element {
+function GoogleSignInButton({ clientId, busy, onCredential }: GoogleSignInProps): React.JSX.Element {
   const t = useTranslation();
   const container = React.useRef<HTMLDivElement>(null);
   const [width, setWidth] = React.useState(334);
@@ -88,5 +90,56 @@ export function GoogleSignIn({ clientId, busy, onCredential }: GoogleSignInProps
       {script === 'loading' ? <p role='status' className='text-sm text-muted-foreground'>{t('auth.login.googleLoading')}</p> : null}
       {script === 'failed' || credentialError ? <FieldError role='alert'>{t('auth.login.googleFailed')}</FieldError> : null}
     </div>
+  );
+}
+
+/**
+ * Tag third-party button errors without attaching credentials or form values.
+ * @param scope - The SDK's isolated capture scope.
+ * @throws {Error} If the SDK cannot annotate the event.
+ */
+function tagGoogleError(scope: Scope): void {
+  scope.setTag('error_boundary', 'google-sign-in');
+}
+
+/**
+ * Explain the remaining email path after the Google subtree has failed.
+ * @param props - Optional monitoring reference for this button failure.
+ * @param props.eventId - Identifier returned by a configured client.
+ * @returns Localized inline feedback.
+ * @throws {Error} If React cannot render feedback.
+ */
+function GoogleSignInFailure({ eventId }: { eventId?: string }): React.JSX.Element {
+  const t = useTranslation();
+  return (
+    <div className='flex flex-col gap-2'>
+      <FieldError role='alert'>{t('auth.login.googleFailed')}</FieldError>
+      {eventId ? <p className='break-all text-xs text-muted-foreground'>{t('applicationError.reference', { id: eventId })}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * Render only the Google failure; the neighboring email form stays mounted.
+ * @param report - The captured SDK report.
+ * @param report.eventId - Identifier associated with this error.
+ * @returns Inline failure feedback.
+ * @throws {Error} If React cannot render feedback.
+ */
+const renderGoogleFailure: FallbackRender = ({ eventId }): React.JSX.Element => (
+  <GoogleSignInFailure eventId={configuredErrorEventId(eventId)} />
+);
+
+/**
+ * Isolate Google's render/effect lifecycle from the email sign-in form.
+ * @param props - Existing Google button configuration and credential callback.
+ * @returns A button or inline failure, with one Sentry capture per failure.
+ * @throws {Error} If the failure feedback itself fails to render.
+ */
+export function GoogleSignIn(props: GoogleSignInProps): React.JSX.Element {
+  return (
+    <ErrorBoundary beforeCapture={tagGoogleError} fallback={renderGoogleFailure}>
+      <GoogleSignInButton {...props} />
+    </ErrorBoundary>
   );
 }

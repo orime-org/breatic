@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { Breadcrumb, BrowserOptions, ErrorEvent } from '@sentry/react';
+import { getClient, type Breadcrumb, type BrowserOptions, type ErrorEvent } from '@sentry/react';
 import {
   addressWithoutQuery,
   errorMonitoringDataCollection,
@@ -81,4 +81,15 @@ export function errorMonitoringInit(build: ErrorMonitoringBuild): BrowserOptions
     beforeSend: prepareEvent,
     beforeBreadcrumb: prepareBreadcrumb,
   };
+}
+
+/**
+ * Hide synthetic event identifiers when no enabled reporting client exists.
+ * @param eventId - Identifier returned by an SDK capture.
+ * @returns The identifier for an enabled configured client, otherwise undefined.
+ * @throws {Error} If the SDK cannot inspect its client.
+ */
+export function configuredErrorEventId(eventId: string): string | undefined {
+  const client = getClient();
+  return client?.getDsn() && client.getOptions().enabled !== false ? eventId : undefined;
 }
