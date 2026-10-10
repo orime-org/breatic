@@ -513,6 +513,9 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     const container = screen.getByTestId('canvas-space');
     expect(container.hasAttribute('data-space-focus-root')).toBe(true);
     expect(container.tabIndex).toBe(-1);
+    // The browser draws its own outline on a focused element; the canvas,
+    // like the document body scroller, shows none.
+    expect(container.classList.contains('outline-none')).toBe(true);
   });
 
   // Figma-like interaction: the left-button drag marquee-selects rather than
