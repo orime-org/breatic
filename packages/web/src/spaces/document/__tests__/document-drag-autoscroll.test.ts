@@ -98,7 +98,11 @@ describe('the drag session', () => {
     drag(view.dom, 'dragstart');
     drag(window, 'dragleave', { relatedTarget: null });
     expect(autoScrollOf(view)!.state).toBe('outside');
-    drag(view.dom, 'dragover', { x: 10, y: 10 });
+    // On the page, held at the body: the session reads it in the capture
+    // phase, and the library's drop cursor, which needs layout a test page
+    // does not have, never sees it.
+    document.body.addEventListener('dragover', (e) => e.stopPropagation(), { once: true });
+    drag(document.body, 'dragover', { x: 10, y: 10 });
     expect(autoScrollOf(view)!.state).toBe('tracking');
   });
 
