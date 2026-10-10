@@ -1058,7 +1058,7 @@
       "noAccount": "还没有账号?",
       "forgotPassword": "忘记密码?",
       "googleLoading": "正在加载 Google 登录…",
-      "googleFailed": "Google 登录暂不可用，请重试或使用邮箱登录。",
+      "googleFailed": "Google 登录暂不可用，请刷新页面或使用邮箱登录。",
       "failed": "登录失败,请重试。"
     },
     "register": {
@@ -2242,6 +2242,13 @@
     "heading": "页面未找到",
     "body": "你访问的页面不存在或已经移动。我们带你回首页。",
     "cta": "返回首页"
+  },
+  "applicationError": {
+    "title": "页面出现了问题",
+    "message": "当前页面无法继续运行。请重新加载或返回首页。如果开启了浏览器翻译，请关闭它并使用产品的语言切换。",
+    "reload": "重新加载",
+    "home": "返回首页",
+    "reference": "错误编号：{id}"
   },
   "pageLoadError": {
     "message": "页面加载失败，请重试。",

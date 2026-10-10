@@ -1058,7 +1058,7 @@
       "noAccount": "Don't have an account?",
       "forgotPassword": "Forgot password?",
       "googleLoading": "Loading Google sign-in…",
-      "googleFailed": "Google sign-in is unavailable. Please try again or use email sign-in.",
+      "googleFailed": "Google sign-in is unavailable. Please refresh the page or use email sign-in.",
       "failed": "Sign-in failed. Please try again."
     },
     "register": {
@@ -2242,6 +2242,13 @@
     "heading": "Page not found",
     "body": "The page you're looking for doesn't exist or has moved. Let's get you back on track.",
     "cta": "Back to home"
+  },
+  "applicationError": {
+    "title": "Something went wrong",
+    "message": "This page could not continue. Reload it, or return to the home page. If you use browser translation, turn it off and use the product language setting.",
+    "reload": "Reload page",
+    "home": "Back to home",
+    "reference": "Error reference: {id}"
   },
   "pageLoadError": {
     "message": "This page could not be loaded. Please try again.",

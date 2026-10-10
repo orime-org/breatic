@@ -28,6 +28,8 @@ const FOOTER_LINK_CLASS =
  */
 interface AuthCardShellProps {
   title: string;
+  /** Show the release identity on login and registration cards. */
+  showVersion?: boolean;
   subtitle?: React.ReactNode;
   footer?: React.ReactNode;
   /** A line under the footer — the terms line on the sign-in and sign-up cards. */
@@ -40,26 +42,37 @@ interface AuthCardShellProps {
  * and footer, then the page footer.
  * @param root0 - component props
  * @param root0.title - heading shown at the top of the card
+ * @param root0.showVersion - whether the card shows the product build identity
  * @param root0.subtitle - optional supporting line beneath the title
  * @param root0.footer - optional footer slot for cross-page links
  * @param root0.notice - optional line rendered under the footer
  * @param root0.children - the form (or other body content) inside the card
  * @returns the page header, the centered auth card, and the page footer.
+ * @throws {Error} If React cannot render the card.
  */
 export function AuthCardShell({
   title,
+  showVersion = false,
   subtitle,
   footer,
   notice,
   children,
 }: AuthCardShellProps): React.JSX.Element {
+  // The release manifest and Vite's bundle share this build-time version.
+  const releaseVersion = import.meta.env.VITE_RELEASE_VERSION;
+  const versionLabel = import.meta.env.PROD && releaseVersion && releaseVersion !== '0.0.0-dev'
+    ? `Beta v${releaseVersion}`
+    : 'Dev';
   return (
     <div className='flex min-h-screen flex-col bg-background'>
       <AuthPageHeader />
       <main className='flex flex-1 items-center justify-center p-6'>
         <div className='w-full max-w-sm rounded-overlay border border-border bg-card p-6 text-card-foreground shadow-sm'>
           <header className='mb-4 flex flex-col gap-1'>
-            <h1 className='text-xl font-semibold tracking-tight'>{title}</h1>
+            <div className='flex items-baseline justify-between gap-3'>
+              <h1 className='text-xl font-semibold tracking-tight'>{title}</h1>
+              {showVersion ? <span className='shrink-0 text-xs text-muted-foreground'>{versionLabel}</span> : null}
+            </div>
             {subtitle ? (
               <p className='text-sm text-muted-foreground'>{subtitle}</p>
             ) : null}
