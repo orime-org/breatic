@@ -82,7 +82,6 @@ export async function resolveOwnerStudioId(projectId: string): Promise<string> {
  *   Stored as `produced_by_user_id`; does NOT affect which studio owns the
  *   asset. On a dedup hit the existing row's producer is kept.
  * @param input.contentHash - sha256 hex (dedup key, never in the URL).
- * @param input.receivedHash - sha256 hex of the bytes as received.
  * @param input.storageKey - Random storage key.
  * @param input.fileUrl - Public URL embedded in Yjs.
  * @param input.sizeBytes - Byte size, as the ingest Worker measured it.
@@ -112,12 +111,6 @@ export async function register(input: {
   ownerStudioId: string;
   actingUserId: string;
   contentHash: string;
-  /**
-   * The hash of the bytes as received: `contentHash` unless the ingest Worker
-   * turned a picture upright (inner#1367). Required, so no registration path
-   * can leave the pre-check without it.
-   */
-  receivedHash: string;
   storageKey: string;
   fileUrl: string;
   sizeBytes: number;
@@ -145,7 +138,6 @@ export async function register(input: {
     studioId,
     producedByUserId: input.actingUserId,
     contentHash: input.contentHash,
-    receivedHash: input.receivedHash,
     storageKey: input.storageKey,
     fileUrl: input.fileUrl,
     sizeBytes: input.sizeBytes,

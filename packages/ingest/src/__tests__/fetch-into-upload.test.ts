@@ -239,7 +239,6 @@ describe("POST /fetch — the transfer", () => {
       "cover",
       "durationSeconds",
       "height",
-      "receivedSha256",
       "sha256",
       "sizeBytes",
       "width",

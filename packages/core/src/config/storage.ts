@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MIN_PART_SIZE_BYTES, PREVIEW_MARGIN_MS, assertUploadWindows } from "@breatic/shared";
+import { MIN_PART_SIZE_BYTES, assertUploadWindows } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 /**
@@ -146,17 +146,15 @@ export const storageConfigSchema = z
     }
 
     // A run can use both tools, so the Worker has to be willing to wait for
-    // two of them, with PREVIEW_MARGIN_MS of the run kept back for the read it
-    // makes once the run answers. Set the other way round it cuts off a
-    // container that is working, and the upload it was measuring loses its
-    // numbers for no reason either end can see. The preview runs on whatever
-    // is left after them.
+    // two of them. Set the other way round it cuts off a container that is
+    // working, and the upload it was measuring loses its numbers for no reason
+    // either end can see. The preview runs on whatever is left after them.
     const { container_run_deadline_ms: run, container_tool_timeout_ms: tool } =
       cfg.ingest;
-    if (run - PREVIEW_MARGIN_MS < tool * 2) {
+    if (run < tool * 2) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `container_run_deadline_ms (${run}) minus PREVIEW_MARGIN_MS (${PREVIEW_MARGIN_MS}) must be at least twice container_tool_timeout_ms (${tool}) — one run may use both tools.`,
+        message: `container_run_deadline_ms (${run}) must be at least twice container_tool_timeout_ms (${tool}) — one run may use both tools.`,
         path: ["ingest", "container_run_deadline_ms"],
       });
     }

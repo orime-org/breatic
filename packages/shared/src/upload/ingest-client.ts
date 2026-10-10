@@ -136,12 +136,6 @@ export interface MediaLimits {
   runDeadlineMs: number;
   /** One tool inside it, reads included. */
   toolTimeoutMs: number;
-  /**
-   * JPEG and lossy WebP quality a picture is re-encoded at when it is turned
-   * upright (inner#1367). A finish that names none seals pictures carrying an
-   * orientation instead of turning them.
-   */
-  uprightJpegQuality?: number;
 }
 
 
@@ -177,12 +171,6 @@ export interface HeldUpload {
 export interface IngestMeasurements {
   /** Of the stored bytes, which is what the ledger keys on. */
   sha256: string;
-  /**
-   * Of the bytes as received. The stored hash unless the Worker turned a
-   * picture upright, when it is what the browser's own hash of the original
-   * file matches (inner#1367).
-   */
-  receivedSha256: string;
   /** What actually landed, which is what it charges for. */
   sizeBytes: number;
   /**
@@ -295,7 +283,6 @@ const seconds = z.coerce
 
 export const ingestMeasurements = z.object({
   sha256: z.string().regex(SHA256_HEX),
-  receivedSha256: z.string().regex(SHA256_HEX),
   sizeBytes: z.coerce.number().int().nonnegative(),
   contentType: z.string().min(1).max(100),
   width: pixels,

@@ -35,7 +35,6 @@ import fc from "fast-check";
 import postgres from "postgres";
 import { initCore, loadLocales } from "@breatic/core";
 import { assetRepo, assetService } from "@breatic/domain";
-import { checkUploadDedup } from "@server/modules/asset/assetUpload.service.js";
 
 try {
   initCore(process.env);
@@ -129,7 +128,6 @@ const baseAsset = (
   studioId,
   producedByUserId: producedBy ?? lastFixtureUserId,
   contentHash,
-  receivedHash: contentHash,
   storageKey: `u/p/image/2026-07-04/${crypto.randomUUID()}.png`,
   fileUrl: `https://cdn/${crypto.randomUUID()}.png`,
   sizeBytes,
@@ -188,57 +186,6 @@ describe("asset repo — within-studio dedup", () => {
       WHERE studio_id = ${personalStudioId} AND content_hash = ${hash}
     `;
     expect(rows[0]!.n).toBe(1);
-  });
-});
-
-// A picture the ingest Worker turned upright is stored under the hash of the
-// turned bytes, while the browser hashes the file it was given (inner#1367).
-describe("asset repo — the hash as received", () => {
-  it("stores the received hash beside the content hash", async () => {
-    const { personalStudioId } = await insertUserWithPersonalStudio();
-    const stored = fakeHash();
-    const received = fakeHash();
-    const { asset } = await assetRepo.registerWithDedup({
-      ...baseAsset(personalStudioId, stored, 100),
-      receivedHash: received,
-    });
-    const rows = await sql<{ received_hash: string }[]>`
-      SELECT received_hash FROM studio_assets WHERE id = ${asset.id}
-    `;
-    expect(rows[0]!.received_hash).toBe(received);
-  });
-
-  it("finds a row by its received hash for the pre-check, and not for post-upload dedup", async () => {
-    const { personalStudioId } = await insertUserWithPersonalStudio();
-    const stored = fakeHash();
-    const received = fakeHash();
-    const { asset } = await assetRepo.registerWithDedup({
-      ...baseAsset(personalStudioId, stored, 100),
-      receivedHash: received,
-    });
-    expect((await assetRepo.findByStudioAndEitherHash(personalStudioId, received))?.id).toBe(asset.id);
-    expect((await assetRepo.findByStudioAndEitherHash(personalStudioId, stored))?.id).toBe(asset.id);
-    expect(await assetRepo.findByStudioAndHash(personalStudioId, received)).toBeNull();
-  });
-
-  it("prefers the row stored under the hash when two rows answer it", async () => {
-    const { personalStudioId } = await insertUserWithPersonalStudio();
-    const original = fakeHash();
-    // One copy stored as received (its turn failed), one turned upright.
-    await assetRepo.registerWithDedup({ ...baseAsset(personalStudioId, fakeHash(), 90), receivedHash: original });
-    const asReceived = await assetRepo.registerWithDedup(baseAsset(personalStudioId, original, 100));
-    expect((await assetRepo.findByStudioAndEitherHash(personalStudioId, original))?.id).toBe(asReceived.asset.id);
-  });
-
-  it("lets the pre-check hit on the received hash", async () => {
-    const { personalStudioId } = await insertUserWithPersonalStudio();
-    const received = fakeHash();
-    const { asset } = await assetRepo.registerWithDedup({
-      ...baseAsset(personalStudioId, fakeHash(), 100),
-      receivedHash: received,
-    });
-    const hit = await checkUploadDedup({ studioId: personalStudioId, contentHash: received });
-    expect(hit?.assetId).toBe(asset.id);
   });
 });
 
@@ -352,7 +299,6 @@ describe("asset service — resolveOwnerStudioId (#1839: the project's studio, a
       ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: collaborator.userId,
       contentHash: fakeHash(),
-      receivedHash: fakeHash(),
       storageKey: "k",
       fileUrl: "https://cdn/x.png",
       sizeBytes: 100,
@@ -376,7 +322,6 @@ describe("asset service — resolveOwnerStudioId (#1839: the project's studio, a
       ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: collaborator.userId,
       contentHash: hash,
-      receivedHash: hash,
       storageKey: "k1",
       fileUrl: "https://cdn/1.png",
       sizeBytes: 100,
@@ -391,7 +336,6 @@ describe("asset service — resolveOwnerStudioId (#1839: the project's studio, a
       ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: owner.userId,
       contentHash: hash,
-      receivedHash: hash,
       storageKey: "k2",
       fileUrl: "https://cdn/2.png",
       sizeBytes: 100,
@@ -431,7 +375,6 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
       ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: hash,
-      receivedHash: hash,
       storageKey: "image/2026-07-26/winner.png",
       fileUrl: "https://cdn/winner.png",
       sizeBytes: 100,
@@ -448,7 +391,6 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
       ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: hash,
-      receivedHash: hash,
       storageKey: "image/2026-07-26/loser.png",
       fileUrl: "https://cdn/loser.png",
       sizeBytes: 100,
@@ -487,7 +429,6 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
       ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: fakeHash(),
-      receivedHash: fakeHash(),
       storageKey: sharedKey,
       fileUrl: "https://cdn/still-referenced.png",
       sizeBytes: 100,
@@ -503,7 +444,6 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
       ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: otherHash,
-      receivedHash: otherHash,
       storageKey: "image/2026-07-26/unrelated-winner.png",
       fileUrl: "https://cdn/unrelated-winner.png",
       sizeBytes: 100,
@@ -518,7 +458,6 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
       ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: otherHash,
-      receivedHash: otherHash,
       storageKey: sharedKey,
       fileUrl: "https://cdn/still-referenced.png",
       sizeBytes: 100,
@@ -542,7 +481,6 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
       ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: hash,
-      receivedHash: hash,
       sizeBytes: 100,
       mimeType: "image/png",
       kind: "image" as const,
@@ -581,7 +519,6 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
       ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: hash,
-      receivedHash: hash,
       sizeBytes: 100,
       mimeType: "image/png",
       kind: "image" as const,
@@ -624,7 +561,6 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
       ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: hash,
-      receivedHash: hash,
       sizeBytes: 100,
       mimeType: "video/mp4",
       kind: "video" as const,

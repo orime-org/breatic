@@ -11,8 +11,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { PREVIEW_MARGIN_MS } from "@shared/upload/media-run.js";
-import { previewSource, previewTimeLeft } from "@ingest/preview-step.js";
+import { previewSource, previewTimeLeft, PREVIEW_MARGIN_MS } from "@ingest/preview-step.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 
 const STILL: ProbeReport = {

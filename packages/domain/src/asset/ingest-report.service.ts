@@ -72,11 +72,6 @@ export type IngestReport =
       outcome: "completed";
       /** What the Worker computed over the stored bytes. */
       sha256: string;
-      /**
-       * What it computed over the bytes as received: `sha256` unless it turned
-       * a picture upright (inner#1367).
-       */
-      receivedSha256: string;
       /** What actually landed, which is the authority over what was declared. */
       sizeBytes: number;
       contentType: string;
@@ -448,8 +443,6 @@ async function fileCover(
       ownerStudioId: grant.studioId,
       actingUserId: grant.userId,
       contentHash: cover.sha256,
-      // A frame our ffmpeg cut: nothing turned it after it landed.
-      receivedHash: cover.sha256,
       storageKey: cover.storageKey,
       fileUrl: adapter.publicUrl(cover.storageKey),
       sizeBytes: cover.sizeBytes,
@@ -642,7 +635,6 @@ export async function applyIngestReport(
     ownerStudioId: grant.studioId,
     actingUserId: grant.userId,
     contentHash: report.sha256,
-    receivedHash: report.receivedSha256,
     storageKey: grant.storageKey,
     fileUrl: adapter.publicUrl(grant.storageKey),
     sizeBytes,

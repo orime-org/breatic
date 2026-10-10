@@ -221,8 +221,6 @@ async function report(
         ? new Response(
             JSON.stringify({
               sha256: body.sha256,
-              // The bytes as received, unless a case turned a picture upright.
-              receivedSha256: body.received_sha256 ?? body.sha256,
               sizeBytes: body.size_bytes,
               contentType,
               // Absent unless a case says otherwise: the container answering
@@ -891,7 +889,6 @@ describe("a finish this server drove — an event that could not be published", 
       storageKey: key,
       outcome: "completed",
       sha256: body.sha256 as string,
-      receivedSha256: body.sha256 as string,
       sizeBytes: body.size_bytes as number,
       contentType: body.content_type as string,
     });
@@ -1647,13 +1644,11 @@ describe("a finish this server drove — the task it settles", () => {
     const seed = await seedEditor();
     const nodeId = crypto.randomUUID();
     const key = await mintTicket(seed, { node_id: nodeId });
-    const hash = crypto.randomBytes(32).toString("hex");
 
     await ingestReportService.applyIngestReport({
       storageKey: key,
       outcome: "completed",
-      sha256: hash,
-      receivedSha256: hash,
+      sha256: crypto.randomBytes(32).toString("hex"),
       sizeBytes: 0,
       contentType: "image/png",
     });
@@ -1850,10 +1845,8 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
 
   /** Answer the one call this server makes to the Worker. */
   function workerAnswers(body: Record<string, unknown>): ReturnType<typeof vi.fn> {
-    // The bytes as received, unless a case turned a picture upright.
-    const answered = { receivedSha256: body.sha256, ...body };
     const stub = vi.fn(async () =>
-      new Response(JSON.stringify(answered), {
+      new Response(JSON.stringify(body), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
@@ -2093,7 +2086,6 @@ describe("an upload our own worker drove", () => {
       return new Response(
         JSON.stringify({
           sha256,
-          receivedSha256: sha256,
           sizeBytes: MEASURED_SIZE,
           contentType: "image/png",
         }),

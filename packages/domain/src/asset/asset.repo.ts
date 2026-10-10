@@ -12,7 +12,7 @@
  * (asset.service.resolveOwnerStudioId); this repo is attribution-agnostic.
  */
 
-import { and, desc, eq, isNull, inArray, or, sql } from "drizzle-orm";
+import { and, eq, isNull, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, studioAssets } from "@breatic/core";
 import type { StudioAssetEntity } from "@breatic/shared";
@@ -49,11 +49,6 @@ export interface RegisterAssetInput {
   /** Who first brought this content in — see StudioAssetEntity. */
   producedByUserId: string;
   contentHash: string;
-  /**
-   * The hash of the bytes as received; `contentHash` unless the ingest Worker
-   * turned a picture upright (inner#1367).
-   */
-  receivedHash: string;
   storageKey: string;
   fileUrl: string;
   sizeBytes: number;
@@ -92,37 +87,6 @@ export async function findByStudioAndHash(
         isNull(studioAssets.deletedAt),
       ),
     )
-    .limit(1);
-  return rows[0] ? toEntity(rows[0]) : null;
-}
-
-/**
- * The live asset a browser's hash of a file names in a studio: stored under
- * that hash, or received as it and turned upright since (inner#1367). Only the
- * pre-upload check asks this; post-upload dedup stays on `content_hash`.
- *
- * Two rows can answer one hash — the same original stored once as received
- * and once turned — and the one stored under the hash is preferred, so the
- * answer does not depend on the order rows come back in.
- * @param studioId - Owner studio.
- * @param hash - sha256 hex the browser computed over the file.
- * @returns The `StudioAssetEntity`, or null when none exists.
- */
-export async function findByStudioAndEitherHash(
-  studioId: string,
-  hash: string,
-): Promise<StudioAssetEntity | null> {
-  const rows = await db
-    .select()
-    .from(studioAssets)
-    .where(
-      and(
-        eq(studioAssets.studioId, studioId),
-        or(eq(studioAssets.contentHash, hash), eq(studioAssets.receivedHash, hash)),
-        isNull(studioAssets.deletedAt),
-      ),
-    )
-    .orderBy(desc(eq(studioAssets.contentHash, hash)))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
 }
@@ -269,7 +233,6 @@ export async function registerWithDedup(
       // see StudioAssetEntity.producedByUserId.
       producedByUserId: input.producedByUserId,
       contentHash: input.contentHash,
-      receivedHash: input.receivedHash,
       storageKey: input.storageKey,
       fileUrl: input.fileUrl,
       sizeBytes: input.sizeBytes,
