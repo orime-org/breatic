@@ -127,7 +127,7 @@ const proposalNode = z
         "What to generate, or a written node's words, in the language the reader " +
           "writes in. Write it up from what the reader asked for; copy their words exactly only when they ask for that. " +
           "A ref or a mark is a segment of its own, never typed into a text segment. " +
-          "Every node going into the pool gets a ref where the prompt speaks of it, and a note too " +
+          "Every node going into the pool gets a ref where the prompt, or in multi_shot a shot, speaks of it, and a note too " +
           "when it lands empty; a node going into a slot by an edge takes a note of its own (a slot " +
           "filled through fills takes none, the lyrics box takes none), and so does " +
           "an empty node no edge sends into a generation (unwired, or wired only as a link to a model that " +
@@ -147,7 +147,7 @@ const proposalNode = z
       .describe(
         "role generate only, in mode multi_shot and nowhere else: each " +
           "shot's own prompt and whole seconds, which add up to the duration. " +
-          "The main prompt is not sent then, so leave it out; notes go in a shot too",
+          "The main prompt is not sent then, so leave it out; refs and notes go in a shot too",
       ),
     // Last on purpose. While this sat before mode and model the default model
     // never wrote it: asked to copy an input holding it character for
@@ -188,7 +188,7 @@ export const inputSchema = z
               .min(1)
               .optional()
               .describe(
-                "Where the node wired in goes: \"pool\" (a ref each where the prompt @s it), " +
+                "Where the node wired in goes: \"pool\" (a ref each where the prompt or a shot @s it), " +
                   "the name of a slot the model has (an empty node the reader picks in the panel; a note each; " +
                   "material fills a slot through fills instead), " +
                   `or "${PANEL_EDITOR_PARAM}" for words @'d into a song model's lyrics box for the reader. Needed ` +

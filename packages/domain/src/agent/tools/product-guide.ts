@@ -893,7 +893,8 @@ export function renderProductGuide(): string {
       "still shows an empty box; nothing typed there is sent. The card lists the proposal's marks for that node. " +
       "A node holding material the reader gave -- a file uploaded in this chat, or a picture saved with " +
       `${SAVE_IMAGE} -- arrives with it in, and a slot the proposal filled from such a node already holds it in ` +
-      "the panel, so there is nothing to pick there; one wired into the reference pool is already @'d in the prompt. " +
+      "the panel, so there is nothing to pick there; one wired into the reference pool is already @'d in its prompt, " +
+      "or in its shot on a node in Multi-Shot. " +
       "The reader generates the nodes in the order the card's arrows run, and waits for each to show its result " +
       "before generating the node it feeds: a node still generating lends nothing, or its previous result, and " +
       "where that source is optional the run goes ahead without it.",

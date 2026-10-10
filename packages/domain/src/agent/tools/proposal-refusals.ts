@@ -130,6 +130,16 @@ type FixFor<Id extends RefusalId> = (typeof REFUSALS)[Id] extends "node"
     : [];
 
 /**
+ * A ref as the agent sends it, which is how a refusal quotes one.
+ * @param index - The node it points at.
+ * @returns The segment's JSON.
+ * @throws {never} Never.
+ */
+export function refAsSent(index: number): string {
+  return `{"ref": ${String(index)}}`;
+}
+
+/**
  * A node as a refusal names it where its name alone may not be unique: its
  * index, and its name or that no node sits there.
  * @param nodes - The proposal's nodes.

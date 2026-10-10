@@ -22,7 +22,7 @@ import {
 } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
-import { fixOn, nodeLabel, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
+import { fixOn, nodeLabel, refAsSent, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
 import {
   aNode,
@@ -128,9 +128,9 @@ function strayRefReason(
   const named = proposal.nodes[stray];
   // The stray index may be @'d more than once, and every copy has to go.
   const count = refsIn(node).filter((i) => i === stray).length;
-  const takeOut = fixOn(at, `take every {"ref": ${String(stray)}} out.`);
-  if (!named) return refuse("ref-outside", `A ref in "${node.name}" points outside the group: {"ref": ${String(stray)}}${timesNamed(count)}.`, takeOut);
-  if (named === node) return refuse("ref-self", `"${node.name}" @s itself with {"ref": ${String(stray)}}${timesNamed(count)}, and a node cannot @ itself.`, takeOut);
+  const takeOut = fixOn(at, `take every ${refAsSent(stray)} out.`);
+  if (!named) return refuse("ref-outside", `A ref in "${node.name}" points outside the group: ${refAsSent(stray)}${timesNamed(count)}.`, takeOut);
+  if (named === node) return refuse("ref-self", `"${node.name}" @s itself with ${refAsSent(stray)}${timesNamed(count)}, and a node cannot @ itself.`, takeOut);
   // Arriving another way -- an edge into a slot or the lyrics box, or a slot
   // filled through fills -- the node is already where it goes; a ref would
   // only send it a second time.
@@ -218,7 +218,7 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
   const unmentioned = pooled.filter((i) => !refs.includes(i));
   if (unmentioned.length > 0) {
     const names = namesOrNone(unmentioned.flatMap((i) => proposal.nodes[i] ?? []));
-    const each = unmentioned.map((i) => `{"ref": ${String(i)}}`).join(", ");
+    const each = unmentioned.map(refAsSent).join(", ");
     return refuse("ref-missing", `${names} ${unmentioned.length === 1 ? "is" : "are"} wired into the pool of "${node.name}" and no ref @s ${unmentioned.length === 1 ? "it" : "them"}. A node in the pool is used only where a ref @s it ${where}: ${each}.`);
   }
   const asked = notesAsked(arriving);

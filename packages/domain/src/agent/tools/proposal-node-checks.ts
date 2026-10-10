@@ -5,10 +5,10 @@
  * The checks one proposed node answers on its own: the material it names,
  * whether it is what its role says, and whether it types a mark as words.
  */
-import { markedSegments, promptPlainText, typedMarkTexts, type PromptSegment, type ProposalNode } from "@breatic/shared";
+import { marksTypedIn, promptPlainText, type PromptSegment, type ProposalNode } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
-import { fixOn, refuse, type NodeLabel } from "@domain/agent/tools/proposal-refusals.js";
+import { fixOn, refAsSent, refuse, type NodeLabel } from "@domain/agent/tools/proposal-refusals.js";
 import { aNode, capitalised } from "@domain/agent/tools/proposal-routing.js";
 import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import type { MaterialTable } from "@domain/asset/material-facts.js";
@@ -35,7 +35,7 @@ const MATERIAL_KINDS: ReadonlySet<string> = new Set(["image", "video", "audio"])
  */
 function carriedMarks(node: ProposalNode): string[] {
   const segments = (node.prompt ?? []).flatMap((segment) =>
-    segment.ref !== undefined ? [`{"ref": ${String(segment.ref)}}`] : segment.slot?.kind === "note" ? [`the note "${segment.slot.label}"`] : [],
+    segment.ref !== undefined ? [refAsSent(segment.ref)] : segment.slot?.kind === "note" ? [`the note "${segment.slot.label}"`] : [],
   );
   const typed = typedMarks(node).filter(({ slot }) => slot.kind !== "tweak").map(({ written }) => `the typed "${written}"`);
   return [...segments, ...typed];
@@ -141,7 +141,7 @@ interface TypedMark {
  * @throws {never} Never.
  */
 function segmentAsSent(segment: PromptSegment): string {
-  return segment.ref !== undefined ? `{"ref": ${String(segment.ref)}}` : JSON.stringify({ slot: segment.slot });
+  return segment.ref !== undefined ? refAsSent(segment.ref) : JSON.stringify({ slot: segment.slot });
 }
 
 /**
@@ -159,10 +159,9 @@ function segmentAsSent(segment: PromptSegment): string {
 function typedMarks(node: ProposalNode): TypedMark[] {
   return [node.prompt ?? [], ...(node.shots ?? []).map((shot) => shot.prompt)].flatMap((segments) => {
     const words = segments.map((segment, i) => segment.text ?? String.fromCodePoint(SEGMENT_MARK + i)).join("");
-    const slots = markedSegments(words).flatMap((part) => (part.slot ? [part.slot] : []));
-    return typedMarkTexts(words).map((typed, i): TypedMark => ({
-      slot: slots[i] as TypedMark["slot"],
-      written: [...typed].map((char) => {
+    return marksTypedIn(words).map(({ slot, text }): TypedMark => ({
+      slot,
+      written: [...text].map((char) => {
         const segment = segments[(char.codePointAt(0) ?? 0) - SEGMENT_MARK];
         return segment !== undefined && segment.text === undefined ? segmentAsSent(segment) : char;
       }).join(""),

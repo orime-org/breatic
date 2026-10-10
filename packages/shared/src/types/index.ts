@@ -127,7 +127,7 @@ export {
   markText,
   writtenMark,
   markedSegments,
-  typedMarkTexts,
+  marksTypedIn,
   proposalMarkSegments,
   promptPlainText,
   promptTextOf,

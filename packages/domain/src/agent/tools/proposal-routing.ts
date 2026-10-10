@@ -124,13 +124,14 @@ export function poolSentence(generation: string): string {
 /**
  * One entry, as the agent is told to send it.
  * @param entry - The entry.
- * @param generation - The generation's name.
+ * @param generation - The generation's name, where the fills go on a named one.
  * @returns The phrase.
  * @throws {never} Never.
  */
-export function entryPhrase(entry: Entry, generation: string): string {
+export function entryPhrase(entry: Entry, generation?: string): string {
   const { into } = entry.way;
-  if (entry.by === "fills") return `through fills "${into}" on "${generation}", with no edge and no ref`;
+  const on = generation === undefined ? "" : ` on "${generation}"`;
+  if (entry.by === "fills") return `through fills "${into}"${on}, with no edge and no ref`;
   if (entry.by === "unwired") return `unwired, with a note saying to pick it into "${into}" and no ref`;
   const marks = [
     ...(entry.ref ? ["a ref @'ing it"] : []),
@@ -233,8 +234,7 @@ export function spaced(sentence: string): string {
 
 /**
  * How nodes of one kind reach one way of a model, said for the agent: once
- * for a node holding material and once for one standing empty, or once for
- * words.
+ * for each thing a node of that kind can hold.
  * @param chosen - The model.
  * @param generation - The generation node.
  * @param kind - The kind the way takes.
@@ -243,12 +243,22 @@ export function spaced(sentence: string): string {
  * @throws {never} Never.
  */
 export function slotSentence(chosen: ModelInfo, generation: ProposalNode, kind: string, into: string): string {
-  const holdings: readonly Holding[] = kind === "text" ? ["words"] : ["material", "empty"];
-  return holdings
+  return holdingsOf(kind)
     .map((holding) => [holdingSubject(kind, holding), entriesFor(chosen, kind, holding).filter((entry) => entry.way.into === into)] as const)
     .filter(([, entries]) => entries.length > 0)
     .map(([subject, entries]) => waysSentence(subject, generation, entries))
     .join(" ");
+}
+
+/**
+ * What a node of one kind can hold, each read apart: words for a text node,
+ * otherwise standing empty or holding material.
+ * @param kind - The kind.
+ * @returns Its holdings, in the order they are said.
+ * @throws {never} Never.
+ */
+export function holdingsOf(kind: string): readonly Holding[] {
+  return kind === "text" ? ["words"] : ["empty", "material"];
 }
 
 /**
@@ -384,6 +394,7 @@ export function goingWay(arriving: readonly Arriving[], kind: string, into: stri
  * The fix for an index a fill names that cannot stand: every copy of it out,
  * or the fill itself off where nothing else is left in it, since a fill names
  * one node at least.
+ * @param off - The fix taking the fill off.
  * @param on - The generation the fill is on.
  * @param param - The fill.
  * @param indices - Every index the fill names.
@@ -392,9 +403,9 @@ export function goingWay(arriving: readonly Arriving[], kind: string, into: stri
  * @returns The fix.
  * @throws {never} Never.
  */
-function takeOutOfFill(on: NodeLabel, param: string, indices: readonly number[], index: number, name?: string): NodeFix {
+function takeOutOfFill(off: NodeFix, on: NodeLabel, param: string, indices: readonly number[], index: number, name?: string): NodeFix {
   return indices.every((i) => i === index)
-    ? fixOn(on, `take fills "${param}" off.`)
+    ? off
     : fixOn(on, `take every ${String(index)}${name === undefined ? "" : ` ("${name}")`} out of fills "${param}".`);
 }
 
@@ -421,32 +432,33 @@ export function fillsOf(
   const slots = slotsOf(chosen);
   const filled: Arriving[] = [];
   for (const [param, indices] of Object.entries(node.fills ?? {})) {
+    const off = fixOn(at, `take fills "${param}" off.`);
     // How many times each index is named, counted once for every refusal below.
     const named = new Map<number, number>();
     for (const i of indices) named.set(i, (named.get(i) ?? 0) + 1);
     const outside = indices.find((i) => proposal.nodes[i] === undefined);
     if (outside !== undefined) {
-      return refuse("fill-outside", `fills "${param}" on "${node.name}" points at node ${String(outside)}${timesNamed(named.get(outside) ?? 0)}, which is not in the group.`, takeOutOfFill(at, param, indices, outside));
+      return refuse("fill-outside", `fills "${param}" on "${node.name}" points at node ${String(outside)}${timesNamed(named.get(outside) ?? 0)}, which is not in the group.`, takeOutOfFill(off, at, param, indices, outside));
     }
     const self = indices.find((i) => proposal.nodes[i] === node);
     if (self !== undefined) {
-      return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself${timesNamed(named.get(self) ?? 0)}, and a node cannot fill its own slot.`, takeOutOfFill(at, param, indices, self, node.name));
+      return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself${timesNamed(named.get(self) ?? 0)}, and a node cannot fill its own slot.`, takeOutOfFill(off, at, param, indices, self, node.name));
     }
     const slot = slots.find(({ way }) => way.into === param);
     if (slot === undefined) {
       return chosen.params[param]?.fromReferencePool === true
-        ? refuse("fill-into-pool", `"${param}" is the reference pool of "${chosen.name}", which takes no fills; ${slotsPhrase(chosen)}.`, fixOn(at, `take fills "${param}" off.`))
-        : refuse("fill-not-a-slot", `"${chosen.name}" has no slot "${param}"; ${slotsPhrase(chosen)}.`, fixOn(at, `take fills "${param}" off.`));
+        ? refuse("fill-into-pool", `"${param}" is the reference pool of "${chosen.name}", which takes no fills; ${slotsPhrase(chosen)}.`, off)
+        : refuse("fill-not-a-slot", `"${chosen.name}" has no slot "${param}"; ${slotsPhrase(chosen)}.`, off);
     }
     const seen = new Map<string, ProposalNode>();
     for (const index of indices) {
       const from = proposal.nodes[index] as ProposalNode;
       const count = named.get(index) ?? 0;
       if (from.material === undefined) {
-        return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${from.name}"${timesNamed(count)}, which holds no material, and fills takes only nodes holding it. ${waysOrNone(from, node, chosen)}`, takeOutOfFill(at, param, indices, index, from.name));
+        return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${from.name}"${timesNamed(count)}, which holds no material, and fills takes only nodes holding it. ${waysOrNone(from, node, chosen)}`, takeOutOfFill(off, at, param, indices, index, from.name));
       }
       if (from.type !== slot.kind) {
-        return refuse("fill-wrong-kind", `"${chosen.name}" takes ${slot.kind} in "${param}", and "${from.name}" is ${from.type}${count > 1 ? ` and is named ${String(count)} times` : ""}. ${waysOrNone(from, node, chosen)}`, takeOutOfFill(at, param, indices, index, from.name));
+        return refuse("fill-wrong-kind", `"${chosen.name}" takes ${slot.kind} in "${param}", and "${from.name}" is ${from.type}${count > 1 ? ` and is named ${String(count)} times` : ""}. ${waysOrNone(from, node, chosen)}`, takeOutOfFill(off, at, param, indices, index, from.name));
       }
       const twin = seen.get(from.material);
       if (twin === from) {

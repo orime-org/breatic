@@ -362,7 +362,7 @@ describe("marks the reader can act on", () => {
 
   it("asks for a ref for every node going into the pool, and a note for every node going into a slot", () => {
     const shape = inputSchema.shape.nodes.element.shape;
-    expect(shape.prompt.description ?? "").toMatch(/Every node going into the pool gets a ref where the prompt speaks of it, and a note too when it lands empty/);
+    expect(shape.prompt.description ?? "").toMatch(/Every node going into the pool gets a ref where the prompt, or in multi_shot a shot, speaks of it, and a note too when it lands empty/);
     expect(shape.prompt.description ?? "").toMatch(/a node going into a slot by an edge takes a note of its own \(a slot filled through fills takes none, the lyrics box takes none\)/);
     expect(shape.prompt.description ?? "").toMatch(/an empty node no edge sends into a generation \(unwired, or wired only as a link to a model that takes nothing from it\)/);
   });

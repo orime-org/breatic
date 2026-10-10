@@ -125,11 +125,39 @@ function bareReferenceLabel(label: string): string {
   return label;
 }
 
+/** The mark a slot segment stands for. */
+type MarkSlot = NonNullable<PromptSegment["slot"]>;
+
+/** A mark typed into words: the mark it stands for, how it is written there and where. */
+export interface TypedMark {
+  readonly slot: MarkSlot;
+  readonly text: string;
+  /** Where in the words the mark starts. */
+  readonly at: number;
+}
+
+/**
+ * The marks a stretch of words types out, each read once: the mark it stands
+ * for, the label doubling as the card's line where the kind has one, and the
+ * mark as it is written there.
+ * @param text - The words.
+ * @returns Each typed mark, in order.
+ * @throws {never} Never.
+ */
+export function marksTypedIn(text: string): TypedMark[] {
+  return [...text.matchAll(MARK_PATTERN)].map((match) => {
+    const group = match.findIndex((captured, i) => i > 0 && captured !== undefined);
+    const kind = MARK_KINDS[group - 1] ?? "tweak";
+    const read = match[group] ?? "";
+    const label = kind === "asset" ? bareReferenceLabel(read) : read;
+    return { slot: kind === "note" ? { kind, label } : { kind, label, note: label }, text: match[0], at: match.index };
+  });
+}
+
 /**
  * Read a prompt into segments: each `[📎 …]`, `{✏️ …}` and `(💡 …)` becomes
- * the mark it stands for, the label doubling as the card's line where the
- * kind has one. The inverse of {@link writtenMark}: a template's locale
- * prompt and a prompt copied out of a box read back to the same label.
+ * the mark it stands for. The inverse of {@link writtenMark}: a template's
+ * locale prompt and a prompt copied out of a box read back to the same label.
  * @param text - The prompt as a locale file or a box writes it.
  * @returns Its segments.
  * @throws {never} Never.
@@ -137,28 +165,13 @@ function bareReferenceLabel(label: string): string {
 export function markedSegments(text: string): PromptSegment[] {
   const segments: PromptSegment[] = [];
   let at = 0;
-  for (const match of text.matchAll(MARK_PATTERN)) {
-    const [whole] = match;
-    const group = match.findIndex((captured, i) => i > 0 && captured !== undefined);
-    const kind = MARK_KINDS[group - 1] ?? "tweak";
-    const read = match[group] ?? "";
-    const label = kind === "asset" ? bareReferenceLabel(read) : read;
-    if (match.index > at) segments.push({ text: text.slice(at, match.index) });
-    segments.push({ slot: kind === "note" ? { kind, label } : { kind, label, note: label } });
-    at = match.index + whole.length;
+  for (const mark of marksTypedIn(text)) {
+    if (mark.at > at) segments.push({ text: text.slice(at, mark.at) });
+    segments.push({ slot: mark.slot });
+    at = mark.at + mark.text.length;
   }
   if (at < text.length) segments.push({ text: text.slice(at) });
   return segments;
-}
-
-/**
- * The marks a stretch of words types out, each as it is written there.
- * @param text - The words.
- * @returns Each typed mark, in order.
- * @throws {never} Never.
- */
-export function typedMarkTexts(text: string): string[] {
-  return [...text.matchAll(MARK_PATTERN)].map(([whole]) => whole);
 }
 
 /**

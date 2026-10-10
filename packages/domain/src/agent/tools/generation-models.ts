@@ -26,7 +26,7 @@ import {
   type WayKind,
 } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
-import { entriesFor, holdingSubject, type Entry, type Holding } from "@domain/agent/tools/proposal-routing.js";
+import { entriesFor, entryPhrase, holdingsOf, holdingSubject, type Entry } from "@domain/agent/tools/proposal-routing.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
 
 /** One model with what a run at its defaults costs, when the catalog prices it. */
@@ -85,6 +85,16 @@ function renderStoryboard(model: PricedModelInfo): string {
 }
 
 /**
+ * Where this model's words are written, and so where a mention of a node
+ * wired into it goes: in the multi-shot mode each shot holds its own words.
+ * @param model - The model.
+ * @returns "the shot it belongs to" or "the prompt".
+ */
+function wordsBox(model: PricedModelInfo): string {
+  return model.storyboard ? "the shot it belongs to" : "the prompt";
+}
+
+/**
  * Which camera commands this model reads out of its prompt and how to write
  * them, as MiniMax documents the syntax.
  * @param model - The model to describe.
@@ -93,36 +103,29 @@ function renderStoryboard(model: PricedModelInfo): string {
 function renderCameraCommands(model: PricedModelInfo): string {
   const commands = model.cameraCommands;
   if (!commands || commands.length === 0) return "";
-  const where = model.storyboard ? " into the shot it belongs to" : " into the prompt";
   return (
-    ` Reads camera commands written${where}: ${commands.map((c) => cameraCommandBracket([c])).join(" ")}.` +
+    ` Reads camera commands written into ${wordsBox(model)}: ${commands.map((c) => cameraCommandBracket([c])).join(" ")}.` +
     ` Commands inside one bracket, comma-separated with no space, as in ${cameraCommandBracket(["Truck left", "Push in"])}, run at the same time, at most ${CAMERA_COMMANDS_PER_BRACKET} in one bracket;` +
     ` separate brackets run in the order they appear; never put the opposite directions of one axis, or ${cameraCommandBracket([STATIC_SHOT])} with a movement, in one bracket.`
   );
 }
 
 /**
- * One entry, as the listing says it: where the node lands, how the proposal
- * sends it, how many it takes, and what the prompt carries for each.
+ * One entry, as the listing says it: where the node lands, how many it takes,
+ * and how the proposal sends it, in the words the refusals use.
  * @param kind - The kind of node going this way.
  * @param entry - The entry, as the proposal check reads it.
+ * @param box - Where the model's words are written.
  * @returns The phrase.
  */
-function entryWords(kind: WayKind, entry: Entry): string {
+function entryWords(kind: WayKind, entry: Entry, box: string): string {
   const { way } = entry;
   const where =
     way.into === "pool"
-      ? kind === "text" ? "@'d into the prompt" : "the reference pool"
+      ? kind === "text" ? box : "the reference pool"
       : way.into === PANEL_EDITOR_PARAM ? "the lyrics box" : "a slot";
-  const room = Number.isFinite(way.room) ? `, at most ${String(way.room)}` : "";
-  const carries = [
-    ...(entry.ref ? ["a ref each where the prompt @s it"] : []),
-    ...(entry.note ? ["a note each"] : []),
-    ...(way.mark === "placed" ? ["@'d there for you"] : []),
-  ];
-  const how =
-    entry.by === "edge" ? `by an edge with into: "${way.into}"` : entry.by === "fills" ? "through fills, with no edge" : "by a pick in the panel, not wired in";
-  return `"${way.into}" ${how} (${[`${where}${room}`, ...carries].join(", ")})`;
+  const room = Number.isFinite(way.room) ? ` (at most ${String(way.room)})` : "";
+  return `${where}${room} ${entryPhrase(entry)}`;
 }
 
 /**
@@ -161,14 +164,13 @@ function renderModel(model: PricedModelInfo): string {
   const ways = waysIn(model);
   const routing = [...ways.keys()]
     .map((kind) => {
-      const holdings: Holding[] = kind === "text" ? ["words"] : ["empty", "material"];
-      const said = holdings.map((holding) => ({ holding, entries: entriesFor(model, kind, holding) }));
+      const said = holdingsOf(kind).map((holding) => ({ holding, entries: entriesFor(model, kind, holding) }));
       // A kind that only goes into the pool is @'d like any mention, and
       // needs no line of its own.
       if (said.every(({ entries }) => entries.every((entry) => entry.way.into === "pool"))) return "";
       return said
         .filter(({ entries }) => entries.length > 0)
-        .map(({ holding, entries }) => ` ${holdingSubject(kind, holding)} goes into ${entries.map((entry) => entryWords(kind, entry)).join(" or ")}.`)
+        .map(({ holding, entries }) => ` ${holdingSubject(kind, holding)} goes into ${entries.map((entry) => entryWords(kind, entry, wordsBox(model))).join(", or into ")}.`)
         .join("");
     })
     .join("");
@@ -204,7 +206,7 @@ function renderModel(model: PricedModelInfo): string {
       // product guide the description points at. The pool is filled by an
       // edge and then a mention; a slot is picked on the canvas.
       const how = spec.fromReferencePool
-        ? "filled on the canvas, not typed here, by an edge into this node, then a mention of it in the prompt"
+        ? `filled on the canvas, not typed here, by an edge into this node, then a mention of it in ${wordsBox(model)}`
         : "filled from another node on the canvas through a source slot, not typed here; leave it unset";
       return `    ${name}:${shape}${howMany} ${how}. ${spec.what}`;
     }
