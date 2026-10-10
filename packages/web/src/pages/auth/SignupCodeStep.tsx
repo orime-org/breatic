@@ -188,6 +188,7 @@ export function SignupCodeStep({
 
   return (
     <AuthCardShell
+      showVersion
       title={t('auth.register.code.title')}
       subtitle={<SentTo text={t('auth.register.code.sentTo', { email })} email={email} />}
     >

@@ -137,6 +137,7 @@ export default function LoginPage(): React.JSX.Element {
 
   return (
     <AuthCardShell
+      showVersion
       title={t('auth.login.title')}
       notice={<TermsNotice />}
       subtitle={t('auth.login.subtitle')}

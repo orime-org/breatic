@@ -6,7 +6,7 @@
  * header and footer around the centred card.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 
 import { AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
@@ -16,9 +16,9 @@ import { OFFICIAL_HOME_URL, PRIVACY_URL, TERMS_URL } from '@web/lib/official-hom
  * Render the shell around a stand-in form.
  * @returns the render result.
  */
-function renderShell(): ReturnType<typeof render> {
+function renderShell(showVersion = false): ReturnType<typeof render> {
   return render(
-    <AuthCardShell title='Sign in' footer={<span>Card footer</span>}>
+    <AuthCardShell title='Sign in' showVersion={showVersion} footer={<span>Card footer</span>}>
       <form aria-label='Stand-in form' />
     </AuthCardShell>,
   );
@@ -70,5 +70,34 @@ describe('AuthCardShell', () => {
       expect(link).toHaveAttribute('target', '_blank');
       expect(link.getAttribute('rel')).toContain('noreferrer');
     }
+  });
+});
+
+
+afterEach(() => { vi.unstubAllEnvs(); });
+
+describe('auth card build version', () => {
+  it.each([
+    [true, '0.0.6', 'Beta v0.0.6'],
+    [true, '0.0.6-rc.1', 'Beta v0.0.6-rc.1'],
+    [true, '', 'dev'],
+    [true, '0.0.0-dev', 'dev'],
+    [false, '0.0.6', 'dev'],
+  ])('shows the build identity for production=%s, version=%s', (production, version, label) => {
+    vi.stubEnv('PROD', production);
+    vi.stubEnv('VITE_RELEASE_VERSION', version);
+    vi.stubEnv('VITE_APP_VERSION', 'a'.repeat(40));
+    renderShell(true);
+    const header = screen.getByRole('heading', { name: 'Sign in' }).closest('header');
+    expect(header).toHaveTextContent(label);
+    expect(header).not.toHaveTextContent('a'.repeat(40));
+  });
+
+  it('keeps other account cards free of the version label', () => {
+    vi.stubEnv('PROD', true);
+    vi.stubEnv('VITE_RELEASE_VERSION', '0.0.6');
+    renderShell();
+    expect(screen.queryByText('Beta v0.0.6')).not.toBeInTheDocument();
+    expect(screen.queryByText('dev')).not.toBeInTheDocument();
   });
 });
