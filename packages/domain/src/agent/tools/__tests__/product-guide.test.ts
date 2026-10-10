@@ -553,10 +553,9 @@ describe("what the guide says", () => {
   it("says a proposal @s every node it wires into the pool, and a node not @'d is not used", () => {
     const cards = section("Proposal cards");
     expect(cards).toMatch(/A proposal @s for the reader every node it wires into the reference list/);
-    expect(cards).toMatch(/A node @'d that lands empty[^.]*comes with a note saying what to do first/);
-    // Generating early sends nothing for it, and a model that runs only with
-    // that source is stopped by the panel, as its listing line says.
-    expect(cards).toMatch(/A node @'d that lands empty[^.]*comes with a note saying what to do first; generating before then sends nothing for it, and the run stops where the model runs only when that source holds a node\./);
+    // Generating early sends nothing for it; the panel stops the run only when
+    // nothing else in that source holds a node and the model needs one there.
+    expect(cards).toMatch(/A node @'d that lands empty[^.]*comes with a note saying what to do first; generating before then sends nothing for it, and the run stops only where nothing else in that source holds a node and the model runs only when one does\./);
     const pool = cards.split("Into the reference list")[1] ?? "";
     expect(pool).toMatch(/by the proposal for every node it wires in[^.]*\. A node wired in that is not @'d is not used/);
   });
