@@ -62,6 +62,8 @@ const MEDIA_BOX = '[data-media-box]';
 const MEDIA_CHROME = '[data-media-chrome]';
 /** A table block. */
 const TABLE_BLOCK = '[data-content-type="table"]';
+/** A block's content element, which carries the space above the block. */
+const BLOCK_CONTENT = '.bn-block-content';
 /** The video readiness from which a frame can be drawn (`HAVE_CURRENT_DATA`). */
 const HAVE_CURRENT_DATA = 2;
 
@@ -107,9 +109,16 @@ export function buildDragPreview(
   const layer = page.createElement('div');
   layer.className = [...view.dom.classList].filter((name) => !EDITOR_ONLY_CLASSES.has(name)).join(' ');
   layer.style.display = 'inline-block';
+  // On the root's line an inline block sits on the baseline, below the line's
+  // own ascent, and the root, cut to the scaled size, would clip its foot.
+  layer.style.verticalAlign = 'top';
   layer.style.padding = '0';
   layer.style.transformOrigin = '0px 0px';
   layer.append(content);
+  // The first block stands flush against the top, as the document's first block
+  // does (`index.css`): the space every other block carries above it is the
+  // gap to the block before, and the preview has none.
+  layer.querySelector<HTMLElement>(BLOCK_CONTENT)?.style.setProperty('--doc-block-lift', '0px');
   root.append(layer);
   page.body.append(root);
   const size = measure(layer);
