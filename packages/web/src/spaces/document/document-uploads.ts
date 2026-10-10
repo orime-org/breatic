@@ -14,7 +14,6 @@
 import type { EditorView } from '@tiptap/pm/view';
 
 import { UploadFailedError, type StoredUpload } from '@web/data/upload/media-upload';
-import type { MediaSize } from '@web/spaces/document/document-media-size';
 import {
   checkFileAdmission,
   fileToNodeSpec,
@@ -51,8 +50,6 @@ export interface DocumentUploaderDeps {
   readonly refuse: (messageKey: string, params: Readonly<Record<string, string>>) => void;
   /** Closes the reader's undo step around a batch's start and each insert. */
   readonly undo: UndoCapture;
-  /** The pixel size of a picture or a video, read off its file (A23). */
-  readonly measure: (file: File) => Promise<MediaSize | undefined>;
 }
 
 /** What the entries and the placeholders call. */
@@ -125,7 +122,6 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
     const file = held.get(slotId);
     if (file === undefined) return;
     deps.register(slotId);
-    const sizing = deps.measure(file);
     let stored: StoredUpload;
     try {
       stored = await deps.upload(file, (progress) => {
@@ -136,8 +132,6 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       patchUploadSlot(view, slotId, { phase: 'failed', failure: failureOf(err, file) });
       return;
     }
-    // Still in flight, and checked for being writable, until the size is in.
-    const size = stored.kind === 'audio' ? undefined : await sizing;
     deps.unregister(slotId);
     if (stored.fileUrl === undefined || stored.kind === undefined) {
       patchUploadSlot(view, slotId, {
@@ -166,7 +160,10 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
         props: {
           url: stored.fileUrl,
           name: file.name,
-          ...(size !== undefined && { mediaWidth: size.width, mediaHeight: size.height }),
+          // The size the server read off the stored picture, which for one with
+          // an EXIF orientation is its upright copy (inner#1367 §4.8a).
+          ...(typeof stored.width === 'number' &&
+            typeof stored.height === 'number' && { mediaWidth: stored.width, mediaHeight: stored.height }),
         },
       },
       deps.undo,

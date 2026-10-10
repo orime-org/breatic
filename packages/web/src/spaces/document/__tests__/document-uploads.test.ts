@@ -91,7 +91,6 @@ function deps(maxBytes = 1000): { deps: DocumentUploaderDeps; pending: Pending[]
       unregister: vi.fn(),
       refuse: vi.fn(),
       undo: { stopCapturing: vi.fn() },
-      measure: () => Promise.resolve(undefined),
     },
   };
 }
@@ -344,25 +343,33 @@ describe('an upload that succeeds (A13, A15)', () => {
     expect(blocks(editor)[1]!.type).toBe('video');
   });
 
-  it('writes the size read off the file onto the block (A23)', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader({ ...d, measure: () => Promise.resolve({ width: 640, height: 360 }) });
-
-    await start(editor, uploader, [file('clip.png', 'image/png')]);
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/clip.png', assetId: 'x', kind: 'image' });
-    await settle();
-
-    expect(blocks(editor)[1]!.props).toMatchObject({ mediaWidth: 640, mediaHeight: 360 });
-  });
-
-  it('writes no size when the file could not be measured (A23)', async () => {
+  // The server read the size off the stored picture, which for one with an
+  // EXIF orientation is its upright copy (inner#1367 §4.8a).
+  it('writes the size the server read off the stored picture onto the block (A23)', async () => {
     const editor = open();
     const { deps: d, pending } = deps();
     const uploader = createDocumentUploader(d);
 
     await start(editor, uploader, [file('clip.png', 'image/png')]);
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/clip.png', assetId: 'x', kind: 'image' });
+    pending[0]!.resolve({
+      fileUrl: 'https://cdn.example/clip.png',
+      assetId: 'x',
+      kind: 'image',
+      width: 640,
+      height: 360,
+    });
+    await settle();
+
+    expect(blocks(editor)[1]!.props).toMatchObject({ mediaWidth: 640, mediaHeight: 360 });
+  });
+
+  it('writes no size when the server read none (A23)', async () => {
+    const editor = open();
+    const { deps: d, pending } = deps();
+    const uploader = createDocumentUploader(d);
+
+    await start(editor, uploader, [file('clip.png', 'image/png')]);
+    pending[0]!.resolve({ fileUrl: 'https://cdn.example/clip.png', assetId: 'x', kind: 'image', width: null, height: null });
     await settle();
 
     expect(blocks(editor)[1]!.props['mediaWidth']).toBeUndefined();
@@ -414,37 +421,6 @@ describe('an upload that succeeds (A13, A15)', () => {
     expect(uploadSlots(editor.prosemirrorView!.state)[0]).toMatchObject({
       phase: 'failed',
       failure: { messageKey: 'spaces.document.media.readOnly', retryable: true },
-    });
-  });
-});
-
-describe('an upload whose size is read after the file is stored (A12, A23)', () => {
-  it('stays in flight and checks the body is writable once the size is in', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    let sized: (size: { width: number; height: number }) => void = () => undefined;
-    const uploader = createDocumentUploader({
-      ...d,
-      measure: () =>
-        new Promise((resolve) => {
-          sized = resolve;
-        }),
-    });
-
-    await start(editor, uploader, [file('a.png', 'image/png')]);
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image' });
-    await settle();
-    expect(d.unregister).not.toHaveBeenCalled();
-
-    editor.isEditable = false;
-    sized({ width: 640, height: 360 });
-    await settle();
-
-    expect(d.unregister).toHaveBeenCalled();
-    expect(blocks(editor)).toHaveLength(2);
-    expect(uploadSlots(editor.prosemirrorView!.state)[0]).toMatchObject({
-      phase: 'failed',
-      failure: { messageKey: 'spaces.document.media.readOnly' },
     });
   });
 });

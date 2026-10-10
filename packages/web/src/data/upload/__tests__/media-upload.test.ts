@@ -206,6 +206,8 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
         assetId: 'asset-existing',
         fileUrl: 'https://cdn/existing.png',
         kind: 'image',
+        width: 3000,
+        height: 4000,
       }),
     });
 
@@ -216,6 +218,8 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       fileUrl: 'https://cdn/existing.png',
       assetId: 'asset-existing',
       kind: 'image',
+      width: 3000,
+      height: 4000,
     });
   });
 

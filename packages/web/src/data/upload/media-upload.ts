@@ -268,7 +268,13 @@ export async function runMediaUpload(
     // Nothing moves. When a node is behind this upload, the server has already
     // written its history and published what ends its handling; an upload with
     // no node reads what the answer names.
-    deps.onSuccess({ fileUrl: answer.fileUrl, assetId: answer.assetId, kind: answer.kind });
+    deps.onSuccess({
+      fileUrl: answer.fileUrl,
+      assetId: answer.assetId,
+      kind: answer.kind,
+      ...(answer.width !== undefined && { width: answer.width }),
+      ...(answer.height !== undefined && { height: answer.height }),
+    });
     return;
   }
 

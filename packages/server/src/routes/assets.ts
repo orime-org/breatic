@@ -352,6 +352,9 @@ assets.post(
           assetId: dedupHit.assetId,
           fileUrl: dedupHit.fileUrl,
           kind: dedupHit.kind,
+          // The picture's size, read off it when it was stored (inner#1367).
+          width: dedupHit.width,
+          height: dedupHit.height,
         },
       });
     }
