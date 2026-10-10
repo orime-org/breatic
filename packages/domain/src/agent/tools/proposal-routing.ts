@@ -382,15 +382,15 @@ export function goingWay(arriving: readonly Arriving[], kind: string, into: stri
 }
 
 /**
- * The fix for an index a fill names that cannot stand, which may be named
- * more than once.
+ * The fix for an index a fill names that cannot stand: every copy of it out.
  * @param param - The fill.
- * @param count - How many times the index is named.
+ * @param at - The index.
+ * @param name - The node it points at, where there is one.
  * @returns The fix.
  * @throws {never} Never.
  */
-function takeOutOfFill(param: string, count: number): string {
-  return count > 1 ? `Take every one out of fills "${param}".` : `Take it out of fills "${param}".`;
+function takeOutOfFill(param: string, at: number, name?: string): string {
+  return `Take every ${String(at)}${name === undefined ? "" : ` (${name})`} out of fills "${param}".`;
 }
 
 /**
@@ -417,12 +417,12 @@ export function fillsOf(
     const outside = indices.find((at) => proposal.nodes[at] === undefined);
     if (outside !== undefined) {
       const count = indices.filter((at) => at === outside).length;
-      return refuse("fill-outside", `fills "${param}" on "${node.name}" points at node ${String(outside)}${timesNamed(count)}, which is not in the group.`, takeOutOfFill(param, count));
+      return refuse("fill-outside", `fills "${param}" on "${node.name}" points at node ${String(outside)}${timesNamed(count)}, which is not in the group.`, takeOutOfFill(param, outside));
     }
     const named = indices.map((at) => proposal.nodes[at] as ProposalNode);
     const selfCount = named.filter((n) => n === node).length;
     if (selfCount > 0) {
-      return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself${timesNamed(selfCount)}, and a node cannot fill its own slot.`, takeOutOfFill(param, selfCount));
+      return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself${timesNamed(selfCount)}, and a node cannot fill its own slot.`, takeOutOfFill(param, proposal.nodes.indexOf(node), `"${node.name}"`));
     }
     const slot = slots.find(({ way }) => way.into === param);
     if (slot === undefined) {
@@ -433,12 +433,11 @@ export function fillsOf(
     const seen = new Map<string, ProposalNode>();
     for (const from of named) {
       const count = named.filter((n) => n === from).length;
-      const takeFrom = `Take "${from.name}" out of fills "${param}"${count > 1 ? ", every time it is named" : ""}.`;
       if (from.material === undefined) {
-        return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${from.name}"${timesNamed(count)}, which holds no material, and fills takes only nodes holding it. ${waysOrNone(from, node, chosen)}`, takeFrom);
+        return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${from.name}"${timesNamed(count)}, which holds no material, and fills takes only nodes holding it. ${waysOrNone(from, node, chosen)}`, takeOutOfFill(param, proposal.nodes.indexOf(from), `"${from.name}"`));
       }
       if (from.type !== slot.kind) {
-        return refuse("fill-wrong-kind", `"${chosen.name}" takes ${slot.kind} in "${param}", and "${from.name}" is ${from.type}${count > 1 ? `, named ${String(count)} times` : ""}. ${waysOrNone(from, node, chosen)}`, takeFrom);
+        return refuse("fill-wrong-kind", `"${chosen.name}" takes ${slot.kind} in "${param}", and "${from.name}" is ${from.type}${count > 1 ? ` and is named ${String(count)} times` : ""}. ${waysOrNone(from, node, chosen)}`, takeOutOfFill(param, proposal.nodes.indexOf(from), `"${from.name}"`));
       }
       const twin = seen.get(from.material);
       if (twin === from) {

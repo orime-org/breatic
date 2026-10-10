@@ -125,9 +125,8 @@ function strayRefReason(
   const named = proposal.nodes[stray];
   // The stray index may be @'d more than once, and every copy has to go.
   const count = refsIn(node).filter((at) => at === stray).length;
-  const takeOut = count > 1 ? "Take those refs out." : "Take that ref out.";
-  if (!named) return refuse("ref-outside", `A ref in "${node.name}" points outside the group: {"ref": ${String(stray)}}${timesNamed(count)}.`, takeOut);
-  if (named === node) return refuse("ref-self", `"${node.name}" @s itself with {"ref": ${String(stray)}}${timesNamed(count)}, and a node cannot @ itself.`, takeOut);
+  if (!named) return refuse("ref-outside", `A ref in "${node.name}" points outside the group: {"ref": ${String(stray)}}${timesNamed(count)}.`, `Take every {"ref": ${String(stray)}} out.`);
+  if (named === node) return refuse("ref-self", `"${node.name}" @s itself with {"ref": ${String(stray)}}${timesNamed(count)}, and a node cannot @ itself.`, `Take every {"ref": ${String(stray)}} out.`);
   // Arriving another way -- an edge into a slot or the lyrics box, or a slot
   // filled through fills -- the node is already where it goes; a ref would
   // only send it a second time.
@@ -139,7 +138,7 @@ function strayRefReason(
   const byRefs = count > 1 ? `${String(count)} refs` : "a ref";
   const pool = (waysIn(chosen).get(named.type) ?? []).find((way) => way.mark === "ref");
   if (pool === undefined || !entriesFor(chosen, named.type, holdingOf(named)).some((entry) => entry.ref)) {
-    return refuse("ref-not-pooled-no-pool", `"${named.name}" is @'d by ${byRefs} in "${node.name}", and only a node in its pool takes a ref, while "${chosen.name}" has no pool for ${aNode(named.type)}. ${ways}`, count > 1 ? "Leave those refs out." : "Leave the ref out.");
+    return refuse("ref-not-pooled-no-pool", `"${named.name}" is @'d by ${byRefs} in "${node.name}", and only a node in its pool takes a ref, while "${chosen.name}" has no pool for ${aNode(named.type)}. ${ways}`, `Take every {"ref": ${String(stray)}} out.`);
   }
   const held = goingWay(arriving, named.type, pool.into);
   return refuse("ref-not-pooled", `"${named.name}" is @'d by ${byRefs} in "${node.name}" but is not wired into its pool, and only a node in its pool takes a ref. ${ways} The pool of "${node.name}" takes ${roomOf(pool.room)} ${named.type} node(s) and holds ${namesOrNone(held)}.`);
@@ -257,20 +256,19 @@ function refWordsFor(proposal: CanvasProposal, node: ProposalNode, pooled: reado
  * @param chosen - Its model.
  * @param sent - The prompt as it goes out.
  * @param scripts - The text nodes @'d into it.
- * @param shotTexts - Each shot's words as they go out, in order.
  * @returns The reason, or null where the gate lets it through.
  * @throws {never} Never.
  */
-function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelInfo, sent: string, scripts: readonly ProposalNode[], shotTexts: readonly string[]): Refusal | null {
+function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelInfo, sent: string, scripts: readonly ProposalNode[]): Refusal | null {
   const model = chosen.name;
   const board = chosen.storyboard;
   switch (verdict.refusal) {
     case "storyboard-shot-empty":
       return refuse("shot-empty", `Shot ${String(verdict.shot)} writes nothing. Every shot needs its own words.`);
     case "storyboard-too-many":
-      return refuse("too-many-shots", `"${model}" takes at most ${String(verdict.limit)} shots, and this proposal gives ${String(shotTexts.length)}.`);
+      return refuse("too-many-shots", `"${model}" takes at most ${String(verdict.limit)} shots, and this proposal gives ${String(verdict.found)}.`);
     case "storyboard-shot-too-long":
-      return refuse("shot-too-long", `Shot ${String(verdict.shot)} is ${String([...extractPromptText(shotTexts[(verdict.shot ?? 1) - 1] ?? "")].length)} characters, longer than the ${String(verdict.limit)} characters "${model}" takes for one shot.`);
+      return refuse("shot-too-long", `Shot ${String(verdict.shot)} is ${String(verdict.found)} characters, longer than the ${String(verdict.limit)} characters "${model}" takes for one shot.`);
     case "storyboard-duration-mismatch":
       return refuse("shots-duration", `The shots add up to ${String(verdict.seconds?.shots)} seconds and ${String(board?.totalParam)} is ${String(verdict.seconds?.total)}.`);
     case "prompt-missing":
@@ -338,7 +336,7 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
       ? { storyboard: { shots, total, ...(board === undefined ? {} : { maxShots: board.maxShots }), ...(shotCap === undefined ? {} : { maxChars: shotCap }) } }
       : {}),
   });
-  return (verdict === null ? null : gateReason(verdict, node, chosen, sent, scripts, shots.map((shot) => shot.text))) ?? { ok: true };
+  return (verdict === null ? null : gateReason(verdict, node, chosen, sent, scripts)) ?? { ok: true };
 }
 
 /**

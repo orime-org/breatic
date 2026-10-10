@@ -91,14 +91,27 @@ function sameEnds(a: CanvasProposal["edges"][number], b: CanvasProposal["edges"]
 }
 
 /**
- * How many edges the proposal sends the same way as this one, itself included.
+ * Every edge the proposal sends the same way as this one, itself included.
  * @param proposal - The proposal.
  * @param edge - The edge.
- * @returns The count.
+ * @returns The edges.
  * @throws {never} Never.
  */
-function copiesOf(proposal: CanvasProposal, edge: CanvasProposal["edges"][number]): number {
-  return proposal.edges.filter((e) => sameEnds(e, edge)).length;
+function edgesBetween(proposal: CanvasProposal, edge: CanvasProposal["edges"][number]): CanvasProposal["edges"] {
+  return proposal.edges.filter((e) => sameEnds(e, edge));
+}
+
+/**
+ * The edges between two nodes, said for the agent: how many, and each one's into.
+ * @param edges - The edges, all between the same two nodes.
+ * @param from - The node they run from, as the sentence names it.
+ * @param to - The node they run to, as the sentence names it.
+ * @returns The phrase.
+ * @throws {never} Never.
+ */
+function edgesSaid(edges: CanvasProposal["edges"], from: string, to: string): string {
+  const intos = edges.map((e) => (e.into === undefined ? "no into" : `into "${e.into}"`)).join(", ");
+  return `${edges.length > 1 ? `${String(edges.length)} edges run` : "An edge runs"} from ${from} to ${to} (${intos})`;
 }
 
 /**
@@ -163,19 +176,20 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
   const pairs = new Set<string>();
   for (const edge of proposal.edges) {
     const ends = [edge.fromIndex, edge.toIndex];
-    if (ends.some((i) => i < 0 || i >= proposal.nodes.length)) {
-      const count = copiesOf(proposal, edge);
-      return refuse("edge-outside", `${count > 1 ? `${String(count)} edges point` : "An edge points"} outside the group: ${JSON.stringify(edge)}.`, count > 1 ? "Take those edges off." : "Take that edge off.");
+    // An edge is named by its two ends, and every fix takes every edge between them.
+    const between = edgesBetween(proposal, edge);
+    if (ends.some((i) => proposal.nodes[i] === undefined)) {
+      const [fromLabel = "", toLabel = ""] = ends.map((i) => `node ${String(i)}${proposal.nodes[i] === undefined ? " (not in the group)" : ""}`);
+      return refuse("edge-outside", `${edgesSaid(between, fromLabel, toLabel)}.`, `Take every edge from node ${String(edge.fromIndex)} to node ${String(edge.toIndex)} off.`);
     }
     if (edge.fromIndex === edge.toIndex) {
-      const count = copiesOf(proposal, edge);
-      return refuse("edge-self-loop", `${count > 1 ? `${String(count)} edges loop` : "An edge loops"} node ${String(edge.fromIndex)} onto itself.`, count > 1 ? "Take those edges off." : "Take that edge off.");
+      return refuse("edge-self-loop", `${edgesSaid(between, `node ${String(edge.fromIndex)}`, "itself")}.`, `Take every edge from node ${String(edge.fromIndex)} to itself off.`);
     }
+    const fromName = `"${proposal.nodes[edge.fromIndex]?.name ?? ""}"`;
+    const toName = `"${proposal.nodes[edge.toIndex]?.name ?? ""}"`;
     const pair = `${String(edge.fromIndex)}>${String(edge.toIndex)}`;
     if (pairs.has(pair)) {
-      const between = proposal.edges.filter((e) => sameEnds(e, edge));
-      const intos = between.map((e) => (e.into === undefined ? "no into" : `into "${e.into}"`)).join(", ");
-      return refuse("edge-repeated", `${String(between.length)} edges run from "${proposal.nodes[edge.fromIndex]?.name ?? ""}" to "${proposal.nodes[edge.toIndex]?.name ?? ""}" (${intos}), and a node goes into a generation one way.`);
+      return refuse("edge-repeated", `${edgesSaid(between, fromName, toName)}, and a node goes into a generation one way.`);
     }
     pairs.add(pair);
     // An edge is how one node draws on another's material, so it can only end
@@ -192,7 +206,7 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
       // How the node reaches the generation instead is the model's to say; a
       // generation naming no model the catalog serves has only the canvas rule.
       const chosen = chosenModelOf(into);
-      return refuse("edge-not-allowed", `The canvas does not let ${aNode(outOf.type)} feed ${aNode(into.type)}, by your hand or theirs.${chosen ? spaced(waysOrNone(outOf, into, chosen)) : ""}`, "Take that edge off.");
+      return refuse("edge-not-allowed", `The canvas does not let ${aNode(outOf.type)} feed ${aNode(into.type)}, by your hand or theirs. ${edgesSaid(between, fromName, toName)}.${chosen ? spaced(waysOrNone(outOf, into, chosen)) : ""}`, `Take every edge from ${fromName} to ${toName} off.`);
     }
   }
   if (hasRing(proposal)) {

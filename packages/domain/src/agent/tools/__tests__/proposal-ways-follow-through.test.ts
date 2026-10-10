@@ -242,7 +242,7 @@ describe("each refusal tells the agent a way that is there", () => {
     const gen = proposal.nodes[1] as ProposalNode;
     proposal.nodes[1] = { ...gen, prompt: [...(gen.prompt ?? []), NOTE, { ref: 0 }] };
     const verdict = checkProposal(proposal, MATERIALS);
-    expect(verdict).toMatchObject({ ok: false, reason: expect.stringMatching(/leave the ref out/i) });
+    expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining('Take every {"ref": 0} out.') });
     expect(verdict.ok ? "" : verdict.reason).not.toContain('into: "pool"');
   });
 
@@ -295,7 +295,7 @@ describe("each refusal tells the agent a way that is there", () => {
     const proposal = follow(setting, probe("video", "material"), undefined);
     proposal.nodes[1] = { ...(proposal.nodes[1] as ProposalNode), fills: { [slot]: [1] } };
     const verdict = checkProposal(proposal, MATERIALS);
-    expect(verdict).toMatchObject({ ok: false, reason: `fills "${slot}" on "Gen" points at "Gen" itself, and a node cannot fill its own slot. Take it out of fills "${slot}".` });
+    expect(verdict).toMatchObject({ ok: false, reason: `fills "${slot}" on "Gen" points at "Gen" itself, and a node cannot fill its own slot. Take every 1 ("Gen") out of fills "${slot}".` });
   });
 
   it("sends words to the lyrics box only where the panel draws it", () => {
