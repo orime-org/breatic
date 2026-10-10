@@ -292,7 +292,7 @@ describe('the table handles as layers of the body (inner#1127)', () => {
 });
 
 describe('dragging a line (inner#1350)', () => {
-  it('hands the browser a preview of the whole line, freezes the handles and hides itself until the drag ends', () => {
+  it('hands the browser a preview of the whole line, freezes the handles and hides itself until the drag ends', async () => {
     openOver(0, 1);
     render(<DocumentTableHandle orientation='column' hideOtherElements={() => undefined} />);
     const handle = screen.getByTestId('doc-table-col-handle');
@@ -307,6 +307,11 @@ describe('dragging a line (inner#1350)', () => {
     expect(preview.textContent).toContain('b2');
     expect(preview.textContent).not.toContain('a1');
     expect(side.frozen).toBe(1);
+    // Hidden during the dragstart itself, the source makes Chrome cancel the drag.
+    expect(handle.closest('.invisible')).toBeNull();
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
     expect(handle.closest('.invisible')).not.toBeNull();
 
     fireEvent.dragEnd(handle);

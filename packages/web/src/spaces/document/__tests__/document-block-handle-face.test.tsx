@@ -167,13 +167,19 @@ describe('the strip keeps its face through what the reader started', () => {
     expect(screen.getByTestId('doc-block-plus')).toBeTruthy();
   });
 
-  it('hides the strip while its drag runs, keeping it in the page for the drag end', () => {
+  it('hides the strip from the frame after its drag starts, keeping it in the page for the drag end', async () => {
     openOver([{ type: 'paragraph', content: 'x' }], 0);
     render(<DocumentBlockHandle />);
     const grip = screen.getByTestId('doc-block-handle');
     const strip = grip.closest<HTMLElement>('[data-row-id]')!;
 
     fireEvent.dragStart(grip);
+    // Hidden during the dragstart itself, the source makes Chrome cancel the
+    // drag; it goes from the next frame, once the drag is under way.
+    expect(strip.classList.contains('invisible')).toBe(false);
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
     // The frozen menu does not follow the rows as the body scrolls under the
     // drag (inner#1350 §5.2), so it is hidden, not removed.
     expect(strip.classList.contains('invisible')).toBe(true);
