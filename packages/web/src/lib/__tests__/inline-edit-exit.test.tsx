@@ -75,7 +75,7 @@ let removeListener = (): void => {};
 
 /**
  * Renders the harness with spies; `onParentKey` sees the keys that reach the
- * window, where the canvas and the tab strip listen.
+ * window, where the canvas listens.
  * @param overrides - Props to replace.
  * @returns The spies.
  */
@@ -176,7 +176,13 @@ describe('useInlineEditExit', () => {
     fireEvent.keyDown(field, { key: 'a', keyCode: 65 });
     fireEvent.compositionEnd(field);
     fireEvent.keyDown(field, { key: 'Enter', keyCode: 13 });
-    fireEvent.keyDown(screen.getByTestId('field'), { key: 'Enter', keyCode: 13 });
+    expect(onParentKey).not.toHaveBeenCalled();
+  });
+
+  it('stops the key that ends the edit at the box when isolated', () => {
+    const { onParentKey, onCancel } = setup({ isolate: true });
+    fireEvent.keyDown(screen.getByTestId('field'), { key: 'Escape', keyCode: 27 });
+    expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onParentKey).not.toHaveBeenCalled();
   });
 
@@ -184,6 +190,37 @@ describe('useInlineEditExit', () => {
     const { onParentKey } = setup();
     fireEvent.keyDown(screen.getByTestId('field'), { key: 'a', keyCode: 65 });
     expect(onParentKey).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['Enter', 13],
+    ['Escape', 27],
+  ])('keeps the held %s from repeating into the target until it is released', (key, keyCode) => {
+    setup();
+    fireEvent.keyDown(screen.getByTestId('field'), { key, keyCode });
+    const target = screen.getByTestId('target');
+    expect(document.activeElement).toBe(target);
+    const reached = vi.fn();
+    target.addEventListener('keydown', reached);
+
+    const notCancelled = fireEvent.keyDown(target, { key, keyCode, repeat: true });
+    expect(notCancelled).toBe(false);
+    expect(reached).not.toHaveBeenCalled();
+
+    fireEvent.keyUp(target, { key, keyCode });
+    fireEvent.keyDown(target, { key, keyCode, repeat: true });
+    expect(reached).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets the held key repeat again once the window loses focus', () => {
+    setup();
+    fireEvent.keyDown(screen.getByTestId('field'), { key: 'Enter', keyCode: 13 });
+    const target = screen.getByTestId('target');
+    const reached = vi.fn();
+    target.addEventListener('keydown', reached);
+    fireEvent.blur(window);
+    fireEvent.keyDown(target, { key: 'Enter', keyCode: 13, repeat: true });
+    expect(reached).toHaveBeenCalledTimes(1);
   });
 
   it('does not carry a missing-target hand-back over to a later edit that ends by leaving', () => {

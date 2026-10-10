@@ -83,6 +83,17 @@ describe('ending an edit from the keyboard', () => {
     expect(document.activeElement).toBe(screen.getByTestId('title-display'));
   });
 
+  it('does not reopen the box while the Enter that closed it is held', async () => {
+    const user = userEvent.setup();
+    render(<TitleEditable maxLength={255} value='My project' onChange={vi.fn()} />);
+    await user.dblClick(screen.getByTestId('title-display'));
+    fireEvent.keyDown(screen.getByTestId('title-input'), { key: 'Enter', keyCode: 13 });
+    const title = screen.getByTestId('title-display');
+    expect(document.activeElement).toBe(title);
+    fireEvent.keyDown(title, { key: 'Enter', keyCode: 13, repeat: true });
+    expect(screen.queryByTestId('title-input')).toBeNull();
+  });
+
   it.each([
     ['Enter', { key: 'Enter', keyCode: 13 }],
     ['Escape', { key: 'Escape', keyCode: 27 }],
