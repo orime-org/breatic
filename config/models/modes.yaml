@@ -53,6 +53,21 @@ image:
       description: >
         Remove the background from an image, outputting the subject
         on a transparent background with precise alpha matting.
+    inpaint:
+      label: Inpainting
+      description: >
+        Repaint only the area a mask marks, as a text prompt describes,
+        leaving the rest of the image unchanged.
+    erase:
+      label: Object Removal
+      description: >
+        Remove what a mask marks and fill the area with matching
+        background, leaving the rest of the image unchanged.
+    sketch_edit:
+      label: Sketch Edit
+      description: >
+        Edit an image by following rough strokes drawn on it, as a text
+        prompt describes.
 
 video:
   modes:

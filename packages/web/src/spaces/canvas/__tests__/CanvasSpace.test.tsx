@@ -1377,6 +1377,38 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     warnSpy.mockRestore();
   });
 
+  // inner#1302: a drawing layer or crop frame on a locked node is a `nodrag`
+  // overlay; a drag there draws or crops and never moves the node, so it must
+  // not trip the lock-drag warning.
+  it('a drag on a nodrag overlay inside a LOCKED node does NOT warn', () => {
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'locked',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', handling: false, locked: true },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    const el = document.querySelector('.react-flow__node[data-id="locked"]')!;
+    const overlay = document.createElement('div');
+    overlay.className = 'nodrag nopan';
+    el.appendChild(overlay);
+    const ev = (type: string, x: number, y: number, buttons = 0): MouseEvent =>
+      new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, buttons });
+    act(() => {
+      overlay.dispatchEvent(ev('pointerdown', 10, 10, 1));
+      window.dispatchEvent(ev('pointermove', 40, 40, 1));
+    });
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   // #1904 acceptance 3: an end-frame pick takes an image and nothing else.
   // The click handler dispatches on the pick's purpose and the branches carry
   // no exhaustive check, so a slot with no branch of its own falls through to

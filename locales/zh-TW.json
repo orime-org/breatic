@@ -857,6 +857,17 @@
           },
           "prompt": "描述表情和動作"
         },
+        "inpaint": {
+          "label": "局部修改",
+          "prompt": "寫下你想把塗抹的地方改成什麼"
+        },
+        "erase": {
+          "label": "擦除"
+        },
+        "sketch": {
+          "label": "塗鴉改圖",
+          "prompt": "寫下你的塗鴉要變成什麼"
+        },
         "crop": {
           "label": "裁切"
         },
@@ -975,7 +986,8 @@
         "sourceGone": "來源節點已被刪除。",
         "sourceChanged": "素材已更換。",
         "sourceChangedByPeer": "協作者更換了素材。",
-        "couldNotStart": "工具沒能啟動，請重試。"
+        "couldNotStart": "工具沒能啟動，請重試。",
+        "drawingEmpty": "請先在圖上畫。"
       },
       "adjust": {
         "exposure": "曝光",
@@ -993,6 +1005,18 @@
         "vignette": "暗角",
         "grain": "顆粒",
         "fade": "褪色"
+      },
+      "draw": {
+        "brush": "畫筆",
+        "rect": "矩形",
+        "ellipse": "橢圓",
+        "eraser": "橡皮擦",
+        "size": "大小",
+        "color": "顏色",
+        "maskColor": "遮罩顏色",
+        "undo": "復原",
+        "redo": "重做",
+        "clear": "清除"
       }
     },
     "template": {

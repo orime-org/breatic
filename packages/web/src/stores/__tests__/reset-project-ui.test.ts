@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCanvasStore } from '@web/stores/canvas';
 import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
 import { useConversationRuntime, _resetForTests } from '@web/stores/conversation-runtime';
-import { useInpaintStore } from '@web/stores/inpaint';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import { useUIStore } from '@web/stores/ui';
 import { canvasSessions } from '@web/stores/canvas-session';
@@ -31,11 +30,6 @@ describe('resetProjectUiStores (#1771)', () => {
     useUIStore.getState().setActiveRegion('agent');
     useUIStore.getState().setSidebarOpen(false); // preference
     useUIStore.getState().setChatPanelCollapsed(true); // preference
-
-
-    useInpaintStore.getState().setMaskDataUrl('data:image/png;base64,AAAA');
-    useInpaintStore.getState().beginStroke({ radius: 8, alpha: 1 });
-    useInpaintStore.getState().setBrushSize(42); // preference
   });
 
   it('clears the open Generate panel and pick session (the reported symptom)', () => {
@@ -59,17 +53,9 @@ describe('resetProjectUiStores (#1771)', () => {
     // Back to the space, so the next project opens with its canvas answering
     // the keyboard before anything has been clicked (#168, A9).
     expect(ui.activeRegion).toBe('space');
-
-
-    const inpaint = useInpaintStore.getState();
-    expect(inpaint.strokes).toEqual([]);
-    expect(inpaint.maskDataUrl).toBeNull();
-    // Undo history (zundo temporal) is cleared too — a fresh entry can't undo
-    // back into the old strokes.
-    expect(useInpaintStore.temporal.getState().pastStates).toEqual([]);
   });
 
-  it('KEEPS layout / viewport / brush preferences (fresh session, not fresh preferences)', () => {
+  it('KEEPS layout / viewport preferences (fresh session, not fresh preferences)', () => {
     resetProjectUiStores('project-1');
     // Canvas viewport preferences.
     expect(useCanvasStore.getState().minimapVisible).toBe(false);
@@ -77,8 +63,6 @@ describe('resetProjectUiStores (#1771)', () => {
     // Chrome layout preferences.
     expect(useUIStore.getState().sidebarOpen).toBe(false);
     expect(useUIStore.getState().chatPanelCollapsed).toBe(true);
-    // Brush preference.
-    expect(useInpaintStore.getState().brushSize).toBe(42);
   });
 
   /**

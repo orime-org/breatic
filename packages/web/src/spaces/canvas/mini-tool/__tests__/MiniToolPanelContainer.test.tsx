@@ -7,7 +7,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { ReactFlow } from '@xyflow/react';
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -15,12 +15,40 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
+// jsdom has no 2D rasteriser; the pixel check runs in Playwright.
+vi.mock('@web/spaces/canvas/mini-tool/paint-drawing', () => ({ hasInk: vi.fn() }));
+
+import type { ModelCatalog, ModelEntry } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { toast } from '@web/lib/toast';
+import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
+import { hasInk } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import { canvasSessions } from '@web/stores/canvas-session';
+import type { DrawOp } from '@web/stores/drawing-draft';
+
+const ERASER = {
+  name: 'bria-eraser',
+  display_name: 'Bria Eraser',
+  modality: 'image',
+  mode: ['erase'],
+  description: '',
+  guide: '',
+  tier: 'internal',
+  generation_time: 15,
+  takes_prompt: false,
+  params: {
+    image: { description: '', default: null, accepts: 'image', fill: 'tool' },
+    mask_image: { description: '', default: null, accepts: 'image', fill: 'tool' },
+  },
+  providers: [],
+} as unknown as ModelEntry;
+
+const CATALOG = {
+  image: [ERASER], video: [], audio: [], tts: [], three_d: [], total: 1, credit_multiplier: 1,
+} as unknown as ModelCatalog;
 
 const ORIENT = { turns: 0, flipX: false, flipY: false };
 
@@ -86,7 +114,14 @@ describe('MiniToolPanelContainer', () => {
         params: { orient: { turns: 1, flipX: false, flipY: false } },
         source: { url: 'a.png' },
       }),
+      undefined,
     );
+  });
+
+  it('shows a press under way while the draft says it is exporting', () => {
+    render(tree(source('a.png'), () => Promise.resolve()));
+    act(() => canvasSessions.of('').getState().setMiniToolExporting(true, canvasSessions.of('').getState().panelSession));
+    expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
   });
 
   // A7: nothing to export yet, so nothing is started and the reader is told.
@@ -140,6 +175,7 @@ describe('MiniToolPanelContainer', () => {
       'src',
       expect.objectContaining({ id: 'video.cut' }),
       expect.objectContaining({ params: { range: { start: 0, end: 12 } } }),
+      undefined,
     );
   });
 
@@ -147,5 +183,56 @@ describe('MiniToolPanelContainer', () => {
     render(tree(source('a.png'), () => Promise.resolve()));
     fireEvent.keyDown(screen.getByTestId('mini-tool-panel-title'), { key: 'Escape' });
     expect(canvasSessions.of('').getState().panelKind).toBeNull();
+  });
+
+  // inner#1302 B5: Execute stays off until the drawing leaves some ink.
+  describe('a drawing tool', () => {
+    const STROKE: DrawOp = { kind: 'stroke', erase: false, size: 5, color: '#FF3B30', points: [[0.1, 0.1]] };
+
+    beforeEach(() => {
+      vi.mocked(hasInk).mockImplementation((ops) => ops.length > 0);
+      client.setQueryData(modelCatalogQuery().queryKey, CATALOG);
+      canvasSessions.of('').getState().openMiniTool('src', 'image.erase', { sourceContent: 'a.png', params: {} });
+    });
+
+    it('keeps Execute off with nothing drawn', () => {
+      render(tree(source('a.png'), () => Promise.resolve()));
+      expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
+    });
+
+    it('asks hasInk about the visible ops on the source shape and follows its answer', () => {
+      canvasSessions.of('').getState().addDrawingStep(STROKE);
+      vi.mocked(hasInk).mockReturnValue(false);
+      const view = render(tree(source('a.png'), () => Promise.resolve()));
+      expect(hasInk).toHaveBeenLastCalledWith([STROKE], 'mask', 1.6);
+      expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
+      vi.mocked(hasInk).mockReturnValue(true);
+      canvasSessions.of('').getState().addDrawingStep({ ...STROKE, points: [[0.2, 0.2]] });
+      view.rerender(tree(source('a.png'), () => Promise.resolve()));
+      expect(screen.getByTestId('mini-tool-run')).toBeEnabled();
+    });
+
+    // B11: a drawing made on the old picture does not stay on the new one.
+    it('drops what was drawn when the source takes new content, and says so', () => {
+      canvasSessions.of('').getState().addDrawingStep(STROKE);
+      const view = render(tree(source('a.png'), () => Promise.resolve()));
+      view.rerender(tree(source('b.png'), () => Promise.resolve()));
+      expect(canvasSessions.of('').getState().miniTool?.drawing?.steps).toEqual([]);
+      expect(toast.warning).toHaveBeenCalledOnce();
+      expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
+    });
+
+    it('hands the run the visible ops at the press', () => {
+      const onRun = vi.fn(() => Promise.resolve());
+      canvasSessions.of('').getState().addDrawingStep(STROKE);
+      canvasSessions.of('').getState().addDrawingStep({ kind: 'clear' });
+      canvasSessions.of('').getState().addDrawingStep({ ...STROKE, points: [[0.2, 0.2]] });
+      render(tree(source('a.png'), onRun));
+      fireEvent.click(screen.getByTestId('mini-tool-run'));
+      expect(onRun).toHaveBeenCalledWith('src', expect.objectContaining({ id: 'image.erase' }), expect.anything(), {
+        kind: 'mask',
+        ops: [{ ...STROKE, points: [[0.2, 0.2]] }],
+      });
+    });
   });
 });

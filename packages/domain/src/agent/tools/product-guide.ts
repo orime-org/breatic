@@ -760,7 +760,19 @@ export function renderProductGuide(): string {
       "required one must be filled before the arrow works; a small X on a filled box empties it), and for some " +
       "tools a text box. A crop shows a box with " +
       "eight handles on the node and takes a ratio and a size in pixels in the panel; rotating turns and flips the " +
-      `picture on the node as you press. ${quoted(t("canvas.miniTool.image.upscale.label"))} for a picture offers ` +
+      "picture on the node as you press. The tools you draw with take the drawing straight on the node: drag " +
+      `with the left button to draw. Their panel starts with a row of icons whose names show on hover: ` +
+      `${quoted(t("canvas.miniTool.draw.brush"))}, ${quoted(t("canvas.miniTool.draw.rect"))}, ` +
+      `${quoted(t("canvas.miniTool.draw.ellipse"))} and ${quoted(t("canvas.miniTool.draw.eraser"))}, then ` +
+      `${quoted(t("canvas.miniTool.draw.undo"))}, ${quoted(t("canvas.miniTool.draw.redo"))} and ` +
+      `${quoted(t("canvas.miniTool.draw.clear"))}. Below are a ${quoted(t("canvas.miniTool.draw.size"))} slider, ` +
+      "which the [ and ] keys also move a step at a time, and a row of colour dots: " +
+      `${quoted(t("canvas.miniTool.draw.maskColor"))} on the tools that paint a mask, which only changes how the ` +
+      `mask looks on screen, or ${quoted(t("canvas.miniTool.draw.color"))} on the sketch, which is painted into ` +
+      "the picture. A rectangle or ellipse fills on a mask and is an outline on a sketch; the eraser removes only " +
+      "what was drawn. While the panel is open, Cmd+Z or Ctrl+Z and the undo and redo in the view bar step through " +
+      "the drawing, and the arrow stays greyed out until something is drawn. " +
+      `${quoted(t("canvas.miniTool.image.upscale.label"))} for a picture offers ` +
       `three output sizes, 2K, 4K and 8K, each showing the pixel size it comes to on that picture (its long edge ` +
       "becomes 2048, 4096 or 8192); a size no larger than the picture, or past what the model makes, is greyed out, " +
       `and when none can be used pressing the arrow says ${quoted(t("canvas.miniTool.panel.noUsableTier"))} Below the ` +
@@ -771,7 +783,7 @@ export function renderProductGuide(): string {
       "source, joined to it by a line and named after it (such as CROP- followed by its name); one undo takes them " +
       "all away, and the source stays as it was. What the run did shows in the new node's column of task icons and " +
       "its task list, the same as a generation. If the node's picture or video changes while the panel is open, " +
-      "the crop, range and turns go back to their start.",
+      "the crop, range and turns go back to their start, and anything drawn on it is cleared.",
     "",
     "## Focus crops",
     `In a picture or video panel, ${quoted(t("canvas.generatePanel.focus"))} takes a region of a picture or ` +

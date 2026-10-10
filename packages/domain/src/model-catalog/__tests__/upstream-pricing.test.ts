@@ -48,6 +48,8 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
     { input: { resolution: "720p", duration: 5 }, usd: 0.85 },
     { input: { resolution: "1080p", duration: 5 }, usd: 1.45 },
   ],
+  "bria/eraser": [{ input: {}, usd: 0.04 }],
+  "bria/fibo-edit/genfill": [{ input: {}, usd: 0.04 }],
   "bria/remove-background": [{ input: {}, usd: 0.018 }],
   "bytedance/avatar-omni-human-1.5": [{ input: { audio: "a" }, durations: { audio: [10] }, usd: 1.6 }],
   "bytedance/dreamactor-v2": [{ input: { video: "v" }, durations: { video: [10] }, usd: 0.5 }],
@@ -68,6 +70,7 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
     { input: { resolution: "720p", audio: "a" }, durations: { audio: [2] }, usd: 1.76 },
     { input: { resolution: "720p", audio: "a" }, durations: { audio: [200] }, usd: 52.8 },
   ],
+  "bytedance/seedream-v4.5/edit": [{ input: { images: ["i"] }, usd: 0.04 }],
   "bytedance/seedance-2.5/video-extend": [{ input: { resolution: "480p", video: "v" }, durations: { video: [5] }, usd: 1.1 }],
   "clarity-ai/pro-upscaler": [
     { input: { target_megapixels: 4 }, usd: 0.12 },
@@ -206,7 +209,7 @@ function wavespeedEndpoints(): Map<string, FullProviderEndpoint> {
 describe("WaveSpeed pricing contracts in the catalog", () => {
   const endpoints = wavespeedEndpoints();
 
-  it("covers exactly the 60 endpoints of the finalized catalog", () => {
+  it("covers exactly the 63 endpoints of the finalized catalog", () => {
     expect([...endpoints.keys()].sort()).toEqual(Object.keys(CASES).sort());
   });
 
