@@ -4472,7 +4472,7 @@ function CanvasSpaceInner({
         // detaches its listeners without resetting keyPressed), hijacking
         // every drag until the next Shift press. Keep xyflow's key props
         // CONSTANT; make the marquee harmless instead.
-        className={`relative h-full w-full bg-canvas ${pickForNodeId != null ? 'canvas-picking' : ''}`}
+        className={`relative h-full w-full bg-canvas outline-none ${pickForNodeId != null ? 'canvas-picking' : ''}`}
         onDragOver={onDragOver}
         onDrop={onDrop}
       >
