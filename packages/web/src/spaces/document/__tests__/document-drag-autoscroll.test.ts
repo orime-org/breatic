@@ -6,7 +6,7 @@
  * autoscroll session.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -104,6 +104,31 @@ describe('the drag session', () => {
     document.body.addEventListener('dragover', (e) => e.stopPropagation(), { once: true });
     drag(document.body, 'dragover', { x: 10, y: 10 });
     expect(autoScrollOf(view)!.state).toBe('tracking');
+  });
+
+  it('reads the pointer off a dragenter too: Chrome sends it instead of a dragover when the element under the pointer changes', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView!;
+    drag(view.dom, 'dragstart');
+    const follow = vi.spyOn(autoScrollOf(view)!, 'follow');
+    drag(document.body, 'dragenter', { x: 40, y: 890, relatedTarget: view.dom });
+    expect(follow).toHaveBeenCalledWith({ x: 40, y: 890 });
+  });
+
+  it('ignores the library\'s synthetic drag events, which carry a pointer clamped into the editor', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView!;
+    drag(view.dom, 'dragstart');
+    const auto = autoScrollOf(view)!;
+    const follow = vi.spyOn(auto, 'follow');
+    for (const type of ['dragover', 'dragenter', 'drop', 'dragend']) {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 497, clientY: 890 });
+      Object.defineProperty(event, 'synthetic', { value: true });
+      document.body.addEventListener(type, (e) => e.stopPropagation(), { once: true });
+      document.body.dispatchEvent(event);
+    }
+    expect(follow).not.toHaveBeenCalled();
+    expect(auto.state).toBe('tracking');
   });
 
   it.each(['drop', 'dragend'])('ends on %s', (type) => {
