@@ -18,6 +18,7 @@ import { findTemplate, templatePrompt, type ProposalNode } from "@breatic/shared
 import { restoreProcessEnv, useEnvWithKeys, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
 import { verdictFor, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
+import { inputSchema } from "../proposal-input.js";
 import { REFUSALS, type RefusalId } from "../proposal-refusals.js";
 
 beforeEach(() => {
@@ -184,7 +185,10 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "edge-repeated": [{
     meets: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }, { fromIndex: 0, toIndex: 1, into: "pool" }]),
-    states: ['Two edges run from "Pic" to "Gen" (into "pool", into "pool")', "a node goes into a generation one way"],
+    states: ['2 edges run from "Pic" to "Gen" (into "pool", into "pool")', "a node goes into a generation one way"],
+  }, {
+    meets: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }, { fromIndex: 0, toIndex: 1, into: "pool" }, { fromIndex: 0, toIndex: 1 }]),
+    states: ['3 edges run from "Pic" to "Gen" (into "pool", into "pool", no into)'],
   }, {
     meets: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }, { fromIndex: 0, toIndex: 1, into: "style_images" }]),
     states: ['(into "pool", into "style_images")'],
@@ -216,7 +220,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "group-unnamed": [{
     meets: { nodes: [EMPTY_PIC, EDIT_POOL], edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }], rationale: "r" },
-    states: ["give the group a name"],
+    states: ["Two or more nodes land together in a group, and it has no name.", "Give the group a name saying what it is for."],
     fix: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
   }],
   "template-unknown": [{
@@ -360,6 +364,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   "notes-missing": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     states: ['"Gen" needs a note for each of "Pic"', "and carries 0"],
+    fix: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
   }],
   "shot-empty": [{
     meets: group([{ ...STORY, shots: [{ prompt: [], duration: 2 }, TWO_SHOTS[1] as (typeof TWO_SHOTS)[number]] }]),
@@ -408,6 +413,13 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: ["Save a picture found on the web with save_image first"],
     fix: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
   }],
+  "material-not-ours-media": [{
+    meets: group([{ ...CLIP_HELD, material: "https://elsewhere.example/a.mp4" }, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }], fills: { video: [0] } })]),
+    states: ['"Clip" holds an address that is not in our storage. A video node takes material only from our storage: a file the user uploaded in the chat.'],
+  }, {
+    meets: group([{ role: "source", type: "audio", name: "Track", material: "https://elsewhere.example/a.mp3" }, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }] })]),
+    states: ["An audio node takes material only from our storage: a file the user uploaded in the chat."],
+  }],
   "material-missing": [{
     meets: group([{ ...HELD_PIC, material: MISSING }, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
     states: ["Copy it again exactly"],
@@ -423,7 +435,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "source-configured": [{
     meets: group([{ ...EMPTY_PIC, mode: "t2i" }, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    states: ["takes no mode, model, parameters, fills, shots or prompt"],
+    states: ["takes no mode, model, parameters, fills, shots or prompt; it carries mode."],
   }],
   "written-not-text": [{
     meets: group([{ ...WORDS, type: "image" }, DRAW]),
@@ -431,7 +443,10 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "written-configured": [{
     meets: group([{ ...WORDS, mode: "t2i" }, DRAW]),
-    states: ["takes no mode, model, fills or shots"],
+    states: ["takes no mode, model, parameters, fills or shots -- nothing is generated there; it carries mode."],
+  }, {
+    meets: group([{ ...WORDS, params: { duration: 5 } }, DRAW]),
+    states: ["it carries parameters."],
   }],
   "written-empty": [{
     meets: group([{ ...WORDS, prompt: [{ text: "   " }] }, DRAW]),
@@ -527,12 +542,12 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   "fill-outside": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [5] } })]),
     states: ['fills "style_images" on "Gen" points at node 5, which is not in the group. Take it out of fills "style_images".'],
-    fix: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [] } })]),
+    fix: group([HELD_PIC, gen("image", "i2i", EDIT)]),
   }],
   "fill-self": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [1] } })]),
     states: ['and a node cannot fill its own slot. Take it out of fills "style_images".'],
-    fix: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [] } })]),
+    fix: group([HELD_PIC, gen("image", "i2i", EDIT)]),
   }],
   "fill-not-a-slot": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { nope: [0] } })]),
@@ -547,16 +562,20 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   "fill-no-material": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
     states: ['which holds no material, and fills takes only nodes holding it. Take "Pic" out of fills "style_images".', '"Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref.'],
-    fix: group([EMPTY_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [] } })]),
+    fix: group([EMPTY_PIC, gen("image", "i2i", EDIT)]),
   }],
   "fill-wrong-kind": [{
     meets: group([CLIP_HELD, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
     states: ['Take "Clip" out of fills "style_images".', `"${EDIT}" takes no video node, so "Clip" has no way into "Gen".`],
-    fix: group([CLIP_HELD, gen("image", "i2i", EDIT, { fills: { style_images: [] } })]),
+    fix: group([CLIP_HELD, gen("image", "i2i", EDIT)]),
   }],
   "fill-repeated": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0, 0] } })]),
-    states: ["Name it once."],
+    states: ['names "Pic" 2 times', "Name it once."],
+    fix: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
+  }, {
+    meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0, 0, 0] } })]),
+    states: ['names "Pic" 3 times'],
     fix: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
   }],
   "fill-twice": [{
@@ -570,6 +589,9 @@ describe("every refusal states its fault, its rule and its facts", () => {
     for (const [at, entry] of cases.entries()) {
       it(`${refusal} (${String(at)}): is met and says what is wrong${REFUSALS[refusal] ? ", and its one fix clears it" : ""}`, () => {
         entry.catalog?.();
+        // Every proposal here is one the tool would take in, so a fix is proven on what the agent can send.
+        expect(inputSchema.safeParse(entry.meets).success, "the met proposal passes the tool's schema").toBe(true);
+        if (entry.fix !== undefined) expect(inputSchema.safeParse(entry.fix).success, "the fixed proposal passes the tool's schema").toBe(true);
         const met = verdictFor(entry.meets, MATERIALS);
         expect(met).toMatchObject({ ok: false, refusal });
         const reason = met.ok ? "" : met.reason;

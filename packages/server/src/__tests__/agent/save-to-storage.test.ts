@@ -148,6 +148,15 @@ describe("saveToStorageFor", () => {
     expect(log.error).not.toHaveBeenCalled();
   });
 
+  it("refuses a link that did not answer in time as the link's own, logged as an error", async () => {
+    transferReaderUrlToStorage.mockRejectedValue(new ReaderUrlTransferError("source_too_slow"));
+
+    const err = await refusalOf(save(LINK));
+
+    expect(err).toMatchObject({ kind: "link", detail: "source_too_slow" });
+    expect(log.error).toHaveBeenCalledWith(expect.objectContaining({ reason: "source_too_slow" }), "agent_save_failed");
+  });
+
   it("logs a failure on our side as an error and lets it through, never as a refusal of the link", async () => {
     const failure = new ReaderUrlTransferError("store_failed");
     transferReaderUrlToStorage.mockRejectedValue(failure);
