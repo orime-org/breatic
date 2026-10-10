@@ -210,6 +210,12 @@ export function blockPreviewContent(view: EditorView, blocks: readonly Element[]
   if (box !== null) {
     box.remove();
     content = box;
+    // The box takes its width from the body's row (an audio fills it; any box
+    // is held to it), and the preview wraps its content, so the copy carries
+    // the width the box is drawn at.
+    const id = blocks[0]!.getAttribute('data-id');
+    const original = id === null ? null : view.dom.querySelector(`[data-id="${id}"] ${MEDIA_BOX}`);
+    if (original !== null) content.style.width = `${original.getBoundingClientRect().width}px`;
   } else {
     content = page.createElement('div');
     content.style.width = `${columnWidth(view)}px`;
