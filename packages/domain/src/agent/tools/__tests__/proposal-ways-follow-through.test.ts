@@ -123,24 +123,9 @@ function probe(kind: string, what: ProbeKind): ProposalNode {
 }
 
 /**
- * The params a node going in by one entry fills: the pool params taking its
- * kind, or the slot the entry names.
- * @param chosen - The generation's model.
- * @param kind - The node's kind.
- * @param entry - The entry.
- * @returns The params.
- */
-function paramsFilledBy(chosen: ModelInfo, kind: string, entry: Entry): string[] {
-  if (entry.way.into !== "pool") return [entry.way.into];
-  return Object.entries(chosen.params).filter(([, p]) => p.fromReferencePool === true && p.accepts === kind).map(([name]) => name);
-}
-
-/**
  * A group of the probe and one generation, the probe going in exactly as one
  * entry says and nothing more. A song model also gets the lyrics its box
- * needs, from a second written node, unless the probe is going there itself;
- * and every source the model runs only with that the probe does not give
- * arrives as material, through fills into a slot or an edge into the pool.
+ * needs, from a second written node, unless the probe is going there itself.
  * @param setting - The generation's model.
  * @param node - The probe.
  * @param entry - The way it goes in, or none to leave it unwired.
@@ -151,28 +136,6 @@ function follow(setting: Setting, node: ProposalNode, entry: Entry | undefined):
   const prompt: PromptSegment[] = chosen.takesPrompt ? [{ text: "Make it. " }] : [];
   if (entry?.ref === true) prompt.push({ ref: 0 });
   if (entry?.note === true) prompt.push(NOTE);
-  const song = (waysIn(chosen).get("text") ?? []).some((way) => way.into === PANEL_EDITOR_PARAM) && entry?.way.into !== PANEL_EDITOR_PARAM;
-  const lyrics: ProposalNode = { role: "written", type: "text", name: "Lyrics", prompt: [{ text: "La la la." }] };
-  const nodes: ProposalNode[] = song ? [node, lyrics] : [node];
-  const edges: CanvasProposal["edges"] = [
-    ...(entry?.by === "edge" ? [{ fromIndex: 0, toIndex: 1, into: entry.way.into }] : []),
-    ...(song ? [{ fromIndex: 2, toIndex: 1, into: PANEL_EDITOR_PARAM }] : []),
-  ];
-  const fills: Record<string, number[]> = entry?.by === "fills" ? { [entry.way.into]: [0] } : {};
-  const given = entry === undefined ? [] : paramsFilledBy(chosen, node.type, entry);
-  for (const need of chosen.needs) {
-    if (need.some((param) => given.includes(param))) continue;
-    const param = need[0] as string;
-    const kind = chosen.params[param]?.accepts ?? "image";
-    const at = nodes.length + 1;
-    nodes.push({ role: "source", type: kind as GenerationNodeType, name: `Need ${param}`, material: ADDRESS[kind] });
-    if (chosen.params[param]?.fromReferencePool === true) {
-      edges.push({ fromIndex: at, toIndex: 1, into: "pool" });
-      prompt.push({ ref: at });
-    } else {
-      fills[param] = [...(fills[param] ?? []), at];
-    }
-  }
   const gen: ProposalNode = {
     role: "generate",
     type: nodeType,
@@ -180,11 +143,16 @@ function follow(setting: Setting, node: ProposalNode, entry: Entry | undefined):
     mode,
     model: chosen.name,
     ...wordsFor(chosen, prompt),
-    ...(Object.keys(fills).length > 0 ? { fills } : {}),
+    ...(entry?.by === "fills" ? { fills: { [entry.way.into]: [0] } } : {}),
   };
+  const song = (waysIn(chosen).get("text") ?? []).some((way) => way.into === PANEL_EDITOR_PARAM) && entry?.way.into !== PANEL_EDITOR_PARAM;
+  const lyrics: ProposalNode = { role: "written", type: "text", name: "Lyrics", prompt: [{ text: "La la la." }] };
   return {
-    nodes: [nodes[0] as ProposalNode, gen, ...nodes.slice(1)],
-    edges,
+    nodes: song ? [node, gen, lyrics] : [node, gen],
+    edges: [
+      ...(entry?.by === "edge" ? [{ fromIndex: 0, toIndex: 1, into: entry.way.into }] : []),
+      ...(song ? [{ fromIndex: 2, toIndex: 1, into: PANEL_EDITOR_PARAM }] : []),
+    ],
     rationale: "A probe.",
     groupName: "Probe",
   };

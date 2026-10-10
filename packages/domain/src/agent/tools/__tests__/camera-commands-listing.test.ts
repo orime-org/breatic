@@ -65,8 +65,8 @@ describe("camera commands in the model listing", () => {
   });
 
   it("says where the commands go in the multi-shot mode", async () => {
-    expect(await lineOf("multi_shot", "minimax-h3-text-to-video")).toMatch(/into the shot/);
-    expect(await lineOf("t2v", "minimax-h3-text-to-video")).not.toMatch(/into the shot/);
+    expect(await lineOf("multi_shot", "minimax-h3-text-to-video")).toMatch(/written into a shot:/);
+    expect(await lineOf("t2v", "minimax-h3-text-to-video")).not.toMatch(/written into a shot:/);
   });
 
   it("says nothing about camera commands for a model that reads none", async () => {

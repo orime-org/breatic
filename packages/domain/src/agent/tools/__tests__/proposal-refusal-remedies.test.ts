@@ -76,7 +76,6 @@ const TTS = "realtime-tts-2";
 const SHOTS = "kling-v3.0-4k-text-to-video";
 const VID = "minimax-h3-image-to-video";
 const OMNI_SHOTS = "gemini-omni-1.1-flash-image-to-video";
-const KLING_O3 = "kling-video-o3-4k-image-to-video";
 
 /** A note, as every to-do on a card is. */
 const NOTE = { slot: { kind: "note" as const, label: "Put the picture in Pic first" } };
@@ -128,8 +127,6 @@ const LONG_SCRIPT = "x".repeat(600);
 
 /** An empty clip node. */
 const CLIP_EMPTY: Sent["nodes"][number] = { role: "source", type: "video", name: "Clip" };
-/** A track node holding material. */
-const TUNE_HELD: Sent["nodes"][number] = { role: "source", type: "audio", name: "Tune", material: TUNES[0] };
 /** A clip node holding material. */
 const CLIP_HELD: Sent["nodes"][number] = { role: "source", type: "video", name: "Clip", material: CLIP };
 /**
@@ -293,20 +290,8 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([{ ...DRAW, name: "Draw" }, gen("video", "i2v", VID, { name: "Vid", prompt: [{ text: "Move it." }, NOTE] }), { ...HELD_PIC, name: "B" }], [{ fromIndex: 0, toIndex: 1, into: "image" }]),
     states: ['"nano-banana-2" takes no image node, so "B" has no way into "Draw".', '"B" goes into "Vid" through fills "image" on "Vid", with no edge and no ref.'],
   }],
-  "source-missing": [{
-    // The picture goes into the pool, and the required first frame holds nothing.
-    meets: group([HELD_PIC, gen("video", "i2v", KLING_O3, { prompt: [{ text: "Move " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    states: [`"${KLING_O3}" runs only when "image" holds a node, and no node goes there on "Gen".`, 'An image node holding material goes into "Gen" through fills "image" on "Gen", with no edge and no ref.', 'An empty image node goes into "Gen" by an edge with into: "image" and a note saying to pick it there and no ref.'],
-  }, {
-    meets: group([gen("video", "i2v", VID, { prompt: [{ text: "Move." }] })]),
-    states: [`"${VID}" runs only when "image" holds a node, and no node goes there on "Gen".`],
-  }, {
-    // A group the model declares: any one member is enough.
-    meets: group([gen("audio", "a2m", SONG, { prompt: [{ text: "Make a song." }] })]),
-    states: [`"${SONG}" runs only when one of "song", "vocal", "melody" holds a node, and no node goes there on "Gen".`],
-  }],
   "loose-without-note": [{
-    meets: group([EMPTY_PIC, TUNE_HELD, gen("video", "talking_head", HEAD, { prompt: undefined, fills: { audio: [1] } })]),
+    meets: group([EMPTY_PIC, gen("video", "talking_head", HEAD, { prompt: undefined })]),
     states: ['"Pic" goes into no generation, so the reader picks it into a slot in the panel, and a note tells them which.', "carry 0 note(s) beyond those their wired nodes use"],
   }],
   "text-generates": [{
@@ -802,7 +787,7 @@ function doubledMarks(sent: Sent): Sent {
   // Typed marks are read off the words joined, as the check reads them, so a
   // mark typed across segments is written twice by writing the words twice.
   const twice = (segments: NonNullable<Sent["nodes"][number]["prompt"]>): NonNullable<Sent["nodes"][number]["prompt"]> =>
-    marksTypedIn(segments.map((s) => s.text ?? "").join("")).length > 0
+    marksTypedIn(segments.map((s) => ("text" in s ? s.text : "")).join("")).length > 0
       ? [...segments, ...segments]
       : segments.flatMap((s): typeof segments => ("ref" in s || ("slot" in s && s.slot.kind === "note") ? [s, s] : [s]));
   return {

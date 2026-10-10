@@ -63,6 +63,7 @@ function withUnreachableSeed(): PricedModelsForMode {
         seconds: 60,
         nodeType: "image",
         takesPrompt: true,
+        needs: [],
         params: { seed: { noControl: true, default: 7, what: "Random seed" } },
       },
     ],
@@ -251,11 +252,11 @@ describe("what the rendered answer tells the model", () => {
   });
 
   // Every model in Multi-Shot writes its words in shots and leaves the prompt
-  // out, so a node it @s is @'d in the shot it belongs to.
+  // out, so a node it @s is @'d in a shot.
   it("says a node wired into a multi-shot model is @'d in its shot, never in the prompt", async () => {
     const said = renderGenerationModelsForModel(await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "multi_shot" }));
     const line = said.split("\n- ").find((l) => l.includes("(kling-video-o3-4k-image-to-video)")) ?? "";
-    expect(line).toMatch(/elements: [^\n]*then a mention of it in the shot it belongs to\./);
+    expect(line).toMatch(/elements: [^\n]*then a mention of it in a shot\./);
     expect(said).not.toMatch(/the prompt @s it|a mention of it in the prompt/);
   });
 

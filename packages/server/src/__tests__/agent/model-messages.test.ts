@@ -512,6 +512,7 @@ const modelsAnswer: ModelsForMode = {
       seconds: 18,
       nodeType: "image",
       takesPrompt: true,
+      needs: [],
       params: {},
     },
   ],

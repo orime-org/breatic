@@ -88,10 +88,10 @@ function renderStoryboard(model: PricedModelInfo): string {
  * Where this model's words are written, and so where a mention of a node
  * wired into it goes: in the multi-shot mode each shot holds its own words.
  * @param model - The model.
- * @returns "the shot it belongs to" or "the prompt".
+ * @returns "a shot" or "the prompt".
  */
 function wordsBox(model: PricedModelInfo): string {
-  return model.storyboard ? "the shot it belongs to" : "the prompt";
+  return model.storyboard ? "a shot" : "the prompt";
 }
 
 /**
@@ -108,6 +108,19 @@ function renderCameraCommands(model: PricedModelInfo): string {
     ` Commands inside one bracket, comma-separated with no space, as in ${cameraCommandBracket(["Truck left", "Push in"])}, run at the same time, at most ${CAMERA_COMMANDS_PER_BRACKET} in one bracket;` +
     ` separate brackets run in the order they appear; never put the opposite directions of one axis, or ${cameraCommandBracket([STATIC_SHOT])} with a movement, in one bracket.`
   );
+}
+
+/**
+ * What a run in this mode needs before it can start, as the panel and the
+ * server's gate hold it: each requirement as its one param, or one of its
+ * params where any one is enough.
+ * @param model - The model.
+ * @returns The sentence, or the empty string for a model that needs nothing.
+ */
+function renderNeeds(model: PricedModelInfo): string {
+  if (model.needs.length === 0) return "";
+  const each = model.needs.map((need) => `${need.length === 1 ? `"${String(need[0])}"` : `one of ${need.map((param) => `"${param}"`).join(", ")}`} holds a node`);
+  return ` It runs only when ${each.join(" and ")}.`;
 }
 
 /**
@@ -181,7 +194,7 @@ function renderModel(model: PricedModelInfo): string {
     model.takesPrompt && !mediaToAt
       ? " Nothing wired in but a text node can be @'d here, so a ref can only @ words."
       : "";
-  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${wordsOnly}${renderStoryboard(model)}${renderCameraCommands(model)}`;
+  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderNeeds(model)}${wordsOnly}${renderStoryboard(model)}${renderCameraCommands(model)}`;
   const params = Object.entries(model.params).filter(([, spec]) => !spec.fromStoryboard).map(([name, spec]) => {
     // Shape and cap belong to the parameter, so they are stated whatever else
     // it says about itself -- including for a slot, where together they are

@@ -9,12 +9,14 @@ import {
   canConnect,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
+  missingSources,
   modelLabel,
   PANEL_EDITOR_PARAM,
   paramValues,
   storyboardSpec,
   type ControlGate,
   type GenerationNodeType,
+  type MissingSource,
   type ModelEntry,
   type ParamDescriptor,
   type ReferenceKind,
@@ -204,6 +206,12 @@ export interface ModelInfo {
    * up to. Absent in every other mode.
    */
   storyboard?: StoryboardSpec;
+  /**
+   * What a run in this mode needs before it can start: each requirement is
+   * the params any one of which holding a node meets it, read off the same
+   * declarations the panel and the server's gate read.
+   */
+  needs: MissingSource[];
 }
 
 /** What one node can do in one mode: the models, or why there are none. */
@@ -543,6 +551,7 @@ export function modelsForMode(
         : {}),
       ...(others.length > 0 ? { alsoServes: others } : {}),
       ...(storyboard ? { storyboard } : {}),
+      needs: missingSources(entry, mode, {}),
       params: Object.fromEntries(
         reached
           // A carrier field this mode does not use belongs to another mode of
