@@ -31,6 +31,11 @@ export const INGEST_FAILURE_CODES = [
   "store_failed",
   /** The parts would not assemble into an object, or it would not hash. */
   "assemble_failed",
+  /**
+   * A picture with an EXIF orientation could not be turned upright, or its
+   * orientation could not be read (inner#1367).
+   */
+  "upright_failed",
 ] as const;
 
 /**

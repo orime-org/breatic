@@ -22,6 +22,7 @@
 import type { Job } from "bullmq";
 import { coverKeyFor, env, getStorageConfig, logger } from "@breatic/core";
 import {
+  assetService,
   ingestReportService,
   uploadDeadline,
   uploadTicketService,
@@ -196,6 +197,7 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
       // The transfer has the task's two hours and nothing shorter (inner#1367).
       // A transfer cut there is settled as expired by the report.
       deadlineAt,
+      limits: assetService.mediaLimits(),
       signal: signalUntil(deadlineAt),
     });
   } catch (err) {

@@ -25,6 +25,7 @@ import {
   finishUploadAtIngest,
   fetchUrlToIngest,
   readStoredMediaAtIngest,
+  IngestAnswerError,
   type IngestTarget,
   type UploadClientConfig,
 } from '@shared/upload/ingest-client.js';
@@ -121,6 +122,9 @@ const MEASURED = {
 
 /** When the upload's task runs out, as the caller worked it out. */
 const DEADLINE_AT = 1_800_000_000_000;
+
+/** What the Worker turns a tagged picture upright under (inner#1367). */
+const LIMITS = { uprightJpegQuality: 90, uprightMaxBytes: 2 * 1024 * 1024 * 1024 };
 
 describe('sending bytes to the ingest Worker', () => {
   it('opens the upload with the ticket our server signed', async () => {
@@ -223,7 +227,7 @@ describe('finishing an upload', () => {
   it('asks the upload it holds to finish, with the newest token', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT });
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, limits: LIMITS });
 
     expect(urlOf(0)).toBe(
       'https://ingest.example.com/uploads/upload-1/complete',
@@ -237,7 +241,7 @@ describe('finishing an upload', () => {
   it('presents the shared secret', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT });
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, limits: LIMITS });
 
     expect(headersOf(0)['x-ingest-secret']).toBe(SECRET);
   });
@@ -247,14 +251,14 @@ describe('finishing an upload', () => {
 
     await finishUploadAtIngest(WORKER_URL, held, SECRET, {
       coverKey: COVER_KEY,
-      deadlineAt: DEADLINE_AT,
+      deadlineAt: DEADLINE_AT, limits: LIMITS,
     });
 
     expect(headersOf(0)['content-type']).toBe('application/json');
     expect(JSON.parse(mockedRequest.mock.calls[0]?.[1]?.body as string)).toEqual({
       parts: held.parts,
       // The Worker holds the media container to the task's own deadline.
-      deadlineAt: DEADLINE_AT,
+      deadlineAt: DEADLINE_AT, limits: LIMITS,
       // Named on every finish. Which media have a frame to lift is decided
       // from the type, and the type is the edge's to read off the bytes — so
       // no caller knows yet whether this key will be written to.
@@ -269,13 +273,13 @@ describe('finishing an upload', () => {
 
     await finishUploadAtIngest(WORKER_URL, held, SECRET, {
       coverKey: COVER_KEY,
-      deadlineAt: DEADLINE_AT,
+      deadlineAt: DEADLINE_AT, limits: LIMITS,
       deferMediaRead: true,
     });
 
     expect(JSON.parse(mockedRequest.mock.calls[0]?.[1]?.body as string)).toEqual({
       parts: held.parts,
-      deadlineAt: DEADLINE_AT,
+      deadlineAt: DEADLINE_AT, limits: LIMITS,
       coverKey: COVER_KEY,
       deferMediaRead: true,
     });
@@ -284,7 +288,7 @@ describe('finishing an upload', () => {
   it('answers with what the Worker measured over the stored object', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    const measured = await finishUploadAtIngest(WORKER_URL, held, SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT });
+    const measured = await finishUploadAtIngest(WORKER_URL, held, SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, limits: LIMITS });
 
     // A medium with no such number and an answer that never carried the field
     // are the same fact, so both read as none and every caller has one case.
@@ -294,6 +298,7 @@ describe('finishing an upload', () => {
       height: null,
       durationSeconds: null,
       cover: null,
+      upright: null,
     });
   });
 
@@ -320,13 +325,44 @@ describe('finishing an upload', () => {
       WORKER_URL,
       held,
       SECRET,
-      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT },
+      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, limits: LIMITS },
     );
 
     expect(measured).toMatchObject({ width: null, height: null, durationSeconds: null });
   });
 
   // A cover is its own asset row, so a half-described one cannot be filed.
+  // A picture with an EXIF orientation is registered as its upright copy,
+  // stored beside it (inner#1367).
+  it('reads the upright copy the Worker wrote for a tagged picture', async () => {
+    const upright = { storageKey: 'image/2026-10-10/1_x_upright.jpg', sizeBytes: 900, width: 3000, height: 4000 };
+    mockedRequest.mockResolvedValueOnce(answers(200, { ...MEASURED, upright }));
+
+    const measured = await finishUploadAtIngest(WORKER_URL, held, SECRET, {
+      coverKey: COVER_KEY,
+      deadlineAt: DEADLINE_AT,
+      limits: LIMITS,
+    });
+
+    expect(measured.upright).toEqual(upright);
+  });
+
+  // Filing the original in its place would put a sideways picture on the node,
+  // so an upright copy that cannot be read makes the answer unusable.
+  it('refuses an answer whose upright copy cannot be read', async () => {
+    mockedRequest.mockResolvedValueOnce(
+      answers(200, { ...MEASURED, upright: { storageKey: '', sizeBytes: -1 } }),
+    );
+
+    await expect(
+      finishUploadAtIngest(WORKER_URL, held, SECRET, {
+        coverKey: COVER_KEY,
+        deadlineAt: DEADLINE_AT,
+        limits: LIMITS,
+      }),
+    ).rejects.toBeInstanceOf(IngestAnswerError);
+  });
+
   it('answers no cover when the one described is missing a field', async () => {
     mockedRequest.mockResolvedValueOnce(
       answers(200, {
@@ -339,7 +375,7 @@ describe('finishing an upload', () => {
       WORKER_URL,
       held,
       SECRET,
-      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT },
+      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, limits: LIMITS },
     );
 
     expect(measured.cover).toBeNull();
@@ -357,7 +393,7 @@ describe('finishing an upload', () => {
       WORKER_URL,
       held,
       SECRET,
-      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT },
+      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, limits: LIMITS },
     );
 
     expect(measured).toMatchObject({ width: 1920, height: 1080, durationSeconds });
@@ -371,7 +407,7 @@ describe('finishing an upload', () => {
     );
 
     await expect(
-      finishUploadAtIngest(WORKER_URL, held, SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT }),
+      finishUploadAtIngest(WORKER_URL, held, SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, limits: LIMITS }),
     ).rejects.toThrow();
   });
 
@@ -383,7 +419,7 @@ describe('finishing an upload', () => {
     );
 
     await expect(
-      finishUploadAtIngest(WORKER_URL, held, SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT }),
+      finishUploadAtIngest(WORKER_URL, held, SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, limits: LIMITS }),
     ).rejects.toThrow();
   });
 });
@@ -479,7 +515,7 @@ describe('what the shared transport is told', () => {
       WORKER_URL,
       { uploadId: 'upload-1', token: 'token-3', parts: [] },
       SECRET,
-      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, signal },
+      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, limits: LIMITS, signal },
     );
 
     expect(optionsOf(0).replaySafe).toBe(true);
@@ -497,7 +533,7 @@ describe('handing the Worker a URL to fetch', () => {
   it('names the fetch endpoint and carries the ticket and the secret', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT });
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, limits: LIMITS });
 
     expect(urlOf(0)).toBe(`${WORKER_URL}/fetch`);
     expect(headersOf(0)).toMatchObject({
@@ -513,7 +549,7 @@ describe('handing the Worker a URL to fetch', () => {
       SOURCE,
       ticketFor(1),
       SECRET,
-      { coverKey: 'video/2026-09-11/1_clip_cover.png', deadlineAt: DEADLINE_AT },
+      { coverKey: 'video/2026-09-11/1_clip_cover.png', deadlineAt: DEADLINE_AT, limits: LIMITS },
     );
 
     expect(JSON.parse(String(mockedRequest.mock.calls[0]?.[1]?.body))).toEqual({
@@ -521,7 +557,7 @@ describe('handing the Worker a URL to fetch', () => {
       coverKey: 'video/2026-09-11/1_clip_cover.png',
       // The Worker holds the transfer and the container to the task's own
       // deadline.
-      deadlineAt: DEADLINE_AT,
+      deadlineAt: DEADLINE_AT, limits: LIMITS,
     });
   });
 
@@ -531,7 +567,7 @@ describe('handing the Worker a URL to fetch', () => {
   it('tells the transport that sending it again costs something', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT });
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, limits: LIMITS });
 
     expect(optionsOf(0).replaySafe).toBe(false);
   });
@@ -542,7 +578,7 @@ describe('handing the Worker a URL to fetch', () => {
 
     await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, {
       coverKey: COVER_KEY,
-      deadlineAt: DEADLINE_AT,
+      deadlineAt: DEADLINE_AT, limits: LIMITS,
       signal,
     });
 
@@ -564,7 +600,7 @@ describe('handing the Worker a URL to fetch', () => {
       SOURCE,
       ticketFor(1),
       SECRET,
-      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT },
+      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, limits: LIMITS },
     );
 
     expect(measured).toMatchObject({
@@ -578,7 +614,7 @@ describe('handing the Worker a URL to fetch', () => {
     mockedRequest.mockResolvedValueOnce(answers(200, { sha256: 'not-a-hash' }));
 
     await expect(
-      fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT }),
+      fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, limits: LIMITS }),
     ).rejects.toThrow();
   });
 });
@@ -700,7 +736,7 @@ describe('when the Worker refuses', () => {
         'https://provider.example/x.mp4',
         ticketFor(1),
         SECRET,
-        { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT },
+        { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, limits: LIMITS },
       ),
     ).rejects.toMatchObject({ status: 502, code: 'store_failed' });
   });

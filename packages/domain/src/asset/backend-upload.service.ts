@@ -35,6 +35,7 @@ import {
   type UploadClientConfig,
 } from "@breatic/shared";
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
+import { mediaLimits } from "@domain/asset/asset.service.js";
 import { signTicketFor } from "@domain/asset/upload-ticket.service.js";
 import {
   applyIngestReport,
@@ -236,7 +237,12 @@ export async function uploadBytesToStorage(
     opened.target.uploadUrl,
     held,
     env.INGEST_SHARED_SECRET,
-    { coverKey: coverKeyFor(opened.storageKey), deadlineAt: ctx.deadlineAt, signal },
+    {
+      coverKey: coverKeyFor(opened.storageKey),
+      deadlineAt: ctx.deadlineAt,
+      limits: mediaLimits(),
+      signal,
+    },
   );
   return landed(
     await applyIngestReport({
@@ -274,7 +280,12 @@ export async function transferUrlToStorage(
     sourceUrl,
     opened.target,
     env.INGEST_SHARED_SECRET,
-    { coverKey: coverKeyFor(opened.storageKey), deadlineAt: ctx.deadlineAt, signal },
+    {
+      coverKey: coverKeyFor(opened.storageKey),
+      deadlineAt: ctx.deadlineAt,
+      limits: mediaLimits(),
+      signal,
+    },
   );
   return landed(
     await applyIngestReport({

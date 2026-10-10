@@ -38,6 +38,7 @@
  */
 
 import {
+  getStorageConfig,
   NotFoundError,
   projectsRepo,
 } from "@breatic/core";
@@ -46,7 +47,7 @@ import {
   type RegisterAssetInput,
 } from "@domain/asset/asset.repo.js";
 import { t } from "@breatic/shared";
-import type { StudioAssetEntity } from "@breatic/shared";
+import type { MediaLimits, StudioAssetEntity } from "@breatic/shared";
 import { queueForReclaim } from "@domain/asset/storage-reclaim.repo.js";
 
 /**
@@ -212,4 +213,20 @@ export function detectAssetKind(
     return "document";
   }
   return "file";
+}
+
+/**
+ * What the ingest Worker turns a picture upright under, read from
+ * `config/storage.yaml` (inner#1367). The Worker reads no configuration of
+ * its own, so every finish and fetch carries these.
+ * @returns The quality and the size ceiling for an upright copy.
+ */
+export function mediaLimits(): MediaLimits {
+  const { upload, ingest } = getStorageConfig();
+  return {
+    uprightJpegQuality: ingest.upright_jpeg_quality,
+    // An upright copy is the same picture re-encoded, so it is held to the
+    // same ceiling the received bytes were.
+    uprightMaxBytes: upload.max_upload_bytes,
+  };
 }

@@ -110,6 +110,17 @@ export interface IngestOutcome {
   kind?: string;
 }
 
+/**
+ * What the Worker turns a picture upright under (inner#1367). It reads no
+ * configuration of its own, so these travel on every finish and fetch.
+ */
+export interface MediaLimits {
+  /** JPEG and lossy WebP quality for the upright copy, 1-100. */
+  uprightJpegQuality: number;
+  /** The most the upright copy may weigh, in bytes. */
+  uprightMaxBytes: number;
+}
+
 /** What finishing or fetching an upload is told, beyond the bytes. */
 export interface IngestRun {
   /** Where to write a cut frame, named on every finish and fetch. */
@@ -119,6 +130,8 @@ export interface IngestRun {
    * The Worker holds the media container to it and to nothing of its own.
    */
   deadlineAt: number;
+  /** What a picture with an EXIF orientation is turned upright under. */
+  limits: MediaLimits;
   /** The same deadline as a signal, so a resend cannot stretch it. */
   signal?: AbortSignal;
 }
@@ -191,6 +204,17 @@ export interface IngestMeasurements {
      */
     width?: number | null;
     height?: number | null;
+  } | null;
+  /**
+   * The upright copy of a picture with an EXIF orientation, written beside
+   * the bytes as received (inner#1367). The asset is this copy; `sha256` and
+   * the type stay the received bytes'.
+   */
+  upright?: {
+    storageKey: string;
+    sizeBytes: number;
+    width: number | null;
+    height: number | null;
   } | null;
 }
 
@@ -283,6 +307,17 @@ export const ingestMeasurements = z.object({
     })
     .nullish()
     .catch(null)
+    .transform(absentAsNone),
+  // No `.catch`: filing the received bytes in place of an upright copy that
+  // cannot be read would put a sideways picture on the node.
+  upright: z
+    .object({
+      storageKey: z.string().min(1).max(500),
+      sizeBytes: z.coerce.number().int().positive(),
+      width: pixels,
+      height: pixels,
+    })
+    .nullish()
     .transform(absentAsNone),
 });
 
@@ -405,6 +440,7 @@ export async function finishUploadAtIngest(
         parts: held.parts,
         coverKey: run.coverKey,
         deadlineAt: run.deadlineAt,
+        limits: run.limits,
         ...(run.deferMediaRead === true && { deferMediaRead: true }),
       }),
     },
@@ -547,6 +583,7 @@ export async function fetchUrlToIngest(
         url: sourceUrl,
         coverKey: run.coverKey,
         deadlineAt: run.deadlineAt,
+        limits: run.limits,
       }),
     },
     // Sending this again is a second full transfer: the Worker opens its own

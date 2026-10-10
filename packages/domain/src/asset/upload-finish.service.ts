@@ -21,6 +21,7 @@ import {
 } from "@breatic/shared";
 import * as ingestReportService from "@domain/asset/ingest-report.service.js";
 import type { IngestReportOutcome } from "@domain/asset/ingest-report.service.js";
+import { mediaLimits } from "@domain/asset/asset.service.js";
 import * as mediaReadService from "@domain/asset/media-read.service.js";
 import { uploadDeadline } from "@domain/asset/upload-deadline.js";
 
@@ -104,6 +105,7 @@ export async function finishUpload(job: UploadFinishJob): Promise<UploadFinishRe
         // place.
         coverKey: coverKeyFor(storageKey),
         deadlineAt,
+        limits: mediaLimits(),
         signal: signalUntil(deadlineAt),
         deferMediaRead: !mediaReadService.readsMediaAtFinish(job.assetSource),
       },

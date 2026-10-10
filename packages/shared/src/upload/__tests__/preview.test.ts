@@ -87,6 +87,8 @@ describe("isStoredObjectUrl", () => {
   it("accepts a stored original and a stored cover", () => {
     expect(isStoredObjectUrl(`${BASE}/${IMAGE_KEY}`)).toBe(true);
     expect(isStoredObjectUrl(`${BASE}/${COVER_KEY}`)).toBe(true);
+    // A picture turned upright is stored under its own key (inner#1367).
+    expect(isStoredObjectUrl(`${BASE}/${IMAGE_KEY.replace(/\.(\w+)$/, "_upright.$1")}`)).toBe(true);
   });
 
   it("rejects a preview, an external address and a non-http string", () => {

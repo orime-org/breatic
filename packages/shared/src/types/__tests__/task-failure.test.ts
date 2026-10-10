@@ -54,6 +54,8 @@ describe("the cause a stored code is read as", () => {
       // from the ingest Worker before it means the Worker or the line to it
       // went away (inner#1367).
       "ingest_no_answer",
+      // A picture that could not be turned upright (inner#1367).
+      "upright_failed",
     ]) {
       expect(readTaskFailure(ours).reason).toBe("internal");
     }

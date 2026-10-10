@@ -70,7 +70,12 @@ import {
   loadLocales,
   getNodeTaskConfig,
 } from "@breatic/core";
-import { assetRepo, MEDIA_READ_QUEUE, type UploadFinishResult } from "@breatic/domain";
+import {
+  assetRepo,
+  assetService,
+  MEDIA_READ_QUEUE,
+  type UploadFinishResult,
+} from "@breatic/domain";
 import { closeFinishQueue, runQueuedFinish } from "@server/__tests__/helpers/queued-finish.js";
 import { signSessionToken } from "@breatic/shared";
 import type { Hono } from "hono";
@@ -253,7 +258,7 @@ describe("which finishes ask the Worker for no media read", () => {
     expect(sent.deadlineAt as number).toBeLessThanOrEqual(
       Date.now() + getNodeTaskConfig().default_budget_ms,
     );
-    expect(sent).not.toHaveProperty("limits");
+    expect(sent.limits).toEqual(assetService.mediaLimits());
   });
 
   it("a studio avatar asks for none", async () => {

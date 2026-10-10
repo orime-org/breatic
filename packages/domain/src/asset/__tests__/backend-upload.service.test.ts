@@ -103,7 +103,12 @@ const CTX = {
 };
 
 /** What every call of a backend upload is bounded by. */
-const RUN = { deadlineAt: DEADLINE_AT, signal: expect.any(AbortSignal) };
+const RUN = {
+  deadlineAt: DEADLINE_AT,
+  // What a tagged picture is turned upright under, off the mocked yaml.
+  limits: { uprightJpegQuality: 85, uprightMaxBytes: MAX_UPLOAD },
+  signal: expect.any(AbortSignal),
+};
 
 beforeEach(() => {
   vi.clearAllMocks();

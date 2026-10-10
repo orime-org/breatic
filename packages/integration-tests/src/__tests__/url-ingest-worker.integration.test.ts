@@ -42,6 +42,7 @@ import {
   verifyUploadTicket,
   type UploadTicketPayload,
 } from "@breatic/shared";
+import { assetService } from "@breatic/domain";
 import type { Job } from "bullmq";
 import type { createApp } from "@server/app.js";
 import {
@@ -275,8 +276,9 @@ describe("the url ingest job — what it asks the Worker for", () => {
       FROM node_tasks WHERE storage_key = ${job.storageKey}
     `;
     expect(asked.body.deadlineAt).toBe(Number(rows[0]!.ends));
-    expect(asked.body).not.toHaveProperty("limits");
     expect(asked.body).not.toHaveProperty("callBudgetMs");
+    // What a tagged picture is turned upright under travels the same way.
+    expect(asked.body.limits).toEqual(assetService.mediaLimits());
   });
 
   it("names a place for a cover on every call, whatever the source turns out to be", async () => {

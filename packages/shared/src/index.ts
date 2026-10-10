@@ -600,6 +600,7 @@ export {
   type UploadStatus,
   type UploadStatusResult,
 } from "@shared/upload/upload-status.js";
+export { uprightKeyFor, UPRIGHT_KEY_MARKER } from "@shared/upload/upright.js";
 // Why a task failed, as a code rather than a sentence: the writer is a server
 // and the reader is whoever opens the list, in their own language.
 export {
@@ -662,6 +663,7 @@ export {
   UploadHttpError,
   type UploadClientConfig,
   type IngestTarget,
+  type MediaLimits,
   type IngestOutcome,
   type HeldUpload,
   type PartReceipt,
