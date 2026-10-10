@@ -71,15 +71,21 @@ describe('a row drag', () => {
     expect(element.textContent).toContain('first');
   });
 
-  it('freezes the side menu for the drag and lets it go, preview and all, at the end', () => {
+  it('freezes the side menu while it is up and lets it go, preview and all, at the end', () => {
     const editor = open();
+    const sideMenu = editor.getExtension(SideMenuExtension)!;
+    // The menu is up whenever its handle is pressed; a test page has no hover
+    // to bring it up, so its state is put in place.
+    sideMenu.store.setState({ show: true } as never);
+    const freeze = vi.spyOn(sideMenu, 'freezeMenu').mockImplementation(() => undefined);
+    const unfreeze = vi.spyOn(sideMenu, 'unfreezeMenu').mockImplementation(() => undefined);
     const { dataTransfer, setDragImage } = transfer();
     const end = startRowDrag(editor as never, { dataTransfer, clientY: 0 }, editor.document[0]!.id);
-    const sideMenu = editor.getExtension(SideMenuExtension)!;
-    expect(sideMenu.menuFrozen).toBe(true);
+    expect(freeze).toHaveBeenCalledTimes(1);
+    expect(unfreeze).not.toHaveBeenCalled();
     const [element] = setDragImage.mock.calls.at(-1) as [HTMLElement];
     end();
-    expect(sideMenu.menuFrozen).toBe(false);
+    expect(unfreeze).toHaveBeenCalledTimes(1);
     expect(element.isConnected).toBe(false);
   });
 });
