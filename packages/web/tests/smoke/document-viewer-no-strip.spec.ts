@@ -257,6 +257,21 @@ test('the same gesture on the owner page does bring a handle', async () => {
   expect(await handlesAfterHover(owner)).toBe(1);
 });
 
+test('a viewer cannot open a Space name for editing, and the owner can (inner#956 A7)', async () => {
+  const name = `space-tab-name-${String(spaceId)}`;
+  const field = `space-tab-name-input-${String(spaceId)}`;
+
+  await viewer.getByTestId(name).dblclick();
+  // The same wait the strip gets above, for a field that would be coming.
+  await viewer.waitForTimeout(500);
+  await expect(viewer.getByTestId(field)).toHaveCount(0);
+
+  await owner.getByTestId(name).dblclick();
+  await expect(owner.getByTestId(field)).toBeFocused();
+  await owner.keyboard.press('Escape');
+  await expect(owner.getByTestId(field)).toHaveCount(0);
+});
+
 test('a viewer reads a table and gets none of its controls, nor can type in it', async () => {
   await openTheSpace(viewer);
   const cell = viewer.locator(`${EDITOR} td`).filter({ hasText: CELL });

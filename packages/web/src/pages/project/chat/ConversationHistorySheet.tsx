@@ -32,6 +32,7 @@ import {
 import { cn } from '@web/lib/utils';
 import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useInlineEditExit } from '@web/lib/inline-edit-exit';
 import { useReturnFocus } from '@web/lib/overlay-focus';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
 import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
@@ -256,13 +257,6 @@ function ConversationRowView({
 
   /**
    * Take what was typed, if it is a name at all.
-   *
-   * Where the keyboard lands afterwards is left to the browser. The box
-   * unmounts, so the focus falls to the page -- and putting it back by hand
-   * means choosing an element to put it on, which is how a rename came to
-   * switch the conversation on screen: the row is also the button that opens
-   * it, and the same keypress that ended the edit reached it. Focus placement
-   * across the app is a separate matter, to be settled in one place.
    * @param typed - The contents of the box.
    */
   const commit = (typed: string): void => {
@@ -272,6 +266,16 @@ function ConversationRowView({
     // so a name of nothing is not one. Same rule the server applies.
     if (named.length > 0 && named !== row.title) onRename(row.id, named);
   };
+
+  // Ending the box from the keyboard gives the keyboard to this row's menu
+  // button, where the rename started; the row itself opens the conversation.
+  const menuButton = React.useRef<HTMLButtonElement>(null);
+  const exit = useInlineEditExit({
+    editing: renaming,
+    target: () => menuButton.current,
+    commit: () => commit(box.current?.value ?? ''),
+    cancel: () => setRenaming(false),
+  });
 
   return (
     <li role='listitem'>
@@ -312,10 +316,8 @@ function ConversationRowView({
             // Marks what an Escape means while the focus is in here. The
             // sheet reads it before dismissing; see `onEscapeKeyDown` below.
             data-renaming
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commit(e.currentTarget.value);
-              if (e.key === 'Escape') setRenaming(false);
-            }}
+            onKeyDown={exit.onKeyDown}
+            onCompositionEnd={exit.onCompositionEnd}
             onBlur={(e) => commit(e.currentTarget.value)}
           />
         ) : (
@@ -361,6 +363,7 @@ function ConversationRowView({
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
+                    ref={menuButton}
                     type='button'
                     variant='chrome-ghost'
                     size='chrome'

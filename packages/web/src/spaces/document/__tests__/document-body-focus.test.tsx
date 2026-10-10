@@ -121,6 +121,14 @@ function idAt(editor: Editor, index: number): string {
   return (editor.document as { id: string }[])[index]!.id;
 }
 
+describe('where a tab rename hands the keyboard back', () => {
+  it('marks the body scroller as the Space content container', () => {
+    const { scroller } = open(TEXT);
+    expect(scroller.hasAttribute('data-space-focus-root')).toBe(true);
+    expect(scroller.tabIndex).toBe(-1);
+  });
+});
+
 describe('whether the body holds the focus', () => {
   it('holds while the editable element has the focus, and says so on the element', () => {
     const { editor } = open(TEXT);

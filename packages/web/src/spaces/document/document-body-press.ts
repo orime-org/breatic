@@ -28,6 +28,7 @@ import { DOCUMENT_COMMENT_SELECTION, selectedThreadsIn } from '@web/spaces/docum
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import { rowHit } from '@web/spaces/document/document-media-row-press';
 import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
+import { SPACE_FOCUS_ROOT } from '@web/lib/space-focus-root';
 
 /** The attribute on the layout elements beside the body column that count as blank. */
 export const BODY_BLANK = 'data-document-body-blank';
@@ -176,7 +177,9 @@ export function attachBodyScroller(
   editor: { undo: () => unknown; redo: () => unknown },
 ): () => void {
   scroller.setAttribute(BODY_BLANK, '');
-  // Takes the focus from a script and a click, never from Tab.
+  // Takes the focus from a script and a click, never from Tab; where a tab
+  // rename hands the keyboard back.
+  scroller.setAttribute(SPACE_FOCUS_ROOT, '');
   scroller.tabIndex = -1;
   const stopScroll = watchBodyScroll(view, scroller);
   let pressed: { x: number; y: number; done: boolean } | null = null;
