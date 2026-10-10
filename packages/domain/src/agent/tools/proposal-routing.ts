@@ -195,7 +195,7 @@ export function waysAcrossGroup(proposal: CanvasProposal, node: ProposalNode, aw
  * @returns Each slot with the kind it takes.
  * @throws {never} Never.
  */
-export function slotsOf(chosen: ModelInfo): { kind: WayKind; way: WayIn }[] {
+function slotsOf(chosen: ModelInfo): { kind: WayKind; way: WayIn }[] {
   return [...waysIn(chosen)].flatMap(([kind, list]) => list.filter((way) => way.mark === "note").map((way) => ({ kind, way })));
 }
 
@@ -258,7 +258,7 @@ export function holdingSubject(kind: string, holding: Holding): string {
  * @returns It, capitalised.
  * @throws {never} Never.
  */
-function capitalised(phrase: string): string {
+export function capitalised(phrase: string): string {
   return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
@@ -271,7 +271,7 @@ function capitalised(phrase: string): string {
  * @throws {never} Never.
  */
 export function boxReason(chosen: ModelInfo, generation: ProposalNode, key: string): string {
-  return `"${key}" is written in a box of its own on the panel, and nothing set here reaches it. Leave it out. ${slotSentence(chosen, generation, "text", key)}`;
+  return `"${key}" is written in a box of its own on the panel, and nothing set here reaches it. ${slotSentence(chosen, generation, "text", key)}`;
 }
 
 /** A node going into a generation, and the entry it arrives by. */
@@ -392,29 +392,30 @@ export function fillsOf(
   for (const [param, indices] of Object.entries(node.fills ?? {})) {
     const outside = indices.find((at) => proposal.nodes[at] === undefined);
     if (outside !== undefined) {
-      return refuse("fill-outside", `fills "${param}" on "${node.name}" points at node ${String(outside)}, which is not in the group. Take it out of fills "${param}".`);
+      return refuse("fill-outside", `fills "${param}" on "${node.name}" points at node ${String(outside)}, which is not in the group.`, `Take it out of fills "${param}".`);
     }
     const named = indices.map((at) => proposal.nodes[at] as ProposalNode);
     if (named.includes(node)) {
-      return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself, and a node cannot fill its own slot. Take it out of fills "${param}".`);
+      return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself, and a node cannot fill its own slot.`, `Take it out of fills "${param}".`);
     }
     const slot = slots.find(({ way }) => way.into === param);
     if (slot === undefined) {
       return chosen.params[param]?.fromReferencePool === true
-        ? refuse("fill-into-pool", `"${param}" is the reference pool of "${chosen.name}", which takes no fills; ${slotsPhrase(chosen)}. Take fills "${param}" off.`)
-        : refuse("fill-not-a-slot", `"${chosen.name}" has no slot "${param}"; ${slotsPhrase(chosen)}. Take fills "${param}" off.`);
+        ? refuse("fill-into-pool", `"${param}" is the reference pool of "${chosen.name}", which takes no fills; ${slotsPhrase(chosen)}.`, `Take fills "${param}" off.`)
+        : refuse("fill-not-a-slot", `"${chosen.name}" has no slot "${param}"; ${slotsPhrase(chosen)}.`, `Take fills "${param}" off.`);
     }
     const seen = new Map<string, ProposalNode>();
     for (const from of named) {
       if (from.material === undefined) {
-        return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${from.name}", which holds no material, and fills takes only nodes holding it. Take "${from.name}" out of fills "${param}". ${waysOrNone(from, node, chosen)}`);
+        return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${from.name}", which holds no material, and fills takes only nodes holding it. ${waysOrNone(from, node, chosen)}`, `Take "${from.name}" out of fills "${param}".`);
       }
       if (from.type !== slot.kind) {
-        return refuse("fill-wrong-kind", `"${chosen.name}" takes ${slot.kind} in "${param}", and "${from.name}" is ${from.type}. Take "${from.name}" out of fills "${param}". ${waysOrNone(from, node, chosen)}`);
+        return refuse("fill-wrong-kind", `"${chosen.name}" takes ${slot.kind} in "${param}", and "${from.name}" is ${from.type}. ${waysOrNone(from, node, chosen)}`, `Take "${from.name}" out of fills "${param}".`);
       }
       const twin = seen.get(from.material);
       if (twin === from) {
-        return refuse("fill-repeated", `fills "${param}" on "${node.name}" names "${from.name}" twice, and the slot keeps one copy of it. Name it once.`);
+        const times = named.filter((n) => n === from).length;
+        return refuse("fill-repeated", `fills "${param}" on "${node.name}" names "${from.name}" ${String(times)} times, and the slot keeps one copy of it.`, "Name it once.");
       }
       if (twin !== undefined) {
         return refuse("fill-twice", `fills "${param}" on "${node.name}" holds "${twin.name}" and "${from.name}", which hold the same material, and the slot keeps one copy of it.`);

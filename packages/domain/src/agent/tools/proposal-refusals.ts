@@ -9,8 +9,10 @@
  * facts of the proposal the agent reasons from; the agent puts it right. A fix
  * is written only where one action on the element the refusal names is the
  * only way to clear it, the node's mode and model held as they are. Each name
- * is keyed here with that mark, and a test keyed by these names holds each
- * reason to its statements and each marked fix to clearing its refusal.
+ * is keyed here with that mark, `refuse` takes the fix as an argument of its
+ * own exactly for the names marked with one, and a test keyed by these names
+ * holds each reason to its statements and each marked fix to clearing its
+ * refusal.
  */
 
 /** Every refusal the proposal check gives, each marked with whether its reason carries the one fix. */
@@ -48,7 +50,7 @@ export const REFUSALS = {
   "ref-not-pooled-no-pool": true,
   "way-over-room": false,
   "ref-missing": false,
-  "notes-missing": false,
+  "notes-missing": true,
   "shot-empty": false,
   "too-many-shots": false,
   "shot-too-long": false,
@@ -60,6 +62,7 @@ export const REFUSALS = {
   "written-takes-no-mark": true,
   "material-not-source": false,
   "material-not-ours": true,
+  "material-not-ours-media": false,
   "material-missing": true,
   "material-wrong-kind": false,
   "text-source": false,
@@ -105,13 +108,17 @@ export interface Refusal {
   reason: string;
 }
 
+/** The fix a refusal's reason ends on: one sentence for a name marked with one, nothing otherwise. */
+type FixFor<Id extends RefusalId> = (typeof REFUSALS)[Id] extends true ? [fix: string] : [];
+
 /**
  * A refusal, named.
  * @param refusal - Its name.
- * @param reason - What the agent reads.
+ * @param reason - What is wrong, the rule it breaks and the facts of the proposal.
+ * @param fix - The one fix, for a name marked with one; the reason ends on it.
  * @returns The refusal.
  * @throws {never} Never.
  */
-export function refuse(refusal: RefusalId, reason: string): Refusal {
-  return { ok: false, refusal, reason };
+export function refuse<Id extends RefusalId>(refusal: Id, reason: string, ...fix: FixFor<Id>): Refusal {
+  return { ok: false, refusal, reason: fix.length > 0 ? `${reason} ${fix.join(" ")}` : reason };
 }

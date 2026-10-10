@@ -9,9 +9,18 @@ import { markedSegments, promptPlainText, type ProposalNode } from "@breatic/sha
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { refuse } from "@domain/agent/tools/proposal-refusals.js";
-import { aNode } from "@domain/agent/tools/proposal-routing.js";
+import { aNode, capitalised } from "@domain/agent/tools/proposal-routing.js";
 import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import type { MaterialTable } from "@domain/asset/material-facts.js";
+
+/** The fields that configure a generation, each with the word a refusal names it by. */
+const CONFIGURED_FIELDS: ReadonlyArray<readonly [keyof ProposalNode, string]> = [
+  ["mode", "mode"],
+  ["model", "model"],
+  ["params", "parameters"],
+  ["fills", "fills"],
+  ["shots", "shots"],
+];
 
 /** The node kinds that hold material. */
 const MATERIAL_KINDS: ReadonlySet<string> = new Set(["image", "video", "audio"]);
@@ -28,7 +37,7 @@ const MATERIAL_KINDS: ReadonlySet<string> = new Set(["image", "video", "audio"])
  * @throws {never} Never.
  */
 function writtenTakesNoMark(node: ProposalNode): ProposalVerdict {
-  return refuse("written-takes-no-mark", `"${node.name}" holds words the reader keeps as they are, so it takes no ref or note. Take it out and say what you meant in your own message.`);
+  return refuse("written-takes-no-mark", `"${node.name}" holds words the reader keeps as they are, so it takes no ref or note.`, "Take it out and say what you meant in your own message.");
 }
 
 /**
@@ -49,10 +58,14 @@ export function checkMaterial(node: ProposalNode, materials: MaterialTable): Pro
   }
   const facts = materials.get(node.material);
   if (facts === undefined) {
-    return refuse("material-not-ours", `"${node.name}" holds an address that is not in our storage. Save a picture found on the web with ${SAVE_IMAGE} first and use the address it answers with.`);
+    // Only a picture can be saved from the web; a clip or a track reaches our
+    // storage as a file the reader uploads in the chat.
+    return node.type === "image"
+      ? refuse("material-not-ours", `"${node.name}" holds an address that is not in our storage.`, `Save a picture found on the web with ${SAVE_IMAGE} first and use the address it answers with.`)
+      : refuse("material-not-ours-media", `"${node.name}" holds an address that is not in our storage. ${capitalised(aNode(node.type))} takes material only from our storage: a file the user uploaded in the chat.`);
   }
   if (facts === "missing") {
-    return refuse("material-missing", `"${node.name}" holds an address in our storage that does not exist, most likely mistyped. Copy it again exactly as the attachment or the ${SAVE_IMAGE} answer gives it.`);
+    return refuse("material-missing", `"${node.name}" holds an address in our storage that does not exist, most likely mistyped.`, `Copy it again exactly as the attachment or the ${SAVE_IMAGE} answer gives it.`);
   }
   if (facts.kind !== node.type) {
     return refuse("material-wrong-kind", `"${node.name}" is ${aNode(node.type)} and its material is ${facts.kind}.`);
@@ -72,12 +85,7 @@ export function checkMaterial(node: ProposalNode, materials: MaterialTable): Pro
  * @throws {never} Never.
  */
 export function checkNodeRole(node: ProposalNode): ProposalVerdict {
-  const configured =
-    node.mode !== undefined ||
-    node.model !== undefined ||
-    node.params !== undefined ||
-    node.fills !== undefined ||
-    node.shots !== undefined;
+  const configured = CONFIGURED_FIELDS.filter(([field]) => node[field] !== undefined).map(([, said]) => said);
   if (node.role === "source") {
     // Words are the one kind of material nobody has to go and find: an empty
     // text node is a click away, so proposing one asks for work rather than
@@ -85,8 +93,9 @@ export function checkNodeRole(node: ProposalNode): ProposalVerdict {
     if (node.type === "text") {
       return refuse("text-source", `"${node.name}" is an empty text node, which the reader makes in one click; words go on a written node.`);
     }
-    if (configured || node.prompt !== undefined) {
-      return refuse("source-configured", `"${node.name}" is a source node: it holds material or stands empty for the reader, so it takes no mode, model, parameters, fills, shots or prompt.`);
+    const carried = [...configured, ...(node.prompt !== undefined ? ["prompt"] : [])];
+    if (carried.length > 0) {
+      return refuse("source-configured", `"${node.name}" is a source node: it holds material or stands empty for the reader, so it takes no mode, model, parameters, fills, shots or prompt; it carries ${carried.join(", ")}.`);
     }
     return { ok: true };
   }
@@ -95,8 +104,8 @@ export function checkNodeRole(node: ProposalNode): ProposalVerdict {
   if (node.type !== "text") {
     return refuse("written-not-text", `"${node.name}" carries words, and a text node is the only one that holds those.`);
   }
-  if (configured) {
-    return refuse("written-configured", `"${node.name}" already holds its words, so it takes no mode, model, fills or shots -- nothing is generated there.`);
+  if (configured.length > 0) {
+    return refuse("written-configured", `"${node.name}" already holds its words, so it takes no mode, model, parameters, fills or shots -- nothing is generated there; it carries ${configured.join(", ")}.`);
   }
   // A text node's body holds words and nothing else: a reference would ask
   // for material nothing here reads, and a note would vanish from words that

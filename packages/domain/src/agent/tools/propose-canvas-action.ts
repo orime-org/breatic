@@ -142,18 +142,16 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
   for (const edge of proposal.edges) {
     const ends = [edge.fromIndex, edge.toIndex];
     if (ends.some((i) => i < 0 || i >= proposal.nodes.length)) {
-      return refuse("edge-outside", `An edge points outside the group: ${JSON.stringify(edge)}. Take that edge off.`);
+      return refuse("edge-outside", `An edge points outside the group: ${JSON.stringify(edge)}.`, "Take that edge off.");
     }
     if (edge.fromIndex === edge.toIndex) {
-      return refuse("edge-self-loop", `An edge loops node ${edge.fromIndex} onto itself. Take that edge off.`);
+      return refuse("edge-self-loop", `An edge loops node ${edge.fromIndex} onto itself.`, "Take that edge off.");
     }
     const pair = `${String(edge.fromIndex)}>${String(edge.toIndex)}`;
     if (pairs.has(pair)) {
-      const intos = proposal.edges
-        .filter((e) => e.fromIndex === edge.fromIndex && e.toIndex === edge.toIndex)
-        .map((e) => (e.into === undefined ? "no into" : `into "${e.into}"`))
-        .join(", ");
-      return refuse("edge-repeated", `Two edges run from "${proposal.nodes[edge.fromIndex]?.name ?? ""}" to "${proposal.nodes[edge.toIndex]?.name ?? ""}" (${intos}), and a node goes into a generation one way.`);
+      const between = proposal.edges.filter((e) => e.fromIndex === edge.fromIndex && e.toIndex === edge.toIndex);
+      const intos = between.map((e) => (e.into === undefined ? "no into" : `into "${e.into}"`)).join(", ");
+      return refuse("edge-repeated", `${String(between.length)} edges run from "${proposal.nodes[edge.fromIndex]?.name ?? ""}" to "${proposal.nodes[edge.toIndex]?.name ?? ""}" (${intos}), and a node goes into a generation one way.`);
     }
     pairs.add(pair);
     // An edge is how one node draws on another's material, so it can only end
@@ -170,7 +168,7 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
       // How the node reaches the generation instead is the model's to say; a
       // generation naming no model the catalog serves has only the canvas rule.
       const chosen = chosenModelOf(into);
-      return refuse("edge-not-allowed", `The canvas does not let ${aNode(outOf.type)} feed ${aNode(into.type)}, by your hand or theirs. Take that edge off.${chosen ? spaced(waysOrNone(outOf, into, chosen)) : ""}`);
+      return refuse("edge-not-allowed", `The canvas does not let ${aNode(outOf.type)} feed ${aNode(into.type)}, by your hand or theirs.${chosen ? spaced(waysOrNone(outOf, into, chosen)) : ""}`, "Take that edge off.");
     }
   }
   if (hasRing(proposal)) {
@@ -181,7 +179,7 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
   // on a ground of its own. Only the model knows what that thing is for -- it
   // just decided -- so the name comes with the proposal.
   if (proposal.nodes.length > 1 && (proposal.groupName ?? "").trim() === "") {
-    return refuse("group-unnamed", "Two or more nodes land together in a group, so give the group a name saying what it is for.");
+    return refuse("group-unnamed", "Two or more nodes land together in a group, and it has no name.", "Give the group a name saying what it is for.");
   }
 
   for (const [index, node] of proposal.nodes.entries()) {

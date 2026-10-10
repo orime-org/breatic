@@ -14,6 +14,7 @@
 import { AppError, checkRateLimit, getRedis, logger } from "@breatic/core";
 import {
   backendUploadService,
+  isReaderLinkFault,
   SaveRefused,
   urlIngestFailureLevel,
   type SaveToStorage,
@@ -81,9 +82,8 @@ export function saveToStorageFor({ projectId, userId }: { projectId: string; use
       if (err instanceof backendUploadService.ReaderUrlTransferError) {
         // Only a refusal of the reader's own link is the link's to answer
         // for; one on our side is a fault, told to the model as one.
-        const level = urlIngestFailureLevel(err.reason);
-        logger[level]({ err, projectId, userId, url, reason: err.reason, reported: err.reported }, "agent_save_failed");
-        if (level === "warn") throw new SaveRefused("link", err.reason);
+        logger[urlIngestFailureLevel(err.reason)]({ err, projectId, userId, url, reason: err.reason, reported: err.reported }, "agent_save_failed");
+        if (isReaderLinkFault(err.reason)) throw new SaveRefused("link", err.reason);
         throw err;
       }
       logger.error({ err, projectId, userId, url }, "agent_save_failed");

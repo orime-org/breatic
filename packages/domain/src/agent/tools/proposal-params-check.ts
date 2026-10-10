@@ -94,18 +94,18 @@ function offStepReason(key: string, value: number, info: ParamInfo): string | nu
 function placedElsewhere(chosen: ModelInfo, node: ProposalNode, key: string, info: ParamInfo): Refusal | undefined {
   if (info.fromStoryboard === true) {
     return chosen.storyboard === undefined
-      ? refuse("param-storyboard-other-mode", `"${key}" is set by shots, which only the multi_shot mode takes. Leave it out.`)
-      : refuse("param-storyboard", `"${key}" is set by the node's shots. Leave it out of params.`);
+      ? refuse("param-storyboard-other-mode", `"${key}" is set by shots, which only the multi_shot mode takes.`, "Leave it out.")
+      : refuse("param-storyboard", `"${key}" is set by the node's shots.`, "Leave it out of params.");
   }
   // Asked before anything that tells the agent how the reader fills a
   // value: a value the panel draws no control for is one nobody fills.
   if (info.noControl === true) {
-    return refuse("param-no-control", `The panel draws no control for "${key}", so the reader can neither see it nor change it. Leave it out.`);
+    return refuse("param-no-control", `The panel draws no control for "${key}", so the reader can neither see it nor change it.`, "Leave it out.");
   }
   if (theirsToFill(key, info)) {
     return info.valuesFrom !== undefined
-      ? refuse("param-from-list", `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here; which one to pick goes in a note. Leave it out.`)
-      : refuse("param-box", boxReason(chosen, node, key));
+      ? refuse("param-from-list", `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here; which one to pick goes in a note.`, "Leave it out.")
+      : refuse("param-box", boxReason(chosen, node, key), "Leave it out.");
   }
   if (info.filledBySource !== true) return undefined;
   // Two ways that material arrives, and the sentence names the one this
@@ -115,8 +115,8 @@ function placedElsewhere(chosen: ModelInfo, node: ProposalNode, key: string, inf
   // The catalog refuses a place on the canvas that names no kind it takes.
   const reached = spaced(slotSentence(chosen, node, info.accepts ?? "", info.fromReferencePool === true ? "pool" : key));
   return info.fromReferencePool === true
-    ? refuse("param-pool", `"${key}" is the reference pool, which nodes reach and nothing set here does. Leave it out.${reached}`)
-    : refuse("param-slot", `"${key}" is a slot for the reader's own material, which nodes reach and nothing set here does. Leave it out.${reached}`);
+    ? refuse("param-pool", `"${key}" is the reference pool, which nodes reach and nothing set here does.${reached}`, "Leave it out.")
+    : refuse("param-slot", `"${key}" is a slot for the reader's own material, which nodes reach and nothing set here does.${reached}`, "Leave it out.");
 }
 
 /**
@@ -135,7 +135,7 @@ export function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerd
     const info = chosen.params[key];
     if (!info) {
       const settable = Object.entries(chosen.params).filter(([name, declared]) => placedElsewhere(chosen, node, name, declared) === undefined).map(([name]) => name);
-      return refuse("param-undeclared", `"${chosen.name}" declares no ${key}. ${settable.length > 0 ? `The ones set here: ${settable.join(", ")}.` : "Nothing is set here."} Leave "${key}" out.`);
+      return refuse("param-undeclared", `"${chosen.name}" declares no ${key}. ${settable.length > 0 ? `The ones set here: ${settable.join(", ")}.` : "Nothing is set here."}`, `Leave "${key}" out.`);
     }
     const elsewhere = placedElsewhere(chosen, node, key, info);
     if (elsewhere !== undefined) return elsewhere;

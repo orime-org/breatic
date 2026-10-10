@@ -221,7 +221,7 @@ describe("fills (A6 and the four rules of round two)", () => {
       held("image", "Style", PORTRAIT),
       { role: "generate", type: "image", name: "Edit", mode: "i2i", model: "nano-banana-pro-edit-ultra", fills: { style_images: [0, 0] }, prompt: [{ text: "Edit it." }] },
     ]);
-    expect(refusal(proposal)).toMatch(/names "Style" twice/);
+    expect(refusal(proposal)).toMatch(/names "Style" 2 times/);
   });
 
   it("refuses the same material twice in one slot", () => {

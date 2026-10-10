@@ -237,7 +237,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "template-no-prompt": [{
     meets: group([EMPTY_PIC, { ...EDIT_POOL, prompt: undefined, template: "storyboard-grid-25", mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    states: ['"Gen" names template "storyboard-grid-25" and sends no prompt. Give it a prompt.', "The template's prompt, to rewrite in the reader's language with their story or detail in it:", 'an empty one by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first'],
+    states: ['"Gen" names template "storyboard-grid-25" and sends no prompt.', "Give it a prompt.", "The template's prompt, to rewrite in the reader's language with their story or detail in it:", 'an empty one by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first'],
     fix: group([EMPTY_PIC, { ...EDIT_POOL, template: "storyboard-grid-25", mode: undefined, model: undefined, prompt: [...storyboardSegments(), NOTE] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
   }],
   "sources-no-taker": [{
@@ -329,7 +329,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "ref-not-pooled-no-pool": [{
     meets: group([EMPTY_PIC, gen("image", "t2i", T2I, { prompt: [{ text: "Draw " }, { ref: 0 }, NOTE] })]),
-    states: ['"nano-banana-2" has no pool for an image node. Leave the ref out.', '"nano-banana-2" takes no image node, so "Pic" has no way into "Gen".'],
+    states: ['"nano-banana-2" has no pool for an image node.', "Leave the ref out.", '"nano-banana-2" takes no image node, so "Pic" has no way into "Gen".'],
     fix: group([EMPTY_PIC, gen("image", "t2i", T2I, { prompt: [{ text: "Draw " }, NOTE] })]),
   }, {
     meets: group([CLIP_HELD, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score " }, { ref: 0 }] })]),
@@ -342,7 +342,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }, {
     // Over the pool with another way open: the other way is said as a rule, with its room and who holds it.
     meets: group(PICS(12).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(12), ...NOTES(12)] })]), Array.from({ length: 12 }, (_, i) => ({ fromIndex: i, toIndex: 12, into: "pool" }))),
-    states: [`"${EDIT}" takes 11 image node(s) by "pool", and 12 are going that way`, 'An empty image node goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref.', '"style_images" takes 3 and holds none.'],
+    states: [`"${EDIT}" takes 11 image node(s) by "pool", and 12 are going that way`, 'An empty image node goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref.', '"style_images" takes 3 image node(s) and holds none.'],
   }, {
     // Nodes holding material and empty ones over the same way: the ways are said for each.
     meets: group(
@@ -355,7 +355,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
       [...["A", "X", "C"].map((name, i): Sent["nodes"][number] => ({ role: "source", type: "audio", name, material: TUNES[i] })), WORDS, gen("audio", "a2m", SONG, { prompt: [{ text: "Make a song." }], fills: { melody: [0, 1, 2], vocal: [1] } })],
       [{ fromIndex: 3, toIndex: 4, into: "lyrics" }],
     ),
-    states: ['by "melody", and 3 are going that way ("A", "X", "C")', '"vocal" takes 1 and holds "X".'],
+    states: ['by "melody", and 3 are going that way ("A", "X", "C")', '"vocal" takes 1 audio node(s) and holds "X".'],
   }],
   "ref-missing": [{
     meets: group([WORDS, { ...STORY }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
@@ -468,17 +468,17 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "param-box": [{
     meets: group([WORDS, gen("audio", "t2m", SONG, { prompt: [{ text: "Upbeat pop." }], params: { lyrics: "la la" } })], [{ fromIndex: 0, toIndex: 1, into: "lyrics" }]),
-    states: ['Leave it out. A written text node goes into "Gen" by an edge with into: "lyrics"'],
+    states: ['A written text node goes into "Gen" by an edge with into: "lyrics"', "Leave it out."],
     fix: group([WORDS, gen("audio", "t2m", SONG, { prompt: [{ text: "Upbeat pop." }] })], [{ fromIndex: 0, toIndex: 1, into: "lyrics" }]),
   }],
   "param-pool": [{
     meets: group([gen("image", "i2i", EDIT, { params: { images: PIC } })]),
-    states: ['Leave it out. An image node holding material goes into "Gen" by an edge with into: "pool" and a ref @\'ing it', 'An empty image node goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first'],
+    states: ['An image node holding material goes into "Gen" by an edge with into: "pool" and a ref @\'ing it', "Leave it out.", 'An empty image node goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first'],
     fix: group([gen("image", "i2i", EDIT)]),
   }],
   "param-slot": [{
     meets: group([gen("image", "i2i", EDIT, { params: { style_images: PIC } })]),
-    states: ['Leave it out. An image node holding material goes into "Gen" through fills "style_images" on "Gen"', 'An empty image node goes into "Gen" by an edge with into: "style_images" and a note saying to pick it there and no ref'],
+    states: ['An image node holding material goes into "Gen" through fills "style_images" on "Gen"', "Leave it out.", 'An empty image node goes into "Gen" by an edge with into: "style_images" and a note saying to pick it there and no ref'],
     fix: group([gen("image", "i2i", EDIT)]),
   }],
   "param-storyboard": [{
@@ -561,7 +561,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "fill-no-material": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
-    states: ['which holds no material, and fills takes only nodes holding it. Take "Pic" out of fills "style_images".', '"Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref.'],
+    states: ['which holds no material, and fills takes only nodes holding it.', 'Take "Pic" out of fills "style_images".', '"Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref.'],
     fix: group([EMPTY_PIC, gen("image", "i2i", EDIT)]),
   }],
   "fill-wrong-kind": [{
