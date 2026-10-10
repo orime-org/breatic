@@ -180,12 +180,12 @@ function originalOf(view: EditorView, copy: Element, selector: string): Element 
  * @param view - The editor view.
  * @param content - The copied content.
  */
-function settle(view: EditorView, content: HTMLElement): void {
+function settle(view: EditorView, content: Element): void {
   content.querySelectorAll(MEDIA_CHROME).forEach((chrome) => {
     chrome.remove();
   });
   const tables = content.matches(TABLE_BLOCK) ? [content] : [];
-  tables.push(...content.querySelectorAll<HTMLElement>(TABLE_BLOCK));
+  tables.push(...content.querySelectorAll(TABLE_BLOCK));
   tables.forEach((block) => {
     block.replaceChildren(...block.querySelectorAll('table'));
   });
