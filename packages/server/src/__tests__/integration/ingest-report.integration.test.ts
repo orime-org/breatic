@@ -68,6 +68,7 @@ import {
   canvasSpaceDocName,
   INGEST_FAILURE_HEADER,
   signSessionToken,
+  uprightKeyFor,
   UPLOAD_STATUS_MAX_KEYS,
 } from "@breatic/shared";
 import type { Hono } from "hono";
@@ -244,6 +245,8 @@ async function report(
               // The cover the container cut, already written to the key this
               // server minted and hashed at the edge.
               ...(body.cover !== undefined && { cover: body.cover }),
+              // The upright copy of a picture with an EXIF orientation.
+              ...(body.upright !== undefined && { upright: body.upright }),
             }),
             { status: 200, headers: { "content-type": "application/json" } },
           )
@@ -637,6 +640,98 @@ describe("a finish this server drove — a completed upload", () => {
       WHERE node_id = ${nodeId} AND deleted_at IS NULL
     `;
     expect(history[0]!.metadata.toolId).toBe("image.crop");
+  });
+
+  // A picture with an EXIF orientation is filed as its upright copy; the hash
+  // stays the received bytes' (inner#1367 §4.5).
+  it("files a picture turned upright as its upright copy, under the received hash", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { content_type: "image/jpeg" });
+    const sha = crypto.randomBytes(32).toString("hex");
+
+    const finished = await report(
+      completed(key, {
+        sha256: sha,
+        content_type: "image/jpeg",
+        width: 3000,
+        height: 4000,
+        upright: { storageKey: uprightKeyFor(key), sizeBytes: 3900, width: 3000, height: 4000 },
+      }),
+    );
+
+    expect(finished.refused).toBeUndefined();
+    const rows = await sql<
+      { storage_key: string; file_url: string; size_bytes: string; width: number; height: number }[]
+    >`
+      SELECT storage_key, file_url, size_bytes, width, height FROM studio_assets
+      WHERE content_hash = ${sha}
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      storage_key: uprightKeyFor(key),
+      size_bytes: "3900",
+      width: 3000,
+      height: 4000,
+    });
+    expect(rows[0]!.file_url.endsWith(uprightKeyFor(key))).toBe(true);
+    expect(finished.outcome).toMatchObject({ status: "registered", ownRow: true });
+  });
+
+  it("files the upright copy under the key it is derived from the ticket's, whatever the answer named", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { content_type: "image/jpeg" });
+    const sha = crypto.randomBytes(32).toString("hex");
+
+    await report(
+      completed(key, {
+        sha256: sha,
+        content_type: "image/jpeg",
+        upright: { storageKey: "image/2026-10-10/someone_else.jpg", sizeBytes: 10, width: 1, height: 1 },
+      }),
+    );
+
+    const rows = await sql<{ storage_key: string }[]>`
+      SELECT storage_key FROM studio_assets WHERE content_hash = ${sha}
+    `;
+    expect(rows[0]!.storage_key).toBe(uprightKeyFor(key));
+  });
+
+  it("keeps the ticket's key on the node history row of a picture turned upright", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { content_type: "image/jpeg", node_id: nodeId });
+
+    await report(
+      completed(key, {
+        content_type: "image/jpeg",
+        upright: { storageKey: uprightKeyFor(key), sizeBytes: 3900, width: 3000, height: 4000 },
+      }),
+    );
+
+    // The ticket's key is what makes a repeated report find this row again.
+    const history = await sql<{ upload_storage_key: string }[]>`
+      SELECT upload_storage_key FROM node_history WHERE node_id = ${nodeId}
+    `;
+    expect(history[0]!.upload_storage_key).toBe(key);
+  });
+
+  it("queues the losing upright copy for reclaim when its received bytes dedup", async () => {
+    const seed = await seedEditor();
+    const sha = crypto.randomBytes(32).toString("hex");
+    const upright = (k: string) => ({ storageKey: uprightKeyFor(k), sizeBytes: 3900, width: 3000, height: 4000 });
+    const firstKey = await mintTicket(seed, { content_type: "image/jpeg" });
+    await report(completed(firstKey, { sha256: sha, content_type: "image/jpeg", upright: upright(firstKey) }));
+    const secondKey = await mintTicket(seed, { content_type: "image/jpeg" });
+
+    const second = await report(
+      completed(secondKey, { sha256: sha, content_type: "image/jpeg", upright: upright(secondKey) }),
+    );
+
+    expect(second.outcome).toMatchObject({ status: "registered", ownRow: false });
+    const queued = await sql<{ kept_storage_key: string }[]>`
+      SELECT kept_storage_key FROM storage_reclaim_queue WHERE storage_key = ${uprightKeyFor(secondKey)}
+    `;
+    expect(queued[0]!.kept_storage_key).toBe(uprightKeyFor(firstKey));
   });
 
   it("reuses the existing row when the bytes turn out to be a duplicate", async () => {

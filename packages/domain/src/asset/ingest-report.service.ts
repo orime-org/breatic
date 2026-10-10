@@ -43,7 +43,7 @@ import {
   getStreamRedis,
   NotFoundError,
 } from "@breatic/core";
-import { canvasSpaceDocName, t } from "@breatic/shared";
+import { canvasSpaceDocName, t, uprightKeyFor } from "@breatic/shared";
 import type { NodeTaskResult, StudioAssetEntity } from "@breatic/shared";
 import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
@@ -99,6 +99,17 @@ export type IngestReport =
         /** The frame's own pixel size, which is not the video's. */
         width?: number | null;
         height?: number | null;
+      } | null;
+      /**
+       * The upright copy of a picture with an EXIF orientation, written beside
+       * the bytes as received (inner#1367). Present, it is what is filed;
+       * `sha256` and `contentType` stay the received bytes'.
+       */
+      upright?: {
+        storageKey: string;
+        sizeBytes: number;
+        width: number | null;
+        height: number | null;
       } | null;
     }
   | {
@@ -311,6 +322,44 @@ async function announceFailure(
     outcome: expired ? "expired" : "failed",
     errorMessage: message,
   });
+}
+
+/**
+ * Whether a ledger row's key is one this upload wrote: the ticket's own, or
+ * the upright copy beside it (inner#1367).
+ * @param key - The row's key.
+ * @param grant - The upload's grant.
+ * @returns True for this upload's own row.
+ */
+function isOwnKey(key: string, grant: UploadGrant): boolean {
+  return key === grant.storageKey || key === uprightKeyFor(grant.storageKey);
+}
+
+/**
+ * What a completed upload is filed as: its upright copy when the Worker wrote
+ * one, the bytes as received otherwise.
+ * @param report - The completed report.
+ * @param grant - The upload's grant.
+ * @returns The key, size and pixel size to file.
+ */
+function filedObject(
+  report: Extract<IngestReport, { outcome: "completed" }>,
+  grant: UploadGrant,
+): { storageKey: string; sizeBytes: number; width: number | null; height: number | null } {
+  if (report.upright !== undefined && report.upright !== null) {
+    return {
+      storageKey: uprightKeyFor(grant.storageKey),
+      sizeBytes: report.upright.sizeBytes,
+      width: report.upright.width,
+      height: report.upright.height,
+    };
+  }
+  return {
+    storageKey: grant.storageKey,
+    sizeBytes: report.sizeBytes,
+    width: report.width ?? null,
+    height: report.height ?? null,
+  };
 }
 
 /**
@@ -580,7 +629,7 @@ export async function applyIngestReport(
       assetId: existing.id,
       fileUrl,
       kind: settledKind,
-      ownRow: existing.storageKey === grant.storageKey,
+      ownRow: isOwnKey(existing.storageKey, grant),
       coverUrl: existingCover?.fileUrl ?? null,
       width: existing.width,
       height: existing.height,
@@ -626,6 +675,10 @@ export async function applyIngestReport(
   }
 
   const kind = assetService.detectAssetKind(contentType);
+  // A picture turned upright is filed as its upright copy (inner#1367 §4.5).
+  // The key is derived from the ticket's rather than read off the answer, so
+  // the copy can only ever be the one this upload wrote.
+  const filed = filedObject(report, grant);
 
   // Filed first, so the video row below is inserted already pointing at it.
   // The frame was cut in the media container while this request waited, so
@@ -641,13 +694,13 @@ export async function applyIngestReport(
     ownerStudioId: grant.studioId,
     actingUserId: grant.userId,
     contentHash: report.sha256,
-    storageKey: grant.storageKey,
-    fileUrl: adapter.publicUrl(grant.storageKey),
-    sizeBytes,
+    storageKey: filed.storageKey,
+    fileUrl: adapter.publicUrl(filed.storageKey),
+    sizeBytes: filed.sizeBytes,
     mimeType: contentType,
     kind,
-    width: report.width ?? null,
-    height: report.height ?? null,
+    width: filed.width,
+    height: filed.height,
     durationSeconds: report.durationSeconds ?? null,
     // Off the grant, because what this is was decided where the upload was
     // opened. The worker opens its own now (#181), and calling everything that
@@ -690,7 +743,8 @@ export async function applyIngestReport(
       storageKey: grant.storageKey,
       metadata: {
         ...(grant.filename !== null && { filename: grant.filename }),
-        size: sizeBytes,
+        // What the node holds, which for a picture turned upright is its copy.
+        size: filed.sizeBytes,
         mimeType: contentType,
         // The row is named by the browser tool that made the file, as its
         // task row is (inner#888 A20).
@@ -751,7 +805,7 @@ export async function applyIngestReport(
     assetId: asset.id,
     fileUrl: asset.fileUrl,
     kind: asset.kind,
-    ownRow: asset.storageKey === grant.storageKey,
+    ownRow: isOwnKey(asset.storageKey, grant),
     coverUrl,
     width: asset.width,
     height: asset.height,

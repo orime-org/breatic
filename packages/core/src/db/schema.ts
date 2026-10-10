@@ -2205,9 +2205,17 @@ export const studioAssets = pgTable(
     studioId: uuid("studio_id")
       .notNull()
       .references(() => studios.id, { onDelete: "restrict" }),
-    /** sha256 hex of the content - the dedup key (never in the URL). */
+    /**
+     * sha256 hex of the bytes as received - the dedup key (never in the URL).
+     * A picture turned upright keeps the received bytes' hash, not its upright
+     * copy's (inner#1367).
+     */
     contentHash: varchar("content_hash", { length: 64 }).notNull(),
-    /** Random storage key (unchanged format; NOT the hash). */
+    /**
+     * Random storage key (unchanged format; NOT the hash). A picture turned
+     * upright is filed under its upright copy's key, `uprightKeyFor` of the
+     * ticket's; the received bytes stay at the key without `_upright`.
+     */
     storageKey: text("storage_key").notNull(),
     /** Public URL (adapter.publicUrl(key)) - the value embedded in Yjs. */
     fileUrl: text("file_url").notNull(),
@@ -2484,7 +2492,11 @@ export const storageReclaimQueue = pgTable(
   "storage_reclaim_queue",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    /** The redundant object to reclaim (the copy this request just stored). */
+    /**
+     * The redundant object to reclaim (the copy this request just stored). For
+     * a picture turned upright it is the upright copy; the received bytes at
+     * the same key without `_upright` go with it (inner#1367).
+     */
     storageKey: text("storage_key").notNull(),
     /** Its content fingerprint — identical to the surviving row's. */
     contentHash: varchar("content_hash", { length: 64 }).notNull(),
