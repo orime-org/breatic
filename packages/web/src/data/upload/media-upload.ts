@@ -8,7 +8,7 @@ import {
   type UploadTicketRequest,
   type UploadTicketResponse,
 } from '@web/data/upload/ingest-upload';
-import type { IngestOutcome, UploadClientConfig } from '@breatic/shared';
+import type { UploadClientConfig } from '@breatic/shared';
 import {
   errorStatus,
   retryTransient,
@@ -16,8 +16,13 @@ import {
   UNSUPPORTED_TYPE_STATUS,
 } from '@web/data/upload/upload-retry';
 import { assetsApi } from '@web/data/api/assets';
-import { BytesNotDelivered, sendFileAndFinish } from '@web/data/upload/finish-upload';
+import {
+  BytesNotDelivered,
+  sendFileAndFinish,
+  type QueuedFinish,
+} from '@web/data/upload/finish-upload';
 import { hashFile } from '@web/data/upload/hash';
+import { waitForUploadEnding, type UploadEnding } from '@web/data/upload/upload-status';
 
 /**
  * The media upload orchestrator: ask for a ticket, send the bytes to the ingest
@@ -37,6 +42,9 @@ export interface StoredUpload {
   fileUrl: string | undefined;
   assetId: string | undefined;
   kind: string | undefined;
+  /** Pixel size read off the stored bytes, when the finish read it. */
+  width?: number | null;
+  height?: number | null;
 }
 
 /**
@@ -138,6 +146,19 @@ function failureOf(err: unknown): UploadFailureReason {
   return REASON_BY_STATUS.get(errorStatus(err) ?? -1) ?? 'upload';
 }
 
+/**
+ * The failure a finish that did not register ended in. The status query names
+ * the reason the server recorded; only a format the edge refused has a
+ * failure of its own, since re-sending the same bytes meets the same refusal.
+ * @param ending - What the status query answered.
+ * @returns The failure reason to report.
+ */
+function failureOfEnding(ending: Exclude<UploadEnding, { state: 'completed' }>): UploadFailureReason {
+  return ending.state === 'failed' && ending.reason === 'unsupported_type'
+    ? 'unsupportedType'
+    : 'upload';
+}
+
 /** Injected dependencies for {@link runMediaUpload} (network + result sinks). */
 export interface MediaUploadDeps {
   /** Fetch the session-cached upload knobs (`assetsApi.fetchUploadConfig`). */
@@ -150,13 +171,18 @@ export interface MediaUploadDeps {
   hashFile: (file: File) => Promise<string | null>;
   /** Ask for a ticket, or be told the studio already holds this content. */
   requestTicket: (params: UploadTicketRequest) => Promise<UploadTicketResponse>;
-  /** Send the bytes to the ingest Worker and finish the upload. */
+  /** Send the bytes to the ingest Worker and have our server queue the finish. */
   sendToIngest: (
     file: File,
     ticket: UploadTicket,
     cfg: UploadClientConfig,
     onPartLanded?: (bytesLanded: number) => void,
-  ) => Promise<IngestOutcome>;
+  ) => Promise<QueuedFinish>;
+  /**
+   * Wait for how a queued finish ended (`waitForUploadEnding` unless a test
+   * stands in for it).
+   */
+  waitForEnding?: (storageKey: string) => Promise<UploadEnding>;
   /** Told the share of the file that has landed, from 0 to 1, after each part. */
   onProgress?: (fraction: number) => void;
   /**
@@ -194,10 +220,11 @@ export interface MediaUploadDeps {
  * server refuses a request without one, so a file that cannot be fingerprinted
  * is refused here rather than sent and rejected.
  *
- * What happens after the bytes land is not this function's to report. The
- * Worker tells the server, the server writes the node through Yjs, and the
- * node comes out of handling that way (design §5). This returning is only the
- * browser's half being over.
+ * Finishing runs on the server as a job (inner#1367 §4.2a). An upload with a
+ * node behind it is over for the page once that job is queued: the server
+ * writes the node through Yjs, and only a finish that did not register comes
+ * back here, through `onFailure`, when the status query has its ending. An
+ * upload with no node waits for that ending and reads its result from it.
  * @param file - The media file to upload.
  * @param context - Where it lands and what it is for.
  * @param deps - Injected config / hash / network / result callbacks.
@@ -245,25 +272,43 @@ export async function runMediaUpload(
     return;
   }
 
+  const { taskId } = answer;
+  let queued: QueuedFinish;
   try {
     const { onProgress } = deps;
-    const outcome =
+    queued =
       onProgress === undefined
         ? await deps.sendToIngest(file, answer, cfg)
         : await deps.sendToIngest(file, answer, cfg, (landed) => {
           onProgress(landed / file.size);
         });
-    deps.onSuccess({
-      fileUrl: outcome.fileUrl,
-      assetId: outcome.assetId ?? undefined,
-      kind: outcome.kind,
-    });
   } catch (err) {
     deps.onFailure({
       reason: failureOf(err),
-      ...(answer.taskId !== undefined && { taskId: answer.taskId }),
+      ...(taskId !== undefined && { taskId }),
     });
+    return;
   }
+
+  const ending = (deps.waitForEnding ?? waitForUploadEnding)(queued.storageKey);
+  if (taskId !== undefined) {
+    void ending.then((end) => {
+      if (end.state !== 'completed') deps.onFailure({ reason: failureOfEnding(end), taskId });
+    });
+    return;
+  }
+  const end = await ending;
+  if (end.state !== 'completed') {
+    deps.onFailure({ reason: failureOfEnding(end) });
+    return;
+  }
+  deps.onSuccess({
+    fileUrl: end.result.fileUrl,
+    assetId: end.result.assetId,
+    kind: end.result.kind,
+    width: end.result.width,
+    height: end.result.height,
+  });
 }
 
 /** Why an upload did not complete; the caller picks the message from it. */

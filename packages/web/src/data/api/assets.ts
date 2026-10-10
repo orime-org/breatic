@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { apiGet, apiPost } from '@web/data/api/request';
-import type { UploadClientConfig } from '@breatic/shared';
+import { apiGet, apiPost, request } from '@web/data/api/request';
+import type { ApiEnvelope } from '@web/data/api/types';
+import type { UploadClientConfig, UploadStatus } from '@breatic/shared';
 import type {
   UploadTicketRequest,
   UploadTicketResponse,
@@ -12,6 +13,11 @@ import type {
 export interface UploadConfig extends UploadClientConfig {
   /** What every stored object's public URL starts with. */
   assetUrlPrefix: string;
+  /**
+   * How long the page waits before asking how its uploads ended, in seconds,
+   * until an answer names its own interval (inner#1367).
+   */
+  uploadStatusPollSeconds: number;
 }
 
 /** Session cache for the upload knobs (one fetch per session). */
@@ -72,6 +78,29 @@ export const assetsApi = {
    * the next caller retries.
    * @returns The upload knobs (cap, attempts, backoff, timeouts).
    */
+  /**
+   * Ask how these uploads ended (inner#1367 §4.2a).
+   * @param keys - The keys their finishes were queued under, at most
+   *   `UPLOAD_STATUS_MAX_KEYS`.
+   * @returns One status per key, and how long the server asks to be left
+   *   before the next question, when it said.
+   * @throws {ApiException} When the request fails.
+   */
+  async fetchUploadStatus(
+    keys: readonly string[],
+  ): Promise<{ items: UploadStatus[]; retryAfterSeconds: number | null }> {
+    const res = await request.get<ApiEnvelope<{ items: UploadStatus[] }>>(
+      '/assets/upload-status',
+      // `key=a&key=b`, the repeated form the route reads.
+      { params: { key: [...keys] }, paramsSerializer: { indexes: null } },
+    );
+    const seconds = Number(res.headers['retry-after']);
+    return {
+      items: res.data.data.items,
+      retryAfterSeconds: Number.isFinite(seconds) && seconds > 0 ? seconds : null,
+    };
+  },
+
   async fetchUploadConfig(): Promise<UploadConfig> {
     if (uploadConfigCache) return uploadConfigCache;
     const cfg = await apiGet<UploadConfig>('/assets/upload-config');

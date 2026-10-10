@@ -73,6 +73,7 @@ describe("Assets routes", () => {
           clientMaxAttempts: number;
           clientRetryBaseDelayMs: number;
           uploadIdleTimeoutMs: number;
+          uploadStatusPollSeconds: number;
           assetUrlPrefix: string;
         };
       };
@@ -81,6 +82,7 @@ describe("Assets routes", () => {
         clientMaxAttempts: 2,
         clientRetryBaseDelayMs: 250,
         uploadIdleTimeoutMs: 45000,
+        uploadStatusPollSeconds: 7,
         // What every stored object's public URL starts with: the document
         // body tells its own media from outside links by it (inner#1127 A18).
         assetUrlPrefix: "https://cdn.example/",

@@ -97,6 +97,7 @@ assets.get("/upload-config", requireAuth, async (c) => {
       clientMaxAttempts: upload.client_max_attempts,
       clientRetryBaseDelayMs: upload.client_retry_base_delay_ms,
       uploadIdleTimeoutMs: upload.upload_idle_timeout_seconds * 1000,
+      uploadStatusPollSeconds: upload.upload_status_poll_seconds,
       assetUrlPrefix: store.publicUrl(""),
     },
   });

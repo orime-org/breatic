@@ -71,17 +71,28 @@ afterEach(() => {
 });
 
 describe('finishing an upload our server drives', () => {
-  it('gives back the row the server registered', async () => {
-    apiPost.mockResolvedValue({ assetId: 'a1', fileUrl: 'https://cdn/x.png' });
+  // The finish runs on the server as a job (inner#1367 §4.2a): the answer
+  // says it was queued and under which key, and the ending comes from the
+  // status query.
+  it('gives back the key the queued finish runs under', async () => {
+    apiPost.mockResolvedValue({ storageKey: TICKET.storageKey });
 
-    const outcome = await sendFileAndFinish(
+    const queued = await sendFileAndFinish(
       new File(['x'], 'x.png', { type: 'image/png' }),
       TICKET,
       CFG,
     );
 
-    expect(outcome.fileUrl).toBe('https://cdn/x.png');
+    expect(queued).toEqual({ storageKey: TICKET.storageKey });
     expect(apiPost).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks with the time limit the API client already has, since the answer comes at once', async () => {
+    apiPost.mockResolvedValue({ storageKey: TICKET.storageKey });
+
+    await sendFileAndFinish(new File(['x'], 'x.png', { type: 'image/png' }), TICKET, CFG);
+
+    expect(apiPost.mock.calls[0]?.[2]).toEqual({ headers: { 'x-upload-token': 'a-token' } });
   });
 
   // The grant is void and the bytes are refused: R2 already holds what it is
@@ -90,7 +101,7 @@ describe('finishing an upload our server drives', () => {
   // replaces the status that explains the refusal with whatever the last
   // attempt happens to get.
   it('stops asking once the server has refused for a reason a repeat cannot change', async () => {
-    apiPost.mockRejectedValue(refusal(413));
+    apiPost.mockRejectedValue(refusal(409));
 
     await expect(
       sendFileAndFinish(
@@ -98,7 +109,7 @@ describe('finishing an upload our server drives', () => {
         TICKET,
         CFG,
       ),
-    ).rejects.toMatchObject({ status: 413 });
+    ).rejects.toMatchObject({ status: 409 });
 
     expect(apiPost).toHaveBeenCalledTimes(1);
   });
@@ -123,7 +134,7 @@ describe('finishing an upload our server drives', () => {
   });
 
   it('leaves a finish the ledger refused unmarked, since it settled the row', async () => {
-    apiPost.mockRejectedValue(refusal(415));
+    apiPost.mockRejectedValue(refusal(404));
 
     await expect(
       sendFileAndFinish(

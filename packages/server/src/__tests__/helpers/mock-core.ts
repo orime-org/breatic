@@ -472,7 +472,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // Values intentionally differ from config/storage.yaml so route tests
     // prove the endpoint reads config instead of hardcoding.
     getStorageConfig: () => ({
-      upload: { max_upload_bytes: 1024, client_max_attempts: 2, client_retry_base_delay_ms: 250, upload_idle_timeout_seconds: 45 },
+      upload: { max_upload_bytes: 1024, client_max_attempts: 2, client_retry_base_delay_ms: 250, upload_idle_timeout_seconds: 45, upload_status_poll_seconds: 7 },
     }),
     // Logger
     logger: { ...mocks.logger, child: () => mocks.logger },
