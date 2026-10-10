@@ -6,7 +6,7 @@ import * as React from 'react';
 import { useInlineEditExit } from '@web/lib/inline-edit-exit';
 import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
-import { nodeShell } from '@web/spaces/canvas/node-shell';
+import { flowNodeWrapper } from '@web/spaces/canvas/flow-node-wrapper';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { useCanvasStore } from '@web/stores';
 
@@ -62,8 +62,9 @@ interface UseInlineRenameOptions {
  * The shared inline name-edit state machine behind the canvas node name
  * header and the group name label: double-click to edit, Enter / blur
  * commits a trimmed non-blank value, Escape cancels, and a key that ends the
- * edit gives the keyboard back to the node's shell. Owning the editing /
- * draft state + the double-fire guard here keeps the one rule in one place;
+ * edit gives the keyboard back to the node's ReactFlow wrapper. Owning the
+ * editing / draft state + the double-fire guard here keeps the one rule in one
+ * place;
  * each consumer renders its own input + label markup around it.
  * @param root0 - The current value, length cap, read-only / locked flags, and commit callback.
  * @param root0.current - Display value seeded into the draft when editing starts.
@@ -149,7 +150,7 @@ export function useInlineRename({
   const nodeId = React.useContext(NodeIdContext);
   const exit = useInlineEditExit({
     editing,
-    target: () => (nodeId == null ? null : nodeShell(spaceId, nodeId)),
+    target: () => (nodeId == null ? null : flowNodeWrapper(spaceId, nodeId)),
     commit,
     cancel,
   });

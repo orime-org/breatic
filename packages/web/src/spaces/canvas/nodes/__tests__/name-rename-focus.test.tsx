@@ -3,7 +3,7 @@
 
 /**
  * Where the keyboard goes when a node or group name stops being edited
- * (inner#956): back to the node's shell on Enter and Escape, so arrow keys and
+ * (inner#956): back to the node's ReactFlow wrapper on Enter and Escape, so arrow keys and
  * Enter keep working on the node that was just renamed.
  */
 
@@ -27,21 +27,21 @@ const CANVAS: CanvasContextValue = {
 /**
  * Renders a name editor inside the wrapper ReactFlow stamps for node `n1`.
  * @param children - The name editor.
- * @returns The node's shell.
+ * @returns The node's ReactFlow wrapper.
  */
 function renderInShell(children: React.ReactNode): HTMLElement {
   render(
     <div data-space-outlet='s1'>
       <CanvasContext.Provider value={CANVAS}>
         <NodeIdContext.Provider value='n1'>
-          <div className='react-flow__node' data-id='n1' tabIndex={-1} data-testid='shell'>
+          <div className='react-flow__node' data-id='n1' tabIndex={-1} data-testid='wrapper'>
             {children}
           </div>
         </NodeIdContext.Provider>
       </CanvasContext.Provider>
     </div>,
   );
-  return screen.getByTestId('shell');
+  return screen.getByTestId('wrapper');
 }
 
 const SITES = [
@@ -70,14 +70,14 @@ describe.each(SITES)('ending a $name edit', ({ mount, label, input }) => {
   it.each([
     ['Enter', { key: 'Enter', keyCode: 13 }],
     ['Escape', { key: 'Escape', keyCode: 27 }],
-  ])('gives the node shell the keyboard on %s', (_, init) => {
-    const shell = mount(vi.fn());
+  ])('gives the node wrapper the keyboard on %s', (_, init) => {
+    const wrapper = mount(vi.fn());
     fireEvent.doubleClick(screen.getByTestId(label));
     expect(document.activeElement).toBe(screen.getByTestId(input));
     const notCancelled = fireEvent.keyDown(screen.getByTestId(input), init);
     expect(notCancelled).toBe(false);
     expect(screen.queryByTestId(input)).toBeNull();
-    expect(document.activeElement).toBe(shell);
+    expect(document.activeElement).toBe(wrapper);
   });
 
   it.each([

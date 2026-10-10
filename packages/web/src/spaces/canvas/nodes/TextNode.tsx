@@ -12,7 +12,7 @@ import {
   useCanvasSession,
   useCanvasSessionStore,
 } from '@web/spaces/canvas/canvas-context';
-import { nodeShell } from '@web/spaces/canvas/node-shell';
+import { flowNodeWrapper } from '@web/spaces/canvas/flow-node-wrapper';
 import { endKeptEditor } from '@web/spaces/canvas/kept-editors';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
@@ -118,7 +118,7 @@ export const TextNode = React.memo(function TextNode({
     (focus: 'return-focus' | 'keep-focus'): void => {
       endWriting();
       if (focus === 'keep-focus' || !nodeId) return;
-      nodeShell(spaceId, nodeId)?.focus();
+      flowNodeWrapper(spaceId, nodeId)?.focus();
     },
     [endWriting, nodeId, spaceId],
   );
@@ -221,7 +221,7 @@ export const TextNode = React.memo(function TextNode({
     // never attach to exactly the nodes most in need of a way in. ReactFlow
     // stamps `data-id` on the wrapper it makes focusable, so this is the same
     // element either way.
-    const shell = nodeShell(spaceId, nodeId);
+    const shell = flowNodeWrapper(spaceId, nodeId);
     if (!shell) return undefined;
     /**
      * Open the editor when Enter is pressed on the node itself.

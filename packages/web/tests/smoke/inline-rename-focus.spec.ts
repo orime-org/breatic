@@ -22,7 +22,7 @@ const spaces: string[] = [];
 /**
  * Describes the focused element in a few fields a case can compare.
  * @returns The test id, the Space outlet it is in, whether it carries the
- *   content-container mark, and the node id when it is a canvas node shell.
+ *   content-container mark, and the node id when it is a canvas node wrapper.
  */
 async function focused(): Promise<{
   testId: string | null;
