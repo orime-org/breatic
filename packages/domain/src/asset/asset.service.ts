@@ -38,7 +38,6 @@
  */
 
 import {
-  getStorageConfig,
   NotFoundError,
   projectsRepo,
 } from "@breatic/core";
@@ -47,7 +46,6 @@ import {
   type RegisterAssetInput,
 } from "@domain/asset/asset.repo.js";
 import { t } from "@breatic/shared";
-import type { MediaLimits } from "@breatic/shared";
 import type { StudioAssetEntity } from "@breatic/shared";
 import { queueForReclaim } from "@domain/asset/storage-reclaim.repo.js";
 
@@ -214,23 +212,4 @@ export function detectAssetKind(
     return "document";
   }
   return "file";
-}
-
-/**
- * How long the media container gets, out of `config/storage.yaml`.
- *
- * It travels on the request because the Worker holds no configuration of its
- * own. Read in one place, so both lanes that reach the Worker hand it the same
- * pair. How long the caller waits for the whole request is not here: that is
- * the transport's, and naming a second figure for it only copies the one it
- * already applies.
- * @returns The deadlines for the run and for each tool inside it.
- */
-export function mediaLimits(): MediaLimits {
-  const { ingest } = getStorageConfig();
-  return {
-    runDeadlineMs: ingest.container_run_deadline_ms,
-    toolTimeoutMs: ingest.container_tool_timeout_ms,
-    uprightJpegQuality: ingest.upright_jpeg_quality,
-  };
 }

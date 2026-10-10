@@ -28,7 +28,6 @@ import {
 import { describe, it, expect, vi } from "vitest";
 import {
   signUploadTicket,
-  type MediaLimits,
   type UploadTicketPayload,
 } from "@breatic/shared";
 import { previewKeyFor } from "@breatic/shared";
@@ -93,7 +92,7 @@ async function uploadedThrough(
       partSize: PART_SIZE,
       contentType: "video/mp4",
       expiresAt: Date.now() + 300_000,
-      sessionTokenTtlSeconds: 900,
+      deadlineAt: Date.now() + 7_200_000,
       ...over,
     },
     env.INGEST_SHARED_SECRET,
@@ -166,7 +165,7 @@ async function complete(
   secret: string | null = env.INGEST_SHARED_SECRET,
   coverKey?: string,
   run?: {
-    limits?: MediaLimits;
+    deadlineAt?: number;
     media?: Env["MEDIA"];
     bucket?: Env["BUCKET"];
     deferMediaRead?: boolean;
@@ -185,7 +184,7 @@ async function complete(
       body: JSON.stringify({
         parts,
         ...(coverKey !== undefined && { coverKey }),
-        ...(run?.limits !== undefined && { limits: run.limits }),
+        ...(run?.deadlineAt !== undefined && { deadlineAt: run.deadlineAt }),
         ...(run?.deferMediaRead !== undefined && {
           deferMediaRead: run.deferMediaRead,
         }),
@@ -487,7 +486,7 @@ describe("a cover asked for on something that has no frame", () => {
     const run = containerAnswering(FILM, new Uint8Array([0x89, 0x50, 7, 7]));
 
     await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, coverKey, {
-      limits: LIMITS,
+      deadlineAt: DEADLINE_AT,
       media: run.media,
     });
 
@@ -519,7 +518,8 @@ describe("a cover asked for on something that has no frame", () => {
   });
 });
 
-const LIMITS: MediaLimits = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
+/** When the upload's task runs out, as our server worked it out. */
+const DEADLINE_AT = Date.now() + 7_200_000;
 
 /** One report of a 1920x1080 film, the shape ffprobe answers with. */
 const FILM: ProbeReport = {
@@ -549,7 +549,7 @@ describe("an upload whose container answers", () => {
       parts,
       env.INGEST_SHARED_SECRET,
       coverKey,
-      { limits: LIMITS, media: run.media },
+      { deadlineAt: DEADLINE_AT, media: run.media },
     );
 
     expect(response.status).toBe(200);
@@ -578,7 +578,7 @@ describe("an upload whose container answers", () => {
     const run = containerAnswering(FILM, new Uint8Array([0x89, 0x50]));
 
     await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, coverKey, {
-      limits: LIMITS,
+      deadlineAt: DEADLINE_AT,
       media: run.media,
     });
 
@@ -603,7 +603,7 @@ describe("an upload whose container answers", () => {
     );
 
     await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, coverKey, {
-      limits: LIMITS,
+      deadlineAt: DEADLINE_AT,
       media: run.media,
     });
 
@@ -630,7 +630,7 @@ describe("an upload whose container answers", () => {
       parts,
       env.INGEST_SHARED_SECRET,
       coverKey,
-      { limits: LIMITS, media: run.media },
+      { deadlineAt: DEADLINE_AT, media: run.media },
     );
 
     expect(await response.json()).toMatchObject({
@@ -646,23 +646,20 @@ describe("an upload whose container answers", () => {
   });
 
   // What keeps a video's bytes from reaching anything: the run is authorised
-  // for the one key it is about, and the tool deadline it is held to is the
-  // caller's, not one this Worker holds a second copy of.
+  // for the one key it is about, and the deadline it is held to is the task's,
+  // not one this Worker holds of its own.
   it("authorises the run for its own key alone, and passes the deadline on", async () => {
     const { storageKey, uploadId, token, parts } = await uploadedThrough(2);
     const coverKey = `video/2026-09-05/${seq++}_asked_cover.png`;
     const run = containerAnswering(FILM, null);
 
     await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, coverKey, {
-      limits: LIMITS,
+      deadlineAt: DEADLINE_AT,
       media: run.media,
     });
 
     expect(run.authorisedFor).toBe(storageKey);
-    expect(run.asked).toMatchObject({
-      wantCover: true,
-      toolTimeoutMs: LIMITS.toolTimeoutMs,
-    });
+    expect(run.asked).toMatchObject({ wantCover: true, deadlineAt: DEADLINE_AT });
     expect(run.asked?.objectUrl).toContain(storageKey);
   });
 
@@ -679,7 +676,7 @@ describe("an upload whose container answers", () => {
       parts,
       env.INGEST_SHARED_SECRET,
       coverKey,
-      { limits: LIMITS, media: run.media },
+      { deadlineAt: DEADLINE_AT, media: run.media },
     );
 
     expect(await response.json()).toMatchObject({
@@ -730,7 +727,7 @@ describe("an upload whose container answers", () => {
     });
 
     expect(errors).toHaveBeenCalledWith(
-      "ingest_media_limits_missing",
+      "ingest_media_deadline_missing",
       expect.anything(),
     );
     errors.mockRestore();
@@ -750,7 +747,7 @@ describe("an upload whose container answers", () => {
       parts,
       env.INGEST_SHARED_SECRET,
       undefined,
-      { limits: LIMITS, media: run.media, deferMediaRead: true },
+      { deadlineAt: DEADLINE_AT, media: run.media, deferMediaRead: true },
     );
 
     expect(response.status).toBe(200);
@@ -976,7 +973,7 @@ describe("a container carrying only sound", () => {
       parts,
       env.INGEST_SHARED_SECRET,
       undefined,
-      { limits: LIMITS, media: run.media },
+      { deadlineAt: DEADLINE_AT, media: run.media },
     );
 
     expect(response.status).toBe(200);
@@ -998,7 +995,7 @@ describe("a container carrying only sound", () => {
       parts,
       env.INGEST_SHARED_SECRET,
       undefined,
-      { limits: LIMITS, media: run.media },
+      { deadlineAt: DEADLINE_AT, media: run.media },
     );
 
     expect(await response.json()).toMatchObject({ contentType: "video/mp4" });
@@ -1032,7 +1029,7 @@ describe("a container carrying only sound", () => {
       parts,
       env.INGEST_SHARED_SECRET,
       undefined,
-      { limits: LIMITS, media: run.media },
+      { deadlineAt: DEADLINE_AT, media: run.media },
     );
 
     expect(await response.json()).toMatchObject({ contentType: "audio/mp4" });
@@ -1062,7 +1059,7 @@ describe("a container carrying only sound", () => {
       parts,
       env.INGEST_SHARED_SECRET,
       undefined,
-      { limits: LIMITS, media: run.media },
+      { deadlineAt: DEADLINE_AT, media: run.media },
     );
 
     expect(run.asked).not.toBeNull();
@@ -1114,7 +1111,7 @@ describe("a re-delivered finish", () => {
       parts,
       env.INGEST_SHARED_SECRET,
       coverKey,
-      { limits: LIMITS, media: first.media },
+      { deadlineAt: DEADLINE_AT, media: first.media },
     );
 
     expect(await opened.json()).toMatchObject({
@@ -1129,7 +1126,7 @@ describe("a re-delivered finish", () => {
       parts,
       env.INGEST_SHARED_SECRET,
       coverKey,
-      { limits: LIMITS, media: second.media },
+      { deadlineAt: DEADLINE_AT, media: second.media },
     );
 
     expect(await replayed.json()).toMatchObject({
@@ -1156,7 +1153,7 @@ describe("a re-delivered finish", () => {
       parts,
       env.INGEST_SHARED_SECRET,
       coverKey,
-      { limits: LIMITS, media: first.media },
+      { deadlineAt: DEADLINE_AT, media: first.media },
     );
 
     expect(await opened.json()).toMatchObject({ contentType: "video/mp4" });
@@ -1169,7 +1166,7 @@ describe("a re-delivered finish", () => {
       env.INGEST_SHARED_SECRET,
       coverKey,
       {
-        limits: LIMITS,
+        deadlineAt: DEADLINE_AT,
         media: second.media,
         bucket: bucketRefusingRangedReads(),
       },
@@ -1213,7 +1210,7 @@ describe("an upload whose preview is cut", () => {
       parts,
       env.INGEST_SHARED_SECRET,
       undefined,
-      { limits: LIMITS, media: run.media },
+      { deadlineAt: DEADLINE_AT, media: run.media },
     );
 
     expect(response.status).toBe(200);
@@ -1229,7 +1226,7 @@ describe("an upload whose preview is cut", () => {
     const run = containerAnswering(FILM, pngHeader(1920, 1080), PREVIEW_BYTES);
 
     await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, coverKey, {
-      limits: LIMITS,
+      deadlineAt: DEADLINE_AT,
       media: run.media,
     });
 
@@ -1237,23 +1234,20 @@ describe("an upload whose preview is cut", () => {
     expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(PREVIEW_BYTES);
   });
 
-  // The window is stated as an instant so the container can see what a cold
-  // start has already spent of it.
-  it("tells the container when the whole run has to be answered", async () => {
+  // The window is the task's own instant (inner#1367), passed through as
+  // it arrived, so the container can see what a cold start has spent of it.
+  it("tells the container the task's deadline as it arrived", async () => {
     const { uploadId, token, parts } = await uploadedThrough(2, {
       contentType: "image/png",
     });
     const run = containerAnswering(STILL, null, PREVIEW_BYTES);
-    const before = Date.now();
 
     await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, undefined, {
-      limits: LIMITS,
+      deadlineAt: DEADLINE_AT,
       media: run.media,
     });
 
-    const deadlineAt = run.asked?.deadlineAt ?? 0;
-    expect(deadlineAt).toBeGreaterThanOrEqual(before + LIMITS.runDeadlineMs);
-    expect(deadlineAt).toBeLessThanOrEqual(Date.now() + LIMITS.runDeadlineMs);
+    expect(run.asked?.deadlineAt).toBe(DEADLINE_AT);
   });
 
   // The preview runs on whatever the run has left (inner#1339): the request
@@ -1265,7 +1259,7 @@ describe("an upload whose preview is cut", () => {
     const run = containerAnswering(STILL, null, PREVIEW_BYTES);
 
     await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, undefined, {
-      limits: LIMITS,
+      deadlineAt: DEADLINE_AT,
       media: run.media,
     });
 
@@ -1285,7 +1279,7 @@ describe("an upload whose preview is cut", () => {
       parts,
       env.INGEST_SHARED_SECRET,
       undefined,
-      { limits: LIMITS, media: run.media },
+      { deadlineAt: DEADLINE_AT, media: run.media },
     );
 
     expect(await response.json()).toMatchObject({ width: 1200, height: 800 });

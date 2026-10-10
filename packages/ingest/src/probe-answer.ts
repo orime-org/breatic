@@ -46,20 +46,15 @@ export interface ProbeRequest {
   /** Whether to lift a cover frame, decided from the ticket's content type. */
   wantCover: boolean;
   /**
-   * How long one tool may run, reads included. It comes off
-   * `config/storage.yaml`, which checks it against the deadline the Worker
-   * holds the whole run to.
-   */
-  toolTimeoutMs: number;
-  /**
    * Whether to cut a preview: of the cover for a video, of the object else.
    * It runs on whatever is left before `deadlineAt`.
    */
   wantPreview: boolean;
   /**
-   * When the Worker stops waiting for this answer, in epoch ms. An instant
-   * rather than a span, so time a cold start spent before the request arrived
-   * is counted.
+   * When the task this run serves runs out, in epoch ms (inner#1367). Every
+   * tool in the run is held to it and to nothing of its own. An instant rather
+   * than a span, so time a cold start spent before the request arrived is
+   * counted.
    */
   deadlineAt: number;
   /**

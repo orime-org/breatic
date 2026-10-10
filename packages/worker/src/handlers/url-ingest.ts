@@ -20,10 +20,10 @@
  */
 
 import type { Job } from "bullmq";
-import { coverKeyFor, env, getStorageConfig, logger } from "@breatic/core";
+import { coverKeyFor, env, getNodeTaskConfig, getStorageConfig, logger } from "@breatic/core";
 import {
-  assetService,
   ingestReportService,
+  nodeTaskService,
   uploadTicketService,
 } from "@breatic/domain";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
@@ -33,6 +33,7 @@ import {
   reduceMediaType,
   isUploadableMediaType,
   UploadHttpError,
+  signalUntil,
   INGEST_REFUSED_UNNAMED,
   INGEST_NO_ANSWER,
   INGEST_NOT_STARTED,
@@ -123,6 +124,38 @@ async function fail(storageKey: string, reason: string): Promise<void> {
 }
 
 /**
+ * When this transfer's task runs out: the end of the row the route opened on
+ * the node. A job whose row is gone gets the same two hours from when it was
+ * queued, the moment the row would have started counting.
+ * @param job - The queued submission.
+ * @returns The deadline in epoch milliseconds.
+ */
+async function urlIngestDeadline(job: Job<UrlIngestJobData>): Promise<number> {
+  const row = await nodeTaskService.findByStorageKey(job.data.storageKey);
+  return row !== null
+    ? row.startedAt.getTime() + row.budgetMs
+    : job.timestamp + getNodeTaskConfig().default_budget_ms;
+}
+
+/**
+ * Settle a transfer whose job ended without its handler settling it.
+ *
+ * The queue does not deliver a transfer twice, so a job whose process went
+ * away mid-transfer (a deploy, a crash) is failed the next time a worker picks
+ * it up, carrying the reason the queue recorded when it judged it stalled. The
+ * handler never ran that time, so this is the one place its grant and its row
+ * can be settled; without it the node shows a running task until the deadline.
+ * @param job - The failed job.
+ * @returns Whether this was a stalled job, settled here.
+ * @throws {Error} When settling itself fails.
+ */
+export async function settleStalledUrlIngest(job: Job<UrlIngestJobData>): Promise<boolean> {
+  if (!job.deferredFailure) return false;
+  await fail(job.data.storageKey, INGEST_NO_ANSWER);
+  return true;
+}
+
+/**
  * Have the ingest Worker pull the address this job names into R2.
  *
  * Never throws for a transfer that failed, from signing the ticket onward:
@@ -136,6 +169,7 @@ async function fail(storageKey: string, reason: string): Promise<void> {
 export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
   const { storageKey, studioId, url, userId, projectId, nodeId } = job.data;
   const { upload, ingest } = getStorageConfig();
+  const deadlineAt = await urlIngestDeadline(job);
 
   let target;
   try {
@@ -150,6 +184,7 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
       contentType: TYPE_UNKNOWN,
       typeFromSource: true,
       expiresAt: Date.now() + ingest.ticket_expires_seconds * 1000,
+      deadlineAt,
     });
   } catch (err) {
     // Nothing was fetched, so neither the address nor its source is what to
@@ -165,18 +200,17 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
 
   let measured;
   try {
-    measured = await fetchUrlToIngest(
-      url,
-      target,
-      env.INGEST_SHARED_SECRET,
+    measured = await fetchUrlToIngest(url, target, env.INGEST_SHARED_SECRET, {
       // Named on every call rather than only for video. Which media have a
       // frame to lift is decided from the type, and nobody on this side knows
       // the type until the transfer has already happened — so the Worker
       // judges it there, against the type it stored the object under.
-      coverKeyFor(storageKey),
-      assetService.mediaLimits(),
-      ingest.url_fetch_deadline_ms,
-    );
+      coverKey: coverKeyFor(storageKey),
+      // The transfer has the task's two hours and nothing shorter (inner#1367).
+      // A transfer cut there is settled as expired by the report.
+      deadlineAt,
+      signal: signalUntil(deadlineAt),
+    });
   } catch (err) {
     // An UploadHttpError exists only because an answer arrived, so a missing
     // name on it is the Worker refusing without saying why. Only the absence

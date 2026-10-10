@@ -32,8 +32,7 @@ const CONFIG = {
   maxUploadBytes: 2147483648,
   clientMaxAttempts: 1,
   clientRetryBaseDelayMs: 1,
-  clientRequestTimeoutMs: 30000,
-  clientPutMinBytesPerSec: 65536,
+  uploadIdleTimeoutMs: 60000,
 };
 
 /** What a full account answers with, shaped the way `apiGet` hands it over. */

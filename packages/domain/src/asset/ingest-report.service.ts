@@ -34,6 +34,7 @@ import * as assetRepo from "@domain/asset/asset.repo.js";
 import * as assetService from "@domain/asset/asset.service.js";
 import * as nodeHistoryService from "@domain/node-history/node-history.service.js";
 import * as nodeTaskService from "@domain/node-task/node-task.service.js";
+import { failureOutcome } from "@domain/node-task/failure-outcome.js";
 import { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
 import {
   getStorageAdapter,
@@ -319,7 +320,8 @@ async function announceFailure(
  * on — leaves nothing to settle and nothing to publish.
  * @param grant - The grant, which names the node and the key.
  * @param outcome - Where the row lands, and what rides along.
- * @param outcome.outcome - `done` or `failed`.
+ * @param outcome.outcome - `done` or `failed`; a failure past the task's
+ *   deadline lands as `expired`.
  * @param outcome.nodeHistoryId - The history row holding the result.
  * @param outcome.errorMessage - What the list shows for a failure.
  * @param outcome.result - The content fields, on the transition into `done`.
@@ -337,16 +339,21 @@ async function settleUploadTask(
 ): Promise<boolean> {
   const task = await nodeTaskService.findByStorageKey(grant.storageKey);
   if (task === null) return false;
+  // Every call on an upload's chain is cut at the task's deadline, so a
+  // failure that arrives past it ends the task the way the deadline does.
+  const expired =
+    outcome.outcome === "failed" &&
+    failureOutcome(task.startedAt.getTime() + task.budgetMs) === "expired";
 
   const settled = await nodeTaskService.settle({
     taskId: task.id,
-    outcome: outcome.outcome,
+    outcome: expired ? "expired" : outcome.outcome,
     ...(outcome.nodeHistoryId !== undefined && {
       nodeHistoryId: outcome.nodeHistoryId,
     }),
-    ...(outcome.errorMessage !== undefined && {
-      errorMessage: outcome.errorMessage,
-    }),
+    ...(expired
+      ? { errorMessage: "expired" }
+      : outcome.errorMessage !== undefined && { errorMessage: outcome.errorMessage }),
   });
 
   // The content rides along whenever the row holds this outcome, a repeated

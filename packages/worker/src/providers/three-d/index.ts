@@ -74,8 +74,8 @@ function getTransport(providerName: string): typeof wavespeedTransport.generate 
  * @param prompt - 3D object description prompt
  * @param modelName - Model name (required)
  * @param params - Additional parameters passed to the model family
- * @param resume - Worker resume context for at-most-once submit (#1628)
- * @param deadlineAt - The task's two-hour deadline, in epoch milliseconds
+ * @param resume - Worker resume context for at-most-once submit (#1628),
+ *   carrying the task's two-hour deadline
  * @returns Object with url, model, and cost (actual API cost in USD)
  * @throws {StillRunning} while the task is still going
  * @throws {TaskDeadlinePassed} when the deadline has passed before a submit
@@ -86,7 +86,6 @@ export async function generateAsync(
   modelName: string | undefined,
   params: Record<string, unknown>,
   resume: ResumeContext,
-  deadlineAt: number,
 ): Promise<{ url: string; model: string; cost: number }> {
   const resolved = resolveModel("three_d", modelName);
   const family = _MODEL_FAMILIES.get(resolved.modelName);
@@ -108,7 +107,7 @@ export async function generateAsync(
   const release = await acquireSemaphore(resolved.providerName, resolved.maxConcurrency);
 
   try {
-    return await transport(formattedPrompt, resolved, apiParams, resume, deadlineAt);
+    return await transport(formattedPrompt, resolved, apiParams, resume);
   } finally {
     release();
   }

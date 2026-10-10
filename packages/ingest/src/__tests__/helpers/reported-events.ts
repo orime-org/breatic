@@ -103,7 +103,7 @@ export async function pull(
       partSize: 5 * 1024 * 1024,
       contentType: "image/png",
       expiresAt: Date.now() + 300_000,
-      sessionTokenTtlSeconds: 900,
+      deadlineAt: Date.now() + 7_200_000,
       ...over,
     },
     env.INGEST_SHARED_SECRET,
@@ -139,7 +139,7 @@ export async function openUpload(): Promise<{ uploadId: string; token: string }>
       partSize: 5 * 1024 * 1024,
       contentType: "video/mp4",
       expiresAt: Date.now() + 300_000,
-      sessionTokenTtlSeconds: 900,
+      deadlineAt: Date.now() + 7_200_000,
     },
     env.INGEST_SHARED_SECRET,
   );

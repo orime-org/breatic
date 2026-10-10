@@ -117,7 +117,7 @@ export {
 export { runGracefulShutdown } from "@core/infra/graceful-shutdown.js";
 export {
   idleSocketDispatcher,
-  deadlineBoundDispatcher,
+  installDeadlineBoundDispatcher,
 } from "@core/infra/idle-socket-dispatcher.js";
 export type { GracefulShutdownDeps } from "@core/infra/graceful-shutdown.js";
 export { checkInfraReady } from "@core/infra/connectivity-check.js";

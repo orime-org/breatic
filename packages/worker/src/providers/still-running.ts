@@ -11,6 +11,8 @@
  * budget (`default_budget_ms` in `config/node-tasks.yaml`).
  */
 
+import { signalUntil } from "@breatic/shared";
+
 /**
  * This pickup cannot finish its work yet — the upstream work is still going,
  * the question about it got no usable answer, or no reading place was free:
@@ -47,4 +49,17 @@ export class TaskDeadlinePassed extends Error {
  */
 export function assertBeforeDeadline(deadlineAt: number): void {
   if (Date.now() >= deadlineAt) throw new TaskDeadlinePassed();
+}
+
+/**
+ * The task's deadline as the signal every call to an upstream carries
+ * (inner#1367). Past the deadline it is already raised, so a call made then
+ * fails at once and the run ends the way any call past it does.
+ * @param deadlineAt - The task's deadline, in epoch milliseconds.
+ * @returns The signal.
+ */
+export function deadlineSignal(deadlineAt: number): AbortSignal {
+  return Date.now() < deadlineAt
+    ? signalUntil(deadlineAt)
+    : AbortSignal.abort(new TaskDeadlinePassed());
 }

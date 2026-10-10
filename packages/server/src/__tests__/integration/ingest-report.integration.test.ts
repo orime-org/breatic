@@ -196,7 +196,7 @@ async function report(
       storageKey,
       uploadId: FINISH_UPLOAD_ID,
       contentType,
-      sessionTokenTtlSeconds: 900,
+      deadlineAt: Date.now() + 7_200_000,
       expiresAt: Date.now() + 900_000,
       partSize: 8 * 1024 * 1024,
       totalParts: ONE_PART.length,
@@ -1583,6 +1583,24 @@ describe("a finish this server drove — the task it settles", () => {
     expect(rows[0]!.error_message).not.toBeNull();
   });
 
+  // Every call on the upload's chain is cut at the task's deadline, so an
+  // abort that arrives past it is the deadline's doing whatever it names.
+  it("settles the row as expired when the abort arrives past the task's deadline", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    await sql`
+      UPDATE node_tasks SET started_at = now() - (budget_ms + 1000) * interval '1 millisecond'
+      WHERE node_id = ${nodeId}
+    `;
+
+    await report({ storage_key: key, outcome: "aborted" });
+
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.status).toBe("expired");
+    expect(rows[0]!.error_message).toBe("expired");
+  });
+
   // Four failures answer the same status at the edge, and one more never
   // reaches it at all. What the list shows has to say which of them happened,
   // or every one of them reads to the user as the source being at fault.
@@ -1594,11 +1612,11 @@ describe("a finish this server drove — the task it settles", () => {
     await ingestReportService.applyIngestReport({
       storageKey: key,
       outcome: "aborted",
-      reason: "source_too_slow",
+      reason: "ingest_no_answer",
     });
 
     const rows = await tasksOn(nodeId);
-    expect(rows[0]!.error_message).toBe("source_too_slow");
+    expect(rows[0]!.error_message).toBe("ingest_no_answer");
   });
 
   // The edge is the one place that ever sees these bytes, so "we do not take
@@ -1833,7 +1851,7 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
         storageKey,
         uploadId: UPLOAD_ID,
         contentType: "image/png",
-        sessionTokenTtlSeconds: 900,
+        deadlineAt: Date.now() + 7_200_000,
         expiresAt: Date.now() + 900_000,
         partSize: 5 * 1024 * 1024,
         totalParts: 1,
@@ -2114,6 +2132,7 @@ describe("an upload our own worker drove", () => {
         taskType: "image",
         ext: ".png",
         contentType: "image/png",
+        deadlineAt: Date.now() + 3_600_000,
       },
     );
 
@@ -2145,6 +2164,7 @@ describe("an upload our own worker drove", () => {
         taskType: "image",
         ext: ".png",
         contentType: "image/png",
+        deadlineAt: Date.now() + 3_600_000,
       },
     );
 
@@ -2173,6 +2193,7 @@ describe("an upload our own worker drove", () => {
         taskType: "image",
         ext: ".png",
         contentType: "image/png",
+        deadlineAt: Date.now() + 3_600_000,
       },
     );
 

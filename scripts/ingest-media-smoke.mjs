@@ -76,7 +76,7 @@ try {
     const answer = await fetch('http://127.0.0.1:8080/probe', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ objectUrl: `http://127.0.0.1:${origin.address().port}/video.mp4`,
-        wantCover, toolTimeoutMs: 10000 }), signal: AbortSignal.timeout(25000),
+        wantCover, deadlineAt: Date.now() + 25000 }), signal: AbortSignal.timeout(25000),
     });
     assert.equal(answer.status, 200);
     const form = await answer.formData();
@@ -105,7 +105,7 @@ try {
     upright.answer = 200;
     const answer = await fetch('http://127.0.0.1:8080/probe', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ objectUrl: photoUrl, wantCover: false, wantPreview: true, toolTimeoutMs: 10000,
+      body: JSON.stringify({ objectUrl: photoUrl, wantCover: false, wantPreview: true,
         deadlineAt: Date.now() + 25000,
         upright: { writeUrl, contentType: 'image/jpeg', lossless: false, quality: 90 } }),
       signal: AbortSignal.timeout(25000),
@@ -128,7 +128,7 @@ try {
     upright.answer = refused;
     const answer = await fetch('http://127.0.0.1:8080/probe', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ objectUrl: photoUrl, wantCover: false, wantPreview: true, toolTimeoutMs: 10000,
+      body: JSON.stringify({ objectUrl: photoUrl, wantCover: false, wantPreview: true,
         deadlineAt: Date.now() + 25000,
         upright: { writeUrl, contentType: 'image/jpeg', lossless: false, quality: 90 } }),
       signal: AbortSignal.timeout(25000),

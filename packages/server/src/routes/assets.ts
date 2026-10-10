@@ -24,6 +24,7 @@ import {
   isUploadableMediaType,
   UploadHttpError,
   INGEST_REFUSED_UNNAMED,
+  signalUntil,
   t,
   type NodeTaskAction,
 } from "@breatic/shared";
@@ -89,8 +90,7 @@ assets.get("/upload-config", requireAuth, async (c) => {
       maxUploadBytes: upload.max_upload_bytes,
       clientMaxAttempts: upload.client_max_attempts,
       clientRetryBaseDelayMs: upload.client_retry_base_delay_ms,
-      clientRequestTimeoutMs: upload.client_request_timeout_ms,
-      clientPutMinBytesPerSec: upload.client_put_min_bytes_per_sec,
+      uploadIdleTimeoutMs: upload.upload_idle_timeout_seconds * 1000,
       assetUrlPrefix: store.publicUrl(""),
     },
   });
@@ -348,6 +348,10 @@ assets.post(
     const ext = safeExt(body.filename);
 
     const expiresAt = Date.now() + ingest.ticket_expires_seconds * 1000;
+    // The upload's two hours, the same ones its row is judged by (inner#1367).
+    // The ticket and every call the Worker makes for it end there.
+    const budgetMs = getNodeTaskConfig().default_budget_ms;
+    const deadlineAt = Date.now() + budgetMs;
 
     // The grant, and the task row this upload is on whatever node it lands on,
     // opened before the ticket that starts it (#186, design §4.6.5). Nothing
@@ -376,7 +380,7 @@ assets.post(
         },
       },
       {
-        budgetMs: getNodeTaskConfig().default_budget_ms,
+        budgetMs,
         ...uploadRowOf(body),
       },
     );
@@ -388,6 +392,7 @@ assets.post(
       declaredSize: body.size,
       contentType: body.content_type,
       expiresAt,
+      deadlineAt,
     });
 
     logger.info(
@@ -531,9 +536,14 @@ assets.post(
         // nobody here knows it yet. The key is derived from the object's own,
         // so re-delivering this request names the same place rather than
         // leaving a second frame behind.
-        coverKeyFor(storageKey),
-        assetService.mediaLimits(),
-        !mediaReadService.readsMediaAtFinish(claim.assetSource),
+        {
+          coverKey: coverKeyFor(storageKey),
+          // The upload's two hours, signed into the token by the ticket
+          // (inner#1367); finishing it is held to them and nothing shorter.
+          deadlineAt: session.deadlineAt,
+          signal: signalUntil(session.deadlineAt),
+          deferMediaRead: !mediaReadService.readsMediaAtFinish(claim.assetSource),
+        },
       );
     } catch (err) {
       // Both ways this can go wrong end here: the Worker refused, or it

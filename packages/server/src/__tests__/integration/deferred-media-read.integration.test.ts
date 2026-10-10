@@ -68,6 +68,7 @@ import {
   setSession,
   sessionCookieName,
   loadLocales,
+  getNodeTaskConfig,
 } from "@breatic/core";
 import { assetRepo, MEDIA_READ_QUEUE } from "@breatic/domain";
 import { signSessionToken } from "@breatic/shared";
@@ -195,7 +196,7 @@ async function finish(
       storageKey,
       uploadId: UPLOAD_ID,
       contentType: "image/jpeg",
-      sessionTokenTtlSeconds: 900,
+      deadlineAt: Date.now() + 7_200_000,
       expiresAt: Date.now() + 900_000,
       partSize: 5 * 1024 * 1024,
       totalParts: 1,
@@ -232,7 +233,7 @@ async function rowOf(assetId: string): Promise<{
 }
 
 describe("which finishes ask the Worker for no media read", () => {
-  it("a project cover asks for none, and still sends its deadlines", async () => {
+  it("a project cover asks for none, and still sends its deadline", async () => {
     const admin = await seedAdmin();
     const key = await keyFor(admin.cookie, {
       project_id: admin.projectId,
@@ -243,7 +244,12 @@ describe("which finishes ask the Worker for no media read", () => {
 
     expect(res.status).toBe(200);
     expect(sent.deferMediaRead).toBe(true);
-    expect(sent.limits).toBeDefined();
+    // The upload's two hours, signed into its token by the ticket (inner#1367).
+    expect(sent.deadlineAt as number).toBeGreaterThan(Date.now());
+    expect(sent.deadlineAt as number).toBeLessThanOrEqual(
+      Date.now() + getNodeTaskConfig().default_budget_ms,
+    );
+    expect(sent).not.toHaveProperty("limits");
   });
 
   it("a studio avatar asks for none", async () => {

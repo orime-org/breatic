@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { previewSource, previewTimeLeft, PREVIEW_MARGIN_MS } from "@ingest/preview-step.js";
+import { previewSource } from "@ingest/preview-step.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 
 const STILL: ProbeReport = {
@@ -81,18 +81,14 @@ describe("what the preview is cut from", () => {
 describe("whether there is time to cut it", () => {
   const ask = { wantPreview: true, wantCover: false, cover: null, report: STILL };
 
-  it("cuts it while anything is left before the deadline beyond the margin", () => {
-    expect(
-      previewSource({ ...ask, now: NOW, deadlineAt: NOW + PREVIEW_MARGIN_MS + 1 }),
-    ).toBe("object");
+  // The task's deadline is the only bound (inner#1367): no time is kept back
+  // before it.
+  it("cuts it while anything is left before the deadline", () => {
+    expect(previewSource({ ...ask, now: NOW, deadlineAt: NOW + 1 })).toBe("object");
   });
 
-  // A cold start spends the window before the container sees the request, and
-  // the deadline is an instant so that spending shows here.
-  it("skips it when a cold start has spent the window", () => {
-    expect(
-      previewSource({ ...ask, now: NOW, deadlineAt: NOW + PREVIEW_MARGIN_MS }),
-    ).toBe("late");
+  it("skips it once the deadline has come", () => {
+    expect(previewSource({ ...ask, now: NOW, deadlineAt: NOW })).toBe("late");
   });
 
   it("says nothing about time for a video whose cover did not come out", () => {
@@ -105,15 +101,5 @@ describe("whether there is time to cut it", () => {
     expect(
       previewSource({ ...ask, wantPreview: false, now: NOW, deadlineAt: NOW }),
     ).toBeNull();
-  });
-});
-
-describe("how long the preview may run", () => {
-  // inner#1339: a 1080x64800 PNG takes vips about a minute on the smallest
-  // container, so the preview gets the whole rest of the run.
-  it("is everything left before the deadline but the margin", () => {
-    expect(previewTimeLeft({ now: NOW, deadlineAt: NOW + 120_000 })).toBe(
-      120_000 - PREVIEW_MARGIN_MS,
-    );
   });
 });

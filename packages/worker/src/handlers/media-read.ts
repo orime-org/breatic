@@ -8,7 +8,7 @@
  */
 
 import type { Job } from "bullmq";
-import { logger } from "@breatic/core";
+import { getNodeTaskConfig, logger } from "@breatic/core";
 import { mediaReadService, type MediaReadJob } from "@breatic/domain";
 
 /**
@@ -20,7 +20,10 @@ import { mediaReadService, type MediaReadJob } from "@breatic/domain";
  */
 export async function runMediaRead(job: Job<MediaReadJob>): Promise<void> {
   const { assetId } = job.data;
-  const result = await mediaReadService.readAndFillMedia(assetId);
+  // No task row stands behind a read, so its two hours count from when it was
+  // queued, the way a task with no node's rows does (inner#1367).
+  const deadlineAt = job.timestamp + getNodeTaskConfig().default_budget_ms;
+  const result = await mediaReadService.readAndFillMedia(assetId, deadlineAt);
   if (result === "nothing_found") {
     logger.warn({ assetId }, "media_read_nothing_found");
   }

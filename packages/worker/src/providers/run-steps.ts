@@ -16,6 +16,7 @@
  */
 
 import { logger } from "@breatic/core";
+import { signalUntil } from "@breatic/shared";
 import type { upstreamCloneRepo, upstreamStepRepo, FullModelEntry } from "@breatic/domain";
 
 import { acquireSemaphore, resolveModel, type ResolvedModel } from "@worker/providers/shared.js";
@@ -145,6 +146,7 @@ async function predict(
       persistTaskId: (id: string): Promise<void> => deps.steps.markSubmitted(step.id, id),
       externalTaskId: stepLabel(ctx, step),
       retryStarting: ctx.retryStarting,
+      deadlineAt: ctx.deadlineAt,
     });
   } catch (err) {
     if (err instanceof UpstreamTaskFailed) await deps.steps.markFailed(step.id, err.upstreamError);
@@ -478,7 +480,14 @@ export async function runCatalogTask(
 
   if (carried.urls === undefined) throw new Error("No output URL after WaveSpeed polling");
   let cost = carried.inlineCostUsd;
-  for (const prediction of carried.predictions) cost += await queryBilling(resolved, prediction);
+  // Bounded by the task's deadline like every other call on its chain, and a
+  // lookup cut there answers 0, as any failed lookup does. Work that finished
+  // right at the deadline still gets its lookup, under the transport's own
+  // bound, so a run that produced its output is not charged nothing.
+  const billingSignal = Date.now() < ctx.deadlineAt ? signalUntil(ctx.deadlineAt) : undefined;
+  for (const prediction of carried.predictions) {
+    cost += await queryBilling(resolved, prediction, billingSignal);
+  }
   const outputs = carried.urls.slice(0, outputCount).map((url) => ({ url }));
   return { outputs, model: resolved.modelName, cost };
 }

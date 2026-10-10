@@ -47,7 +47,6 @@ const RESOLVED: ResolvedModel = {
   providerName: "wavespeed",
   baseUrl: "https://api.wavespeed.test/v3",
   apiKey: "ws-key",
-  timeout: 60,
   maxConcurrency: 5,
 };
 
@@ -74,8 +73,8 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
     const r = await generate("a chair", RESOLVED, { quality: "high" }, {
       storedTaskId: null,
       persistTaskId,
-      externalTaskId: "breatic-task-abc", retryStarting: false,
-    }, LATER);
+      externalTaskId: "breatic-task-abc", retryStarting: false, deadlineAt: LATER,
+    });
 
     expect(requestWithRetryMock).toHaveBeenCalledTimes(1);
     const submitBody = JSON.parse(
@@ -84,7 +83,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
     expect(submitBody).toEqual({ quality: "high", prompt: "a chair" }); // Tier B: no client id field
     expect(persistTaskId).toHaveBeenCalledWith("ws-777");
     expect(String(pollOnceMock.mock.calls[0]![0])).toContain("ws-777");
-    expect(queryBillingMock).toHaveBeenCalledWith(RESOLVED, "ws-777");
+    expect(queryBillingMock).toHaveBeenCalledWith(RESOLVED, "ws-777", expect.any(AbortSignal));
     expect(r.url).toBe("https://cdn.wavespeed.test/model.glb");
   });
 
@@ -94,13 +93,13 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
     const r = await generate("a chair", RESOLVED, {}, {
       storedTaskId: "ws-stored-42",
       persistTaskId,
-      externalTaskId: "breatic-task-abc", retryStarting: false,
-    }, LATER);
+      externalTaskId: "breatic-task-abc", retryStarting: false, deadlineAt: LATER,
+    });
 
     expect(requestWithRetryMock).toHaveBeenCalledTimes(0); // ⑦ core: no duplicate generation
     expect(persistTaskId).toHaveBeenCalledTimes(0);
     expect(String(pollOnceMock.mock.calls[0]![0])).toContain("ws-stored-42");
-    expect(queryBillingMock).toHaveBeenCalledWith(RESOLVED, "ws-stored-42");
+    expect(queryBillingMock).toHaveBeenCalledWith(RESOLVED, "ws-stored-42", expect.any(AbortSignal));
     expect(r.url).toBe("https://cdn.wavespeed.test/model.glb");
   });
 
@@ -109,7 +108,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
       const persistTaskId = vi.fn(async () => {});
 
       await expect(
-        generate("a chair", RESOLVED, {}, { storedTaskId: null, persistTaskId, externalTaskId: "x", retryStarting: false }, Date.now() - 1),
+        generate("a chair", RESOLVED, {}, { storedTaskId: null, persistTaskId, externalTaskId: "x", retryStarting: false, deadlineAt: Date.now() - 1 }),
       ).rejects.toBeInstanceOf(TaskDeadlinePassed);
       expect(requestWithRetryMock).not.toHaveBeenCalled();
     });
@@ -117,7 +116,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
     // Nothing is submitted, so nothing may have been paid for twice.
     it("writes no duplicate-cost warning for a retry that submits nothing past the deadline", async () => {
       await expect(
-        generate("a chair", RESOLVED, {}, { storedTaskId: null, persistTaskId: vi.fn(), externalTaskId: "x", retryStarting: true }, Date.now() - 1),
+        generate("a chair", RESOLVED, {}, { storedTaskId: null, persistTaskId: vi.fn(), externalTaskId: "x", retryStarting: true, deadlineAt: Date.now() - 1 }),
       ).rejects.toBeInstanceOf(TaskDeadlinePassed);
       expect(warnMock).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
     });
@@ -129,8 +128,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
         "a chair",
         RESOLVED,
         {},
-        { storedTaskId: "ws-stored-42", persistTaskId: vi.fn(), externalTaskId: "x", retryStarting: false },
-        LATER,
+        { storedTaskId: "ws-stored-42", persistTaskId: vi.fn(), externalTaskId: "x", retryStarting: false, deadlineAt: LATER },
       ).catch((e: unknown) => e);
 
       expect(err).toBeInstanceOf(StillRunning);
@@ -145,8 +143,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
           "a chair",
           RESOLVED,
           {},
-          { storedTaskId: "ws-stored-42", persistTaskId: vi.fn(), externalTaskId: "x", retryStarting: false },
-          Date.now() - 1,
+          { storedTaskId: "ws-stored-42", persistTaskId: vi.fn(), externalTaskId: "x", retryStarting: false, deadlineAt: Date.now() - 1 },
         ),
       ).rejects.toBeInstanceOf(StillRunning);
     });

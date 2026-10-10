@@ -21,7 +21,6 @@ const JOB = {
   params: { range: { start: 0, end: 1 } },
   input: { storageKey: "video/in.mp4" },
   outputs: [{ storageKey: "video/out.mp4", contentType: "video/mp4" }],
-  limits: { runDeadlineMs: 1000, toolTimeoutMs: 1000 },
 };
 
 /**

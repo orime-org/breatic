@@ -13,19 +13,12 @@ upload:
   # Base backoff (ms), full-jittered, between those same browser attempts.
   # A part's backoff lives in the shared HTTP transport.
   client_retry_base_delay_ms: 1000
-  # Floor for the part stall guard below. Despite the name it does NOT time
-  # the ticket request: that goes through axios, whose timeout is set in
-  # packages/web/src/data/api/request.ts.
-  client_request_timeout_ms: 30000
-  # Part stall guard: per-attempt timeout = max(request timeout,
-  # ONE PART's size / this rate). A dead connection aborts + retries instead
-  # of hanging forever, while a part that is legitimately slow never trips it.
-  # Bounded from below against part_size_bytes: the figure has to stay inside
-  # what a timer can hold, and the transport refuses an out-of-range deadline
-  # rather than clamping it. Too low a rate here is refused at startup with
-  # the lowest usable value in the message — at the shipped part size that
-  # floor is 4.
-  client_put_min_bytes_per_sec: 65536
+  # How long one part may go without a byte moving, in seconds, before it is
+  # cut and sent again. An idle window, not a duration: a slow part that keeps
+  # moving runs as long as it needs. A page reads progress from the upload
+  # itself; our backend reads it off the socket. 60 is where Uppy's maintainers
+  # moved their 30-second default after it cut uploads on slow links.
+  upload_idle_timeout_seconds: 60
 
 # The ingest Worker (#173). Every figure it runs on is decided here and signed
 # into the ticket, because a Worker cannot read this file and a second copy in
@@ -44,43 +37,7 @@ ingest:
   # How long the browser has to START the upload. Checked once, when it asks
   # the Worker to begin; an upload already running is never cut off by it.
   ticket_expires_seconds: 300
-  # How long a session token stays usable. One token is carried through two
-  # chains: the whole of the part it was issued for, retries included, and the
-  # chain completing an upload runs on — completing names no deadline of its
-  # own, so each of its deliveries takes the transport's default. Loading this
-  # file checks it outlasts the longer of them; one expiring partway turns the
-  # delivery that would have succeeded into a 401.
-  session_token_ttl_seconds: 1200
-  # How long the ingest Worker waits for the media container to answer. It
-  # bounds the whole run: starting the container, ffprobe, the cover and the
-  # preview. Reaching it costs the upload its resolution badge, its poster and
-  # its preview (the backfill cuts that later) — the object is stored and
-  # hashed before the container is asked anything.
-  container_run_deadline_ms: 150000
-  # How long ffprobe or ffmpeg inside the container may run, reading the object
-  # over the network included. Two of these have to fit inside the deadline
-  # above, which the loader checks; the preview runs on whatever is left.
-  container_tool_timeout_ms: 60000
   # The quality a JPEG or lossy WebP is re-encoded at when a picture shown at an
   # EXIF orientation is turned upright on ingest (1-100). Turning a JPEG
   # re-encodes it; PNG and lossless WebP stay lossless.
   upright_jpeg_quality: 90
-  # How long ONE call asking the Worker to pull a source URL may take. It
-  # bounds the whole transfer: the answer only arrives once the Worker has
-  # finished writing R2.
-  #
-  # There is nothing to compute it from. The address announces no length, and
-  # max_upload_bytes is a ceiling rather than a size. What it is chosen against
-  # is the platform's own bound: a delivery spent waiting for a response is
-  # refused at 301.4s however long we ask for (measured on Node 24, recorded in
-  # packages/shared/src/http/constants.ts). Sitting under that is what makes
-  # the timer that fires ours, so a transfer that ran out of time is a failure
-  # this lane can name rather than one the platform produced.
-  #
-  # The source does not get all of it. Assembling the object and hashing it
-  # happen after the last byte, and the container reads the object after that,
-  # so what is left for the transfer is this figure minus those. The container
-  # is held to whatever remains rather than to container_run_deadline_ms, so a
-  # slow probe costs an upload its resolution and its poster and never the
-  # upload itself.
-  url_fetch_deadline_ms: 290000

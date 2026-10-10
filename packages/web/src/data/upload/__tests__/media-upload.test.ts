@@ -27,8 +27,7 @@ const CFG = {
   maxUploadBytes: 2147483648,
   clientMaxAttempts: 3,
   clientRetryBaseDelayMs: 1000,
-  clientRequestTimeoutMs: 30000,
-  clientPutMinBytesPerSec: 65536,
+  uploadIdleTimeoutMs: 60000,
   assetUrlPrefix: 'https://cdn/',
 };
 

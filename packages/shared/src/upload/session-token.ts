@@ -51,15 +51,11 @@ export interface SessionTokenPayload extends PartLayout {
    */
   contentType: string;
   /**
-   * How long a token lasts, in seconds, as the ticket signed it.
-   *
-   * It rides here so that the next re-issue can start a fresh window without
-   * this Worker holding a copy of the figure — the value lives in
-   * `config/storage.yaml`, which checks it against the other windows, and a
-   * second copy here would be a second place for it to drift out of that
-   * relation.
+   * When the upload's task runs out, as the ticket signed it, in epoch ms.
+   * It rides here so the next re-issue can carry it forward without this
+   * Worker holding anything.
    */
-  sessionTokenTtlSeconds: number;
+  deadlineAt: number;
   /** Epoch ms after which it is refused. */
   expiresAt: number;
 }

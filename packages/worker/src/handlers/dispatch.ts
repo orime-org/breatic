@@ -20,13 +20,14 @@ import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
-import { taskService, upstreamStepRepo } from "@breatic/domain";
+import { failureOutcome, taskService, upstreamStepRepo } from "@breatic/domain";
 import { creditLotService, creditsForUsd, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import {
   assetService,
   createUsageRecorder,
   settleTaskForNode,
+  readingLimitsUntil,
   understandMediaAt,
   UNDERSTAND_PINS,
 } from "@breatic/domain";
@@ -490,13 +491,19 @@ async function runTaskBody(
   const storedTaskId = existing?.providerTaskId ?? null;
   // Each paid call that may repeat writes its own duplicate-cost warning.
   const retryStarting = await reportRetryOnce(job, { taskId, storedTaskId });
-  const resume: ResumeContext = {
+  /**
+   * The resume context for a run held to this deadline.
+   * @param runDeadlineAt - When the task runs out, in epoch ms.
+   * @returns The context.
+   */
+  const resumeUntil = (runDeadlineAt: number): ResumeContext => ({
     storedTaskId,
     persistTaskId: (id: string): Promise<void> =>
       taskService.recordProviderTaskId(taskId, id),
     externalTaskId: `breatic-${taskId}`,
     retryStarting,
-  };
+    deadlineAt: runDeadlineAt,
+  });
   // A container job keeps its id from the first submit, so a pickup never submits it twice.
   const containerRun = source === "mini_tool" && toolId !== undefined && miniToolById(toolId)?.run.kind === "container";
 
@@ -530,8 +537,7 @@ async function runTaskBody(
         userId,
         projectId,
         taskId,
-        resume,
-        deadlineAt,
+        resume: resumeUntil(deadlineAt),
       });
     } else if (taskType === "understand") {
       // A reading answers with one piece of text, and the row on the node it
@@ -552,14 +558,17 @@ async function runTaskBody(
           "provider_reinvoked_on_retry_potential_duplicate_cost",
         );
       }
-      [providerResult, creditsUsed] = await runUnderstand(params, recorderFor("canvas_understand"));
+      [providerResult, creditsUsed] = await runUnderstand(
+        params,
+        recorderFor("canvas_understand"),
+        deadlineAt,
+      );
     } else if (taskType in AIGC_TASK_TYPES) {
       [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, {
-        resume,
+        resume: resumeUntil(deadlineAt),
         taskId,
         projectId: projectId ?? undefined,
         outputCount: 1,
-        deadlineAt,
       });
     } else {
       throw new Error(`Task type '${taskType}' has no runner`);
@@ -576,6 +585,12 @@ async function runTaskBody(
       }
       err = new TaskDeadlinePassed();
     }
+    // Every call on the chain is bounded by the deadline (inner#1367), so a
+    // run cut there fails with whatever the cut call threw. Its ending is the
+    // deadline's all the same.
+    if (!(err instanceof TaskDeadlinePassed) && failureOutcome(deadlineAt) === "expired") {
+      err = new TaskDeadlinePassed();
+    }
     // Provider call failed. Safe to retry via BullMQ — no charge yet,
     // no provider_result_url recorded. The next retry enters this
     // function fresh.
@@ -587,7 +602,7 @@ async function runTaskBody(
     // The error itself, beside what the row will hold. A reading stores a
     // code of ours, and `internal` says only that a part of this broke —
     // which part is what `err` carries, and the log is where it lands.
-    logger.error({ err, taskId, error: errorMsg }, "provider_call_failed");
+    logger.error({ err: thrown, taskId, error: errorMsg }, "provider_call_failed");
     // Two ways this is the last word on the run: the queue has no attempts
     // left, or the failure itself says a further attempt reaches the same
     // answer. The second matters where an attempt is not free — a reading
@@ -644,18 +659,25 @@ async function runTaskBody(
       userId,
       projectId,
       taskId,
+      deadlineAt,
     });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    logger.error({ taskId, error: errorMsg }, "persist_failed_no_charge");
+    logger.error({ err, taskId, error: errorMsg }, "persist_failed_no_charge");
+    // Storing is bounded by the same deadline as the run, so a store cut
+    // there ends the task the way the deadline ends it.
+    const expired = failureOutcome(deadlineAt) === "expired";
     await finishFailedRun({
       ...runEnd,
       // Storing what broke would put one English sentence on a row read in
       // whatever language its reader set. Which part of storing it failed is
       // the log's to say — it says it right above — and the reader's next
       // move is to run it again, which is what this code says to them.
-      errorMessage: "internal" satisfies TaskFailureReason,
+      errorMessage: expired
+        ? new TaskDeadlinePassed().message
+        : ("internal" satisfies TaskFailureReason),
       settles: true,
+      outcome: expired ? "expired" : "failed",
     });
     // Return normally (don't throw) — we don't want BullMQ to retry
     // something we've explicitly decided not to charge for.
@@ -1326,6 +1348,7 @@ const EXTRA_URL_FIELDS = [
  * @param opts.userId - User the stored assets are attributed to.
  * @param opts.projectId - Project the assets belong to, if any.
  * @param opts.taskId - Producing task id (asset cost link).
+ * @param opts.deadlineAt - When the task runs out; every store is cut there.
  * @returns The outputs with temp URLs / buffers replaced by canonical storage URLs.
  * @throws {Error} When an output could not be stored or registered. Registering
  *   is not separable here: the report the Worker sends is what registers, so a
@@ -1334,7 +1357,7 @@ const EXTRA_URL_FIELDS = [
 export async function persistOutputs(
   outputs: PersistedOutput[],
   extras: Record<string, unknown>,
-  opts: { taskType: string; userId: string; projectId?: string; taskId: string },
+  opts: { taskType: string; userId: string; projectId?: string; taskId: string; deadlineAt: number },
 ): Promise<PersistedOutput[]> {
   const persisted: PersistedOutput[] = [];
   const adapter = await getStorageAdapter();
@@ -1358,6 +1381,7 @@ export async function persistOutputs(
       actingUserId: opts.userId,
       assetSource: "ai",
       generationTaskId: opts.taskId,
+      deadlineAt: opts.deadlineAt,
       taskType: opts.taskType,
       ext: OUTPUT_EXTENSIONS[opts.taskType] ?? ".bin",
       contentType:
@@ -1440,8 +1464,6 @@ export interface ProviderRun {
   projectId: string | undefined;
   /** How many outputs the run writes to nodes: 1 for a canvas generation, the tool's outputs for a mini-tool. */
   outputCount: number;
-  /** The task's two-hour deadline, in epoch milliseconds (inner#1337). */
-  deadlineAt: number;
 }
 
 interface RunMiniToolOpts {
@@ -1455,8 +1477,6 @@ interface RunMiniToolOpts {
   taskId: string;
   /** Async-transport resume context for at-most-once vendor submit (#1628). */
   resume: ResumeContext;
-  /** The task's two-hour deadline, in epoch milliseconds (inner#1337). */
-  deadlineAt: number;
 }
 
 /**
@@ -1475,7 +1495,7 @@ interface RunMiniToolOpts {
 export async function runMiniTool(
   opts: RunMiniToolOpts,
 ): Promise<[Record<string, unknown>, number]> {
-  const { toolId, params, userId, projectId, taskId, resume, deadlineAt } = opts;
+  const { toolId, params, userId, projectId, taskId, resume } = opts;
   const spec = miniToolById(toolId);
   if (!spec) throw new Error(`mini-tool ${toolId} is not in the registry`);
 
@@ -1490,7 +1510,6 @@ export async function runMiniTool(
       taskId,
       projectId,
       outputCount: spec.outputs.length,
-      deadlineAt,
     });
     return [result, creditsFor((result.cost as number) ?? 0)];
   }
@@ -1530,6 +1549,8 @@ export async function runMiniTool(
  * what this path sends has to be able to call it.
  * @param params - Task params carrying `source_type`, `source_url` and an optional prompt.
  * @param usage - The task's recorder; the call is recorded on it.
+ * @param deadlineAt - When the task runs out; every part of the reading gets
+ *   what is left of it (inner#1367).
  * @returns A `[result, credits]` tuple: one output holding the text, and the credits to charge.
  * @throws {MediaUnavailable} when the address yields no usable media.
  * @throws {UnderstandRefused} when the service would not answer.
@@ -1539,6 +1560,7 @@ export async function runMiniTool(
 export async function runUnderstand(
   params: Record<string, unknown>,
   usage: UsageRecorder,
+  deadlineAt: number,
 ): Promise<[Record<string, unknown>, number]> {
   const sourceType = params.source_type as string;
   const cfg = getUnderstandConfig();
@@ -1574,10 +1596,7 @@ export async function runUnderstand(
       apiKey: getRawEnvVar("OPENROUTER_API_KEY") ?? "",
       baseUrl: UNDERSTAND_PINS.baseUrl,
       maxBytes: cfg.max_media_bytes,
-      fetchTimeoutMs: cfg.fetch_timeout_ms,
-      minBytesPerSec: cfg.min_bytes_per_sec,
-      readFloorMs: cfg.read_floor_ms,
-      timeoutMs: cfg.call_timeout_ms,
+      ...readingLimitsUntil(deadlineAt, cfg.max_media_bytes),
       maxOutputTokens: cfg.max_output_tokens,
       onBilled: record,
     }));
@@ -1688,8 +1707,8 @@ async function importProvider(taskType: string): Promise<{
           const studioId = run.projectId ? await assetService.resolveOwnerStudioId(run.projectId) : null;
           return {
             ...(await runCatalogTask(
-              stepDepsFor(studioId),
-              { taskId: run.taskId, studioId, deadlineAt: run.deadlineAt, retryStarting: run.resume.retryStarting },
+              stepDepsFor(studioId, run.resume.deadlineAt),
+              { taskId: run.taskId, studioId, deadlineAt: run.resume.deadlineAt, retryStarting: run.resume.retryStarting },
               modality,
               prompt,
               model,
@@ -1703,7 +1722,7 @@ async function importProvider(taskType: string): Promise<{
     case "three-d": {
       const m = await import("@worker/providers/three-d/index.js");
       return wrap(m.validateThreeDParams, (prompt, model, params, run) =>
-        m.generateAsync(prompt, model, params, run.resume, run.deadlineAt),
+        m.generateAsync(prompt, model, params, run.resume),
       );
     }
     default: throw new Error(`Unknown AIGC task type: ${taskType}`);

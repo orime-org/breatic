@@ -127,8 +127,7 @@ describe('assetsApi.fetchUploadConfig — session-cached knobs', () => {
       maxUploadBytes: 2147483648,
       clientMaxAttempts: 3,
       clientRetryBaseDelayMs: 1000,
-      clientRequestTimeoutMs: 30000,
-      clientPutMinBytesPerSec: 65536,
+      uploadIdleTimeoutMs: 60000,
     });
 
     const first = await assetsApi.fetchUploadConfig();
@@ -147,8 +146,7 @@ describe('assetsApi.fetchUploadConfig — session-cached knobs', () => {
       maxUploadBytes: 1,
       clientMaxAttempts: 3,
       clientRetryBaseDelayMs: 1000,
-      clientRequestTimeoutMs: 30000,
-      clientPutMinBytesPerSec: 65536,
+      uploadIdleTimeoutMs: 60000,
       assetUrlPrefix: 'https://cdn.example/',
     });
 
@@ -165,8 +163,7 @@ describe('assetsApi.fetchUploadConfig — session-cached knobs', () => {
         maxUploadBytes: 1,
         clientMaxAttempts: 3,
         clientRetryBaseDelayMs: 1000,
-        clientRequestTimeoutMs: 30000,
-        clientPutMinBytesPerSec: 65536,
+        uploadIdleTimeoutMs: 60000,
       });
 
     await expect(assetsApi.fetchUploadConfig()).rejects.toThrow('down');

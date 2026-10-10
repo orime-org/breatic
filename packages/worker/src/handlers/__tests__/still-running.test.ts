@@ -96,7 +96,9 @@ vi.mock("@breatic/core", () => ({
   NotFoundError: class extends Error {},
   logger: { info: h.info, warn: h.warn, error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("@breatic/domain", () => ({
+vi.mock("@breatic/domain", async () => ({
+  // The real judgement: the case below is about the ending it gives.
+  failureOutcome: (await import("@domain/node-task/failure-outcome.js")).failureOutcome,
   buildAgentConfig: vi.fn(),
   getModel: vi.fn(),
   generateTextRetry: vi.fn(),
@@ -292,6 +294,25 @@ describe("a run past its two-hour deadline", () => {
       expect.any(String),
       expect.objectContaining({ outcome: "expired" }),
     );
+  });
+
+  // A call on the chain is bounded by the deadline itself (inner#1367), so the
+  // failure that ends it there is whatever the cut call threw. The ending is
+  // the deadline's all the same.
+  it("settles a failure that arrives once the deadline has come as expired", async () => {
+    h.runCatalogTask.mockImplementation(async () => {
+      vi.spyOn(Date, "now").mockReturnValue(DEADLINE);
+      throw new Error("http request to https://vendor/ was cancelled by its caller");
+    });
+
+    await runTask(jobOf({}, 2), "lock-token").catch(() => undefined);
+
+    expect(h.settleTaskForNode).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      expect.objectContaining({ outcome: "expired" }),
+    );
+    vi.restoreAllMocks();
   });
 
   it("settles any other failure as failed", async () => {

@@ -23,12 +23,10 @@ import { StillRunning } from "@worker/providers/still-running.js";
  */
 function httpConfig(): {
   pollInterval: number;
-  billingTimeout: number;
 } {
   const cfg = getWorkerConfig();
   return {
     pollInterval: cfg.poll_interval,
-    billingTimeout: cfg.billing_timeout,
   };
 }
 
@@ -101,8 +99,8 @@ export function extractNested(
  * @param options - Fetch options (method, headers, body). Any `signal` here is
  *   discarded — the transport supplies its own deadline from `timeoutMs`.
  * @param provider - Provider name, used to word the failure.
- * @param timeoutMs - How long ONE delivery may take. Omitted leaves the
- *   transport's own default in place.
+ * @param signal - The task's deadline (inner#1367), which no resend can
+ *   stretch. Omitted leaves the transport's own default in place.
  * @returns Parsed JSON response.
  * @throws {HttpStatusError} On any non-ok status, carrying the status and the
  *   vendor's response body — it is the only diagnostic these calls produce.
@@ -120,11 +118,11 @@ export async function requestWithRetry(
   url: string,
   options: RequestInit,
   provider = "unknown",
-  timeoutMs?: number,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
   const response = await httpRequest(url, options, {
     replaySafe: false,
-    ...(timeoutMs !== undefined && { timeoutMs }),
+    ...(signal !== undefined && { signal }),
   });
 
   if (response.ok) {
@@ -165,6 +163,8 @@ export interface PollOptions {
   failureStatuses: Set<string>;
   errorPath?: string[];
   provider?: string;
+  /** The task's deadline (inner#1367). */
+  signal?: AbortSignal;
 }
 
 /**
@@ -225,7 +225,12 @@ export async function pollOnce(
 
   let resp: Record<string, unknown>;
   try {
-    resp = await requestWithRetry(fetchUrl, { method: "GET", headers: options.headers }, provider);
+    resp = await requestWithRetry(
+      fetchUrl,
+      { method: "GET", headers: options.headers },
+      provider,
+      options.signal,
+    );
   } catch (err) {
     if (!askAgain(err)) throw err;
     logger.warn({ err, provider, url }, "poll_request_failed");
@@ -279,9 +284,14 @@ interface BillingLine {
  * wrong has to stay tellable apart from those two.
  * @param resolved - Resolved provider endpoint.
  * @param taskId - The vendor's prediction uuid.
+ * @param signal - The task's deadline (inner#1367).
  * @returns What the prediction cost in USD, or 0 when the vendor did not say.
  */
-export async function queryBilling(resolved: ResolvedModel, taskId: string): Promise<number> {
+export async function queryBilling(
+  resolved: ResolvedModel,
+  taskId: string,
+  signal?: AbortSignal,
+): Promise<number> {
   try {
     const resp = await httpRequest(
       `${resolved.baseUrl}/billings/search`,
@@ -290,7 +300,7 @@ export async function queryBilling(resolved: ResolvedModel, taskId: string): Pro
         headers: bearerHeaders(resolved.apiKey),
         body: JSON.stringify({ prediction_uuids: [taskId] }),
       },
-      { replaySafe: false, timeoutMs: httpConfig().billingTimeout },
+      { replaySafe: false, ...(signal !== undefined && { signal }) },
     );
 
     if (!resp.ok) {

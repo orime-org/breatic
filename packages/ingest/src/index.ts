@@ -28,7 +28,6 @@ import {
   INGEST_FAILURE_HEADER,
   type IngestFailureCode,
   type SessionTokenPayload,
-  type MediaLimits,
   type PreviewOutcome,
   type UploadTicketPayload,
 } from "@breatic/shared";
@@ -55,7 +54,6 @@ import {
   PREVIEW_CONTENT_TYPE,
 } from "@ingest/probe-command.js";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
-import { runWindowLeft } from "@ingest/run-window.js";
 import {
   assembleObject,
   hashStoredObject,
@@ -133,15 +131,10 @@ function missingSettings(env: Env): string[] {
 /**
  * Issue the token the next request carries.
  *
- * Its window comes off whatever was presented — the ticket on the first one,
- * the previous token on every re-issue — rather than from a figure held here:
- * the value lives in `config/storage.yaml`, which also checks it against the
- * other windows, and a copy in this Worker would be a second place for it to
- * drift out of that relation.
- *
- * Every issue starts the window over. It is sized for the gap between two
- * parts, and carrying the remaining life forward instead would make that same
- * figure a ceiling on the whole upload.
+ * It expires at the upload's deadline, carried forward from whatever was
+ * presented — the ticket on the first one, the previous token on every
+ * re-issue (inner#1367): the upload is bounded by its task's deadline, which
+ * our server decided, and by nothing held here.
  * @param grant - What the ticket or the presented token signed.
  * @param uploadId - R2's id for the multipart upload.
  * @param secret - The shared secret.
@@ -153,7 +146,7 @@ async function issueToken(
     contentType: string;
     partSize: number;
     totalParts: number;
-    sessionTokenTtlSeconds: number;
+    deadlineAt: number;
   },
   uploadId: string,
   secret: string,
@@ -163,8 +156,8 @@ async function issueToken(
       storageKey: grant.storageKey,
       uploadId,
       contentType: grant.contentType,
-      sessionTokenTtlSeconds: grant.sessionTokenTtlSeconds,
-      expiresAt: Date.now() + grant.sessionTokenTtlSeconds * 1000,
+      deadlineAt: grant.deadlineAt,
+      expiresAt: grant.deadlineAt,
       partSize: grant.partSize,
       totalParts: grant.totalParts,
     },
@@ -313,11 +306,11 @@ interface FinishBody {
   parts?: RecordedPart[];
   /** Where a cut frame goes, present only when the caller wants one. */
   coverKey?: string;
-  /** How long the media container gets, out of `config/storage.yaml`. */
-  limits?: MediaLimits;
+  /** When the upload's task runs out, in epoch ms (inner#1367). */
+  deadlineAt?: number;
   /**
    * True when the caller reads the media numbers after this upload returns
-   * (#299: covers and avatars). Its own field: a finish whose limits are
+   * (#299: covers and avatars). Its own field: a finish whose deadline is
    * missing is a caller's mistake and is written down, this one is not.
    */
   deferMediaRead?: boolean;
@@ -394,7 +387,7 @@ async function completeUpload(
     uploadId,
     contentType: session.contentType,
     parts,
-    limits: limitsOf(body.limits),
+    deadlineAt: deadlineOf(body.deadlineAt),
     deferMediaRead: body.deferMediaRead === true,
     ...(typeof body.coverKey === "string" && { coverKey: body.coverKey }),
   });
@@ -422,12 +415,10 @@ async function completeUpload(
  *   has a frame worth showing is judged here, off the type the object was
  *   stored under, because the lane that takes an address does not know that
  *   type until the transfer has already happened.
- * @param upload.limits - How long the media container gets. The Worker reads
- *   no configuration of its own, so these travel on the request.
+ * @param upload.deadlineAt - When the upload's task runs out, which every
+ *   container run is held to, or null when the caller named none.
  * @param upload.deferMediaRead - True when the caller reads the numbers later,
  *   so no container is started here.
- * @param upload.answerBy - When this call has to be answered, or null when
- *   nobody said.
  * @returns What the server registered, or why this could not finish.
  */
 async function finishUpload(
@@ -438,12 +429,11 @@ async function finishUpload(
     contentType: string;
     parts: RecordedPart[];
     coverKey?: string;
-    limits: MediaLimits | null;
+    deadlineAt: number | null;
     deferMediaRead?: boolean;
-    answerBy?: number | null;
   },
 ): Promise<Response> {
-  const { storageKey, uploadId, contentType, parts, limits } = upload;
+  const { storageKey, uploadId, contentType, parts, deadlineAt } = upload;
 
   const assembled = await assembleObject(env.BUCKET, storageKey, uploadId, parts)
     .then((sizeBytes) => ({ sizeBytes }))
@@ -520,15 +510,12 @@ async function finishUpload(
   // this step decides is whether a node shows a resolution and a poster, so
   // every way it can go wrong has the same answer, and a way added later is
   // covered without being found first.
-  // Read here rather than at entry: the run may have whatever the transfer,
-  // the assembly and the hash left of the caller's window, and nothing below
-  // this line can unmake the object above it.
   const measured = upload.deferMediaRead === true
     ? { media: NO_MEASUREMENT, cover: null, contentType: storedType }
     : (await measureMedia(env, {
       storageKey,
       contentType: storedType,
-      limits: runWindowLeft(limits, upload.answerBy ?? null, Date.now()),
+      deadlineAt,
       ...(upload.coverKey !== undefined && { coverKey: upload.coverKey }),
     }).catch(noted("ingest_media_measure_failed", { storageKey }))) ??
     { media: NO_MEASUREMENT, cover: null, contentType: storedType };
@@ -546,22 +533,17 @@ async function finishUpload(
 }
 
 /**
- * The deadlines one run is held to, or nothing when the caller named none.
+ * The task deadline one run is held to, or nothing when the caller named none.
  *
- * They live in `config/storage.yaml` and travel on the request, because this
- * Worker reads no configuration of its own. A body that names neither gets no
- * container run at all: a second copy of the figures here would be a second
- * place for them to drift, and a run with no bound would hold a stored, hashed
+ * It travels on the request because this Worker reads no configuration of its
+ * own and decides no time of its own (inner#1367). A body that names none gets
+ * no container run at all: a run with no bound would hold a stored, hashed
  * upload open for as long as the container took.
- * @param sent - What the request carried, when it carried anything.
- * @returns The deadlines, or null when they did not arrive.
+ * @param sent - What the request carried.
+ * @returns The deadline in epoch ms, or null when none usable arrived.
  */
-function limitsOf(sent: MediaLimits | undefined): MediaLimits | null {
-  const run = sent?.runDeadlineMs;
-  const tool = sent?.toolTimeoutMs;
-  if (typeof run !== "number" || run <= 0) return null;
-  if (typeof tool !== "number" || tool <= 0) return null;
-  return { runDeadlineMs: run, toolTimeoutMs: tool };
+function deadlineOf(sent: unknown): number | null {
+  return typeof sent === "number" && Number.isFinite(sent) && sent > 0 ? sent : null;
 }
 
 /**
@@ -644,7 +626,7 @@ interface StoredCover {
  * @param about.storageKey - The object to read.
  * @param about.contentType - What the stored bytes read as.
  * @param about.coverKey - Where a cut frame goes, when one was asked for.
- * @param about.limits - How long the container gets for this run.
+ * @param about.deadlineAt - When the task runs out, or null when unnamed.
  * @returns The numbers and the cover, each absent when there is none.
  */
 async function measureMedia(
@@ -653,7 +635,7 @@ async function measureMedia(
     storageKey: string;
     contentType: string;
     coverKey?: string;
-    limits: MediaLimits | null;
+    deadlineAt: number | null;
   },
 ): Promise<MediaAnswer> {
   // Asked unconditionally, and judged by what comes back. A delivery that
@@ -667,10 +649,11 @@ async function measureMedia(
     if (standing !== null && hasCoverFrame(standing.contentType)) return standing;
   }
 
-  // No deadline named, no run: the request that starts one carries the figures
-  // it is held to, so a body without them is a caller that cannot be waited on.
-  if (about.limits === null) {
-    noteFailure("ingest_media_limits_missing", { storageKey: about.storageKey });
+  // No deadline named, no run: the request that starts one carries the
+  // instant it is held to, so a body without it is a caller that cannot be
+  // waited on.
+  if (about.deadlineAt === null) {
+    noteFailure("ingest_media_deadline_missing", { storageKey: about.storageKey });
     return { media: NO_MEASUREMENT, cover: null, contentType: about.contentType };
   }
   const read = await readMediaAtEdge(env, {
@@ -680,7 +663,7 @@ async function measureMedia(
     // still picture has none, and running the container for one costs a run.
     wantCover: coverKey !== undefined && hasCoverFrame(about.contentType),
     wantPreview: wantsPreview(about.contentType, coverKey),
-    limits: about.limits,
+    deadlineAt: about.deadlineAt,
   });
   const contentType = typeCorrectedByReport(about.contentType, read.report);
   const media = mediaNumbersFor(contentType, read.report);
@@ -829,16 +812,11 @@ interface FetchBody {
   url?: string;
   /** Where a cut frame goes, present only when the caller wants one. */
   coverKey?: string;
-  /** How long the media container gets, out of `config/storage.yaml`. */
-  limits?: MediaLimits;
   /**
-   * How long this whole call may take, in milliseconds.
-   *
-   * The transfer runs inside it, so the container cannot be given its own
-   * figure as well without the two together outrunning the caller — and a
-   * caller whose timer fires throws away an object already stored and hashed.
+   * When the task this transfer serves runs out, in epoch ms (inner#1367).
+   * The transfer and the container that reads the result are both held to it.
    */
-  callBudgetMs?: number;
+  deadlineAt?: number;
 }
 
 /**
@@ -884,7 +862,6 @@ function storedTypeFor(
  * @returns What the server registered, or why the transfer did not finish.
  */
 async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
-  const startedAt = Date.now();
   if (!fromOurBackend(request, env)) {
     return new Response("Unauthorized", { status: 401 });
   }
@@ -970,11 +947,7 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
     uploadId: created.uploadId,
     contentType: storedType,
     parts: written,
-    limits: limitsOf(body?.limits),
-    answerBy:
-      typeof body?.callBudgetMs === "number" && body.callBudgetMs > 0
-        ? startedAt + body.callBudgetMs
-        : null,
+    deadlineAt: deadlineOf(body?.deadlineAt),
     ...(typeof body?.coverKey === "string" && { coverKey: body.coverKey }),
   });
 }
@@ -983,7 +956,8 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
 interface MediaReadBody {
   storageKey?: unknown;
   contentType?: unknown;
-  limits?: MediaLimits;
+  /** When the job asking runs out, in epoch ms (inner#1367). */
+  deadlineAt?: unknown;
   wantPreview?: unknown;
 }
 
@@ -1009,15 +983,15 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
   const body = await request.json<MediaReadBody>().catch(() => null);
   const storageKey = body?.storageKey;
   const contentType = body?.contentType;
-  const limits = limitsOf(body?.limits);
+  const deadlineAt = deadlineOf(body?.deadlineAt);
   if (
     typeof storageKey !== "string" ||
     storageKey.length === 0 ||
     typeof contentType !== "string" ||
     contentType.length === 0 ||
-    limits === null
+    deadlineAt === null
   ) {
-    return new Response("storageKey, contentType and limits are required", {
+    return new Response("storageKey, contentType and deadlineAt are required", {
       status: 400,
     });
   }
@@ -1034,7 +1008,7 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
     contentType,
     wantCover: false,
     wantPreview: askedForPreview && !standing,
-    limits,
+    deadlineAt,
   });
   const numbers = mediaNumbersFor(
     typeCorrectedByReport(contentType, read.report),

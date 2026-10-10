@@ -826,7 +826,7 @@
         "expired": "時間切れになりました。",
         "no_result": "この実行は何も生成しませんでした。",
         "source_unreachable": "このアドレスを開けませんでした。",
-        "source_too_slow": "このアドレスの取得が時間切れになりました。",
+        "source_cut_off": "このアドレスからの送信がファイルの途中で止まりました。",
         "unsupported_type": "{kind, select, image {対応していない形式です。画像は {formats} に対応しています。} video {対応していない形式です。動画は {formats} に対応しています。} audio {対応していない形式です。音声は {formats} に対応しています。} other {対応していない形式です。}}",
         "empty": "何も取得できませんでした。",
         "internal": "こちら側で問題が起きました。",

@@ -374,6 +374,37 @@ function parsedHeaders(raw: string): Headers {
   return headers;
 }
 
+/**
+ * The part of XMLHttpRequest this layer uses. Declared here because the
+ * runtimes this package compiles for do not all carry the DOM's types; only
+ * a page has the object itself.
+ */
+interface Xhr {
+  open(method: string, url: string): void;
+  setRequestHeader(name: string, value: string): void;
+  send(body: unknown): void;
+  abort(): void;
+  getAllResponseHeaders(): string;
+  responseType: string;
+  readonly status: number;
+  readonly statusText: string;
+  readonly response: unknown;
+  upload: { onprogress: (() => void) | null };
+  onprogress: (() => void) | null;
+  onload: (() => void) | null;
+  onerror: (() => void) | null;
+  onabort: (() => void) | null;
+}
+
+/**
+ * The page's XMLHttpRequest, or undefined where there is none.
+ * @returns Its constructor.
+ */
+function xhrConstructor(): (new () => Xhr) | undefined {
+  const found = (globalThis as { XMLHttpRequest?: unknown }).XMLHttpRequest;
+  return typeof found === "function" ? (found as new () => Xhr) : undefined;
+}
+
 /** Statuses a Response may not carry a body for. */
 const NULL_BODY_STATUSES = new Set([101, 103, 204, 205, 304]);
 
@@ -395,11 +426,15 @@ function sendWithXhr(
   signal: AbortSignal,
   watch: IdleWatch,
 ): Promise<Response> {
+  const Request = xhrConstructor();
+  if (Request === undefined) return Promise.reject(new Error("no XMLHttpRequest here"));
   return new Promise<Response>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
+    const xhr = new Request();
     const timer = idleTimer(watch);
     /** Abort the request when this delivery's signal is raised. */
-    const abort = (): void => xhr.abort();
+    const abort = (): void => {
+      xhr.abort();
+    };
     /** Stop the timer and the subscription, on every way out. */
     const settle = (): void => {
       timer.done();
@@ -436,7 +471,7 @@ function sendWithXhr(
       return;
     }
     signal.addEventListener("abort", abort, { once: true });
-    xhr.send(watch.bytes as XMLHttpRequestBodyInit);
+    xhr.send(watch.bytes);
   });
 }
 
@@ -500,7 +535,7 @@ export async function httpRequest(
   const idleMs =
     options.idleTimeoutMs === undefined ? undefined : usableDeadline(options.idleTimeoutMs);
   const bytes = idleMs === undefined ? null : sentBytes(init.body);
-  if (bytes !== null && typeof XMLHttpRequest !== "function") {
+  if (bytes !== null && xhrConstructor() === undefined) {
     throw new Error("http was given idleTimeoutMs where there is no XMLHttpRequest; pass a dispatcher that times the socket instead");
   }
 

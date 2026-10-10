@@ -23,17 +23,17 @@
  * second time.
  */
 
-import { coverKeyFor, env, getStorageConfig } from "@breatic/core";
+import { coverKeyFor, env, getStorageConfig, idleSocketDispatcher } from "@breatic/core";
 import {
   fetchUrlToIngest,
   finishUploadAtIngest,
   sendBytesToIngest,
+  signalUntil,
   type IngestOutcome,
   type IngestTarget,
   type StudioAssetEntity,
   type UploadClientConfig,
 } from "@breatic/shared";
-import { mediaLimits } from "@domain/asset/asset.service.js";
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
 import { signTicketFor } from "@domain/asset/upload-ticket.service.js";
 import {
@@ -128,6 +128,11 @@ export interface BackendUploadContext {
   ext: string;
   /** What the object is served as. */
   contentType: string;
+  /**
+   * When the task these bytes belong to runs out, in epoch ms (inner#1367).
+   * Every call of the upload is bounded by it and by nothing of its own.
+   */
+  deadlineAt: number;
 }
 
 /**
@@ -175,16 +180,16 @@ async function openBackendUpload(
       declaredSize,
       contentType: ctx.contentType,
       expiresAt,
+      deadlineAt: ctx.deadlineAt,
     }),
   };
 }
 
 /**
- * The deadlines a backend upload's parts are given.
+ * The knobs a backend upload's parts are sent under.
  *
- * The same knobs the browser is served, read from the same config, because
- * they answer the same question: how long one part may stall before the
- * delivery is given up on.
+ * The same ones the browser is served: a part is cut once its bytes stop
+ * moving for the idle window, which Node reads off the socket.
  * @returns The knobs.
  */
 function uploadKnobs(): UploadClientConfig {
@@ -193,8 +198,7 @@ function uploadKnobs(): UploadClientConfig {
     maxUploadBytes: upload.max_upload_bytes,
     clientMaxAttempts: upload.client_max_attempts,
     clientRetryBaseDelayMs: upload.client_retry_base_delay_ms,
-    clientRequestTimeoutMs: upload.client_request_timeout_ms,
-    clientPutMinBytesPerSec: upload.client_put_min_bytes_per_sec,
+    uploadIdleTimeoutMs: upload.upload_idle_timeout_seconds * 1000,
   };
 }
 
@@ -208,6 +212,7 @@ function uploadKnobs(): UploadClientConfig {
  * @param bytes - What to store.
  * @param ctx - What this upload is and who it belongs to.
  * @returns The registered asset, as the report handler filed it.
+ * @throws {DeadlinePassed} When the task's deadline has already come.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  * @throws {UploadHttpError} When the Worker refuses any step.
  * @throws {Error} When the report filed nothing.
@@ -217,14 +222,21 @@ export async function uploadBytesToStorage(
   bytes: Blob,
   ctx: BackendUploadContext,
 ): Promise<StoredAsset> {
+  const signal = signalUntil(ctx.deadlineAt);
+  const knobs = uploadKnobs();
   const opened = await openBackendUpload(ctx, bytes.size);
-  const held = await sendBytesToIngest(bytes, opened.target, uploadKnobs());
+  const held = await sendBytesToIngest(
+    bytes,
+    { ...opened.target, dispatcher: idleSocketDispatcher(knobs.uploadIdleTimeoutMs) },
+    knobs,
+    undefined,
+    signal,
+  );
   const measured = await finishUploadAtIngest(
     opened.target.uploadUrl,
     held,
     env.INGEST_SHARED_SECRET,
-    coverKeyFor(opened.storageKey),
-    mediaLimits(),
+    { coverKey: coverKeyFor(opened.storageKey), deadlineAt: ctx.deadlineAt, signal },
   );
   return landed(
     await applyIngestReport({
@@ -245,6 +257,7 @@ export async function uploadBytesToStorage(
  * @param sourceUrl - The provider's temporary link.
  * @param ctx - What this upload is and who it belongs to.
  * @returns The registered asset, as the report handler filed it.
+ * @throws {DeadlinePassed} When the task's deadline has already come.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  * @throws {UploadHttpError} When the Worker could not store the source.
  * @throws {Error} When the report filed nothing.
@@ -254,15 +267,14 @@ export async function transferUrlToStorage(
   sourceUrl: string,
   ctx: BackendUploadContext,
 ): Promise<StoredAsset> {
-  const { upload, ingest } = getStorageConfig();
+  const signal = signalUntil(ctx.deadlineAt);
+  const { upload } = getStorageConfig();
   const opened = await openBackendUpload(ctx, upload.max_upload_bytes);
   const measured = await fetchUrlToIngest(
     sourceUrl,
     opened.target,
     env.INGEST_SHARED_SECRET,
-    coverKeyFor(opened.storageKey),
-    mediaLimits(),
-    ingest.url_fetch_deadline_ms,
+    { coverKey: coverKeyFor(opened.storageKey), deadlineAt: ctx.deadlineAt, signal },
   );
   return landed(
     await applyIngestReport({

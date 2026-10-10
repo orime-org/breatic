@@ -28,7 +28,10 @@ const UNAVAILABLE_AS: Readonly<Record<UnavailableKind, TaskFailureReason>> = {
   unreachable: "source_unreachable",
   "unsupported-type": "understand_unsupported_type",
   "too-large": "understand_over_cap",
-  slow: "source_too_slow",
+  // The canvas lane gives a read the task's time left, so a read that runs
+  // long ends at the deadline and settles as expired (inner#1367). What
+  // reaches this as "slow" is a body that stopped part way.
+  slow: "source_cut_off",
   empty: "empty",
 };
 
@@ -144,7 +147,7 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
   expired: false,
   no_result: false,
   source_unreachable: false,
-  source_too_slow: false,
+  source_cut_off: false,
   unsupported_type: false,
   empty: false,
   internal: false,

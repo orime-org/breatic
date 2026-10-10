@@ -30,11 +30,12 @@ const applyIngestReport = vi.fn();
 
 const PART_SIZE = 8 * 1024 * 1024;
 const MAX_UPLOAD = 2 * 1024 * 1024 * 1024;
-const RUN_DEADLINE = 150_000;
-const TOOL_TIMEOUT = 60_000;
-const UPRIGHT_QUALITY = 85;
-const LIMITS = { runDeadlineMs: RUN_DEADLINE, toolTimeoutMs: TOOL_TIMEOUT, uprightJpegQuality: UPRIGHT_QUALITY };
-const URL_FETCH_DEADLINE_MS = 290_000;
+const IDLE_SECONDS = 45;
+/** When the generation these bytes belong to runs out. */
+const DEADLINE_AT = Date.now() + 3_600_000;
+/** What core's idle-socket dispatcher hands back, as this test sees it. */
+const IDLE_DISPATCHER = { dispatcher: "idle-socket" };
+const idleSocketDispatcher = vi.fn(() => IDLE_DISPATCHER);
 
 vi.mock("@breatic/core", () => ({
   env: { INGEST_SHARED_SECRET: "secret", INGEST_BASE_URL: "https://ingest.example" },
@@ -47,20 +48,16 @@ vi.mock("@breatic/core", () => ({
     ingest: {
       part_size_bytes: PART_SIZE,
       ticket_expires_seconds: 900,
-      session_token_ttl_seconds: 300,
-      container_run_deadline_ms: RUN_DEADLINE,
-      container_tool_timeout_ms: TOOL_TIMEOUT,
-      upright_jpeg_quality: UPRIGHT_QUALITY,
-      url_fetch_deadline_ms: URL_FETCH_DEADLINE_MS,
+      upright_jpeg_quality: 85,
     },
     upload: {
       max_upload_bytes: MAX_UPLOAD,
       client_max_attempts: 3,
       client_retry_base_delay_ms: 500,
-      client_request_timeout_ms: 60_000,
-      client_put_min_bytes_per_sec: 1024,
+      upload_idle_timeout_seconds: IDLE_SECONDS,
     },
   }),
+  idleSocketDispatcher,
 }));
 // Real but for the four calls driven here, so the rule deciding which media
 // has a frame to cut is the shared one rather than a copy typed in a test.
@@ -78,6 +75,15 @@ const { uploadBytesToStorage, transferUrlToStorage } = await import(
   "@domain/asset/backend-upload.service.js"
 );
 
+/**
+ * The deadline the last signed ticket carries.
+ * @returns It, in epoch ms.
+ */
+function signTicketDeadline(): number | undefined {
+  return (signUploadTicket.mock.calls.at(-1)?.[0] as { deadlineAt?: number } | undefined)
+    ?.deadlineAt;
+}
+
 /** What the Worker answers with once the object has landed. */
 const MEASURED = {
   sha256: "a".repeat(64),
@@ -93,7 +99,11 @@ const CTX = {
   taskType: "image",
   ext: ".png",
   contentType: "image/png",
+  deadlineAt: DEADLINE_AT,
 };
+
+/** What every call of a backend upload is bounded by. */
+const RUN = { deadlineAt: DEADLINE_AT, signal: expect.any(AbortSignal) };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -170,6 +180,34 @@ describe("uploadBytesToStorage — lane ②", () => {
       partSize: PART_SIZE,
       totalParts: 1,
     });
+  });
+
+  // A part is cut once its bytes stop moving (inner#1367). Node judges that on
+  // the socket, so the parts go through a dispatcher that times it, and every
+  // call of the upload is bounded by the generation's deadline.
+  it("sends the parts through an idle-timed socket, under the deadline", async () => {
+    await uploadBytesToStorage(new Blob(["x"]), CTX);
+
+    expect(idleSocketDispatcher).toHaveBeenCalledWith(IDLE_SECONDS * 1000);
+    const [, target, knobs, onPartLanded, signal] = sendBytesToIngest.mock.calls[0] as [
+      Blob,
+      { dispatcher?: unknown },
+      { uploadIdleTimeoutMs: number },
+      unknown,
+      AbortSignal,
+    ];
+    expect(target.dispatcher).toBe(IDLE_DISPATCHER);
+    expect(knobs.uploadIdleTimeoutMs).toBe(IDLE_SECONDS * 1000);
+    expect(onPartLanded).toBeUndefined();
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signTicketDeadline()).toBe(DEADLINE_AT);
+  });
+
+  it("starts nothing once the generation's deadline has passed", async () => {
+    await expect(
+      uploadBytesToStorage(new Blob(["x"]), { ...CTX, deadlineAt: Date.now() - 1 }),
+    ).rejects.toThrow(/deadline/);
+    expect(issueUploadGrant).not.toHaveBeenCalled();
   });
 
   it("counts the parts a large output needs", async () => {
@@ -288,15 +326,9 @@ describe("transferUrlToStorage — lane ③", () => {
       // A place for a frame, named for every transfer: this lane learns what
       // it fetched only after the bytes are down, so there is nothing here to
       // narrow by and the edge narrows instead (#240).
-      "image/2026-01-01/k_cover.png",
-      // The Worker reads no configuration of its own, so the run it is asked
-      // to start carries the deadlines it is held to.
-      LIMITS,
-      // This one bounds the whole transfer rather than the container run,
-      // and it cannot be derived: a link announces no length. Left to the
-      // transport it falls back to the platform's own bound, which is
-      // nobody's decision about this transfer.
-      URL_FETCH_DEADLINE_MS,
+      // The transfer and the container are held to the generation's own
+      // deadline and nothing else (inner#1367).
+      { coverKey: "image/2026-01-01/k_cover.png", ...RUN },
     );
     expect(sendBytesToIngest).not.toHaveBeenCalled();
     expect(out.fileUrl).toBe("https://our-bucket/k.png");
@@ -324,9 +356,7 @@ describe("transferUrlToStorage — lane ③", () => {
       "secret",
       // Derived from the video's own key, so re-delivering this transfer
       // names the frame it already cut (A5).
-      "video/2026-01-01/k_cover.png",
-      LIMITS,
-      URL_FETCH_DEADLINE_MS,
+      { coverKey: "video/2026-01-01/k_cover.png", ...RUN },
     );
   });
 });
@@ -353,8 +383,7 @@ describe("what lane ② asks the Worker for", () => {
       "https://ingest.example",
       expect.anything(),
       "secret",
-      "video/2026-01-01/k_cover.png",
-      LIMITS,
+      { coverKey: "video/2026-01-01/k_cover.png", ...RUN },
     );
   });
 
@@ -374,8 +403,7 @@ describe("what lane ② asks the Worker for", () => {
       "https://ingest.example",
       expect.anything(),
       "secret",
-      "image/2026-01-01/k_cover.png",
-      LIMITS,
+      { coverKey: "image/2026-01-01/k_cover.png", ...RUN },
     );
   });
 });

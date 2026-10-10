@@ -826,7 +826,7 @@
         "expired": "它超时了。",
         "no_result": "这次运行没有产出内容。",
         "source_unreachable": "这个地址打不开。",
-        "source_too_slow": "取这个地址的内容超时了。",
+        "source_cut_off": "这个地址的内容没传完就断了。",
         "unsupported_type": "{kind, select, image {不是支持的格式，图片只收 {formats}。} video {不是支持的格式，视频只收 {formats}。} audio {不是支持的格式，音频只收 {formats}。} other {不是支持的格式。}}",
         "empty": "没有拿到任何内容。",
         "internal": "我们这边出错了。",

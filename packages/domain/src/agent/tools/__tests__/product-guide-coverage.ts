@@ -355,7 +355,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.task.failure.no_credits": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.no_result": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.over_cap": { excluded: REASONS.SAYS_WHAT_HAPPENED },
-  "canvas.task.failure.source_too_slow": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "canvas.task.failure.source_cut_off": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.source_unreachable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.tool_failed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.no_audio_track": { excluded: REASONS.SAYS_WHAT_HAPPENED },

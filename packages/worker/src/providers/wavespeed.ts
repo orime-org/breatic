@@ -15,14 +15,13 @@
 
 import type { ResumeContext } from "@worker/providers/shared.js";
 import { submitOrResume } from "@worker/providers/async-resume.js";
+import { deadlineSignal } from "@worker/providers/still-running.js";
 import { bearerHeaders, requestWithRetry, pollOnce, extractNested } from "@worker/providers/http.js";
 
-/** Where predictions are sent and how long one may take. */
+/** Where predictions are sent. */
 export interface WavespeedEndpoint {
   baseUrl: string;
   apiKey: string;
-  /** Seconds. */
-  timeout: number;
 }
 
 /** What a finished prediction answered. */
@@ -48,10 +47,11 @@ function outputsOf(data: Record<string, unknown>): unknown[] | undefined {
  * at-most-once across pickups (#1628): with a stored id the POST is skipped;
  * a fresh run stores the returned id before it asks. A submit response that
  * already carries outputs is the answer, and nothing is asked.
- * @param endpoint - Base url, key and timeout.
+ * @param endpoint - Base url and key.
  * @param modelId - The WaveSpeed model path, e.g. `minimax/speech-2.8-hd`.
  * @param body - The request body, sent verbatim.
- * @param resume - Worker resume context: the stored id, and where a new one is stored.
+ * @param resume - Worker resume context: the stored id, where a new one is
+ *   stored, and the task's deadline every call is bounded by.
  * @returns The prediction's outputs and its id.
  * @throws {StillRunning} when the prediction is still going, or the question
  *   about it got no usable answer.
@@ -65,6 +65,7 @@ export async function runPrediction(
   resume: ResumeContext,
 ): Promise<PredictionRun> {
   const headers = bearerHeaders(endpoint.apiKey);
+  const signal = deadlineSignal(resume.deadlineAt);
   let syncAnswer: Record<string, unknown> | null = null;
 
   /**
@@ -77,7 +78,7 @@ export async function runPrediction(
       `${endpoint.baseUrl}/${modelId}`,
       { method: "POST", headers, body: JSON.stringify(body) },
       "wavespeed",
-      endpoint.timeout * 1000,
+      signal,
     );
     const taskId = extractNested(data, ["data", "id"]) as string | undefined;
     if (outputsOf(data)) {
@@ -103,6 +104,7 @@ export async function runPrediction(
         failureStatuses: new Set(["failed"]),
         errorPath: ["data", "error"],
         provider: "wavespeed",
+        signal,
       })),
     taskId,
   });

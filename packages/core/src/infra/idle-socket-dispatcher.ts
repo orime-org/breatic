@@ -11,7 +11,7 @@
  * them.
  */
 
-import { Agent, buildConnector } from "undici";
+import { Agent, buildConnector, setGlobalDispatcher } from "undici";
 
 /**
  * A dispatcher whose sockets are cut once no byte has moved either way for
@@ -43,14 +43,18 @@ export function idleSocketDispatcher(idleMs: number): Agent {
 }
 
 /**
- * A dispatcher that waits for an answer as long as the caller lets it.
+ * Make every `fetch` in this process wait for an answer as long as its caller
+ * lets it.
  *
  * `headersTimeout` is switched off: every call made through it is bounded by
  * its caller instead — the transport's own `timeoutMs`, or a task's deadline
  * passed as the signal. `bodyTimeout` keeps undici's default, which is itself
- * an idle window on reading the answer.
- * @returns The dispatcher, for the process-wide `setGlobalDispatcher`.
+ * an idle window on reading the answer. For an application entry to call once
+ * at start; a library never installs it.
+ * @returns The dispatcher now installed.
  */
-export function deadlineBoundDispatcher(): Agent {
-  return new Agent({ headersTimeout: 0 });
+export function installDeadlineBoundDispatcher(): Agent {
+  const dispatcher = new Agent({ headersTimeout: 0 });
+  setGlobalDispatcher(dispatcher);
+  return dispatcher;
 }

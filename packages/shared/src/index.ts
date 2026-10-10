@@ -533,6 +533,7 @@ export type {
 // caller holding a 200 has no use for "and it took two tries", while a caller
 // holding a failure has a log line to write.
 export { httpRequest, HttpRetryError } from "@shared/http/request.js";
+export { DeadlinePassed, signalUntil } from "@shared/http/deadline.js";
 export { readWithin, readBytesWithin, BodyTooLarge, EmptyBody } from "@shared/http/read-within.js";
 
 // Beside the transport because it undoes what the transport did: a request
@@ -643,17 +644,6 @@ export {
 // Plain text in and out of a text node's body ships at
 // `@breatic/shared/canvas/text-body` — that file says why it is not here.
 
-// The arithmetic both sides of an upload read: the browser sizes each part's
-// deadline with it, and the config refuses windows narrower than what they
-// have to hold.
-export {
-  partDeadlineMs,
-  partRetryBudgetMs,
-  completeRetryBudgetMs,
-  assertUploadWindows,
-  type PartDeadlineConfig,
-  type UploadWindows,
-} from "@shared/upload/windows.js";
 // Sending bytes to the ingest Worker. Whoever holds them sends them: the
 // browser for a file a person picked, our own backend for what it produced
 // itself -- one implementation, so "every asset reaches R2 through the ingest
@@ -663,7 +653,6 @@ export {
   finishUploadAtIngest,
   fetchUrlToIngest,
   readStoredMediaAtIngest,
-  computePutTimeoutMs,
   IngestAnswerError,
   UploadHttpError,
   type UploadClientConfig,
@@ -672,7 +661,7 @@ export {
   type HeldUpload,
   type PartReceipt,
   type IngestMeasurements,
-  type MediaLimits,
+  type IngestRun,
   type MediaNumbers,
   PREVIEW_OUTCOMES,
   type PreviewOutcome,

@@ -36,14 +36,12 @@ import {
   sessionCookieName,
   loadLocales,
   coverKeyFor,
-  getStorageConfig,
 } from "@breatic/core";
 import {
   INGEST_FAILURE_HEADER,
   verifyUploadTicket,
   type UploadTicketPayload,
 } from "@breatic/shared";
-import { assetService } from "@breatic/domain";
 import type { Job } from "bullmq";
 import type { createApp } from "@server/app.js";
 import {
@@ -263,21 +261,22 @@ describe("the url ingest job — what it asks the Worker for", () => {
     expect(payload.studioId).toBe(job.studioId);
   });
 
-  it("sends the container's windows and the budget for this whole call", async () => {
-    // Without the windows the Worker starts no run at all, so the node loses
-    // its resolution and every video its poster; without the budget the
-    // container spends what the transfer needed. Both travel on the body
-    // because the Worker reads no configuration of its own.
+  it("holds the transfer to the end of the row the route opened, and nothing shorter", async () => {
+    // The Worker reads no configuration of its own, so the deadline travels
+    // on the body; it is the task row's, the one the node is judged by
+    // (inner#1367).
     const job = await submitted();
     workerAnswers(landed());
 
     await run(job);
 
-    const { ingest } = getStorageConfig();
-    expect(asked.body).toMatchObject({
-      limits: assetService.mediaLimits(),
-      callBudgetMs: ingest.url_fetch_deadline_ms,
-    });
+    const rows = await sql<{ ends: string }[]>`
+      SELECT (floor(extract(epoch FROM started_at) * 1000) + budget_ms)::bigint AS ends
+      FROM node_tasks WHERE storage_key = ${job.storageKey}
+    `;
+    expect(asked.body.deadlineAt).toBe(Number(rows[0]!.ends));
+    expect(asked.body).not.toHaveProperty("limits");
+    expect(asked.body).not.toHaveProperty("callBudgetMs");
   });
 
   it("names a place for a cover on every call, whatever the source turns out to be", async () => {
@@ -377,7 +376,7 @@ describe("the url ingest job — when it does not", () => {
 
     expect(await taskOn(job.nodeId)).toMatchObject({
       status: "failed",
-      error_message: "source_too_slow",
+      error_message: "ingest_no_answer",
     });
   });
 

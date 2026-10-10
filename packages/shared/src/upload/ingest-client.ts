@@ -24,7 +24,6 @@
 
 import { z } from "zod";
 import { httpRequest } from "@shared/http/request.js";
-import { partDeadlineMs } from "@shared/upload/windows.js";
 import {
   INGEST_FAILURE_HEADER,
   readIngestFailureCode,
@@ -39,10 +38,12 @@ export interface UploadClientConfig {
   clientMaxAttempts: number;
   /** Base backoff (ms) between ticket attempts; full jitter on base * 2^attemptIndex. */
   clientRetryBaseDelayMs: number;
-  /** Floor for the part stall guard. It times no API request — the ticket goes through the axios client. */
-  clientRequestTimeoutMs: number;
-  /** PUT stall guard rate: timeout = max(floor, size / rate). */
-  clientPutMinBytesPerSec: number;
+  /**
+   * How long one part may go without a byte moving before it is cut and sent
+   * again (inner#1367): an idle window, so a slow part that keeps moving is
+   * never cut.
+   */
+  uploadIdleTimeoutMs: number;
 }
 
 /** An HTTP failure from the ingest Worker, carrying what it refused with. */
@@ -74,26 +75,6 @@ export class UploadHttpError extends Error {
   }
 }
 
-/**
- * Per-attempt PUT timeout: a stall guard, not a UX deadline. Scales with
- * file size at the minimum acceptable transfer rate so a legitimately
- * slow big upload never trips it, floored at the value below, whose name says API request but times none.
- * @param sizeBytes - The file size about to be PUT.
- * @param cfg - The upload knobs.
- * @returns The per-attempt timeout in milliseconds.
- */
-export function computePutTimeoutMs(
-  sizeBytes: number,
-  cfg: UploadClientConfig,
-): number {
-  // The same arithmetic the config's own window check reads. A second copy
-  // here would let the browser's deadline and that check disagree.
-  return partDeadlineMs(sizeBytes, {
-    requestTimeoutMs: cfg.clientRequestTimeoutMs,
-    minBytesPerSec: cfg.clientPutMinBytesPerSec,
-  });
-}
-
 /** What sending bytes to the Worker needs off a ticket. */
 export interface IngestTarget {
   /** The signed permission slip the Worker verifies. */
@@ -104,6 +85,12 @@ export interface IngestTarget {
   partSize: number;
   /** How many parts the bytes were cut into. */
   totalParts: number;
+  /**
+   * What Node sends the parts through, timing the socket for a part whose
+   * bytes stopped moving (core's `idleSocketDispatcher`). A page leaves it
+   * out and the transport judges the same from upload progress.
+   */
+  dispatcher?: unknown;
 }
 
 /**
@@ -123,21 +110,18 @@ export interface IngestOutcome {
   kind?: string;
 }
 
-/**
- * How long the media container gets, which the caller reads out of
- * `config/storage.yaml`.
- *
- * The Worker holds no configuration of its own — it has no filesystem and
- * reads no environment beyond its bindings — so a value that belongs in that
- * file reaches it the way the session token's window does: on the request.
- */
-export interface MediaLimits {
-  /** The whole run: starting the container and every tool. */
-  runDeadlineMs: number;
-  /** One tool inside it, reads included. */
-  toolTimeoutMs: number;
+/** What finishing or fetching an upload is told, beyond the bytes. */
+export interface IngestRun {
+  /** Where to write a cut frame, named on every finish and fetch. */
+  coverKey: string;
+  /**
+   * When the task this upload belongs to runs out, in epoch ms (inner#1367).
+   * The Worker holds the media container to it and to nothing of its own.
+   */
+  deadlineAt: number;
+  /** The same deadline as a signal, so a resend cannot stretch it. */
+  signal?: AbortSignal;
 }
-
 
 /** What one part's write left behind: R2's receipt for it. */
 export interface PartReceipt {
@@ -343,6 +327,7 @@ function readMeasurements(answered: unknown): IngestMeasurements {
  * @param cfg - The upload knobs, which size the per-delivery deadlines.
  * @param onPartLanded - Told how many bytes have landed so far, after each
  *   part the Worker accepts.
+ * @param signal - The upload's deadline, ending every call of it.
  * @returns Everything finishing this upload will need.
  * @throws {UploadHttpError} When the Worker refuses either step.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -353,8 +338,9 @@ export async function sendBytesToIngest(
   target: IngestTarget,
   cfg: UploadClientConfig,
   onPartLanded?: (bytesLanded: number) => void,
+  signal?: AbortSignal,
 ): Promise<HeldUpload> {
-  const opened = await openUpload(target, cfg);
+  const opened = await openUpload(target, signal);
 
   let token = opened.token;
   const parts: PartReceipt[] = [];
@@ -368,6 +354,7 @@ export async function sendBytesToIngest(
       slice,
       token,
       cfg,
+      signal,
     );
     token = landed.token;
     parts.push({ partNumber: landed.partNumber, etag: landed.etag });
@@ -380,12 +367,10 @@ export async function sendBytesToIngest(
 /**
  * Ask the Worker to assemble the object and measure it.
  *
- * No deadline of its own. This request carries no bytes, and how long the
- * Worker spends reading the assembled object back to hash it happens inside
- * Cloudflare's network, at a rate the caller's own upload figures say nothing
- * about. A deadline reached here costs only this delivery: the retry brings
- * the same upload id, for which R2 refuses a second complete rather than
- * writing anything.
+ * Bounded by the upload's task deadline and nothing else (inner#1367): the
+ * Worker holds its container to `deadlineAt`, and the caller's signal ends
+ * the wait at the same instant. A resend brings the same upload id, for which
+ * R2 refuses a second complete rather than writing anything.
  *
  * The secret goes with it because a session token travels to the browser —
  * every part's answer hands it one — while finishing is the step whose
@@ -393,15 +378,9 @@ export async function sendBytesToIngest(
  * @param uploadUrl - The ingest Worker's base address.
  * @param held - The upload id, newest token and part receipts.
  * @param secret - The secret the Worker also holds.
- * @param coverKey - The key to write a cut frame to. Named on every finish:
- *   which media have a frame to lift is decided from the type, and the type is
- *   the edge's to read off the stored bytes.
- * @param limits - How long the container's run and each tool inside it get,
- *   out of `config/storage.yaml`. The Worker reads no configuration of its own.
- * @param deferMediaRead - True when the media numbers are read after this
- *   upload returns rather than now (#299: covers and avatars). Its own field,
- *   so a finish that lost its limits is still told apart from one that asked
- *   for no read.
+ * @param run - The cover key, the deadline, and whether the media numbers are
+ *   read after this upload returns rather than now (#299: covers and
+ *   avatars).
  * @returns What the Worker measured over the stored object.
  * @throws {UploadHttpError} When the upload did not become an object.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -411,9 +390,7 @@ export async function finishUploadAtIngest(
   uploadUrl: string,
   held: HeldUpload,
   secret: string,
-  coverKey: string,
-  limits: MediaLimits,
-  deferMediaRead = false,
+  run: IngestRun & { deferMediaRead?: boolean },
 ): Promise<IngestMeasurements> {
   const answered = await askWorker<unknown>(
     `${uploadUrl}/uploads/${held.uploadId}/complete`,
@@ -426,15 +403,15 @@ export async function finishUploadAtIngest(
       },
       body: JSON.stringify({
         parts: held.parts,
-        coverKey,
-        limits,
-        ...(deferMediaRead && { deferMediaRead: true }),
+        coverKey: run.coverKey,
+        deadlineAt: run.deadlineAt,
+        ...(run.deferMediaRead === true && { deferMediaRead: true }),
       }),
     },
     // The request names the upload it finishes, and a finished one is refused
     // by R2 rather than written twice, so a repeat answers out of the object
     // already standing on that key.
-    { replaySafe: true },
+    { replaySafe: true, ...(run.signal !== undefined && { signal: run.signal }) },
   );
   return readMeasurements(answered);
 }
@@ -484,17 +461,17 @@ const previewOutcome = z
  * worker once the upload has returned, and the backfill of previews. The only
  * thing it may write is a preview at a key derived from the object's own, and
  * one standing there is left alone, so a repeat costs one more container run
- * and nothing else. No deadline of its own: the wait is the container's, and
- * the Worker bounds it by `limits`.
+ * and nothing else. Bounded by the caller's deadline: the Worker holds its
+ * container to `deadlineAt`, and the signal ends the wait at the same instant.
  * @param uploadUrl - The ingest Worker's base address.
  * @param secret - The secret the Worker also holds.
  * @param about - The object to read.
  * @param about.storageKey - Its key.
  * @param about.contentType - What the ledger recorded the bytes as, which says
  *   whether there is anything for the container to read.
- * @param about.limits - How long the run and each tool inside it get, out of
- *   `config/storage.yaml`.
+ * @param about.deadlineAt - When the job asking runs out, in epoch ms.
  * @param about.wantPreview - Whether to cut a preview when none stands.
+ * @param signal - The same deadline as a signal.
  * @returns The three numbers, each unusable one as none, and what became of
  *   the preview when one was asked for.
  * @throws {UploadHttpError} When the Worker refuses.
@@ -507,9 +484,10 @@ export async function readStoredMediaAtIngest(
   about: {
     storageKey: string;
     contentType: string;
-    limits: MediaLimits;
+    deadlineAt: number;
     wantPreview?: boolean;
   },
+  signal?: AbortSignal,
 ): Promise<StoredMediaRead> {
   const answered = await askWorker<unknown>(
     `${uploadUrl}/media`,
@@ -521,7 +499,7 @@ export async function readStoredMediaAtIngest(
       },
       body: JSON.stringify(about),
     },
-    { replaySafe: true },
+    { replaySafe: true, ...(signal !== undefined && { signal }) },
   );
   const numbers = mediaNumbers.parse(answered ?? {});
   const preview = previewOutcome.parse(
@@ -543,15 +521,8 @@ export async function readStoredMediaAtIngest(
  * @param sourceUrl - Where the bytes are now.
  * @param target - What the ticket endpoint issued for them.
  * @param secret - The secret the Worker also holds.
- * @param coverKey - The key to write a cut frame to. Named on every finish:
- *   which media have a frame to lift is decided from the type, and the type is
- *   the edge's to read off the stored bytes.
- * @param limits - How long the container's run and each tool inside it get,
- *   out of `config/storage.yaml`. The Worker reads no configuration of its own.
- * @param deadlineMs - How long this one call may take, out of the same file.
- *   Required rather than optional: the answer arrives only once the whole
- *   transfer is written, and the transport's fallback is the platform's bound
- *   rather than anyone's decision about this transfer.
+ * @param run - The cover key, and the task deadline the Worker holds the
+ *   transfer and the container to, with the same deadline as a signal.
  * @returns What the Worker measured over the object it pulled.
  * @throws {UploadHttpError} When the Worker could not store the source.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -561,9 +532,7 @@ export async function fetchUrlToIngest(
   sourceUrl: string,
   target: IngestTarget,
   secret: string,
-  coverKey: string,
-  limits: MediaLimits,
-  deadlineMs: number,
+  run: IngestRun,
 ): Promise<IngestMeasurements> {
   const answered = await askWorker<unknown>(
     `${target.uploadUrl}/fetch`,
@@ -576,18 +545,15 @@ export async function fetchUrlToIngest(
       },
       body: JSON.stringify({
         url: sourceUrl,
-        coverKey,
-        limits,
-        // The transfer runs inside this call, so the Worker holds the
-        // container to what is left of it rather than to its own figure.
-        callBudgetMs: deadlineMs,
+        coverKey: run.coverKey,
+        deadlineAt: run.deadlineAt,
       }),
     },
     // Sending this again is a second full transfer: the Worker opens its own
     // multipart upload each time it runs, so a repeat re-fetches the source,
     // writes R2 a second time, and brings an upload id the permission to
     // finish this key was not granted to.
-    { timeoutMs: deadlineMs, replaySafe: false },
+    { replaySafe: false, ...(run.signal !== undefined && { signal: run.signal }) },
   );
   return readMeasurements(answered);
 }
@@ -602,7 +568,11 @@ export async function fetchUrlToIngest(
  * @param url - The endpoint.
  * @param init - Method, headers and body.
  * @param options - What only the caller knows about this delivery.
- * @param options.timeoutMs - One delivery's deadline; the transport's default when absent.
+ * @param options.signal - The caller's deadline, ending the whole call.
+ * @param options.idleTimeoutMs - How long a delivery may go without a byte
+ *   moving, in a page.
+ * @param options.dispatcher - What Node sends through, when the caller times
+ *   the socket.
  * @param options.replaySafe - Whether sending this again produces no second
  *   side effect. The test is whether the request names the upload it writes
  *   into: a part and a completion do, and opening one does not.
@@ -612,12 +582,23 @@ export async function fetchUrlToIngest(
 export async function askWorker<T>(
   url: string,
   init: RequestInit,
-  { timeoutMs, replaySafe }: { timeoutMs?: number; replaySafe: boolean },
+  options: {
+    replaySafe: boolean;
+    signal?: AbortSignal;
+    idleTimeoutMs?: number;
+    dispatcher?: unknown;
+  },
 ): Promise<T> {
-  const res = await httpRequest(url, init, {
-    replaySafe,
-    ...(timeoutMs !== undefined && { timeoutMs }),
-  });
+  const { replaySafe, signal, idleTimeoutMs, dispatcher } = options;
+  const res = await httpRequest(
+    url,
+    dispatcher === undefined ? init : ({ ...init, dispatcher } as RequestInit),
+    {
+      replaySafe,
+      ...(signal !== undefined && { signal }),
+      ...(idleTimeoutMs !== undefined && { idleTimeoutMs }),
+    },
+  );
   if (!res.ok) {
     throw new UploadHttpError(
       res.status,
@@ -630,13 +611,13 @@ export async function askWorker<T>(
 /**
  * Open a multipart upload for this ticket's key.
  * @param target - The signed ticket and where to send it.
- * @param cfg - The upload knobs.
+ * @param signal - The upload's deadline.
  * @returns The upload's id and its first session token.
  * @throws {UploadHttpError} When the Worker refuses the ticket.
  */
 async function openUpload(
   target: IngestTarget,
-  cfg: UploadClientConfig,
+  signal: AbortSignal | undefined,
 ): Promise<OpenedUpload> {
   return askWorker<OpenedUpload>(
     `${target.uploadUrl}/uploads`,
@@ -644,7 +625,7 @@ async function openUpload(
     // This request carries no upload id: it mints one, and the Worker opens a
     // fresh multipart upload on every delivery. A replay leaves the first one
     // abandoned, holding parts R2 charges for.
-    { timeoutMs: cfg.clientRequestTimeoutMs, replaySafe: false },
+    { replaySafe: false, ...(signal !== undefined && { signal }) },
   );
 }
 
@@ -656,6 +637,7 @@ async function openUpload(
  * @param bytes - This part's bytes.
  * @param token - The token this part is authorised by.
  * @param cfg - The upload knobs.
+ * @param signal - The upload's deadline.
  * @returns This part's receipt and the token for the next part.
  * @throws {UploadHttpError} When the Worker refuses the part.
  */
@@ -666,15 +648,21 @@ async function sendPart(
   bytes: Blob,
   token: string,
   cfg: UploadClientConfig,
+  signal: AbortSignal | undefined,
 ): Promise<PartReceipt & { token: string }> {
   return askWorker<PartReceipt & { token: string }>(
     `${target.uploadUrl}/uploads/${uploadId}/parts/${part}`,
     { method: "PUT", body: bytes, headers: { "x-upload-token": token } },
-    // The deadline is a stall guard sized to this part, not to the file: a
-    // part that is transferring at all must not be cut off, and a part that
-    // has stopped should not hold the upload for the whole file's budget.
-    // The part number is in the path, so a repeat writes the same part under
-    // the same number; R2 keeps the later write of a part, never both.
-    { timeoutMs: computePutTimeoutMs(bytes.size, cfg), replaySafe: true },
+    // Cut only once its bytes stop moving: in a page the transport reads
+    // upload progress, in Node the caller's dispatcher times the socket. The
+    // part number is in the path, so a repeat writes the same part under the
+    // same number; R2 keeps the later write of a part, never both.
+    {
+      replaySafe: true,
+      ...(signal !== undefined && { signal }),
+      ...(target.dispatcher !== undefined
+        ? { dispatcher: target.dispatcher }
+        : { idleTimeoutMs: cfg.uploadIdleTimeoutMs }),
+    },
   );
 }

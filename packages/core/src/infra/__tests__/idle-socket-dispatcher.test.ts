@@ -12,8 +12,12 @@ import { createServer, type Server, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 
 import { describe, it, expect, afterEach } from "vitest";
+import { getGlobalDispatcher, setGlobalDispatcher } from "undici";
 
-import { idleSocketDispatcher } from "@core/infra/idle-socket-dispatcher.js";
+import {
+  idleSocketDispatcher,
+  installDeadlineBoundDispatcher,
+} from "@core/infra/idle-socket-dispatcher.js";
 
 const IDLE_MS = 400;
 const BIG = 64 * 1024 * 1024;
@@ -99,5 +103,21 @@ describe("idleSocketDispatcher", () => {
     } as RequestInit).catch((err: unknown) => err);
     expect(String((failure as { cause?: unknown }).cause)).toMatch(/no bytes moved for 400ms/);
     await dispatcher.close();
+  });
+});
+
+describe("installDeadlineBoundDispatcher", () => {
+  it("becomes the dispatcher every fetch in the process goes through", async () => {
+    const before = getGlobalDispatcher();
+    try {
+      const installed = installDeadlineBoundDispatcher();
+      expect(getGlobalDispatcher()).toBe(installed);
+
+      const url = await server("drain");
+      const res = await fetch(url, { method: "POST", body: "x" });
+      expect(await res.text()).toBe("ok");
+    } finally {
+      setGlobalDispatcher(before);
+    }
   });
 });

@@ -25,7 +25,6 @@ import {
   finishUploadAtIngest,
   fetchUrlToIngest,
   readStoredMediaAtIngest,
-  computePutTimeoutMs,
   type IngestTarget,
   type UploadClientConfig,
 } from '@shared/upload/ingest-client.js';
@@ -43,8 +42,7 @@ const cfg: UploadClientConfig = {
   maxUploadBytes: 2 * 1024 * 1024 * 1024,
   clientMaxAttempts: 3,
   clientRetryBaseDelayMs: 500,
-  clientRequestTimeoutMs: 30_000,
-  clientPutMinBytesPerSec: 50_000,
+  uploadIdleTimeoutMs: 60_000,
 };
 
 /** A ticket for a file of `totalParts` parts. */
@@ -87,7 +85,12 @@ function headersOf(nth: number): Record<string, string> {
 }
 
 /** The transport options of the nth call. */
-function optionsOf(nth: number): { replaySafe: boolean; timeoutMs?: number } {
+function optionsOf(nth: number): {
+  replaySafe: boolean;
+  timeoutMs?: number;
+  idleTimeoutMs?: number;
+  signal?: AbortSignal;
+} {
   const options = mockedRequest.mock.calls[nth]?.[2];
   if (options === undefined) throw new Error(`no call ${nth}`);
   return options;
@@ -116,8 +119,8 @@ const MEASURED = {
   contentType: 'image/png',
 };
 
-/** What the caller reads out of `config/storage.yaml` for the container. */
-const LIMITS = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
+/** When the upload's task runs out, as the caller worked it out. */
+const DEADLINE_AT = 1_800_000_000_000;
 
 describe('sending bytes to the ingest Worker', () => {
   it('opens the upload with the ticket our server signed', async () => {
@@ -220,7 +223,7 @@ describe('finishing an upload', () => {
   it('asks the upload it holds to finish, with the newest token', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT });
 
     expect(urlOf(0)).toBe(
       'https://ingest.example.com/uploads/upload-1/complete',
@@ -234,7 +237,7 @@ describe('finishing an upload', () => {
   it('presents the shared secret', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT });
 
     expect(headersOf(0)['x-ingest-secret']).toBe(SECRET);
   });
@@ -242,14 +245,16 @@ describe('finishing an upload', () => {
   it('hands back every part receipt, as JSON it says is JSON', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, {
+      coverKey: COVER_KEY,
+      deadlineAt: DEADLINE_AT,
+    });
 
     expect(headersOf(0)['content-type']).toBe('application/json');
     expect(JSON.parse(mockedRequest.mock.calls[0]?.[1]?.body as string)).toEqual({
       parts: held.parts,
-      // The Worker reads no configuration of its own, so how long it may wait
-      // on the media container travels here.
-      limits: LIMITS,
+      // The Worker holds the media container to the task's own deadline.
+      deadlineAt: DEADLINE_AT,
       // Named on every finish. Which media have a frame to lift is decided
       // from the type, and the type is the edge's to read off the bytes — so
       // no caller knows yet whether this key will be written to.
@@ -258,16 +263,19 @@ describe('finishing an upload', () => {
   });
 
   // A cover or an avatar is read after the upload returns (#299). The request
-  // still carries the deadlines: what says "not now" is its own field, so a
-  // lane that drops its limits by mistake is still told apart from this one.
+  // still carries the deadline: what says "not now" is its own field.
   it('asks for no media read when the caller defers it', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS, true);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, {
+      coverKey: COVER_KEY,
+      deadlineAt: DEADLINE_AT,
+      deferMediaRead: true,
+    });
 
     expect(JSON.parse(mockedRequest.mock.calls[0]?.[1]?.body as string)).toEqual({
       parts: held.parts,
-      limits: LIMITS,
+      deadlineAt: DEADLINE_AT,
       coverKey: COVER_KEY,
       deferMediaRead: true,
     });
@@ -276,7 +284,7 @@ describe('finishing an upload', () => {
   it('answers with what the Worker measured over the stored object', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    const measured = await finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS);
+    const measured = await finishUploadAtIngest(WORKER_URL, held, SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT });
 
     // A medium with no such number and an answer that never carried the field
     // are the same fact, so both read as none and every caller has one case.
@@ -312,8 +320,7 @@ describe('finishing an upload', () => {
       WORKER_URL,
       held,
       SECRET,
-      COVER_KEY,
-      LIMITS,
+      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT },
     );
 
     expect(measured).toMatchObject({ width: null, height: null, durationSeconds: null });
@@ -332,8 +339,7 @@ describe('finishing an upload', () => {
       WORKER_URL,
       held,
       SECRET,
-      COVER_KEY,
-      LIMITS,
+      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT },
     );
 
     expect(measured.cover).toBeNull();
@@ -351,8 +357,7 @@ describe('finishing an upload', () => {
       WORKER_URL,
       held,
       SECRET,
-      COVER_KEY,
-      LIMITS,
+      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT },
     );
 
     expect(measured).toMatchObject({ width: 1920, height: 1080, durationSeconds });
@@ -366,7 +371,7 @@ describe('finishing an upload', () => {
     );
 
     await expect(
-      finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS),
+      finishUploadAtIngest(WORKER_URL, held, SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT }),
     ).rejects.toThrow();
   });
 
@@ -378,7 +383,7 @@ describe('finishing an upload', () => {
     );
 
     await expect(
-      finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS),
+      finishUploadAtIngest(WORKER_URL, held, SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT }),
     ).rejects.toThrow();
   });
 });
@@ -427,42 +432,59 @@ describe('what the shared transport is told', () => {
     ).toBe(false);
   });
 
-  // A stall guard sized to the part, so a part that is transferring at all is
-  // never cut off and one that has stopped does not hold the whole file's
-  // budget.
-  it('gives each part a deadline its own size earns', async () => {
+  // A part is cut only once its bytes stop moving (inner#1367), however long
+  // a slow part that keeps moving takes. In a page the transport judges that
+  // from upload progress.
+  it('times each part by the idle window, with no deadline of its own', async () => {
     wireOpenAndParts(2);
 
     await sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
 
-    expect(optionsOf(1).timeoutMs).toBe(computePutTimeoutMs(PART_SIZE, cfg));
-    expect(optionsOf(2).timeoutMs).toBe(computePutTimeoutMs(10, cfg));
+    expect(optionsOf(1).idleTimeoutMs).toBe(cfg.uploadIdleTimeoutMs);
+    expect(optionsOf(2).idleTimeoutMs).toBe(cfg.uploadIdleTimeoutMs);
+    expect(optionsOf(1).timeoutMs).toBeUndefined();
   });
 
-  // Completing carries no bytes, and the work it waits on — reading the
-  // assembled object back to hash it, then the media container's run — happens
-  // inside Cloudflare's network, at a rate the caller's own upload figures say
-  // nothing about. So it names no deadline and takes the transport's own,
-  // rather than one sized from those figures, which at the upload cap would
-  // have been hours.
-  it('names no deadline of its own for finishing, and repeats it', async () => {
+  // Node judges the same on the socket: the caller hands in a dispatcher that
+  // times it, and the transport is given no idle window it cannot honour.
+  it('sends parts through the dispatcher a backend caller hands in', async () => {
+    wireOpenAndParts(1);
+    const dispatcher = { name: 'idle-socket' };
+
+    await sendBytesToIngest(fileOf(10), { ...ticketFor(1), dispatcher }, cfg);
+
+    const init = mockedRequest.mock.calls[1]?.[1] as RequestInit & { dispatcher?: unknown };
+    expect(init.dispatcher).toBe(dispatcher);
+    expect(optionsOf(1).idleTimeoutMs).toBeUndefined();
+  });
+
+  // Every call on an upload is bounded by its task's deadline, which arrives
+  // as a signal so a resend cannot stretch it.
+  it('passes the caller signal to every call of an upload', async () => {
+    wireOpenAndParts(1);
+    const signal = new AbortController().signal;
+
+    await sendBytesToIngest(fileOf(10), ticketFor(1), cfg, undefined, signal);
+
+    expect(optionsOf(0).signal).toBe(signal);
+    expect(optionsOf(1).signal).toBe(signal);
+    expect(optionsOf(0).timeoutMs).toBeUndefined();
+  });
+
+  it('bounds finishing by the caller signal, and repeats it', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
+    const signal = new AbortController().signal;
 
     await finishUploadAtIngest(
       WORKER_URL,
       { uploadId: 'upload-1', token: 'token-3', parts: [] },
       SECRET,
-      COVER_KEY,
-      LIMITS,
+      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, signal },
     );
 
     expect(optionsOf(0).replaySafe).toBe(true);
+    expect(optionsOf(0).signal).toBe(signal);
     expect(optionsOf(0).timeoutMs).toBeUndefined();
-    // The figure that would otherwise have been handed over, kept here so this
-    // test says what it is refusing rather than only that another was used.
-    expect(computePutTimeoutMs(PART_SIZE * 2 + 700, cfg)).toBeGreaterThan(
-      cfg.clientRequestTimeoutMs,
-    );
   });
 });
 
@@ -471,14 +493,11 @@ describe('what the shared transport is told', () => {
 // the ticket that says where they may land.
 describe('handing the Worker a URL to fetch', () => {
   const SOURCE = 'https://provider.example/generated/clip.mp4';
-  // Not the figure the config ships: this pins that the caller's own number
-  // reaches the transport, which a hard-coded copy of it would also satisfy.
-  const DEADLINE = 123_456;
 
   it('names the fetch endpoint and carries the ticket and the secret', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, COVER_KEY, LIMITS, DEADLINE);
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT });
 
     expect(urlOf(0)).toBe(`${WORKER_URL}/fetch`);
     expect(headersOf(0)).toMatchObject({
@@ -494,20 +513,15 @@ describe('handing the Worker a URL to fetch', () => {
       SOURCE,
       ticketFor(1),
       SECRET,
-      'video/2026-09-11/1_clip_cover.png',
-      LIMITS,
-      DEADLINE,
+      { coverKey: 'video/2026-09-11/1_clip_cover.png', deadlineAt: DEADLINE_AT },
     );
 
     expect(JSON.parse(String(mockedRequest.mock.calls[0]?.[1]?.body))).toEqual({
       url: SOURCE,
       coverKey: 'video/2026-09-11/1_clip_cover.png',
-      limits: LIMITS,
-      // The transfer happens inside this call, so the Worker is told how long
-      // the whole of it may take and holds the container to what is left.
-      // Without it the two together outrun the caller, whose timer then fires
-      // on an object already stored and hashed.
-      callBudgetMs: DEADLINE,
+      // The Worker holds the transfer and the container to the task's own
+      // deadline.
+      deadlineAt: DEADLINE_AT,
     });
   });
 
@@ -517,21 +531,23 @@ describe('handing the Worker a URL to fetch', () => {
   it('tells the transport that sending it again costs something', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, COVER_KEY, LIMITS, DEADLINE);
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT });
 
     expect(optionsOf(0).replaySafe).toBe(false);
   });
 
-  // The transport cannot derive this one. What it sends is a few hundred
-  // bytes; how long the answer takes is a third party's business, and the
-  // default it falls back to is the platform's own bound rather than anyone's
-  // decision about this lane.
-  it('waits under the deadline its caller named', async () => {
+  it('waits as long as the caller signal allows', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
+    const signal = new AbortController().signal;
 
-    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, COVER_KEY, LIMITS, DEADLINE);
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, {
+      coverKey: COVER_KEY,
+      deadlineAt: DEADLINE_AT,
+      signal,
+    });
 
-    expect(optionsOf(0).timeoutMs).toBe(DEADLINE);
+    expect(optionsOf(0).signal).toBe(signal);
+    expect(optionsOf(0).timeoutMs).toBeUndefined();
   });
 
   it('reads the same measurements a finish is read for', async () => {
@@ -548,9 +564,7 @@ describe('handing the Worker a URL to fetch', () => {
       SOURCE,
       ticketFor(1),
       SECRET,
-      COVER_KEY,
-      LIMITS,
-      DEADLINE,
+      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT },
     );
 
     expect(measured).toMatchObject({
@@ -564,7 +578,7 @@ describe('handing the Worker a URL to fetch', () => {
     mockedRequest.mockResolvedValueOnce(answers(200, { sha256: 'not-a-hash' }));
 
     await expect(
-      fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, COVER_KEY, LIMITS, DEADLINE),
+      fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT }),
     ).rejects.toThrow();
   });
 });
@@ -575,7 +589,7 @@ describe('reading a stored object', () => {
   const ABOUT = {
     storageKey: 'image/2026-10-01/1_cover.jpg',
     contentType: 'image/jpeg',
-    limits: LIMITS,
+    deadlineAt: DEADLINE_AT,
   };
 
   it('names the media endpoint and presents the shared secret', async () => {
@@ -590,7 +604,7 @@ describe('reading a stored object', () => {
     });
   });
 
-  it('sends the key, the type the ledger recorded and the container deadlines', async () => {
+  it('sends the key, the type the ledger recorded and the deadline', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, { width: 800, height: 450 }));
 
     await readStoredMediaAtIngest(WORKER_URL, SECRET, ABOUT);
@@ -686,9 +700,7 @@ describe('when the Worker refuses', () => {
         'https://provider.example/x.mp4',
         ticketFor(1),
         SECRET,
-        COVER_KEY,
-        LIMITS,
-        290_000,
+        { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT },
       ),
     ).rejects.toMatchObject({ status: 502, code: 'store_failed' });
   });

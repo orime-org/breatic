@@ -72,8 +72,7 @@ describe("Assets routes", () => {
           maxUploadBytes: number;
           clientMaxAttempts: number;
           clientRetryBaseDelayMs: number;
-          clientRequestTimeoutMs: number;
-          clientPutMinBytesPerSec: number;
+          uploadIdleTimeoutMs: number;
           assetUrlPrefix: string;
         };
       };
@@ -81,8 +80,7 @@ describe("Assets routes", () => {
         maxUploadBytes: 1024,
         clientMaxAttempts: 2,
         clientRetryBaseDelayMs: 250,
-        clientRequestTimeoutMs: 5000,
-        clientPutMinBytesPerSec: 1024,
+        uploadIdleTimeoutMs: 45000,
         // What every stored object's public URL starts with: the document
         // body tells its own media from outside links by it (inner#1127 A18).
         assetUrlPrefix: "https://cdn.example/",

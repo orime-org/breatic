@@ -19,7 +19,6 @@ import {
   ingestMeasurements,
   UploadHttpError,
   type IngestMeasurements,
-  type MediaLimits,
 } from "@shared/upload/ingest-client.js";
 
 /** One output a job writes. */
@@ -40,7 +39,6 @@ export interface MiniToolJobRequest {
   params: Record<string, unknown>;
   input: { storageKey: string };
   outputs: MiniToolJobOutput[];
-  limits: MediaLimits;
 }
 
 /** What the container measured about its own run. */
@@ -79,7 +77,6 @@ export const miniToolJobRequestSchema = z.object({
     )
     .min(1)
     .max(8),
-  limits: z.object({ runDeadlineMs: z.number().positive(), toolTimeoutMs: z.number().positive() }),
 });
 
 const usage = z.object({
@@ -116,6 +113,7 @@ export function readMiniToolJobReport(answered: unknown): MiniToolJobReport {
  * @param baseUrl - The ingest Worker's base address.
  * @param secret - The secret the Worker also holds.
  * @param job - The job.
+ * @param signal - The task's deadline.
  * @returns The job's report.
  * @throws {UploadHttpError} When the Worker refuses, 503 when the container could not start.
  * @throws {unknown} The transport's own failure when no delivery produced a response.
@@ -124,6 +122,7 @@ export async function submitMiniToolJob(
   baseUrl: string,
   secret: string,
   job: MiniToolJobRequest,
+  signal?: AbortSignal,
 ): Promise<MiniToolJobReport> {
   const answered = await askWorker<unknown>(
     `${baseUrl}/jobs`,
@@ -132,7 +131,7 @@ export async function submitMiniToolJob(
       headers: { "x-ingest-secret": secret, "content-type": "application/json" },
       body: JSON.stringify(job),
     },
-    { replaySafe: true },
+    { replaySafe: true, ...(signal !== undefined && { signal }) },
   );
   return readMiniToolJobReport(answered);
 }
@@ -143,6 +142,7 @@ export async function submitMiniToolJob(
  * @param secret - The secret the Worker also holds.
  * @param containerClass - The class it was submitted to.
  * @param jobId - Its id.
+ * @param signal - The task's deadline.
  * @returns The report, or null when that class holds no such job.
  * @throws {UploadHttpError} When the Worker refuses for any other reason.
  * @throws {unknown} The transport's own failure when no delivery produced a response.
@@ -152,12 +152,13 @@ export async function readMiniToolJob(
   secret: string,
   containerClass: string,
   jobId: string,
+  signal?: AbortSignal,
 ): Promise<MiniToolJobReport | null> {
   try {
     const answered = await askWorker<unknown>(
       `${baseUrl}/jobs/${encodeURIComponent(containerClass)}/${encodeURIComponent(jobId)}`,
       { method: "GET", headers: { "x-ingest-secret": secret } },
-      { replaySafe: true },
+      { replaySafe: true, ...(signal !== undefined && { signal }) },
     );
     return readMiniToolJobReport(answered);
   } catch (err) {

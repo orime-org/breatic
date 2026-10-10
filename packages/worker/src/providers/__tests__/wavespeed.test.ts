@@ -26,12 +26,20 @@ import { runPrediction, type WavespeedEndpoint } from "@worker/providers/wavespe
 import { StillRunning } from "@worker/providers/still-running.js";
 
 /** A run with nothing submitted yet, whose id goes nowhere. */
-const FRESH = { storedTaskId: null, persistTaskId: async (): Promise<void> => {}, externalTaskId: "t-0", retryStarting: false };
+/** When the task these predictions serve runs out. */
+const DEADLINE_AT = Date.now() + 3_600_000;
+
+const FRESH = {
+  storedTaskId: null,
+  persistTaskId: async (): Promise<void> => {},
+  externalTaskId: "t-0",
+  retryStarting: false,
+  deadlineAt: DEADLINE_AT,
+};
 
 const ENDPOINT: WavespeedEndpoint = {
   baseUrl: "https://api.wavespeed.test/v3",
   apiKey: "ws-key",
-  timeout: 60,
 };
 
 const COMPLETED = { data: { status: "completed", outputs: ["https://cdn.test/out.mp4"] } };
@@ -62,11 +70,14 @@ describe("runPrediction", () => {
     const run = await runPrediction(ENDPOINT, "vendor/model/t2v", { text: "hi", duration: 5 }, {
       storedTaskId: null,
       persistTaskId,
-      externalTaskId: "t-1", retryStarting: false,
+      externalTaskId: "t-1", retryStarting: false, deadlineAt: DEADLINE_AT,
     });
 
     expect(requestWithRetryMock.mock.calls[0]![0]).toBe("https://api.wavespeed.test/v3/vendor/model/t2v");
     expect(submittedBody()).toEqual({ text: "hi", duration: 5 });
+    // The submit is bounded by the task's deadline and nothing of the model's
+    // own (inner#1367).
+    expect(requestWithRetryMock.mock.calls[0]![3]).toBeInstanceOf(AbortSignal);
     expect(persistTaskId).toHaveBeenCalledWith("ws-1");
     expect(pollOnceMock.mock.calls[0]![0]).toBe(
       "https://api.wavespeed.test/v3/predictions/ws-1/result",
@@ -78,7 +89,7 @@ describe("runPrediction", () => {
     const run = await runPrediction(ENDPOINT, "vendor/model/t2v", { text: "hi" }, {
       storedTaskId: "ws-9",
       persistTaskId: vi.fn(async (): Promise<void> => {}),
-      externalTaskId: "t-1", retryStarting: false,
+      externalTaskId: "t-1", retryStarting: false, deadlineAt: DEADLINE_AT,
     });
 
     expect(requestWithRetryMock).not.toHaveBeenCalled();
@@ -106,7 +117,7 @@ describe("runPrediction", () => {
     const run = await runPrediction(ENDPOINT, "vendor/model/t2i", {}, {
       storedTaskId: null,
       persistTaskId,
-      externalTaskId: "t-1", retryStarting: false,
+      externalTaskId: "t-1", retryStarting: false, deadlineAt: DEADLINE_AT,
     });
 
     expect(persistTaskId).not.toHaveBeenCalled();
@@ -127,7 +138,7 @@ describe("runPrediction", () => {
     const persistTaskId = vi.fn(async (): Promise<void> => {});
 
     await expect(
-      runPrediction(ENDPOINT, "vendor/model/t2v", {}, { storedTaskId: null, persistTaskId, externalTaskId: "t-3", retryStarting: false }),
+      runPrediction(ENDPOINT, "vendor/model/t2v", {}, { storedTaskId: null, persistTaskId, externalTaskId: "t-3", retryStarting: false, deadlineAt: DEADLINE_AT }),
     ).rejects.toBeInstanceOf(StillRunning);
     expect(persistTaskId).toHaveBeenCalledWith("ws-3");
   });

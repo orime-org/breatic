@@ -46,7 +46,6 @@ vi.mock("@breatic/core", () => ({
 vi.mock("@breatic/domain", async () => ({
   // The billing formula itself, so the charge these cases assert is the real one.
   containerCostUsd: (await import("@domain/credit/container-cost.js")).containerCostUsd,
-  assetService: { mediaLimits: () => ({ runDeadlineMs: 1, toolTimeoutMs: 1 }) },
   creditsForUsd: (usd: number, multiplier: number) => usd * 100 * multiplier,
   createUsageRecorder: () => ({ recordServiceCall: h.recordServiceCall, settle: async () => 0 }),
   ingestReportService: { applyIngestReport: h.applyIngestReport },
@@ -71,7 +70,7 @@ import { UploadHttpError } from "@breatic/shared";
 import { miniToolById, type MiniToolSpec } from "@breatic/shared/mini-tools";
 
 import { ContainerJobFailed, runContainerJob } from "@worker/handlers/container/run-container-job.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning, TaskDeadlinePassed } from "@worker/providers/still-running.js";
 
 const CUT = miniToolById("video.cut") as MiniToolSpec;
 const INPUT = { taskId: "t1", userId: "u1", projectId: "p1", params: { range: { start: 0, end: 2 } }, sourceKey: "v/src.mp4" };
@@ -236,20 +235,22 @@ describe("runContainerJob", () => {
     expect(h.markDone).not.toHaveBeenCalled();
   });
 
-  it("fails as the tool's failure when the deadline passes with the job still running", async () => {
+  // A job still going past its deadline ran out of time, and settles as
+  // expired like any other task (inner#1367).
+  it("ends as the deadline's when it passes with the job still running", async () => {
     h.steps[0]!.output = { jobId: "task:t1", containerClass: "Std1", deadlineAt: h.now.value - 10_000, outputs: [OUT] };
     h.readMiniToolJob.mockResolvedValueOnce({ state: "running" });
 
-    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toMatchObject({ reason: "tool_failed" });
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(TaskDeadlinePassed);
     expect(h.readMiniToolJob).toHaveBeenCalledTimes(1);
   });
 
-  it("fails as the tool's failure when the container refused to start on every pickup until past the grace", async () => {
+  it("ends as the deadline's when the container refused to start on every pickup until past the grace", async () => {
     h.steps[0]!.output = { jobId: "task:t1", containerClass: "Std1", deadlineAt: h.now.value - 10_000, outputs: [OUT] };
     h.readMiniToolJob.mockResolvedValueOnce(null);
     h.submitMiniToolJob.mockRejectedValueOnce(new UploadHttpError(503, null));
 
-    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toMatchObject({ reason: "tool_failed" });
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(TaskDeadlinePassed);
   });
 
   it("spends an attempt when submitting fails for a reason other than the container not starting", async () => {

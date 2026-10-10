@@ -50,12 +50,11 @@ export interface UploadTicketPayload {
   /** Epoch ms. Checked once, when the upload starts. */
   expiresAt: number;
   /**
-   * How long a token issued for the next part stays usable, in seconds. Signed
-   * in for the same reason `partSize` is: it lives in `config/storage.yaml`,
-   * the Worker cannot read that file, and a second copy inside the Worker is a
-   * second place for the value to drift out of the relations checked at load.
+   * When the task this upload belongs to runs out, in epoch ms (inner#1367).
+   * Every session token issued for it expires then: the upload is bounded by
+   * its task's deadline and nothing else.
    */
-  sessionTokenTtlSeconds: number;
+  deadlineAt: number;
 }
 
 /** Why a ticket did not verify. */

@@ -28,7 +28,6 @@ import {
 } from "@ingest/probe-answer.js";
 import { noted, noteFailure } from "@ingest/error-monitoring.js";
 import type { MediaContainer } from "@ingest/media-container.js";
-import type { MediaLimits } from "@breatic/shared";
 
 /** What reading media off a stored object needs bound. */
 export interface MediaEnv {
@@ -70,9 +69,9 @@ const UNFINISHED = Symbol("unfinished");
  *   ffmpeg has anything to say about it.
  * @param about.wantCover - Whether to ask for a frame as well.
  * @param about.wantPreview - Whether to ask for a preview as well.
- * @param about.limits - How long this run gets, and how long one tool inside
- *   it may take. Both come off `config/storage.yaml` by way of the caller; the
- *   Worker reads no configuration of its own.
+ * @param about.deadlineAt - When the task this run serves runs out, in epoch
+ *   ms (inner#1367). The wait ends then, and every tool in the run is held to
+ *   it; nothing here has a figure of its own.
  * @returns What the container answered, or nothing found.
  */
 export async function readMediaAtEdge(
@@ -82,21 +81,19 @@ export async function readMediaAtEdge(
     contentType: string;
     wantCover: boolean;
     wantPreview?: boolean;
-    limits: MediaLimits;
+    deadlineAt: number;
   },
 ): Promise<ProbeAnswer> {
   if (!PROBEABLE.test(about.contentType)) return UNREAD_ANSWER;
+  const left = about.deadlineAt - Date.now();
+  if (left <= 0) return UNREAD_ANSWER;
 
   const instance = env.MEDIA.get(env.MEDIA.idFromName(about.storageKey));
-  // Taken just before the timer below starts, so it is the instant that timer
-  // fires at.
-  const deadlineAt = Date.now() + about.limits.runDeadlineMs;
   const asked: ProbeRequest = {
     objectUrl: mediaObjectUrl(about.storageKey),
     wantCover: about.wantCover,
-    toolTimeoutMs: about.limits.toolTimeoutMs,
     wantPreview: about.wantPreview === true,
-    deadlineAt,
+    deadlineAt: about.deadlineAt,
   };
 
   const answered = await Promise.race([
@@ -121,7 +118,7 @@ export async function readMediaAtEdge(
     // Stops the waiting, not the run. Nothing can reach into a container to
     // end one, and what is left behind sleeps on its own.
     new Promise<typeof UNFINISHED>((resolve) => {
-      setTimeout(() => resolve(UNFINISHED), about.limits.runDeadlineMs);
+      setTimeout(() => resolve(UNFINISHED), left);
     }),
   ]).catch(noted("ingest_media_read_failed", { storageKey: about.storageKey }));
 
@@ -133,7 +130,7 @@ export async function readMediaAtEdge(
     // where it fires, so a run that answered first never reaches this line.
     noteFailure("ingest_media_read_unfinished", {
       storageKey: about.storageKey,
-      runDeadlineMs: about.limits.runDeadlineMs,
+      deadlineAt: about.deadlineAt,
     });
     return UNREAD_ANSWER;
   }

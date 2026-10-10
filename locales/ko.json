@@ -826,7 +826,7 @@
         "expired": "시간이 초과되었습니다.",
         "no_result": "이 실행은 아무것도 생성하지 않았습니다.",
         "source_unreachable": "이 주소를 열 수 없습니다.",
-        "source_too_slow": "이 주소를 가져오는 데 시간이 초과되었습니다.",
+        "source_cut_off": "이 주소에서 파일을 끝까지 받지 못했습니다.",
         "unsupported_type": "{kind, select, image {지원하지 않는 형식입니다. 이미지는 {formats}을(를) 지원합니다.} video {지원하지 않는 형식입니다. 동영상은 {formats}을(를) 지원합니다.} audio {지원하지 않는 형식입니다. 오디오는 {formats}을(를) 지원합니다.} other {지원하지 않는 형식입니다.}}",
         "empty": "아무것도 받지 못했습니다.",
         "internal": "저희 쪽에서 문제가 생겼습니다.",

@@ -176,7 +176,6 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
               ...(output.coverKey !== undefined && { coverUrl: mediaObjectUrl(output.coverKey) }),
             })),
             reportUrl: `http://${JOB_REPORT_HOST}/report`,
-            toolTimeoutMs: request.limits.toolTimeoutMs,
           }),
         }),
       );

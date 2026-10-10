@@ -67,17 +67,14 @@ afterEach(() => {
 });
 
 describe("a container run that outlasts the deadline", () => {
+  // The task's deadline is the only bound on the wait (inner#1367).
   it("answers nothing found rather than waiting on", async () => {
     const noted = vi.spyOn(console, "error").mockImplementation(() => {});
+    const deadlineAt = Date.now() + 20;
 
     const read = await readMediaAtEdge(
       containerThat(() => new Promise<Response>(() => {})),
-      {
-        storageKey: KEY,
-        contentType: "video/mp4",
-        wantCover: false,
-        limits: { runDeadlineMs: 20, toolTimeoutMs: 10 },
-      },
+      { storageKey: KEY, contentType: "video/mp4", wantCover: false, deadlineAt },
     );
 
     expect(read).toEqual({
@@ -88,8 +85,24 @@ describe("a container run that outlasts the deadline", () => {
     });
     expect(noted).toHaveBeenCalledWith(
       "ingest_media_read_unfinished",
-      expect.objectContaining({ storageKey: KEY, runDeadlineMs: 20 }),
+      expect.objectContaining({ storageKey: KEY, deadlineAt }),
     );
+  });
+
+  it("starts no run when the deadline has already come", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let started = false;
+
+    const read = await readMediaAtEdge(
+      containerThat(() => {
+        started = true;
+        return Promise.resolve(buildProbeAnswer(FILM, null));
+      }),
+      { storageKey: KEY, contentType: "video/mp4", wantCover: false, deadlineAt: Date.now() - 1 },
+    );
+
+    expect(started).toBe(false);
+    expect(read.answered).toBe(false);
   });
 });
 
@@ -102,12 +115,7 @@ describe("a container run that answers first", () => {
 
     const read = await readMediaAtEdge(
       containerThat(() => Promise.resolve(buildProbeAnswer(FILM, null))),
-      {
-        storageKey: KEY,
-        contentType: "video/mp4",
-        wantCover: false,
-        limits: { runDeadlineMs: 20, toolTimeoutMs: 10 },
-      },
+      { storageKey: KEY, contentType: "video/mp4", wantCover: false, deadlineAt: Date.now() + 20 },
     );
     // Past the deadline the run beat, which is when the timer would fire.
     await new Promise((resolve) => setTimeout(resolve, 60));
