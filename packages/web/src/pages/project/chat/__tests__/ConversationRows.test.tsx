@@ -135,24 +135,60 @@ describe('naming a conversation from its row', () => {
     expect(onRename).toHaveBeenCalledWith('c2', 'Storyboard notes');
   });
 
-  it('never takes the keyboard back to the row', async () => {
-    // 三种退出(回车、Escape、失焦)一视同仁:提交完不安排焦点落到哪儿,由浏览器
-    // 决定。唯一的底线是别把它抢回本行 —— 读者按 Tab 或者点别处时焦点已经交给
-    // 别的东西了,抢回来那一次按键就等于没按。焦点位置的统一处理是另一件事。
+  it('leaves the keyboard where the reader took it when they leave the box', async () => {
+    // Leaving the box is the reader handing the focus to something else (Tab
+    // and a press elsewhere are the same path for this box); taking it back
+    // to the row would make that keystroke count for nothing.
     renderSheet();
 
     await userEvent.click(screen.getByTestId('conversation-menu-c2'));
     await userEvent.click(await screen.findByTestId('conversation-rename-c2'));
     const box = await screen.findByTestId('conversation-rename-input');
 
-    // 失焦本身就是「读者已经把焦点给了别的东西」这件事的信号 —— Tab 和点击
-    // 别处对这个框来说是同一条路。
+    act(() => box.focus());
+    fireEvent.change(box, { target: { value: 'Storyboard notes' } });
+    const elsewhere = screen.getByTestId('conversation-open-c1');
     await act(async () => {
-      fireEvent.blur(box, { target: { value: 'Storyboard notes' } });
+      elsewhere.focus();
     });
 
     expect(screen.queryByTestId('conversation-rename-input')).toBeNull();
-    expect(document.activeElement).not.toBe(screen.getByTestId('conversation-open-c2'));
+    expect(document.activeElement).toBe(elsewhere);
+  });
+
+  it.each([
+    ['Enter', { key: 'Enter', keyCode: 13 }],
+    ['Escape', { key: 'Escape', keyCode: 27 }],
+  ])('consumes the %s that ends the box and hands the keyboard to the row menu', async (_, init) => {
+    // The consumed keydown is what keeps the keystroke from becoming a click on
+    // whatever takes the focus; the browser walk checks the conversation on
+    // screen end to end.
+    renderSheet();
+
+    await userEvent.click(screen.getByTestId('conversation-menu-c2'));
+    await userEvent.click(await screen.findByTestId('conversation-rename-c2'));
+    const box = await screen.findByTestId('conversation-rename-input');
+    const notCancelled = fireEvent.keyDown(box, init);
+
+    expect(notCancelled).toBe(false);
+    expect(screen.queryByTestId('conversation-rename-input')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByTestId('conversation-menu-c2'));
+  });
+
+  it.each([
+    ['Enter', { key: 'Enter', keyCode: 13 }],
+    ['Escape', { key: 'Escape', keyCode: 27 }],
+  ])('keeps the box open on the %s that ends an input method composition', async (_, init) => {
+    const { onRename } = renderSheet();
+
+    await userEvent.click(screen.getByTestId('conversation-menu-c2'));
+    await userEvent.click(await screen.findByTestId('conversation-rename-c2'));
+    const box = await screen.findByTestId('conversation-rename-input');
+    fireEvent.compositionEnd(box);
+    fireEvent.keyDown(box, init);
+
+    expect(screen.getByTestId('conversation-rename-input')).toBe(box);
+    expect(onRename).not.toHaveBeenCalled();
   });
 
   it('keeps the name to itself when the reader presses Escape', async () => {

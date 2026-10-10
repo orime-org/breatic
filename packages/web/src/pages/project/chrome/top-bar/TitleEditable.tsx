@@ -3,6 +3,8 @@
 
 import * as React from 'react';
 
+import { useInlineEditExit } from '@web/lib/inline-edit-exit';
+
 interface TitleEditableProps {
   value: string;
   onChange: (next: string) => void;
@@ -77,6 +79,8 @@ const DEFAULT_TITLE_MAX_WIDTH = 320;
  *   - Enter / blur commit (trim, drop newlines, slice to the length cap,
  *     reject empty).
  *   - Escape cancel (restore previous value, exit edit mode).
+ *   - Ending from the keyboard gives the keyboard back to the title; keys
+ *     that belong to an input method end nothing.
  * @param root0 - Editable title props.
  * @param root0.value - Current project title shown in static mode and seeded as the edit draft.
  * @param root0.onChange - Called with the trimmed, length-capped new title once the user commits a rename.
@@ -130,6 +134,15 @@ export function TitleEditable({
     setEditing(false);
   };
 
+  // Ending the edit from the keyboard gives the keyboard back to the title.
+  const display = React.useRef<HTMLSpanElement>(null);
+  const exit = useInlineEditExit({
+    editing,
+    target: () => display.current,
+    commit,
+    cancel,
+  });
+
   // What the static span reads. `draft` is the name, and while there is none
   // the stand-in takes its place on screen -- without ever becoming the value
   // the box opens with or the one a commit is compared against.
@@ -152,16 +165,8 @@ export function TitleEditable({
         spellCheck={false}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            commit();
-          }
-          if (e.key === 'Escape') {
-            e.preventDefault();
-            cancel();
-          }
-        }}
+        onKeyDown={exit.onKeyDown}
+        onCompositionEnd={exit.onCompositionEnd}
         // `field-sizing: content` (2024 CSS spec, Chrome 123+ / FF 137+ /
         // Safari 18.4+) makes the input width follow the content length up
         // to max-width — matching the span's inline-block content-grow
@@ -202,6 +207,7 @@ export function TitleEditable({
   // false, so rollback on failure still flows back through `draft`.
   return (
     <span
+      ref={display}
       role='textbox'
       tabIndex={0}
       onDoubleClick={() => setEditing(true)}

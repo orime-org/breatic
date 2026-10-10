@@ -273,8 +273,8 @@ function ProjectWorkspace({
   // Viewer affordance model (access-permission § 6.2, option B): the canvas
   // left creation menu stays visible + disabled (LeftFloatingMenu) and the
   // canvas body is read-only (SpaceOutlet); everything else a viewer cannot
-  // do is HIDDEN (Agent column, share, manage, new-space, title edit). The
-  // upgrade entry lives on the top-bar RoleTag.
+  // do is HIDDEN (Agent column, share, manage, new-space, title edit, Space
+  // rename). The upgrade entry lives on the top-bar RoleTag.
   const isViewer = role === 'viewer';
   // Its own query, so a generation can refresh what the pool has left without
   // refetching the project's name and role, which do not change with it.
@@ -1018,7 +1018,7 @@ function ProjectWorkspace({
                     onViewSpace={onViewSpace}
                     onDeleteSpace={onDeleteSpace}
                     onSetSpaceLocked={onSetSpaceLocked}
-                    onRenameSpace={onRenameSpace}
+                    onRenameSpace={isViewer ? undefined : onRenameSpace}
                     onReorder={onReorderTab}
                     metaProvider={provider}
                     currentUserRole={role}
