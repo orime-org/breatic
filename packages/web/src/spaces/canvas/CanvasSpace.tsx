@@ -197,8 +197,7 @@ import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { downloadableAsset } from '@web/spaces/canvas/node-download';
 import { keepSnapshot } from '@web/spaces/canvas/keep-snapshot';
 import { startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
-import { downloadHref } from '@web/data/api/download-href';
-import { triggerDownload } from '@web/lib/download';
+import { downloadAsset } from '@web/lib/download';
 import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
 import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
@@ -3840,7 +3839,7 @@ function CanvasSpaceInner({
   // shut for them. The browser makes the request itself so the file lands in
   // its download list; nothing here learns how it went.
   const downloadFromMenu = React.useCallback((): void => {
-    if (menuDownloadUrl !== null) triggerDownload(downloadHref(menuDownloadUrl));
+    if (menuDownloadUrl !== null) downloadAsset(menuDownloadUrl);
   }, [menuDownloadUrl]);
   // Whether the menu's node has anything to keep — asked when the menu opens,
   // which is when the item is drawn. The words themselves are read at the

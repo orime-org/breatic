@@ -23,9 +23,7 @@ describe("an unknown path", () => {
     expect(response.status).toBe(404);
   });
 
-  it("includes the download path, even for a stored object", async () => {
-    // The resource domain answers downloads now (inner#1335), so a stored
-    // object is no longer served from here.
+  it("is refused for a stored object's key too", async () => {
     const key = "image/2026-08-13/stored.png";
     await env.BUCKET.put(key, new Uint8Array([1, 2, 3]));
     const ctx = createExecutionContext();
