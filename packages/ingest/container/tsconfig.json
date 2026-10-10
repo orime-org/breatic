@@ -28,6 +28,7 @@
     "../src/preview-step.ts",
     "../src/jobs/op-args.ts",
     "../../shared/src/adjust-value.ts",
+    "../../shared/src/upload/media-run.ts",
     "../../shared/src/mini-tools/types.ts",
     "__tests__/*.ts"
   ]

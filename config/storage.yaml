@@ -59,7 +59,8 @@ ingest:
   container_run_deadline_ms: 150000
   # How long ffprobe or ffmpeg inside the container may run, reading the object
   # over the network included. Two of these have to fit inside the deadline
-  # above, which the loader checks; the preview runs on whatever is left.
+  # above with PREVIEW_MARGIN_MS (5 s) kept back, which the loader checks; the
+  # preview runs on whatever is left.
   container_tool_timeout_ms: 60000
   # How long ONE call asking the Worker to pull a source URL may take. It
   # bounds the whole transfer: the answer only arrives once the Worker has

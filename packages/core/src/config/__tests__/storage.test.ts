@@ -8,6 +8,7 @@ import {
   completeRetryBudgetMs,
 } from "@breatic/shared";
 
+import { PREVIEW_MARGIN_MS } from "@breatic/shared";
 import { getStorageConfig, storageConfigSchema } from "@core/config/storage.js";
 
 /** The upload cap the yaml ships, in bytes. */
@@ -266,18 +267,31 @@ describe("the container's two deadlines", () => {
   });
 });
 
-// The preview runs on whatever the run has left (inner#1339), so the run
-// deadline only has to hold the two tool runs.
+// The preview runs on whatever the run has left (inner#1339), and the Worker
+// keeps PREVIEW_MARGIN_MS of the run back to read the object once more before
+// it answers (inner#1367), so the run deadline has to hold the two tool runs
+// with that margin taken off.
 describe("the preview in the run deadline", () => {
-  it("takes a run deadline of exactly two tool runs", () => {
+  it("takes a run deadline of two tool runs plus the margin", () => {
     const cfg = storageConfigSchema.parse({
       ingest: {
-        container_run_deadline_ms: 120_000,
+        container_run_deadline_ms: 120_000 + PREVIEW_MARGIN_MS,
         container_tool_timeout_ms: 60_000,
       },
     });
 
-    expect(cfg.ingest.container_run_deadline_ms).toBe(120_000);
+    expect(cfg.ingest.container_run_deadline_ms).toBe(125_000);
     expect(cfg.ingest).not.toHaveProperty("container_preview_timeout_ms");
+  });
+
+  it("refuses one that leaves the margin short by a millisecond", () => {
+    expect(() =>
+      storageConfigSchema.parse({
+        ingest: {
+          container_run_deadline_ms: 120_000 + PREVIEW_MARGIN_MS - 1,
+          container_tool_timeout_ms: 60_000,
+        },
+      }),
+    ).toThrow(/PREVIEW_MARGIN_MS/);
   });
 });

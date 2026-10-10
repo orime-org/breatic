@@ -721,6 +721,10 @@ export {
   previewUrlFor,
   originalUrlFor,
 } from "@shared/upload/preview.js";
+// The time a media container run keeps back before the Worker's deadline: the
+// Worker and its container hold runs to it, and the storage config checks
+// against it.
+export { PREVIEW_MARGIN_MS } from "@shared/upload/media-run.js";
 // The type read off the bytes themselves. It lives beside the lists above
 // because they answer two halves of one question: what these bytes are, and
 // whether we take it.

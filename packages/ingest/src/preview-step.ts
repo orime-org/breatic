@@ -10,13 +10,8 @@
 
 import { hasPreviewableFrame } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
+import { PREVIEW_MARGIN_MS } from "@shared/upload/media-run.js";
 
-/**
- * Time kept back between the end of a preview and the Worker's deadline. The
- * deadline is an instant the Worker named on its own clock, and the container
- * compares it against another.
- */
-export const PREVIEW_MARGIN_MS = 5_000;
 
 /**
  * How long the preview tool may run: the rest of the run but the margin.
