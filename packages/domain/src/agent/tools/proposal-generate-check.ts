@@ -181,11 +181,11 @@ interface Wiring {
  * @param node - The generation.
  * @param index - Its index.
  * @param chosen - Its model.
+ * @param at - The generation, as a fix names it.
  * @returns What the wiring settles, or the refusal.
  * @throws {never} Never.
  */
-function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number, chosen: ModelInfo): Wiring | Refusal {
-  const at = nodeLabel(proposal.nodes, index);
+function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number, chosen: ModelInfo, at: NodeLabel): Wiring | Refusal {
   const routing = routeEdges(proposal, index, chosen);
   if ("refusal" in routing) return routing;
   const filling = fillsOf(proposal, node, chosen, at);
@@ -210,15 +210,15 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
   // a node: the mention lands as one the reader would insert from the pool.
   const pooled = arriving.filter(({ entry }) => entry.ref).map(({ node: n }) => proposal.nodes.indexOf(n));
   const refs = refsIn(node);
-  const stray = refs.find((at) => !pooled.includes(at));
+  const stray = refs.find((i) => !pooled.includes(i));
   if (stray !== undefined) return strayRefReason(proposal, node, chosen, arriving, stray, at);
   // Marks go where the words are sent: with shots, in the shot.
   const where = node.shots === undefined ? "in the prompt" : "in the shot";
   // Every one at once, so a single retry puts them all in.
-  const unmentioned = pooled.filter((at) => !refs.includes(at));
+  const unmentioned = pooled.filter((i) => !refs.includes(i));
   if (unmentioned.length > 0) {
-    const names = namesOrNone(unmentioned.flatMap((at) => proposal.nodes[at] ?? []));
-    const each = unmentioned.map((at) => `{"ref": ${String(at)}}`).join(", ");
+    const names = namesOrNone(unmentioned.flatMap((i) => proposal.nodes[i] ?? []));
+    const each = unmentioned.map((i) => `{"ref": ${String(i)}}`).join(", ");
     return refuse("ref-missing", `${names} ${unmentioned.length === 1 ? "is" : "are"} wired into the pool of "${node.name}" and no ref @s ${unmentioned.length === 1 ? "it" : "them"}. A node in the pool is used only where a ref @s it ${where}: ${each}.`);
   }
   const asked = notesAsked(arriving);
@@ -361,7 +361,7 @@ export function checkGenerateNode(proposal: CanvasProposal, node: ProposalNode, 
   const at = nodeLabel(proposal.nodes, index);
   const settings = checkSettings(node, chosen, at);
   if (!settings.ok) return settings;
-  const wiring = checkWiring(proposal, node, index, chosen);
+  const wiring = checkWiring(proposal, node, index, chosen, at);
   if ("refusal" in wiring) return wiring;
   return checkPanelGate(proposal, node, chosen, wiring, at);
 }

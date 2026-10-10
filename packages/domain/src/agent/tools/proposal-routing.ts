@@ -195,7 +195,7 @@ export function waysAcrossGroup(proposal: CanvasProposal, node: ProposalNode, aw
  * @returns Each slot with the kind it takes.
  * @throws {never} Never.
  */
-export function slotsOf(chosen: ModelInfo): { kind: WayKind; way: WayIn }[] {
+function slotsOf(chosen: ModelInfo): { kind: WayKind; way: WayIn }[] {
   return [...waysIn(chosen)].flatMap(([kind, list]) => list.filter((way) => way.mark === "note").map((way) => ({ kind, way })));
 }
 
@@ -381,16 +381,21 @@ export function goingWay(arriving: readonly Arriving[], kind: string, into: stri
 }
 
 /**
- * The fix for an index a fill names that cannot stand: every copy of it out.
+ * The fix for an index a fill names that cannot stand: every copy of it out,
+ * or the fill itself off where nothing else is left in it, since a fill names
+ * one node at least.
  * @param on - The generation the fill is on.
  * @param param - The fill.
- * @param index - The index.
+ * @param indices - Every index the fill names.
+ * @param index - The index that cannot stand.
  * @param name - The node it points at, where there is one.
  * @returns The fix.
  * @throws {never} Never.
  */
-function takeOutOfFill(on: NodeLabel, param: string, index: number, name?: string): NodeFix {
-  return fixOn(on, `take every ${String(index)}${name === undefined ? "" : ` ("${name}")`} out of fills "${param}".`);
+function takeOutOfFill(on: NodeLabel, param: string, indices: readonly number[], index: number, name?: string): NodeFix {
+  return indices.every((i) => i === index)
+    ? fixOn(on, `take fills "${param}" off.`)
+    : fixOn(on, `take every ${String(index)}${name === undefined ? "" : ` ("${name}")`} out of fills "${param}".`);
 }
 
 /**
@@ -421,11 +426,11 @@ export function fillsOf(
     for (const i of indices) named.set(i, (named.get(i) ?? 0) + 1);
     const outside = indices.find((i) => proposal.nodes[i] === undefined);
     if (outside !== undefined) {
-      return refuse("fill-outside", `fills "${param}" on "${node.name}" points at node ${String(outside)}${timesNamed(named.get(outside) ?? 0)}, which is not in the group.`, takeOutOfFill(at, param, outside));
+      return refuse("fill-outside", `fills "${param}" on "${node.name}" points at node ${String(outside)}${timesNamed(named.get(outside) ?? 0)}, which is not in the group.`, takeOutOfFill(at, param, indices, outside));
     }
     const self = indices.find((i) => proposal.nodes[i] === node);
     if (self !== undefined) {
-      return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself${timesNamed(named.get(self) ?? 0)}, and a node cannot fill its own slot.`, takeOutOfFill(at, param, self, node.name));
+      return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself${timesNamed(named.get(self) ?? 0)}, and a node cannot fill its own slot.`, takeOutOfFill(at, param, indices, self, node.name));
     }
     const slot = slots.find(({ way }) => way.into === param);
     if (slot === undefined) {
@@ -438,10 +443,10 @@ export function fillsOf(
       const from = proposal.nodes[index] as ProposalNode;
       const count = named.get(index) ?? 0;
       if (from.material === undefined) {
-        return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${from.name}"${timesNamed(count)}, which holds no material, and fills takes only nodes holding it. ${waysOrNone(from, node, chosen)}`, takeOutOfFill(at, param, index, from.name));
+        return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${from.name}"${timesNamed(count)}, which holds no material, and fills takes only nodes holding it. ${waysOrNone(from, node, chosen)}`, takeOutOfFill(at, param, indices, index, from.name));
       }
       if (from.type !== slot.kind) {
-        return refuse("fill-wrong-kind", `"${chosen.name}" takes ${slot.kind} in "${param}", and "${from.name}" is ${from.type}${count > 1 ? ` and is named ${String(count)} times` : ""}. ${waysOrNone(from, node, chosen)}`, takeOutOfFill(at, param, index, from.name));
+        return refuse("fill-wrong-kind", `"${chosen.name}" takes ${slot.kind} in "${param}", and "${from.name}" is ${from.type}${count > 1 ? ` and is named ${String(count)} times` : ""}. ${waysOrNone(from, node, chosen)}`, takeOutOfFill(at, param, indices, index, from.name));
       }
       const twin = seen.get(from.material);
       if (twin === from) {

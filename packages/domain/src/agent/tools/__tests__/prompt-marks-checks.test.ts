@@ -556,15 +556,13 @@ describe("a mark the agent writes as words", () => {
     expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringContaining('"Clip"') });
   });
 
-  it("hands back a mark copied from a box with its label alone, and every mark at once", () => {
-    const copied = `${markText({ kind: "asset", label: "the character photo", note: "x" })} in the rain, {✏️ the weather}`;
-    const answer = checkProposal(edit([CHARACTER], [...AT_CHARACTER, { text: ` ${copied}` }]));
+  it("quotes every mark typed into the words as the agent wrote it, with the segment each kind is sent as", () => {
+    const asset = markText({ kind: "asset", label: "the character photo", note: "x" });
+    const answer = checkProposal(edit([CHARACTER], [...AT_CHARACTER, { text: ` ${asset} in the rain, {✏️ the weather}` }]));
     expect(answer).toMatchObject({ ok: false });
     const reason = answer.ok ? "" : answer.reason;
-    expect(reason).toContain("the node meant by the character photo");
-    expect(reason).toContain('"label":"the weather"');
-    expect(reason).not.toContain(t("canvas.promptMark.reference", { label: "" }).trim());
-    expect(reason).not.toContain('"note":"…"');
+    expect(reason).toContain(`types 2 mark(s) into its words as text: "${asset}", "{✏️ the weather}".`);
+    expect(reason).toContain('{"ref": <index>} for a node; {"slot": {"kind": "tweak", "label": "…", "note": "…"}} for words the reader writes.');
   });
 
   it("tells a written node to take a typed reference or note out, the way the role check does", () => {

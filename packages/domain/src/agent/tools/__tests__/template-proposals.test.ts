@@ -151,7 +151,7 @@ describe("an empty node wired into a reference pool", () => {
 
   it("is refused when the prompt names it only in words, since the picture put there would not be sent", () => {
     const answer = answerFor(withPrompt([{ text: "Use [📎 character reference] as the reference. A 5x5 storyboard." }]));
-    expect(answer).toMatchObject({ placed: false, reason: expect.stringMatching(/types 1 mark\(s\) into its words.*\{"ref": <index of the node meant by character reference>\}/) });
+    expect(answer).toMatchObject({ placed: false, reason: expect.stringContaining('types 1 mark(s) into its words as text: "[📎 character reference]". A mark works only as a segment of its own, with the text segments kept to plain words: {"ref": <index>} for a node.') });
   });
 
   it("is placed when a ref mentions it", () => {

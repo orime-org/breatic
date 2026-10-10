@@ -296,7 +296,7 @@ describe("each refusal tells the agent a way that is there", () => {
     const proposal = follow(setting, probe("video", "material"), undefined);
     proposal.nodes[1] = { ...(proposal.nodes[1] as ProposalNode), fills: { [slot]: [1] } };
     const verdict = checkProposal(proposal, MATERIALS);
-    expect(verdict).toMatchObject({ ok: false, reason: `fills "${slot}" on "Gen" points at "Gen" itself, and a node cannot fill its own slot. On node 1 ("Gen"), take every 1 ("Gen") out of fills "${slot}".` });
+    expect(verdict).toMatchObject({ ok: false, reason: `fills "${slot}" on "Gen" points at "Gen" itself, and a node cannot fill its own slot. On node 1 ("Gen"), take fills "${slot}" off.` });
   });
 
   it("sends words to the lyrics box only where the panel draws it", () => {

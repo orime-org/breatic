@@ -23,9 +23,9 @@ const ONE_OF = new Intl.ListFormat("en", { type: "disjunction" });
 const MATERIAL_KINDS: ReadonlySet<string> = new Set(["image", "video", "audio"]);
 
 /**
- * Each ref and note a written node carries, said by value in the order its
- * words carry them: a ref segment, a note segment, or a ref or note mark
- * typed into the words as they are written there.
+ * Each ref and note a written node carries, said by value: its ref segments,
+ * its note segments, then each ref or note mark typed into its words, quoted
+ * as written.
  *
  * A typed ✏️ mark is left out: a text node's words take one, as a segment of
  * its own.
@@ -34,13 +34,11 @@ const MATERIAL_KINDS: ReadonlySet<string> = new Set(["image", "video", "audio"])
  * @throws {never} Never.
  */
 function carriedMarks(node: ProposalNode): string[] {
-  return (node.prompt ?? []).flatMap((segment) => {
-    if (segment.ref !== undefined) return [`{"ref": ${String(segment.ref)}}`];
-    if (segment.slot?.kind === "note") return [`the note "${segment.slot.label}"`];
-    return typedMarkTexts(segment.text ?? "")
-      .filter((typed) => markedSegments(typed)[0]?.slot?.kind !== "tweak")
-      .map((typed) => `the typed "${typed}"`);
-  });
+  const segments = (node.prompt ?? []).flatMap((segment) =>
+    segment.ref !== undefined ? [`{"ref": ${String(segment.ref)}}`] : segment.slot?.kind === "note" ? [`the note "${segment.slot.label}"`] : [],
+  );
+  const typed = typedMarks(node).filter(({ slot }) => slot.kind !== "tweak").map(({ written }) => `the typed "${written}"`);
+  return [...segments, ...typed];
 }
 
 /**
@@ -127,22 +125,57 @@ export function checkNodeRole(node: ProposalNode, at: NodeLabel): ProposalVerdic
   return { ok: true };
 }
 
+/** The first character standing in for a segment that is not text, while a prompt is read as one string. */
+const SEGMENT_MARK = 0xe000;
+
+/** A mark typed into a node's words: what it reads as, and the words as the agent wrote them. */
+interface TypedMark {
+  slot: NonNullable<PromptSegment["slot"]>;
+  written: string;
+}
+
+/**
+ * A segment that is not text, as the agent sends it.
+ * @param segment - The segment.
+ * @returns Its JSON.
+ * @throws {never} Never.
+ */
+function segmentAsSent(segment: PromptSegment): string {
+  return segment.ref !== undefined ? `{"ref": ${String(segment.ref)}}` : JSON.stringify({ slot: segment.slot });
+}
+
 /**
  * The marks a node's words carry typed out as text, read from its prompt and
  * every shot.
  *
  * Each prompt is read as one string, so a mark typed across two text segments
- * is caught too. A slot stands in as one character: brackets typed around a
- * mark read back as one mark that swallows it, as they would once written out.
+ * is caught too. Every other segment stands in as a character of its own:
+ * brackets typed around it read back as one mark that swallows it, and the
+ * mark is quoted with that segment written back as it was sent.
  * @param node - The node.
  * @returns The typed marks.
  * @throws {never} Never.
  */
-function typedMarks(node: ProposalNode): NonNullable<PromptSegment["slot"]>[] {
-  return [node.prompt ?? [], ...(node.shots ?? []).map((shot) => shot.prompt)].flatMap((segments) =>
-    markedSegments(segments.map((segment) => segment.text ?? "\u0000").join("")).flatMap((part) => (part.slot ? [part.slot] : [])),
-  );
+function typedMarks(node: ProposalNode): TypedMark[] {
+  return [node.prompt ?? [], ...(node.shots ?? []).map((shot) => shot.prompt)].flatMap((segments) => {
+    const words = segments.map((segment, i) => segment.text ?? String.fromCodePoint(SEGMENT_MARK + i)).join("");
+    const slots = markedSegments(words).flatMap((part) => (part.slot ? [part.slot] : []));
+    return typedMarkTexts(words).map((typed, i): TypedMark => ({
+      slot: slots[i] as TypedMark["slot"],
+      written: [...typed].map((char) => {
+        const segment = segments[(char.codePointAt(0) ?? 0) - SEGMENT_MARK];
+        return segment !== undefined && segment.text === undefined ? segmentAsSent(segment) : char;
+      }).join(""),
+    }));
+  });
 }
+
+/** The segment each kind of mark is sent as, for the rule a typed mark breaks. */
+const SEGMENT_FORMS: Record<NonNullable<PromptSegment["slot"]>["kind"], string> = {
+  asset: '{"ref": <index>} for a node',
+  note: '{"slot": {"kind": "note", "label": "…"}} for a note',
+  tweak: '{"slot": {"kind": "tweak", "label": "…", "note": "…"}} for words the reader writes',
+};
 
 /**
  * Whether a node's words carry a mark typed out as text.
@@ -150,11 +183,12 @@ function typedMarks(node: ProposalNode): NonNullable<PromptSegment["slot"]>[] {
  * Typed, the bracket is words: the reader gets no line on the card for it,
  * the canvas adds nothing to it, and it reaches the model as it stands.
  * @param node - The node being judged.
- * @returns Whether it stands, and the segment to send in its place when not.
+ * @returns Whether it stands, and the marks typed with the rule they break when not.
  * @throws {never} Never.
  */
 export function markTypedAsWords(node: ProposalNode): ProposalVerdict {
   const typed = typedMarks(node);
   if (typed.length === 0) return { ok: true };
-  return refuse("mark-typed", `"${node.name}" types ${String(typed.length)} mark(s) into its words, and a mark works only as a segment of its own, with the text segments kept to plain words: ${typed.map((slot) => (slot.kind === "asset" ? `{"ref": <index of the node meant by ${slot.label}>}` : JSON.stringify({ slot }))).join(", ")}.`);
+  const forms = [...new Set(typed.map(({ slot }) => SEGMENT_FORMS[slot.kind]))];
+  return refuse("mark-typed", `"${node.name}" types ${String(typed.length)} mark(s) into its words as text: ${typed.map(({ written }) => `"${written}"`).join(", ")}. A mark works only as a segment of its own, with the text segments kept to plain words: ${forms.join("; ")}.`);
 }

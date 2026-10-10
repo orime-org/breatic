@@ -9,7 +9,6 @@ import { z } from "zod";
 
 import {
   CAMERA_COMMANDS_PER_BRACKET,
-  canConnect,
   cameraCommandBracket,
   formatCredits,
   GENERATION_NODE_MODES,
@@ -24,11 +23,10 @@ import {
   waysIn,
   type ModelInfo,
   type ModelsForMode,
-  type WayIn,
   type WayKind,
 } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
-import { aNode, capitalised, slotsOf } from "@domain/agent/tools/proposal-routing.js";
+import { entriesFor, holdingSubject, type Entry, type Holding } from "@domain/agent/tools/proposal-routing.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
 
 /** One model with what a run at its defaults costs, when the catalog prices it. */
@@ -104,21 +102,27 @@ function renderCameraCommands(model: PricedModelInfo): string {
 }
 
 /**
- * What one way in says about itself: where the node lands, how many it takes,
- * and what the prompt carries for each.
+ * One entry, as the listing says it: where the node lands, how the proposal
+ * sends it, how many it takes, and what the prompt carries for each.
  * @param kind - The kind of node going this way.
- * @param way - The way.
- * @returns The words inside the brackets after its name.
+ * @param entry - The entry, as the proposal check reads it.
+ * @returns The phrase.
  */
-function wayWords(kind: WayKind, way: WayIn): string {
+function entryWords(kind: WayKind, entry: Entry): string {
+  const { way } = entry;
   const where =
     way.into === "pool"
       ? kind === "text" ? "@'d into the prompt" : "the reference pool"
       : way.into === PANEL_EDITOR_PARAM ? "the lyrics box" : "a slot";
   const room = Number.isFinite(way.room) ? `, at most ${String(way.room)}` : "";
-  const mark =
-    way.mark === "ref" ? "a ref each where the prompt @s it" : way.mark === "note" ? "a note each" : "@'d there for you";
-  return `${where}${room}, ${mark}`;
+  const carries = [
+    ...(entry.ref ? ["a ref each where the prompt @s it"] : []),
+    ...(entry.note ? ["a note each"] : []),
+    ...(way.mark === "placed" ? ["@'d there for you"] : []),
+  ];
+  const how =
+    entry.by === "edge" ? `by an edge with into: "${way.into}"` : entry.by === "fills" ? "through fills, with no edge" : "by a pick in the panel, not wired in";
+  return `"${way.into}" ${how} (${[`${where}${room}`, ...carries].join(", ")})`;
 }
 
 /**
@@ -155,25 +159,17 @@ function renderModel(model: PricedModelInfo): string {
   // Where a node reaching the model goes and what the prompt carries for it, read off
   // the same ways the proposal check reads (design 5.7 tables A and D).
   const ways = waysIn(model);
-  const routing = [...ways]
-    .map(([kind, list]) => {
-      const each = list.map((way) => `"${way.into}" (${wayWords(kind, way)})`);
-      // An edge or a pick in the panel brings an empty node; a node holding
-      // material reaches the same slots through fills (inner#1315).
-      const filled = slotsOf(model).filter((slot) => slot.kind === kind).map(({ way }) => `"${way.into}"`);
-      const throughFills = filled.length > 0 ? ` ${capitalised(aNode(kind))} holding material goes into ${filled.join(" or ")} through fills, with no edge and no note.` : "";
-      // The canvas will not wire this kind into the node: its slots are
-      // filled by picking a node in the panel.
-      if (!canConnect(kind, model.nodeType)) {
-        const into = list.map((way) => `"${way.into}"`).join(" or ");
-        return ` An empty ${kind} node is picked into ${into} in the panel, not wired in (${list.map((way) => wayWords(kind, way)).join("; ")}).${throughFills}`;
-      }
-      const wired = list.length > 1
-        ? ` Each ${kind} node wired in goes one of ${String(list.length)} ways; say which on its edge with into: ${each.join(" or ")}.`
-        : list[0] !== undefined && list[0].into !== "pool"
-          ? ` Each ${kind} node wired in goes into ${each[0] ?? ""}.`
-          : "";
-      return `${wired}${throughFills}`;
+  const routing = [...ways.keys()]
+    .map((kind) => {
+      const holdings: Holding[] = kind === "text" ? ["words"] : ["empty", "material"];
+      const said = holdings.map((holding) => ({ holding, entries: entriesFor(model, kind, holding) }));
+      // A kind that only goes into the pool is @'d like any mention, and
+      // needs no line of its own.
+      if (said.every(({ entries }) => entries.every((entry) => entry.way.into === "pool"))) return "";
+      return said
+        .filter(({ entries }) => entries.length > 0)
+        .map(({ holding, entries }) => ` ${holdingSubject(kind, holding)} goes into ${entries.map((entry) => entryWords(kind, entry)).join(" or ")}.`)
+        .join("");
     })
     .join("");
   // Words wired in can always be @'d into a box that is drawn, so a ref on a
