@@ -727,3 +727,66 @@ describe('SpaceTabBar', () => {
     });
   });
 });
+
+
+// Ending a rename gives the keyboard to the content of the Space being shown,
+// the container a press beside the document body leaves it in (inner#956).
+// Each outlet stands in for one kind of Space: the canvas container carries
+// the mark in its markup, the document body scroller gets it when the body
+// attaches it.
+describe('ending a tab rename', () => {
+  const outlets: HTMLElement[] = [];
+
+  /**
+   * Adds a Space outlet holding a content container.
+   * @param spaceId - The Space the outlet shows.
+   * @returns The content container.
+   */
+  const addOutlet = (spaceId: string): HTMLElement => {
+    const outlet = document.createElement('div');
+    outlet.setAttribute('data-space-outlet', spaceId);
+    const content = document.createElement('div');
+    content.setAttribute('data-space-focus-root', '');
+    content.tabIndex = -1;
+    outlet.append(content);
+    document.body.append(outlet);
+    outlets.push(outlet);
+    return content;
+  };
+
+  afterEach(() => {
+    outlets.splice(0).forEach((outlet) => outlet.remove());
+  });
+
+  it.each([
+    ['canvas', 'Enter', 's1'],
+    ['canvas', 'Escape', 's1'],
+    ['document', 'Enter', 's2'],
+    ['document', 'Escape', 's2'],
+  ])('gives the %s Space content the keyboard on %s', async (_kind, key, id) => {
+    const user = userEvent.setup();
+    const canvas = addOutlet('s1');
+    const body = addOutlet('s2');
+    setup({ activeSpaceId: id, onRenameSpace: vi.fn() });
+    await user.dblClick(screen.getByTestId(`space-tab-name-${id}`));
+    const field = screen.getByTestId(`space-tab-name-input-${id}`);
+    await user.type(field, `x{${key}}`);
+    expect(screen.queryByTestId(`space-tab-name-input-${id}`)).toBeNull();
+    expect(document.activeElement).toBe(id === 's1' ? canvas : body);
+  });
+
+  it.each([
+    ['Enter', { key: 'Enter', keyCode: 13 }],
+    ['Escape', { key: 'Escape', keyCode: 27 }],
+  ])('keeps the field open on the %s that ends an input method composition', async (_, init) => {
+    const user = userEvent.setup();
+    const onRenameSpace = vi.fn();
+    setup({ onRenameSpace });
+    await user.dblClick(screen.getByTestId('space-tab-name-s1'));
+    const field = screen.getByTestId('space-tab-name-input-s1');
+    fireEvent.compositionEnd(field);
+    fireEvent.keyDown(field, init);
+    expect(screen.getByTestId('space-tab-name-input-s1')).toBe(field);
+    expect(onRenameSpace).not.toHaveBeenCalled();
+  });
+});

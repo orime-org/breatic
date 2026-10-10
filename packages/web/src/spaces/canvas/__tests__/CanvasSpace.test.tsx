@@ -507,6 +507,14 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(screen.getByTestId('canvas-empty')).toBeInTheDocument();
   });
 
+  it('marks its container as where a tab rename hands the keyboard back', () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    renderSpace();
+    const container = screen.getByTestId('canvas-space');
+    expect(container.hasAttribute('data-space-focus-root')).toBe(true);
+    expect(container.tabIndex).toBe(-1);
+  });
+
   // Figma-like interaction: the left-button drag marquee-selects rather than
   // pans, so ReactFlow's pane must NOT carry the `draggable` class (which it
   // only adds when panOnDrag enables the left button).
