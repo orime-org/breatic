@@ -36,6 +36,7 @@ import {
   ingestReportService,
   mediaReadService,
   studioAuthService,
+  uploadDeadline,
   uploadTicketService,
 } from "@breatic/domain";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
@@ -348,11 +349,6 @@ assets.post(
     const ext = safeExt(body.filename);
 
     const expiresAt = Date.now() + ingest.ticket_expires_seconds * 1000;
-    // The upload's two hours, the same ones its row is judged by (inner#1367).
-    // The ticket and every call the Worker makes for it end there.
-    const budgetMs = getNodeTaskConfig().default_budget_ms;
-    const deadlineAt = Date.now() + budgetMs;
-
     // The grant, and the task row this upload is on whatever node it lands on,
     // opened before the ticket that starts it (#186, design §4.6.5). Nothing
     // schedules a deadline: the row carries its own budget, and whoever opens
@@ -380,10 +376,13 @@ assets.post(
         },
       },
       {
-        budgetMs,
+        budgetMs: getNodeTaskConfig().default_budget_ms,
         ...uploadRowOf(body),
       },
     );
+    // The upload's two hours, read off the row or the grant just opened
+    // (inner#1367). The ticket and every call the Worker makes for it end there.
+    const deadlineAt = await uploadDeadline(key);
 
     const target = await uploadTicketService.signTicketFor({
       storageKey: key,

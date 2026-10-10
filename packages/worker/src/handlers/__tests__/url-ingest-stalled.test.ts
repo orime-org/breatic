@@ -14,13 +14,12 @@ const h = vi.hoisted(() => ({ applyIngestReport: vi.fn() }));
 vi.mock("@breatic/core", () => ({
   coverKeyFor: vi.fn(),
   env: {},
-  getNodeTaskConfig: vi.fn(),
   getStorageConfig: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 vi.mock("@breatic/domain", () => ({
   ingestReportService: { applyIngestReport: h.applyIngestReport },
-  nodeTaskService: {},
+  uploadDeadline: vi.fn(),
   uploadTicketService: {},
 }));
 vi.mock("@worker/handlers/side-effects.js", () => ({ noteSideEffects: vi.fn() }));

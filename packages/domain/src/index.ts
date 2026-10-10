@@ -163,6 +163,7 @@ export {
 // ── Registering what the edge measured (our server finishes the browser's
 //    upload, our worker finishes its own — one function, one place) ──
 export * as ingestReportService from "@domain/asset/ingest-report.service.js";
+export { uploadDeadline } from "@domain/asset/upload-deadline.js";
 export type {
   IngestReport,
   IngestReportOutcome,

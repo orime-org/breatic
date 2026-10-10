@@ -35,6 +35,7 @@ import * as assetService from "@domain/asset/asset.service.js";
 import * as nodeHistoryService from "@domain/node-history/node-history.service.js";
 import * as nodeTaskService from "@domain/node-task/node-task.service.js";
 import { failureOutcome } from "@domain/node-task/failure-outcome.js";
+import { uploadDeadline } from "@domain/asset/upload-deadline.js";
 import { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
 import {
   getStorageAdapter,
@@ -297,15 +298,17 @@ async function announceSuccess(
  * Tell the node this upload failed.
  * @param grant - The grant, which carries where the node lives.
  * @param message - What the node shows.
+ * @param expired - Whether the upload ran out of its two hours.
  * @returns Whether publishing the node's numbers failed.
  */
 async function announceFailure(
   grant: UploadGrant,
   message: string,
+  expired = false,
 ): Promise<boolean> {
   if (!hasNode(grant)) return false;
   return settleUploadTask(grant, {
-    outcome: "failed",
+    outcome: expired ? "expired" : "failed",
     errorMessage: message,
   });
 }
@@ -320,8 +323,8 @@ async function announceFailure(
  * on — leaves nothing to settle and nothing to publish.
  * @param grant - The grant, which names the node and the key.
  * @param outcome - Where the row lands, and what rides along.
- * @param outcome.outcome - `done` or `failed`; a failure past the task's
- *   deadline lands as `expired`.
+ * @param outcome.outcome - `done`, `failed`, or `expired` for a failure past
+ *   the upload's deadline.
  * @param outcome.nodeHistoryId - The history row holding the result.
  * @param outcome.errorMessage - What the list shows for a failure.
  * @param outcome.result - The content fields, on the transition into `done`.
@@ -331,7 +334,7 @@ async function announceFailure(
 async function settleUploadTask(
   grant: GrantWithNode,
   outcome: {
-    outcome: "done" | "failed";
+    outcome: "done" | "failed" | "expired";
     nodeHistoryId?: string;
     errorMessage?: string;
     result?: NodeTaskResult;
@@ -339,21 +342,16 @@ async function settleUploadTask(
 ): Promise<boolean> {
   const task = await nodeTaskService.findByStorageKey(grant.storageKey);
   if (task === null) return false;
-  // Every call on an upload's chain is cut at the task's deadline, so a
-  // failure that arrives past it ends the task the way the deadline does.
-  const expired =
-    outcome.outcome === "failed" &&
-    failureOutcome(task.startedAt.getTime() + task.budgetMs) === "expired";
 
   const settled = await nodeTaskService.settle({
     taskId: task.id,
-    outcome: expired ? "expired" : outcome.outcome,
+    outcome: outcome.outcome,
     ...(outcome.nodeHistoryId !== undefined && {
       nodeHistoryId: outcome.nodeHistoryId,
     }),
-    ...(expired
-      ? { errorMessage: "expired" }
-      : outcome.errorMessage !== undefined && { errorMessage: outcome.errorMessage }),
+    ...(outcome.errorMessage !== undefined && {
+      errorMessage: outcome.errorMessage,
+    }),
   });
 
   // The content rides along whenever the row holds this outcome, a repeated
@@ -539,11 +537,12 @@ export async function applyIngestReport(
   // one.
   if (report.outcome === "aborted") {
     if (grant.consumedAt !== null) return { status: "stale" };
-    await voidGrant(grant.storageKey);
-    const countsPublishFailed = await announceFailure(
-      grant,
-      report.reason ?? "aborted",
-    );
+    // Every call on an upload's chain is cut at its deadline, so a failure
+    // that arrives past it ends the upload the way the deadline does.
+    const expired = failureOutcome(await uploadDeadline(grant.storageKey)) === "expired";
+    const reason = expired ? "expired" : (report.reason ?? "aborted");
+    await voidGrant(grant.storageKey, reason);
+    const countsPublishFailed = await announceFailure(grant, reason, expired);
     return { status: "voided", ...(countsPublishFailed && { countsPublishFailed }) };
   }
 
@@ -598,7 +597,7 @@ export async function applyIngestReport(
   const { upload } = getStorageConfig();
   const sizeBytes = report.sizeBytes;
   if (sizeBytes > upload.max_upload_bytes) {
-    await voidGrant(grant.storageKey);
+    await voidGrant(grant.storageKey, "over_cap");
     const countsPublishFailed = await announceFailure(grant, "over_cap");
     return {
       status: "rejected",
@@ -617,7 +616,7 @@ export async function applyIngestReport(
   // (`packages/ingest/src/part-layout.ts`), and that refusal reaches the node
   // the ordinary way.
   if (sizeBytes === 0) {
-    await voidGrant(grant.storageKey);
+    await voidGrant(grant.storageKey, "empty");
     const countsPublishFailed = await announceFailure(grant, "empty");
     return {
       status: "rejected",
@@ -742,7 +741,11 @@ export async function applyIngestReport(
   // The answer is a CAS: false means another delivery of this same report got
   // there first, and both did the same work against one registered asset — so
   // the loser has nothing to undo and nothing to say.
-  await consumeGrant({ storageKey: grant.storageKey, userId: grant.userId });
+  await consumeGrant({
+    storageKey: grant.storageKey,
+    userId: grant.userId,
+    assetId: asset.id,
+  });
   return {
     status: "registered",
     assetId: asset.id,

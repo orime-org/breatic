@@ -46,6 +46,10 @@ export interface UploadGrant {
   consumedAt: Date | null;
   /** Set when this grant died without its bytes ever becoming an asset. */
   voidedAt: Date | null;
+  /** The ledger row the bytes registered as, set with `consumedAt`. */
+  assetId: string | null;
+  /** Why the grant was voided, set with `voidedAt`. */
+  failureReason: string | null;
   /** How long the browser has to start the upload. */
   expiresAt: Date;
   /** Node these bytes land on. Null for a focus crop, which has no node. */
@@ -80,6 +84,8 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     declaredSize: row.declaredSize,
     consumedAt: row.consumedAt,
     voidedAt: row.voidedAt,
+    assetId: row.assetId,
+    failureReason: row.failureReason,
     expiresAt: row.expiresAt,
     nodeId: row.nodeId,
     projectId: row.projectId,
@@ -252,15 +258,17 @@ export async function claimFinalize(params: {
  * @param params - The ownership claim.
  * @param params.storageKey - The key being registered.
  * @param params.userId - The authenticated caller.
+ * @param params.assetId - The ledger row the bytes registered as.
  * @returns True when this call consumed the grant; false otherwise.
  */
 export async function consumeGrant(params: {
   storageKey: string;
   userId: string;
+  assetId: string;
 }): Promise<boolean> {
   const rows = await db
     .update(uploadGrants)
-    .set({ consumedAt: sql`now()` })
+    .set({ consumedAt: sql`now()`, assetId: params.assetId })
     .where(
       and(
         eq(uploadGrants.storageKey, params.storageKey),
@@ -307,13 +315,14 @@ export async function findGrantByKey(
  * The object may well exist in storage at this point. Nothing here deletes it;
  * this row is what tells the operations-side cleanup that it has no owner.
  * @param storageKey - The key being written off.
+ * @param reason - Why, as the upload status query will answer it.
  * @returns True when this call voided the grant; false when it was already
  *   consumed or already voided.
  */
-export async function voidGrant(storageKey: string): Promise<boolean> {
+export async function voidGrant(storageKey: string, reason: string): Promise<boolean> {
   const rows = await db
     .update(uploadGrants)
-    .set({ voidedAt: sql`now()` })
+    .set({ voidedAt: sql`now()`, failureReason: reason })
     .where(
       and(
         eq(uploadGrants.storageKey, storageKey),

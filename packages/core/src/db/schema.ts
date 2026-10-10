@@ -2376,6 +2376,17 @@ export const uploadGrants = pgTable(
      */
     voidedAt: timestamp("voided_at", { withTimezone: true }),
     /**
+     * The ledger row this grant's bytes registered as, written with
+     * `consumed_at` — on a dedup hit, the row that already stood. What the
+     * upload status query hands a grant with no node, which has no task row to
+     * carry its result (inner#1367).
+     */
+    assetId: uuid("asset_id").references(() => studioAssets.id, {
+      onDelete: "restrict",
+    }),
+    /** Why the grant was voided, written with `voided_at`. */
+    failureReason: text("failure_reason"),
+    /**
      * How long the ticket itself stays usable. The same instant is signed into
      * the ticket, and the Worker checks that copy once, when the browser asks
      * it to start; an upload already running is never cut off by it. This

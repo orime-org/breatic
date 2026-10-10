@@ -326,6 +326,39 @@ describe("a finish this server drove — a completed upload", () => {
     expect(rows[0]!.n).toBe("0");
   });
 
+  it("points the consumed grant at the ledger row it registered", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+
+    await report(completed(key));
+
+    const rows = await sql<{ asset_id: string | null; id: string; failure_reason: string | null }[]>`
+      SELECT g.asset_id, a.id, g.failure_reason
+      FROM upload_grants g JOIN studio_assets a ON a.storage_key = g.storage_key
+      WHERE g.storage_key = ${key}
+    `;
+    expect(rows[0]!.asset_id).toBe(rows[0]!.id);
+    expect(rows[0]!.failure_reason).toBeNull();
+  });
+
+  it("points a grant whose bytes deduped at the row that already stood", async () => {
+    const seed = await seedEditor();
+    const first = await mintTicket(seed);
+    const second = await mintTicket(seed);
+    const sha256 = crypto.randomBytes(32).toString("hex");
+
+    await report(completed(first, { sha256 }));
+    await report(completed(second, { sha256 }));
+
+    const rows = await sql<{ storage_key: string; asset_id: string | null }[]>`
+      SELECT storage_key, asset_id FROM upload_grants
+      WHERE storage_key IN (${first}, ${second})
+    `;
+    const ids = new Set(rows.map((r) => r.asset_id));
+    expect(ids.size).toBe(1);
+    expect([...ids][0]).not.toBeNull();
+  });
+
   it("registers the asset under the grant's studio and consumes the grant", async () => {
     const seed = await seedEditor();
     const nodeId = crypto.randomUUID();
@@ -1005,6 +1038,53 @@ describe("a finish the Worker could not complete", () => {
     const docName = `project-${seed.projectId}/canvas-${seed.spaceId}`;
     const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
     expect(events).toHaveLength(2);
+  });
+
+  // A grant with no node has no task row to say why it failed, so the grant
+  // itself carries the reason the status query answers with (inner#1367).
+  it("writes down on the grant why it was voided", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+
+    await ingestReportService.applyIngestReport({
+      storageKey: key,
+      outcome: "aborted",
+      reason: "store_failed",
+    });
+
+    const grants = await sql<{ failure_reason: string | null; asset_id: string | null }[]>`
+      SELECT failure_reason, asset_id FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]).toEqual({ failure_reason: "store_failed", asset_id: null });
+  });
+
+  it("writes expired on a grant with no node whose abort arrives past its two hours", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await sql`
+      UPDATE upload_grants
+      SET created_at = now() - interval '2 hours' - interval '1 second'
+      WHERE storage_key = ${key}
+    `;
+
+    await report({ storage_key: key, outcome: "aborted" });
+
+    const grants = await sql<{ failure_reason: string | null }[]>`
+      SELECT failure_reason FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]!.failure_reason).toBe("expired");
+  });
+
+  it("writes over_cap on a grant whose bytes came back too large", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+
+    await report(completed(key, { size_bytes: Number.MAX_SAFE_INTEGER }));
+
+    const grants = await sql<{ failure_reason: string | null }[]>`
+      SELECT failure_reason FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]!.failure_reason).toBe("over_cap");
   });
 
   it("voids the grant even when the node's counts could not be published", async () => {
@@ -1739,7 +1819,8 @@ describe("a finish this server drove — the task it settles", () => {
     const body = completed(key, { sha256: sha });
 
     await report(body);
-    await sql`DELETE FROM studio_assets WHERE content_hash = ${sha}`;
+    // Gone the way a ledger row goes: soft-deleted, never removed.
+    await sql`UPDATE studio_assets SET deleted_at = now() WHERE content_hash = ${sha}`;
 
     const res = await report(body);
 

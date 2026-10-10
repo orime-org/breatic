@@ -20,10 +20,10 @@
  */
 
 import type { Job } from "bullmq";
-import { coverKeyFor, env, getNodeTaskConfig, getStorageConfig, logger } from "@breatic/core";
+import { coverKeyFor, env, getStorageConfig, logger } from "@breatic/core";
 import {
   ingestReportService,
-  nodeTaskService,
+  uploadDeadline,
   uploadTicketService,
 } from "@breatic/domain";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
@@ -124,20 +124,6 @@ async function fail(storageKey: string, reason: string): Promise<void> {
 }
 
 /**
- * When this transfer's task runs out: the end of the row the route opened on
- * the node. A job whose row is gone gets the same two hours from when it was
- * queued, the moment the row would have started counting.
- * @param job - The queued submission.
- * @returns The deadline in epoch milliseconds.
- */
-async function urlIngestDeadline(job: Job<UrlIngestJobData>): Promise<number> {
-  const row = await nodeTaskService.findByStorageKey(job.data.storageKey);
-  return row !== null
-    ? row.startedAt.getTime() + row.budgetMs
-    : job.timestamp + getNodeTaskConfig().default_budget_ms;
-}
-
-/**
  * Settle a transfer whose job ended without its handler settling it.
  *
  * The queue does not deliver a transfer twice, so a job whose process went
@@ -169,7 +155,8 @@ export async function settleStalledUrlIngest(job: Job<UrlIngestJobData>): Promis
 export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
   const { storageKey, studioId, url, userId, projectId, nodeId } = job.data;
   const { upload, ingest } = getStorageConfig();
-  const deadlineAt = await urlIngestDeadline(job);
+  // The end of the row the route opened on the node (inner#1367).
+  const deadlineAt = await uploadDeadline(storageKey);
 
   let target;
   try {
