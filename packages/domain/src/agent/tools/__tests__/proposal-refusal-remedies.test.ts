@@ -519,9 +519,13 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: ["An audio node takes material only from our storage: a file the user uploaded in the chat."],
   }],
   "material-missing": [{
+    // A mistyped address and one copied from another studio's canvas read the
+    // same here, and each is put right differently, so no fix is written.
     meets: group([{ ...HELD_PIC, material: MISSING }, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
-    states: ['On node 0 ("Pic"), copy it again exactly'],
-    fix: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
+    states: [
+      '"Pic" holds an address in our storage that is not registered in this studio.',
+      "Material comes only from this studio's storage: files the user uploaded in the chat and pictures saved with save_image.",
+    ],
   }],
   "material-wrong-kind": [{
     meets: group([{ ...HELD_PIC, material: CLIP }, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
