@@ -100,9 +100,9 @@ describe("marksTypedIn", () => {
   it("gives each mark typed into words, read as markedSegments reads it and as it is written there, in order", () => {
     const words = "(💡 Pick a frame) Use [📎 a photo] to show {✏️ the story}.";
     expect(marksTypedIn(words)).toEqual([
-      { slot: { kind: "note", label: "Pick a frame" }, text: "(💡 Pick a frame)" },
-      { slot: { kind: "asset", label: "a photo", note: "a photo" }, text: "[📎 a photo]" },
-      { slot: { kind: "tweak", label: "the story", note: "the story" }, text: "{✏️ the story}" },
+      { slot: { kind: "note", label: "Pick a frame" }, text: "(💡 Pick a frame)", at: 0 },
+      { slot: { kind: "asset", label: "a photo", note: "a photo" }, text: "[📎 a photo]", at: 22 },
+      { slot: { kind: "tweak", label: "the story", note: "the story" }, text: "{✏️ the story}", at: 43 },
     ]);
     expect(marksTypedIn(words).map(({ slot }) => slot)).toEqual(markedSegments(words).flatMap((part) => (part.slot ? [part.slot] : [])));
   });
