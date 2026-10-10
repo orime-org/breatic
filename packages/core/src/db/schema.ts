@@ -2207,6 +2207,13 @@ export const studioAssets = pgTable(
       .references(() => studios.id, { onDelete: "restrict" }),
     /** sha256 hex of the content - the dedup key (never in the URL). */
     contentHash: varchar("content_hash", { length: 64 }).notNull(),
+    /**
+     * sha256 hex of the bytes as received (inner#1367). The same as
+     * `content_hash` unless the ingest Worker turned a picture shown at an EXIF
+     * orientation upright; then it is what the browser's own hash of the
+     * original file matches, so the dedup pre-check finds the row either way.
+     */
+    receivedHash: varchar("received_hash", { length: 64 }).notNull(),
     /** Random storage key (unchanged format; NOT the hash). */
     storageKey: text("storage_key").notNull(),
     /** Public URL (adapter.publicUrl(key)) - the value embedded in Yjs. */
@@ -2315,6 +2322,12 @@ export const studioAssets = pgTable(
     // replacement. Partial to match the guard's predicate exactly.
     index("studio_assets_storage_key_idx")
       .on(table.storageKey)
+      .where(sql`${table.deletedAt} IS NULL`),
+    // The dedup pre-check looks a browser's hash up here as well as under
+    // content_hash (inner#1367). Not unique: it is a second way in, and the
+    // unique key stays content_hash.
+    index("studio_assets_studio_received_hash_idx")
+      .on(table.studioId, table.receivedHash)
       .where(sql`${table.deletedAt} IS NULL`),
     // The (studio_id, content_hash) partial UNIQUE (within-studio dedup
     // key, WHERE deleted_at IS NULL) lives in the migration - Drizzle's

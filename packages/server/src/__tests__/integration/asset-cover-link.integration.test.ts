@@ -88,6 +88,7 @@ async function registerAsset(
     studioId,
     producedByUserId: userId,
     contentHash: hash,
+    receivedHash: hash,
     storageKey: `uploads/${crypto.randomUUID()}.${kind === "video" ? "mp4" : "png"}`,
     fileUrl: `https://cdn.example.com/${hash.slice(0, 8)}`,
     sizeBytes: 1024,

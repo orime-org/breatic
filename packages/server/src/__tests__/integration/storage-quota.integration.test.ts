@@ -270,6 +270,7 @@ async function seedAsset(
     studioId,
     producedByUserId: producedBy,
     contentHash: crypto.randomBytes(32).toString("hex"),
+    receivedHash: crypto.randomBytes(32).toString("hex"),
     storageKey: `image/2026-08-19/${crypto.randomUUID()}.png`,
     fileUrl: `https://cdn/${crypto.randomUUID()}.png`,
     sizeBytes,

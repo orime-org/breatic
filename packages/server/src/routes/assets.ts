@@ -305,12 +305,11 @@ assets.post(
       );
     }
 
-    // Dedup: the owner studio already holding this content (with a matching
-    // size) skips the upload entirely — no key, no grant, no ticket.
+    // Dedup: the owner studio already holding this content skips the upload
+    // entirely — no key, no grant, no ticket.
     const dedupHit = await assetUploadService.checkUploadDedup({
       studioId,
       contentHash: body.client_hash,
-      sizeBytes: body.size,
     });
     if (dedupHit) {
       logger.info(

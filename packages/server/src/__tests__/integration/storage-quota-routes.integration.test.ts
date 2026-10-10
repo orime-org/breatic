@@ -129,6 +129,7 @@ async function fullAccount(filledBytes: number): Promise<{
       studioId,
       producedByUserId: userId,
       contentHash,
+      receivedHash: contentHash,
       storageKey: `image/2026-08-19/${crypto.randomUUID()}.png`,
       fileUrl: `https://cdn/${crypto.randomUUID()}.png`,
       sizeBytes,
