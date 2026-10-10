@@ -10,6 +10,7 @@ describe("urlIngestFailureLevel", () => {
     expect(urlIngestFailureLevel("source_unreachable")).toBe("warn");
     expect(urlIngestFailureLevel("unsupported_type")).toBe("warn");
     expect(urlIngestFailureLevel("over_cap")).toBe("warn");
+    expect(urlIngestFailureLevel("empty")).toBe("warn");
   });
 
   it("treats every failure on our side as an error", () => {

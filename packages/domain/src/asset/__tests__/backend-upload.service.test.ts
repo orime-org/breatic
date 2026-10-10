@@ -454,4 +454,15 @@ describe("transferReaderUrlToStorage — a reader's link (inner#1315)", () => {
       expect.objectContaining({ outcome: "aborted", reason: INGEST_TYPE_NOT_REPORTED }),
     );
   });
+
+  it.each(["empty", "over_cap"])("names a %s report as the link's own refusal", async (reason) => {
+    // The report turned down what the link sent: the link is at fault, and
+    // the same link gets the same answer again.
+    applyIngestReport.mockResolvedValue({ status: "rejected", reason });
+
+    const failed = await transferReaderUrlToStorage(LINK, WHO).catch((err: unknown) => err);
+
+    expect(failed).toBeInstanceOf(ReaderUrlTransferError);
+    expect((failed as InstanceType<typeof ReaderUrlTransferError>).reason).toBe(reason);
+  });
 });
