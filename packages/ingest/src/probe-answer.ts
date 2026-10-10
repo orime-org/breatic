@@ -20,6 +20,7 @@
  */
 
 import { NOTHING_FOUND } from "@ingest/media-metadata.js";
+import type { UprightOrder } from "@ingest/upright-run.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import {
   COVER_CONTENT_TYPE,
@@ -61,6 +62,11 @@ export interface ProbeRequest {
    * is counted.
    */
   deadlineAt: number;
+  /**
+   * Turn the object upright and write it back before probing it (inner#1367).
+   * Probing and the preview then read the written picture.
+   */
+  upright?: UprightOrder;
 }
 
 /** What the Worker got back from one container run. */

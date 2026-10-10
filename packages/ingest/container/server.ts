@@ -36,6 +36,7 @@ import {
   readProbeOutput,
 } from "@ingest/probe-command.js";
 import { previewSource, previewTimeLeft } from "@ingest/preview-step.js";
+import { uprightArgs, type UprightOrder } from "@ingest/upright-run.js";
 import { openObject, runTool } from "./run-tool.js";
 import { NOTHING_FOUND, pickMediaMetadata } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
@@ -58,6 +59,12 @@ const COVER_MAX_BYTES = 10 * 1024 * 1024;
  * ordinary 576-wide frame is around 100 KB.
  */
 const PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
+
+/**
+ * The most an upright picture may weigh. It is held in memory between vips
+ * and the write-back, and the instance has 1 GiB.
+ */
+const UPRIGHT_MAX_BYTES = 256 * 1024 * 1024;
 
 /** One run's request as it arrives: read before it is believed. */
 type IncomingRequest = Partial<Record<keyof ProbeRequest, unknown>>;
@@ -144,6 +151,51 @@ async function cutPreview(
   return cut === null ? null : new Uint8Array(cut);
 }
 
+/**
+ * Read an upright order off the request, when it carries a whole one.
+ * @param sent - What arrived.
+ * @returns The order, or null.
+ */
+function uprightOrderOf(sent: unknown): UprightOrder | null {
+  if (typeof sent !== "object" || sent === null) return null;
+  const order = sent as Partial<Record<keyof UprightOrder, unknown>>;
+  if (
+    typeof order.writeUrl !== "string" ||
+    typeof order.contentType !== "string" ||
+    typeof order.lossless !== "boolean" ||
+    typeof order.quality !== "number"
+  ) {
+    return null;
+  }
+  return { writeUrl: order.writeUrl, contentType: order.contentType, lossless: order.lossless, quality: order.quality };
+}
+
+/**
+ * Turn the object upright and write it back.
+ * @param objectUrl - Where to read it.
+ * @param order - How to encode it and where to write it.
+ * @param timeoutMs - How long vips may run, the read included.
+ * @returns True only when the write-back was answered 200.
+ */
+async function turnUpright(objectUrl: string, order: UprightOrder, timeoutMs: number): Promise<boolean> {
+  const args = uprightArgs(order);
+  if (args === null) return false;
+  const signal = AbortSignal.timeout(timeoutMs);
+  const input = await openObject(objectUrl, signal);
+  if (input === null) return false;
+  const turned = await runTool("vips", args, { maxBytes: UPRIGHT_MAX_BYTES, signal, input });
+  if (turned === null) return false;
+  try {
+    const answered = await fetch(order.writeUrl, { method: "PUT", body: turned });
+    await answered.body?.cancel();
+    if (answered.status !== 200) console.error("media_upright_write_refused", { status: answered.status });
+    return answered.status === 200;
+  } catch (err) {
+    console.error("media_upright_write_failed", { err: err instanceof Error ? err.message : String(err) });
+    return false;
+  }
+}
+
 createServer((req, res) => {
   if (req.method === "POST" && req.url === RUN_PATH) {
     void (async () => {
@@ -193,6 +245,17 @@ createServer((req, res) => {
       wantPreview: asked.wantPreview === true,
       deadlineAt: typeof asked.deadlineAt === "number" ? asked.deadlineAt : 0,
     };
+
+    const upright = uprightOrderOf(asked.upright);
+    if (upright !== null) {
+      // Anything but a 200 from the write-back ends the run here: the Worker's
+      // arbiter counts it as a failed run and the object stays as received.
+      const written = await turnUpright(request.objectUrl, upright, request.toolTimeoutMs);
+      if (!written) {
+        res.writeHead(409).end();
+        return;
+      }
+    }
 
     const found = await probe(
       request.objectUrl,
