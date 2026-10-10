@@ -152,6 +152,16 @@ export function markedSegments(text: string): PromptSegment[] {
 }
 
 /**
+ * The marks a stretch of words types out, each as it is written there.
+ * @param text - The words.
+ * @returns Each typed mark, in order.
+ * @throws {never} Never.
+ */
+export function typedMarkTexts(text: string): string[] {
+  return [...text.matchAll(MARK_PATTERN)].map(([whole]) => whole);
+}
+
+/**
  * The prompt as the panel will read it back, marks and all.
  *
  * Projected the way the canvas writes it and the editor gives it back: a line

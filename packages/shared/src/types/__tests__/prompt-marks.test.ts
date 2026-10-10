@@ -11,7 +11,7 @@ import { resolve } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { setLocale, setLocaleMessages } from "@shared/i18n/index.js";
-import { markText, markedSegments, promptPlainText, promptTextOf } from "@shared/types/canvas-proposal";
+import { markText, markedSegments, promptPlainText, promptTextOf, typedMarkTexts } from "@shared/types/canvas-proposal";
 
 beforeAll(() => {
   for (const locale of ["en", "zh-CN"]) {
@@ -93,5 +93,15 @@ describe("a reference to a proposed node (inner#1315)", () => {
 
   it("counts an @ as the empty words it is given", () => {
     expect(promptTextOf([{ text: "Look at " }, { ref: 1 }], () => "")).toBe("Look at ");
+  });
+});
+
+describe("typedMarkTexts", () => {
+  it("gives each mark typed into words as it is written there, in order", () => {
+    expect(typedMarkTexts("(💡 Pick a frame) Use [📎 a photo] to show {✏️ the story}.")).toEqual(["(💡 Pick a frame)", "[📎 a photo]", "{✏️ the story}"]);
+  });
+
+  it("gives nothing for words with no mark", () => {
+    expect(typedMarkTexts("Plain words (and a bracket).")).toEqual([]);
   });
 });

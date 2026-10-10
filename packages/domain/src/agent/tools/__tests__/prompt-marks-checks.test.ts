@@ -468,7 +468,7 @@ describe("a kind the canvas will not wire into the node (table A, first row)", (
     });
     expect(answer).toMatchObject({
       ok: false,
-      reason: expect.stringContaining('"Clip" goes into "Sfx" unwired, with a note saying to pick it into "video" and no ref. Take every edge from "Clip" to "Sfx" off.'),
+      reason: expect.stringContaining('"Clip" goes into "Sfx" unwired, with a note saying to pick it into "video" and no ref. Take every edge from node 0 ("Clip") to node 1 ("Sfx") off.'),
     });
   });
 });

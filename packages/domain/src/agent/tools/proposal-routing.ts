@@ -21,7 +21,7 @@ import {
   type ProposalNode,
 } from "@breatic/shared";
 
-import { refuse, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
+import { fixOn, refuse, type NodeLabel, type NodeFix, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { modelsForMode, waysIn, type ModelInfo, type WayIn, type WayKind } from "@domain/model-catalog/mode-catalog.js";
 
 /** What a node holds, which decides how it may go into a generation. */
@@ -195,7 +195,7 @@ export function waysAcrossGroup(proposal: CanvasProposal, node: ProposalNode, aw
  * @returns Each slot with the kind it takes.
  * @throws {never} Never.
  */
-function slotsOf(chosen: ModelInfo): { kind: WayKind; way: WayIn }[] {
+export function slotsOf(chosen: ModelInfo): { kind: WayKind; way: WayIn }[] {
   return [...waysIn(chosen)].flatMap(([kind, list]) => list.filter((way) => way.mark === "note").map((way) => ({ kind, way })));
 }
 
@@ -212,8 +212,7 @@ function slotsPhrase(chosen: ModelInfo): string {
 
 /**
  * How many times an element a refusal names appears in the proposal, said
- * after it: nothing for once, so a fix that takes it out is read as taking
- * every copy out.
+ * after it: nothing for once.
  * @param count - How many times it appears.
  * @returns ", N times", or the empty string.
  * @throws {never} Never.
@@ -383,14 +382,15 @@ export function goingWay(arriving: readonly Arriving[], kind: string, into: stri
 
 /**
  * The fix for an index a fill names that cannot stand: every copy of it out.
+ * @param on - The generation the fill is on.
  * @param param - The fill.
- * @param at - The index.
+ * @param index - The index.
  * @param name - The node it points at, where there is one.
  * @returns The fix.
  * @throws {never} Never.
  */
-function takeOutOfFill(param: string, at: number, name?: string): string {
-  return `Take every ${String(at)}${name === undefined ? "" : ` (${name})`} out of fills "${param}".`;
+function takeOutOfFill(on: NodeLabel, param: string, index: number, name?: string): NodeFix {
+  return fixOn(on, `take every ${String(index)}${name === undefined ? "" : ` ("${name}")`} out of fills "${param}".`);
 }
 
 /**
@@ -403,6 +403,7 @@ function takeOutOfFill(param: string, at: number, name?: string): string {
  * @param proposal - The whole proposal.
  * @param node - The generation.
  * @param chosen - Its model.
+ * @param at - The generation, as a fix names it.
  * @returns Each filled node with its slot, or the refusal.
  * @throws {never} Never.
  */
@@ -410,38 +411,41 @@ export function fillsOf(
   proposal: CanvasProposal,
   node: ProposalNode,
   chosen: ModelInfo,
+  at: NodeLabel,
 ): { filled: Arriving[] } | Refusal {
   const slots = slotsOf(chosen);
   const filled: Arriving[] = [];
   for (const [param, indices] of Object.entries(node.fills ?? {})) {
-    const outside = indices.find((at) => proposal.nodes[at] === undefined);
+    // How many times each index is named, counted once for every refusal below.
+    const named = new Map<number, number>();
+    for (const i of indices) named.set(i, (named.get(i) ?? 0) + 1);
+    const outside = indices.find((i) => proposal.nodes[i] === undefined);
     if (outside !== undefined) {
-      const count = indices.filter((at) => at === outside).length;
-      return refuse("fill-outside", `fills "${param}" on "${node.name}" points at node ${String(outside)}${timesNamed(count)}, which is not in the group.`, takeOutOfFill(param, outside));
+      return refuse("fill-outside", `fills "${param}" on "${node.name}" points at node ${String(outside)}${timesNamed(named.get(outside) ?? 0)}, which is not in the group.`, takeOutOfFill(at, param, outside));
     }
-    const named = indices.map((at) => proposal.nodes[at] as ProposalNode);
-    const selfCount = named.filter((n) => n === node).length;
-    if (selfCount > 0) {
-      return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself${timesNamed(selfCount)}, and a node cannot fill its own slot.`, takeOutOfFill(param, proposal.nodes.indexOf(node), `"${node.name}"`));
+    const self = indices.find((i) => proposal.nodes[i] === node);
+    if (self !== undefined) {
+      return refuse("fill-self", `fills "${param}" on "${node.name}" points at "${node.name}" itself${timesNamed(named.get(self) ?? 0)}, and a node cannot fill its own slot.`, takeOutOfFill(at, param, self, node.name));
     }
     const slot = slots.find(({ way }) => way.into === param);
     if (slot === undefined) {
       return chosen.params[param]?.fromReferencePool === true
-        ? refuse("fill-into-pool", `"${param}" is the reference pool of "${chosen.name}", which takes no fills; ${slotsPhrase(chosen)}.`, `Take fills "${param}" off.`)
-        : refuse("fill-not-a-slot", `"${chosen.name}" has no slot "${param}"; ${slotsPhrase(chosen)}.`, `Take fills "${param}" off.`);
+        ? refuse("fill-into-pool", `"${param}" is the reference pool of "${chosen.name}", which takes no fills; ${slotsPhrase(chosen)}.`, fixOn(at, `take fills "${param}" off.`))
+        : refuse("fill-not-a-slot", `"${chosen.name}" has no slot "${param}"; ${slotsPhrase(chosen)}.`, fixOn(at, `take fills "${param}" off.`));
     }
     const seen = new Map<string, ProposalNode>();
-    for (const from of named) {
-      const count = named.filter((n) => n === from).length;
+    for (const index of indices) {
+      const from = proposal.nodes[index] as ProposalNode;
+      const count = named.get(index) ?? 0;
       if (from.material === undefined) {
-        return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${from.name}"${timesNamed(count)}, which holds no material, and fills takes only nodes holding it. ${waysOrNone(from, node, chosen)}`, takeOutOfFill(param, proposal.nodes.indexOf(from), `"${from.name}"`));
+        return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${from.name}"${timesNamed(count)}, which holds no material, and fills takes only nodes holding it. ${waysOrNone(from, node, chosen)}`, takeOutOfFill(at, param, index, from.name));
       }
       if (from.type !== slot.kind) {
-        return refuse("fill-wrong-kind", `"${chosen.name}" takes ${slot.kind} in "${param}", and "${from.name}" is ${from.type}${count > 1 ? ` and is named ${String(count)} times` : ""}. ${waysOrNone(from, node, chosen)}`, takeOutOfFill(param, proposal.nodes.indexOf(from), `"${from.name}"`));
+        return refuse("fill-wrong-kind", `"${chosen.name}" takes ${slot.kind} in "${param}", and "${from.name}" is ${from.type}${count > 1 ? ` and is named ${String(count)} times` : ""}. ${waysOrNone(from, node, chosen)}`, takeOutOfFill(at, param, index, from.name));
       }
       const twin = seen.get(from.material);
       if (twin === from) {
-        return refuse("fill-repeated", `fills "${param}" on "${node.name}" names "${from.name}" ${String(count)} times, and the slot keeps one copy of it.`, "Name it once.");
+        return refuse("fill-repeated", `fills "${param}" on "${node.name}" names "${from.name}" ${String(count)} times, and the slot keeps one copy of it.`, fixOn(at, `name it once in fills "${param}".`));
       }
       if (twin !== undefined) {
         return refuse("fill-twice", `fills "${param}" on "${node.name}" holds "${twin.name}" and "${from.name}", which hold the same material, and the slot keeps one copy of it.`);

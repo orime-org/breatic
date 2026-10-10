@@ -915,10 +915,10 @@ export function renderProductGuide(): string {
     "How work reaches a node depends on where it goes:",
     "- Into the reference list: it is @'d in the prompt or a shot, by the proposal for every node it wires in, " +
       "or by the reader where a template's 📎 mark asks. A node wired in that is not @'d is not used.",
-    "- Into one of the mode's source slots: it is not @'d; an orange note says which slot to pick it into, " +
-      "and a required slot left empty stops the run. Once that node holds " +
-      "its file or its generated result, the reader opens the panel of the node it feeds, presses that slot's " +
-      "button and clicks the node.",
+    "- Into one of the mode's source slots: it is not @'d. A slot a proposal filled from a node holding material " +
+      "arrives holding it. For an empty node an orange note says which slot to pick it into, and a required slot " +
+      "left empty stops the run. Once that node holds its file or its generated result, the reader opens the panel " +
+      "of the node it feeds, presses that slot's button and clicks the node.",
     "- Into a song model's lyrics box: a text node @'d in the lyrics box, where a proposal arrives with it " +
       "already @'d; it is not @'d in the style prompt above it.",
     "",

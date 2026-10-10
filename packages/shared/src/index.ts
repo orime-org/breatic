@@ -226,6 +226,7 @@ export {
   markText,
   writtenMark,
   markedSegments,
+  typedMarkTexts,
   promptPlainText,
   promptTextOf,
   sanitizeVoicePage,

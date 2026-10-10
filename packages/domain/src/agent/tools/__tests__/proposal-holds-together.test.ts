@@ -884,14 +884,14 @@ describe("wiring that could not be placed", () => {
     const wrong = propose(sourceless(), { sources: [], marks: 0 });
     wrong.edges = [{ fromIndex: 0, toIndex: 7 }];
 
-    expect(checkProposal(wrong)).toMatchObject({ ok: false, reason: expect.stringContaining("An edge runs from node 0 to node 7 (not in the group) (no into). Take every edge from node 0 to node 7 off.") });
+    expect(checkProposal(wrong)).toMatchObject({ ok: false, reason: expect.stringContaining('An edge runs from node 0 ("Result") to node 7 (not in the group) (no into). Take every edge from node 0 ("Result") to node 7 (not in the group) off.') });
   });
 
   it("refuses an edge looping a node onto itself", () => {
     const wrong = propose(sourceless(), { sources: [], marks: 0 });
     wrong.edges = [{ fromIndex: 0, toIndex: 0 }];
 
-    expect(checkProposal(wrong)).toMatchObject({ ok: false, reason: expect.stringContaining("An edge runs from node 0 to itself (no into). Take every edge from node 0 to itself off.") });
+    expect(checkProposal(wrong)).toMatchObject({ ok: false, reason: expect.stringContaining('An edge runs from node 0 ("Result") to itself (no into). Take every edge from node 0 ("Result") to itself off.') });
   });
 
   it("refuses an edge that does not end at the node that generates", () => {
@@ -1841,7 +1841,7 @@ describe("a mark pointing at an upstream node", () => {
 
     expect(verdict).toMatchObject({
       ok: false,
-      reason: expect.stringContaining("Take every ref and note out"),
+      reason: expect.stringContaining('it carries {"ref": 1}. On node 0 ("Your copy"), take out every ref and note it carries'),
     });
   });
 

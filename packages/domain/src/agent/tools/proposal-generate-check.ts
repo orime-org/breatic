@@ -22,7 +22,7 @@ import {
 } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
-import { refuse, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
+import { fixOn, nodeLabel, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
 import {
   aNode,
@@ -77,30 +77,31 @@ function resolveModel(node: ProposalNode, index: number): { chosen: ModelInfo } 
  * Whether the node's values, shots and prompt suit its model.
  * @param node - The node.
  * @param chosen - Its model.
+ * @param at - The node, as a fix names it.
  * @returns Whether it stands, and what is wrong when it does not.
  * @throws {never} Never.
  */
-function checkSettings(node: ProposalNode, chosen: ModelInfo): ProposalVerdict {
-  const values = checkParams(chosen, node);
+function checkSettings(node: ProposalNode, chosen: ModelInfo, at: NodeLabel): ProposalVerdict {
+  const values = checkParams(chosen, node, at);
   if (!values.ok) return values;
   // Defined in the multi-shot mode alone, for a model that takes shots there.
   const board = chosen.storyboard;
   if (node.shots !== undefined && board === undefined) {
-    return refuse("shots-outside-multishot", `Shots belong to the multi_shot mode, and "${node.name}" runs "${node.mode ?? ""}".`, "Leave shots out.");
+    return refuse("shots-outside-multishot", `Shots belong to the multi_shot mode, and "${node.name}" runs "${node.mode ?? ""}".`, fixOn(at, "leave shots out."));
   }
   if (board !== undefined && node.shots === undefined) {
-    return refuse("multishot-no-shots", "In the multi_shot mode the shots are what is generated.", "Give shots, each with its own prompt and seconds.");
+    return refuse("multishot-no-shots", "In the multi_shot mode the shots are what is generated.", fixOn(at, "give shots, each with its own prompt and seconds."));
   }
   // The multi-shot run sends the shots in place of the main prompt, so marks
   // in a main prompt beside them would be counted and priced but never sent.
   if (node.shots !== undefined && (node.prompt?.length ?? 0) > 0) {
-    return refuse("shots-with-prompt", "With shots the main prompt is not sent; its words, refs and notes go in the shots.", "Leave prompt out.");
+    return refuse("shots-with-prompt", "With shots the main prompt is not sent; its words, refs and notes go in the shots.", fixOn(at, "leave prompt out."));
   }
   // A model drawing no box mounts no editor and forces the box empty: only a
   // note, which the reader reads on the card and which is never sent, has a
   // place there. Words, a tweak and an @ all need a box.
   if (!chosen.takesPrompt && proposalMarkSegments(node).some((segment) => segment.slot?.kind !== "note")) {
-    return refuse("no-prompt-box", `"${chosen.name}" draws no prompt box, so words, tweak marks and refs written there reach nobody.`, "Keep only notes saying what the reader picks in the panel.");
+    return refuse("no-prompt-box", `"${chosen.name}" draws no prompt box, so words, tweak marks and refs written there reach nobody.`, fixOn(at, "keep only notes saying what the reader picks in the panel."));
   }
   return { ok: true };
 }
@@ -112,6 +113,7 @@ function checkSettings(node: ProposalNode, chosen: ModelInfo): ProposalVerdict {
  * @param chosen - Its model.
  * @param arriving - The nodes going into it, each with its entry.
  * @param stray - The index the ref names.
+ * @param at - The generation, as a fix names it.
  * @returns The refusal.
  * @throws {never} Never.
  */
@@ -121,12 +123,14 @@ function strayRefReason(
   chosen: ModelInfo,
   arriving: readonly Arriving[],
   stray: number,
+  at: NodeLabel,
 ): Refusal {
   const named = proposal.nodes[stray];
   // The stray index may be @'d more than once, and every copy has to go.
-  const count = refsIn(node).filter((at) => at === stray).length;
-  if (!named) return refuse("ref-outside", `A ref in "${node.name}" points outside the group: {"ref": ${String(stray)}}${timesNamed(count)}.`, `Take every {"ref": ${String(stray)}} out.`);
-  if (named === node) return refuse("ref-self", `"${node.name}" @s itself with {"ref": ${String(stray)}}${timesNamed(count)}, and a node cannot @ itself.`, `Take every {"ref": ${String(stray)}} out.`);
+  const count = refsIn(node).filter((i) => i === stray).length;
+  const takeOut = fixOn(at, `take every {"ref": ${String(stray)}} out.`);
+  if (!named) return refuse("ref-outside", `A ref in "${node.name}" points outside the group: {"ref": ${String(stray)}}${timesNamed(count)}.`, takeOut);
+  if (named === node) return refuse("ref-self", `"${node.name}" @s itself with {"ref": ${String(stray)}}${timesNamed(count)}, and a node cannot @ itself.`, takeOut);
   // Arriving another way -- an edge into a slot or the lyrics box, or a slot
   // filled through fills -- the node is already where it goes; a ref would
   // only send it a second time.
@@ -138,7 +142,7 @@ function strayRefReason(
   const byRefs = count > 1 ? `${String(count)} refs` : "a ref";
   const pool = (waysIn(chosen).get(named.type) ?? []).find((way) => way.mark === "ref");
   if (pool === undefined || !entriesFor(chosen, named.type, holdingOf(named)).some((entry) => entry.ref)) {
-    return refuse("ref-not-pooled-no-pool", `"${named.name}" is @'d by ${byRefs} in "${node.name}", and only a node in its pool takes a ref, while "${chosen.name}" has no pool for ${aNode(named.type)}. ${ways}`, `Take every {"ref": ${String(stray)}} out.`);
+    return refuse("ref-not-pooled-no-pool", `"${named.name}" is @'d by ${byRefs} in "${node.name}", and only a node in its pool takes a ref, while "${chosen.name}" has no pool for ${aNode(named.type)}. ${ways}`, takeOut);
   }
   const held = goingWay(arriving, named.type, pool.into);
   return refuse("ref-not-pooled", `"${named.name}" is @'d by ${byRefs} in "${node.name}" but is not wired into its pool, and only a node in its pool takes a ref. ${ways} The pool of "${node.name}" takes ${roomOf(pool.room)} ${named.type} node(s) and holds ${namesOrNone(held)}.`);
@@ -181,9 +185,10 @@ interface Wiring {
  * @throws {never} Never.
  */
 function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number, chosen: ModelInfo): Wiring | Refusal {
+  const at = nodeLabel(proposal.nodes, index);
   const routing = routeEdges(proposal, index, chosen);
   if ("refusal" in routing) return routing;
-  const filling = fillsOf(proposal, node, chosen);
+  const filling = fillsOf(proposal, node, chosen, at);
   if ("refusal" in filling) return filling;
   const arriving = [...routing.routed, ...filling.filled];
   // Over a way's room is said first: every count below would otherwise ask
@@ -206,7 +211,7 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
   const pooled = arriving.filter(({ entry }) => entry.ref).map(({ node: n }) => proposal.nodes.indexOf(n));
   const refs = refsIn(node);
   const stray = refs.find((at) => !pooled.includes(at));
-  if (stray !== undefined) return strayRefReason(proposal, node, chosen, arriving, stray);
+  if (stray !== undefined) return strayRefReason(proposal, node, chosen, arriving, stray, at);
   // Marks go where the words are sent: with shots, in the shot.
   const where = node.shots === undefined ? "in the prompt" : "in the shot";
   // Every one at once, so a single retry puts them all in.
@@ -219,7 +224,7 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
   const asked = notesAsked(arriving);
   const notes = notesIn(node);
   if (notes < asked.length) {
-    return refuse("notes-missing", `"${node.name}" needs a note for each of ${asked.map(({ node: n, why }) => `"${n.name}" (${why})`).join(", ")}, and carries ${String(notes)}.`, `Give each one a note ${where}: which slot to pick it into, or what to do first with a node that lands empty.`);
+    return refuse("notes-missing", `"${node.name}" needs a note for each of ${asked.map(({ node: n, why }) => `"${n.name}" (${why})`).join(", ")}, and carries ${String(notes)}.`, fixOn(at, `give each one a note ${where}: which slot to pick it into, or what to do first with a node that lands empty.`));
   }
   return { arriving, pooled };
 }
@@ -256,10 +261,11 @@ function refWordsFor(proposal: CanvasProposal, node: ProposalNode, pooled: reado
  * @param chosen - Its model.
  * @param sent - The prompt as it goes out.
  * @param scripts - The text nodes @'d into it.
+ * @param at - The generation, as a fix names it.
  * @returns The reason, or null where the gate lets it through.
  * @throws {never} Never.
  */
-function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelInfo, sent: string, scripts: readonly ProposalNode[]): Refusal | null {
+function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelInfo, sent: string, scripts: readonly ProposalNode[], at: NodeLabel): Refusal | null {
   const model = chosen.name;
   const board = chosen.storyboard;
   switch (verdict.refusal) {
@@ -273,7 +279,7 @@ function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelIn
       return refuse("shots-duration", `The shots add up to ${String(verdict.seconds?.shots)} seconds and ${String(board?.totalParam)} is ${String(verdict.seconds?.total)}.`);
     case "prompt-missing":
     case "style-missing":
-      return refuse("prompt-missing", `"${model}" generates from what the prompt says, and this proposal writes nothing in it.`, "Write a prompt.");
+      return refuse("prompt-missing", `"${model}" generates from what the prompt says, and this proposal writes nothing in it.`, fixOn(at, "write a prompt."));
     case "lyrics-missing":
       return refuse("lyrics-missing", `"${model}" sings the words in its lyrics box, and this proposal leaves it empty. ${slotSentence(chosen, node, "text", PANEL_EDITOR_PARAM)}`);
     case "prompt-too-long": {
@@ -293,10 +299,11 @@ function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelIn
  * @param node - The generation.
  * @param chosen - Its model.
  * @param wiring - What its wiring settled.
+ * @param at - The generation, as a fix names it.
  * @returns Whether it stands, and the gate's refusal when it does not.
  * @throws {never} Never.
  */
-function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: ModelInfo, wiring: Wiring): ProposalVerdict {
+function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: ModelInfo, wiring: Wiring, at: NodeLabel): ProposalVerdict {
   const { arriving, pooled } = wiring;
   const board = chosen.storyboard;
   const scripts = pooled.flatMap((at) => {
@@ -336,7 +343,7 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
       ? { storyboard: { shots, total, ...(board === undefined ? {} : { maxShots: board.maxShots }), ...(shotCap === undefined ? {} : { maxChars: shotCap }) } }
       : {}),
   });
-  return (verdict === null ? null : gateReason(verdict, node, chosen, sent, scripts)) ?? { ok: true };
+  return (verdict === null ? null : gateReason(verdict, node, chosen, sent, scripts, at)) ?? { ok: true };
 }
 
 /**
@@ -351,9 +358,10 @@ export function checkGenerateNode(proposal: CanvasProposal, node: ProposalNode, 
   const resolved = resolveModel(node, index);
   if ("refusal" in resolved) return resolved;
   const { chosen } = resolved;
-  const settings = checkSettings(node, chosen);
+  const at = nodeLabel(proposal.nodes, index);
+  const settings = checkSettings(node, chosen, at);
   if (!settings.ok) return settings;
   const wiring = checkWiring(proposal, node, index, chosen);
   if ("refusal" in wiring) return wiring;
-  return checkPanelGate(proposal, node, chosen, wiring);
+  return checkPanelGate(proposal, node, chosen, wiring, at);
 }

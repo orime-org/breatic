@@ -7,7 +7,7 @@
 import { PANEL_EDITOR_PARAM, type ControlGate, type ProposalNode } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
-import { refuse, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
+import { fixOn, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { boxReason, slotSentence, spaced } from "@domain/agent/tools/proposal-routing.js";
 import type { ModelInfo, ParamInfo } from "@domain/model-catalog/mode-catalog.js";
 import { onStep } from "@domain/model-catalog/param-declaration.js";
@@ -88,24 +88,26 @@ function offStepReason(key: string, value: number, info: ParamInfo): string | nu
  * @param node - The node.
  * @param key - The parameter's name.
  * @param info - What the catalog says about it.
+ * @param at - The node, as a fix names it.
  * @returns The refusal, or undefined.
  * @throws {never} Never.
  */
-function placedElsewhere(chosen: ModelInfo, node: ProposalNode, key: string, info: ParamInfo): Refusal | undefined {
+function placedElsewhere(chosen: ModelInfo, node: ProposalNode, key: string, info: ParamInfo, at: NodeLabel): Refusal | undefined {
+  const leaveOut = fixOn(at, `leave "${key}" out of params.`);
   if (info.fromStoryboard === true) {
     return chosen.storyboard === undefined
-      ? refuse("param-storyboard-other-mode", `"${key}" is set by shots, which only the multi_shot mode takes.`, "Leave it out.")
-      : refuse("param-storyboard", `"${key}" is set by the node's shots.`, "Leave it out of params.");
+      ? refuse("param-storyboard-other-mode", `"${key}" is set by shots, which only the multi_shot mode takes.`, leaveOut)
+      : refuse("param-storyboard", `"${key}" is set by the node's shots.`, leaveOut);
   }
   // Asked before anything that tells the agent how the reader fills a
   // value: a value the panel draws no control for is one nobody fills.
   if (info.noControl === true) {
-    return refuse("param-no-control", `The panel draws no control for "${key}", so the reader can neither see it nor change it.`, "Leave it out.");
+    return refuse("param-no-control", `The panel draws no control for "${key}", so the reader can neither see it nor change it.`, leaveOut);
   }
   if (theirsToFill(key, info)) {
     return info.valuesFrom !== undefined
-      ? refuse("param-from-list", `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here; which one to pick goes in a note.`, "Leave it out.")
-      : refuse("param-box", boxReason(chosen, node, key), "Leave it out.");
+      ? refuse("param-from-list", `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here; which one to pick goes in a note.`, leaveOut)
+      : refuse("param-box", boxReason(chosen, node, key), leaveOut);
   }
   if (info.filledBySource !== true) return undefined;
   // Two ways that material arrives, and the sentence names the one this
@@ -115,8 +117,8 @@ function placedElsewhere(chosen: ModelInfo, node: ProposalNode, key: string, inf
   // The catalog refuses a place on the canvas that names no kind it takes.
   const reached = spaced(slotSentence(chosen, node, info.accepts ?? "", info.fromReferencePool === true ? "pool" : key));
   return info.fromReferencePool === true
-    ? refuse("param-pool", `"${key}" is the reference pool, which nodes reach and nothing set here does.${reached}`, "Leave it out.")
-    : refuse("param-slot", `"${key}" is a slot for the reader's own material, which nodes reach and nothing set here does.${reached}`, "Leave it out.");
+    ? refuse("param-pool", `"${key}" is the reference pool, which nodes reach and nothing set here does.${reached}`, leaveOut)
+    : refuse("param-slot", `"${key}" is a slot for the reader's own material, which nodes reach and nothing set here does.${reached}`, leaveOut);
 }
 
 /**
@@ -127,17 +129,18 @@ function placedElsewhere(chosen: ModelInfo, node: ProposalNode, key: string, inf
  * upstream unchecked.
  * @param chosen - The model the proposal picked, as the catalog projects it.
  * @param node - The node being judged.
+ * @param at - The node, as a fix names it.
  * @returns Whether every value stands, and which one does not.
  * @throws {never} Never.
  */
-export function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
+export function checkParams(chosen: ModelInfo, node: ProposalNode, at: NodeLabel): ProposalVerdict {
   for (const [key, value] of Object.entries(node.params ?? {})) {
     const info = chosen.params[key];
     if (!info) {
-      const settable = Object.entries(chosen.params).filter(([name, declared]) => placedElsewhere(chosen, node, name, declared) === undefined).map(([name]) => name);
-      return refuse("param-undeclared", `"${chosen.name}" declares no ${key}. ${settable.length > 0 ? `The ones set here: ${settable.join(", ")}.` : "Nothing is set here."}`, `Leave "${key}" out.`);
+      const settable = Object.entries(chosen.params).filter(([name, declared]) => placedElsewhere(chosen, node, name, declared, at) === undefined).map(([name]) => name);
+      return refuse("param-undeclared", `"${chosen.name}" declares no ${key}. ${settable.length > 0 ? `The ones set here: ${settable.join(", ")}.` : "Nothing is set here."}`, fixOn(at, `leave "${key}" out of params.`));
     }
-    const elsewhere = placedElsewhere(chosen, node, key, info);
+    const elsewhere = placedElsewhere(chosen, node, key, info, at);
     if (elsewhere !== undefined) return elsewhere;
     if (!isDrawn(chosen, node.params ?? {}, info)) {
       const gate = info.gate as ControlGate;

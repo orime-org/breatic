@@ -25,6 +25,7 @@ import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests
 
 import { checkProposal, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
 import { checkParams } from "../proposal-params-check.js";
+import { nodeLabel } from "../proposal-refusals.js";
 import { entriesFor, type Entry, type Holding } from "../proposal-routing.js";
 
 beforeEach(() => {
@@ -242,7 +243,7 @@ describe("each refusal tells the agent a way that is there", () => {
     const gen = proposal.nodes[1] as ProposalNode;
     proposal.nodes[1] = { ...gen, prompt: [...(gen.prompt ?? []), NOTE, { ref: 0 }] };
     const verdict = checkProposal(proposal, MATERIALS);
-    expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining('Take every {"ref": 0} out.') });
+    expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining('On node 1 ("Gen"), take every {"ref": 0} out.') });
     expect(verdict.ok ? "" : verdict.reason).not.toContain('into: "pool"');
   });
 
@@ -295,7 +296,7 @@ describe("each refusal tells the agent a way that is there", () => {
     const proposal = follow(setting, probe("video", "material"), undefined);
     proposal.nodes[1] = { ...(proposal.nodes[1] as ProposalNode), fills: { [slot]: [1] } };
     const verdict = checkProposal(proposal, MATERIALS);
-    expect(verdict).toMatchObject({ ok: false, reason: `fills "${slot}" on "Gen" points at "Gen" itself, and a node cannot fill its own slot. Take every 1 ("Gen") out of fills "${slot}".` });
+    expect(verdict).toMatchObject({ ok: false, reason: `fills "${slot}" on "Gen" points at "Gen" itself, and a node cannot fill its own slot. On node 1 ("Gen"), take every 1 ("Gen") out of fills "${slot}".` });
   });
 
   it("sends words to the lyrics box only where the panel draws it", () => {
@@ -305,7 +306,7 @@ describe("each refusal tells the agent a way that is there", () => {
     if (lyrics === undefined) throw new Error("the song model declares no lyrics box");
     const hidden: ModelInfo = { ...setting.chosen, params: { ...setting.chosen.params, [PANEL_EDITOR_PARAM]: { ...lyrics, noControl: true } } };
     const gen: ProposalNode = { role: "generate", type: setting.nodeType, name: "Song", mode: setting.mode, model: setting.chosen.name, params: { [PANEL_EDITOR_PARAM]: "la" } };
-    expect(checkParams(setting.chosen, gen)).toMatchObject({ refusal: "param-box", reason: expect.stringContaining(`by an edge with into: "${PANEL_EDITOR_PARAM}"`) });
-    expect(checkParams(hidden, gen)).toMatchObject({ refusal: "param-no-control" });
+    expect(checkParams(setting.chosen, gen, nodeLabel([gen], 0))).toMatchObject({ refusal: "param-box", reason: expect.stringContaining(`by an edge with into: "${PANEL_EDITOR_PARAM}"`) });
+    expect(checkParams(hidden, gen, nodeLabel([gen], 0))).toMatchObject({ refusal: "param-no-control" });
   });
 });

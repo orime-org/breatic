@@ -28,6 +28,7 @@ import {
   type WayKind,
 } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+import { aNode, capitalised, slotsOf } from "@domain/agent/tools/proposal-routing.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
 
 /** One model with what a run at its defaults costs, when the catalog prices it. */
@@ -157,17 +158,22 @@ function renderModel(model: PricedModelInfo): string {
   const routing = [...ways]
     .map(([kind, list]) => {
       const each = list.map((way) => `"${way.into}" (${wayWords(kind, way)})`);
+      // An edge or a pick in the panel brings an empty node; a node holding
+      // material reaches the same slots through fills (inner#1315).
+      const filled = slotsOf(model).filter((slot) => slot.kind === kind).map(({ way }) => `"${way.into}"`);
+      const throughFills = filled.length > 0 ? ` ${capitalised(aNode(kind))} holding material goes into ${filled.join(" or ")} through fills, with no edge and no note.` : "";
       // The canvas will not wire this kind into the node: its slots are
       // filled by picking a node in the panel.
       if (!canConnect(kind, model.nodeType)) {
         const into = list.map((way) => `"${way.into}"`).join(" or ");
-        return ` Each ${kind} node is picked into ${into} in the panel, not wired in (${list.map((way) => wayWords(kind, way)).join("; ")}).`;
+        return ` An empty ${kind} node is picked into ${into} in the panel, not wired in (${list.map((way) => wayWords(kind, way)).join("; ")}).${throughFills}`;
       }
-      return list.length > 1
+      const wired = list.length > 1
         ? ` Each ${kind} node wired in goes one of ${String(list.length)} ways; say which on its edge with into: ${each.join(" or ")}.`
         : list[0] !== undefined && list[0].into !== "pool"
           ? ` Each ${kind} node wired in goes into ${each[0] ?? ""}.`
           : "";
+      return `${wired}${throughFills}`;
     })
     .join("");
   // Words wired in can always be @'d into a box that is drawn, so a ref on a

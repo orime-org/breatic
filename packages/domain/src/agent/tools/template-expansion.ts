@@ -20,7 +20,7 @@ import {
   type ProposalNode,
 } from "@breatic/shared";
 
-import { refuse, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
+import { fixOn, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { poolSentence } from "@domain/agent/tools/proposal-routing.js";
 
 /** The node with its template filled in, or why the template does not apply. */
@@ -48,10 +48,11 @@ export function templateSegmentsText(template: GenerationTemplate): string {
 /**
  * Fills a node from the template it names.
  * @param node - The node as the agent sent it, naming a template.
+ * @param at - The node, as a fix names it.
  * @returns The expanded node, or a reason the agent can act on.
  * @throws {never} Never.
  */
-export function expandTemplate(node: ProposalNode & { template: string }): TemplateExpansion {
+export function expandTemplate(node: ProposalNode & { template: string }, at: NodeLabel): TemplateExpansion {
   const { template: id, ...rest } = node;
   const template = findTemplate(id);
   if (!template) {
@@ -70,7 +71,7 @@ export function expandTemplate(node: ProposalNode & { template: string }): Templ
     // The pool is the template's own model's; a node settling another model
     // is told how its nodes go in once it has a prompt to check.
     const pool = keepsTemplate ? ` Each node the prompt @s goes into the pool. ${poolSentence(rest.name)}` : "";
-    return refuse("template-no-prompt", `"${rest.name}" names template "${id}" and sends no prompt. The template's prompt, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template)}.${pool}`, "Give it a prompt.");
+    return refuse("template-no-prompt", `"${rest.name}" names template "${id}" and sends no prompt. The template's prompt, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template)}.${pool}`, fixOn(at, "write a prompt."));
   }
   const params = keepsTemplate ? { ...template.params, ...rest.params } : rest.params;
   return {

@@ -12,6 +12,7 @@ import { loadLocales } from "@breatic/core";
 
 import type { ProposalNode } from "@breatic/shared";
 
+import { nodeLabel } from "@domain/agent/tools/proposal-refusals.js";
 import { expandTemplate } from "@domain/agent/tools/template-expansion.js";
 
 beforeAll(() => {
@@ -19,6 +20,9 @@ beforeAll(() => {
 });
 
 const PROMPT = [{ text: "A storyboard of " }, { ref: 0 }, { text: " in 25 frames." }];
+
+/** The node as a fix names it. */
+const AT = nodeLabel([{ name: "Grid" }], 0);
 
 /**
  * A generate node naming a template, with what the test gives it.
@@ -31,7 +35,7 @@ function named(extra: Partial<ProposalNode> = {}): ProposalNode & { template: st
 
 describe("expandTemplate", () => {
   it("fills the mode, model and params the agent left out", () => {
-    const out = expandTemplate(named());
+    const out = expandTemplate(named(), AT);
     expect(out).toEqual({
       ok: true,
       node: {
@@ -47,29 +51,29 @@ describe("expandTemplate", () => {
   });
 
   it("lays the agent's params over the template's while mode and model stay the template's", () => {
-    const out = expandTemplate(named({ params: { resolution: "8k" } }));
+    const out = expandTemplate(named({ params: { resolution: "8k" } }), AT);
     expect(out.ok && out.node.params).toEqual({ aspect_ratio: "1:1", resolution: "8k" });
   });
 
   it("carries none of the template's params once the agent picks another model", () => {
-    const out = expandTemplate(named({ model: "gpt-image-2.5-sunburst-edit", params: { quality: "high" } }));
+    const out = expandTemplate(named({ model: "gpt-image-2.5-sunburst-edit", params: { quality: "high" } }), AT);
     expect(out.ok && out.node.model).toBe("gpt-image-2.5-sunburst-edit");
     expect(out.ok && out.node.params).toEqual({ quality: "high" });
   });
 
   it("carries none of the template's params once the agent picks another mode", () => {
-    const out = expandTemplate(named({ mode: "t2i", model: "nano-banana-2" }));
+    const out = expandTemplate(named({ mode: "t2i", model: "nano-banana-2" }), AT);
     expect(out.ok && out.node.params).toBeUndefined();
   });
 
   it("keeps the prompt the agent wrote", () => {
     const prompt = [{ text: "a storyboard of a cat" }];
-    const out = expandTemplate(named({ prompt }));
+    const out = expandTemplate(named({ prompt }), AT);
     expect(out.ok && out.node.prompt).toEqual(prompt);
   });
 
   it("refuses a node with no prompt, giving the template's words with a ref placeholder for each reference", () => {
-    const out = expandTemplate(named({ prompt: undefined }));
+    const out = expandTemplate(named({ prompt: undefined }), AT);
     expect(out.ok).toBe(false);
     const reason = out.ok ? "" : out.reason;
     expect(reason).toContain("sends no prompt");
@@ -78,17 +82,17 @@ describe("expandTemplate", () => {
   });
 
   it("refuses a template it does not have, naming the ones it does", () => {
-    const out = expandTemplate({ ...named(), template: "no-such" });
+    const out = expandTemplate({ ...named(), template: "no-such" }, AT);
     expect(out).toMatchObject({ ok: false, reason: expect.stringContaining("storyboard-grid-25") });
   });
 
   it("refuses a template on a node that does not generate, saying where it goes", () => {
-    const out = expandTemplate(named({ role: "source" }));
+    const out = expandTemplate(named({ role: "source" }), AT);
     expect(out).toMatchObject({ ok: false, reason: expect.stringContaining("generate node") });
   });
 
   it("refuses a template on a node of another type", () => {
-    const out = expandTemplate(named({ type: "video" }));
+    const out = expandTemplate(named({ type: "video" }), AT);
     expect(out).toMatchObject({ ok: false, reason: expect.stringContaining("image") });
   });
 });

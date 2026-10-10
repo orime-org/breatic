@@ -48,7 +48,7 @@ import { checkGenerateNode } from "@domain/agent/tools/proposal-generate-check.j
 import { checkEmptyNodesFit, checkUnsentNotes, hasRing } from "@domain/agent/tools/proposal-group-checks.js";
 import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/tools/proposal-node-checks.js";
-import { refuse, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
+import { fixEdges, fixGroup, nodeLabel, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { aNode, chosenModelOf, routeEdges, spaced, waysOrNone } from "@domain/agent/tools/proposal-routing.js";
 import { expandTemplate, templateSegmentsText } from "@domain/agent/tools/template-expansion.js";
 import { GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
@@ -104,12 +104,12 @@ function edgesBetween(proposal: CanvasProposal, edge: CanvasProposal["edges"][nu
 /**
  * The edges between two nodes, said for the agent: how many, and each one's into.
  * @param edges - The edges, all between the same two nodes.
- * @param from - The node they run from, as the sentence names it.
- * @param to - The node they run to, as the sentence names it.
+ * @param from - The node they run from.
+ * @param to - The node they run to, or the node itself.
  * @returns The phrase.
  * @throws {never} Never.
  */
-function edgesSaid(edges: CanvasProposal["edges"], from: string, to: string): string {
+function edgesSaid(edges: CanvasProposal["edges"], from: NodeLabel, to: NodeLabel | "itself"): string {
   const intos = edges.map((e) => (e.into === undefined ? "no into" : `into "${e.into}"`)).join(", ");
   return `${edges.length > 1 ? `${String(edges.length)} edges run` : "An edge runs"} from ${from} to ${to} (${intos})`;
 }
@@ -147,10 +147,11 @@ export function checkProposal(sent: CanvasProposal, materials: MaterialTable = N
  * @throws {never} Never.
  */
 function checkResolved(proposal: CanvasProposal, materials: MaterialTable): ProposalVerdict {
-  for (const node of proposal.nodes) {
-    const held = checkMaterial(node, materials);
+  for (const [index, node] of proposal.nodes.entries()) {
+    const at = nodeLabel(proposal.nodes, index);
+    const held = checkMaterial(node, at, materials);
     if (!held.ok) return held;
-    const verdict = checkNodeRole(node);
+    const verdict = checkNodeRole(node, at);
     if (!verdict.ok) return verdict;
     const typed = markTypedAsWords(node);
     if (!typed.ok) return typed;
@@ -171,25 +172,24 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
       : refuse("nothing-generates", "Nothing here generates, so a card placed from this leaves the reader nothing to press.");
   }
 
-  // The canvas holds one edge between two nodes, and a node goes into a
-  // generation one way.
+  // The canvas holds one edge between two nodes: a second drag between the
+  // same two lands on the first.
   const pairs = new Set<string>();
   for (const edge of proposal.edges) {
     const ends = [edge.fromIndex, edge.toIndex];
     // An edge is named by its two ends, and every fix takes every edge between them.
     const between = edgesBetween(proposal, edge);
+    const from = nodeLabel(proposal.nodes, edge.fromIndex);
+    const to = nodeLabel(proposal.nodes, edge.toIndex);
     if (ends.some((i) => proposal.nodes[i] === undefined)) {
-      const [fromLabel = "", toLabel = ""] = ends.map((i) => `node ${String(i)}${proposal.nodes[i] === undefined ? " (not in the group)" : ""}`);
-      return refuse("edge-outside", `${edgesSaid(between, fromLabel, toLabel)}.`, `Take every edge from node ${String(edge.fromIndex)} to node ${String(edge.toIndex)} off.`);
+      return refuse("edge-outside", `${edgesSaid(between, from, to)}.`, fixEdges(from, to));
     }
     if (edge.fromIndex === edge.toIndex) {
-      return refuse("edge-self-loop", `${edgesSaid(between, `node ${String(edge.fromIndex)}`, "itself")}.`, `Take every edge from node ${String(edge.fromIndex)} to itself off.`);
+      return refuse("edge-self-loop", `${edgesSaid(between, from, "itself")}.`, fixEdges(from, "itself"));
     }
-    const fromName = `"${proposal.nodes[edge.fromIndex]?.name ?? ""}"`;
-    const toName = `"${proposal.nodes[edge.toIndex]?.name ?? ""}"`;
     const pair = `${String(edge.fromIndex)}>${String(edge.toIndex)}`;
     if (pairs.has(pair)) {
-      return refuse("edge-repeated", `${edgesSaid(between, fromName, toName)}, and a node goes into a generation one way.`);
+      return refuse("edge-repeated", `${edgesSaid(between, from, to)}, and the canvas holds one edge between two nodes.`);
     }
     pairs.add(pair);
     // An edge is how one node draws on another's material, so it can only end
@@ -206,7 +206,7 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
       // How the node reaches the generation instead is the model's to say; a
       // generation naming no model the catalog serves has only the canvas rule.
       const chosen = chosenModelOf(into);
-      return refuse("edge-not-allowed", `The canvas does not let ${aNode(outOf.type)} feed ${aNode(into.type)}, by your hand or theirs. ${edgesSaid(between, fromName, toName)}.${chosen ? spaced(waysOrNone(outOf, into, chosen)) : ""}`, `Take every edge from ${fromName} to ${toName} off.`);
+      return refuse("edge-not-allowed", `The canvas does not let ${aNode(outOf.type)} feed ${aNode(into.type)}, by your hand or theirs. ${edgesSaid(between, from, to)}.${chosen ? spaced(waysOrNone(outOf, into, chosen)) : ""}`, fixEdges(from, to));
     }
   }
   if (hasRing(proposal)) {
@@ -217,7 +217,7 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
   // on a ground of its own. Only the model knows what that thing is for -- it
   // just decided -- so the name comes with the proposal.
   if (proposal.nodes.length > 1 && (proposal.groupName ?? "").trim() === "") {
-    return refuse("group-unnamed", "Two or more nodes land together in a group, and it has no name.", "Give the group a name saying what it is for.");
+    return refuse("group-unnamed", "Two or more nodes land together in a group, and it has no name.", fixGroup("Give the group a name saying what it is for."));
   }
 
   for (const [index, node] of proposal.nodes.entries()) {
@@ -244,13 +244,13 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
  */
 function resolveSent(sent: z.infer<typeof inputSchema>): { proposal: CanvasProposal } | Refusal {
   const nodes: ProposalNode[] = [];
-  for (const node of sent.nodes) {
+  for (const [index, node] of sent.nodes.entries()) {
     if (node.template === undefined) {
       const { template: _none, ...plain } = node;
       nodes.push(plain);
       continue;
     }
-    const expanded = expandTemplate({ ...node, template: node.template });
+    const expanded = expandTemplate({ ...node, template: node.template }, nodeLabel(sent.nodes, index));
     if (!expanded.ok) return expanded;
     nodes.push(expanded.node);
   }
