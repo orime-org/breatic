@@ -59,10 +59,11 @@ function pngChunk(type: string, data: Uint8Array): Uint8Array {
   return concat(u32be(data.length), ascii(type), data, new Uint8Array(4));
 }
 
-function png(exif: Uint8Array | null): Uint8Array {
+function png(exif: Uint8Array | null, animated = false): Uint8Array {
   return concat(
     new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     pngChunk("IHDR", new Uint8Array(13)),
+    animated ? pngChunk("acTL", new Uint8Array(8)) : new Uint8Array(0),
     exif === null ? new Uint8Array(0) : pngChunk("eXIf", exif),
     pngChunk("IDAT", new Uint8Array(500)),
     pngChunk("IEND", new Uint8Array(0)),
@@ -81,9 +82,10 @@ function webp(options: {
   imageBytes: number;
   lossless: boolean;
   exifPrefix?: boolean;
+  animated?: boolean;
 }): Uint8Array {
   const vp8x = new Uint8Array(10);
-  vp8x[0] = options.exifFlag ? 0x08 : 0;
+  vp8x[0] = (options.exifFlag ? 0x08 : 0) | (options.animated === true ? 0x02 : 0);
   const image = riffChunk(options.lossless ? "VP8L" : "VP8 ", new Uint8Array(options.imageBytes));
   const exif =
     options.exif === null
@@ -121,6 +123,7 @@ describe("readImageOrientation", () => {
     await expect(readImageOrientation(readerOf(jpeg(tiff(value))), "image/jpeg")).resolves.toEqual({
       orientation: value,
       lossless: false,
+      animated: false,
     });
   });
 
@@ -128,6 +131,7 @@ describe("readImageOrientation", () => {
     await expect(readImageOrientation(readerOf(jpeg(tiff(6, true))), "image/jpeg")).resolves.toEqual({
       orientation: 6,
       lossless: false,
+      animated: false,
     });
   });
 
@@ -135,6 +139,7 @@ describe("readImageOrientation", () => {
     await expect(readImageOrientation(readerOf(jpeg(null)), "image/jpeg")).resolves.toEqual({
       orientation: 1,
       lossless: false,
+      animated: false,
     });
   });
 
@@ -143,6 +148,7 @@ describe("readImageOrientation", () => {
     await expect(readImageOrientation(readerOf(cut), "image/jpeg")).resolves.toEqual({
       orientation: 1,
       lossless: false,
+      animated: false,
     });
   });
 
@@ -150,6 +156,7 @@ describe("readImageOrientation", () => {
     await expect(readImageOrientation(readerOf(jpeg(tiff(9))), "image/jpeg")).resolves.toEqual({
       orientation: 1,
       lossless: false,
+      animated: false,
     });
   });
 
@@ -157,6 +164,7 @@ describe("readImageOrientation", () => {
     await expect(readImageOrientation(readerOf(png(tiff(8))), "image/png")).resolves.toEqual({
       orientation: 8,
       lossless: false,
+      animated: false,
     });
   });
 
@@ -164,6 +172,7 @@ describe("readImageOrientation", () => {
     await expect(readImageOrientation(readerOf(png(null)), "image/png")).resolves.toEqual({
       orientation: 1,
       lossless: false,
+      animated: false,
     });
   });
 
@@ -173,6 +182,7 @@ describe("readImageOrientation", () => {
     await expect(readImageOrientation(reader, "image/webp")).resolves.toEqual({
       orientation: 6,
       lossless: false,
+      animated: false,
     });
     // It skips the image data by its length instead of reading it.
     const bytesRead = reader.calls.reduce((n, [, length]) => n + length, 0);
@@ -184,6 +194,7 @@ describe("readImageOrientation", () => {
     await expect(readImageOrientation(readerOf(bytes), "image/webp")).resolves.toEqual({
       orientation: 3,
       lossless: false,
+      animated: false,
     });
   });
 
@@ -192,6 +203,7 @@ describe("readImageOrientation", () => {
     await expect(readImageOrientation(readerOf(bytes), "image/webp")).resolves.toEqual({
       orientation: 6,
       lossless: true,
+      animated: false,
     });
   });
 
@@ -200,6 +212,7 @@ describe("readImageOrientation", () => {
     await expect(readImageOrientation(readerOf(bytes), "image/webp")).resolves.toEqual({
       orientation: 1,
       lossless: false,
+      animated: false,
     });
   });
 
@@ -207,6 +220,26 @@ describe("readImageOrientation", () => {
     await expect(readImageOrientation(readerOf(simpleWebp(true)), "image/webp")).resolves.toEqual({
       orientation: 1,
       lossless: true,
+      animated: false,
+    });
+  });
+
+  // An animated picture is kept as it is: vips autorot writes out only its
+  // first frame (inner#1367 §4.2).
+  it("tells an animated WebP by its VP8X animation flag", async () => {
+    const bytes = webp({ exif: tiff(6), exifFlag: true, imageBytes: 300, lossless: false, animated: true });
+    await expect(readImageOrientation(readerOf(bytes), "image/webp")).resolves.toEqual({
+      orientation: 6,
+      lossless: false,
+      animated: true,
+    });
+  });
+
+  it("tells an animated PNG by an acTL chunk ahead of its image data", async () => {
+    await expect(readImageOrientation(readerOf(png(tiff(6), true)), "image/png")).resolves.toEqual({
+      orientation: 6,
+      lossless: false,
+      animated: true,
     });
   });
 
@@ -214,6 +247,7 @@ describe("readImageOrientation", () => {
     await expect(readImageOrientation(readerOf(new Uint8Array(10)), "image/gif")).resolves.toEqual({
       orientation: 1,
       lossless: false,
+      animated: false,
     });
   });
 

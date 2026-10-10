@@ -20,6 +20,12 @@ export interface ImageOrientation {
   orientation: number;
   /** True for a WebP whose image data is VP8L; false for everything else. */
   lossless: boolean;
+  /**
+   * True for an animated WebP (the VP8X animation flag) or PNG (an `acTL`
+   * chunk ahead of IDAT). One is kept as it is: vips autorot writes out only
+   * its first frame.
+   */
+  animated: boolean;
 }
 
 /** How much of a JPEG or PNG is read: an APP1 segment is at most 64 KiB. */
@@ -30,7 +36,7 @@ const MAX_WEBP_CHUNKS = 64;
 
 const ORIENTATION_TAG = 0x0112;
 
-const UPRIGHT: ImageOrientation = { orientation: 1, lossless: false };
+const UPRIGHT: ImageOrientation = { orientation: 1, lossless: false, animated: false };
 
 /**
  * Read a stored picture's orientation.
@@ -43,8 +49,10 @@ export async function readImageOrientation(
   contentType: string,
 ): Promise<ImageOrientation | "unreadable"> {
   try {
-    if (contentType === "image/jpeg") return { orientation: jpegOrientation(await read(0, HEAD_WINDOW)), lossless: false };
-    if (contentType === "image/png") return { orientation: pngOrientation(await read(0, HEAD_WINDOW)), lossless: false };
+    if (contentType === "image/jpeg") {
+      return { ...UPRIGHT, orientation: jpegOrientation(await read(0, HEAD_WINDOW)) };
+    }
+    if (contentType === "image/png") return { ...UPRIGHT, ...pngOrientation(await read(0, HEAD_WINDOW)) };
     if (contentType === "image/webp") return await webpOrientation(read);
     return UPRIGHT;
   } catch {
@@ -76,20 +84,24 @@ function jpegOrientation(bytes: Uint8Array): number {
 }
 
 /**
- * The orientation in a PNG's eXIf chunk, which the spec puts before IDAT.
+ * The orientation in a PNG's eXIf chunk, and whether an `acTL` chunk makes it
+ * animated; the spec puts both before IDAT.
  * @param bytes - The start of the file.
- * @returns 1-8.
+ * @returns 1-8, and whether it is animated.
  */
-function pngOrientation(bytes: Uint8Array): number {
+function pngOrientation(bytes: Uint8Array): { orientation: number; animated: boolean } {
+  let orientation = 1;
+  let animated = false;
   let at = 8;
   while (at + 8 <= bytes.length) {
     const length = readU32(bytes, at, false);
     const type = ascii(bytes, at + 4, 4);
-    if (type === "IDAT" || type === "IEND") return 1;
-    if (type === "eXIf") return tiffOrientation(bytes.subarray(at + 8, at + 8 + length));
+    if (type === "IDAT" || type === "IEND") break;
+    if (type === "acTL") animated = true;
+    if (type === "eXIf") orientation = tiffOrientation(bytes.subarray(at + 8, at + 8 + length));
     at += 12 + length;
   }
-  return 1;
+  return { orientation, animated };
 }
 
 /**
@@ -104,13 +116,17 @@ async function webpOrientation(read: RangeReader): Promise<ImageOrientation> {
   let lossless = false;
   let imageSeen = false;
   let exifExpected = false;
+  let animated = false;
   let at = 12;
   for (let i = 0; i < MAX_WEBP_CHUNKS && at + 8 <= end; i++) {
     const chunk = await read(at, 18);
     if (chunk.length < 8) break;
     const type = ascii(chunk, 0, 4);
     const size = readU32(chunk, 4, true);
-    if (type === "VP8X") exifExpected = ((chunk[8] ?? 0) & 0x08) !== 0;
+    if (type === "VP8X") {
+      exifExpected = ((chunk[8] ?? 0) & 0x08) !== 0;
+      animated = ((chunk[8] ?? 0) & 0x02) !== 0;
+    }
     if (type === "VP8L" || type === "VP8 ") {
       lossless = type === "VP8L";
       imageSeen = true;
@@ -119,11 +135,11 @@ async function webpOrientation(read: RangeReader): Promise<ImageOrientation> {
     if (type === "EXIF") {
       const payload = await read(at + 8, size);
       const tiff = startsWith(payload, 0, "Exif\0\0") ? payload.subarray(6) : payload;
-      return { orientation: tiffOrientation(tiff), lossless };
+      return { orientation: tiffOrientation(tiff), lossless, animated };
     }
     at += 8 + size + (size % 2);
   }
-  return { orientation: 1, lossless: imageSeen && lossless };
+  return { orientation: 1, lossless: imageSeen && lossless, animated };
 }
 
 /**
