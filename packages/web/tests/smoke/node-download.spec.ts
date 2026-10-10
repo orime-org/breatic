@@ -96,7 +96,9 @@ test('the menu hands the stored file to the browser as a download @needs-ingest 
   });
 
   // The Space starts empty, so the one picture that appears is this upload's.
-  const nodeImage = visibleSpace(page).locator('.react-flow__node img');
+  // Zoomed past the preview, the node lays the original over it as a second
+  // img; the node's own picture is the one with this test id.
+  const nodeImage = visibleSpace(page).getByTestId('image-node-img');
   await expect(nodeImage).toHaveCount(1, { timeout: 30_000 });
   const shown = new URL(await nodeImage.evaluate((img) => (img as HTMLImageElement).src));
   expect(
