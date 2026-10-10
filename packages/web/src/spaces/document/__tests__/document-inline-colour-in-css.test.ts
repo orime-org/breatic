@@ -14,9 +14,10 @@
  *
  * What decides it is the cascade layer, which is asserted here because jsdom
  * lays nothing out and cannot be asked what colour the text came out. Its
- * sheet is imported into `@layer base` (`index.css`), and an unlayered rule
- * beats every layered one whatever the specificity, so ours clear it while
- * sitting unlayered as the rest of that scope does.
+ * sheet is imported into `@layer base` (`index.css`), and ours sit in
+ * `@layer components` with the rest of that scope; Tailwind declares the
+ * layers `theme, base, components, utilities`, so a later layer beats an
+ * earlier one whatever the specificity and ours clear it.
  *
  * What the reader actually sees is A6's browser half.
  */
@@ -24,6 +25,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import postcss, { type AtRule, type Node as CssNode, type Rule } from 'postcss';
 import { describe, it, expect } from 'vitest';
 
 import { COLOUR_HUES } from '@web/spaces/document/document-colour-run';
@@ -51,24 +53,22 @@ function ruleFor(tail: string): string {
 }
 
 /**
- * Whether a selector sits inside an `@layer` block.
- *
- * Counted by braces: an unlayered rule has as many closes as opens before it,
- * one inside a layer has one open too many.
+ * The layer a selector's rule sits in, read off its parents.
  * @param needle - Any part of the selector.
- * @returns Whether it is layered.
+ * @returns The layer's name, or null when the rule is unlayered.
  */
-function isLayered(needle: string): boolean {
-  const sheet = stylesheet();
-  const at = sheet.indexOf(needle);
-  // A missing selector would otherwise count the braces of the whole file and
-  // answer "unlayered", which is the answer this case wants — so it has to be
-  // the case that fails rather than the one that passes.
-  expect(at, `\`${needle}\` should appear in index.css`).toBeGreaterThan(-1);
-  const before = sheet.slice(0, at);
-  const opens = before.split('{').length - 1;
-  const closes = before.split('}').length - 1;
-  return opens > closes;
+function layerOf(needle: string): string | null {
+  let found: Rule | undefined;
+  postcss.parse(stylesheet()).walkRules((rule) => {
+    if (found === undefined && rule.selector.includes(needle)) found = rule;
+  });
+  // A missing selector would otherwise answer "unlayered", so it has to be the
+  // case that fails rather than one that passes.
+  expect(found, `\`${needle}\` should appear in index.css`).toBeDefined();
+  for (let at: CssNode | undefined = found?.parent; at !== undefined; at = at.parent as CssNode | undefined) {
+    if (at.type === 'atrule' && (at as AtRule).name === 'layer') return (at as AtRule).params;
+  }
+  return null;
 }
 
 /**
@@ -131,12 +131,10 @@ describe('what an inline text colour renders as', () => {
     });
   });
 
-  it('leaves the rules unlayered, above the layer BlockNote sets its own in', () => {
-    // An unlayered rule beats every layered one, and BlockNote's sheet is
-    // imported into `base`. Ours inside any layer would be decided by which
-    // layer, which is not something this file can see.
-    expect(isLayered('[data-style-type=\'textColor\'][data-value=\'red\']')).toBe(
-      false,
-    );
+  it('puts the rules in the components layer, above the layer BlockNote sets its own in', () => {
+    // BlockNote's sheet is imported into `base`; the one layer that beats it
+    // and still loses to a utility on the run's own element is `components`.
+    expect(layerOf('[data-style-type=\'textColor\'][data-value=\'red\']')).toBe('components');
+    expect(stylesheet()).toContain('@import \'@blocknote/react/style.css\' layer(base);');
   });
 });
