@@ -18,6 +18,10 @@ vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/upload/media-upload')>()),
   uploadMedia: upload.media,
 }));
+// The pixel size is read off the file with an object URL, which jsdom lacks.
+vi.mock('@web/spaces/document/document-media-size', () => ({
+  measureMediaFile: () => Promise.resolve(undefined),
+}));
 vi.mock('@web/data/api/assets', () => ({
   assetsApi: {
     fetchUploadConfig: vi.fn().mockResolvedValue({ maxUploadBytes: 1_000_000, assetUrlPrefix: 'https://cdn.example/' }),
