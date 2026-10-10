@@ -1008,7 +1008,7 @@ export function renderProductGuide(): string {
       "audio, or clicking it, shows a row of icons above it: left, centre and right alignment (only when the " +
       "picture or video is narrower than the page; audio is always as wide as the page), " +
       `${quoted(t("spaces.document.media.caption"))} (a T), which opens a line under it for a caption, ` +
-      `${quoted(t("spaces.document.media.fullscreen"))} (four arrows, pictures only; double-clicking the ` +
+      `${quoted(t("spaces.document.media.fullscreen"))} (two arrows pointing out to opposite corners, pictures only; double-clicking the ` +
       "picture does the same, and an X at the top right closes it), " +
       `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, and ` +
       `${quoted(t("spaces.document.media.delete"))} (a bin). Clicking a picture or video also shows a small square at each ` +

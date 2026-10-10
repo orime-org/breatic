@@ -137,7 +137,7 @@ describe('resolveUploadFailure', () => {
 });
 
 describe('which failures a retry can change (shared with the document body, inner#1127 A6)', () => {
-  it('answers yes for the failures that are about this attempt: a transfer and the catch-all', () => {
+  it('answers yes for the failures that are about this attempt: the catch-all, a transfer and a rate limit', () => {
     expect(UPLOAD_FAILURE_REASONS.filter(uploadRetryCanChange)).toEqual([
       'rateLimited',
       'transfer',

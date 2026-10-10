@@ -586,8 +586,9 @@ body {
      selected. A divider and a media block are the exceptions: neither has text,
      so clicking one or walking onto it with the arrows node-selects it, and that
      selection IS the reader's. A divider is painted by `.doc-in-selection`
-     further down, the same band a drag across it gets (#124); a media block is
-     framed by `.doc-media-in-selection` (inner#1127).
+     further down, the same band a drag across it gets (#124); a media block
+     draws its own frame off its selected state
+     (`[data-media-box][data-selected='true']`, inner#1127).
 
      The rule below stays because the library draws a marker of its own over the
      same block — a `#64a0ff` wash with a 4px inset ring, a fixed value that
@@ -1886,8 +1887,9 @@ body {
     border-top-color: var(--color-border);
   }
 
-  /* A media block's toolbar, caption field and resize handles write to the
-     document, so a body the reader may not write to shows none of them
+  /* A media block's toolbar, caption field and resize handles are for editing
+     it (the toolbar's full-screen and download go with them), so a body the
+     reader may not write to shows none of them
      (inner#1127 A11). Read off the surface's own editability: the node view
      that draws them is not rebuilt when that changes. */
   .doc-body[contenteditable='false'] [data-media-chrome] {

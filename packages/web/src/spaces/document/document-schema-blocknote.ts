@@ -96,7 +96,7 @@ function withProps<T extends SpecWithProps>(
 }
 
 /**
- * Builds the schema: twelve block types, three added props, the rest turned off.
+ * Builds the schema: twelve block types, five added props, the rest turned off.
  * @returns The schema to hand `BlockNoteEditor.create`.
  * @throws {Error} Whatever BlockNote throws while validating the specs.
  */

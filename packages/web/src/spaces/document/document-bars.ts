@@ -14,11 +14,11 @@
  * 3. otherwise whatever the selection raises: a selected media block's
  *    toolbar, or the bubble bar.
  *
- * Two controls stand aside for a bar on screen rather than for the selection
+ * Some controls stand aside for a bar on screen rather than for the selection
  * behind it, which stays in the editor while the body does not hold the
  * focus and is then not drawn (inner#1127, `document-body-focus.ts`): the
- * row handles and the link toolbar the pointer raises stand aside while the
- * bubble bar is up, and the column handle makes room for the cell button
+ * row handles, the table handles and the link toolbar the pointer raises
+ * stand aside while the bubble bar is up, and the column handle makes room for the cell button
  * while it is up.
  */
 

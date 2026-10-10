@@ -18,7 +18,8 @@ import { UploadFailedError, uploadMedia, type UploadFailureReason } from '@web/d
 /**
  * What a failed picture upload tells the person: their account is full, the
  * format is not one we take, the page could not fingerprint the file (a reload
- * fixes it, a retry on this page does not), or something else a retry may fix.
+ * fixes it, a retry on this page does not), they are uploading too often (a
+ * retry after a while goes through), or something else a retry may fix.
  */
 export type PictureFailure = Exclude<UploadFailureReason, 'transfer'>;
 

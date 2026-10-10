@@ -52,8 +52,8 @@ export interface StoredUpload {
  * `storage` — the studio's account is out of room (#89), which no retry fixes
  * either, for the opposite reason: nothing is broken, there is simply nowhere
  * to put the bytes until the admin acts.
- * `rateLimited` — the reader asked for more tickets than the per-user limit
- * allows in its window. A retry once the window has passed goes through.
+ * `rateLimited` — the reader went over a per-user limit on the upload routes
+ * (tickets, or finishing uploads) in its window. A retry once the window has passed goes through.
  * `unsupportedType` — the edge read the stored bytes and turned them down.
  * The bytes are what they are, so re-sending them meets the same refusal.
  * `transfer` — the transfer half ended without our server hearing anything:
@@ -107,7 +107,7 @@ export interface UploadFailure {
   taskId?: string;
 }
 
-/** Too Many Requests (RFC 6585 §4): the per-user limit on tickets. */
+/** Too Many Requests (RFC 6585 §4): a per-user limit on the upload routes. */
 const RATE_LIMITED_STATUS = 429;
 
 /** The statuses that name their own reason; whether a retry helps is `uploadRetryCanChange`'s call. */

@@ -36,7 +36,8 @@
  *
  * A MEDIA ROW IS NOT EITHER. The picture, video or audio and everything else
  * in its row answer a click — with the modifier or without — in
- * `document-media-row-press.ts`, whose handler the editor asks after this one.
+ * `document-media-row-press.ts`, whose handler the editor asks before this one
+ * (it is registered earlier in `build-document-editor.ts`).
  */
 
 import { createExtension } from '@blocknote/core';

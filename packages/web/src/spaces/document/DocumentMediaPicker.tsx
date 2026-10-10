@@ -5,8 +5,9 @@
  * The file picker behind the insert menu's media entries (inner#1127 A1).
  *
  * A pick opens the system picker filtered to that kind. The gap the files go
- * into is made when files are chosen, not when the entry is pressed: closing
- * the picker without a file leaves the document as it was.
+ * into is made once a chosen file is admitted, not when the entry is pressed:
+ * closing the picker without a file, or choosing only files that are refused,
+ * leaves the document as it was.
  */
 
 import * as React from 'react';
@@ -17,7 +18,7 @@ import type { UploadGap } from '@web/spaces/document/document-upload-slots';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 
-/** Opens the picker for a kind; `gap` makes the gap once files are chosen. */
+/** Opens the picker for a kind; `gap` makes the gap once a chosen file is admitted. */
 type MediaPick = (kind: MediaBlockType, gap: () => UploadGap | null) => void;
 
 const MediaPickContext = React.createContext<MediaPick | null>(null);

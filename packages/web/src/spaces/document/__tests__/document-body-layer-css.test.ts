@@ -6,7 +6,8 @@
  *
  * An unlayered rule beats every utility a component writes on its own
  * element, and the body now holds elements that carry utilities (the media
- * toolbar, its resize knobs, the caption field, the upload placeholders). Two
+ * toolbar, its resize knobs, the caption field and caption, the picture and
+ * its skeleton, the audio and video player, the upload placeholders). Two
  * kinds of rule stay outside, each meeting an unlayered rule that
  * `@tiptap/core` injects (`style.ts`), to which any layered rule loses:
  * the `::selection` rules and the gap cursor's colour.

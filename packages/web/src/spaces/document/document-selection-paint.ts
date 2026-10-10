@@ -15,7 +15,7 @@
  * select-all) paints every no-text block wholly inside it. A node selection
  * paints only a divider: the reader makes one by clicking it or walking onto
  * it with the arrows, and the 2026-09-18 rule that the machinery's own node
- * selections are not drawn (`index.css:558`) stays for every other block. A
+ * selections are not drawn (`index.css`, "A node-selected block is not drawn") stays for every other block. A
  * media block the reader selects draws itself (see `NODE_SELECTED`).
  *
  * WHEN. Only while the reader can see a selection at all. In an editable body

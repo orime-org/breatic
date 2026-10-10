@@ -5,7 +5,7 @@
  * The image, video and audio blocks, as this Space draws them (inner#1127).
  *
  * The library's own blocks keep their props, parse rules and HTML export;
- * only the node view is ours. Two things it does that the library's does not:
+ * only the node view is ours. Three things it does that the library's does not:
  *
  * - **`update`.** The library's block node views have none
  *   (`createSpec.ts:286-290`), so every prop change rebuilds the view — a

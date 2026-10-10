@@ -170,7 +170,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   }, [handle]);
 
   // The scroller is where a press on blank space leaves the focus, and where
-  // every press in the body is first read (inner#1127 A20). A Space hidden
+  // a press in the body is first read (inner#1127 A20). A Space hidden
   // lets go of the focus at once: its layers stay on the page, so nothing
   // waits for them to leave. Shown again, the body decides from where the
   // focus is.

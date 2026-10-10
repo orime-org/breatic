@@ -63,7 +63,7 @@ describe('isTransientUploadError — retry only what can heal', () => {
   it('reads status off the project ApiException flat .status (real presign error shape)', () => {
     // apiGet rejects with ApiException, whose status is FLAT on `.status` and
     // not at `{ response: { status } }`. Adversarial #2: without this, every
-    // transient presign failure (503/429/network-0) is judged non-transient
+    // transient presign failure (5xx/network-0) is judged non-transient
     // and the presign retry is dead. The real class is constructed here rather
     // than a stand-in shaped like it, so that a change to the class is a
     // change to this fixture.

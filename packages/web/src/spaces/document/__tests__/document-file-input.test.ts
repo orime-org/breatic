@@ -187,7 +187,7 @@ describe('the gap a drop goes into (A2)', () => {
 });
 
 describe('a paste of files', () => {
-  it('hands the files and the gap at the caret over, and inserts nothing itself', () => {
+  it('hands the files and the gap under the line holding the caret over, and inserts nothing itself', () => {
     const sink = vi.fn();
     const editor = open(
       [

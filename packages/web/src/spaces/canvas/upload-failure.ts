@@ -72,10 +72,10 @@ const REFUSALS: ReadonlySet<UploadFailure['reason']> = new Set([
 /**
  * The sentence each reason needs, keyed by what the reader should do next.
  *
- * `transfer` is absent, and the compiler holds it out: that reason leaves
- * through the reporting arm below, which carries no sentence. A ticket without
- * a task row (`upload-opening.ts`, when no node or no space is named) is the
- * one shape that would want one, and the arm spells out what it reads.
+ * `transfer` is absent, and the compiler holds it out: with a task row it
+ * leaves through the reporting arm below, which carries no sentence; where it
+ * does need one (no task row, a document placeholder, the focus crop),
+ * `uploadFailureMessageKey` reads it as the catch-all.
  */
 const TOAST_KEY: Readonly<
   Record<Exclude<UploadFailure['reason'], 'transfer'>, string>
