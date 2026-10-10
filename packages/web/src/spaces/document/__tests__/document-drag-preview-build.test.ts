@@ -3,7 +3,8 @@
 
 /**
  * inner#1350 A1: every drag preview is the dragged content itself, drawn in
- * the body's styles, scaled as a whole so its longest side is 512px
+ * the body's styles, scaled down as a whole so its longest side is at most
+ * 512px
  * (design §4).
  */
 
@@ -76,6 +77,11 @@ describe('previewScale', () => {
 
   it('fits the height to 512 when the content is taller than wide', () => {
     expect(previewScale(300, 1200)).toBeCloseTo(PREVIEW_LONGEST_SIDE / 1200);
+  });
+
+  it('keeps content no longer than 512 on any side at its own size', () => {
+    expect(previewScale(121, 127)).toBe(1);
+    expect(previewScale(512, 40)).toBe(1);
   });
 });
 

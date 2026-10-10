@@ -3,7 +3,8 @@
 
 /**
  * The body scrolls while something is dragged near or past its edge, and the
- * drag preview is the dragged content scaled to a 512px longest side
+ * drag preview is the dragged content, scaled down to a 512px longest side
+ * when it is longer than that
  * (inner#1350).
  *
  * The half jsdom cannot reach: real layout decides where the edges are, real
@@ -251,7 +252,7 @@ async function insertWideTable(p: Page, cols: number): Promise<void> {
   }
 }
 
-test('A7 and A1: a column dragged past the table frame scrolls the frame sideways, not the body, under a 512px preview', async () => {
+test('A7 and A1: a column dragged past the table frame scrolls the frame sideways, not the body, under a preview at the column\'s own size', async () => {
   await openSmokeProject(page);
   createdSpaceIds.push(await createSpace(page, 'document', `autoscroll-${Date.now()}`));
   const editor = page.locator(EDITOR);
@@ -290,6 +291,8 @@ test('A7 and A1: a column dragged past the table frame scrolls the frame sideway
   await page.mouse.up();
   const images = await page.evaluate(() => (window as unknown as { __images: Array<{ width: number; height: number; scale: string; lift: number }> }).__images);
   const ours = images.at(-1)!;
-  expect(Math.max(ours.width, ours.height)).toBeCloseTo(512, 0);
+  // A column is shorter than 512 on both sides: it is shown at its own size.
+  expect(ours.scale).toBe('scale(1)');
+  expect(Math.max(ours.width, ours.height)).toBeLessThan(512);
   expect(ours.lift).toBeCloseTo(0, 0);
 });
