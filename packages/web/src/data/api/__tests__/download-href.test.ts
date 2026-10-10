@@ -4,38 +4,41 @@
 /**
  * The address a node's Download menu item points at.
  *
- * Same-origin and nothing else: the server reads the asset URL off it,
- * checks the URL is ours, and redirects to the Worker that serves the bytes
- * with `Content-Disposition`. Which is why this is a string and not a call —
- * the browser has to make the request itself for the download to land in its
- * own download list.
+ * The asset's own public URL with `download=1`: the resource domain answers
+ * that query with `Content-Disposition: attachment`, which is what lands the
+ * file in the browser's own download list.
  */
 
 import { describe, it, expect } from 'vitest';
 import { downloadHref } from '@web/data/api/download-href';
 
 describe('the download address for an asset', () => {
-  it('points at our own API', () => {
+  it('is the asset URL with download=1', () => {
     expect(downloadHref('https://assets.example.com/image/a.png')).toBe(
-      '/api/v1/assets/download?url=https%3A%2F%2Fassets.example.com%2Fimage%2Fa.png',
+      'https://assets.example.com/image/a.png?download=1',
     );
   });
 
-  it('escapes the asset URL so its own query cannot leak into ours', () => {
-    const href = downloadHref('https://assets.example.com/a.png?v=2&x=1');
+  it('keeps a query the asset URL already has', () => {
+    const href = new URL(downloadHref('https://assets.example.com/a.png?v=2&x=1'));
 
-    expect(href).toBe(
-      `/api/v1/assets/download?url=${encodeURIComponent('https://assets.example.com/a.png?v=2&x=1')}`,
-    );
-    // One parameter, whatever the asset URL held.
-    expect(href.split('?')).toHaveLength(2);
+    expect(href.origin + href.pathname).toBe('https://assets.example.com/a.png');
+    expect(href.searchParams.get('v')).toBe('2');
+    expect(href.searchParams.get('x')).toBe('1');
+    expect(href.searchParams.get('download')).toBe('1');
   });
 
-  it('escapes a non-ASCII name', () => {
+  it('sets download=1 once when the asset URL already names it', () => {
+    const href = new URL(downloadHref('https://assets.example.com/a.png?download=0'));
+
+    expect(href.searchParams.getAll('download')).toEqual(['1']);
+  });
+
+  it('keeps a non-ASCII name pointing at the same object', () => {
     const asset = 'https://assets.example.com/image/封面.png';
+    const href = new URL(downloadHref(asset));
 
-    expect(downloadHref(asset)).toBe(
-      `/api/v1/assets/download?url=${encodeURIComponent(asset)}`,
-    );
+    expect(decodeURIComponent(href.pathname)).toBe('/image/封面.png');
+    expect(href.searchParams.get('download')).toBe('1');
   });
 });
