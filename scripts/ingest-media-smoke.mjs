@@ -10,19 +10,22 @@ import { setTimeout } from 'node:timers/promises';
 
 const directory = mkdtempSync(join(tmpdir(), 'media-smoke-'));
 const fixture = join(directory, 'video.mp4');
-// The upright cases (inner#1367): the photo is served at /photo.jpg, written
-// back at /upright/photo.jpg, and served from then on as what was written.
-const upright = { photo: null, written: null, answer: 200 };
+// The upright cases (inner#1367): the photo is served at /photo, and the
+// container writes the upright picture back to /upright with its pixel size.
+const upright = { photo: null, written: null, headers: null, answer: 200 };
 const origin = createServer(async (req, res) => {
-  if (req.url === '/photo.jpg') {
-    res.writeHead(200, { 'content-type': 'image/jpeg' });
-    res.end(upright.written ?? upright.photo);
+  if (req.url === '/photo') {
+    res.writeHead(200);
+    res.end(upright.photo);
     return;
   }
-  if (req.method === 'PUT' && req.url === '/upright/photo.jpg') {
+  if (req.method === 'PUT' && req.url === '/upright') {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
-    if (upright.answer === 200) upright.written = Buffer.concat(chunks);
+    if (upright.answer === 200) {
+      upright.written = Buffer.concat(chunks);
+      upright.headers = req.headers;
+    }
     res.writeHead(upright.answer).end();
     return;
   }
@@ -97,50 +100,80 @@ try {
     'color=c=blue:s=64x24', '-filter_complex', '[0][1]vstack', '-frames:v', '1', plain], { timeout: 30000 });
   const shownRed = { 2: 'top', 3: 'bottom', 4: 'bottom', 5: 'left', 6: 'right', 7: 'right', 8: 'left' };
   const opposite = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
-  const photoUrl = `http://127.0.0.1:${origin.address().port}/photo.jpg`;
-  const writeUrl = `http://127.0.0.1:${origin.address().port}/upright/photo.jpg`;
+  const photoUrl = `http://127.0.0.1:${origin.address().port}/photo`;
+  const writeUrl = `http://127.0.0.1:${origin.address().port}/upright`;
+  /** Ask the container to turn the served photo upright; answers the parsed form. */
+  async function turn(contentType, lossless = false) {
+    upright.written = null;
+    upright.headers = null;
+    const answer = await fetch('http://127.0.0.1:8080/probe', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ objectUrl: photoUrl, wantCover: false, wantPreview: true,
+        deadlineAt: Date.now() + 25000,
+        upright: { writeUrl, contentType, lossless, quality: 90, maxBytes: 16 * 1024 * 1024 } }),
+      signal: AbortSignal.timeout(25000),
+    });
+    assert.equal(answer.status, 200, `${contentType}: answered`);
+    const form = await answer.formData();
+    return { report: JSON.parse(form.get('meta')), outcome: JSON.parse(form.get('upright')), preview: form.get('preview') };
+  }
+  /** Check what was written: turned, its tag gone, red where it is shown. */
+  function checkWritten(label, extension, turned, side, blueRed = 60) {
+    const out = join(directory, `upright-${label}.${extension}`);
+    execFileSync('sh', ['-c', `cat > ${out}`], { input: upright.written });
+    assert.equal(Number(execFileSync('vipsheader', ['-f', 'width', out]).toString()), turned ? 48 : 64, `${label}: width`);
+    assert.throws(() => execFileSync('vipsheader', ['-f', 'orientation', out], { stdio: 'pipe' }), `${label}: tag dropped`);
+    assert.ok(redAt(out, side) > 200 && redAt(out, opposite[side]) < blueRed, `${label}: red on the ${side}`);
+    assert.equal(upright.headers['x-upright-width'], String(turned ? 48 : 64), `${label}: width header`);
+    assert.equal(upright.headers['x-upright-height'], String(turned ? 64 : 48), `${label}: height header`);
+    return out;
+  }
+  upright.answer = 200;
   for (const [orientation, side] of Object.entries(shownRed)) {
     upright.photo = withOrientation(readFileSync(plain), Number(orientation));
-    upright.written = null;
-    upright.answer = 200;
-    const answer = await fetch('http://127.0.0.1:8080/probe', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ objectUrl: photoUrl, wantCover: false, wantPreview: true,
-        deadlineAt: Date.now() + 25000,
-        upright: { writeUrl, contentType: 'image/jpeg', lossless: false, quality: 90 } }),
-      signal: AbortSignal.timeout(25000),
-    });
-    assert.equal(answer.status, 200, `orientation ${orientation}`);
-    const out = join(directory, `upright-${orientation}.jpg`);
-    execFileSync('sh', ['-c', `cat > ${out}`], { input: upright.written });
     const turned = Number(orientation) >= 5;
-    assert.equal(Number(execFileSync('vipsheader', ['-f', 'width', out]).toString()), turned ? 48 : 64);
-    assert.throws(() => execFileSync('vipsheader', ['-f', 'orientation', out], { stdio: 'pipe' }));
-    assert.ok(redAt(out, side) > 200 && redAt(out, opposite[side]) < 60, `orientation ${orientation}: red on the ${side}`);
-    const form = await answer.formData();
-    const report = JSON.parse(form.get('meta'));
-    assert.ok(report.streams.some(stream => stream.width === (turned ? 48 : 64)), `orientation ${orientation}: probed the written picture`);
-    assert.ok(form.get('preview') !== null, `orientation ${orientation}: preview cut`);
+    const ran = await turn('image/jpeg');
+    assert.deepEqual(ran.outcome, { state: 'written' }, `orientation ${orientation}: written`);
+    checkWritten(`jpeg-${orientation}`, 'jpg', turned, side);
+    assert.ok(ran.report.streams.some(stream => stream.width === (turned ? 48 : 64)), `orientation ${orientation}: probed the turned picture`);
+    assert.ok(ran.preview !== null, `orientation ${orientation}: preview cut`);
   }
+  // A PNG (eXIf chunk) and a WebP (EXIF chunk) at orientation 6, and a JPEG
+  // carrying an ICC profile: vips keeps the profile through the turn.
+  const tagged6 = join(directory, 'tagged6.jpg');
+  execFileSync('sh', ['-c', `cat > ${tagged6}`], { input: withOrientation(readFileSync(plain), 6) });
+  for (const [format, contentType] of [['png', 'image/png'], ['webp', 'image/webp']]) {
+    const source = join(directory, `tagged6.${format}`);
+    execFileSync('vips', ['copy', tagged6, source]);
+    assert.equal(execFileSync('vipsheader', ['-f', 'orientation', source]).toString().trim(), '6', `${format}: tagged`);
+    upright.photo = readFileSync(source);
+    const ran = await turn(contentType);
+    assert.deepEqual(ran.outcome, { state: 'written' }, `${format}: written`);
+    checkWritten(format, format, true, 'right');
+  }
+  const withIcc = join(directory, 'icc6.jpg');
+  // At Q95: the default Q75 re-encode bleeds enough red into the blue half to
+  // read as red where the check samples.
+  execFileSync('vips', ['icc_export', tagged6, `${withIcc}[Q=95]`, '--output-profile', 'srgb']);
+  assert.equal(execFileSync('vipsheader', ['-f', 'orientation', withIcc]).toString().trim(), '6', 'icc: tagged');
+  upright.photo = readFileSync(withIcc);
+  assert.deepEqual((await turn('image/jpeg')).outcome, { state: 'written' }, 'icc: written');
+  // Converted to the sRGB profile, the blue half reads red 90 already in the
+  // sample, so the turned picture is held to the sample's own blue.
+  const iccOut = checkWritten('icc', 'jpg', true, 'right', redAt(withIcc, 'bottom') + 20);
+  assert.ok(execFileSync('vipsheader', ['-a', iccOut]).toString().includes('icc-profile-data'), 'icc: profile kept');
+
   for (const refused of [409, 500]) {
     upright.photo = withOrientation(readFileSync(plain), 6);
-    upright.written = null;
     upright.answer = refused;
-    const answer = await fetch('http://127.0.0.1:8080/probe', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ objectUrl: photoUrl, wantCover: false, wantPreview: true,
-        deadlineAt: Date.now() + 25000,
-        upright: { writeUrl, contentType: 'image/jpeg', lossless: false, quality: 90 } }),
-      signal: AbortSignal.timeout(25000),
-    });
-    assert.equal(answer.status, 409, `write-back answered ${refused}`);
+    assert.deepEqual((await turn('image/jpeg')).outcome, { state: 'failed', step: 'write' }, `write-back answered ${refused}`);
   }
 
   const invalid = await fetch('http://127.0.0.1:8080/probe', {
     method: 'POST', body: '{}', signal: AbortSignal.timeout(1000),
   });
   assert.equal(invalid.status, 400);
-  console.log('Media smoke passed: HTTP video probe, PNG cover, no-cover, upright for orientations 2-8, refused write-back and invalid request.');
+  console.log('Media smoke passed: HTTP video probe, PNG cover, no-cover, upright JPEG for orientations 2-8, PNG and WebP at 6, ICC kept, refused write-back and invalid request.');
 } finally {
   service?.kill();
   origin.closeAllConnections();
