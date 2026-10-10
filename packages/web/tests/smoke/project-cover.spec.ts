@@ -15,10 +15,13 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { test, expect, type Page } from 'playwright/test';
 
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
+import { hueOf, storedPicture, uniqueJpeg } from '../helpers/upload';
 
 /**
  * A solid-colour PNG, built here so each run can use bytes of its own.
@@ -85,18 +88,20 @@ async function studioSlugOf(page: Page, projectId: string): Promise<string> {
  * @param page - The studio page, showing the project's card.
  * @param projectId - The project.
  * @param picture - The image to pick.
+ * @param file - The picked file's name and type.
  * @returns The cover URL from the server's answer.
  */
-async function uploadCover(page: Page, projectId: string, picture: Buffer): Promise<string> {
+async function uploadCover(
+  page: Page,
+  projectId: string,
+  picture: Buffer,
+  file: { name: string; mimeType: string } = { name: 'cover.png', mimeType: 'image/png' },
+): Promise<string> {
   const card = page.getByTestId(`project-card-${projectId}`);
   await card.hover();
   await card.getByRole('button', { name: 'More actions' }).click();
   await page.getByRole('menuitem', { name: 'Upload cover' }).click();
-  await card.getByTestId('project-cover-input').setInputFiles({
-    name: 'cover.png',
-    mimeType: 'image/png',
-    buffer: picture,
-  });
+  await card.getByTestId('project-cover-input').setInputFiles({ ...file, buffer: picture });
   await expect(page.getByTestId('image-crop-dialog')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('image-crop-selection')).toBeVisible();
 
@@ -147,4 +152,19 @@ test('the owner uploads and replaces a project cover @needs-storage', async ({ p
   await page.goto('/studio');
   const recent = page.locator(`a[href$="-${projectId}"]`).first();
   await expect(recent.locator('img')).toHaveAttribute('src', second, { timeout: 15_000 });
+});
+
+// A4 (inner#1367): a phone photo picked as a cover is stored upright. Shown at
+// its EXIF orientation the sample is red above blue; the crop keeps both.
+test('a cover cut from a phone photo is stored upright @needs-storage', async ({ page }) => {
+  const projectId = smokeProjectId('A', 1);
+  await openSmokeProject(page, 'A', 1);
+  const slug = await studioSlugOf(page, projectId);
+  await page.goto(`/studio/${slug}`);
+  await expect(page.getByTestId(`project-card-${projectId}`)).toBeVisible({ timeout: 15_000 });
+
+  const photo = uniqueJpeg(readFileSync(join(__dirname, '../fixtures/exif6-red-top.jpg')));
+  const url = await uploadCover(page, projectId, photo, { name: 'photo.jpg', mimeType: 'image/jpeg' });
+  const stored = await storedPicture(page, url);
+  expect([hueOf(stored.top), hueOf(stored.bottom)]).toEqual(['red', 'blue']);
 });
