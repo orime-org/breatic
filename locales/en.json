@@ -1058,7 +1058,7 @@
       "noAccount": "Don't have an account?",
       "forgotPassword": "Forgot password?",
       "googleLoading": "Loading Google sign-in…",
-      "googleFailed": "Google sign-in is unavailable. Please try again or use email sign-in.",
+      "googleFailed": "Google sign-in is unavailable. Please refresh the page or use email sign-in.",
       "failed": "Sign-in failed. Please try again."
     },
     "register": {

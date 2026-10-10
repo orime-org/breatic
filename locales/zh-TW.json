@@ -1058,7 +1058,7 @@
       "noAccount": "還沒有帳號?",
       "forgotPassword": "忘記密碼?",
       "googleLoading": "正在載入 Google 登入…",
-      "googleFailed": "Google 登入暫不可用，請重試或使用電子郵件登入。",
+      "googleFailed": "Google 登入暫不可用，請重新整理頁面或使用電子郵件登入。",
       "failed": "登入失敗,請重試。"
     },
     "register": {

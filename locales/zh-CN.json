@@ -1058,7 +1058,7 @@
       "noAccount": "还没有账号?",
       "forgotPassword": "忘记密码?",
       "googleLoading": "正在加载 Google 登录…",
-      "googleFailed": "Google 登录暂不可用，请重试或使用邮箱登录。",
+      "googleFailed": "Google 登录暂不可用，请刷新页面或使用邮箱登录。",
       "failed": "登录失败,请重试。"
     },
     "register": {
