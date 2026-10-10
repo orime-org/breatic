@@ -40,6 +40,8 @@ exports[`every refusal's advice is a proposal the check takes > fill-into-pool (
 
 exports[`every refusal's advice is a proposal the check takes > fill-into-pool (1): is met, and each way it says to put it right is accepted 1`] = `""images" is the reference pool of "qwen-image-edit-multiple-angles", which takes no fills. Take fills "images" off. "N1" goes into "Gen" by an edge with into: "pool" and a ref @'ing it."`;
 
+exports[`every refusal's advice is a proposal the check takes > fill-into-pool (2): is met, and each way it says to put it right is accepted 1`] = `""images" is the reference pool of "nano-banana-pro-edit-ultra", which takes no fills. Take fills "images" off."`;
+
 exports[`every refusal's advice is a proposal the check takes > fill-no-material (0): is met, and each way it says to put it right is accepted 1`] = `"fills "style_images" on "Gen" points at "Pic", which holds no material, and fills takes only nodes holding it. Take "Pic" out of fills "style_images". "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref."`;
 
 exports[`every refusal's advice is a proposal the check takes > fill-not-a-slot (0): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" has no slot "nope". Take fills "nope" off. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it, or through fills "style_images" on "Gen", with no edge and no ref."`;
@@ -188,7 +190,9 @@ exports[`every refusal's advice is a proposal the check takes > way-over-room (1
 
 exports[`every refusal's advice is a proposal the check takes > way-over-room (2): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" takes 11 image node(s) by "pool", and 13 are going that way ("M0", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12"). Send fewer."`;
 
-exports[`every refusal's advice is a proposal the check takes > way-over-room (3): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" takes 11 image node(s) by "pool", and 15 are going that way ("Pic 0", "Pic 1", "Pic 2", "Pic 3", "Pic 4", "Pic 5", "Pic 6", "Pic 7", "Pic 8", "Pic 9", "Pic 10", "Pic 11", "Pic 12", "Pic 13", "Pic 14"). Send fewer."`;
+exports[`every refusal's advice is a proposal the check takes > way-over-room (3): is met, and each way it says to put it right is accepted 1`] = `""mureka-v9.5-generate-song" takes 1 audio node(s) by "melody", and 3 are going that way ("A", "X", "C"). Send fewer."`;
+
+exports[`every refusal's advice is a proposal the check takes > way-over-room (4): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" takes 11 image node(s) by "pool", and 15 are going that way ("Pic 0", "Pic 1", "Pic 2", "Pic 3", "Pic 4", "Pic 5", "Pic 6", "Pic 7", "Pic 8", "Pic 9", "Pic 10", "Pic 11", "Pic 12", "Pic 13", "Pic 14"). Send fewer."`;
 
 exports[`every refusal's advice is a proposal the check takes > way-over-room-other-way (0): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" takes 11 image node(s) by "pool", and 12 are going that way ("Pic 0", "Pic 1", "Pic 2", "Pic 3", "Pic 4", "Pic 5", "Pic 6", "Pic 7", "Pic 8", "Pic 9", "Pic 10", "Pic 11"). Send fewer, or send the rest another way: "Pic 11" goes into "Gen" by an edge with into: "style_images" and a note saying to pick it there and no ref."`;
 

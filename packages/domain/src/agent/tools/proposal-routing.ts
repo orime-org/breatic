@@ -497,9 +497,7 @@ function wayStates(
   chosen: ModelInfo,
   placed: readonly Arriving[],
 ): { open: Entry[]; closed: { entry: Entry; closed: Closed }[] } {
-  // A node the same advice sends in counts where it is sent, not also where it now arrives.
-  const moved = new Set(placed.map((arrival) => arrival.node));
-  const others = [...arrivingInto(proposal, generation, chosen).filter((arrival) => arrival.node !== node && !moved.has(arrival.node)), ...placed];
+  const others = [...arrivingInto(proposal, generation, chosen).filter((arrival) => arrival.node !== node), ...placed];
   const open: Entry[] = [];
   const closed: { entry: Entry; closed: Closed }[] = [];
   for (const entry of entriesFor(chosen, node.type, holdingOf(node))) {

@@ -388,8 +388,14 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }, {
     // "X" also fills "vocal", which stays when it leaves "melody", so "vocal"
     // has no room for "C" and no other way is offered.
-    meets: group([...["A", "X", "C"].map((name, i): Sent["nodes"][number] => ({ role: "source", type: "audio", name, material: TUNES[i] })), gen("audio", "a2m", SONG, { prompt: [{ text: "Make a song." }], fills: { melody: [0, 1, 2], vocal: [1] } })]),
-    followed: [{ says: "Send fewer.", proposal: group([...["A", "X"].map((name, i): Sent["nodes"][number] => ({ role: "source", type: "audio", name, material: TUNES[i] })), gen("audio", "a2m", SONG, { prompt: [{ text: "Make a song." }], fills: { melody: [0], vocal: [1] } })]) }],
+    meets: group(
+      [...["A", "X", "C"].map((name, i): Sent["nodes"][number] => ({ role: "source", type: "audio", name, material: TUNES[i] })), WORDS, gen("audio", "a2m", SONG, { prompt: [{ text: "Make a song." }], fills: { melody: [0, 1, 2], vocal: [1] } })],
+      [{ fromIndex: 3, toIndex: 4, into: "lyrics" }],
+    ),
+    followed: [{ says: "Send fewer.", proposal: group(
+      [...["A", "X"].map((name, i): Sent["nodes"][number] => ({ role: "source", type: "audio", name, material: TUNES[i] })), WORDS, gen("audio", "a2m", SONG, { prompt: [{ text: "Make a song." }], fills: { melody: [0], vocal: [1] } })],
+      [{ fromIndex: 2, toIndex: 3, into: "lyrics" }],
+    ) }],
     endsOn: "Send fewer.",
   }, {
     // Four past the room, and the other way holds three.
