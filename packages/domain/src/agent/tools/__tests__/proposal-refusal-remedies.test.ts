@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Every refusal the proposal check gives, held to its own advice: a proposal
- * that meets it, and for each way the reason says to put it right, the
- * proposal that does exactly that and nothing else -- which the check has to
- * accept. The table is keyed by refusal name, so a refusal added without its
- * case does not compile (inner#1315).
+ * Every refusal the proposal check gives, held to what it says (design 5.10):
+ * a proposal that meets it; the statements of fault, rule and fact its reason
+ * makes, each checked against the catalog and the proposal; and, for a refusal
+ * marked as having one fix, the proposal that follows that fix, which this
+ * refusal no longer meets. The table is keyed by refusal name, so a refusal
+ * added without its case does not compile (inner#1315).
  */
 
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
@@ -17,7 +18,7 @@ import { findTemplate, templatePrompt, type ProposalNode } from "@breatic/shared
 import { restoreProcessEnv, useEnvWithKeys, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
 import { verdictFor, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
-import type { RefusalId } from "../proposal-refusals.js";
+import { REFUSALS, type RefusalId } from "../proposal-refusals.js";
 
 beforeEach(() => {
   loadLocales();
@@ -31,39 +32,27 @@ afterAll(() => {
 /** What the model sends, as the tool's input. */
 type Sent = Parameters<typeof verdictFor>[0];
 
-/** One refusal: what meets it, and what each piece of its advice builds. */
+/** One refusal: what meets it, what its reason says, and its one fix where it has one. */
 interface RefusalCase {
-  /** A proposal the check refuses with this refusal. */
-  meets: Sent;
-  /**
-   * One proposal per way the reason says to put it right, each doing that and
-   * nothing else, with the words of the reason it follows. Where the reason
-   * names no fix, the one its words leave is followed and says is left out.
-   */
-  followed: { says: string | undefined; proposal: Sent }[];
-  /** Advice the reason gives that is answered in the reply rather than on the canvas. */
-  inTheReply?: string;
   /** The catalog the case is met under, where it is not the full one. */
   catalog?: () => void;
-  /** The words the reason ends on, where advice added after them would be wrong. */
-  endsOn?: string;
+  /** A proposal the check refuses with this refusal. */
+  meets: Sent;
+  /** Statements the reason makes, each true of the catalog and the proposal. */
+  states: string[];
+  /** The proposal after the reason's one fix, for a refusal marked as having one. */
+  fix?: Sent;
 }
 
 const PIC = "https://resource.example/image/2026-10-09/1_pic.png";
 const CLIP = "https://resource.example/video/2026-10-09/1_clip.mp4";
 const ELSEWHERE = "https://elsewhere.example/a.png";
 const MISSING = "https://resource.example/image/2026-10-09/1_typo.png";
-const CLIP_IMAGE = "https://resource.example/image/2026-10-09/2_frame.png";
-const THIRD = "https://resource.example/image/2026-10-09/3_third.png";
-const FOURTH = "https://resource.example/image/2026-10-09/4_fourth.png";
 const TUNES = ["1_a", "2_x", "3_c"].map((name) => `https://resource.example/audio/2026-10-09/${name}.mp3`);
 
 const MEDIA = { coverUrl: null, width: 640, height: 480, duration: 3, mimeType: "image/png", size: 100 };
 const MATERIALS: MaterialTable = new Map<string, MaterialFacts | "missing">([
   [PIC, { kind: "image", media: MEDIA }],
-  [CLIP_IMAGE, { kind: "image", media: MEDIA }],
-  [THIRD, { kind: "image", media: MEDIA }],
-  [FOURTH, { kind: "image", media: MEDIA }],
   [CLIP, { kind: "video", media: { ...MEDIA, mimeType: "video/mp4" } }],
   ...TUNES.map((tune): [string, MaterialFacts] => [tune, { kind: "audio", media: { ...MEDIA, mimeType: "audio/mpeg" } }]),
   [MISSING, "missing"],
@@ -76,10 +65,8 @@ const HEAD = "omnihuman-1.5";
 const SCORE = "sonilo-video-to-music";
 const SONG = "mureka-v9.5-generate-song";
 const TTS = "realtime-tts-2";
-const LONG_TTS = "minimax-speech-2.8-hd";
 const SHOTS = "kling-v3.0-4k-text-to-video";
 const VID = "minimax-h3-image-to-video";
-const IDEO = "ideogram-v3-quality";
 
 /** A note, as every to-do on a card is. */
 const NOTE = { slot: { kind: "note" as const, label: "Put the picture in Pic first" } };
@@ -170,8 +157,8 @@ function NOTES(count: number): (typeof NOTE)[] {
   return Array.from({ length: count }, () => NOTE);
 }
 
-/** The values the multiple-angles model has a control for, each set to a value it takes. */
-const ANGLES_SETTABLE: Record<string, number> = { distance: 2, horizontal_angle: 45, vertical_angle: 30 };
+/** The values the multiple-angles model has a control for. */
+const ANGLES_SETTABLE = ["distance", "horizontal_angle", "vertical_angle"];
 
 // The template's words are read from the locales while the cases are built.
 loadLocales();
@@ -179,563 +166,422 @@ loadLocales();
 const CASES: Record<RefusalId, RefusalCase[]> = {
   "nothing-generates": [{
     meets: { nodes: [EMPTY_PIC], edges: [], rationale: "r" },
-    followed: [{ says: 'Propose what gets made', proposal: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }],
-    inTheReply: "say in your reply what they should do",
+    states: ["Nothing here generates, so a card placed from this leaves the reader nothing to press."],
   }],
   "nothing-generates-words": [{
     meets: { nodes: [WORDS], edges: [], rationale: "r" },
-    followed: [],
-    inTheReply: "Write them in your reply",
+    states: ["words with nothing generating belong in your reply"],
   }],
   "edge-outside": [{
     meets: group([DRAW], [{ fromIndex: 0, toIndex: 4 }]),
-    followed: [{ says: undefined, proposal: group([DRAW]) }],
+    states: ["An edge points outside the group", "Take that edge off."],
+    fix: group([DRAW]),
   }],
   "edge-self-loop": [{
     meets: group([DRAW], [{ fromIndex: 0, toIndex: 0 }]),
-    followed: [{ says: undefined, proposal: group([DRAW]) }],
+    states: ["An edge loops node 0 onto itself.", "Take that edge off."],
+    fix: group([DRAW]),
   }],
   "edge-repeated": [{
     meets: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }, { fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [{ says: 'Send one edge', proposal: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }],
+    states: ['Two edges run from "Pic" to "Gen" (into "pool", into "pool")', "a node goes into a generation one way"],
+  }, {
+    meets: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }, { fromIndex: 0, toIndex: 1, into: "style_images" }]),
+    states: ['(into "pool", into "style_images")'],
   }],
   "edge-into-nothing-generating": [{
     meets: group([DRAW, WORDS], [{ fromIndex: 0, toIndex: 1 }]),
-    followed: [{ says: undefined, proposal: group([DRAW, WORDS]) }],
+    states: ['An edge flows into "Words", which generates nothing'],
   }],
   "edge-not-allowed": [{
     meets: group([CLIP_EMPTY, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }] })], [{ fromIndex: 0, toIndex: 1 }]),
-    followed: [{ says: 'leave this edge off. "Clip" goes into "Gen" unwired, with a note saying to pick it into "video" and no ref', proposal: group([CLIP_EMPTY, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }, NOTE] })]) }],
+    states: ["The canvas does not let a video node feed an audio node", "Take that edge off.", '"Clip" goes into "Gen" unwired, with a note saying to pick it into "video" and no ref.'],
+    fix: group([CLIP_EMPTY, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }] })]),
   }, {
     meets: group([CLIP_EMPTY, gen("image", "i2i", EDIT)], [{ fromIndex: 0, toIndex: 1 }]),
-    followed: [
-      { says: 'leave this edge off. "nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen". No other generation here has a way left for "Clip"; take "Clip" out', proposal: group([gen("image", "i2i", EDIT)]) },
-      { says: "or propose a model that takes it", proposal: group([CLIP_EMPTY, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }, NOTE] })]) },
-    ],
+    states: ["Take that edge off.", '"nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen".'],
+    fix: group([CLIP_EMPTY, gen("image", "i2i", EDIT)]),
+  }, {
+    // The generation names no model the catalog serves: the canvas rule is all there is to say.
+    meets: group([CLIP_EMPTY, gen("image", "i2i", "no-such-model")], [{ fromIndex: 0, toIndex: 1 }]),
+    states: ["The canvas does not let a video node feed an image node, by your hand or theirs. Take that edge off."],
+    fix: group([CLIP_EMPTY, gen("image", "i2i", "no-such-model")]),
   }],
   "edge-ring": [{
     meets: group(
       [gen("image", "i2i", EDIT, { name: "A", prompt: [{ text: "From " }, { ref: 1 }, NOTE] }), gen("image", "i2i", EDIT, { name: "B", prompt: [{ text: "From " }, { ref: 0 }, NOTE] })],
       [{ fromIndex: 0, toIndex: 1, into: "pool" }, { fromIndex: 1, toIndex: 0, into: "pool" }],
     ),
-    followed: [{ says: undefined, proposal: group(
-      [gen("image", "i2i", EDIT, { name: "A", prompt: [{ text: "Make it." }], mode: "t2i", model: T2I }), gen("image", "i2i", EDIT, { name: "B", prompt: [{ text: "From " }, { ref: 0 }, NOTE] })],
-      [{ fromIndex: 0, toIndex: 1, into: "pool" }],
-    ) }],
+    states: ["Those edges make a ring"],
   }],
   "group-unnamed": [{
     meets: { nodes: [EMPTY_PIC, EDIT_POOL], edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }], rationale: "r" },
-    followed: [{ says: 'give the group a name', proposal: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }],
+    states: ["give the group a name"],
+    fix: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
   }],
   "template-unknown": [{
     meets: group([EMPTY_PIC, { ...EDIT_POOL, template: "no-such-template", mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [{ says: 'Templates: storyboard-grid-25', proposal: group([EMPTY_PIC, { ...EDIT_POOL, template: "storyboard-grid-25", mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }],
+    states: ['No template "no-such-template". Templates: storyboard-grid-25'],
   }],
   "template-role": [{
     meets: group([{ ...EMPTY_PIC, template: "storyboard-grid-25" }, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [{ says: 'goes on a generate node', proposal: group([EMPTY_PIC, { ...EDIT_POOL, template: "storyboard-grid-25", mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }],
+    states: ['Template "storyboard-grid-25" goes on a generate node; "Pic" is a source node.'],
   }],
   "template-type": [{
     meets: group([gen("video", "t2v", SHOTS, { template: "storyboard-grid-25" })]),
-    followed: [{ says: 'is for image nodes', proposal: group([EMPTY_PIC, { ...EDIT_POOL, template: "storyboard-grid-25", mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }],
+    states: ['Template "storyboard-grid-25" is for image nodes, not video.'],
   }],
   "template-no-prompt": [{
     meets: group([EMPTY_PIC, { ...EDIT_POOL, prompt: undefined, template: "storyboard-grid-25", mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [{
-      says: 'an empty one by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first',
-      proposal: group([EMPTY_PIC, { ...EDIT_POOL, template: "storyboard-grid-25", mode: undefined, model: undefined, prompt: [...storyboardSegments(), NOTE] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    }],
-  }, {
-    meets: group([HELD_PIC, { ...EDIT_POOL, prompt: undefined, template: "storyboard-grid-25", mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [{
-      says: 'A node holding material or words goes into "Gen" by an edge with into: "pool" and a ref @\'ing it',
-      proposal: group([HELD_PIC, { ...EDIT_POOL, template: "storyboard-grid-25", mode: undefined, model: undefined, prompt: storyboardSegments() }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    }],
+    states: ['"Gen" names template "storyboard-grid-25" and sends no prompt. Give it a prompt.', "The template's prompt, to rewrite in the reader's language with their story or detail in it:", 'an empty one by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first'],
+    fix: group([EMPTY_PIC, { ...EDIT_POOL, template: "storyboard-grid-25", mode: undefined, model: undefined, prompt: [...storyboardSegments(), NOTE] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
   }],
   "sources-no-taker": [{
     meets: group([EMPTY_PIC, DRAW]),
-    followed: [{ says: undefined, proposal: group([DRAW]) }],
+    states: ["This group places 1 image source node(s), and nothing in it takes image material."],
   }],
   "sources-over-room": [{
     meets: group([EMPTY_PIC, { ...EMPTY_PIC, name: "Pic 2" }, gen("video", "talking_head", HEAD, { prompt: [NOTE, NOTE] })]),
-    followed: [{ says: undefined, proposal: group([EMPTY_PIC, gen("video", "talking_head", HEAD, { prompt: [NOTE] })]) }],
+    states: ["This group places 2 image source node(s), and the panels in it hold 1 at a time."],
   }],
   "material-unused": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Make it." }] })]),
-    followed: [{ says: 'Send it into a generation that takes it: "Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }, { says: 'through fills "style_images" on "Gen", with no edge and no ref', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) }],
+    states: ['"Pic" holds material that nothing here uses, and material reaches a generation only through fills or an edge into its pool.', '"Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it, or through fills "style_images" on "Gen", with no edge and no ref.'],
   }, {
     meets: group([{ ...DRAW, name: "Draw" }, gen("video", "i2v", VID, { name: "Vid", prompt: [{ text: "Move it." }, NOTE] }), { ...HELD_PIC, name: "B" }], [{ fromIndex: 0, toIndex: 1, into: "image" }]),
-    followed: [
-      { says: 'take "B" out', proposal: group([{ ...DRAW, name: "Draw" }, gen("video", "i2v", VID, { name: "Vid", prompt: [{ text: "Move it." }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "image" }]) },
-      { says: "or propose a model that takes it", proposal: group([{ ...DRAW, name: "Draw" }, gen("video", "i2v", VID, { name: "Vid", prompt: [{ text: "Move it." }, NOTE] }), { ...HELD_PIC, name: "B" }, gen("image", "i2i", EDIT, { name: "Edit", fills: { style_images: [2] } })], [{ fromIndex: 0, toIndex: 1, into: "image" }]) },
-    ],
-  }, {
-    meets: group([HELD_PIC, { ...HELD_PIC, name: "Pic 2" }, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
-    followed: [{ says: 'Send it into a generation that takes it: "Pic 2" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it.', proposal: group([HELD_PIC, { ...HELD_PIC, name: "Pic 2" }, gen("image", "i2i", EDIT, { fills: { style_images: [0] }, prompt: [{ text: "Edit " }, { ref: 1 }] })], [{ fromIndex: 1, toIndex: 2, into: "pool" }]) }],
+    states: ['"nano-banana-2" takes no image node, so "B" has no way into "Draw".', '"B" goes into "Vid" through fills "image" on "Vid", with no edge and no ref.'],
   }],
   "loose-without-note": [{
     meets: group([EMPTY_PIC, gen("video", "talking_head", HEAD, { prompt: undefined })]),
-    followed: [{ says: 'Give each one a note saying which slot to pick it into', proposal: group([EMPTY_PIC, gen("video", "talking_head", HEAD, { prompt: [NOTE] })]) }],
+    states: ['"Pic" goes into no generation, so the reader picks it into a slot in the panel, and a note tells them which.', "carry 0 note(s) beyond those their wired nodes use"],
   }],
   "text-generates": [{
     meets: group([{ role: "generate", type: "text", name: "Copy", prompt: [{ text: "Write it." }] }, DRAW]),
-    followed: [{ says: 'send it as a written node', proposal: group([WORDS, DRAW]) }],
+    states: ['"Copy" is a text node, and nothing is generated into one; words go on a written node.'],
   }],
   "no-mode-model": [{
     meets: group([gen("image", "t2i", T2I, { mode: undefined })]),
-    followed: [{ says: 'it needs a mode and a model', proposal: group([DRAW]) }],
+    states: ["it needs a mode and a model"],
   }],
   "mode-unbacked": [{
     meets: group([gen("image", "no-such-mode", T2I)]),
-    followed: [{ says: 'It offers: t2i', proposal: group([DRAW]) }],
+    states: ['No model here backs "no-such-mode" on an image node. It offers: t2i'],
   }],
   "no-model-for-kind": [{
     catalog: () => useEnvWithKeys([]),
     meets: group([gen("video", "t2v", SHOTS)]),
-    followed: [],
-    inTheReply: "Say so in your reply",
+    states: ["No video model can generate right now."],
   }],
   "model-not-in-mode": [{
     meets: group([gen("image", "t2i", EDIT)]),
-    followed: [{ says: 'Those that do:', proposal: group([DRAW]) }],
+    states: [`"${EDIT}" does not back "t2i". Those that do:`],
   }],
   "shots-outside-multishot": [{
     meets: group([gen("video", "t2v", SHOTS, { prompt: undefined, shots: TWO_SHOTS })]),
-    followed: [{ says: 'Propose mode "multi_shot"', proposal: group([STORY]) }, { says: 'or leave shots out', proposal: group([gen("video", "t2v", SHOTS)]) }],
+    states: ['Shots belong to the multi_shot mode, and "Gen" runs "t2v". Leave shots out.'],
+    fix: group([gen("video", "t2v", SHOTS, { prompt: undefined })]),
   }],
   "multishot-no-shots": [{
     meets: group([gen("video", "multi_shot", SHOTS, { params: { duration: 5 } })]),
-    followed: [{ says: 'Give shots', proposal: group([STORY]) }],
+    states: ["In the multi_shot mode the shots are what is generated. Give shots"],
+    fix: group([STORY]),
   }],
   "shots-with-prompt": [{
     meets: group([{ ...STORY, prompt: [{ text: "Make it." }] }]),
-    followed: [{ says: 'Put its words, refs and notes into the shots and leave prompt out', proposal: group([STORY]) }],
+    states: ["With shots the main prompt is not sent; its words, refs and notes go in the shots. Leave prompt out."],
+    fix: group([STORY]),
   }],
   "no-prompt-box": [{
     meets: group([EMPTY_PIC, gen("video", "talking_head", HEAD, { prompt: [{ text: "Talk." }, NOTE] })]),
-    followed: [{ says: 'Keep only notes', proposal: group([EMPTY_PIC, gen("video", "talking_head", HEAD, { prompt: [NOTE] })]) }],
+    states: [`"${HEAD}" draws no prompt box`, "Keep only notes"],
+    fix: group([EMPTY_PIC, gen("video", "talking_head", HEAD, { prompt: [NOTE] })]),
   }],
   "ref-outside": [{
     meets: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make " }, { ref: 7 }] })]),
-    followed: [{ says: undefined, proposal: group([DRAW]) }],
+    states: ['A ref in "Gen" points outside the group: {"ref": 7}. Take that ref out.'],
+    fix: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make " }] })]),
   }],
   "ref-self": [{
     meets: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make " }, { ref: 0 }] })]),
-    followed: [{ says: 'Check the index the ref means', proposal: group([DRAW]) }],
+    states: ['"Gen" @s itself with {"ref": 0}, and a node cannot @ itself. Take that ref out.'],
+    fix: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make " }] })]),
   }],
   "ref-arrives-otherwise": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] }, prompt: [{ text: "In the style of " }, { ref: 0 }] })]),
-    followed: [{ says: 'through fills "style_images" on "Gen", with no edge and no ref, so leave the ref out', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] }, prompt: [{ text: "In the style of it." }] })]) }],
+    states: ['"Pic" goes into "Gen" through fills "style_images" on "Gen", with no edge and no ref, and only a node wired into the pool takes a ref.'],
   }, {
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Style of " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "style_images" }]),
-    followed: [{ says: 'by an edge with into: "style_images" and a note saying to pick it there and no ref, so leave the ref out', proposal: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Style of it." }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "style_images" }]) }],
+    states: ['"Pic" goes into "Gen" by an edge with into: "style_images" and a note saying to pick it there and no ref, and only a node wired into the pool takes a ref.'],
   }, {
     meets: group([WORDS, gen("audio", "t2m", SONG, { prompt: [{ text: "Upbeat pop for " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "lyrics" }]),
-    followed: [{ says: 'by an edge with into: "lyrics", which landing @s into that box, and no ref, so leave the ref out', proposal: group([WORDS, gen("audio", "t2m", SONG, { prompt: [{ text: "Upbeat pop." }] })], [{ fromIndex: 0, toIndex: 1, into: "lyrics" }]) }],
+    states: ['"Words" goes into "Gen" by an edge with into: "lyrics", which landing @s into that box, and no ref, and only a node wired into the pool takes a ref.'],
   }],
   "ref-not-pooled": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }, NOTE] })]),
-    followed: [
-      { says: 'To keep the ref, send it into the pool that way', proposal: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) },
-      { says: 'by an edge with into: "style_images" and a note saying to pick it there and no ref. To keep the ref, send it into the pool that way; otherwise leave the ref out', proposal: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "style_images" }]) },
-    ],
-  }],
-  "ref-not-pooled-closed": [{
+    states: ['"Pic" is @\'d by a ref in "Gen" but is not wired into its pool, and only a node in its pool takes a ref.', '"Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref.', 'The pool of "Gen" takes 11 image node(s) and holds none.'],
+  }, {
     meets: group(PICS(4).concat([gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, ...REFS(4), ...NOTES(4)] })]), [0, 1, 2].map((i) => ({ fromIndex: i, toIndex: 4, into: "pool" }))),
-    followed: [{ says: 'Leave the ref out. "Pic 3" has no way left into "Gen": "pool" has no room left. No other generation here has a way left for "Pic 3"; take "Pic 3" out', proposal: group(PICS(3).concat([gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, ...REFS(3), ...NOTES(4)] })]), [0, 1, 2].map((i) => ({ fromIndex: i, toIndex: 3, into: "pool" }))) }],
+    states: ['"Pic 3" is @\'d by a ref in "Gen" but is not wired into its pool', 'The pool of "Gen" takes 3 image node(s) and holds "Pic 0", "Pic 1", "Pic 2".'],
   }],
   "ref-not-pooled-no-pool": [{
     meets: group([EMPTY_PIC, gen("image", "t2i", T2I, { prompt: [{ text: "Draw " }, { ref: 0 }, NOTE] })]),
-    followed: [
-      { says: 'Leave the ref out. "nano-banana-2" takes no image node, so "Pic" has no way into "Gen". No other generation here has a way left for "Pic"; take "Pic" out', proposal: group([gen("image", "t2i", T2I, { prompt: [{ text: "Draw " }, NOTE] })]) },
-      { says: "or propose a model that takes it", proposal: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) },
-    ],
+    states: ['"nano-banana-2" has no pool for an image node. Leave the ref out.', '"nano-banana-2" takes no image node, so "Pic" has no way into "Gen".'],
+    fix: group([EMPTY_PIC, gen("image", "t2i", T2I, { prompt: [{ text: "Draw " }, NOTE] })]),
   }, {
     meets: group([CLIP_HELD, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score " }, { ref: 0 }] })]),
-    followed: [{ says: 'Leave the ref out. "Clip" goes into "Gen" through fills "video" on "Gen", with no edge and no ref', proposal: group([CLIP_HELD, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }], fills: { video: [0] } })]) }],
+    states: ["Leave the ref out.", '"Clip" goes into "Gen" through fills "video" on "Gen", with no edge and no ref.'],
+    fix: group([CLIP_HELD, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score " }] })]),
   }],
   "way-over-room": [{
-    meets: group(
-      [0, 1, 2, 3].map((i) => ({ ...EMPTY_PIC, name: `Pic ${String(i)}` })).concat([gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, { ref: 1 }, { ref: 2 }, { ref: 3 }, NOTE, NOTE, NOTE, NOTE] })]),
-      [0, 1, 2, 3].map((i) => ({ fromIndex: i, toIndex: 4, into: "pool" })),
-    ),
-    followed: [{ says: 'Send fewer', proposal: group(
-      [0, 1, 2].map((i) => ({ ...EMPTY_PIC, name: `Pic ${String(i)}` })).concat([gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, { ref: 1 }, { ref: 2 }, NOTE, NOTE, NOTE] })]),
-      [0, 1, 2].map((i) => ({ fromIndex: i, toIndex: 3, into: "pool" })),
-    ) }],
+    meets: group(PICS(4).concat([gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, ...REFS(4), ...NOTES(4)] })]), [0, 1, 2, 3].map((i) => ({ fromIndex: i, toIndex: 4, into: "pool" }))),
+    states: [`"${ANGLES}" takes 3 image node(s) by "pool", and 4 are going that way ("Pic 0", "Pic 1", "Pic 2", "Pic 3").`, 'An empty image node goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first.'],
   }, {
-    meets: group(
-      Array.from({ length: 12 }, (_, i): Sent["nodes"][number] => ({ ...HELD_PIC, name: `M${String(i)}`, material: i === 11 ? PIC : CLIP_IMAGE })).concat([{ ...HELD_PIC, name: "Twin" }, gen("image", "i2i", EDIT, { fills: { style_images: [12] }, prompt: [{ text: "Edit " }, ...REFS(12)] })]),
-      Array.from({ length: 12 }, (_, i) => ({ fromIndex: i, toIndex: 13, into: "pool" })),
-    ),
-    followed: [{ says: "Send fewer.", proposal: group(
-      Array.from({ length: 11 }, (_, i): Sent["nodes"][number] => ({ ...HELD_PIC, name: `M${String(i)}`, material: CLIP_IMAGE })).concat([{ ...HELD_PIC, name: "Twin" }, gen("image", "i2i", EDIT, { fills: { style_images: [11] }, prompt: [{ text: "Edit " }, ...REFS(11)] })]),
-      Array.from({ length: 11 }, (_, i) => ({ fromIndex: i, toIndex: 12, into: "pool" })),
-    ) }],
-    endsOn: "Send fewer.",
+    // Over the pool with another way open: the other way is said as a rule, with its room and who holds it.
+    meets: group(PICS(12).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(12), ...NOTES(12)] })]), Array.from({ length: 12 }, (_, i) => ({ fromIndex: i, toIndex: 12, into: "pool" }))),
+    states: [`"${EDIT}" takes 11 image node(s) by "pool", and 12 are going that way`, 'An empty image node goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref.', '"style_images" takes 3 and holds none.'],
   }, {
-    // The two past the room hold the same material: the slot open to the
-    // first is closed to the second by it, so no other way is offered.
+    // Nodes holding material and empty ones over the same way: the ways are said for each.
     meets: group(
-      Array.from({ length: 13 }, (_, i): Sent["nodes"][number] => ({ ...HELD_PIC, name: `M${String(i)}`, material: i >= 11 ? PIC : CLIP_IMAGE })).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(13)] })]),
-      Array.from({ length: 13 }, (_, i) => ({ fromIndex: i, toIndex: 13, into: "pool" })),
+      [...PICS(11), { ...HELD_PIC, name: "M" }, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(12), ...NOTES(11)] })],
+      Array.from({ length: 12 }, (_, i) => ({ fromIndex: i, toIndex: 12, into: "pool" })),
     ),
-    followed: [{ says: "Send fewer.", proposal: group(
-      Array.from({ length: 11 }, (_, i): Sent["nodes"][number] => ({ ...HELD_PIC, name: `M${String(i)}`, material: CLIP_IMAGE })).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(11)] })]),
-      Array.from({ length: 11 }, (_, i) => ({ fromIndex: i, toIndex: 11, into: "pool" })),
-    ) }],
-    endsOn: "Send fewer.",
+    states: ['An image node holding material goes into "Gen" by an edge with into: "pool" and a ref @\'ing it, or through fills "style_images" on "Gen", with no edge and no ref.', 'An empty image node goes into "Gen"'],
   }, {
-    // "X" also fills "vocal", which stays when it leaves "melody", so "vocal"
-    // has no room for "C" and no other way is offered.
     meets: group(
       [...["A", "X", "C"].map((name, i): Sent["nodes"][number] => ({ role: "source", type: "audio", name, material: TUNES[i] })), WORDS, gen("audio", "a2m", SONG, { prompt: [{ text: "Make a song." }], fills: { melody: [0, 1, 2], vocal: [1] } })],
       [{ fromIndex: 3, toIndex: 4, into: "lyrics" }],
     ),
-    followed: [{ says: "Send fewer.", proposal: group(
-      [...["A", "X"].map((name, i): Sent["nodes"][number] => ({ role: "source", type: "audio", name, material: TUNES[i] })), WORDS, gen("audio", "a2m", SONG, { prompt: [{ text: "Make a song." }], fills: { melody: [0], vocal: [1] } })],
-      [{ fromIndex: 2, toIndex: 3, into: "lyrics" }],
-    ) }],
-    endsOn: "Send fewer.",
-  }, {
-    // Four past the room, and the other way holds three.
-    meets: group(
-      PICS(15).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(15), ...NOTES(15)] })]),
-      Array.from({ length: 15 }, (_, i) => ({ fromIndex: i, toIndex: 15, into: "pool" })),
-    ),
-    followed: [{ says: "Send fewer.", proposal: group(
-      PICS(11).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(11), ...NOTES(11)] })]),
-      Array.from({ length: 11 }, (_, i) => ({ fromIndex: i, toIndex: 11, into: "pool" })),
-    ) }],
-    endsOn: "Send fewer.",
-  }],
-  "way-over-room-other-way": [{
-    meets: group(
-      PICS(12).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(12), ...NOTES(12)] })]),
-      Array.from({ length: 12 }, (_, i) => ({ fromIndex: i, toIndex: 12, into: "pool" })),
-    ),
-    followed: [
-      { says: "Send fewer", proposal: group(
-        PICS(11).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(11), ...NOTES(11)] })]),
-        Array.from({ length: 11 }, (_, i) => ({ fromIndex: i, toIndex: 11, into: "pool" })),
-      ) },
-      { says: 'or send the rest another way: "Pic 11" goes into "Gen" by an edge with into: "style_images" and a note saying to pick it there and no ref', proposal: group(
-        PICS(12).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(11), ...NOTES(12)] })]),
-        [...Array.from({ length: 11 }, (_, i) => ({ fromIndex: i, toIndex: 12, into: "pool" })), { fromIndex: 11, toIndex: 12, into: "style_images" }],
-      ) },
-    ],
-  }, {
-    // Two past the room holding different material: each is given one way,
-    // and the second is told it with the first already counted there.
-    meets: group(
-      Array.from({ length: 13 }, (_, i): Sent["nodes"][number] => ({ ...HELD_PIC, name: `M${String(i)}`, material: i === 11 ? PIC : i === 12 ? THIRD : CLIP_IMAGE })).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(13)] })]),
-      Array.from({ length: 13 }, (_, i) => ({ fromIndex: i, toIndex: 13, into: "pool" })),
-    ),
-    followed: [{ says: 'send the rest another way: "M11" goes into "Gen" through fills "style_images" on "Gen", with no edge and no ref. "M12" goes into "Gen" through fills "style_images" on "Gen", with no edge and no ref.', proposal: group(
-      Array.from({ length: 13 }, (_, i): Sent["nodes"][number] => ({ ...HELD_PIC, name: `M${String(i)}`, material: i === 11 ? PIC : i === 12 ? THIRD : CLIP_IMAGE })).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(11)], fills: { style_images: [11, 12] } })]),
-      Array.from({ length: 11 }, (_, i) => ({ fromIndex: i, toIndex: 13, into: "pool" })),
-    ) }],
+    states: ['by "melody", and 3 are going that way ("A", "X", "C")', '"vocal" takes 1 and holds "X".'],
   }],
   "ref-missing": [{
     meets: group([WORDS, { ...STORY }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [{ says: 'in the shot where the words speak of it', proposal: group([WORDS, { ...STORY, shots: [{ prompt: [{ text: "A paper boat. " }, { ref: 0 }], duration: 2 }, TWO_SHOTS[1] as (typeof TWO_SHOTS)[number]] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }],
+    states: ['"Words" is wired into the pool of "Gen" and no ref @s it. A node in the pool is used only where a ref @s it in the shot: {"ref": 0}.'],
   }],
   "notes-missing": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [{ says: 'Give each one a note in the prompt', proposal: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }],
+    states: ['"Gen" needs a note for each of "Pic"', "and carries 0"],
   }],
   "shot-empty": [{
     meets: group([{ ...STORY, shots: [{ prompt: [], duration: 2 }, TWO_SHOTS[1] as (typeof TWO_SHOTS)[number]] }]),
-    followed: [{ says: 'Every shot needs its own words', proposal: group([STORY]) }],
+    states: ["Shot 1 writes nothing. Every shot needs its own words."],
   }],
   "too-many-shots": [{
     meets: group([{ ...STORY, params: { duration: 7 }, shots: Array.from({ length: 7 }, (_, i) => ({ prompt: [{ text: `Shot ${String(i)}.` }], duration: 1 })) }]),
-    followed: [{ says: 'Send at most 6, with their seconds still adding up to duration', proposal: group([{ ...STORY, params: { duration: 7 }, shots: Array.from({ length: 6 }, (_, i) => ({ prompt: [{ text: `Shot ${String(i)}.` }], duration: i === 0 ? 2 : 1 })) }]) }],
+    states: [`"${SHOTS}" takes at most 6 shots, and their seconds add up to duration.`],
   }],
   "shot-too-long": [{
     meets: group([{ ...STORY, shots: [{ prompt: [{ text: LONG_SCRIPT }], duration: 2 }, TWO_SHOTS[1] as (typeof TWO_SHOTS)[number]] }]),
-    followed: [{ says: 'Shorten it', proposal: group([STORY]) }],
+    states: ["Shot 1 is longer than the"],
   }],
   "shots-duration": [{
     meets: group([{ ...STORY, params: { duration: 8 } }]),
-    followed: [{ says: 'Make them match', proposal: group([STORY]) }],
+    states: ["The shots add up to 5 seconds and duration is 8."],
   }],
   "prompt-missing": [{
     meets: group([gen("image", "t2i", T2I, { prompt: [] })]),
-    followed: [{ says: 'writes nothing in it', proposal: group([DRAW]) }],
+    states: [`"${T2I}" generates from what the prompt says, and this proposal writes nothing in it. Write a prompt.`],
+    fix: group([DRAW]),
   }],
   "lyrics-missing": [{
     meets: group([gen("audio", "t2m", SONG, { prompt: [{ text: "Upbeat pop." }] })]),
-    followed: [{ says: 'A written text node goes into "Gen" by an edge with into: "lyrics"', proposal: group([WORDS, gen("audio", "t2m", SONG, { prompt: [{ text: "Upbeat pop." }] })], [{ fromIndex: 0, toIndex: 1, into: "lyrics" }]) }],
+    states: ['A written text node goes into "Gen" by an edge with into: "lyrics"'],
   }],
   "prompt-too-long": [{
     meets: group([gen("audio", "tts", TTS, { prompt: [{ text: "y".repeat(2100) }] })]),
-    followed: [{ says: 'Shorten it', proposal: group([gen("audio", "tts", TTS, { prompt: [{ text: "y".repeat(1900) }] })]) }, { says: 'or propose a model that takes it', proposal: group([gen("audio", "tts", LONG_TTS, { prompt: [{ text: "y".repeat(2100) }] })]) }],
+    states: [`"${TTS}" takes`, "and this prompt is 2100."],
   }],
   "script-too-long-for-shot": [{
     meets: group([{ ...WORDS, prompt: [{ text: LONG_SCRIPT }] }, { ...STORY, shots: [{ prompt: [{ ref: 0 }], duration: 2 }, TWO_SHOTS[1] as (typeof TWO_SHOTS)[number]] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [{ says: 'Shorten it', proposal: group([WORDS, { ...STORY, shots: [{ prompt: [{ ref: 0 }], duration: 2 }, TWO_SHOTS[1] as (typeof TWO_SHOTS)[number]] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }, { says: 'or propose a model that takes it', proposal: group([{ ...WORDS, prompt: [{ text: LONG_SCRIPT }] }, gen("video", "t2v", SHOTS, { prompt: [{ text: "Film " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }],
+    states: ['so @\'ing it into a shot is refused at Generate.'],
   }],
   "written-takes-no-mark": [{
     meets: group([{ ...WORDS, prompt: [{ text: "Copy " }, NOTE] }, DRAW]),
-    followed: [{ says: 'Take it out', proposal: group([WORDS, DRAW]) }],
+    states: ['"Words" holds words the reader keeps as they are, so it takes no ref or note. Take it out'],
+    fix: group([WORDS, DRAW]),
   }],
   "material-not-source": [{
     meets: group([{ ...DRAW, material: PIC }]),
-    followed: [{ says: 'only a source image, video or audio node holds', proposal: group([DRAW]) }],
+    states: ["only a source image, video or audio node holds"],
   }],
   "material-not-ours": [{
     meets: group([{ ...HELD_PIC, material: ELSEWHERE }, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
-    followed: [{ says: 'Save a picture found on the web with save_image first', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) }],
+    states: ["Save a picture found on the web with save_image first"],
+    fix: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
   }],
   "material-missing": [{
     meets: group([{ ...HELD_PIC, material: MISSING }, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
-    followed: [{ says: 'Copy it again exactly', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) }],
+    states: ["Copy it again exactly"],
+    fix: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
   }],
   "material-wrong-kind": [{
     meets: group([{ ...HELD_PIC, material: CLIP }, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
-    followed: [{ says: 'Give it image material', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) }],
+    states: ['"Pic" is an image node and its material is video.'],
   }],
   "text-source": [{
     meets: group([{ role: "source", type: "text", name: "Copy" }, DRAW]),
-    followed: [{ says: 'send it as a written node', proposal: group([WORDS, DRAW]) }, { says: 'or leave it out', proposal: group([DRAW]) }],
+    states: ['"Copy" is an empty text node, which the reader makes in one click; words go on a written node.'],
   }],
   "source-configured": [{
     meets: group([{ ...EMPTY_PIC, mode: "t2i" }, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [{ says: 'takes no mode', proposal: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }],
+    states: ["takes no mode, model, parameters, fills, shots or prompt"],
   }],
   "written-not-text": [{
     meets: group([{ ...WORDS, type: "image" }, DRAW]),
-    followed: [{ says: 'a text node is the only one', proposal: group([WORDS, DRAW]) }],
+    states: ["a text node is the only one that holds those"],
   }],
   "written-configured": [{
     meets: group([{ ...WORDS, mode: "t2i" }, DRAW]),
-    followed: [{ says: 'takes no mode', proposal: group([WORDS, DRAW]) }],
+    states: ["takes no mode, model, fills or shots"],
   }],
   "written-empty": [{
     meets: group([{ ...WORDS, prompt: [{ text: "   " }] }, DRAW]),
-    followed: [{ says: 'carries no words', proposal: group([WORDS, DRAW]) }],
+    states: ["says it holds words and carries no words"],
   }],
   "mark-typed": [{
     meets: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make it {✏️ mood}." }] })]),
-    followed: [{ says: 'Send each as a segment of its own', proposal: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make it " }, { slot: { kind: "tweak", label: "mood", note: "mood" } }, { text: "." }] })]) }],
+    states: ['"Gen" types 1 mark(s) into its words, and a mark works only as a segment of its own, with the text segments kept to plain words:'],
   }],
   "param-undeclared": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE], params: { format: "png" } })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [
-      { says: 'Leave "format" out', proposal: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) },
-      ...Object.entries(ANGLES_SETTABLE).map(([key, value]) => ({ says: `The ones set here: ${Object.keys(ANGLES_SETTABLE).join(", ")}.`, proposal: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE], params: { [key]: value } })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) })),
-    ],
+    states: [`"${ANGLES}" declares no format. The ones set here: ${ANGLES_SETTABLE.join(", ")}. Leave "format" out.`],
+    fix: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
   }],
   "param-from-list": [{
     meets: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }], params: { voice_id: "Dennis" } })]),
-    followed: [{ says: 'Leave it out and add a note saying which one to pick', proposal: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }, { slot: { kind: "note", label: "Pick a voice" } }] })]) }],
+    states: ["so it cannot be written here; which one to pick goes in a note. Leave it out."],
+    fix: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }] })]),
   }],
   "param-box": [{
     meets: group([WORDS, gen("audio", "t2m", SONG, { prompt: [{ text: "Upbeat pop." }], params: { lyrics: "la la" } })], [{ fromIndex: 0, toIndex: 1, into: "lyrics" }]),
-    followed: [{ says: 'Leave it out. A written text node goes into "Gen" by an edge with into: "lyrics"', proposal: group([WORDS, gen("audio", "t2m", SONG, { prompt: [{ text: "Upbeat pop." }] })], [{ fromIndex: 0, toIndex: 1, into: "lyrics" }]) }],
+    states: ['Leave it out. A written text node goes into "Gen" by an edge with into: "lyrics"'],
+    fix: group([WORDS, gen("audio", "t2m", SONG, { prompt: [{ text: "Upbeat pop." }] })], [{ fromIndex: 0, toIndex: 1, into: "lyrics" }]),
   }],
   "param-pool": [{
     meets: group([gen("image", "i2i", EDIT, { params: { images: PIC } })]),
-    followed: [
-      { says: 'Leave it out. An image node holding material goes into "Gen" by an edge with into: "pool" and a ref @\'ing it', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) },
-      { says: 'An empty image node goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first', proposal: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) },
-    ],
+    states: ['Leave it out. An image node holding material goes into "Gen" by an edge with into: "pool" and a ref @\'ing it', 'An empty image node goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first'],
+    fix: group([gen("image", "i2i", EDIT)]),
   }],
   "param-slot": [{
     meets: group([gen("image", "i2i", EDIT, { params: { style_images: PIC } })]),
-    followed: [
-      { says: 'Leave it out. An image node holding material goes into "Gen" through fills "style_images" on "Gen"', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) },
-      { says: 'An empty image node goes into "Gen" by an edge with into: "style_images" and a note saying to pick it there and no ref', proposal: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit it." }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "style_images" }]) },
-    ],
+    states: ['Leave it out. An image node holding material goes into "Gen" through fills "style_images" on "Gen"', 'An empty image node goes into "Gen" by an edge with into: "style_images" and a note saying to pick it there and no ref'],
+    fix: group([gen("image", "i2i", EDIT)]),
   }],
   "param-storyboard": [{
     meets: group([{ ...STORY, params: { duration: 5, multi_prompt: "x" } }]),
-    followed: [{ says: 'Leave it out of params and give shots', proposal: group([STORY]) }],
+    states: ['"multi_prompt" is set by the node\'s shots. Leave it out of params.'],
+    fix: group([STORY]),
   }],
   "param-storyboard-other-mode": [{
     meets: group([gen("video", "t2v", SHOTS, { params: { multi_prompt: "x" } })]),
-    followed: [{ says: "only the multi_shot mode takes. Leave it out", proposal: group([gen("video", "t2v", SHOTS)]) }],
+    states: ["only the multi_shot mode takes. Leave it out"],
+    fix: group([gen("video", "t2v", SHOTS)]),
   }],
   "param-no-control": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE], params: { output_format: "png" } })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [{ says: 'Leave it out', proposal: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }],
+    states: ["Leave it out"],
+    fix: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
   }],
   "param-gated-off": [{
     meets: group([gen("image", "t2i", T2I, { params: { camera: "ARRI Alexa 35" } })]),
-    followed: [{ says: 'Set that switch', proposal: group([gen("image", "t2i", T2I, { params: { enable_camera: true, camera: "ARRI Alexa 35" } })]) }, { says: 'or leave "camera" out', proposal: group([DRAW]) }],
+    states: ['"camera" only counts while "enable_camera" is on, and this proposal leaves it off.'],
   }],
   "param-option": [{
     meets: group([gen("image", "t2i", T2I, { params: { aspect_ratio: "7:7" } })]),
-    followed: [{ says: 'offers "1:1"', proposal: group([gen("image", "t2i", T2I, { params: { aspect_ratio: "1:1" } })]) }],
+    states: ['offers "1:1"'],
   }],
   "param-not-number": [{
-    meets: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }, { slot: { kind: "note", label: "Pick a voice" } }], params: { speed: "fast" } })]),
-    followed: [{ says: 'takes a number', proposal: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }, { slot: { kind: "note", label: "Pick a voice" } }], params: { speed: 1.2 } })]) }],
+    meets: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }], params: { speed: "fast" } })]),
+    states: ["takes a number"],
   }],
   "param-out-of-range": [{
     meets: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }], params: { speed: 9 } })]),
-    followed: [{ says: 'runs from 0.5 to 1.5', proposal: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }], params: { speed: 1.5 } })]) }],
+    states: ["runs from 0.5 to 1.5"],
   }],
   "param-off-step": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE], params: { horizontal_angle: 50 } })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [{ says: 'so it takes 0, 45', proposal: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE], params: { horizontal_angle: 45 } })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }],
+    states: ["so it takes 0, 45"],
   }],
   "edge-kind-not-taken": [{
     meets: group([HELD_PIC, DRAW, { ...gen("image", "i2i", EDIT), name: "Edit" }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [
-      { says: 'Take that edge off. Send it into a generation that takes it: "Pic" goes into "Edit" by an edge with into: "pool" and a ref @\'ing it', proposal: group([HELD_PIC, DRAW, gen("image", "i2i", EDIT, { name: "Edit", prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 2, into: "pool" }]) },
-      { says: 'or through fills "style_images" on "Edit"', proposal: group([HELD_PIC, DRAW, gen("image", "i2i", EDIT, { name: "Edit", fills: { style_images: [0] } })]) },
-    ],
+    states: [`"${T2I}" takes no image node, so the edge from "Pic" goes nowhere in it.`, '"Pic" goes into "Edit" by an edge with into: "pool" and a ref @\'ing it, or through fills "style_images" on "Edit", with no edge and no ref.'],
   }, {
-    meets: group([HELD_PIC, DRAW, gen("image", "i2i", EDIT, { name: "Edit", prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }, { fromIndex: 0, toIndex: 2, into: "pool" }]),
-    followed: [{ says: "goes nowhere in it. Take that edge off.", proposal: group([HELD_PIC, DRAW, gen("image", "i2i", EDIT, { name: "Edit", prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 2, into: "pool" }]) }],
-  }, {
-    meets: group([EMPTY_PIC, DRAW], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [
-      { says: 'Take that edge off. No other generation here has a way left for "Pic"; take "Pic" out', proposal: group([DRAW]) },
-      { says: "or propose a model that takes it", proposal: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) },
-    ],
-  }, {
-    meets: group([HELD_PIC, DRAW, gen("image", "i2i", EDIT, { name: "E1", prompt: [{ text: "Edit " }, { ref: 0 }] }), gen("image", "i2i", EDIT, { name: "E2" })], [{ fromIndex: 0, toIndex: 1, into: "pool" }, { fromIndex: 0, toIndex: 2, into: "pool" }]),
-    followed: [{ says: "goes nowhere in it. Take that edge off.", proposal: group([HELD_PIC, DRAW, gen("image", "i2i", EDIT, { name: "E1", prompt: [{ text: "Edit " }, { ref: 0 }] }), gen("image", "i2i", EDIT, { name: "E2" })], [{ fromIndex: 0, toIndex: 2, into: "pool" }]) }],
-    endsOn: "goes nowhere in it. Take that edge off.",
+    // An empty source is told the ways an empty node goes.
+    meets: group([EMPTY_PIC, DRAW, { ...gen("image", "i2i", EDIT), name: "Edit" }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    states: ['"Pic" goes into "Edit" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref.'],
   }, {
     meets: group([HELD_PIC, { ...DRAW, name: "D1" }, { ...DRAW, name: "D2" }], [{ fromIndex: 0, toIndex: 1, into: "pool" }, { fromIndex: 0, toIndex: 2 }]),
-    followed: [{ says: 'Take that edge off. No other generation here has a way left for "Pic"; take "Pic" out', proposal: group([{ ...DRAW, name: "D1" }, { ...DRAW, name: "D2" }]) }],
+    states: [`"${T2I}" takes no image node, so "Pic" has no way into "D2".`],
   }],
   "edge-kind-not-taken-link": [{
     meets: group([{ ...DRAW, name: "A" }, { ...DRAW, name: "B" }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [
-      { says: "Leave into off that edge", proposal: group([{ ...DRAW, name: "A" }, { ...DRAW, name: "B" }], [{ fromIndex: 0, toIndex: 1 }]) },
-      { says: "or propose a model that takes it", proposal: group([{ ...DRAW, name: "A" }, gen("image", "i2i", EDIT, { name: "B", prompt: [{ text: "Edit " }, { ref: 0 }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) },
-    ],
+    states: [`"${T2I}" takes no image node, so the edge from "A" goes nowhere in it.`, "An edge that says no into stands as a creative link."],
   }],
   "edge-into-ambiguous": [{
     meets: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1 }]),
-    followed: [{ says: 'by an edge with into: "pool" and a ref @\'ing it and a note', proposal: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }, { says: 'by an edge with into: "style_images" and a note saying to pick it there and no ref', proposal: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit it." }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "style_images" }]) }],
+    states: ['The edge from "Pic" says no into, and "nano-banana-pro-edit-ultra" takes an image node more than one way.', '"Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref.'],
   }],
   "edge-not-an-entry": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT)], [{ fromIndex: 0, toIndex: 1, into: "style_images" }]),
-    followed: [{ says: 'by an edge with into: "pool" and a ref @\'ing it', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }, { says: 'through fills "style_images" on "Gen", with no edge and no ref', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) }],
-  }, {
-    meets: group([HELD_PIC, gen("video", "i2v", VID, { name: "Vid", fills: { image: [0] }, prompt: [{ text: "Move it." }] }), { ...HELD_PIC, name: "B", material: CLIP_IMAGE }], [{ fromIndex: 2, toIndex: 1, into: "image" }]),
-    followed: [
-      { says: 'Take that edge off. "B" has no way left into "Vid": "image" has no room left. No other generation here has a way left for "B"; take "B" out', proposal: group([HELD_PIC, gen("video", "i2v", VID, { name: "Vid", fills: { image: [0] }, prompt: [{ text: "Move it." }] })]) },
-      { says: "or propose a model that takes it", proposal: group([HELD_PIC, gen("video", "i2v", VID, { name: "Vid", fills: { image: [0] }, prompt: [{ text: "Move it." }] }), { ...HELD_PIC, name: "B", material: CLIP_IMAGE }, gen("image", "i2i", EDIT, { name: "Edit", fills: { style_images: [2] } })]) },
-    ],
-  }, {
-    meets: group([{ ...HELD_PIC, name: "X" }, { ...HELD_PIC, name: "N" }, gen("image", "t2i", IDEO, { fills: { style_images: [0] } })], [{ fromIndex: 1, toIndex: 2, into: "style_images" }]),
-    followed: [{ says: 'Take that edge off. "N" has no way left into "Gen": "X" already brings the same material into "style_images". No other generation here has a way left for "N"; take "N" out', proposal: group([{ ...HELD_PIC, name: "X" }, gen("image", "t2i", IDEO, { fills: { style_images: [0] } })]) }],
-  }, {
-    meets: group([{ ...HELD_PIC, name: "A" }, { ...HELD_PIC, name: "B", material: CLIP_IMAGE }, { ...HELD_PIC, name: "C", material: THIRD }, { ...HELD_PIC, name: "N", material: FOURTH }, gen("image", "t2i", IDEO, { fills: { style_images: [0, 1, 2] } })], [{ fromIndex: 3, toIndex: 4, into: "style_images" }]),
-    followed: [{ says: 'Take that edge off. "N" has no way left into "Gen": "style_images" has no room left. No other generation here has a way left for "N"; take "N" out', proposal: group([{ ...HELD_PIC, name: "A" }, { ...HELD_PIC, name: "B", material: CLIP_IMAGE }, { ...HELD_PIC, name: "C", material: THIRD }, gen("image", "t2i", IDEO, { fills: { style_images: [0, 1, 2] } })]) }],
+    states: ['"Pic" does not go into "style_images" of "Gen" by an edge.', '"Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it, or through fills "style_images" on "Gen", with no edge and no ref.'],
   }],
   "fill-outside": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [5] } })]),
-    followed: [{ says: 'which is not in the group', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) }],
+    states: ['fills "style_images" on "Gen" points at node 5, which is not in the group. Take it out of fills "style_images".'],
+    fix: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [] } })]),
   }],
   "fill-self": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [1] } })]),
-    followed: [{ says: 'Check the index the fill means', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) }],
+    states: ['and a node cannot fill its own slot. Take it out of fills "style_images".'],
+    fix: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [] } })]),
   }],
   "fill-not-a-slot": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { nope: [0] } })]),
-    followed: [
-      { says: 'Take fills "nope" off. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) },
-      { says: 'or through fills "style_images" on "Gen"', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) },
-    ],
-  }, {
-    // Two named and room for one: the second is told the first fills it.
-    meets: group([{ ...HELD_PIC, name: "A" }, { ...HELD_PIC, name: "B", material: CLIP_IMAGE }, gen("video", "i2v", VID, { fills: { first_frame: [0, 1] } })]),
-    followed: [{ says: 'Take fills "first_frame" off. "A" goes into "Gen" through fills "image" on "Gen", with no edge and no ref. "B" has no way left into "Gen": "image" has no room left. No other generation here has a way left for "B"; take "B" out', proposal: group([{ ...HELD_PIC, name: "A" }, gen("video", "i2v", VID, { fills: { image: [0] } })]) }],
-  }, {
-    // Two named holding the same material: the second is told the first brings it.
-    meets: group([{ ...HELD_PIC, name: "A" }, { ...HELD_PIC, name: "B" }, gen("image", "t2i", IDEO, { fills: { style: [0, 1] } })]),
-    followed: [{ says: 'Take fills "style" off. "A" goes into "Gen" through fills "style_images" on "Gen", with no edge and no ref. "B" has no way left into "Gen": "A" already brings the same material into "style_images". No other generation here has a way left for "B"; take "B" out', proposal: group([{ ...HELD_PIC, name: "A" }, gen("image", "t2i", IDEO, { fills: { style_images: [0] } })]) }],
+    states: [`"${EDIT}" has no slot "nope"; its slots: "style_images". Take fills "nope" off.`],
+    fix: group([HELD_PIC, gen("image", "i2i", EDIT)]),
   }],
   "fill-into-pool": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { images: [0] } })]),
-    followed: [
-      { says: 'Take fills "images" off. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) },
-      { says: 'or through fills "style_images" on "Gen"', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) },
-    ],
-  }, {
-    // "N0" already goes into the pool, so it is told nothing and takes no room
-    // from "N1".
-    meets: group(
-      [{ ...HELD_PIC, name: "P1" }, { ...HELD_PIC, name: "N0", material: CLIP_IMAGE }, { ...HELD_PIC, name: "N1", material: THIRD }, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, { ref: 1 }], fills: { images: [1, 2] } })],
-      [{ fromIndex: 0, toIndex: 3, into: "pool" }, { fromIndex: 1, toIndex: 3, into: "pool" }],
-    ),
-    followed: [{ says: 'Take fills "images" off. "N1" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it.', proposal: group(
-      [{ ...HELD_PIC, name: "P1" }, { ...HELD_PIC, name: "N0", material: CLIP_IMAGE }, { ...HELD_PIC, name: "N1", material: THIRD }, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, { ref: 1 }, { ref: 2 }] })],
-      [{ fromIndex: 0, toIndex: 3, into: "pool" }, { fromIndex: 1, toIndex: 3, into: "pool" }, { fromIndex: 2, toIndex: 3, into: "pool" }],
-    ) }],
-    endsOn: '"N1" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it.',
-  }, {
-    // Every node it names already goes in, so taking it off is all there is.
-    meets: group([HELD_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }], fills: { images: [0] } })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    followed: [{ says: 'Take fills "images" off.', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) }],
-    endsOn: 'Take fills "images" off.',
+    states: [`"images" is the reference pool of "${EDIT}", which takes no fills; its slots: "style_images". Take fills "images" off.`],
+    fix: group([HELD_PIC, gen("image", "i2i", EDIT)]),
   }],
   "fill-no-material": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
-    followed: [
-      { says: 'Take "Pic" out of fills "style_images". "Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note', proposal: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) },
-      { says: 'by an edge with into: "style_images" and a note saying to pick it there and no ref', proposal: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit it." }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "style_images" }]) },
-    ],
+    states: ['which holds no material, and fills takes only nodes holding it. Take "Pic" out of fills "style_images".', '"Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref.'],
+    fix: group([EMPTY_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [] } })]),
   }],
   "fill-wrong-kind": [{
     meets: group([CLIP_HELD, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
-    followed: [
-      { says: 'Take "Clip" out of fills "style_images". "nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen". No other generation here has a way left for "Clip"; take "Clip" out', proposal: group([gen("image", "i2i", EDIT)]) },
-      { says: "or propose a model that takes it", proposal: group([CLIP_HELD, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }], fills: { video: [0] } })]) },
-    ],
+    states: ['Take "Clip" out of fills "style_images".', `"${EDIT}" takes no video node, so "Clip" has no way into "Gen".`],
+    fix: group([CLIP_HELD, gen("image", "i2i", EDIT, { fills: { style_images: [] } })]),
   }],
   "fill-repeated": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0, 0] } })]),
-    followed: [{ says: "Name it once", proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) }],
+    states: ["Name it once."],
+    fix: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
   }],
   "fill-twice": [{
     meets: group([HELD_PIC, { ...HELD_PIC, name: "Pic 2" }, gen("image", "i2i", EDIT, { fills: { style_images: [0, 1] } })]),
-    followed: [{ says: 'Take "Pic 2" out', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) }],
+    states: ['fills "style_images" on "Gen" holds "Pic" and "Pic 2", which hold the same material, and the slot keeps one copy of it.'],
   }],
 };
 
-describe("every refusal's advice is a proposal the check takes", () => {
+describe("every refusal states its fault, its rule and its facts", () => {
   for (const [refusal, cases] of Object.entries(CASES) as [RefusalId, RefusalCase[]][]) {
     for (const [at, entry] of cases.entries()) {
-      it(`${refusal} (${String(at)}): is met, and each way it says to put it right is accepted`, () => {
+      it(`${refusal} (${String(at)}): is met and says what is wrong${REFUSALS[refusal] ? ", and its one fix clears it" : ""}`, () => {
         entry.catalog?.();
         const met = verdictFor(entry.meets, MATERIALS);
         expect(met).toMatchObject({ ok: false, refusal });
         const reason = met.ok ? "" : met.reason;
-        // The words are pinned so a changed reason is seen in review beside
-        // the advice followed below.
+        // The words are pinned so a changed reason is read in review.
         expect(reason).toMatchSnapshot();
-        if (entry.inTheReply !== undefined) expect(reason).toContain(entry.inTheReply);
-        if (entry.endsOn !== undefined) expect(reason.endsWith(entry.endsOn), `"${reason}" ends on "${entry.endsOn}"`).toBe(true);
-        for (const [i, { says, proposal }] of entry.followed.entries()) {
-          if (says !== undefined) expect(reason, `the reason gives advice ${String(i)}`).toContain(says);
-          expect(verdictFor(proposal, MATERIALS), `advice ${String(i)} of "${reason}"`).toEqual({ ok: true });
-        }
-        expect(entry.followed.length > 0 || entry.inTheReply !== undefined).toBe(true);
+        for (const statement of entry.states) expect(reason).toContain(statement);
+        // A fix is written only where the table marks the refusal as having one.
+        expect(entry.fix !== undefined, `${refusal} carries a fix exactly when REFUSALS marks one`).toBe(REFUSALS[refusal]);
+        if (entry.fix === undefined) return;
+        const after = verdictFor(entry.fix, MATERIALS);
+        expect(after.ok ? undefined : after.refusal, `following the fix of "${reason}"`).not.toBe(refusal);
       });
     }
   }
-});
-
-describe("advice counts only the fills the check lets stand", () => {
-  it("does not count a fill named twice against the room of its slot", () => {
-    const met = verdictFor(group([{ ...HELD_PIC, name: "X" }, { ...HELD_PIC, name: "N", material: CLIP_IMAGE }, gen("image", "t2i", IDEO, { fills: { style_images: [0, 0, 0] } })], [{ fromIndex: 1, toIndex: 2, into: "style_images" }]), MATERIALS);
-    expect(met).toMatchObject({ ok: false, refusal: "edge-not-an-entry", reason: expect.stringContaining('"N" goes into "Gen" through fills "style_images"') });
-  });
-
-  it("counts the nodes of a fill beside an index outside the group or at the generation", () => {
-    for (const bad of [2, 9]) {
-      const met = verdictFor(group([{ ...HELD_PIC, name: "A" }, { ...HELD_PIC, name: "B", material: CLIP_IMAGE }, gen("video", "i2v", "kling-video-o3-4k-image-to-video", { fills: { bogus: [1], image: [0, bad] } })]), MATERIALS);
-      expect(met).toMatchObject({ ok: false, refusal: "fill-not-a-slot" });
-      expect(met.ok ? "" : met.reason).not.toContain('through fills "image"');
-    }
-  });
 });
