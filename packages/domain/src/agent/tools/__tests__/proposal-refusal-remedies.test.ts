@@ -371,6 +371,29 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
       Array.from({ length: 11 }, (_, i) => ({ fromIndex: i, toIndex: 12, into: "pool" })),
     ) }],
     endsOn: "Send fewer.",
+  }, {
+    // The two past the room hold the same material: the slot open to the
+    // first is closed to the second by it, so no other way is offered.
+    meets: group(
+      Array.from({ length: 13 }, (_, i): Sent["nodes"][number] => ({ ...HELD_PIC, name: `M${String(i)}`, material: i >= 11 ? PIC : CLIP_IMAGE })).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(13)] })]),
+      Array.from({ length: 13 }, (_, i) => ({ fromIndex: i, toIndex: 13, into: "pool" })),
+    ),
+    followed: [{ says: "Send fewer.", proposal: group(
+      Array.from({ length: 11 }, (_, i): Sent["nodes"][number] => ({ ...HELD_PIC, name: `M${String(i)}`, material: CLIP_IMAGE })).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(11)] })]),
+      Array.from({ length: 11 }, (_, i) => ({ fromIndex: i, toIndex: 11, into: "pool" })),
+    ) }],
+    endsOn: "Send fewer.",
+  }, {
+    // Four past the room, and the other way holds three.
+    meets: group(
+      PICS(15).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(15), ...NOTES(15)] })]),
+      Array.from({ length: 15 }, (_, i) => ({ fromIndex: i, toIndex: 15, into: "pool" })),
+    ),
+    followed: [{ says: "Send fewer.", proposal: group(
+      PICS(11).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(11), ...NOTES(11)] })]),
+      Array.from({ length: 11 }, (_, i) => ({ fromIndex: i, toIndex: 11, into: "pool" })),
+    ) }],
+    endsOn: "Send fewer.",
   }],
   "way-over-room-other-way": [{
     meets: group(
@@ -387,6 +410,17 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
         [...Array.from({ length: 11 }, (_, i) => ({ fromIndex: i, toIndex: 12, into: "pool" })), { fromIndex: 11, toIndex: 12, into: "style_images" }],
       ) },
     ],
+  }, {
+    // Two past the room holding different material: each is given one way,
+    // and the second is told it with the first already counted there.
+    meets: group(
+      Array.from({ length: 13 }, (_, i): Sent["nodes"][number] => ({ ...HELD_PIC, name: `M${String(i)}`, material: i === 11 ? PIC : i === 12 ? THIRD : CLIP_IMAGE })).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(13)] })]),
+      Array.from({ length: 13 }, (_, i) => ({ fromIndex: i, toIndex: 13, into: "pool" })),
+    ),
+    followed: [{ says: 'send the rest another way: "M11" goes into "Gen" through fills "style_images" on "Gen", with no edge and no ref. "M12" goes into "Gen" through fills "style_images" on "Gen", with no edge and no ref.', proposal: group(
+      Array.from({ length: 13 }, (_, i): Sent["nodes"][number] => ({ ...HELD_PIC, name: `M${String(i)}`, material: i === 11 ? PIC : i === 12 ? THIRD : CLIP_IMAGE })).concat([gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, ...REFS(11)], fills: { style_images: [11, 12] } })]),
+      Array.from({ length: 11 }, (_, i) => ({ fromIndex: i, toIndex: 13, into: "pool" })),
+    ) }],
   }],
   "ref-missing": [{
     meets: group([WORDS, { ...STORY }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
@@ -597,6 +631,14 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
       { says: 'Take fills "nope" off. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]) },
       { says: 'or through fills "style_images" on "Gen"', proposal: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]) },
     ],
+  }, {
+    // Two named and room for one: the second is told the first fills it.
+    meets: group([{ ...HELD_PIC, name: "A" }, { ...HELD_PIC, name: "B", material: CLIP_IMAGE }, gen("video", "i2v", VID, { fills: { first_frame: [0, 1] } })]),
+    followed: [{ says: 'Take fills "first_frame" off. "A" goes into "Gen" through fills "image" on "Gen", with no edge and no ref. "B" has no way left into "Gen": "image" has no room left. No other generation here has a way left for "B"; take "B" out', proposal: group([{ ...HELD_PIC, name: "A" }, gen("video", "i2v", VID, { fills: { image: [0] } })]) }],
+  }, {
+    // Two named holding the same material: the second is told the first brings it.
+    meets: group([{ ...HELD_PIC, name: "A" }, { ...HELD_PIC, name: "B" }, gen("image", "t2i", IDEO, { fills: { style: [0, 1] } })]),
+    followed: [{ says: 'Take fills "style" off. "A" goes into "Gen" through fills "style_images" on "Gen", with no edge and no ref. "B" has no way left into "Gen": "A" already brings the same material into "style_images". No other generation here has a way left for "B"; take "B" out', proposal: group([{ ...HELD_PIC, name: "A" }, gen("image", "t2i", IDEO, { fills: { style_images: [0] } })]) }],
   }],
   "fill-into-pool": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { images: [0] } })]),
@@ -656,5 +698,13 @@ describe("advice counts only the fills the check lets stand", () => {
   it("does not count a fill named twice against the room of its slot", () => {
     const met = verdictFor(group([{ ...HELD_PIC, name: "X" }, { ...HELD_PIC, name: "N", material: CLIP_IMAGE }, gen("image", "t2i", IDEO, { fills: { style_images: [0, 0, 0] } })], [{ fromIndex: 1, toIndex: 2, into: "style_images" }]), MATERIALS);
     expect(met).toMatchObject({ ok: false, refusal: "edge-not-an-entry", reason: expect.stringContaining('"N" goes into "Gen" through fills "style_images"') });
+  });
+
+  it("counts the nodes of a fill beside an index outside the group or at the generation", () => {
+    for (const bad of [2, 9]) {
+      const met = verdictFor(group([{ ...HELD_PIC, name: "A" }, { ...HELD_PIC, name: "B", material: CLIP_IMAGE }, gen("video", "i2v", "kling-video-o3-4k-image-to-video", { fills: { bogus: [1], image: [0, bad] } })]), MATERIALS);
+      expect(met).toMatchObject({ ok: false, refusal: "fill-not-a-slot" });
+      expect(met.ok ? "" : met.reason).not.toContain('through fills "image"');
+    }
   });
 });
