@@ -13,7 +13,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { findTemplate, markedSegments, templatePrompt, type ProposalNode } from "@breatic/shared";
+import { findTemplate, marksTypedIn, templatePrompt, type ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useEnvWithKeys, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
@@ -46,10 +46,10 @@ interface RefusalCase {
   /** Words the reason must not hold, where saying them would be untrue of this proposal. */
   absent?: string[];
   /**
-   * Why nothing this case holds can be written twice and still meet its
-   * refusal; the copies test checks the reason holds and skips the case.
+   * The refusal every doubling that changes this case meets first, where none
+   * can reach its own: the copies test holds each doubling to it.
    */
-  noCopies?: string;
+  noCopies?: RefusalId;
 }
 
 const PIC = "https://resource.example/image/2026-10-09/1_pic.png";
@@ -76,6 +76,7 @@ const TTS = "realtime-tts-2";
 const SHOTS = "kling-v3.0-4k-text-to-video";
 const VID = "minimax-h3-image-to-video";
 const OMNI_SHOTS = "gemini-omni-1.1-flash-image-to-video";
+const KLING_O3 = "kling-video-o3-4k-image-to-video";
 
 /** A note, as every to-do on a card is. */
 const NOTE = { slot: { kind: "note" as const, label: "Put the picture in Pic first" } };
@@ -127,6 +128,8 @@ const LONG_SCRIPT = "x".repeat(600);
 
 /** An empty clip node. */
 const CLIP_EMPTY: Sent["nodes"][number] = { role: "source", type: "video", name: "Clip" };
+/** A track node holding material. */
+const TUNE_HELD: Sent["nodes"][number] = { role: "source", type: "audio", name: "Tune", material: TUNES[0] };
 /** A clip node holding material. */
 const CLIP_HELD: Sent["nodes"][number] = { role: "source", type: "video", name: "Clip", material: CLIP };
 /**
@@ -290,8 +293,20 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([{ ...DRAW, name: "Draw" }, gen("video", "i2v", VID, { name: "Vid", prompt: [{ text: "Move it." }, NOTE] }), { ...HELD_PIC, name: "B" }], [{ fromIndex: 0, toIndex: 1, into: "image" }]),
     states: ['"nano-banana-2" takes no image node, so "B" has no way into "Draw".', '"B" goes into "Vid" through fills "image" on "Vid", with no edge and no ref.'],
   }],
+  "source-missing": [{
+    // The picture goes into the pool, and the required first frame holds nothing.
+    meets: group([HELD_PIC, gen("video", "i2v", KLING_O3, { prompt: [{ text: "Move " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    states: [`"${KLING_O3}" runs only when "image" holds a node, and no node goes there on "Gen".`, 'An image node holding material goes into "Gen" through fills "image" on "Gen", with no edge and no ref.', 'An empty image node goes into "Gen" by an edge with into: "image" and a note saying to pick it there and no ref.'],
+  }, {
+    meets: group([gen("video", "i2v", VID, { prompt: [{ text: "Move." }] })]),
+    states: [`"${VID}" runs only when "image" holds a node, and no node goes there on "Gen".`],
+  }, {
+    // A group the model declares: any one member is enough.
+    meets: group([gen("audio", "a2m", SONG, { prompt: [{ text: "Make a song." }] })]),
+    states: [`"${SONG}" runs only when one of "song", "vocal", "melody" holds a node, and no node goes there on "Gen".`],
+  }],
   "loose-without-note": [{
-    meets: group([EMPTY_PIC, gen("video", "talking_head", HEAD, { prompt: undefined })]),
+    meets: group([EMPTY_PIC, TUNE_HELD, gen("video", "talking_head", HEAD, { prompt: undefined, fills: { audio: [1] } })]),
     states: ['"Pic" goes into no generation, so the reader picks it into a slot in the panel, and a note tells them which.', "carry 0 note(s) beyond those their wired nodes use"],
   }],
   "text-generates": [{
@@ -323,7 +338,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   "multishot-no-shots": [{
     meets: group([gen("video", "multi_shot", SHOTS, { params: { duration: 5 } })]),
     states: ["In the multi_shot mode the shots are what is generated. On node 0 (\"Gen\"), give shots"],
-    fix: group([STORY]),
+    fix: group([{ ...gen("video", "multi_shot", SHOTS, { params: { duration: 5 } }), shots: TWO_SHOTS }]),
   }],
   "shots-with-prompt": [{
     meets: group([{ ...STORY, prompt: [{ text: "Make it." }] }]),
@@ -429,7 +444,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     // With shots, notes go in a shot.
     meets: group([EMPTY_PIC, gen("video", "multi_shot", OMNI_SHOTS, { prompt: undefined, params: { duration: 5 }, shots: TWO_SHOTS })], [{ fromIndex: 0, toIndex: 1, into: "image" }]),
     states: ['On node 1 ("Gen"), give each one a note in the shot'],
-    noCopies: "it carries no mark, and its one edge written twice is refused as repeated first",
+    noCopies: "edge-repeated",
     fix: group([EMPTY_PIC, gen("video", "multi_shot", OMNI_SHOTS, { prompt: undefined, params: { duration: 5 }, shots: [{ ...TWO_SHOTS[0] as (typeof TWO_SHOTS)[number], prompt: [{ text: "A paper boat." }, NOTE] }, TWO_SHOTS[1] as (typeof TWO_SHOTS)[number]] })], [{ fromIndex: 0, toIndex: 1, into: "image" }]),
   }],
   "shot-empty": [{
@@ -571,7 +586,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   "param-box": [{
     meets: group([WORDS, gen("audio", "t2m", SONG, { prompt: [{ text: "Upbeat pop." }], params: { lyrics: "la la" } })], [{ fromIndex: 0, toIndex: 1, into: "lyrics" }]),
     states: ['A written text node goes into "Gen" by an edge with into: "lyrics"', 'On node 1 ("Gen"), leave "lyrics" out of params.'],
-    noCopies: "a param is set once by its key, and its one edge written twice is refused as repeated first",
+    noCopies: "edge-repeated",
     fix: group([WORDS, gen("audio", "t2m", SONG, { prompt: [{ text: "Upbeat pop." }] })], [{ fromIndex: 0, toIndex: 1, into: "lyrics" }]),
   }],
   "param-pool": [{
@@ -778,17 +793,18 @@ describe("every refusal states its fault, its rule and its facts", () => {
 type Doubling = (sent: Sent) => Sent;
 
 /**
- * The proposal with every ref and note segment, every stretch of words that
- * types a mark and every fill index written twice.
+ * The proposal with every ref and note segment and every fill index written
+ * twice, or a prompt's words written twice where they type a mark.
  * @param sent - The proposal.
  * @returns The doubled proposal.
  */
 function doubledMarks(sent: Sent): Sent {
+  // Typed marks are read off the words joined, as the check reads them, so a
+  // mark typed across segments is written twice by writing the words twice.
   const twice = (segments: NonNullable<Sent["nodes"][number]["prompt"]>): NonNullable<Sent["nodes"][number]["prompt"]> =>
-    segments.flatMap((s): typeof segments => {
-      const typesAMark = "text" in s && markedSegments(s.text).some((part) => part.slot !== undefined);
-      return "ref" in s || ("slot" in s && s.slot.kind === "note") || typesAMark ? [s, s] : [s];
-    });
+    marksTypedIn(segments.map((s) => s.text ?? "").join("")).length > 0
+      ? [...segments, ...segments]
+      : segments.flatMap((s): typeof segments => ("ref" in s || ("slot" in s && s.slot.kind === "note") ? [s, s] : [s]));
   return {
     ...sent,
     nodes: sent.nodes.map((node) => ({
@@ -838,7 +854,7 @@ describe("a fix names what to take out by value, so the copies of it do not chan
           return !twice.ok && twice.refusal === refusal ? [twice.reason] : [];
         });
         if (entry.noCopies !== undefined) {
-          expect(reached, `${refusal} (${String(at)}) says ${entry.noCopies}`).toEqual([]);
+          for (const double of changing) expect(verdictFor(double(entry.meets), MATERIALS)).toMatchObject({ ok: false, refusal: entry.noCopies });
           return;
         }
         expect(reached.length, `${refusal} (${String(at)}) meets its own refusal under some doubling`).toBeGreaterThan(0);

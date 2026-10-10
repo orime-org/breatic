@@ -241,6 +241,15 @@ describe("what the rendered answer tells the model", () => {
     );
   });
 
+  it("says which sources a model runs only with, one of a group where any member is enough", async () => {
+    const i2v = renderGenerationModelsForModel(await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" }));
+    expect(i2v).toMatch(/\(kling-video-o3-4k-image-to-video\)[^\n]* It runs only when "image" holds a node\./);
+    const a2m = renderGenerationModelsForModel(await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "a2m" }));
+    expect(a2m).toMatch(/\(mureka-v9\.5-generate-song\)[^\n]* It runs only when one of "song", "vocal", "melody" holds a node\./);
+    const t2i = renderGenerationModelsForModel(await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" }));
+    expect(t2i.split("\n").find((l) => l.includes("(nano-banana-2)")) ?? "").not.toContain("runs only when");
+  });
+
   // Every model in Multi-Shot writes its words in shots and leaves the prompt
   // out, so a node it @s is @'d in the shot it belongs to.
   it("says a node wired into a multi-shot model is @'d in its shot, never in the prompt", async () => {
