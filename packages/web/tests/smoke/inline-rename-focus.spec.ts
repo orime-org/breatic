@@ -146,28 +146,108 @@ for (const region of ['top-bar', 'agent-column'] as const) {
   });
 }
 
-test('a history row rename gives the row menu the keyboard and keeps the conversation', async () => {
-  await page.getByTestId('open-conversation-history').click();
+/**
+ * Opens the history and picks a row that is not the conversation on screen,
+ * making one when the project holds only that conversation. A rename that
+ * reopened its own row would switch to it, and only a row other than the
+ * current one shows that on screen.
+ * @returns The row's id and the open button of the conversation on screen.
+ */
+async function openHistoryAtAnotherRow(): Promise<{ rowId: string; currentBefore: string | null }> {
   const list = page.getByTestId('conversation-history-list');
-  const menu = list.locator('[data-testid^="conversation-menu-"]').first();
-  await expect(menu).toBeAttached({ timeout: 15_000 });
-  const rowId = ((await menu.getAttribute('data-testid')) ?? '').replace('conversation-menu-', '');
-  const current = list.locator('[aria-current="true"]');
-  const currentBefore = await current.getAttribute('data-testid');
+  const others = list.locator('[data-testid^="conversation-open-"]:not([aria-current])');
+  await page.getByTestId('open-conversation-history').click();
+  await expect(list.locator('[data-testid^="conversation-open-"]').first()).toBeAttached({ timeout: 15_000 });
+  if ((await others.count()) === 0) {
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('conversation-history-sheet')).toHaveCount(0);
+    await page.getByTestId('new-conversation').click();
+    await page.getByTestId('open-conversation-history').click();
+    await expect(others.first()).toBeAttached({ timeout: 15_000 });
+  }
+  const rowId = ((await others.first().getAttribute('data-testid')) ?? '').replace('conversation-open-', '');
+  const currentBefore = await list.locator('[aria-current="true"]').getAttribute('data-testid');
+  return { rowId, currentBefore };
+}
+
+/**
+ * Opens a row's rename box the keyboard way: the row's menu button, Enter for
+ * the menu, Enter on Rename.
+ * @param rowId - The row.
+ */
+async function renameRowFromKeyboard(rowId: string): Promise<void> {
+  await page.getByTestId(`conversation-menu-${rowId}`).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId(`conversation-rename-${rowId}`)).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('conversation-rename-input')).toBeFocused();
+}
+
+test('a history row rename gives the row menu the keyboard and keeps the conversation', async () => {
+  const { rowId, currentBefore } = await openHistoryAtAnotherRow();
+  const list = page.getByTestId('conversation-history-list');
 
   for (const key of ['Enter', 'Escape']) {
-    // The keyboard path: the row's menu button, Enter for the menu, Enter on
-    // Rename, then the key that ends the box.
-    await menu.focus();
-    await page.keyboard.press('Enter');
-    await expect(page.getByTestId(`conversation-rename-${rowId}`)).toBeVisible();
-    await page.keyboard.press('Enter');
-    const field = page.getByTestId('conversation-rename-input');
-    await expect(field).toBeFocused();
+    await renameRowFromKeyboard(rowId);
     await page.keyboard.press(key);
-    await expect(field).toHaveCount(0);
+    await expect(page.getByTestId('conversation-rename-input')).toHaveCount(0);
     await expect(page.getByTestId(`conversation-menu-${rowId}`)).toBeFocused();
     await expect(page.getByTestId('conversation-history-sheet')).toBeVisible();
-    expect(await current.getAttribute('data-testid')).toBe(currentBefore);
+    expect(await list.locator('[aria-current="true"]').getAttribute('data-testid')).toBe(currentBefore);
   }
+});
+
+/**
+ * Holds Enter down: the press, the auto-repeats the system sends while the key
+ * is held, then its release.
+ * @param repeats - How many repeats to send.
+ */
+async function holdEnter(repeats: number): Promise<void> {
+  const cdp = await page.context().newCDPSession(page);
+  const enter = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 };
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', text: '\r', ...enter });
+  for (let i = 0; i < repeats; i += 1) {
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', autoRepeat: true, text: '\r', ...enter });
+  }
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...enter });
+  await cdp.detach();
+}
+
+test('holding the Enter that ends a rename does not act on where the keyboard went', async () => {
+  // The title opens for editing on Enter.
+  const title = page.getByTestId('top-bar').getByTestId('title-display');
+  await title.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('top-bar').getByTestId('title-input')).toBeFocused();
+  await holdEnter(3);
+  await expect(page.getByTestId('top-bar').getByTestId('title-input')).toHaveCount(0);
+  await expect(title).toBeFocused();
+
+  // The row menu button opens its menu on Enter.
+  const { rowId } = await openHistoryAtAnotherRow();
+  await renameRowFromKeyboard(rowId);
+  await holdEnter(3);
+  await expect(page.getByTestId('conversation-rename-input')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(page.getByTestId(`conversation-menu-${rowId}`)).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('conversation-history-sheet')).toHaveCount(0);
+
+  // A text node opens its body on Enter.
+  const id = await createSpace(page, 'canvas', `rename-held-${String(Date.now())}`);
+  spaces.push(id);
+  await page.getByTestId(`space-tab-name-${id}`).click();
+  const pane = visibleSpace(page).locator('.react-flow__pane');
+  await expect(pane).toBeVisible({ timeout: 20_000 });
+  const box = await pane.boundingBox();
+  if (box === null) throw new Error('the canvas pane has no box');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: 'right' });
+  await page.getByTestId('create-node-text').click();
+  const node = visibleSpace(page).locator('.react-flow__node-text').first();
+  await expect(node).toBeVisible({ timeout: 20_000 });
+  await node.getByTestId('node-header-name').dblclick();
+  await expect(node.getByTestId('node-header-input')).toBeFocused();
+  await holdEnter(3);
+  await expect(node.locator('[contenteditable="true"]')).toHaveCount(0);
+  expect(await focused()).toMatchObject({ nodeId: await node.getAttribute('data-id') });
 });
