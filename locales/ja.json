@@ -860,6 +860,17 @@
           },
           "prompt": "表情や動きを入力"
         },
+        "inpaint": {
+          "label": "部分修正",
+          "prompt": "塗った部分をどう変えるか入力"
+        },
+        "erase": {
+          "label": "消去"
+        },
+        "sketch": {
+          "label": "スケッチ編集",
+          "prompt": "描いたものを何にするか入力"
+        },
         "crop": {
           "label": "トリミング"
         },
@@ -978,7 +989,8 @@
         "sourceGone": "元のノードが削除されました。",
         "sourceChanged": "素材が変わりました。",
         "sourceChangedByPeer": "コラボレーターが素材を変えました。",
-        "couldNotStart": "ツールを開始できませんでした。もう一度お試しください。"
+        "couldNotStart": "ツールを開始できませんでした。もう一度お試しください。",
+        "drawingEmpty": "先に画像に描いてください。"
       },
       "adjust": {
         "exposure": "露出",
@@ -996,6 +1008,18 @@
         "vignette": "周辺減光",
         "grain": "粒子",
         "fade": "フェード"
+      },
+      "draw": {
+        "brush": "ブラシ",
+        "rect": "長方形",
+        "ellipse": "楕円",
+        "eraser": "消しゴム",
+        "size": "サイズ",
+        "color": "色",
+        "maskColor": "マスクの色",
+        "undo": "元に戻す",
+        "redo": "やり直す",
+        "clear": "クリア"
       }
     },
     "template": {

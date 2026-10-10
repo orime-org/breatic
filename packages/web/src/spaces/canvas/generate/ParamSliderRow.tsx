@@ -52,6 +52,8 @@ interface ParamSliderRowProps {
   /** Prefix of every test id this row renders. */
   testIdPrefix: string;
   className: string | undefined;
+  /** Whether the slider takes input. */
+  disabled?: boolean;
 }
 
 /**
@@ -79,6 +81,7 @@ interface ParamSliderRowProps {
  * @param root0.onChange - Called with the committed param.
  * @param root0.testIdPrefix - Prefix of every test id.
  * @param root0.className - Row spacing.
+ * @param root0.disabled - Whether the slider takes input.
  * @returns The row.
  */
 export function ParamSliderRow({
@@ -97,6 +100,7 @@ export function ParamSliderRow({
   onChange,
   testIdPrefix,
   className,
+  disabled,
 }: ParamSliderRowProps): React.JSX.Element {
   // Where the thumb sits until the gesture ends. Held apart from `value` so
   // the control follows the pointer while the document does not.
@@ -181,6 +185,7 @@ export function ParamSliderRow({
         className='text-foreground'
         data-testid={`${testIdPrefix}-${name}-slider`}
         aria-label={label}
+        disabled={disabled}
         min={min}
         max={max}
         step={step}

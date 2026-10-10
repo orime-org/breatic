@@ -15,6 +15,7 @@ import { vi } from 'vitest';
 
 import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { NodeCropLayer } from '@web/spaces/canvas/crop/NodeCropLayer';
+import { NodeDrawLayer } from '@web/spaces/canvas/mini-tool/NodeDrawLayer';
 
 /** The media's box on screen, and its layout size unless {@link LAYOUT} says otherwise. Mutable. */
 export const IMG_BOX = { left: 100, top: 50, width: 400, height: 300 };
@@ -45,6 +46,7 @@ function MediaNode({ id, data }: NodeProps<Node<MediaNodeData>>): React.JSX.Elem
         <img data-testid='image-node-img' src={data.src} alt='' />
       )}
       <NodeCropLayer nodeId={id} wrapper={wrapper} />
+      <NodeDrawLayer nodeId={id} wrapper={wrapper} />
     </div>
   );
 }

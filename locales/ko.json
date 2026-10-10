@@ -860,6 +860,17 @@
           },
           "prompt": "표정과 움직임을 입력하세요"
         },
+        "inpaint": {
+          "label": "부분 수정",
+          "prompt": "칠한 부분을 무엇으로 바꿀지 입력하세요"
+        },
+        "erase": {
+          "label": "지우기"
+        },
+        "sketch": {
+          "label": "스케치 편집",
+          "prompt": "그린 것을 무엇으로 바꿀지 입력하세요"
+        },
         "crop": {
           "label": "자르기"
         },
@@ -978,7 +989,8 @@
         "sourceGone": "원본 노드가 삭제되었습니다.",
         "sourceChanged": "소재가 바뀌었습니다.",
         "sourceChangedByPeer": "공동 작업자가 소재를 바꿨습니다.",
-        "couldNotStart": "도구를 시작하지 못했습니다. 다시 시도하세요."
+        "couldNotStart": "도구를 시작하지 못했습니다. 다시 시도하세요.",
+        "drawingEmpty": "먼저 그림 위에 그려 주세요."
       },
       "adjust": {
         "exposure": "노출",
@@ -996,6 +1008,18 @@
         "vignette": "비네트",
         "grain": "그레인",
         "fade": "페이드"
+      },
+      "draw": {
+        "brush": "브러시",
+        "rect": "사각형",
+        "ellipse": "타원",
+        "eraser": "지우개",
+        "size": "크기",
+        "color": "색상",
+        "maskColor": "마스크 색상",
+        "undo": "실행 취소",
+        "redo": "다시 실행",
+        "clear": "모두 지우기"
       }
     },
     "template": {

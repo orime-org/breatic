@@ -48,6 +48,16 @@ const CRYSTAL = {
     creativity: { fill: "tool", default: 0, min: 0, max: 10 },
   },
 };
+const GENFILL = {
+  name: "bria-genfill",
+  takes_prompt: true,
+  params: { image: { fill: "tool", accepts: "image" }, mask_image: { fill: "tool", accepts: "image" } },
+};
+const SEEDREAM = {
+  name: "seedream-v4.5-edit",
+  takes_prompt: true,
+  params: { images: { fill: "tool", accepts: "image", type: "list", max_items: 1 } },
+};
 const VOCALS = {
   name: "vocal-remover",
   takes_prompt: false,
@@ -82,7 +92,7 @@ describe("POST /mini-tools", () => {
       keyFromUrl: (url: string) => (url.startsWith("https://assets.example.com/") ? url.slice(27) : null),
     });
     vi.mocked(modelCatalog.getModelCatalog).mockReturnValue({
-      image: [CRYSTAL],
+      image: [CRYSTAL, GENFILL, SEEDREAM],
       video: [],
       audio: [VOCALS],
       tts: [],
@@ -105,6 +115,50 @@ describe("POST /mini-tools", () => {
     expect(mocks.nodeTaskService.open).toHaveBeenCalledWith(
       expect.objectContaining({ nodeId: NODE_A, action: "mini_tool", label: "image.upscale" }),
     );
+  });
+
+  // inner#1302: what the reader drew reaches the pinned model through the task's params.
+  it("sends the drawn mask and the upright copy to the inpaint model", async () => {
+    const res = await post({
+      tool: "image.inpaint",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png" },
+      prompt: "a red bow tie",
+      drawing: { image: "https://assets.example.com/i/upright.png", mask: "https://assets.example.com/i/mask.png" },
+    });
+
+    expect(res.status).toBe(201);
+    expect(mocks.taskService.create.mock.calls[0]?.[6]).toBe("bria-genfill");
+    expect(mocks.taskService.create.mock.calls[0]?.[5]).toMatchObject({
+      image: "https://assets.example.com/i/upright.png",
+      mask_image: "https://assets.example.com/i/mask.png",
+      prompt: "a red bow tie",
+    });
+  });
+
+  it("sends the sketch composite as the only image in the list", async () => {
+    await post({
+      tool: "image.sketch",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png" },
+      prompt: "a party hat",
+      drawing: { image: "https://assets.example.com/i/sketch.png" },
+    });
+
+    expect(mocks.taskService.create.mock.calls[0]?.[5]).toMatchObject({
+      images: ["https://assets.example.com/i/sketch.png"],
+    });
+  });
+
+  it("refuses a drawing tool's run that carries no drawing, before any row opens", async () => {
+    const res = await post({
+      tool: "image.erase",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png" },
+    });
+
+    expect(res.status).toBe(422);
+    expect(mocks.taskService.create).not.toHaveBeenCalled();
   });
 
   it("opens one row per output for vocal separation", async () => {
