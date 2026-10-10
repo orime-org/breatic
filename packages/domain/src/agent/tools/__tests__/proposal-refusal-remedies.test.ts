@@ -70,6 +70,7 @@ const SONG = "mureka-v9.5-generate-song";
 const TTS = "realtime-tts-2";
 const SHOTS = "kling-v3.0-4k-text-to-video";
 const VID = "minimax-h3-image-to-video";
+const OMNI_SHOTS = "gemini-omni-1.1-flash-image-to-video";
 
 /** A note, as every to-do on a card is. */
 const NOTE = { slot: { kind: "note" as const, label: "Put the picture in Pic first" } };
@@ -419,6 +420,11 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     states: ['"Gen" needs a note for each of "Pic"', "and carries 0", 'On node 1 ("Gen"), give each one a note in the prompt'],
     fix: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+  }, {
+    // With shots, notes go in a shot.
+    meets: group([EMPTY_PIC, gen("video", "multi_shot", OMNI_SHOTS, { prompt: undefined, params: { duration: 5 }, shots: TWO_SHOTS })], [{ fromIndex: 0, toIndex: 1, into: "image" }]),
+    states: ['On node 1 ("Gen"), give each one a note in the shot'],
+    fix: group([EMPTY_PIC, gen("video", "multi_shot", OMNI_SHOTS, { prompt: undefined, params: { duration: 5 }, shots: [{ ...TWO_SHOTS[0] as (typeof TWO_SHOTS)[number], prompt: [{ text: "A paper boat." }, NOTE] }, TWO_SHOTS[1] as (typeof TWO_SHOTS)[number]] })], [{ fromIndex: 0, toIndex: 1, into: "image" }]),
   }],
   "shot-empty": [{
     meets: group([{ ...STORY, shots: [{ prompt: [], duration: 2 }, TWO_SHOTS[1] as (typeof TWO_SHOTS)[number]] }]),
@@ -466,7 +472,17 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }, {
     // A note segment and a note typed as words are named together.
     meets: group([{ ...WORDS, prompt: [{ text: "Copy (💡 do this) " }, NOTE] }, DRAW]),
-    states: ['it carries the typed "(💡 do this)", the note "Put the picture in Pic first".'],
+    states: ['it carries the note "Put the picture in Pic first", the typed "(💡 do this)".'],
+    fix: group([WORDS, DRAW]),
+  }, {
+    // A mark typed across two text segments is read as one.
+    meets: group([{ ...WORDS, prompt: [{ text: "See (💡 do " }, { text: "this)" }] }, DRAW]),
+    states: ['it carries the typed "(💡 do this)".'],
+    fix: group([WORDS, DRAW]),
+  }, {
+    // A ref inside typed brackets: both are named, the ref as the agent sent it.
+    meets: group([{ ...WORDS, prompt: [{ text: "See [📎 a" }, { ref: 1 }, { text: "b]" }] }, DRAW]),
+    states: ['it carries {"ref": 1}, the typed "[📎 a{"ref": 1}b]".'],
     fix: group([WORDS, DRAW]),
   }, {
     // Only a typed mark: it is named as typed, so the agent finds it in its words.
@@ -529,7 +545,12 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "mark-typed": [{
     meets: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make it {✏️ mood}." }] })]),
-    states: ['"Gen" types 1 mark(s) into its words, and a mark works only as a segment of its own, with the text segments kept to plain words:'],
+    states: ['"Gen" types 1 mark(s) into its words as text: "{✏️ mood}". A mark works only as a segment of its own, with the text segments kept to plain words: {"slot": {"kind": "tweak", "label": "…", "note": "…"}} for words the reader writes.'],
+  }, {
+    // Brackets typed around a ref: quoted as written, the ref inside as the agent sent it.
+    meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit [📎 " }, { ref: 0 }, { text: "] now." }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    states: ['"Gen" types 1 mark(s) into its words as text: "[📎 {"ref": 0}]".', '{"ref": <index>} for a node'],
+    absent: ["\u0000", "meant by"],
   }],
   "param-undeclared": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE], params: { format: "png" } })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
@@ -616,20 +637,29 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "fill-outside": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [5] } })]),
-    states: ['fills "style_images" on "Gen" points at node 5, which is not in the group. On node 1 ("Gen"), take every 5 out of fills "style_images".'],
+    states: ['fills "style_images" on "Gen" points at node 5, which is not in the group. On node 1 ("Gen"), take fills "style_images" off.'],
     fix: group([HELD_PIC, gen("image", "i2i", EDIT)]),
   }, {
+    // A good index stands beside the bad one: only the bad one goes.
+    meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0, 5] } })]),
+    states: ['On node 1 ("Gen"), take every 5 out of fills "style_images".'],
+    fix: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
+  }, {
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [5, 5] } })]),
-    states: ['fills "style_images" on "Gen" points at node 5, 2 times, which is not in the group.', 'On node 1 ("Gen"), take every 5 out of fills "style_images".'],
+    states: ['fills "style_images" on "Gen" points at node 5, 2 times, which is not in the group.', 'On node 1 ("Gen"), take fills "style_images" off.'],
     fix: group([HELD_PIC, gen("image", "i2i", EDIT)]),
   }],
   "fill-self": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [1] } })]),
-    states: ['and a node cannot fill its own slot. On node 1 ("Gen"), take every 1 ("Gen") out of fills "style_images".'],
+    states: ['and a node cannot fill its own slot. On node 1 ("Gen"), take fills "style_images" off.'],
     fix: group([HELD_PIC, gen("image", "i2i", EDIT)]),
   }, {
+    meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0, 1] } })]),
+    states: ['On node 1 ("Gen"), take every 1 ("Gen") out of fills "style_images".'],
+    fix: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
+  }, {
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [1, 1] } })]),
-    states: ['points at "Gen" itself, 2 times, and a node cannot fill its own slot.', 'On node 1 ("Gen"), take every 1 ("Gen") out of fills "style_images".'],
+    states: ['points at "Gen" itself, 2 times, and a node cannot fill its own slot.', 'On node 1 ("Gen"), take fills "style_images" off.'],
     fix: group([HELD_PIC, gen("image", "i2i", EDIT)]),
   }],
   "fill-not-a-slot": [{
@@ -644,21 +674,29 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "fill-no-material": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
-    states: ['which holds no material, and fills takes only nodes holding it.', 'On node 1 ("Gen"), take every 0 ("Pic") out of fills "style_images".', '"Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref.'],
+    states: ['which holds no material, and fills takes only nodes holding it.', 'On node 1 ("Gen"), take fills "style_images" off.', '"Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref.'],
     fix: group([EMPTY_PIC, gen("image", "i2i", EDIT)]),
   }, {
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0, 0] } })]),
-    states: ['points at "Pic", 2 times, which holds no material', 'On node 1 ("Gen"), take every 0 ("Pic") out of fills "style_images".'],
+    states: ['points at "Pic", 2 times, which holds no material', 'On node 1 ("Gen"), take fills "style_images" off.'],
     fix: group([EMPTY_PIC, gen("image", "i2i", EDIT)]),
+  }, {
+    meets: group([EMPTY_PIC, { ...HELD_PIC, name: "Held" }, gen("image", "i2i", EDIT, { fills: { style_images: [0, 1] } })]),
+    states: ['On node 2 ("Gen"), take every 0 ("Pic") out of fills "style_images".'],
+    fix: group([EMPTY_PIC, { ...HELD_PIC, name: "Held" }, gen("image", "i2i", EDIT, { fills: { style_images: [1] } })]),
   }],
   "fill-wrong-kind": [{
     meets: group([CLIP_HELD, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
-    states: ['On node 1 ("Gen"), take every 0 ("Clip") out of fills "style_images".', `"${EDIT}" takes no video node, so "Clip" has no way into "Gen".`],
+    states: ['On node 1 ("Gen"), take fills "style_images" off.', `"${EDIT}" takes no video node, so "Clip" has no way into "Gen".`],
     fix: group([CLIP_HELD, gen("image", "i2i", EDIT)]),
   }, {
     meets: group([CLIP_HELD, gen("image", "i2i", EDIT, { fills: { style_images: [0, 0] } })]),
-    states: ['and "Clip" is video and is named 2 times.', 'On node 1 ("Gen"), take every 0 ("Clip") out of fills "style_images".'],
+    states: ['and "Clip" is video and is named 2 times.', 'On node 1 ("Gen"), take fills "style_images" off.'],
     fix: group([CLIP_HELD, gen("image", "i2i", EDIT)]),
+  }, {
+    meets: group([CLIP_HELD, HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0, 1] } })]),
+    states: ['On node 2 ("Gen"), take every 0 ("Clip") out of fills "style_images".'],
+    fix: group([CLIP_HELD, HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [1] } })]),
   }],
   "fill-repeated": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0, 0] } })]),
@@ -674,6 +712,33 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: ['fills "style_images" on "Gen" holds "Pic" and "Pic 2", which hold the same material, and the slot keeps one copy of it.'],
   }],
 };
+
+/**
+ * Hold a fix proposal to the place its sentence names: a node fix leaves every
+ * other node and every edge as it was; an edge fix takes off only the edges
+ * between its two ends; the group's fix leaves nodes and edges alone.
+ * @param meets - The proposal refused.
+ * @param fix - The proposal after the fix.
+ * @param sentence - The fix as the reason ends on it.
+ */
+function actsWhereItSays(meets: Sent, fix: Sent, sentence: string): void {
+  const onNode = /^On node (\d+) /.exec(sentence);
+  if (onNode) {
+    const at = Number(onNode[1]);
+    expect(fix.nodes.filter((_, i) => i !== at), `"${sentence}" leaves the other nodes alone`).toEqual(meets.nodes.filter((_, i) => i !== at));
+    expect(fix.edges, `"${sentence}" leaves the edges alone`).toEqual(meets.edges);
+    return;
+  }
+  const between = /^Take every edge from node (\d+) \(.*?\) to (?:node (\d+) \(.*?\)|itself) off\.$/.exec(sentence);
+  expect(fix.nodes, `"${sentence}" leaves the nodes alone`).toEqual(meets.nodes);
+  if (between) {
+    const from = Number(between[1]);
+    const to = between[2] === undefined ? from : Number(between[2]);
+    expect(fix.edges, `"${sentence}" takes off only those edges`).toEqual(meets.edges.filter((e) => e.fromIndex !== from || e.toIndex !== to));
+    return;
+  }
+  expect(fix.edges, `"${sentence}" leaves the edges alone`).toEqual(meets.edges);
+}
 
 describe("every refusal states its fault, its rule and its facts", () => {
   for (const [refusal, cases] of Object.entries(CASES) as [RefusalId, RefusalCase[]][]) {
@@ -695,6 +760,8 @@ describe("every refusal states its fault, its rule and its facts", () => {
         if (entry.fix === undefined) return;
         const after = verdictFor(entry.fix, MATERIALS);
         expect(after.ok ? undefined : after.refusal, `following the fix of "${reason}"`).not.toBe(refusal);
+        // The fix proposal changes only what the sentence names.
+        actsWhereItSays(entry.meets, entry.fix, lastSentence(reason));
       });
     }
   }

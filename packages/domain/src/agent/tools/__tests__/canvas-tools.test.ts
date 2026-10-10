@@ -228,7 +228,7 @@ describe("what the rendered answer tells the model", () => {
   it("says which wired node fills a slot the pool shares a kind with", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /\(kling-video-o3-4k-image-to-video\)[^\n]*Each image node wired in goes one of 2 ways; say which on its edge with into: "pool" \(the reference pool, at most \d+, a ref each where the prompt @s it\) or "\w+" \(a slot, at most 1, a note each\)\./,
+      /\(kling-video-o3-4k-image-to-video\)[^\n]*An empty image node goes into "pool" by an edge with into: "pool" \(the reference pool, at most \d+, a ref each where the prompt @s it, a note each\) or "(\w+)" by an edge with into: "\1" \(a slot, at most 1, a note each\)\. An image node holding material goes into "pool" by an edge with into: "pool" \(the reference pool, at most \d+, a ref each where the prompt @s it\) or "\1" through fills, with no edge \(a slot, at most 1\)\./,
     );
   });
 
@@ -237,7 +237,7 @@ describe("what the rendered answer tells the model", () => {
   it("says how many wired nodes an optional slot can take instead of the pool", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /\(nano-banana-pro-edit-ultra\)[^\n]*Each image node wired in goes one of 2 ways; say which on its edge with into: "pool" \(the reference pool, at most 11, a ref each where the prompt @s it\) or "style_images" \(a slot, at most 3, a note each\)\./,
+      /\(nano-banana-pro-edit-ultra\)[^\n]*An empty image node goes into "pool" by an edge with into: "pool" \(the reference pool, at most 11, a ref each where the prompt @s it, a note each\) or "style_images" by an edge with into: "style_images" \(a slot, at most 3, a note each\)\. An image node holding material goes into "pool" by an edge with into: "pool" \(the reference pool, at most 11, a ref each where the prompt @s it\) or "style_images" through fills, with no edge \(a slot, at most 3\)\./,
     );
   });
 
@@ -250,16 +250,16 @@ describe("what the rendered answer tells the model", () => {
   it("says a kind the canvas will not wire into the node is picked into its slot in the panel", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "sfx" });
     const line = renderGenerationModelsForModel(answer).split("\n").find((l) => l.includes("(hunyuan-video-foley)")) ?? "";
-    expect(line).toMatch(/An empty video node is picked into "video" in the panel, not wired in \(a slot, at most 1, a note each\)\./);
-    expect(line).toMatch(/A video node holding material goes into "video" through fills, with no edge and no note\./);
-    expect(line).not.toMatch(/video node wired in/);
+    expect(line).toMatch(/An empty video node goes into "video" by a pick in the panel, not wired in \(a slot, at most 1, a note each\)\./);
+    expect(line).toMatch(/A video node holding material goes into "video" through fills, with no edge \(a slot, at most 1\)\./);
+    expect(line).not.toMatch(/video node[^.]*by an edge/);
   });
 
   it("says a node holding material goes into a slot through fills, with no note, wherever the model has a slot", async () => {
     const i2v = renderGenerationModelsForModel(await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" }));
-    expect(i2v).toMatch(/\(seedance-2\.5-image-to-video\)[^\n]*Each image node wired in goes into "image" \(a slot, at most 1, a note each\)\. An image node holding material goes into "image" through fills, with no edge and no note\./);
+    expect(i2v).toMatch(/\(seedance-2\.5-image-to-video\)[^\n]*An empty image node goes into "image" by an edge with into: "image" \(a slot, at most 1, a note each\)\. An image node holding material goes into "image" through fills, with no edge \(a slot, at most 1\)\./);
     const t2i = renderGenerationModelsForModel(await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" }));
-    expect(t2i).toMatch(/\(krea-v2-large-text-to-image\)[^\n]*An image node holding material goes into "style_images" through fills, with no edge and no note\./);
+    expect(t2i).toMatch(/\(krea-v2-large-text-to-image\)[^\n]*An image node holding material goes into "style_images" through fills, with no edge \(a slot, at most 3\)\./);
   });
 
   it("says the lyrics box is filled by a text node wired in, not set as a parameter", async () => {
@@ -272,7 +272,7 @@ describe("what the rendered answer tells the model", () => {
   it("names both boxes a song model's words can go into, and what each asks for", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "t2m" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /\(mureka-v9\.5-generate-song\)[^\n]*Each text node wired in goes one of 2 ways; say which on its edge with into: "pool" \(@'d into the prompt, a ref each where the prompt @s it\) or "lyrics" \(the lyrics box, @'d there for you\)\./,
+      /\(mureka-v9\.5-generate-song\)[^\n]*A written text node goes into "pool" by an edge with into: "pool" \(@'d into the prompt, a ref each where the prompt @s it\) or "lyrics" by an edge with into: "lyrics" \(the lyrics box, @'d there for you\)\./,
     );
   });
 
@@ -280,7 +280,7 @@ describe("what the rendered answer tells the model", () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
     const said = renderGenerationModelsForModel(answer);
     expect(said).toMatch(
-      /\(seedance-2\.5-image-to-video\)[^\n]*Each image node wired in goes into "image" \(a slot, at most 1, a note each\)\.[^\n]*Nothing wired in but a text node can be @'d here, so a ref can only @ words\./,
+      /\(seedance-2\.5-image-to-video\)[^\n]*An empty image node goes into "image" by an edge with into: "image" \(a slot, at most 1, a note each\)\.[^\n]*Nothing wired in but a text node can be @'d here, so a ref can only @ words\./,
     );
     expect(said).not.toMatch(/\(kling-video-o3-4k-image-to-video\)[^\n]*Nothing wired in but a text node/);
   });
@@ -288,7 +288,7 @@ describe("what the rendered answer tells the model", () => {
   it("says nodes for an optional slot cannot be @'d where the model has no pool of their kind", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /\(krea-v2-large-text-to-image\)[^\n]*Each image node wired in goes into "style_images" \(a slot, at most 3, a note each\)\./,
+      /\(krea-v2-large-text-to-image\)[^\n]*An empty image node goes into "style_images" by an edge with into: "style_images" \(a slot, at most 3, a note each\)\./,
     );
   });
 
