@@ -13,7 +13,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { extendFromPress, followFromPoint } from '@web/spaces/document/document-body-edge-pointer';
-import { autoScrollOf } from '@web/spaces/document/document-drag-autoscroll';
+import { DragWindow, autoScrollOf, countsDragEvents } from '@web/spaces/document/document-drag-autoscroll';
 import { startTableDrag } from '@web/spaces/document/document-table-drag';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -121,7 +121,10 @@ describe('the drag session', () => {
     drag(view.dom, 'dragstart');
     const auto = autoScrollOf(view)!;
     const follow = vi.spyOn(auto, 'follow');
-    for (const type of ['dragover', 'dragenter', 'drop', 'dragend']) {
+    // The ones BlockNote dispatches (`SideMenu.ts` `dispatchSyntheticEvent`,
+    // `closeDropCursor`); the dragleave's relatedTarget is null here, which a
+    // real leave of the window also has.
+    for (const type of ['dragover', 'dragleave', 'drop']) {
       const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 497, clientY: 890 });
       Object.defineProperty(event, 'synthetic', { value: true });
       document.body.addEventListener(type, (e) => e.stopPropagation(), { once: true });
@@ -147,23 +150,68 @@ describe('the drag session', () => {
     expect(autoScrollOf(view)!.state).toBe('idle');
   });
 
-  it('scrolls the frame nearest the dragged column sideways, ungated', () => {
-    const { editor } = open([
+  it('scrolls the frame of the dragged column sideways, ungated, and holds the body still until the drag ends', () => {
+    const { editor, scroller } = open([
       { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] } },
     ]);
     const view = editor.prosemirrorView!;
+    // The frame the body draws around a table (`document-table-blocknote.tsx`)
+    // is a React view a test page does not mount; it is put in place.
+    const table = view.dom.querySelector('table')!;
+    const frame = document.createElement('div');
+    frame.setAttribute('data-radix-scroll-area-viewport', '');
+    table.replaceWith(frame);
+    frame.append(table);
     let cellPos = -1;
     view.state.doc.descendants((node, pos) => {
       if (cellPos < 0 && node.type.name === 'tableCell') cellPos = pos;
       return cellPos < 0;
     });
-    const frame = (view.nodeDOM(cellPos) as HTMLElement).closest('[data-radix-scroll-area-viewport]');
+    scroller.style.overflowY = 'scroll';
     startTableDrag(view, 'column', cellPos);
     drag(view.dom, 'dragstart');
     const target = autoScrollOf(view)!.target!;
     expect(target.el).toBe(frame);
     expect(target.axis).toBe('x');
     expect(target.gate).toBe(false);
+    // The browser's own drag autoscroll scrolls any box a reader could scroll
+    // that the pointer nears; a column drag leaves the body where it is (A7).
+    expect(scroller.style.overflowY).toBe('hidden');
+    document.body.addEventListener('drop', (e) => e.stopPropagation(), { once: true });
+    drag(document.body, 'drop');
+    expect(scroller.style.overflowY).toBe('scroll');
+  });
+});
+
+describe('leaving the window', () => {
+  it('counts on dragenter and dragleave in Safari, whose relatedTarget is always null', () => {
+    const win = new DragWindow(true);
+    const leave = (): boolean => win.leaves(new MouseEvent('dragleave'));
+    win.start();
+    win.enter(); // the draggable
+    win.enter(); // the next element
+    expect(leave()).toBe(false); // the draggable, left for it
+    win.enter();
+    expect(leave()).toBe(false);
+    expect(leave()).toBe(true); // the last one: the window
+  });
+
+  it('reads the relatedTarget elsewhere', () => {
+    const win = new DragWindow(false);
+    const to = (relatedTarget: EventTarget | null): MouseEvent => {
+      const event = new MouseEvent('dragleave');
+      Object.defineProperty(event, 'relatedTarget', { value: relatedTarget });
+      return event;
+    };
+    win.start();
+    expect(win.leaves(to(document.body))).toBe(false);
+    expect(win.leaves(to(null))).toBe(true);
+  });
+
+  it('counts in Safari and nowhere else, by the user agent', () => {
+    expect(countsDragEvents('Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15')).toBe(true);
+    expect(countsDragEvents('Mozilla/5.0 (Macintosh) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36')).toBe(false);
+    expect(countsDragEvents('Mozilla/5.0 (Macintosh; rv:140.0) Gecko/20100101 Firefox/140.0')).toBe(false);
   });
 });
 
