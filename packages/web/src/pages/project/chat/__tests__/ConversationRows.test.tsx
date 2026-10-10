@@ -135,10 +135,10 @@ describe('naming a conversation from its row', () => {
     expect(onRename).toHaveBeenCalledWith('c2', 'Storyboard notes');
   });
 
-  it('never takes the keyboard back to the row', async () => {
-    // 三种退出(回车、Escape、失焦)一视同仁:提交完不安排焦点落到哪儿,由浏览器
-    // 决定。唯一的底线是别把它抢回本行 —— 读者按 Tab 或者点别处时焦点已经交给
-    // 别的东西了,抢回来那一次按键就等于没按。焦点位置的统一处理是另一件事。
+  it('leaves the keyboard where the reader took it when they leave the box', async () => {
+    // Leaving the box is the reader handing the focus to something else (Tab
+    // and a press elsewhere are the same path for this box); taking it back
+    // to the row would make that keystroke count for nothing.
     renderSheet();
 
     await userEvent.click(screen.getByTestId('conversation-menu-c2'));
@@ -153,6 +153,38 @@ describe('naming a conversation from its row', () => {
 
     expect(screen.queryByTestId('conversation-rename-input')).toBeNull();
     expect(document.activeElement).not.toBe(screen.getByTestId('conversation-open-c2'));
+  });
+
+  it.each([
+    ['Enter', 'Storyboard notes{Enter}'],
+    ['Escape', 'never mind{Escape}'],
+  ])('hands the keyboard to the row menu on %s and keeps the conversation on screen', async (_, keys) => {
+    const { onPick } = renderSheet();
+
+    await userEvent.click(screen.getByTestId('conversation-menu-c2'));
+    await userEvent.click(await screen.findByTestId('conversation-rename-c2'));
+    const box = await screen.findByTestId('conversation-rename-input');
+    await userEvent.type(box, keys);
+
+    expect(screen.queryByTestId('conversation-rename-input')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByTestId('conversation-menu-c2'));
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['Enter', { key: 'Enter', keyCode: 13 }],
+    ['Escape', { key: 'Escape', keyCode: 27 }],
+  ])('keeps the box open on the %s that ends an input method composition', async (_, init) => {
+    const { onRename } = renderSheet();
+
+    await userEvent.click(screen.getByTestId('conversation-menu-c2'));
+    await userEvent.click(await screen.findByTestId('conversation-rename-c2'));
+    const box = await screen.findByTestId('conversation-rename-input');
+    fireEvent.compositionEnd(box);
+    fireEvent.keyDown(box, init);
+
+    expect(screen.getByTestId('conversation-rename-input')).toBe(box);
+    expect(onRename).not.toHaveBeenCalled();
   });
 
   it('keeps the name to itself when the reader presses Escape', async () => {
