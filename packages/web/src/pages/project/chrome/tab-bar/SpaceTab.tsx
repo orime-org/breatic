@@ -27,6 +27,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
+import { useInlineEditExit } from '@web/lib/inline-edit-exit';
+import { spaceFocusRoot } from '@web/lib/space-focus-root';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceType } from '@breatic/shared';
@@ -210,6 +212,17 @@ export function SpaceTab({
     setDraft(name);
   };
 
+  // Ending the name from the keyboard gives the keyboard to the content of
+  // this Space, as a press beside the document body does. Every key stays in
+  // the field: the tab around it reads keys for dragging.
+  const exit = useInlineEditExit({
+    editing,
+    target: () => spaceFocusRoot(id),
+    commit,
+    cancel,
+    isolate: true,
+  });
+
   const tab = (
     <Button
       // A tab strip, not a standalone labelled button: the active fill is the
@@ -282,16 +295,8 @@ export function SpaceTab({
           maxLength={SPACE_NAME_MAX_LEN}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              commit();
-            } else if (e.key === 'Escape') {
-              e.preventDefault();
-              cancel();
-            }
-            e.stopPropagation();
-          }}
+          onKeyDown={exit.onKeyDown}
+          onCompositionEnd={exit.onCompositionEnd}
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
           data-testid={`space-tab-name-input-${id}`}

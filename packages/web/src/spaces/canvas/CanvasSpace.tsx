@@ -4459,8 +4459,10 @@ function CanvasSpaceInner({
         data-project-id={projectId}
         data-space-id={spaceId}
         data-readonly={readOnly ? 'true' : undefined}
-        // Click-focusable, not tab-reachable.
+        // Click-focusable, not tab-reachable; where a tab rename hands the
+        // keyboard back.
         tabIndex={-1}
+        data-space-focus-root=''
         // canvas-picking scopes the pick-mode stylesheet: it hides xyflow's
         // NodesSelection rect (see index.css) so a marquee mid-pick cannot
         // create a click-swallowing dead zone. The rect is neutralized at the
