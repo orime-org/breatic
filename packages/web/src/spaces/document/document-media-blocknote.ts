@@ -39,8 +39,7 @@ import type { NodeViewRendererProps } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Decoration } from '@tiptap/pm/view';
 
-import { downloadHref } from '@web/data/api/download-href';
-import { triggerDownload } from '@web/lib/download';
+import { downloadAsset } from '@web/lib/download';
 import {
   MEDIA_CHROME,
   MEDIA_FRAME,
@@ -187,7 +186,7 @@ function mediaNodeView(
     },
     download: () => {
       const { url } = propsOf(node);
-      if (url !== '') triggerDownload(downloadHref(url));
+      if (url !== '') downloadAsset(url);
     },
     dragStart: (event) => {
       const id = blockId();

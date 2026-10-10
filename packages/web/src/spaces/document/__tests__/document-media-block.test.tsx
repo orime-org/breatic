@@ -19,7 +19,7 @@ import { resetPreviewRecords } from '@web/lib/preview-src';
 import { BODY_PART } from '@web/spaces/document/document-body-focus';
 
 const download = vi.hoisted(() => ({ trigger: vi.fn() }));
-vi.mock('@web/lib/download', () => ({ triggerDownload: download.trigger }));
+vi.mock('@web/lib/download', () => ({ downloadAsset: download.trigger }));
 
 const { buildDocumentEditor } = await import('@web/spaces/document/build-document-editor');
 const { DocumentMediaViews } = await import('@web/spaces/document/DocumentMediaViews');
@@ -482,15 +482,41 @@ describe('the toolbar', () => {
     expect(within(toolbar(editor)).queryByTestId('doc-media-align-left')).toBeNull();
   });
 
-  it('downloads through the same address the canvas uses (A19)', () => {
-    const editor = open('audio');
+  it.each(['image', 'video', 'audio'] as const)(
+    'downloads a %s through its own public asset URL (A19)',
+    (type) => {
+      const editor = open(type);
 
-    fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-download'));
+      fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-download'));
 
-    expect(download.trigger).toHaveBeenCalledWith(
-      `/api/v1/assets/download?url=${encodeURIComponent(URL_OF)}`,
-    );
-  });
+      expect(download.trigger).toHaveBeenCalledExactlyOnceWith(URL_OF);
+    },
+  );
+
+  it.each(['image', 'video', 'audio'] as const)(
+    'preserves the %s asset query when handing it to the shared download helper',
+    (type) => {
+      // The shared helper owns adding download=1; the block must hand it the
+      // original URL without turning it into a backend or Ingest request.
+      const url = `${URL_OF}?v=2&signature=public-test-signature&download=0`;
+      const editor = open(type, { url });
+
+      fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-download'));
+
+      expect(download.trigger).toHaveBeenCalledExactlyOnceWith(url);
+    },
+  );
+
+  it.each(['image', 'video', 'audio'] as const)(
+    'starts no download for a %s whose asset URL is empty',
+    (type) => {
+      const editor = open(type, { url: '' });
+
+      fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-download'));
+
+      expect(download.trigger).not.toHaveBeenCalled();
+    },
+  );
 
   it('deletes the block', () => {
     const editor = open('video');
