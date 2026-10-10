@@ -12,6 +12,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { extendFromPress, followFromPoint } from '@web/spaces/document/document-body-edge-pointer';
 import { autoScrollOf } from '@web/spaces/document/document-drag-autoscroll';
 import { startTableDrag } from '@web/spaces/document/document-table-drag';
 
@@ -134,5 +135,35 @@ describe('the drag session', () => {
     expect(target.el).toBe(frame);
     expect(target.axis).toBe('x');
     expect(target.gate).toBe(false);
+  });
+});
+
+describe('the pulled-selection session', () => {
+  it('starts when the follower takes a blank press from the browser, and ends with the press', () => {
+    const { editor, scroller } = open();
+    const view = editor.prosemirrorView!;
+    followFromPoint(view, 10, 10);
+    const auto = autoScrollOf(view)!;
+    expect(auto.source).toBe('press');
+    expect(auto.target?.el).toBe(scroller);
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    expect(auto.state).toBe('idle');
+  });
+
+  it('starts when the follower takes a Shift press from the browser', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView!;
+    view.focus();
+    const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true, shiftKey: true, clientX: 10, clientY: 100 });
+    extendFromPress(view, event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(autoScrollOf(view)!.source).toBe('press');
+  });
+
+  it('does not start on a plain press the browser keeps', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView!;
+    view.dom.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX: 10, clientY: 10 }));
+    expect(autoScrollOf(view)!.state).toBe('idle');
   });
 });
