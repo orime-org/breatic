@@ -17,7 +17,11 @@ import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { ImageCropDialog } from '@web/pages/studio/container/dialogs/ImageCropDialog';
-import { checkPickedFile } from '@web/pages/studio/container/dialogs/crop-image';
+import {
+  checkPickedFile,
+  checkPickedFormat,
+  PICKED_FORMATS,
+} from '@web/pages/studio/container/dialogs/crop-image';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
 import type { StudioDetail } from '@web/pages/studio/container/container-types';
 
@@ -82,7 +86,13 @@ export function AvatarSection({
         toast.warning(t(`studio.container.imageError.${problem}`));
         return;
       }
-      setPicked(file);
+      void checkPickedFormat(file).then((format) => {
+        if (format !== null) {
+          toast.warning(t(`studio.container.imageError.${format}`));
+          return;
+        }
+        setPicked(file);
+      });
     },
     [t],
   );
@@ -141,7 +151,7 @@ export function AvatarSection({
           <input
             ref={inputRef}
             type='file'
-            accept='image/*'
+            accept={PICKED_FORMATS}
             hidden
             onChange={handlePick}
             data-testid='avatar-file-input'

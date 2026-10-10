@@ -20,6 +20,7 @@ import {
   MAX_PICKED_BYTES,
   MAX_PICKED_EDGE_PX,
   checkPickedFile,
+  checkPickedFormat,
   checkPickedPixels,
   encodeCropBlob,
   renderCropBlob,
@@ -44,6 +45,34 @@ describe('checkPickedFile', () => {
 
   it('caps at 20 MiB — big enough for any real photo, small enough to catch a video picked by mistake', () => {
     expect(MAX_PICKED_BYTES).toBe(20 * 1024 * 1024);
+  });
+});
+
+// Chromium does not apply a WebP's EXIF orientation where WebKit does, while
+// both apply a PNG's and a JPEG's; a cover or an avatar is cropped in the
+// browser, so it takes the two the browsers agree on (inner#1367 §4.8b). The
+// bytes decide, since a name or a declared type says nothing.
+describe('checkPickedFormat', () => {
+  /** A file whose bytes start with `head`, named and typed as given. */
+  const picked = (head: number[], name: string, type: string): File =>
+    new File([new Uint8Array([...head, ...new Array(20).fill(0)])], name, { type });
+
+  it('accepts a PNG', async () => {
+    await expect(checkPickedFormat(picked([0x89, 0x50, 0x4e, 0x47], 'a.png', 'image/png'))).resolves.toBeNull();
+  });
+
+  it('accepts a JPEG', async () => {
+    await expect(checkPickedFormat(picked([0xff, 0xd8, 0xff], 'a.jpg', 'image/jpeg'))).resolves.toBeNull();
+  });
+
+  it('refuses a WebP', async () => {
+    const webp = [0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50];
+    await expect(checkPickedFormat(picked(webp, 'a.webp', 'image/webp'))).resolves.toBe('unsupported_type');
+  });
+
+  it('refuses a WebP named and typed as a JPEG', async () => {
+    const webp = [0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50];
+    await expect(checkPickedFormat(picked(webp, 'a.jpg', 'image/jpeg'))).resolves.toBe('unsupported_type');
   });
 });
 
