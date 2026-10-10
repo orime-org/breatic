@@ -45,6 +45,7 @@ import {
   type PointerZone,
 } from '@web/spaces/document/document-body-edge-selection';
 import { bodyHolds } from '@web/spaces/document/document-body-focus';
+import { autoScrollOf, bodyScrollerOf } from '@web/spaces/document/document-drag-autoscroll';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 
 /**
@@ -328,6 +329,7 @@ class PointerFollower {
     // ProseMirror does not focus on a Shift press: a selection set in a body
     // without the focus is neither painted nor where the next keys go.
     event.preventDefault();
+    this.scrollWithPress();
     if (!view.hasFocus()) view.focus();
     const next = dragSelection(doc, { press: zone, anchor: fixed, left: true }, zone, pointer);
     if (next !== null && !next.eq(selection)) view.dispatch(view.state.tr.setSelection(next));
@@ -348,6 +350,17 @@ class PointerFollower {
     view.focus();
     const zone = zoneAt(view, y);
     this.begin({ startX: x, startY: y, x, y, zone, anchorEdge: zone === 'body' ? null : zone, left: true, moved: true, onWidget: false });
+    this.scrollWithPress();
+  }
+
+  /**
+   * Scrolls the body while this press is pulled past its edge. Only for a press
+   * taken from the browser: one the browser keeps is scrolled by its own
+   * selection autoscroll (inner#1350 §5.2).
+   */
+  private scrollWithPress(): void {
+    const scroller = bodyScrollerOf(this.view);
+    if (scroller !== null) autoScrollOf(this.view)?.beginPress(scroller);
   }
 
   /**
@@ -435,6 +448,7 @@ class PointerFollower {
   private end(): void {
     if (this.press === null) return;
     this.press = null;
+    autoScrollOf(this.view)?.end('press');
     const root = this.view.root;
     root.removeEventListener('mousemove', this.onMove as EventListener);
     root.removeEventListener('scroll', this.onScroll, true);
