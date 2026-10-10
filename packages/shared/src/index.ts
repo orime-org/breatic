@@ -595,6 +595,11 @@ export {
   type PartLayout,
   type SessionTokenPayload,
 } from "@shared/upload/session-token.js";
+export {
+  UPLOAD_STATUS_MAX_KEYS,
+  type UploadStatus,
+  type UploadStatusResult,
+} from "@shared/upload/upload-status.js";
 // Why a task failed, as a code rather than a sentence: the writer is a server
 // and the reader is whoever opens the list, in their own language.
 export {

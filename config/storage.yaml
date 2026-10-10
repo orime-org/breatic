@@ -19,6 +19,11 @@ upload:
   # itself; our backend reads it off the socket. 60 is where Uppy's maintainers
   # moved their 30-second default after it cut uploads on slow links.
   upload_idle_timeout_seconds: 60
+  # How long the browser waits between asking how its uploads ended, in
+  # seconds (inner#1367). Sent as Retry-After on every status answer. A
+  # finish takes a few seconds for most files, so asking every couple of
+  # seconds puts the result in front of the person about when it lands.
+  upload_status_poll_seconds: 2
 
 # The ingest Worker (#173). Every figure it runs on is decided here and signed
 # into the ticket, because a Worker cannot read this file and a second copy in

@@ -52,6 +52,7 @@ import {
   sessionCookieName,
   loadLocales,
   taskEventsStreamKey,
+  getStorageConfig,
 } from "@breatic/core";
 import {
   backendUploadService,
@@ -62,6 +63,7 @@ import {
   canvasSpaceDocName,
   INGEST_FAILURE_HEADER,
   signSessionToken,
+  UPLOAD_STATUS_MAX_KEYS,
 } from "@breatic/shared";
 import type { Hono } from "hono";
 
@@ -2282,5 +2284,129 @@ describe("an upload our own worker drove", () => {
       SELECT id FROM project_activities WHERE project_id = ${seed.projectId}
     `) as unknown as { id: string }[];
     expect(feed).toHaveLength(0);
+  });
+});
+
+describe("the upload status query (inner#1367)", () => {
+  /** Ask how these uploads ended, as `cookie`'s user. */
+  async function statusOf(
+    cookie: string,
+    keys: string[],
+  ): Promise<{ res: Response; items: Record<string, unknown>[] }> {
+    const query = keys.map((k) => `key=${encodeURIComponent(k)}`).join("&");
+    const res = await app.request(`/api/v1/assets/upload-status?${query}`, {
+      headers: { cookie },
+    });
+    const items =
+      res.status === 200
+        ? ((await res.json()) as { data: { items: Record<string, unknown>[] } }).data.items
+        : [];
+    return { res, items };
+  }
+
+  it("answers an upload still being finished as finishing", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+
+    const { items } = await statusOf(seed.cookie, [key]);
+
+    expect(items).toEqual([{ key, state: "finishing" }]);
+  });
+
+  it("answers a registered upload with what it registered as", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await report(completed(key, { width: 800, height: 600 }));
+
+    const { items } = await statusOf(seed.cookie, [key]);
+
+    const asset = await sql<{ id: string; file_url: string }[]>`
+      SELECT id, file_url FROM studio_assets WHERE storage_key = ${key}
+    `;
+    expect(items).toEqual([
+      {
+        key,
+        state: "completed",
+        result: {
+          assetId: asset[0]!.id,
+          fileUrl: asset[0]!.file_url,
+          kind: "image",
+          width: 800,
+          height: 600,
+        },
+      },
+    ]);
+  });
+
+  it("answers a voided upload with the reason written on its grant", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await ingestReportService.applyIngestReport({
+      storageKey: key,
+      outcome: "aborted",
+      reason: "unsupported_type",
+    });
+
+    const { items } = await statusOf(seed.cookie, [key]);
+
+    expect(items).toEqual([{ key, state: "failed", reason: "unsupported_type" }]);
+  });
+
+  it("answers expired for one still finishing past its two hours, and writes nothing", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await sql`
+      UPDATE upload_grants
+      SET created_at = now() - interval '2 hours' - interval '1 second'
+      WHERE storage_key = ${key}
+    `;
+
+    const { items } = await statusOf(seed.cookie, [key]);
+
+    expect(items).toEqual([{ key, state: "failed", reason: "expired" }]);
+    const grants = await sql<{ voided_at: Date | null }[]>`
+      SELECT voided_at FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]!.voided_at).toBeNull();
+  });
+
+  it("answers unknown for someone else's upload and for a key never issued", async () => {
+    const owner = await seedEditor();
+    const other = await seedEditor();
+    const key = await mintTicket(owner);
+    const mine = await mintTicket(other);
+
+    const { items } = await statusOf(other.cookie, [key, "image/never/issued.png", mine]);
+
+    expect(items).toEqual([
+      { key, state: "unknown" },
+      { key: "image/never/issued.png", state: "unknown" },
+      { key: mine, state: "finishing" },
+    ]);
+  });
+
+  it("tells the caller how long to wait before asking again", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+
+    const { res } = await statusOf(seed.cookie, [key]);
+
+    expect(res.headers.get("retry-after")).toBe(
+      String(getStorageConfig().upload.upload_status_poll_seconds),
+    );
+  });
+
+  it("refuses a request naming no upload, or more than one request may carry", async () => {
+    const seed = await seedEditor();
+
+    // 422 is what every route's request validation answers.
+    expect((await statusOf(seed.cookie, [])).res.status).toBe(422);
+    const many = Array.from({ length: UPLOAD_STATUS_MAX_KEYS + 1 }, (_, i) => `k/${i}`);
+    expect((await statusOf(seed.cookie, many)).res.status).toBe(422);
+  });
+
+  it("requires a signed-in caller", async () => {
+    const res = await app.request("/api/v1/assets/upload-status?key=a");
+    expect(res.status).toBe(401);
   });
 });

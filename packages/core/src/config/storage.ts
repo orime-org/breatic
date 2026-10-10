@@ -62,6 +62,11 @@ export const storageConfigSchema = z
        * 30-second default after it cut uploads on slow links.
        */
       upload_idle_timeout_seconds: z.number().int().positive().default(60),
+      /**
+       * How long the browser waits between asking how its uploads ended, in
+       * seconds; sent as `Retry-After` on every status answer (inner#1367).
+       */
+      upload_status_poll_seconds: z.number().int().positive().default(2),
     })
     .prefault({}),
 

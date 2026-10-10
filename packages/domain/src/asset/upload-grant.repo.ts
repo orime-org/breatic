@@ -19,7 +19,7 @@
  * table's schema), and this is still the only place that reads or writes it.
  */
 
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db, uploadGrants } from "@breatic/core";
 import type { StudioAssetEntity } from "@breatic/shared";
 
@@ -304,6 +304,29 @@ export async function findGrantByKey(
     .where(eq(uploadGrants.storageKey, storageKey))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * The grants among `storageKeys` that were issued to `userId`.
+ *
+ * Ownership is the query condition, so a key issued to someone else reads the
+ * same as one never issued: absent.
+ * @param userId - Who is asking.
+ * @param storageKeys - The keys asked about.
+ * @returns The caller's grants among them, in no particular order.
+ */
+export async function findOwnGrants(
+  userId: string,
+  storageKeys: readonly string[],
+): Promise<UploadGrant[]> {
+  if (storageKeys.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(uploadGrants)
+    .where(
+      and(eq(uploadGrants.userId, userId), inArray(uploadGrants.storageKey, [...storageKeys])),
+    );
+  return rows.map(toEntity);
 }
 
 /**

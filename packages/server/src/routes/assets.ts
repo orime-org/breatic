@@ -25,6 +25,7 @@ import {
   UploadHttpError,
   INGEST_REFUSED_UNNAMED,
   signalUntil,
+  UPLOAD_STATUS_MAX_KEYS,
   t,
   type NodeTaskAction,
 } from "@breatic/shared";
@@ -37,6 +38,7 @@ import {
   mediaReadService,
   studioAuthService,
   uploadDeadline,
+  uploadStatusService,
   uploadTicketService,
 } from "@breatic/domain";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
@@ -96,6 +98,36 @@ assets.get("/upload-config", requireAuth, async (c) => {
     },
   });
 });
+
+// ── Upload status (inner#1367 §4.2a) ────────────────────────────────
+
+/**
+ * How the caller's uploads ended. Finishing answers 202 and runs as a job, so
+ * the page asks here — every upload it is waiting on, in one request — until
+ * each has an ending. A key that is not the caller's reads as `unknown`.
+ */
+assets.get(
+  "/upload-status",
+  requireAuth,
+  rateLimitFor("upload-status", "user"),
+  validate(
+    "query",
+    z.object({
+      // One `key` arrives as a string, several as an array.
+      key: z.preprocess(
+        (v) => (Array.isArray(v) ? v : [v]),
+        z.array(z.string().min(1).max(512)).min(1).max(UPLOAD_STATUS_MAX_KEYS),
+      ),
+    }),
+  ),
+  async (c) => {
+    const user = c.get("user");
+    const { key } = c.req.valid("query");
+    const items = await uploadStatusService.statusOf(user.id, key);
+    c.header("Retry-After", String(getStorageConfig().upload.upload_status_poll_seconds));
+    return c.json({ data: { items } });
+  },
+);
 
 // ── Upload ticket (#173) ────────────────────────────────────────────
 
