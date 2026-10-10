@@ -39,6 +39,7 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { cn } from '@web/lib/utils';
+import { useDragSourceHidden } from '@web/spaces/document/use-drag-source-hidden';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -295,11 +296,10 @@ export function DocumentTableHandle({
   const state = useExtensionState(TableHandlesExtension) as HandlesState | undefined;
   const holdsSelection = useHoldsSelection(editor);
   const [open, setOpen] = React.useState(false);
-  // Whether this handle's drag runs: the handles are frozen for it so the
-  // handle, the drag's source, stays in the page and its `dragend` reaches the
-  // document; frozen, it no longer follows the table as the body scrolls under
-  // the drag, so it is hidden (inner#1350 §5.2).
-  const [dragging, setDragging] = React.useState(false);
+  // The handles are frozen for this handle's drag so the handle, the drag's
+  // source, stays in the page and its `dragend` reaches the document
+  // (inner#1350 §5.2); frozen, it no longer follows the table, so it is hidden.
+  const source = useDragSourceHidden();
   const preview = React.useRef<DragPreview | null>(null);
   const row = orientation === 'row';
 
@@ -375,7 +375,7 @@ export function DocumentTableHandle({
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <div
-        className={cn('doc-table-handle relative flex', dragging && 'invisible')}
+        className={cn('doc-table-handle relative flex', source.hidden && 'invisible')}
         style={placeStyle}
         // A layer of the body, belonging on its table (inner#1127).
         {...bodyLayerMark(editor, { block: state.block.id })}
@@ -415,7 +415,7 @@ export function DocumentTableHandle({
               event.dataTransfer.setDragImage(preview.current.element, 0, 0);
             }
             handles.freezeHandles();
-            setDragging(true);
+            source.hideAfterStart();
           }}
           onDragEnd={() => {
             const view = editor.prosemirrorView;
@@ -423,7 +423,7 @@ export function DocumentTableHandle({
             preview.current?.remove();
             preview.current = null;
             if (!open) handles.unfreezeHandles();
-            setDragging(false);
+            source.show();
           }}
           onClick={() => {
             onOpenChange(!open);

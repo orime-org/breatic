@@ -42,6 +42,7 @@ import {
 } from '@blocknote/react';
 
 import { cn } from '@web/lib/utils';
+import { useDragSourceHidden } from '@web/spaces/document/use-drag-source-hidden';
 import { Button } from '@web/components/ui/button';
 import {
   DropdownMenu,
@@ -161,6 +162,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
   // and the drag's own first act is to select the row it moves, which is what
   // the gate below would otherwise read as the reader having a selection.
   const [dragActive, setDragActive] = React.useState(false);
+  const source = useDragSourceHidden();
 
   // A1: a reader holding a selection is served by the bubble bar, and the two
   // are never on screen together. The library's side menu answers to the
@@ -290,10 +292,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
       // thing the library does for its own chrome (`.bn-trailing-block`,
       // `.bn-toggle-button`). The handle's own half is also covered by the UA
       // style on `[draggable=true]`; this reaches the rest of the strip.
-      // `invisible` while its drag runs: the menu is frozen for the drag so the
-      // handle, the drag's source, stays in the page, but it no longer follows
-      // the rows as the body scrolls under the drag (inner#1350 §5.2).
-      className={cn('flex select-none items-center gap-0.5', dragActive && 'invisible')}
+      className={cn('flex select-none items-center gap-0.5', source.hidden && 'invisible')}
       style={{ transform: `translateY(${String(offset)}px)` }}
     >
       <DropdownMenu open={menuOpen} onOpenChange={onMenuOpenChange}>
@@ -326,9 +325,11 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
               setDragActive(true);
               setMenuFace(face);
               endDrag.current = startRowDrag(editor as never, event.nativeEvent, block.id);
+              source.hideAfterStart();
             }}
             onDragEnd={() => {
               setDragActive(false);
+              source.show();
               endDrag.current?.();
               endDrag.current = null;
             }}
