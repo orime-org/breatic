@@ -80,7 +80,7 @@ describe('previewScale', () => {
 });
 
 describe('buildDragPreview', () => {
-  it('sizes the root to the scaled size and scales an inner layer, which carries the body styles', () => {
+  it('sizes the root to the scaled size and scales an inner layer, which carries the body classes but no editor class', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const content = document.createElement('div');
     const preview = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 1024, height: 256 }));
@@ -93,8 +93,12 @@ describe('buildDragPreview', () => {
     expect(layer.style.transform).toBe('scale(0.5)');
     expect(layer.style.transformOrigin).toBe('0px 0px');
     expect(root.style.transform).toBe('');
-    for (const name of ['bn-root', 'bn-editor', 'ProseMirror', 'doc-body']) {
-      expect(layer.classList.contains(name)).toBe(true);
+    expect(layer.classList.contains('doc-body')).toBe(true);
+    // BlockNote takes any `.bn-editor` in the page for an editor and reads its
+    // block group, drop routing included (`SideMenu.ts` findClosestEditorElement);
+    // its own preview drops these three classes, and so does ours.
+    for (const name of ['bn-root', 'bn-editor', 'ProseMirror']) {
+      expect(layer.classList.contains(name)).toBe(false);
     }
     expect(layer.contains(content)).toBe(true);
     preview.remove();

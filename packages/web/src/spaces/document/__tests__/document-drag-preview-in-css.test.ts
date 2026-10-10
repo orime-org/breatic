@@ -36,4 +36,14 @@ describe('what a drag shows', () => {
     // handed to `setDragImage`.
     expect(stylesheet()).toMatch(/\.bn-drag-preview > \* \{\s*opacity: 0\.6;/);
   });
+
+  it('draws a table in the preview the way the body draws it', () => {
+    // The table's lines, collapse and cell widths hang off `.bn-editor` and
+    // `.ProseMirror` in BlockNote and prosemirror-tables, classes the preview
+    // cannot carry (inner#1350 §4), so they are given to it here.
+    const css = stylesheet();
+    expect(css).toMatch(/\.bn-drag-preview \[data-content-type='table'\] table \{[^}]*border-collapse: collapse;[^}]*table-layout: fixed;/);
+    expect(css).toMatch(/\.bn-drag-preview \[data-content-type='table'\] td \{[^}]*border-width: 1px;[^}]*border-style: solid;/);
+    expect(css).toMatch(/\.bn-drag-preview \[data-content-type='table'\] td:not\(\[colwidth\]\)[^{]*\{[^}]*min-width: var\(--default-cell-min-width\);/);
+  });
 });
