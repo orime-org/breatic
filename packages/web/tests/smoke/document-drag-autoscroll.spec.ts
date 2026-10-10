@@ -16,6 +16,7 @@
  */
 import { test, expect, type Page } from 'playwright/test';
 
+import { wavBytes } from '../helpers/media-bytes';
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
@@ -194,6 +195,37 @@ test('A6: a selection pulled from the gutter past the body bottom scrolls it', a
   await hold(page, view.x + 200, view.y + view.height + 30);
   expect(await scrollTop(page)).toBeGreaterThan(before + 300);
   await page.mouse.up();
+});
+
+test('A1: an audio dragged by its grip is previewed at the shape it has in the body', async () => {
+  await openSmokeProject(page);
+  createdSpaceIds.push(await createSpace(page, 'document', `autoscroll-${Date.now()}`));
+  const editor = page.locator(EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await editor.click();
+  await page.keyboard.type('lead');
+  await editor.evaluate((element, base64) => {
+    const transfer = new DataTransfer();
+    const raw = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    transfer.items.add(new File([raw], 'clip.wav', { type: 'audio/wav' }));
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+  }, wavBytes().toString('base64'));
+  const box = page.locator(`${EDITOR} [data-content-type="audio"] [data-media-box]`).first();
+  await expect(box).toBeVisible({ timeout: 60_000 });
+  const drawn = (await box.boundingBox())!;
+  await page.mouse.move(5, 5);
+  await page.mouse.move(drawn.x + 10, drawn.y + drawn.height / 2, { steps: 3 });
+  const grip = (await page.getByTestId('doc-block-handle').boundingBox())!;
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 8, grip.y + 12, { steps: 4 });
+  await page.mouse.move(grip.x + 20, grip.y + 40, { steps: 4 });
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2, { steps: 4 });
+  await page.mouse.up();
+  const images = await page.evaluate(() => (window as unknown as { __images: Array<{ width: number; height: number; scale: string; lift: number }> }).__images);
+  const ours = images.at(-1)!;
+  expect(Math.max(ours.width, ours.height)).toBeCloseTo(512, 0);
+  expect(ours.width / ours.height).toBeCloseTo(drawn.width / drawn.height, 1);
 });
 
 /**

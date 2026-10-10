@@ -143,6 +143,25 @@ describe('blockPreviewContent', () => {
     expect(content.querySelector('img')).not.toBeNull();
   });
 
+  it('gives a media box the width it is drawn at in the body, where it may have none of its own', () => {
+    const editor = open([{ type: 'paragraph', content: 'x' }]);
+    const view = editor.prosemirrorView!;
+    // The body's audio box fills its row (`w-full`); the copy is set in a
+    // preview that wraps its content, where a full width is no width at all.
+    const original = document.createElement('div');
+    original.setAttribute('data-id', 'audio-1');
+    original.innerHTML = '<div data-media-box="" class="w-full"></div>';
+    view.dom.append(original);
+    original.querySelector('[data-media-box]')!.getBoundingClientRect = () => ({ width: 768, height: 84 }) as DOMRect;
+    const block = document.createElement('div');
+    block.className = 'bn-block-outer';
+    block.setAttribute('data-id', 'audio-1');
+    block.innerHTML = '<div data-media-box="" class="w-full"><div data-testid="media-player"></div></div>';
+    const content = blockPreviewContent(view, [block]);
+    expect(content.hasAttribute('data-media-box')).toBe(true);
+    expect(content.style.width).toBe('768px');
+  });
+
   it('takes a table out of its scroll frame: every column, and none of the frame\'s scrollbar or edges', () => {
     const editor = open([{ type: 'paragraph', content: 'x' }]);
     const view = editor.prosemirrorView!;
