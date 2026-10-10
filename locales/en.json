@@ -727,6 +727,9 @@
       "failed": "Upload failed.",
       "extractionFailed": "Couldn't read the text in {filename}."
     },
+    "paste": {
+      "failed": "Paste failed."
+    },
     "minimap": {
       "label": "Canvas minimap"
     },
@@ -858,6 +861,17 @@
           },
           "prompt": "Describe the expression and movement"
         },
+        "inpaint": {
+          "label": "Inpaint",
+          "prompt": "Describe what the painted area should become"
+        },
+        "erase": {
+          "label": "Erase"
+        },
+        "sketch": {
+          "label": "Sketch edit",
+          "prompt": "Describe what your drawing should become"
+        },
         "crop": {
           "label": "Crop"
         },
@@ -976,7 +990,8 @@
         "sourceGone": "The source node was deleted.",
         "sourceChanged": "The source changed.",
         "sourceChangedByPeer": "A collaborator changed the source.",
-        "couldNotStart": "Couldn't start the tool. Try again."
+        "couldNotStart": "Couldn't start the tool. Try again.",
+        "drawingEmpty": "Draw on the picture first."
       },
       "adjust": {
         "exposure": "Exposure",
@@ -994,6 +1009,18 @@
         "vignette": "Vignette",
         "grain": "Grain",
         "fade": "Fade"
+      },
+      "draw": {
+        "brush": "Brush",
+        "rect": "Rectangle",
+        "ellipse": "Ellipse",
+        "eraser": "Eraser",
+        "size": "Size",
+        "color": "Color",
+        "maskColor": "Mask color",
+        "undo": "Undo",
+        "redo": "Redo",
+        "clear": "Clear"
       }
     },
     "template": {
@@ -1032,7 +1059,7 @@
       "noAccount": "Don't have an account?",
       "forgotPassword": "Forgot password?",
       "googleLoading": "Loading Google sign-in…",
-      "googleFailed": "Google sign-in is unavailable. Please try again or use email sign-in.",
+      "googleFailed": "Google sign-in is unavailable. Please refresh the page or use email sign-in.",
       "failed": "Sign-in failed. Please try again."
     },
     "register": {
@@ -2234,6 +2261,13 @@
     "heading": "Page not found",
     "body": "The page you're looking for doesn't exist or has moved. Let's get you back on track.",
     "cta": "Back to home"
+  },
+  "applicationError": {
+    "title": "Something went wrong",
+    "message": "This page could not continue. Reload it, or return to the home page. If you use browser translation, turn it off and use the product language setting.",
+    "reload": "Reload page",
+    "home": "Back to home",
+    "reference": "Error reference: {id}"
   },
   "pageLoadError": {
     "message": "This page could not be loaded. Please try again.",

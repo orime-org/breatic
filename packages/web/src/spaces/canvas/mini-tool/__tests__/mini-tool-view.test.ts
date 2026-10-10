@@ -6,8 +6,10 @@ import { type ModelEntry, type ParamDescriptor } from '@breatic/shared';
 import { miniToolById, miniToolRequestSchema } from '@breatic/shared/mini-tools';
 
 import {
+  BLOCKING_REFUSALS,
   aspectRatioOf,
   creditMode,
+  exportsBeforeRun,
   miniToolRefusal,
   rectForAspect,
   resolvedParams,
@@ -186,6 +188,46 @@ describe('miniToolRefusal', () => {
     expect(
       miniToolRefusal({ spec: tool('image.rotate'), entry: undefined, prompt: '', slots: {}, sourceShown: true, exporting: true }),
     ).toBe('exporting');
+  });
+
+  // inner#1302 §6.3: nothing drawn holds Execute back, after the slots and
+  // before the prompt.
+  describe('a drawing tool', () => {
+    const genfill = entry({ mask_image: { description: '', default: null, fill: 'tool' } }, true);
+    const inpaint = { spec: tool('image.inpaint'), entry: genfill, slots: {}, sourceShown: true, exporting: false };
+
+    it('refuses with nothing drawn', () => {
+      expect(miniToolRefusal({ ...inpaint, prompt: 'a cat', inked: false })).toBe('drawingEmpty');
+      expect(miniToolRefusal({ ...inpaint, prompt: 'a cat' })).toBe('drawingEmpty');
+    });
+
+    it('puts an empty drawing ahead of an empty prompt', () => {
+      expect(miniToolRefusal({ ...inpaint, prompt: '', inked: false })).toBe('drawingEmpty');
+      expect(miniToolRefusal({ ...inpaint, prompt: '', inked: true })).toBe('promptMissing');
+    });
+
+    it('runs once something is drawn', () => {
+      expect(miniToolRefusal({ ...inpaint, prompt: 'a cat', inked: true })).toBeNull();
+    });
+
+    it('takes no ink into account for a tool without a drawing', () => {
+      expect(miniToolRefusal({ ...base, sourceShown: true, exporting: false, inked: false })).toBeNull();
+    });
+  });
+});
+
+describe('BLOCKING_REFUSALS', () => {
+  it('disables Execute for the reasons the reader fixes in the panel', () => {
+    expect([...BLOCKING_REFUSALS].sort()).toEqual(['drawingEmpty', 'exporting', 'promptMissing', 'slotMissing']);
+  });
+});
+
+describe('exportsBeforeRun', () => {
+  it('holds for a browser tool and a drawing tool, not for a plain server tool', () => {
+    expect(exportsBeforeRun(tool('image.rotate'))).toBe(true);
+    expect(exportsBeforeRun(tool('image.inpaint'))).toBe(true);
+    expect(exportsBeforeRun(tool('image.sketch'))).toBe(true);
+    expect(exportsBeforeRun(tool('image.upscale'))).toBe(false);
   });
 });
 

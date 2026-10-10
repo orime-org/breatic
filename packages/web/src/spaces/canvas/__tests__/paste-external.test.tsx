@@ -16,31 +16,58 @@ import { renderHook, waitFor } from '@testing-library/react';
 import * as canvasSpace from '@web/data/yjs/canvas-space';
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
-import { _resetForTests } from '@web/data/yjs/manager';
+import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import {
   canvasTakesPaste,
   cloneForPaste,
   CLIPBOARD_MARKER,
+  CLIPBOARD_VERSION,
   pasteOffsetFor,
+  type ClipboardNode,
+  type ClipboardPayload,
 } from '@web/spaces/canvas/node-clipboard';
 import { useUIStore } from '@web/stores/ui';
 
 const toastError = vi.hoisted(() => vi.fn());
 vi.mock('@web/lib/toast', () => ({ toast: { error: toastError } }));
 
-const outside = {
-  type: 'image' as const,
+const outside: ClipboardNode = {
+  id: 'x1',
+  type: 'image',
   position: { x: 10, y: 20 },
-  name: 'A picture',
-  content: 'https://original.example/1.png',
+  data: { name: 'A picture', content: 'https://original.example/1.png' },
   external: true,
 };
 
+/**
+ * A payload of the given nodes, every one of them picked.
+ * @param nodes - Its nodes.
+ * @param source - Where it was copied, when on a canvas.
+ * @returns The payload.
+ */
+const payloadOf = (nodes: ClipboardNode[], source?: ClipboardPayload['source']): ClipboardPayload => ({
+  version: CLIPBOARD_VERSION,
+  ...(source === undefined ? {} : { source }),
+  picked: nodes.map((n) => n.id),
+  nodes,
+  edges: [],
+});
+
+/**
+ * The data stored on a node of the test canvas.
+ * @param id - The node.
+ * @returns Its data, or undefined when the node is not there.
+ */
+const storedData = (id: string): Record<string, unknown> | undefined =>
+  canvasSpace.readNodes(getDoc(docName.canvasSpace('p1', 's1'))).find((n) => n.id === id)?.data as
+    | Record<string, unknown>
+    | undefined;
+
 describe('cloning a node from outside', () => {
   it('leaves the address off the node and keeps the name as it is', () => {
-    const [node] = cloneForPaste([outside], 'u-9', { dx: 0, dy: 0 });
+    const [node] = cloneForPaste(payloadOf([outside]), 'u-9', { dx: 0, dy: 0 }).nodes;
 
     expect(node?.type).toBe('image');
     expect(node?.data.content).toBeUndefined();
@@ -51,6 +78,8 @@ describe('cloning a node from outside', () => {
 describe('pasting a node from outside', () => {
   beforeEach(() => {
     _resetForTests();
+    // The Space is open, as it is while its canvas is on screen.
+    getDoc(docName.canvasSpace('p1', 's1'));
     toastError.mockReset();
     useCurrentUserStore.getState().setUser({
       id: 'u-9',
@@ -66,21 +95,22 @@ describe('pasting a node from outside', () => {
   });
 
   it('creates an empty image node and asks for the address to be fetched into it', async () => {
-    const addNode = vi.spyOn(canvasSpace, 'addNode').mockImplementation(() => undefined);
+    const paste = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {} });
     const ingestUrl = vi
       .spyOn(canvasApi, 'ingestUrl')
       .mockResolvedValue({ task_id: 't1' });
     const { result } = renderHook(() => useNodeCreation('p1', 's1'));
 
-    const [id] = result.current.pasteNodesAt(
-      [outside, { type: 'text', position: { x: 0, y: 0 }, content: 'note' }],
+    const ids = await result.current.pastePayload(
+      payloadOf([outside, { id: 't1', type: 'text', position: { x: 0, y: 0 }, data: { content: 'note' } }]),
       { dx: 0, dy: 0 },
     );
 
-    expect(addNode).toHaveBeenCalledTimes(2);
-    const created = addNode.mock.calls[0]?.[2];
-    expect(created?.id).toBe(id);
-    expect(created?.data.content).toBeUndefined();
+    expect(ids).toHaveLength(2);
+    const id = ids?.[0] ?? '';
+    expect(storedData(id)?.content).toBeUndefined();
+    // The picture's address is never handed to the paste registration.
+    expect(JSON.stringify(paste.mock.calls)).not.toContain('original.example');
     await waitFor(() => expect(ingestUrl).toHaveBeenCalledTimes(1));
     expect(ingestUrl).toHaveBeenCalledWith({
       url: 'https://original.example/1.png',
@@ -90,13 +120,12 @@ describe('pasting a node from outside', () => {
     });
   });
 
-  it('asks for nothing when no node in the paste is from outside', () => {
-    vi.spyOn(canvasSpace, 'addNode').mockImplementation(() => undefined);
+  it('asks for nothing when no node in the paste is from outside', async () => {
     const ingestUrl = vi.spyOn(canvasApi, 'ingestUrl');
     const { result } = renderHook(() => useNodeCreation('p1', 's1'));
 
-    result.current.pasteNodesAt(
-      [{ type: 'image', position: { x: 0, y: 0 }, content: 'https://ours.example/a.png' }],
+    await result.current.pastePayload(
+      payloadOf([{ id: 'i1', type: 'image', position: { x: 0, y: 0 }, data: { content: 'https://ours.example/a.png' } }]),
       { dx: 0, dy: 0 },
     );
 
@@ -104,21 +133,19 @@ describe('pasting a node from outside', () => {
   });
 
   it('says storage is full when the server answers 507', async () => {
-    vi.spyOn(canvasSpace, 'addNode').mockImplementation(() => undefined);
     vi.spyOn(canvasApi, 'ingestUrl').mockRejectedValue(new ApiException({ status: 507, message: 'full' }));
     const { result } = renderHook(() => useNodeCreation('p1', 's1'));
 
-    result.current.pasteNodesAt([outside], { dx: 0, dy: 0 });
+    await result.current.pastePayload(payloadOf([outside]), { dx: 0, dy: 0 });
 
     await waitFor(() => expect(toastError).toHaveBeenCalledWith('Studio storage is full. Uploading is unavailable.'));
   });
 
   it('says the upload failed for any other refusal', async () => {
-    vi.spyOn(canvasSpace, 'addNode').mockImplementation(() => undefined);
     vi.spyOn(canvasApi, 'ingestUrl').mockRejectedValue(new ApiException({ status: 429, message: 'slow down' }));
     const { result } = renderHook(() => useNodeCreation('p1', 's1'));
 
-    result.current.pasteNodesAt([outside], { dx: 0, dy: 0 });
+    await result.current.pastePayload(payloadOf([outside]), { dx: 0, dy: 0 });
 
     await waitFor(() => expect(toastError).toHaveBeenCalledWith('Upload failed.'));
   });
@@ -173,7 +200,7 @@ describe('where pasted nodes land', () => {
 
   it('puts pictures from outside in the middle of the view, even with the origin in view', () => {
     const offset = pasteOffsetFor(
-      [{ ...outside, position: { x: 0, y: 0 } }],
+      payloadOf([{ ...outside, position: { x: 0, y: 0 } }]),
       { x: -100, y: -100, width: 800, height: 600 },
       'here',
     );
@@ -185,7 +212,7 @@ describe('where pasted nodes land', () => {
 
   it('keeps nodes copied on the canvas beside their source', () => {
     const offset = pasteOffsetFor(
-      [{ type: 'text' as const, position: { x: 1100, y: 1100 }, space: 'here' }],
+      payloadOf([{ id: 't1', type: 'text', position: { x: 1100, y: 1100 }, data: {} }], { projectId: 'p1', spaceId: 'here' }),
       viewport,
       'here',
     );

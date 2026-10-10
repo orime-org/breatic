@@ -33,8 +33,10 @@ import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
+import { DrawingControls } from '@web/spaces/canvas/mini-tool/DrawingControls';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
 import {
+  BLOCKING_REFUSALS,
   aspectRatioOf,
   rectForAspect,
   setRectSide,
@@ -193,7 +195,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
     onClose,
   } = props;
   const t = useTranslation();
-  const blocked = refusal === 'slotMissing' || refusal === 'promptMissing' || refusal === 'exporting';
+  const blocked = BLOCKING_REFUSALS.has(refusal);
   return (
     <CanvasPanel
       title={
@@ -206,6 +208,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
       onClose={onClose}
     >
       <div className='flex flex-col gap-2.5 px-3 pb-2.5'>
+        {spec.drawing !== undefined ? <DrawingControls kind={spec.drawing.kind} /> : null}
         {spec.slots.length > 0 ? (
           <div className='flex flex-wrap gap-1.5'>
             {spec.slots.map((slot) => {
@@ -298,7 +301,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
           ))
         )}
       </div>
-      <div className='flex items-center justify-end gap-1.5 border-t border-border px-3 py-2'>
+      <div className='flex items-center justify-between gap-1.5 border-t border-border px-3 py-2'>
         <span
           data-testid='mini-tool-credit'
           className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'

@@ -9,6 +9,7 @@
 
 import type { ResumeContext } from "@worker/providers/shared.js";
 import type { VoiceSampleJob } from "@worker/voice-samples/plan.js";
+import { StillRunning } from "@worker/providers/still-running.js";
 
 /** The key the storage check asks about. */
 const PROBE_KEY = "voice-samples/probe.mp3";
@@ -137,32 +138,61 @@ export async function syncVoiceSamples(jobs: readonly VoiceSampleJob[], deps: Sy
   };
 }
 
+/** How a sample waits on a prediction the upstream is still running. */
+export interface PredictionWaiting {
+  /** How long a sample may wait from its submit before it is given up, in milliseconds. */
+  budgetMs: number;
+  /** The current time, in epoch milliseconds. */
+  now: () => number;
+  /** Resolve at the given time, in epoch milliseconds. */
+  sleepUntil: (at: number) => Promise<void>;
+}
+
 /**
  * A prediction that is paid for once per sample across passes: the upstream
- * task it submitted is kept by sample key, and a later pass polls that task
- * again. A task the upstream itself failed is dropped, so the next pass
- * submits a new one.
+ * task it submitted is kept by sample key, and a later pass asks about that
+ * task again. Within a pass, a task still going is asked about again at the
+ * time the question named, until the budget since its submit runs out; the
+ * sample then fails this pass and keeps its task for the next. A task the
+ * upstream itself failed is dropped, so the next pass submits a new one.
  * @param run - Runs one prediction with the resume context it is given.
  * @param startsOver - Whether an error means the upstream failed the task.
+ * @param waiting - The budget and the clock the waiting runs on.
  * @returns The prediction step for {@link syncVoiceSamples}.
  */
 export function resumablePredict(
   run: (job: VoiceSampleJob, resume: ResumeContext) => Promise<string>,
   startsOver: (err: unknown) => boolean,
+  waiting: PredictionWaiting,
 ): (job: VoiceSampleJob) => Promise<string> {
-  const submitted = new Map<string, string>();
+  const submitted = new Map<string, { id: string; at: number }>();
+  // Samples whose last submit failed before an id was stored: it may have reached the upstream.
+  const unsure = new Set<string>();
   return async (job) => {
-    try {
-      return await run(job, {
-        storedTaskId: submitted.get(job.key) ?? null,
-        persistTaskId: async (id) => {
-          submitted.set(job.key, id);
-        },
-        externalTaskId: job.key,
-      });
-    } catch (err) {
-      if (startsOver(err)) submitted.delete(job.key);
-      throw err;
+    for (;;) {
+      try {
+        return await run(job, {
+          storedTaskId: submitted.get(job.key)?.id ?? null,
+          persistTaskId: async (id) => {
+            submitted.set(job.key, { id, at: waiting.now() });
+          },
+          externalTaskId: job.key,
+          retryStarting: unsure.has(job.key),
+        });
+      } catch (err) {
+        if (!(err instanceof StillRunning)) {
+          const over = startsOver(err);
+          if (over) submitted.delete(job.key);
+          if (over || submitted.has(job.key)) unsure.delete(job.key);
+          else unsure.add(job.key);
+          throw err;
+        }
+        const since = submitted.get(job.key)?.at ?? waiting.now();
+        if (waiting.now() - since >= waiting.budgetMs) {
+          throw new Error(`${job.key}: the prediction was still running after ${waiting.budgetMs / 1000}s`);
+        }
+        await waiting.sleepUntil(err.resumeAt);
+      }
     }
   };
 }

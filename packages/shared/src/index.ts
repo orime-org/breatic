@@ -278,6 +278,9 @@ export {
   taskCreateSchema,
   understandSchema,
   nodeHistorySnapshotSchema,
+  canvasPasteSchema,
+  pastePairSchema,
+  pasteHistoryItemSchema,
   projectCreateSchema,
   checkoutSchema,
   paymentConfirmSchema,
@@ -308,6 +311,9 @@ export type {
   ChatAttachedChip,
   TaskCreateInput,
   UnderstandInput,
+  CanvasPasteInput,
+  PastePair,
+  PasteHistoryItem,
   ProjectCreateInput,
   CheckoutInput,
   PaymentConfirmInput,
@@ -624,9 +630,7 @@ export { assetNameFromUrl } from "@shared/media/asset-name.js";
 // when a task settles and by the canvas when a reader restores one.
 export {
   NODE_MEDIA_KEYS,
-  readNodeMedia,
   writeNodeMedia,
-  type NodeMediaData,
   type NodeMediaFields,
 } from "@shared/canvas/node-media.js";
 export {
@@ -720,6 +724,7 @@ export {
   previewKeyFor,
   previewUrlFor,
   originalUrlFor,
+  isStoredObjectUrl,
 } from "@shared/upload/preview.js";
 // The type read off the bytes themselves. It lives beside the lists above
 // because they answer two halves of one question: what these bytes are, and

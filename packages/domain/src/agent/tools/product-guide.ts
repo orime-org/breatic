@@ -244,7 +244,8 @@ export function renderProductGuide(): string {
       `${String(getAgentConfig().attachment_max_items)} pictures, videos, sounds, PDF, Word (.docx), Excel or ` +
       "plain text files to the next message; pasting such files into the box (a screenshot, a copied file) " +
       "attaches them the same way. Canvas nodes are handed over with " +
-      `${quoted(t("canvas.contextMenu.addToAgent"))} on their right-click menu; if the model list cannot be read at that moment, nothing is attached and ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} on their right-click menu, or by copying them and pasting into the box, which attaches the same chip; ` +
+      "if the model list cannot be read at that moment, nothing is attached and " +
       `${quoted(t("canvas.generatePanel.catalogUnavailable"))} shows. In a document, the selected text or a whole ` +
       "line goes in as one text attachment named after its first line, from the selection bar or the six-dot " +
       "handle's menu (see the document section); the same line handed over again leaves one chip holding what " +
@@ -312,8 +313,9 @@ export function renderProductGuide(): string {
     "- Right-click an empty spot on the canvas (inside a group's box you get the group's menu instead) and pick " +
       `${typeLabel("text")}, ${typeLabel("image")}, ${typeLabel("audio")} or ${typeLabel("video")}; the node ` +
       `appears centred where you clicked. The same menu has ${quoted(t("canvas.contextMenu.paste"))}, which puts ` +
-      "copied nodes or copied text at the spot you clicked, a step down and to the right while another node " +
-      "already starts at that spot; a copied picture, screenshot or file does nothing there, so paste those with Cmd/Ctrl+V.",
+      "copied nodes, copied text or a copied picture or screenshot at the spot you clicked, a step down and to " +
+      "the right while another node already starts at that spot; a file copied from the computer's file browser " +
+      "pastes there as its name in a text node, so paste files with Cmd/Ctrl+V.",
     "- On a canvas space a floating menu of icons runs along the left edge; each names itself when hovered. " +
       `${quoted(t("menu.item.nodes"))} (a sparkle) opens a list of the same types; the node appears in the ` +
       "middle of the view.",
@@ -391,7 +393,10 @@ export function renderProductGuide(): string {
       `holds now is marked ${quoted(t("canvas.history.current"))}, ${quoted(t("canvas.history.restore"))} puts ` +
       `an earlier one back, and a failed attempt shows ${quoted(t("canvas.history.failed"))}. The panel is headed ` +
       `${quoted(t("canvas.history.title"))} with the number of entries, closes with its X, and ends with ` +
-      `${quoted(t("canvas.history.end"))} once everything is loaded. A node with none shows ` +
+      `${quoted(t("canvas.history.end"))} once everything is loaded. A pasted or duplicated picture, video or ` +
+      `sound node that holds a file starts with one ${quoted(t("canvas.history.typeUpload"))} entry, and a text ` +
+      `node with words in it with one ` +
+      `${quoted(t("canvas.history.typeSnapshot"))} entry. A node with none shows ` +
       `${quoted(t("canvas.history.empty.title"))} and ${quoted(t("canvas.history.empty.hint"))} If it cannot ` +
       `load it says ${quoted(t("canvas.history.loadError"))} with ${quoted(t("canvas.history.retry"))}.`,
     `- On a text node, ${quoted(t("canvas.nodeMenu.snapshot"))}, greyed while the node is empty: it keeps a copy ` +
@@ -406,7 +411,10 @@ export function renderProductGuide(): string {
       "deleted as it starts, " +
       `${quoted(t("canvas.understand.sourceGone"))}`,
     `- ${quoted(t("canvas.contextMenu.copy"))} (Cmd/Ctrl+C) and ${quoted(t("canvas.contextMenu.duplicate"))} ` +
-      "(Cmd/Ctrl+D), which places a copy slightly below and to the right.",
+      "(Cmd/Ctrl+D), which places a copy slightly below and to the right, a step further while another node " +
+      "already starts there. A copy, pasted or duplicated, carries the original's content but not its history, " +
+      "its lock, its running tasks or its failure message. It comes out selected with the keyboard on it, so the arrow keys move it; " +
+      "when it lands out of view the canvas slides over to it, keeping the zoom.",
     `- ${quoted(t("canvas.contextMenu.rename"))} and ${quoted(t("canvas.nodeMenu.lock"))} or ` +
       `${quoted(t("canvas.nodeMenu.unlock"))}. A locked node or group shows a small padlock at its top-right ` +
       "corner, and a locked note shows one at the bottom right of its bubble; a locked node " +
@@ -760,7 +768,19 @@ export function renderProductGuide(): string {
       "required one must be filled before the arrow works; a small X on a filled box empties it), and for some " +
       "tools a text box. A crop shows a box with " +
       "eight handles on the node and takes a ratio and a size in pixels in the panel; rotating turns and flips the " +
-      `picture on the node as you press. ${quoted(t("canvas.miniTool.image.upscale.label"))} for a picture offers ` +
+      "picture on the node as you press. The tools you draw with take the drawing straight on the node: drag " +
+      `with the left button to draw. Their panel starts with a row of icons whose names show on hover: ` +
+      `${quoted(t("canvas.miniTool.draw.brush"))}, ${quoted(t("canvas.miniTool.draw.rect"))}, ` +
+      `${quoted(t("canvas.miniTool.draw.ellipse"))} and ${quoted(t("canvas.miniTool.draw.eraser"))}, then ` +
+      `${quoted(t("canvas.miniTool.draw.undo"))}, ${quoted(t("canvas.miniTool.draw.redo"))} and ` +
+      `${quoted(t("canvas.miniTool.draw.clear"))}. Below are a ${quoted(t("canvas.miniTool.draw.size"))} slider, ` +
+      "which the [ and ] keys also move a step at a time, and a row of colour dots: " +
+      `${quoted(t("canvas.miniTool.draw.maskColor"))} on the tools that paint a mask, which only changes how the ` +
+      `mask looks on screen, or ${quoted(t("canvas.miniTool.draw.color"))} on the sketch, which is painted into ` +
+      "the picture. A rectangle or ellipse fills on a mask and is an outline on a sketch; the eraser removes only " +
+      "what was drawn. While the panel is open, Cmd+Z or Ctrl+Z and the undo and redo in the view bar step through " +
+      "the drawing, and the arrow stays greyed out until something is drawn. " +
+      `${quoted(t("canvas.miniTool.image.upscale.label"))} for a picture offers ` +
       `three output sizes, 2K, 4K and 8K, each showing the pixel size it comes to on that picture (its long edge ` +
       "becomes 2048, 4096 or 8192); a size no larger than the picture, or past what the model makes, is greyed out, " +
       `and when none can be used pressing the arrow says ${quoted(t("canvas.miniTool.panel.noUsableTier"))} Below the ` +
@@ -771,7 +791,7 @@ export function renderProductGuide(): string {
       "source, joined to it by a line and named after it (such as CROP- followed by its name); one undo takes them " +
       "all away, and the source stays as it was. What the run did shows in the new node's column of task icons and " +
       "its task list, the same as a generation. If the node's picture or video changes while the panel is open, " +
-      "the crop, range and turns go back to their start.",
+      "the crop, range and turns go back to their start, and anything drawn on it is cleared.",
     "",
     "## Focus crops",
     `In a picture or video panel, ${quoted(t("canvas.generatePanel.focus"))} takes a region of a picture or ` +
@@ -1128,7 +1148,8 @@ export function renderProductGuide(): string {
       `closes; the project's owner can bring the space back from ${quoted(t("activity.header"))}.`,
     `- When this chat cannot load, it is covered with ${quoted(t("chat.load.failedTitle"))} or ` +
       `${quoted(t("chat.load.refusedTitle"))} and ${quoted(t("chat.load.retry"))}.`,
-    `- ${quoted(t("canvas.upload.storageFull"))} when uploading, or ` +
+    `- ${quoted(t("canvas.upload.storageFull"))} when uploading or when pasting pictures, videos or sounds ` +
+      "into another studio, or " +
       `${quoted(t("canvas.generatePanel.errorStorageFull"))} when generating: the storage of the studio's admin ` +
       "is full, counted across every studio they administer. What is already there keeps working, but nothing " +
       "new can be uploaded or generated until they upgrade. The bell's " +

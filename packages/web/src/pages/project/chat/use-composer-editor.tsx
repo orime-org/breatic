@@ -26,7 +26,7 @@ import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
 import { chatReferenceContent } from '@web/pages/project/chat/chat-reference';
 import { ATTACHMENTS_CHANGED_META, composerExtensions } from '@web/pages/project/chat/composer-extensions';
 import { draftContent, draftOf } from '@web/pages/project/chat/composer-draft';
-import { parseClipboardNodes, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
+import { parseClipboard, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 import type { TrayItem } from '@web/stores/chat-attachments';
 
 /** What the box is told and what it reports. */
@@ -49,8 +49,8 @@ export interface ComposerEditorInput {
   onEnter: () => void;
   /** Called with pasted files. */
   onPasteFiles: (files: File[]) => void;
-  /** Called with canvas nodes pasted as the canvas's own clipboard text. */
-  onPasteCanvas: (nodes: ClipboardNode[]) => void;
+  /** Called with the payload of the canvas's own clipboard text pasted into the box. */
+  onPasteCanvas: (payload: ClipboardPayload) => void;
   /** Called when the limit turned something away. */
   onRefusedAtLimit: () => void;
 }
@@ -164,9 +164,9 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
           }
           // The canvas's own clipboard text becomes an attachment; text that
           // only looks like it is pasted as the words it is.
-          const nodes = parseClipboardNodes(event.clipboardData?.getData('text/plain') ?? '');
-          if (nodes !== null) {
-            live.current.onPasteCanvas(nodes);
+          const payload = parseClipboard(event.clipboardData?.getData('text/plain') ?? '');
+          if (payload !== null) {
+            live.current.onPasteCanvas(payload);
             return true;
           }
           // Everything else is pasted as ProseMirror pastes it; one past the

@@ -651,3 +651,87 @@ models:
           base_price: 18000
           formula: ""
           discount_rate: 100
+
+  - name: "bria-genfill"
+    display_name: "Bria GenFill"
+    mode: "inpaint"
+    takes_prompt: true
+    tier: "internal"
+    description: "Repaints only the masked area"
+    guide: "Inpainting: changes the area the reader painted and leaves the rest of the picture as it was."
+    generation_time: 30
+    icon: "bria"
+    params:
+      image:
+        description: "Source image"
+        default: null
+        accepts: "image"
+        fill: "tool"
+      mask_image:
+        description: "Black-and-white mask the size of the source, white where to change"
+        default: null
+        accepts: "image"
+        fill: "tool"
+    providers:
+      - name: "wavespeed"
+        model_id: "bria/fibo-edit/genfill"
+        priority: 1
+        pricing:
+          base_price: 40000
+          formula: ""
+          discount_rate: 100
+
+  - name: "bria-eraser"
+    display_name: "Bria Eraser"
+    mode: "erase"
+    takes_prompt: false
+    tier: "internal"
+    description: "Removes the masked object"
+    guide: "Object removal: takes out what the reader painted and fills in the background."
+    generation_time: 15
+    icon: "bria"
+    params:
+      image:
+        description: "Source image"
+        default: null
+        accepts: "image"
+        fill: "tool"
+      mask_image:
+        description: "Black-and-white mask the size of the source, white where to erase"
+        default: null
+        accepts: "image"
+        fill: "tool"
+    providers:
+      - name: "wavespeed"
+        model_id: "bria/eraser"
+        priority: 1
+        pricing:
+          base_price: 40000
+          formula: ""
+          discount_rate: 100
+
+  - name: "seedream-v4.5-edit"
+    display_name: "Seedream 4.5 Edit"
+    mode: "sketch_edit"
+    takes_prompt: true
+    tier: "internal"
+    description: "Follows strokes drawn on the picture"
+    guide: "Sketch edit: turns the rough shapes drawn on the picture into what the prompt says."
+    generation_time: 30
+    icon: "seedream"
+    params:
+      images:
+        description: "The source with the reader's drawing painted on it"
+        default: null
+        type: "list"
+        max_items: 1
+        accepts: "image"
+        fill: "tool"
+    providers:
+      - name: "wavespeed"
+        model_id: "bytedance/seedream-v4.5/edit"
+        priority: 1
+        pricing:
+          base_price: 40000
+          formula: ""
+          discount_rate: 100

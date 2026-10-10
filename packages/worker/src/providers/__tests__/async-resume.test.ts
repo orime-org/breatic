@@ -1,7 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const { warnMock } = vi.hoisted(() => ({ warnMock: vi.fn() }));
+
+vi.mock("@breatic/core", () => ({ logger: { warn: warnMock, info: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 
 import { submitOrResume } from "@worker/providers/async-resume.js";
 
@@ -19,7 +23,7 @@ describe("submitOrResume (#1628 ⑦ async resume)", () => {
     const persistId = vi.fn(async () => {});
     const poll = vi.fn(async (id: string) => ({ ok: true, id }));
 
-    const r = await submitOrResume({ storedTaskId: null, submit, persistId, poll });
+    const r = await submitOrResume({ retryStarting: false, label: "task-1", storedTaskId: null, submit, persistId, poll });
 
     expect(submit).toHaveBeenCalledTimes(1);
     expect(persistId).toHaveBeenCalledWith("vid-123");
@@ -32,7 +36,7 @@ describe("submitOrResume (#1628 ⑦ async resume)", () => {
     const persistId = vi.fn(async () => {});
     const poll = vi.fn(async (id: string) => ({ ok: true, id }));
 
-    const r = await submitOrResume({
+    const r = await submitOrResume({ retryStarting: false, label: "task-1",
       storedTaskId: "vid-existing",
       submit,
       persistId,
@@ -53,9 +57,51 @@ describe("submitOrResume (#1628 ⑦ async resume)", () => {
     const poll = vi.fn();
 
     await expect(
-      submitOrResume({ storedTaskId: null, submit, persistId, poll }),
+      submitOrResume({ retryStarting: false, label: "task-1", storedTaskId: null, submit, persistId, poll }),
     ).rejects.toThrow("submit 5xx");
     expect(persistId).toHaveBeenCalledTimes(0);
     expect(poll).toHaveBeenCalledTimes(0);
+  });
+});
+
+// #1628 monitoring: a retry that submits again may be the upstream's second charge.
+describe("the duplicate-cost warning", () => {
+  beforeEach(() => warnMock.mockReset());
+
+  /**
+   * One submit-or-resume with the given flags.
+   * @param storedTaskId - The id a previous pickup stored, or null.
+   * @param retryStarting - Whether this pickup starts a retry.
+   */
+  async function run(storedTaskId: string | null, retryStarting: boolean): Promise<void> {
+    await submitOrResume({
+      storedTaskId,
+      retryStarting,
+      label: "breatic-task-1-0",
+      submit: async () => "vid-1",
+      persistId: async () => {},
+      poll: async () => ({}),
+    });
+  }
+
+  it("is raised when a retry submits again", async () => {
+    await run(null, true);
+
+    expect(warnMock).toHaveBeenCalledWith(
+      { submit: "breatic-task-1-0" },
+      "provider_reinvoked_on_retry_potential_duplicate_cost",
+    );
+  });
+
+  it("is not raised when a retry asks about the stored id", async () => {
+    await run("vid-1", true);
+
+    expect(warnMock).not.toHaveBeenCalled();
+  });
+
+  it("is not raised when the pickup does not start a retry", async () => {
+    await run(null, false);
+
+    expect(warnMock).not.toHaveBeenCalled();
   });
 });

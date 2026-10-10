@@ -140,6 +140,7 @@ export default function RegisterPage(): React.JSX.Element {
   return (
     <>
       <AuthCardShell
+        showVersion
         title={t('auth.register.title')}
         notice={<TermsNotice />}
         subtitle={t('auth.register.subtitle')}

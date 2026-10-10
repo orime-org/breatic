@@ -10,9 +10,9 @@ import { createClassPatternRule } from "#rules/class-pattern-rule";
  * contrast guarantee the token palette makes.
  *
  * Separate from the other raw-value checks because it needs exemptions they
- * do not, and those live in the config: the brand mark is a fixed logo
- * colour by definition, and the inpaint brush works in pigment rather than
- * in UI surfaces. Both are live — four files rely on them today.
+ * do not, and it lives in the config: the brand mark is a fixed logo colour
+ * by definition. Image content drawn in a fixed colour carries the
+ * `design-value: allow` marker on its line instead.
  *
  * The guard also excused the token definition file, and that one IS dead:
  * its include filter only ever read .ts and .tsx, so a .css file never

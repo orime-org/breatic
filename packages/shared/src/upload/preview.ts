@@ -41,8 +41,20 @@ export function previewKeyFor(key: string): string {
  *   object's address (an external image, a blob, a preview).
  */
 export function previewUrlFor(url: string): string | null {
-  if (!/^https?:\/\//.test(url)) return null;
-  return STORED_KEY_TAIL.test(url) ? `${url}${PREVIEW_SUFFIX}` : null;
+  return isStoredObjectUrl(url) ? `${url}${PREVIEW_SUFFIX}` : null;
+}
+
+/**
+ * Whether an address names an object in our storage: an original or a video
+ * cover, never a preview.
+ *
+ * Only the shape of the address is judged: the page does not know which host
+ * the bucket answers on, and nothing else is shaped like a stored key.
+ * @param url - Any string.
+ * @returns True for an http(s) address whose path ends in a stored key.
+ */
+export function isStoredObjectUrl(url: string): boolean {
+  return /^https?:\/\//.test(url) && STORED_KEY_TAIL.test(url);
 }
 
 /**

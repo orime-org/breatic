@@ -14,7 +14,7 @@
 // MUST be first: reads process.env + initCore before any env.* read.
 import "@worker/bootstrap-config.js";
 
-import { getStorageAdapter, logger } from "@breatic/core";
+import { getNodeTaskConfig, getStorageAdapter, logger } from "@breatic/core";
 import { getFullModelConfig, getVoiceSampleConfig, voiceSampleUrl } from "@breatic/domain";
 import { httpRequest } from "@breatic/shared";
 
@@ -45,6 +45,7 @@ const ATTEMPTS = 3;
  * @param job - The sample.
  * @param resume - The upstream task an earlier pass already submitted for it.
  * @returns Where the prediction's output is.
+ * @throws {StillRunning} When the prediction is still going.
  * @throws {Error} When the prediction fails or answers no output.
  */
 async function predict(modality: "tts" | "video", job: VoiceSampleJob, resume: ResumeContext): Promise<string> {
@@ -151,6 +152,11 @@ async function syncKind(
     predict: resumablePredict(
       (job, resume) => predict(sample.modality, job, resume),
       (err) => err instanceof UpstreamTaskFailed,
+      {
+        budgetMs: getNodeTaskConfig().default_budget_ms,
+        now: () => Date.now(),
+        sleepUntil: (at) => new Promise((resolve) => setTimeout(resolve, Math.max(0, at - Date.now()))),
+      },
     ),
     download,
     finish: sample.finish,

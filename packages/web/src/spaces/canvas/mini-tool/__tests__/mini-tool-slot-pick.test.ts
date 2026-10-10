@@ -9,7 +9,16 @@ import {
   miniToolSlotValue,
 } from '@web/spaces/canvas/mini-tool/mini-tool-slot-pick';
 
-const DRAFT = { toolId: 'video.edit', sourceContent: 'v.mp4', prompt: '', params: {}, slots: {}, sourceSize: null };
+const DRAFT = {
+  toolId: 'video.edit',
+  sourceContent: 'v.mp4',
+  prompt: '',
+  params: {},
+  slots: {},
+  sourceSize: null,
+  drawing: null,
+  exporting: false,
+};
 
 describe('activeMiniToolSlot', () => {
   it('reads the slot a mini-tool pick fills off the open tool', () => {

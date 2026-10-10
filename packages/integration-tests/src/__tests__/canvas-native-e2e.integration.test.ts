@@ -87,7 +87,6 @@ const providerCtrl = {
 // Must be hoisted before the module imports below
 vi.mock("@worker/handlers/container/run-container-job.js", () => ({
   ContainerJobFailed: class ContainerJobFailed extends Error {},
-  ContainerJobPending: class ContainerJobPending extends Error {},
   runContainerJob: async (): Promise<[Record<string, unknown>, number]> => [await syntheticRun(), 0],
 }));
 

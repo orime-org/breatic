@@ -109,13 +109,14 @@ test('a copied picture pastes onto the canvas and lands as a stored picture @nee
 
   const text = await page.evaluate(() => navigator.clipboard.readText());
   expect(text.startsWith('__breatic_canvas_nodes__:')).toBe(true);
-  const [copied] = JSON.parse(text.slice('__breatic_canvas_nodes__:'.length)) as {
-    name?: string;
-    content: string;
-    external: boolean;
-  }[];
+  const payload = JSON.parse(text.slice('__breatic_canvas_nodes__:'.length)) as {
+    version: number;
+    nodes: { data: { name?: string; content: string }; external: boolean }[];
+  };
+  expect(payload.version).toBe(2);
+  const [copied] = payload.nodes;
   expect(copied?.external).toBe(true);
-  expect(copied?.content.startsWith('https://')).toBe(true);
+  expect(copied?.data.content.startsWith('https://')).toBe(true);
 
   // Pasted straight away: the keyboard is still on the copy button.
   const before = (await documentNodes(page)).length;
@@ -124,9 +125,9 @@ test('a copied picture pastes onto the canvas and lands as a stored picture @nee
   await expect.poll(async () => (await documentNodes(page)).length, { timeout: 15_000 }).toBe(before + 1);
   const pasted = (await documentNodes(page)).at(-1) as DocNode;
   expect(pasted.type).toBe('image');
-  expect(pasted.name).toBe(copied?.name ?? pasted.name);
+  expect(pasted.name).toBe(copied?.data.name ?? pasted.name);
   // The node never holds the outside address; the server writes the stored one.
-  expect(pasted.content).not.toBe(copied?.content);
+  expect(pasted.content).not.toBe(copied?.data.content);
   // It lands in the view, the way a pasted file does.
   const pane = await visibleSpace(page).locator('.react-flow').boundingBox();
   const placed = await visibleSpace(page).locator(`.react-flow__node[data-id="${pasted.id}"]`).boundingBox();
@@ -142,8 +143,8 @@ test('a copied picture pastes onto the canvas and lands as a stored picture @nee
     })
     .not.toBeNull();
   const stored = (await documentNodes(page)).find((n) => n.id === pasted.id)?.content as string;
-  expect(stored).not.toBe(copied?.content);
-  expect(new URL(stored).host).not.toBe(new URL(copied?.content ?? stored).host);
+  expect(stored).not.toBe(copied?.data.content);
+  expect(new URL(stored).host).not.toBe(new URL(copied?.data.content ?? stored).host);
 
   // The open box carries the labelled button for the same picture.
   await square.click();

@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { captureException } from '@sentry/react';
+import { RouteErrorReportContext, type RouteErrorReport } from '@web/app/RouteErrorPage';
+import { configuredErrorEventId } from '@web/lib/error-monitoring';
 import { RouterProvider } from 'react-router-dom';
 
 interface AppRouterProps {
@@ -25,7 +28,17 @@ interface AppRouterProps {
  * @param root0 - The component props.
  * @param root0.router - The data router to render.
  * @returns The router.
+ * @throws {Error} If the router cannot render or error capture fails.
  */
 export function AppRouter({ router }: AppRouterProps): React.JSX.Element {
-  return <RouterProvider router={router} useTransitions={false} />;
+  const [report, setReport] = React.useState<RouteErrorReport>();
+  const reportRouteError = React.useCallback((error: unknown): void => {
+    const eventId = captureException(error, { tags: { error_boundary: 'route' } });
+    setReport({ error, eventId: configuredErrorEventId(eventId) });
+  }, []);
+  return (
+    <RouteErrorReportContext.Provider value={report}>
+      <RouterProvider router={router} useTransitions={false} onError={reportRouteError} />
+    </RouteErrorReportContext.Provider>
+  );
 }

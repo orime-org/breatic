@@ -1,13 +1,20 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import * as React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, renderHook, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 import { AppRouter } from '@web/app/AppRouter';
 import { behindLoadingScreen } from '@web/app/loading-boundary';
+
+vi.mock('react-router-dom', async (original) => {
+  const actual = await original<typeof import('react-router-dom')>();
+  return { ...actual, RouterProvider: vi.fn((props: React.ComponentProps<typeof actual.RouterProvider>) =>
+    React.createElement(actual.RouterProvider, props)) };
+});
+afterEach(() => vi.clearAllMocks());
 
 type PageComponent = () => React.JSX.Element;
 
@@ -81,11 +88,8 @@ describe('AppRouter', () => {
     // works around by never navigating. This pins the wiring so deleting the
     // prop fails here rather than only in a browser.
     const router = createMemoryRouter([{ path: '/', element: <div /> }]);
-    const tree = AppRouter({ router }) as React.ReactElement<
-      React.ComponentProps<typeof RouterProvider>
-    >;
-
-    expect(tree.props.useTransitions).toBe(false);
+    render(<AppRouter router={router} />);
+    expect(vi.mocked(RouterProvider).mock.calls.at(-1)?.[0].useTransitions).toBe(false);
   });
 
   it('leaves the router mounted above the loading screen', () => {
@@ -97,10 +101,23 @@ describe('AppRouter', () => {
     // the project page arrived four seconds later and stayed.
     //
     // The boundary therefore belongs inside the router, which is what this
-    // pins: nothing may stand between `AppRouter` and `RouterProvider`.
+    // pins: no Suspense boundary may hide `RouterProvider`.
     const router = createMemoryRouter([{ path: '/', element: <div /> }]);
 
-    expect(AppRouter({ router }).type).toBe(RouterProvider);
+    const { result } = renderHook(() => AppRouter({ router }));
+    const pending: React.ReactNode[] = [result.current];
+    let foundProvider = false;
+    while (pending.length > 0) {
+      const element = pending.pop();
+      if (!React.isValidElement<{ children?: React.ReactNode }>(element)) continue;
+      expect(element.type).not.toBe(React.Suspense);
+      if (element.type === RouterProvider) {
+        foundProvider = true;
+        continue;
+      }
+      pending.push(...React.Children.toArray(element.props.children));
+    }
+    expect(foundProvider).toBe(true);
   });
 
 });

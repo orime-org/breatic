@@ -122,6 +122,8 @@ describe('mini-tool draft (inner#888 §7.2)', () => {
       params: { creativity: 0 },
       slots: {},
       sourceSize: null,
+      drawing: null,
+      exporting: false,
     });
   });
 
@@ -344,5 +346,14 @@ describe('mini-tool source size (inner#888 §7.4.1)', () => {
     store.getState().setMiniToolSourceSize({ width: 800, height: 600 });
     store.getState().resetMiniToolSource('b', {});
     expect(store.getState().miniTool?.sourceSize).toBeNull();
+  });
+});
+
+describe('settled zoom (inner#1302 §6.2)', () => {
+  it('starts unknown and holds the zoom the last canvas move ended at', () => {
+    const store = createCanvasSessionStore();
+    expect(store.getState().settledZoom).toBeNull();
+    store.getState().setSettledZoom(2);
+    expect(store.getState().settledZoom).toBe(2);
   });
 });

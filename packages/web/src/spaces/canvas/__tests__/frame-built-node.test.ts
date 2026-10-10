@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { frameBuiltNode } from '@web/spaces/canvas/frame-built-node';
+import { frameBuiltNode, framedBox } from '@web/spaces/canvas/frame-built-node';
 
 const VIEWPORT = { x: 0, y: 0, width: 1000, height: 800 };
 /** A node near the right edge of what the reader can see. */
@@ -59,5 +59,50 @@ describe('framing the node a press just wrote', () => {
     expect(
       frameBuiltNode(BUILT, SOURCE, { x: 900, y: 0, width: 1000, height: 800 }),
     ).toBeNull();
+  });
+});
+
+// A paste or duplicate makes several copies at once. Centring on all of them
+// only helps when they fit the view together; when they do not, their middle
+// can be empty canvas, so the first copy is what gets framed.
+describe('what a paste or duplicate frames', () => {
+  it('is all the copies when they fit the view together', () => {
+    expect(
+      framedBox(
+        [
+          { x: 100, y: 100, width: 288, height: 200 },
+          { x: 600, y: 400, width: 288, height: 200 },
+        ],
+        VIEWPORT,
+      ),
+    ).toEqual({ x: 100, y: 100, width: 788, height: 500 });
+  });
+
+  it('is the first copy when they are wider than the view', () => {
+    expect(
+      framedBox(
+        [
+          { x: 24, y: 24, width: 288, height: 200 },
+          { x: 2024, y: 24, width: 288, height: 200 },
+        ],
+        VIEWPORT,
+      ),
+    ).toEqual({ x: 24, y: 24, width: 288, height: 200 });
+  });
+
+  it('is the first copy when they are taller than the view', () => {
+    expect(
+      framedBox(
+        [
+          { x: 24, y: 24, width: 288, height: 200 },
+          { x: 24, y: 2024, width: 288, height: 200 },
+        ],
+        VIEWPORT,
+      ),
+    ).toEqual({ x: 24, y: 24, width: 288, height: 200 });
+  });
+
+  it('is nothing when there are no copies', () => {
+    expect(framedBox([], VIEWPORT)).toBeNull();
   });
 });

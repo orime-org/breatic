@@ -727,6 +727,9 @@
       "failed": "アップロードに失敗しました。",
       "extractionFailed": "{filename} のテキストを読み取れません。"
     },
+    "paste": {
+      "failed": "貼り付けに失敗しました。"
+    },
     "minimap": {
       "label": "キャンバスのミニマップ"
     },
@@ -858,6 +861,17 @@
           },
           "prompt": "表情や動きを入力"
         },
+        "inpaint": {
+          "label": "部分修正",
+          "prompt": "塗った部分をどう変えるか入力"
+        },
+        "erase": {
+          "label": "消去"
+        },
+        "sketch": {
+          "label": "スケッチ編集",
+          "prompt": "描いたものを何にするか入力"
+        },
         "crop": {
           "label": "トリミング"
         },
@@ -976,7 +990,8 @@
         "sourceGone": "元のノードが削除されました。",
         "sourceChanged": "素材が変わりました。",
         "sourceChangedByPeer": "コラボレーターが素材を変えました。",
-        "couldNotStart": "ツールを開始できませんでした。もう一度お試しください。"
+        "couldNotStart": "ツールを開始できませんでした。もう一度お試しください。",
+        "drawingEmpty": "先に画像に描いてください。"
       },
       "adjust": {
         "exposure": "露出",
@@ -994,6 +1009,18 @@
         "vignette": "周辺減光",
         "grain": "粒子",
         "fade": "フェード"
+      },
+      "draw": {
+        "brush": "ブラシ",
+        "rect": "長方形",
+        "ellipse": "楕円",
+        "eraser": "消しゴム",
+        "size": "サイズ",
+        "color": "色",
+        "maskColor": "マスクの色",
+        "undo": "元に戻す",
+        "redo": "やり直す",
+        "clear": "クリア"
       }
     },
     "template": {
@@ -1032,7 +1059,7 @@
       "noAccount": "アカウントをお持ちでないですか?",
       "forgotPassword": "パスワードをお忘れですか?",
       "googleLoading": "Google ログインを読み込み中…",
-      "googleFailed": "Google ログインを利用できません。再試行するか、メールでログインしてください。",
+      "googleFailed": "Google ログインを利用できません。ページを再読み込みするか、メールでログインしてください。",
       "failed": "サインインに失敗しました。もう一度お試しください。"
     },
     "register": {
@@ -2234,6 +2261,13 @@
     "heading": "ページが見つかりません",
     "body": "お探しのページは存在しないか、移動した可能性があります。ホームに戻りましょう。",
     "cta": "ホームに戻る"
+  },
+  "applicationError": {
+    "title": "問題が発生しました",
+    "message": "このページを続行できません。再読み込みするか、ホームに戻ってください。ブラウザの翻訳を使用している場合は無効にし、製品の言語設定をご利用ください。",
+    "reload": "再読み込み",
+    "home": "ホームに戻る",
+    "reference": "エラー番号：{id}"
   },
   "pageLoadError": {
     "message": "ページを読み込めませんでした。もう一度お試しください。",

@@ -727,6 +727,9 @@
       "failed": "업로드에 실패했습니다.",
       "extractionFailed": "{filename}의 텍스트를 읽을 수 없습니다."
     },
+    "paste": {
+      "failed": "붙여넣기에 실패했습니다."
+    },
     "minimap": {
       "label": "캔버스 미니맵"
     },
@@ -858,6 +861,17 @@
           },
           "prompt": "표정과 움직임을 입력하세요"
         },
+        "inpaint": {
+          "label": "부분 수정",
+          "prompt": "칠한 부분을 무엇으로 바꿀지 입력하세요"
+        },
+        "erase": {
+          "label": "지우기"
+        },
+        "sketch": {
+          "label": "스케치 편집",
+          "prompt": "그린 것을 무엇으로 바꿀지 입력하세요"
+        },
         "crop": {
           "label": "자르기"
         },
@@ -976,7 +990,8 @@
         "sourceGone": "원본 노드가 삭제되었습니다.",
         "sourceChanged": "소재가 바뀌었습니다.",
         "sourceChangedByPeer": "공동 작업자가 소재를 바꿨습니다.",
-        "couldNotStart": "도구를 시작하지 못했습니다. 다시 시도하세요."
+        "couldNotStart": "도구를 시작하지 못했습니다. 다시 시도하세요.",
+        "drawingEmpty": "먼저 그림 위에 그려 주세요."
       },
       "adjust": {
         "exposure": "노출",
@@ -994,6 +1009,18 @@
         "vignette": "비네트",
         "grain": "그레인",
         "fade": "페이드"
+      },
+      "draw": {
+        "brush": "브러시",
+        "rect": "사각형",
+        "ellipse": "타원",
+        "eraser": "지우개",
+        "size": "크기",
+        "color": "색상",
+        "maskColor": "마스크 색상",
+        "undo": "실행 취소",
+        "redo": "다시 실행",
+        "clear": "모두 지우기"
       }
     },
     "template": {
@@ -1032,7 +1059,7 @@
       "noAccount": "계정이 없으신가요?",
       "forgotPassword": "비밀번호를 잊으셨나요?",
       "googleLoading": "Google 로그인 불러오는 중…",
-      "googleFailed": "Google 로그인을 사용할 수 없습니다. 다시 시도하거나 이메일로 로그인하세요.",
+      "googleFailed": "Google 로그인을 사용할 수 없습니다. 페이지를 새로고침하거나 이메일로 로그인하세요.",
       "failed": "로그인에 실패했습니다. 다시 시도해 주세요."
     },
     "register": {
@@ -2234,6 +2261,13 @@
     "heading": "페이지를 찾을 수 없습니다",
     "body": "찾으시는 페이지가 존재하지 않거나 이동되었습니다. 홈으로 돌아가 다시 시작해 보세요.",
     "cta": "홈으로 돌아가기"
+  },
+  "applicationError": {
+    "title": "문제가 발생했습니다",
+    "message": "이 페이지를 계속 사용할 수 없습니다. 새로고침하거나 홈으로 돌아가세요. 브라우저 번역을 사용 중이라면 끄고 제품의 언어 설정을 이용해 주세요.",
+    "reload": "새로고침",
+    "home": "홈으로 돌아가기",
+    "reference": "오류 번호: {id}"
   },
   "pageLoadError": {
     "message": "페이지를 불러오지 못했습니다. 다시 시도해 주세요.",

@@ -5,6 +5,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import * as Sentry from '@sentry/react';
 import App from '@web/App';
+import { AppErrorBoundary } from '@web/app/AppErrorBoundary';
 // Self-host Inter (the --font-sans primary) so the UI no longer depends on the
 // viewer having Inter installed locally. Weights mirror tokens.css usage.
 import '@fontsource/inter/400.css';
@@ -34,9 +35,9 @@ const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement,
 );
 root.render(
-  <Sentry.ErrorBoundary fallback={<div>Page Error</div>}>
+  <AppErrorBoundary>
     <React.StrictMode>
       <App />
     </React.StrictMode>
-  </Sentry.ErrorBoundary>,
+  </AppErrorBoundary>,
 );

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as Sentry from '@sentry/react';
 import { MemoryRouter } from 'react-router-dom';
 import LoginPage from '../LoginPage';
 import type * as AuthModule from '@web/data/api/auth';
@@ -39,7 +40,34 @@ beforeEach(() => {
   document.documentElement.dataset.theme = 'light';
 });
 
+afterEach(async () => { await Sentry.close(); vi.restoreAllMocks(); });
+
 describe('official Google login', () => {
+  it('contains SDK effect failures and preserves a usable email form', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const send = vi.fn<ReturnType<NonNullable<Sentry.BrowserOptions['transport']>>['send']>(async () => ({ statusCode: 200 }));
+    Sentry.init({ dsn: 'https://public@sentry.invalid/1', defaultIntegrations: false,
+      transport: () => ({ send, flush: async () => true }) });
+    const error = new TypeError('undefined is not an object (evaluating \'a.contentType\')');
+    sdk.renderButton.mockImplementationOnce(() => { throw error; });
+    vi.mocked(authApi.login).mockRejectedValue(new Error('Synthetic login rejection'));
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'test@example.invalid' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'test-password' } });
+    fireEvent.load(document.querySelector('script[src^="https://accounts.google.com/gsi/client"]')!);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/use email sign-in/i);
+    expect(screen.getByLabelText('Email')).toHaveValue('test@example.invalid');
+    expect(screen.getByLabelText('Password')).toHaveValue('test-password');
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await waitFor(() => expect(authApi.login).toHaveBeenCalledExactlyOnceWith({
+      email: 'test@example.invalid', password: 'test-password',
+    }));
+    await Sentry.flush(2000);
+    expect(send).toHaveBeenCalledTimes(1);
+    const event = send.mock.calls[0]?.[0]?.[1]?.[0]?.[1];
+    expect(event).toMatchObject({ tags: { error_boundary: 'google-sign-in' },
+      exception: { values: expect.arrayContaining([expect.objectContaining({ value: error.message })]) } });
+  });
   it('uses outline_dark in light mode and outline in dark mode', async () => {
     setup();
     expect(sdk.renderButton).toHaveBeenLastCalledWith(expect.any(HTMLElement), expect.objectContaining({

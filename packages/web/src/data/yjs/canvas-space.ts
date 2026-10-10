@@ -21,15 +21,14 @@ import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import {
-  readNodeMedia,
   usableUrls,
   writeNodeMedia,
-  type NodeMediaData,
   type NodeMediaFields,
 } from '@breatic/shared';
 import { bodyFromText, bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import type { NodeKind, NodeView } from '@web/data/yjs/node-view';
 import { toNodeView } from '@web/data/yjs/node-view';
+import { fillNestedData, splitSnapshot } from '@web/data/yjs/node-data-snapshot';
 
 /**
  * Canvas-space Yjs document — single source of truth for one canvas
@@ -633,15 +632,67 @@ export function addNode(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   doc.transact(() => {
-    const map = new Y.Map<unknown>();
-    map.set('id', node.id);
-    map.set('type', node.type);
-    // Group containment: persist the member→Group link as a top-level field
-    // (alongside position), only when set so top-level nodes carry no key.
-    if (node.parentId !== undefined) map.set('parentId', node.parentId);
-    map.set('position', node.position);
-    map.set('data', buildDataMap(node.data, node.type));
-    nodesMap.set(node.id, map);
+    nodesMap.set(node.id, nodeEntry(node, buildDataMap(node.data, node.type)));
+  }, CANVAS_UNDO);
+}
+
+/**
+ * One node's entry in `nodesMap`, holding a data map built for its type.
+ * @param node - The node's id, type, position and Group link.
+ * @param data - Its data map.
+ * @returns The entry.
+ */
+function nodeEntry(node: Omit<SnapshotNode, 'data'>, data: Y.Map<unknown>): Y.Map<unknown> {
+  const map = new Y.Map<unknown>();
+  map.set('id', node.id);
+  map.set('type', node.type);
+  // Group containment: persist the member→Group link as a top-level field
+  // (alongside position), only when set so top-level nodes carry no key.
+  if (node.parentId !== undefined) map.set('parentId', node.parentId);
+  map.set('position', node.position);
+  map.set('data', data);
+  return map;
+}
+
+/** A node to write from a clipboard snapshot: `data` is `snapshotNodeData`'s output. */
+export interface SnapshotNode {
+  id: string;
+  type: string;
+  position: { x: number; y: number };
+  parentId?: string;
+  data: Record<string, unknown>;
+}
+
+/**
+ * Write nodes and edges carried by a clipboard snapshot, in one undo step
+ * (inner#1349, design 5.3). Each node is born through the same path as
+ * {@link addNode}, so every container a node of its type needs exists from
+ * birth; the snapshot's nested structures are then filled into those
+ * containers once the node is in the document, where they can be read.
+ * Edges whose ends are not both in the document are skipped.
+ * @param doc - The canvas document (a live Space, or a throwaway doc).
+ * @param nodes - The nodes, groups before their members.
+ * @param edges - The edges, each with its `createdAt`.
+ */
+export function writeSnapshotNodes(
+  doc: Y.Doc,
+  nodes: ReadonlyArray<SnapshotNode>,
+  edges: ReadonlyArray<CanvasEdge>,
+): void {
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
+  doc.transact(() => {
+    for (const node of nodes) {
+      const { plain, nested } = splitSnapshot(node.data);
+      const type = node.type as NodeType;
+      // A text node's words arrive in its body tree; `content` would seed the
+      // body a second time.
+      if (type === 'text') delete plain.content;
+      const data = buildDataMap(plain as CanvasNodeFields['data'], type);
+      nodesMap.set(node.id, nodeEntry(node, data));
+      fillNestedData(data, nested);
+    }
+    for (const edge of edges) putEdge(nodesMap, edgesMap, edge);
   }, CANVAS_UNDO);
 }
 
@@ -1397,33 +1448,6 @@ export function readTextBodies(
 }
 
 /**
- * Read several nodes' media fields as the document holds them, right now.
- *
- * For the copy path, alongside {@link readTextBodies}: the canvas nodes carry a
- * view of the data with the media fields renamed, and the copy carries the
- * document's own keys.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space holding the nodes.
- * @param nodeIds - Ids of the nodes to read.
- * @returns Node id to media fields, for the ids that hold any.
- */
-export function readNodeMediaFields(
-  projectId: string,
-  spaceId: string,
-  nodeIds: ReadonlyArray<string>,
-): ReadonlyMap<string, NodeMediaData> {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const out = new Map<string, NodeMediaData>();
-  for (const id of nodeIds) {
-    const data = nodeDataMap(doc, id);
-    if (data === null) continue;
-    const media = readNodeMedia(Object.fromEntries(data.entries()));
-    if (Object.keys(media).length > 0) out.set(id, media);
-  }
-  return out;
-}
-
-/**
  * Hand back a text node's body, repairing an empty seat on the way.
  *
  * This is the question an EDITOR asks — "give me the body I can bind to" —
@@ -1900,33 +1924,45 @@ export function addEdge(
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
   let added = false;
   doc.transact(() => {
-    // Validate BOTH endpoints against live Yjs state inside the transaction —
-    // this is the airtight write boundary. A caller's guard reads its React
-    // closure, which goes stale the instant a collaborator deletes a node
-    // (Yjs applies the deletion before React re-creates the handler), so the
-    // only race-free place to reject an orphaned edge is here, atomically with
-    // the write. Returns whether the edge landed so the caller can surface
-    // feedback (a silently-rejected edge must not read as success in the UI).
-    if (!nodesMap.has(edge.source) || !nodesMap.has(edge.target)) return;
-    // Deterministic ids make a duplicate drag map onto the EXISTING entry —
-    // rewriting it would replace createdAt (the reference silently jumps to
-    // the rail's end) and push a spurious undo entry. Idempotent success.
-    if (edgesMap.has(edge.id)) {
-      added = true;
-      return;
-    }
-    const map = new Y.Map<unknown>();
-    map.set('id', edge.id);
-    map.set('source', edge.source);
-    map.set('target', edge.target);
-    if (edge.toolId) map.set('toolId', edge.toolId);
-    // Connection time drives reference-rail order (undo re-inserts the map
-    // with its original stamp, so an undone+redone edge keeps its place).
-    map.set('createdAt', edge.createdAt ?? Date.now());
-    edgesMap.set(edge.id, map);
-    added = true;
+    added = putEdge(nodesMap, edgesMap, edge);
   }, CANVAS_UNDO);
   return added;
+}
+
+/**
+ * Write one edge inside an open transaction. Both endpoints are checked
+ * against live Yjs state here — this is the airtight write boundary. A
+ * caller's guard reads its React closure, which goes stale the instant a
+ * collaborator deletes a node (Yjs applies the deletion before React
+ * re-creates the handler), so the only race-free place to reject an orphaned
+ * edge is atomically with the write.
+ * @param nodesMap - The canvas-space `nodesMap`.
+ * @param edgesMap - The canvas-space `edgesMap`.
+ * @param edge - The edge.
+ * @returns Whether the edge is in the document afterwards, so a caller can
+ *   surface feedback (a silently-rejected edge must not read as success).
+ */
+function putEdge(
+  nodesMap: Y.Map<Y.Map<unknown>>,
+  edgesMap: Y.Map<Y.Map<unknown>>,
+  edge: CanvasEdge,
+): boolean {
+  if (edge.source === edge.target) return false;
+  if (!nodesMap.has(edge.source) || !nodesMap.has(edge.target)) return false;
+  // Deterministic ids make a duplicate drag map onto the EXISTING entry —
+  // rewriting it would replace createdAt (the reference silently jumps to
+  // the rail's end) and push a spurious undo entry. Idempotent success.
+  if (edgesMap.has(edge.id)) return true;
+  const map = new Y.Map<unknown>();
+  map.set('id', edge.id);
+  map.set('source', edge.source);
+  map.set('target', edge.target);
+  if (edge.toolId) map.set('toolId', edge.toolId);
+  // Connection time drives reference-rail order (undo re-inserts the map
+  // with its original stamp, so an undone+redone edge keeps its place).
+  map.set('createdAt', edge.createdAt ?? Date.now());
+  edgesMap.set(edge.id, map);
+  return true;
 }
 
 /**
