@@ -70,6 +70,26 @@ function cellTexts(content: HTMLElement): string[][] {
   return [...content.querySelectorAll('tr')].map((tr) => [...tr.querySelectorAll('td, th')].map((c) => c.textContent ?? ''));
 }
 
+/**
+ * A block as BlockNote draws it: its own content, and the blocks nested under
+ * it in a group.
+ * @param id - Its id.
+ * @param type - Its content type.
+ * @param inner - The inside of its content.
+ * @param children - Its nested blocks, as HTML.
+ * @returns The block.
+ */
+function blockOf(id: string, type: string, inner: string, children?: string): HTMLElement {
+  const block = document.createElement('div');
+  block.className = 'bn-block-outer';
+  block.setAttribute('data-id', id);
+  block.innerHTML =
+    `<div class="bn-block"><div class="bn-block-content" data-content-type="${type}">${inner}</div>` +
+    (children === undefined ? '' : `<div class="bn-block-group">${children}</div>`) +
+    '</div>';
+  return block;
+}
+
 describe('previewScale', () => {
   it('fits the width to 512 when the content is wider than tall', () => {
     expect(previewScale(768, 40)).toBeCloseTo(PREVIEW_LONGEST_SIDE / 768);
@@ -138,11 +158,12 @@ describe('blockPreviewContent', () => {
   it('takes a media block as its media box alone, without the chrome around it', () => {
     const editor = open([{ type: 'paragraph', content: 'x' }]);
     const view = editor.prosemirrorView!;
-    const block = document.createElement('div');
-    block.className = 'bn-block-outer';
-    block.innerHTML =
+    const block = blockOf(
+      'm1',
+      'image',
       '<div data-testid="doc-media-row" class="flex w-full justify-end">' +
-      '<div data-media-box="" style="width: 240px"><div data-media-chrome="">bar</div><img alt=""></div></div>';
+        '<div data-media-box="" style="width: 240px"><div data-media-chrome="">bar</div><img alt=""></div></div>',
+    );
     const content = blockPreviewContent(view, [block]);
     expect(content.hasAttribute('data-media-box')).toBe(true);
     expect(content.querySelector('[data-media-chrome]')).toBeNull();
@@ -154,18 +175,53 @@ describe('blockPreviewContent', () => {
     const view = editor.prosemirrorView!;
     // The body's audio box fills its row (`w-full`); the copy is set in a
     // preview that wraps its content, where a full width is no width at all.
-    const original = document.createElement('div');
-    original.setAttribute('data-id', 'audio-1');
-    original.innerHTML = '<div data-media-box="" class="w-full"></div>';
+    const original = blockOf('audio-1', 'audio', '<div data-media-box="" class="w-full"></div>');
     view.dom.append(original);
     original.querySelector('[data-media-box]')!.getBoundingClientRect = () => ({ width: 768, height: 84 }) as DOMRect;
-    const block = document.createElement('div');
-    block.className = 'bn-block-outer';
-    block.setAttribute('data-id', 'audio-1');
-    block.innerHTML = '<div data-media-box="" class="w-full"><div data-testid="media-player"></div></div>';
+    const block = blockOf('audio-1', 'audio', '<div data-media-box="" class="w-full"><div data-testid="media-player"></div></div>');
     const content = blockPreviewContent(view, [block]);
     expect(content.hasAttribute('data-media-box')).toBe(true);
     expect(content.style.width).toBe('768px');
+  });
+
+  it('takes a row with a medium nested under it whole: its words, and the medium among its children', () => {
+    const editor = open([{ type: 'paragraph', content: 'x' }]);
+    const view = editor.prosemirrorView!;
+    const block = blockOf(
+      'p1',
+      'paragraph',
+      'parent words',
+      blockOf('m1', 'image', '<div data-media-box=""><img alt=""></div>').outerHTML,
+    );
+    const content = blockPreviewContent(view, [block]);
+    expect(content.matches('[data-media-box]')).toBe(false);
+    expect(content.textContent).toContain('parent words');
+    expect(content.querySelector('[data-media-box]')).not.toBeNull();
+  });
+
+  it('takes a medium with rows nested under it whole, those rows included', () => {
+    const editor = open([{ type: 'paragraph', content: 'x' }]);
+    const view = editor.prosemirrorView!;
+    const block = blockOf(
+      'm1',
+      'image',
+      '<div data-media-box=""><img alt=""></div>',
+      blockOf('p1', 'paragraph', 'child words').outerHTML,
+    );
+    const content = blockPreviewContent(view, [block]);
+    expect(content.matches('[data-media-box]')).toBe(false);
+    expect(content.textContent).toContain('child words');
+  });
+
+  it('keeps the blocks in a block group, where nested ones take their indent', () => {
+    const editor = open([{ type: 'paragraph', content: 'x' }]);
+    const view = editor.prosemirrorView!;
+    const block = blockOf('p1', 'bulletListItem', 'parent', blockOf('p2', 'bulletListItem', 'child').outerHTML);
+    const content = blockPreviewContent(view, [block]);
+    // BlockNote indents a group only inside another group (`Block.css`
+    // `.bn-block-group .bn-block-group`).
+    const nested = content.querySelector('.bn-block .bn-block-group')!;
+    expect(nested.parentElement!.closest('.bn-block-group')).not.toBeNull();
   });
 
   it('takes a table out of its scroll frame: every column, and none of the frame\'s scrollbar or edges', () => {
@@ -189,16 +245,28 @@ describe('blockPreviewContent', () => {
     expect(content.querySelector('[data-overflow-edge]')).toBeNull();
   });
 
-  it('draws each video as a canvas of the same size', () => {
+  it('draws each video as a canvas of its own size when it has no original', () => {
     const editor = open([{ type: 'paragraph', content: 'x' }]);
     const view = editor.prosemirrorView!;
-    const block = document.createElement('div');
-    block.className = 'bn-block-outer';
-    block.innerHTML = '<div data-media-box=""><video width="320" height="180"></video></div>';
+    const block = blockOf('v1', 'video', '<div data-media-box=""><video width="320" height="180"></video></div>');
     const content = blockPreviewContent(view, [block]);
     expect(content.querySelector('video')).toBeNull();
     const canvas = content.querySelector('canvas')!;
-    expect(canvas).not.toBeNull();
+    expect([canvas.width, canvas.height]).toEqual([320, 180]);
+  });
+
+  it('draws a video from the copy of the block it sits in, when the same video is in the body twice', () => {
+    const editor = open([{ type: 'paragraph', content: 'x' }]);
+    const view = editor.prosemirrorView!;
+    const video = '<div data-media-box=""><video src="https://example.test/same.mp4"></video></div>';
+    const first = blockOf('v1', 'video', video);
+    const second = blockOf('v2', 'video', video);
+    view.dom.append(first, second);
+    first.querySelector('video')!.getBoundingClientRect = () => ({ width: 100, height: 50 }) as DOMRect;
+    second.querySelector('video')!.getBoundingClientRect = () => ({ width: 300, height: 150 }) as DOMRect;
+    const content = blockPreviewContent(view, [blockOf('v2', 'video', video)]);
+    const canvas = content.querySelector('canvas')!;
+    expect([canvas.width, canvas.height]).toEqual([300, 150]);
   });
 });
 
@@ -222,7 +290,16 @@ describe('tableLinePreviewContent', () => {
     const content = tableLinePreviewContent(editor.prosemirrorView!, cellOf(editor, 'c1'), 'column')!;
     expect(cellTexts(content)).toEqual([['c1'], ['c2'], ['c3']]);
     const cols = content.querySelectorAll('colgroup col');
-    expect(cols.length).toBeLessThanOrEqual(1);
+    expect(cols.length).toBe(1);
+  });
+
+  it('sets a row at its table\'s width and a column at its cell\'s, the widths they are drawn at in the body', () => {
+    const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
+    const view = editor.prosemirrorView!;
+    view.dom.querySelector('table')!.getBoundingClientRect = () => ({ width: 1081, height: 90 }) as DOMRect;
+    (view.nodeDOM(cellOf(editor, 'c1')) as HTMLElement).getBoundingClientRect = () => ({ width: 121, height: 30 }) as DOMRect;
+    expect(tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!.style.width).toBe('1081px');
+    expect(tableLinePreviewContent(view, cellOf(editor, 'c2'), 'column')!.style.width).toBe('121px');
   });
 
   it('holds the line\'s table and nothing of the frame the table scrolls in', () => {
