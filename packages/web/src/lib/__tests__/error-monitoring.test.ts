@@ -60,6 +60,43 @@ describe('errorMonitoringInit', () => {
     expect(beforeSend?.(ours, {})).toBe(ours);
   });
 
+  it('keeps a caught route chunk NetworkError and strips request secrets before reporting', () => {
+    const beforeSend = errorMonitoringInit({ dsn: DSN, mode: 'production', version: SHA })?.beforeSend;
+    const event: ErrorEvent = {
+      type: undefined,
+      exception: { values: [{ value: 'NetworkError when attempting to fetch resource.' }] },
+      tags: {
+        error_boundary: 'route-chunk',
+        chunk_stage: 'preload',
+        chunk_surface: 'ordinary',
+      },
+      request: {
+        url: 'https://app.test/login?token=secret#step',
+        headers: { Referer: 'https://app.test/decision?token=other', 'User-Agent': 'ua' },
+      },
+    };
+
+    expect(beforeSend?.(event, {})).toEqual({
+      ...event,
+      request: {
+        url: 'https://app.test/login',
+        headers: { Referer: 'https://app.test/decision', 'User-Agent': 'ua' },
+      },
+    });
+  });
+
+  it('still filters unrelated browser noise carrying route chunk context', () => {
+    const beforeSend = errorMonitoringInit({ dsn: DSN, mode: 'production', version: SHA })?.beforeSend;
+    const event = (value: string): ErrorEvent => ({
+      type: undefined,
+      exception: { values: [{ value }] },
+      tags: { error_boundary: 'route-chunk' },
+    });
+
+    expect(beforeSend?.(event('ResizeObserver loop limit exceeded'), {})).toBeNull();
+    expect(beforeSend?.(event('Script error.'), {})).toBeNull();
+  });
+
   it('reports the page and the previous page without their query or fragment', () => {
     const beforeSend = errorMonitoringInit({ dsn: DSN, mode: 'production', version: SHA })?.beforeSend;
     const event: ErrorEvent = {
