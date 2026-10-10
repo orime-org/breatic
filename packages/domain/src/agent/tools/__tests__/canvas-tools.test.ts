@@ -248,7 +248,7 @@ describe("what the rendered answer tells the model", () => {
     const a2m = renderGenerationModelsForModel(await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "a2m" }));
     expect(a2m).toMatch(/\(mureka-v9\.5-generate-song\)[^\n]* It runs only when one of "song", "vocal", "melody" holds a node\./);
     const t2i = renderGenerationModelsForModel(await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" }));
-    expect(t2i.split("\n").find((l) => l.includes("(nano-banana-2)")) ?? "").not.toContain("runs only when");
+    expect(t2i).toMatch(/\(nano-banana-2\)(?![^\n]*runs only when)/);
   });
 
   // Every model in Multi-Shot writes its words in shots and leaves the prompt

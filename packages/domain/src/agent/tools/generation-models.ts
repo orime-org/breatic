@@ -111,8 +111,8 @@ function renderCameraCommands(model: PricedModelInfo): string {
 }
 
 /**
- * What a run in this mode needs before it can start, as the panel and the
- * server's gate hold it: each requirement as its one param, or one of its
+ * What a run in this mode needs before it can start, as the panel holds a
+ * run in this mode to it: each requirement as its one param, or one of its
  * params where any one is enough.
  * @param model - The model.
  * @returns The sentence, or the empty string for a model that needs nothing.

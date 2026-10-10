@@ -13,12 +13,13 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { findTemplate, marksTypedIn, templatePrompt, type ProposalNode } from "@breatic/shared";
+import { findTemplate, templatePrompt, type ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useEnvWithKeys, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
 import { verdictFor, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
+import { typedMarks } from "../proposal-node-checks.js";
 import { REFUSALS, type RefusalId } from "../proposal-refusals.js";
 
 beforeEach(() => {
@@ -784,10 +785,10 @@ type Doubling = (sent: Sent) => Sent;
  * @returns The doubled proposal.
  */
 function doubledMarks(sent: Sent): Sent {
-  // Typed marks are read off the words joined, as the check reads them, so a
-  // mark typed across segments is written twice by writing the words twice.
+  // Typed marks are found by the check's own reading, so a mark typed across
+  // segments is written twice by writing the words twice.
   const twice = (segments: NonNullable<Sent["nodes"][number]["prompt"]>): NonNullable<Sent["nodes"][number]["prompt"]> =>
-    marksTypedIn(segments.map((s) => ("text" in s ? s.text : "")).join("")).length > 0
+    typedMarks({ role: "written", type: "text", name: "", prompt: segments }).length > 0
       ? [...segments, ...segments]
       : segments.flatMap((s): typeof segments => ("ref" in s || ("slot" in s && s.slot.kind === "note") ? [s, s] : [s]));
   return {
@@ -833,15 +834,13 @@ describe("a fix names what to take out by value, so the copies of it do not chan
         const once = verdictFor(entry.meets, MATERIALS);
         // Writing everything twice can trip an earlier check first, so each case
         // has to meet its own refusal under one doubling that changes it at least,
-        // or say why none can, which then has to hold.
-        const reached = changing.flatMap((double) => {
-          const twice = verdictFor(double(entry.meets), MATERIALS);
-          return !twice.ok && twice.refusal === refusal ? [twice.reason] : [];
-        });
+        // or name in noCopies the refusal every doubling meets first instead.
+        const verdicts = changing.map((double) => verdictFor(double(entry.meets), MATERIALS));
         if (entry.noCopies !== undefined) {
-          for (const double of changing) expect(verdictFor(double(entry.meets), MATERIALS)).toMatchObject({ ok: false, refusal: entry.noCopies });
+          for (const verdict of verdicts) expect(verdict).toMatchObject({ ok: false, refusal: entry.noCopies });
           return;
         }
+        const reached = verdicts.flatMap((verdict) => (!verdict.ok && verdict.refusal === refusal ? [verdict.reason] : []));
         expect(reached.length, `${refusal} (${String(at)}) meets its own refusal under some doubling`).toBeGreaterThan(0);
         for (const reason of reached) expect(lastSentence(reason)).toBe(lastSentence(once.ok ? "" : once.reason));
       });

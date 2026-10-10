@@ -900,8 +900,8 @@ export function renderProductGuide(): string {
       "where that source is optional the run goes ahead without it.",
     "A proposal @s for the reader every node it wires into the reference list: its prompt or shot arrives with " +
       "those mentions in it, the same as ones typed with @. A node @'d that lands empty -- an empty node, or a " +
-      "generation still to run -- comes with a note saying what to do first; generating before then runs " +
-      "without it. A prompt or shot from a template carries three kinds of mark, and one from a proposal the " +
+      "generation still to run -- comes with a note saying what to do first; generating before then sends " +
+      "nothing for it, and the run stops where the model runs only when that source holds a node. A prompt or shot from a template carries three kinds of mark, and one from a proposal the " +
       "last two only. A 📎 mark in square brackets " +
       "asks the reader to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
       "their own file in (double-click it to pick one), a generated result, or a text node -- then delete the " +
