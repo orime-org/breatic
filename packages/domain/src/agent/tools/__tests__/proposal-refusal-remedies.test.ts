@@ -43,6 +43,8 @@ interface RefusalCase {
   states: string[];
   /** The proposal after the reason's one fix, for a refusal marked as having one. */
   fix?: Sent;
+  /** Words the reason must not hold, where saying them would be untrue of this proposal. */
+  absent?: string[];
 }
 
 const PIC = "https://resource.example/image/2026-10-09/1_pic.png";
@@ -177,10 +179,18 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([DRAW], [{ fromIndex: 0, toIndex: 4 }]),
     states: ["An edge points outside the group", "Take that edge off."],
     fix: group([DRAW]),
+  }, {
+    meets: group([DRAW], [{ fromIndex: 0, toIndex: 4 }, { fromIndex: 0, toIndex: 4 }]),
+    states: ['2 edges point outside the group: {"fromIndex":0,"toIndex":4}.', "Take those edges off."],
+    fix: group([DRAW]),
   }],
   "edge-self-loop": [{
     meets: group([DRAW], [{ fromIndex: 0, toIndex: 0 }]),
     states: ["An edge loops node 0 onto itself.", "Take that edge off."],
+    fix: group([DRAW]),
+  }, {
+    meets: group([DRAW], [{ fromIndex: 0, toIndex: 0 }, { fromIndex: 0, toIndex: 0 }]),
+    states: ["2 edges loop node 0 onto itself.", "Take those edges off."],
     fix: group([DRAW]),
   }],
   "edge-repeated": [{
@@ -239,6 +249,12 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([EMPTY_PIC, { ...EDIT_POOL, prompt: undefined, template: "storyboard-grid-25", mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     states: ['"Gen" names template "storyboard-grid-25" and sends no prompt.', "Give it a prompt.", "The template's prompt, to rewrite in the reader's language with their story or detail in it:", 'an empty one by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first'],
     fix: group([EMPTY_PIC, { ...EDIT_POOL, template: "storyboard-grid-25", mode: undefined, model: undefined, prompt: [...storyboardSegments(), NOTE] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+  }, {
+    // The node settles its own model, which takes no picture: the pool the template's own model has is not its.
+    meets: group([{ ...DRAW, prompt: undefined, template: "storyboard-grid-25" }]),
+    states: ['"Gen" names template "storyboard-grid-25" and sends no prompt.', "Give it a prompt."],
+    absent: ['into: "pool"', "goes into the pool"],
+    fix: group([{ ...DRAW, template: "storyboard-grid-25" }]),
   }],
   "sources-no-taker": [{
     meets: group([EMPTY_PIC, DRAW]),
@@ -304,10 +320,18 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make " }, { ref: 7 }] })]),
     states: ['A ref in "Gen" points outside the group: {"ref": 7}. Take that ref out.'],
     fix: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make " }] })]),
+  }, {
+    meets: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make " }, { ref: 7 }, { ref: 7 }] })]),
+    states: ['A ref in "Gen" points outside the group: {"ref": 7}, 2 times.', "Take those refs out."],
+    fix: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make " }] })]),
   }],
   "ref-self": [{
     meets: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make " }, { ref: 0 }] })]),
     states: ['"Gen" @s itself with {"ref": 0}, and a node cannot @ itself. Take that ref out.'],
+    fix: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make " }] })]),
+  }, {
+    meets: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make " }, { ref: 0 }, { ref: 0 }] })]),
+    states: ['"Gen" @s itself with {"ref": 0}, 2 times, and a node cannot @ itself.', "Take those refs out."],
     fix: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make " }] })]),
   }],
   "ref-arrives-otherwise": [{
@@ -326,6 +350,9 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }, {
     meets: group(PICS(4).concat([gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, ...REFS(4), ...NOTES(4)] })]), [0, 1, 2].map((i) => ({ fromIndex: i, toIndex: 4, into: "pool" }))),
     states: ['"Pic 3" is @\'d by a ref in "Gen" but is not wired into its pool', 'The pool of "Gen" takes 3 image node(s) and holds "Pic 0", "Pic 1", "Pic 2".'],
+  }, {
+    meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit " }, { ref: 0 }, { text: " like " }, { ref: 0 }, NOTE] })]),
+    states: ['"Pic" is @\'d by 2 refs in "Gen" but is not wired into its pool'],
   }],
   "ref-not-pooled-no-pool": [{
     meets: group([EMPTY_PIC, gen("image", "t2i", T2I, { prompt: [{ text: "Draw " }, { ref: 0 }, NOTE] })]),
@@ -335,6 +362,10 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([CLIP_HELD, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score " }, { ref: 0 }] })]),
     states: ["Leave the ref out.", '"Clip" goes into "Gen" through fills "video" on "Gen", with no edge and no ref.'],
     fix: group([CLIP_HELD, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score " }] })]),
+  }, {
+    meets: group([EMPTY_PIC, gen("image", "t2i", T2I, { prompt: [{ text: "Draw " }, { ref: 0 }, { text: " like " }, { ref: 0 }, NOTE] })]),
+    states: ['"Pic" is @\'d by 2 refs in "Gen"', "Leave those refs out."],
+    fix: group([EMPTY_PIC, gen("image", "t2i", T2I, { prompt: [{ text: "Draw it like it." }, NOTE] })]),
   }],
   "way-over-room": [{
     meets: group(PICS(4).concat([gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, ...REFS(4), ...NOTES(4)] })]), [0, 1, 2, 3].map((i) => ({ fromIndex: i, toIndex: 4, into: "pool" }))),
@@ -371,12 +402,14 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: ["Shot 1 writes nothing. Every shot needs its own words."],
   }],
   "too-many-shots": [{
-    meets: group([{ ...STORY, params: { duration: 7 }, shots: Array.from({ length: 7 }, (_, i) => ({ prompt: [{ text: `Shot ${String(i)}.` }], duration: 1 })) }]),
-    states: [`"${SHOTS}" takes at most 6 shots, and their seconds add up to duration.`],
+    // The seconds do not add up either: the reason says nothing about them.
+    meets: group([{ ...STORY, params: { duration: 5 }, shots: Array.from({ length: 7 }, (_, i) => ({ prompt: [{ text: `Shot ${String(i)}.` }], duration: 3 })) }]),
+    states: [`"${SHOTS}" takes at most 6 shots, and this proposal gives 7.`],
+    absent: ["seconds"],
   }],
   "shot-too-long": [{
     meets: group([{ ...STORY, shots: [{ prompt: [{ text: LONG_SCRIPT }], duration: 2 }, TWO_SHOTS[1] as (typeof TWO_SHOTS)[number]] }]),
-    states: ["Shot 1 is longer than the"],
+    states: [`Shot 1 is 600 characters, longer than the 512 characters "${SHOTS}" takes for one shot.`],
   }],
   "shots-duration": [{
     meets: group([{ ...STORY, params: { duration: 8 } }]),
@@ -402,6 +435,10 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   "written-takes-no-mark": [{
     meets: group([{ ...WORDS, prompt: [{ text: "Copy " }, NOTE] }, DRAW]),
     states: ['"Words" holds words the reader keeps as they are, so it takes no ref or note. Take it out'],
+    fix: group([WORDS, DRAW]),
+  }, {
+    meets: group([{ ...WORDS, prompt: [{ text: "Copy " }, NOTE, { text: " and " }, NOTE] }, DRAW]),
+    states: ["so it takes no ref or note, and it carries 2.", "Take them out"],
     fix: group([WORDS, DRAW]),
   }],
   "material-not-source": [{
@@ -543,10 +580,18 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [5] } })]),
     states: ['fills "style_images" on "Gen" points at node 5, which is not in the group. Take it out of fills "style_images".'],
     fix: group([HELD_PIC, gen("image", "i2i", EDIT)]),
+  }, {
+    meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [5, 5] } })]),
+    states: ['fills "style_images" on "Gen" points at node 5, 2 times, which is not in the group.', 'Take every one out of fills "style_images".'],
+    fix: group([HELD_PIC, gen("image", "i2i", EDIT)]),
   }],
   "fill-self": [{
     meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [1] } })]),
     states: ['and a node cannot fill its own slot. Take it out of fills "style_images".'],
+    fix: group([HELD_PIC, gen("image", "i2i", EDIT)]),
+  }, {
+    meets: group([HELD_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [1, 1] } })]),
+    states: ['points at "Gen" itself, 2 times, and a node cannot fill its own slot.', 'Take every one out of fills "style_images".'],
     fix: group([HELD_PIC, gen("image", "i2i", EDIT)]),
   }],
   "fill-not-a-slot": [{
@@ -563,10 +608,18 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
     states: ['which holds no material, and fills takes only nodes holding it.', 'Take "Pic" out of fills "style_images".', '"Pic" goes into "Gen" by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref.'],
     fix: group([EMPTY_PIC, gen("image", "i2i", EDIT)]),
+  }, {
+    meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { fills: { style_images: [0, 0] } })]),
+    states: ['points at "Pic", 2 times, which holds no material', 'Take "Pic" out of fills "style_images", every time it is named.'],
+    fix: group([EMPTY_PIC, gen("image", "i2i", EDIT)]),
   }],
   "fill-wrong-kind": [{
     meets: group([CLIP_HELD, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
     states: ['Take "Clip" out of fills "style_images".', `"${EDIT}" takes no video node, so "Clip" has no way into "Gen".`],
+    fix: group([CLIP_HELD, gen("image", "i2i", EDIT)]),
+  }, {
+    meets: group([CLIP_HELD, gen("image", "i2i", EDIT, { fills: { style_images: [0, 0] } })]),
+    states: ['and "Clip" is video, named 2 times.', 'Take "Clip" out of fills "style_images", every time it is named.'],
     fix: group([CLIP_HELD, gen("image", "i2i", EDIT)]),
   }],
   "fill-repeated": [{
@@ -598,6 +651,7 @@ describe("every refusal states its fault, its rule and its facts", () => {
         // The words are pinned so a changed reason is read in review.
         expect(reason).toMatchSnapshot();
         for (const statement of entry.states) expect(reason).toContain(statement);
+        for (const words of entry.absent ?? []) expect(reason).not.toContain(words);
         // A fix is written only where the table marks the refusal as having one.
         expect(entry.fix !== undefined, `${refusal} carries a fix exactly when REFUSALS marks one`).toBe(REFUSALS[refusal]);
         if (entry.fix === undefined) return;
@@ -606,4 +660,10 @@ describe("every refusal states its fault, its rule and its facts", () => {
       });
     }
   }
+});
+
+describe("a material address is one the save tool can take", () => {
+  it("turns away an address that is not https, which save_image cannot save", () => {
+    expect(inputSchema.safeParse(group([{ ...HELD_PIC, material: "http://elsewhere.example/a.png" }, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })])).success).toBe(false);
+  });
 });
