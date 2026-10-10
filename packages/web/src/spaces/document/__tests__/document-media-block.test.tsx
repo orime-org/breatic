@@ -428,7 +428,7 @@ describe('the toolbar', () => {
       .getAllByRole('button')
       .map((b) => b.getAttribute('data-action'));
     expect(buttons).toEqual(rows);
-    expect(within(toolbar(editor)).queryByTestId('doc-media-sep')).toBeNull();
+    expect(toolbar(editor).querySelector('[class*="after:w-px"]')).toBeNull();
   });
 
   it('offers alignment on an image narrower than the body (A9)', () => {
@@ -470,9 +470,10 @@ describe('the toolbar', () => {
     expect(media(editor).props['textAlignment']).toBe('left');
     expect(within(toolbar(editor)).getByTestId('doc-media-align-left').className).toContain('bg-accent-strong');
     expect(within(toolbar(editor)).getByTestId('doc-media-align-center').className).not.toContain('bg-accent-strong');
-    // A rule sets the alignments apart from the rest, as in the selection bar.
-    expect(within(toolbar(editor)).getByTestId('doc-media-align-right').nextElementSibling)
-      .toBe(within(toolbar(editor)).getByTestId('doc-media-sep'));
+    // A rule after the last alignment sets the group apart, as in the
+    // selection bar; it is drawn, not an element of its own.
+    expect(within(toolbar(editor)).getByTestId('doc-media-align-right').className).toContain('after:w-px');
+    expect(within(toolbar(editor)).queryByRole('separator')).toBeNull();
   });
 
   it('never offers alignment on audio, which is as wide as the body', () => {

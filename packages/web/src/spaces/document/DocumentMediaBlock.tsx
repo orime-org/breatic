@@ -31,7 +31,6 @@ import {
   DialogContent,
   DialogTitle,
 } from '@web/components/ui/dialog';
-import { Separator } from '@web/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-end';
@@ -138,6 +137,14 @@ const CORNERS = [
   { corner: 'sw', side: 'left', place: '-bottom-3 -left-3', cursor: 'cursor-nesw-resize' },
   { corner: 'se', side: 'right', place: '-bottom-3 -right-3', cursor: 'cursor-nwse-resize' },
 ] as const;
+
+/**
+ * The selection bar's rule between groups (16px tall, 3px either side), drawn
+ * after the last alignment: an element of its own inside the block would put
+ * line breaks in the page's selection of the block.
+ */
+const GROUP_RULE_AFTER =
+  'relative mr-[7px] after:absolute after:-right-[4px] after:top-1/2 after:h-4 after:w-px after:-translate-y-1/2 after:bg-border';
 
 /** Where each alignment puts the media in its row. */
 const JUSTIFY: Readonly<Record<string, string>> = {
@@ -470,6 +477,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
                 action='align'
                 testId={`doc-media-align-${value}`}
                 pressed={alignment === value}
+                className={value === 'right' ? GROUP_RULE_AFTER : undefined}
                 onPress={() => {
                   actions.setProps({ textAlignment: value });
                 }}
@@ -477,14 +485,6 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
                 <Icon />
               </ToolButton>
             ))}
-            {sized && narrower && (
-              <Separator
-                orientation='vertical'
-                data-testid='doc-media-sep'
-                // The selection bar's rule between groups.
-                className='mx-[3px] h-4 w-px'
-              />
-            )}
             <ToolButton
               label={t('spaces.document.media.caption')}
               action='caption'
