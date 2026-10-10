@@ -25,6 +25,7 @@
 
 import type { EditorView } from '@tiptap/pm/view';
 
+import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import type { DragOrientation } from '@web/spaces/document/document-table-drag';
 import { cellAt } from '@web/spaces/document/document-table-run';
 
@@ -59,14 +60,16 @@ const EDITOR_ONLY_CLASSES = new Set(['bn-root', 'bn-editor', 'ProseMirror']);
 
 /** A media block's box: the media and nothing around it. */
 const MEDIA_BOX = '[data-media-box]';
-/** The controls a media block draws over its media. */
-const MEDIA_CHROME = '[data-media-chrome]';
 /** A table block. */
 const TABLE_BLOCK = '[data-content-type="table"]';
 /** A block's content element, which carries the space above the block. */
 const BLOCK_CONTENT = '.bn-block-content';
-/** The video readiness from which a frame can be drawn (`HAVE_CURRENT_DATA`). */
-const HAVE_CURRENT_DATA = 2;
+/** A block's own content, as against the blocks nested under it. */
+const OWN_CONTENT = ':scope > .bn-block > .bn-block-content';
+/** The group a block's nested blocks sit in. */
+const NESTED_GROUP = ':scope > .bn-block > .bn-block-group';
+/** BlockNote's group of blocks, the context its indent rules read. */
+const BLOCK_GROUP_CLASS = 'bn-block-group';
 
 /**
  * The scale that brings a longest side over {@link PREVIEW_LONGEST_SIDE} down to
@@ -149,14 +152,32 @@ function columnWidth(view: EditorView): number {
 }
 
 /**
+ * The element in the body a copied element was copied from: in the block with
+ * the copy's block id, the one at the copy's place among the same kind.
+ * @param view - The editor view.
+ * @param copy - The copied element, still inside its copied block.
+ * @param selector - What kind of element it is.
+ * @returns The original, or null when the copy carries no block id.
+ */
+function originalOf(view: EditorView, copy: Element, selector: string): Element | null {
+  const block = copy.closest('[data-id]');
+  const id = block?.getAttribute('data-id');
+  if (block === null || block === undefined || id === null || id === undefined) return null;
+  const original = view.dom.querySelector(`[data-id="${id}"]`);
+  const index = [...block.querySelectorAll(selector)].indexOf(copy);
+  return original?.querySelectorAll(selector)[index] ?? null;
+}
+
+/**
  * Turns copied content into what the preview shows: no media toolbar, each
- * table as its table alone, a still of each video.
+ * table as its table alone, a still of each video. Run while the copies are
+ * still in their copied blocks, where their originals can be found.
  *
  * A table block holds its table inside the frame it scrolls in, and the frame
  * draws a scrollbar and the edges of what is scrolled off. The preview shows
  * every column, so none of that is true of it: the block keeps its table and
  * nothing else.
- * @param view - The editor view, where the copied videos' originals are.
+ * @param view - The editor view.
  * @param content - The copied content.
  */
 function settle(view: EditorView, content: HTMLElement): void {
@@ -168,9 +189,9 @@ function settle(view: EditorView, content: HTMLElement): void {
   tables.forEach((block) => {
     block.replaceChildren(...block.querySelectorAll('table'));
   });
-  const originals = [...view.dom.querySelectorAll('video')];
   content.querySelectorAll('video').forEach((video) => {
-    video.replaceWith(stillOf(video, originals));
+    const original = originalOf(view, video, 'video');
+    video.replaceWith(stillOf(video, original instanceof HTMLVideoElement ? original : null));
   });
 }
 
@@ -179,18 +200,16 @@ function settle(view: EditorView, content: HTMLElement): void {
  * A copied video starts loading from nothing, and the drag image is taken
  * before it has a frame.
  * @param copy - The copied video.
- * @param originals - The body's videos.
+ * @param original - The video it was copied from.
  * @returns The canvas.
  */
-function stillOf(copy: HTMLVideoElement, originals: HTMLVideoElement[]): HTMLCanvasElement {
-  const original = originals.find((video) => video.currentSrc !== '' && video.currentSrc === copy.currentSrc) ??
-    originals.find((video) => video.getAttribute('src') !== null && video.getAttribute('src') === copy.getAttribute('src'));
+function stillOf(copy: HTMLVideoElement, original: HTMLVideoElement | null): HTMLCanvasElement {
   const box = original?.getBoundingClientRect();
   const canvas = copy.ownerDocument.createElement('canvas');
   canvas.width = Math.round(box?.width || copy.width || copy.clientWidth);
   canvas.height = Math.round(box?.height || copy.height || copy.clientHeight);
   canvas.className = copy.className;
-  if (original !== undefined && original.readyState >= HAVE_CURRENT_DATA) {
+  if (original !== null && original.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
     canvas.getContext('2d')?.drawImage(original, 0, 0, canvas.width, canvas.height);
   }
   return canvas;
@@ -198,58 +217,39 @@ function stillOf(copy: HTMLVideoElement, originals: HTMLVideoElement[]): HTMLCan
 
 /**
  * What a row drag's preview shows, from the blocks BlockNote copied: a lone
- * media block is its media box; anything else is the blocks at the width of
- * the body column.
+ * media block with nothing nested under it is its media box; anything else is
+ * the blocks, in a block group at the width of the body column.
+ *
+ * Each copy carries what it had in the body: the width it is drawn at, and the
+ * group its nested blocks' indent is read in.
  * @param view - The editor view.
  * @param blocks - The copied blocks.
  * @returns The content, detached.
  */
 export function blockPreviewContent(view: EditorView, blocks: readonly Element[]): HTMLElement {
   const page = view.dom.ownerDocument;
-  const box = blocks.length === 1 && blocks[0]!.querySelector(TABLE_BLOCK) === null
-    ? blocks[0]!.querySelector<HTMLElement>(MEDIA_BOX)
-    : null;
-  let content: HTMLElement;
+  const lone = blocks.length === 1 ? blocks[0]! : null;
+  const own = lone?.querySelector(OWN_CONTENT);
+  const box =
+    lone !== null && own !== null && own !== undefined && !own.matches(TABLE_BLOCK) &&
+    lone.querySelector(NESTED_GROUP) === null
+      ? own.querySelector<HTMLElement>(MEDIA_BOX)
+      : null;
   if (box !== null) {
-    box.remove();
-    content = box;
     // The box takes its width from the body's row (an audio fills it; any box
-    // is held to it), and the preview wraps its content, so the copy carries
-    // the width the box is drawn at.
-    const id = blocks[0]!.getAttribute('data-id');
-    const original = id === null ? null : view.dom.querySelector(`[data-id="${id}"] ${MEDIA_BOX}`);
-    if (original !== null) content.style.width = `${original.getBoundingClientRect().width}px`;
-  } else {
-    content = page.createElement('div');
-    content.style.width = `${columnWidth(view)}px`;
-    content.append(...blocks);
+    // is held to it), and the preview wraps its content.
+    const original = originalOf(view, box, MEDIA_BOX);
+    if (original !== null) box.style.width = `${original.getBoundingClientRect().width}px`;
+    settle(view, lone!);
+    box.remove();
+    return box;
   }
+  const content = page.createElement('div');
+  content.className = BLOCK_GROUP_CLASS;
+  content.style.width = `${columnWidth(view)}px`;
+  content.append(...blocks);
   settle(view, content);
   return content;
-}
-
-/**
- * The child indices from an ancestor down to a node.
- * @param ancestor - The ancestor.
- * @param node - The node.
- * @returns The path.
- */
-function pathTo(ancestor: Element, node: Element): number[] {
-  const path: number[] = [];
-  for (let at: Element = node; at !== ancestor && at.parentElement !== null; at = at.parentElement) {
-    path.unshift([...at.parentElement.children].indexOf(at));
-  }
-  return path;
-}
-
-/**
- * Follows child indices down from a node.
- * @param from - The node.
- * @param path - The path.
- * @returns The node at its end.
- */
-function follow(from: Element, path: readonly number[]): Element | undefined {
-  return path.reduce<Element | undefined>((at, index) => at?.children[index], from);
 }
 
 /**
@@ -280,7 +280,10 @@ export function tableLinePreviewContent(
   const block = cells[0]?.closest(TABLE_BLOCK);
   if (block === null || block === undefined) return null;
   const copy = block.cloneNode(true) as HTMLElement;
-  const kept = new Set(cells.map((cell) => follow(copy, pathTo(block, cell))));
+  // The copy has the original's structure, so a cell is at its own place.
+  const originals = [...block.querySelectorAll('td, th')];
+  const copies = [...copy.querySelectorAll('td, th')];
+  const kept = new Set(cells.map((cell) => copies[originals.indexOf(cell)]));
   copy.querySelectorAll('td, th').forEach((cell) => {
     if (!kept.has(cell)) cell.remove();
   });
@@ -298,6 +301,12 @@ export function tableLinePreviewContent(
       table.style.minWidth = '0';
     });
   }
+  // The line keeps the width it is drawn at in the body, its table's for a row
+  // and its cell's for a column: the preview wraps its content, and a table
+  // with no stored widths would lay out again to whatever width it is given.
+  const drawn = orientation === 'row' ? block.querySelector('table') : cells[0];
+  const width = drawn?.getBoundingClientRect().width ?? 0;
+  if (width > 0) copy.style.width = `${width}px`;
   settle(view, copy);
   return copy;
 }
