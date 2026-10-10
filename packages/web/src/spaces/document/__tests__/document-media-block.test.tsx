@@ -695,14 +695,14 @@ describe('resizing (A8)', () => {
     }
   });
 
-  it('takes a press on a 24px square around each knob, which stays an 8px dot (WCAG 2.5.8)', () => {
+  it('takes a press on a 24px square around each knob, which stays an 8px square (WCAG 2.5.8)', () => {
     const editor = open('image', { previewWidth: 200 });
     selectMedia(editor);
 
     for (const corner of ['nw', 'ne', 'sw', 'se']) {
       const target = within(element(editor)).getByTestId(`doc-media-resize-${corner}`);
       expect(target.className).toMatch(/\bh-6\b.*\bw-6\b|\bw-6\b.*\bh-6\b/);
-      // The dot is the stylesheet's (`[data-media-knob]::after`): an element
+      // The square is the stylesheet's (`[data-media-knob]::after`): an element
       // inside it would put line breaks in the page's selection of the block.
       expect(target.hasAttribute('data-media-knob')).toBe(true);
       expect(target.childElementCount).toBe(0);

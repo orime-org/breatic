@@ -129,7 +129,7 @@ const ALIGNMENTS = [
 /**
  * The corner knobs of a selected picture or video, and the side each one
  * pulls. Each takes a press on a 24px square centred on its corner, the
- * smallest target WCAG 2.5.8 allows; the stylesheet draws its 8px dot.
+ * smallest target WCAG 2.5.8 allows; the stylesheet draws its 8px square.
  */
 const CORNERS = [
   { corner: 'nw', side: 'left', place: '-left-3 -top-3', cursor: 'cursor-nwse-resize' },

@@ -65,7 +65,7 @@ describe('a selected or hovered media block in the stylesheet', () => {
     expect(own?.selector).toContain('[contenteditable=\'true\']');
   });
 
-  it('draws each corner knob as an 8px dot in the middle of its 24px target', () => {
+  it('draws each corner knob as an 8px square in the middle of its 24px target, the mark of a resize that keeps the ratio', () => {
     const css = readFileSync(resolve(import.meta.dirname, '../../../index.css'), 'utf8');
     const decls = new Map<string, string>();
     postcss.parse(css).walkRules((rule) => {
@@ -78,5 +78,7 @@ describe('a selected or hovered media block in the stylesheet', () => {
 
     expect(decls.get('inset')).toBe('8px');
     expect(decls.get('border')).toBe('1px solid var(--color-content-link)');
+    // A square, as the canvas resize handles are; a round knob means a free ratio.
+    expect(decls.get('border-radius')).toBe('1px');
   });
 });

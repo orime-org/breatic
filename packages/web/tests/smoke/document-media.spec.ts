@@ -486,7 +486,7 @@ test('a selected picture is framed with a knob on each corner, and its handle st
   await img.click();
   await expect(frame).toHaveCSS('outline-width', '1px');
   expect(await frame.evaluate((element) => getComputedStyle(element).outline)).toBe(hoveredOutline);
-  // Each knob takes a press on 24px around its corner (WCAG 2.5.8) and shows an 8px dot.
+  // Each knob takes a press on 24px around its corner (WCAG 2.5.8) and shows an 8px square.
   const shown = (await frame.boundingBox())!;
   const corners = {
     nw: [shown.x, shown.y],
@@ -501,11 +501,11 @@ test('a selected picture is framed with a knob on each corner, and its handle st
     expect([box.width, box.height]).toEqual([24, 24]);
     expect(Math.abs(box.x + 12 - corners[corner][0])).toBeLessThanOrEqual(1);
     expect(Math.abs(box.y + 12 - corners[corner][1])).toBeLessThanOrEqual(1);
-    const dot = await knob.evaluate((element) => {
+    const square = await knob.evaluate((element) => {
       const style = getComputedStyle(element, '::after');
-      return [style.width, style.height];
+      return [style.width, style.height, style.borderRadius];
     });
-    expect(dot).toEqual(['8px', '8px']);
+    expect(square).toEqual(['8px', '8px', '1px']);
   }
   await expect(page.locator(IMAGE)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
